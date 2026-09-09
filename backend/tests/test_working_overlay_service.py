@@ -22,7 +22,9 @@ from app.domain.working_overlay import (
     cell_key,
     column_key,
 )
+from app.domain.preparation_issue import ISSUE_TIME_VALUE_MISSING, ISSUE_WAVEFORM_VALUE_INVALID, ISSUE_WAVEFORM_VALUE_MISSING
 from app.services.errors import (
+    InvalidBulkNullIssueCodeError,
     InvalidColumnRoleError,
     InvalidDataRegionError,
     InvalidEngineeringQuantityError,
@@ -39,8 +41,10 @@ from app.services.preparation_import_service import (
 )
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.working_overlay_service import (
+    apply_bulk_mark_null,
     clear_header_row,
     edit_cell,
+    preview_bulk_mark_null,
     redo_working_change,
     reset_all_working_changes,
     reset_cell,
@@ -1158,3 +1162,265 @@ class TestEngineeringQuantityAndUnitSuffixRestoration:
         # assignment, so the auto-suggest block never fires again at all
         # on this second round trip -- the user's own "V" override survives.
         assert session.working_overlay.column_measured_units[column_key(None, 0)] == "V"
+
+
+def _bulk_source(registry: PreparationSessionRegistry, *, rows: int = 5, blank_at: tuple = (), invalid_at: tuple = ()) -> str:
+    """A minimal CSV with column 0 = Time Axis (always valid), column 1
+    = Waveform -- `blank_at`/`invalid_at` are 1-based row numbers to
+    seed as an empty/invalid raw waveform value."""
+    lines = []
+    for i in range(1, rows + 1):
+        value = "" if i in blank_at else ("ERR" if i in invalid_at else f"{i}.0")
+        lines.append(f"2026-08-31 13:00:{i:02d},{value}")
+    source_id = _add_csv(registry, ("\n".join(lines) + "\n").encode())
+    set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="time_axis", registry=registry)
+    set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
+    return source_id
+
+
+class TestPreviewBulkMarkNull:
+    def test_returns_the_authoritative_eligible_count_with_no_mutation(self):
+        registry = PreparationSessionRegistry()
+        source_id = _bulk_source(registry, rows=10, blank_at=(2, 4, 6))
+        session = registry.get("ws-1", source_id)
+        revision_before = session.working_overlay.revision
+
+        result = preview_bulk_mark_null(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            issue_code=ISSUE_WAVEFORM_VALUE_MISSING, registry=registry,
+        )
+
+        assert result.eligible_count == 3
+        assert session.working_overlay.cell_overrides == {}  # no mutation
+        assert session.working_overlay.revision == revision_before  # no history entry either
+
+    def test_invalid_scope_returns_the_invalid_count(self):
+        registry = PreparationSessionRegistry()
+        source_id = _bulk_source(registry, rows=10, invalid_at=(3, 5))
+
+        result = preview_bulk_mark_null(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            issue_code=ISSUE_WAVEFORM_VALUE_INVALID, registry=registry,
+        )
+
+        assert result.eligible_count == 2
+
+    def test_not_assigned_column_returns_zero_eligible_never_an_error(self):
+        registry = PreparationSessionRegistry()
+        lines = ["2026-08-31 13:00:00,1.0,"]
+        source_id = _add_csv(registry, ("\n".join(lines) + "\n").encode())
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="time_axis", registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
+        # column_index=2 stays not_assigned
+
+        result = preview_bulk_mark_null(
+            workspace_id="ws-1", source_id=source_id, column_index=2,
+            issue_code=ISSUE_WAVEFORM_VALUE_MISSING, registry=registry,
+        )
+
+        assert result.eligible_count == 0
+
+    def test_out_of_range_column_raises_invalid_working_coordinate(self):
+        registry = PreparationSessionRegistry()
+        source_id = _bulk_source(registry, rows=3)
+
+        with pytest.raises(InvalidWorkingCoordinateError):
+            preview_bulk_mark_null(
+                workspace_id="ws-1", source_id=source_id, column_index=99,
+                issue_code=ISSUE_WAVEFORM_VALUE_MISSING, registry=registry,
+            )
+
+    def test_time_axis_issue_code_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _bulk_source(registry, rows=3)
+
+        with pytest.raises(InvalidBulkNullIssueCodeError):
+            preview_bulk_mark_null(
+                workspace_id="ws-1", source_id=source_id, column_index=0,
+                issue_code=ISSUE_TIME_VALUE_MISSING, registry=registry,
+            )
+
+
+class TestApplyBulkMarkNull:
+    def test_marks_every_currently_eligible_cell(self):
+        registry = PreparationSessionRegistry()
+        source_id = _bulk_source(registry, rows=10, blank_at=(2, 4, 6))
+
+        result = apply_bulk_mark_null(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            issue_code=ISSUE_WAVEFORM_VALUE_MISSING, registry=registry,
+        )
+
+        assert result.eligible_count == 3
+        assert result.applied_count == 3
+        assert result.overlay.can_undo is True
+        session = registry.get("ws-1", source_id)
+        for row_number in (2, 4, 6):
+            assert session.working_overlay.cell_overrides[cell_key(None, row_number, 1)].kind == OVERRIDE_KIND_NULL
+
+    def test_creates_exactly_one_undoable_operation(self):
+        registry = PreparationSessionRegistry()
+        source_id = _bulk_source(registry, rows=20, blank_at=tuple(range(1, 21)))
+
+        apply_bulk_mark_null(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            issue_code=ISSUE_WAVEFORM_VALUE_MISSING, registry=registry,
+        )
+
+        session = registry.get("ws-1", source_id)
+        # 2 set_column_role ops (Time Axis + Waveform) + 1 bulk op.
+        assert len(session.working_overlay.history) == 3
+        assert session.working_overlay.history[-1].kind == "bulk_cell"
+
+    def test_undo_restores_the_whole_group_in_one_press(self):
+        registry = PreparationSessionRegistry()
+        source_id = _bulk_source(registry, rows=10, blank_at=(2, 4, 6))
+        apply_bulk_mark_null(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            issue_code=ISSUE_WAVEFORM_VALUE_MISSING, registry=registry,
+        )
+
+        summary = undo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert summary.can_redo is True
+        session = registry.get("ws-1", source_id)
+        for row_number in (2, 4, 6):
+            assert cell_key(None, row_number, 1) not in session.working_overlay.cell_overrides
+
+    def test_redo_reapplies_the_full_group(self):
+        registry = PreparationSessionRegistry()
+        source_id = _bulk_source(registry, rows=10, blank_at=(2, 4, 6))
+        apply_bulk_mark_null(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            issue_code=ISSUE_WAVEFORM_VALUE_MISSING, registry=registry,
+        )
+        undo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        redo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        for row_number in (2, 4, 6):
+            assert session.working_overlay.cell_overrides[cell_key(None, row_number, 1)].kind == OVERRIDE_KIND_NULL
+
+    def test_reset_all_restores_original_source_state(self):
+        registry = PreparationSessionRegistry()
+        source_id = _bulk_source(registry, rows=10, blank_at=(2, 4, 6))
+        apply_bulk_mark_null(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            issue_code=ISSUE_WAVEFORM_VALUE_MISSING, registry=registry,
+        )
+
+        reset_all_working_changes(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        assert session.working_overlay.cell_overrides == {}
+
+    def test_staleness_manually_repaired_cells_are_not_overwritten(self):
+        # Task section 13/33's own exact scenario: preview says N,
+        # then the user manually fixes some of those cells before the
+        # SAME bulk scope is applied -- apply must re-evaluate current
+        # eligibility, never trust the earlier preview.
+        registry = PreparationSessionRegistry()
+        source_id = _bulk_source(registry, rows=10, blank_at=(2, 4, 6, 8))
+        preview = preview_bulk_mark_null(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            issue_code=ISSUE_WAVEFORM_VALUE_MISSING, registry=registry,
+        )
+        assert preview.eligible_count == 4
+        # The user manually repairs two of the four blank cells in between.
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=2, column_index=1, value="22.0", registry=registry)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=4, column_index=1, value="44.0", registry=registry)
+
+        result = apply_bulk_mark_null(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            issue_code=ISSUE_WAVEFORM_VALUE_MISSING, registry=registry,
+        )
+
+        assert result.eligible_count == 2  # re-evaluated fresh, not the stale 4
+        assert result.applied_count == 2
+        session = registry.get("ws-1", source_id)
+        # The manually repaired cells keep their real, entered values --
+        # never converted to null by the stale bulk request.
+        assert session.working_overlay.cell_overrides[cell_key(None, 2, 1)].kind == OVERRIDE_KIND_EDIT
+        assert session.working_overlay.cell_overrides[cell_key(None, 2, 1)].value == "22.0"
+        assert session.working_overlay.cell_overrides[cell_key(None, 4, 1)].kind == OVERRIDE_KIND_EDIT
+        assert session.working_overlay.cell_overrides[cell_key(None, 4, 1)].value == "44.0"
+        # The two still-blank cells DID get nulled.
+        assert session.working_overlay.cell_overrides[cell_key(None, 6, 1)].kind == OVERRIDE_KIND_NULL
+        assert session.working_overlay.cell_overrides[cell_key(None, 8, 1)].kind == OVERRIDE_KIND_NULL
+
+    def test_already_explicit_null_cells_are_not_recounted_or_reapplied(self):
+        registry = PreparationSessionRegistry()
+        source_id = _bulk_source(registry, rows=10, blank_at=(2, 4))
+        edit_cell(
+            workspace_id="ws-1", source_id=source_id, row_number=2, column_index=1,
+            value=None, kind="null", registry=registry,
+        )
+
+        result = apply_bulk_mark_null(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            issue_code=ISSUE_WAVEFORM_VALUE_MISSING, registry=registry,
+        )
+
+        assert result.eligible_count == 1  # only row 4 -- row 2 already resolved
+        assert result.applied_count == 1
+
+    def test_not_assigned_column_applies_nothing_returns_zero_no_error(self):
+        registry = PreparationSessionRegistry()
+        lines = ["2026-08-31 13:00:00,1.0,"]
+        source_id = _add_csv(registry, ("\n".join(lines) + "\n").encode())
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="time_axis", registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
+
+        result = apply_bulk_mark_null(
+            workspace_id="ws-1", source_id=source_id, column_index=2,
+            issue_code=ISSUE_WAVEFORM_VALUE_MISSING, registry=registry,
+        )
+
+        assert result.applied_count == 0
+        session = registry.get("ws-1", source_id)
+        assert session.working_overlay.cell_overrides == {}
+
+    def test_no_eligible_cells_is_a_normal_zero_response_not_an_error(self):
+        registry = PreparationSessionRegistry()
+        source_id = _bulk_source(registry, rows=5)  # every cell already valid
+
+        result = apply_bulk_mark_null(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            issue_code=ISSUE_WAVEFORM_VALUE_MISSING, registry=registry,
+        )
+
+        assert result.eligible_count == 0
+        assert result.applied_count == 0
+
+    def test_valid_sibling_channel_in_the_same_row_stays_untouched(self):
+        registry = PreparationSessionRegistry()
+        lines = [f"2026-08-31 13:00:{i:02d},{'' if i == 2 else f'{i}.0'},{i}.5" for i in range(1, 6)]
+        source_id = _add_csv(registry, ("\n".join(lines) + "\n").encode())
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="time_axis", registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=2, role="waveform", registry=registry)
+
+        apply_bulk_mark_null(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            issue_code=ISSUE_WAVEFORM_VALUE_MISSING, registry=registry,
+        )
+
+        session = registry.get("ws-1", source_id)
+        assert cell_key(None, 2, 1) in session.working_overlay.cell_overrides
+        assert cell_key(None, 2, 2) not in session.working_overlay.cell_overrides  # sibling column untouched
+
+    def test_large_batch_50000_cells_stays_a_single_operation(self):
+        registry = PreparationSessionRegistry()
+        source_id = _bulk_source(registry, rows=50_000, blank_at=tuple(range(1, 50_001)))
+
+        result = apply_bulk_mark_null(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            issue_code=ISSUE_WAVEFORM_VALUE_MISSING, registry=registry,
+        )
+
+        assert result.applied_count == 50_000
+        session = registry.get("ws-1", source_id)
+        assert session.working_overlay.history[-1].kind == "bulk_cell"
+        undo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert session.working_overlay.cell_overrides == {}

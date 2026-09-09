@@ -3392,3 +3392,224 @@ class TestWithProvenanceExportApi:
         zf = zipfile.ZipFile(io.BytesIO(with_provenance.content))
         bundled_csv = zf.read(next(n for n in zf.namelist() if n.endswith(".csv")))
         assert data_only.content == bundled_csv
+
+
+# ---- CSV/Excel ingestion Slice 5 (DEC-084): bulk explicit-null resolution API ----
+
+
+def _bulk_api_source(client, *, rows: int = 10, blank_at: tuple = (), invalid_at: tuple = ()) -> str:
+    lines = []
+    for i in range(1, rows + 1):
+        value = "" if i in blank_at else ("ERR" if i in invalid_at else f"{i}.0")
+        lines.append(f"2026-08-31 13:00:{i:02d},{value}")
+    source_id = _upload_csv(client, content=("\n".join(lines) + "\n").encode())
+    client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+    client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+    return source_id
+
+
+def _bulk_preview(client, source_id, column_index=1, issue_code="waveform_value_missing"):
+    return client.post(
+        f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/bulk-null/preview",
+        json={"column_index": column_index, "issue_code": issue_code},
+    )
+
+
+def _bulk_apply(client, source_id, column_index=1, issue_code="waveform_value_missing"):
+    return client.post(
+        f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/bulk-null/apply",
+        json={"column_index": column_index, "issue_code": issue_code},
+    )
+
+
+class TestBulkNullEndpoints:
+    def test_preview_returns_the_authoritative_count_with_no_mutation(self, client):
+        source_id = _bulk_api_source(client, rows=10, blank_at=(2, 4, 6))
+
+        resp = _bulk_preview(client, source_id)
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body == {"column_index": 1, "issue_code": "waveform_value_missing", "eligible_count": 3}
+        summary = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}").json()
+        assert summary["working_overlay"]["edited_cell_count"] == 0
+
+    def test_preview_invalid_scope_counts_only_invalid_cells(self, client):
+        source_id = _bulk_api_source(client, rows=10, invalid_at=(3, 5))
+
+        resp = _bulk_preview(client, source_id, issue_code="waveform_value_invalid")
+
+        assert resp.json()["eligible_count"] == 2
+
+    def test_apply_marks_every_eligible_cell_as_one_change(self, client):
+        source_id = _bulk_api_source(client, rows=10, blank_at=(2, 4, 6))
+
+        resp = _bulk_apply(client, source_id)
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["eligible_count"] == 3
+        assert body["applied_count"] == 3
+        assert body["working_overlay"]["edited_cell_count"] == 3
+        assert body["working_overlay"]["can_undo"] is True
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        for row in rows["rows"]:
+            if row["row_number"] in (2, 4, 6):
+                assert row["modified_cells"] == [{"column_index": 1, "raw_value": "", "is_explicit_null": True}]
+
+    def test_apply_resolves_the_issue_group_from_the_issues_endpoint(self, client):
+        source_id = _bulk_api_source(client, rows=10, blank_at=(2, 4, 6))
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime", "confirmed": True},
+        )
+        before = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+        before_missing = next(i for i in before["issues"] if i["code"] == "waveform_value_missing")
+        assert before_missing["details"]["missing_count"] == 3
+
+        _bulk_apply(client, source_id)
+
+        after = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+        codes = {i["code"] for i in after["issues"]}
+        assert "waveform_value_missing" not in codes
+
+    def test_undo_restores_the_whole_bulk_group_in_one_press(self, client):
+        source_id = _bulk_api_source(client, rows=10, blank_at=(2, 4, 6))
+        _bulk_apply(client, source_id)
+
+        resp = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/undo")
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["edited_cell_count"] == 0
+        assert resp.json()["can_redo"] is True
+
+    def test_redo_reapplies_the_whole_bulk_group(self, client):
+        source_id = _bulk_api_source(client, rows=10, blank_at=(2, 4, 6))
+        _bulk_apply(client, source_id)
+        client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/undo")
+
+        resp = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/redo")
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["edited_cell_count"] == 3
+
+    def test_reset_all_restores_original_source_state_after_bulk_apply(self, client):
+        source_id = _bulk_api_source(client, rows=10, blank_at=(2, 4, 6))
+        _bulk_apply(client, source_id)
+
+        resp = client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working")
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["edited_cell_count"] == 0
+
+    def test_staleness_manually_repaired_cells_reduce_the_applied_count(self, client):
+        source_id = _bulk_api_source(client, rows=10, blank_at=(2, 4, 6, 8))
+        preview = _bulk_preview(client, source_id).json()
+        assert preview["eligible_count"] == 4
+
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/2/1", json={"value": "22.0"},
+        )
+
+        resp = _bulk_apply(client, source_id)
+
+        body = resp.json()
+        assert body["eligible_count"] == 3  # re-evaluated fresh, not the stale 4
+        assert body["applied_count"] == 3
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        row_2 = next(r for r in rows["rows"] if r["row_number"] == 2)
+        assert row_2["cells"][1] == "22.0"
+
+    def test_time_axis_issue_code_is_rejected_with_400(self, client):
+        source_id = _bulk_api_source(client, rows=5)
+
+        resp = _bulk_preview(client, source_id, column_index=0, issue_code="time_value_missing")
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_bulk_null_issue_code"
+
+    def test_unsupported_issue_code_is_rejected_with_400(self, client):
+        source_id = _bulk_api_source(client, rows=5)
+
+        resp = _bulk_preview(client, source_id, issue_code="bogus_code")
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_bulk_null_issue_code"
+
+    def test_not_assigned_column_returns_zero_not_an_error(self, client):
+        source_id = _upload_csv(client, content=b"a,b,c\n1,2,\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        # column_index=2 stays not_assigned
+
+        resp = _bulk_apply(client, source_id, column_index=2)
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["eligible_count"] == 0
+        assert resp.json()["applied_count"] == 0
+
+    def test_out_of_range_column_returns_400(self, client):
+        source_id = _bulk_api_source(client, rows=5)
+
+        resp = _bulk_preview(client, source_id, column_index=99)
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_working_coordinate"
+
+    def test_on_unknown_source_returns_404(self, client):
+        resp = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources/does-not-exist/working/cells/bulk-null/preview",
+            json={"column_index": 1, "issue_code": "waveform_value_missing"},
+        )
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "source_not_found"
+
+    def test_on_multi_sheet_excel_without_selection_returns_400(self, client):
+        content = _build_xlsx({"A": [["x"]], "B": [["y"]]})
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+
+        resp = _bulk_preview(client, source_id)
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "worksheet_not_selected"
+
+    def test_no_eligible_cells_returns_a_normal_zero_response(self, client):
+        source_id = _bulk_api_source(client, rows=5)  # every cell already valid
+
+        resp = _bulk_apply(client, source_id)
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["eligible_count"] == 0
+        assert resp.json()["applied_count"] == 0
+
+    def test_bulk_scope_is_never_limited_by_the_cell_issues_browse_cap(self, client):
+        # DEC-084 Slice 5 section 21's own CRITICAL regression: the
+        # Data Issues browse list caps at MAX_CELL_ISSUES (2000), but
+        # bulk preview/apply must still see and act on the FULL,
+        # uncapped eligible set.
+        from app.services.readiness_service import MAX_CELL_ISSUES
+
+        total_rows = MAX_CELL_ISSUES + 500
+        source_id = _bulk_api_source(client, rows=total_rows, blank_at=tuple(range(1, total_rows + 1)))
+
+        issues = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+        assert issues["cell_issues_truncated"] is True
+        assert len(issues["cell_issues"]) == MAX_CELL_ISSUES
+
+        preview = _bulk_preview(client, source_id).json()
+        assert preview["eligible_count"] == total_rows
+
+        apply_resp = _bulk_apply(client, source_id)
+        assert apply_resp.json()["applied_count"] == total_rows
+
+        summary = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}").json()
+        assert summary["working_overlay"]["edited_cell_count"] == total_rows
+        assert summary["working_overlay"]["can_undo"] is True
+
+        # Still a SINGLE undo, regardless of scale.
+        undo_resp = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/undo")
+        assert undo_resp.json()["edited_cell_count"] == 0

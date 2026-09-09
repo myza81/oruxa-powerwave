@@ -159,7 +159,8 @@ from app.domain.time_axis import (
     STATUS_UNSUPPORTED,
     TimeAxisInterpretationResult,
 )
-from app.domain.working_overlay import ROLE_WAVEFORM
+from app.domain.working_overlay import ROLE_NOT_ASSIGNED, ROLE_WAVEFORM
+from app.services.errors import InvalidBulkNullIssueCodeError
 from app.services.preparation_preview_service import iterate_active_region_rows
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.time_axis_interpreters import _combine_date_and_time, _parse_time_only, _to_float, parse_absolute_datetime
@@ -376,7 +377,7 @@ def _classify_time_cell(value, *, family: str, date_order: str | None) -> str:
 
 def _scan_full_active_region(
     session: PreparationSession, *, worksheet_index: int | None, summary: TimeAxisInterpretationResult,
-) -> tuple[list[PreparationIssue], list[PreparationCellIssue], bool]:
+) -> tuple[list[PreparationIssue], list[PreparationCellIssue], bool, dict[tuple[int, str], list[int]]]:
     """(task sections J, K, L, S) ONE single-pass streaming scan over
     the ENTIRE active data region -- never the bounded sample
     `get_time_axis_summary()` itself uses -- checking BOTH the
@@ -385,12 +386,24 @@ def _scan_full_active_region(
     rows, the header row, and rows outside the active region are all
     skipped, matching every other row-level check in this codebase.
 
-    Returns `(issues, cell_issues, cell_issues_truncated)` (DEC-084,
-    Slice 4) -- `cell_issues` is the SAME per-row/column findings this
-    scan already collects to build the coarse `issues` messages below,
-    additionally exposed as individually navigable
-    `PreparationCellIssue` entries (bounded by `MAX_CELL_ISSUES`) for the
-    Data Issues panel -- never a second, separate scan.
+    Returns `(issues, cell_issues, cell_issues_truncated,
+    waveform_eligible_rows)`. `cell_issues` is the SAME per-row/column
+    findings this scan already collects to build the coarse `issues`
+    messages below, additionally exposed as individually navigable
+    `PreparationCellIssue` entries (bounded by `MAX_CELL_ISSUES`, DEC-084
+    Slice 4) for the Data Issues panel -- never a second, separate scan.
+
+    `waveform_eligible_rows` (DEC-084, Slice 5) is the SAME Waveform
+    missing/invalid findings, reshaped as `{(column_index, issue_code):
+    [row_number, ...]}` -- deliberately the FULL, UNCAPPED set (never
+    truncated by `MAX_CELL_ISSUES`), since that cap exists only to keep
+    the Data Issues browse list's own payload bounded and must never
+    silently define a bulk-operation's real scope (see
+    `eligible_bulk_null_rows()` below, the ONLY consumer of this
+    return value). Time Axis findings are deliberately NOT included
+    here at all -- bulk null is never eligible for them (Slice 1's own
+    permanent guardrail), so there is nothing for a caller to ever
+    legitimately look up under a `time_value_*` key.
     """
     time_axis_family = summary.family
     time_axis_date_order = (summary.options or {}).get("date_order")
@@ -542,7 +555,16 @@ def _scan_full_active_region(
         for code, row_number, col, offending_value in all_cell_entries[:MAX_CELL_ISSUES]
     ]
 
-    return issues, cell_issues, cell_issues_truncated
+    # DEC-084 (Slice 5): built from the SAME `waveform_missing`/
+    # `waveform_invalid` lists above -- the full, uncapped set, grouped
+    # by (column_index, issue_code) for O(1) bulk-scope lookup.
+    waveform_eligible_rows: dict[tuple[int, str], list[int]] = {}
+    for row_number, col in waveform_missing:
+        waveform_eligible_rows.setdefault((col, ISSUE_WAVEFORM_VALUE_MISSING), []).append(row_number)
+    for row_number, col, _value in waveform_invalid:
+        waveform_eligible_rows.setdefault((col, ISSUE_WAVEFORM_VALUE_INVALID), []).append(row_number)
+
+    return issues, cell_issues, cell_issues_truncated, waveform_eligible_rows
 
 
 def collect_readiness_issues(
@@ -584,13 +606,68 @@ def collect_readiness_issues(
     cell_issues: list[PreparationCellIssue] = []
     cell_issues_truncated = False
     if time_axis_usable or has_waveform_column:
-        region_issues, cell_issues, cell_issues_truncated = _scan_full_active_region(
+        # DEC-084 (Slice 5): `_scan_full_active_region()`'s own 4th
+        # return value (the uncapped bulk-eligibility lookup) is not
+        # this function's concern -- only `eligible_bulk_null_rows()`
+        # below reads it, via its own direct call to the scan.
+        region_issues, cell_issues, cell_issues_truncated, _waveform_eligible_rows = _scan_full_active_region(
             session, worksheet_index=worksheet_index,
             summary=summary if time_axis_usable else _EMPTY_TIME_AXIS_SUMMARY,
         )
         issues.extend(region_issues)
 
     return issues, cell_issues, cell_issues_truncated
+
+
+def eligible_bulk_null_rows(
+    session: PreparationSession, *, worksheet_index: int | None, column_index: int, issue_code: str,
+    workspace_id: str, source_id: str, registry: PreparationSessionRegistry,
+) -> list[int]:
+    """DEC-084 (Slice 5): the AUTHORITATIVE, UNCAPPED list of row_numbers
+    currently eligible for bulk explicit-null resolution under this
+    EXACT `(column_index, issue_code)` scope -- reuses the SAME full-
+    active-region scan `_scan_full_active_region()`/`collect_readiness_
+    issues()` already run for `GET .../issues`, never a second
+    interpretation engine, and critically NEVER filtered through
+    `MAX_CELL_ISSUES` (that cap exists only for the Data Issues browse
+    list -- see that constant's own docstring -- and must never define
+    bulk-operation scope, DEC-084's own explicit rule).
+
+    Raises `InvalidBulkNullIssueCodeError` if `issue_code` is not
+    `ISSUE_WAVEFORM_VALUE_MISSING`/`ISSUE_WAVEFORM_VALUE_INVALID` -- a
+    Time Axis issue code (or any other string) is never eligible for
+    bulk null (Slice 1's own permanent Time-Axis-stays-blocking policy)
+    and this is a genuine client request error, not a "nothing to do
+    right now" outcome.
+
+    Returns an EMPTY list (never an error) when the column does not
+    currently carry the Waveform role at all -- Not Assigned, Time
+    Axis, or an out-of-range column all naturally have zero eligible
+    cells rather than needing their own special-cased rejection; a
+    column's role is exactly as changeable between preview and apply as
+    a cell's own value is (task's own "stale scope" framing), so this
+    mirrors that same tolerance. Already-explicit-null cells are
+    already excluded by construction -- the scan's own existing
+    `explicit_null_columns` exemption (Slice 1) never adds them to
+    `waveform_missing`/`waveform_invalid` in the first place.
+    """
+    if issue_code not in (ISSUE_WAVEFORM_VALUE_MISSING, ISSUE_WAVEFORM_VALUE_INVALID):
+        raise InvalidBulkNullIssueCodeError(
+            f"issue_code must be one of ({ISSUE_WAVEFORM_VALUE_MISSING!r}, {ISSUE_WAVEFORM_VALUE_INVALID!r}); "
+            f"got {issue_code!r}. Time Axis issues are never eligible for bulk explicit-null resolution."
+        )
+    role = session.working_overlay.column_roles.get((worksheet_index, column_index), ROLE_NOT_ASSIGNED)
+    if role != ROLE_WAVEFORM:
+        return []
+
+    _time_axis_issues, summary, time_axis_usable = _time_axis_readiness_issues(
+        workspace_id=workspace_id, source_id=source_id, registry=registry, worksheet_index=worksheet_index,
+    )
+    _issues, _cell_issues, _truncated, waveform_eligible_rows = _scan_full_active_region(
+        session, worksheet_index=worksheet_index,
+        summary=summary if time_axis_usable else _EMPTY_TIME_AXIS_SUMMARY,
+    )
+    return waveform_eligible_rows.get((column_index, issue_code), [])
 
 
 #: A configuration-free stand-in passed to `_scan_full_active_region()`

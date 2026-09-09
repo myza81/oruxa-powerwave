@@ -135,6 +135,63 @@ class WorkingOverlaySummaryOut(BaseModel):
         )
 
 
+class BulkNullScopeRequest(BaseModel):
+    """Body of both `POST .../working/cells/bulk-null/preview` and
+    `POST .../working/cells/bulk-null/apply` (DEC-084, Slice 5) -- a
+    SEMANTIC scope (`column_index` + `issue_code`), never a raw
+    coordinate list. `issue_code` must be `"waveform_value_missing"` or
+    `"waveform_value_invalid"` -- any other value (including a genuine
+    but out-of-scope Time Axis code) is rejected
+    (`invalid_bulk_null_issue_code`, see `app.services.errors.
+    InvalidBulkNullIssueCodeError`'s own docstring for why this is a
+    real error, never a silent zero)."""
+
+    column_index: int
+    issue_code: str
+
+
+class BulkNullPreviewOut(BaseModel):
+    """Response of `POST .../working/cells/bulk-null/preview` -- the
+    AUTHORITATIVE eligible-cell count for this scope, computed with NO
+    mutation. Never derived from (and never limited by) the Data Issues
+    browse list's own `MAX_CELL_ISSUES` cap."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    column_index: int
+    issue_code: str
+    eligible_count: int
+
+
+class BulkNullApplyOut(BaseModel):
+    """Response of `POST .../working/cells/bulk-null/apply`.
+    `eligible_count` is re-evaluated FRESH at apply time (never a
+    caller's own earlier preview, which may be stale); `applied_count`
+    is how many cells this call actually changed. `working_overlay` is
+    the SAME `WorkingOverlaySummaryOut` shape every other working-
+    overlay mutation endpoint already returns (`can_undo` now `true`,
+    the bulk action counted as exactly ONE change toward `edited_cell_
+    count`/history, never one per affected cell)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    column_index: int
+    issue_code: str
+    eligible_count: int
+    applied_count: int
+    working_overlay: WorkingOverlaySummaryOut
+
+    @classmethod
+    def from_domain(cls, result) -> "BulkNullApplyOut":
+        return cls(
+            column_index=result.column_index,
+            issue_code=result.issue_code,
+            eligible_count=result.eligible_count,
+            applied_count=result.applied_count,
+            working_overlay=WorkingOverlaySummaryOut.from_domain(result.overlay),
+        )
+
+
 class PreparationSessionSummaryOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

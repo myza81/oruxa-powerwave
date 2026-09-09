@@ -52,6 +52,9 @@ from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, Reques
 from app.config import Settings
 from app.schemas.preparation_issue import PreparationIssueSummaryOut
 from app.schemas.preparation_session import (
+    BulkNullApplyOut,
+    BulkNullPreviewOut,
+    BulkNullScopeRequest,
     CellWorkingValueRequest,
     ColumnRoleRequest,
     ConfiguredTimePreviewOut,
@@ -101,8 +104,10 @@ from app.services.time_axis_service import (
     set_time_axis_configuration,
 )
 from app.services.working_overlay_service import (
+    apply_bulk_mark_null,
     clear_header_row,
     edit_cell,
+    preview_bulk_mark_null,
     redo_working_change,
     reset_all_working_changes,
     reset_cell,
@@ -456,6 +461,57 @@ def delete_working_cell(
     except ImportServiceError as exc:
         raise _working_error(exc) from exc
     return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.post("/{source_id}/working/cells/bulk-null/preview", response_model=BulkNullPreviewOut)
+def post_working_cells_bulk_null_preview(
+    workspace_id: str,
+    source_id: str,
+    body: BulkNullScopeRequest,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> BulkNullPreviewOut:
+    """DEC-084 (Slice 5): count-before-apply -- the AUTHORITATIVE
+    eligible-cell count for `(column_index, issue_code)`, with NO
+    mutation (mirrors `POST .../working/time-axis/interpret`'s own
+    preview/apply split). Never limited by the Data Issues browse
+    list's own `MAX_CELL_ISSUES` cap -- see `app.services.
+    readiness_service.eligible_bulk_null_rows()`'s own docstring."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = preview_bulk_mark_null(
+            workspace_id=workspace_id, source_id=source_id,
+            column_index=body.column_index, issue_code=body.issue_code, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    # BulkNullPreviewOut's fields are already identical to
+    # BulkNullPreview's own (model_config = from_attributes=True) --
+    # model_validate() re-shapes it without a bespoke from_domain().
+    return BulkNullPreviewOut.model_validate(result)
+
+
+@router.post("/{source_id}/working/cells/bulk-null/apply", response_model=BulkNullApplyOut)
+def post_working_cells_bulk_null_apply(
+    workspace_id: str,
+    source_id: str,
+    body: BulkNullScopeRequest,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> BulkNullApplyOut:
+    """DEC-084 (Slice 5): applies bulk explicit-null resolution to every
+    currently eligible cell in this exact scope, as ONE grouped
+    Undo/Redo operation -- eligibility is re-evaluated fresh here
+    (never trusting an earlier preview call, which may now be stale).
+    See `app.services.working_overlay_service.apply_bulk_mark_null()`'s
+    own docstring for the full data-integrity contract."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = apply_bulk_mark_null(
+            workspace_id=workspace_id, source_id=source_id,
+            column_index=body.column_index, issue_code=body.issue_code, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return BulkNullApplyOut.from_domain(result)
 
 
 @router.put("/{source_id}/working/rows/{row_number}", response_model=WorkingOverlaySummaryOut)

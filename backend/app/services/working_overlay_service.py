@@ -68,6 +68,7 @@ from app.services.errors import (
 )
 from app.services.preparation_preview_service import ensure_csv_totals_cached, resolve_single_column_label
 from app.services.preparation_session_registry import PreparationSessionRegistry
+from app.services.readiness_service import eligible_bulk_null_rows
 
 
 @dataclass(slots=True)
@@ -597,3 +598,113 @@ def redo_working_change(
     session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
     overlay_domain.redo(session.working_overlay)
     return summarize_working_overlay(session, session.summary.selected_worksheet_index)
+
+
+@dataclass(slots=True)
+class BulkNullPreview:
+    """DEC-084 (Slice 5): the authoritative eligible-cell COUNT for one
+    `(column_index, issue_code)` bulk-null scope, computed WITHOUT any
+    mutation -- never derived from the Data Issues browse list's own
+    `MAX_CELL_ISSUES`-capped `cell_issues` (see `app.services.
+    readiness_service.eligible_bulk_null_rows()`'s own docstring for
+    why that cap must never define bulk scope)."""
+
+    column_index: int
+    issue_code: str
+    eligible_count: int
+
+
+@dataclass(slots=True)
+class BulkNullApplyResult:
+    """DEC-084 (Slice 5): the result of actually applying a bulk-null
+    scope. `eligible_count` is re-evaluated FRESH at apply time --
+    NEVER trusting a caller's own earlier preview call, since the
+    overlay may have changed in between (task's own explicit "apply
+    must re-evaluate current eligibility" / "stale scope" requirement).
+    `applied_count` is the number of cells THIS call actually changed.
+    Both are reported separately (task section 24/9's own suggested
+    shape) even though they are equal by construction today (a cell
+    `eligible_bulk_null_rows()` returns can never already be
+    explicit-null -- see that function's own docstring -- so
+    `bulk_set_cells_null()`'s own "skip already-null" branch never
+    actually triggers here); keeping them as two distinct fields costs
+    nothing and stays transparent/future-proof rather than collapsing
+    an intentional distinction into one number."""
+
+    column_index: int
+    issue_code: str
+    eligible_count: int
+    applied_count: int
+    overlay: WorkingOverlaySummary
+
+
+def preview_bulk_mark_null(
+    *, workspace_id: str, source_id: str, column_index: int, issue_code: str, registry: PreparationSessionRegistry,
+) -> BulkNullPreview:
+    """DEC-084 (Slice 5): count-before-apply (task section 8) -- a pure,
+    read-only evaluation of exactly which cells `apply_bulk_mark_null()`
+    would affect right now, with NO mutation and NO history entry.
+    Mirrors the Time Axis `interpret`/apply precedent already
+    established in this codebase (a dedicated preview step distinct
+    from the mutating one, not a `dry_run` flag folded into the same
+    endpoint).
+
+    Raises `InvalidWorkingCoordinateError` for an out-of-range
+    `column_index`, or `InvalidBulkNullIssueCodeError` for anything
+    other than `ISSUE_WAVEFORM_VALUE_MISSING`/`ISSUE_WAVEFORM_VALUE_
+    INVALID` (see `eligible_bulk_null_rows()`'s own docstring for why
+    a Time Axis issue code is a real error here, never a silent zero).
+    A column that is not currently Waveform (Not Assigned, Time Axis,
+    or simply has zero matching cells right now) returns
+    `eligible_count=0` -- not an error."""
+    session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    worksheet_index = _resolve_worksheet_index(session)
+    _check_column_bound(session, worksheet_index, column_index)
+    rows = eligible_bulk_null_rows(
+        session, worksheet_index=worksheet_index, column_index=column_index, issue_code=issue_code,
+        workspace_id=workspace_id, source_id=source_id, registry=registry,
+    )
+    return BulkNullPreview(column_index=column_index, issue_code=issue_code, eligible_count=len(rows))
+
+
+def apply_bulk_mark_null(
+    *, workspace_id: str, source_id: str, column_index: int, issue_code: str, registry: PreparationSessionRegistry,
+) -> BulkNullApplyResult:
+    """DEC-084 (Slice 5): applies bulk explicit-null resolution to
+    EVERY currently eligible cell in this exact `(column_index,
+    issue_code)` scope, as ONE grouped, single-Undo/Redo working-overlay
+    operation (`app.domain.working_overlay.bulk_set_cells_null()`) --
+    never one HTTP request, one rescan, or one history entry per cell.
+
+    Eligibility is recomputed HERE, fresh, from the CURRENT overlay
+    state -- never from a caller's own earlier `preview_bulk_mark_null()`
+    call, which may now be stale (a manual edit, an earlier Undo, or a
+    role change could have happened in between). `eligible_count` in
+    the response is this fresh count; `applied_count` is how many cells
+    were actually changed. Valid raw values, valid manual edits, cells
+    already resolved (explicit-null or no-longer-matching-the-issue-
+    type), sibling channels on the same row, and any column that is not
+    currently Waveform are all left completely untouched -- this
+    function only ever writes the cells `eligible_bulk_null_rows()`
+    itself currently reports.
+
+    Raises the SAME `InvalidWorkingCoordinateError`/
+    `InvalidBulkNullIssueCodeError` as `preview_bulk_mark_null()` for an
+    invalid scope. Returns `applied_count=0` (a normal, successful
+    response, never an error) when nothing is currently eligible --
+    matching this module's own "no eligible cells is not a failure"
+    precedent (e.g. `reset_cell()`'s own safe no-op)."""
+    session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    worksheet_index = _resolve_worksheet_index(session)
+    _check_column_bound(session, worksheet_index, column_index)
+    rows = eligible_bulk_null_rows(
+        session, worksheet_index=worksheet_index, column_index=column_index, issue_code=issue_code,
+        workspace_id=workspace_id, source_id=source_id, registry=registry,
+    )
+    keys = [overlay_domain.cell_key(worksheet_index, row_number, column_index) for row_number in rows]
+    applied_count = overlay_domain.bulk_set_cells_null(session.working_overlay, keys)
+    return BulkNullApplyResult(
+        column_index=column_index, issue_code=issue_code,
+        eligible_count=len(rows), applied_count=applied_count,
+        overlay=summarize_working_overlay(session, worksheet_index),
+    )

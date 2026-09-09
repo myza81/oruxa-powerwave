@@ -40,6 +40,7 @@ from app.domain.working_overlay import (
     reset_data_region,
     reset_column_measured_unit,
     row_key,
+    bulk_set_cells_null,
     set_cell_null,
     set_cell_value,
     set_column_engineering_quantity,
@@ -251,6 +252,129 @@ class TestExplicitNullUndoRedo:
 
         assert overlay.cell_overrides[key].kind == OVERRIDE_KIND_CLEAR
         assert overlay.cell_overrides[key].value is None
+
+
+class TestBulkSetCellsNull:
+    """DEC-084 (Slice 5): `bulk_set_cells_null()` marks MANY cells
+    explicit null as ONE grouped, single-Undo/Redo `WorkingOperation`
+    -- never one per cell."""
+
+    def test_marks_every_key_explicit_null(self):
+        overlay = WorkingOverlay()
+        keys = [cell_key(None, r, 1) for r in range(1, 6)]
+
+        changed = bulk_set_cells_null(overlay, keys)
+
+        assert changed == 5
+        for key in keys:
+            assert overlay.cell_overrides[key].kind == OVERRIDE_KIND_NULL
+            assert overlay.cell_overrides[key].value is None
+
+    def test_creates_exactly_one_history_entry_regardless_of_batch_size(self):
+        overlay = WorkingOverlay()
+        keys = [cell_key(None, r, 1) for r in range(1, 501)]  # 500 cells
+
+        bulk_set_cells_null(overlay, keys)
+
+        assert len(overlay.history) == 1
+        assert overlay.history[0].kind == "bulk_cell"
+        assert overlay.revision == 1
+
+    def test_undo_restores_every_affected_cell_to_its_prior_state(self):
+        overlay = WorkingOverlay()
+        original_key = cell_key(None, 1, 1)   # had no override at all
+        edited_key = cell_key(None, 2, 1)     # had a manual edit
+        cleared_key = cell_key(None, 3, 1)    # had a plain clear
+        set_cell_value(overlay, edited_key, "42")
+        set_cell_value(overlay, cleared_key, None)
+
+        bulk_set_cells_null(overlay, [original_key, edited_key, cleared_key])
+        assert undo(overlay) is True
+
+        assert original_key not in overlay.cell_overrides
+        assert overlay.cell_overrides[edited_key].kind == OVERRIDE_KIND_EDIT
+        assert overlay.cell_overrides[edited_key].value == "42"
+        assert overlay.cell_overrides[cleared_key].kind == OVERRIDE_KIND_CLEAR
+        assert overlay.cell_overrides[cleared_key].value is None
+
+    def test_redo_reapplies_the_full_bulk_action(self):
+        overlay = WorkingOverlay()
+        keys = [cell_key(None, r, 1) for r in range(1, 11)]
+        bulk_set_cells_null(overlay, keys)
+        undo(overlay)
+
+        assert redo(overlay) is True
+
+        for key in keys:
+            assert overlay.cell_overrides[key].kind == OVERRIDE_KIND_NULL
+
+    def test_undo_of_a_large_batch_is_a_single_press(self):
+        # The exact scenario task section 10 describes: a 50,000-cell
+        # bulk action reverses in ONE Undo, not 50,000.
+        overlay = WorkingOverlay()
+        keys = [cell_key(None, r, 1) for r in range(1, 50_001)]
+
+        bulk_set_cells_null(overlay, keys)
+        undone = undo(overlay)
+
+        assert undone is True
+        assert overlay.cell_overrides == {}
+        assert len(overlay.history) == 0
+
+    def test_already_explicit_null_cells_are_skipped_no_duplicate_no_pointless_history(self):
+        overlay = WorkingOverlay()
+        already_null_key = cell_key(None, 1, 1)
+        fresh_key = cell_key(None, 2, 1)
+        set_cell_null(overlay, already_null_key)
+        revision_before = overlay.revision
+
+        changed = bulk_set_cells_null(overlay, [already_null_key, fresh_key])
+
+        assert changed == 1  # only fresh_key actually changed
+        assert overlay.revision == revision_before + 1  # one op, not two
+        assert len(overlay.history) == 2  # the initial set_cell_null + this one bulk op
+
+    def test_all_keys_already_null_is_a_complete_no_op(self):
+        overlay = WorkingOverlay()
+        key = cell_key(None, 1, 1)
+        set_cell_null(overlay, key)
+        revision_before = overlay.revision
+        history_len_before = len(overlay.history)
+
+        changed = bulk_set_cells_null(overlay, [key])
+
+        assert changed == 0
+        assert overlay.revision == revision_before  # no new operation recorded
+        assert len(overlay.history) == history_len_before
+
+    def test_empty_key_list_is_a_safe_no_op(self):
+        overlay = WorkingOverlay()
+
+        changed = bulk_set_cells_null(overlay, [])
+
+        assert changed == 0
+        assert overlay.revision == 0
+        assert overlay.history == []
+
+    def test_reset_all_clears_bulk_null_overrides_too(self):
+        overlay = WorkingOverlay()
+        keys = [cell_key(None, r, 1) for r in range(1, 6)]
+        bulk_set_cells_null(overlay, keys)
+
+        reset_all(overlay)
+
+        assert overlay.cell_overrides == {}
+
+    def test_undo_after_reset_all_restores_the_bulk_null_overrides(self):
+        overlay = WorkingOverlay()
+        keys = [cell_key(None, r, 1) for r in range(1, 6)]
+        bulk_set_cells_null(overlay, keys)
+        reset_all(overlay)
+
+        undo(overlay)
+
+        for key in keys:
+            assert overlay.cell_overrides[key].kind == OVERRIDE_KIND_NULL
 
 
 class TestRowExclusion:

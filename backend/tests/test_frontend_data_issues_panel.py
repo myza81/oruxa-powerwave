@@ -343,12 +343,13 @@ class TestReadinessAndUndoRedoIntegration:
             assert "undoStack" not in body and "redoStack" not in body
 
 
-class TestNoBulkActionsYet:
-    def test_no_bulk_mark_as_null_controls_exist(self):
-        source = _source()
-        assert "Mark all as Null" not in source
-        assert "Mark selected as Null" not in source
-
+class TestSingleCellActionAreaStillUngrouped:
+    # The per-cell action area (Selected: <coordinate> -- Mark as Null /
+    # Fill Manually / Change Role) predates bulk resolution (Slice 4) and
+    # stays scoped to exactly one cell even now that Slice 5 adds a
+    # SEPARATE, column-issue-group-level bulk control elsewhere in the
+    # same panel (see TestBulkNullControls below) -- the two never merge
+    # into one "select many, act once" mechanism.
     def test_coordinate_list_items_are_not_checkboxes(self):
         source = _source()
         body = _function_body(
@@ -356,13 +357,93 @@ class TestNoBulkActionsYet:
         )
         assert 'type="checkbox"' not in body
 
-    def test_action_area_never_targets_a_whole_group_or_selection(self):
+    def test_single_cell_action_area_never_targets_a_whole_group_or_selection(self):
         source = _source()
         body = _function_body(
             source, "function wwDataPrepRenderDataIssuesActionArea(issue)", "function wwDataPrepRenderDataIssuesPanel()",
         )
         assert "selected cells" not in body.lower()
         assert "all issues" not in body.lower()
+
+
+class TestBulkNullControls:
+    # DEC-084 (Slice 5): safe bulk explicit-null resolution -- one
+    # button per bulk-eligible (column_index, issue_code) group, gated
+    # to the two Waveform-only issue codes, with a confirmation dialog
+    # that always re-fetches the authoritative count before the user can
+    # confirm (task sections 3-9, 15-17).
+    def test_eligible_codes_are_exactly_the_two_waveform_codes(self):
+        source = _source()
+        assert 'const WW_BULK_NULL_ELIGIBLE_CODES = new Set(["waveform_value_missing", "waveform_value_invalid"]);' in source
+
+    def test_bulk_button_is_rendered_per_column_group_gated_by_eligibility(self):
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepRenderCellIssueGroupHtml(", "function wwDataPrepRenderDataIssuesActionArea(",
+        )
+        assert "WW_BULK_NULL_ELIGIBLE_CODES.has(issueCode)" in body
+        assert "ww-data-issues-bulk-null-btn" in body
+        assert "data-bulk-null-issue-code=" in body
+        assert "data-bulk-null-column-index=" in body
+
+    def test_bulk_button_count_comes_from_the_preview_endpoint_never_cell_issues_length(self):
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepFetchBulkNullCount(issueCode, columnIndex)", "function wwDataPrepRenderCellIssueGroupHtml(",
+        )
+        assert "/working/cells/bulk-null/preview" in body
+        assert "eligible_count" in body
+
+    def test_confirmation_dialog_exists_with_required_wording(self):
+        source = _source()
+        assert 'id="wwDataIssuesBulkNullOverlay"' in source
+        assert 'id="wwDataIssuesBulkNullConfirmBtn"' in source
+        assert 'id="wwDataIssuesBulkNullCancelBtn"' in source
+
+    def test_confirm_open_refetches_the_authoritative_count_fresh(self):
+        # Task section 8/16: never trust the button's own already-shown
+        # count for the actual confirmation text -- a fresh preview call
+        # happens every time the dialog opens.
+        source = _source()
+        body = _function_body(
+            source, "async function openWwDataIssuesBulkNullConfirm(columnIndex, issueCode)", "function closeWwDataIssuesBulkNullConfirm()",
+        )
+        assert "/working/cells/bulk-null/preview" in body
+        assert "Other valid cells in the same rows will not be changed." in body
+
+    def test_apply_uses_the_dedicated_apply_endpoint_and_reports_drift(self):
+        # Task section 9: staleness between the confirmation's own preview
+        # and the actual apply must be reported, never silently dropped.
+        source = _source()
+        body = _function_body(
+            source, "async function wwDataPrepApplyBulkNull(columnIndex, issueCode, previewCount)", "document.getElementById(\"wwDataQualityReviewBtn\")",
+        )
+        assert "/working/cells/bulk-null/apply" in body
+        assert "no longer eligible" in body
+
+    def test_apply_reuses_the_existing_overlay_summary_path_no_new_undo_redo_stack(self):
+        # Task section 10/19: one grouped backend operation, surfaced
+        # through the SAME wwDataPrepApplyOverlaySummary()/Undo/Redo
+        # buttons every other working-overlay mutation already uses --
+        # no bulk-specific history array of its own.
+        source = _source()
+        body = _function_body(
+            source, "async function wwDataPrepApplyBulkNull(columnIndex, issueCode, previewCount)", "document.getElementById(\"wwDataQualityReviewBtn\")",
+        )
+        assert "wwDataPrepApplyOverlaySummary(" in body
+        assert "History" not in body
+        assert "undoStack" not in body and "redoStack" not in body
+
+    def test_time_axis_issue_group_never_gets_a_bulk_button(self):
+        # Backend-and-frontend guardrail (task section 5): a Time Axis
+        # column's own cell_issues carry `time_value_missing`/
+        # `time_value_invalid` codes, neither of which is in
+        # WW_BULK_NULL_ELIGIBLE_CODES, so the same gated branch that
+        # renders the button for a Waveform group silently renders
+        # nothing at all for a Time Axis one.
+        source = _source()
+        assert '"time_value_missing"' not in source.split("const WW_BULK_NULL_ELIGIBLE_CODES")[1].split(";")[0]
+        assert '"time_value_invalid"' not in source.split("const WW_BULK_NULL_ELIGIBLE_CODES")[1].split(";")[0]
 
 
 class TestDataIssuesStateIsOwnAndSeparateFromAnnotations:

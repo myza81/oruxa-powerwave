@@ -820,3 +820,21 @@ class ExportTimeAxisValueError(ImportServiceError):
     silently repaired; the export attempt is discarded."""
 
     code = "export_time_axis_invalid"
+
+
+class InvalidBulkNullIssueCodeError(ImportServiceError):
+    """DEC-084 (Slice 5): a bulk explicit-null request's own `issue_code`
+    is not one of the two Waveform-scoped codes
+    (`waveform_value_missing`/`waveform_value_invalid`) bulk resolution
+    is eligible for -- covers both a genuinely unsupported/unknown
+    string AND a real-but-out-of-scope Time Axis code
+    (`time_value_missing`/`time_value_invalid`). This is a real request
+    error (400), never a silent zero-eligible-count outcome, because
+    Time Axis explicit null is DEC-084's own permanent, never-relaxed
+    guardrail (Slice 1) -- requesting it here is a genuine client
+    mistake to surface loudly, unlike a column that simply happens to
+    have zero eligible cells right now (which returns a normal
+    `eligible_count=0`/`applied_count=0` response instead, see
+    `app.services.readiness_service.eligible_bulk_null_rows()`)."""
+
+    code = "invalid_bulk_null_issue_code"

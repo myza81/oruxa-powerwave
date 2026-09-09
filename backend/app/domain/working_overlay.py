@@ -389,6 +389,44 @@ def reset_cell(overlay: WorkingOverlay, key: CellKey) -> bool:
     return True
 
 
+def bulk_set_cells_null(overlay: WorkingOverlay, keys: list[CellKey]) -> int:
+    """Mark MANY cells explicit null as ONE undoable/redoable grouped
+    operation (DEC-084, Slice 5) -- never one `WorkingOperation` per
+    cell, so a 50,000-cell bulk action still costs exactly one Undo
+    press, matching `set_cell_null()`'s own single-cell semantics scaled
+    up. `keys` is the CALLER's own already-computed, ALREADY-FILTERED
+    eligible-cell list (see `app.services.readiness_service.
+    eligible_bulk_null_rows()`) -- this function stays a pure mutation
+    primitive with no eligibility policy of its own, exactly like every
+    other function in this module.
+
+    A key whose CURRENT override is already `OVERRIDE_KIND_NULL` is
+    silently skipped (task's own "do not write duplicate overrides, do
+    not add pointless history entries" rule) -- it contributes neither
+    a mutation nor a history/`before` entry. Returns the number of
+    cells ACTUALLY changed; returns `0` and records nothing at all
+    (a safe no-op, matching `reset_cell()`'s own "no history entry when
+    nothing changed" convention) if every key was already explicit-null
+    or `keys` was empty.
+    """
+    changes: list[tuple[CellKey, CellOverride | None, CellOverride]] = []
+    for key in keys:
+        existing = overlay.cell_overrides.get(key)
+        if existing is not None and existing.kind == OVERRIDE_KIND_NULL:
+            continue
+        changes.append((key, existing, CellOverride(kind=OVERRIDE_KIND_NULL, value=None)))
+    if not changes:
+        return 0
+    for key, _before, after in changes:
+        overlay.cell_overrides[key] = after
+    _record(
+        overlay, "bulk_cell", None,
+        before=[(key, before) for key, before, _after in changes],
+        after=[(key, after) for key, _before, after in changes],
+    )
+    return len(changes)
+
+
 def set_row_excluded(overlay: WorkingOverlay, key: RowKey, excluded: bool) -> None:
     before = key in overlay.excluded_rows
     if excluded:
@@ -623,6 +661,20 @@ def _apply_state(overlay: WorkingOverlay, kind: str, key, state) -> None:
             overlay.cell_overrides.pop(key, None)
         else:
             overlay.cell_overrides[key] = state
+    elif kind == "bulk_cell":
+        # DEC-084 (Slice 5): `state` is the list of (CellKey,
+        # CellOverride | None) pairs `bulk_set_cells_null()` recorded --
+        # undo restores each cell's own EXACT prior state (an earlier
+        # override, or `None` meaning "no override at all"), redo
+        # reapplies each cell's own explicit-null override -- the SAME
+        # per-cell logic the plain "cell" branch above already uses,
+        # just looped once per affected cell instead of needing its own
+        # separate `WorkingOperation`.
+        for cell_key, override in state:
+            if override is None:
+                overlay.cell_overrides.pop(cell_key, None)
+            else:
+                overlay.cell_overrides[cell_key] = override
     elif kind == "row":
         if state:
             overlay.excluded_rows.add(key)

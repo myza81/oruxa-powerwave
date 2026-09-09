@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import io
 
+import pytest
 from fastapi import UploadFile
 from openpyxl import Workbook
 from starlette.datastructures import Headers
@@ -30,9 +31,11 @@ from app.domain.preparation_issue import (
     SEVERITY_BLOCKING,
     SEVERITY_WARNING,
 )
+from app.services.errors import InvalidBulkNullIssueCodeError
 from app.services.preparation_import_service import import_csv_preparation_source, import_excel_preparation_source
 from app.services.preparation_issue_service import build_issue_summary
 from app.services.preparation_session_registry import PreparationSessionRegistry
+from app.services.readiness_service import MAX_CELL_ISSUES, eligible_bulk_null_rows
 from app.services.time_axis_service import set_time_axis_configuration
 from app.domain.working_overlay import OVERRIDE_KIND_NULL
 from app.services.working_overlay_service import (
@@ -1164,3 +1167,147 @@ class TestCellIssueDetails:
         summary = _issues(registry, source_id)
 
         assert summary.cell_issues_truncated is False
+
+
+class TestEligibleBulkNullRows:
+    """DEC-084 (Slice 5): `eligible_bulk_null_rows()` -- the AUTHORITATIVE,
+    UNCAPPED source of bulk-null scope, reusing the exact same full-
+    region scan `GET .../issues` already runs. Never filtered through
+    `MAX_CELL_ISSUES` -- that cap exists only for the Data Issues browse
+    list."""
+
+    def _rows(self, registry, *, source_id, column_index=1, issue_code=ISSUE_WAVEFORM_VALUE_MISSING):
+        session = registry.get("ws-1", source_id)
+        return eligible_bulk_null_rows(
+            session, worksheet_index=None, column_index=column_index, issue_code=issue_code,
+            workspace_id="ws-1", source_id=source_id, registry=registry,
+        )
+
+    def test_full_authoritative_count_for_missing_scope(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry, rows=10)
+        for row_number in (2, 4, 6):
+            edit_cell(workspace_id="ws-1", source_id=source_id, row_number=row_number, column_index=1, value=None, registry=registry)
+
+        rows = self._rows(registry, source_id=source_id, issue_code=ISSUE_WAVEFORM_VALUE_MISSING)
+
+        assert sorted(rows) == [2, 4, 6]
+
+    def test_full_authoritative_count_for_invalid_scope(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry, rows=10)
+        for row_number in (3, 5):
+            edit_cell(workspace_id="ws-1", source_id=source_id, row_number=row_number, column_index=1, value="N/A", registry=registry)
+
+        rows = self._rows(registry, source_id=source_id, issue_code=ISSUE_WAVEFORM_VALUE_INVALID)
+
+        assert sorted(rows) == [3, 5]
+
+    def test_missing_scope_never_includes_invalid_cells_and_vice_versa(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry, rows=10)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=2, column_index=1, value=None, registry=registry)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=3, column_index=1, value="N/A", registry=registry)
+
+        missing_rows = self._rows(registry, source_id=source_id, issue_code=ISSUE_WAVEFORM_VALUE_MISSING)
+        invalid_rows = self._rows(registry, source_id=source_id, issue_code=ISSUE_WAVEFORM_VALUE_INVALID)
+
+        assert missing_rows == [2]
+        assert invalid_rows == [3]
+
+    def test_browse_cap_never_limits_the_authoritative_bulk_scope(self):
+        # THE critical Slice 5 regression test (task section 21):
+        # matching issue count > MAX_CELL_ISSUES -- the browse list
+        # (`cell_issues`) truncates, but bulk scope must return the
+        # FULL, uncapped set regardless.
+        registry = PreparationSessionRegistry()
+        total_rows = MAX_CELL_ISSUES + 500
+        source_id = _ready_source(registry, rows=total_rows)
+        for row_number in range(1, total_rows + 1):
+            edit_cell(workspace_id="ws-1", source_id=source_id, row_number=row_number, column_index=1, value=None, registry=registry)
+
+        summary = _issues(registry, source_id)
+        rows = self._rows(registry, source_id=source_id, issue_code=ISSUE_WAVEFORM_VALUE_MISSING)
+
+        assert summary.cell_issues_truncated is True
+        assert len(summary.cell_issues) == MAX_CELL_ISSUES  # the browse list IS capped
+        assert len(rows) == total_rows  # but the bulk scope is NOT
+
+    def test_valid_cells_are_never_included(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry, rows=5)  # every waveform cell is already valid
+
+        rows = self._rows(registry, source_id=source_id, issue_code=ISSUE_WAVEFORM_VALUE_MISSING)
+
+        assert rows == []
+
+    def test_manually_repaired_cell_is_excluded(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry, rows=5)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=2, column_index=1, value=None, registry=registry)
+        assert self._rows(registry, source_id=source_id) == [2]
+
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=2, column_index=1, value="99.5", registry=registry)
+
+        assert self._rows(registry, source_id=source_id) == []
+
+    def test_already_explicit_null_cell_is_excluded(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry, rows=5)
+        edit_cell(
+            workspace_id="ws-1", source_id=source_id, row_number=2, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=registry,
+        )
+
+        rows = self._rows(registry, source_id=source_id, issue_code=ISSUE_WAVEFORM_VALUE_MISSING)
+
+        assert rows == []
+
+    def test_not_assigned_column_returns_zero_eligible_never_an_error(self):
+        registry = PreparationSessionRegistry()
+        lines = [f"2026-08-31 13:00:{i:02d},{i}.0,note{i}" for i in range(5)]
+        lines[2] = "2026-08-31 13:00:02,,note2"
+        source_id = _add_csv(registry, ("\n".join(lines) + "\n").encode())
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        # column_index=2 stays not_assigned
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id="absolute_datetime", confirmed=True, registry=registry,
+        )
+
+        rows = self._rows(registry, source_id=source_id, column_index=2, issue_code=ISSUE_WAVEFORM_VALUE_MISSING)
+
+        assert rows == []
+
+    def test_time_axis_issue_code_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry, rows=5)
+
+        with pytest.raises(InvalidBulkNullIssueCodeError):
+            self._rows(registry, source_id=source_id, column_index=0, issue_code=ISSUE_TIME_VALUE_MISSING)
+
+    def test_unsupported_issue_code_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry, rows=5)
+
+        with pytest.raises(InvalidBulkNullIssueCodeError):
+            self._rows(registry, source_id=source_id, issue_code="bogus_code")
+
+    def test_sibling_channels_in_the_same_row_are_a_different_scope(self):
+        registry = PreparationSessionRegistry()
+        lines = [f"2026-08-31 13:00:{i:02d},{i}.0,{i}.5" for i in range(5)]
+        lines[2] = "2026-08-31 13:00:02,,2.5"  # column 1 blank, column 2 valid
+        source_id = _add_csv(registry, ("\n".join(lines) + "\n").encode())
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1, 2)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id="absolute_datetime", confirmed=True, registry=registry,
+        )
+
+        col1_rows = self._rows(registry, source_id=source_id, column_index=1, issue_code=ISSUE_WAVEFORM_VALUE_MISSING)
+        col2_rows = self._rows(registry, source_id=source_id, column_index=2, issue_code=ISSUE_WAVEFORM_VALUE_MISSING)
+
+        assert col1_rows == [3]
+        assert col2_rows == []  # column 2's own valid value on row 3 is untouched/unaffected

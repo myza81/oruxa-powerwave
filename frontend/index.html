@@ -2597,6 +2597,36 @@
         .ww-data-issues-load-more {
             display: block; margin: 6px auto; font-size: 0.68rem; padding: 4px 10px;
         }
+        /* DEC-084 (Slice 5): bulk explicit-null resolution -- one button
+           per bulk-eligible column issue-group, never a global toolbar
+           (task section 15). Matches .ww-data-issues-load-more's own
+           compact block/small-font convention immediately above. */
+        .ww-data-issues-bulk-null-btn {
+            display: block; margin: 0 6px 6px; font-size: 0.68rem; padding: 4px 9px;
+        }
+        .ww-data-issues-bulk-null-btn:disabled { opacity: 0.6; cursor: default; }
+        /* This dialog's own trigger button lives INSIDE the Data Issues
+           panel, which on narrow screens (<=820px) is its own
+           position: fixed overlay at z-index: 40 (see that rule's own
+           docstring) -- .confirm-overlay's shared z-index: 10 would sit
+           BENEATH it there, intercepting every click. One step above,
+           the same documented convention .ww-info-tip-portal's own
+           z-index: 50 already established relative to that same 40. */
+        #wwDataIssuesBulkNullOverlay { z-index: 41; }
+        /* Stacking hardening (post-Slice-5 review): Reset All Changes'
+           own trigger button lives OUTSIDE the Data Issues panel (Row 6
+           toolbar, not the panel body), but the panel itself is still a
+           full-height position: fixed overlay at z-index: 40 whenever it
+           is open at this same <=820px breakpoint -- the centered
+           .confirm-box would render BENEATH it there exactly like the
+           bulk-null dialog above did, occluding Cancel/Confirm. Scoped
+           to this one dialog's own id, same +1-over-40 convention as
+           #wwDataIssuesBulkNullOverlay immediately above -- every other
+           .confirm-overlay use (new workspace, clear Per-Unit, etc.) is
+           deliberately left at the shared z-index: 10, since none of
+           them can ever be triggered while a position:fixed panel at
+           z-index 40+ is also open. */
+        #wwDataPrepResetAllOverlay { z-index: 41; }
         .ww-data-issues-action-area {
             flex: 0 0 auto; padding: 10px 12px; border-top: 1px solid var(--panel-border);
             background: var(--surface-tint); font-size: 0.72rem;
@@ -7474,6 +7504,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 </div>
             </div>
 
+            <!-- DEC-084 (Slice 5): bulk explicit-null resolution confirmation
+                 -- reuses the exact same .confirm-overlay/.confirm-box shell
+                 as #wwDataPrepResetAllOverlay immediately above. Title/count
+                 text is filled in dynamically per column+issue-type scope
+                 (see openWwDataIssuesBulkNullConfirm()); the authoritative
+                 eligible count is always fetched fresh here (task section 8),
+                 never read from the possibly-truncated cell_issues list. -->
+            <div class="confirm-overlay" id="wwDataIssuesBulkNullOverlay" hidden>
+                <div class="confirm-box" role="alertdialog" aria-modal="true" aria-labelledby="wwDataIssuesBulkNullTitle">
+                    <p id="wwDataIssuesBulkNullTitle">Mark cells as Null?</p>
+                    <p class="hint" id="wwDataIssuesBulkNullCount">Calculating the exact number of affected cells…</p>
+                    <div class="confirm-actions">
+                        <button type="button" class="secondary" id="wwDataIssuesBulkNullCancelBtn">Cancel</button>
+                        <button type="button" class="danger-solid" id="wwDataIssuesBulkNullConfirmBtn" disabled>Mark as Null</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Redesign: right-side Signal Builder drawer, opened via
                  "+ New Channel" above -- same fixed/translateX/backdrop
                  mechanics as #wwAnnotationDrawer. Holds the SAME operation
@@ -9815,6 +9863,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             dataIssuesPanelOpen: false,
             selectedCellIssueKey: null,
             dataIssuesExpandedColumnGroups: new Set(),
+            // DEC-084 (Slice 5): per-(issue_code, column_index) group,
+            // the AUTHORITATIVE eligible count from the dedicated preview
+            // endpoint -- never derived from cell_issues.length (task
+            // section 8/21: the browse cap must never define bulk scope).
+            // Keyed by "<issue_code>|<column_index>", value
+            // { revision, count }; invalidated whenever workingRevision
+            // moves past `revision` (see wwDataPrepFetchBulkNullCount()).
+            bulkNullCounts: new Map(),
+            bulkNullCountsInFlight: new Set(),
             // Slice 7 (DEC-072): Time-Axis interpretation FRAMEWORK
             // state -- `timeAxisSummary` is the full
             // GET .../time-axis response body (a
@@ -10865,6 +10922,49 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 " — " + parts.join(", ") + truncatedNote;
         }
 
+        // DEC-084 (Slice 5): the ONLY two issue codes ever eligible for
+        // bulk explicit-null resolution -- Time Axis codes
+        // (`time_value_missing`/`time_value_invalid`) are never in this
+        // set (task section 5), so a column currently in the Time Axis
+        // role never renders a bulk button regardless of how its
+        // cell_issues happen to be grouped.
+        const WW_BULK_NULL_ELIGIBLE_CODES = new Set(["waveform_value_missing", "waveform_value_invalid"]);
+
+        function wwDataPrepBulkNullGroupKey(issueCode, columnIndex) {
+            return issueCode + "|" + columnIndex;
+        }
+
+        // Fetches the AUTHORITATIVE eligible count for one bulk-null
+        // scope in the background and re-renders the panel once it
+        // arrives (task section 8/21: the button's own displayed count
+        // must never be simply cell_issues.length, since that list is
+        // capped at MAX_CELL_ISSUES and a single column's true count can
+        // exceed what's shown). Cached per workingRevision so a render
+        // pass that hasn't changed anything never refetches; a stale
+        // in-flight response (source/worksheet/revision changed while it
+        // was in the air) is discarded rather than applied.
+        function wwDataPrepFetchBulkNullCount(issueCode, columnIndex) {
+            const key = wwDataPrepBulkNullGroupKey(issueCode, columnIndex);
+            const revision = wwDataPrep.workingRevision;
+            const cached = wwDataPrep.bulkNullCounts.get(key);
+            if (cached && cached.revision === revision) return;
+            if (wwDataPrep.bulkNullCountsInFlight.has(key)) return;
+            wwDataPrep.bulkNullCountsInFlight.add(key);
+            const requestedSourceId = wwDataPrep.sourceId;
+            fetch(wwDataPrepSourceUrl("/working/cells/bulk-null/preview"), {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ column_index: columnIndex, issue_code: issueCode }),
+            })
+                .then((response) => (response.ok ? response.json() : null))
+                .then((body) => {
+                    wwDataPrep.bulkNullCountsInFlight.delete(key);
+                    if (!body || requestedSourceId !== wwDataPrep.sourceId || wwDataPrep.workingRevision !== revision) return;
+                    wwDataPrep.bulkNullCounts.set(key, { revision, count: body.eligible_count });
+                    wwDataPrepRenderDataIssuesPanel();
+                })
+                .catch(() => { wwDataPrep.bulkNullCountsInFlight.delete(key); });
+        }
+
         function wwDataPrepRenderCellIssueGroupHtml(title, kindKey, byColumn) {
             if (byColumn.size === 0) return "";
             let html = '<div class="ww-data-issues-type-group"><h5 class="ww-data-issues-group-title">' + escapeHtml(title) + '</h5>';
@@ -10879,8 +10979,31 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const visible = expanded ? issuesForColumn : issuesForColumn.slice(0, WW_DATA_ISSUES_INITIAL_VISIBLE);
                 html += '<div class="ww-data-issues-column-group">' +
                     '<p class="ww-data-issues-column-title">' + escapeHtml(wwDataPrepColumnDisplayName(columnIndex)) +
-                    ' <span class="ww-data-issues-panel-count">' + issuesForColumn.length + '</span></p>' +
-                    '<ul class="ww-data-issues-coordinate-list">';
+                    ' <span class="ww-data-issues-panel-count">' + issuesForColumn.length + '</span></p>';
+                // Bulk action (DEC-084, Slice 5): only for the two
+                // Waveform-scoped issue codes -- a Time Axis column's own
+                // group (issue.code startsWith "time_value_") never gets
+                // this button (task section 5's own backend-and-frontend
+                // guardrail). The displayed count is the AUTHORITATIVE
+                // backend preview once it resolves; before that, the
+                // button still works (its own confirmation re-fetches the
+                // count anyway), just without a number yet.
+                const issueCode = issuesForColumn[0] && issuesForColumn[0].code;
+                if (WW_BULK_NULL_ELIGIBLE_CODES.has(issueCode)) {
+                    const bulkKey = wwDataPrepBulkNullGroupKey(issueCode, columnIndex);
+                    const cached = wwDataPrep.bulkNullCounts.get(bulkKey);
+                    const known = cached && cached.revision === wwDataPrep.workingRevision ? cached.count : null;
+                    // Only fetch while the panel is actually open -- no
+                    // point spending a request on a count nobody can see
+                    // yet; opening the panel (or a later mutation
+                    // invalidating the cache) triggers a fresh fetch then.
+                    if (wwDataPrep.dataIssuesPanelOpen) wwDataPrepFetchBulkNullCount(issueCode, columnIndex);
+                    html += '<button type="button" class="secondary ww-data-issues-bulk-null-btn" ' +
+                        'data-bulk-null-issue-code="' + escapeHtml(issueCode) + '" data-bulk-null-column-index="' + columnIndex + '"' +
+                        (known === 0 ? ' disabled' : '') + '>' +
+                        (known != null ? 'Mark all ' + known + ' as Null' : 'Mark as Null…') + '</button>';
+                }
+                html += '<ul class="ww-data-issues-coordinate-list">';
                 for (const issue of visible) {
                     const key = wwDataPrepCellIssueKey(issue);
                     const isSelected = key === wwDataPrep.selectedCellIssueKey;
@@ -11144,6 +11267,43 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
         }
 
+        // DEC-084 (Slice 5): applies bulk explicit-null resolution for
+        // one (column_index, issue_code) scope -- counted as ONE
+        // undoable/redoable change (the SAME wwDataPrepApplyOverlaySummary()
+        // path every other working-overlay mutation already uses, so
+        // Undo/Redo need no bulk-specific UI of their own, task section
+        // 19). `previewCount` is the count shown in the confirmation
+        // dialog just before this call; if the apply's own fresh re-
+        // evaluation (task section 9's staleness guardrail) finds fewer
+        // eligible cells than that -- because the user or another action
+        // resolved some in between -- the drift is reported transparently
+        // rather than silently swallowed.
+        async function wwDataPrepApplyBulkNull(columnIndex, issueCode, previewCount) {
+            const status = document.getElementById("wwDataPrepStatus");
+            try {
+                const response = await fetch(wwDataPrepSourceUrl("/working/cells/bulk-null/apply"), {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ column_index: columnIndex, issue_code: issueCode }),
+                });
+                if (!response.ok) {
+                    const body = await response.json().catch(() => null);
+                    status.textContent = (body && body.detail && body.detail.message) || "Could not mark these cells as null.";
+                    await wwDataPrepFetchPreview();
+                    return;
+                }
+                const result = await response.json();
+                wwDataPrepApplyOverlaySummary(result.working_overlay);
+                const drift = previewCount != null ? previewCount - result.applied_count : 0;
+                status.textContent = drift > 0
+                    ? result.applied_count + " cells marked as Null. " + drift +
+                        (drift === 1 ? " issue was" : " issues were") + " no longer eligible."
+                    : "";
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
         document.getElementById("wwDataQualityReviewBtn").addEventListener("click", () => wwDataPrepSetIssuesPanelOpen(true));
         document.getElementById("wwDataIssuesPanelToggleBtn").addEventListener("click", wwDataPrepToggleIssuesPanel);
         document.getElementById("wwDataIssuesPrevBtn").addEventListener("click", () => wwDataPrepSelectIssueByOffset(-1));
@@ -11160,6 +11320,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (loadMoreBtn) {
                 wwDataPrep.dataIssuesExpandedColumnGroups.add(loadMoreBtn.dataset.loadMoreGroup);
                 wwDataPrepRenderDataIssuesPanel();
+            }
+            const bulkNullBtn = event.target.closest(".ww-data-issues-bulk-null-btn");
+            if (bulkNullBtn) {
+                openWwDataIssuesBulkNullConfirm(
+                    parseInt(bulkNullBtn.dataset.bulkNullColumnIndex, 10),
+                    bulkNullBtn.dataset.bulkNullIssueCode,
+                );
             }
         });
         document.getElementById("wwDataIssuesActionArea").addEventListener("click", async (event) => {
@@ -13664,6 +13831,76 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (event.key !== "Escape") return;
             if (!document.getElementById("wwDataPrepResetAllOverlay").hidden) closeWwDataPrepResetAllConfirm();
         });
+
+        // DEC-084 (Slice 5): bulk explicit-null confirmation -- reuses
+        // the exact same open/close/Escape/click-outside pattern as
+        // Reset All Changes immediately above. The eligible count is
+        // ALWAYS re-fetched fresh here (task section 8), independent of
+        // whatever count the triggering button happened to already show
+        // (which may itself have been stale or still loading).
+        async function openWwDataIssuesBulkNullConfirm(columnIndex, issueCode) {
+            const overlay = document.getElementById("wwDataIssuesBulkNullOverlay");
+            const titleEl = document.getElementById("wwDataIssuesBulkNullTitle");
+            const countEl = document.getElementById("wwDataIssuesBulkNullCount");
+            const confirmBtn = document.getElementById("wwDataIssuesBulkNullConfirmBtn");
+            overlay.dataset.columnIndex = String(columnIndex);
+            overlay.dataset.issueCode = issueCode;
+            delete overlay.dataset.eligibleCount;
+            const columnName = wwDataPrepColumnDisplayName(columnIndex);
+            const kindLabelSingular = issueCode === "waveform_value_invalid" ? "invalid value" : "empty cell";
+            const kindLabelPlural = issueCode === "waveform_value_invalid" ? "invalid values" : "empty cells";
+            titleEl.textContent = "Mark cells as Null in " + columnName + "?";
+            countEl.textContent = "Calculating the exact number of affected cells…";
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = "Mark as Null";
+            overlay.hidden = false;
+            document.getElementById("wwDataIssuesBulkNullCancelBtn").focus();
+            try {
+                const response = await fetch(wwDataPrepSourceUrl("/working/cells/bulk-null/preview"), {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ column_index: columnIndex, issue_code: issueCode }),
+                });
+                // Superseded (closed, or re-opened for a different scope)
+                // while the request was in flight -- discard it.
+                if (overlay.hidden || overlay.dataset.columnIndex !== String(columnIndex) || overlay.dataset.issueCode !== issueCode) return;
+                if (!response.ok) {
+                    countEl.textContent = "Could not determine the affected cell count.";
+                    return;
+                }
+                const body = await response.json();
+                if (overlay.hidden || overlay.dataset.columnIndex !== String(columnIndex) || overlay.dataset.issueCode !== issueCode) return;
+                overlay.dataset.eligibleCount = String(body.eligible_count);
+                countEl.textContent = body.eligible_count === 0
+                    ? "There are no unresolved " + kindLabelPlural + " left in this column to mark as Null."
+                    : body.eligible_count + " " + (body.eligible_count === 1 ? kindLabelSingular : kindLabelPlural) +
+                        " in this column will be marked as Null. Other valid cells in the same rows will not be changed.";
+                confirmBtn.disabled = body.eligible_count === 0;
+                confirmBtn.textContent = body.eligible_count ? "Mark " + body.eligible_count + " as Null" : "Nothing to mark";
+            } catch (error) {
+                if (overlay.hidden || overlay.dataset.columnIndex !== String(columnIndex) || overlay.dataset.issueCode !== issueCode) return;
+                countEl.textContent = "Could not reach the backend.";
+            }
+        }
+        function closeWwDataIssuesBulkNullConfirm() {
+            document.getElementById("wwDataIssuesBulkNullOverlay").hidden = true;
+        }
+        document.getElementById("wwDataIssuesBulkNullCancelBtn").addEventListener("click", closeWwDataIssuesBulkNullConfirm);
+        document.getElementById("wwDataIssuesBulkNullOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "wwDataIssuesBulkNullOverlay") closeWwDataIssuesBulkNullConfirm();
+        });
+        document.getElementById("wwDataIssuesBulkNullConfirmBtn").addEventListener("click", async () => {
+            const overlay = document.getElementById("wwDataIssuesBulkNullOverlay");
+            const columnIndex = parseInt(overlay.dataset.columnIndex, 10);
+            const issueCode = overlay.dataset.issueCode;
+            const previewCount = overlay.dataset.eligibleCount != null ? parseInt(overlay.dataset.eligibleCount, 10) : null;
+            closeWwDataIssuesBulkNullConfirm();
+            await wwDataPrepApplyBulkNull(columnIndex, issueCode, previewCount);
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            if (!document.getElementById("wwDataIssuesBulkNullOverlay").hidden) closeWwDataIssuesBulkNullConfirm();
+        });
+
         document.getElementById("wwDataPrepWorksheetSelect").addEventListener("change", async (event) => {
             const newIndex = parseInt(event.target.value, 10);
             const status = document.getElementById("wwDataPrepStatus");
@@ -13774,6 +14011,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwDataPrep.dataIssuesPanelOpen = false;
             wwDataPrep.selectedCellIssueKey = null;
             wwDataPrep.dataIssuesExpandedColumnGroups = new Set();
+            // DEC-084 (Slice 5): a freshly opened source's own bulk-null
+            // counts are never carried over -- a stale cached count from
+            // a DIFFERENT source could otherwise coincidentally match the
+            // fresh source's own workingRevision (both often start at 0).
+            wwDataPrep.bulkNullCounts = new Map();
+            wwDataPrep.bulkNullCountsInFlight = new Set();
             wwDataPrep.timeAxisSummary = null;
             wwDataPrep.columnRoles = [];
             wwDataPrep.columnEngineeringQuantities = [];
