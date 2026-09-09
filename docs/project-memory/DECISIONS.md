@@ -11996,6 +11996,319 @@ not pushed (pending owner review).
 
 ---
 
+## DEC-084 — Explicit Null Resolution and Calculated-Channel Missing-Data Policy: unresolved empty/invalid cells remain blocking; an explicit user-marked null becomes a distinct resolved state for Waveform/data columns (Time Axis stays blocking); each calculated channel independently declares its own null-handling policy, never inheriting automatic propagation from its source
+
+Date: 2026-09-09
+Status: Approved
+Source: explicit project-owner policy direction ("record the approved
+policy for handling empty/invalid cells, explicit nulls, and calculated-
+channel missing-data behavior"). A documentation-only decision ahead of
+implementation — no explicit-null overlay, Data Issues panel,
+interpolation/estimation engine, or bulk null action exists in code yet
+(see Impact).
+
+Decision:
+
+**Governing data-integrity principles**, binding on every future
+implementation of this policy:
+
+> - Do not remove valid data because another cell in the same row is bad.
+> - Do not infer or fabricate missing measurements.
+> - Do not silently replace missing/invalid values.
+> - Do not mutate the original source data.
+> - Every correction or null decision must be explicit and traceable.
+
+**1. Unresolved empty/invalid cells stay blocking — no weakening of the
+existing DEC-072/Slice-9 readiness guardrail**
+([CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin),
+`time_value_missing`/`time_value_invalid`/`waveform_value_missing`/
+`waveform_value_invalid`):
+
+```text
+unresolved empty cell            -> blocking
+unresolved invalid/nonconforming -> blocking
+```
+
+This decision adds explicit RESOLUTION PATHS on top of that guardrail —
+it does not relax it.
+
+**2. Three approved resolution paths for an empty/invalid cell in an
+active Time Axis or Waveform column** — and only three:
+
+```text
+1. Mark as Null
+2. Fill Manually
+3. Change the column role to Not Assigned / Ignore (DEC-073)
+```
+
+**Row exclusion is explicitly NOT a missing-cell resolution policy.**
+The existing per-row Exclude/Include toggle (Slice 4) remains a
+legitimate, independent, user-driven action (e.g. discarding a genuinely
+garbage or duplicate-header row) — it must never be documented,
+suggested, or implemented as the standard way to resolve one bad cell. A
+row may carry valid measurements in every other column; nothing in this
+policy discards that data because one cell is bad.
+
+**3. Manual fill is ordinary data, not a special state.** Once the user
+manually enters a valid value into a previously empty/invalid cell, it
+is treated exactly like any other cell of that column — it re-enters the
+standard validation/processing sequence, is not flagged or routed
+differently downstream, and an invalid manual entry is still blocking
+(point 1 is not bypassed by attempting a manual fill).
+
+**4. Explicit null is a distinct semantic state — not equivalent to
+"still blank":**
+
+```text
+unresolved blank/invalid = blocking
+explicit user-marked null = resolved missing data
+```
+
+An explicit null must be stored/represented as its own tri-state value
+(unresolved / explicit-null / has-a-value), never collapsed back onto
+"empty string" or "whitespace" — a cell that is merely clear/blank
+carries no evidence the user ever looked at it, while an explicit null
+carries an affirmative, traceable engineer decision that the measurement
+is genuinely absent.
+
+**Column-type asymmetry, intentional:**
+
+```text
+active Waveform/data cell, explicit null -> resolved / non-blocking
+active Time Axis cell,     explicit null -> still blocking
+```
+
+Time Axis stays stricter because a row with no valid x-coordinate cannot
+be placed on any waveform or exported timeline at all — there is no
+"gap" concept for the independent variable the way there is for a
+dependent one. No Time-Axis-null workaround (e.g. inferring a timestamp
+across a null gap) is defined by this decision; one would need its own
+separate, explicitly approved design.
+
+**5. Cleaned export carries the user-configured result, not a
+normalization of it:**
+
+- a manually filled cell exports as the value the user entered;
+- a cell explicitly marked null exports as the configured literal `null`
+  representation for the target format — **never** silently rendered as
+  an empty CSV field or a blank Excel cell indistinguishable from "was
+  never looked at";
+- Not Assigned/Ignore columns are omitted per the existing DEC-073
+  cleaned-export policy, unchanged;
+- an unresolved empty/invalid cell remains blocking and therefore cannot
+  itself reach a cleaned-export path (point 1) — cleaned export never
+  has to decide what to do with a genuinely unresolved cell.
+
+**6. Waveform/plotting behavior for an explicit null:**
+
+- an explicit null in a source/waveform channel is an intentional,
+  reported gap — never converted to zero, never silently interpolated,
+  never bridged by drawing the plotted line across it;
+- plotting resumes normally once valid data resumes after the gap;
+- valid data in every other channel on the same row is unaffected,
+  consistent with the governing "one bad cell never costs a good
+  measurement" principle.
+
+**7. Calculated channels do not automatically propagate null from a
+source — each calculated channel explicitly declares its OWN
+null-handling policy**, one of:
+
+```text
+1. Propagate Null        (any null input -> null output, the safe default)
+2. Treat Null as Zero
+3. Estimate Missing Data  (interpolation/estimation, see point 8)
+4. Require Manual Value   (block the calculated result until supplied)
+```
+
+This is a property of the CALCULATED CHANNEL's own definition, never of
+the source channel or of `WorkingOverlay` — the same source feeding two
+different calculated channels may be treated two different ways
+simultaneously, and neither treatment ever touches the source:
+
+```text
+Source B remains null.
+
+Calculated channel C may choose Estimate Missing Data (interpolation).
+Calculated channel D may choose Propagate Null.
+
+Neither policy modifies B.
+```
+
+This is layered ON TOP of, and does not relax, the existing DEC-047
+multi-input time-alignment guardrail — DEC-047's "no interpolation/
+resampling/time-shifting/crop-to-overlap" governs whether two operands'
+SAMPLE-TIME AXES may be combined at all (a structural precondition,
+evaluated before any computation runs); this decision's "Estimate
+Missing Data" option governs how a null VALUE within an already-aligned,
+already-eligible series is filled for that one calculated channel's own
+computation. The two are orthogonal — this decision does not reopen or
+weaken DEC-047's alignment rule in any way.
+
+**8. When "Estimate Missing Data" is chosen, the user must explicitly
+select both a method and a maximum gap** — neither has an implicit
+default. Initial approved estimation methods (a deliberately practical,
+engineering-oriented set, not an open-ended math library):
+
+```text
+Hold Last Value
+Nearest Value
+Linear Interpolation
+PCHIP / Shape-Preserving Interpolation
+Local Mean
+```
+
+Arbitrary cubic-spline or higher-order polynomial methods are explicitly
+NOT part of this initial approved set.
+
+Maximum permissible gap (conceptually a single configured value, unit
+TBD by implementation against available Time Axis context —
+`samples`/`milliseconds`/`seconds`):
+
+```text
+Method:       Linear Interpolation
+Maximum gap:  3 samples
+```
+
+The engine must never silently estimate an arbitrarily long missing
+section. If the actual gap exceeds the configured maximum, that portion
+stays unresolved/null according to the SAME null-handling policy
+selected in point 7 (i.e. it is not silently reconstructed just because
+estimation was requested) — the maximum-gap guardrail can only ever make
+a result MORE conservative, never less.
+
+**9. Interpolation/estimation never alters source data — it exists only
+inside the one calculated channel's own computation:**
+
+```text
+Source channel B:
+10, 11, null, 13, 14
+
+Calculated channel C:
+null policy = Linear Interpolation
+
+Temporary effective B for C:
+10, 11, 12, 13, 14
+```
+
+The original B remains `10, 11, null, 13, 14` — unchanged, in the
+source, in `WorkingOverlay`, and for every OTHER calculated channel that
+also reads B. The estimated value is scoped to that one calculated
+channel's own evaluation and is never written back anywhere.
+
+**10. Traceability.** A calculated channel using a non-default null
+policy (anything other than Propagate Null) should retain, as part of
+its own definition/metadata:
+
+```text
+null handling policy
+interpolation/estimation method (if applicable)
+maximum gap (if applicable)
+```
+
+so an engineer can later determine whether a calculated result depended
+on estimated rather than measured data. This records the REQUIRED
+behavior/design intent only — it does not invent a persistence schema
+ahead of the implementation that will need one (no such schema exists in
+code today).
+
+**11. Data Issues UX direction (design-level, not yet implemented):**
+
+- the Raw Data Preview (Data Preparation Workspace) remains the main,
+  detailed resolution workspace — this decision does not introduce a
+  second editing surface;
+- unresolved cells should additionally be discoverable through a
+  persistent **Data Issues side panel**, reusing the established
+  Annotations review-drawer interaction pattern where practical —
+  persistent/collapsible, never a transient modal/pop-up, with
+  independent panel scrolling;
+- each listed issue's coordinate is clickable and should eventually
+  navigate the table to the corresponding source cell while keeping the
+  panel open, reusing the existing stable source-coordinate model
+  (`worksheet_index_or_None, row_number, column_index`) wherever
+  applicable;
+- both per-cell and safe bulk resolution must be supported.
+
+**12. Bulk-action guardrails:**
+
+- eligible groupings: the user's current selection; every eligible
+  unresolved cell in one column; every eligible cell in one issue group;
+- every bulk action must state its scope and the exact affected-cell
+  count before it runs;
+- a bulk action must never touch a cell that is not itself unresolved —
+  valid cells are never in scope;
+- the Time-Axis-stricter rule (point 4) applies identically inside a
+  bulk action — a bulk "Mark as Null" can never resolve a Time Axis cell;
+- bulk actions should participate in the existing Undo/Redo model
+  (Slice 4, `WorkingOverlay`) once implemented, the same as any other
+  cell/row mutation.
+
+Reason:
+
+Slice 9 already established that missing/invalid Time Axis and Waveform
+cells block readiness and are never coerced to zero or fabricated, but
+left open exactly how an engineer is supposed to RESOLVE such a finding
+once reported — readiness "only ever reports; the engineer resolves,"
+and this decision is what the engineer is now approved to resolve it
+WITH. Without this decision, the only structurally-available "fix" an
+engineer could reach for is excluding the whole row (an existing,
+unrelated Slice-4 control) — which silently discards every other valid
+measurement on that row and is exactly the outcome the governing
+principles in this decision forbid. Calculated channels similarly had no
+defined behavior at all for a null input reaching them (DEC-047 is
+silent on VALUES, only on TIME-AXIS ALIGNMENT) — leaving "what happens"
+implementation-defined per engineer/session was judged more dangerous
+than fixing one explicit, owner-approved policy now, before any of this
+is built.
+
+Alternatives considered:
+
+- Treating row exclusion as an implicit/acceptable resolution for a
+  single bad cell (rejected — this is exactly the "discard good data
+  because one cell is bad" failure mode the governing principles
+  forbid; no wording in this project's memory currently recommends it
+  either, so this decision closes the gap pre-emptively rather than
+  correcting an existing error).
+- Making calculated channels always propagate null automatically,
+  matching typical spreadsheet/NaN-poisoning semantics (rejected —
+  forecloses legitimate engineering need to bridge small measurement
+  gaps, e.g. a one-sample dropout in a component feeding an RMS or
+  addition calculation, without ever letting the engineer choose that
+  explicitly).
+- Allowing arbitrary/unbounded interpolation whenever "Estimate Missing
+  Data" is chosen (rejected — silently reconstructing a large missing
+  section is fabrication, which the governing principles explicitly
+  forbid; a mandatory maximum-gap guardrail was required).
+- Offering an open-ended interpolation method list (cubic spline,
+  arbitrary polynomial order, etc.) (rejected — the product intentionally
+  limits initial methods to a practical, explainable, engineering-
+  oriented set; more exotic methods are not ruled out forever, merely
+  not part of this initial approved set).
+- Exporting explicit null as a blank/empty cell in cleaned CSV/Excel
+  output (rejected — indistinguishable from "never looked at," which
+  destroys the exact traceability the governing principles require).
+- A modal/pop-up issue browser instead of a persistent side panel
+  (rejected — the owner-approved UX direction reuses the existing
+  Annotations review-drawer's persistent/collapsible pattern instead).
+
+Impact:
+
+**Documentation-only decision** — no production code, tests, or schema
+changes are made by this entry. Everything above is APPROVED POLICY,
+governing how this area must be implemented once work begins; almost
+none of it exists in code yet (see
+[CURRENT_STATE.md — Known intentional constraints](CURRENT_STATE.md#known-intentional-constraints--deferred-items)
+for the explicit approved-vs-implemented distinction). Cross-referenced
+from
+[CSV_EXCEL_INGESTION_ARCHITECTURE.md §19](CSV_EXCEL_INGESTION_ARCHITECTURE.md#19-explicit-null-resolution-and-calculated-channel-missing-data-policy--see-dec-084)
+and from the Calculated Channels entry in
+[CURRENT_STATE.md — Implemented capabilities](CURRENT_STATE.md#implemented-capabilities).
+The next planned implementation step (not yet authorized) begins with
+explicit-null backend/domain semantics (the tri-state cell
+representation, point 4) — the Data Issues panel, interpolation engine,
+and bulk actions are later, dependent steps.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

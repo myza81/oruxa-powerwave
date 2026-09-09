@@ -2382,3 +2382,53 @@ decision *before* Slice 1 can safely begin (i.e. the current code
 imposes a hard constraint this document did not anticipate), that must
 be reported explicitly when Slice 1 is actually scoped — not resolved
 silently in advance.
+
+---
+
+## 19. Explicit null resolution and calculated-channel missing-data policy — see DEC-084
+
+**`[OWNER DECISION]` (DEC-084, 2026-09-09)**: the full policy is recorded
+in [DECISIONS.md — DEC-084](DECISIONS.md#dec-084--explicit-null-resolution-and-calculated-channel-missing-data-policy-unresolved-emptyinvalid-cells-remain-blocking-an-explicit-user-marked-null-becomes-a-distinct-resolved-state-for-waveformdata-columns-time-axis-stays-blocking-each-calculated-channel-independently-declares-its-own-null-handling-policy-never-inheriting-automatic-propagation-from-its-source)
+and is not duplicated here in full — this section restates only the
+points most directly relevant to this document's own scope (the Data
+Preparation Workspace / working-overlay model) and records their status
+as **NOT YET IMPLEMENTED** (see [CURRENT_STATE.md](CURRENT_STATE.md) for
+the current/approved distinction).
+
+**Current guardrail is unchanged**: an unresolved empty or invalid cell
+in an active Time Axis or Waveform column stays `blocking`
+(`time_value_missing`/`time_value_invalid`/`waveform_value_missing`/
+`waveform_value_invalid`, §14 above). DEC-084 does not weaken this — it
+adds three explicit resolution paths on top of it: **Mark as Null**,
+**Fill Manually**, or **change the column role to Not Assigned/Ignore**
+(DEC-073). **Row exclusion (the existing Slice 4 per-row Exclude/Include
+toggle) is explicitly excluded from this list** — it remains a
+legitimate, independent action, never the standard way to resolve one
+bad cell, because a row may still carry valid measurements in every
+other column.
+
+An explicit null becomes its own tri-state value on `WorkingOverlay`
+(unresolved / explicit-null / has-a-value) — resolved/non-blocking for
+an active Waveform/data cell, still blocking for an active Time Axis
+cell (no valid x-coordinate for that row). Cleaned export must carry an
+explicit null as the format's own configured literal `null`
+representation, never as an empty CSV field or blank Excel cell
+indistinguishable from "never looked at." A future **Data Issues side
+panel** (reusing the existing Annotations review-drawer pattern) is the
+approved UX direction for surfacing unresolved cells outside the raw
+table itself, supporting both per-cell and scope-stated bulk resolution.
+
+**None of the above exists in code today** — `WorkingOverlay` (§9/§17,
+`app/domain/working_overlay.py`) currently models only `cell_overrides`
+(a plain value replacement) and `excluded_rows`; it has no explicit-null
+tri-state concept yet. This section records required design intent for
+when that work is actually scoped, not a claim that it is built.
+
+Calculated-channel null-handling policy (Propagate Null / Treat Null as
+Zero / Estimate Missing Data / Require Manual Value, plus the bounded
+interpolation-method set and mandatory maximum-gap guardrail) is
+recorded in DEC-084 itself and cross-referenced from the Calculated
+Channels entry in [CURRENT_STATE.md](CURRENT_STATE.md) — it is a
+property of each calculated channel's own definition (DEC-047), not of
+this document's own raw/working-overlay model, so it is not restated
+here.

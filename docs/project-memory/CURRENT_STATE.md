@@ -433,7 +433,17 @@ re-confirmed by the TG-FINAL audit):
   ordered N-input Subtraction, and trailing one-cycle RMS. Multi-input
   operations require proven synchronized sample-time alignment (no
   interpolation/resampling). Immutable after creation, with dependency-
-  aware delete/cascade.
+  aware delete/cascade. **Missing-data (null) input policy is a separate,
+  approved-but-not-yet-implemented concern**: each calculated channel is
+  meant to explicitly declare its own null-handling policy (Propagate
+  Null / Treat Null as Zero / Estimate Missing Data with a bounded
+  interpolation method and mandatory maximum gap / Require Manual Value)
+  rather than automatically inheriting null-propagation from its source —
+  see [DECISIONS.md — DEC-084](DECISIONS.md#dec-084--explicit-null-resolution-and-calculated-channel-missing-data-policy-unresolved-emptyinvalid-cells-remain-blocking-an-explicit-user-marked-null-becomes-a-distinct-resolved-state-for-waveformdata-columns-time-axis-stays-blocking-each-calculated-channel-independently-declares-its-own-null-handling-policy-never-inheriting-automatic-propagation-from-its-source).
+  This is layered on top of, and never relaxes, the existing DEC-047
+  time-alignment guardrail above (which governs whether operand SAMPLE
+  TIMES may be combined at all, not how a null VALUE within an
+  already-aligned series is filled).
 - **Annotations**: `text_note` (floating, content-anchored), `callout`
   (waveform-anchored with a movable label box), and `peak_max`/`peak_min`
   (dynamically viewport-recalculated) — all resolve their own owning Time
@@ -1345,6 +1355,24 @@ correctness defects:
   reduced-precision fast-path gap (`datetime.fromisoformat()` silently
   accepting date-only/week-only ISO strings with no diagnostic) also
   remains open, unaffected by DEC-081.
+- **Explicit null resolution and calculated-channel missing-data policy
+  (DEC-084, 2026-09-09) is APPROVED POLICY, not yet implemented.** Today,
+  an unresolved empty/invalid Time Axis or Waveform cell correctly stays
+  `blocking` (Slice 9, above) and `WorkingOverlay` supports only plain
+  cell-value edits and whole-row exclude/include — there is no
+  explicit-null tri-state cell value, no Data Issues side panel, no
+  calculated-channel null-handling-policy selector, and no
+  interpolation/estimation engine anywhere in code yet. Do not treat any
+  of DEC-084's approved policy (explicit null as a distinct resolved
+  state, the three approved resolution paths, cleaned-export `null`
+  representation, calculated-channel Propagate/Zero/Estimate/Manual
+  policies, the bounded interpolation-method set, the mandatory
+  maximum-gap guardrail, or the Data Issues panel UX direction) as
+  already built. The next planned implementation step (not yet
+  authorized) begins with explicit-null backend/domain semantics; see
+  [DECISIONS.md — DEC-084](DECISIONS.md#dec-084--explicit-null-resolution-and-calculated-channel-missing-data-policy-unresolved-emptyinvalid-cells-remain-blocking-an-explicit-user-marked-null-becomes-a-distinct-resolved-state-for-waveformdata-columns-time-axis-stays-blocking-each-calculated-channel-independently-declares-its-own-null-handling-policy-never-inheriting-automatic-propagation-from-its-source)
+  and
+  [CSV_EXCEL_INGESTION_ARCHITECTURE.md §19](CSV_EXCEL_INGESTION_ARCHITECTURE.md#19-explicit-null-resolution-and-calculated-channel-missing-data-policy--see-dec-084).
 
 Genuinely open engineering/operational items (not yet resolved either
 way):
