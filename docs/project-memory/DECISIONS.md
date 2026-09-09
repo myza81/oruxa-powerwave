@@ -12292,20 +12292,33 @@ Alternatives considered:
 
 Impact:
 
-**Documentation-only decision** — no production code, tests, or schema
-changes are made by this entry. Everything above is APPROVED POLICY,
-governing how this area must be implemented once work begins; almost
-none of it exists in code yet (see
-[CURRENT_STATE.md — Known intentional constraints](CURRENT_STATE.md#known-intentional-constraints--deferred-items)
-for the explicit approved-vs-implemented distinction). Cross-referenced
-from
+**Originally a documentation-only decision** — at the time this entry
+was recorded (2026-09-09), no production code, tests, or schema changes
+had been made by it; everything above was APPROVED POLICY governing how
+this area would be implemented once work began, with almost none of it
+in code yet.
+
+**Update (2026-09-09, same day): implementation is now complete.**
+Data Preparation Slices 1-5 (explicit-null `WorkingOverlay` tri-state,
+single-cell and backend-scope-authoritative bulk Mark as Null, the Data
+Issues panel + Data Quality summary, cleaned-export/conversion/
+display-path preservation) and Calculated Channel Slices 1-4
+(per-channel `null_policy`, the Hold Last/Nearest/Linear/Local Mean
+estimation engine, Signal Builder UI, channel-level traceability) both
+now exist in code, cross-referenced from
 [CSV_EXCEL_INGESTION_ARCHITECTURE.md §19](CSV_EXCEL_INGESTION_ARCHITECTURE.md#19-explicit-null-resolution-and-calculated-channel-missing-data-policy--see-dec-084)
-and from the Calculated Channels entry in
-[CURRENT_STATE.md — Implemented capabilities](CURRENT_STATE.md#implemented-capabilities).
-The next planned implementation step (not yet authorized) begins with
-explicit-null backend/domain semantics (the tri-state cell
-representation, point 4) — the Data Issues panel, interpolation engine,
-and bulk actions are later, dependent steps.
+and from
+[CURRENT_STATE.md — Implemented capabilities](CURRENT_STATE.md#implemented-capabilities)
+(the current authority for exactly what is built vs. still deferred —
+see also
+[CURRENT_STATE.md — Known intentional constraints](CURRENT_STATE.md#known-intentional-constraints--deferred-items)).
+See [HANDOFF.md](HANDOFF.md) for the full implementation commit chain.
+PCHIP interpolation, non-`samples` max-gap units, per-sample
+provenance, a provenance graph, calculated-channel export, and
+edit/update of an existing calculated channel remain intentionally
+deferred extensions — this update record does not change the APPROVED
+POLICY itself (Decision/Reason/Alternatives above), only this Impact
+section's own now-outdated implementation-status note.
 
 ---
 

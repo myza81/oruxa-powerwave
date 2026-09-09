@@ -2391,9 +2391,13 @@ silently in advance.
 in [DECISIONS.md — DEC-084](DECISIONS.md#dec-084--explicit-null-resolution-and-calculated-channel-missing-data-policy-unresolved-emptyinvalid-cells-remain-blocking-an-explicit-user-marked-null-becomes-a-distinct-resolved-state-for-waveformdata-columns-time-axis-stays-blocking-each-calculated-channel-independently-declares-its-own-null-handling-policy-never-inheriting-automatic-propagation-from-its-source)
 and is not duplicated here in full — this section restates only the
 points most directly relevant to this document's own scope (the Data
-Preparation Workspace / working-overlay model) and records their status
-as **NOT YET IMPLEMENTED** (see [CURRENT_STATE.md](CURRENT_STATE.md) for
-the current/approved distinction).
+Preparation Workspace / working-overlay model). **Status update
+(2026-09-09): the points below are now IMPLEMENTED** (Data Preparation
+Slices 1-5 — see [CURRENT_STATE.md](CURRENT_STATE.md) for the current
+implemented-baseline-vs-deferred-extensions distinction, and
+[HANDOFF.md](HANDOFF.md) for the commit chain); this section is
+retained as the original design-intent record, since it still describes
+what was actually built.
 
 **Current guardrail is unchanged**: an unresolved empty or invalid cell
 in an active Time Axis or Waveform column stays `blocking`
@@ -2418,11 +2422,12 @@ panel** (reusing the existing Annotations review-drawer pattern) is the
 approved UX direction for surfacing unresolved cells outside the raw
 table itself, supporting both per-cell and scope-stated bulk resolution.
 
-**None of the above exists in code today** — `WorkingOverlay` (§9/§17,
-`app/domain/working_overlay.py`) currently models only `cell_overrides`
-(a plain value replacement) and `excluded_rows`; it has no explicit-null
-tri-state concept yet. This section records required design intent for
-when that work is actually scoped, not a claim that it is built.
+**Update: the above is now implemented** — `WorkingOverlay` (§9/§17,
+`app/domain/working_overlay.py`) now models a third, distinct
+`OVERRIDE_KIND_NULL` cell state alongside `cell_overrides` (plain value
+replacement) and `excluded_rows`, exactly matching the tri-state concept
+this section originally recorded as design intent (Data Preparation
+Slice 1, commit `3e6485f`).
 
 Calculated-channel null-handling policy (Propagate Null / Treat Null as
 Zero / Estimate Missing Data / Require Manual Value, plus the bounded

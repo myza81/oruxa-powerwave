@@ -4,9 +4,72 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-05**
+Last updated: **2026-09-09**
 
 ## What was most recently done
+
+**DEC-084 (Explicit Null Resolution and Calculated-Channel Missing-Data
+Policy) implementation is now complete end to end** — Data Preparation
+Slices 1-5 and Calculated Channel Slices 1-4, across this commit chain
+(oldest to newest):
+
+```text
+440cb81  docs: define explicit null and missing-data policy
+3e6485f  feat: add explicit null preparation state                    (Data Prep Slice 1)
+79b865b  feat: preserve explicit null through export and conversion   (Data Prep Slice 2)
+bb8183b  fix: preserve explicit null gaps through waveform paths      (Data Prep Slice 3)
+8a83f0c  feat: add data issues review and null resolution             (Data Prep Slice 4)
+cdda022  feat: add bulk null resolution for data issues               (Data Prep Slice 5)
+96d4898  feat: add calculated channel null policies                   (Calc Slice 1)
+dfd483d  feat: add calculated channel missing data estimation         (Calc Slice 2)
+cb49278  feat: expose calculated channel null handling                (Calc Slice 3)
+e26848c  feat: add calculated channel null traceability               (Calc Slice 4)
+```
+
+Full behavioral detail lives in [CURRENT_STATE.md](CURRENT_STATE.md)
+(Implemented capabilities + Known intentional constraints) and in
+[DECISIONS.md — DEC-084](DECISIONS.md#dec-084--explicit-null-resolution-and-calculated-channel-missing-data-policy-unresolved-emptyinvalid-cells-remain-blocking-an-explicit-user-marked-null-becomes-a-distinct-resolved-state-for-waveformdata-columns-time-axis-stays-blocking-each-calculated-channel-independently-declares-its-own-null-handling-policy-never-inheriting-automatic-propagation-from-its-source)
+itself — summary only here.
+
+**Data Preparation**: explicit null is a distinct, resolved
+`WorkingOverlay` cell state (a value cell only — Time Axis explicit
+null still blocks, no valid x-coordinate); single-cell and backend-
+scope-authoritative bulk Mark as Null (bulk never limited to whatever
+the capped 2000-row Data Issues browse list happened to have loaded);
+a Data Issues panel + Data Quality summary; explicit null survives
+cleaned export and canonical conversion into a real waveform gap, with
+display reduction/cursor/annotation all hardened to handle it correctly
+(true finite extrema recovered around a gap, gap itself reported as
+`null`/`None`, Time Axis stays strictly finite throughout).
+
+**Calculated Channels**: each channel declares its own `null_policy` —
+Propagate Null (backward-compatible default) / Treat Null as Zero /
+Require Manual Value (rejects creation outright on any non-finite
+required input, never creates a half-created channel) / Estimate
+Missing Data (Hold Last Value / Nearest Value / Linear Interpolation —
+actual aligned time coordinates, not assumed spacing — or Local Mean
+with an explicit radius; samples-only max gap; an oversized gap stays
+entirely unfilled). Zero-substitution/estimation are always
+calculation-local, never mutating source or parent arrays. Signal
+Builder UI + manager summary + full channel-level detail on the
+existing preview info strip, always sourced from the API-returned
+channel object. Calc Slice 4 also fixed a real UI defect its own UAT
+coverage found: `wwCcCreateChannel()`'s failure branches were calling
+`wwCcSyncCreateButtonState()`, which unconditionally re-hid a just-shown
+backend error (client-side validation has no way to know about a purely
+backend-side rejection) — both branches now recompute only the Create
+button's own disabled state directly; regression-covered by the Require
+Manual Value browser test.
+
+**Deferred** (DEC-084's own scope, not started): PCHIP/SciPy, non-
+`samples` max-gap units, per-sample estimated-value provenance, a
+provenance graph, calculated-channel export, edit/update of an existing
+calculated channel.
+
+**Commit status**: all ten commits above are already committed (see the
+chain). This documentation-closeout pass itself adds no code changes.
+
+## What was done in the prior session — Preparation Status integrity guardrail (DEC-083)
 
 **Fix — Preparation Status integrity guardrail (implemented, DEC-083).**
 UAT report: the Data Preparation "Preparation Status" panel showed

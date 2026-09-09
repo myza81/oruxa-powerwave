@@ -9,8 +9,28 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-05**. A Preparation Status integrity
-fix ([DECISIONS.md — DEC-083](DECISIONS.md#dec-083--preparation-status-must-reflect-the-effective-current-configuration-visible-to-the-user-a-manual-time-axis-is-unconditionally-blocking-never-ready-confirmed-or-not-and-a-time-axis-draft-that-differs-from-the-last-savedapplied-configuration-produces-its-own-blocking-unsaved-changes-issue-computed-live-client-side-with-zero-network-round-trip))
+Last meaningful update: **2026-09-09**. **DEC-084 (Explicit Null
+Resolution and Calculated-Channel Missing-Data Policy) is now an
+IMPLEMENTED BASELINE end to end** — Data Preparation Slices 1-5
+(explicit null as a distinct, resolved `WorkingOverlay` state; single-
+cell and backend-scope-authoritative bulk Mark as Null; a Data Issues
+panel + Data Quality summary; explicit-null preservation through
+cleaned export, canonical conversion, and every downstream
+display/cursor/annotation path) and Calculated Channel Slices 1-4
+(per-channel `null_policy` — Propagate Null/Treat Null as Zero/Require
+Manual Value/Estimate Missing Data with a Hold Last/Nearest/Linear/
+Local Mean estimation engine, always calculation-local and never
+mutating source or parent arrays; Signal Builder UI; channel-level
+traceability). PCHIP interpolation and a handful of other extensions
+remain intentionally deferred — see the Calculated Channels and Data
+Preparation entries under
+[Implemented capabilities](#implemented-capabilities) for the full
+record, the DEC-084 entry under
+[Known intentional constraints](#known-intentional-constraints--deferred-items)
+for exactly what remains deferred, and [HANDOFF.md](HANDOFF.md) for the
+ten-commit implementation chain. A prior (2026-09-05) Preparation
+Status integrity fix
+([DECISIONS.md — DEC-083](DECISIONS.md#dec-083--preparation-status-must-reflect-the-effective-current-configuration-visible-to-the-user-a-manual-time-axis-is-unconditionally-blocking-never-ready-confirmed-or-not-and-a-time-axis-draft-that-differs-from-the-last-savedapplied-configuration-produces-its-own-blocking-unsaved-changes-issue-computed-live-client-side-with-zero-network-round-trip))
 closes a real gap: the `manual` Time Axis interpreter (an engineer
 assertion, never a real per-row reading) could previously reach
 `is_ready=True`/"Ready for Powerwave" -- `readiness_service` never
@@ -433,17 +453,48 @@ re-confirmed by the TG-FINAL audit):
   ordered N-input Subtraction, and trailing one-cycle RMS. Multi-input
   operations require proven synchronized sample-time alignment (no
   interpolation/resampling). Immutable after creation, with dependency-
-  aware delete/cascade. **Missing-data (null) input policy is a separate,
-  approved-but-not-yet-implemented concern**: each calculated channel is
-  meant to explicitly declare its own null-handling policy (Propagate
-  Null / Treat Null as Zero / Estimate Missing Data with a bounded
-  interpolation method and mandatory maximum gap / Require Manual Value)
-  rather than automatically inheriting null-propagation from its source —
-  see [DECISIONS.md — DEC-084](DECISIONS.md#dec-084--explicit-null-resolution-and-calculated-channel-missing-data-policy-unresolved-emptyinvalid-cells-remain-blocking-an-explicit-user-marked-null-becomes-a-distinct-resolved-state-for-waveformdata-columns-time-axis-stays-blocking-each-calculated-channel-independently-declares-its-own-null-handling-policy-never-inheriting-automatic-propagation-from-its-source).
-  This is layered on top of, and never relaxes, the existing DEC-047
-  time-alignment guardrail above (which governs whether operand SAMPLE
-  TIMES may be combined at all, not how a null VALUE within an
-  already-aligned series is filled).
+  aware delete/cascade. **Missing-data (null) input policy (DEC-084,
+  Calc Slices 1-4, 2026-09-09) is implemented**: each calculated channel
+  explicitly declares its own `null_policy` at creation time —
+  `propagate_null` (backward-compatible default), `treat_null_as_zero`,
+  `require_manual_value` (rejects creation outright if any required
+  RESOLVED input contains a non-finite value — never creates an
+  unresolved/half-created channel), or `estimate_missing_data`. Zero-
+  substitution and estimation are always CALCULATION-LOCAL — the source
+  array and any parent calculated channel's own retained array are
+  never mutated; a channel may consume another calculated channel's own
+  already-resolved output, but tracks no per-sample record of which of
+  that parent's samples were themselves estimated (channel-level
+  traceability only, not a provenance graph). `estimate_missing_data`
+  requires an explicit `estimation_method` — Hold Last Value, Nearest
+  Value, Linear Interpolation (using the aligned channel's own actual
+  time coordinates, never assumed-uniform sample spacing), or Local
+  Mean (additionally requires a positive-integer `local_mean_radius`,
+  samples on each side of the gap) — plus a positive-integer
+  `max_gap_value` (`max_gap_unit` supports `samples` only; a gap longer
+  than the maximum is left entirely unfilled, never partially
+  estimated). PCHIP is a recognized `estimation_method` value for
+  forward compatibility only — rejected outright at creation, no SciPy
+  dependency exists, never offered in the frontend. Frontend: the
+  Signal Builder's Null Handling control (defaulting to Propagate Null)
+  with conditional Estimation Method/Maximum Gap/Local Mean Radius
+  fields; the manager's existing compact one-line summary; and full
+  channel-level detail (Missing Data Handling/Method/Maximum
+  Gap/Local Mean Radius) on the existing selected-channel preview info
+  strip — always sourced from the API-returned channel object, never
+  from in-progress builder state. Backend error responses (e.g.
+  `require_manual_value_null`, `invalid_estimation_method`,
+  `estimation_method_not_implemented`) are shown verbatim through the
+  existing structured error area. See
+  [DECISIONS.md — DEC-084](DECISIONS.md#dec-084--explicit-null-resolution-and-calculated-channel-missing-data-policy-unresolved-emptyinvalid-cells-remain-blocking-an-explicit-user-marked-null-becomes-a-distinct-resolved-state-for-waveformdata-columns-time-axis-stays-blocking-each-calculated-channel-independently-declares-its-own-null-handling-policy-never-inheriting-automatic-propagation-from-its-source)
+  for the full approved policy and
+  [Known intentional constraints](#known-intentional-constraints--deferred-items)
+  for what remains deferred (PCHIP/SciPy, non-`samples` max-gap units,
+  per-sample provenance, export, edit/update). This is layered on top
+  of, and never relaxes, the existing DEC-047 time-alignment guardrail
+  above (which governs whether operand SAMPLE TIMES may be combined at
+  all, not how a null VALUE within an already-aligned series is
+  filled).
 - **Annotations**: `text_note` (floating, content-anchored), `callout`
   (waveform-anchored with a movable label box), and `peak_max`/`peak_min`
   (dynamically viewport-recalculated) — all resolve their own owning Time
@@ -1323,6 +1374,40 @@ re-confirmed by the TG-FINAL audit):
   slice implemented so far — see
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).
 
+  **DEC-084 Data Preparation Slices 1-5 (2026-09-09) implement Explicit
+  Null Resolution** on top of this same `WorkingOverlay` — a THIRD,
+  distinct per-cell state (`OVERRIDE_KIND_NULL`) alongside a value
+  override and a clear: an unresolved empty/invalid cell still stays
+  `blocking` (Slice 9's own guardrail, unchanged), but an explicit
+  user-marked null is a resolved, non-blocking state for an active
+  Waveform/data cell — **Time Axis explicit null still blocks** (no
+  valid x-coordinate for that row, DEC-084's own permanent asymmetry).
+  Single-cell Mark as Null (`set_cell_null()`) and bulk Mark as Null
+  (`bulk_set_cells_null()`, one grouped undo/redo entry covering every
+  marked cell) both ride the SAME bounded Undo/Redo/Reset All history
+  every other `WorkingOverlay` mutation already used — no second
+  history. A new Data Issues persistent review panel plus a compact
+  Data Quality summary (frontend) surface unresolved/explicit-null
+  cells for browsing; `MAX_CELL_ISSUES = 2000` bounds only that BROWSE
+  list's own response payload — bulk resolution always re-derives its
+  eligible scope from a separate, uncapped, authoritative backend scan
+  (`eligible_bulk_null_rows()`), never limited to whatever the browse
+  list happened to have loaded. An explicit null survives cleaned
+  CSV/Excel export as the target format's own literal `null`
+  representation (never a blank/empty cell indistinguishable from
+  "never looked at") and survives canonical conversion into a real
+  waveform gap; the downstream min/max envelope display reduction,
+  cursor-value, and annotation-anchor paths were all hardened to
+  recover the true finite extrema around a gap (never silently
+  resolving to the first NaN) and to report the gap itself as
+  `null`/`None` rather than a raw NaN — the Time Axis itself stays
+  strictly finite throughout every one of these paths (never
+  null-eligible). See
+  [DECISIONS.md — DEC-084](DECISIONS.md#dec-084--explicit-null-resolution-and-calculated-channel-missing-data-policy-unresolved-emptyinvalid-cells-remain-blocking-an-explicit-user-marked-null-becomes-a-distinct-resolved-state-for-waveformdata-columns-time-axis-stays-blocking-each-calculated-channel-independently-declares-its-own-null-handling-policy-never-inheriting-automatic-propagation-from-its-source)
+  for the full approved policy and [HANDOFF.md](HANDOFF.md) for the
+  five-commit chain. The Calculated Channels entry above covers the
+  separate (later) calculated-channel side of the same decision.
+
 ## Known intentional constraints / deferred items
 
 These are product decisions or explicitly out-of-scope items, **not**
@@ -1355,24 +1440,31 @@ correctness defects:
   reduced-precision fast-path gap (`datetime.fromisoformat()` silently
   accepting date-only/week-only ISO strings with no diagnostic) also
   remains open, unaffected by DEC-081.
-- **Explicit null resolution and calculated-channel missing-data policy
-  (DEC-084, 2026-09-09) is APPROVED POLICY, not yet implemented.** Today,
-  an unresolved empty/invalid Time Axis or Waveform cell correctly stays
-  `blocking` (Slice 9, above) and `WorkingOverlay` supports only plain
-  cell-value edits and whole-row exclude/include — there is no
-  explicit-null tri-state cell value, no Data Issues side panel, no
-  calculated-channel null-handling-policy selector, and no
-  interpolation/estimation engine anywhere in code yet. Do not treat any
-  of DEC-084's approved policy (explicit null as a distinct resolved
-  state, the three approved resolution paths, cleaned-export `null`
-  representation, calculated-channel Propagate/Zero/Estimate/Manual
-  policies, the bounded interpolation-method set, the mandatory
-  maximum-gap guardrail, or the Data Issues panel UX direction) as
-  already built. The next planned implementation step (not yet
-  authorized) begins with explicit-null backend/domain semantics; see
-  [DECISIONS.md — DEC-084](DECISIONS.md#dec-084--explicit-null-resolution-and-calculated-channel-missing-data-policy-unresolved-emptyinvalid-cells-remain-blocking-an-explicit-user-marked-null-becomes-a-distinct-resolved-state-for-waveformdata-columns-time-axis-stays-blocking-each-calculated-channel-independently-declares-its-own-null-handling-policy-never-inheriting-automatic-propagation-from-its-source)
-  and
-  [CSV_EXCEL_INGESTION_ARCHITECTURE.md §19](CSV_EXCEL_INGESTION_ARCHITECTURE.md#19-explicit-null-resolution-and-calculated-channel-missing-data-policy--see-dec-084).
+- **DEC-084 (Explicit Null Resolution and Calculated-Channel
+  Missing-Data Policy) — IMPLEMENTED BASELINE (2026-09-09)**, across
+  Data Preparation Slices 1-5 and Calculated Channel Slices 1-4; see
+  [Implemented capabilities](#implemented-capabilities) for the full
+  behavioral record and [HANDOFF.md](HANDOFF.md) for the commit chain.
+  The following EXTENSIONS remain intentionally deferred, not yet
+  approved to begin:
+  - PCHIP interpolation — recognized as a valid `estimation_method`
+    wire value for forward compatibility, but creation with it is
+    rejected outright (`estimation_method_not_implemented`); no SciPy
+    dependency exists in this codebase, and it is never offered in the
+    frontend.
+  - `max_gap_unit` values other than `samples` (milliseconds/seconds).
+  - Per-sample estimated-value provenance (which individual samples
+    within a channel were filled, by which policy) — only
+    channel-level policy/method/max-gap/radius metadata is tracked.
+  - A cross-channel provenance graph (e.g. "did Calc B's result depend
+    on an estimated sample in upstream Calc A").
+  - Calculated-channel export.
+  - Edit/update of an existing calculated channel — still immutable
+    after creation (DEC-047); changing policy means creating a new
+    channel.
+  See [DECISIONS.md — DEC-084](DECISIONS.md#dec-084--explicit-null-resolution-and-calculated-channel-missing-data-policy-unresolved-emptyinvalid-cells-remain-blocking-an-explicit-user-marked-null-becomes-a-distinct-resolved-state-for-waveformdata-columns-time-axis-stays-blocking-each-calculated-channel-independently-declares-its-own-null-handling-policy-never-inheriting-automatic-propagation-from-its-source)
+  for the full approved policy (unchanged by this implementation —
+  implementation completing does not itself alter what was decided).
 
 Genuinely open engineering/operational items (not yet resolved either
 way):
