@@ -1029,3 +1029,138 @@ class TestEngineeringQuantityNeverBlocksReadiness:
 
         assert summary.blocking_count == 0
         assert summary.is_ready is True
+
+
+class TestCellIssueDetails:
+    """DEC-084 (Slice 4): `PreparationIssueSummary.cell_issues` exposes
+    the SAME per-row/column findings `_scan_full_active_region()` already
+    collects for the coarse `issues` messages, additionally as
+    individually navigable `PreparationCellIssue` entries -- never a
+    second validation scan."""
+
+    def _cell_issue(self, summary, *, row_number: int, column_index: int):
+        return next(
+            (c for c in summary.cell_issues if c.row_number == row_number and c.column_index == column_index),
+            None,
+        )
+
+    def test_cell_issue_carries_a_stable_source_coordinate(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=3, column_index=1, value=None, registry=registry)
+
+        summary = _issues(registry, source_id)
+
+        detail = self._cell_issue(summary, row_number=3, column_index=1)
+        assert detail is not None
+        assert detail.worksheet_index is None  # CSV has no worksheet dimension
+        assert detail.row_number == 3
+        assert detail.column_index == 1
+
+    def test_waveform_blank_detail_is_emitted(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=2, column_index=1, value=None, registry=registry)
+
+        summary = _issues(registry, source_id)
+
+        detail = self._cell_issue(summary, row_number=2, column_index=1)
+        assert detail is not None
+        assert detail.code == ISSUE_WAVEFORM_VALUE_MISSING
+        assert detail.offending_value is None
+
+    def test_waveform_invalid_detail_is_emitted_with_the_offending_value(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=2, column_index=1, value="N/A", registry=registry)
+
+        summary = _issues(registry, source_id)
+
+        detail = self._cell_issue(summary, row_number=2, column_index=1)
+        assert detail is not None
+        assert detail.code == ISSUE_WAVEFORM_VALUE_INVALID
+        assert detail.offending_value == "N/A"
+
+    def test_time_axis_issues_remain_identifiable_separately_from_waveform(self):
+        registry = PreparationSessionRegistry()
+        lines = [f"2026-08-31 13:00:{i:02d},{i}.0" for i in range(5)]
+        lines[2] = ",2.0"  # blank Time Axis value on row 3
+        source_id = _add_csv(registry, ("\n".join(lines) + "\n").encode())
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id="absolute_datetime", confirmed=True, registry=registry,
+        )
+
+        summary = _issues(registry, source_id)
+
+        time_details = [c for c in summary.cell_issues if c.code == ISSUE_TIME_VALUE_MISSING]
+        waveform_details = [c for c in summary.cell_issues if c.code.startswith("waveform_")]
+        assert len(time_details) == 1
+        assert time_details[0].row_number == 3
+        assert time_details[0].column_index == 0
+        assert waveform_details == []  # row 3's own waveform cell (2.0) is perfectly valid
+
+    def test_explicit_null_resolved_cell_disappears_from_unresolved_issue_details(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=2, column_index=1, value=None, registry=registry)
+        assert self._cell_issue(_issues(registry, source_id), row_number=2, column_index=1) is not None
+
+        edit_cell(
+            workspace_id="ws-1", source_id=source_id, row_number=2, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=registry,
+        )
+
+        summary = _issues(registry, source_id)
+        assert self._cell_issue(summary, row_number=2, column_index=1) is None
+
+    def test_manual_valid_edit_disappears_from_issue_details(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=2, column_index=1, value=None, registry=registry)
+        assert self._cell_issue(_issues(registry, source_id), row_number=2, column_index=1) is not None
+
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=2, column_index=1, value="42.0", registry=registry)
+
+        summary = _issues(registry, source_id)
+        assert self._cell_issue(summary, row_number=2, column_index=1) is None
+
+    def test_invalid_edit_remains_in_issue_details(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=2, column_index=1, value="garbage", registry=registry)
+
+        summary = _issues(registry, source_id)
+        detail = self._cell_issue(summary, row_number=2, column_index=1)
+        assert detail is not None
+        assert detail.code == ISSUE_WAVEFORM_VALUE_INVALID
+        assert detail.offending_value == "garbage"
+
+    def test_not_assigned_column_is_absent_from_issue_details(self):
+        registry = PreparationSessionRegistry()
+        lines = [f"2026-08-31 13:00:{i:02d},{i}.0,note{i}" for i in range(5)]
+        lines[2] = "2026-08-31 13:00:02,3.0,ERR"
+        source_id = _add_csv(registry, ("\n".join(lines) + "\n").encode())
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        # column_index=2 is left at its default (not_assigned)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id="absolute_datetime", confirmed=True, registry=registry,
+        )
+
+        summary = _issues(registry, source_id)
+
+        assert all(c.column_index != 2 for c in summary.cell_issues)
+
+    def test_cell_issues_truncated_flag_defaults_false_when_within_bound(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=2, column_index=1, value=None, registry=registry)
+
+        summary = _issues(registry, source_id)
+
+        assert summary.cell_issues_truncated is False

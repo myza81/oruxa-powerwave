@@ -212,6 +212,35 @@ class PreparationIssue:
     details: dict[str, Any] | None = None
 
 
+@dataclass(slots=True, frozen=True)
+class PreparationCellIssue:
+    """One individual unresolved data-cell finding (DEC-084, Slice 4) --
+    the per-cell detail a Data Issues UI navigates to, distinct from the
+    coarse, aggregated `PreparationIssue` above. This is a SEPARATE,
+    explicitly bounded list (`PreparationIssueSummary.cell_issues`),
+    never smuggled into `PreparationIssue.details` -- that dict's own
+    docstring explicitly forbids carrying an unbounded row/cell list.
+
+    `code` is one of the per-cell-capable `KNOWN_ISSUE_CODES`
+    (`ISSUE_TIME_VALUE_MISSING`/`ISSUE_TIME_VALUE_INVALID`/
+    `ISSUE_WAVEFORM_VALUE_MISSING`/`ISSUE_WAVEFORM_VALUE_INVALID` today)
+    -- the SAME stable identifier the coarse aggregated issue for that
+    category already carries, so a caller can group detail entries under
+    their own coarse issue without a second classification scheme.
+    `offending_value` is the raw, unparsed string for an "invalid"
+    finding, and `None` for a "missing" finding (an empty cell has no
+    value to show). Uses the SAME canonical source coordinate
+    `(worksheet_index, row_number, column_index)` every other
+    working-overlay/preview endpoint already uses -- never the CURRENT
+    visible table position, which changes with pagination/scrolling."""
+
+    code: str
+    worksheet_index: int | None
+    row_number: int
+    column_index: int
+    offending_value: str | None = None
+
+
 @dataclass(slots=True)
 class PreparationIssueSummary:
     """The full response shape for one preparation source's own current
@@ -238,14 +267,26 @@ class PreparationIssueSummary:
     info_count: int
     is_ready: bool = False
     issues: list[PreparationIssue] = field(default_factory=list)
+    # DEC-084 (Slice 4): per-cell navigable detail, bounded -- see
+    # `PreparationCellIssue`'s own docstring. `cell_issues_truncated` is
+    # `True` when more unresolved cells exist than fit the bound (see
+    # `app.services.readiness_service.MAX_CELL_ISSUES`) -- the coarse
+    # `issues` list's own `details.missing_count`/`details.invalid_count`
+    # always still reports the TRUE total regardless of truncation.
+    cell_issues: list[PreparationCellIssue] = field(default_factory=list)
+    cell_issues_truncated: bool = False
 
 
 def summarize_issues(
     *, source_id: str, revision: int, issues: list[PreparationIssue],
+    cell_issues: list[PreparationCellIssue] | None = None, cell_issues_truncated: bool = False,
 ) -> PreparationIssueSummary:
     """Build a `PreparationIssueSummary` from an already-collected issue
     list -- the one place severity counts (and `is_ready`) are computed,
-    so no caller ever has to re-derive them independently."""
+    so no caller ever has to re-derive them independently. `cell_issues`
+    defaults to empty (Slice 6's own configuration-only issues never
+    have per-cell detail) -- only `app.services.readiness_service`'s own
+    full-region scan currently populates it."""
     blocking_count = sum(1 for issue in issues if issue.severity == SEVERITY_BLOCKING)
     warning_count = sum(1 for issue in issues if issue.severity == SEVERITY_WARNING)
     info_count = sum(1 for issue in issues if issue.severity == SEVERITY_INFO)
@@ -259,4 +300,6 @@ def summarize_issues(
         info_count=info_count,
         is_ready=blocking_count == 0,
         issues=list(issues),
+        cell_issues=list(cell_issues) if cell_issues else [],
+        cell_issues_truncated=cell_issues_truncated,
     )

@@ -754,7 +754,7 @@ class TestCellWorkingEndpoints:
         rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
         assert rows["rows"][0]["cells"] == ["EDITED", "b"]
         assert rows["working_revision"] == 1
-        assert rows["rows"][0]["modified_cells"] == [{"column_index": 0, "raw_value": "a"}]
+        assert rows["rows"][0]["modified_cells"] == [{"column_index": 0, "raw_value": "a", "is_explicit_null": False}]
 
     def test_put_cell_clear_sets_none_in_preview(self, client):
         source_id = _upload_csv(client)
@@ -783,6 +783,31 @@ class TestCellWorkingEndpoints:
         assert resp.json()["edited_cell_count"] == 1
         rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
         assert rows["rows"][0]["cells"] == ["a", None]
+
+    def test_put_cell_kind_null_is_flagged_explicit_null_in_modified_cells(self, client):
+        # DEC-084 (Slice 4): `is_explicit_null` is the ONE wire field that
+        # distinguishes an explicit null from a plain clear -- both
+        # otherwise leave `cells` at the same blank `None`.
+        source_id = _upload_csv(client)
+
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/1",
+            json={"kind": "null"},
+        )
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+
+        assert rows["rows"][0]["modified_cells"] == [{"column_index": 1, "raw_value": "b", "is_explicit_null": True}]
+
+    def test_put_cell_clear_is_not_flagged_explicit_null(self, client):
+        source_id = _upload_csv(client)
+
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/1",
+            json={"value": None},
+        )
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+
+        assert rows["rows"][0]["modified_cells"] == [{"column_index": 1, "raw_value": "b", "is_explicit_null": False}]
 
     def test_put_cell_kind_null_with_value_null_is_accepted(self, client):
         source_id = _upload_csv(client)

@@ -139,6 +139,7 @@ from app.domain.preparation_issue import (
     SEVERITY_BLOCKING,
     SEVERITY_WARNING,
     IssueLocation,
+    PreparationCellIssue,
     PreparationIssue,
 )
 from app.domain.preparation_session import PreparationSession
@@ -211,6 +212,19 @@ _WARNING_TIME_DIAGNOSTIC_CODES = frozenset({
     "anchor_assumption_required",
     "time_only_not_absolute",
 })
+
+
+#: DEC-084 (Slice 4): a generous but bounded cap on how many individual
+#: `PreparationCellIssue` entries `_scan_full_active_region()` ever
+#: builds -- matches the "generous but not unlimited" convention already
+#: established by `app.domain.working_overlay.MAX_OPERATION_HISTORY`/
+#: `app.services.preparation_export_service.
+#: MAX_MANIFEST_EXCLUDED_ROWS_LISTED`. The coarse, aggregated
+#: `PreparationIssue.details` counts (`missing_count`/`invalid_count`)
+#: are NEVER capped by this -- only the per-cell navigable detail list
+#: is; `PreparationIssueSummary.cell_issues_truncated` tells a caller
+#: when more exist than fit here.
+MAX_CELL_ISSUES = 2000
 
 
 def _diagnostic_location(worksheet_index: int | None, diagnostic_location) -> IssueLocation:
@@ -362,7 +376,7 @@ def _classify_time_cell(value, *, family: str, date_order: str | None) -> str:
 
 def _scan_full_active_region(
     session: PreparationSession, *, worksheet_index: int | None, summary: TimeAxisInterpretationResult,
-) -> list[PreparationIssue]:
+) -> tuple[list[PreparationIssue], list[PreparationCellIssue], bool]:
     """(task sections J, K, L, S) ONE single-pass streaming scan over
     the ENTIRE active data region -- never the bounded sample
     `get_time_axis_summary()` itself uses -- checking BOTH the
@@ -370,6 +384,13 @@ def _scan_full_active_region(
     column in the same pass (never two separate full scans). Excluded
     rows, the header row, and rows outside the active region are all
     skipped, matching every other row-level check in this codebase.
+
+    Returns `(issues, cell_issues, cell_issues_truncated)` (DEC-084,
+    Slice 4) -- `cell_issues` is the SAME per-row/column findings this
+    scan already collects to build the coarse `issues` messages below,
+    additionally exposed as individually navigable
+    `PreparationCellIssue` entries (bounded by `MAX_CELL_ISSUES`) for the
+    Data Issues panel -- never a second, separate scan.
     """
     time_axis_family = summary.family
     time_axis_date_order = (summary.options or {}).get("date_order")
@@ -390,8 +411,14 @@ def _scan_full_active_region(
         if ws == worksheet_index and role == ROLE_WAVEFORM
     )
 
-    time_missing_count = 0
-    time_invalid_rows: list[int] = []
+    # DEC-084 (Slice 4): `time_missing`/`time_invalid` now carry the
+    # offending column (and, for `time_invalid`, the offending raw
+    # value) alongside each row number -- the exact same information
+    # `waveform_missing`/`waveform_invalid` below already tracked, now
+    # symmetric so both can feed `PreparationCellIssue` entries via the
+    # SAME mechanism.
+    time_missing: list[tuple[int, int]] = []
+    time_invalid: list[tuple[int, int, object]] = []
     saw_naive_absolute = False
     saw_aware_absolute = False
     waveform_missing: list[tuple[int, int]] = []
@@ -408,11 +435,11 @@ def _scan_full_active_region(
                     date_value = row.cells[date_col] if date_col < len(row.cells) else None
                     time_value = row.cells[time_col] if time_col < len(row.cells) else None
                     if date_value in (None, "") or time_value in (None, ""):
-                        time_missing_count += 1
+                        time_missing.append((row.row_number, date_col))
                     else:
                         combined = _combine_date_and_time(str(date_value), str(time_value), date_order=time_axis_date_order or DATE_ORDER_AUTO)
                         if combined is None:
-                            time_invalid_rows.append(row.row_number)
+                            time_invalid.append((row.row_number, date_col, f"{date_value} | {time_value}"))
                         elif combined.tzinfo is None:
                             saw_naive_absolute = True
                         else:
@@ -422,9 +449,9 @@ def _scan_full_active_region(
                     value = row.cells[col] if col < len(row.cells) else None
                     status = _classify_time_cell(value, family=time_axis_family, date_order=time_axis_date_order)
                     if status == "missing":
-                        time_missing_count += 1
+                        time_missing.append((row.row_number, col))
                     elif status == "invalid":
-                        time_invalid_rows.append(row.row_number)
+                        time_invalid.append((row.row_number, col, value))
                     elif time_axis_family == FAMILY_ABSOLUTE:
                         parsed = parse_absolute_datetime(str(value), date_order=time_axis_date_order or DATE_ORDER_AUTO)
                         if parsed is not None and parsed.tzinfo is None:
@@ -452,21 +479,21 @@ def _scan_full_active_region(
                     waveform_invalid.append((row.row_number, col, value))
 
     issues: list[PreparationIssue] = []
-    if time_missing_count:
+    if time_missing:
         issues.append(PreparationIssue(
             severity=SEVERITY_BLOCKING, code=ISSUE_TIME_VALUE_MISSING,
-            message=f"{time_missing_count} row(s) in the active data region have no Time Axis value.",
-            location=IssueLocation(worksheet_index=worksheet_index, field="time_axis"),
+            message=f"{len(time_missing)} row(s) in the active data region have no Time Axis value.",
+            location=IssueLocation(worksheet_index=worksheet_index, row_number=time_missing[0][0], field="time_axis"),
             suggested_action="Fill in, correct, or exclude the affected row(s).",
-            details={"missing_count": time_missing_count},
+            details={"missing_count": len(time_missing)},
         ))
-    if time_invalid_rows:
+    if time_invalid:
         issues.append(PreparationIssue(
             severity=SEVERITY_BLOCKING, code=ISSUE_TIME_VALUE_INVALID,
-            message=f"{len(time_invalid_rows)} row(s) in the active data region have a Time Axis value that cannot be interpreted under the resolved format.",
-            location=IssueLocation(worksheet_index=worksheet_index, row_number=time_invalid_rows[0], field="time_axis"),
+            message=f"{len(time_invalid)} row(s) in the active data region have a Time Axis value that cannot be interpreted under the resolved format.",
+            location=IssueLocation(worksheet_index=worksheet_index, row_number=time_invalid[0][0], field="time_axis"),
             suggested_action="Correct or exclude the affected row(s) -- the original value is preserved.",
-            details={"invalid_count": len(time_invalid_rows)},
+            details={"invalid_count": len(time_invalid)},
         ))
     if time_axis_family == FAMILY_ABSOLUTE and saw_naive_absolute and not saw_aware_absolute and not skip_time_axis_scan:
         issues.append(PreparationIssue(
@@ -492,19 +519,48 @@ def _scan_full_active_region(
             suggested_action="Correct, exclude, or reclassify the affected row(s)/column -- the original value is preserved, never coerced to zero.",
             details={"invalid_count": len(waveform_invalid), "sample_value": str(first_value)},
         ))
-    return issues
+
+    # DEC-084 (Slice 4): the SAME per-row/column findings collected
+    # above, additionally exposed as bounded, individually navigable
+    # `PreparationCellIssue` entries -- grouped by issue type in a fixed,
+    # deterministic order (time-missing, time-invalid, waveform-missing,
+    # waveform-invalid), each group already in row-scan order. Never a
+    # second scan -- purely a re-shaping of data this function already
+    # collected for the coarse messages above.
+    all_cell_entries: list[tuple[str, int, int, str | None]] = (
+        [(ISSUE_TIME_VALUE_MISSING, row_number, col, None) for row_number, col in time_missing]
+        + [(ISSUE_TIME_VALUE_INVALID, row_number, col, str(value)) for row_number, col, value in time_invalid]
+        + [(ISSUE_WAVEFORM_VALUE_MISSING, row_number, col, None) for row_number, col in waveform_missing]
+        + [(ISSUE_WAVEFORM_VALUE_INVALID, row_number, col, str(value)) for row_number, col, value in waveform_invalid]
+    )
+    cell_issues_truncated = len(all_cell_entries) > MAX_CELL_ISSUES
+    cell_issues = [
+        PreparationCellIssue(
+            code=code, worksheet_index=worksheet_index, row_number=row_number,
+            column_index=col, offending_value=offending_value,
+        )
+        for code, row_number, col, offending_value in all_cell_entries[:MAX_CELL_ISSUES]
+    ]
+
+    return issues, cell_issues, cell_issues_truncated
 
 
 def collect_readiness_issues(
     session: PreparationSession, worksheet_index: int | None, *, workspace_id: str, source_id: str,
     registry: PreparationSessionRegistry,
-) -> list[PreparationIssue]:
+) -> tuple[list[PreparationIssue], list[PreparationCellIssue], bool]:
     """(Slice 9) The full readiness rule set -- structure (task section
     C/D/E), time-axis coherence (F/G/H/I), and full-active-region
     value validation (J-N). Combined with Slice 6's own unchanged
     configuration-only issues by `app.services.preparation_issue_
     service.build_issue_summary()`, never computed a second, competing
-    way there."""
+    way there.
+
+    Returns `(issues, cell_issues, cell_issues_truncated)` (DEC-084,
+    Slice 4) -- `cell_issues` is always empty for the structural
+    `waveform_channel_missing`/time-axis-status issues above (they are
+    not per-cell findings); only `_scan_full_active_region()`'s own
+    per-row/column findings ever populate it."""
     issues: list[PreparationIssue] = []
 
     has_waveform_column = any(
@@ -525,13 +581,16 @@ def collect_readiness_issues(
     )
     issues.extend(time_axis_issues)
 
+    cell_issues: list[PreparationCellIssue] = []
+    cell_issues_truncated = False
     if time_axis_usable or has_waveform_column:
-        issues.extend(_scan_full_active_region(
+        region_issues, cell_issues, cell_issues_truncated = _scan_full_active_region(
             session, worksheet_index=worksheet_index,
             summary=summary if time_axis_usable else _EMPTY_TIME_AXIS_SUMMARY,
-        ))
+        )
+        issues.extend(region_issues)
 
-    return issues
+    return issues, cell_issues, cell_issues_truncated
 
 
 #: A configuration-free stand-in passed to `_scan_full_active_region()`

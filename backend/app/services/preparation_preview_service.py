@@ -139,10 +139,20 @@ class ModifiedCell:
     only cells that actually differ from the raw source appear here.
     `raw_value` is the ORIGINAL value at this position, in its native
     type, preserved for provenance/hover/reset display -- never the
-    working value (that already lives in the row's own `cells`)."""
+    working value (that already lives in the row's own `cells`).
+
+    `is_explicit_null` (DEC-084, Slice 4) is `True` when this override's
+    own kind is `OVERRIDE_KIND_NULL` -- surfaced here (rather than only
+    via `PreviewRow.explicit_null_columns`, which stays backend-internal)
+    so the Raw Data Preview table can render a distinct resolved-null
+    representation instead of an ordinary blank cell, without which an
+    explicit null and a plain clear would be visually indistinguishable
+    on the wire, exactly the ambiguity `OVERRIDE_KIND_NULL` itself exists
+    to resolve at the domain layer."""
 
     column_index: int
     raw_value: Any
+    is_explicit_null: bool = False
 
 
 @dataclass(slots=True)
@@ -540,8 +550,9 @@ def _apply_working_overlay(session: PreparationSession, *, worksheet_index: int 
             override = row_overrides[column_index]
             raw_value = row.cells[column_index]
             row.cells[column_index] = override.value if override.kind == OVERRIDE_KIND_EDIT else None
-            modified.append(ModifiedCell(column_index=column_index, raw_value=raw_value))
-            if override.kind == OVERRIDE_KIND_NULL:
+            is_explicit_null = override.kind == OVERRIDE_KIND_NULL
+            modified.append(ModifiedCell(column_index=column_index, raw_value=raw_value, is_explicit_null=is_explicit_null))
+            if is_explicit_null:
                 null_columns.add(column_index)
         row.modified_cells = modified
         row.explicit_null_columns = frozenset(null_columns)
@@ -836,8 +847,9 @@ def iterate_active_region_rows(
                 override = row_overrides[column_index]
                 raw_value = row.cells[column_index]
                 row.cells[column_index] = override.value if override.kind == OVERRIDE_KIND_EDIT else None
-                modified.append(ModifiedCell(column_index=column_index, raw_value=raw_value))
-                if override.kind == OVERRIDE_KIND_NULL:
+                is_explicit_null = override.kind == OVERRIDE_KIND_NULL
+                modified.append(ModifiedCell(column_index=column_index, raw_value=raw_value, is_explicit_null=is_explicit_null))
+                if is_explicit_null:
                     null_columns.add(column_index)
             row.modified_cells = modified
             row.explicit_null_columns = frozenset(null_columns)

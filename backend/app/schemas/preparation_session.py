@@ -187,14 +187,19 @@ class ModifiedCellOut(BaseModel):
     active working override -- see `ModifiedCell`'s own docstring.
     `raw_value` is the ORIGINAL value, kept for provenance/hover/reset
     display, never the working value (that already lives in the row's
-    own `cells`)."""
+    own `cells`). `is_explicit_null` (DEC-084, Slice 4) distinguishes an
+    explicit-null override from a plain clear -- both otherwise leave
+    the row's own `cells` value at the same blank/`null`, so this is the
+    ONE field a UI can read to render a resolved-null state instead of
+    an ordinary blank cell."""
 
     column_index: int
     raw_value: Any
+    is_explicit_null: bool = False
 
     @classmethod
     def from_domain(cls, cell: ModifiedCell) -> "ModifiedCellOut":
-        return cls(column_index=cell.column_index, raw_value=cell.raw_value)
+        return cls(column_index=cell.column_index, raw_value=cell.raw_value, is_explicit_null=cell.is_explicit_null)
 
 
 class PreparationRowOut(BaseModel):

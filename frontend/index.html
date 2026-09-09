@@ -2316,6 +2316,30 @@
                needed). */
             .ww-data-prep-row-1 { grid-template-columns: 1fr; }
             .ww-data-prep-row-1 > .ww-data-prep-file-card { grid-column: auto; }
+            /* DEC-084 (Slice 4), task section 24: reuses this SAME
+               existing breakpoint (never a new/duplicate one) -- the
+               Data Issues panel becomes an overlay (position: fixed,
+               translateX) instead of a permanent flex sibling that
+               would squeeze the table down to an unusable width,
+               reusing the SAME fixed/translateX/z-index mechanics
+               .ww-annotation-drawer already established. */
+            #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-preview-body { display: block; }
+            .ww-data-prep-preview-main { display: block; }
+            .ww-data-issues-panel {
+                position: fixed; top: 0; right: 0; bottom: 0; left: auto;
+                width: 320px; max-width: 88vw; flex: none; margin-top: 0;
+                border-radius: 0; border-left: 1px solid var(--panel-border); border-top: none; border-bottom: none; border-right: none;
+                transform: translateX(100%); transition: transform 0.15s ease; z-index: 40;
+                box-shadow: -4px 0 16px rgba(0, 0, 0, 0.15);
+            }
+            .ww-data-issues-panel[data-open="true"] { transform: translateX(0); }
+            .ww-data-issues-panel[data-open="false"] { transform: translateX(100%); }
+            .ww-data-issues-panel[data-open="false"] .ww-data-issues-panel-header { flex-direction: row; padding: 10px 10px 10px 12px; }
+            .ww-data-issues-panel[data-open="false"] .ww-data-issues-panel-header-text,
+            .ww-data-issues-panel[data-open="false"] .ww-data-issues-panel-body,
+            .ww-data-issues-panel[data-open="false"] .ww-data-issues-panel-nav {
+                display: none;
+            }
         }
         /* Very small screen (~390px and below): retain a single
            horizontal four-step strip and readable titles. Helper text
@@ -2413,6 +2437,13 @@
         #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-table td.ww-data-prep-cell:hover {
             background: var(--hover-tint);
         }
+        /* DEC-084 (Slice 4): visible focus state for a cell landed on
+           via Data Issues panel keyboard/coordinate navigation
+           (task section 25) -- additive only, never changes the
+           existing hover/selected/modified rules above. */
+        #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-table td.ww-data-prep-cell:focus-visible {
+            outline: 2px solid var(--accent); outline-offset: -2px;
+        }
         #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-pagination {
             margin-top: 11px;
             padding-top: 10px;
@@ -2453,6 +2484,159 @@
         .ww-data-prep-col-role-badge[data-role="time_axis"] { background: var(--accent-wash); color: var(--accent); }
         .ww-data-prep-col-role-badge[data-role="waveform"] { background: var(--ok-wash); color: var(--ok); }
         .ww-data-prep-derived-badge { background: var(--accent-wash); color: var(--accent); }
+
+        /* ---- DEC-084 (Slice 4): Data Quality summary + Data Issues
+           panel. Purely ADDITIVE new classes -- no existing
+           .ww-data-prep-preview-card/.ww-data-prep-table-wrap/
+           .ww-data-prep-pagination rule above is modified. The table
+           itself keeps its own exact recently-UAT-passed markup/classes;
+           this only wraps it (plus pagination/status) in one new flex
+           row alongside a new sibling panel. Visual language (border,
+           radius, header/count-badge/close-button styling) deliberately
+           echoes .ww-annotation-drawer's own established pattern
+           (section 6 of the task) without sharing its DOM/state -- see
+           the panel's own JS state (wwDataPrep.dataIssuesPanelOpen /
+           .selectedCellIssueKey), never ww.annotations. ---- */
+        #pageDataPreparation .ww-data-prep-preview-card .ww-data-quality-summary {
+            display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+            gap: 8px 14px; margin-top: 10px; padding: 8px 12px;
+            border: 1px solid var(--panel-border); border-radius: var(--radius);
+            background: var(--surface-tint);
+        }
+        .ww-data-quality-summary-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .ww-data-quality-summary-title {
+            font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em;
+            color: var(--text-dim);
+        }
+        .ww-data-quality-summary-detail { font-size: 0.74rem; color: var(--text); }
+        .ww-data-quality-summary-detail[data-state="clean"] { color: var(--ok); }
+        .ww-data-quality-summary-detail[data-state="attention"] { color: var(--error); }
+        #wwDataQualityReviewBtn { flex: 0 0 auto; }
+
+        #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-preview-body {
+            display: flex; align-items: stretch; gap: 12px; margin-top: 0;
+        }
+        /* The EXISTING table-wrap/pagination/status keep their own exact
+           margin-top/max-height rules unchanged (still targeted via
+           .ww-data-prep-preview-card .ww-data-prep-table-wrap etc. above)
+           -- this wrapper only needs to let them shrink correctly inside
+           a flex row instead of a plain block column. */
+        .ww-data-prep-preview-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+
+        .ww-data-issues-panel {
+            flex: 0 0 300px; max-width: 90vw; display: flex; flex-direction: column;
+            margin-top: 12px; border: 1px solid var(--panel-border); border-radius: calc(var(--radius) + 1px);
+            background: var(--panel); overflow: hidden;
+            transition: flex-basis 0.15s ease;
+        }
+        .ww-data-issues-panel[data-open="false"] { flex: 0 0 40px; }
+        .ww-data-issues-panel[data-open="false"] .ww-data-issues-panel-body,
+        .ww-data-issues-panel[data-open="false"] .ww-data-issues-panel-nav,
+        .ww-data-issues-panel[data-open="false"] .ww-data-issues-panel-header-text {
+            display: none;
+        }
+        .ww-data-issues-panel-header {
+            flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+            gap: 8px; padding: 10px 10px 10px 12px; border-bottom: 1px solid var(--panel-border);
+        }
+        .ww-data-issues-panel[data-open="false"] .ww-data-issues-panel-header {
+            flex-direction: column; border-bottom: none; padding: 10px 4px;
+        }
+        .ww-data-issues-panel-header-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .ww-data-issues-panel-header-text h4 { margin: 0; font-size: 0.8rem; }
+        .ww-data-issues-panel-count {
+            font-size: 0.68rem; font-weight: 700; color: var(--text-dim); background: var(--surface-tint);
+            border-radius: 999px; padding: 1px 7px; align-self: flex-start;
+        }
+        .ww-data-issues-panel-count[data-empty="true"] { color: var(--ok); }
+        .ww-data-issues-panel-toggle {
+            appearance: none; border: none; background: transparent; color: var(--text-dim);
+            font-size: 1rem; line-height: 1; cursor: pointer; padding: 4px 6px; border-radius: var(--radius);
+        }
+        .ww-data-issues-panel-toggle:hover { color: var(--text); background: var(--hover-tint); }
+        .ww-data-issues-panel-toggle:focus-visible, .ww-data-issues-panel-close:focus-visible,
+        .ww-data-issue-coordinate:focus-visible, .ww-data-issues-nav-btn:focus-visible {
+            outline: 2px solid var(--accent); outline-offset: 1px;
+        }
+        .ww-data-issues-panel-nav {
+            flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+            gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--panel-border);
+            font-size: 0.7rem; color: var(--text-dim);
+        }
+        .ww-data-issues-nav-btn {
+            appearance: none; border: 1px solid var(--panel-border); background: var(--panel);
+            color: var(--text); font-size: 0.68rem; padding: 4px 8px; border-radius: calc(var(--radius) - 2px);
+            cursor: pointer;
+        }
+        .ww-data-issues-nav-btn:hover:not(:disabled) { background: var(--hover-tint); }
+        .ww-data-issues-nav-btn:disabled { opacity: 0.5; cursor: default; }
+        .ww-data-issues-panel-body { flex: 1 1 auto; overflow-y: auto; padding: 6px 4px; min-height: 0; }
+        .ww-data-issues-empty-state { padding: 18px 12px; text-align: center; color: var(--ok); font-size: 0.74rem; }
+        .ww-data-issues-truncated-note {
+            margin: 0; padding: 6px 12px; font-size: 0.65rem; color: var(--text-dim); font-style: italic;
+        }
+        .ww-data-issues-group-title {
+            margin: 8px 8px 2px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.02em; color: var(--text-dim);
+        }
+        .ww-data-issues-column-group { margin: 0 4px 6px; }
+        .ww-data-issues-column-title {
+            margin: 0; padding: 4px 8px; font-size: 0.72rem; font-weight: 600; color: var(--text);
+        }
+        .ww-data-issues-coordinate-list { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 6px 4px; list-style: none; margin: 0; }
+        .ww-data-issue-coordinate {
+            appearance: none; border: 1px solid var(--panel-border); background: var(--panel);
+            color: var(--text); font-size: 0.68rem; font-family: inherit; padding: 3px 7px;
+            border-radius: calc(var(--radius) - 2px); cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+        }
+        .ww-data-issue-coordinate:hover { background: var(--hover-tint); }
+        .ww-data-issue-coordinate[aria-current="true"] {
+            border-color: var(--accent); background: var(--accent-wash); color: var(--accent); font-weight: 700;
+        }
+        .ww-data-issue-coordinate-value { color: var(--text-dim); font-style: italic; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ww-data-issues-load-more {
+            display: block; margin: 6px auto; font-size: 0.68rem; padding: 4px 10px;
+        }
+        .ww-data-issues-action-area {
+            flex: 0 0 auto; padding: 10px 12px; border-top: 1px solid var(--panel-border);
+            background: var(--surface-tint); font-size: 0.72rem;
+        }
+        .ww-data-issues-action-area h5 { margin: 0 0 4px; font-size: 0.72rem; }
+        .ww-data-issues-action-coordinate { font-weight: 700; color: var(--accent); }
+        .ww-data-issues-action-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+        .ww-data-issues-action-buttons button { font-size: 0.68rem; padding: 5px 9px; }
+        .ww-data-issues-action-hint { margin: 6px 0 0; font-size: 0.65rem; color: var(--text-dim); font-style: italic; }
+
+        /* Raw Data Preview cell highlighting -- restrained, border +
+           background, never color alone (task section 10): an
+           unresolved empty/invalid cell gets a subtle wash + left
+           border; an explicit-null RESOLVED cell gets a neutral muted
+           badge instead, never an ordinary blank. Selected/edited/
+           header/excluded styles (already established) are untouched --
+           these rules only ever ADD to a cell that is not already one
+           of those, and the explicit-null rule takes visual priority
+           over the plain "modified" reset-button styling since a null
+           cell is a distinct resolved state, not a generic edit. */
+        #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-table td.ww-data-prep-cell-issue-missing {
+            background: color-mix(in srgb, var(--warn) 12%, transparent);
+            box-shadow: inset 3px 0 0 var(--warn);
+        }
+        #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-table td.ww-data-prep-cell-issue-invalid {
+            background: var(--error-wash);
+            box-shadow: inset 3px 0 0 var(--error);
+        }
+        #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-table td.ww-data-prep-cell-explicit-null {
+            background: var(--surface-tint);
+            box-shadow: inset 3px 0 0 var(--text-dim);
+        }
+        .ww-data-prep-null-badge {
+            display: inline-block; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.03em;
+            color: var(--text-dim); background: var(--panel); border: 1px solid var(--panel-border);
+            border-radius: 999px; padding: 1px 6px;
+        }
+        #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-table td.ww-data-prep-cell-issue-selected {
+            outline: 2px solid var(--accent); outline-offset: -2px;
+        }
 
         /* ---- Row 7: Final Actions ---- */
         .ww-data-prep-row-7 { display: flex; justify-content: stretch; }
@@ -7138,24 +7322,66 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                             <button type="button" class="secondary" id="wwDataPrepResetAllBtn" disabled>Reset All Changes</button>
                         </div>
                     </div>
-                    <div class="ww-data-prep-table-wrap">
-                        <table class="ww-data-prep-table" id="wwDataPrepTable"></table>
-                    </div>
-                    <div class="ww-data-prep-pagination">
-                        <span class="hint" id="wwDataPrepRangeLabel"></span>
-                        <div class="ww-data-prep-pager">
-                            <button type="button" class="secondary" id="wwDataPrepFirstBtn" title="First page">First</button>
-                            <button type="button" class="secondary" id="wwDataPrepPrevBtn">Previous</button>
-                            <span class="ww-data-prep-pager-label">
-                                Page
-                                <input type="text" inputmode="numeric" class="ww-data-prep-page-input" id="wwDataPrepPageInput" aria-label="Page number">
-                                of <span id="wwDataPrepPageTotal">1</span>
-                            </span>
-                            <button type="button" class="secondary" id="wwDataPrepNextBtn">Next</button>
-                            <button type="button" class="secondary" id="wwDataPrepLastBtn" title="Last page">Last</button>
+                    <!-- DEC-084 (Slice 4): compact Data Quality summary,
+                         derived from wwDataPrepEffectiveIssueSummary()'s
+                         own cell_issues -- never a second validator. -->
+                    <div class="ww-data-quality-summary" id="wwDataQualitySummary">
+                        <div class="ww-data-quality-summary-text">
+                            <span class="ww-data-quality-summary-title">Data Quality</span>
+                            <span class="ww-data-quality-summary-detail" id="wwDataQualitySummaryDetail">No unresolved data-cell issues</span>
                         </div>
+                        <button type="button" class="secondary" id="wwDataQualityReviewBtn" aria-controls="wwDataIssuesPanel">Review Issues</button>
                     </div>
-                    <div class="upload-status" id="wwDataPrepStatus" role="status" aria-live="polite"></div>
+                    <div class="ww-data-prep-preview-body">
+                        <div class="ww-data-prep-preview-main">
+                            <div class="ww-data-prep-table-wrap">
+                                <table class="ww-data-prep-table" id="wwDataPrepTable"></table>
+                            </div>
+                            <div class="ww-data-prep-pagination">
+                                <span class="hint" id="wwDataPrepRangeLabel"></span>
+                                <div class="ww-data-prep-pager">
+                                    <button type="button" class="secondary" id="wwDataPrepFirstBtn" title="First page">First</button>
+                                    <button type="button" class="secondary" id="wwDataPrepPrevBtn">Previous</button>
+                                    <span class="ww-data-prep-pager-label">
+                                        Page
+                                        <input type="text" inputmode="numeric" class="ww-data-prep-page-input" id="wwDataPrepPageInput" aria-label="Page number">
+                                        of <span id="wwDataPrepPageTotal">1</span>
+                                    </span>
+                                    <button type="button" class="secondary" id="wwDataPrepNextBtn">Next</button>
+                                    <button type="button" class="secondary" id="wwDataPrepLastBtn" title="Last page">Last</button>
+                                </div>
+                            </div>
+                            <div class="upload-status" id="wwDataPrepStatus" role="status" aria-live="polite"></div>
+                        </div>
+                        <!-- DEC-084 (Slice 4): persistent/collapsible Data
+                             Issues panel -- reuses .ww-annotation-drawer's
+                             own visual language (header/count-badge/close
+                             affordance, section 6 of the task) but is its
+                             own component: own state
+                             (wwDataPrep.dataIssuesPanelOpen /
+                             .selectedCellIssueKey), own markup, never
+                             ww.annotations. Persistent as a real flex
+                             sibling on desktop (never position:fixed
+                             there); becomes an overlay only at the
+                             existing 820px breakpoint (see CSS). -->
+                        <aside class="ww-data-issues-panel" id="wwDataIssuesPanel" data-open="false" aria-label="Data Issues">
+                            <div class="ww-data-issues-panel-header">
+                                <div class="ww-data-issues-panel-header-text">
+                                    <h4>Data Issues</h4>
+                                </div>
+                                <span class="ww-data-issues-panel-count" id="wwDataIssuesPanelCount">0</span>
+                                <button type="button" class="ww-data-issues-panel-toggle" id="wwDataIssuesPanelToggleBtn"
+                                        aria-expanded="false" aria-controls="wwDataIssuesPanel" title="Show Data Issues">▸</button>
+                            </div>
+                            <div class="ww-data-issues-panel-nav" id="wwDataIssuesPanelNav" hidden>
+                                <button type="button" class="ww-data-issues-nav-btn" id="wwDataIssuesPrevBtn">&larr; Previous</button>
+                                <span id="wwDataIssuesNavPosition">0 of 0</span>
+                                <button type="button" class="ww-data-issues-nav-btn" id="wwDataIssuesNextBtn">Next &rarr;</button>
+                            </div>
+                            <div class="ww-data-issues-panel-body" id="wwDataIssuesPanelBody"></div>
+                            <div class="ww-data-issues-action-area" id="wwDataIssuesActionArea" hidden></div>
+                        </aside>
+                    </div>
                 </section>
 
                 <!-- Row 7: Final Actions alone, on its own clean bottom
@@ -9569,6 +9795,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // permanently visible too, with no leftover flag at all.
             issuesExpanded: false,
             structureExpanded: true,
+            // DEC-084 (Slice 4): Data Issues panel (Raw Data Preview) --
+            // purely local UI state, never sent to/read from the
+            // backend, and never shared with ww.annotations (its own
+            // separate drawer/state, reused only for interaction/visual
+            // PATTERN ideas -- see the panel's own CSS comment).
+            // `dataIssuesPanelOpen` starts collapsed (a compact handle
+            // is still visible either way, see CSS `data-open="false"`).
+            // `selectedCellIssueKey` is `"<worksheet_index>|<row_number>|
+            // <column_index>"` (worksheet_index as the literal string
+            // "null" for CSV) -- a stable identity independent of list
+            // order/position, so a resolved-then-re-broken cell or a
+            // page/table re-render never loses the selection by
+            // accident. `dataIssuesExpandedColumnGroups` is a Set of the
+            // same per-column group keys (`code + "|" + column_index`)
+            // whose coordinate list the user chose to fully expand past
+            // the initial capped preview (task section 21/22: never dump
+            // every coordinate of a huge group into the DOM at once).
+            dataIssuesPanelOpen: false,
+            selectedCellIssueKey: null,
+            dataIssuesExpandedColumnGroups: new Set(),
             // Slice 7 (DEC-072): Time-Axis interpretation FRAMEWORK
             // state -- `timeAxisSummary` is the full
             // GET .../time-axis response body (a
@@ -9861,7 +10107,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // (raw text, not HTML-escaped) so click-to-edit can seed
                     // its <input> without re-parsing the cell's own markup
                     // (which also holds the reset button once modified).
-                    html += '<td class="' + classes.join(" ") + '" data-row="' + row.row_number +
+                    // DEC-084 (Slice 4): tabindex="-1" makes this cell a
+                    // valid, keyboard-focusable jump target for the Data
+                    // Issues panel's own coordinate navigation
+                    // (cell.focus() in wwDataPrepJumpToSourceCell()) --
+                    // never in the normal Tab order itself (task section
+                    // 25's own "visible focus state" requirement is met
+                    // via the :focus-visible outline rule alongside the
+                    // panel's own controls, without disturbing this
+                    // table's existing tab flow).
+                    html += '<td class="' + classes.join(" ") + '" tabindex="-1" data-row="' + row.row_number +
                         '" data-col="' + c + '" data-value="' + escapeHtml(isBlank ? "" : String(value)) + '"' +
                         titleAttr + '>' + displayValue +
                         (isModified
@@ -9874,6 +10129,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             });
             html += "</tbody>";
             table.innerHTML = html;
+            // DEC-084 (Slice 4): cached purely for
+            // wwDataPrepRefreshCellIssueHighlighting()'s own explicit-null
+            // lookup (row.modified_cells[].is_explicit_null) -- never
+            // read for anything else, and never a second copy of the
+            // working overlay itself.
+            wwDataPrep.lastRenderedRows = preview.rows;
+            wwDataPrepRefreshCellIssueHighlighting();
         }
 
         // Slice 4/5 (DEC-072): reflects the backend's own
@@ -10423,6 +10685,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 toggleBtn.setAttribute("aria-expanded", "false");
                 toggleBtn.setAttribute("aria-label", "View Issues");
                 wwDataPrepRenderWorkflowStrip();
+                wwDataPrepRenderDataQualitySummary();
+                wwDataPrepRenderDataIssuesPanel();
                 return;
             }
             toggleBtn.hidden = false;
@@ -10507,7 +10771,418 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwDataPrepRenderConversionAction();
             wwDataPrepRenderExportAction();
             wwDataPrepRenderWorkflowStrip();
+            // DEC-084 (Slice 4): reuses this SAME already-effective
+            // summary (never a second issue fetch/computation) for the
+            // Raw Data Preview Data Quality summary + Data Issues panel
+            // -- refreshed automatically on every issue re-fetch, which
+            // already happens after every mutation/undo/redo/reset (see
+            // wwDataPrepFetchPreview()'s own docstring) and needs no new
+            // call site of its own anywhere else.
+            wwDataPrepRenderDataQualitySummary();
+            wwDataPrepRenderDataIssuesPanel();
+            // A cell-highlighting-relevant state change (an issue
+            // resolved/appeared) may have just happened -- the currently
+            // rendered table page's own highlighting needs to catch up
+            // too, without a network re-fetch (wwDataPrepRenderTable()
+            // itself never re-fetches; it re-reads wwDataPrep's already-
+            // loaded row/issue state).
+            wwDataPrepRefreshCellIssueHighlighting();
         }
+
+        // ==================================================================
+        // DEC-084 (Slice 4): Raw Data Preview Data Quality summary + Data
+        // Issues panel. Every function below reads ONLY
+        // wwDataPrepEffectiveIssueSummary()'s own `cell_issues` (task
+        // section 17/20) -- never a second frontend validation scan, and
+        // never a locally re-derived readiness verdict. Grouping/coordinate
+        // formatting reuses wwSpreadsheetColumnLabel()/wwDataPrep.
+        // columnLabels (already loaded for the table header/Column Roles),
+        // never a second column-labeling scheme.
+        // ==================================================================
+
+        //: How many coordinate buttons one column-group shows before a
+        //: "Load N more" control appears (task section 21: never dump a
+        //: huge group into the DOM at once).
+        const WW_DATA_ISSUES_INITIAL_VISIBLE = 30;
+
+        function wwDataPrepCellIssueKey(issue) {
+            const ws = issue.worksheet_index == null ? "null" : String(issue.worksheet_index);
+            return ws + "|" + issue.row_number + "|" + issue.column_index;
+        }
+
+        function wwDataPrepCellCoordinateText(issue) {
+            return wwSpreadsheetColumnLabel(issue.column_index) + issue.row_number;
+        }
+
+        function wwDataPrepColumnDisplayName(columnIndex) {
+            const letter = wwSpreadsheetColumnLabel(columnIndex);
+            const label = wwDataPrep.columnLabels && wwDataPrep.columnLabels[columnIndex];
+            return label ? letter + " · " + label : letter;
+        }
+
+        function wwDataPrepFlatCellIssueList() {
+            const summary = wwDataPrepEffectiveIssueSummary();
+            return (summary && summary.cell_issues) || [];
+        }
+
+        // Grouped by TYPE (missing/invalid) then by COLUMN -- task
+        // section 5/22's own suggested structure. Classification comes
+        // ONLY from the backend's own stable `code` suffix (never
+        // re-derived from the offending value's own text).
+        function wwDataPrepGroupCellIssues(cellIssues) {
+            const groups = { missing: new Map(), invalid: new Map() };
+            for (const issue of cellIssues) {
+                const bucket = issue.code.endsWith("_invalid") ? groups.invalid : groups.missing;
+                if (!bucket.has(issue.column_index)) bucket.set(issue.column_index, []);
+                bucket.get(issue.column_index).push(issue);
+            }
+            return groups;
+        }
+
+        function wwDataPrepRenderDataQualitySummary() {
+            const detailEl = document.getElementById("wwDataQualitySummaryDetail");
+            if (!detailEl) return;
+            const cellIssues = wwDataPrepFlatCellIssueList();
+            if (!cellIssues.length) {
+                detailEl.dataset.state = "clean";
+                detailEl.textContent = "No unresolved data-cell issues";
+                return;
+            }
+            let missingCount = 0;
+            let invalidCount = 0;
+            for (const issue of cellIssues) {
+                if (issue.code.endsWith("_invalid")) invalidCount++;
+                else missingCount++;
+            }
+            const parts = [];
+            if (missingCount) parts.push(missingCount + (missingCount === 1 ? " empty cell" : " empty cells"));
+            if (invalidCount) parts.push(invalidCount + (invalidCount === 1 ? " invalid cell" : " invalid cells"));
+            const summary = wwDataPrepEffectiveIssueSummary();
+            const truncatedNote = summary && summary.cell_issues_truncated ? " (more not shown)" : "";
+            detailEl.dataset.state = "attention";
+            detailEl.textContent =
+                cellIssues.length + (cellIssues.length === 1 ? " unresolved cell" : " unresolved cells") +
+                " — " + parts.join(", ") + truncatedNote;
+        }
+
+        function wwDataPrepRenderCellIssueGroupHtml(title, kindKey, byColumn) {
+            if (byColumn.size === 0) return "";
+            let html = '<div class="ww-data-issues-type-group"><h5 class="ww-data-issues-group-title">' + escapeHtml(title) + '</h5>';
+            // Column order matches source column order (never re-sorted
+            // by count/name) -- the SAME convention every other Data
+            // Preparation listing in this workspace already follows.
+            const columnIndices = Array.from(byColumn.keys()).sort((a, b) => a - b);
+            for (const columnIndex of columnIndices) {
+                const issuesForColumn = byColumn.get(columnIndex);
+                const groupKey = kindKey + "|" + columnIndex;
+                const expanded = wwDataPrep.dataIssuesExpandedColumnGroups.has(groupKey);
+                const visible = expanded ? issuesForColumn : issuesForColumn.slice(0, WW_DATA_ISSUES_INITIAL_VISIBLE);
+                html += '<div class="ww-data-issues-column-group">' +
+                    '<p class="ww-data-issues-column-title">' + escapeHtml(wwDataPrepColumnDisplayName(columnIndex)) +
+                    ' <span class="ww-data-issues-panel-count">' + issuesForColumn.length + '</span></p>' +
+                    '<ul class="ww-data-issues-coordinate-list">';
+                for (const issue of visible) {
+                    const key = wwDataPrepCellIssueKey(issue);
+                    const isSelected = key === wwDataPrep.selectedCellIssueKey;
+                    const coordText = wwDataPrepCellCoordinateText(issue);
+                    const ariaLabel = coordText + (issue.offending_value != null ? ", value " + issue.offending_value : ", empty");
+                    html += '<li><button type="button" class="ww-data-issue-coordinate" data-issue-key="' + escapeHtml(key) + '"' +
+                        (isSelected ? ' aria-current="true"' : '') +
+                        ' aria-label="' + escapeHtml(ariaLabel) + '">' +
+                        escapeHtml(coordText) +
+                        (issue.offending_value != null
+                            ? ' <span class="ww-data-issue-coordinate-value">"' + escapeHtml(issue.offending_value) + '"</span>'
+                            : '') +
+                        '</button></li>';
+                }
+                html += '</ul>';
+                if (issuesForColumn.length > WW_DATA_ISSUES_INITIAL_VISIBLE && !expanded) {
+                    html += '<button type="button" class="secondary ww-data-issues-load-more" data-load-more-group="' +
+                        escapeHtml(groupKey) + '">Load ' + (issuesForColumn.length - WW_DATA_ISSUES_INITIAL_VISIBLE) + ' more</button>';
+                }
+                html += '</div>';
+            }
+            html += '</div>';
+            return html;
+        }
+
+        // Time Axis guardrail (task section 14, DEC-084): explicit null
+        // is never offered for a `time_value_*` issue -- Slice 1's own
+        // backend readiness keeps a Time Axis explicit null permanently
+        // BLOCKING, so offering the action here would only silently fail
+        // or (worse) mislead the engineer into thinking it resolved
+        // anything. `Fill Manually` and a plain scroll-to-Time-Axis-
+        // Setup link remain available instead.
+        function wwDataPrepRenderDataIssuesActionArea(issue) {
+            const areaEl = document.getElementById("wwDataIssuesActionArea");
+            if (!areaEl) return;
+            if (!issue) {
+                areaEl.hidden = true;
+                areaEl.innerHTML = "";
+                return;
+            }
+            areaEl.hidden = false;
+            const coordText = wwDataPrepCellCoordinateText(issue);
+            const isTimeAxis = issue.code.startsWith("time_value_");
+            let html = '<h5>Selected: <span class="ww-data-issues-action-coordinate">' + escapeHtml(coordText) + '</span></h5>';
+            html += '<div class="ww-data-issues-action-buttons">';
+            if (!isTimeAxis) html += '<button type="button" data-issue-action="mark-null">Mark as Null</button>';
+            html += '<button type="button" class="secondary" data-issue-action="fill-manually">Fill Manually</button>';
+            html += isTimeAxis
+                ? '<button type="button" class="secondary" data-issue-action="configure-time-axis">Revisit Time Axis</button>'
+                : '<button type="button" class="secondary" data-issue-action="change-role">Change Column Role</button>';
+            html += '</div>';
+            html += isTimeAxis
+                ? '<p class="ww-data-issues-action-hint">Mark as Null is not available for the Time Axis -- a row without a valid time coordinate cannot be placed (DEC-084).</p>'
+                : '<p class="ww-data-issues-action-hint">Change Column Role sets this whole column to Not Assigned, excluding it from Powerwave.</p>';
+            areaEl.innerHTML = html;
+            areaEl.dataset.rowNumber = String(issue.row_number);
+            areaEl.dataset.columnIndex = String(issue.column_index);
+        }
+
+        function wwDataPrepRenderDataIssuesPanel() {
+            const panel = document.getElementById("wwDataIssuesPanel");
+            if (!panel) return;
+            const countEl = document.getElementById("wwDataIssuesPanelCount");
+            const bodyEl = document.getElementById("wwDataIssuesPanelBody");
+            const navEl = document.getElementById("wwDataIssuesPanelNav");
+            const navPositionEl = document.getElementById("wwDataIssuesNavPosition");
+            const prevBtn = document.getElementById("wwDataIssuesPrevBtn");
+            const nextBtn = document.getElementById("wwDataIssuesNextBtn");
+            const toggleBtn = document.getElementById("wwDataIssuesPanelToggleBtn");
+
+            panel.dataset.open = wwDataPrep.dataIssuesPanelOpen ? "true" : "false";
+            toggleBtn.setAttribute("aria-expanded", wwDataPrep.dataIssuesPanelOpen ? "true" : "false");
+            toggleBtn.textContent = wwDataPrep.dataIssuesPanelOpen ? "◂" : "▸";
+            toggleBtn.title = wwDataPrep.dataIssuesPanelOpen ? "Hide Data Issues" : "Show Data Issues";
+            toggleBtn.setAttribute("aria-label", toggleBtn.title);
+
+            const cellIssues = wwDataPrepFlatCellIssueList();
+            countEl.textContent = String(cellIssues.length);
+            countEl.dataset.empty = cellIssues.length === 0 ? "true" : "false";
+
+            // Selection integrity (task section 9): if the previously
+            // selected issue no longer exists (resolved, or a fresh
+            // source), advance to whatever now occupies the SAME ordinal
+            // position when practical -- never silently keep pointing at
+            // an already-resolved cell, but also never jump somewhere
+            // unpredictable.
+            let selectedIndex = cellIssues.findIndex((issue) => wwDataPrepCellIssueKey(issue) === wwDataPrep.selectedCellIssueKey);
+            if (wwDataPrep.selectedCellIssueKey && selectedIndex === -1) {
+                if (cellIssues.length > 0) {
+                    selectedIndex = Math.min(wwDataPrep.lastSelectedCellIssueOrdinal || 0, cellIssues.length - 1);
+                    wwDataPrep.selectedCellIssueKey = wwDataPrepCellIssueKey(cellIssues[selectedIndex]);
+                } else {
+                    wwDataPrep.selectedCellIssueKey = null;
+                }
+            }
+            if (selectedIndex >= 0) wwDataPrep.lastSelectedCellIssueOrdinal = selectedIndex;
+
+            navEl.hidden = cellIssues.length === 0;
+            if (cellIssues.length) {
+                navPositionEl.textContent = (selectedIndex >= 0 ? (selectedIndex + 1) : "–") + " of " + cellIssues.length;
+                prevBtn.disabled = cellIssues.length < 2;
+                nextBtn.disabled = cellIssues.length < 2;
+            }
+
+            if (!cellIssues.length) {
+                bodyEl.innerHTML = '<p class="ww-data-issues-empty-state">No unresolved data issues.</p>';
+                wwDataPrepRenderDataIssuesActionArea(null);
+                return;
+            }
+
+            const groups = wwDataPrepGroupCellIssues(cellIssues);
+            let html = "";
+            const summary = wwDataPrepEffectiveIssueSummary();
+            if (summary && summary.cell_issues_truncated) {
+                html += '<p class="ww-data-issues-truncated-note">Showing the first ' + cellIssues.length +
+                    ' unresolved cells -- more exist. Resolve some to see the rest.</p>';
+            }
+            html += wwDataPrepRenderCellIssueGroupHtml("Empty cells", "missing", groups.missing);
+            html += wwDataPrepRenderCellIssueGroupHtml("Invalid values", "invalid", groups.invalid);
+            bodyEl.innerHTML = html;
+
+            wwDataPrepRenderDataIssuesActionArea(selectedIndex >= 0 ? cellIssues[selectedIndex] : null);
+        }
+
+        // Re-applies cell-level styling to the ALREADY-rendered table
+        // (never rebuilds its HTML) from wwDataPrep's own already-loaded
+        // state -- `lastRenderedRows` (set by wwDataPrepRenderTable, for
+        // explicit-null detection via modified_cells[].is_explicit_null)
+        // and wwDataPrepEffectiveIssueSummary().cell_issues (for
+        // unresolved empty/invalid highlighting). UNRESOLVED is checked
+        // FIRST, explicit-null second -- a Time Axis cell can in
+        // principle be both (Slice 1: Time Axis explicit null stays
+        // BLOCKING) and must never be visually presented as the
+        // resolved "NULL" state in that case (task section 11: "the
+        // frontend display is visual only; the backend explicit-null
+        // kind remains authoritative" -- authoritative readiness wins).
+        function wwDataPrepRefreshCellIssueHighlighting() {
+            const table = document.getElementById("wwDataPrepTable");
+            if (!table) return;
+            const cells = table.querySelectorAll("td.ww-data-prep-cell");
+            if (!cells.length) return;
+
+            const cellIssuesByKey = new Map();
+            for (const issue of wwDataPrepFlatCellIssueList()) {
+                cellIssuesByKey.set(issue.row_number + "|" + issue.column_index, issue);
+            }
+            const explicitNullByKey = new Set();
+            for (const row of (wwDataPrep.lastRenderedRows || [])) {
+                for (const modified of (row.modified_cells || [])) {
+                    if (modified.is_explicit_null) explicitNullByKey.add(row.row_number + "|" + modified.column_index);
+                }
+            }
+            const wsPart = wwDataPrep.selectedWorksheetIndex == null ? "null" : String(wwDataPrep.selectedWorksheetIndex);
+            const selectedKey = wwDataPrep.selectedCellIssueKey;
+
+            cells.forEach((cell) => {
+                const rowNumber = parseInt(cell.dataset.row, 10);
+                const columnIndex = parseInt(cell.dataset.col, 10);
+                const key = rowNumber + "|" + columnIndex;
+
+                cell.classList.remove(
+                    "ww-data-prep-cell-issue-missing", "ww-data-prep-cell-issue-invalid",
+                    "ww-data-prep-cell-explicit-null", "ww-data-prep-cell-issue-selected"
+                );
+                const existingBadge = cell.querySelector(".ww-data-prep-null-badge");
+                if (existingBadge) existingBadge.remove();
+                cell.removeAttribute("aria-label");
+
+                const issue = cellIssuesByKey.get(key);
+                if (issue) {
+                    const isInvalid = issue.code.endsWith("_invalid");
+                    cell.classList.add(isInvalid ? "ww-data-prep-cell-issue-invalid" : "ww-data-prep-cell-issue-missing");
+                    cell.setAttribute("aria-label", isInvalid ? "Invalid value -- not yet resolved" : "Missing value -- not yet resolved");
+                } else if (explicitNullByKey.has(key)) {
+                    cell.classList.add("ww-data-prep-cell-explicit-null");
+                    cell.setAttribute("aria-label", "Explicit null -- resolved intentional missing value");
+                    const badge = document.createElement("span");
+                    badge.className = "ww-data-prep-null-badge";
+                    badge.textContent = "NULL";
+                    cell.appendChild(badge);
+                }
+
+                if (selectedKey === wsPart + "|" + rowNumber + "|" + columnIndex) {
+                    cell.classList.add("ww-data-prep-cell-issue-selected");
+                }
+            });
+        }
+
+        function wwDataPrepSetIssuesPanelOpen(open) {
+            wwDataPrep.dataIssuesPanelOpen = open;
+            wwDataPrepRenderDataIssuesPanel();
+        }
+
+        function wwDataPrepToggleIssuesPanel() {
+            wwDataPrepSetIssuesPanelOpen(!wwDataPrep.dataIssuesPanelOpen);
+        }
+
+        // Stable-coordinate navigation (task section 7/8): jumps by the
+        // cell's own SOURCE row_number, never the currently visible
+        // table position -- correct regardless of header/data-region
+        // configuration. Reuses the EXISTING offset/limit pagination
+        // (wwDataPrepFetchPreview()) rather than a second page-
+        // resolution mechanism.
+        async function wwDataPrepJumpToSourceCell(rowNumber, columnIndex) {
+            const targetOffset = Math.floor((rowNumber - 1) / wwDataPrep.limit) * wwDataPrep.limit;
+            if (targetOffset !== wwDataPrep.offset) {
+                wwDataPrep.offset = targetOffset;
+                await wwDataPrepFetchPreview();
+            }
+            const cell = document.querySelector(
+                '#wwDataPrepTable td.ww-data-prep-cell[data-row="' + rowNumber + '"][data-col="' + columnIndex + '"]'
+            );
+            if (cell) {
+                cell.scrollIntoView({ block: "nearest", inline: "nearest" });
+                cell.focus();
+            }
+        }
+
+        async function wwDataPrepSelectAndJumpToCellIssue(issue) {
+            wwDataPrep.selectedCellIssueKey = wwDataPrepCellIssueKey(issue);
+            // Task section 8: clicking a coordinate keeps the panel open
+            // (it may already be open; this is a no-op then).
+            wwDataPrep.dataIssuesPanelOpen = true;
+            await wwDataPrepJumpToSourceCell(issue.row_number, issue.column_index);
+            wwDataPrepRenderDataIssuesPanel();
+            wwDataPrepRefreshCellIssueHighlighting();
+        }
+
+        function wwDataPrepSelectIssueByOffset(delta) {
+            const list = wwDataPrepFlatCellIssueList();
+            if (!list.length) return;
+            const currentIndex = list.findIndex((issue) => wwDataPrepCellIssueKey(issue) === wwDataPrep.selectedCellIssueKey);
+            const baseIndex = currentIndex === -1 ? 0 : currentIndex;
+            const nextIndex = ((baseIndex + delta) % list.length + list.length) % list.length;
+            wwDataPrepSelectAndJumpToCellIssue(list[nextIndex]);
+        }
+
+        // Reuses the Slice-1 API exactly (task section 12): `{"kind":
+        // "null"}`, never `{"kind":"null","value":"..."}`, and never the
+        // plain Clear action -- explicit null and clear stay distinct
+        // all the way through this UI, matching the backend's own
+        // OVERRIDE_KIND_NULL/OVERRIDE_KIND_CLEAR separation.
+        async function wwDataPrepMarkCellNull(rowNumber, columnIndex) {
+            const status = document.getElementById("wwDataPrepStatus");
+            try {
+                const response = await fetch(
+                    wwDataPrepSourceUrl("/working/cells/" + rowNumber + "/" + columnIndex),
+                    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "null" }) }
+                );
+                if (!response.ok) {
+                    const body = await response.json().catch(() => null);
+                    status.textContent = (body && body.detail && body.detail.message) || "Could not mark this cell as null.";
+                    await wwDataPrepFetchPreview();
+                    return;
+                }
+                wwDataPrepApplyOverlaySummary(await response.json());
+                status.textContent = "";
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        document.getElementById("wwDataQualityReviewBtn").addEventListener("click", () => wwDataPrepSetIssuesPanelOpen(true));
+        document.getElementById("wwDataIssuesPanelToggleBtn").addEventListener("click", wwDataPrepToggleIssuesPanel);
+        document.getElementById("wwDataIssuesPrevBtn").addEventListener("click", () => wwDataPrepSelectIssueByOffset(-1));
+        document.getElementById("wwDataIssuesNextBtn").addEventListener("click", () => wwDataPrepSelectIssueByOffset(1));
+        document.getElementById("wwDataIssuesPanelBody").addEventListener("click", (event) => {
+            const coordBtn = event.target.closest(".ww-data-issue-coordinate");
+            if (coordBtn) {
+                const key = coordBtn.dataset.issueKey;
+                const issue = wwDataPrepFlatCellIssueList().find((i) => wwDataPrepCellIssueKey(i) === key);
+                if (issue) wwDataPrepSelectAndJumpToCellIssue(issue);
+                return;
+            }
+            const loadMoreBtn = event.target.closest(".ww-data-issues-load-more");
+            if (loadMoreBtn) {
+                wwDataPrep.dataIssuesExpandedColumnGroups.add(loadMoreBtn.dataset.loadMoreGroup);
+                wwDataPrepRenderDataIssuesPanel();
+            }
+        });
+        document.getElementById("wwDataIssuesActionArea").addEventListener("click", async (event) => {
+            const btn = event.target.closest("[data-issue-action]");
+            if (!btn) return;
+            const areaEl = document.getElementById("wwDataIssuesActionArea");
+            const rowNumber = parseInt(areaEl.dataset.rowNumber, 10);
+            const columnIndex = parseInt(areaEl.dataset.columnIndex, 10);
+            const action = btn.dataset.issueAction;
+            if (action === "mark-null") {
+                await wwDataPrepMarkCellNull(rowNumber, columnIndex);
+            } else if (action === "fill-manually") {
+                const cell = document.querySelector(
+                    '#wwDataPrepTable td.ww-data-prep-cell[data-row="' + rowNumber + '"][data-col="' + columnIndex + '"]'
+                );
+                if (cell) wwDataPrepBeginCellEdit(cell);
+            } else if (action === "change-role") {
+                await wwDataPrepSetColumnRole(columnIndex, "not_assigned");
+            } else if (action === "configure-time-axis") {
+                const timeAxisPanel = document.getElementById("wwDataPrepTimeAxisPanel");
+                if (timeAxisPanel) timeAxisPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+        });
 
         // CSV/Excel ingestion Slice 10 (DEC-072): decides which of the
         // three conversion-action states (see the HTML comment above
@@ -13092,6 +13767,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // stale count from whichever source was open before this one.
             wwDataPrep.issuesExpanded = false;
             wwDataPrep.structureExpanded = true;
+            // DEC-084 (Slice 4): a freshly opened source starts with the
+            // Data Issues panel collapsed and nothing selected -- never
+            // carries over a coordinate/expanded-group from whichever
+            // source was open before.
+            wwDataPrep.dataIssuesPanelOpen = false;
+            wwDataPrep.selectedCellIssueKey = null;
+            wwDataPrep.dataIssuesExpandedColumnGroups = new Set();
             wwDataPrep.timeAxisSummary = null;
             wwDataPrep.columnRoles = [];
             wwDataPrep.columnEngineeringQuantities = [];

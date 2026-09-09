@@ -19,7 +19,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.domain.preparation_issue import IssueLocation, PreparationIssue, PreparationIssueSummary
+from app.domain.preparation_issue import (
+    IssueLocation,
+    PreparationCellIssue,
+    PreparationIssue,
+    PreparationIssueSummary,
+)
 
 
 class IssueLocationOut(BaseModel):
@@ -67,6 +72,34 @@ class PreparationIssueOut(BaseModel):
         )
 
 
+class PreparationCellIssueOut(BaseModel):
+    """One individually navigable unresolved data-cell finding (DEC-084,
+    Slice 4) -- see `PreparationCellIssue`'s own docstring. `code` is the
+    SAME stable identifier the coarse `PreparationIssueOut` for that
+    category already carries (e.g. `waveform_value_missing`) -- a Data
+    Issues panel groups entries by this field, never a second
+    classification. `offending_value` is `null` for a "missing" finding
+    (nothing to show) and the raw, unparsed string for an "invalid" one."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    worksheet_index: int | None = None
+    row_number: int
+    column_index: int
+    offending_value: str | None = None
+
+    @classmethod
+    def from_domain(cls, cell_issue: PreparationCellIssue) -> "PreparationCellIssueOut":
+        return cls(
+            code=cell_issue.code,
+            worksheet_index=cell_issue.worksheet_index,
+            row_number=cell_issue.row_number,
+            column_index=cell_issue.column_index,
+            offending_value=cell_issue.offending_value,
+        )
+
+
 class PreparationIssueSummaryOut(BaseModel):
     """`GET .../preparation-sources/{source_id}/issues` (Slice 6, now
     carrying real Slice 9 readiness policy too -- see
@@ -76,7 +109,15 @@ class PreparationIssueSummaryOut(BaseModel):
     `app.domain.preparation_issue`'s own module docstring for why the
     fields exist regardless (future-caching compatibility, not a
     behavior either slice exercises). `is_ready` (Slice 9) is
-    `blocking_count == 0` -- warnings and info never affect it."""
+    `blocking_count == 0` -- warnings and info never affect it.
+
+    `cell_issues`/`cell_issues_truncated` (DEC-084, Slice 4): the SAME
+    coarse `issues` findings above, additionally exposed per-cell for a
+    Data Issues panel to navigate -- bounded (see
+    `app.services.readiness_service.MAX_CELL_ISSUES`); `cell_issues_
+    truncated` is `True` when more unresolved cells exist than fit the
+    bound (the coarse issue's own `details.missing_count`/
+    `details.invalid_count` always still reports the true total)."""
 
     source_id: str
     evaluated_revision: int
@@ -87,6 +128,8 @@ class PreparationIssueSummaryOut(BaseModel):
     info_count: int
     is_ready: bool = False
     issues: list[PreparationIssueOut] = Field(default_factory=list)
+    cell_issues: list[PreparationCellIssueOut] = Field(default_factory=list)
+    cell_issues_truncated: bool = False
 
     @classmethod
     def from_domain(cls, summary: PreparationIssueSummary) -> "PreparationIssueSummaryOut":
@@ -100,4 +143,6 @@ class PreparationIssueSummaryOut(BaseModel):
             info_count=summary.info_count,
             is_ready=summary.is_ready,
             issues=[PreparationIssueOut.from_domain(i) for i in summary.issues],
+            cell_issues=[PreparationCellIssueOut.from_domain(c) for c in summary.cell_issues],
+            cell_issues_truncated=summary.cell_issues_truncated,
         )

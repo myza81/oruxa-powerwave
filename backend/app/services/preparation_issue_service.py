@@ -125,7 +125,11 @@ def build_issue_summary(
 
     worksheet_index = _resolve_worksheet_index(session)
     issues = collect_preparation_issues(session, worksheet_index)
-    issues += collect_readiness_issues(
+    readiness_issues, cell_issues, cell_issues_truncated = collect_readiness_issues(
         session, worksheet_index, workspace_id=workspace_id, source_id=source_id, registry=registry,
     )
-    return summarize_issues(source_id=source_id, revision=session.working_overlay.revision, issues=issues)
+    issues += readiness_issues
+    return summarize_issues(
+        source_id=source_id, revision=session.working_overlay.revision, issues=issues,
+        cell_issues=cell_issues, cell_issues_truncated=cell_issues_truncated,
+    )
