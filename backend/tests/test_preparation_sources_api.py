@@ -768,6 +768,63 @@ class TestCellWorkingEndpoints:
         rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
         assert rows["rows"][0]["cells"] == ["a", None]
 
+    def test_put_cell_kind_null_marks_it_explicit_null(self, client):
+        # DEC-084 (Slice 1): the one unambiguous, future-facing request
+        # shape for a "Mark as Null" action -- distinct from the legacy
+        # `{"value": null}` clear shape at the HTTP boundary itself.
+        source_id = _upload_csv(client)
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/1",
+            json={"kind": "null"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["edited_cell_count"] == 1
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["rows"][0]["cells"] == ["a", None]
+
+    def test_put_cell_kind_null_with_value_null_is_accepted(self, client):
+        source_id = _upload_csv(client)
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/1",
+            json={"value": None, "kind": "null"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["rows"][0]["cells"] == ["a", None]
+
+    def test_put_cell_kind_null_with_a_non_null_value_returns_400(self, client):
+        # DEC-084's own data-integrity guardrail: a supplied real value
+        # alongside an explicit-null request must be REJECTED, never
+        # silently discarded.
+        source_id = _upload_csv(client)
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/1",
+            json={"value": "123.45", "kind": "null"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_working_cell_value"
+        # The rejected request must not have partially applied -- the
+        # cell stays completely unedited.
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["rows"][0]["cells"] == ["a", "b"]
+
+    def test_put_cell_unrecognized_kind_returns_400(self, client):
+        source_id = _upload_csv(client)
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/1",
+            json={"kind": "bogus"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_working_cell_value"
+
     def test_delete_cell_resets_it(self, client):
         source_id = _upload_csv(client)
         client.put(

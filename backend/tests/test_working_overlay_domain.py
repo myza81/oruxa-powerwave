@@ -23,6 +23,7 @@ from app.domain.working_overlay import (
     MAX_OPERATION_HISTORY,
     OVERRIDE_KIND_CLEAR,
     OVERRIDE_KIND_EDIT,
+    OVERRIDE_KIND_NULL,
     ROLE_NOT_ASSIGNED,
     ROLE_TIME_AXIS,
     ROLE_WAVEFORM,
@@ -39,6 +40,7 @@ from app.domain.working_overlay import (
     reset_data_region,
     reset_column_measured_unit,
     row_key,
+    set_cell_null,
     set_cell_value,
     set_column_engineering_quantity,
     set_column_measured_unit,
@@ -114,6 +116,141 @@ class TestCellOverrides:
 
         assert overlay.cell_overrides[cell_key(0, 1, 0)].value == "sheet-a"
         assert overlay.cell_overrides[cell_key(1, 1, 0)].value == "sheet-b"
+
+
+class TestExplicitNull:
+    """DEC-084 (Slice 1): a THIRD, distinct override kind -- an explicit,
+    engineer-affirmed null. Never conflated with `OVERRIDE_KIND_CLEAR`
+    despite both storing `value=None`; `kind` alone is what keeps them
+    apart (see `CellOverride`'s own docstring)."""
+
+    def test_set_cell_null_stores_the_null_kind(self):
+        overlay = WorkingOverlay()
+        key = cell_key(None, 1, 0)
+
+        set_cell_null(overlay, key)
+
+        assert overlay.cell_overrides[key].kind == OVERRIDE_KIND_NULL
+        assert overlay.cell_overrides[key].value is None
+
+    def test_null_is_distinguishable_from_clear(self):
+        overlay = WorkingOverlay()
+        null_key = cell_key(None, 1, 0)
+        clear_key = cell_key(None, 2, 0)
+
+        set_cell_null(overlay, null_key)
+        set_cell_value(overlay, clear_key, None)
+
+        assert overlay.cell_overrides[null_key].kind == OVERRIDE_KIND_NULL
+        assert overlay.cell_overrides[clear_key].kind == OVERRIDE_KIND_CLEAR
+        # Both currently store the same value=None -- kind is the ONLY
+        # thing that tells them apart; this assertion exists so a future
+        # refactor cannot silently start conflating the two via value.
+        assert overlay.cell_overrides[null_key].value == overlay.cell_overrides[clear_key].value is None
+        assert overlay.cell_overrides[null_key].kind != overlay.cell_overrides[clear_key].kind
+
+    def test_null_overwrites_a_previous_edit(self):
+        overlay = WorkingOverlay()
+        key = cell_key(None, 1, 0)
+        set_cell_value(overlay, key, "42")
+
+        set_cell_null(overlay, key)
+
+        assert overlay.cell_overrides[key].kind == OVERRIDE_KIND_NULL
+        assert overlay.cell_overrides[key].value is None
+
+    def test_edit_still_behaves_exactly_as_before_null_exists(self):
+        overlay = WorkingOverlay()
+        key = cell_key(None, 1, 0)
+
+        set_cell_value(overlay, key, "42")
+
+        assert overlay.cell_overrides[key].kind == OVERRIDE_KIND_EDIT
+        assert overlay.cell_overrides[key].value == "42"
+
+    def test_clear_still_behaves_exactly_as_before_null_exists(self):
+        overlay = WorkingOverlay()
+        key = cell_key(None, 1, 0)
+
+        set_cell_value(overlay, key, None)
+
+        assert overlay.cell_overrides[key].kind == OVERRIDE_KIND_CLEAR
+        assert overlay.cell_overrides[key].value is None
+
+    def test_reset_cell_removes_a_null_override(self):
+        overlay = WorkingOverlay()
+        key = cell_key(None, 1, 0)
+        set_cell_null(overlay, key)
+
+        removed = reset_cell(overlay, key)
+
+        assert removed is True
+        assert key not in overlay.cell_overrides
+
+    def test_null_participates_in_reset_all(self):
+        overlay = WorkingOverlay()
+        key = cell_key(None, 1, 0)
+        set_cell_null(overlay, key)
+
+        reset_all(overlay)
+
+        assert overlay.cell_overrides == {}
+
+    def test_undo_after_reset_all_restores_a_null_override(self):
+        overlay = WorkingOverlay()
+        key = cell_key(None, 1, 0)
+        set_cell_null(overlay, key)
+        reset_all(overlay)
+
+        undo(overlay)
+
+        assert overlay.cell_overrides[key].kind == OVERRIDE_KIND_NULL
+
+
+class TestExplicitNullUndoRedo:
+    """DEC-084 (Slice 1) task section 9's own required scenarios."""
+
+    def test_original_to_null_to_undo_to_original(self):
+        overlay = WorkingOverlay()
+        key = cell_key(None, 1, 0)
+
+        set_cell_null(overlay, key)
+        undo(overlay)
+
+        assert key not in overlay.cell_overrides
+
+    def test_original_to_null_to_undo_to_redo_to_null(self):
+        overlay = WorkingOverlay()
+        key = cell_key(None, 1, 0)
+        set_cell_null(overlay, key)
+
+        undo(overlay)
+        redo(overlay)
+
+        assert overlay.cell_overrides[key].kind == OVERRIDE_KIND_NULL
+        assert overlay.cell_overrides[key].value is None
+
+    def test_edit_to_null_to_undo_to_edit(self):
+        overlay = WorkingOverlay()
+        key = cell_key(None, 1, 0)
+        set_cell_value(overlay, key, "42")
+
+        set_cell_null(overlay, key)
+        undo(overlay)
+
+        assert overlay.cell_overrides[key].kind == OVERRIDE_KIND_EDIT
+        assert overlay.cell_overrides[key].value == "42"
+
+    def test_clear_to_null_to_undo_to_clear(self):
+        overlay = WorkingOverlay()
+        key = cell_key(None, 1, 0)
+        set_cell_value(overlay, key, None)
+
+        set_cell_null(overlay, key)
+        undo(overlay)
+
+        assert overlay.cell_overrides[key].kind == OVERRIDE_KIND_CLEAR
+        assert overlay.cell_overrides[key].value is None
 
 
 class TestRowExclusion:

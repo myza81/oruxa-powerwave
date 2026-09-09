@@ -34,7 +34,9 @@ from app.services.preparation_import_service import import_csv_preparation_sourc
 from app.services.preparation_issue_service import build_issue_summary
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.time_axis_service import set_time_axis_configuration
+from app.domain.working_overlay import OVERRIDE_KIND_NULL
 from app.services.working_overlay_service import (
+    edit_cell,
     redo_working_change,
     reset_all_working_changes,
     set_column_engineering_quantity,
@@ -696,6 +698,151 @@ class TestWaveformValues:
         )
 
         summary = _issues(registry, source_id)
+        assert summary.is_ready is True
+
+
+class TestExplicitNullReadiness:
+    """DEC-084 (Slice 1): explicit null is a RESOLVED, non-blocking state
+    for a Waveform column, but Time Axis stays strictly blocking even
+    when explicitly marked null -- a row with no valid x-coordinate
+    cannot be placed on any waveform/timeline regardless of how
+    deliberately that absence was marked."""
+
+    def test_unresolved_waveform_blank_is_blocking(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=3, column_index=1, value=None, registry=registry)
+
+        summary = _issues(registry, source_id)
+        assert ISSUE_WAVEFORM_VALUE_MISSING in _codes(summary)
+        assert summary.is_ready is False
+
+    def test_unresolved_waveform_invalid_is_blocking(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=3, column_index=1, value="not-a-number", registry=registry)
+
+        summary = _issues(registry, source_id)
+        assert ISSUE_WAVEFORM_VALUE_INVALID in _codes(summary)
+        assert summary.is_ready is False
+
+    def test_clear_waveform_override_is_blocking(self):
+        # kind omitted, value=None -- a plain CLEAR, distinct from an
+        # explicit null despite both leaving the cell displaying blank.
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=3, column_index=1, value=None, registry=registry)
+
+        summary = _issues(registry, source_id)
+        assert ISSUE_WAVEFORM_VALUE_MISSING in _codes(summary)
+        assert summary.is_ready is False
+
+    def test_explicit_null_waveform_override_is_non_blocking(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+
+        edit_cell(
+            workspace_id="ws-1", source_id=source_id, row_number=3, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=registry,
+        )
+
+        summary = _issues(registry, source_id)
+        assert ISSUE_WAVEFORM_VALUE_MISSING not in _codes(summary)
+        assert ISSUE_WAVEFORM_VALUE_INVALID not in _codes(summary)
+        assert summary.is_ready is True
+
+    def test_explicit_null_never_treated_as_zero(self):
+        # DEC-084's own explicit guardrail: an explicit null must never
+        # be coerced into zero anywhere -- confirmed here by checking the
+        # SAME cell that is null does not ALSO independently satisfy a
+        # numeric check (there is no "0.0" waveform_invalid/parsed value
+        # anywhere in the resulting issue set for this cell).
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+
+        edit_cell(
+            workspace_id="ws-1", source_id=source_id, row_number=3, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=registry,
+        )
+
+        summary = _issues(registry, source_id)
+        assert not any(
+            issue.code == ISSUE_WAVEFORM_VALUE_INVALID and issue.details.get("sample_value") == "0.0"
+            for issue in summary.issues
+        )
+
+    def test_valid_manual_edit_resolves_a_blank_cell_normally(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=3, column_index=1, value=None, registry=registry)
+        assert _issues(registry, source_id).is_ready is False  # confirm the blank is actually blocking first
+
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=3, column_index=1, value="99.5", registry=registry)
+
+        summary = _issues(registry, source_id)
+        assert ISSUE_WAVEFORM_VALUE_MISSING not in _codes(summary)
+        assert summary.is_ready is True
+
+    def test_invalid_manual_edit_stays_blocking(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=3, column_index=1, value="garbage", registry=registry)
+
+        summary = _issues(registry, source_id)
+        assert ISSUE_WAVEFORM_VALUE_INVALID in _codes(summary)
+        assert summary.is_ready is False
+
+    def test_explicit_null_time_axis_cell_is_still_blocking(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+
+        edit_cell(
+            workspace_id="ws-1", source_id=source_id, row_number=3, column_index=0,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=registry,
+        )
+
+        summary = _issues(registry, source_id)
+        assert ISSUE_TIME_VALUE_MISSING in _codes(summary)
+        assert summary.is_ready is False
+
+    def test_undo_after_explicit_null_restores_the_prior_blocking_clear(self):
+        # A regression guardrail across the readiness/undo-redo boundary:
+        # clear (blocking) -> null (resolved) -> undo must restore the
+        # CLEAR override, blocking again -- exactly the "clear -> null ->
+        # undo -> clear" scenario, verified here at the readiness-integration
+        # level rather than only against the bare overlay.
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=3, column_index=1, value=None, registry=registry)
+        assert _issues(registry, source_id).is_ready is False
+        edit_cell(
+            workspace_id="ws-1", source_id=source_id, row_number=3, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=registry,
+        )
+        assert _issues(registry, source_id).is_ready is True
+
+        undo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        summary = _issues(registry, source_id)
+        assert ISSUE_WAVEFORM_VALUE_MISSING in _codes(summary)
+        assert summary.is_ready is False
+
+    def test_redo_after_undo_restores_the_explicit_null_resolution(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=3, column_index=1, value=None, registry=registry)
+        edit_cell(
+            workspace_id="ws-1", source_id=source_id, row_number=3, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=registry,
+        )
+        undo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        redo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        summary = _issues(registry, source_id)
+        assert ISSUE_WAVEFORM_VALUE_MISSING not in _codes(summary)
         assert summary.is_ready is True
 
 

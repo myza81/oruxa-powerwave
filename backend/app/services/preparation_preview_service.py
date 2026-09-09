@@ -92,7 +92,8 @@ from app.domain.channel_classification import ENGINEERING_QUANTITY_UNDEFINED
 from app.domain.preparation_session import FORMAT_CSV, FORMAT_EXCEL, PreparationSession
 from app.domain.working_overlay import (
     END_MODE_SPECIFIC,
-    OVERRIDE_KIND_CLEAR,
+    OVERRIDE_KIND_EDIT,
+    OVERRIDE_KIND_NULL,
     ROLE_NOT_ASSIGNED,
     WorkingOverlay,
 )
@@ -170,7 +171,19 @@ class PreviewRow:
     independent: a row can be inside the active region and still
     excluded, or outside the region and not excluded -- never
     conflated (task's own explicit "these are different concepts"
-    guardrail)."""
+    guardrail).
+
+    `explicit_null_columns` (DEC-084, Slice 1): the 0-based column
+    indices in THIS row currently carrying an explicit-null override
+    (`OVERRIDE_KIND_NULL`) -- sparse, empty for the overwhelming common
+    case. Deliberately NOT surfaced on the wire yet (no `PreparationRowOut`
+    field reads it this slice -- Raw Data Preview highlighting is a later
+    DEC-084 slice); its only consumer today is
+    `app.services.readiness_service`, which needs to tell an explicit
+    null apart from an unresolved clear even though both leave
+    `cells[column_index]` as the same `None` (see `ModifiedCell`'s own
+    docstring for why `cells` alone was never enough to carry this
+    distinction)."""
 
     row_number: int
     cells: list[Any]
@@ -178,6 +191,7 @@ class PreviewRow:
     modified_cells: list[ModifiedCell] = field(default_factory=list)
     is_header: bool = False
     in_active_region: bool = True
+    explicit_null_columns: frozenset[int] = field(default_factory=frozenset)
 
 
 @dataclass(slots=True)
@@ -521,12 +535,16 @@ def _apply_working_overlay(session: PreparationSession, *, worksheet_index: int 
         if needed_len > len(row.cells):
             row.cells = row.cells + [None] * (needed_len - len(row.cells))
         modified: list[ModifiedCell] = []
+        null_columns: set[int] = set()
         for column_index in sorted(row_overrides):
             override = row_overrides[column_index]
             raw_value = row.cells[column_index]
-            row.cells[column_index] = None if override.kind == OVERRIDE_KIND_CLEAR else override.value
+            row.cells[column_index] = override.value if override.kind == OVERRIDE_KIND_EDIT else None
             modified.append(ModifiedCell(column_index=column_index, raw_value=raw_value))
+            if override.kind == OVERRIDE_KIND_NULL:
+                null_columns.add(column_index)
         row.modified_cells = modified
+        row.explicit_null_columns = frozenset(null_columns)
 
 
 def _spreadsheet_column_label(index: int) -> str:
@@ -813,12 +831,16 @@ def iterate_active_region_rows(
             if needed_len > len(row.cells):
                 row.cells = row.cells + [None] * (needed_len - len(row.cells))
             modified: list[ModifiedCell] = []
+            null_columns: set[int] = set()
             for column_index in sorted(row_overrides):
                 override = row_overrides[column_index]
                 raw_value = row.cells[column_index]
-                row.cells[column_index] = None if override.kind == OVERRIDE_KIND_CLEAR else override.value
+                row.cells[column_index] = override.value if override.kind == OVERRIDE_KIND_EDIT else None
                 modified.append(ModifiedCell(column_index=column_index, raw_value=raw_value))
+                if override.kind == OVERRIDE_KIND_NULL:
+                    null_columns.add(column_index)
             row.modified_cells = modified
+            row.explicit_null_columns = frozenset(null_columns)
         return row
 
     if session.summary.source_format == FORMAT_CSV:

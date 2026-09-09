@@ -222,21 +222,46 @@ def edit_cell(
     row_number: int,
     column_index: int,
     value: str | None,
+    kind: str | None = None,
     registry: PreparationSessionRegistry,
 ) -> WorkingOverlaySummary:
     """Set (or clear, when `value is None`) one cell's working value --
     see `app.domain.working_overlay.CellOverride`'s own docstring for
-    why these stay distinct kinds despite rendering identically today."""
+    why these stay distinct kinds despite rendering identically today.
+
+    DEC-084 (Slice 1): `kind=overlay_domain.OVERRIDE_KIND_NULL` requests
+    the THIRD, explicit-null kind instead. `value` must be omitted or
+    explicitly `None` in that case -- a REAL (non-`None`) `value` alongside
+    `kind="null"` is rejected outright, never silently discarded (DEC-084's
+    own "must not silently reinterpret or discard supplied data"
+    guardrail: a future buggy client sending both an explicit-null
+    operation and a real value must fail visibly, not lose the value
+    quietly). `kind=None` (the default) preserves the original edit/clear
+    behavior exactly, unchanged, for every existing caller. Any other
+    `kind` is rejected outright -- never silently downgraded to
+    edit/clear."""
     session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
     worksheet_index = _resolve_worksheet_index(session)
     _check_row_bound(session, worksheet_index, row_number)
     _check_column_bound(session, worksheet_index, column_index)
+    key = overlay_domain.cell_key(worksheet_index, row_number, column_index)
+    if kind is not None:
+        if kind != overlay_domain.OVERRIDE_KIND_NULL:
+            raise InvalidWorkingCellValueError(
+                f"kind must be omitted or {overlay_domain.OVERRIDE_KIND_NULL!r}; got {kind!r}."
+            )
+        if value is not None:
+            raise InvalidWorkingCellValueError(
+                f"value must be omitted or null when kind={overlay_domain.OVERRIDE_KIND_NULL!r}; "
+                f"got a non-null value instead."
+            )
+        overlay_domain.set_cell_null(session.working_overlay, key)
+        return summarize_working_overlay(session, worksheet_index)
     if value is not None and len(value) > overlay_domain.MAX_CELL_VALUE_LENGTH:
         raise InvalidWorkingCellValueError(
             f"Cell working value exceeds the maximum length of "
             f"{overlay_domain.MAX_CELL_VALUE_LENGTH} characters."
         )
-    key = overlay_domain.cell_key(worksheet_index, row_number, column_index)
     overlay_domain.set_cell_value(session.working_overlay, key, value)
     return summarize_working_overlay(session, worksheet_index)
 

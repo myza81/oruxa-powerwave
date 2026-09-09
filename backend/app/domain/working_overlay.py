@@ -127,6 +127,19 @@ if TYPE_CHECKING:
 
 OVERRIDE_KIND_EDIT = "edit"
 OVERRIDE_KIND_CLEAR = "clear"
+#: Explicit-null resolution (DEC-084, Slice 1): a THIRD, distinct override
+#: kind -- never conflated with `OVERRIDE_KIND_CLEAR`. A clear means "no
+#: working value has been supplied yet, still unresolved"; a null means
+#: "the engineer has explicitly confirmed this measurement is genuinely
+#: absent," a DIFFERENT, resolved state for a Waveform/data column (see
+#: `app.services.readiness_service`). Both currently store `value=None`
+#: on `CellOverride` -- `kind` alone is what keeps them distinguishable to
+#: every downstream reader (DEC-084's own explicit "do not reuse `None` in
+#: a way that makes clear and explicit null indistinguishable"
+#: requirement: `kind` is exactly the extra bit that keeps them apart, not
+#: a second overload of `value`).
+OVERRIDE_KIND_NULL = "null"
+KNOWN_OVERRIDE_KINDS = (OVERRIDE_KIND_EDIT, OVERRIDE_KIND_CLEAR, OVERRIDE_KIND_NULL)
 
 #: A generous sanity bound against a pathological/accidental paste --
 #: never an engineering-content validation (task's own "do not infer
@@ -214,9 +227,20 @@ class CellOverride:
     conflated with an edit to an empty string (task's own "Clear cell...
     different from setting \"\"" requirement) even though both currently
     render identically (blank) in the preview.
+
+    `value` is also always `None` when `kind == OVERRIDE_KIND_NULL`
+    (DEC-084, Slice 1) -- an explicit null is semantically a THIRD state,
+    never a synonym for clear: it means the engineer has affirmatively
+    resolved this cell as genuinely-missing data, which
+    `app.services.readiness_service` therefore treats as RESOLVED for a
+    Waveform/data column (unlike an unresolved clear, which stays
+    blocking) -- see that module's own docstring. It does not mean zero,
+    and it is never coerced into one anywhere downstream. `kind` is the
+    only thing that distinguishes a null override from a clear override;
+    callers must never infer "null" from `value is None` alone.
     """
 
-    kind: str  # OVERRIDE_KIND_EDIT | OVERRIDE_KIND_CLEAR
+    kind: str  # OVERRIDE_KIND_EDIT | OVERRIDE_KIND_CLEAR | OVERRIDE_KIND_NULL
     value: str | None
 
 
@@ -336,6 +360,19 @@ def set_cell_value(overlay: WorkingOverlay, key: CellKey, value: str | None) -> 
         if value is None
         else CellOverride(kind=OVERRIDE_KIND_EDIT, value=value)
     )
+    overlay.cell_overrides[key] = after
+    _record(overlay, "cell", key, before, after)
+
+
+def set_cell_null(overlay: WorkingOverlay, key: CellKey) -> None:
+    """Mark one cell's working value as an explicit, engineer-affirmed
+    null (DEC-084, Slice 1) -- distinct from `set_cell_value(overlay,
+    key, None)` (a CLEAR): see `CellOverride`'s own docstring for exactly
+    why these two stay separate `kind`s despite both storing `value=None`.
+    Overwrites any existing override for this cell (edit, clear, or a
+    prior null) the same way `set_cell_value` already does."""
+    before = overlay.cell_overrides.get(key)
+    after = CellOverride(kind=OVERRIDE_KIND_NULL, value=None)
     overlay.cell_overrides[key] = after
     _record(overlay, "cell", key, before, after)
 

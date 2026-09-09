@@ -423,13 +423,14 @@ def put_working_cell(
     body: CellWorkingValueRequest = CellWorkingValueRequest(),
     registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
 ) -> WorkingOverlaySummaryOut:
-    """Set (`value` a string) or clear (`value: null`) one cell's
-    working value -- see `CellWorkingValueRequest`'s own docstring."""
+    """Set (`value` a string), clear (`value: null`), or mark explicit
+    null (`kind: "null"`, DEC-084 Slice 1) one cell's working value --
+    see `CellWorkingValueRequest`'s own docstring."""
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         summary = edit_cell(
             workspace_id=workspace_id, source_id=source_id, row_number=row_number,
-            column_index=column_index, value=body.value, registry=registry,
+            column_index=column_index, value=body.value, kind=body.kind, registry=registry,
         )
     except ImportServiceError as exc:
         raise _working_error(exc) from exc

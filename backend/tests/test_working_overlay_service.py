@@ -15,7 +15,13 @@ from fastapi import UploadFile
 from openpyxl import Workbook
 from starlette.datastructures import Headers
 
-from app.domain.working_overlay import column_key
+from app.domain.working_overlay import (
+    OVERRIDE_KIND_CLEAR,
+    OVERRIDE_KIND_EDIT,
+    OVERRIDE_KIND_NULL,
+    cell_key,
+    column_key,
+)
 from app.services.errors import (
     InvalidColumnRoleError,
     InvalidDataRegionError,
@@ -171,6 +177,154 @@ class TestEditCellCsv:
                 workspace_id="ws-1", source_id="nope", row_number=1, column_index=0,
                 value="x", registry=registry,
             )
+
+
+class TestEditCellExplicitNull:
+    """DEC-084 (Slice 1): `kind="null"` is the one unambiguous way a
+    caller requests the explicit-null override -- distinct from
+    `value=None` (clear) at both the request-schema and domain layers."""
+
+    def test_kind_null_with_value_omitted_is_accepted(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n")
+
+        summary = edit_cell(
+            workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=registry,
+        )
+
+        assert summary.edited_cell_count == 1
+        session = registry.get("ws-1", source_id)
+        override = session.working_overlay.cell_overrides[cell_key(None, 1, 0)]
+        assert override.kind == OVERRIDE_KIND_NULL
+        assert override.value is None
+
+    def test_kind_null_with_value_explicitly_none_is_accepted(self):
+        # `value=None` is indistinguishable from "omitted" once it
+        # reaches this function (both are the Python `None` default) --
+        # this test exists to prove that shape is accepted, not merely
+        # untested.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        summary = edit_cell(
+            workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=registry,
+        )
+
+        assert summary.edited_cell_count == 1
+        session = registry.get("ws-1", source_id)
+        override = session.working_overlay.cell_overrides[cell_key(None, 1, 0)]
+        assert override.kind == OVERRIDE_KIND_NULL
+        assert override.value is None
+
+    def test_kind_null_with_a_non_null_value_is_rejected(self):
+        # DEC-084's own data-integrity guardrail: the application must
+        # never silently reinterpret or discard supplied data. A client
+        # sending both an explicit-null operation AND a real value has a
+        # bug -- it must fail visibly, not silently lose the value.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidWorkingCellValueError):
+            edit_cell(
+                workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0,
+                value="123.45", kind=OVERRIDE_KIND_NULL, registry=registry,
+            )
+
+    def test_kind_null_with_a_non_null_value_does_not_mutate_the_overlay(self):
+        # The rejected request must be a true no-op -- no override
+        # written, no history entry recorded -- never a partial/silent
+        # application of either the null or the value.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidWorkingCellValueError):
+            edit_cell(
+                workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0,
+                value="123.45", kind=OVERRIDE_KIND_NULL, registry=registry,
+            )
+
+        session = registry.get("ws-1", source_id)
+        assert cell_key(None, 1, 0) not in session.working_overlay.cell_overrides
+        assert session.working_overlay.revision == 0
+
+    def test_kind_null_with_empty_string_value_is_rejected(self):
+        # An empty string is still a REAL, non-null value -- it must be
+        # rejected exactly like any other non-null value, never treated
+        # as equivalent to omitted/None.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidWorkingCellValueError):
+            edit_cell(
+                workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0,
+                value="", kind=OVERRIDE_KIND_NULL, registry=registry,
+            )
+
+    def test_kind_omitted_with_value_none_is_still_a_plain_clear(self):
+        # Backward compatibility: the legacy request shape (no `kind` at
+        # all) must keep producing a CLEAR, never a null, so existing
+        # callers are completely unaffected by this addition.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        edit_cell(
+            workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0,
+            value=None, registry=registry,
+        )
+
+        session = registry.get("ws-1", source_id)
+        override = session.working_overlay.cell_overrides[cell_key(None, 1, 0)]
+        assert override.kind == OVERRIDE_KIND_CLEAR
+
+    def test_kind_omitted_with_a_string_value_is_still_a_plain_edit(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        edit_cell(
+            workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0,
+            value="42", registry=registry,
+        )
+
+        session = registry.get("ws-1", source_id)
+        override = session.working_overlay.cell_overrides[cell_key(None, 1, 0)]
+        assert override.kind == OVERRIDE_KIND_EDIT
+        assert override.value == "42"
+
+    def test_an_unrecognized_kind_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidWorkingCellValueError):
+            edit_cell(
+                workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0,
+                value=None, kind="bogus", registry=registry,
+            )
+
+    def test_kind_null_still_enforces_row_bounds(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidWorkingCoordinateError):
+            edit_cell(
+                workspace_id="ws-1", source_id=source_id, row_number=99, column_index=0,
+                value=None, kind=OVERRIDE_KIND_NULL, registry=registry,
+            )
+
+    def test_kind_null_overwrites_a_previous_edit(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0, value="42", registry=registry)
+
+        edit_cell(
+            workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=registry,
+        )
+
+        session = registry.get("ws-1", source_id)
+        override = session.working_overlay.cell_overrides[cell_key(None, 1, 0)]
+        assert override.kind == OVERRIDE_KIND_NULL
 
 
 class TestEditCellExcel:

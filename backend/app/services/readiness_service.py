@@ -78,6 +78,22 @@ them -- the engineer resolves every finding by editing, excluding, or
 reconfiguring, exactly like every earlier slice's own working-overlay
 mutations already require.
 
+**Explicit null (DEC-084, Slice 1)**: `_scan_full_active_region()`
+below is also where the resolution paths DEC-084 approves actually take
+effect. An unresolved raw blank/invalid cell and an explicit CLEAR
+override both still block (`ISSUE_WAVEFORM_VALUE_MISSING`/
+`ISSUE_TIME_VALUE_MISSING`/`ISSUE_TIME_VALUE_INVALID`, unchanged). An
+explicit-null override (`app.domain.working_overlay.OVERRIDE_KIND_NULL`,
+surfaced per-row as `PreviewRow.explicit_null_columns`) is a RESOLVED,
+non-blocking state for a Waveform column ONLY -- it means the engineer
+has affirmatively confirmed the measurement is genuinely absent, never
+that it is zero. A Time Axis column gets NO equivalent exemption: an
+explicit null there still reports as `ISSUE_TIME_VALUE_MISSING`
+(blocking), because a row with no valid x-coordinate cannot be placed on
+any waveform/timeline regardless of how deliberately that absence was
+marked. This module still never interpolates, coerces, or accepts a
+Time-Axis null of any kind -- DEC-084 defines no such workaround.
+
 **Digital channels are explicitly deferred** (task section N): the
 CURRENT column-role model (`app.domain.working_overlay.KNOWN_COLUMN_
 ROLES`) has no dedicated digital role at all -- only `waveform`/
@@ -417,6 +433,18 @@ def _scan_full_active_region(
                             saw_aware_absolute = True
 
             for col in waveform_columns:
+                # DEC-084 (Slice 1): an EXPLICIT null on a Waveform column
+                # is a RESOLVED, intentional missing-data decision -- never
+                # blocking, and never treated as zero -- distinct from an
+                # unresolved raw blank or an unresolved clear override
+                # (both of which still leave `col` out of
+                # `explicit_null_columns` and so still fall through to the
+                # existing missing/invalid checks below, unchanged). Time
+                # Axis columns deliberately get NO equivalent exemption
+                # anywhere in this function -- see this module's own
+                # docstring / DEC-084 for why Time Axis stays stricter.
+                if col in row.explicit_null_columns:
+                    continue
                 value = row.cells[col] if col < len(row.cells) else None
                 if value in (None, ""):
                     waveform_missing.append((row.row_number, col))

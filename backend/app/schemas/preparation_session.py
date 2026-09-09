@@ -325,12 +325,25 @@ class PreparationSourcePreviewOut(BaseModel):
 
 class CellWorkingValueRequest(BaseModel):
     """Body of `PUT .../working/cells/{row_number}/{column_index}`.
-    `value=None` means an explicit CLEAR; any string (including `""`)
-    means an EDIT to that exact string -- see
+
+    Legacy shape (unchanged, fully backward compatible): `kind` omitted
+    (`None`), `value=None` means an explicit CLEAR, any string (including
+    `""`) means an EDIT to that exact string -- see
     `app.domain.working_overlay.CellOverride`'s own docstring for why
-    these stay distinct kinds."""
+    these stay distinct kinds.
+
+    DEC-084 (Slice 1) adds one explicit, unambiguous way to request the
+    THIRD kind, an explicit null: `kind="null"`. `value` must be omitted
+    or explicitly `null` in that case -- a real (non-null) `value`
+    alongside `kind="null"` is REJECTED (`InvalidWorkingCellValueError`),
+    never silently discarded (DEC-084's own "must not silently
+    reinterpret or discard supplied data" guardrail). There is
+    deliberately no request shape where `value: null` alone could mean
+    either "clear" or "explicit null"; the caller must say which one it
+    wants via `kind` (never inferred)."""
 
     value: str | None = None
+    kind: str | None = None
 
 
 class RowExclusionRequest(BaseModel):
