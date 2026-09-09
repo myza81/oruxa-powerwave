@@ -10,6 +10,7 @@ DELETE must release the retained waveform data, not just the metadata.
 from __future__ import annotations
 
 import io
+import json
 
 import pytest
 from fastapi.testclient import TestClient
@@ -305,3 +306,119 @@ class TestLifecycleCleanupReleasesWaveformData:
             "the authoritative waveform_data DataFrame is still referenced "
             "somewhere after source removal"
         )
+
+
+class TestExplicitNullSourceChannelSerialization:
+    """DEC-084 (Slice 3): a source channel converted from a CSV/Excel
+    preparation source can now legitimately contain an explicit-null
+    sample. Regression test for the SAME `allow_nan=False` risk
+    `app.services.calculated_channel_service._finite_or_none`'s own
+    docstring already documents for calculated channels (see
+    `tests/test_calculated_channel_api.py::
+    test_rms_waveform_response_serializes_nan_as_null_not_crash` for the
+    identical precedent) -- FastAPI's default `JSONResponse` would 500 on
+    a raw `NaN` in the response body; this endpoint must instead
+    serialize a gap as `null`, never crash, never a raw NaN, never `0`.
+    """
+
+    def _converted_source_with_explicit_null(self, client, *, null_row_number: int = 2) -> str:
+        content = b"2026-08-31 13:00:00,10.0\n2026-08-31 13:00:01,11.0\n2026-08-31 13:00:02,12.0\n"
+        resp = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources",
+            files={"csv_file": ("e.csv", io.BytesIO(content), "text/csv")},
+        )
+        source_id = resp.json()["source_id"]
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime", "confirmed": True},
+        )
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/{null_row_number}/1",
+            json={"kind": "null"},
+        )
+        converted = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/convert").json()
+        return converted["source_id"]
+
+    def test_waveform_range_finite_values_serialize_normally(self, client):
+        source_id = self._converted_source_with_explicit_null(client)
+
+        resp = client.get(
+            f"/api/v1/workspaces/ws-1/sources/{source_id}/waveform",
+            params={"channel_name": "B"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["values"][0] == 10.0
+        assert body["values"][2] == 12.0
+
+    def test_waveform_range_explicit_null_serializes_as_json_null_not_crash(self, client):
+        source_id = self._converted_source_with_explicit_null(client)
+
+        resp = client.get(
+            f"/api/v1/workspaces/ws-1/sources/{source_id}/waveform",
+            params={"channel_name": "B"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["values"] == [10.0, None, 12.0]
+        assert body["values"][1] is None  # null, never coerced to 0
+
+    def test_waveform_range_array_length_is_preserved_across_the_gap(self, client):
+        source_id = self._converted_source_with_explicit_null(client)
+
+        body = client.get(
+            f"/api/v1/workspaces/ws-1/sources/{source_id}/waveform",
+            params={"channel_name": "B"},
+        ).json()
+
+        assert len(body["time"]) == len(body["values"]) == 3
+        assert body["returned_point_count"] == 3
+        assert body["original_sample_count"] == 3
+        # No timestamp is ever dropped alongside the gap -- the gap
+        # is a `null` VALUE at an otherwise-ordinary row, not a removed row.
+        assert body["time"] == [0.0, 1.0, 2.0]
+
+    def test_multiple_explicit_nulls_remain_multiple_null_positions(self, client):
+        content = (
+            b"2026-08-31 13:00:00,10.0\n2026-08-31 13:00:01,11.0\n"
+            b"2026-08-31 13:00:02,12.0\n2026-08-31 13:00:03,13.0\n2026-08-31 13:00:04,14.0\n"
+        )
+        resp = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources",
+            files={"csv_file": ("e.csv", io.BytesIO(content), "text/csv")},
+        )
+        source_id = resp.json()["source_id"]
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime", "confirmed": True},
+        )
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/2/1", json={"kind": "null"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/4/1", json={"kind": "null"})
+        converted = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/convert").json()
+
+        body = client.get(
+            f"/api/v1/workspaces/ws-1/sources/{converted['source_id']}/waveform",
+            params={"channel_name": "B"},
+        ).json()
+
+        assert body["values"] == [10.0, None, 12.0, None, 14.0]
+
+    def test_no_nan_token_leaks_into_strict_json(self, client):
+        # Re-serializing the already-decoded response body with Python's
+        # own strict `json.dumps(..., allow_nan=False)` proves no raw
+        # `float('nan')` survived anywhere in it -- it would raise
+        # ValueError immediately if one had.
+        source_id = self._converted_source_with_explicit_null(client)
+
+        body = client.get(
+            f"/api/v1/workspaces/ws-1/sources/{source_id}/waveform",
+            params={"channel_name": "B"},
+        ).json()
+
+        json.dumps(body, allow_nan=False)  # must not raise

@@ -20,6 +20,21 @@ Terminology: deliberately not "decimated" anywhere in this codebase or its
 API surface -- see docs/project-memory/MIGRATION_PLAN.md's Phase 2 design
 "Important terminology" note. Use "display representation" / "display
 reduction" / "min/max envelope".
+
+**Explicit-null gaps (DEC-084, Slice 3)**: a converted source channel can
+now legitimately contain `NaN` samples (an engineer's explicit-null
+resolution, see `app.services.preparation_conversion_service`). Plain
+`np.argmin`/`np.argmax` silently resolve to the FIRST `NaN` whenever one
+is present anywhere in the array being searched -- left unguarded, that
+would make a bucket's own reported "extremum" a gap marker instead of a
+real value the moment any sample in it is missing, discarding this
+DEC-019 peak-preservation guarantee exactly where it matters most (a real
+spike sitting right next to a gap). `build_min_max_envelope()` therefore
+branches on whether a bucket is all-finite / all-gap / mixed, using
+`np.nanargmin`/`np.nanargmax` (safe only once at least one finite sample
+is confirmed present) to recover the TRUE finite extrema of a mixed
+bucket while still emitting one gap-marker point so the line visibly
+breaks there rather than silently bridging across the missing region.
 """
 
 from __future__ import annotations
@@ -29,6 +44,19 @@ import numpy as np
 #: Points emitted per bucket (min + max) before first/last-sample padding
 #: and before collapsing a bucket whose min and max are the same sample.
 _POINTS_PER_BUCKET = 2
+
+
+def _point_matches(a_time: float, a_value: float, b_time: float, b_value: float) -> bool:
+    """`True` when two (time, value) points are the same point -- treating
+    two `NaN` values as equal for this purpose (DEC-084, Slice 3), unlike
+    plain `==`/`!=` where `nan != nan` is always `True`. Used only to
+    decide whether the edge-guarantee below still needs to insert/append
+    a point, never to compare two genuinely different real numbers."""
+    if a_time != b_time:
+        return False
+    if a_value == b_value:
+        return True
+    return np.isnan(a_value) and np.isnan(b_value)
 
 
 def build_min_max_envelope(
@@ -95,26 +123,75 @@ def build_min_max_envelope(
     for lo, hi in zip(edges[:-1], edges[1:]):
         bucket_time = time[lo:hi]
         bucket_values = values[lo:hi]
-        i_min = int(np.argmin(bucket_values))
-        i_max = int(np.argmax(bucket_values))
-        if i_min == i_max:
-            out_time.append(float(bucket_time[i_min]))
-            out_values.append(float(bucket_values[i_min]))
+        finite_mask = np.isfinite(bucket_values)
+
+        if finite_mask.all():
+            # Unchanged from before DEC-084 -- no gap in this bucket at
+            # all, so finite data reduces exactly as it always has.
+            i_min = int(np.argmin(bucket_values))
+            i_max = int(np.argmax(bucket_values))
+            indices = {i_min, i_max}
+        elif not finite_mask.any():
+            # Every sample in this bucket is a gap -- a single point
+            # (any index; they are all NaN) already fully represents
+            # "no data here," matching the mixed-bucket gap marker
+            # below in spirit.
+            indices = {0}
         else:
-            first_i, second_i = (i_min, i_max) if i_min < i_max else (i_max, i_min)
-            out_time.append(float(bucket_time[first_i]))
-            out_values.append(float(bucket_values[first_i]))
-            out_time.append(float(bucket_time[second_i]))
-            out_values.append(float(bucket_values[second_i]))
+            # DEC-084 (Slice 3) fix: a MIXED bucket (some real samples,
+            # some explicit-null/NaN gaps). Plain `np.argmin`/`np.argmax`
+            # both silently resolve to the FIRST NaN whenever one is
+            # present anywhere in the array (a documented numpy quirk,
+            # not a bug in numpy) -- naively keeping that behavior here
+            # would make the bucket's own reported "extremum" a gap
+            # marker instead of a real value, discarding this bucket's
+            # true finite min/max entirely. That is exactly the
+            # "invisible extremum" integrity risk this module's own
+            # docstring cites DEC-019 to forbid -- a real recorded peak
+            # sitting right next to an explicit-null sample must not
+            # vanish from the display envelope merely because of that
+            # neighbor.
+            #
+            # `np.nanargmin`/`np.nanargmax` (safe here -- guaranteed at
+            # least one finite value by the `finite_mask.any()` check
+            # above; an all-NaN slice is handled by the branch before
+            # this one instead) recover the TRUE finite extrema. A
+            # single extra gap-marker point (the bucket's own first NaN)
+            # is then added on top so the line still visibly BREAKS
+            # here rather than silently bridging across the missing
+            # region the way ignoring NaN entirely would (task's own
+            # explicit warning: "a reduction algorithm that merely
+            # ignores NaN may accidentally bridge across the gap
+            # visually"). This is a bounded, modest widening of the
+            # existing "up to ~2 points per bucket" budget (already
+            # documented as a budget, not a hard cap) -- only buckets
+            # that actually contain a gap ever emit the extra point.
+            i_min = int(np.nanargmin(bucket_values))
+            i_max = int(np.nanargmax(bucket_values))
+            gap_index = int(np.argmax(~finite_mask))  # first non-finite position
+            indices = {i_min, i_max, gap_index}
+
+        for idx in sorted(indices):
+            out_time.append(float(bucket_time[idx]))
+            out_values.append(float(bucket_values[idx]))
 
     # Guarantee the requested range's true edges are always represented,
     # regardless of whether they happen to be their bucket's extremum --
     # a disturbance analyst needs to see exactly where the visible range
     # starts/ends, not just its peaks.
-    if out_time[0] != float(time[0]) or out_values[0] != float(values[0]):
+    #
+    # DEC-084 (Slice 3): plain `!=` is NaN-unsafe -- `nan != nan` is
+    # always `True` in Python, so if the record's true first/last sample
+    # is itself an explicit-null gap, a naive `!=` check here would
+    # falsely conclude "not yet represented" even when the bucket loop
+    # above already emitted that exact (time, NaN) point, inserting a
+    # redundant duplicate. `_point_matches` treats two NaNs as equal for
+    # this comparison so the edge-guarantee only ever fires when the
+    # edge is genuinely still missing.
+    if not _point_matches(out_time[0], out_values[0], float(time[0]), float(values[0])):
         out_time.insert(0, float(time[0]))
         out_values.insert(0, float(values[0]))
-    if out_time[-1] != float(time[-1]) or out_values[-1] != float(values[-1]):
+    if not _point_matches(out_time[-1], out_values[-1], float(time[-1]), float(values[-1])):
         out_time.append(float(time[-1]))
         out_values.append(float(values[-1]))
 

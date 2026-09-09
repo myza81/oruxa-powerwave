@@ -37,8 +37,9 @@ from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.synchronization_registry import SynchronizationRegistry
 from app.services.synchronization_service import get_source_alignment, list_time_groups, set_source_alignment_offset
 from app.services.time_axis_service import set_time_axis_configuration
-from app.services.waveform_service import extract_cursor_values, extract_waveform_range
-from app.services.working_overlay_service import set_column_role
+from app.domain.working_overlay import OVERRIDE_KIND_NULL
+from app.services.waveform_service import extract_cursor_values, extract_waveform_range, resolve_annotation_anchor
+from app.services.working_overlay_service import edit_cell, set_column_role
 from app.services.workspace_registry import WorkspaceRegistry
 
 WS = "ws-1"
@@ -675,7 +676,90 @@ class TestLifecycleAndIdempotency:
         assert calc_registry.list_for_workspace(WS) == []
 
 
+class TestExplicitNullSourceChannelIntegration:
+    """DEC-084 (Slice 3): a converted CSV source channel can now
+    legitimately contain an explicit-null (`NaN`) sample -- proves it
+    flows safely, end to end, through the real waveform range/cursor/
+    annotation pipeline (never a crash, never a fabricated zero, never a
+    neighboring sample silently substituted)."""
+
+    def _convert_with_explicit_null(self, content: bytes, *, null_row_number: int) -> tuple:
+        prep = PreparationSessionRegistry()
+        ws = WorkspaceRegistry()
+        summary = asyncio.run(import_csv_preparation_source(
+            workspace_id=WS, csv_upload=_upload(content), max_total_bytes=10_000_000, registry=prep,
+        ))
+        source_id = summary.source_id
+        set_column_role(workspace_id=WS, source_id=source_id, column_index=0, role="time_axis", registry=prep)
+        set_column_role(workspace_id=WS, source_id=source_id, column_index=1, role="waveform", registry=prep)
+        set_time_axis_configuration(
+            workspace_id=WS, source_id=source_id, column_indices=(0,),
+            interpreter_id="absolute_datetime", confirmed=True, registry=prep,
+        )
+        edit_cell(
+            workspace_id=WS, source_id=source_id, row_number=null_row_number, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=prep,
+        )
+        metadata = convert_preparation_source(
+            workspace_id=WS, source_id=source_id, preparation_registry=prep, workspace_registry=ws,
+        )
+        return metadata, ws
+
+    def test_range_fetch_does_not_crash_and_preserves_alignment(self):
+        content = b"2026-08-31 13:00:00,10.0\n2026-08-31 13:00:01,11.0\n2026-08-31 13:00:02,12.0\n"
+        metadata, ws = self._convert_with_explicit_null(content, null_row_number=2)
+        active = ws.get(WS, metadata.source_id)
+
+        result = extract_waveform_range(active, channel_name="B", start_time=None, end_time=None, point_budget=1000)
+
+        assert len(result.time) == len(result.values) == 3
+        assert list(result.time) == [0.0, 1.0, 2.0]
+        assert result.values[0] == 10.0
+        assert np.isnan(result.values[1])
+        assert result.values[2] == 12.0
+
+    def test_cursor_on_finite_sample_returns_the_existing_numeric_value(self):
+        content = b"2026-08-31 13:00:00,10.0\n2026-08-31 13:00:01,11.0\n2026-08-31 13:00:02,12.0\n"
+        metadata, ws = self._convert_with_explicit_null(content, null_row_number=2)
+        active = ws.get(WS, metadata.source_id)
+
+        result = extract_cursor_values(
+            active, analog_channel_names=["B"], digital_channel_names=[],
+            cursor_a_time=0.0, cursor_b_time=None,
+        )
+
+        assert result.channels[0].a_value == 10.0
+
+    def test_cursor_on_explicit_null_sample_is_none_not_fabricated(self):
+        content = b"2026-08-31 13:00:00,10.0\n2026-08-31 13:00:01,11.0\n2026-08-31 13:00:02,12.0\n"
+        metadata, ws = self._convert_with_explicit_null(content, null_row_number=2)
+        active = ws.get(WS, metadata.source_id)
+
+        result = extract_cursor_values(
+            active, analog_channel_names=["B"], digital_channel_names=[],
+            cursor_a_time=1.0, cursor_b_time=None,
+        )
+
+        assert result.cursor_a.sample_time == 1.0  # the cursor DID land on the real sample
+        assert result.channels[0].a_value is None  # but that sample's own value is unavailable
+        assert result.channels[0].a_value != 0
+        assert result.channels[0].a_value != 10.0  # never the previous sample
+        assert result.channels[0].a_value != 12.0  # never the next sample
+
+    def test_annotation_anchor_on_explicit_null_sample_is_none_not_fabricated(self):
+        content = b"2026-08-31 13:00:00,10.0\n2026-08-31 13:00:01,11.0\n2026-08-31 13:00:02,12.0\n"
+        metadata, ws = self._convert_with_explicit_null(content, null_row_number=2)
+        active = ws.get(WS, metadata.source_id)
+
+        anchor = resolve_annotation_anchor(active, channel_name="B", approximate_elapsed_seconds=1.0)
+
+        assert anchor.sample_index == 1  # the anchor DID resolve to the real recorded sample
+        assert anchor.elapsed_seconds == 1.0
+        assert anchor.value is None  # but its own value is unavailable, never a fabricated number
+
+
 class TestPerformanceBoundedRangeFetch:
+
     def test_large_converted_source_range_fetch_is_bounded_not_full_dataset(self):
         rows = 50_000
         base = dt.datetime(2026, 1, 1, 0, 0, 0)

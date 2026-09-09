@@ -37,14 +37,20 @@ class AnnotationAnchorRequest(BaseModel):
 
 class AnnotationAnchorOut(BaseModel):
     """The resolved, authoritative anchor -- a real recorded sample, never
-    an interpolated or approximate value."""
+    an interpolated or approximate value.
+
+    `value` is `float | None` (DEC-084, Slice 3 -- widened from `float`,
+    mirroring `CalculatedAnnotationAnchorOut`'s own identical precedent):
+    the anchor itself (`sample_index`/`elapsed_seconds`) is always valid;
+    only the displayed value can be `null`, when that exact sample is an
+    explicit-null gap."""
 
     source_id: str
     channel_name: str
     unit: str
     sample_index: int
     elapsed_seconds: float
-    value: float
+    value: float | None
     per_unit_status: str | None = None
 
     @classmethod

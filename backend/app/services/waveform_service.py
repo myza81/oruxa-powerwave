@@ -18,6 +18,21 @@ The output of this module (`WaveformRangeResult`) is always a *display
 representation* when reduction was applied, and is explicitly labelled as
 such (`representation` field) so nothing downstream can mistake it for
 authoritative engineering data -- see DEC-019.
+
+**Explicit-null gaps (DEC-084, Slice 3)**: a source channel can now
+legitimately contain `NaN` samples (an engineer's explicit-null
+resolution surviving through `app.services.preparation_conversion_
+service`) -- routine data, not a defect. `_finite_or_none()` is this
+module's own sanitization boundary for a SCALAR cursor/annotation value
+(mirroring `app.services.calculated_channel_service`'s identical
+precedent for RMS's warm-up region); `app.schemas.waveform`'s own
+`_sanitize_float_array()` is the equivalent for a whole `time`/`values`
+ARRAY. Both exist so a raw `NaN` never reaches a JSON response body
+(FastAPI's default `JSONResponse` uses `allow_nan=False`, so it would
+500 the request otherwise) -- a gap always becomes `null`, never `0`,
+never a neighboring sample substituted in its place. `app.domain.
+waveform_reduction.build_min_max_envelope()` has its own matching
+NaN-safety hardening for the reduced/display-envelope path.
 """
 
 from __future__ import annotations
@@ -438,6 +453,24 @@ def _nearest_sample_index(time_full: np.ndarray, requested_time: float | None) -
     return idx
 
 
+def _finite_or_none(value: float) -> float | None:
+    """Sanitize a single sample value for a JSON response (DEC-084, Slice
+    3). A source channel can now legitimately contain an explicit-null
+    (`NaN`) sample (see `app.services.preparation_conversion_service`) --
+    FastAPI's default `JSONResponse` calls `json.dumps(..., allow_nan=
+    False)`, so a raw `NaN` reaching a response body would 500 the
+    request rather than degrade gracefully. `None` (JSON `null`) is
+    exactly what this cursor/annotation value already means "unavailable"
+    with -- the SAME representation `app.services.calculated_channel_
+    service._finite_or_none()` independently established for calculated
+    channels (Phase 5B, DEC-048's own RMS warm-up region); this is a
+    second, source-channel-scoped copy of the identical one-line rule
+    rather than a shared import, since that module is calculated-channel
+    -specific and this one is not -- see this function's own callers for
+    exactly where a NaN must never reach the wire as a raw float."""
+    return float(value) if np.isfinite(value) else None
+
+
 def extract_cursor_values(
     active: ActiveSource,
     *,
@@ -510,8 +543,12 @@ def extract_cursor_values(
         if unit is None:
             continue
         values_full = waveform_data[name].to_numpy()
-        a_value = float(values_full[a_index]) if a_index is not None else None
-        b_value = float(values_full[b_index]) if b_index is not None else None
+        # DEC-084 (Slice 3): the recorded sample AT this index may itself
+        # be an explicit-null gap -- `_finite_or_none` reports that as
+        # `None` ("unavailable"), never a raw NaN, never a fabricated
+        # zero, and never a neighboring sample substituted in its place.
+        a_value = _finite_or_none(values_full[a_index]) if a_index is not None else None
+        b_value = _finite_or_none(values_full[b_index]) if b_index is not None else None
 
         display_unit = unit
         per_unit_status: str | None = None
@@ -578,6 +615,14 @@ class AnnotationAnchorResult:
     annotation's authoritative engineering anchor from that point on and
     are never re-resolved against this service again (no backend call
     during drag/zoom/pan -- section 55 of the Phase 4F task).
+
+    `value` is `float | None` (DEC-084, Slice 3 -- widened from `float`):
+    the ANCHOR itself (`sample_index`/`elapsed_seconds`) is always a real,
+    valid recorded sample -- only the displayed VALUE can be unavailable,
+    when that exact sample happens to be an explicit-null gap. Mirrors
+    `app.domain.calculated_channel`'s own identical precedent for an RMS
+    channel's warm-up region (Phase 5B, DEC-048) -- never a fabricated
+    zero, never a neighboring sample substituted in its place.
     """
 
     source_id: str
@@ -585,7 +630,7 @@ class AnnotationAnchorResult:
     unit: str
     sample_index: int
     elapsed_seconds: float
-    value: float
+    value: float | None
     per_unit_status: str | None = None
 
 
@@ -634,7 +679,12 @@ def resolve_annotation_anchor(
             "this source's own recorded time bounds."
         )
 
-    value = float(values_full[index])
+    # DEC-084 (Slice 3): the nearest resolved sample itself may be an
+    # explicit-null gap -- reported as `None` ("unavailable"), never a
+    # raw NaN, never zero, never silently substituted with a neighboring
+    # sample (the anchor's own sample_index/elapsed_seconds are already
+    # fixed above and never move to "find" a non-null value instead).
+    value = _finite_or_none(values_full[index])
     per_unit_status: str | None = None
     if unit_mode == UNIT_MODE_PER_UNIT:
         engineering_type = _analog_channel_engineering_type(active, channel_name)

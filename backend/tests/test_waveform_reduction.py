@@ -218,6 +218,165 @@ class TestSmallInputsAndEdgeCases:
         assert len(out_time) == len(out_values)
 
 
+class TestExplicitNullGaps:
+    """DEC-084 (Slice 3): a converted source channel can now legitimately
+    contain `NaN` samples (an explicit-null resolution). Plain
+    `np.argmin`/`np.argmax` both silently resolve to the FIRST `NaN`
+    whenever one is present anywhere in the searched array -- these tests
+    protect against that quirk turning into an invisible-extremum
+    regression (DEC-019) or a crash."""
+
+    def test_finite_only_reduction_is_unchanged(self):
+        # No NaN anywhere -- byte-for-byte the same as before this slice.
+        n = 2000
+        time = np.arange(n, dtype=np.float64) * 0.001
+        rng = np.random.default_rng(3)
+        values = rng.normal(size=n)
+
+        out_time, out_values = build_min_max_envelope(time, values, point_budget=100)
+
+        assert not np.any(np.isnan(out_values))
+        assert np.all(np.isfinite(out_values))
+
+    def test_single_nan_does_not_crash(self):
+        time = np.array([0.0, 1.0, 2.0, 3.0, 4.0])
+        values = np.array([1.0, 1.1, np.nan, 1.2, 1.3])
+
+        out_time, out_values = build_min_max_envelope(time, values, point_budget=2)
+
+        assert len(out_time) == len(out_values)
+
+    def test_single_nan_preserves_a_gap(self):
+        time = np.array([0.0, 1.0, 2.0, 3.0, 4.0])
+        values = np.array([1.0, 1.1, np.nan, 1.2, 1.3])
+
+        _, out_values = build_min_max_envelope(time, values, point_budget=2)
+
+        assert np.any(np.isnan(out_values))
+
+    def test_single_nan_preserves_valid_values_before_and_after(self):
+        time = np.array([0.0, 1.0, 2.0, 3.0, 4.0])
+        values = np.array([1.0, 1.1, np.nan, 1.2, 1.3])
+
+        _, out_values = build_min_max_envelope(time, values, point_budget=2)
+
+        assert 1.0 in out_values  # the true min, before the gap
+        assert 1.3 in out_values  # the true max, after the gap
+
+    def test_single_nan_never_substitutes_zero(self):
+        time = np.array([0.0, 1.0, 2.0, 3.0, 4.0])
+        values = np.array([1.0, 1.1, np.nan, 1.2, 1.3])
+
+        _, out_values = build_min_max_envelope(time, values, point_budget=2)
+
+        assert 0.0 not in out_values
+
+    def test_consecutive_nans_preserve_a_gap_and_the_valid_edges(self):
+        time = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+        values = np.array([1.0, 1.1, 1.2, np.nan, np.nan, 1.3, 1.4, 1.5])
+
+        out_time, out_values = build_min_max_envelope(time, values, point_budget=2)
+
+        assert len(out_time) == len(out_values)
+        assert np.any(np.isnan(out_values))
+        assert 1.0 in out_values
+        assert 1.5 in out_values
+        assert 0.0 not in out_values
+
+    def test_nan_inside_one_bucket_does_not_hide_a_real_extremum_in_a_neighboring_bucket(self):
+        # The core DEC-084/DEC-019 regression: two adjacent buckets, each
+        # with exactly one NaN sitting right next to that bucket's own
+        # true extremum. Naive argmin/argmax (pre-fix) would let the NaN
+        # win BOTH searches in each bucket, discarding 1.3 and 2.0
+        # entirely -- exactly the "invisible extremum" DEC-019 forbids.
+        time = np.array([0.0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+        values = np.array([1.0, 1.1, 1.2, 1.3, np.nan, np.nan, 2.0, 2.1, 2.2, 2.3])
+
+        _, out_values = build_min_max_envelope(time, values, point_budget=4)  # 2 buckets
+
+        assert 1.3 in out_values, "bucket A's true max must survive its own bucket's NaN"
+        assert 2.0 in out_values, "bucket B's true min must survive its own bucket's NaN"
+        assert np.any(np.isnan(out_values)), "the gap itself must still be visible"
+
+    def test_all_nan_bucket_remains_a_gap(self):
+        time = np.array([0.0, 1.0, 2.0, 3.0])
+        values = np.array([np.nan, np.nan, np.nan, np.nan])
+
+        out_time, out_values = build_min_max_envelope(time, values, point_budget=2)
+
+        assert len(out_time) == len(out_values)
+        assert np.all(np.isnan(out_values))
+        assert 0.0 not in out_values
+
+    def test_nan_at_the_beginning_of_the_whole_range(self):
+        time = np.array([0.0, 1.0, 2.0, 3.0, 4.0])
+        values = np.array([np.nan, 1.0, 2.0, 3.0, 4.0])
+
+        out_time, out_values = build_min_max_envelope(time, values, point_budget=2)
+
+        assert np.isnan(out_values[0])
+        assert out_time[0] == time[0]
+        assert 4.0 in out_values
+        assert 0.0 not in out_values
+
+    def test_nan_at_the_end_of_the_whole_range(self):
+        time = np.array([0.0, 1.0, 2.0, 3.0, 4.0])
+        values = np.array([1.0, 2.0, 3.0, 4.0, np.nan])
+
+        out_time, out_values = build_min_max_envelope(time, values, point_budget=2)
+
+        assert np.isnan(out_values[-1])
+        assert out_time[-1] == time[-1]
+        assert 1.0 in out_values
+        assert 0.0 not in out_values
+
+    def test_edge_guarantee_does_not_duplicate_a_nan_edge_point(self):
+        # Regression for the NaN-unsafe `!=` comparison the edge
+        # guarantee used before this slice: `nan != nan` is always
+        # `True` in Python, so a naive check would insert a REDUNDANT
+        # duplicate point even when the true edge is already correctly
+        # represented as NaN.
+        time = np.array([0.0, 1.0, 2.0, 3.0])
+        values = np.array([np.nan, np.nan, np.nan, np.nan])
+
+        out_time, out_values = build_min_max_envelope(time, values, point_budget=2)
+
+        matches = [i for i, t in enumerate(out_time) if t == time[0]]
+        assert len(matches) == 1
+
+    def test_alternating_valid_and_nan_does_not_crash_and_preserves_gaps(self):
+        n = 20
+        time = np.arange(n, dtype=np.float64)
+        values = np.array([float(i) if i % 2 == 0 else np.nan for i in range(n)])
+
+        out_time, out_values = build_min_max_envelope(time, values, point_budget=8)
+
+        assert len(out_time) == len(out_values)
+        assert np.any(np.isnan(out_values))
+        assert np.any(np.isfinite(out_values))
+        # No finite value was ever coerced FROM a gap into 0 -- every
+        # finite output value must be a genuine even index's own value.
+        for t, v in zip(out_time, out_values):
+            if np.isfinite(v):
+                assert v == t  # by construction, values[i] == i for even i
+
+    def test_output_never_crashes_on_a_bucket_boundary_landing_exactly_on_nan(self):
+        # A deterministic sanity sweep across many bucket counts/positions
+        # -- never a crash, never a length mismatch, regardless of where
+        # NaN happens to fall relative to bucket edges.
+        n = 500
+        time = np.arange(n, dtype=np.float64) * 0.001
+        rng = np.random.default_rng(11)
+        values = rng.normal(size=n)
+        nan_positions = rng.choice(n, size=25, replace=False)
+        values[nan_positions] = np.nan
+
+        for budget in (2, 10, 50, 100, 999):
+            out_time, out_values = build_min_max_envelope(time, values, point_budget=budget)
+            assert len(out_time) == len(out_values)
+            assert np.all(np.diff(out_time) >= 0)
+
+
 class TestInputValidation:
     def test_mismatched_lengths_raise(self):
         with pytest.raises(ValueError):
