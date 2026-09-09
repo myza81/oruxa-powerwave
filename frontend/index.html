@@ -7559,6 +7559,31 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     <section class="ww-cc-drawer-section" id="wwCcBuilderPanel" hidden>
                         <h4 class="ww-cc-drawer-section-title" id="wwCcBuilderTitle">Selected Operation</h4>
                         <div id="wwCcBuilderFields"></div>
+
+                        <!-- DEC-084 Calc Slice 3: Null Handling -- a
+                             separate, operation-independent block (never
+                             inside #wwCcBuilderFields, which is wholesale
+                             replaced by wwCcRenderBuilderFields() on every
+                             operation/input change) so a chosen policy
+                             survives switching which operation card is
+                             selected. The four <option>s are the
+                             backend's own fixed, closed set (app.domain.
+                             calculated_channel.ALL_NULL_POLICIES) --
+                             hardcoded here exactly like the constrained
+                             50/60 Hz Nominal Frequency dropdown above,
+                             never generated from a longer list. -->
+                        <label class="ww-cc-field">
+                            <span>Null Handling</span>
+                            <select id="wwCcNullPolicySelect">
+                                <option value="propagate_null">Propagate Null</option>
+                                <option value="treat_null_as_zero">Treat Null as Zero</option>
+                                <option value="estimate_missing_data">Estimate Missing Data</option>
+                                <option value="require_manual_value">Require Manual Value</option>
+                            </select>
+                        </label>
+                        <p class="hint" id="wwCcNullPolicyHint"></p>
+                        <div id="wwCcEstimationFields"></div>
+
                         <label class="ww-cc-field">
                             <span>Output Name</span>
                             <input type="text" id="wwCcNameInput" maxlength="120" placeholder="Signal name" autocomplete="off">
@@ -24646,6 +24671,50 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         };
         const WW_CC_OPERATION_ORDER = ["reverse_polarity", "absolute_value", "multiply_constant", "rms", "addition", "subtraction"];
 
+        // DEC-084 Calc Slice 3: null-handling policy labels/hints -- wire
+        // values (object keys) match app.domain.calculated_channel.
+        // ALL_NULL_POLICIES exactly (never invented). The <select> itself
+        // is static markup in the drawer (#wwCcNullPolicySelect, four
+        // hardcoded <option>s -- this is a fixed, backend-defined set,
+        // the same "constrained dropdown, never generated from a longer
+        // list" treatment wwCcRenderRmsParameterFields()'s own 50/60 Hz
+        // options already use) -- this object drives only the dynamic
+        // per-selection hint text (section 6) and the compact
+        // manager-list summary (section 18), so each label/hint is
+        // defined exactly once.
+        const WW_CC_NULL_POLICIES = {
+            propagate_null: {
+                label: "Propagate Null",
+                hint: "Missing input samples remain missing in the calculated result.",
+            },
+            treat_null_as_zero: {
+                label: "Treat Null as Zero",
+                hint: "Missing input samples are treated as zero for this calculation only. Source data is not changed.",
+            },
+            estimate_missing_data: {
+                label: "Estimate Missing Data",
+                hint: "Short missing gaps are estimated for this calculation only. Source data is not changed, and gaps longer than the maximum remain missing.",
+            },
+            require_manual_value: {
+                label: "Require Manual Value",
+                hint: "Creation is blocked until all required input values are valid.",
+            },
+        };
+
+        // DEC-084 Calc Slice 3 (section 2/22): only the methods this
+        // slice's backend engine actually implements
+        // (app.domain.calculated_channel.ALL_ESTIMATION_METHODS minus
+        // UNIMPLEMENTED_ESTIMATION_METHODS) -- PCHIP is deliberately
+        // never offered here, even though the backend still recognizes
+        // and explicitly rejects it (app.domain.missing_data_estimation).
+        const WW_CC_ESTIMATION_METHODS = {
+            hold_last: { label: "Hold Last Value" },
+            nearest: { label: "Nearest Value" },
+            linear: { label: "Linear Interpolation" },
+            local_mean: { label: "Local Mean" },
+        };
+        const WW_CC_ESTIMATION_METHOD_ORDER = ["hold_last", "nearest", "linear", "local_mean"];
+
         // Transient Signal Builder state -- deliberately NOT part of `ww`
         // (mirrors `shell`'s own separation from waveform-domain state):
         // this is page-local UI state for the form currently being
@@ -24673,6 +24742,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // or an active selectable control -- the two must never look
             // the same (owner's own explicit UAT requirement).
             nominalFrequencySource: "user",
+            // DEC-084 Calc Slice 3: null-handling configuration -- see
+            // WW_CC_NULL_POLICIES/WW_CC_ESTIMATION_METHODS above.
+            // `nullPolicy` defaults to Propagate Null (backward-
+            // compatible with the backend's own DEFAULT_NULL_POLICY,
+            // section 4/23) -- every other field stays empty/unselected
+            // until Estimate Missing Data is explicitly chosen. Deliberately
+            // NOT reset by wwCcSelectOperation() (unlike constant/
+            // nominalFrequency/override) -- null handling is operation-
+            // independent, so switching which operation card is selected
+            // must not discard an already-configured policy.
+            nullPolicy: "propagate_null",
+            estimationMethod: "",
+            maxGapValue: "",
+            maxGapUnit: "samples",
+            localMeanRadius: "",
         };
         const wwCcListErrors = new Map(); // calculatedChannelId -> inline delete-error message, cleared on next successful action
 
@@ -24696,6 +24780,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwCcBuilder.nominalFrequency = "50";
             wwCcBuilder.nominalFrequencySource = "user";
             wwCcBuilder.override = false;
+            // DEC-084 Calc Slice 3: back to the backward-compatible
+            // default (section 4) on every full reset (drawer open /
+            // after a successful create), same lifecycle as every other
+            // builder field above.
+            wwCcBuilder.nullPolicy = "propagate_null";
+            wwCcBuilder.estimationMethod = "";
+            wwCcBuilder.maxGapValue = "";
+            wwCcBuilder.maxGapUnit = "samples";
+            wwCcBuilder.localMeanRadius = "";
             wwCcResetRmsEligibility();
         }
 
@@ -24972,6 +25065,30 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const refs = new Set(b.inputs.map((i) => i.referenceSourceId));
                 if (refs.size > 1) errors.push("These channels cannot be combined because their sample times are not aligned.");
             }
+            // DEC-084 Calc Slice 3 (section 12): extends this SAME
+            // client-side pre-check, never a second validator -- mirrors
+            // the backend's own required-fields shape
+            // (create_calculated_channel) closely enough to block Create
+            // early, but the backend remains the sole authority (a
+            // request this considers "valid" can still be legitimately
+            // rejected server-side, same caveat as every check above).
+            if (!WW_CC_NULL_POLICIES[b.nullPolicy]) {
+                errors.push("Choose a null-handling policy.");
+            } else if (b.nullPolicy === "estimate_missing_data") {
+                if (!b.estimationMethod || !WW_CC_ESTIMATION_METHODS[b.estimationMethod]) {
+                    errors.push("Choose an estimation method.");
+                }
+                const maxGap = Number(b.maxGapValue);
+                if (b.maxGapValue === "" || !Number.isInteger(maxGap) || maxGap <= 0) {
+                    errors.push("Maximum Gap must be a positive whole number of samples.");
+                }
+                if (b.estimationMethod === "local_mean") {
+                    const radius = Number(b.localMeanRadius);
+                    if (b.localMeanRadius === "" || !Number.isInteger(radius) || radius <= 0) {
+                        errors.push("Local Mean Radius must be a positive whole number of samples.");
+                    }
+                }
+            }
             const trimmedName = b.name.trim();
             if (!trimmedName) errors.push("Enter a signal name.");
             else if (Array.from(ww.calculatedChannels.values()).some((c) => c.name === trimmedName)) {
@@ -25176,6 +25293,85 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // ------------------------------------------------------------------
+        // DEC-084 Calc Slice 3: Null Handling -- operation-independent
+        // calculated-channel configuration (every operation supports all
+        // four backend policies identically), so unlike
+        // wwCcRenderRmsParameterFields() above it does NOT live inside
+        // #wwCcBuilderFields (which wwCcRenderBuilderFields() wholesale
+        // replaces on every operation/input change) -- its own markup is
+        // static in the drawer (#wwCcNullPolicySelect/#wwCcNullPolicyHint/
+        // #wwCcEstimationFields), so a policy chosen before switching
+        // operation cards is never silently discarded.
+        // ------------------------------------------------------------------
+
+        // Section 5/6: syncs the (static) select's value and the
+        // per-selection hint text to current builder state, then
+        // delegates to wwCcRenderEstimationFields() for the conditional
+        // block below it. Called once whenever the builder panel itself
+        // becomes visible/re-populated (wwCcSelectOperation(),
+        // wwRenderCalculatedChannelsPage()) -- never needed from
+        // wwCcAddInputByKey()/wwCcRemoveInput()/wwCcMoveInput(), since
+        // none of those touch null-policy state and this section's own
+        // DOM is untouched by wwCcRenderBuilderFields()'s own innerHTML
+        // replacement (a DOM sibling, not a descendant, of
+        // #wwCcBuilderFields).
+        function wwCcRenderNullPolicyField() {
+            const select = document.getElementById("wwCcNullPolicySelect");
+            const hint = document.getElementById("wwCcNullPolicyHint");
+            if (select) select.value = wwCcBuilder.nullPolicy;
+            if (hint) {
+                const meta = WW_CC_NULL_POLICIES[wwCcBuilder.nullPolicy];
+                hint.textContent = meta ? meta.hint : "";
+            }
+            wwCcRenderEstimationFields();
+        }
+
+        // Section 7-10: Estimation Method + Maximum Gap (+ Local Mean
+        // Radius, method-conditional) -- rendered ONLY when Estimate
+        // Missing Data is selected, into a STABLE container
+        // (#wwCcEstimationFields is never itself destroyed/recreated,
+        // only its own innerHTML is replaced here) so the delegated
+        // change/input listeners wired once in the Wiring section below
+        // keep working across every re-render, the same pattern
+        // #wwCcBuilderFields's own delegated listeners already rely on.
+        function wwCcRenderEstimationFields() {
+            const container = document.getElementById("wwCcEstimationFields");
+            if (!container) return;
+            if (wwCcBuilder.nullPolicy !== "estimate_missing_data") {
+                container.innerHTML = "";
+                return;
+            }
+            let html = '<label class="ww-cc-field"><span>Estimation Method</span>' +
+                '<select id="wwCcEstimationMethodSelect"><option value="">Choose a method…</option>';
+            for (const method of WW_CC_ESTIMATION_METHOD_ORDER) {
+                const methodMeta = WW_CC_ESTIMATION_METHODS[method];
+                html += '<option value="' + method + '"' + (wwCcBuilder.estimationMethod === method ? " selected" : "") + '>' +
+                    escapeHtml(methodMeta.label) + '</option>';
+            }
+            html += '</select></label>';
+
+            // Section 9: a plain numeric input + a fixed "samples" suffix
+            // -- never a one-choice unit dropdown (this task's own
+            // explicit preference), reusing the EXACT SAME value+suffix
+            // pattern every other fixed-unit numeric field in this app
+            // already uses (.ww-pu-value-suffix-group/.ww-pu-suffix --
+            // see e.g. Equipment Rating/Manual Voltage Base above).
+            html += '<label class="ww-cc-field"><span>Maximum Gap' +
+                wwInfoTipHtml("About Maximum Gap", "Gaps longer than this remain missing.") +
+                '</span><div class="ww-pu-value-suffix-group"><input type="number" min="1" step="1" inputmode="numeric" id="wwCcMaxGapValueInput" placeholder="e.g. 3" value="' +
+                escapeHtml(String(wwCcBuilder.maxGapValue)) + '"><span class="ww-pu-suffix">samples</span></div></label>';
+
+            // Section 10: Local Mean only.
+            if (wwCcBuilder.estimationMethod === "local_mean") {
+                html += '<label class="ww-cc-field"><span>Local Mean Radius' +
+                    wwInfoTipHtml("About Local Mean Radius", "Uses up to this many neighboring samples before and after each gap.") +
+                    '</span><div class="ww-pu-value-suffix-group"><input type="number" min="1" step="1" inputmode="numeric" id="wwCcLocalMeanRadiusInput" placeholder="e.g. 2" value="' +
+                    escapeHtml(String(wwCcBuilder.localMeanRadius)) + '"><span class="ww-pu-suffix">samples each side</span></div></label>';
+            }
+            container.innerHTML = html;
+        }
+
+        // ------------------------------------------------------------------
         // Rendering
         // ------------------------------------------------------------------
 
@@ -25329,6 +25525,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("wwCcBuilderPanel").hidden = false;
             wwCcRenderOperationCards();
             wwCcRenderBuilderFields();
+            wwCcRenderNullPolicyField();
             wwCcRenderExpressionPreview();
             wwCcSyncNameAndUnitFields();
             wwCcSyncCreateButtonState();
@@ -25429,6 +25626,31 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return meta ? meta.label : calc.operation;
         }
 
+        // DEC-084 Calc Slice 3 (section 18): a compact, one-line
+        // null-handling summary for the manager list -- deliberately
+        // separate from wwCcExpressionTextFor() above (section 20: null
+        // policy is calculation configuration, never part of the
+        // formula itself). `calc.null_policy` is always present (backend
+        // default is Propagate Null, section 19) -- the `|| "propagate_null"`
+        // fallback only guards a theoretical stale/malformed response,
+        // never normal operation.
+        function wwCcNullPolicySummaryText(calc) {
+            const policy = calc.null_policy || "propagate_null";
+            if (policy === "propagate_null") return "Null: Propagate";
+            if (policy === "treat_null_as_zero") return "Null: Treat as Zero";
+            if (policy === "require_manual_value") return "Null: Require Manual";
+            if (policy === "estimate_missing_data") {
+                const methodMeta = WW_CC_ESTIMATION_METHODS[calc.estimation_method];
+                const methodLabel = methodMeta ? methodMeta.label : (calc.estimation_method || "?");
+                let text = "Missing data: " + methodLabel + ", max " + (calc.max_gap_value != null ? calc.max_gap_value : "?") + " samples";
+                if (calc.estimation_method === "local_mean" && calc.local_mean_radius != null) {
+                    text += ", radius " + calc.local_mean_radius;
+                }
+                return text;
+            }
+            return "Null: " + policy;
+        }
+
         // Keeps a selection current across create/delete/fetch: falls back
         // to the first (oldest) channel when nothing is selected yet, or
         // the previous selection no longer exists.
@@ -25477,7 +25699,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<div class="ww-cc-list-row-main">' +
                         '<div class="ww-cc-list-row-name">' + escapeHtml(calc.name) + '</div>' +
                         '<div class="ww-cc-list-row-expr">' + escapeHtml(wwCcExpressionTextFor(calc)) + '</div>' +
-                        '<div class="ww-cc-list-row-summary">' + escapeHtml((meta ? meta.label : calc.operation) + " · " + inputNames) + '</div>' +
+                        '<div class="ww-cc-list-row-summary">' + escapeHtml((meta ? meta.label : calc.operation) + " · " + inputNames + " · " + wwCcNullPolicySummaryText(calc)) + '</div>' +
                         (error ? '<div class="ww-cc-list-row-error">' + escapeHtml(error) + '</div>' : '') +
                     '</div>' +
                     '<div class="ww-cc-list-row-class"><span class="ww-cc-type-badge">' + escapeHtml(calc.engineering_type || "Undefined") + '</span></div>' +
@@ -25505,6 +25727,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (wwCcBuilder.operation) {
                 builderPanel.hidden = false;
                 wwCcRenderBuilderFields();
+                wwCcRenderNullPolicyField();
                 wwCcRenderExpressionPreview();
                 wwCcSyncNameAndUnitFields();
                 wwCcSyncCreateButtonState();
@@ -26078,6 +26301,28 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // result in itself (it re-derives eligibility server-side).
             const override = wwCcBuilder.operation === "rms" ? !!wwCcBuilder.override : false;
 
+            // DEC-084 Calc Slice 3 (section 13): `null_policy` is always
+            // sent -- estimation fields are OMITTED entirely (never sent
+            // as an explicit `null`) for every other policy, matching
+            // this same function's own existing convention just above
+            // (`parameters` stays `{}` -- no key at all -- for every
+            // operation that doesn't use it). `local_mean_radius` is
+            // itself further omitted unless Local Mean is the chosen
+            // method, even under Estimate Missing Data.
+            const requestBody = {
+                name: wwCcBuilder.name.trim(), operation: wwCcBuilder.operation,
+                inputs: inputsPayload, parameters: parameters, override: override,
+                null_policy: wwCcBuilder.nullPolicy,
+            };
+            if (wwCcBuilder.nullPolicy === "estimate_missing_data") {
+                requestBody.estimation_method = wwCcBuilder.estimationMethod;
+                requestBody.max_gap_value = Number(wwCcBuilder.maxGapValue);
+                requestBody.max_gap_unit = wwCcBuilder.maxGapUnit;
+                if (wwCcBuilder.estimationMethod === "local_mean") {
+                    requestBody.local_mean_radius = Number(wwCcBuilder.localMeanRadius);
+                }
+            }
+
             let response;
             try {
                 response = await fetch(
@@ -26085,10 +26330,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            name: wwCcBuilder.name.trim(), operation: wwCcBuilder.operation,
-                            inputs: inputsPayload, parameters: parameters, override: override,
-                        }),
+                        body: JSON.stringify(requestBody),
                     }
                 );
             } catch (error) {
@@ -26267,6 +26509,56 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwCcBuilder.nameEditedByUser = true;
             wwCcBuilder.name = event.target.value;
             wwCcSyncCreateButtonState();
+        });
+
+        // DEC-084 Calc Slice 3: the Null Handling select is static
+        // markup (never recreated), so a direct listener is enough --
+        // same treatment as #wwCcNameInput just above.
+        document.getElementById("wwCcNullPolicySelect").addEventListener("change", (event) => {
+            wwCcBuilder.nullPolicy = event.target.value;
+            // Section 11: switching AWAY from Estimate Missing Data must
+            // ensure the now-irrelevant estimation fields are never sent
+            // -- cleared here (not merely hidden), so wwCcCreateChannel()
+            // never has to special-case "hidden but still holding a
+            // stale value."
+            if (wwCcBuilder.nullPolicy !== "estimate_missing_data") {
+                wwCcBuilder.estimationMethod = "";
+                wwCcBuilder.maxGapValue = "";
+                wwCcBuilder.localMeanRadius = "";
+            }
+            wwCcRenderNullPolicyField();
+            wwCcSyncCreateButtonState();
+        });
+
+        // #wwCcEstimationFields is rebuilt (innerHTML) by
+        // wwCcRenderEstimationFields() on every relevant change, so its
+        // own inputs/select are handled via delegation on the stable
+        // container -- the exact same pattern #wwCcBuilderFields already
+        // uses for its own dynamically-rendered children.
+        document.getElementById("wwCcEstimationFields").addEventListener("change", (event) => {
+            if (event.target.id === "wwCcEstimationMethodSelect") {
+                wwCcBuilder.estimationMethod = event.target.value;
+                // Section 11: switching Local Mean -> another method must
+                // ensure local_mean_radius is not sent.
+                if (wwCcBuilder.estimationMethod !== "local_mean") wwCcBuilder.localMeanRadius = "";
+                wwCcRenderEstimationFields();
+                wwCcSyncCreateButtonState();
+            } else if (event.target.id === "wwCcMaxGapValueInput") {
+                wwCcBuilder.maxGapValue = event.target.value;
+                wwCcSyncCreateButtonState();
+            } else if (event.target.id === "wwCcLocalMeanRadiusInput") {
+                wwCcBuilder.localMeanRadius = event.target.value;
+                wwCcSyncCreateButtonState();
+            }
+        });
+        document.getElementById("wwCcEstimationFields").addEventListener("input", (event) => {
+            if (event.target.id === "wwCcMaxGapValueInput") {
+                wwCcBuilder.maxGapValue = event.target.value;
+                wwCcSyncCreateButtonState();
+            } else if (event.target.id === "wwCcLocalMeanRadiusInput") {
+                wwCcBuilder.localMeanRadius = event.target.value;
+                wwCcSyncCreateButtonState();
+            }
         });
 
         document.getElementById("wwCcCreateBtn").addEventListener("click", wwCcCreateChannel);
