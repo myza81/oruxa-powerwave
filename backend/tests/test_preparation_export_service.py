@@ -33,6 +33,7 @@ from app.services.errors import (
     WorksheetNotSelectedError,
 )
 from app.services.preparation_export_service import (
+    EXPLICIT_NULL_EXPORT_VALUE,
     EXPORT_MODE_DATA_ONLY,
     EXPORT_MODE_WITH_PROVENANCE,
     export_preparation_source,
@@ -42,7 +43,7 @@ from app.services.preparation_import_service import (
     import_excel_preparation_source,
     select_preparation_worksheet,
 )
-from app.domain.working_overlay import column_key
+from app.domain.working_overlay import OVERRIDE_KIND_NULL, column_key
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.time_axis_service import interpret_time_axis, set_time_axis_configuration
 from app.services.working_overlay_service import (
@@ -627,6 +628,186 @@ class TestWaveformDataIntegrity:
         rows = _read_csv_rows(_unzip(result.content))
 
         assert rows[0] == ["Time", "Voltage", "Voltage__C"]
+
+
+class TestExplicitNullExport:
+    """DEC-084 (Slice 2): a cell explicitly marked null must export as
+    the literal `EXPLICIT_NULL_EXPORT_VALUE` -- in BOTH CSV and Excel --
+    never an empty field/cell, and never conflated with a plain CLEAR
+    (which still exports as empty, and still blocks readiness the same
+    way it always has)."""
+
+    def test_explicit_null_waveform_cell_exports_as_literal_null_in_csv(self):
+        prep = PreparationSessionRegistry()
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
+        edit_cell(
+            workspace_id=WS, source_id=sid, row_number=1, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=prep,
+        )
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+        rows = _read_csv_rows(_unzip(result.content))
+
+        assert rows[1][1] == EXPLICIT_NULL_EXPORT_VALUE
+        assert rows[2][1] == "2.0"  # the other row is completely unaffected
+
+    def test_explicit_null_waveform_cell_exports_as_literal_null_in_excel(self):
+        prep = PreparationSessionRegistry()
+        content = _build_xlsx({"Sheet1": [["2026-08-31 13:00:00", 1.0], ["2026-08-31 13:00:01", 2.0]]})
+        sid = _add_excel(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_absolute(prep, sid, column_index=0)
+        edit_cell(
+            workspace_id=WS, source_id=sid, row_number=1, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=prep,
+        )
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+        rows = _read_xlsx_rows(_unzip(result.content))
+
+        assert rows[1][1] == EXPLICIT_NULL_EXPORT_VALUE
+        assert rows[2][1] == 2.0
+
+    def test_explicit_null_is_never_an_empty_excel_cell(self):
+        # Distinguishes this from openpyxl's own None-means-empty-cell
+        # convention -- the written value must be the real STRING
+        # "null", not a genuinely empty/None cell.
+        prep = PreparationSessionRegistry()
+        content = _build_xlsx({"Sheet1": [["2026-08-31 13:00:00", 1.0]]})
+        sid = _add_excel(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_absolute(prep, sid, column_index=0)
+        edit_cell(
+            workspace_id=WS, source_id=sid, row_number=1, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=prep,
+        )
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+        rows = _read_xlsx_rows(_unzip(result.content))
+
+        assert rows[1][1] is not None
+        assert rows[1][1] == "null"
+
+    def test_manual_edit_exports_the_entered_value_not_null(self):
+        prep = PreparationSessionRegistry()
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,ERR\n")
+        edit_cell(workspace_id=WS, source_id=sid, row_number=1, column_index=1, value="2.5", registry=prep)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+        rows = _read_csv_rows(_unzip(result.content))
+
+        assert rows[1][1] == "2.5"
+        assert rows[1][1] != EXPLICIT_NULL_EXPORT_VALUE
+
+    def test_not_assigned_column_remains_omitted_alongside_an_explicit_null(self):
+        prep = PreparationSessionRegistry()
+        content = b"Time,Voltage,Status\n2026-08-31 13:00:00,1.0,ok\n"
+        sid = _add_csv(prep, content)
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        # column_index=2 ("Status") stays not_assigned
+        _confirm_absolute(prep, sid, column_index=0)
+        edit_cell(
+            workspace_id=WS, source_id=sid, row_number=2, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=prep,
+        )
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+        rows = _read_csv_rows(_unzip(result.content))
+        manifest = _read_manifest(_unzip(result.content))
+
+        assert rows[0] == ["Time", "Voltage"]
+        assert rows[1][1] == EXPLICIT_NULL_EXPORT_VALUE
+        assert manifest["omitted_columns"] == [{"column_index": 2, "label": "Status", "role": "not_assigned"}]
+
+    def test_unresolved_blank_waveform_cell_still_blocks_export(self):
+        # A genuinely blank raw cell -- never touched by any override --
+        # must remain exactly as blocking as before; explicit null is an
+        # ADDITIONAL resolution path, never a relaxation of this rule.
+        prep = PreparationSessionRegistry()
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,\n")
+
+        with pytest.raises(ExportNotReadyError):
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+
+    def test_unresolved_invalid_waveform_cell_still_blocks_export(self):
+        prep = PreparationSessionRegistry()
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,ERR\n")
+
+        with pytest.raises(ExportNotReadyError):
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+
+    def test_clear_override_still_blocks_export_and_never_masquerades_as_null(self):
+        # The critical distinction this whole slice hinges on: `kind`
+        # omitted (a plain CLEAR) must NOT be treated as an explicit
+        # null merely because both currently store `value=None`.
+        prep = PreparationSessionRegistry()
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,1.0\n")
+        edit_cell(workspace_id=WS, source_id=sid, row_number=1, column_index=1, value=None, registry=prep)
+
+        with pytest.raises(ExportNotReadyError):
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+
+    def test_multiple_channels_one_explicit_null_others_untouched(self):
+        # One row: valid V1, explicit-null V2, valid V3 -- proves V1/V3
+        # are preserved exactly, and only V2 becomes the literal null.
+        prep = PreparationSessionRegistry()
+        content = b"Time,V1,V2,V3\n2026-08-31 13:00:00,1.00,1.01,0.99\n"
+        sid = _add_csv(prep, content)
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1, 2, 3)
+        _confirm_absolute(prep, sid, column_index=0)
+        edit_cell(
+            workspace_id=WS, source_id=sid, row_number=2, column_index=2,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=prep,
+        )
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+        rows = _read_csv_rows(_unzip(result.content))
+
+        assert rows[0] == ["Time", "V1", "V2", "V3"]
+        assert rows[1][1] == "1.00"
+        assert rows[1][2] == EXPLICIT_NULL_EXPORT_VALUE
+        assert rows[1][3] == "0.99"
+
+    def test_manifest_records_null_cell_count_distinct_from_cleared(self):
+        prep = PreparationSessionRegistry()
+        content = b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n2026-08-31 13:00:02,3.0\n"
+        sid = _ready_absolute_source(prep, content)
+        edit_cell(
+            workspace_id=WS, source_id=sid, row_number=1, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=prep,
+        )
+        set_row_excluded(workspace_id=WS, source_id=sid, row_number=2, excluded=True, registry=prep)
+        edit_cell(workspace_id=WS, source_id=sid, row_number=2, column_index=1, value=None, registry=prep)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+        manifest = _read_manifest(_unzip(result.content))
+
+        assert manifest["null_cell_count"] == 1
+        assert manifest["cleared_cell_count"] == 1
+
+    def test_data_only_mode_also_exports_the_literal_null(self):
+        # `null_cell_count`/manifest are provenance-only (EXPORT_MODE_
+        # WITH_PROVENANCE) -- the cleaned data itself, including the
+        # explicit-null literal, must be identical in EXPORT_MODE_DATA_ONLY.
+        prep = PreparationSessionRegistry()
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,1.0\n")
+        edit_cell(
+            workspace_id=WS, source_id=sid, row_number=1, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=prep,
+        )
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+        rows = list(csv.reader(io.StringIO(result.content.decode("utf-8"))))
+
+        assert rows[1][1] == EXPLICIT_NULL_EXPORT_VALUE
 
 
 class TestManifestExportedTime:

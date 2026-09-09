@@ -99,6 +99,18 @@ if a concurrent mutation is somehow observed mid-export,
 mixing rows from two different working-overlay states, mirroring Slice
 10's own `ConversionRevisionChangedError` precedent exactly.
 
+**Explicit null (DEC-084, Slice 2)**: `_cell_export_value()` writes the
+literal `EXPLICIT_NULL_EXPORT_VALUE` (`"null"`) for a cell carrying
+`app.domain.working_overlay.OVERRIDE_KIND_NULL` (surfaced per-row as
+`PreviewRow.explicit_null_columns`), in BOTH CSV and Excel -- never an
+empty field/cell. A plain CLEAR override, and a genuinely blank raw
+cell, still export exactly as before (an empty field/cell) -- `kind`,
+never `value` alone, is what keeps an explicit null from being
+conflated with either. The manifest's own `null_cell_count` (alongside
+the pre-existing `edited_cell_count`/`cleared_cell_count`) records how
+many explicit-null cells this export carried, for the same provenance
+reasons those two already do.
+
 **Performance** (task section Y): one single streaming pass over
 `iterate_active_region_rows()` builds the export table's rows
 incrementally -- for Excel, `openpyxl.Workbook(write_only=True)` +
@@ -167,7 +179,13 @@ from app.domain.time_axis import (
     TimeAxisSampleRow,
     is_time_axis_resolved,
 )
-from app.domain.working_overlay import OVERRIDE_KIND_CLEAR, OVERRIDE_KIND_EDIT, ROLE_NOT_ASSIGNED, ROLE_WAVEFORM
+from app.domain.working_overlay import (
+    OVERRIDE_KIND_CLEAR,
+    OVERRIDE_KIND_EDIT,
+    OVERRIDE_KIND_NULL,
+    ROLE_NOT_ASSIGNED,
+    ROLE_WAVEFORM,
+)
 from app.services.errors import (
     ExportNotReadyError,
     ExportRequiresIntervalError,
@@ -200,6 +218,17 @@ from app.services.time_axis_service import get_time_axis_summary, resolve_interp
 #: MAX_OPERATION_HISTORY`'s own bound for the same "generous but not
 #: unlimited" reasoning.
 MAX_MANIFEST_EXCLUDED_ROWS_LISTED = 200
+
+#: DEC-084 (Slice 2): the literal cleaned-export representation of an
+#: explicit-null waveform/data cell, for both CSV and Excel -- a real
+#: string VALUE written into the cell (never an empty field, never
+#: `None`/`NaN`/`0`), so a re-uploaded cleaned file still carries the
+#: engineer's own "genuinely missing" decision forward rather than
+#: silently reverting it to an unresolved blank. Distinct from
+#: `_cell_export_value()`'s existing `None -> ""` handling, which still
+#: covers a raw blank and a CLEAR override exactly as before -- only a
+#: cell carrying `OVERRIDE_KIND_NULL` ever produces this literal.
+EXPLICIT_NULL_EXPORT_VALUE = "null"
 
 #: Excel worksheet name constraints (task section C): at most 31
 #: characters, and none of `: \ / ? * [ ]` -- Excel's own real
@@ -321,14 +350,26 @@ def _unique_export_names(column_labels: list[str], included_column_indices: list
     return result
 
 
-def _cell_export_value(value: Any) -> Any:
+def _cell_export_value(value: Any, *, is_explicit_null: bool) -> Any:
     """Task section L: a genuinely empty cell (raw `None`, or a working
     CLEAR override -- both already surface as `None` in `PreviewRow.
     cells`) exports as an empty field/cell, never the literal text
     `"None"`/`"NaN"`/`"null"`/`0`. Every other value passes through
     UNCHANGED -- this function never coerces, parses, or reinterprets a
     non-empty value (task's own explicit "do not coerce ambiguous
-    non-empty text" guardrail)."""
+    non-empty text" guardrail).
+
+    DEC-084 (Slice 2): `is_explicit_null=True` (the cell carries
+    `OVERRIDE_KIND_NULL`, per `PreviewRow.explicit_null_columns`)
+    overrides that empty-field default with the literal
+    `EXPLICIT_NULL_EXPORT_VALUE` instead -- an explicit null and a plain
+    CLEAR both surface as `value=None` here (see `CellOverride`'s own
+    docstring for why), so `is_explicit_null` -- never `value` alone --
+    is what keeps the two from being conflated on export. `value` itself
+    is ignored whenever `is_explicit_null` is `True` (it is always
+    `None` for that kind anyway; the caller's own flag is authoritative)."""
+    if is_explicit_null:
+        return EXPLICIT_NULL_EXPORT_VALUE
     return "" if value is None else value
 
 
@@ -547,7 +588,13 @@ def export_preparation_source(
             continue
         values = tuple(row.cells[c] if c < len(row.cells) else None for c in time_axis_summary.column_indices)
         time_axis_samples.append(TimeAxisSampleRow(row_number=row.row_number, values=values))
-        waveform_rows.append([_cell_export_value(row.cells[c] if c < len(row.cells) else None) for c in waveform_column_indices])
+        waveform_rows.append([
+            _cell_export_value(
+                row.cells[c] if c < len(row.cells) else None,
+                is_explicit_null=c in row.explicit_null_columns,
+            )
+            for c in waveform_column_indices
+        ])
 
     configured_time = _build_configured_time_column(
         interpreter=interpreter, time_axis_samples=time_axis_samples, time_axis_summary=time_axis_summary,
@@ -564,6 +611,7 @@ def export_preparation_source(
     # own `excluded_row_count` provenance field already is.
     edited_cell_count = 0
     cleared_cell_count = 0
+    null_cell_count = 0
     for (ws, _row_number, _column_index), override in session.working_overlay.cell_overrides.items():
         if ws != worksheet_index:
             continue
@@ -571,6 +619,8 @@ def export_preparation_source(
             edited_cell_count += 1
         elif override.kind == OVERRIDE_KIND_CLEAR:
             cleared_cell_count += 1
+        elif override.kind == OVERRIDE_KIND_NULL:
+            null_cell_count += 1
 
     region = session.working_overlay.data_region.get(worksheet_index)
     base_name = _sanitize_base_filename(session.summary.original_filename)
@@ -598,6 +648,7 @@ def export_preparation_source(
             column_engineering_quantities=column_engineering_quantities,
             column_measured_units=column_measured_units,
             edited_cell_count=edited_cell_count, cleared_cell_count=cleared_cell_count,
+            null_cell_count=null_cell_count,
             excluded_row_numbers=excluded_row_numbers, exported_row_count=len(exported_rows),
             artifact_filename=artifact_filename, configured_time=configured_time, column_labels=column_labels,
         )
@@ -696,7 +747,7 @@ def _build_manifest(
     *, session: PreparationSession, worksheet_index: int | None, captured_revision: int,
     issue_summary, time_axis_summary, omitted_columns: list[dict], column_roles: list[str],
     column_engineering_quantities: list[str], column_measured_units: list[str],
-    edited_cell_count: int, cleared_cell_count: int, excluded_row_numbers: list[int],
+    edited_cell_count: int, cleared_cell_count: int, null_cell_count: int, excluded_row_numbers: list[int],
     exported_row_count: int, artifact_filename: str,
     configured_time: _ConfiguredTimeColumn, column_labels: list[str],
 ) -> dict[str, Any]:
@@ -743,6 +794,11 @@ def _build_manifest(
         "column_measured_units": column_measured_units,
         "edited_cell_count": edited_cell_count,
         "cleared_cell_count": cleared_cell_count,
+        # DEC-084 (Slice 2): distinct from `cleared_cell_count` -- an
+        # explicit null is a RESOLVED missing-data decision, exported as
+        # the literal `EXPLICIT_NULL_EXPORT_VALUE`, never conflated with
+        # an unresolved clear.
+        "null_cell_count": null_cell_count,
         "time_family": time_axis_summary.family,
         "time_provenance": time_axis_summary.provenance,
         "interpreter_id": time_axis_summary.interpreter_id,

@@ -101,6 +101,18 @@ waveform value is ever interpolated or coerced. A contradiction found
 during canonical construction (task section E) is reported via
 `ConversionValidationError`, never silently corrected.
 
+**Explicit null (DEC-084, Slice 2)**: an explicit-null Waveform cell
+(`app.domain.working_overlay.OVERRIDE_KIND_NULL`, surfaced per-row as
+`PreviewRow.explicit_null_columns`) is accepted here as an intentional
+missing sample -- `float("nan")`, never zero, never a
+`ConversionValidationError`. The row is still fully converted (present
+in `waveform_data["time"]` and every OTHER channel's own column); only
+that one channel's value for that one row becomes `NaN`. Time Axis gets
+no equivalent acceptance: Slice 1's readiness gate already keeps an
+explicit-null Time Axis cell permanently blocking, so `issue_summary.
+is_ready` above is always `False` first for any source that has one --
+this module never even reaches its own row loop in that case.
+
 **Performance** (task section AB): one single-pass stream
 (`iterate_active_region_rows`) builds only the two in-memory
 structures conversion actually needs (the time-axis sample list, and a
@@ -374,6 +386,23 @@ def convert_preparation_source(
         time_axis_samples.append(TimeAxisSampleRow(row_number=row.row_number, values=values))
         row_values: dict[int, float] = {}
         for column_index in waveform_column_indices:
+            # DEC-084 (Slice 2): an explicit-null waveform cell is an
+            # intentional, engineer-affirmed missing sample -- accepted
+            # here, never a conversion failure. `float("nan")` is the
+            # SAME internal missing-value representation
+            # `app.services.waveform_service`/`app.domain.per_unit`/
+            # `app.services.table_service`/`app.services.
+            # calculated_channel_service` already use throughout the
+            # waveform pipeline (all `np.isfinite`-gated, all converting
+            # NaN -> `None` at their own JSON boundary) -- never zero,
+            # never dropped, never interpolated. The row itself is still
+            # appended to `row_order`/`waveform_values_by_row` normally
+            # below, so row and channel alignment are both fully
+            # preserved -- only THIS column's value for THIS row becomes
+            # NaN.
+            if column_index in row.explicit_null_columns:
+                row_values[column_index] = float("nan")
+                continue
             raw_value = row.cells[column_index] if column_index < len(row.cells) else None
             parsed = _to_float(raw_value)
             if parsed is None:

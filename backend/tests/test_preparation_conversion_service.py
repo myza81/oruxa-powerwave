@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import asyncio
 import io
+import math
 
 import pytest
 from fastapi import UploadFile
 from openpyxl import Workbook
 from starlette.datastructures import Headers
 
+from app.domain.working_overlay import OVERRIDE_KIND_NULL
 from app.services.errors import (
     ConversionNotReadyError,
     ConversionRequiresIntervalError,
@@ -553,6 +555,200 @@ class TestWaveformChannels:
         metadata = _convert(prep, ws, sid)
 
         assert len(metadata.analog_channels) == 1
+
+
+class TestExplicitNullConversion:
+    """DEC-084 (Slice 2): an explicit-null Waveform cell is accepted and
+    converted as an intentional missing sample (`NaN`) -- never a
+    `ConversionValidationError`, never dropped, never zero -- with row
+    and channel alignment fully preserved. Time Axis stays blocked
+    (Slice 1's own stricter policy), so conversion never even reaches
+    this row loop for a source that has one."""
+
+    def test_explicit_null_waveform_cell_converts_successfully(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        edit_cell(
+            workspace_id="ws-1", source_id=sid, row_number=1, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=prep,
+        )
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+
+        assert metadata is not None
+
+    def test_explicit_null_sample_preserves_row_count(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n2026-08-31 13:00:02,3.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        edit_cell(
+            workspace_id="ws-1", source_id=sid, row_number=2, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=prep,
+        )
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+        active = ws.get("ws-1", metadata.source_id)
+
+        assert active.record.sample_count() == 3
+        assert len(active.record.waveform_data["time"]) == 3
+
+    def test_internal_representation_is_gap_safe_not_zero(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        edit_cell(
+            workspace_id="ws-1", source_id=sid, row_number=1, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=prep,
+        )
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+        active = ws.get("ws-1", metadata.source_id)
+
+        channel_values = list(active.record.waveform_data.iloc[:, 1])
+        assert math.isnan(channel_values[0])
+        assert channel_values[0] != 0.0  # never coerced to zero
+        assert channel_values[1] == 2.0  # the other row's value is untouched
+
+    def test_manual_edit_converts_normally_not_as_null(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,ERR\n2026-08-31 13:00:01,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        edit_cell(workspace_id="ws-1", source_id=sid, row_number=1, column_index=1, value="99.5", registry=prep)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+        active = ws.get("ws-1", metadata.source_id)
+
+        assert list(active.record.waveform_data.iloc[:, 1]) == [99.5, 2.0]
+
+    def test_unresolved_blank_still_cannot_convert(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,\n2026-08-31 13:00:01,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        with pytest.raises(ConversionNotReadyError):
+            _convert(prep, ws, sid)
+
+    def test_unresolved_invalid_still_cannot_convert(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,ERR\n2026-08-31 13:00:01,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        with pytest.raises(ConversionNotReadyError):
+            _convert(prep, ws, sid)
+
+    def test_clear_override_still_blocks_and_never_masquerades_as_null(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        edit_cell(workspace_id="ws-1", source_id=sid, row_number=1, column_index=1, value=None, registry=prep)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        with pytest.raises(ConversionNotReadyError):
+            _convert(prep, ws, sid)
+
+    def test_time_axis_explicit_null_remains_blocked(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+        edit_cell(
+            workspace_id="ws-1", source_id=sid, row_number=1, column_index=0,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=prep,
+        )
+
+        with pytest.raises(ConversionNotReadyError):
+            _convert(prep, ws, sid)
+
+    def test_multiple_explicit_null_cells_across_different_channels_preserve_alignment(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        content = b"Time,V1,V2,V3\n2026-08-31 13:00:00,1.00,1.01,0.99\n2026-08-31 13:00:01,1.02,1.00,1.00\n2026-08-31 13:00:02,1.01,1.00,1.02\n"
+        sid = _add_csv(prep, content)
+        from app.services.working_overlay_service import set_header_row
+        set_header_row(workspace_id="ws-1", source_id=sid, row_number=1, registry=prep)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1, 2, 3)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+        # Row 3 (the second data row): V2 explicit-null.
+        edit_cell(
+            workspace_id="ws-1", source_id=sid, row_number=3, column_index=2,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=prep,
+        )
+        # Row 4 (the third data row): V3 explicit-null.
+        edit_cell(
+            workspace_id="ws-1", source_id=sid, row_number=4, column_index=3,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=prep,
+        )
+
+        metadata = _convert(prep, ws, sid)
+        active = ws.get("ws-1", metadata.source_id)
+
+        v1 = list(active.record.waveform_data["V1"])
+        v2 = list(active.record.waveform_data["V2"])
+        v3 = list(active.record.waveform_data["V3"])
+        assert active.record.sample_count() == 3
+        assert v1 == [1.00, 1.02, 1.01]  # never touched by either null
+        assert v2[0] == 1.01 and math.isnan(v2[1]) and v2[2] == 1.00
+        assert v3[0] == 0.99 and v3[1] == 1.00 and math.isnan(v3[2])
+
+    def test_one_row_valid_v1_null_v2_valid_v3_preserves_v1_and_v3(self):
+        # The exact worked example from the task: one row contains valid
+        # V1, explicit-null V2, valid V3 -- V1/V3 must be preserved, and
+        # V2's null must never propagate into either sibling channel.
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        content = b"Time,V1,V2,V3\n2026-08-31 13:00:00,1.00,1.01,0.99\n"
+        sid = _add_csv(prep, content)
+        from app.services.working_overlay_service import set_header_row
+        set_header_row(workspace_id="ws-1", source_id=sid, row_number=1, registry=prep)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1, 2, 3)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+        edit_cell(
+            workspace_id="ws-1", source_id=sid, row_number=2, column_index=2,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=prep,
+        )
+
+        metadata = _convert(prep, ws, sid)
+        active = ws.get("ws-1", metadata.source_id)
+
+        assert active.record.waveform_data["V1"].iloc[0] == 1.00
+        assert math.isnan(active.record.waveform_data["V2"].iloc[0])
+        assert active.record.waveform_data["V3"].iloc[0] == 0.99
+
+    def test_excluded_row_with_explicit_null_never_reaches_conversion(self):
+        # An excluded row's own explicit null is simply irrelevant --
+        # the whole row (null cell included) never reaches the row loop
+        # at all, matching existing row-exclusion semantics exactly.
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        edit_cell(
+            workspace_id="ws-1", source_id=sid, row_number=1, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=prep,
+        )
+        set_row_excluded(workspace_id="ws-1", source_id=sid, row_number=1, excluded=True, registry=prep)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+        active = ws.get("ws-1", metadata.source_id)
+
+        assert active.record.sample_count() == 1
+        assert list(active.record.waveform_data.iloc[:, 1]) == [2.0]
 
 
 class TestEngineeringQuantityConversion:

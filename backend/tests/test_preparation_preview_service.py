@@ -15,6 +15,7 @@ from fastapi import UploadFile
 from openpyxl import Workbook
 from starlette.datastructures import Headers
 
+from app.domain.working_overlay import OVERRIDE_KIND_NULL
 from app.services.errors import SourceNotFoundError, WorksheetNotSelectedError
 from app.services.preparation_import_service import (
     import_csv_preparation_source,
@@ -419,6 +420,31 @@ class TestWorkingOverlayInCsvPreview:
         result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
 
         assert result.rows[0].cells == ["a", None]
+
+    def test_explicit_null_cell_survives_the_working_overlay_to_preview_round_trip(self):
+        # DEC-084 (Slice 2) round-trip guardrail: the explicit-null
+        # marker set on the overlay must reach `PreviewRow.
+        # explicit_null_columns` (the field export/conversion actually
+        # consume to distinguish it from a plain clear) -- both a null
+        # and a clear render the SAME `cells` value (`None`), so this
+        # separate field is the only thing carrying the distinction
+        # through the preview layer.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n")
+
+        edit_cell(
+            workspace_id="ws-1", source_id=source_id, row_number=1, column_index=1,
+            value=None, kind=OVERRIDE_KIND_NULL, registry=registry,
+        )
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=2, column_index=1, value=None, registry=registry)
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.rows[0].cells == ["a", None]
+        assert result.rows[1].cells == ["1", None]
+        # Both render identically as `None` -- only explicit_null_columns
+        # tells them apart.
+        assert result.rows[0].explicit_null_columns == frozenset({1})
+        assert result.rows[1].explicit_null_columns == frozenset()
 
     def test_reset_cell_restores_the_raw_value_in_preview(self):
         registry = PreparationSessionRegistry()
