@@ -211,9 +211,14 @@ class TestUngroupedSourceDefaultChannels:
     channels -- truthful, un-annotated single base amount."""
 
     def test_source_default_voltage(self, group_registry, voltage_config_registry, current_config_registry):
+        # Slice 4: a resolved reference is now required for Voltage too;
+        # explicit line-to-line evidence keeps this test's own effective
+        # base identical to the raw entered value (LG-specific division
+        # is covered by test_per_unit_source_default_voltage_reference.py).
         profile = _profile(voltage_base_value=275.0)
         prov = _build_source(
-            "V132", VOLTAGE, profile=profile, group_registry=group_registry,
+            "V132", VOLTAGE, profile=profile, voltage_channel_names=["VAB", "VBC", "VCA"],
+            group_registry=group_registry,
             voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
         )
         assert prov.status == STATUS_CONFIGURED

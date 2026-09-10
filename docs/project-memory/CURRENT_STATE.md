@@ -597,6 +597,39 @@ re-confirmed by the TG-FINAL audit):
   guarding (the same class of race this slice's own source-channel
   popover already handles) — reported as a small, separately-schedulable
   follow-up rather than rushed in.
+  **Slice 4 (2026-09-11) corrects Source Default Voltage-base
+  interpretation**, closing the exact gap
+  [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) §8 had
+  documented as a confirmed `[FACT]` since 2026-08-22: `voltage_base_value`
+  is now uniformly the nominal SYSTEM LINE-TO-LINE voltage (identical
+  semantics to `VoltageBaseConfiguration.nominal_voltage_ll_kv`) —
+  a line-to-ground channel's own effective base is now correctly
+  `Vbase_LL / √3`, a line-to-line channel's is `Vbase_LL` unchanged. A
+  resolved reference is now required for VOLTAGE to resolve `configured`
+  at all (mirrors the Measurement Group resolver's own long-standing
+  gate). **The derived current-base formula
+  (`Ibase = Sbase / (√3 × Vbase_LL)`) is unchanged in its own governing
+  principle** — always the raw nominal `Vbase_LL`, regardless of
+  reference; the old helper that multiplied by `√3` for a line-to-ground
+  reference is removed outright (it would now silently double-convert).
+  This intentionally changes numeric pu results for any existing
+  line-to-ground Source Default configuration (e.g. `≈0.577 pu` → the
+  correct `≈1.0 pu` for a 275 kV/≈158.8 kV worked example) — deliberate,
+  not preserved for backward compatibility, per explicit owner
+  instruction. DEC-051 precedence, DEC-052 inheritance, Measurement
+  Group arithmetic, and direct/manual current-base mode are all
+  byte-for-byte unchanged (calculated channels that fall back to Source
+  Default inherit the fix automatically via the same, now-corrected
+  `resolve_per_unit()` — no separate correction needed). Slice 2
+  coverage and Slice 3 provenance reflect the corrected arithmetic with
+  zero code changes of their own. Frontend: the Source Default modal's
+  own cosmetic Ibase preview had the identical bug and is now corrected
+  to match; its Voltage Reference tooltip (which previously, and now
+  incorrectly, claimed the reference is never applied to a displayed
+  channel's own value) is corrected; a new secondary "Nominal system
+  voltage / Effective L-G base" preview line was added. See
+  [DECISIONS.md — DEC-049's own 2026-09-11 update](DECISIONS.md#dec-049--global-per-unit-measurement-mode-workspace-scoped-base-profiles-backend-only-conversion-explicit-reassignment-and-two-axis-modeprofile-calculated-channel-inheritance-provenance)
+  for the full record, including the complete test-file update list.
 - **Calculated channels**: workspace-scoped derived analog channels —
   Reverse Polarity, Absolute Value, Multiply-by-Constant, N-input Addition,
   ordered N-input Subtraction, and trailing one-cycle RMS. Multi-input

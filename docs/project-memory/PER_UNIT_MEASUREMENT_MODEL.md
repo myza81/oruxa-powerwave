@@ -472,6 +472,26 @@ not the required `≈1.0 pu`. **This gap is now an approved-but-unbuilt
 requirement, not merely an open question** — implementation is Slice 3
 (§24), not this documentation pass and not Slice 1.
 
+**Update (2026-09-11) — this `[FACT]` is now CORRECTED for the DEC-049
+source-wide resolver too**, closing the gap this paragraph documents as
+"unaffected by this decision." Per the owner's own explicit "Per-Unit
+Configuration Slice 4" instruction (a UI-hierarchy-slice numbering
+distinct from this document's own DEC-050 §24 Slice sequence — do not
+confuse the two), `app.domain.per_unit.resolve_per_unit()`'s VOLTAGE
+branch now applies the identical governing principle this section
+already established for Measurement Groups: `voltage_base_value` is
+uniformly the nominal system LINE-TO-LINE voltage, and a line-to-ground
+channel now correctly divides by `Vbase_LL / √3`. The worked example
+above now computes the correct `≈1.0 pu` for BOTH the group-aware and
+Source-Default paths. See
+[DECISIONS.md](DECISIONS.md)'s DEC-049 entry, 2026-09-11 addendum, for
+the full record. `resolve_current_base_amps()`'s own
+`Ibase = Sbase / (√3 × Vbase_LL)` formula is UNCHANGED in its own
+governing principle (still always the raw nominal LL value, per §10/§11
+below) — only its internal helper was simplified, since `Vbase_LL` no
+longer needs a separate reference-dependent conversion step now that
+`voltage_base_value` itself is always already the LL value.
+
 ---
 
 ## 9. Current groups (`TARGET MODEL`)

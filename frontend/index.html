@@ -21482,10 +21482,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const sbase = Number(state.apparentPowerBaseValue);
                 const reference = state.voltageReferenceMode === "manual" ? state.voltageReferenceOverride : state.autoDetection.reference;
                 if (!Number.isFinite(vbase) || vbase <= 0 || !Number.isFinite(sbase) || sbase <= 0 || !reference) return "—";
+                // Per-Unit Configuration Slice 4 correction: the entered
+                // Voltage Base is now uniformly the nominal SYSTEM
+                // LINE-TO-LINE voltage (matching the Measurement Groups
+                // modal's own identical semantics), so this cosmetic
+                // preview's own Vbase_LL is simply the entered value in
+                // volts, with NO reference-dependent adjustment any more
+                // -- mirrors app.domain.per_unit.resolve_current_base_amps()'s
+                // own corrected formula exactly (see its own docstring
+                // for the full reasoning). Multiplying by sqrt(3) here
+                // for a line-to-ground reference, as this preview used
+                // to, would now double-convert and silently mismatch
+                // what the backend actually saves.
                 const vbaseVolts = vbase * 1000;
-                const vbaseLL = reference === PER_UNIT_LINE_TO_GROUND ? vbaseVolts * PER_UNIT_SQRT_3 : vbaseVolts;
                 const sbaseVa = sbase * 1_000_000;
-                const amps = sbaseVa / (PER_UNIT_SQRT_3 * vbaseLL);
+                const amps = sbaseVa / (PER_UNIT_SQRT_3 * vbaseVolts);
                 return (amps / 1000).toFixed(4) + " kA";
             }
             return "—";
@@ -21564,11 +21575,30 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // (conflicting evidence vs. no recognizable pattern, section 5's
         // own worked example) -- never a silently invented default; the
         // engineer must still be able to pick a reference in that case.
+        // Per-Unit Configuration Slice 4 correction: the entered Voltage
+        // Base is the nominal SYSTEM LINE-TO-LINE voltage; a line-to-
+        // ground channel's own effective base is Vbase_LL / sqrt(3) --
+        // matching app.domain.per_unit.resolve_per_unit()'s own
+        // corrected VOLTAGE branch exactly (never re-derived
+        // independently here; this is a read-only preview of the SAME
+        // formula, not a second implementation of it). Returns `null`
+        // when the base/reference aren't both known yet -- callers skip
+        // rendering the preview line entirely in that case, never a
+        // fabricated "—".
+        function wwPerUnitEffectiveVoltageBaseText(state, reference) {
+            const vbase = Number(state.voltageBaseValue);
+            if (!Number.isFinite(vbase) || vbase <= 0 || !reference) return null;
+            const isLg = reference === PER_UNIT_LINE_TO_GROUND;
+            const effective = isLg ? vbase / PER_UNIT_SQRT_3 : vbase;
+            return "Nominal system voltage: " + vbase + " kV L-L — Effective " + (isLg ? "L-G" : "L-L") +
+                " base: " + effective.toFixed(2) + " kV";
+        }
+
         function wwRenderVoltageReferenceBlock(state) {
             const refLabel = (ref) => (ref === PER_UNIT_LINE_TO_LINE ? "Line-to-Line" : "Line-to-Ground");
             const infoTip = wwInfoTipHtml(
                 "Voltage Reference",
-                "Whether Voltage channels of this recording represent line-to-ground or line-to-line measurements. Used only to derive the Current Base below -- never applied automatically to a displayed channel's own per-unit value."
+                "Whether Voltage channels of this recording represent line-to-ground or line-to-line measurements. A line-to-ground channel's own per-unit base is Vbase_LL / √3; a line-to-line channel uses Vbase_LL directly. Also used to derive the Current Base below (which always uses the raw nominal Vbase_LL, regardless of reference)."
             );
             const detailsToggleBtn = (evidence) => (
                 evidence.length
@@ -21584,21 +21614,25 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             );
 
             if (state.voltageReferenceMode === "manual") {
+                const manualPreview = wwPerUnitEffectiveVoltageBaseText(state, state.voltageReferenceOverride);
                 return '<div class="ww-cc-field"><span>Voltage Reference ' + infoTip + '</span>' +
                     '<select id="perUnitVoltageReferenceOverride">' +
                     '<option value="' + PER_UNIT_LINE_TO_GROUND + '"' + (state.voltageReferenceOverride === PER_UNIT_LINE_TO_GROUND ? " selected" : "") + '>Line-to-Ground</option>' +
                     '<option value="' + PER_UNIT_LINE_TO_LINE + '"' + (state.voltageReferenceOverride === PER_UNIT_LINE_TO_LINE ? " selected" : "") + '>Line-to-Line</option>' +
                     '</select>' +
                     '<div class="hint">Manual override</div>' +
+                    (manualPreview ? '<div class="hint">' + escapeHtml(manualPreview) + '</div>' : '') +
                     '<div class="ww-pu-ref-actions"><button type="button" class="secondary" id="perUnitReturnToAutoBtn">Return to Auto</button></div>' +
                     '</div>';
             }
 
             if (state.autoDetection.reference) {
                 const evidence = state.autoDetection.evidence || [];
+                const autoPreview = wwPerUnitEffectiveVoltageBaseText(state, state.autoDetection.reference);
                 return '<div class="ww-cc-field"><span>Voltage Reference ' + infoTip + '</span>' +
                     '<div class="hint">Auto: ' + refLabel(state.autoDetection.reference) + '</div>' +
                     '<div class="hint">Detected automatically from channel naming.</div>' +
+                    (autoPreview ? '<div class="hint">' + escapeHtml(autoPreview) + '</div>' : '') +
                     '<div class="ww-pu-ref-actions">' + detailsToggleBtn(evidence) +
                     '<button type="button" class="secondary" id="perUnitOverrideReferenceBtn">Override</button></div>' +
                     detailsPanel("Detected as " + refLabel(state.autoDetection.reference), evidence) +

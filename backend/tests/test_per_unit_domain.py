@@ -41,7 +41,6 @@ from app.domain.per_unit import (
     resolve_current_base_amps,
     resolve_effective_voltage_reference,
     resolve_per_unit,
-    voltage_base_ll_volts,
     voltage_base_valid,
     voltage_base_volts,
 )
@@ -110,23 +109,6 @@ class TestResolveEffectiveVoltageReference:
         assert detection.reference == LINE_TO_GROUND
 
 
-class TestVoltageBaseLLVolts:
-    def test_line_to_line_reference_is_unchanged(self):
-        profile = _profile(voltage_base_value=275.0)
-        assert voltage_base_ll_volts(profile, LINE_TO_LINE) == pytest.approx(275_000.0)
-
-    def test_line_to_ground_reference_is_normalized_by_sqrt_3(self):
-        profile = _profile(voltage_base_value=100.0)
-        assert voltage_base_ll_volts(profile, LINE_TO_GROUND) == pytest.approx(100_000.0 * 1.7320508075688772)
-
-    def test_unresolved_reference_never_applies_sqrt_3_unconfirmed(self):
-        # resolve_current_base_amps() already gates on a KNOWN reference
-        # before ever calling this -- but as a defense-in-depth default,
-        # an unconfirmed reference must never silently apply sqrt(3).
-        profile = _profile(voltage_base_value=100.0)
-        assert voltage_base_ll_volts(profile, None) == pytest.approx(100_000.0)
-
-
 class TestResolveCurrentBaseAmps:
     def test_none_mode_is_unconfigured(self):
         amps, reason = resolve_current_base_amps(_profile(current_base_mode=CURRENT_BASE_MODE_NONE), LINE_TO_LINE)
@@ -168,15 +150,25 @@ class TestResolveCurrentBaseAmps:
         expected = 500_000_000.0 / (1.7320508075688772 * 275_000.0)
         assert amps == pytest.approx(expected)
 
-    def test_derived_mode_normalizes_line_to_ground_vbase_first(self):
-        lg_profile = _profile(current_base_mode=CURRENT_BASE_MODE_DERIVED, voltage_base_value=100.0, apparent_power_base_value=500.0)
-        ll_profile = _profile(
-            current_base_mode=CURRENT_BASE_MODE_DERIVED,
-            voltage_base_value=100.0 * 1.7320508075688772, apparent_power_base_value=500.0,
-        )
-        lg_amps, _ = resolve_current_base_amps(lg_profile, LINE_TO_GROUND)
-        ll_amps, _ = resolve_current_base_amps(ll_profile, LINE_TO_LINE)
+    def test_derived_mode_ibase_is_independent_of_voltage_reference(self):
+        """Slice 4 correction: `voltage_base_value` is now uniformly the
+        nominal system LINE-TO-LINE voltage regardless of reference (see
+        `resolve_per_unit()`'s own updated VOLTAGE branch) -- so the
+        SAME entered value must now produce the IDENTICAL Ibase whether
+        the source's voltage channels are line-to-ground or line-to-line.
+        This replaces the old (now-incorrect) expectation that an LG
+        profile's entered value needed multiplying by sqrt(3) here to
+        match an LL profile's own sqrt(3)-larger entered value -- that
+        was only correct under the abandoned pre-Slice-4 reading of
+        `voltage_base_value` as "whatever the channel itself measures.\""""
+        profile_kwargs = dict(current_base_mode=CURRENT_BASE_MODE_DERIVED, voltage_base_value=100.0, apparent_power_base_value=500.0)
+        lg_amps, lg_reason = resolve_current_base_amps(_profile(**profile_kwargs), LINE_TO_GROUND)
+        ll_amps, ll_reason = resolve_current_base_amps(_profile(**profile_kwargs), LINE_TO_LINE)
+        assert lg_reason is None
+        assert ll_reason is None
         assert lg_amps == pytest.approx(ll_amps)
+        expected = 500_000_000.0 / (1.7320508075688772 * 100_000.0)
+        assert lg_amps == pytest.approx(expected)
 
 
 class TestResolvePerUnit:
@@ -195,12 +187,28 @@ class TestResolvePerUnit:
         assert resolution.reason == "voltage_base_not_configured"
 
     def test_voltage_with_base_is_configured(self):
+        # Slice 4: a resolved reference is now required for VOLTAGE too
+        # (mirrors the CURRENT branch's own long-standing requirement) --
+        # explicit line-to-line evidence keeps this test's own base
+        # amount identical to the raw entered value (see the dedicated
+        # LG-specific tests in test_per_unit_source_default_voltage_reference.py
+        # for the sqrt(3) division case).
         profile = _profile(voltage_base_value=275.0)
-        resolution = resolve_per_unit(VOLTAGE, profile)
+        resolution = resolve_per_unit(VOLTAGE, profile, voltage_channel_names=["VAB", "VBC", "VCA"])
         assert resolution.status == STATUS_CONFIGURED
         assert resolution.base_amount == pytest.approx(275_000.0)
         assert resolution.base_unit == "V"
         assert resolution.profile_id == "src-1"
+
+    def test_voltage_with_undetermined_reference_is_base_required(self):
+        """Slice 4: a Voltage channel can no longer resolve `configured`
+        while its own effective reference is undetermined -- mirrors
+        `voltage_group_config.resolve_voltage_base_for_group()`'s own
+        identical "never silently guess" gate."""
+        profile = _profile(voltage_base_value=275.0)
+        resolution = resolve_per_unit(VOLTAGE, profile, voltage_channel_names=["CH1", "CH2"])
+        assert resolution.status == STATUS_BASE_REQUIRED
+        assert resolution.reason == "voltage_reference_undetermined"
 
     def test_current_with_derived_base_and_detectable_reference_is_configured(self):
         profile = _profile(
@@ -226,24 +234,29 @@ class TestResolvePerUnit:
 
 
 class TestConvertValueToPu:
-    def test_direct_division_never_applies_sqrt_3(self):
-        # Decision 3: even a line-to-ground-reference source divides a
-        # measured voltage directly by its own declared base -- sqrt(3)
-        # is only ever used internally to derive Ibase.
-        profile = _profile(voltage_base_value=100.0)
-        resolution = resolve_per_unit(VOLTAGE, profile)
+    def test_direct_division_never_applies_a_second_sqrt_3(self):
+        """`convert_value_to_pu()` itself is always a direct
+        `measured / resolution.base_amount` division, with no reference
+        awareness of its own -- any sqrt(3) adjustment for a
+        line-to-ground channel is already baked into `base_amount` by
+        `resolve_per_unit()` (Slice 4) BEFORE this function ever runs,
+        so this function must never apply sqrt(3) a second time on top
+        of an already-LG-adjusted base."""
+        profile = _profile(voltage_base_value=100.0 * 1.7320508075688772)  # nominal LL = 100*sqrt(3)
+        resolution = resolve_per_unit(VOLTAGE, profile, voltage_channel_names=["VR", "VY", "VB"])  # line-to-ground
+        assert resolution.base_amount == pytest.approx(100_000.0)  # already divided by sqrt(3) once
         result = convert_value_to_pu(105_000.0, "V", resolution, VOLTAGE)
-        assert result == pytest.approx(1.05)
+        assert result == pytest.approx(1.05)  # 105/100, NOT 105/(100*sqrt(3))
 
     def test_scales_measured_unit_before_dividing(self):
         profile = _profile(voltage_base_value=275.0)
-        resolution = resolve_per_unit(VOLTAGE, profile)
+        resolution = resolve_per_unit(VOLTAGE, profile, voltage_channel_names=["VAB", "VBC", "VCA"])
         result = convert_value_to_pu(280.0, "kV", resolution, VOLTAGE)
         assert result == pytest.approx(280.0 / 275.0)
 
     def test_returns_none_for_unrecognized_measured_unit(self):
         profile = _profile(voltage_base_value=275.0)
-        resolution = resolve_per_unit(VOLTAGE, profile)
+        resolution = resolve_per_unit(VOLTAGE, profile, voltage_channel_names=["VAB", "VBC", "VCA"])
         assert convert_value_to_pu(280.0, "ohm", resolution, VOLTAGE) is None
 
     def test_returns_none_when_not_configured(self):
@@ -252,14 +265,14 @@ class TestConvertValueToPu:
 
     def test_returns_none_for_non_finite_value(self):
         profile = _profile(voltage_base_value=275.0)
-        resolution = resolve_per_unit(VOLTAGE, profile)
+        resolution = resolve_per_unit(VOLTAGE, profile, voltage_channel_names=["VAB", "VBC", "VCA"])
         assert convert_value_to_pu(float("nan"), "kV", resolution, VOLTAGE) is None
 
 
 class TestConvertArrayToPu:
     def test_converts_array_and_preserves_nan(self):
         profile = _profile(voltage_base_value=275.0)
-        resolution = resolve_per_unit(VOLTAGE, profile)
+        resolution = resolve_per_unit(VOLTAGE, profile, voltage_channel_names=["VAB", "VBC", "VCA"])
         arr = np.array([275.0, 550.0, np.nan])
         out = convert_array_to_pu(arr, "kV", resolution, VOLTAGE)
         assert out[0] == pytest.approx(1.0)
@@ -278,7 +291,7 @@ class TestApplyPerUnitToValue:
 
     def test_configured_converts_and_reports_status(self):
         profile = _profile(voltage_base_value=275.0)
-        resolution = resolve_per_unit(VOLTAGE, profile)
+        resolution = resolve_per_unit(VOLTAGE, profile, voltage_channel_names=["VAB", "VBC", "VCA"])
         value, unit, status = apply_per_unit_to_value(275.0, "kV", VOLTAGE, resolution)
         assert value == pytest.approx(1.0)
         assert unit == "pu"
@@ -292,7 +305,7 @@ class TestApplyPerUnitToValue:
 
     def test_configured_but_unrecognized_measured_unit_falls_back_to_base_required(self):
         profile = _profile(voltage_base_value=275.0)
-        resolution = resolve_per_unit(VOLTAGE, profile)
+        resolution = resolve_per_unit(VOLTAGE, profile, voltage_channel_names=["VAB", "VBC", "VCA"])
         value, unit, status = apply_per_unit_to_value(280.0, "ohm", VOLTAGE, resolution)
         assert (value, unit) == (280.0, "ohm")
         assert status == STATUS_BASE_REQUIRED
@@ -309,7 +322,7 @@ class TestApplyPerUnitToValue:
         # actually has a value -- status is derived from the measured
         # unit, never from value presence.
         profile = _profile(voltage_base_value=275.0)
-        resolution = resolve_per_unit(VOLTAGE, profile)
+        resolution = resolve_per_unit(VOLTAGE, profile, voltage_channel_names=["VAB", "VBC", "VCA"])
         _, _, status_with_value = apply_per_unit_to_value(275.0, "kV", VOLTAGE, resolution)
         _, _, status_without_value = apply_per_unit_to_value(None, "kV", VOLTAGE, resolution)
         assert status_with_value == status_without_value == STATUS_CONFIGURED
@@ -318,7 +331,7 @@ class TestApplyPerUnitToValue:
 class TestApplyPerUnitToArray:
     def test_configured_converts_array(self):
         profile = _profile(voltage_base_value=275.0)
-        resolution = resolve_per_unit(VOLTAGE, profile)
+        resolution = resolve_per_unit(VOLTAGE, profile, voltage_channel_names=["VAB", "VBC", "VCA"])
         arr = np.array([275.0, 550.0])
         values, unit, status = apply_per_unit_to_array(arr, "kV", VOLTAGE, resolution)
         assert values[0] == pytest.approx(1.0)

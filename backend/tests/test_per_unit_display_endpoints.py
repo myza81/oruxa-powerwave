@@ -138,7 +138,12 @@ class TestSourceAnnotationAnchorPerUnit:
         assert eng_body["elapsed_seconds"] == pu_body["elapsed_seconds"]
         assert pu_body["per_unit_status"] == "configured"
         assert pu_body["unit"] == "pu"
-        assert pu_body["value"] == pytest.approx(eng_body["value"] / 275_000.0)
+        # Slice 4 correction: "VA" is a bare single-phase-letter name --
+        # confidently auto-detected as line-to-ground -- so the entered
+        # 275 kV nominal LL base now correctly divides by sqrt(3) before
+        # use, matching app.domain.voltage_group_config's own identical
+        # Measurement Group math.
+        assert pu_body["value"] == pytest.approx(eng_body["value"] / (275_000.0 / 1.7320508075688772))
 
 
 class TestSourcePeakValuesPerUnit:

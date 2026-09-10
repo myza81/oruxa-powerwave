@@ -188,7 +188,20 @@ class TestSourceChannelResolutionEndpoint:
 
     def test_source_default_voltage_channel_is_truthful_no_ll_lg_label(self, client, comtrade_fixtures_dir):
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
-        put_resp = client.put(f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}", json={"voltage_base_value": 132.0})
+        # Manual line-to-line override: this fixture's own FULL voltage-
+        # channel-name list spans both individual-phase (N275_V*/S132_V*)
+        # and paired-phase (E275_V*) evidence, which under DEC-049's own
+        # source-wide (never per-group) reference model is a genuine,
+        # pre-existing "cannot auto-detect one reference for a source
+        # spanning multiple conventions" case -- unrelated to and not
+        # solved by this Slice 4 arithmetic fix. A manual override is
+        # the realistic, existing escape hatch (section 7's own
+        # "engineer authority" principle), and keeps this test's own
+        # actual purpose (truthful display, not auto-detection) isolated.
+        put_resp = client.put(
+            f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}",
+            json={"voltage_base_value": 132.0, "voltage_reference_mode": "manual", "voltage_reference_override": "line_to_line"},
+        )
         assert put_resp.status_code == 200, put_resp.text
 
         body = _resolution(client, "ws-1", source_id, "S132_VR")

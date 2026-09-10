@@ -165,21 +165,6 @@ def resolve_effective_voltage_reference(
     return detect_voltage_reference(voltage_channel_names)
 
 
-def voltage_base_ll_volts(profile: PerUnitBaseProfile, effective_reference: str | None) -> float | None:
-    """Decision 3 (unchanged invariant): the source's own voltage base
-    normalized to line-to-line volts -- applies `x sqrt(3)` ONLY here,
-    when a line-to-ground base must be converted for the `Ibase = Sbase
-    / (sqrt(3) x Vbase_LL)` derivation below. This is NEVER applied to a
-    measured channel's own per-unit division, which is always a direct
-    `measured / base` (see convert_value_to_pu())."""
-    volts = voltage_base_volts(profile)
-    if volts is None:
-        return None
-    if effective_reference == LINE_TO_GROUND:
-        return volts * SQRT_3
-    return volts
-
-
 def resolve_current_base_amps(
     profile: PerUnitBaseProfile, effective_reference: str | None
 ) -> tuple[float | None, str | None]:
@@ -189,7 +174,31 @@ def resolve_current_base_amps(
     surface as "Base required"). `effective_reference` is resolved by
     the caller via resolve_effective_voltage_reference() -- this function
     stays a pure consumer of an already-decided reference, never running
-    detection itself."""
+    detection itself.
+
+    **Slice 4 correction (Per-Unit Settings hierarchy)**: `voltage_base_value`
+    is now uniformly the nominal SYSTEM LINE-TO-LINE voltage regardless
+    of the channel's own reference (see `resolve_per_unit()`'s own
+    updated VOLTAGE branch and docs/project-memory/DECISIONS.md's
+    DEC-049 Slice 4 addendum) -- so `Vbase_LL` for this formula is now
+    simply `voltage_base_volts(profile)` directly, with NO reference-
+    dependent adjustment, exactly matching
+    `app.domain.current_group_config`'s own equipment-rating resolver
+    (which reads a linked Voltage group's `nominal_voltage_ll_kv`
+    directly for the identical reason: "equipment-rated current-base
+    derivation ALWAYS uses the raw nominal LINE-TO-LINE voltage, never a
+    phase value"). Before this correction, a line-to-ground reference
+    multiplied the entered value by `sqrt(3)` here -- that was only
+    correct under the PRE-Slice-4 (and now abandoned) reading of
+    `voltage_base_value` as "whatever the channel's own reference
+    happens to measure," under which an LG entry needed scaling UP to
+    an LL-equivalent for this formula. Slice 4 redefines the field
+    itself to always mean the nominal LL value, so no such scaling is
+    needed or correct any more -- multiplying now would double-convert.
+    The `effective_reference` gate below is otherwise UNCHANGED (still
+    required to be resolved before deriving a current base): this
+    preserves the existing "never silently guess" behaviour even though
+    the reference's VALUE no longer changes the resulting number."""
     if profile.current_base_mode == CURRENT_BASE_MODE_NONE:
         return None, "current_base_not_configured"
     if profile.current_base_mode == CURRENT_BASE_MODE_DIRECT:
@@ -200,7 +209,7 @@ def resolve_current_base_amps(
     if effective_reference not in KNOWN_VOLTAGE_REFERENCES:
         return None, "voltage_reference_undetermined"
     sbase_va = apparent_power_base_va(profile)
-    vbase_ll = voltage_base_ll_volts(profile, effective_reference)
+    vbase_ll = voltage_base_volts(profile)
     if sbase_va is None or vbase_ll is None:
         return None, "current_base_not_configured"
     return sbase_va / (SQRT_3 * vbase_ll), None
@@ -237,11 +246,29 @@ def resolve_per_unit(
     engineering units without saying so.
 
     `voltage_channel_names` is the OWNING SOURCE's own full list of
-    Voltage-classified channel names -- only consulted for `CURRENT`
-    channels under `current_base_mode == "derived"`, to resolve the
-    effective voltage reference (auto-detected or manually overridden).
-    Callers resolve this once per source per request (see
+    Voltage-classified channel names -- consulted for BOTH engineering
+    types now (Slice 4 correction, below) to resolve the effective
+    voltage reference (auto-detected or manually overridden). Callers
+    resolve this once per source per request (see
     app.api.v1.sources/app.api.v1.calculated_channels), not per channel.
+
+    **Slice 4 correction (Per-Unit Settings hierarchy)**:
+    `voltage_base_value` is the nominal SYSTEM LINE-TO-LINE voltage (the
+    engineer enters the familiar nominal system LL rating, e.g. "275",
+    regardless of how any individual channel happens to be wired/
+    measured) -- exactly mirroring `app.domain.voltage_group_config`'s
+    own `VoltageBaseConfiguration.nominal_voltage_ll_kv` semantics. A
+    VOLTAGE channel's own applicable denominator therefore depends on
+    its effective reference, identically to
+    `voltage_group_config.resolve_voltage_base_for_group()`: a
+    line-to-line channel divides by the nominal value directly; a
+    line-to-ground channel divides by `Vbase_LL / sqrt(3)`. Before this
+    correction, EVERY Voltage channel divided by the raw entered value
+    unconditionally, regardless of reference -- silently wrong for any
+    line-to-ground channel (e.g. entering "275" against a phase-to-
+    ground channel reading ~158.8 kV produced ~0.577 pu instead of the
+    correct ~1.0 pu). See docs/project-memory/DECISIONS.md's DEC-049
+    Slice 4 addendum for the full record of this correction.
     """
     if engineering_type not in (VOLTAGE, CURRENT):
         return PerUnitResolution(status=STATUS_NOT_APPLICABLE, profile_id=None, base_amount=None, base_unit=None, reason=None)
@@ -250,12 +277,19 @@ def resolve_per_unit(
             status=STATUS_BASE_REQUIRED, profile_id=None, base_amount=None, base_unit=None, reason="not_configured"
         )
     if engineering_type == VOLTAGE:
-        amount = voltage_base_volts(profile)
-        if amount is None:
+        nominal_volts = voltage_base_volts(profile)
+        if nominal_volts is None:
             return PerUnitResolution(
                 status=STATUS_BASE_REQUIRED, profile_id=profile.source_id, base_amount=None, base_unit=None,
                 reason="voltage_base_not_configured",
             )
+        detection = resolve_effective_voltage_reference(profile, voltage_channel_names or [])
+        if detection.reference not in KNOWN_VOLTAGE_REFERENCES:
+            return PerUnitResolution(
+                status=STATUS_BASE_REQUIRED, profile_id=profile.source_id, base_amount=None, base_unit=None,
+                reason="voltage_reference_undetermined",
+            )
+        amount = nominal_volts / SQRT_3 if detection.reference == LINE_TO_GROUND else nominal_volts
         return PerUnitResolution(status=STATUS_CONFIGURED, profile_id=profile.source_id, base_amount=amount, base_unit="V", reason=None)
     # CURRENT
     detection = resolve_effective_voltage_reference(profile, voltage_channel_names or [])
@@ -281,15 +315,17 @@ def _measured_unit_scale(engineering_type: str, measured_unit: str | None) -> fl
 def convert_value_to_pu(
     value: float | None, measured_unit: str | None, resolution: PerUnitResolution, engineering_type: str
 ) -> float | None:
-    """`measured / base`, always a direct division -- decision 3: never
-    an automatic sqrt(3) factor here, regardless of the source's own
-    voltage reference (that reference only ever affects how Ibase is
-    DERIVED, in voltage_base_ll_volts() above). Returns `None` (never
+    """`measured / base`, always a direct division -- never an
+    automatic sqrt(3) factor HERE. Any reference-dependent adjustment
+    (a line-to-ground Voltage channel's `Vbase_LL / sqrt(3)`, or Ibase's
+    own `Sbase / (sqrt(3) x Vbase_LL)` derivation) is already baked into
+    `resolution.base_amount` by the time it reaches this function --
+    see `resolve_per_unit()`'s own VOLTAGE branch (Slice 4 correction)
+    and `resolve_current_base_amps()` above. Returns `None` (never
     guesses) when the value is missing/non-finite, the resolution is not
     `configured`, or the measured unit is not one of the minimal
     recognized set -- a caller must fall back to the engineering value
-    in every such case. Unchanged from the original DEC-049
-    implementation."""
+    in every such case."""
     if value is None or not np.isfinite(value):
         return None
     if resolution.status != STATUS_CONFIGURED or resolution.base_amount is None:

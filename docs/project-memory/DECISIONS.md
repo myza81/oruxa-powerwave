@@ -6376,6 +6376,80 @@ File B with the identical filename, confirm it stays independently
 unconfigured, Start New Workspace clears both). See
 [MIGRATION_PLAN.md — Phase 5C-UAT](MIGRATION_PLAN.md#phase-5c-uat--source-bound-per-unit-redesign-2026-08-22).
 
+**Update (2026-09-11) — Per-Unit Configuration Slice 4: Source Default
+Voltage-base interpretation is corrected to match the Measurement Group
+model's own (already-correct) semantics.** Root cause, confirmed by
+direct code reading before any change: `resolve_per_unit()`'s VOLTAGE
+branch divided a measured channel directly by the raw entered
+`voltage_base_value`, regardless of the channel's own effective
+reference — auto-detected or manually overridden — a gap
+`PER_UNIT_MEASUREMENT_MODEL.md` §8 had already documented as a
+confirmed `[FACT]` (2026-08-22) but explicitly scoped as "unaffected by
+this decision" at the time, since §8/DEC-050 only fixed the
+Measurement-Group path. This update closes that gap for the DEC-049
+Source Default path too:
+
+```text
+voltage_base_value is now uniformly the nominal SYSTEM LINE-TO-LINE
+voltage (identical semantics to
+app.domain.voltage_group_config.VoltageBaseConfiguration.nominal_voltage_ll_kv)
+
+line-to-line reference  -> effective base = Vbase_LL           (unchanged)
+line-to-ground reference -> effective base = Vbase_LL / sqrt(3)  (the fix)
+```
+
+A resolved reference is now REQUIRED for a Voltage channel to resolve
+`configured` (mirroring `voltage_group_config.resolve_voltage_base_for_group()`'s
+own long-standing "never silently guess" gate, reason
+`voltage_reference_undetermined`) — previously only the CURRENT branch
+had this requirement. **The derived current base
+(`Ibase = Sbase / (sqrt(3) × Vbase_LL)`) is explicitly UNCHANGED in its
+own governing formula** — it always uses the raw nominal `Vbase_LL`
+directly, regardless of reference, exactly like
+`app.domain.current_group_config`'s own equipment-rating resolver. The
+old `voltage_base_ll_volts()` helper (which multiplied by `sqrt(3)` for
+a line-to-ground reference) is removed outright — under the corrected
+field semantics that conversion is no longer meaningful, since the
+entered value is already the LL value; keeping it would have silently
+double-converted current-base results for any Source Default configured
+with `current_base_mode="derived"` on a line-to-ground-reference source.
+
+**This intentionally changes numerical pu results** for any existing
+Source Default Voltage configuration using a line-to-ground reference —
+e.g. entering `275` against a phase-to-ground channel reading ≈158.8 kV
+previously computed ≈0.577 pu; it now correctly computes ≈1.0 pu. This
+is a deliberate correction, not preserved for backward compatibility,
+per explicit owner instruction. Line-to-line configurations, direct/
+manual current-base mode, and every Measurement Group calculation are
+byte-for-byte unchanged (verified directly, not merely assumed) — see
+[PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) §8's own
+2026-09-11 update for the full before/after record. DEC-051 precedence
+and DEC-052 calculated-channel inheritance are untouched — both simply
+call the same, now-corrected `resolve_per_unit()`, so a calculated
+channel that falls back to Source Default inherits the fix automatically
+with no separate correction. Slice 2 coverage and Slice 3 provenance
+(both already built on this same resolver) automatically reflect the
+corrected arithmetic with zero code changes of their own beyond test
+updates. No persistence/schema change; no migration.
+
+Files changed: `app/domain/per_unit.py` (the fix; `voltage_base_ll_volts()`
+removed); `frontend/index.html` (the Source Default modal's own cosmetic
+Ibase preview had the identical pre-fix `sqrt(3)`-for-LG multiplication
+baked in and has been corrected to match; its Voltage Reference tooltip,
+which previously claimed the reference is "never applied automatically
+to a displayed channel's own per-unit value" — true before this fix,
+false after — is corrected; a new secondary "Nominal system voltage /
+Effective L-G base" preview line was added, per the task's own optional
+UI-clarity suggestion). Tests: `test_per_unit_source_default_voltage_reference.py`
+(new, the full mandated numerical scenario set) and
+`test_frontend_per_unit_source_default_voltage_reference.py` (new);
+`test_per_unit_domain.py`, `test_per_unit_display_endpoints.py`,
+`test_measured_unit_per_unit.py`, `test_per_unit_provenance_service.py`,
+`test_per_unit_provenance_api.py`, `test_per_unit_coverage_api.py`
+updated where they had locked in the old, now-incorrect arithmetic
+(each with an explicit comment explaining the corrected semantics, per
+the task's own instruction never to silently weaken an assertion).
+
 ---
 
 ## DEC-050 — Per-Unit measurement model is clarified to be measurement-group-aware; the currently deployed source-bound model (DEC-049) is not the final target

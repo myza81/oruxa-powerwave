@@ -152,7 +152,10 @@ class TestCsvVoltagePerUnitBecomesConfigured:
             params={"channel_name": "VR", "unit_mode": "per_unit"},
         ).json()
 
-        base_volts = 1.32 * 1000.0  # voltage_base_value is canonical kV
+        # Slice 4 correction: "VR" is a bare single-phase-letter name --
+        # confidently auto-detected as line-to-ground -- so the entered
+        # nominal LL base now correctly divides by sqrt(3) before use.
+        base_volts = (1.32 * 1000.0) / 1.7320508075688772  # voltage_base_value is canonical kV, LG-adjusted
         expected = [v / base_volts for v in engineering["values"]]
         assert per_unit_mode["values"] == pytest.approx(expected)
 
@@ -172,7 +175,8 @@ class TestCsvVoltagePerUnitBecomesConfigured:
             params={"channel_name": "VR", "unit_mode": "per_unit"},
         ).json()
 
-        base_volts = 1.32 * 1000.0
+        # Slice 4 correction -- see test_values_scale_correctly_by_the_measured_unit above.
+        base_volts = (1.32 * 1000.0) / 1.7320508075688772
         expected = [(v * 1000.0) / base_volts for v in engineering["values"]]
         assert per_unit_mode["values"] == pytest.approx(expected)
 

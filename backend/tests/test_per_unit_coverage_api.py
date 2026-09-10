@@ -117,9 +117,19 @@ class TestCoverageEndpoint:
         # under Measurement Groups (DEC-051: never re-consulted); the 9
         # Current channels stay needs_configuration (no current base
         # configured).
+        # Manual reference override: the 6 remaining ungrouped Voltage
+        # channels (S132_V* individual-phase, E275_V* paired-phase) span
+        # two different naming conventions, which under DEC-049's own
+        # source-wide (never per-group) reference model cannot auto-
+        # detect one confident reference for the whole source -- a
+        # genuine, pre-existing DEC-049 coarseness (exactly why
+        # Measurement Groups exist), unrelated to this Slice 4 fix. An
+        # explicit override is the realistic escape hatch; this test
+        # only asserts CONFIGURED/NEEDS_CONFIGURATION status counts, not
+        # the exact pu value each of the 6 channels resolves to.
         default_resp = client.put(
             f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}",
-            json={"voltage_base_value": 132.0},
+            json={"voltage_base_value": 132.0, "voltage_reference_mode": "manual", "voltage_reference_override": "line_to_line"},
         )
         assert default_resp.status_code == 200, default_resp.text
 
@@ -141,9 +151,13 @@ class TestCoverageEndpoint:
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
 
         # A fully usable Source Default exists for Voltage up front.
+        # Manual override for the same reason as the progressive test
+        # above (this fixture's own full voltage-channel list spans two
+        # naming conventions, an unrelated pre-existing DEC-049
+        # source-wide-reference coarseness -- not this slice's concern).
         default_resp = client.put(
             f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}",
-            json={"voltage_base_value": 275.0},
+            json={"voltage_base_value": 275.0, "voltage_reference_mode": "manual", "voltage_reference_override": "line_to_line"},
         )
         assert default_resp.status_code == 200, default_resp.text
 
