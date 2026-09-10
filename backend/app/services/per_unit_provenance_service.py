@@ -27,14 +27,20 @@ already reports (`PerUnitResolution.profile_id`, repurposed by
 a group id for exactly this reason). No new resolution math is
 introduced anywhere in this module.
 
-**Source Default truthfulness (task's own explicit requirement)**: a
-Source Default channel's own resolved base is displayed as a single
-plain amount, never annotated "L-L"/"L-G" and never split into a
-separate "nominal" vs "effective" pair -- DEC-049's own resolver
-(`app.domain.per_unit.resolve_per_unit`) uses the entered value directly
-as the divisor with no reference-aware adjustment (the known,
-separately-governed LL/LG gap), and this module must never fabricate a
-correction the actual arithmetic does not perform.
+**Source Default Voltage truthfulness (updated for the Slice 4
+follow-up enhancement)**: since Slice 4 corrected
+`app.domain.per_unit.resolve_per_unit()` to treat the entered Source
+Default Voltage Base as the nominal SYSTEM LINE-TO-LINE voltage (never
+a phase-derived number), that field now has a fixed, known engineering
+meaning -- exactly like a Measurement Group's own
+`nominal_voltage_ll_kv`. It is therefore now truthful (and required by
+this follow-up) to expose it via the SAME `nominal_base_kv`/
+`nominal_reference` fields a Measurement Group already uses, rather
+than inventing a second, Source-Default-specific structure. This is
+UNCHANGED for Source Default CURRENT, which has no equivalent "nominal"
+concept (`resolve_current_base_amps()`'s own Ibase formula has no
+reference-aware adjustment to expose) -- only Voltage gains these two
+fields for the Source Default scope.
 """
 
 from __future__ import annotations
@@ -45,12 +51,14 @@ from app.domain.calculated_channel import CalculatedChannel
 from app.domain.channel_classification import (
     ENGINEERING_QUANTITY_CURRENT_ANGLE,
     ENGINEERING_QUANTITY_VOLTAGE_ANGLE,
+    VOLTAGE,
 )
 from app.domain.per_unit import (
     STATUS_CONFIGURED,
     STATUS_NOT_APPLICABLE,
     PerUnitBaseProfile,
     PerUnitResolution,
+    resolve_effective_voltage_reference,
     resolve_per_unit,
 )
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
@@ -121,9 +129,13 @@ class PerUnitChannelProvenance:
     reason: str | None
     measurement_group_id: str | None
     measurement_group_name: str | None
-    # Voltage Measurement Group only: the user-entered nominal LINE-TO-
-    # LINE base and the group's own effective reference. Never populated
-    # for Source Default (see module docstring).
+    # The user-entered nominal LINE-TO-LINE base and the channel's own
+    # effective reference (the "channel interpretation" the UI shows) --
+    # populated for a Voltage Measurement Group (from that group's own
+    # configuration) AND, since the Slice 4 follow-up, for Source
+    # Default Voltage too (from the source's own profile -- see module
+    # docstring). Never populated for Current, in either scope (Current
+    # has no equivalent "nominal LL, reference-adjusted" concept).
     nominal_base_kv: float | None
     nominal_reference: str | None  # "line_to_ground" | "line_to_line" | None
     # The actual resolved denominator used for division -- populated for
@@ -209,10 +221,36 @@ def _provenance_from_group(
     )
 
 
-def _provenance_from_legacy(resolution: PerUnitResolution, *, engineering_type: str) -> PerUnitChannelProvenance:
+def _provenance_from_legacy(
+    resolution: PerUnitResolution,
+    *,
+    engineering_type: str,
+    per_unit_profile: PerUnitBaseProfile | None = None,
+    voltage_channel_names: list[str] | None = None,
+) -> PerUnitChannelProvenance:
     if resolution.status == STATUS_NOT_APPLICABLE:
         return _not_applicable_provenance(engineering_type)
     effective_base_amount, effective_base_unit = _effective_base(resolution)
+
+    nominal_base_kv = None
+    nominal_reference = None
+    if engineering_type == VOLTAGE and resolution.status == STATUS_CONFIGURED and per_unit_profile is not None:
+        # Slice 4 follow-up: the entered Source Default Voltage Base is
+        # now uniformly the nominal SYSTEM LINE-TO-LINE voltage (see
+        # resolve_per_unit()'s own VOLTAGE branch) -- expose it and the
+        # channel's own effective reference via the SAME fields a
+        # Measurement Group already uses. `nominal_reference` is
+        # re-derived here via the SAME pure, deterministic
+        # resolve_effective_voltage_reference() call resolve_per_unit()
+        # itself already made internally to reach `STATUS_CONFIGURED` in
+        # the first place -- a side-effect-free function given the same
+        # inputs can never disagree with itself, so this stays faithful
+        # to the "one source of truth" resolution without requiring
+        # resolve_per_unit() to expose its own internal detection.
+        nominal_base_kv = per_unit_profile.voltage_base_value
+        detection = resolve_effective_voltage_reference(per_unit_profile, voltage_channel_names or [])
+        nominal_reference = detection.reference
+
     return PerUnitChannelProvenance(
         status=resolution.status,
         engineering_type=engineering_type,
@@ -220,8 +258,8 @@ def _provenance_from_legacy(resolution: PerUnitResolution, *, engineering_type: 
         reason=_reason_text(SOURCE_KIND_SOURCE_DEFAULT, resolution.reason),
         measurement_group_id=None,
         measurement_group_name=None,
-        nominal_base_kv=None,
-        nominal_reference=None,
+        nominal_base_kv=nominal_base_kv,
+        nominal_reference=nominal_reference,
         effective_base_amount=effective_base_amount,
         effective_base_unit=effective_base_unit,
         equipment_rating_mva=None,
@@ -263,7 +301,10 @@ def build_source_channel_provenance(
         )
 
     legacy_resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
-    return _provenance_from_legacy(legacy_resolution, engineering_type=engineering_type)
+    return _provenance_from_legacy(
+        legacy_resolution, engineering_type=engineering_type,
+        per_unit_profile=per_unit_profile, voltage_channel_names=voltage_channel_names,
+    )
 
 
 def build_calculated_channel_provenance(
@@ -296,4 +337,7 @@ def build_calculated_channel_provenance(
         )
 
     legacy_resolution = resolve_per_unit(channel.engineering_type, per_unit_profile, voltage_channel_names)
-    return _provenance_from_legacy(legacy_resolution, engineering_type=channel.engineering_type)
+    return _provenance_from_legacy(
+        legacy_resolution, engineering_type=channel.engineering_type,
+        per_unit_profile=per_unit_profile, voltage_channel_names=voltage_channel_names,
+    )

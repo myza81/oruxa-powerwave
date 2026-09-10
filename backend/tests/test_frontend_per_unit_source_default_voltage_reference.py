@@ -64,15 +64,18 @@ class TestVoltageReferenceTooltipNoLongerMisleading:
 
 
 class TestEffectiveVoltageBasePreview:
-    """The task's own optional (but implemented here) secondary
-    preview: "Nominal system voltage: 275 kV L-L — Effective L-G base:
-    158.77 kV"-shaped text, shown once both the base and reference are
-    known."""
+    """Same-day follow-up: the preview now shows three SEPARATE lines
+    (Nominal voltage / Channel interpretation / Effective base) instead
+    of one combined sentence -- see
+    test_frontend_per_unit_source_default_voltage_traceability.py for
+    the full focused coverage of this follow-up enhancement. This class
+    only re-confirms the helper still exists, is still wired into both
+    branches, and still never fabricates without both inputs."""
 
     def test_preview_helper_exists_and_never_fabricates_without_both_inputs(self):
         source = _source()
         body = _function_body(
-            source, "function wwPerUnitEffectiveVoltageBaseText(state, reference)", "function wwRenderVoltageReferenceBlock"
+            source, "function wwPerUnitEffectiveVoltageBaseLines(state, reference)", "function wwRenderVoltageReferenceBlock"
         )
         assert "return null" in body
         assert "PER_UNIT_LINE_TO_GROUND" in body
@@ -81,14 +84,13 @@ class TestEffectiveVoltageBasePreview:
     def test_preview_is_wired_into_both_manual_and_auto_branches(self):
         source = _source()
         body = _function_body(source, "function wwRenderVoltageReferenceBlock(state)", "function wwWirePerUnitProfileFieldsEvents")
-        assert "wwPerUnitEffectiveVoltageBaseText(state, state.voltageReferenceOverride)" in body
-        assert "wwPerUnitEffectiveVoltageBaseText(state, state.autoDetection.reference)" in body
+        assert "wwPerUnitEffectiveVoltageBaseLines(state, state.voltageReferenceOverride)" in body
+        assert "wwPerUnitEffectiveVoltageBaseLines(state, state.autoDetection.reference)" in body
 
-    def test_preview_line_is_html_escaped(self):
+    def test_preview_lines_are_html_escaped(self):
         source = _source()
         body = _function_body(source, "function wwRenderVoltageReferenceBlock(state)", "function wwWirePerUnitProfileFieldsEvents")
-        assert "escapeHtml(manualPreview)" in body
-        assert "escapeHtml(autoPreview)" in body
+        assert "escapeHtml(line)" in body
 
 
 class TestSlice1Through3NavigationUnaffected:

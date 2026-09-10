@@ -208,13 +208,15 @@ class TestGroupedIncompleteChannel:
 
 class TestUngroupedSourceDefaultChannels:
     """Scenarios 4, 5: ungrouped Source Default Voltage/Current
-    channels -- truthful, un-annotated single base amount."""
+    channels."""
 
-    def test_source_default_voltage(self, group_registry, voltage_config_registry, current_config_registry):
-        # Slice 4: a resolved reference is now required for Voltage too;
-        # explicit line-to-line evidence keeps this test's own effective
-        # base identical to the raw entered value (LG-specific division
-        # is covered by test_per_unit_source_default_voltage_reference.py).
+    def test_source_default_voltage_ll(self, group_registry, voltage_config_registry, current_config_registry):
+        # Slice 4 follow-up: since Slice 4 fixed Source Default Voltage
+        # to treat the entered value as the nominal SYSTEM L-L voltage,
+        # that field now has a known engineering meaning -- exposed here
+        # via the SAME nominal_base_kv/nominal_reference fields a
+        # Measurement Group already uses (no second, Source-Default-
+        # specific structure). L-L reference: nominal == effective.
         profile = _profile(voltage_base_value=275.0)
         prov = _build_source(
             "V132", VOLTAGE, profile=profile, voltage_channel_names=["VAB", "VBC", "VCA"],
@@ -225,12 +227,41 @@ class TestUngroupedSourceDefaultChannels:
         assert prov.source_kind == SOURCE_KIND_SOURCE_DEFAULT
         assert prov.measurement_group_id is None
         assert prov.measurement_group_name is None
-        # Truthfulness requirement: no fabricated LL/LG split for Source
-        # Default -- only the plain resolved amount, never a "nominal".
-        assert prov.nominal_base_kv is None
-        assert prov.nominal_reference is None
+        assert prov.nominal_base_kv == pytest.approx(275.0)
+        assert prov.nominal_reference == "line_to_line"
         assert prov.effective_base_amount == pytest.approx(275.0, abs=1e-6)
         assert prov.effective_base_unit == "kV"
+
+    def test_source_default_voltage_lg(self, group_registry, voltage_config_registry, current_config_registry):
+        """Scenario 1 of this follow-up: nominal 275 kV L-L, channel
+        interpretation L-G, effective base ≈158.77 kV."""
+        profile = _profile(voltage_base_value=275.0)
+        prov = _build_source(
+            "VR", VOLTAGE, profile=profile, voltage_channel_names=["VR", "VY", "VB"],
+            group_registry=group_registry,
+            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+        )
+        assert prov.status == STATUS_CONFIGURED
+        assert prov.source_kind == SOURCE_KIND_SOURCE_DEFAULT
+        assert prov.nominal_base_kv == pytest.approx(275.0)
+        assert prov.nominal_reference == "line_to_ground"
+        assert prov.effective_base_amount == pytest.approx(158.77, abs=0.01)
+        assert prov.effective_base_unit == "kV"
+
+    def test_source_default_current_never_gets_nominal_fields(
+        self, group_registry, voltage_config_registry, current_config_registry
+    ):
+        """Scenario 4 of this follow-up: no fabricated nominal/reference
+        for Current -- Current has no equivalent "nominal LL,
+        reference-adjusted" concept, in either scope."""
+        profile = _profile(voltage_base_value=275.0, current_base_mode="direct", direct_current_base_value=2.0995)
+        prov = _build_source(
+            "LINEA_IR", CURRENT, profile=profile, group_registry=group_registry,
+            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+        )
+        assert prov.status == STATUS_CONFIGURED
+        assert prov.nominal_base_kv is None
+        assert prov.nominal_reference is None
 
     def test_source_default_current_direct(self, group_registry, voltage_config_registry, current_config_registry):
         profile = _profile(current_base_mode="direct", direct_current_base_value=2.0995)

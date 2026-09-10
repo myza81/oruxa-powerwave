@@ -101,17 +101,22 @@ class TestSourceDefaultShownCorrectly:
         )
         assert '"Source Default"' in body
 
-    def test_source_default_base_row_never_appends_a_reference_suffix(self):
+    def test_source_default_current_row_never_appends_a_reference_suffix(self):
+        """Follow-up enhancement update: Source Default VOLTAGE now
+        legitimately shares the same "Effective base" + reference-suffix
+        presentation as Measurement Groups (see
+        TestNominalAndInterpretationForSourceDefaultVoltage below) --
+        but Source Default CURRENT (no nominal_base_kv, no reference-
+        aware adjustment in its own arithmetic) must still never get a
+        suffix, in its own dedicated branch."""
         source = _source()
         body = _function_body(
-            source, 'resolution.source_kind === "source_default"', 'rows.push(wwPerUnitInfoRowHtml("Status"'
+            source,
+            "// Source Default Current: deliberately plain",
+            "rows.push(wwPerUnitInfoRowHtml(\"Status\"",
         )
-        # The Source Default branch computes its label/value with NO
-        # reference/refAbbrev suffix at all -- unlike the Measurement
-        # Group branch immediately above it, which explicitly appends
-        # `suffix` (refAbbrev) to its own "Effective base" row.
         assert "+ suffix" not in body
-        assert "refAbbrev ?" not in body
+        assert "refAbbrev" not in body
 
 
 class TestEffectiveBaseShownForGroupAwareLGVoltage:

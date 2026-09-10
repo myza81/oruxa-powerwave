@@ -186,7 +186,7 @@ class TestSourceChannelResolutionEndpoint:
         assert body["source_kind"] == "measurement_group"
         assert body["reason"] == "Voltage base is not configured for this group."
 
-    def test_source_default_voltage_channel_is_truthful_no_ll_lg_label(self, client, comtrade_fixtures_dir):
+    def test_source_default_voltage_channel_ll_reports_nominal_and_interpretation(self, client, comtrade_fixtures_dir):
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
         # Manual line-to-line override: this fixture's own FULL voltage-
         # channel-name list spans both individual-phase (N275_V*/S132_V*)
@@ -194,10 +194,9 @@ class TestSourceChannelResolutionEndpoint:
         # source-wide (never per-group) reference model is a genuine,
         # pre-existing "cannot auto-detect one reference for a source
         # spanning multiple conventions" case -- unrelated to and not
-        # solved by this Slice 4 arithmetic fix. A manual override is
-        # the realistic, existing escape hatch (section 7's own
-        # "engineer authority" principle), and keeps this test's own
-        # actual purpose (truthful display, not auto-detection) isolated.
+        # solved by this fix. A manual override is the realistic,
+        # existing escape hatch (section 7's own "engineer authority"
+        # principle), and keeps this test's own scenario deterministic.
         put_resp = client.put(
             f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}",
             json={"voltage_base_value": 132.0, "voltage_reference_mode": "manual", "voltage_reference_override": "line_to_line"},
@@ -208,10 +207,46 @@ class TestSourceChannelResolutionEndpoint:
         assert body["status"] == "configured"
         assert body["source_kind"] == "source_default"
         assert body["measurement_group_id"] is None
-        assert body["nominal_base_kv"] is None
-        assert body["nominal_reference"] is None
+        # Slice 4 follow-up: Source Default Voltage now reports the same
+        # nominal_base_kv/nominal_reference fields a Measurement Group
+        # already uses -- the entered value has a fixed, known nominal
+        # L-L meaning since Slice 4, so exposing it is now truthful.
+        assert body["nominal_base_kv"] == pytest.approx(132.0)
+        assert body["nominal_reference"] == "line_to_line"
         assert body["effective_base_amount"] == pytest.approx(132.0, abs=1e-6)
         assert body["effective_base_unit"] == "kV"
+
+    def test_source_default_voltage_channel_lg_reports_nominal_and_interpretation(self, client, comtrade_fixtures_dir):
+        """This slice's own primary worked example: nominal 275 kV L-L,
+        channel interpretation L-G, effective base ≈158.77 kV."""
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        put_resp = client.put(
+            f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}",
+            json={"voltage_base_value": 275.0, "voltage_reference_mode": "manual", "voltage_reference_override": "line_to_ground"},
+        )
+        assert put_resp.status_code == 200, put_resp.text
+
+        body = _resolution(client, "ws-1", source_id, "S132_VR")
+        assert body["status"] == "configured"
+        assert body["source_kind"] == "source_default"
+        assert body["nominal_base_kv"] == pytest.approx(275.0)
+        assert body["nominal_reference"] == "line_to_ground"
+        assert body["effective_base_amount"] == pytest.approx(158.77, abs=0.01)
+        assert body["effective_base_unit"] == "kV"
+
+    def test_source_default_current_channel_never_reports_nominal_fields(self, client, comtrade_fixtures_dir):
+        """Scenario 4 of this follow-up: no fabricated nominal/reference
+        for Source Default Current."""
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        client.put(
+            f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}",
+            json={"current_base_mode": "direct", "direct_current_base_value": 2.0995},
+        )
+        body = _resolution(client, "ws-1", source_id, "LINEA_IR")
+        assert body["status"] == "configured"
+        assert body["source_kind"] == "source_default"
+        assert body["nominal_base_kv"] is None
+        assert body["nominal_reference"] is None
 
     def test_ungrouped_channel_with_no_source_default_reports_a_useful_reason(self, client, comtrade_fixtures_dir):
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)

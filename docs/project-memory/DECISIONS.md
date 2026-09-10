@@ -6450,6 +6450,41 @@ updated where they had locked in the old, now-incorrect arithmetic
 (each with an explicit comment explaining the corrected semantics, per
 the task's own instruction never to silently weaken an assertion).
 
+**Update (2026-09-11, same day) — Slice 4 follow-up: Source Default
+Voltage provenance now exposes its own nominal/interpretation fields,
+reusing the exact Measurement Group presentation.** Purely a
+presentation/provenance enhancement -- no arithmetic, resolver,
+precedence, or persistence change. Since Slice 4 fixed
+`resolve_per_unit()` to treat the entered Source Default Voltage Base
+as the nominal SYSTEM LINE-TO-LINE voltage, that field now has the
+identical fixed engineering meaning a Measurement Group's own
+`nominal_voltage_ll_kv` already has -- so it is now truthful (where it
+previously was not) to expose it. `app.services.per_unit_provenance_service._provenance_from_legacy()`
+now populates `nominal_base_kv`/`nominal_reference` for a Source
+Default VOLTAGE channel exactly like `_provenance_from_group()` already
+does for a Measurement Group -- reusing the SAME two
+`PerUnitResolutionOut` fields, never a second Source-Default-specific
+structure. `nominal_reference` is re-derived via the SAME pure,
+deterministic `resolve_effective_voltage_reference()` call
+`resolve_per_unit()` itself already made internally to reach
+`STATUS_CONFIGURED` in the first place -- a side-effect-free function
+given the same inputs can never disagree with itself, preserving the
+"one source of truth" guarantee without requiring `resolve_per_unit()`
+to expose its own internal detection. Source Default CURRENT is
+explicitly unaffected -- it has no equivalent "nominal LL, reference-
+adjusted" concept, so `nominal_base_kv`/`nominal_reference` stay `null`
+for it, in both scopes. Frontend: the Per-Unit Details popover's
+Nominal-voltage/Channel-interpretation/Effective-base rows are no
+longer gated to Measurement Groups -- they render generically off
+`resolution.nominal_base_kv`'s presence, so Source Default Voltage now
+gets the identical three-row presentation; the Source Default editor's
+own preview (added earlier in the same-day Slice 4 UI fix) is refined
+from one combined sentence into the same three separate lines. No
+migration; DEC-051/DEC-052/Measurement Group arithmetic/coverage
+classification are all untouched (verified directly). See
+[CURRENT_STATE.md](CURRENT_STATE.md) for the full file/test-list
+record.
+
 ---
 
 ## DEC-050 — Per-Unit measurement model is clarified to be measurement-group-aware; the currently deployed source-bound model (DEC-049) is not the final target

@@ -348,8 +348,12 @@ class TestMeasurementGroupArithmeticUnchangedLiveApi:
         body = resp.json()
         assert body["effective_base_amount"] == pytest.approx(158.77, abs=0.01)
         assert body["effective_base_unit"] == "kV"
-        # Truthfulness requirement preserved: Source Default still never
-        # fabricates a separate "nominal" field the way a Measurement
-        # Group does -- only the single resolved effective amount.
-        assert body["nominal_base_kv"] is None
-        assert body["nominal_reference"] is None
+        # Follow-up enhancement (same-day): since the entered Source
+        # Default Voltage Base now has a fixed, known nominal L-L
+        # meaning, provenance also reports nominal_base_kv/
+        # nominal_reference -- the SAME fields a Measurement Group
+        # already uses, never a separate Source-Default-specific
+        # structure. See test_per_unit_provenance_{service,api}.py for
+        # the full, focused coverage of this enhancement.
+        assert body["nominal_base_kv"] == pytest.approx(275.0)
+        assert body["nominal_reference"] == "line_to_ground"

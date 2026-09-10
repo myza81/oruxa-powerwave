@@ -630,6 +630,22 @@ re-confirmed by the TG-FINAL audit):
   voltage / Effective L-G base" preview line was added. See
   [DECISIONS.md — DEC-049's own 2026-09-11 update](DECISIONS.md#dec-049--global-per-unit-measurement-mode-workspace-scoped-base-profiles-backend-only-conversion-explicit-reassignment-and-two-axis-modeprofile-calculated-channel-inheritance-provenance)
   for the full record, including the complete test-file update list.
+  **Same-day follow-up: Source Default Voltage provenance now shows the
+  same three concepts a Measurement Group already shows** — Nominal
+  voltage / Channel interpretation / Effective base — reusing the
+  identical `nominal_base_kv`/`nominal_reference` `PerUnitResolutionOut`
+  fields (never a second Source-Default-specific structure), since
+  Slice 4 gave the entered Source Default Voltage Base the same fixed
+  nominal-LL meaning a Measurement Group's own configuration already
+  has. Source Default Current is unaffected (no equivalent "nominal LL"
+  concept, so those two fields stay `null` for it). The Per-Unit Details
+  popover's three-row presentation is no longer gated to Measurement
+  Groups — it renders generically off `nominal_base_kv`'s presence; the
+  Source Default editor's own preview (from the same-day Slice 4 UI fix
+  above) is refined from one combined sentence into the same three
+  separate lines. Presentation/provenance only — no arithmetic,
+  resolver, precedence, or persistence change. See
+  [DECISIONS.md — DEC-049's own 2026-09-11 same-day update](DECISIONS.md#dec-049--global-per-unit-measurement-mode-workspace-scoped-base-profiles-backend-only-conversion-explicit-reassignment-and-two-axis-modeprofile-calculated-channel-inheritance-provenance).
 - **Calculated channels**: workspace-scoped derived analog channels —
   Reverse Polarity, Absolute Value, Multiply-by-Constant, N-input Addition,
   ordered N-input Subtraction, and trailing one-cycle RMS. Multi-input

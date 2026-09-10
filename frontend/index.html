@@ -19729,32 +19729,46 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 rows.push(wwPerUnitInfoRowHtml(
                     "Source", "Measurement Group: " + (resolution.measurement_group_name || resolution.measurement_group_id || "—")
                 ));
-                if (resolution.nominal_base_kv != null) {
-                    rows.push(wwPerUnitInfoRowHtml("Nominal voltage", resolution.nominal_base_kv + " kV L-L"));
-                }
+            } else if (resolution.source_kind === "source_default") {
+                rows.push(wwPerUnitInfoRowHtml("Source", "Source Default"));
+            }
+
+            // Nominal voltage / Channel interpretation: the SAME three-
+            // concept presentation for BOTH scopes whenever the backend
+            // actually reports a nominal L-L base -- a Measurement
+            // Group's own voltage_config, or (since this follow-up
+            // enhancement) Source Default Voltage, which now has the
+            // identical fixed nominal-L-L meaning post-Slice-4. Current
+            // (either scope) never carries nominal_base_kv.
+            if (resolution.nominal_base_kv != null) {
+                rows.push(wwPerUnitInfoRowHtml("Nominal voltage", resolution.nominal_base_kv + " kV L-L"));
                 if (refAbbrev) {
                     rows.push(wwPerUnitInfoRowHtml("Channel interpretation", refAbbrev));
                 }
-                if (resolution.equipment_rating_mva != null) {
-                    let ratingText = resolution.equipment_rating_mva + " MVA";
-                    if (resolution.applicable_voltage_ll_kv != null) ratingText += " @ " + resolution.applicable_voltage_ll_kv + " kV";
-                    rows.push(wwPerUnitInfoRowHtml("Equipment rating", ratingText));
-                }
-                if (resolution.effective_base_amount != null) {
+            }
+
+            if (resolution.source_kind === "measurement_group" && resolution.equipment_rating_mva != null) {
+                let ratingText = resolution.equipment_rating_mva + " MVA";
+                if (resolution.applicable_voltage_ll_kv != null) ratingText += " @ " + resolution.applicable_voltage_ll_kv + " kV";
+                rows.push(wwPerUnitInfoRowHtml("Equipment rating", ratingText));
+            }
+
+            if (resolution.effective_base_amount != null) {
+                if (resolution.nominal_base_kv != null) {
+                    // Voltage, either scope: "Effective base", annotated
+                    // with the channel's own interpretation (L-G/L-L).
                     const suffix = refAbbrev ? " " + refAbbrev : "";
                     rows.push(wwPerUnitInfoRowHtml(
                         "Effective base", resolution.effective_base_amount.toFixed(2) + " " + resolution.effective_base_unit + suffix
                     ));
-                }
-            } else if (resolution.source_kind === "source_default") {
-                rows.push(wwPerUnitInfoRowHtml("Source", "Source Default"));
-                if (resolution.effective_base_amount != null) {
-                    // Deliberately plain -- no L-L/L-G suffix. Source
-                    // Default's own current arithmetic uses this value
-                    // directly with no reference-aware adjustment; showing
-                    // a suffix here would fabricate a distinction the
-                    // actual calculation does not make (task's own
-                    // explicit truthfulness requirement).
+                } else if (resolution.source_kind === "measurement_group") {
+                    rows.push(wwPerUnitInfoRowHtml(
+                        "Effective base", resolution.effective_base_amount.toFixed(2) + " " + resolution.effective_base_unit
+                    ));
+                } else if (resolution.source_kind === "source_default") {
+                    // Source Default Current: deliberately plain -- no
+                    // suffix. Its own arithmetic has no reference-aware
+                    // adjustment to expose (unlike Voltage above).
                     const label = resolution.engineering_type === "Voltage" ? "Voltage base" : "Current base";
                     rows.push(wwPerUnitInfoRowHtml(label, resolution.effective_base_amount.toFixed(2) + " " + resolution.effective_base_unit));
                 }
@@ -21585,13 +21599,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // when the base/reference aren't both known yet -- callers skip
         // rendering the preview line entirely in that case, never a
         // fabricated "—".
-        function wwPerUnitEffectiveVoltageBaseText(state, reference) {
+        // Same-day follow-up: three SEPARATE lines (Nominal voltage /
+        // Channel interpretation / Effective base) instead of one
+        // combined sentence -- matching the exact presentation the
+        // Per-Unit Details popover uses for the identical concepts
+        // (wwRenderChannelPerUnitResolution()'s own "Nominal voltage"/
+        // "Channel interpretation"/"Effective base" rows), so an
+        // engineer sees the same three-concept breakdown whether they
+        // are editing Source Default or inspecting an already-displayed
+        // channel's own provenance.
+        function wwPerUnitEffectiveVoltageBaseLines(state, reference) {
             const vbase = Number(state.voltageBaseValue);
             if (!Number.isFinite(vbase) || vbase <= 0 || !reference) return null;
             const isLg = reference === PER_UNIT_LINE_TO_GROUND;
             const effective = isLg ? vbase / PER_UNIT_SQRT_3 : vbase;
-            return "Nominal system voltage: " + vbase + " kV L-L — Effective " + (isLg ? "L-G" : "L-L") +
-                " base: " + effective.toFixed(2) + " kV";
+            const interpretation = isLg ? "L-G" : "L-L";
+            return [
+                "Nominal voltage: " + vbase + " kV L-L",
+                "Channel interpretation: " + interpretation,
+                "Effective base: " + effective.toFixed(2) + " kV " + interpretation,
+            ];
         }
 
         function wwRenderVoltageReferenceBlock(state) {
@@ -21613,26 +21640,30 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     : ''
             );
 
+            const previewLinesHtml = (lines) => (
+                lines ? lines.map((line) => '<div class="hint">' + escapeHtml(line) + '</div>').join("") : ''
+            );
+
             if (state.voltageReferenceMode === "manual") {
-                const manualPreview = wwPerUnitEffectiveVoltageBaseText(state, state.voltageReferenceOverride);
+                const manualPreview = wwPerUnitEffectiveVoltageBaseLines(state, state.voltageReferenceOverride);
                 return '<div class="ww-cc-field"><span>Voltage Reference ' + infoTip + '</span>' +
                     '<select id="perUnitVoltageReferenceOverride">' +
                     '<option value="' + PER_UNIT_LINE_TO_GROUND + '"' + (state.voltageReferenceOverride === PER_UNIT_LINE_TO_GROUND ? " selected" : "") + '>Line-to-Ground</option>' +
                     '<option value="' + PER_UNIT_LINE_TO_LINE + '"' + (state.voltageReferenceOverride === PER_UNIT_LINE_TO_LINE ? " selected" : "") + '>Line-to-Line</option>' +
                     '</select>' +
                     '<div class="hint">Manual override</div>' +
-                    (manualPreview ? '<div class="hint">' + escapeHtml(manualPreview) + '</div>' : '') +
+                    previewLinesHtml(manualPreview) +
                     '<div class="ww-pu-ref-actions"><button type="button" class="secondary" id="perUnitReturnToAutoBtn">Return to Auto</button></div>' +
                     '</div>';
             }
 
             if (state.autoDetection.reference) {
                 const evidence = state.autoDetection.evidence || [];
-                const autoPreview = wwPerUnitEffectiveVoltageBaseText(state, state.autoDetection.reference);
+                const autoPreview = wwPerUnitEffectiveVoltageBaseLines(state, state.autoDetection.reference);
                 return '<div class="ww-cc-field"><span>Voltage Reference ' + infoTip + '</span>' +
                     '<div class="hint">Auto: ' + refLabel(state.autoDetection.reference) + '</div>' +
                     '<div class="hint">Detected automatically from channel naming.</div>' +
-                    (autoPreview ? '<div class="hint">' + escapeHtml(autoPreview) + '</div>' : '') +
+                    previewLinesHtml(autoPreview) +
                     '<div class="ww-pu-ref-actions">' + detailsToggleBtn(evidence) +
                     '<button type="button" class="secondary" id="perUnitOverrideReferenceBtn">Override</button></div>' +
                     detailsPanel("Detected as " + refLabel(state.autoDetection.reference), evidence) +

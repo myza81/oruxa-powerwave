@@ -92,6 +92,44 @@ regression suite passes with zero failures (exit code 0); `git diff
 **Commit status**: already committed in this session; see this task's
 own final report for the exact commit hash.
 
+**Same-day follow-up: Source Default Voltage provenance now shows the
+same three concepts a Measurement Group already shows.** Presentation/
+provenance only -- no arithmetic, resolver, precedence, or persistence
+change. Since the Slice 4 fix above gave the entered Source Default
+Voltage Base a fixed nominal SYSTEM L-L meaning (identical to a
+Measurement Group's own `nominal_voltage_ll_kv`), it is now truthful to
+expose it: `app.services.per_unit_provenance_service._provenance_from_legacy()`
+populates `nominal_base_kv`/`nominal_reference` for Source Default
+VOLTAGE exactly like `_provenance_from_group()` already does for a
+Measurement Group -- reusing the SAME two `PerUnitResolutionOut`
+fields, never a second Source-Default-specific structure.
+`nominal_reference` is re-derived via the SAME pure
+`resolve_effective_voltage_reference()` call `resolve_per_unit()`
+itself already made internally, so it can never disagree ("one source
+of truth" preserved without `resolve_per_unit()` exposing its own
+internal detection). Source Default CURRENT is unaffected (no
+equivalent "nominal LL" concept -- stays `null` in both scopes).
+
+**Frontend**: the Per-Unit Details popover's Nominal-voltage/Channel-
+interpretation/Effective-base rows are no longer gated to Measurement
+Groups -- they render generically off `resolution.nominal_base_kv`'s
+presence (`wwRenderChannelPerUnitResolution()`), so Source Default
+Voltage now gets the identical three-row treatment; Source Default
+Current keeps its own separate, un-annotated fallback line unchanged.
+The Source Default editor's own preview (`wwPerUnitEffectiveVoltageBaseLines()`,
+renamed from `wwPerUnitEffectiveVoltageBaseText()`) is refined from one
+combined sentence into the same three separate lines, rendered as
+individual `.hint` divs.
+
+**Files changed**: `backend/app/services/per_unit_provenance_service.py`,
+`frontend/index.html`, plus `test_per_unit_provenance_service.py`/
+`test_per_unit_provenance_api.py`/`test_per_unit_source_default_voltage_reference.py`/
+`test_frontend_per_unit_traceability.py`/
+`test_frontend_per_unit_source_default_voltage_reference.py` updated,
+and new `test_frontend_per_unit_source_default_voltage_traceability.py`
+(12 tests). Full per-unit + frontend sweep and full backend regression
+both pass with zero failures; `git diff --check` clean.
+
 ## What was done in the prior session — Per-Unit Settings hierarchy, Slice 3: channel-level traceability
 
 **Per-Unit Settings hierarchy, Slice 3: channel-level traceability.**
