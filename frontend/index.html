@@ -2627,6 +2627,33 @@
            them can ever be triggered while a position:fixed panel at
            z-index 40+ is also open. */
         #wwDataPrepResetAllOverlay { z-index: 41; }
+        /* Missing-value fill/estimation enhancement (owner UAT,
+           2026-09-10): both new dialogs are reachable from inside the
+           Data Issues panel/action area (single-cell "Estimate Missing
+           Value") or its group header ("Fill / Estimate Missing
+           Values") -- same +1-over-40 scoped convention as the two
+           rules immediately above, for the same reason (task section
+           27's own "new dialogs must stack above [the drawer],
+           following the existing scoped z-index pattern"). */
+        #wwDataIssuesEstimateOverlay,
+        #wwDataIssuesBulkFillOverlay { z-index: 41; }
+        /* These two dialogs carry a Method select + conditional
+           numeric fields + a multi-line count breakdown -- slightly
+           wider than the plain confirm-box default (380px) so the
+           bulk dialog's longest line ("Values that will remain
+           unresolved: 14") never wraps awkwardly. */
+        .ww-data-issues-estimate-box { max-width: 440px; }
+        .ww-data-issues-estimate-box .ww-cc-field { display: block; margin: 10px 0; font-size: 0.78rem; }
+        .ww-data-issues-estimate-box .ww-cc-field > span { display: block; margin-bottom: 4px; font-weight: 600; }
+        .ww-data-issues-estimate-box select,
+        .ww-data-issues-estimate-box input[type="number"] {
+            width: 100%; box-sizing: border-box;
+        }
+        /* Count/breakdown text is built with literal "\n" (task
+           sections 5/12's own multi-line suggested layouts) -- textContent
+           only, never innerHTML, so this is the one CSS hook needed to
+           actually render those as separate lines. */
+        #wwDataIssuesEstimateCount, #wwDataIssuesBulkFillCount { white-space: pre-line; }
         .ww-data-issues-action-area {
             flex: 0 0 auto; padding: 10px 12px; border-top: 1px solid var(--panel-border);
             background: var(--surface-tint); font-size: 0.72rem;
@@ -2664,6 +2691,30 @@
             color: var(--text-dim); background: var(--panel); border: 1px solid var(--panel-border);
             border-radius: 999px; padding: 1px 6px;
         }
+        /* Missing-value fill/estimation enhancement (owner UAT,
+           2026-09-10): task sections 15/16 -- algorithmically estimated
+           and constant-filled cells must be visually distinguishable
+           from raw source values AND from each other, subtly, and
+           never by color alone (border + background + a labelled
+           badge, same restrained convention as the explicit-null rule
+           above). Constant Value is deliberately never labelled
+           "Estimated" (task section 16) -- it is a direct user-
+           specified fill, not an interpolation result. */
+        #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-table td.ww-data-prep-cell-estimated {
+            background: color-mix(in srgb, var(--accent) 10%, transparent);
+            box-shadow: inset 3px 0 0 var(--accent);
+        }
+        #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-table td.ww-data-prep-cell-constant-fill {
+            background: color-mix(in srgb, var(--ok) 10%, transparent);
+            box-shadow: inset 3px 0 0 var(--ok);
+        }
+        .ww-data-prep-estimated-badge, .ww-data-prep-filled-badge {
+            display: inline-block; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.03em;
+            background: var(--panel); border: 1px solid var(--panel-border);
+            border-radius: 999px; padding: 1px 6px;
+        }
+        .ww-data-prep-estimated-badge { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--panel-border)); }
+        .ww-data-prep-filled-badge { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--panel-border)); }
         #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-table td.ww-data-prep-cell-issue-selected {
             outline: 2px solid var(--accent); outline-offset: -2px;
         }
@@ -7522,6 +7573,59 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 </div>
             </div>
 
+            <!-- Missing-value fill/estimation enhancement (owner UAT,
+                 2026-09-10): single-cell "Estimate Missing Value" --
+                 reuses the exact same .confirm-overlay/.confirm-box
+                 shell as the bulk-null dialog immediately above. The
+                 backend treats estimation as a contiguous-gap operation
+                 (task section 4), so #wwDataIssuesEstimateCount always
+                 shows the ACTUAL affected count from the backend's own
+                 preview response, never just "1 cell" implied by the
+                 single click that opened this dialog. -->
+            <div class="confirm-overlay" id="wwDataIssuesEstimateOverlay" hidden>
+                <div class="confirm-box ww-data-issues-estimate-box" role="alertdialog" aria-modal="true" aria-labelledby="wwDataIssuesEstimateTitle">
+                    <p id="wwDataIssuesEstimateTitle">Estimate Missing Value</p>
+                    <p class="hint" id="wwDataIssuesEstimateCellLabel">Cell —</p>
+                    <label class="ww-cc-field"><span>Method</span>
+                        <select id="wwDataIssuesEstimateMethodSelect"></select>
+                    </label>
+                    <div id="wwDataIssuesEstimateGapFields"></div>
+                    <p class="hint" id="wwDataIssuesEstimateCount">Calculating…</p>
+                    <p class="hint">Other valid cells will not be changed. Original source data will remain unchanged.</p>
+                    <div class="confirm-actions">
+                        <button type="button" class="secondary" id="wwDataIssuesEstimateCancelBtn">Cancel</button>
+                        <button type="button" id="wwDataIssuesEstimateConfirmBtn" disabled>Estimate</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Missing-value fill/estimation enhancement (owner UAT,
+                 2026-09-10): group-level "Fill / Estimate Missing
+                 Values" -- Method includes Constant Value (strictly
+                 issue-scoped, task section 10) plus the four algorithmic
+                 methods (gap-based, section 11).
+                 #wwDataIssuesBulkFillGapNote is shown only when a
+                 mixed-gap expansion makes affected_count differ from
+                 matching_count, so scope is never silently expanded
+                 without being shown. -->
+            <div class="confirm-overlay" id="wwDataIssuesBulkFillOverlay" hidden>
+                <div class="confirm-box ww-data-issues-estimate-box" role="alertdialog" aria-modal="true" aria-labelledby="wwDataIssuesBulkFillTitle">
+                    <p id="wwDataIssuesBulkFillTitle">Fill / Estimate Missing Values</p>
+                    <p class="hint" id="wwDataIssuesBulkFillScopeLabel">Column —</p>
+                    <label class="ww-cc-field"><span>Method</span>
+                        <select id="wwDataIssuesBulkFillMethodSelect"></select>
+                    </label>
+                    <div id="wwDataIssuesBulkFillFields"></div>
+                    <p class="hint" id="wwDataIssuesBulkFillCount">Calculating…</p>
+                    <p class="hint" id="wwDataIssuesBulkFillGapNote" hidden>Estimation is applied to complete contiguous missing/invalid gaps.</p>
+                    <p class="hint">Other valid cells will not be changed. Original source data will remain unchanged.</p>
+                    <div class="confirm-actions">
+                        <button type="button" class="secondary" id="wwDataIssuesBulkFillCancelBtn">Cancel</button>
+                        <button type="button" id="wwDataIssuesBulkFillConfirmBtn" disabled>Apply</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Redesign: right-side Signal Builder drawer, opened via
                  "+ New Channel" above -- same fixed/translateX/backdrop
                  mechanics as #wwAnnotationDrawer. Holds the SAME operation
@@ -11054,6 +11158,28 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         'data-bulk-null-issue-code="' + escapeHtml(issueCode) + '" data-bulk-null-column-index="' + columnIndex + '"' +
                         (known === 0 ? ' disabled' : '') + '>' +
                         (known != null ? 'Mark all ' + known + ' as Null' : 'Mark as Null…') + '</button>';
+                    // Missing-value fill/estimation enhancement (owner
+                    // UAT, 2026-09-10): group-level "Fill / Estimate
+                    // Missing Values" -- opens a dialog covering BOTH
+                    // Constant Value (strictly issue-scoped, task section
+                    // 10) and the four algorithmic methods (gap-based,
+                    // may expand beyond this one issue type into a mixed
+                    // gap, task section 11). Deliberately no separate
+                    // separate bulk manual-fill action (task section 1)
+                    // -- same-value bulk filling lives only here, under
+                    // Constant Value.
+                    html += '<button type="button" class="secondary ww-data-issues-bulk-fill-btn" ' +
+                        'data-bulk-fill-issue-code="' + escapeHtml(issueCode) + '" data-bulk-fill-column-index="' + columnIndex + '">' +
+                        'Fill / Estimate Missing Values</button>';
+                    // Group-level "Set <Column> to Not Assigned" (task
+                    // section 19) -- same wwDataPrepSetColumnRole(...,
+                    // "not_assigned") call and same explicit whole-column
+                    // confirmation wording as the single-cell action
+                    // area's own "change-role" button; no second ignore
+                    // mechanism.
+                    html += '<button type="button" class="secondary ww-data-issues-group-not-assigned-btn" ' +
+                        'data-not-assigned-column-index="' + columnIndex + '">' +
+                        'Set ' + escapeHtml(wwDataPrepColumnDisplayName(columnIndex)) + ' to Not Assigned</button>';
                 }
                 html += '<ul class="ww-data-issues-coordinate-list">';
                 for (const issue of visible) {
@@ -11103,6 +11229,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             html += '<div class="ww-data-issues-action-buttons">';
             if (!isTimeAxis) html += '<button type="button" data-issue-action="mark-null">Mark as Null</button>';
             html += '<button type="button" class="secondary" data-issue-action="fill-manually">Fill Manually</button>';
+            // Missing-value fill/estimation enhancement (owner UAT,
+            // 2026-09-10): single-cell "Estimate Missing Value" -- only
+            // for the two Waveform-scoped issue codes (task section 2),
+            // reusing the SAME eligibility set as the bulk-null button
+            // above (Time Axis is never eligible, backend-enforced
+            // either way). Backend treats estimation as a contiguous-gap
+            // operation, so this one click may affect more than this one
+            // cell -- the dialog itself shows the actual affected count
+            // before Apply (task section 4), never implied here.
+            if (WW_BULK_NULL_ELIGIBLE_CODES.has(issue.code)) {
+                html += '<button type="button" class="secondary" data-issue-action="estimate">Estimate Missing Value</button>';
+            }
             html += isTimeAxis
                 ? '<button type="button" class="secondary" data-issue-action="configure-time-axis">Revisit Time Axis</button>'
                 : '<button type="button" class="secondary" data-issue-action="change-role">Set Column to Not Assigned</button>';
@@ -11113,6 +11251,464 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             areaEl.innerHTML = html;
             areaEl.dataset.rowNumber = String(issue.row_number);
             areaEl.dataset.columnIndex = String(issue.column_index);
+            areaEl.dataset.issueCode = issue.code;
+        }
+
+        // ==============================================================================
+        // Missing-value fill/estimation enhancement (owner UAT,
+        // 2026-09-10) -- frontend integration for the backend endpoints
+        // added in commit e60e830 (see
+        // app.services.working_overlay_service /
+        // app.api.v1.preparation_sources for the authoritative
+        // contract). Two new dialogs: single-cell "Estimate Missing
+        // Value" (opened from the per-cell action area above) and
+        // group-level "Fill / Estimate Missing Values" (Constant Value
+        // + the four algorithmic methods, opened from a waveform issue
+        // group). Both are thin clients over the backend's own preview/
+        // apply endpoints -- every count/value shown here comes from
+        // the backend response, never computed or guessed locally (task
+        // section 3/13). Distinct constant/function names from
+        // WW_CC_ESTIMATION_METHODS (the unrelated Calculated Channel
+        // null-handling builder's own method map, ~line 24970) even
+        // though the four underlying method identifiers are shared with
+        // the backend -- the two features are otherwise independent.
+        // ==============================================================================
+
+        const WW_DATA_PREP_ESTIMATION_METHODS = {
+            hold_last: { label: "Hold Last Value" },
+            nearest: { label: "Nearest Value" },
+            linear: { label: "Linear Interpolation" },
+            local_mean: { label: "Local Mean" },
+        };
+        const WW_DATA_PREP_ESTIMATION_METHOD_ORDER = ["hold_last", "nearest", "linear", "local_mean"];
+
+        function wwDataPrepEstimationMethodLabel(method) {
+            const meta = WW_DATA_PREP_ESTIMATION_METHODS[method];
+            return meta ? meta.label : (method || "?");
+        }
+
+        function wwDataPrepIssueKindLabel(issueCode, plural) {
+            const invalid = issueCode === "waveform_value_invalid";
+            if (invalid) return plural ? "invalid values" : "invalid value";
+            return plural ? "empty cells" : "empty cell";
+        }
+
+        // ------------------------------------------------------------------
+        // Single-cell Estimate Missing Value dialog (task sections 4-8)
+        // ------------------------------------------------------------------
+
+        const wwDataPrepEstimateDialog = {
+            rowNumber: null, columnIndex: null, issueCode: null,
+            method: "linear", maxGapValue: "3", maxGapUnit: "samples", localMeanRadius: "",
+            requestToken: 0, lastPreview: null,
+        };
+        let wwDataPrepEstimateDebounceTimer = null;
+
+        function wwDataPrepRenderEstimateMethodSelect() {
+            const select = document.getElementById("wwDataIssuesEstimateMethodSelect");
+            if (!select) return;
+            let html = "";
+            for (const method of WW_DATA_PREP_ESTIMATION_METHOD_ORDER) {
+                html += '<option value="' + method + '"' + (wwDataPrepEstimateDialog.method === method ? " selected" : "") + '>' +
+                    escapeHtml(wwDataPrepEstimationMethodLabel(method)) + '</option>';
+            }
+            select.innerHTML = html;
+        }
+
+        // Section 7-8: a plain numeric input + fixed "samples" suffix
+        // (never a one-choice unit dropdown), the SAME
+        // .ww-pu-value-suffix-group/.ww-pu-suffix pattern the
+        // Calculated Channel estimation-method fields already
+        // established -- Local Mean Radius is rendered only when Local
+        // Mean is the selected method, and its own stored value is
+        // cleared whenever the method changes away from it (wired
+        // below).
+        function wwDataPrepRenderEstimateDialogFields() {
+            const container = document.getElementById("wwDataIssuesEstimateGapFields");
+            if (!container) return;
+            const d = wwDataPrepEstimateDialog;
+            let html = '<label class="ww-cc-field"><span>Maximum Gap' +
+                wwInfoTipHtml("About Maximum Gap", "Gaps longer than this remain unresolved.") +
+                '</span><div class="ww-pu-value-suffix-group"><input type="number" min="1" step="1" inputmode="numeric" id="wwDataIssuesEstimateMaxGapInput" placeholder="e.g. 3" value="' +
+                escapeHtml(String(d.maxGapValue)) + '"><span class="ww-pu-suffix">samples</span></div></label>';
+            if (d.method === "local_mean") {
+                html += '<label class="ww-cc-field"><span>Local Mean Radius' +
+                    wwInfoTipHtml("About Local Mean Radius", "Uses up to this many neighboring samples before and after each gap.") +
+                    '</span><div class="ww-pu-value-suffix-group"><input type="number" min="1" step="1" inputmode="numeric" id="wwDataIssuesEstimateRadiusInput" placeholder="e.g. 2" value="' +
+                    escapeHtml(String(d.localMeanRadius)) + '"><span class="ww-pu-suffix">samples each side</span></div></label>';
+            }
+            container.innerHTML = html;
+        }
+
+        function wwDataPrepEstimateValidationError() {
+            const d = wwDataPrepEstimateDialog;
+            if (!d.method) return "Choose an estimation method.";
+            const maxGap = Number(d.maxGapValue);
+            if (!Number.isInteger(maxGap) || maxGap < 1) return "Maximum Gap must be a positive whole number of samples.";
+            if (d.method === "local_mean") {
+                const radius = Number(d.localMeanRadius);
+                if (!Number.isInteger(radius) || radius < 1) return "Local Mean Radius must be a positive whole number of samples.";
+            }
+            return null;
+        }
+
+        function openWwDataIssuesEstimateDialog(rowNumber, columnIndex, issueCode) {
+            const overlay = document.getElementById("wwDataIssuesEstimateOverlay");
+            const d = wwDataPrepEstimateDialog;
+            d.rowNumber = rowNumber;
+            d.columnIndex = columnIndex;
+            d.issueCode = issueCode;
+            if (!d.method) d.method = "linear";
+            if (!d.maxGapValue) d.maxGapValue = "3";
+            document.getElementById("wwDataIssuesEstimateCellLabel").textContent =
+                "Cell " + wwSpreadsheetColumnLabel(columnIndex) + rowNumber;
+            wwDataPrepRenderEstimateMethodSelect();
+            wwDataPrepRenderEstimateDialogFields();
+            overlay.hidden = false;
+            document.getElementById("wwDataIssuesEstimateCancelBtn").focus();
+            wwDataPrepRefreshEstimateDialogPreview();
+        }
+
+        function closeWwDataIssuesEstimateDialog() {
+            document.getElementById("wwDataIssuesEstimateOverlay").hidden = true;
+            wwDataPrepEstimateDialog.requestToken += 1; // discards any in-flight preview response
+            // Cancels a still-pending debounced preview too -- without
+            // this, a config edit made just before closing (or before
+            // Apply) could still fire a network request after the
+            // dialog is gone, needlessly hitting the backend for a cell
+            // that may already be resolved by then.
+            if (wwDataPrepEstimateDebounceTimer) { clearTimeout(wwDataPrepEstimateDebounceTimer); wwDataPrepEstimateDebounceTimer = null; }
+        }
+
+        // Preview-before-confirmation (task section 13): every count
+        // shown here comes straight off EstimatePreviewOut -- never
+        // derived from cell_issues/displayed coordinates/browser group
+        // count, since the Data Issues browse list is capped.
+        async function wwDataPrepRefreshEstimateDialogPreview() {
+            const d = wwDataPrepEstimateDialog;
+            const countEl = document.getElementById("wwDataIssuesEstimateCount");
+            const confirmBtn = document.getElementById("wwDataIssuesEstimateConfirmBtn");
+            const validationError = wwDataPrepEstimateValidationError();
+            if (validationError) {
+                countEl.textContent = validationError;
+                confirmBtn.disabled = true;
+                confirmBtn.textContent = "Estimate";
+                return;
+            }
+            const token = ++d.requestToken;
+            countEl.textContent = "Calculating…";
+            confirmBtn.disabled = true;
+            try {
+                const response = await fetch(
+                    wwDataPrepSourceUrl("/working/cells/" + d.rowNumber + "/" + d.columnIndex + "/estimate/preview"),
+                    {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            issue_code: d.issueCode, method: d.method, max_gap_value: Number(d.maxGapValue),
+                            max_gap_unit: "samples",
+                            local_mean_radius: d.method === "local_mean" ? Number(d.localMeanRadius) : null,
+                        }),
+                    },
+                );
+                if (token !== d.requestToken) return; // superseded by a newer config change or dialog close
+                if (!response.ok) {
+                    const body = await response.json().catch(() => null);
+                    countEl.textContent = (body && body.detail && body.detail.message) || "Could not determine the affected cell count.";
+                    confirmBtn.disabled = true;
+                    return;
+                }
+                const body = await response.json();
+                if (token !== d.requestToken) return;
+                d.lastPreview = body;
+                // Task section 4: never imply only the clicked cell will
+                // change -- always show BOTH the originally-matching
+                // scope (N, always 1 for a single-cell request) and the
+                // true resolved gap size (M), since a mixed missing/
+                // invalid gap expands beyond the one clicked cell's own
+                // issue type.
+                let text = "Matching issue cells: " + body.matching_count + "\n" +
+                    "Values that will be estimated: " + body.eligible_count;
+                if (body.affected_count !== body.eligible_count) {
+                    text += "\nThis cell is part of a " + body.affected_count + "-cell contiguous gap; " +
+                        "gaps longer than the maximum remain unresolved.";
+                }
+                countEl.textContent = text;
+                confirmBtn.disabled = body.eligible_count === 0;
+                confirmBtn.textContent = body.eligible_count > 0
+                    ? "Estimate " + body.eligible_count + (body.eligible_count === 1 ? " Value" : " Values")
+                    : "Nothing to Estimate";
+            } catch (error) {
+                if (token !== d.requestToken) return;
+                countEl.textContent = "Could not reach the backend.";
+                confirmBtn.disabled = true;
+            }
+        }
+
+        function wwDataPrepQueueEstimateDialogPreview() {
+            if (wwDataPrepEstimateDebounceTimer) clearTimeout(wwDataPrepEstimateDebounceTimer);
+            wwDataPrepEstimateDebounceTimer = setTimeout(wwDataPrepRefreshEstimateDialogPreview, 250);
+        }
+
+        async function wwDataPrepApplyEstimateDialog() {
+            const d = wwDataPrepEstimateDialog;
+            const status = document.getElementById("wwDataPrepStatus");
+            const previewCount = d.lastPreview ? d.lastPreview.eligible_count : null;
+            closeWwDataIssuesEstimateDialog();
+            try {
+                const response = await fetch(
+                    wwDataPrepSourceUrl("/working/cells/" + d.rowNumber + "/" + d.columnIndex + "/estimate/apply"),
+                    {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            issue_code: d.issueCode, method: d.method, max_gap_value: Number(d.maxGapValue),
+                            max_gap_unit: "samples",
+                            local_mean_radius: d.method === "local_mean" ? Number(d.localMeanRadius) : null,
+                        }),
+                    },
+                );
+                if (!response.ok) {
+                    const body = await response.json().catch(() => null);
+                    status.textContent = (body && body.detail && body.detail.message) || "Could not estimate this value.";
+                    await wwDataPrepFetchPreview();
+                    return;
+                }
+                const result = await response.json();
+                wwDataPrepApplyOverlaySummary(result.working_overlay);
+                // Apply-time staleness (task section 14): eligibility is
+                // re-evaluated fresh at apply time -- if it found fewer
+                // cells than the preview did, say so rather than
+                // presenting the stale preview count as the actual
+                // result.
+                const drift = previewCount != null ? previewCount - result.applied_count : 0;
+                status.textContent = drift > 0
+                    ? result.applied_count + " value" + (result.applied_count === 1 ? "" : "s") + " estimated. " + drift +
+                        (drift === 1 ? " cell was" : " cells were") + " no longer eligible."
+                    : (result.applied_count > 0 ? result.applied_count + " value" + (result.applied_count === 1 ? "" : "s") + " estimated." : "");
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Bulk "Fill / Estimate Missing Values" dialog (task sections
+        // 9-12) -- Constant Value (strictly issue-scoped, section 10) +
+        // the four algorithmic methods (gap-based, section 11).
+        // ------------------------------------------------------------------
+
+        const WW_DATA_PREP_BULK_FILL_METHOD_ORDER = ["constant", "hold_last", "nearest", "linear", "local_mean"];
+
+        function wwDataPrepBulkFillMethodLabel(method) {
+            if (method === "constant") return "Constant Value";
+            return wwDataPrepEstimationMethodLabel(method);
+        }
+
+        const wwDataPrepBulkFillDialog = {
+            columnIndex: null, issueCode: null,
+            method: "constant", constantValue: "0",
+            maxGapValue: "3", maxGapUnit: "samples", localMeanRadius: "",
+            requestToken: 0, lastPreview: null,
+        };
+        let wwDataPrepBulkFillDebounceTimer = null;
+
+        function wwDataPrepRenderBulkFillMethodSelect() {
+            const select = document.getElementById("wwDataIssuesBulkFillMethodSelect");
+            if (!select) return;
+            let html = "";
+            for (const method of WW_DATA_PREP_BULK_FILL_METHOD_ORDER) {
+                html += '<option value="' + method + '"' + (wwDataPrepBulkFillDialog.method === method ? " selected" : "") + '>' +
+                    escapeHtml(wwDataPrepBulkFillMethodLabel(method)) + '</option>';
+            }
+            select.innerHTML = html;
+        }
+
+        function wwDataPrepRenderBulkFillFields() {
+            const container = document.getElementById("wwDataIssuesBulkFillFields");
+            if (!container) return;
+            const d = wwDataPrepBulkFillDialog;
+            let html = "";
+            if (d.method === "constant") {
+                // Section 10: not interpolation -- a plain user-supplied
+                // numeric value, never a gap-based configuration field.
+                html += '<label class="ww-cc-field"><span>Value</span>' +
+                    '<input type="number" step="any" inputmode="decimal" id="wwDataIssuesBulkFillConstantInput" value="' +
+                    escapeHtml(String(d.constantValue)) + '"></label>';
+            } else {
+                html += '<label class="ww-cc-field"><span>Maximum Gap' +
+                    wwInfoTipHtml("About Maximum Gap", "Gaps longer than this remain unresolved.") +
+                    '</span><div class="ww-pu-value-suffix-group"><input type="number" min="1" step="1" inputmode="numeric" id="wwDataIssuesBulkFillMaxGapInput" placeholder="e.g. 3" value="' +
+                    escapeHtml(String(d.maxGapValue)) + '"><span class="ww-pu-suffix">samples</span></div></label>';
+                if (d.method === "local_mean") {
+                    html += '<label class="ww-cc-field"><span>Local Mean Radius' +
+                        wwInfoTipHtml("About Local Mean Radius", "Uses up to this many neighboring samples before and after each gap.") +
+                        '</span><div class="ww-pu-value-suffix-group"><input type="number" min="1" step="1" inputmode="numeric" id="wwDataIssuesBulkFillRadiusInput" placeholder="e.g. 2" value="' +
+                        escapeHtml(String(d.localMeanRadius)) + '"><span class="ww-pu-suffix">samples each side</span></div></label>';
+                }
+            }
+            container.innerHTML = html;
+        }
+
+        function wwDataPrepBulkFillValidationError() {
+            const d = wwDataPrepBulkFillDialog;
+            if (d.method === "constant") {
+                const value = Number(d.constantValue);
+                if (d.constantValue === "" || !Number.isFinite(value)) return "Value must be a finite number.";
+                return null;
+            }
+            const maxGap = Number(d.maxGapValue);
+            if (!Number.isInteger(maxGap) || maxGap < 1) return "Maximum Gap must be a positive whole number of samples.";
+            if (d.method === "local_mean") {
+                const radius = Number(d.localMeanRadius);
+                if (!Number.isInteger(radius) || radius < 1) return "Local Mean Radius must be a positive whole number of samples.";
+            }
+            return null;
+        }
+
+        function openWwDataIssuesBulkFillDialog(columnIndex, issueCode) {
+            const overlay = document.getElementById("wwDataIssuesBulkFillOverlay");
+            const d = wwDataPrepBulkFillDialog;
+            d.columnIndex = columnIndex;
+            d.issueCode = issueCode;
+            if (!d.method) d.method = "constant";
+            if (!d.maxGapValue) d.maxGapValue = "3";
+            if (d.constantValue === "" || d.constantValue == null) d.constantValue = "0";
+            document.getElementById("wwDataIssuesBulkFillScopeLabel").textContent =
+                "Column " + wwDataPrepColumnDisplayName(columnIndex) + " · Issue: " + wwDataPrepIssueKindLabel(issueCode, true);
+            wwDataPrepRenderBulkFillMethodSelect();
+            wwDataPrepRenderBulkFillFields();
+            document.getElementById("wwDataIssuesBulkFillGapNote").hidden = true;
+            overlay.hidden = false;
+            document.getElementById("wwDataIssuesBulkFillCancelBtn").focus();
+            wwDataPrepRefreshBulkFillPreview();
+        }
+
+        function closeWwDataIssuesBulkFillDialog() {
+            document.getElementById("wwDataIssuesBulkFillOverlay").hidden = true;
+            wwDataPrepBulkFillDialog.requestToken += 1;
+            // Same rationale as closeWwDataIssuesEstimateDialog() above.
+            if (wwDataPrepBulkFillDebounceTimer) { clearTimeout(wwDataPrepBulkFillDebounceTimer); wwDataPrepBulkFillDebounceTimer = null; }
+        }
+
+        async function wwDataPrepRefreshBulkFillPreview() {
+            const d = wwDataPrepBulkFillDialog;
+            const countEl = document.getElementById("wwDataIssuesBulkFillCount");
+            const gapNoteEl = document.getElementById("wwDataIssuesBulkFillGapNote");
+            const confirmBtn = document.getElementById("wwDataIssuesBulkFillConfirmBtn");
+            const validationError = wwDataPrepBulkFillValidationError();
+            if (validationError) {
+                countEl.textContent = validationError;
+                gapNoteEl.hidden = true;
+                confirmBtn.disabled = true;
+                return;
+            }
+            const token = ++d.requestToken;
+            countEl.textContent = "Calculating…";
+            gapNoteEl.hidden = true;
+            confirmBtn.disabled = true;
+            const kindLabelPlural = wwDataPrepIssueKindLabel(d.issueCode, true);
+            try {
+                if (d.method === "constant") {
+                    const response = await fetch(wwDataPrepSourceUrl("/working/cells/bulk-constant-fill/preview"), {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ column_index: d.columnIndex, issue_code: d.issueCode }),
+                    });
+                    if (token !== d.requestToken) return;
+                    if (!response.ok) {
+                        const body = await response.json().catch(() => null);
+                        countEl.textContent = (body && body.detail && body.detail.message) || "Could not determine the affected cell count.";
+                        return;
+                    }
+                    const body = await response.json();
+                    if (token !== d.requestToken) return;
+                    d.lastPreview = body;
+                    // Section 10: Constant Value stays strictly issue-
+                    // scoped -- ConstantFillPreviewOut carries only
+                    // eligible_count, no matching/affected split, since
+                    // no gap semantics ever apply to it.
+                    countEl.textContent = body.eligible_count === 0
+                        ? "There are no unresolved " + kindLabelPlural + " left in this column to fill."
+                        : "Matching " + kindLabelPlural + ": " + body.eligible_count;
+                    confirmBtn.disabled = body.eligible_count === 0;
+                } else {
+                    const response = await fetch(wwDataPrepSourceUrl("/working/cells/bulk-estimate/preview"), {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            column_index: d.columnIndex, issue_code: d.issueCode, method: d.method,
+                            max_gap_value: Number(d.maxGapValue), max_gap_unit: "samples",
+                            local_mean_radius: d.method === "local_mean" ? Number(d.localMeanRadius) : null,
+                        }),
+                    });
+                    if (token !== d.requestToken) return;
+                    if (!response.ok) {
+                        const body = await response.json().catch(() => null);
+                        countEl.textContent = (body && body.detail && body.detail.message) || "Could not determine the affected cell count.";
+                        return;
+                    }
+                    const body = await response.json();
+                    if (token !== d.requestToken) return;
+                    d.lastPreview = body;
+                    // Section 11: a bulk action scoped to one issue type
+                    // may still expand to the full mixed contiguous gap
+                    // -- show BOTH matching_count (N) and affected_count
+                    // (M) whenever they differ, never silently expanding
+                    // scope without displaying it.
+                    const mixedGap = body.affected_count !== body.matching_count;
+                    let text = "Matching " + kindLabelPlural + ": " + body.matching_count;
+                    if (mixedGap) text += "\nValues in the full contiguous gap: " + body.affected_count;
+                    text += "\nValues eligible for estimation: " + body.eligible_count +
+                        "\nValues that will remain unresolved: " + body.unresolved_count;
+                    countEl.textContent = text;
+                    gapNoteEl.hidden = !mixedGap;
+                    confirmBtn.disabled = body.eligible_count === 0;
+                }
+            } catch (error) {
+                if (token !== d.requestToken) return;
+                countEl.textContent = "Could not reach the backend.";
+            }
+        }
+
+        function wwDataPrepQueueBulkFillPreview() {
+            if (wwDataPrepBulkFillDebounceTimer) clearTimeout(wwDataPrepBulkFillDebounceTimer);
+            wwDataPrepBulkFillDebounceTimer = setTimeout(wwDataPrepRefreshBulkFillPreview, 250);
+        }
+
+        async function wwDataPrepApplyBulkFillDialog() {
+            const d = wwDataPrepBulkFillDialog;
+            const status = document.getElementById("wwDataPrepStatus");
+            const previewCount = d.lastPreview ? d.lastPreview.eligible_count : null;
+            const isConstant = d.method === "constant";
+            closeWwDataIssuesBulkFillDialog();
+            try {
+                const response = isConstant
+                    ? await fetch(wwDataPrepSourceUrl("/working/cells/bulk-constant-fill/apply"), {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ column_index: d.columnIndex, issue_code: d.issueCode, constant_value: Number(d.constantValue) }),
+                    })
+                    : await fetch(wwDataPrepSourceUrl("/working/cells/bulk-estimate/apply"), {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            column_index: d.columnIndex, issue_code: d.issueCode, method: d.method,
+                            max_gap_value: Number(d.maxGapValue), max_gap_unit: "samples",
+                            local_mean_radius: d.method === "local_mean" ? Number(d.localMeanRadius) : null,
+                        }),
+                    });
+                if (!response.ok) {
+                    const body = await response.json().catch(() => null);
+                    status.textContent = (body && body.detail && body.detail.message) || "Could not apply this fill/estimate action.";
+                    await wwDataPrepFetchPreview();
+                    return;
+                }
+                const result = await response.json();
+                wwDataPrepApplyOverlaySummary(result.working_overlay);
+                const drift = previewCount != null ? previewCount - result.applied_count : 0;
+                status.textContent = drift > 0
+                    ? result.applied_count + " cell" + (result.applied_count === 1 ? "" : "s") + " updated. " + drift +
+                        (drift === 1 ? " cell was" : " cells were") + " no longer eligible."
+                    : (result.applied_count > 0 ? result.applied_count + " cell" + (result.applied_count === 1 ? "" : "s") + " updated." : "");
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
         }
 
         function wwDataPrepRenderDataIssuesPanel() {
@@ -11203,9 +11799,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 cellIssuesByKey.set(issue.row_number + "|" + issue.column_index, issue);
             }
             const explicitNullByKey = new Set();
+            // Missing-value fill/estimation enhancement (owner UAT,
+            // 2026-09-10, task sections 15/16): mirrors
+            // explicitNullByKey's own construction exactly, keyed off
+            // the SAME modified_cells[] the backend already returns
+            // (ModifiedCellOut.is_estimated/is_constant_fill/
+            // estimation_method) -- never a second local computation of
+            // which cells are estimated/filled.
+            const estimatedByKey = new Map();
+            const constantFillByKey = new Set();
             for (const row of (wwDataPrep.lastRenderedRows || [])) {
                 for (const modified of (row.modified_cells || [])) {
-                    if (modified.is_explicit_null) explicitNullByKey.add(row.row_number + "|" + modified.column_index);
+                    const modKey = row.row_number + "|" + modified.column_index;
+                    if (modified.is_explicit_null) explicitNullByKey.add(modKey);
+                    if (modified.is_estimated) estimatedByKey.set(modKey, modified.estimation_method || null);
+                    if (modified.is_constant_fill) constantFillByKey.add(modKey);
                 }
             }
             const wsPart = wwDataPrep.selectedWorksheetIndex == null ? "null" : String(wwDataPrep.selectedWorksheetIndex);
@@ -11218,9 +11826,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
                 cell.classList.remove(
                     "ww-data-prep-cell-issue-missing", "ww-data-prep-cell-issue-invalid",
-                    "ww-data-prep-cell-explicit-null", "ww-data-prep-cell-issue-selected"
+                    "ww-data-prep-cell-explicit-null", "ww-data-prep-cell-estimated",
+                    "ww-data-prep-cell-constant-fill", "ww-data-prep-cell-issue-selected"
                 );
-                const existingBadge = cell.querySelector(".ww-data-prep-null-badge");
+                const existingBadge = cell.querySelector(".ww-data-prep-null-badge, .ww-data-prep-estimated-badge, .ww-data-prep-filled-badge");
                 if (existingBadge) existingBadge.remove();
                 cell.removeAttribute("aria-label");
 
@@ -11235,6 +11844,31 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     const badge = document.createElement("span");
                     badge.className = "ww-data-prep-null-badge";
                     badge.textContent = "NULL";
+                    cell.appendChild(badge);
+                } else if (estimatedByKey.has(key)) {
+                    // Task section 15: distinguishable from an untouched
+                    // source value, subtle, never color alone -- a
+                    // labelled badge whose own tooltip names the method
+                    // where available, without clobbering the cell's own
+                    // raw-value title set at render time.
+                    const method = estimatedByKey.get(key);
+                    const methodLabel = method ? wwDataPrepEstimationMethodLabel(method) : null;
+                    cell.classList.add("ww-data-prep-cell-estimated");
+                    cell.setAttribute("aria-label", "Estimated" + (methodLabel ? " using " + methodLabel : "") + " -- not an original source value");
+                    const badge = document.createElement("span");
+                    badge.className = "ww-data-prep-estimated-badge";
+                    badge.textContent = "Estimated";
+                    if (methodLabel) badge.title = "Estimated using " + methodLabel;
+                    cell.appendChild(badge);
+                } else if (constantFillByKey.has(key)) {
+                    // Task section 16: never labelled "Estimated" -- a
+                    // direct user-specified fill, not an interpolation
+                    // result.
+                    cell.classList.add("ww-data-prep-cell-constant-fill");
+                    cell.setAttribute("aria-label", "Filled with a constant value -- not an original source value");
+                    const badge = document.createElement("span");
+                    badge.className = "ww-data-prep-filled-badge";
+                    badge.textContent = "Filled";
                     cell.appendChild(badge);
                 }
 
@@ -11360,7 +11994,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwDataIssuesPanelToggleBtn").addEventListener("click", wwDataPrepToggleIssuesPanel);
         document.getElementById("wwDataIssuesPrevBtn").addEventListener("click", () => wwDataPrepSelectIssueByOffset(-1));
         document.getElementById("wwDataIssuesNextBtn").addEventListener("click", () => wwDataPrepSelectIssueByOffset(1));
-        document.getElementById("wwDataIssuesPanelBody").addEventListener("click", (event) => {
+        document.getElementById("wwDataIssuesPanelBody").addEventListener("click", async (event) => {
             const coordBtn = event.target.closest(".ww-data-issue-coordinate");
             if (coordBtn) {
                 const key = coordBtn.dataset.issueKey;
@@ -11379,6 +12013,32 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     parseInt(bulkNullBtn.dataset.bulkNullColumnIndex, 10),
                     bulkNullBtn.dataset.bulkNullIssueCode,
                 );
+                return;
+            }
+            const bulkFillBtn = event.target.closest(".ww-data-issues-bulk-fill-btn");
+            if (bulkFillBtn) {
+                openWwDataIssuesBulkFillDialog(
+                    parseInt(bulkFillBtn.dataset.bulkFillColumnIndex, 10),
+                    bulkFillBtn.dataset.bulkFillIssueCode,
+                );
+                return;
+            }
+            const groupNotAssignedBtn = event.target.closest(".ww-data-issues-group-not-assigned-btn");
+            if (groupNotAssignedBtn) {
+                // Mirrors the single-cell action area's own "change-role"
+                // handler exactly (same confirmation wording, same
+                // wwDataPrepSetColumnRole(...) call, task section 19) --
+                // just triggered from the group header instead of a
+                // specific issue cell.
+                const columnIndex = parseInt(groupNotAssignedBtn.dataset.notAssignedColumnIndex, 10);
+                const columnLabel = (wwDataPrep.columnLabels && wwDataPrep.columnLabels[columnIndex]) || wwSpreadsheetColumnLabel(columnIndex);
+                const confirmed = window.confirm(
+                    'Set "' + columnLabel + '" to Not Assigned?\n\n' +
+                    "This affects the entire column, not only the cells with issues. " +
+                    "The column will no longer participate in waveform preparation or readiness checks."
+                );
+                if (!confirmed) return;
+                await wwDataPrepSetColumnRole(columnIndex, "not_assigned");
             }
         });
         document.getElementById("wwDataIssuesActionArea").addEventListener("click", async (event) => {
@@ -11395,6 +12055,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '#wwDataPrepTable td.ww-data-prep-cell[data-row="' + rowNumber + '"][data-col="' + columnIndex + '"]'
                 );
                 if (cell) wwDataPrepBeginCellEdit(cell);
+            } else if (action === "estimate") {
+                openWwDataIssuesEstimateDialog(rowNumber, columnIndex, areaEl.dataset.issueCode);
             } else if (action === "change-role") {
                 // Missing-value fill/estimation enhancement (owner UAT,
                 // 2026-09-10): this action affects the ENTIRE column, not
@@ -13968,6 +14630,62 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.addEventListener("keydown", (event) => {
             if (event.key !== "Escape") return;
             if (!document.getElementById("wwDataIssuesBulkNullOverlay").hidden) closeWwDataIssuesBulkNullConfirm();
+        });
+
+        // ------------------------------------------------------------------
+        // Single-cell Estimate Missing Value dialog wiring -- same open/
+        // close/Escape/click-outside shell as bulk-null/Reset All above.
+        // ------------------------------------------------------------------
+        document.getElementById("wwDataIssuesEstimateCancelBtn").addEventListener("click", closeWwDataIssuesEstimateDialog);
+        document.getElementById("wwDataIssuesEstimateOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "wwDataIssuesEstimateOverlay") closeWwDataIssuesEstimateDialog();
+        });
+        document.getElementById("wwDataIssuesEstimateConfirmBtn").addEventListener("click", async () => {
+            await wwDataPrepApplyEstimateDialog();
+        });
+        document.getElementById("wwDataIssuesEstimateMethodSelect").addEventListener("change", (event) => {
+            wwDataPrepEstimateDialog.method = event.target.value;
+            if (wwDataPrepEstimateDialog.method !== "local_mean") wwDataPrepEstimateDialog.localMeanRadius = "";
+            wwDataPrepRenderEstimateDialogFields();
+            wwDataPrepQueueEstimateDialogPreview();
+        });
+        document.getElementById("wwDataIssuesEstimateGapFields").addEventListener("input", (event) => {
+            if (event.target.id === "wwDataIssuesEstimateMaxGapInput") wwDataPrepEstimateDialog.maxGapValue = event.target.value;
+            else if (event.target.id === "wwDataIssuesEstimateRadiusInput") wwDataPrepEstimateDialog.localMeanRadius = event.target.value;
+            else return;
+            wwDataPrepQueueEstimateDialogPreview();
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            if (!document.getElementById("wwDataIssuesEstimateOverlay").hidden) closeWwDataIssuesEstimateDialog();
+        });
+
+        // ------------------------------------------------------------------
+        // Bulk Fill / Estimate Missing Values dialog wiring
+        // ------------------------------------------------------------------
+        document.getElementById("wwDataIssuesBulkFillCancelBtn").addEventListener("click", closeWwDataIssuesBulkFillDialog);
+        document.getElementById("wwDataIssuesBulkFillOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "wwDataIssuesBulkFillOverlay") closeWwDataIssuesBulkFillDialog();
+        });
+        document.getElementById("wwDataIssuesBulkFillConfirmBtn").addEventListener("click", async () => {
+            await wwDataPrepApplyBulkFillDialog();
+        });
+        document.getElementById("wwDataIssuesBulkFillMethodSelect").addEventListener("change", (event) => {
+            wwDataPrepBulkFillDialog.method = event.target.value;
+            if (wwDataPrepBulkFillDialog.method !== "local_mean") wwDataPrepBulkFillDialog.localMeanRadius = "";
+            wwDataPrepRenderBulkFillFields();
+            wwDataPrepQueueBulkFillPreview();
+        });
+        document.getElementById("wwDataIssuesBulkFillFields").addEventListener("input", (event) => {
+            if (event.target.id === "wwDataIssuesBulkFillConstantInput") wwDataPrepBulkFillDialog.constantValue = event.target.value;
+            else if (event.target.id === "wwDataIssuesBulkFillMaxGapInput") wwDataPrepBulkFillDialog.maxGapValue = event.target.value;
+            else if (event.target.id === "wwDataIssuesBulkFillRadiusInput") wwDataPrepBulkFillDialog.localMeanRadius = event.target.value;
+            else return;
+            wwDataPrepQueueBulkFillPreview();
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            if (!document.getElementById("wwDataIssuesBulkFillOverlay").hidden) closeWwDataIssuesBulkFillDialog();
         });
 
         document.getElementById("wwDataPrepWorksheetSelect").addEventListener("change", async (event) => {
