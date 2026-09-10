@@ -1046,7 +1046,25 @@
         .ww-data-prep-table td.ww-data-prep-cell-modified { background: var(--accent-wash-soft); box-shadow: inset 0 0 0 1px var(--accent-dim); }
         .ww-data-prep-table tr.ww-data-prep-row-excluded td, .ww-data-prep-table tr.ww-data-prep-row-excluded th { opacity: 0.45; text-decoration: line-through; }
         .ww-data-prep-table tr.ww-data-prep-row-excluded th .ww-data-prep-row-toggle-btn { text-decoration: underline; } /* keep the toggle itself legible/clickable under the row's own strike-through */
-        .ww-data-prep-table th.ww-data-prep-col-ignored, .ww-data-prep-table td.ww-data-prep-col-ignored-cell { opacity: 0.45; }
+        .ww-data-prep-table td.ww-data-prep-col-ignored-cell { opacity: 0.45; }
+        /* UAT fix (2026-09-10, real-browser regression): this "Not
+           Assigned" column header is the STICKY thead th itself (every
+           column defaults to Not Assigned until a role is picked, so
+           this hits nearly every header on a freshly uploaded source --
+           exactly the reported repro). Element-level `opacity` composites
+           the WHOLE element -- background included -- against whatever
+           sits behind it, so opacity: 0.45 here was silently undoing the
+           thead th rule's own opaque `background: var(--panel)` (the
+           computed background-color was genuinely solid; the element's
+           overall paint was not). Dimming now applies via `color` only,
+           which never affects background compositing, so the header
+           stays a fully opaque occluding surface while still reading as
+           visually de-emphasized (no role badge is ever rendered for
+           Not Assigned in the first place -- see roleBadge()). Body
+           cells for the same column are unaffected (never sticky, so
+           opacity there was never an occlusion problem) and keep the
+           original rule above. */
+        .ww-data-prep-table th.ww-data-prep-col-ignored { color: var(--text-dim); }
         .ww-data-prep-table td.ww-data-prep-cell { cursor: text; }
         .ww-data-prep-table td.ww-data-prep-cell:hover { background: var(--surface-tint); }
         .ww-data-prep-cell-input { width: 100%; max-width: 200px; box-sizing: border-box; font: inherit; border: 1px solid var(--accent); border-radius: 3px; padding: 1px 4px; background: var(--panel); color: var(--text); }
@@ -2435,6 +2453,18 @@
                consistent with them instead of introducing a new token. */
             background: var(--panel);
             border-bottom: 1px solid var(--panel-border);
+        }
+        /* Restates the base .ww-data-prep-table th.ww-data-prep-col-ignored
+           color-only dimming rule at this page's own higher (ID-scoped)
+           specificity -- the rule immediately above would otherwise win
+           and silently cancel the dimming for every Not Assigned column
+           header in THIS table (the ID-scoped selector always outranks
+           the base rule's plain classes, regardless of declaration
+           order). Color only, same reasoning as the base rule: never
+           opacity, which would undo this table's own opaque sticky
+           background again. */
+        #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-table thead th.ww-data-prep-col-ignored {
+            color: var(--text-dim);
         }
         #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-table tbody th {
             background: var(--panel);
