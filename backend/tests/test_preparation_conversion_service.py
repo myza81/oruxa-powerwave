@@ -1001,6 +1001,31 @@ class TestSamplingMetadata:
         assert active.record.sampling_info.is_uniform is True
         assert active.record.sampling_info.sampling_rates == [1.0]
 
+    def test_sixty_second_interval_source_derives_one_sixtieth_hz(self):
+        """Owner UAT (2026-09-10, Recording Events Sampling Rate(s)
+        display): a real Excel recording with a genuine 60s sample
+        interval displayed "0.0166666666667 Hz". Audited first -- proves
+        that value is the mathematically CORRECT derived rate for this
+        timing (not a derivation bug); the frontend's own
+        formatSamplingRate() needed a display-precision fix instead, kept
+        entirely separate from this derivation-correctness proof."""
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        # 13:00:00, 13:01:00, ..., 13:04:00 -- exactly 60s apart.
+        timestamps = [f"13:{i:02d}:00" for i in range(5)]
+        rows = "\n".join(f"{ts},{i}.0" for i, ts in enumerate(timestamps))
+        sid = _add_csv(prep, (rows + "\n").encode())
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="time_of_day", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+        active = ws.get("ws-1", metadata.source_id)
+
+        assert list(active.record.waveform_data["time"]) == [0.0, 60.0, 120.0, 180.0, 240.0]
+        assert active.record.sampling_info.is_uniform is True
+        (rate,) = active.record.sampling_info.sampling_rates
+        assert rate == pytest.approx(1.0 / 60.0)
+
     def test_irregular_source_no_fake_average_rate_claimed(self):
         prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
         sid = _add_csv(prep, b"13:14:01,1.0\n13:14:02,2.0\n13:14:04,3.0\n13:14:05,4.0\n13:14:09,5.0\n")
