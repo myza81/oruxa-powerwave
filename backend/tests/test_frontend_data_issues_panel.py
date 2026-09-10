@@ -853,6 +853,245 @@ class TestEstimatedAndConstantFillVisualStates:
             assert "box-shadow" in rule
 
 
+class TestEstimatedAndConstantFillDisplayFormatting:
+    # UAT fix (2026-09-10): an estimated/constant-filled cell holds the
+    # raw computed override value (e.g. a linear-interpolation result
+    # such as 73.75999999999999), which must never be shown with a
+    # floating-point tail -- the surrounding raw source cells in the
+    # same column render in that column's own compact, source-native
+    # decimal format (e.g. "73.28"). Presentation-layer only: this is
+    # the display-text side; TestEstimatedAndConstantFillVisualStates
+    # above covers the (unchanged) badge/class/provenance side.
+    def test_render_table_formats_only_estimated_and_constant_fill_cells(self):
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepRenderTable(preview)", "function wwDataPrepApplyOverlaySummary(",
+        )
+        assert "modifiedCell.is_estimated || modifiedCell.is_constant_fill" in body
+        assert "wwDataPrepFormatDerivedValue(value, c, preview.rows)" in body
+
+    def test_no_second_ad_hoc_formatter_was_invented_without_checking_for_one(self):
+        # The task's own instruction: check for an existing shared
+        # numeric formatter before writing a new one. wwFormatEngineeringValue()
+        # (fixed 1-or-3-decimal, for waveform Y-axis magnitudes) is the
+        # only general-purpose numeric formatter in the codebase; the
+        # comment directly above wwDataPrepColumnDecimalPrecision()
+        # records that it was found and NOT reused (its precision rule
+        # cannot match an arbitrary preview column's own source-native
+        # decimal format), rather than silently inventing a second
+        # formatter without checking.
+        source = _source()
+        body = _function_body(
+            source,
+            "// UAT fix (2026-09-10): Estimated/Filled cells hold the raw",
+            "function wwDataPrepRenderTable(preview)",
+        )
+        # Mentioned once, in the comment, as the formatter considered
+        # and rejected -- never actually called anywhere in this range.
+        assert body.count("wwFormatEngineeringValue") == 1
+
+    def test_precision_is_derived_from_the_columns_own_raw_sibling_values(self):
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepFormatDerivedValue(", "function wwDataPrepRenderTable(preview)",
+        )
+        assert "wwDataPrepColumnDecimalPrecision(rows, columnIndex)" in body
+        assert "num.toFixed(precision)" in body
+
+    def test_precision_helper_excludes_derived_cells_from_the_reference_scan(self):
+        # A derived (estimated/constant-fill) cell must never be used as
+        # its own precision reference -- only genuine raw source values
+        # in that column establish the column's own decimal format.
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepColumnDecimalPrecision(", "function wwDataPrepFormatDerivedValue(",
+        )
+        assert "modified.is_estimated || modified.is_constant_fill)) continue;" in body
+
+    def test_data_value_and_title_attributes_still_carry_the_exact_raw_value(self):
+        # Click-to-edit (data-value) and the hover tooltip (title) must
+        # stay exact/unrounded -- only the visible cell text changes.
+        # Confirms wwDataPrepFormatDerivedValue() is used for the
+        # displayed text only, never for data-value/title.
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepRenderTable(preview)", "function wwDataPrepApplyOverlaySummary(",
+        )
+        data_value_idx = body.index('data-value="')
+        title_idx = body.index("const titleAttr =")
+        data_value_segment = body[data_value_idx:data_value_idx + 100]
+        title_segment = body[title_idx:title_idx + 120]
+        assert 'escapeHtml(isBlank ? "" : String(value))' in data_value_segment
+        assert "wwDataPrepFormatDerivedValue" not in data_value_segment
+        assert "escapeHtml(String(value))" in title_segment
+        assert "wwDataPrepFormatDerivedValue" not in title_segment
+
+    def test_underlying_working_overlay_value_is_never_touched_by_formatting(self):
+        # The formatter is called with the row's own `value` purely to
+        # compute display text -- it must never be assigned back into
+        # row.cells or otherwise mutate the fetched preview state.
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepFormatDerivedValue(", "function wwDataPrepRenderTable(preview)",
+        )
+        assert "row.cells[" not in body
+        assert ".cells[c] =" not in body
+
+
+def _column_decimal_precision(raw_values):
+    """Pure-Python mirror of wwDataPrepColumnDecimalPrecision()'s
+    frequency-count + smallest-decimals-tie-break rule.
+
+    This repository's frontend test harness has no JS execution engine
+    (see this module's own docstring -- CI stays deliberately Python-only,
+    DEC-071) -- this mirror does NOT execute the real JS and is not a
+    substitute for that. It exists only to make the worked examples in
+    TestPrecisionIsRepresentativeNotMaximum below self-checking against
+    the same rule, and the OTHER tests in this file/that class -- which
+    assert the exact operators/expressions present in the real JS source
+    (e.g. "decimals < bestDecimals") -- are what actually pins the real
+    implementation to this rule.
+    """
+    import re
+    from collections import Counter
+
+    counts: Counter[int] = Counter()
+    for raw in raw_values:
+        if raw is None or raw == "":
+            continue
+        text = str(raw).strip()
+        if not re.match(r"^-?\d+(\.\d+)?$", text):
+            continue
+        dot = text.find(".")
+        decimals = 0 if dot == -1 else len(text) - dot - 1
+        counts[decimals] += 1
+    if not counts:
+        return None
+    best_decimals, best_count = None, -1
+    for decimals, count in counts.items():
+        if count > best_count or (count == best_count and decimals < best_decimals):
+            best_decimals, best_count = decimals, count
+    return best_decimals
+
+
+class TestPrecisionIsRepresentativeNotMaximum:
+    # Owner UAT hardening (2026-09-10): the ORIGINAL implementation took
+    # the MAXIMUM decimal-place count seen among a column's own raw
+    # values -- a single unusually precise raw token (or, symmetrically,
+    # the column's typical precision being dragged to 0 by an occasional
+    # bare integer) would force every estimated/constant-filled value in
+    # that column to an unrepresentative precision. The fix uses the
+    # REPRESENTATIVE (most common/mode) decimal count instead, tied
+    # toward the SMALLER count on a frequency tie.
+    #
+    # Two layers of coverage per scenario: (1) the real JS source is
+    # asserted to contain the exact frequency-map/tie-break expressions
+    # (this is the actual regression guard, consistent with every other
+    # test_frontend_*.py's static-source convention -- there is no JS
+    # execution engine here to run the real function against data), and
+    # (2) the worked datasets are cross-checked against the disclosed
+    # Python mirror above, which implements the identical rule, so the
+    # numbers asserted below are not just hand-picked.
+
+    def test_precision_helper_uses_a_frequency_map_not_a_running_maximum(self):
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepColumnDecimalPrecision(", "function wwDataPrepFormatDerivedValue(",
+        )
+        assert "const decimalCounts = new Map();" in body
+        assert "decimalCounts.set(decimals, (decimalCounts.get(decimals) || 0) + 1);" in body
+        assert "maxDecimals" not in body
+        assert "decimals > maxDecimals" not in body
+
+    def test_tie_between_two_decimal_counts_breaks_toward_the_smaller_count(self):
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepColumnDecimalPrecision(", "function wwDataPrepFormatDerivedValue(",
+        )
+        assert "count > bestCount || (count === bestCount && decimals < bestDecimals)" in body
+
+    def test_predominant_two_decimal_column_infers_two_decimals(self):
+        # The task's own example: 5 of 6 raw values at 2 decimals, one
+        # bare integer -- must infer 2, matching the column's own
+        # dominant format, never 0 and never a maximum-based value.
+        raw_values = ["73.28", "76.16", "74.24", "72", "70.08", "69.12"]
+        assert _column_decimal_precision(raw_values) == 2
+
+    def test_single_outlier_does_not_force_its_own_precision(self):
+        # A single 5-decimal outlier among five 2-decimal values must
+        # never drag the whole column's inferred precision up to 5.
+        raw_values = ["73.28", "76.16", "74.24", "70.08", "69.12", "12.34567"]
+        assert _column_decimal_precision(raw_values) == 2
+
+    def test_occasional_integer_does_not_force_integer_display(self):
+        # A single bare integer among mostly 2-decimal values must never
+        # drag the column's inferred precision down to 0.
+        raw_values = ["10.50", "11.25", "9.75", "12", "8.40", "10.10"]
+        assert _column_decimal_precision(raw_values) == 2
+
+    def test_genuinely_predominant_three_decimal_column_infers_three_decimals(self):
+        # A genuinely different column format (3 decimals dominant, one
+        # 1-decimal outlier) must be respected as its own column's own
+        # representative precision, not clamped to some other value.
+        raw_values = ["1.234", "1.567", "1.890", "2.001", "1.5"]
+        assert _column_decimal_precision(raw_values) == 3
+
+    def test_estimated_underlying_value_remains_exact(self):
+        # The precision fix is presentation-only: the exact raw
+        # computed value (e.g. 73.75999999999999, the task's own
+        # reported example) must still be what data-value/title carry,
+        # and what wwDataPrepFormatDerivedValue() receives as input --
+        # only its DISPLAYED text is rounded to the column's
+        # representative precision. Mirrors
+        # test_data_value_and_title_attributes_still_carry_the_exact_raw_value
+        # above, restated here against the task's own example value.
+        source = _source()
+        render_body = _function_body(
+            source, "function wwDataPrepRenderTable(preview)", "function wwDataPrepApplyOverlaySummary(",
+        )
+        assert "const value = row.cells[c];" in render_body
+        data_value_idx = render_body.index('data-value="')
+        data_value_segment = render_body[data_value_idx:data_value_idx + 100]
+        assert 'escapeHtml(isBlank ? "" : String(value))' in data_value_segment
+        assert "wwDataPrepFormatDerivedValue" not in data_value_segment
+        # The formatter itself never rounds/reassigns the exact input --
+        # it only returns a display string derived from it.
+        format_body = _function_body(
+            source, "function wwDataPrepFormatDerivedValue(", "function wwDataPrepRenderTable(preview)",
+        )
+        assert "const num = Number(value);" in format_body
+        assert "value =" not in format_body.replace("const num = Number(value);", "")
+
+    def test_constant_fill_uses_the_same_presentation_rule_as_estimated(self):
+        # Both override kinds route through the exact same formatter
+        # call -- there is no second, constant-fill-specific rounding
+        # rule to drift out of sync with the estimated one.
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepRenderTable(preview)", "function wwDataPrepApplyOverlaySummary(",
+        )
+        derived_condition = "modifiedCell.is_estimated || modifiedCell.is_constant_fill"
+        assert derived_condition in body
+        # Exactly one formatter call, gated by the single combined
+        # condition above -- not two separate branches/formatters.
+        assert body.count("wwDataPrepFormatDerivedValue(value, c, preview.rows)") == 1
+        assert body.count(derived_condition) == 1
+
+    def test_no_reference_fallback_uses_bounded_significant_digits_not_fixed_decimals(self):
+        # Reviewed per owner feedback: an arbitrary fixed toFixed(6) can
+        # either truncate a large value's integer part or pad a small
+        # one with meaningless trailing zeros. A bounded
+        # significant-digit rounding reads as a natural engineering
+        # value at any magnitude while still removing the
+        # floating-point tail.
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepFormatDerivedValue(", "function wwDataPrepRenderTable(preview)",
+        )
+        assert "num.toPrecision(6)" in body
+        assert "num.toFixed(6)" not in body
+
+
 class TestNewDialogsStackAboveTheDrawer:
     # Task section 27: same scoped +1-over-40 z-index convention as
     # #wwDataIssuesBulkNullOverlay/#wwDataPrepResetAllOverlay.

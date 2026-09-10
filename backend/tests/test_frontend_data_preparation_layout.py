@@ -1095,6 +1095,28 @@ class TestRawDataPreviewPolish:
         assert "escapeHtml(label)" in body
         assert "roleBadge(role)" in body
 
+    def test_sticky_header_uses_an_opaque_background_not_a_low_alpha_wash(self):
+        # UAT fix (2026-09-10): --surface-tint is a 2-2.5%-alpha wash
+        # token (theme.css) intended for subtle tints/zebra-striping, not
+        # an opaque surface. This preview card's own scoped `thead th`
+        # rule (more specific than, and applied on top of, the shared
+        # .ww-data-prep-table base rule's already-opaque `--panel`
+        # background) had overridden it back to `--surface-tint`, which
+        # read as effectively transparent once the header became sticky
+        # -- scrolled-under row values showed through and conflicted
+        # with the header labels. Fixed to the SAME opaque `--panel`
+        # surface the table-wrap container and the sticky left
+        # row-number column (tbody th, the next rule below) already use.
+        source = _source()
+        css = self._preview_css(source)
+        header_rule = _function_body(css, ".ww-data-prep-table thead th {", "}")
+        body_th_rule = _function_body(css, ".ww-data-prep-table tbody th {", "}")
+        assert "background: var(--panel);" in header_rule
+        assert "var(--surface-tint)" not in header_rule
+        assert header_rule.count("background: var(--panel);") == 1
+        # Matches the sticky left column's own already-opaque background.
+        assert "background: var(--panel);" in body_th_rule
+
     def test_final_action_buttons_are_polished_without_changing_handlers_or_ids(self):
         source = _source()
         final_start = source.index("/* ---- Row 7: Final Actions ----")

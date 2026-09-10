@@ -2423,7 +2423,17 @@
         #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-table thead th {
             color: var(--text);
             font-weight: 700;
-            background: var(--surface-tint);
+            /* UAT fix (2026-09-10): --surface-tint is a 2-2.5%-alpha wash
+               token (theme.css), never meant as an opaque surface -- at
+               that alpha it read as effectively transparent once the
+               header became sticky, letting scrolled-under row values
+               show through and conflict with the header labels. --panel
+               is the SAME opaque surface the table-wrap container
+               (.ww-data-prep-table-wrap, two rules above) and the sticky
+               left row-number column (tbody th, immediately below) both
+               already use -- reusing it keeps the header visually
+               consistent with them instead of introducing a new token. */
+            background: var(--panel);
             border-bottom: 1px solid var(--panel-border);
         }
         #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-table tbody th {
@@ -10226,6 +10236,77 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 icon + '<span class="ww-data-prep-worksheet-tab-label">' + label + '</span></button>';
         }
 
+        // UAT fix (2026-09-10): Estimated/Filled cells hold the raw
+        // computed numeric override (e.g. a linear-interpolation result
+        // such as 73.75999999999999), which carries a floating-point tail
+        // the surrounding raw source cells in the same column never do --
+        // those render verbatim from the source file/edit (e.g. "73.28"),
+        // never through any numeric formatter. There is no existing
+        // general-purpose numeric formatter in this codebase that fits
+        // this "match this column's own natural decimal precision" rule
+        // (wwFormatEngineeringValue() is a fixed 1-or-3-decimal formatter
+        // for waveform Y-axis magnitudes -- a different, incompatible
+        // precision rule; it is not reused here). Presentation only: the
+        // underlying working-overlay value/provenance is untouched, and
+        // `data-value`/the cell `title` (below) still carry the exact
+        // value for editing/hover.
+        //
+        // Hardening (2026-09-10, owner UAT): precision is the
+        // REPRESENTATIVE (most common/mode) decimal-place count among
+        // this column's own raw values, never the maximum -- a single
+        // unusually precise raw token (or a genuine occasional integer)
+        // must never drag every estimated/constant-filled value in the
+        // column up (or down) to its own precision. Example: raw values
+        // 73.28/76.16/74.24/72/70.08/69.12 (5 of 6 at 2 decimals, one
+        // integer at 0) infer 2, never 0 and never anything an outlier
+        // alone would force. A tie between two decimal counts is broken
+        // toward the SMALLER one -- the more conservative, less
+        // falsely-precise choice, consistent with this rule's own
+        // purpose.
+        function wwDataPrepColumnDecimalPrecision(rows, columnIndex) {
+            const decimalCounts = new Map(); // decimal-place count -> occurrences
+            for (const row of rows) {
+                const modified = (row.modified_cells || []).find((m) => m.column_index === columnIndex);
+                if (modified && (modified.is_estimated || modified.is_constant_fill)) continue;
+                const raw = row.cells[columnIndex];
+                if (raw === null || raw === undefined || raw === "") continue;
+                const str = String(raw).trim();
+                if (!/^-?\d+(\.\d+)?$/.test(str)) continue;
+                const dotIndex = str.indexOf(".");
+                const decimals = dotIndex === -1 ? 0 : str.length - dotIndex - 1;
+                decimalCounts.set(decimals, (decimalCounts.get(decimals) || 0) + 1);
+            }
+            if (decimalCounts.size === 0) return null;
+            let bestDecimals = null;
+            let bestCount = -1;
+            for (const [decimals, count] of decimalCounts) {
+                if (count > bestCount || (count === bestCount && decimals < bestDecimals)) {
+                    bestDecimals = decimals;
+                    bestCount = count;
+                }
+            }
+            return bestDecimals;
+        }
+
+        function wwDataPrepFormatDerivedValue(value, columnIndex, rows) {
+            const num = Number(value);
+            if (!Number.isFinite(num)) return String(value);
+            const precision = wwDataPrepColumnDecimalPrecision(rows, columnIndex);
+            if (precision != null) return num.toFixed(precision);
+            // No raw numeric sibling in this column on this page to infer
+            // a representative decimal precision from -- fall back to a
+            // bounded SIGNIFICANT-DIGIT rounding (6 significant figures)
+            // rather than an arbitrary fixed decimal-place count: that
+            // still reads as a natural engineering value at any
+            // magnitude (73.75999999999999 -> "73.76", 12345.6789012 ->
+            // "12345.7") and removes the floating-point tail either way,
+            // without truncating a large value's integer part or padding
+            // a small one with meaningless trailing zeros the way a
+            // fixed toFixed(6) would.
+            if (num === 0) return "0";
+            return String(Number(num.toPrecision(6)));
+        }
+
         function wwDataPrepRenderTable(preview) {
             const table = document.getElementById("wwDataPrepTable");
             const columnCount = wwDataPrep.columnCount || 0;
@@ -10283,6 +10364,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // from the backend's own working-view merge -- never
                 // recomputed here from a locally-tracked edit list.
                 const modifiedCols = new Set((row.modified_cells || []).map((m) => m.column_index));
+                const modifiedByCol = new Map((row.modified_cells || []).map((m) => [m.column_index, m]));
                 const rowClasses = [];
                 if (row.excluded) rowClasses.push("ww-data-prep-row-excluded");
                 if (row.is_header) rowClasses.push("ww-data-prep-row-is-header");
@@ -10310,7 +10392,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // from each other here (raw structural preview, not a
                     // data-quality/type report).
                     const isBlank = value === null || value === undefined || value === "";
-                    const displayValue = isBlank ? "" : escapeHtml(String(value));
+                    const modifiedCell = modifiedByCol.get(c);
+                    const isDerivedNumeric = !isBlank && modifiedCell && (modifiedCell.is_estimated || modifiedCell.is_constant_fill);
+                    const displayValue = isBlank
+                        ? ""
+                        : escapeHtml(isDerivedNumeric ? wwDataPrepFormatDerivedValue(value, c, preview.rows) : String(value));
                     const isModified = modifiedCols.has(c);
                     const classes = ["ww-data-prep-cell"];
                     if (isModified) classes.push("ww-data-prep-cell-modified");
