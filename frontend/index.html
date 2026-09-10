@@ -16071,6 +16071,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // deliberately stay separate so a stale viewport can never
             // become a later source's full-record authority.
             sourceBounds: new Map(),
+            // Owner UAT hardening pass (2026-09-10, waveform time-axis
+            // auto-fit): the ONE piece of state needed to tell "this
+            // source has never had a channel displayed yet" (DEC-037's
+            // own zero-channel-source-open case -- still wanted for the
+            // INITIAL/default view) apart from "this source WAS displayed
+            // and the engineer explicitly hid it" (must stop contributing
+            // -- the new UAT requirement). Audited first: neither
+            // ww.sourceBounds (opened-once, never touched by display
+            // actions) nor ww.displayed/ww.digitalDisplayed (pure CURRENT
+            // visibility, symmetric on hide) can distinguish these two --
+            // see wwTimeExtentContributingSourceIds()'s own comment. A
+            // real source_id is added here the first moment any one of
+            // its channels is ever displayed (wwAddSelectedChannels/
+            // wwAddDigitalChannels) and never removed by a hide action --
+            // only by full source removal or workspace reset, mirroring
+            // ww.sourceBounds's own cleanup lifecycle exactly. Membership
+            // here is a one-way history flag, never a visibility state in
+            // its own right (ww.displayed/ww.digitalDisplayed remain the
+            // sole current-visibility authority).
+            sourceEverDisplayed: new Set(),
             workspaceBounds: null,
             viewport: null,
             // Time Range slider (task: "Add a horizontal two-handle Time
@@ -16097,6 +16117,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // single-Time-Group case this map always has exactly one
             // entry and is byte-for-byte equivalent to ww.viewport.
             timeGroupViewports: new Map(),
+            // Owner UAT (2026-09-10, waveform time-axis auto-fit): each
+            // active group's own LAST DERIVED full bounds (wwDeriveTimeGroupBounds()'s
+            // own return value, cached ONLY for next-call change detection
+            // -- the bounds themselves are still recomputed fresh, never
+            // read back out of this map for any other purpose). Lets
+            // wwRefreshTimeGroupViewports() tell "the displayed SOURCE SET
+            // for this group actually changed" (must reset the viewport to
+            // the new full extent, task section 8) apart from "a channel
+            // toggled but every already-displayed source is unchanged"
+            // (must preserve the engineer's own current zoom) -- see that
+            // function's own comment. ww.workspaceBounds itself is this
+            // same signal for the primary group; this is its per-group
+            // mirror for every OTHER active group.
+            timeGroupFullBoundsCache: new Map(),
             // Per-group debounce timers for slider<->Plotly drag-zoom/pan
             // broadcasts (mirrors ww.viewportDebounceTimer below, now one
             // timer per group instead of one shared timer, so a drag in
@@ -16981,11 +17015,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // wwRenderWorkspaceRecordings() first learns about it) -- so
         // "has a ww.sourceBounds entry" and "participates in the
         // workspace" are now the same fact by construction, and this
-        // simply returns that whole key set. A source with zero displayed
-        // channels still correctly contributes its own extent (Phase
-        // 4A-UAT10's own "zero-channel source-open can still establish
-        // correct time bounds" requirement), now for every open source at
-        // once rather than only the single most-recently-selected one.
+        // simply returns that whole key set (every OPEN source, for every
+        // open source at once rather than only the single most-recently-
+        // selected one). Used as-is by every consumer that needs "which
+        // sources exist in this workspace" (e.g. Synchronise Sources' own
+        // source list). Owner UAT hardening pass (2026-09-10): the
+        // DEFAULT-TIME-EXTENT consumers (wwDeriveWorkspaceBounds()/
+        // wwDeriveTimeGroupBounds()) no longer read this directly -- they
+        // go through wwTimeExtentContributingSourceIds(), which narrows
+        // this same participating set further (excludes a source the
+        // engineer explicitly hid every channel of) while still preserving
+        // DEC-037/Phase 4A-UAT10's own original "zero-channel source-open
+        // can still establish correct time bounds" case for a source that
+        // has never had a channel displayed at all -- see that function's
+        // own comment for the full rule.
         function wwParticipatingSourceIds() {
             return new Set(ww.sourceBounds.keys());
         }
@@ -16996,14 +17039,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // in WORKSPACE time, so a source shifted left/right by its own
         // alignment offset correctly grows/moves the derived workspace
         // extent instead of silently clipping that source's own shifted
-        // data out of view. wwParticipatingSourceIds() already resolves a
-        // calculated channel's display id back to its real reference
-        // source before this runs, so wwAlignmentOffsetForSource() (not
-        // the display-id-resolving variant) is correct here.
+        // data out of view. wwTimeExtentContributingSourceIds() already
+        // resolves a calculated channel's display id back to its real
+        // reference source before this runs, so wwAlignmentOffsetForSource()
+        // (not the display-id-resolving variant) is correct here.
+        //
+        // Displayed-OR-never-yet-displayed default extent (owner UAT
+        // hardening pass, 2026-09-10): this is the DEFAULT/AUTO-FIT extent
+        // Reset Time View and a fresh viewport use -- see
+        // wwTimeExtentContributingSourceIds()'s own comment for the full
+        // A-vs-B rule (DEC-037's original "a freshly opened, zero-channel
+        // source may still establish initial bounds" is preserved; only a
+        // source the engineer EXPLICITLY hid every channel of stops
+        // contributing).
         function wwDeriveWorkspaceBounds() {
             let start = null;
             let end = null;
-            for (const sourceId of wwParticipatingSourceIds()) {
+            for (const sourceId of wwTimeExtentContributingSourceIds()) {
                 const bounds = ww.sourceBounds.get(sourceId);
                 if (!bounds) continue;
                 const offset = wwAlignmentOffsetForSource(sourceId);
@@ -17155,19 +17207,29 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // wwDeriveWorkspaceBounds()'s own per-group generalization --
-        // the union of every PARTICIPATING source's own shifted extent,
-        // restricted to sources whose CURRENT Time Group is `groupId`.
-        // Recomputed fresh on every call, never cached (same "derived,
-        // not stored" precedent as the union version) -- task section 4:
-        // "the slider's full extent must come from the Time Group's
-        // actual full bounds," never a first-source/first-panel
-        // shortcut. `null` if no participating source currently belongs
-        // to this group (the group has fully emptied out, e.g. its last
-        // displayed channel was just removed).
+        // the union of every CONTRIBUTING source's own shifted extent
+        // (wwTimeExtentContributingSourceIds() -- displayed, or never yet
+        // displayed), restricted to sources whose CURRENT Time Group is
+        // `groupId`. Recomputed fresh on every call, never cached (same
+        // "derived, not stored" precedent as the union version) -- task
+        // section 4: "the slider's full extent must come from the Time
+        // Group's actual full bounds," never a first-source/first-panel
+        // shortcut. `null` if no contributing source currently belongs to
+        // this group (the group has fully emptied out, e.g. its last
+        // displayed channel was just removed or explicitly hidden).
+        //
+        // Owner UAT hardening pass (2026-09-10): see
+        // wwTimeExtentContributingSourceIds()'s own comment for the full
+        // A-vs-B rule this now applies -- a source explicitly hidden after
+        // having been displayed stops contributing, but a freshly opened
+        // source that has never had a channel displayed yet still may
+        // (DEC-037's own original intent, preserved). Sources fully
+        // removed from the workspace already correctly drop out (their
+        // ww.sourceBounds entry is deleted), so that path is unaffected.
         function wwDeriveTimeGroupBounds(groupId) {
             let start = null;
             let end = null;
-            for (const sourceId of wwParticipatingSourceIds()) {
+            for (const sourceId of wwTimeExtentContributingSourceIds()) {
                 if (wwTimeGroupIdForDisplaySourceId(sourceId) !== groupId) continue;
                 const bounds = ww.sourceBounds.get(sourceId);
                 if (!bounds) continue;
@@ -17185,6 +17247,77 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const bounds = wwDeriveTimeGroupBounds(groupId);
             if (!bounds) return wwNormalizeBounds(start, end);
             return wwNormalizeBounds(Math.max(start, bounds.start), Math.min(end, bounds.end));
+        }
+
+        // The set of real source ids CURRENTLY displaying at least one
+        // channel -- union of wwDisplayedAnalogSourceIds() and
+        // wwDisplayedDigitalSourceIds() (analog OR digital channel
+        // currently on-screen counts as "this source is displayed"), each
+        // resolved through wwTimingSourceIdForDisplaySourceId() so a
+        // displayed CALCULATED channel correctly resolves to its real
+        // reference source (a calculated channel has no ww.sourceBounds
+        // entry of its own -- see wwTimingSourceIdForDisplaySourceId()'s
+        // own comment). Derived fresh from the SAME ww.displayed/
+        // ww.digitalDisplayed authority the rest of the Time Group
+        // machinery (wwActiveTimeGroupIds()/wwTimeGroupHasDisplayedChannels())
+        // already uses, so a source can never disagree with itself about
+        // whether it is "displayed." A pure CURRENT-state primitive --
+        // does not by itself decide the default time extent; see
+        // wwTimeExtentContributingSourceIds() immediately below for that.
+        function wwDisplayedTimingSourceIds() {
+            const ids = new Set();
+            for (const sourceId of wwDisplayedAnalogSourceIds()) ids.add(wwTimingSourceIdForDisplaySourceId(sourceId));
+            for (const sourceId of wwDisplayedDigitalSourceIds()) ids.add(wwTimingSourceIdForDisplaySourceId(sourceId));
+            return ids;
+        }
+
+        // Owner UAT hardening pass (2026-09-10): the set of real source
+        // ids that should drive the DEFAULT/auto-fit time extent
+        // (wwDeriveWorkspaceBounds()/wwDeriveTimeGroupBounds() only --
+        // every other consumer of "which sources exist," e.g. Synchronise
+        // Sources' own source list, keeps using wwParticipatingSourceIds()
+        // unchanged; DEC-037 is not being relaxed for those).
+        //
+        // First cut of this fix (same-day, superseded by this function)
+        // used wwDisplayedTimingSourceIds() alone -- CURRENTLY displayed
+        // only. That over-corrected: DEC-037/Phase 4A-UAT10 explicitly
+        // wanted a freshly opened source with ZERO channels picked yet to
+        // still establish useful initial bounds ("zero-channel source-open
+        // can still establish correct time bounds"), and a plain
+        // "currently displayed" test can't tell that case apart from "this
+        // source WAS displayed and the engineer explicitly hid every one
+        // of its channels" (which must genuinely stop contributing -- the
+        // reported UAT bug). Both look identical as "zero entries in
+        // ww.displayed/ww.digitalDisplayed right now."
+        //
+        // The distinguishing fact — audited first, see this task's own
+        // report: neither ww.sourceBounds (opened-once, untouched by
+        // display actions) nor ww.displayed/ww.digitalDisplayed (pure
+        // current-visibility, symmetric on hide) can tell these apart —
+        // is ww.sourceEverDisplayed, a one-way per-source history flag set
+        // the moment any channel of that source is first displayed
+        // (wwAddSelectedChannels/wwAddDigitalChannels) and cleared only on
+        // full source removal or workspace reset, never on hide (see its
+        // own declaration comment).
+        //
+        // Final rule: a participating source (wwParticipatingSourceIds(),
+        // i.e. still open in the workspace -- a REMOVED source already
+        // correctly drops out via its own ww.sourceBounds deletion)
+        // contributes if EITHER it is currently displayed (covers "long +
+        // short both shown," and "show it again" after a hide) OR it has
+        // NEVER yet been displayed (covers DEC-037's own initial-bounds
+        // case). The ONLY excluded case is a participating source that
+        // WAS displayed and now has zero displayed channels -- explicitly
+        // hidden by the engineer. Manual offsets/Time-Group filtering are
+        // applied by the caller exactly as before; this function only
+        // decides SET membership, never "longest duration wins."
+        function wwTimeExtentContributingSourceIds() {
+            const displayed = wwDisplayedTimingSourceIds();
+            const ids = new Set();
+            for (const sourceId of wwParticipatingSourceIds()) {
+                if (displayed.has(sourceId) || !ww.sourceEverDisplayed.has(sourceId)) ids.add(sourceId);
+            }
+            return ids;
         }
 
         // ==================================================================
@@ -17512,16 +17645,41 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             for (const groupId of Array.from(ww.timeGroupViewports.keys())) {
                 if (!activeIds.has(groupId)) ww.timeGroupViewports.delete(groupId);
             }
+            for (const groupId of Array.from(ww.timeGroupFullBoundsCache.keys())) {
+                if (!activeIds.has(groupId)) ww.timeGroupFullBoundsCache.delete(groupId);
+            }
 
             for (const groupId of activeIds) {
                 if (groupId === primaryGroupId) continue;
                 const bounds = wwDeriveTimeGroupBounds(groupId);
                 if (!bounds) {
                     ww.timeGroupViewports.delete(groupId);
+                    ww.timeGroupFullBoundsCache.delete(groupId);
                     continue;
                 }
                 const current = ww.timeGroupViewports.get(groupId);
-                const isFresh = !!(options.resetViewport || !current);
+                // Owner UAT (2026-09-10): the displayed SOURCE SET for this
+                // group actually changed (an add/remove/hide/show of one of
+                // its sources -- task section 8's own "strong enough event
+                // to recompute the default range") if this group's own full
+                // bounds differ from what they were on the PREVIOUS call
+                // (ww.timeGroupFullBoundsCache, this map's one and only
+                // purpose). Merely toggling a SECOND channel of a source
+                // already counted in the union leaves the bounds unchanged,
+                // so that case correctly falls through to the ordinary
+                // clamp-existing-viewport branch below and never disturbs
+                // the engineer's own current zoom (task section 8's other
+                // half: "ordinary... changes should not cause surprise
+                // auto-fit"). An explicit `resetViewport` (`false` for the
+                // manual-synchronization-offset side-effect path, a
+                // computed boolean for opening/re-opening a source) always
+                // wins over this derived signal.
+                const previousBounds = ww.timeGroupFullBoundsCache.get(groupId) || null;
+                ww.timeGroupFullBoundsCache.set(groupId, bounds);
+                const boundsChanged = !wwBoundsEqual(previousBounds, bounds);
+                const isFresh = options.resetViewport === undefined
+                    ? (boundsChanged || !current)
+                    : !!(options.resetViewport || !current);
                 const desired = isFresh ? bounds : (wwClampRangeToTimeGroup(groupId, current.start, current.end) || bounds);
                 if (current && wwBoundsEqual(current, desired)) continue;
                 await wwApplyAndFetchGroupViewport(groupId, desired.start, desired.end);
@@ -17545,6 +17703,25 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // 23). A no-op call in the common single-Time-Group
             // workspace (every group IS the primary one).
             await wwRefreshTimeGroupViewports(options);
+            // Owner UAT (2026-09-10, waveform time-axis auto-fit): captured
+            // BEFORE ww.workspaceBounds is overwritten below -- this
+            // group's own PREVIOUS full bounds, compared against the freshly
+            // derived ones just below to detect a genuine displayed-SOURCE-
+            // SET change (add/remove/hide/show a source -- task section 8's
+            // "strong enough event to recompute the default range"),
+            // exactly as wwRefreshTimeGroupViewports()'s own
+            // ww.timeGroupFullBoundsCache does for every OTHER group (see
+            // that function's own comment for the full reasoning: a mere
+            // clamp of the OLD viewport into new bounds can only ever
+            // narrow, never widen, and can leave a stale partial sub-range
+            // instead of the newly-hidden/shown source's own full extent,
+            // so a genuine bounds change must force a full reset rather
+            // than a clamp). Merely toggling a SECOND channel of a source
+            // already counted in the union leaves bounds unchanged, so that
+            // case still falls through to the ordinary clamp-existing-
+            // viewport branch and never disturbs the engineer's own current
+            // zoom (task section 8's other half).
+            const previousWorkspaceBounds = ww.workspaceBounds;
             const next = wwDeriveWorkspaceBounds();
             ww.workspaceBounds = next;
             // Phase 4B (section 25): captured BEFORE ww.viewport is
@@ -17556,8 +17733,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // below. Reused, not reinvented, for cursor reinitialization
             // so the two can never disagree about what counts as "a fresh
             // view" (least-surprising behavior per that section's own
-            // guidance).
-            const isFreshViewport = !!(options.resetViewport || !ww.viewport);
+            // guidance). An explicit `resetViewport` (`false` for the
+            // manual-synchronization-offset side-effect path, a computed
+            // boolean for opening/re-opening a source) always wins over
+            // the derived bounds-changed signal.
+            const workspaceBoundsChanged = !wwBoundsEqual(previousWorkspaceBounds, next);
+            const isFreshViewport = options.resetViewport === undefined
+                ? (workspaceBoundsChanged || !ww.viewport)
+                : !!(options.resetViewport || !ww.viewport);
 
             if (!next) {
                 ww.viewport = null;
@@ -23687,6 +23870,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 };
                 panel.channels.push(channelEntry);
                 ww.displayed.set(key, { panel, channel: channelEntry });
+                // Owner UAT hardening pass: the ONE place an analog (or,
+                // for a calculated channel, its real reference source's)
+                // id is marked as having ever been displayed -- see
+                // ww.sourceEverDisplayed's own declaration comment. Never
+                // removed by a hide action.
+                ww.sourceEverDisplayed.add(wwTimingSourceIdForDisplaySourceId(channelEntry.sourceId));
                 jobs.push({ panel, channelEntry });
             }
 
@@ -24463,6 +24652,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     if (!response.ok) continue;
                     const body = await response.json();
                     const metaByName = new Map(metas.map((m) => [m.channelName, m]));
+                    // Owner UAT hardening pass: mirrors the analog marking
+                    // in wwAddSelectedChannels -- see
+                    // ww.sourceEverDisplayed's own declaration comment.
+                    ww.sourceEverDisplayed.add(wwTimingSourceIdForDisplaySourceId(sourceId));
                     for (const chan of body.channels) {
                         const meta = metaByName.get(chan.channel_name);
                         if (!meta) continue;
@@ -24600,6 +24793,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwClearDigitalCursorValuesForChannels(sourceId, removedDigitalNames);
             }
             ww.sourceBounds.delete(sourceId);
+            // Owner UAT hardening pass: a fully-removed source's display
+            // HISTORY must not linger either -- mirrors ww.sourceBounds's
+            // own cleanup immediately above (see
+            // ww.sourceEverDisplayed's own declaration comment).
+            ww.sourceEverDisplayed.delete(sourceId);
             wwRefreshWorkspaceBounds();
             // Phase 4F (section 57) + Phase 4G (section 46): a Callout OR
             // +Peak/-Peak anchored to a REMOVED source's channel is
@@ -26755,6 +26953,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             ww.displayed.clear();
             if (options.resetSourceBounds) {
                 ww.sourceBounds.clear();
+                // Owner UAT hardening pass: same scoping/lifecycle as
+                // ww.sourceBounds directly above -- see
+                // ww.sourceEverDisplayed's own declaration comment.
+                ww.sourceEverDisplayed.clear();
                 ww.workspaceBounds = null;
                 ww.viewport = null;
                 // Phase 5A-UAT3: same scoping as ww.sourceBounds directly

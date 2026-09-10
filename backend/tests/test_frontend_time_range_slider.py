@@ -34,6 +34,9 @@ def test_slider_state_exists():
     source = _source()
     assert "timeGroupViewports: new Map()" in source
     assert "timeGroupViewportDebounceTimers: new Map()" in source
+    # Owner UAT (2026-09-10, waveform time-axis auto-fit): the per-group
+    # change-detection cache -- see TestDisplaySetChangeForcesViewportReset.
+    assert "timeGroupFullBoundsCache: new Map()" in source
 
 
 def test_slider_dom_container_sits_between_digital_region_and_sticky_ruler():
@@ -88,16 +91,148 @@ class TestPanelAndPrimaryGroupResolution:
 
 class TestFullBoundsComeFromTheGroupItself:
     """Task section 4: full extent must come from the group's ACTUAL full
-    bounds -- never a first-source/first-panel/first-uploaded shortcut."""
+    bounds -- never a first-source/first-panel/first-uploaded shortcut.
 
-    def test_derive_time_group_bounds_unions_every_participating_source_in_that_group(self):
+    Owner UAT hardening pass (2026-09-10, waveform time-axis auto-fit):
+    the group's own "full bounds" is now the union of CONTRIBUTING sources
+    (wwTimeExtentContributingSourceIds()) -- a source currently displayed,
+    OR a source that has never yet had a channel displayed at all
+    (DEC-037/Phase 4A-UAT10's own original "zero-channel source-open can
+    still establish bounds" case, deliberately preserved) -- never every
+    merely-opened/participating source unconditionally
+    (wwParticipatingSourceIds() alone, which would let an EXPLICITLY
+    hidden source keep contributing forever). See
+    wwTimeExtentContributingSourceIds()'s own comment for the full rule."""
+
+    def test_derive_time_group_bounds_unions_every_contributing_source_in_that_group(self):
         source = _source()
         fn_idx = source.index("function wwDeriveTimeGroupBounds(groupId)")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert "for (const sourceId of wwParticipatingSourceIds())" in fn_body
+        assert "for (const sourceId of wwTimeExtentContributingSourceIds())" in fn_body
         assert "wwTimeGroupIdForDisplaySourceId(sourceId) !== groupId" in fn_body
         assert "Math.min(start, shiftedStart)" in fn_body
         assert "Math.max(end, shiftedEnd)" in fn_body
+
+    def test_workspace_bounds_also_unions_every_contributing_source(self):
+        source = _source()
+        fn_idx = source.index("function wwDeriveWorkspaceBounds()")
+        fn_body = source[fn_idx : source.index("function wwClampRangeToWorkspace", fn_idx)]
+        assert "for (const sourceId of wwTimeExtentContributingSourceIds())" in fn_body
+
+    def test_displayed_timing_source_ids_unions_analog_and_digital_resolved_through_calculated_reference(self):
+        source = _source()
+        fn_idx = source.index("function wwDisplayedTimingSourceIds()")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert "wwDisplayedAnalogSourceIds()" in fn_body
+        assert "wwDisplayedDigitalSourceIds()" in fn_body
+        assert "wwTimingSourceIdForDisplaySourceId(sourceId)" in fn_body
+
+
+class TestTimeExtentContributionPreservesDec037ForNeverDisplayedSources:
+    """Owner UAT hardening pass (2026-09-10): required semantic distinction
+    between (A) a source opened/loaded but never given a displayed channel
+    (must still be able to establish initial/default bounds, DEC-037) and
+    (B) a source whose channels WERE displayed and then explicitly hidden
+    (must stop contributing). Audited first (see this session's own
+    report): neither ww.sourceBounds nor ww.displayed/ww.digitalDisplayed
+    can tell these two apart on their own -- both look identical as "zero
+    entries right now." ww.sourceEverDisplayed is the one new, minimal
+    piece of state this distinction actually needs."""
+
+    def test_ever_displayed_state_exists_and_is_never_cleared_by_a_hide_action(self):
+        source = _source()
+        assert "sourceEverDisplayed: new Set()" in source
+        # The batch "Hide all" removal functions must never touch it --
+        # only full source removal / workspace reset may.
+        hide_all_idx = source.index("function wwToggleChannelGroupDisplay")
+        hide_all_body = source[hide_all_idx : source.index("\n        }\n", hide_all_idx)]
+        assert "sourceEverDisplayed" not in hide_all_body
+
+    def test_ever_displayed_is_marked_on_first_analog_and_digital_display(self):
+        source = _source()
+        add_idx = source.index("async function wwAddSelectedChannels(channelMetas, options)")
+        add_body = source[add_idx : source.index("function wwRemoveChannelByKey", add_idx)]
+        assert "ww.sourceEverDisplayed.add(wwTimingSourceIdForDisplaySourceId(channelEntry.sourceId));" in add_body
+
+        digital_idx = source.index("async function wwAddDigitalChannels(channelMetas, options)")
+        digital_body = source[digital_idx : source.index("function wwRemoveDigitalChannelByKey", digital_idx)]
+        assert "ww.sourceEverDisplayed.add(wwTimingSourceIdForDisplaySourceId(sourceId));" in digital_body
+
+    def test_ever_displayed_is_cleared_on_full_source_removal_and_workspace_reset(self):
+        source = _source()
+        remove_idx = source.index("function wwRemoveChannelsForSource(sourceId)")
+        remove_body = source[remove_idx : source.index("\n        }\n", remove_idx)]
+        assert "ww.sourceEverDisplayed.delete(sourceId);" in remove_body
+
+        clear_idx = source.index("function wwClearWorkspace(options)")
+        clear_body = source[clear_idx : source.index("// Phase 2C-C1", clear_idx)]
+        assert "if (options.resetSourceBounds)" in clear_body
+        assert "ww.sourceEverDisplayed.clear();" in clear_body
+
+    def test_contributing_rule_includes_never_displayed_or_currently_displayed_only(self):
+        """The exact rule: a participating source contributes if it is
+        CURRENTLY displayed, OR has NEVER been displayed -- the only
+        excluded case is "was displayed, now explicitly hidden."""
+        source = _source()
+        fn_idx = source.index("function wwTimeExtentContributingSourceIds()")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert "const displayed = wwDisplayedTimingSourceIds();" in fn_body
+        assert "for (const sourceId of wwParticipatingSourceIds())" in fn_body
+        assert "if (displayed.has(sourceId) || !ww.sourceEverDisplayed.has(sourceId)) ids.add(sourceId);" in fn_body
+
+
+class TestDisplaySetChangeForcesViewportReset:
+    """Owner UAT (2026-09-10, waveform time-axis auto-fit), task section 8:
+    "adding/removing/showing/hiding a source is a strong enough event to
+    recompute the default range" -- even when a viewport already exists.
+    A mere clamp of the OLD viewport into new bounds can only ever narrow,
+    never widen, and can leave a stale partial sub-range instead of the
+    newly-hidden/shown source's own full extent, so wwRefreshWorkspaceBounds()/
+    wwRefreshTimeGroupViewports() must detect a genuine bounds change (the
+    displayed SOURCE SET changed) and treat that the same as an explicit
+    resetViewport request -- but only when the caller didn't already pass
+    an explicit resetViewport (the manual-synchronization-offset side
+    effect path keeps its own explicit `resetViewport: false`, and must
+    never be overridden by this)."""
+
+    def test_workspace_bounds_change_forces_a_fresh_viewport_when_resetviewport_omitted(self):
+        source = _source()
+        fn_idx = source.index("async function wwRefreshWorkspaceBounds(options)")
+        fn_body = source[fn_idx : source.index("if (!next) {", fn_idx)]
+        assert "const previousWorkspaceBounds = ww.workspaceBounds;" in fn_body
+        assert "const workspaceBoundsChanged = !wwBoundsEqual(previousWorkspaceBounds, next);" in fn_body
+        assert "options.resetViewport === undefined" in fn_body
+        assert "(workspaceBoundsChanged || !ww.viewport)" in fn_body
+        # The explicit-false caller (manual sync offset) must still win.
+        assert ": !!(options.resetViewport || !ww.viewport);" in fn_body
+
+    def test_time_group_bounds_change_forces_a_fresh_viewport_when_resetviewport_omitted(self):
+        source = _source()
+        fn_idx = source.index("async function wwRefreshTimeGroupViewports(options)")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert "ww.timeGroupFullBoundsCache.get(groupId)" in fn_body
+        assert "ww.timeGroupFullBoundsCache.set(groupId, bounds);" in fn_body
+        assert "const boundsChanged = !wwBoundsEqual(previousBounds, bounds);" in fn_body
+        assert "options.resetViewport === undefined" in fn_body
+        assert "(boundsChanged || !current)" in fn_body
+        assert ": !!(options.resetViewport || !current);" in fn_body
+
+    def test_time_group_bounds_cache_is_pruned_for_groups_that_disappear(self):
+        source = _source()
+        fn_idx = source.index("async function wwRefreshTimeGroupViewports(options)")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert "if (!activeIds.has(groupId)) ww.timeGroupFullBoundsCache.delete(groupId);" in fn_body
+        assert "ww.timeGroupFullBoundsCache.delete(groupId);" in fn_body
+
+    def test_offset_change_side_effect_still_passes_an_explicit_resetviewport_false(self):
+        """Confirms the ONE caller that must be immune to the new
+        bounds-changed auto-reset still opts out explicitly (unchanged
+        from before this fix -- see test_frontend_synchronization.py's own
+        broader coverage of this same call site)."""
+        source = _source()
+        fn_idx = source.index("async function wwSyncApplyOffsetChangeSideEffectsForGroup(groupId)")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert "await wwRefreshWorkspaceBounds({ resetViewport: false });" in fn_body
 
 
 class TestApplyAndFetchGroupViewportScoping:
