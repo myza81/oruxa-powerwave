@@ -9,26 +9,34 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-09**. **DEC-084 (Explicit Null
+Last meaningful update: **2026-09-10**. **DEC-084 (Explicit Null
 Resolution and Calculated-Channel Missing-Data Policy) is now an
-IMPLEMENTED BASELINE end to end** — Data Preparation Slices 1-5
-(explicit null as a distinct, resolved `WorkingOverlay` state; single-
-cell and backend-scope-authoritative bulk Mark as Null; a Data Issues
-panel + Data Quality summary; explicit-null preservation through
-cleaned export, canonical conversion, and every downstream
-display/cursor/annotation path) and Calculated Channel Slices 1-4
-(per-channel `null_policy` — Propagate Null/Treat Null as Zero/Require
-Manual Value/Estimate Missing Data with a Hold Last/Nearest/Linear/
-Local Mean estimation engine, always calculation-local and never
-mutating source or parent arrays; Signal Builder UI; channel-level
-traceability). PCHIP interpolation and a handful of other extensions
-remain intentionally deferred — see the Calculated Channels and Data
-Preparation entries under
+IMPLEMENTED BASELINE end to end, including Data Preparation's own
+algorithmic estimation and bulk constant fill** — Data Preparation
+Slices 1-5 (explicit null as a distinct, resolved `WorkingOverlay`
+state; single-cell and backend-scope-authoritative bulk Mark as Null; a
+Data Issues panel + Data Quality summary; explicit-null preservation
+through cleaned export, canonical conversion, and every downstream
+display/cursor/annotation path), the Data Preparation missing-value
+Fill/Estimate slice (single-cell **Estimate Missing Value** and
+group-level **Fill / Estimate Missing Values** — the four algorithmic
+methods plus issue-scoped **Constant Value** — reusing the SAME shared
+`app.domain.missing_data_estimation` engine Calculated Channels
+already used, gap-based scope transparency for mixed missing/invalid
+gaps, and estimated/constant-fill visual states in the Raw Data
+Preview), and Calculated Channel Slices 1-4 (per-channel `null_policy`
+— Propagate Null/Treat Null as Zero/Require Manual Value/Estimate
+Missing Data with a Hold Last/Nearest/Linear/Local Mean estimation
+engine, always calculation-local and never mutating source or parent
+arrays; Signal Builder UI; channel-level traceability). PCHIP
+interpolation and a handful of other extensions remain intentionally
+deferred — see the Calculated Channels and Data Preparation entries
+under
 [Implemented capabilities](#implemented-capabilities) for the full
 record, the DEC-084 entry under
 [Known intentional constraints](#known-intentional-constraints--deferred-items)
 for exactly what remains deferred, and [HANDOFF.md](HANDOFF.md) for the
-ten-commit implementation chain. A prior (2026-09-05) Preparation
+full implementation commit chain. A prior (2026-09-05) Preparation
 Status integrity fix
 ([DECISIONS.md — DEC-083](DECISIONS.md#dec-083--preparation-status-must-reflect-the-effective-current-configuration-visible-to-the-user-a-manual-time-axis-is-unconditionally-blocking-never-ready-confirmed-or-not-and-a-time-axis-draft-that-differs-from-the-last-savedapplied-configuration-produces-its-own-blocking-unsaved-changes-issue-computed-live-client-side-with-zero-network-round-trip))
 closes a real gap: the `manual` Time Axis interpreter (an engineer
@@ -1426,6 +1434,54 @@ re-confirmed by the TG-FINAL audit):
   five-commit chain. The Calculated Channels entry above covers the
   separate (later) calculated-channel side of the same decision.
 
+  **DEC-084 Data Preparation missing-value Fill/Estimate slice
+  (2026-09-10, `e60e830` backend + `4882ed9` frontend) extends the
+  above from three single-cell resolution paths to four, plus a bulk
+  algorithmic/constant-fill action.** Single-cell actions are now Mark
+  as Null / Fill Manually / **Estimate Missing Value** / Set Column to
+  Not Assigned (renamed from "Change Column Role"; column-level even
+  when launched from one cell's issue, with an explicit whole-column
+  confirmation naming the column). Group actions are Mark matching
+  issues as Null / **Fill / Estimate Missing Values** / Set Column to
+  Not Assigned — there is no separate "Bulk Fill Manually" action;
+  same-value bulk filling is **Constant Value**, one method inside Fill
+  / Estimate Missing Values, not a fifth top-level action. Two new
+  `WorkingOverlay` override kinds (`OVERRIDE_KIND_ESTIMATED`,
+  `OVERRIDE_KIND_CONSTANT_FILL`) extend the same tri-state model above
+  to five states, riding the identical bounded Undo/Redo/Reset All
+  history (one grouped entry per action, no second history). Algorithmic
+  estimation reuses the SAME shared engine Calculated Channels already
+  used (`app.domain.missing_data_estimation` — Hold Last Value / Nearest
+  Value / Linear Interpolation / Local Mean, samples-only max gap;
+  PCHIP recognized but rejected, no SciPy) and is gap-based: a
+  contiguous non-finite run (e.g. `blank / invalid / blank`) is one
+  mathematical unit regardless of whether members are individually
+  classified `waveform_value_missing` or `waveform_value_invalid` —
+  selecting or scoping from one member/issue-type resolves the whole
+  eligible gap, and the UI shows both the originally-requested
+  `matching_count` and the true gap-expanded `affected_count`
+  transparently whenever they differ (never silent scope expansion).
+  **Constant Value is not interpolation** and stays strictly scoped to
+  the requested issue type — it never expands across the rest of a
+  mixed gap the way algorithmic estimation does. Every preview/apply
+  count is backend-authoritative (`preview_estimate`/`apply_estimate`/
+  `preview_bulk_constant_fill`/`apply_bulk_constant_fill` in
+  `working_overlay_service.py`, six new
+  `.../working/cells/...` API routes), never derived from the capped
+  Data Issues browse list; apply re-evaluates eligibility fresh and
+  reports any preview-vs-apply drift transparently. Time Axis issues
+  (`time_value_missing`/`time_value_invalid`) are structurally
+  ineligible for both new actions — the frontend reuses the same
+  waveform-only eligibility gate the existing Mark-as-Null guardrail
+  already relied on. Estimated and constant-filled cells are resolved/
+  non-blocking, export as their concrete numeric value, and convert
+  downstream as ordinary finite samples; the Raw Data Preview marks
+  them with distinct "Estimated"/"Filled" badges (never color alone,
+  Constant Value never labelled "Estimated"). See
+  [DECISIONS.md — DEC-084](DECISIONS.md#dec-084--explicit-null-resolution-and-calculated-channel-missing-data-policy-unresolved-emptyinvalid-cells-remain-blocking-an-explicit-user-marked-null-becomes-a-distinct-resolved-state-for-waveformdata-columns-time-axis-stays-blocking-each-calculated-channel-independently-declares-its-own-null-handling-policy-never-inheriting-automatic-propagation-from-its-source)
+  for the full policy-level update and [HANDOFF.md](HANDOFF.md) for the
+  commit chain.
+
 ## Known intentional constraints / deferred items
 
 These are product decisions or explicitly out-of-scope items, **not**
@@ -1459,21 +1515,34 @@ correctness defects:
   accepting date-only/week-only ISO strings with no diagnostic) also
   remains open, unaffected by DEC-081.
 - **DEC-084 (Explicit Null Resolution and Calculated-Channel
-  Missing-Data Policy) — IMPLEMENTED BASELINE (2026-09-09)**, across
-  Data Preparation Slices 1-5 and Calculated Channel Slices 1-4; see
+  Missing-Data Policy) — IMPLEMENTED BASELINE (2026-09-10)**, across
+  Data Preparation Slices 1-5, the Data Preparation missing-value
+  Fill/Estimate slice, and Calculated Channel Slices 1-4; see
   [Implemented capabilities](#implemented-capabilities) for the full
   behavioral record and [HANDOFF.md](HANDOFF.md) for the commit chain.
   The following EXTENSIONS remain intentionally deferred, not yet
   approved to begin:
   - PCHIP interpolation — recognized as a valid `estimation_method`
-    wire value for forward compatibility, but creation with it is
-    rejected outright (`estimation_method_not_implemented`); no SciPy
-    dependency exists in this codebase, and it is never offered in the
-    frontend.
-  - `max_gap_unit` values other than `samples` (milliseconds/seconds).
-  - Per-sample estimated-value provenance (which individual samples
-    within a channel were filled, by which policy) — only
-    channel-level policy/method/max-gap/radius metadata is tracked.
+    wire value for forward compatibility in both Calculated Channels
+    and Data Preparation, but creation/estimation with it is rejected
+    outright (`estimation_method_not_implemented`); no SciPy dependency
+    exists in this codebase, and it is never offered in either frontend.
+  - `max_gap_unit` values other than `samples` (milliseconds/seconds),
+    for both Calculated Channels and Data Preparation.
+  - Time Axis interpolation — algorithmic estimation only ever fills a
+    Waveform/data cell using the Time Axis's own already-resolved
+    values; there is no mechanism to estimate a missing/invalid Time
+    Axis value itself (DEC-084 point 4's original "no Time-Axis-null
+    workaround is defined by this decision," unchanged).
+  - A per-sample provenance EXPORT format — Data Preparation's own
+    `WorkingOverlay` DOES track which method estimated a given cell
+    (`CellOverride.estimation_method`, surfaced through the preview
+    API's `is_estimated`/`estimation_method` fields and the Raw Data
+    Preview's own badge), but cleaned export/conversion still carries
+    only the resolved numeric value, never an annotation of which cells
+    were estimated or by which method. Calculated channels track only
+    channel-level policy/method/max-gap/radius metadata, no per-sample
+    record at all.
   - A cross-channel provenance graph (e.g. "did Calc B's result depend
     on an estimated sample in upstream Calc A").
   - Calculated-channel export.

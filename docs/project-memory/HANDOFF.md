@@ -4,9 +4,71 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-09**
+Last updated: **2026-09-10**
 
 ## What was most recently done
+
+**DEC-084 extended: Data Preparation missing-value Fill/Estimate is now
+implemented end to end**, adding algorithmic estimation and bulk
+constant fill on top of the already-complete explicit-null baseline
+below. Commit chain (oldest to newest):
+
+```text
+e60e830  feat: add data preparation missing value resolution   (backend foundation + hardening)
+4882ed9  feat: expose data preparation fill and estimation      (frontend integration)
+```
+
+(`e89a911`/`44ef075`, fractional-sampling-rate display fixes committed
+in the same session, are unrelated to this capability and not part of
+this chain.)
+
+Full behavioral detail lives in [CURRENT_STATE.md](CURRENT_STATE.md)
+(Implemented capabilities + Known intentional constraints) and in
+[DECISIONS.md — DEC-084](DECISIONS.md#dec-084--explicit-null-resolution-and-calculated-channel-missing-data-policy-unresolved-emptyinvalid-cells-remain-blocking-an-explicit-user-marked-null-becomes-a-distinct-resolved-state-for-waveformdata-columns-time-axis-stays-blocking-each-calculated-channel-independently-declares-its-own-null-handling-policy-never-inheriting-automatic-propagation-from-its-source)
+itself (see its 2026-09-10 update block) — summary only here.
+
+**Single-cell actions are now four**: Mark as Null / Fill Manually /
+**Estimate Missing Value** (new) / Set Column to Not Assigned (renamed
+from "Change Column Role," column-level even from one cell's issue,
+explicit whole-column confirmation). **Group actions**: Mark matching
+issues as Null / **Fill / Estimate Missing Values** (new) / Set Column
+to Not Assigned — no separate "Bulk Fill Manually"; same-value bulk
+filling is **Constant Value**, one method inside Fill / Estimate
+Missing Values, not its own top-level action.
+
+Algorithmic estimation (single-cell and bulk) reuses the SAME shared
+engine Calculated Channels already used
+(`app.domain.missing_data_estimation` — Hold Last Value / Nearest
+Value / Linear Interpolation / Local Mean, samples-only max gap, PCHIP
+recognized but rejected) and is gap-based: a contiguous non-finite run
+is one unit regardless of whether members are `waveform_value_missing`
+or `waveform_value_invalid` (e.g. `blank / invalid / blank` is one
+3-cell gap) — the UI shows both the requested `matching_count` and the
+true gap-expanded `affected_count` transparently whenever they differ.
+Constant Value is explicitly NOT interpolation and stays strictly
+issue-scoped — it never expands across a mixed gap. Two new
+`WorkingOverlay` override kinds (`estimated`, `constant_fill`) extend
+the existing tri-state model to five states, riding the same bounded
+Undo/Redo/Reset All history (one grouped entry per action). Every
+preview/apply count is backend-authoritative, never derived from the
+capped Data Issues browse list; apply re-evaluates eligibility fresh
+and reports preview-vs-apply drift transparently. Time Axis issues
+remain structurally ineligible for both new actions (same waveform-only
+gate the existing Mark-as-Null guardrail already used). Estimated/
+constant-filled cells show distinct "Estimated"/"Filled" badges in the
+Raw Data Preview (never color alone, Constant Value never labelled
+"Estimated").
+
+**Deferred, unchanged**: PCHIP/SciPy, non-`samples` max-gap units, Time
+Axis interpolation, a per-sample provenance EXPORT format (per-cell
+`estimation_method` IS tracked internally and shown in the UI, but
+cleaned export carries only the resolved value), a cross-channel
+provenance graph, calculated-channel export, edit/update of an existing
+calculated channel.
+
+**Commit status**: both commits above are already committed.
+
+## What was done in the prior session — DEC-084 Explicit Null Resolution and Calculated-Channel Missing-Data Policy (implementation complete)
 
 **DEC-084 (Explicit Null Resolution and Calculated-Channel Missing-Data
 Policy) implementation is now complete end to end** — Data Preparation

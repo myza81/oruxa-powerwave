@@ -12381,6 +12381,110 @@ deferred extensions — this update record does not change the APPROVED
 POLICY itself (Decision/Reason/Alternatives above), only this Impact
 section's own now-outdated implementation-status note.
 
+**Update (2026-09-10): Data Preparation resolution paths extended with
+algorithmic estimation and bulk constant fill — point 2's original
+"three, and only three" is now superseded in practice** (the Decision
+text above is preserved verbatim as the historical baseline; this
+paragraph is the current-truth update, per this file's own "supersede
+via a new update note, never silently rewrite" convention). Implemented
+across `e60e830` (backend foundation) and `4882ed9` (frontend
+integration) — see [HANDOFF.md](HANDOFF.md) for the full commit
+chain and [CURRENT_STATE.md — Implemented capabilities](CURRENT_STATE.md#implemented-capabilities)
+for the complete behavioral record; only the policy-level summary is
+recorded here.
+
+*Final single-cell actions* for an unresolved Waveform/data cell:
+
+```text
+1. Mark as Null
+2. Fill Manually
+3. Estimate Missing Value   (NEW)
+4. Set Column to Not Assigned
+```
+
+"Set Column to Not Assigned" (renamed from "change the column role,"
+same underlying action) is column-level even when launched from one
+cell's own issue — the confirmation names the column and states the
+whole-column effect explicitly, never applies to just the clicked cell.
+
+*Final bulk/group actions*, per eligible waveform issue group:
+
+```text
+1. Mark matching issues as Null
+2. Fill / Estimate Missing Values
+3. Set Column to Not Assigned
+```
+
+There is no separate "Bulk Fill Manually" action. Same-value bulk
+filling is **Constant Value**, one of the methods offered inside "Fill
+/ Estimate Missing Values" — not a fifth top-level action.
+
+*Provenance states* a prepared cell can now carry: raw/original (never
+touched), manual edit, explicit null, algorithmic estimate, constant
+fill. The original uploaded source remains immutable in every case
+(DEC-009, unchanged) — estimated and constant-filled values exist only
+in the `WorkingOverlay`/prepared working dataset, exactly like every
+other override kind already did.
+
+*Algorithmic estimation methods* — same four this decision's point 8
+already approved for calculated channels, now also offered for Data
+Preparation's own single-cell and bulk estimation, reusing the SAME
+shared engine (`app.domain.missing_data_estimation`, never a second
+implementation): Hold Last Value, Nearest Value, Linear Interpolation,
+Local Mean (explicit radius, samples each side). **PCHIP remains
+deferred/unsupported** — point 8's original five-method list is
+narrowed in practice to these four, matching the same narrowing this
+Impact section already recorded for calculated channels on 2026-09-09.
+Maximum gap is **samples-only** in the implemented engine (point 8's
+original "unit TBD" is now resolved, not left open).
+
+*Contiguous-gap rule*: algorithmic estimation is gap-based, never
+per-cell. A contiguous run of non-finite Waveform cells is one
+mathematical unit regardless of whether individual members are
+classified `waveform_value_missing` or `waveform_value_invalid` — e.g.
+`blank / invalid / blank` is one 3-cell gap. Selecting or scoping
+estimation from any one member (or one issue type) resolves the WHOLE
+eligible gap; the resulting `matching_count` (the originally-requested
+scope) and `affected_count` (the true, gap-expanded scope) are shown
+to the engineer transparently whenever they differ — scope is never
+silently expanded.
+
+*Constant Value is explicitly not interpolation.* It is a plain,
+user-supplied bulk fill value, and stays strictly scoped to the
+requested issue type — unlike algorithmic estimation, it never expands
+across the rest of a mixed contiguous gap (the invalid member of a
+`blank / invalid / blank` gap is left untouched by a Constant Value
+fill launched from the "empty cells" group).
+
+*Time Axis guardrail, reconfirmed*: the new Fill/Estimate actions apply
+only to `waveform_value_missing`/`waveform_value_invalid`, never to
+`time_value_missing`/`time_value_invalid`. Time Axis interpolation
+remains explicitly out of scope, unchanged from point 4's original
+"no Time-Axis-null workaround is defined by this decision."
+
+*Readiness/export/downstream*, extending point 5/6 to the two new
+resolved states: an estimated or constant-filled Waveform cell is
+resolved/non-blocking, exports as its concrete numeric prepared value,
+and converts downstream as an ordinary finite waveform sample — never
+flagged or routed differently. Explicit null (point 4/6, unchanged)
+remains resolved missing data that exports as the format's literal
+`null` and converts to a real waveform gap. An unresolved empty/invalid
+cell remains blocking, unchanged (point 1).
+
+*Undo/Redo/Reset*: a single-cell gap estimate (even when it resolves
+several cells) and a bulk fill/estimate action each ride the SAME
+bounded `WorkingOverlay` Undo/Redo history as every other mutation —
+one grouped history entry per action, no second history mechanism.
+Reset All restores the original unresolved source state exactly,
+unchanged.
+
+**Still deferred, unchanged by this update**: PCHIP/SciPy, `max_gap_unit`
+values other than `samples`, Time Axis interpolation, a per-sample
+provenance EXPORT format (cleaned export carries only the resolved
+numeric value, not which method produced it), a cross-channel
+provenance graph, calculated-channel export, and edit/update of an
+existing calculated channel.
+
 ---
 
 ## How to add a decision

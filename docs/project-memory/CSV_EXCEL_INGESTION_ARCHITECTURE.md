@@ -2403,13 +2403,15 @@ what was actually built.
 in an active Time Axis or Waveform column stays `blocking`
 (`time_value_missing`/`time_value_invalid`/`waveform_value_missing`/
 `waveform_value_invalid`, §14 above). DEC-084 does not weaken this — it
-adds three explicit resolution paths on top of it: **Mark as Null**,
-**Fill Manually**, or **change the column role to Not Assigned/Ignore**
-(DEC-073). **Row exclusion (the existing Slice 4 per-row Exclude/Include
-toggle) is explicitly excluded from this list** — it remains a
-legitimate, independent action, never the standard way to resolve one
-bad cell, because a row may still carry valid measurements in every
-other column.
+originally added three explicit resolution paths on top of it: **Mark
+as Null**, **Fill Manually**, or **change the column role to Not
+Assigned/Ignore** (DEC-073); a fourth (**Estimate Missing Value**) and
+a bulk algorithmic/constant-fill action were added later — see the
+**Update (2026-09-10)** paragraph below. **Row exclusion (the existing
+Slice 4 per-row Exclude/Include toggle) is explicitly excluded from
+this list** — it remains a legitimate, independent action, never the
+standard way to resolve one bad cell, because a row may still carry
+valid measurements in every other column.
 
 An explicit null becomes its own tri-state value on `WorkingOverlay`
 (unresolved / explicit-null / has-a-value) — resolved/non-blocking for
@@ -2437,3 +2439,23 @@ Channels entry in [CURRENT_STATE.md](CURRENT_STATE.md) — it is a
 property of each calculated channel's own definition (DEC-047), not of
 this document's own raw/working-overlay model, so it is not restated
 here.
+
+**Update (2026-09-10): a fourth single-cell path and bulk resolution
+are now implemented.** `WorkingOverlay` (§9/§17) gained two more
+override kinds alongside `OVERRIDE_KIND_NULL` — `estimated` and
+`constant_fill` — extending the tri-state model above to five states.
+Single-cell **Estimate Missing Value** and group-level **Fill /
+Estimate Missing Values** (the same four estimation methods DEC-084
+approved for calculated channels, reusing the SAME shared
+`app.domain.missing_data_estimation` engine, plus issue-scoped
+**Constant Value** for same-value bulk fill) are now available for
+`waveform_value_missing`/`waveform_value_invalid` cells only — Time
+Axis cells remain structurally ineligible, unchanged. Algorithmic
+estimation is gap-based (a contiguous non-finite run is one unit even
+when it mixes both issue codes), with the UI transparently showing
+both the requested and true gap-expanded affected scope whenever a
+mixed gap causes them to differ. The full policy-level record is
+[DECISIONS.md — DEC-084](DECISIONS.md#dec-084--explicit-null-resolution-and-calculated-channel-missing-data-policy-unresolved-emptyinvalid-cells-remain-blocking-an-explicit-user-marked-null-becomes-a-distinct-resolved-state-for-waveformdata-columns-time-axis-stays-blocking-each-calculated-channel-independently-declares-its-own-null-handling-policy-never-inheriting-automatic-propagation-from-its-source)'s
+own 2026-09-10 update block; [CURRENT_STATE.md](CURRENT_STATE.md) is
+the current authority for the full implemented-vs-deferred behavioral
+record.
