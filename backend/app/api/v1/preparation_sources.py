@@ -58,13 +58,21 @@ from app.schemas.preparation_session import (
     CellWorkingValueRequest,
     ColumnRoleRequest,
     ConfiguredTimePreviewOut,
+    ConstantFillApplyOut,
+    ConstantFillApplyRequest,
+    ConstantFillPreviewOut,
+    BulkFillScopeRequest,
     DataRegionRequest,
     EngineeringQuantityRequest,
+    EstimateApplyOut,
+    EstimatePreviewOut,
+    EstimateScopeRequest,
     HeaderRowRequest,
     MeasuredUnitRequest,
     PreparationSessionSummaryOut,
     PreparationSourcePreviewOut,
     RowExclusionRequest,
+    SingleCellEstimateRequest,
     WorkingOverlaySummaryOut,
     WorksheetSelectionRequest,
 )
@@ -104,10 +112,14 @@ from app.services.time_axis_service import (
     set_time_axis_configuration,
 )
 from app.services.working_overlay_service import (
+    apply_bulk_constant_fill,
     apply_bulk_mark_null,
+    apply_estimate,
     clear_header_row,
     edit_cell,
+    preview_bulk_constant_fill,
     preview_bulk_mark_null,
+    preview_estimate,
     redo_working_change,
     reset_all_working_changes,
     reset_cell,
@@ -152,6 +164,10 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "invalid_engineering_quantity": status.HTTP_400_BAD_REQUEST,
     "invalid_time_axis_configuration": status.HTTP_400_BAD_REQUEST,
     "unknown_time_axis_interpreter": status.HTTP_400_BAD_REQUEST,
+    # Missing-value fill/estimation enhancement (owner UAT, 2026-09-10):
+    "invalid_bulk_null_issue_code": status.HTTP_400_BAD_REQUEST,
+    "invalid_estimation_configuration": status.HTTP_400_BAD_REQUEST,
+    "invalid_fill_target": status.HTTP_400_BAD_REQUEST,
     # Slice 10 (DEC-072): conversion runtime/capability failures --
     # every one of these means "the current preparation state cannot
     # honor this request yet," a genuine state-conflict semantic (409),
@@ -512,6 +528,164 @@ def post_working_cells_bulk_null_apply(
     except ImportServiceError as exc:
         raise _working_error(exc) from exc
     return BulkNullApplyOut.from_domain(result)
+
+
+# ==============================================================================
+# Missing-value fill/estimation enhancement (owner UAT, 2026-09-10) --
+# extends DEC-084's bulk Mark as Null pattern above with two more
+# resolution paths for waveform_value_missing/waveform_value_invalid
+# cells: algorithmic estimation (single-cell AND bulk) and bulk constant
+# fill. See app.services.working_overlay_service's own module-level
+# comment for the full data-integrity contract every one of these
+# endpoints shares with bulk Mark as Null (backend-authoritative scope,
+# fresh re-evaluation at apply time, one grouped Undo/Redo operation).
+# ==============================================================================
+
+
+@router.post("/{source_id}/working/cells/bulk-constant-fill/preview", response_model=ConstantFillPreviewOut)
+def post_working_cells_bulk_constant_fill_preview(
+    workspace_id: str,
+    source_id: str,
+    body: BulkFillScopeRequest,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> ConstantFillPreviewOut:
+    """Count-before-apply for bulk constant fill -- the AUTHORITATIVE
+    eligible-cell count for `(column_index, issue_code)`, with no
+    mutation. Never limited by the Data Issues browse list's own
+    `MAX_CELL_ISSUES` cap."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = preview_bulk_constant_fill(
+            workspace_id=workspace_id, source_id=source_id,
+            column_index=body.column_index, issue_code=body.issue_code, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return ConstantFillPreviewOut.model_validate(result)
+
+
+@router.post("/{source_id}/working/cells/bulk-constant-fill/apply", response_model=ConstantFillApplyOut)
+def post_working_cells_bulk_constant_fill_apply(
+    workspace_id: str,
+    source_id: str,
+    body: ConstantFillApplyRequest,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> ConstantFillApplyOut:
+    """Applies an explicit constant fill to every currently eligible
+    cell in this scope, as ONE grouped Undo/Redo operation. Eligibility
+    is re-evaluated fresh here, never trusting an earlier preview call."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = apply_bulk_constant_fill(
+            workspace_id=workspace_id, source_id=source_id, column_index=body.column_index,
+            issue_code=body.issue_code, constant_value=body.constant_value, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return ConstantFillApplyOut.from_domain(result)
+
+
+@router.post("/{source_id}/working/cells/bulk-estimate/preview", response_model=EstimatePreviewOut)
+def post_working_cells_bulk_estimate_preview(
+    workspace_id: str,
+    source_id: str,
+    body: EstimateScopeRequest,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> EstimatePreviewOut:
+    """Count-before-apply for bulk estimation -- the authoritative
+    "Matching unresolved cells / Eligible for X estimation / Will remain
+    unresolved" breakdown, with no mutation."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = preview_estimate(
+            workspace_id=workspace_id, source_id=source_id, column_index=body.column_index,
+            issue_code=body.issue_code, method=body.method, max_gap_value=body.max_gap_value,
+            max_gap_unit=body.max_gap_unit, local_mean_radius=body.local_mean_radius,
+            target_row_number=None, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return EstimatePreviewOut.model_validate(result)
+
+
+@router.post("/{source_id}/working/cells/bulk-estimate/apply", response_model=EstimateApplyOut)
+def post_working_cells_bulk_estimate_apply(
+    workspace_id: str,
+    source_id: str,
+    body: EstimateScopeRequest,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> EstimateApplyOut:
+    """Applies estimation to every currently eligible cell in this
+    scope, as ONE grouped Undo/Redo operation. Eligibility (and which
+    gaps are within the configured maximum) is re-evaluated fresh here,
+    never trusting an earlier preview call."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = apply_estimate(
+            workspace_id=workspace_id, source_id=source_id, column_index=body.column_index,
+            issue_code=body.issue_code, method=body.method, max_gap_value=body.max_gap_value,
+            max_gap_unit=body.max_gap_unit, local_mean_radius=body.local_mean_radius,
+            target_row_number=None, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return EstimateApplyOut.from_domain(result)
+
+
+@router.post(
+    "/{source_id}/working/cells/{row_number}/{column_index}/estimate/preview", response_model=EstimatePreviewOut,
+)
+def post_working_cell_estimate_preview(
+    workspace_id: str,
+    source_id: str,
+    body: SingleCellEstimateRequest,
+    row_number: int = Path(ge=1),
+    column_index: int = Path(ge=0),
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> EstimatePreviewOut:
+    """Count-before-apply for a SINGLE-CELL estimate -- task section 5's
+    own recommendation B: the scope actually previewed/applied is the
+    entire contiguous eligible gap containing `row_number`, never only
+    that one cell in isolation (mathematically consistent interpolation
+    -- the confirmation must state the ACTUAL affected count)."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = preview_estimate(
+            workspace_id=workspace_id, source_id=source_id, column_index=column_index,
+            issue_code=body.issue_code, method=body.method, max_gap_value=body.max_gap_value,
+            max_gap_unit=body.max_gap_unit, local_mean_radius=body.local_mean_radius,
+            target_row_number=row_number, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return EstimatePreviewOut.model_validate(result)
+
+
+@router.post(
+    "/{source_id}/working/cells/{row_number}/{column_index}/estimate/apply", response_model=EstimateApplyOut,
+)
+def post_working_cell_estimate_apply(
+    workspace_id: str,
+    source_id: str,
+    body: SingleCellEstimateRequest,
+    row_number: int = Path(ge=1),
+    column_index: int = Path(ge=0),
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> EstimateApplyOut:
+    """Applies a single-cell (gap-scoped) estimate as ONE grouped Undo/
+    Redo operation, even when the gap spans multiple rows -- exactly one
+    Undo press restores every affected cell (task section 22)."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = apply_estimate(
+            workspace_id=workspace_id, source_id=source_id, column_index=column_index,
+            issue_code=body.issue_code, method=body.method, max_gap_value=body.max_gap_value,
+            max_gap_unit=body.max_gap_unit, local_mean_radius=body.local_mean_radius,
+            target_row_number=row_number, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return EstimateApplyOut.from_domain(result)
 
 
 @router.put("/{source_id}/working/rows/{row_number}", response_model=WorkingOverlaySummaryOut)

@@ -754,7 +754,10 @@ class TestCellWorkingEndpoints:
         rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
         assert rows["rows"][0]["cells"] == ["EDITED", "b"]
         assert rows["working_revision"] == 1
-        assert rows["rows"][0]["modified_cells"] == [{"column_index": 0, "raw_value": "a", "is_explicit_null": False}]
+        assert rows["rows"][0]["modified_cells"] == [{
+            "column_index": 0, "raw_value": "a", "is_explicit_null": False,
+            "is_estimated": False, "is_constant_fill": False, "estimation_method": None,
+        }]
 
     def test_put_cell_clear_sets_none_in_preview(self, client):
         source_id = _upload_csv(client)
@@ -796,7 +799,10 @@ class TestCellWorkingEndpoints:
         )
         rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
 
-        assert rows["rows"][0]["modified_cells"] == [{"column_index": 1, "raw_value": "b", "is_explicit_null": True}]
+        assert rows["rows"][0]["modified_cells"] == [{
+            "column_index": 1, "raw_value": "b", "is_explicit_null": True,
+            "is_estimated": False, "is_constant_fill": False, "estimation_method": None,
+        }]
 
     def test_put_cell_clear_is_not_flagged_explicit_null(self, client):
         source_id = _upload_csv(client)
@@ -807,7 +813,10 @@ class TestCellWorkingEndpoints:
         )
         rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
 
-        assert rows["rows"][0]["modified_cells"] == [{"column_index": 1, "raw_value": "b", "is_explicit_null": False}]
+        assert rows["rows"][0]["modified_cells"] == [{
+            "column_index": 1, "raw_value": "b", "is_explicit_null": False,
+            "is_estimated": False, "is_constant_fill": False, "estimation_method": None,
+        }]
 
     def test_put_cell_kind_null_with_value_null_is_accepted(self, client):
         source_id = _upload_csv(client)
@@ -3456,7 +3465,10 @@ class TestBulkNullEndpoints:
         rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
         for row in rows["rows"]:
             if row["row_number"] in (2, 4, 6):
-                assert row["modified_cells"] == [{"column_index": 1, "raw_value": "", "is_explicit_null": True}]
+                assert row["modified_cells"] == [{
+                    "column_index": 1, "raw_value": "", "is_explicit_null": True,
+                    "is_estimated": False, "is_constant_fill": False, "estimation_method": None,
+                }]
 
     def test_apply_resolves_the_issue_group_from_the_issues_endpoint(self, client):
         source_id = _bulk_api_source(client, rows=10, blank_at=(2, 4, 6))

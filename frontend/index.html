@@ -11105,11 +11105,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             html += '<button type="button" class="secondary" data-issue-action="fill-manually">Fill Manually</button>';
             html += isTimeAxis
                 ? '<button type="button" class="secondary" data-issue-action="configure-time-axis">Revisit Time Axis</button>'
-                : '<button type="button" class="secondary" data-issue-action="change-role">Change Column Role</button>';
+                : '<button type="button" class="secondary" data-issue-action="change-role">Set Column to Not Assigned</button>';
             html += '</div>';
             html += isTimeAxis
                 ? '<p class="ww-data-issues-action-hint">Mark as Null is not available for the Time Axis -- a row without a valid time coordinate cannot be placed (DEC-084).</p>'
-                : '<p class="ww-data-issues-action-hint">Change Column Role sets this whole column to Not Assigned, excluding it from Powerwave.</p>';
+                : '<p class="ww-data-issues-action-hint">Set Column to Not Assigned affects the ENTIRE column, not only this cell -- it will no longer participate in waveform preparation or readiness checks.</p>';
             areaEl.innerHTML = html;
             areaEl.dataset.rowNumber = String(issue.row_number);
             areaEl.dataset.columnIndex = String(issue.column_index);
@@ -11396,6 +11396,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 );
                 if (cell) wwDataPrepBeginCellEdit(cell);
             } else if (action === "change-role") {
+                // Missing-value fill/estimation enhancement (owner UAT,
+                // 2026-09-10): this action affects the ENTIRE column, not
+                // just the single issue cell it is launched from -- a
+                // plain confirmation naming the column makes that explicit
+                // before it runs (task section 15), where the previous
+                // "Change Column Role" wording/silent-apply behavior did
+                // not. Reuses wwDataPrepSetColumnRole(columnIndex,
+                // "not_assigned") unchanged -- the SAME function the
+                // Structure panel's own Column Roles <select> already
+                // calls; never a second ignore mechanism.
+                const columnLabel = (wwDataPrep.columnLabels && wwDataPrep.columnLabels[columnIndex]) || wwSpreadsheetColumnLabel(columnIndex);
+                const confirmed = window.confirm(
+                    'Set "' + columnLabel + '" to Not Assigned?\n\n' +
+                    "This affects the entire column, not only the cells with issues. " +
+                    "The column will no longer participate in waveform preparation or readiness checks."
+                );
+                if (!confirmed) return;
                 await wwDataPrepSetColumnRole(columnIndex, "not_assigned");
             } else if (action === "configure-time-axis") {
                 const timeAxisPanel = document.getElementById("wwDataPrepTimeAxisPanel");

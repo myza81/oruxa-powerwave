@@ -922,3 +922,33 @@ class InvalidBulkNullIssueCodeError(ImportServiceError):
     `app.services.readiness_service.eligible_bulk_null_rows()`)."""
 
     code = "invalid_bulk_null_issue_code"
+
+
+class InvalidEstimationConfigurationError(ImportServiceError):
+    """Missing-value fill/estimation enhancement: the requested
+    `method`/`max_gap_value`/`max_gap_unit`/`local_mean_radius`/
+    `constant_value` combination is not a valid estimation/fill request
+    -- an unrecognized or unimplemented method (PCHIP), a non-positive
+    `max_gap_value`/`local_mean_radius`, a `max_gap_unit` other than
+    `"samples"`, a missing `local_mean_radius` when `method="local_mean"`,
+    a missing/non-finite `constant_value` when `method="constant"`, or
+    Linear Interpolation requested while the current Time Axis is not
+    yet resolved enough to supply real time coordinates. A genuine
+    request error (400), never silently downgraded to a different
+    method or a zero-eligible-count outcome."""
+
+    code = "invalid_estimation_configuration"
+
+
+class InvalidFillTargetError(ImportServiceError):
+    """Missing-value fill/estimation enhancement: the requested column
+    does not currently carry the Waveform role, or (for a single-cell
+    estimate) the targeted cell is not itself a currently-unresolved
+    `waveform_value_missing`/`waveform_value_invalid` cell -- covers both
+    a genuinely out-of-scope column/cell AND an attempt to target a Time
+    Axis column (DEC-084's own permanent guardrail: estimation never
+    applies to `time_value_missing`/`time_value_invalid`, backend-
+    enforced here, never only in the frontend). A real request error
+    (400), never a silent no-op."""
+
+    code = "invalid_fill_target"

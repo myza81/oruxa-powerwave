@@ -116,100 +116,44 @@ DEFAULT_NULL_POLICY = NULL_POLICY_PROPAGATE
 #: METHODS` below, never by blocking the policy itself.
 UNIMPLEMENTED_NULL_POLICIES: frozenset[str] = frozenset()
 
-# ---- DEC-084 Calc Slice 2: missing-data estimation configuration ----
+# ---- DEC-084 Calc Slice 2 / missing-value fill/estimation enhancement:
+# missing-data estimation configuration ----
 #
-# Only meaningful when `null_policy == NULL_POLICY_ESTIMATE`. These
-# constants/predicates own the CONFIGURATION shape (what a valid
-# estimation request looks like); the actual array-filling engine lives
-# in the separate app.domain.missing_data_estimation module (section 3
-# of this task: a dedicated, reusable, independently-testable module),
-# which imports the method-name constants below rather than
-# redefining them.
-
-#: valid, valid, gap, valid -> fill with the previous finite sample.
-ESTIMATION_METHOD_HOLD_LAST = "hold_last"
-#: Fill with the closest finite bracketing sample (sample-index
-#: distance); equidistant ties break to the PREVIOUS sample.
-ESTIMATION_METHOD_NEAREST = "nearest"
-#: Linear interpolation using actual aligned `time` coordinates (never
-#: sample index); no extrapolation -- a gap touching either end of the
-#: array is never filled.
-ESTIMATION_METHOD_LINEAR = "linear"
-#: Fill the whole eligible gap with the mean of up to `local_mean_radius`
-#: finite samples immediately before and up to `local_mean_radius` finite
-#: samples immediately after it.
-ESTIMATION_METHOD_LOCAL_MEAN = "local_mean"
-#: Shape-preserving cubic interpolation -- recognized as a configuration
-#: VALUE for forward compatibility only (this task's section 19): no
-#: SciPy dependency exists in this codebase and none is added by this
-#: slice, so selecting it must be rejected outright, never silently
-#: downgraded to Linear.
-ESTIMATION_METHOD_PCHIP = "pchip"
-
-ALL_ESTIMATION_METHODS = frozenset(
-    {
-        ESTIMATION_METHOD_HOLD_LAST, ESTIMATION_METHOD_NEAREST,
-        ESTIMATION_METHOD_LINEAR, ESTIMATION_METHOD_LOCAL_MEAN, ESTIMATION_METHOD_PCHIP,
-    }
+# Only meaningful when `null_policy == NULL_POLICY_ESTIMATE`. Owner
+# hardening pass (2026-09-10): these method-name/max-gap constants and
+# `*_valid()` predicates USED to be defined here, with
+# `app.domain.missing_data_estimation` importing them backwards from
+# this calculated-channel-specific module -- correct while estimation
+# was calculated-channel-only, but once Data Preparation's own missing-
+# value fill/estimation enhancement needed the SAME configuration shape,
+# that direction became exactly the "Data Preparation depends on the
+# Calculated Channel domain merely to obtain generic estimation
+# constants" coupling the hardening pass explicitly forbids. Relocated
+# to `app.domain.missing_data_estimation` itself (the true shared/
+# neutral home -- it already owns the actual array-filling ENGINE these
+# constants configure) and re-exported here UNCHANGED so every existing
+# import of these names from THIS module (this file's own docstring
+# below, `app.services.calculated_channel_service`, and their own
+# existing tests) keeps working without modification -- same objects,
+# same values, zero behavior change. NEW code should import directly
+# from `app.domain.missing_data_estimation` instead (see that module's
+# own docstring) -- `app.services.working_overlay_service` (Data
+# Preparation) already does.
+from app.domain.missing_data_estimation import (  # noqa: E402
+    ALL_ESTIMATION_METHODS,
+    ALL_MAX_GAP_UNITS,
+    ESTIMATION_METHOD_HOLD_LAST,
+    ESTIMATION_METHOD_LINEAR,
+    ESTIMATION_METHOD_LOCAL_MEAN,
+    ESTIMATION_METHOD_NEAREST,
+    ESTIMATION_METHOD_PCHIP,
+    MAX_GAP_UNIT_SAMPLES,
+    UNIMPLEMENTED_ESTIMATION_METHODS,
+    estimation_method_valid,
+    local_mean_radius_valid,
+    max_gap_unit_valid,
+    max_gap_value_valid,
 )
-#: Recognized methods with no working engine yet -- mirrors
-#: `UNIMPLEMENTED_NULL_POLICIES`'s own contract one level down.
-UNIMPLEMENTED_ESTIMATION_METHODS = frozenset({ESTIMATION_METHOD_PCHIP})
-
-#: This slice's only supported `max_gap_unit` (this task's section 1:
-#: "For this slice: max_gap_unit = 'samples' only. Do not support
-#: milliseconds/seconds yet."). A single-member set, not a bare string
-#: constant, so a future slice adding a second unit only ever needs to
-#: grow this set -- every `in ALL_MAX_GAP_UNITS` check keeps working
-#: unchanged.
-MAX_GAP_UNIT_SAMPLES = "samples"
-ALL_MAX_GAP_UNITS = frozenset({MAX_GAP_UNIT_SAMPLES})
-
-
-def estimation_method_valid(estimation_method) -> bool:
-    """True only for one of the five recognized method names (this
-    covers BOTH a missing/`None` method and a genuinely unknown string --
-    `None not in ALL_ESTIMATION_METHODS` is already `False`, so no
-    separate `is None` branch is needed). Whether a recognized method is
-    actually IMPLEMENTED yet is a separate question -- see
-    `UNIMPLEMENTED_ESTIMATION_METHODS` -- deliberately kept apart so a
-    caller can distinguish "not a real method" from "a real method this
-    slice doesn't implement yet" with two different, clearer errors."""
-    return estimation_method in ALL_ESTIMATION_METHODS
-
-
-def max_gap_value_valid(max_gap_value) -> bool:
-    """`max_gap_value` must be a positive whole number of samples (this
-    slice's only supported `max_gap_unit`) -- section 1/2. `bool` is
-    explicitly rejected even though Python treats it as an `int` subtype
-    (mirrors `nominal_frequency_valid`'s own documented reasoning), and a
-    missing (`None`) value is already `False` via the `isinstance` check,
-    so "missing" and "invalid" share one predicate."""
-    return bool(
-        isinstance(max_gap_value, int)
-        and not isinstance(max_gap_value, bool)
-        and max_gap_value > 0
-    )
-
-
-def max_gap_unit_valid(max_gap_unit) -> bool:
-    """True only for `"samples"` (`ALL_MAX_GAP_UNITS`) -- section 1: this
-    slice deliberately does not support milliseconds/seconds yet."""
-    return max_gap_unit in ALL_MAX_GAP_UNITS
-
-
-def local_mean_radius_valid(local_mean_radius) -> bool:
-    """`local_mean_radius` must be a positive whole number of samples
-    (section 1: "N finite candidate samples before + N ... after") --
-    same `bool`-exclusion/missing-value handling as `max_gap_value_valid`
-    above, deliberately mirrored rather than sharing one generic
-    "positive int" helper, since the two are independently-named
-    configuration concepts that happen to share a validation shape today."""
-    return bool(
-        isinstance(local_mean_radius, int)
-        and not isinstance(local_mean_radius, bool)
-        and local_mean_radius > 0
-    )
 
 
 @dataclass(slots=True, frozen=True)

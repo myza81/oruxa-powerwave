@@ -92,7 +92,9 @@ from app.domain.channel_classification import ENGINEERING_QUANTITY_UNDEFINED
 from app.domain.preparation_session import FORMAT_CSV, FORMAT_EXCEL, PreparationSession
 from app.domain.working_overlay import (
     END_MODE_SPECIFIC,
+    OVERRIDE_KIND_CONSTANT_FILL,
     OVERRIDE_KIND_EDIT,
+    OVERRIDE_KIND_ESTIMATED,
     OVERRIDE_KIND_NULL,
     ROLE_NOT_ASSIGNED,
     WorkingOverlay,
@@ -130,6 +132,15 @@ _CSV_CANDIDATE_DELIMITERS = ",;\t|"
 _CSV_DEFAULT_DELIMITER = ","
 _CSV_SNIFF_SAMPLE_CHARS = 8192
 
+#: Missing-value fill/estimation enhancement: every override kind whose
+#: `value` is a real, usable working value -- an ordinary manual EDIT,
+#: an algorithmically ESTIMATED result, or an explicit CONSTANT fill.
+#: `OVERRIDE_KIND_CLEAR`/`OVERRIDE_KIND_NULL` are deliberately excluded
+#: (both are intentionally value-less -- see `CellOverride`'s own
+#: docstring), so `row.cells[column_index]` renders `None` for either,
+#: exactly as before this enhancement.
+_VALUE_BEARING_OVERRIDE_KINDS = (OVERRIDE_KIND_EDIT, OVERRIDE_KIND_ESTIMATED, OVERRIDE_KIND_CONSTANT_FILL)
+
 
 @dataclass(slots=True)
 class ModifiedCell:
@@ -148,11 +159,25 @@ class ModifiedCell:
     representation instead of an ordinary blank cell, without which an
     explicit null and a plain clear would be visually indistinguishable
     on the wire, exactly the ambiguity `OVERRIDE_KIND_NULL` itself exists
-    to resolve at the domain layer."""
+    to resolve at the domain layer.
+
+    `is_estimated`/`is_constant_fill` (missing-value fill/estimation
+    enhancement) mirror `is_explicit_null` exactly, one flag per new
+    `CellOverride` kind -- so the table can render a visually distinct
+    "estimated" vs "constant-filled" state instead of both looking like
+    an ordinary manual edit, without which an engineer could not tell
+    algorithmically-derived data apart from either raw or manually-typed
+    data at a glance (task's own explicit "must not look indistinguishable
+    from untouched source data" requirement). `estimation_method` is
+    populated only alongside `is_estimated=True`, for an optional tooltip
+    -- never populated for a constant fill (which has no method)."""
 
     column_index: int
     raw_value: Any
     is_explicit_null: bool = False
+    is_estimated: bool = False
+    is_constant_fill: bool = False
+    estimation_method: str | None = None
 
 
 @dataclass(slots=True)
@@ -549,9 +574,14 @@ def _apply_working_overlay(session: PreparationSession, *, worksheet_index: int 
         for column_index in sorted(row_overrides):
             override = row_overrides[column_index]
             raw_value = row.cells[column_index]
-            row.cells[column_index] = override.value if override.kind == OVERRIDE_KIND_EDIT else None
+            row.cells[column_index] = override.value if override.kind in _VALUE_BEARING_OVERRIDE_KINDS else None
             is_explicit_null = override.kind == OVERRIDE_KIND_NULL
-            modified.append(ModifiedCell(column_index=column_index, raw_value=raw_value, is_explicit_null=is_explicit_null))
+            modified.append(ModifiedCell(
+                column_index=column_index, raw_value=raw_value, is_explicit_null=is_explicit_null,
+                is_estimated=override.kind == OVERRIDE_KIND_ESTIMATED,
+                is_constant_fill=override.kind == OVERRIDE_KIND_CONSTANT_FILL,
+                estimation_method=override.estimation_method,
+            ))
             if is_explicit_null:
                 null_columns.add(column_index)
         row.modified_cells = modified
@@ -846,9 +876,14 @@ def iterate_active_region_rows(
             for column_index in sorted(row_overrides):
                 override = row_overrides[column_index]
                 raw_value = row.cells[column_index]
-                row.cells[column_index] = override.value if override.kind == OVERRIDE_KIND_EDIT else None
+                row.cells[column_index] = override.value if override.kind in _VALUE_BEARING_OVERRIDE_KINDS else None
                 is_explicit_null = override.kind == OVERRIDE_KIND_NULL
-                modified.append(ModifiedCell(column_index=column_index, raw_value=raw_value, is_explicit_null=is_explicit_null))
+                modified.append(ModifiedCell(
+                    column_index=column_index, raw_value=raw_value, is_explicit_null=is_explicit_null,
+                    is_estimated=override.kind == OVERRIDE_KIND_ESTIMATED,
+                    is_constant_fill=override.kind == OVERRIDE_KIND_CONSTANT_FILL,
+                    estimation_method=override.estimation_method,
+                ))
                 if is_explicit_null:
                     null_columns.add(column_index)
             row.modified_cells = modified

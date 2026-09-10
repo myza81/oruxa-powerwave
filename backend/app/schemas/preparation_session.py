@@ -192,6 +192,143 @@ class BulkNullApplyOut(BaseModel):
         )
 
 
+# ---- Missing-value fill/estimation enhancement (owner UAT, 2026-09-10) ----
+# Mirrors BulkNullScopeRequest/BulkNullPreviewOut/BulkNullApplyOut's own
+# shapes exactly -- a SEMANTIC scope (column_index + issue_code), never a
+# raw coordinate list; the backend is authoritative for exactly which
+# cells match at preview AND apply time.
+
+
+class BulkFillScopeRequest(BaseModel):
+    """Body of the bulk constant-fill preview/apply endpoints."""
+
+    column_index: int
+    issue_code: str
+
+
+class ConstantFillApplyRequest(BaseModel):
+    """Body of `POST .../working/cells/bulk-constant-fill/apply` --
+    `BulkFillScopeRequest` plus the one additional field constant fill
+    needs (task section 7: "not interpolation," a plain user-supplied
+    number)."""
+
+    column_index: int
+    issue_code: str
+    constant_value: float
+
+
+class ConstantFillPreviewOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    column_index: int
+    issue_code: str
+    eligible_count: int
+
+
+class ConstantFillApplyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    column_index: int
+    issue_code: str
+    eligible_count: int
+    applied_count: int
+    working_overlay: WorkingOverlaySummaryOut
+
+    @classmethod
+    def from_domain(cls, result) -> "ConstantFillApplyOut":
+        return cls(
+            column_index=result.column_index,
+            issue_code=result.issue_code,
+            eligible_count=result.eligible_count,
+            applied_count=result.applied_count,
+            working_overlay=WorkingOverlaySummaryOut.from_domain(result.overlay),
+        )
+
+
+class EstimateScopeRequest(BaseModel):
+    """Body shared by the bulk-estimate preview/apply endpoints. `method`
+    is one of the four recognized estimation methods (never `"constant"`
+    -- that is `ConstantFillApplyRequest`'s own separate action);
+    `max_gap_unit` is always `"samples"` (task section 9: no other unit
+    is supported yet); `local_mean_radius` is required only when
+    `method == "local_mean"`, `None` otherwise."""
+
+    column_index: int
+    issue_code: str
+    method: str
+    max_gap_value: int
+    max_gap_unit: str = "samples"
+    local_mean_radius: int | None = None
+
+
+class SingleCellEstimateRequest(BaseModel):
+    """Body shared by the single-cell estimate preview/apply endpoints --
+    `EstimateScopeRequest` plus `issue_code` (the clicked cell's own
+    CURRENT issue type, so the backend can confirm it is genuinely
+    eligible right now rather than trusting the frontend's own possibly-
+    stale Data Issues list)."""
+
+    issue_code: str
+    method: str
+    max_gap_value: int
+    max_gap_unit: str = "samples"
+    local_mean_radius: int | None = None
+
+
+class EstimatePreviewOut(BaseModel):
+    """Response of both the single-cell and bulk estimate preview
+    endpoints -- task section 11's own required shape: "Matching
+    unresolved cells / Eligible for X estimation / Will remain
+    unresolved," extended by the owner hardening pass (2026-09-10) with
+    `affected_count`: estimation treats a full contiguous non-finite
+    waveform gap as ONE mathematical unit, regardless of whether its
+    members are individually classified `waveform_value_missing` or
+    `waveform_value_invalid` -- `matching_count` (N) is the originally-
+    requested single-issue-type group size; `affected_count` (M) is that
+    group expanded to the complete gap(s) it belongs to (a superset of N
+    whenever a touched gap mixes both issue types, equal to it
+    otherwise). `eligible_count`/`unresolved_count` are computed against
+    `affected_count`, never `matching_count`."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    column_index: int
+    issue_code: str
+    method: str
+    matching_count: int
+    affected_count: int
+    eligible_count: int
+    unresolved_count: int
+
+
+class EstimateApplyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    column_index: int
+    issue_code: str
+    method: str
+    matching_count: int
+    affected_count: int
+    eligible_count: int
+    applied_count: int
+    unresolved_count: int
+    working_overlay: WorkingOverlaySummaryOut
+
+    @classmethod
+    def from_domain(cls, result) -> "EstimateApplyOut":
+        return cls(
+            column_index=result.column_index,
+            issue_code=result.issue_code,
+            method=result.method,
+            matching_count=result.matching_count,
+            affected_count=result.affected_count,
+            eligible_count=result.eligible_count,
+            applied_count=result.applied_count,
+            unresolved_count=result.unresolved_count,
+            working_overlay=WorkingOverlaySummaryOut.from_domain(result.overlay),
+        )
+
+
 class PreparationSessionSummaryOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -253,10 +390,20 @@ class ModifiedCellOut(BaseModel):
     column_index: int
     raw_value: Any
     is_explicit_null: bool = False
+    #: Missing-value fill/estimation enhancement: mirrors
+    #: `is_explicit_null` for the two new override kinds -- see
+    #: `ModifiedCell`'s own docstring.
+    is_estimated: bool = False
+    is_constant_fill: bool = False
+    estimation_method: str | None = None
 
     @classmethod
     def from_domain(cls, cell: ModifiedCell) -> "ModifiedCellOut":
-        return cls(column_index=cell.column_index, raw_value=cell.raw_value, is_explicit_null=cell.is_explicit_null)
+        return cls(
+            column_index=cell.column_index, raw_value=cell.raw_value, is_explicit_null=cell.is_explicit_null,
+            is_estimated=cell.is_estimated, is_constant_fill=cell.is_constant_fill,
+            estimation_method=cell.estimation_method,
+        )
 
 
 class PreparationRowOut(BaseModel):

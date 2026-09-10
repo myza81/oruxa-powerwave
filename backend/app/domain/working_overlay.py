@@ -139,7 +139,39 @@ OVERRIDE_KIND_CLEAR = "clear"
 #: requirement: `kind` is exactly the extra bit that keeps them apart, not
 #: a second overload of `value`).
 OVERRIDE_KIND_NULL = "null"
-KNOWN_OVERRIDE_KINDS = (OVERRIDE_KIND_EDIT, OVERRIDE_KIND_CLEAR, OVERRIDE_KIND_NULL)
+#: Missing-value fill/estimation enhancement (owner UAT, 2026-09-10): a
+#: FOURTH and FIFTH override kind, extending DEC-084's original
+#: three-resolution-path policy (Mark as Null / Fill Manually / Not
+#: Assigned) with a fourth resolution path -- Estimate Missing Value --
+#: for `waveform_value_missing`/`waveform_value_invalid` cells only (see
+#: `app.services.working_overlay_service`'s own enforcement of that
+#: restriction; this module stays format/column-role-agnostic like every
+#: other function here). Unlike `OVERRIDE_KIND_NULL` (deliberately
+#: value-less -- see `CellOverride`'s own docstring), an estimated or
+#: constant-filled cell DOES carry a real, finite numeric `value` (as a
+#: string, the SAME convention `OVERRIDE_KIND_EDIT` already uses) --
+#: this is what lets every existing downstream consumer that reads
+#: `CellOverride.value` (preview rendering, conversion, export) treat it
+#: as an ordinary resolved value with ZERO changes, while `kind` alone
+#: still keeps it traceable as NOT raw/manually-typed data (never
+#: confused with either).
+#:
+#: `OVERRIDE_KIND_ESTIMATED` additionally carries the estimation
+#: configuration used to derive `value` (`estimation_method`/
+#: `max_gap_value`/`max_gap_unit`/`local_mean_radius` on `CellOverride`)
+#: -- traceability, mirroring DEC-084 point 10's calculated-channel
+#: requirement, now extended to Data Preparation itself.
+#: `OVERRIDE_KIND_CONSTANT_FILL` is explicit user fill, not an
+#: algorithmic estimate -- it carries no estimation metadata at all
+#: (all four fields stay `None`), keeping it visually/semantically
+#: distinguishable from `OVERRIDE_KIND_ESTIMATED` even though both
+#: resolve to a real value.
+OVERRIDE_KIND_ESTIMATED = "estimated"
+OVERRIDE_KIND_CONSTANT_FILL = "constant_fill"
+KNOWN_OVERRIDE_KINDS = (
+    OVERRIDE_KIND_EDIT, OVERRIDE_KIND_CLEAR, OVERRIDE_KIND_NULL,
+    OVERRIDE_KIND_ESTIMATED, OVERRIDE_KIND_CONSTANT_FILL,
+)
 
 #: A generous sanity bound against a pathological/accidental paste --
 #: never an engineering-content validation (task's own "do not infer
@@ -240,8 +272,18 @@ class CellOverride:
     callers must never infer "null" from `value is None` alone.
     """
 
-    kind: str  # OVERRIDE_KIND_EDIT | OVERRIDE_KIND_CLEAR | OVERRIDE_KIND_NULL
+    kind: str  # one of KNOWN_OVERRIDE_KINDS
     value: str | None
+    #: Missing-value fill/estimation enhancement: populated ONLY when
+    #: `kind == OVERRIDE_KIND_ESTIMATED` -- the estimation method/gap
+    #: configuration that produced `value`, for traceability (DEC-084
+    #: point 10, extended to Data Preparation). Always `None` for every
+    #: other kind, including `OVERRIDE_KIND_CONSTANT_FILL` (explicit user
+    #: fill has no estimation configuration to record).
+    estimation_method: str | None = None
+    max_gap_value: int | None = None
+    max_gap_unit: str | None = None
+    local_mean_radius: int | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -417,6 +459,108 @@ def bulk_set_cells_null(overlay: WorkingOverlay, keys: list[CellKey]) -> int:
         changes.append((key, existing, CellOverride(kind=OVERRIDE_KIND_NULL, value=None)))
     if not changes:
         return 0
+    for key, _before, after in changes:
+        overlay.cell_overrides[key] = after
+    _record(
+        overlay, "bulk_cell", None,
+        before=[(key, before) for key, before, _after in changes],
+        after=[(key, after) for key, _before, after in changes],
+    )
+    return len(changes)
+
+
+def set_cell_estimated(
+    overlay: WorkingOverlay, key: CellKey, value: str, *,
+    estimation_method: str, max_gap_value: int, max_gap_unit: str, local_mean_radius: int | None = None,
+) -> None:
+    """Mark one cell's working value as an algorithmically ESTIMATED
+    resolution (missing-value fill/estimation enhancement) -- the numeric
+    RESULT of `app.domain.missing_data_estimation.apply_estimation()`,
+    already computed by the caller (this function stays a pure mutation
+    primitive with no estimation math of its own, exactly like every
+    other function in this module -- see `app.services.
+    working_overlay_service`'s own orchestration). `value` is the
+    stringified finite result; the estimation configuration that produced
+    it is recorded alongside for traceability. Overwrites any existing
+    override for this cell the same way `set_cell_value`/`set_cell_null`
+    already do."""
+    before = overlay.cell_overrides.get(key)
+    after = CellOverride(
+        kind=OVERRIDE_KIND_ESTIMATED, value=value,
+        estimation_method=estimation_method, max_gap_value=max_gap_value,
+        max_gap_unit=max_gap_unit, local_mean_radius=local_mean_radius,
+    )
+    overlay.cell_overrides[key] = after
+    _record(overlay, "cell", key, before, after)
+
+
+def set_cell_constant_fill(overlay: WorkingOverlay, key: CellKey, value: str) -> None:
+    """Mark one cell's working value as an explicit CONSTANT fill
+    (missing-value fill/estimation enhancement) -- NOT an estimate (no
+    interpolation math produced it); `value` is the exact user-supplied
+    constant, stringified. Carries no estimation metadata (see
+    `CellOverride`'s own docstring for why this stays visually/
+    semantically distinct from `OVERRIDE_KIND_ESTIMATED`)."""
+    before = overlay.cell_overrides.get(key)
+    after = CellOverride(kind=OVERRIDE_KIND_CONSTANT_FILL, value=value)
+    overlay.cell_overrides[key] = after
+    _record(overlay, "cell", key, before, after)
+
+
+def bulk_set_cells_estimated(
+    overlay: WorkingOverlay, entries: list[tuple[CellKey, str]], *,
+    estimation_method: str, max_gap_value: int, max_gap_unit: str, local_mean_radius: int | None = None,
+) -> int:
+    """Mark MANY cells as algorithmically estimated, as ONE undoable/
+    redoable grouped operation -- mirrors `bulk_set_cells_null()`'s own
+    shape exactly (same `"bulk_cell"` `WorkingOperation` kind, so undo/
+    redo needs zero new code -- `_apply_state()`'s existing `"bulk_cell"`
+    branch already restores/reapplies an arbitrary `(CellKey,
+    CellOverride | None)` list regardless of the override's own kind).
+    `entries` is the CALLER's own already-computed `(key, estimated_value)`
+    pairs -- one shared estimation configuration applies to every entry
+    in this one call (the same configuration that produced every value),
+    consistent with `set_cell_estimated()`'s own per-cell metadata shape.
+    This function stays a pure mutation primitive with no eligibility or
+    estimation policy of its own. Returns the number of cells written;
+    `entries=[]` is a safe no-op (no history entry recorded)."""
+    if not entries:
+        return 0
+    changes: list[tuple[CellKey, CellOverride | None, CellOverride]] = [
+        (
+            key,
+            overlay.cell_overrides.get(key),
+            CellOverride(
+                kind=OVERRIDE_KIND_ESTIMATED, value=value,
+                estimation_method=estimation_method, max_gap_value=max_gap_value,
+                max_gap_unit=max_gap_unit, local_mean_radius=local_mean_radius,
+            ),
+        )
+        for key, value in entries
+    ]
+    for key, _before, after in changes:
+        overlay.cell_overrides[key] = after
+    _record(
+        overlay, "bulk_cell", None,
+        before=[(key, before) for key, before, _after in changes],
+        after=[(key, after) for key, _before, after in changes],
+    )
+    return len(changes)
+
+
+def bulk_set_cells_constant_fill(overlay: WorkingOverlay, keys: list[CellKey], value: str) -> int:
+    """Mark MANY cells with the SAME explicit constant fill, as ONE
+    undoable/redoable grouped operation -- mirrors `bulk_set_cells_null()`/
+    `bulk_set_cells_estimated()` exactly (same `"bulk_cell"`
+    `WorkingOperation` kind). `keys` is the caller's own already-computed,
+    already-filtered eligible-cell list. Returns the number of cells
+    written; `keys=[]` is a safe no-op."""
+    if not keys:
+        return 0
+    changes: list[tuple[CellKey, CellOverride | None, CellOverride]] = [
+        (key, overlay.cell_overrides.get(key), CellOverride(kind=OVERRIDE_KIND_CONSTANT_FILL, value=value))
+        for key in keys
+    ]
     for key, _before, after in changes:
         overlay.cell_overrides[key] = after
     _record(

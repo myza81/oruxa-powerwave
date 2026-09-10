@@ -46,7 +46,10 @@ single, dataset-wide boundary; there is still no per-column end.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+
+import numpy as np
 
 from app.domain import working_overlay as overlay_domain
 from app.domain.channel_classification import (
@@ -55,20 +58,46 @@ from app.domain.channel_classification import (
     measured_unit_valid_for_quantity,
     parse_engineering_quantity_and_unit_suffix,
 )
+# Missing-value fill/estimation enhancement (owner UAT hardening pass,
+# 2026-09-10): imported from the shared, calculated-channel-agnostic
+# app.domain.missing_data_estimation -- NEVER from app.domain.
+# calculated_channel (that module now re-exports these same names only
+# for its own pre-existing callers; Data Preparation has no legitimate
+# reason to depend on the Calculated Channel domain merely to obtain
+# generic estimation constants). See that module's own docstring.
+from app.domain.missing_data_estimation import (
+    ESTIMATION_METHOD_LINEAR,
+    ESTIMATION_METHOD_LOCAL_MEAN,
+    UNIMPLEMENTED_ESTIMATION_METHODS,
+    apply_estimation,
+    estimation_method_valid,
+    find_gaps,
+    local_mean_radius_valid,
+    max_gap_unit_valid,
+    max_gap_value_valid,
+)
+from app.domain.preparation_issue import ISSUE_WAVEFORM_VALUE_INVALID, ISSUE_WAVEFORM_VALUE_MISSING
 from app.domain.preparation_session import PreparationSession
 from app.services.errors import (
     InvalidColumnRoleError,
     InvalidDataRegionError,
     InvalidEngineeringQuantityError,
+    InvalidEstimationConfigurationError,
+    InvalidFillTargetError,
     InvalidMeasuredUnitError,
     InvalidWorkingCellValueError,
     InvalidWorkingCoordinateError,
     SourceNotFoundError,
     WorksheetNotSelectedError,
 )
-from app.services.preparation_preview_service import ensure_csv_totals_cached, resolve_single_column_label
+from app.services.preparation_preview_service import (
+    ensure_csv_totals_cached,
+    iterate_active_region_rows,
+    resolve_single_column_label,
+)
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.readiness_service import eligible_bulk_null_rows
+from app.services.time_axis_interpreters import _to_float
 
 
 @dataclass(slots=True)
@@ -706,5 +735,520 @@ def apply_bulk_mark_null(
     return BulkNullApplyResult(
         column_index=column_index, issue_code=issue_code,
         eligible_count=len(rows), applied_count=applied_count,
+        overlay=summarize_working_overlay(session, worksheet_index),
+    )
+
+
+# ==============================================================================
+# Missing-value fill/estimation enhancement (owner UAT, 2026-09-10)
+#
+# Extends DEC-084's original three resolution paths (Mark as Null / Fill
+# Manually / Not Assigned) with a fourth -- Estimate Missing Value -- and
+# a bulk-only fifth -- Constant Value fill -- for `waveform_value_missing`/
+# `waveform_value_invalid` cells ONLY. Time Axis cells are never eligible
+# (`_resolve_fill_scope()` enforces this backend-side via
+# `_BULK_ISSUE_CODES`, never only in the frontend).
+#
+# Reuses, never duplicates:
+#   - app.domain.missing_data_estimation.apply_estimation()/find_gaps() --
+#     the SAME engine DEC-084 Calc Slice 2 built for calculated-channel
+#     estimation (gap definition, per-method math, max-gap enforcement --
+#     an oversized gap is left unfilled by that engine already, never
+#     partially filled).
+#   - app.domain.calculated_channel's own method/max-gap/local-mean-radius
+#     constants and `*_valid()` predicates -- pure, config-shape-only,
+#     zero calculated-channel-specific coupling, so reusing them here adds
+#     no real dependency beyond a shared vocabulary (see this module's
+#     own test coverage for the deliberate choice not to relocate them).
+#   - app.services.readiness_service.eligible_bulk_null_rows() -- the
+#     SAME authoritative, uncapped (column_index, issue_code) eligibility
+#     list bulk Mark as Null already uses; estimation/fill never invents
+#     a second interpretation of "which cells are currently unresolved."
+#   - app.services.time_axis_service.build_configured_time_values() --
+#     for Linear Interpolation only, the SAME resolved Time Axis
+#     canonical conversion/cleaned export/Configured-Time-preview-column
+#     already use, so Linear can never silently disagree with what
+#     Powerwave will actually use as this recording's own time axis.
+# ==============================================================================
+
+#: The one "method" value that is NOT an estimation algorithm -- explicit
+#: constant user fill (task section 7: "Constant Value is not
+#: interpolation"). Deliberately NOT a member of
+#: app.domain.calculated_channel.ALL_ESTIMATION_METHODS (calculated
+#: channels have no constant-fill concept at all) -- validated as its
+#: own case here instead.
+FILL_METHOD_CONSTANT = "constant"
+
+_BULK_ISSUE_CODES = (ISSUE_WAVEFORM_VALUE_MISSING, ISSUE_WAVEFORM_VALUE_INVALID)
+
+
+def _validate_estimation_method(
+    method: str, *, max_gap_value: object, max_gap_unit: object, local_mean_radius: object,
+) -> None:
+    if not estimation_method_valid(method):
+        raise InvalidEstimationConfigurationError(
+            f"method must be one of the recognized estimation methods; got {method!r}."
+        )
+    if method in UNIMPLEMENTED_ESTIMATION_METHODS:
+        raise InvalidEstimationConfigurationError(f"method {method!r} is not implemented yet.")
+    if not max_gap_value_valid(max_gap_value):
+        raise InvalidEstimationConfigurationError("max_gap_value must be a positive whole number of samples.")
+    if not max_gap_unit_valid(max_gap_unit):
+        raise InvalidEstimationConfigurationError("max_gap_unit must be 'samples' -- no other unit is supported.")
+    if method == ESTIMATION_METHOD_LOCAL_MEAN and not local_mean_radius_valid(local_mean_radius):
+        raise InvalidEstimationConfigurationError(
+            "local_mean_radius must be a positive whole number of samples when method='local_mean'."
+        )
+
+
+def _build_column_series(
+    session: PreparationSession, *, worksheet_index: int | None, column_index: int,
+) -> tuple[list[int], np.ndarray]:
+    """One single-pass scan over the active region for ONE column,
+    producing `(row_numbers, values)` where `values[i]` is the finite
+    float currently at `row_numbers[i]` if that cell holds a valid
+    working number, and NaN otherwise. Missing, unparseable/invalid, AND
+    explicit-null cells are ALL represented as NaN here -- all three are
+    equally "no usable value" for GAP-FINDING/bracketing purposes (you
+    cannot interpolate FROM an invalid or deliberately-null cell any more
+    than from a blank one). This does NOT mean an explicit-null cell can
+    ever be overwritten: every caller below only ever WRITES to the
+    `eligible_bulk_null_rows()` subset (missing/invalid, never null), so
+    a null cell can influence gap math but is never itself a write
+    target. Excluded rows, the header row, and rows outside the active
+    region are skipped, matching every other full-region scan in this
+    codebase."""
+    row_numbers: list[int] = []
+    values: list[float] = []
+    for row in iterate_active_region_rows(session, worksheet_index=worksheet_index):
+        if row.excluded or row.is_header or not row.in_active_region:
+            continue
+        row_numbers.append(row.row_number)
+        if column_index in row.explicit_null_columns:
+            values.append(float("nan"))
+            continue
+        cell = row.cells[column_index] if column_index < len(row.cells) else None
+        parsed = _to_float(cell) if cell not in (None, "") else None
+        values.append(parsed if parsed is not None else float("nan"))
+    return row_numbers, np.array(values, dtype=float)
+
+
+def _build_column_time_seconds(
+    *, workspace_id: str, source_id: str, registry: PreparationSessionRegistry, row_numbers: list[int],
+) -> np.ndarray:
+    """Real, Time-Axis-aware elapsed seconds for each row in
+    `row_numbers`, reusing `app.services.time_axis_service.
+    build_configured_time_values()` -- the SAME resolved Time Axis
+    canonical conversion/cleaned export/Configured-Time-preview-column
+    already use. Linear Interpolation therefore uses actual aligned time
+    coordinates, never assumed-uniform sample spacing (task section 8's
+    own "reuse the already-approved calculated-channel semantics"
+    requirement). For the absolute family the resolved value is an ISO
+    string -- converted to a POSIX timestamp float purely as a
+    consistent, monotonic linear time basis (interpolation only ever
+    uses DIFFERENCES/RATIOS of this value, so a constant epoch offset is
+    mathematically irrelevant); every other family's own resolved value
+    is already a plain numeric-seconds string.
+
+    Raises `InvalidEstimationConfigurationError` if the current Time
+    Axis is not resolved enough to supply real coordinates -- Linear
+    Interpolation is never silently downgraded to sample-index spacing."""
+    # Local import: avoids a module-level import cycle (time_axis_service
+    # itself imports from preparation_preview_service, which this module
+    # already imports from at module scope).
+    from app.domain.time_axis import FAMILY_ABSOLUTE
+    from app.services.time_axis_service import build_configured_time_values
+    from datetime import datetime
+
+    configured = build_configured_time_values(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    if configured is None:
+        raise InvalidEstimationConfigurationError(
+            "Linear Interpolation requires a resolved Time Axis; the current Time Axis configuration is not "
+            "usable yet."
+        )
+    seconds: list[float] = []
+    for row_number in row_numbers:
+        raw = configured.values_by_row_number.get(row_number)
+        if raw is None:
+            seconds.append(float("nan"))
+            continue
+        try:
+            seconds.append(datetime.fromisoformat(raw).timestamp() if configured.family == FAMILY_ABSOLUTE else float(raw))
+        except ValueError:
+            seconds.append(float("nan"))
+    return np.array(seconds, dtype=float)
+
+
+def _resolve_fill_scope(
+    *, workspace_id: str, source_id: str, column_index: int, issue_code: str,
+    target_row_number: int | None, registry: PreparationSessionRegistry,
+) -> tuple[PreparationSession, int | None, list[int], np.ndarray, list[int]]:
+    """Shared resolution step for every single-cell/bulk estimate/fill
+    preview+apply function below (task sections 11/13: authoritative
+    backend scope, never a frontend-supplied coordinate list; re-run
+    fresh on every call, including at apply time -- task section 12's
+    own "never blindly apply to a stale coordinate list" requirement).
+
+    Returns `(session, worksheet_index, row_numbers, values,
+    target_rows)`. `row_numbers`/`values` are this column's own full
+    active-region numeric series (`_build_column_series()`);
+    `target_rows` is the set of row_numbers THIS action is actually
+    scoped to -- every currently-eligible `(column_index, issue_code)`
+    row for a bulk action (`target_row_number=None`), or only the
+    eligible rows within the ONE contiguous gap containing
+    `target_row_number` for a single-cell action (task section 5's own
+    recommendation B: estimate the entire contiguous gap containing the
+    clicked cell, never only that one cell in isolation).
+
+    A column that is not currently Waveform (Not Assigned, Time Axis, or
+    out-of-range) is never a special-cased error here -- exactly like
+    `eligible_bulk_null_rows()` itself (reused below unchanged), it
+    naturally reports zero eligible rows, since `waveform_value_missing`/
+    `waveform_value_invalid` are only ever produced for Waveform-role
+    columns in the first place -- this is what backend-enforces task
+    section 3's Time-Axis guardrail structurally, with no separate
+    check needed."""
+    if issue_code not in _BULK_ISSUE_CODES:
+        raise InvalidFillTargetError(
+            f"issue_code must be one of {_BULK_ISSUE_CODES}; got {issue_code!r}. Time Axis issues are never "
+            f"eligible for estimation/fill."
+        )
+    session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    worksheet_index = _resolve_worksheet_index(session)
+    _check_column_bound(session, worksheet_index, column_index)
+    eligible_rows = eligible_bulk_null_rows(
+        session, worksheet_index=worksheet_index, column_index=column_index, issue_code=issue_code,
+        workspace_id=workspace_id, source_id=source_id, registry=registry,
+    )
+    row_numbers, values = _build_column_series(session, worksheet_index=worksheet_index, column_index=column_index)
+    if target_row_number is None:
+        target_rows = list(eligible_rows)
+    else:
+        if target_row_number not in eligible_rows:
+            raise InvalidFillTargetError(
+                f"row_number {target_row_number} is not currently an unresolved {issue_code} cell in this column."
+            )
+        position_by_row = {rn: i for i, rn in enumerate(row_numbers)}
+        gap = next((g for g in find_gaps(values) if g[0] <= position_by_row[target_row_number] <= g[1]), None)
+        eligible_set = set(eligible_rows)
+        target_rows = (
+            [row_numbers[p] for p in range(gap[0], gap[1] + 1) if row_numbers[p] in eligible_set]
+            if gap is not None else [target_row_number]
+        )
+    return session, worksheet_index, row_numbers, values, target_rows
+
+
+def _expand_to_gap_rows(
+    row_numbers: list[int], values: np.ndarray, seed_rows: list[int], writable_rows: set[int],
+) -> list[int]:
+    """Owner hardening pass (2026-09-10): a contiguous non-finite gap is
+    a single mathematical unit REGARDLESS of whether its individual
+    members are classified `waveform_value_missing` or `waveform_value_
+    invalid` -- `_build_column_series()` already represents both (and an
+    explicit-null cell) identically as NaN, so `find_gaps()` already sees
+    ONE gap spanning e.g. blank/invalid/blank. For every row in
+    `seed_rows` (the ORIGINALLY-requested, single-issue-type scope), find
+    its own containing gap and include every row of that gap that is
+    CURRENTLY a writable waveform cell (`writable_rows` -- the union of
+    both issue types' own eligible sets, deliberately EXCLUDING explicit-
+    null rows, which are never a write target regardless of gap
+    membership). The result is a SUPERSET of `seed_rows` whenever a
+    touched gap mixes both issue types; equal to it otherwise. A seed row
+    with no containing gap (should not normally happen, since every seed
+    is itself non-finite) falls back to just that one row, never an
+    error.
+
+    Order is `row_numbers`' own ascending order, deduplicated -- stable
+    and deterministic regardless of `seed_rows`' own order."""
+    if not seed_rows:
+        return []
+    position_by_row = {rn: i for i, rn in enumerate(row_numbers)}
+    gaps = find_gaps(values)
+    result_positions: set[int] = set()
+    for seed in seed_rows:
+        pos = position_by_row[seed]
+        gap = next((g for g in gaps if g[0] <= pos <= g[1]), None)
+        if gap is None:
+            result_positions.add(pos)
+            continue
+        for p in range(gap[0], gap[1] + 1):
+            if row_numbers[p] in writable_rows:
+                result_positions.add(p)
+    return [row_numbers[p] for p in sorted(result_positions)]
+
+
+def _resolve_estimation_scope(
+    *, workspace_id: str, source_id: str, column_index: int, issue_code: str,
+    target_row_number: int | None, registry: PreparationSessionRegistry,
+) -> tuple[PreparationSession, int | None, list[int], np.ndarray, list[int], list[int]]:
+    """The estimate-specific counterpart of `_resolve_fill_scope()`
+    (constant fill keeps using that one, unchanged -- task's own
+    explicit "Constant Value... keep strictly scoped to the selected
+    issue group/cells, because it is not a gap-based mathematical
+    operation" requirement). Estimation, unlike constant fill, treats
+    the full contiguous non-finite waveform gap as the mathematical
+    unit -- a gap mixing `waveform_value_missing` and `waveform_value_
+    invalid` members is never split by issue type.
+
+    Returns `(session, worksheet_index, row_numbers, values,
+    matching_rows, affected_rows)`:
+    - `matching_rows` -- the ORIGINALLY-requested, single-issue-type
+      scope (task's own "matching group cells: N"): exactly the one
+      clicked cell for a single-cell request, or every currently-
+      eligible `(column_index, issue_code)` row for a bulk request --
+      mirrors `_resolve_fill_scope()`'s own `target_row_number`
+      branching exactly.
+    - `affected_rows` -- `matching_rows` expanded to the full contiguous
+      gap(s) they belong to, unioned across BOTH issue types
+      (`_expand_to_gap_rows()`) -- task's own "total cells that will be
+      estimated: M". A superset of `matching_rows` whenever a touched
+      gap mixes both issue types; equal to it otherwise."""
+    if issue_code not in _BULK_ISSUE_CODES:
+        raise InvalidFillTargetError(
+            f"issue_code must be one of {_BULK_ISSUE_CODES}; got {issue_code!r}. Time Axis issues are never "
+            f"eligible for estimation/fill."
+        )
+    session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    worksheet_index = _resolve_worksheet_index(session)
+    _check_column_bound(session, worksheet_index, column_index)
+    eligible_by_code = {
+        code: eligible_bulk_null_rows(
+            session, worksheet_index=worksheet_index, column_index=column_index, issue_code=code,
+            workspace_id=workspace_id, source_id=source_id, registry=registry,
+        )
+        for code in _BULK_ISSUE_CODES
+    }
+    writable_rows = set(eligible_by_code[ISSUE_WAVEFORM_VALUE_MISSING]) | set(eligible_by_code[ISSUE_WAVEFORM_VALUE_INVALID])
+    row_numbers, values = _build_column_series(session, worksheet_index=worksheet_index, column_index=column_index)
+    if target_row_number is None:
+        matching_rows = list(eligible_by_code[issue_code])
+    else:
+        if target_row_number not in eligible_by_code[issue_code]:
+            raise InvalidFillTargetError(
+                f"row_number {target_row_number} is not currently an unresolved {issue_code} cell in this column."
+            )
+        matching_rows = [target_row_number]
+    affected_rows = _expand_to_gap_rows(row_numbers, values, matching_rows, writable_rows)
+    return session, worksheet_index, row_numbers, values, matching_rows, affected_rows
+
+
+@dataclass(slots=True)
+class ConstantFillPreview:
+    """The authoritative eligible-cell COUNT for a bulk constant-fill
+    scope, computed WITHOUT any mutation -- mirrors `BulkNullPreview`
+    exactly. Every currently-eligible cell would be filled regardless of
+    WHAT constant is chosen, so `constant_value` is not needed for
+    preview at all."""
+
+    column_index: int
+    issue_code: str
+    eligible_count: int
+
+
+@dataclass(slots=True)
+class ConstantFillApplyResult:
+    """Mirrors `BulkNullApplyResult` exactly -- `eligible_count` is
+    re-evaluated fresh at apply time, never trusting an earlier preview
+    call."""
+
+    column_index: int
+    issue_code: str
+    eligible_count: int
+    applied_count: int
+    overlay: WorkingOverlaySummary
+
+
+def preview_bulk_constant_fill(
+    *, workspace_id: str, source_id: str, column_index: int, issue_code: str, registry: PreparationSessionRegistry,
+) -> ConstantFillPreview:
+    """Count-before-apply for `POST .../working/cells/bulk-constant-fill/apply`."""
+    _session, _worksheet_index, _row_numbers, _values, target_rows = _resolve_fill_scope(
+        workspace_id=workspace_id, source_id=source_id, column_index=column_index, issue_code=issue_code,
+        target_row_number=None, registry=registry,
+    )
+    return ConstantFillPreview(column_index=column_index, issue_code=issue_code, eligible_count=len(target_rows))
+
+
+def apply_bulk_constant_fill(
+    *, workspace_id: str, source_id: str, column_index: int, issue_code: str, constant_value: float,
+    registry: PreparationSessionRegistry,
+) -> ConstantFillApplyResult:
+    """Applies an explicit constant fill to EVERY currently eligible
+    cell in this exact `(column_index, issue_code)` scope, as ONE
+    grouped, single-Undo/Redo working-overlay operation
+    (`bulk_set_cells_constant_fill()`). Valid cells, manually-fixed
+    cells, explicit-null cells, and any non-Waveform column are never
+    touched -- this function only ever writes the cells
+    `eligible_bulk_null_rows()` itself currently reports. The original
+    source data is never modified (task section 7's own confirmation
+    wording)."""
+    if constant_value is None or not math.isfinite(constant_value):
+        raise InvalidEstimationConfigurationError("constant_value must be a finite number.")
+    session, worksheet_index, _row_numbers, _values, target_rows = _resolve_fill_scope(
+        workspace_id=workspace_id, source_id=source_id, column_index=column_index, issue_code=issue_code,
+        target_row_number=None, registry=registry,
+    )
+    keys = [overlay_domain.cell_key(worksheet_index, rn, column_index) for rn in target_rows]
+    applied_count = overlay_domain.bulk_set_cells_constant_fill(session.working_overlay, keys, str(constant_value))
+    return ConstantFillApplyResult(
+        column_index=column_index, issue_code=issue_code,
+        eligible_count=len(target_rows), applied_count=applied_count,
+        overlay=summarize_working_overlay(session, worksheet_index),
+    )
+
+
+@dataclass(slots=True)
+class EstimationPreview:
+    """Authoritative preview for a single-cell OR bulk estimation
+    request, computed WITHOUT any mutation (task section 11's own
+    required shape: "Matching unresolved cells / Eligible for X
+    estimation / Will remain unresolved," extended by the owner
+    hardening pass with the mixed-gap `affected_count` breakdown).
+
+    `matching_count` (N) -- the ORIGINALLY-requested, single-issue-type
+    scope: 1 for a single-cell request, or every currently-eligible
+    `(column_index, issue_code)` row for a bulk request.
+    `affected_count` (M) -- `matching_count`'s own rows expanded to the
+    full contiguous non-finite gap(s) they belong to, unioned across
+    BOTH `waveform_value_missing`/`waveform_value_invalid` (estimation
+    treats a mixed gap as one mathematical unit, never split by issue
+    type) -- equal to `matching_count` unless a touched gap mixes both
+    issue types, in which case `M > N`. `eligible_count` is how many of
+    the `affected_count` rows fall inside a gap `<= max_gap_value`
+    samples under the requested method; `unresolved_count` is the rest
+    -- an oversized gap that will remain unresolved even after apply,
+    never partially filled."""
+
+    column_index: int
+    issue_code: str
+    method: str
+    matching_count: int
+    affected_count: int
+    eligible_count: int
+    unresolved_count: int
+
+
+@dataclass(slots=True)
+class EstimationApplyResult:
+    """Mirrors `EstimationPreview`, plus the actual `applied_count` --
+    re-evaluated fresh at apply time (task section 12), never trusting
+    an earlier preview call. `eligible_count` here is this SAME fresh
+    apply-time count, always equal to `applied_count` (every cell the
+    fresh scan reports eligible is, by construction, one this call
+    actually writes)."""
+
+    column_index: int
+    issue_code: str
+    method: str
+    matching_count: int
+    affected_count: int
+    eligible_count: int
+    applied_count: int
+    unresolved_count: int
+    overlay: WorkingOverlaySummary
+
+
+def _compute_estimation(
+    *, row_numbers: list[int], values: np.ndarray, method: str, max_gap_value: int, local_mean_radius: int | None,
+    workspace_id: str, source_id: str, registry: PreparationSessionRegistry,
+) -> np.ndarray:
+    """Runs `app.domain.missing_data_estimation.apply_estimation()` over
+    the WHOLE column series in one call (cheap, O(active rows)) -- max-
+    gap enforcement happens INSIDE that engine already (task section 9:
+    an oversized gap is left NaN, never partially filled), so this
+    function adds only the one extra piece that engine does not itself
+    own: real Time-Axis-aware seconds for Linear
+    (`_build_column_time_seconds()`); every other method ignores `time`
+    entirely, matching the engine's own per-method contract."""
+    time_seconds = (
+        _build_column_time_seconds(
+            workspace_id=workspace_id, source_id=source_id, registry=registry, row_numbers=row_numbers,
+        )
+        if method == ESTIMATION_METHOD_LINEAR else np.zeros_like(values)
+    )
+    return apply_estimation(
+        time=time_seconds, values=values, estimation_method=method,
+        max_gap_value=max_gap_value, local_mean_radius=local_mean_radius,
+    )
+
+
+def preview_estimate(
+    *, workspace_id: str, source_id: str, column_index: int, issue_code: str, method: str,
+    max_gap_value: int, max_gap_unit: str, local_mean_radius: int | None, target_row_number: int | None,
+    registry: PreparationSessionRegistry,
+) -> EstimationPreview:
+    """Count-before-apply for both the single-cell (`target_row_number`
+    set) and bulk (`target_row_number=None`) estimate endpoints. Uses
+    `_resolve_estimation_scope()` (never `_resolve_fill_scope()`, which
+    stays constant-fill-only) so a mixed missing+invalid gap is always
+    reported and estimated as one complete unit -- `matching_count`
+    (N, the originally-requested single-issue-type group) and
+    `affected_count` (M, the gap-expanded true scope) are reported
+    separately, transparently, whenever they differ."""
+    _validate_estimation_method(
+        method, max_gap_value=max_gap_value, max_gap_unit=max_gap_unit, local_mean_radius=local_mean_radius,
+    )
+    _session, _worksheet_index, row_numbers, values, matching_rows, affected_rows = _resolve_estimation_scope(
+        workspace_id=workspace_id, source_id=source_id, column_index=column_index, issue_code=issue_code,
+        target_row_number=target_row_number, registry=registry,
+    )
+    estimated = _compute_estimation(
+        row_numbers=row_numbers, values=values, method=method, max_gap_value=max_gap_value,
+        local_mean_radius=local_mean_radius, workspace_id=workspace_id, source_id=source_id, registry=registry,
+    )
+    position_by_row = {rn: i for i, rn in enumerate(row_numbers)}
+    eligible_count = sum(1 for rn in affected_rows if math.isfinite(estimated[position_by_row[rn]]))
+    return EstimationPreview(
+        column_index=column_index, issue_code=issue_code, method=method,
+        matching_count=len(matching_rows), affected_count=len(affected_rows), eligible_count=eligible_count,
+        unresolved_count=len(affected_rows) - eligible_count,
+    )
+
+
+def apply_estimate(
+    *, workspace_id: str, source_id: str, column_index: int, issue_code: str, method: str,
+    max_gap_value: int, max_gap_unit: str, local_mean_radius: int | None, target_row_number: int | None,
+    registry: PreparationSessionRegistry,
+) -> EstimationApplyResult:
+    """Applies estimation to every currently-eligible cell in scope, as
+    ONE grouped, single-Undo/Redo working-overlay operation
+    (`bulk_set_cells_estimated()`) -- used identically for a single-cell
+    gap estimate (task section 22: "one user action -> one Undo") and a
+    whole-column bulk estimate; `bulk_set_cells_estimated()` already
+    groups any number of entries, including exactly one, into a single
+    `WorkingOperation`, so no separate single-cell code path is needed.
+    Scope (both `matching_rows` and its gap-expanded `affected_rows`) is
+    recomputed fresh here (task section 12) -- never trusting an earlier
+    preview call. A mixed missing+invalid gap is always resolved as one
+    complete unit -- never a partial hole left merely because one member
+    has a different classification than the one that launched this
+    action."""
+    _validate_estimation_method(
+        method, max_gap_value=max_gap_value, max_gap_unit=max_gap_unit, local_mean_radius=local_mean_radius,
+    )
+    session, worksheet_index, row_numbers, values, matching_rows, affected_rows = _resolve_estimation_scope(
+        workspace_id=workspace_id, source_id=source_id, column_index=column_index, issue_code=issue_code,
+        target_row_number=target_row_number, registry=registry,
+    )
+    estimated = _compute_estimation(
+        row_numbers=row_numbers, values=values, method=method, max_gap_value=max_gap_value,
+        local_mean_radius=local_mean_radius, workspace_id=workspace_id, source_id=source_id, registry=registry,
+    )
+    position_by_row = {rn: i for i, rn in enumerate(row_numbers)}
+    entries = [
+        (overlay_domain.cell_key(worksheet_index, rn, column_index), str(float(estimated[position_by_row[rn]])))
+        for rn in affected_rows if math.isfinite(estimated[position_by_row[rn]])
+    ]
+    applied_count = overlay_domain.bulk_set_cells_estimated(
+        session.working_overlay, entries, estimation_method=method, max_gap_value=max_gap_value,
+        max_gap_unit=max_gap_unit, local_mean_radius=local_mean_radius,
+    )
+    matching_count = len(matching_rows)
+    affected_count = len(affected_rows)
+    return EstimationApplyResult(
+        column_index=column_index, issue_code=issue_code, method=method,
+        matching_count=matching_count, affected_count=affected_count,
+        eligible_count=applied_count, applied_count=applied_count,
+        unresolved_count=affected_count - applied_count,
         overlay=summarize_working_overlay(session, worksheet_index),
     )

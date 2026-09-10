@@ -1,25 +1,42 @@
-"""Missing-data estimation engine for calculated channels (DEC-084 Calc
-Slice 2, `null_policy = estimate_missing_data`).
+"""Shared missing-data estimation POLICY (method/max-gap/local-mean-radius
+configuration shape) and ENGINE (the actual array-filling math), used by
+BOTH calculated-channel `null_policy = estimate_missing_data` (DEC-084
+Calc Slice 2) and Data Preparation's own missing-value fill/estimation
+enhancement (owner UAT, 2026-09-10, `app.services.working_overlay_service`).
 
 A pure, framework-free, NumPy-based module -- no registry access, no
-HTTP-mappable errors, no frontend concerns (matches the domain/ layer
-contract already established by app.domain.calculated_channel's own
-module docstring). Every function here is calculation-local and
-non-mutating: each `estimate_*` function returns a NEW array (`values.
-copy()` up front, then selective in-place writes on that copy only) and
-never writes into its own `values`/`time` input arrays -- the caller's
-retained source/calculated-channel arrays are always safe to pass in
-directly (app.services.calculated_channel_service is the one caller,
-applying this independently per input, per DEC-084 point 7/9-10/section
-10 of this task).
+HTTP-mappable errors, no frontend concerns, and (owner hardening pass,
+2026-09-10) no dependency on EITHER of its own two consumers' domain
+modules. This is the intentional, neutral home for the configuration
+constants/predicates below -- they used to live in
+`app.domain.calculated_channel` (re-exported from there unchanged, for
+every existing import site), which was the right call while estimation
+was calculated-channel-only, but became backwards once Data Preparation
+needed the identical configuration shape: Data Preparation has no
+legitimate reason to depend on the Calculated Channel domain merely to
+learn what a valid `estimation_method`/`max_gap_value` looks like.
+Desired shape now:
+
+    Data Preparation ---\\
+                          +--> THIS module (shared policy + engine)
+    Calculated Channel --/
+
+Every function here is calculation-local and non-mutating: each
+`estimate_*` function returns a NEW array (`values.copy()` up front, then
+selective in-place writes on that copy only) and never writes into its
+own `values`/`time` input arrays -- a caller's retained source/prepared/
+calculated-channel arrays are always safe to pass in directly
+(`app.services.calculated_channel_service` and
+`app.services.working_overlay_service` are its two callers today, each
+applying this independently per input/column).
 
 Gap definition (section 5): one or more CONSECUTIVE non-finite samples
 (NaN, +Inf, or -Inf -- section 14, all treated identically as "missing")
 form one contiguous gap, `[start, end]` inclusive. A gap is eligible for
 estimation only when its length (`end - start + 1`) is `<= max_gap_value`
-samples (this slice's only supported `max_gap_unit`, "samples" --
-app.domain.calculated_channel.MAX_GAP_UNIT_SAMPLES); an oversized gap is
-left entirely as NaN -- never partially filled (section 12).
+samples (this module's only supported `max_gap_unit`, `MAX_GAP_UNIT_SAMPLES`
+below); an oversized gap is left entirely as NaN -- never partially filled
+(section 12).
 
 Each `estimate_*` function reads its NEIGHBOR/bracket values from the
 ORIGINAL input `values` array, never from its own partially-filled output
@@ -33,12 +50,91 @@ from __future__ import annotations
 
 import numpy as np
 
-from app.domain.calculated_channel import (
-    ESTIMATION_METHOD_HOLD_LAST,
-    ESTIMATION_METHOD_LINEAR,
-    ESTIMATION_METHOD_LOCAL_MEAN,
-    ESTIMATION_METHOD_NEAREST,
+# ---- Missing-data estimation configuration (method/max-gap/local-mean-
+# radius shape) -- relocated here (owner hardening pass, 2026-09-10) from
+# app.domain.calculated_channel, which now re-exports these SAME names
+# unchanged (same objects, same values) for every pre-existing import
+# site. See this module's own docstring for the full rationale.
+
+#: valid, valid, gap, valid -> fill with the previous finite sample.
+ESTIMATION_METHOD_HOLD_LAST = "hold_last"
+#: Fill with the closest finite bracketing sample (sample-index
+#: distance); equidistant ties break to the PREVIOUS sample.
+ESTIMATION_METHOD_NEAREST = "nearest"
+#: Linear interpolation using actual aligned `time` coordinates (never
+#: sample index); no extrapolation -- a gap touching either end of the
+#: array is never filled.
+ESTIMATION_METHOD_LINEAR = "linear"
+#: Fill the whole eligible gap with the mean of up to `local_mean_radius`
+#: finite samples immediately before and up to `local_mean_radius` finite
+#: samples immediately after it.
+ESTIMATION_METHOD_LOCAL_MEAN = "local_mean"
+#: Shape-preserving cubic interpolation -- recognized as a configuration
+#: VALUE for forward compatibility only: no SciPy dependency exists in
+#: this codebase and none is added by this module, so selecting it must
+#: be rejected outright, never silently downgraded to Linear.
+ESTIMATION_METHOD_PCHIP = "pchip"
+
+ALL_ESTIMATION_METHODS = frozenset(
+    {
+        ESTIMATION_METHOD_HOLD_LAST, ESTIMATION_METHOD_NEAREST,
+        ESTIMATION_METHOD_LINEAR, ESTIMATION_METHOD_LOCAL_MEAN, ESTIMATION_METHOD_PCHIP,
+    }
 )
+#: Recognized methods with no working engine yet.
+UNIMPLEMENTED_ESTIMATION_METHODS = frozenset({ESTIMATION_METHOD_PCHIP})
+
+#: The only supported `max_gap_unit` so far ("samples" -- no milliseconds/
+#: seconds support yet, for either consumer). A single-member set, not a
+#: bare string constant, so a future addition only ever needs to grow
+#: this set -- every `in ALL_MAX_GAP_UNITS` check keeps working unchanged.
+MAX_GAP_UNIT_SAMPLES = "samples"
+ALL_MAX_GAP_UNITS = frozenset({MAX_GAP_UNIT_SAMPLES})
+
+
+def estimation_method_valid(estimation_method) -> bool:
+    """True only for one of the five recognized method names (this
+    covers BOTH a missing/`None` method and a genuinely unknown string --
+    `None not in ALL_ESTIMATION_METHODS` is already `False`, so no
+    separate `is None` branch is needed). Whether a recognized method is
+    actually IMPLEMENTED yet is a separate question -- see
+    `UNIMPLEMENTED_ESTIMATION_METHODS` -- deliberately kept apart so a
+    caller can distinguish "not a real method" from "a real method not
+    implemented yet" with two different, clearer errors."""
+    return estimation_method in ALL_ESTIMATION_METHODS
+
+
+def max_gap_value_valid(max_gap_value) -> bool:
+    """`max_gap_value` must be a positive whole number of samples (this
+    module's only supported `max_gap_unit`). `bool` is explicitly
+    rejected even though Python treats it as an `int` subtype, and a
+    missing (`None`) value is already `False` via the `isinstance`
+    check, so "missing" and "invalid" share one predicate."""
+    return bool(
+        isinstance(max_gap_value, int)
+        and not isinstance(max_gap_value, bool)
+        and max_gap_value > 0
+    )
+
+
+def max_gap_unit_valid(max_gap_unit) -> bool:
+    """True only for `"samples"` (`ALL_MAX_GAP_UNITS`) -- milliseconds/
+    seconds are not supported yet."""
+    return max_gap_unit in ALL_MAX_GAP_UNITS
+
+
+def local_mean_radius_valid(local_mean_radius) -> bool:
+    """`local_mean_radius` must be a positive whole number of samples
+    ("N finite candidate samples before + N ... after") -- same
+    `bool`-exclusion/missing-value handling as `max_gap_value_valid`
+    above, deliberately mirrored rather than sharing one generic
+    "positive int" helper, since the two are independently-named
+    configuration concepts that happen to share a validation shape today."""
+    return bool(
+        isinstance(local_mean_radius, int)
+        and not isinstance(local_mean_radius, bool)
+        and local_mean_radius > 0
+    )
 
 
 def find_gaps(values: np.ndarray) -> list[tuple[int, int]]:
