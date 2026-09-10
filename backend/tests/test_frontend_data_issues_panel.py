@@ -76,12 +76,17 @@ class TestDataIssuesPanelExistsAndIsPersistentCollapsible:
         # position: fixed -- only the narrow-screen override (inside the
         # existing 820px breakpoint, found separately/earlier in the
         # file since it was merged into that existing block) does.
-        idx = source.index("flex: 0 0 300px")
+        # UI/UX polish (2026-09-10): width widened 300px -> 320px for
+        # the redesigned panel's own more generous padding/rhythm --
+        # the flex-basis literal itself isn't the behavior under test
+        # here (still a desktop flex sibling, never position: fixed),
+        # so this just tracks whatever the current desktop width is.
+        idx = source.index("flex: 0 0 320px")
         rule_start = source.rindex(".ww-data-issues-panel {", 0, idx)
         rule_end = source.index("}", idx)
         desktop_rule = source[rule_start:rule_end]
         assert "position: fixed" not in desktop_rule
-        assert "flex: 0 0 300px" in desktop_rule
+        assert "flex: 0 0 320px" in desktop_rule
 
     def test_narrow_screen_override_reuses_the_existing_data_prep_820px_breakpoint(self):
         # Reuses the SAME Data-Preparation-scoped 820px block

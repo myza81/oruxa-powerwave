@@ -2563,13 +2563,19 @@
            a flex row instead of a plain block column. */
         .ww-data-prep-preview-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 
+        /* UI/UX polish (2026-09-10, owner-approved mock direction):
+           spacing/hierarchy/grouping only -- every id/class below is
+           unchanged from the original DEC-084 Slice 4/5 implementation,
+           so no JS, markup structure, or behavior changes were needed
+           for this pass (see the redesign's own PR notes for the full
+           before/after rationale). */
         .ww-data-issues-panel {
-            flex: 0 0 300px; max-width: 90vw; display: flex; flex-direction: column;
-            margin-top: 12px; border: 1px solid var(--panel-border); border-radius: calc(var(--radius) + 1px);
+            flex: 0 0 320px; max-width: 90vw; display: flex; flex-direction: column;
+            margin-top: 12px; border: 1px solid var(--panel-border); border-radius: calc(var(--radius) + 2px);
             background: var(--panel); overflow: hidden;
             transition: flex-basis 0.15s ease;
         }
-        .ww-data-issues-panel[data-open="false"] { flex: 0 0 40px; }
+        .ww-data-issues-panel[data-open="false"] { flex: 0 0 44px; }
         .ww-data-issues-panel[data-open="false"] .ww-data-issues-panel-body,
         .ww-data-issues-panel[data-open="false"] .ww-data-issues-panel-nav,
         .ww-data-issues-panel[data-open="false"] .ww-data-issues-panel-header-text {
@@ -2577,21 +2583,22 @@
         }
         .ww-data-issues-panel-header {
             flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
-            gap: 8px; padding: 10px 10px 10px 12px; border-bottom: 1px solid var(--panel-border);
+            gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--panel-border);
         }
         .ww-data-issues-panel[data-open="false"] .ww-data-issues-panel-header {
-            flex-direction: column; border-bottom: none; padding: 10px 4px;
+            flex-direction: column; border-bottom: none; padding: 12px 6px;
         }
-        .ww-data-issues-panel-header-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-        .ww-data-issues-panel-header-text h4 { margin: 0; font-size: 0.8rem; }
+        .ww-data-issues-panel-header-text { display: flex; flex-direction: row; align-items: center; gap: 10px; min-width: 0; }
+        .ww-data-issues-panel-header-text h4 { margin: 0; font-size: 0.92rem; font-weight: 700; }
         .ww-data-issues-panel-count {
-            font-size: 0.68rem; font-weight: 700; color: var(--text-dim); background: var(--surface-tint);
-            border-radius: 999px; padding: 1px 7px; align-self: flex-start;
+            font-size: 0.72rem; font-weight: 700; color: var(--text-dim); background: var(--surface-tint);
+            border-radius: 999px; padding: 2px 9px; align-self: center; flex: 0 0 auto;
         }
         .ww-data-issues-panel-count[data-empty="true"] { color: var(--ok); }
         .ww-data-issues-panel-toggle {
             appearance: none; border: none; background: transparent; color: var(--text-dim);
-            font-size: 1rem; line-height: 1; cursor: pointer; padding: 4px 6px; border-radius: var(--radius);
+            font-size: 1rem; line-height: 1; cursor: pointer; padding: 5px 7px; border-radius: var(--radius);
+            flex: 0 0 auto;
         }
         .ww-data-issues-panel-toggle:hover { color: var(--text); background: var(--hover-tint); }
         .ww-data-issues-panel-toggle:focus-visible, .ww-data-issues-panel-close:focus-visible,
@@ -2600,34 +2607,53 @@
         }
         .ww-data-issues-panel-nav {
             flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
-            gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--panel-border);
-            font-size: 0.7rem; color: var(--text-dim);
+            gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--panel-border);
+            font-size: 0.74rem; color: var(--text-dim); font-weight: 600;
         }
         .ww-data-issues-nav-btn {
             appearance: none; border: 1px solid var(--panel-border); background: var(--panel);
-            color: var(--text); font-size: 0.68rem; padding: 4px 8px; border-radius: calc(var(--radius) - 2px);
-            cursor: pointer;
+            color: var(--text); font-size: 0.72rem; font-weight: 600; padding: 7px 14px;
+            border-radius: calc(var(--radius) + 1px); cursor: pointer;
         }
         .ww-data-issues-nav-btn:hover:not(:disabled) { background: var(--hover-tint); }
         .ww-data-issues-nav-btn:disabled { opacity: 0.5; cursor: default; }
-        .ww-data-issues-panel-body { flex: 1 1 auto; overflow-y: auto; padding: 6px 4px; min-height: 0; }
-        .ww-data-issues-empty-state { padding: 18px 12px; text-align: center; color: var(--ok); font-size: 0.74rem; }
+        .ww-data-issues-panel-body { flex: 1 1 auto; overflow-y: auto; padding: 14px; min-height: 0; }
+        .ww-data-issues-empty-state { padding: 24px 12px; text-align: center; color: var(--ok); font-size: 0.76rem; }
         .ww-data-issues-truncated-note {
-            margin: 0; padding: 6px 12px; font-size: 0.65rem; color: var(--text-dim); font-style: italic;
+            margin: 0 0 10px; padding: 8px 12px; font-size: 0.66rem; color: var(--text-dim); font-style: italic;
+            background: var(--surface-tint); border-radius: calc(var(--radius) - 1px);
         }
+        .ww-data-issues-type-group + .ww-data-issues-type-group { margin-top: 18px; }
         .ww-data-issues-group-title {
-            margin: 8px 8px 2px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
-            letter-spacing: 0.02em; color: var(--text-dim);
+            margin: 0 2px 10px; font-size: 0.67rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.07em; color: var(--text-dim);
         }
-        .ww-data-issues-column-group { margin: 0 4px 6px; }
+        /* "Lightweight section/card" grouping (owner-approved mock
+           direction): each column's own issue group now reads as one
+           intentional block -- a bordered, subtly tinted card -- rather
+           than an unbounded stack of controls. --surface-tint (a low-
+           alpha neutral wash) is the correct use here: a purely
+           decorative, non-occluding card background, never a sticky
+           surface that would need to be opaque (contrast the Raw Data
+           Preview sticky header fix elsewhere on this page, where the
+           same token was the wrong choice for exactly that reason). */
+        .ww-data-issues-column-group {
+            margin: 0 0 14px; padding: 14px; border: 1px solid var(--panel-border);
+            border-radius: calc(var(--radius) + 1px); background: var(--surface-tint);
+        }
+        .ww-data-issues-column-group:last-child { margin-bottom: 4px; }
         .ww-data-issues-column-title {
-            margin: 0; padding: 4px 8px; font-size: 0.72rem; font-weight: 600; color: var(--text);
+            margin: 0 0 12px; padding: 0; font-size: 0.84rem; font-weight: 700; color: var(--text);
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
         }
-        .ww-data-issues-coordinate-list { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 6px 4px; list-style: none; margin: 0; }
+        .ww-data-issues-coordinate-list {
+            display: flex; flex-wrap: wrap; gap: 8px; padding: 0; list-style: none; margin: 0 0 6px;
+        }
         .ww-data-issue-coordinate {
             appearance: none; border: 1px solid var(--panel-border); background: var(--panel);
-            color: var(--text); font-size: 0.68rem; font-family: inherit; padding: 3px 7px;
-            border-radius: calc(var(--radius) - 2px); cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+            color: var(--text); font-size: 0.72rem; font-weight: 600; font-family: inherit; padding: 7px 12px;
+            border-radius: calc(var(--radius) + 1px); cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+            min-width: 42px; justify-content: center;
         }
         .ww-data-issue-coordinate:hover { background: var(--hover-tint); }
         .ww-data-issue-coordinate[aria-current="true"] {
@@ -2635,15 +2661,25 @@
         }
         .ww-data-issue-coordinate-value { color: var(--text-dim); font-style: italic; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ww-data-issues-load-more {
-            display: block; margin: 6px auto; font-size: 0.68rem; padding: 4px 10px;
+            display: block; width: 100%; box-sizing: border-box; margin: 10px 0 2px;
+            font-size: 0.72rem; font-weight: 600; padding: 8px 12px; border-radius: calc(var(--radius) + 1px);
         }
         /* DEC-084 (Slice 5): bulk explicit-null resolution -- one button
            per bulk-eligible column issue-group, never a global toolbar
-           (task section 15). Matches .ww-data-issues-load-more's own
-           compact block/small-font convention immediately above. */
-        .ww-data-issues-bulk-null-btn {
-            display: block; margin: 0 6px 6px; font-size: 0.68rem; padding: 4px 9px;
+           (task section 15). Unified full-width block sizing/rhythm
+           with the two sibling group-level actions immediately below
+           (owner-approved mock direction: "consistent button sizing,
+           cleaner spacing between stacked buttons") -- action set and
+           click behavior are unchanged, only shared layout rules moved
+           onto one combined selector. */
+        .ww-data-issues-bulk-null-btn,
+        .ww-data-issues-bulk-fill-btn,
+        .ww-data-issues-group-not-assigned-btn {
+            display: block; width: 100%; box-sizing: border-box; margin: 0 0 8px;
+            font-size: 0.74rem; font-weight: 600; padding: 9px 12px; border-radius: calc(var(--radius) + 1px);
+            text-align: center;
         }
+        .ww-data-issues-group-not-assigned-btn { margin-bottom: 14px; }
         .ww-data-issues-bulk-null-btn:disabled { opacity: 0.6; cursor: default; }
         /* This dialog's own trigger button lives INSIDE the Data Issues
            panel, which on narrow screens (<=820px) is its own
@@ -2695,14 +2731,24 @@
            actually render those as separate lines. */
         #wwDataIssuesEstimateCount, #wwDataIssuesBulkFillCount { white-space: pre-line; }
         .ww-data-issues-action-area {
-            flex: 0 0 auto; padding: 10px 12px; border-top: 1px solid var(--panel-border);
-            background: var(--surface-tint); font-size: 0.72rem;
+            flex: 0 0 auto; padding: 16px; border-top: 1px solid var(--panel-border);
+            background: var(--surface-tint); font-size: 0.74rem;
         }
-        .ww-data-issues-action-area h5 { margin: 0 0 4px; font-size: 0.72rem; }
+        .ww-data-issues-action-area h5 { margin: 0 0 10px; font-size: 0.86rem; font-weight: 600; color: var(--text); }
         .ww-data-issues-action-coordinate { font-weight: 700; color: var(--accent); }
-        .ww-data-issues-action-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-        .ww-data-issues-action-buttons button { font-size: 0.68rem; padding: 5px 9px; }
-        .ww-data-issues-action-hint { margin: 6px 0 0; font-size: 0.65rem; color: var(--text-dim); font-style: italic; }
+        /* Owner-approved mock direction: the first two actions (e.g.
+           Mark as Null / Fill Manually) sit side by side; any further
+           action (Estimate Missing Value, Set Column to Not Assigned)
+           takes its own full-width row -- purely a CSS grid placement
+           rule, so it adapts automatically to however many buttons this
+           issue actually has (2 for a Time Axis issue, 3-4 otherwise)
+           without depending on which specific actions are present. */
+        .ww-data-issues-action-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+        .ww-data-issues-action-buttons > button:nth-child(n+3) { grid-column: 1 / -1; }
+        .ww-data-issues-action-buttons button {
+            font-size: 0.72rem; font-weight: 600; padding: 9px 10px; border-radius: calc(var(--radius) + 1px);
+        }
+        .ww-data-issues-action-hint { margin: 10px 0 0; font-size: 0.68rem; color: var(--text-dim); font-style: italic; line-height: 1.4; }
 
         /* Raw Data Preview cell highlighting -- restrained, border +
            background, never color alone (task section 10): an
@@ -11270,7 +11316,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // yet; opening the panel (or a later mutation
                     // invalidating the cache) triggers a fresh fetch then.
                     if (wwDataPrep.dataIssuesPanelOpen) wwDataPrepFetchBulkNullCount(issueCode, columnIndex);
-                    html += '<button type="button" class="secondary ww-data-issues-bulk-null-btn" ' +
+                    // UI/UX polish (2026-09-10, owner-approved mock
+                    // direction): no "secondary" class here -- this is
+                    // the group's own primary/highest-prominence action
+                    // (a solid-fill button, same base button style the
+                    // single-cell action area's own "Mark as Null"
+                    // already uses undecorated), matching the mock's
+                    // own solid-blue treatment. The two group actions
+                    // below stay "secondary" (outline), unchanged.
+                    html += '<button type="button" class="ww-data-issues-bulk-null-btn" ' +
                         'data-bulk-null-issue-code="' + escapeHtml(issueCode) + '" data-bulk-null-column-index="' + columnIndex + '"' +
                         (known === 0 ? ' disabled' : '') + '>' +
                         (known != null ? 'Mark all ' + known + ' as Null' : 'Mark as Null…') + '</button>';
