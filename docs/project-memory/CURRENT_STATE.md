@@ -499,6 +499,15 @@ re-confirmed by the TG-FINAL audit):
   slice (not implemented). See `test_frontend_per_unit_settings.py` plus
   updated assertions in `test_frontend_measurement_groups.py`/
   `test_frontend_per_unit_mode.py`.
+  **Same-day UAT fix**: selecting **Per Unit** from the dropdown had
+  been auto-opening the Source Default modal whenever no source yet had
+  a configured DEC-049 profile (a pre-existing "Section 68" convenience
+  that predates this hierarchy) — this undermined the new
+  Recommended/Fallback framing by making Source Default look like the
+  automatic path. Removed outright: selecting Per Unit now only changes
+  display mode; opening any configuration surface is always the
+  separate, explicit "Per-Unit Settings…" action. Zero backend/API
+  change.
 - **Calculated channels**: workspace-scoped derived analog channels —
   Reverse Polarity, Absolute Value, Multiply-by-Constant, N-input Addition,
   ordered N-input Subtraction, and trailing one-cycle RMS. Multi-input

@@ -321,11 +321,21 @@ def test_manage_per_unit_bases_toolbar_control_exists_in_html():
     assert 'id="perUnitSourceSelect"' in source
 
 
-def test_first_switch_to_per_unit_with_no_configured_source_auto_opens_setup_modal():
+def test_selecting_per_unit_never_auto_opens_any_configuration_surface():
+    """Slice 1 UAT fix (Per-Unit Settings hierarchy): selecting Per Unit
+    used to auto-open the source-wide setup modal whenever no source had
+    a configured DEC-049 profile yet (the original "Section 68"
+    convenience, predating the Measurement Groups/Source Default
+    hierarchy). That side effect is now removed outright -- opening any
+    configuration surface must always be a separate, explicit action via
+    "Per-Unit Settings...", never a consequence of switching display
+    mode, regardless of whether any source has a configured base."""
     source = _source()
     start = source.index('.ww-split-menu-item[data-unit-mode="per_unit"]\').addEventListener("click"')
     end = source.index("});", start) + 3
     body = source[start:end]
     assert "await wwApplyUnitMode(\"per_unit\");" in body
-    assert "some((c) => c.configured)" in body
-    assert "await wwOpenPerUnitProfilesModal();" in body
+    assert "wwOpenPerUnitProfilesModal" not in body
+    assert "wwOpenPerUnitSettingsModal" not in body
+    assert "wwOpenMeasurementGroupsModal" not in body
+    assert "some((c) => c.configured)" not in body

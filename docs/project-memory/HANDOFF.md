@@ -51,6 +51,29 @@ byte-for-byte unchanged.
 backend regression suite passes with zero failures (exit code 0, no
 `FAILED`/`ERROR` in the run). `git diff --check` clean.
 
+**Same-day UAT fix**: selecting **Per Unit** from the toolbar dropdown
+had been auto-opening the Source Default modal whenever no source in
+the workspace yet had a configured DEC-049 profile — a pre-existing
+"Section 68" convenience that predates this hierarchy (originally
+reasonable when there was only one modal to open), now confirmed by the
+owner's own UAT to undermine the new Recommended/Fallback framing by
+making Source Default appear to be the automatic/default path. Root
+cause verified directly in code:
+`.ww-split-menu-item[data-unit-mode="per_unit"]`'s own click handler
+unconditionally checked `Array.from(ww.perUnitSourceConfigs.values()).some((c) => c.configured)`
+and called `wwOpenPerUnitProfilesModal()` whenever that was false — a
+state-dependent branch, which is why it wasn't obvious from static
+review alone. Fix: that branch is removed outright; selecting Per Unit
+now ONLY calls `wwApplyUnitMode("per_unit")` (still refetches
+`ww.perUnitSourceConfigs` internally, purely as a convenience for
+whenever Source Default is opened afterwards — that modal re-fetches on
+its own open regardless, so this was never a correctness dependency).
+Opening any configuration surface is now always the separate, explicit
+"Per-Unit Settings…" action, with zero exceptions. 75 focused tests
+pass (one new/one rewritten assertion locking in "no auto-open, ever");
+full backend regression suite passes with zero failures; `git diff
+--check` clean. Zero backend/API/calculation change.
+
 **Explicitly deferred** (per the task's own scope limit, not forgotten):
 coverage counts (grouped/default/unconfigured channel statistics),
 per-channel active-configuration traceability (which resolver/group/

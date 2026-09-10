@@ -181,6 +181,22 @@ class TestUnitModeControlsUnchanged:
         settings_wiring = _function_body(source, 'document.getElementById("wwOpenPerUnitSettingsBtn")', "document.addEventListener")
         assert "wwApplyUnitMode" not in settings_wiring
 
+    def test_selecting_per_unit_never_opens_any_configuration_surface(self):
+        """UAT fix: clicking "Per Unit" must ONLY switch display mode --
+        it must never open Source Default, Measurement Groups, or the
+        new Per-Unit Settings parent surface as a side effect. Opening a
+        configuration surface is always a separate, explicit action via
+        "Per-Unit Settings..."."""
+        source = _source()
+        wiring = _function_body(
+            source,
+            'document.querySelector(\'#wwUnitModeMenu .ww-split-menu-item[data-unit-mode="per_unit"]\')',
+            'document.getElementById("wwOpenPerUnitSettingsBtn")',
+        )
+        assert "wwOpenPerUnitProfilesModal" not in wiring
+        assert "wwOpenPerUnitSettingsModal" not in wiring
+        assert "wwOpenMeasurementGroupsModal" not in wiring
+
 
 class TestNoBackendOrApiChange:
     """Checklist item 9: Slice 1 is UI-only -- no new fetch/mutating
