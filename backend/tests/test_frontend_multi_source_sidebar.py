@@ -96,9 +96,30 @@ def test_sampling_rate_formatting_uses_khz_and_multi_rate_fallback():
     fn_body = _function_body(source, "function wwFormatCompactSamplingRate(samplingRates)", "function wwFormatCompactDuration")
     assert 'if (samplingRates.length > 1) return "Multi-rate";' in fn_body
     assert '" kHz"' in fn_body
-    assert '" Hz"' in fn_body
+    # Sidebar sampling-rate presentation fix (owner UAT, 2026-09-10): the
+    # sub-1kHz case now DELEGATES to the shared formatSamplingRate() (the
+    # same fix Recording Events already uses) instead of a second,
+    # divergent `Math.round(hz) + " Hz"` rule that turned any genuine
+    # positive rate below 0.5 Hz into a misleading "0 Hz". No bare
+    # `" Hz"` string literal is ever written directly in THIS function's
+    # own body any more -- it lives only inside the shared helper.
+    assert "return formatSamplingRate(hz);" in fn_body
+    assert '" Hz"' not in fn_body
     # Never confuses this with nominal grid frequency.
     assert "nominal_frequency" not in fn_body
+
+
+def test_compact_sampling_rate_never_rounds_a_positive_rate_to_zero():
+    source = _source()
+    fn_idx = source.index("function formatSamplingRate(rate)")
+    fn_body = source[fn_idx : source.index("function formatSamplingRates(rates)", fn_idx)]
+    # The shared formatter's own fractional branch (4 significant digits,
+    # never a bare Math.round to the nearest Hz) is what makes a genuine
+    # sub-1Hz rate (e.g. 1/60 Hz) render as "0.01667 Hz" here too, instead
+    # of "0 Hz" -- locks the mechanism wwFormatCompactSamplingRate() below
+    # 1000 Hz now depends on.
+    assert "SAMPLING_RATE_SIGNIFICANT_DIGITS" in fn_body
+    assert "Math.round(hz)" not in source[source.index("function wwFormatCompactSamplingRate(samplingRates)") : source.index("function wwFormatCompactDuration")]
 
 
 def test_duration_formatting_is_compact_not_fixed_three_decimals():

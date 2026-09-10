@@ -94,6 +94,20 @@ test("Recording Events Sampling Rate(s): a genuine 1/60 Hz rate renders cleanly,
     await expect(page.locator("#workspaceRow")).toBeVisible();
   });
 
+  await test.step("Waveform sidebar/source header also shows a non-zero fractional sampling rate", async () => {
+    // wwFormatCompactSamplingRate() fix (owner UAT, 2026-09-10): this
+    // surface used to round any sub-1Hz rate to a misleading "0 Hz" --
+    // now delegates to the same shared formatter Recording Events uses
+    // below 1000 Hz, so both surfaces render the identical clean value
+    // for this source (acceptable per the task's own "It is acceptable
+    // if both render exactly 0.01667 Hz").
+    const meta = page.locator(`details.source-recording[data-source-id="${sourceId}"] .source-recording-meta`);
+    await expect(meta).toBeVisible();
+    const text = await meta.textContent();
+    expect(text).toContain("0.01667 Hz");
+    expect(text).not.toContain("0 Hz");
+  });
+
   await test.step("Back on Recordings: the Sampling Rate(s) cell shows a clean value, no floating-point tail", async () => {
     await page.locator("#mainNavRecordingsBtn").click();
     await expect(page.locator("#pageRecordings")).toBeVisible();

@@ -14653,13 +14653,31 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // frequency (SourceMetadata.nominal_frequency, a completely
         // separate field this function never reads) -- always the
         // RECORDING's own sampling_rates.
+        //
+        // Sidebar sampling-rate presentation fix (owner UAT, 2026-09-10):
+        // the sub-1kHz branch used to be a bare `Math.round(hz) + " Hz"`,
+        // which turns ANY genuine positive rate below 0.5 Hz into
+        // "0 Hz" -- indistinguishable from "no rate at all," and strictly
+        // worse than Recording Events' own already-fixed formatSamplingRate()
+        // (a 1/60 Hz source showed "0.01667 Hz" there but "0 Hz" here).
+        // Delegates to that SAME shared formatter below 1000 Hz instead of
+        // a second, divergent rounding rule -- it already collapses
+        // near-integer float noise (50.00000008 -> "50 Hz") and bounds a
+        // genuine fractional rate to a small number of significant digits
+        // (1/60 -> "0.01667 Hz") without ever rounding a positive rate to
+        // zero. Only the >= 1000 Hz kHz-compaction stays this function's
+        // own separate rule -- that magnitude range needs a DIFFERENT unit
+        // for compactness, not just different rounding, so it is not a
+        // case the shared Hz-only formatter is meant to cover; kHz's own
+        // 2-decimal rounding already keeps ordinary declared-rate noise
+        // (5000.00000001 Hz) well within one compact "5 kHz" reading.
         function wwFormatCompactSamplingRate(samplingRates) {
             if (!Array.isArray(samplingRates) || samplingRates.length === 0) return "—";
             if (samplingRates.length > 1) return "Multi-rate";
             const hz = samplingRates[0];
             if (!Number.isFinite(hz) || hz <= 0) return "—";
             if (hz >= 1000) return (Math.round((hz / 1000) * 100) / 100) + " kHz";
-            return Math.round(hz) + " Hz";
+            return formatSamplingRate(hz);
         }
 
         // Recording duration, formatted compactly for the source summary
