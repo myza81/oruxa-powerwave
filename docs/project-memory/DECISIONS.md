@@ -6866,6 +6866,28 @@ resolver, or registry was modified. See [CURRENT_STATE.md](CURRENT_STATE.md)
 for the full file/behavior record. Per-channel active-configuration
 traceability remains deferred to a further UAT slice.
 
+**Update (2026-09-10) — Per-Unit Settings hierarchy, Slice 3: per-channel
+provenance/traceability is now implemented, built from this exact
+precedence rule (and, for calculated channels, DEC-052's own
+restriction) rather than a second implementation of either.** New
+`app/services/per_unit_provenance_service.py` answers "which
+configuration controls this channel, and what effective base is used"
+by reading `status`/`reason`/the resolved base directly off the same
+`PerUnitResolution` `resolve_group_aware_per_unit()`/
+`resolve_calculated_group_aware_per_unit()`/DEC-049's `resolve_per_unit()`
+already produce for the live display endpoints — never an independent
+re-derivation, so the shown explanation cannot disagree with the actual
+conversion. Source Default is displayed truthfully (one plain base
+amount, never a fabricated L-L/L-G split) — this decision's LL/LG gap is
+neither fixed nor hidden. New additive endpoints only
+(`GET .../sources/{id}/per-unit-resolution`,
+`GET .../calculated-channels/{id}/per-unit-resolution`); no existing
+endpoint, resolver, or registry was modified. See
+[CURRENT_STATE.md](CURRENT_STATE.md) for the full record, including the
+deliberate boundary on calculated-channel frontend UI (backend fully
+supports and tests it; the Signal Builder page's own frontend affordance
+is a separately-schedulable follow-up).
+
 ---
 
 ## DEC-052 — Voltage multi-input Addition/Subtraction calculated channels never inherit a DEC-050 Measurement Group base

@@ -32,16 +32,18 @@ from app.schemas.annotation_anchor import AnnotationAnchorOut, AnnotationAnchorR
 from app.schemas.cursor_values import CursorValuesOut, CursorValuesRequest
 from app.schemas.digital_waveform import DigitalWaveformBatchOut, DigitalWaveformOut
 from app.schemas.peak_value import PeakValueBatchOut, PeakValueBatchRequest, PeakValueResultOut
+from app.schemas.per_unit import PerUnitResolutionOut
 from app.schemas.source import ErrorOut, SourceChannelsOut, SourceSummaryOut
 from app.schemas.table import SourceTableOut
 from app.schemas.waveform import WaveformRangeOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import remove_calculated_channels_for_source
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
-from app.services.errors import ImportServiceError, InvalidTimeRangeError
+from app.services.errors import ChannelNotAnalogError, ChannelNotFoundError, ImportServiceError, InvalidTimeRangeError
 from app.services.import_service import import_comtrade_source
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.measurement_group_service import remove_measurement_groups_for_source
+from app.services.per_unit_provenance_service import build_source_channel_provenance
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.per_unit_service import delete_source_per_unit_config
 from app.services.synchronization_registry import SynchronizationRegistry
@@ -215,6 +217,55 @@ def get_source_channels(
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
     return SourceChannelsOut.from_domain(active.metadata)
+
+
+@router.get("/{source_id}/per-unit-resolution", response_model=PerUnitResolutionOut)
+def get_source_channel_per_unit_resolution(
+    workspace_id: str,
+    source_id: str,
+    channel_name: str = Query(..., description="Analog channel name, as returned by GET .../channels."),
+    registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
+    voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
+    current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+) -> PerUnitResolutionOut:
+    """Per-Unit Settings hierarchy, Slice 3: this channel's own Per-Unit
+    provenance -- which configuration (Measurement Group or Source
+    Default) is authoritative for it, and the actual effective base
+    used, built from the exact same resolution
+    GET .../waveform?unit_mode=per_unit already uses (see
+    app.services.per_unit_provenance_service's own "one source of
+    truth" guarantee). Read-only channel METADATA, never a waveform
+    sample -- fetched lazily on explicit engineer request only, never
+    attached to any waveform/cursor/peak response."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    active = _get_or_404(registry, workspace_id, source_id)
+    channel = next((ch for ch in active.metadata.analog_channels if ch.name == channel_name), None)
+    if channel is None:
+        if any(ch.name == channel_name for ch in active.metadata.digital_channels):
+            raise _http_error(
+                ChannelNotAnalogError(
+                    f"Channel '{channel_name}' is a digital channel; Per-Unit provenance is only "
+                    "meaningful for analog channels."
+                )
+            )
+        raise _http_error(ChannelNotFoundError(f"No channel named '{channel_name}' on this source."))
+
+    per_unit_profile = per_unit_registry.get(workspace_id, source_id)
+    provenance = build_source_channel_provenance(
+        workspace_id=workspace_id,
+        source_id=source_id,
+        channel_name=channel_name,
+        engineering_type=channel.engineering_type,
+        engineering_quantity=channel.engineering_quantity,
+        per_unit_profile=per_unit_profile,
+        voltage_channel_names=_voltage_channel_names_for_active(active),
+        group_registry=measurement_group_registry,
+        voltage_config_registry=voltage_group_config_registry,
+        current_config_registry=current_group_config_registry,
+    )
+    return PerUnitResolutionOut.from_provenance(provenance)
 
 
 @router.get("/{source_id}/table", response_model=SourceTableOut)

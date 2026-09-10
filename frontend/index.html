@@ -8259,6 +8259,36 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
     <div class="ww-context-menu" id="wwChannelContextMenu" role="menu" hidden>
         <button type="button" class="ww-context-menu-item" id="wwChannelMenuRenameBtn" role="menuitem">Rename&hellip;</button>
         <button type="button" class="ww-context-menu-item" id="wwChannelMenuColorBtn" role="menuitem">Change colour&hellip;</button>
+        <button type="button" class="ww-context-menu-item" id="wwChannelMenuPerUnitBtn" role="menuitem">Per-Unit Details&hellip;</button>
+    </div>
+
+    <!-- Per-Unit Settings hierarchy, Slice 3 (channel-level traceability):
+         reuses this SAME context menu (one more item, same singleton-
+         overlay-retargeted-per-open convention as Rename/Change colour
+         above) and the Calculated Channels page's own established
+         label/value info-strip pattern (.ww-cc-preview-info-strip/
+         -info-label/-info-value) for the content -- no new visual
+         system. Read-only: opening this popover only ever GETs
+         GET .../sources/{id}/per-unit-resolution, never mutates
+         anything. Content is built entirely from the backend's own
+         already-resolved provenance (app.services.per_unit_provenance_service)
+         -- never independently re-derived here, so this can never
+         disagree with the actual conversion. -->
+    <div class="confirm-overlay" id="wwChannelPerUnitOverlay" hidden>
+        <div class="group-editor-box" role="dialog" aria-modal="true" aria-labelledby="wwChannelPerUnitTitle">
+            <div class="group-editor-header">
+                <h3 id="wwChannelPerUnitTitle">Per-unit configuration</h3>
+                <button type="button" class="group-editor-close" id="wwChannelPerUnitCloseBtn" aria-label="Close">&times;</button>
+            </div>
+            <p class="hint" id="wwChannelPerUnitChannelName"></p>
+            <p class="hint" id="wwChannelPerUnitNotApplicable" hidden>Per-unit conversion is not applicable to this channel.</p>
+            <p class="hint error" id="wwChannelPerUnitError" hidden role="alert"></p>
+            <div class="ww-cc-preview-info-strip" id="wwChannelPerUnitBody" hidden></div>
+            <div class="group-editor-footer">
+                <span class="toolbar-spacer"></span>
+                <button type="button" class="secondary" id="wwChannelPerUnitCloseFooterBtn">Close</button>
+            </div>
+        </div>
     </div>
 
     <div class="confirm-overlay" id="wwChannelRenameOverlay" hidden>
@@ -19637,6 +19667,147 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwSyncChannelColorModalPreview(wwColorForChannel(sourceId, channelName));
             document.getElementById("wwChannelColorError").hidden = true;
             document.getElementById("wwChannelColorOverlay").hidden = false;
+        }
+
+        // ------------------------------------------------------------------
+        // Per-Unit Settings hierarchy, Slice 3 (channel-level traceability):
+        // reuses the SAME context-menu-target convention as Rename/Change
+        // colour above -- one singleton popover, retargeted per open().
+        // Read-only: fetches GET .../per-unit-resolution once per open,
+        // never mutates anything. A monotonic request sequence (same
+        // pattern this file already uses elsewhere, e.g.
+        // wwTable.requestSeq) guards against a stale response rendering
+        // after the popover was closed/retargeted before the fetch
+        // resolved -- clearing wwChannelMenuTarget on close (as
+        // wwCloseChannelContextMenu() already does) is NOT itself a
+        // reliable staleness signal here, since this popover's own open
+        // flow closes the context menu immediately, before the fetch
+        // even starts.
+        // ------------------------------------------------------------------
+
+        let wwChannelPerUnitRequestSeq = 0;
+
+        function wwPerUnitReferenceAbbrev(reference) {
+            if (reference === "line_to_line") return "L-L";
+            if (reference === "line_to_ground") return "L-G";
+            return null;
+        }
+
+        function wwPerUnitInfoRowHtml(label, value) {
+            return '<div><span class="ww-cc-preview-info-label">' + escapeHtml(label) + '</span>' +
+                '<span class="ww-cc-preview-info-value">' + escapeHtml(value) + '</span></div>';
+        }
+
+        // The ONE place this popover decides what to show -- built
+        // entirely from the backend's own already-resolved provenance
+        // fields, never independently re-derived, so the explanation can
+        // never disagree with the actual conversion (the task's own
+        // "one source of truth" requirement).
+        function wwRenderChannelPerUnitResolution(resolution) {
+            const bodyEl = document.getElementById("wwChannelPerUnitBody");
+            const errorEl = document.getElementById("wwChannelPerUnitError");
+            const naEl = document.getElementById("wwChannelPerUnitNotApplicable");
+            bodyEl.hidden = true;
+            bodyEl.innerHTML = "";
+            errorEl.hidden = true;
+            naEl.hidden = true;
+
+            if (resolution === null) {
+                errorEl.textContent = "Failed to load per-unit configuration. Check your connection and try again.";
+                errorEl.hidden = false;
+                return;
+            }
+            if (resolution.status === "not_applicable") {
+                naEl.hidden = false;
+                return;
+            }
+
+            const refAbbrev = wwPerUnitReferenceAbbrev(resolution.nominal_reference);
+            const rows = [];
+
+            if (resolution.source_kind === "measurement_group") {
+                rows.push(wwPerUnitInfoRowHtml(
+                    "Source", "Measurement Group: " + (resolution.measurement_group_name || resolution.measurement_group_id || "—")
+                ));
+                if (resolution.nominal_base_kv != null) {
+                    rows.push(wwPerUnitInfoRowHtml("Nominal voltage", resolution.nominal_base_kv + " kV L-L"));
+                }
+                if (refAbbrev) {
+                    rows.push(wwPerUnitInfoRowHtml("Channel interpretation", refAbbrev));
+                }
+                if (resolution.equipment_rating_mva != null) {
+                    let ratingText = resolution.equipment_rating_mva + " MVA";
+                    if (resolution.applicable_voltage_ll_kv != null) ratingText += " @ " + resolution.applicable_voltage_ll_kv + " kV";
+                    rows.push(wwPerUnitInfoRowHtml("Equipment rating", ratingText));
+                }
+                if (resolution.effective_base_amount != null) {
+                    const suffix = refAbbrev ? " " + refAbbrev : "";
+                    rows.push(wwPerUnitInfoRowHtml(
+                        "Effective base", resolution.effective_base_amount.toFixed(2) + " " + resolution.effective_base_unit + suffix
+                    ));
+                }
+            } else if (resolution.source_kind === "source_default") {
+                rows.push(wwPerUnitInfoRowHtml("Source", "Source Default"));
+                if (resolution.effective_base_amount != null) {
+                    // Deliberately plain -- no L-L/L-G suffix. Source
+                    // Default's own current arithmetic uses this value
+                    // directly with no reference-aware adjustment; showing
+                    // a suffix here would fabricate a distinction the
+                    // actual calculation does not make (task's own
+                    // explicit truthfulness requirement).
+                    const label = resolution.engineering_type === "Voltage" ? "Voltage base" : "Current base";
+                    rows.push(wwPerUnitInfoRowHtml(label, resolution.effective_base_amount.toFixed(2) + " " + resolution.effective_base_unit));
+                }
+            }
+
+            rows.push(wwPerUnitInfoRowHtml("Status", resolution.status === "configured" ? "Configured" : "Needs configuration"));
+            if (resolution.reason) {
+                rows.push(wwPerUnitInfoRowHtml("Reason", resolution.reason));
+            }
+
+            bodyEl.innerHTML = rows.join("");
+            bodyEl.hidden = false;
+        }
+
+        async function wwFetchChannelPerUnitResolution(sourceId, channelName) {
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                    "/sources/" + encodeURIComponent(sourceId) + "/per-unit-resolution" +
+                    "?channel_name=" + encodeURIComponent(channelName)
+                );
+            } catch (error) {
+                return null;
+            }
+            if (!response.ok) return null;
+            try {
+                return await response.json();
+            } catch (error) {
+                return null;
+            }
+        }
+
+        async function wwOpenChannelPerUnitModal() {
+            if (!wwChannelMenuTarget) return;
+            const sourceId = wwChannelMenuTarget.sourceId;
+            const channelName = wwChannelMenuTarget.channelName;
+            wwCloseChannelContextMenu();
+            const mySeq = ++wwChannelPerUnitRequestSeq;
+            document.getElementById("wwChannelPerUnitChannelName").textContent = wwChannelDisplayName(sourceId, channelName);
+            document.getElementById("wwChannelPerUnitBody").hidden = true;
+            document.getElementById("wwChannelPerUnitBody").innerHTML = "";
+            document.getElementById("wwChannelPerUnitError").hidden = true;
+            document.getElementById("wwChannelPerUnitNotApplicable").hidden = true;
+            document.getElementById("wwChannelPerUnitOverlay").hidden = false;
+            const resolution = await wwFetchChannelPerUnitResolution(sourceId, channelName);
+            if (mySeq !== wwChannelPerUnitRequestSeq) return; // superseded by a later open/close
+            wwRenderChannelPerUnitResolution(resolution);
+        }
+
+        function wwCloseChannelPerUnitModal() {
+            document.getElementById("wwChannelPerUnitOverlay").hidden = true;
+            wwChannelPerUnitRequestSeq++; // invalidate any in-flight fetch
         }
 
         // ------------------------------------------------------------------
@@ -32555,6 +32726,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // the drawer-priority Escape handler above.
         document.getElementById("wwChannelMenuRenameBtn").addEventListener("click", wwOpenChannelRenameModal);
         document.getElementById("wwChannelMenuColorBtn").addEventListener("click", wwOpenChannelColorModal);
+        document.getElementById("wwChannelMenuPerUnitBtn").addEventListener("click", () => { wwOpenChannelPerUnitModal(); });
         document.addEventListener("click", (event) => {
             const menu = document.getElementById("wwChannelContextMenu");
             if (!menu.hidden && !menu.contains(event.target)) wwCloseChannelContextMenu();
@@ -32563,7 +32735,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (event.key !== "Escape") return;
             if (!document.getElementById("wwChannelContextMenu").hidden) { wwCloseChannelContextMenu(); return; }
             if (!document.getElementById("wwChannelRenameOverlay").hidden) { wwCloseChannelRenameModal(); return; }
-            if (!document.getElementById("wwChannelColorOverlay").hidden) wwCloseChannelColorModal();
+            if (!document.getElementById("wwChannelColorOverlay").hidden) { wwCloseChannelColorModal(); return; }
+            if (!document.getElementById("wwChannelPerUnitOverlay").hidden) wwCloseChannelPerUnitModal();
         });
 
         // Rename modal.
@@ -32628,6 +32801,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwChannelColorCloseFooterBtn").addEventListener("click", wwCloseChannelColorModal);
         document.getElementById("wwChannelColorOverlay").addEventListener("click", (event) => {
             if (event.target.id === "wwChannelColorOverlay") wwCloseChannelColorModal(); // click on backdrop
+        });
+
+        // Per-Unit Details popover (Slice 3) -- same close/backdrop
+        // convention as every other overlay in this file; Escape is
+        // already handled above, ordered after the context menu/Rename/
+        // Change colour layers.
+        document.getElementById("wwChannelPerUnitCloseBtn").addEventListener("click", wwCloseChannelPerUnitModal);
+        document.getElementById("wwChannelPerUnitCloseFooterBtn").addEventListener("click", wwCloseChannelPerUnitModal);
+        document.getElementById("wwChannelPerUnitOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "wwChannelPerUnitOverlay") wwCloseChannelPerUnitModal(); // click on backdrop
         });
 
         // Phase 2C-B1/C1: Grouped/Separate/Custom layout mode.

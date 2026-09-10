@@ -542,8 +542,61 @@ re-confirmed by the TG-FINAL audit):
   treatment when it is `> 0` — Measurement Groups and Source Default
   rows are always neutral, and Source Default usage is never shown as
   an error, matching the existing badge palette's own established
-  never-`--error` convention. Per-channel "why this value" traceability
-  remains deferred to a future UAT slice (Slice 3), not implemented.
+  never-`--error` convention.
+  **Slice 3 (Per-Unit Settings hierarchy, channel-level traceability)
+  adds per-channel "why does this show this pu value" provenance.**
+  New `app/services/per_unit_provenance_service.py`
+  (`build_source_channel_provenance()`/`build_calculated_channel_provenance()`)
+  — its own "one source of truth" guarantee: every field is read
+  directly off the exact `PerUnitResolution` that would convert the
+  channel's own displayed value (`resolve_group_aware_per_unit()`/
+  `resolve_calculated_group_aware_per_unit()` first, DEC-049
+  `resolve_per_unit()` fallback otherwise — the identical dispatch order
+  `waveform_service._resolve_effective_per_unit()`/
+  `calculated_channel_service._resolve_effective_per_unit_for_calculated_channel()`
+  already use), so the shown explanation can never disagree with the
+  actual conversion. The richer Measurement Group display fields
+  (nominal LL kV, effective L-G/L-L reference, equipment rating,
+  applicable voltage) are obtained by calling the SAME
+  `measurement_group_view_service.build_group_view()` Slice 6's own
+  modal already renders from — no new resolution math anywhere.
+  DEC-052's Voltage multi-input restriction is fully respected for
+  calculated channels (verified directly: unary inherits, multi-input
+  Voltage Add/Subtract never does, multi-input Current does, a
+  cross-group case falls back to legacy exactly like DEC-051 already
+  specifies). **Source Default is displayed truthfully, never
+  "corrected"**: its own resolved base is one plain amount with no
+  fabricated L-L/L-G annotation and no separate nominal-vs-effective
+  split, matching DEC-049's own actual (unadjusted) arithmetic exactly
+  — the known, separately-governed LL/LG gap is neither fixed nor
+  hidden by this slice. New additive endpoints,
+  `GET .../sources/{source_id}/per-unit-resolution?channel_name=...`
+  (`app/api/v1/sources.py`) and
+  `GET .../calculated-channels/{id}/per-unit-resolution`
+  (`app/api/v1/calculated_channels.py`), both returning
+  `PerUnitResolutionOut` (`app/schemas/per_unit.py`) — read-only channel
+  METADATA, fetched lazily on explicit engineer request only, never
+  attached to any waveform/cursor/peak response; no existing
+  endpoint/schema/resolver changed. **Frontend (source channels only
+  this slice — see below for the calculated-channel UI boundary)**: a
+  third RECORDINGS-sidebar channel-context-menu item, "Per-Unit
+  Details…" (alongside DEC-070's existing Rename/Change colour),
+  opens a small popover reusing the Calculated Channels page's own
+  established label/value info-strip pattern
+  (`.ww-cc-preview-info-strip`) — no new visual system. Not-applicable
+  channels show a single fixed neutral line, never fabricated base
+  info; a monotonic request-sequence guard (mirroring this file's own
+  established `requestSeq` convention) discards a stale response if the
+  popover is closed/retargeted before its fetch resolves. **Deliberate
+  boundary**: the backend fully supports calculated-channel provenance
+  (tested end-to-end, including DEC-052), but no frontend affordance was
+  added for it this slice — the Calculated Channels/Signal Builder page
+  is a structurally separate surface whose existing preview info strip
+  is rendered synchronously from already-known static fields, so adding
+  an async per-unit fetch there safely needs its own stale-response
+  guarding (the same class of race this slice's own source-channel
+  popover already handles) — reported as a small, separately-schedulable
+  follow-up rather than rushed in.
 - **Calculated channels**: workspace-scoped derived analog channels —
   Reverse Polarity, Absolute Value, Multiply-by-Constant, N-input Addition,
   ordered N-input Subtraction, and trailing one-cycle RMS. Multi-input

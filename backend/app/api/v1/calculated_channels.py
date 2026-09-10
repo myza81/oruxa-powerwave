@@ -34,6 +34,7 @@ from app.schemas.calculated_channel import (
     RmsEligibilityRequest,
     RmsEligibilityResponse,
 )
+from app.schemas.per_unit import PerUnitResolutionOut
 from app.schemas.source import ErrorOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import (
@@ -48,6 +49,7 @@ from app.services.calculated_channel_service import (
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.errors import ImportServiceError
 from app.services.measurement_group_registry import MeasurementGroupRegistry
+from app.services.per_unit_provenance_service import build_calculated_channel_provenance
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.per_unit_service import voltage_channel_names_for_source
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
@@ -268,6 +270,40 @@ def get_channel_waveform(
         voltage_config_registry=voltage_group_config_registry, current_config_registry=current_group_config_registry,
     )
     return CalculatedWaveformRangeOut.from_result(result)
+
+
+@router.get("/{calculated_channel_id}/per-unit-resolution", response_model=PerUnitResolutionOut)
+def get_channel_per_unit_resolution(
+    workspace_id: str,
+    calculated_channel_id: str,
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
+    voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
+    current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+) -> PerUnitResolutionOut:
+    """Per-Unit Settings hierarchy, Slice 3: this calculated channel's
+    own Per-Unit provenance, built from the exact same resolution
+    GET .../waveform?unit_mode=per_unit already uses -- including
+    DEC-052's own Voltage multi-input restriction, via
+    `resolve_calculated_group_aware_per_unit()` (never re-implemented
+    here). Read-only channel metadata, fetched lazily on explicit
+    engineer request only."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    channel = _get_channel_or_404(calc_registry, workspace_id, calculated_channel_id)
+    per_unit_profile = _resolve_profile_for_calculated_channel(per_unit_registry, workspace_id, calculated_channel_id)
+    provenance = build_calculated_channel_provenance(
+        workspace_id=workspace_id,
+        channel=channel,
+        per_unit_profile=per_unit_profile,
+        voltage_channel_names=_voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profile),
+        calc_registry=calc_registry,
+        group_registry=measurement_group_registry,
+        voltage_config_registry=voltage_group_config_registry,
+        current_config_registry=current_group_config_registry,
+    )
+    return PerUnitResolutionOut.from_provenance(provenance)
 
 
 @router.post("/rms-eligibility", response_model=RmsEligibilityResponse)

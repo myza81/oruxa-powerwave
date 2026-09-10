@@ -8,6 +8,89 @@ Last updated: **2026-09-10**
 
 ## What was most recently done
 
+**Per-Unit Settings hierarchy, Slice 3: channel-level traceability.**
+Answers "which configuration controls this channel, and what effective
+base is actually used?" for one specific Voltage/Current channel. New
+`app/services/per_unit_provenance_service.py`
+(`build_source_channel_provenance()`/`build_calculated_channel_provenance()`)
+-- its own "one source of truth" guarantee, verified by 30 focused
+tests: every provenance field is read directly off the exact
+`PerUnitResolution` that would convert the channel's own displayed
+value (`resolve_group_aware_per_unit()`/
+`resolve_calculated_group_aware_per_unit()` first, DEC-049's
+`resolve_per_unit()` fallback otherwise -- the identical dispatch order
+`waveform_service._resolve_effective_per_unit()`/
+`calculated_channel_service._resolve_effective_per_unit_for_calculated_channel()`
+already use), never independently re-derived. The richer Measurement
+Group display fields (nominal LL kV, effective L-G/L-L reference,
+equipment rating, applicable voltage) come from calling the SAME
+`measurement_group_view_service.build_group_view()` Slice 6's own modal
+already uses -- zero new resolution math anywhere. DEC-052's Voltage
+multi-input restriction is fully respected for calculated channels
+(verified directly: unary inherits, multi-input Voltage Add/Subtract
+never does, multi-input Current does, cross-group falls back to legacy
+exactly per DEC-051). **Source Default is displayed truthfully**: one
+plain base amount, never a fabricated L-L/L-G annotation or a
+nominal-vs-effective split -- the known, separately-governed LL/LG gap
+is neither fixed nor hidden.
+
+**New additive endpoints only**:
+`GET .../sources/{source_id}/per-unit-resolution?channel_name=...`
+(`app/api/v1/sources.py`) and
+`GET .../calculated-channels/{id}/per-unit-resolution`
+(`app/api/v1/calculated_channels.py`), both returning
+`PerUnitResolutionOut` (`app/schemas/per_unit.py`) -- read-only channel
+metadata, fetched lazily on explicit request, never attached to any
+waveform/cursor/peak response. No existing endpoint/schema/resolver/
+registry was touched.
+
+**Frontend (source channels this slice)**: a third RECORDINGS-sidebar
+channel-context-menu item, "Per-Unit Details…" (alongside DEC-070's
+existing Rename/Change colour), opens a small popover reusing the
+Calculated Channels page's own established label/value info-strip
+pattern (`.ww-cc-preview-info-strip`) -- no new visual system. A
+not-applicable channel shows one fixed neutral line, never fabricated
+base info. A monotonic request-sequence guard (mirroring this file's
+own established `requestSeq` convention) discards a stale response if
+the popover is closed/retargeted before its own fetch resolves.
+
+**Deliberate, reported boundary**: the backend fully supports and tests
+calculated-channel provenance end-to-end (including DEC-052), but no
+frontend affordance was added for it this slice. The Calculated
+Channels/Signal Builder page is a structurally separate surface whose
+existing preview info strip renders synchronously from already-known
+static fields (`wwCcRenderPreviewStatusAndInfo()`) -- adding an async
+per-unit fetch there needs its own stale-response guard (the same class
+of race this slice's own source-channel popover already handles via
+`wwChannelPerUnitRequestSeq`), which would meaningfully enlarge this
+slice's scope. Flagged as a small, separately-schedulable follow-up
+rather than rushed or guessed at, per the task's own explicit
+instruction.
+
+**Files changed**: `backend/app/services/per_unit_provenance_service.py`
+(new), `backend/app/api/v1/sources.py` (additive endpoint),
+`backend/app/api/v1/calculated_channels.py` (additive endpoint),
+`backend/app/schemas/per_unit.py` (additive `PerUnitResolutionOut`),
+`frontend/index.html` (context-menu item + popover markup/CSS/JS),
+`backend/tests/test_per_unit_provenance_service.py` (new, 17 tests),
+`backend/tests/test_per_unit_provenance_api.py` (new, 13 tests),
+`backend/tests/test_frontend_per_unit_traceability.py` (new, 18 tests).
+
+**Tests**: 142 focused tests pass across the Slice 1/2/3 per-unit test
+files; full backend regression suite passes with zero failures (exit
+code 0); `git diff --check` clean.
+
+**Explicitly deferred**: the calculated-channel frontend affordance
+described above, drill-down channel lists behind Slice 2's coverage
+counts, and the separately-governed DEC-049 legacy LL/LG voltage-math
+gap (untouched -- calculation behaviour, displayed truthfully not
+corrected).
+
+**Commit status**: already committed in this session; see this task's
+own final report for the exact commit hash.
+
+## What was done in the prior session — Per-Unit Settings hierarchy, Slice 2: coverage visibility
+
 **Per-Unit Settings hierarchy, Slice 2: coverage visibility.** Adds a
 read-only "Per-unit coverage" section to the Slice 1 parent surface
 (`#perUnitSettingsOverlay`) — for a selected recording, how many
