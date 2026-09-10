@@ -49,23 +49,42 @@ class TestModalAndDrawerMarkupExists:
         assert 'id="wwMgDrawerSaveBtn"' in source
         assert 'id="wwMgDrawerCancelBtn"' in source
 
-    def test_toolbar_gains_the_new_primary_entry_point(self):
+    def test_toolbar_exposes_one_settings_entry_point_not_two_competing_ones(self):
+        """Slice 1 (Per-Unit Settings hierarchy): the toolbar menu no
+        longer exposes Measurement Groups and Source Default as two
+        directly-competing items -- both are reached through the new
+        parent #perUnitSettingsOverlay instead."""
         source = _source()
-        assert 'id="wwManageMeasurementGroupsBtn"' in source
-        assert "Manage Per-Unit / Measurement Groups" in source
+        assert 'id="wwOpenPerUnitSettingsBtn"' in source
+        assert "Per-Unit Settings" in source
+        menu_body = _function_body(source, 'id="wwUnitModeMenu"', "</div>\n                        </div>")
+        assert 'id="wwManageMeasurementGroupsBtn"' not in menu_body
+        assert 'id="wwManagePerUnitBasesBtn"' not in menu_body
 
 
 class TestDec049CoexistenceUnchanged:
-    """Task section 24: the legacy source-wide modal must remain fully
-    reachable, never deleted, only de-emphasized."""
+    """Task section 24 / Slice 1: the source-wide modal must remain fully
+    reachable and fully functional -- Slice 1 only changes how it is
+    framed/reached (via the new parent Per-Unit Settings surface,
+    presented as "Source Default"/"Fallback"), never its own markup,
+    functions, or backend."""
 
-    def test_legacy_menu_item_still_exists_and_still_opens_the_old_modal(self):
+    def test_source_default_modal_still_exists_and_still_opens_via_the_original_function(self):
         source = _source()
-        assert 'id="wwManagePerUnitBasesBtn"' in source
-        assert "Legacy source-wide base settings" in source
-        # Still wired to the ORIGINAL, unmodified open function.
-        wiring = _function_body(source, 'document.getElementById("wwManagePerUnitBasesBtn")', "document.addEventListener")
+        assert 'id="perUnitProfilesOverlay"' in source
+        assert 'id="wwOpenPerUnitProfilesFromSettingsBtn"' in source
+        # Routed from the new parent surface, but still wired to the
+        # ORIGINAL, unmodified open function.
+        wiring = _function_body(source, 'document.getElementById("wwOpenPerUnitProfilesFromSettingsBtn")', "document.addEventListener")
         assert "wwOpenPerUnitProfilesModal()" in wiring
+
+    def test_no_user_facing_legacy_wording_remains(self):
+        """Owner requirement: 'Legacy' must not be shown to normal users.
+        The word may still appear in internal comments -- this only
+        checks the one previously user-facing string is gone."""
+        source = _source()
+        assert "Legacy source-wide base settings" not in source
+        assert 'class="ww-split-menu-item--legacy"' not in source
 
     def test_legacy_modal_functions_are_unmodified_and_still_present(self):
         source = _source()
@@ -214,7 +233,7 @@ class TestCancelDiscardsUnsavedEdits:
         # never truncate this slice short.
         body = _function_body(
             source,
-            'document.getElementById("wwManageMeasurementGroupsBtn").addEventListener',
+            'document.getElementById("wwMeasurementGroupsBackToSettingsBtn").addEventListener',
             "// Phase 2C-B1/C1: Grouped/Separate/Custom layout mode.",
         )
         drawer_check_index = body.index('wwCloseMgDrawer(); return;')

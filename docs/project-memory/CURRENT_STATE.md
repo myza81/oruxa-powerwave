@@ -474,6 +474,31 @@ re-confirmed by the TG-FINAL audit):
   were needed. A blank unit still leaves the channel `base_required`
   (fail-closed, unchanged); the DEC-078 Angle guardrail is unaffected
   (a valid `deg`/`rad` unit never makes an Angle channel PU-eligible).
+  **Per-Unit Settings hierarchy, Slice 1 (2026-09-10, UI-only formalization
+  of [DECISIONS.md — DEC-051](DECISIONS.md#dec-051--dec-049dec-050-live-endpoint-coexistence-precedence-group-membership-not-configuration-completeness-decides-which-resolver-applies-to-a-channel)'s
+  existing precedence, no engine/API change)**: the Unit Mode toolbar menu
+  no longer exposes Measurement Groups and the source-wide modal as two
+  directly-competing items. Both are now reached through one new parent
+  surface, `#perUnitSettingsOverlay` (`wwOpenPerUnitSettingsBtn`), which
+  explains the relationship before routing into whichever the engineer
+  picks: **Measurement Groups** (`Recommended` badge — DEC-050, the
+  specific path for a channel a group actually covers) and **Source
+  Default** (`Fallback` badge — DEC-049's existing source-wide modal,
+  user-facing title changed from "Manage Per-Unit Bases" to "Source
+  Default — Per-Unit"; internal id `#perUnitProfilesOverlay` and every
+  function/endpoint unchanged). The word "Legacy" no longer appears
+  anywhere user-facing. The Source Default modal's own hint text — which
+  had claimed "every eligible Voltage/Current channel of that recording
+  uses its own configuration automatically" — was stale since DEC-051
+  (a grouped channel does not use it) and is corrected to state its
+  actual current scope. Each child modal gets a small "← Per-Unit
+  Settings" link back to the parent (close-then-reopen, no nested modal
+  stacking). Backend precedence itself (DEC-051) is completely
+  unchanged — this is presentation only. Coverage counts and per-channel
+  active-configuration traceability remain deferred to a future UAT
+  slice (not implemented). See `test_frontend_per_unit_settings.py` plus
+  updated assertions in `test_frontend_measurement_groups.py`/
+  `test_frontend_per_unit_mode.py`.
 - **Calculated channels**: workspace-scoped derived analog channels —
   Reverse Polarity, Absolute Value, Multiply-by-Constant, N-input Addition,
   ordered N-input Subtraction, and trailing one-cycle RMS. Multi-input

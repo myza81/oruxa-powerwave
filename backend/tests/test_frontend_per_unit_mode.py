@@ -312,7 +312,11 @@ def test_manage_per_unit_bases_toolbar_control_exists_in_html():
     assert 'id="wwUnitModeMenu"' in source
     assert 'data-unit-mode="engineering"' in source
     assert 'data-unit-mode="per_unit"' in source
-    assert 'id="wwManagePerUnitBasesBtn"' in source
+    # Slice 1 (Per-Unit Settings hierarchy): the toolbar now routes to a
+    # single "Per-Unit Settings..." entry point rather than opening the
+    # source-wide modal directly -- the modal itself, its own function,
+    # and its own form controls are all still fully present/unchanged.
+    assert 'id="wwOpenPerUnitSettingsBtn"' in source
     assert 'id="perUnitProfilesOverlay"' in source
     assert 'id="perUnitSourceSelect"' in source
 

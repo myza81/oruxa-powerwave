@@ -6820,6 +6820,29 @@ a second time. No existing DEC-049 calculated-channel code path was
 modified. See
 [MIGRATION_PLAN.md — Phase 13](MIGRATION_PLAN.md#phase-13--dec-050-slice-7-calculated-channel-per-unit-inheritance-2026-08-25).
 
+**Update (2026-09-10) — Per-Unit Settings hierarchy, Slice 1: this
+decision's own precedence rule is now formalized in the UI, not merely
+in backend behaviour.** This is presentation only — not a new decision,
+not a change to the rule above. The Unit Mode toolbar menu previously
+exposed the Measurement Groups modal and the source-wide modal as two
+directly-competing items with no explanation of how they relate; an
+owner UAT request asked for a single "Per-Unit Settings" entry point
+that states the relationship (`Measurement Groups` = `Recommended`,
+`Source Default` = `Fallback`, "Measurement Group settings are used
+where available; Source Default is used for applicable channels outside
+Measurement Groups") before routing into either existing modal
+unchanged. The word "Legacy" was removed from every user-facing string
+(it may remain in internal comments); the source-wide modal's own
+title changed from "Manage Per-Unit Bases" to "Source Default — Per-Unit"
+and its stale pre-this-decision hint text ("every eligible Voltage/
+Current channel... uses its own configuration automatically" — no
+longer true once a channel is grouped) was corrected. No backend file,
+API route, registry, or domain object was touched or renamed — see
+[CURRENT_STATE.md](CURRENT_STATE.md) for the full frontend-file/test
+inventory. Coverage counts and per-channel active-configuration
+traceability (both audited as feasible, additive-only backend work) are
+explicitly deferred to a later, separately-approved UAT slice.
+
 ---
 
 ## DEC-052 — Voltage multi-input Addition/Subtraction calculated channels never inherit a DEC-050 Measurement Group base

@@ -8,6 +8,64 @@ Last updated: **2026-09-10**
 
 ## What was most recently done
 
+**Per-Unit Settings hierarchy, Slice 1 (UI-only formalization of the
+existing DEC-051 precedence rule — no engine/API change).** Following a
+Phase-1 audit of the Powerwave Per-Unit configuration UX (owner-reported
+confusion that Measurement Groups and the source-wide modal looked like
+two competing configuration methods), this slice adds one lightweight
+parent surface, `#perUnitSettingsOverlay` (opened via a single new
+toolbar item, `wwOpenPerUnitSettingsBtn` — "Per-Unit Settings…" —
+replacing the two previously separate, directly-competing toolbar
+items), that explains the relationship before routing into whichever of
+the two existing, functionally-unchanged modals the engineer picks:
+**Measurement Groups** (`Recommended` badge) and **Source Default**
+(`Fallback` badge — DEC-049's existing source-wide modal, retitled from
+"Manage Per-Unit Bases" to "Source Default — Per-Unit"; internal id
+`#perUnitProfilesOverlay` and every function/endpoint unchanged). The
+word "Legacy" no longer appears anywhere user-facing (it may still
+appear in internal comments). The Source Default modal's own hint text
+— which had claimed "every eligible Voltage/Current channel of that
+recording uses its own configuration automatically" — was stale since
+DEC-051 (a grouped channel does not use it) and now states its actual
+current scope. Each child modal gained a small "← Per-Unit Settings"
+text link back to the parent (plain close-then-reopen, no nested modal
+stacking, per the task's own "robust/simple over clever modal stacking"
+instruction). See [DECISIONS.md — DEC-051's own 2026-09-10
+update](DECISIONS.md#dec-051--dec-049dec-050-live-endpoint-coexistence-precedence-group-membership-not-configuration-completeness-decides-which-resolver-applies-to-a-channel)
+and [CURRENT_STATE.md](CURRENT_STATE.md) for the full record — this is
+presentation only, not a new architectural decision.
+
+**Files changed**: `frontend/index.html` only (toolbar menu, two badge
+CSS variants + a back-link/action-row CSS rule, the new parent overlay
+markup, framing-copy edits to both existing modals, new
+`wwOpenPerUnitSettingsModal()`/`wwClosePerUnitSettingsModal()`, and
+updated event wiring). `backend/tests/test_frontend_measurement_groups.py`
+and `backend/tests/test_frontend_per_unit_mode.py` updated for the new
+menu/modal structure; new `backend/tests/test_frontend_per_unit_settings.py`
+(20 tests) added. Zero backend production files touched — DEC-051
+precedence, DEC-049/DEC-050 resolvers, and every API route are
+byte-for-byte unchanged.
+
+**Tests**: 74 focused frontend-regression tests pass
+(`test_frontend_per_unit_settings.py` + the two updated files); full
+backend regression suite passes with zero failures (exit code 0, no
+`FAILED`/`ERROR` in the run). `git diff --check` clean.
+
+**Explicitly deferred** (per the task's own scope limit, not forgotten):
+coverage counts (grouped/default/unconfigured channel statistics),
+per-channel active-configuration traceability (which resolver/group/
+effective-base produced a given channel's pu value), any new backend
+endpoint or API response field, and the separately-governed DEC-049
+legacy LL/LG voltage-math gap identified during the audit (intentionally
+untouched — calculation behaviour). All are candidates for a future,
+separately-approved UAT slice.
+
+**Commit status**: already committed in this session; see this task's
+own final report for the exact commit hash.
+
+## What was done in the prior session — DEC-084 extended: Data
+Preparation missing-value Fill/Estimate is now implemented end to end
+
 **DEC-084 extended: Data Preparation missing-value Fill/Estimate is now
 implemented end to end**, adding algorithmic estimation and bulk
 constant fill on top of the already-complete explicit-null baseline
