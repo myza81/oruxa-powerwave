@@ -8,6 +8,76 @@ Last updated: **2026-09-10**
 
 ## What was most recently done
 
+**Per-Unit Settings hierarchy, Slice 2: coverage visibility.** Adds a
+read-only "Per-unit coverage" section to the Slice 1 parent surface
+(`#perUnitSettingsOverlay`) — for a selected recording, how many
+applicable Voltage/Current channels are covered by a Measurement Group,
+how many fall to Source Default, and how many currently need
+configuration. Coverage is a derived read model only, never persisted,
+never mutates anything, and stays in exact lockstep with DEC-051's own
+precedence: new `app/services/per_unit_coverage_service.py`
+(`build_per_unit_coverage_summary()`) classifies each channel by calling
+the SAME public resolvers `waveform_service._resolve_effective_per_unit()`
+already dispatches through (`resolve_group_aware_per_unit()` first,
+falling through to DEC-049's `resolve_per_unit()` only when ungrouped)
+— the precedence decision itself is never re-implemented. A grouped
+channel whose own group base is incomplete counts as **Needs
+configuration**, never Source Default, even when a fully usable Source
+Default exists on the same source (verified directly, both at the
+service level and through the live API against the real
+`synth_measurement_groups` fixture). Voltage/Current Angle channels
+(DEC-078) and digital channels are excluded from every count;
+`applicable_channel_count` always equals the sum of the three category
+counts.
+
+**New additive API surface only**: `GET .../per-unit/sources/{source_id}/coverage`
+(`app/api/v1/per_unit.py`, three new small registry-getter functions
+mirroring `measurement_groups.py`'s own established per-router-getter
+convention) returning `PerUnitCoverageOut`
+(`app/schemas/per_unit.py`). No existing endpoint, schema, resolver, or
+registry was modified.
+
+**Frontend**: the parent surface (previously pure static routing copy)
+gained its own "Recording" `<select>` (mirroring the two child modals'
+own selector shape) and a compact three-row coverage stat list
+(`wwLoadAndRenderPerUnitCoverage()`), refetched on source-select change.
+Explicit, distinct empty/edge states: "Upload a recording to see
+Per-Unit coverage" (no sources at all), "No applicable Voltage/Current
+channels for per-unit conversion" (zero applicable, neutral wording,
+never a zero-count warning), and a separate fetch-failure message. Only
+the "Needs configuration" row gets a proportional `--warn` treatment
+when its own count is `> 0` — Measurement Groups/Source Default rows
+are always neutral, matching the existing badge palette's own
+established never-`--error` convention (Source Default usage is never
+shown as an error).
+
+**Files changed**: `backend/app/services/per_unit_coverage_service.py`
+(new), `backend/app/api/v1/per_unit.py` (additive endpoint + 3 getters),
+`backend/app/schemas/per_unit.py` (additive `PerUnitCoverageOut`),
+`frontend/index.html` (parent-surface markup/CSS/JS additions),
+`backend/tests/test_per_unit_coverage_service.py` (new, 18 tests),
+`backend/tests/test_per_unit_coverage_api.py` (new, 4 tests),
+`backend/tests/test_frontend_per_unit_coverage.py` (new, 17 tests), one
+Slice-1 test in `test_frontend_per_unit_settings.py` updated (its own
+"never fetches at all" assertion superseded by the new, correct
+"read-only, never mutates" one).
+
+**Tests**: 116 focused tests pass across the six per-unit test files;
+full backend regression suite passes with zero failures (exit code 0);
+`git diff --check` clean.
+
+**Explicitly deferred** (per the task's own scope limit): per-channel
+"why this pu value" traceability (which resolver/group/effective-base
+produced a given channel's value), drill-down channel lists behind each
+count, and the separately-governed DEC-049 legacy LL/LG voltage-math gap
+(untouched — calculation behaviour). Candidates for Slice 3, pending
+owner UAT of this slice.
+
+**Commit status**: already committed in this session; see this task's
+own final report for the exact commit hash.
+
+## What was done in the prior session — Per-Unit Settings hierarchy, Slice 1
+
 **Per-Unit Settings hierarchy, Slice 1 (UI-only formalization of the
 existing DEC-051 precedence rule — no engine/API change).** Following a
 Phase-1 audit of the Powerwave Per-Unit configuration UX (owner-reported

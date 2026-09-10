@@ -6843,6 +6843,29 @@ inventory. Coverage counts and per-channel active-configuration
 traceability (both audited as feasible, additive-only backend work) are
 explicitly deferred to a later, separately-approved UAT slice.
 
+**Update (2026-09-10) — Per-Unit Settings hierarchy, Slice 2: coverage
+counts are now implemented, still without changing this decision's own
+precedence rule.** New `app/services/per_unit_coverage_service.py`
+classifies each of a source's own applicable Voltage/Current channels
+into exactly one of Measurement Groups / Source Default / Needs
+configuration by calling the SAME public resolvers this decision's own
+precedence rule already governs (`resolve_group_aware_per_unit()` first,
+falling through to DEC-049's `resolve_per_unit()` only when ungrouped)
+— the precedence DECISION itself is never re-implemented, only its
+orchestration order is mirrored, so coverage can never disagree with
+what a live waveform/measurement endpoint actually shows. A grouped
+channel whose own group configuration is incomplete counts as Needs
+configuration, never Source Default, even when a fully usable Source
+Default exists on the same source — directly re-confirms this
+decision's own "never silently borrow another base" rule via a new,
+focused test (`test_per_unit_coverage_service.py`'s
+`TestGroupedButIncomplete`, plus a live-API equivalent in
+`test_per_unit_coverage_api.py`). New additive endpoint only
+(`GET .../per-unit/sources/{source_id}/coverage`); no existing endpoint,
+resolver, or registry was modified. See [CURRENT_STATE.md](CURRENT_STATE.md)
+for the full file/behavior record. Per-channel active-configuration
+traceability remains deferred to a further UAT slice.
+
 ---
 
 ## DEC-052 — Voltage multi-input Addition/Subtraction calculated channels never inherit a DEC-050 Measurement Group base

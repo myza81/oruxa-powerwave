@@ -14,10 +14,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from app.schemas.per_unit import SourcePerUnitConfigOut, SourcePerUnitConfigUpdateRequest
+from app.schemas.per_unit import PerUnitCoverageOut, SourcePerUnitConfigOut, SourcePerUnitConfigUpdateRequest
 from app.schemas.source import ErrorOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.errors import ImportServiceError
+from app.services.measurement_group_registry import MeasurementGroupRegistry
+from app.services.per_unit_coverage_service import build_per_unit_coverage_summary
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.per_unit_service import (
     delete_source_per_unit_config,
@@ -25,6 +28,7 @@ from app.services.per_unit_service import (
     list_source_per_unit_configs,
     upsert_source_per_unit_config,
 )
+from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/per-unit", tags=["per-unit"])
@@ -47,6 +51,24 @@ def get_calculated_channel_registry(request: Request) -> CalculatedChannelRegist
 
 def get_per_unit_registry(request: Request) -> PerUnitRegistry:
     return request.app.state.per_unit_registry
+
+
+# Slice 2 (Per-Unit Settings hierarchy, coverage): mirrors
+# app.api.v1.measurement_groups's own identically-named getters verbatim
+# -- this codebase's established pattern is a small, router-local getter
+# per registry rather than a shared cross-router import (see that
+# module's own `get_workspace_registry`, duplicated rather than
+# imported, for precedent).
+def get_measurement_group_registry(request: Request) -> MeasurementGroupRegistry:
+    return request.app.state.measurement_group_registry
+
+
+def get_voltage_group_config_registry(request: Request) -> VoltageGroupConfigRegistry:
+    return request.app.state.voltage_group_config_registry
+
+
+def get_current_group_config_registry(request: Request) -> CurrentGroupConfigRegistry:
+    return request.app.state.current_group_config_registry
 
 
 def _validate_workspace_id(workspace_id: str) -> str:
@@ -139,3 +161,37 @@ def delete_source(
     delete_source_per_unit_config(
         workspace_id=workspace_id, source_id=source_id, registry=registry, source_registry=source_registry, calc_registry=calc_registry
     )
+
+
+@router.get("/sources/{source_id}/coverage", response_model=PerUnitCoverageOut)
+def get_source_coverage(
+    workspace_id: str,
+    source_id: str,
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
+    voltage_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
+    current_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+) -> PerUnitCoverageOut:
+    """Per-Unit Settings hierarchy, Slice 2: one source's own Per-Unit
+    coverage breakdown -- how many applicable Voltage/Current channels
+    are covered by a Measurement Group, how many fall to Source Default,
+    and how many currently need configuration. Read-only, derived fresh
+    per request from already-existing metadata/registry state (see
+    app.services.per_unit_coverage_service) -- never persisted, never
+    mutates anything. 404 `source_not_found` if `source_id` does not
+    exist in this workspace."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = build_per_unit_coverage_summary(
+            workspace_id=workspace_id,
+            source_id=source_id,
+            source_registry=source_registry,
+            per_unit_registry=per_unit_registry,
+            group_registry=group_registry,
+            voltage_config_registry=voltage_config_registry,
+            current_config_registry=current_config_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return PerUnitCoverageOut.from_summary(summary)

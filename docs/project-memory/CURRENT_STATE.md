@@ -508,6 +508,42 @@ re-confirmed by the TG-FINAL audit):
   display mode; opening any configuration surface is always the
   separate, explicit "Per-Unit Settings…" action. Zero backend/API
   change.
+  **Slice 2 (Per-Unit Settings hierarchy, coverage) adds a read-only
+  "Per-unit coverage" section to the parent surface** — for the
+  selected recording, how many applicable Voltage/Current channels are
+  covered by a Measurement Group, how many fall to Source Default, and
+  how many currently need configuration. New
+  `app/services/per_unit_coverage_service.py` (`build_per_unit_coverage_summary()`)
+  classifies each of a source's own `AnalogChannelSummary` entries by
+  calling the SAME public building blocks
+  `waveform_service._resolve_effective_per_unit()` already dispatches
+  through (`resolve_group_aware_per_unit()` first, falling through to
+  the DEC-049 `resolve_per_unit()` only when the channel is not grouped)
+  — DEC-051's own precedence is never re-implemented, only mirrored in
+  orchestration order; a grouped-but-incomplete channel is
+  `needs_configuration`, never silently counted as Source Default, even
+  when a fully usable Source Default exists on the same source. Voltage/
+  Current Angle channels (DEC-078) and digital channels are excluded
+  from every count; `applicable_channel_count` always equals the sum of
+  the three category counts. Pure metadata/registry read — no waveform
+  sample data touched, nothing persisted, no existing registry mutated.
+  New additive endpoint `GET .../per-unit/sources/{source_id}/coverage`
+  (`app/api/v1/per_unit.py`, `PerUnitCoverageOut` in
+  `app/schemas/per_unit.py`) — no existing endpoint/schema changed.
+  Frontend: the Per-Unit Settings parent surface (`#perUnitSettingsOverlay`,
+  previously pure static routing copy) gained its own "Recording"
+  selector (mirroring the two child modals' own selector) and a compact
+  three-row coverage stat list, refetched on source-select change.
+  Empty/edge states are explicit: "Upload a recording to see Per-Unit
+  coverage" (no sources), "No applicable Voltage/Current channels for
+  per-unit conversion" (zero applicable, neutral wording, never a
+  zero-count warning), and a distinct fetch-failure message. Only the
+  "Needs configuration" row's own count gets a proportional `--warn`
+  treatment when it is `> 0` — Measurement Groups and Source Default
+  rows are always neutral, and Source Default usage is never shown as
+  an error, matching the existing badge palette's own established
+  never-`--error` convention. Per-channel "why this value" traceability
+  remains deferred to a future UAT slice (Slice 3), not implemented.
 - **Calculated channels**: workspace-scoped derived analog channels —
   Reverse Polarity, Absolute Value, Multiply-by-Constant, N-input Addition,
   ordered N-input Subtraction, and trailing one-cycle RMS. Multi-input

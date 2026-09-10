@@ -16,6 +16,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from app.services.per_unit_coverage_service import PerUnitCoverageSummary
 from app.services.per_unit_service import SourcePerUnitConfigView
 
 
@@ -77,4 +78,26 @@ class SourcePerUnitConfigOut(BaseModel):
                 else None
             ),
             created_at=view.created_at,
+        )
+
+
+class PerUnitCoverageOut(BaseModel):
+    """Per-Unit Settings hierarchy, Slice 2: one source's own Per-Unit
+    coverage breakdown -- mutually exclusive counts, derived fresh per
+    request (see app.services.per_unit_coverage_service), never stored."""
+
+    source_id: str
+    applicable_channel_count: int
+    measurement_group_count: int
+    source_default_count: int
+    needs_configuration_count: int
+
+    @classmethod
+    def from_summary(cls, summary: PerUnitCoverageSummary) -> "PerUnitCoverageOut":
+        return cls(
+            source_id=summary.source_id,
+            applicable_channel_count=summary.applicable_channel_count,
+            measurement_group_count=summary.measurement_group_count,
+            source_default_count=summary.source_default_count,
+            needs_configuration_count=summary.needs_configuration_count,
         )

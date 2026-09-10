@@ -199,18 +199,34 @@ class TestUnitModeControlsUnchanged:
 
 
 class TestNoBackendOrApiChange:
-    """Checklist item 9: Slice 1 is UI-only -- no new fetch/mutating
-    request anywhere in the new code, and the existing DEC-049/DEC-050
-    API paths are untouched."""
+    """Checklist item 9: no new MUTATING request anywhere in the new
+    code, and the existing DEC-049/DEC-050 API paths are untouched.
 
-    def test_new_functions_never_fetch(self):
+    Slice 1's own version of this test asserted the parent surface never
+    fetches at all -- true for Slice 1 (pure static routing copy), but
+    superseded by Slice 2's own explicit coverage requirement: the
+    surface now legitimately issues read-only GET requests (source list,
+    per-unit coverage). What must remain true, and what this test now
+    checks, is that it is READ-ONLY -- never POST/PUT/PATCH/DELETE."""
+
+    def test_settings_surface_never_issues_a_mutating_request(self):
         source = _source()
-        body = _function_body(source, "function wwOpenPerUnitSettingsModal()", "function wwClosePerUnitSettingsModal()")
-        assert "fetch(" not in body
-        body2 = _function_body(source, "function wwClosePerUnitSettingsModal()", "// ------")
-        assert "fetch(" not in body2
+        body = _function_body(source, "async function wwOpenPerUnitSettingsModal()", "// ------")
+        for verb in ('"POST"', '"PUT"', '"PATCH"', '"DELETE"'):
+            assert verb not in body
+
+    def test_coverage_fetch_is_a_plain_get(self):
+        source = _source()
+        body = _function_body(source, "async function wwFetchPerUnitCoverage(sourceId)", "async function wwLoadAndRenderPerUnitCoverage()")
+        assert "fetch(" in body
+        for verb in ('"POST"', '"PUT"', '"PATCH"', '"DELETE"', "method:"):
+            assert verb not in body
 
     def test_existing_api_paths_are_untouched(self):
         source = _source()
         assert '"/per-unit/sources"' in source
         assert "/measurement-groups" in source
+
+    def test_new_coverage_endpoint_path_is_additive(self):
+        source = _source()
+        assert "/coverage" in source
