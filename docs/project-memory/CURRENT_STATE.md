@@ -415,6 +415,24 @@ re-confirmed by the TG-FINAL audit):
   [Architecture](#architecture)); Absolute (real recording wall-clock) and
   Elapsed time-axis modes, both group-correct; per-Time-Group t0 with
   internally-supported, UI-hidden Detect Event.
+- **Default/auto-fit waveform time extent (DEC-037, hardened
+  2026-09-10)**: the workspace/per-Time-Group default extent Reset Time
+  View restores is the union min/max of every currently CONTRIBUTING
+  source's own effective (offset-applied) bounds — never "longest
+  duration wins," and a non-contained pair of source ranges unions
+  correctly. A source contributes if it is currently displayed, or has
+  never yet had a channel displayed at all (DEC-037's own original
+  zero-channel-source-open case, preserved); a source that WAS displayed
+  and is now fully hidden stops contributing until re-shown, and a fully
+  removed source never contributes. This is narrower than, and separate
+  from, "which sources participate in the workspace" generally (still
+  every opened source, unchanged, e.g. for the Synchronise Sources
+  source list) — see
+  [DECISIONS.md — DEC-037's own 2026-09-10 update](DECISIONS.md#dec-037--waveform-time-domain-state-is-source-aware-source-bounds-workspace-bounds-and-viewport-are-distinct-phase-4a-uat10)
+  for the full rule. Synchronization/reference-source ownership (the
+  first-uploaded-source rule) is unaffected. The viewport itself only
+  auto-resets the engineer's current zoom when the contributing set's own
+  bounds actually change value.
 - **Per-Unit measurement model**: the group-aware model (DEC-050's target)
   has its core implemented — automatic measurement-group detection,
   group-aware Voltage and Current PU conversion, a frontend Measurement

@@ -3021,6 +3021,67 @@ Impact:
   or resampling is implemented by this decision.
 - See [MIGRATION_PLAN.md — Phase 4A-UAT10](MIGRATION_PLAN.md#phase-4a-uat10--source-aware-time-bounds-2026-08-19).
 
+**Update (2026-09-10, owner UAT + same-day hardening pass — clarification of
+this same decision, not a new architectural direction, no new DEC-XXX
+entry)**: owner UAT surfaced a gap this decision's original "currently
+participating source set" wording did not anticipate. "Participating"
+(`wwParticipatingSourceIds()`, i.e. "has a `ww.sourceBounds` entry, still
+open in the workspace") is the same test this decision uses both for "may
+this zero-channel source establish initial bounds" AND for "which sources
+exist in this workspace at all" (e.g. the Synchronise Sources source
+list) — those turned out to be two genuinely different questions. A source
+that HAD been displayed and was then explicitly hidden (every one of its
+channels turned off, without removing it from the workspace) is still
+"participating" by that definition, so it kept stretching the derived
+workspace/group bounds indefinitely — a real regression this decision's
+own wording did not intend, but also did not rule out.
+
+The distinction now implemented, without weakening this decision's
+original zero-channel-source-open case:
+
+- **Participating/open** — this decision's own original scope
+  (`wwParticipatingSourceIds()`), completely unchanged, and still the right
+  answer for "which sources exist in this workspace" generally.
+- **Contributing to the current default/auto-fit VISUAL time extent**
+  (`wwTimeExtentContributingSourceIds()`, new, used ONLY by
+  `wwDeriveWorkspaceBounds()`/`wwDeriveTimeGroupBounds()`) — a participating
+  source contributes if it is CURRENTLY displayed, OR it has NEVER yet been
+  displayed at all (this decision's own "zero-channel source-open can
+  still establish correct time bounds" case, preserved verbatim and still
+  fully implemented). A participating source that WAS displayed and now
+  has zero displayed channels is excluded until one of its channels is
+  shown again. Removal from the workspace already excluded a source
+  correctly before this update (its `ww.sourceBounds` entry is deleted) and
+  still does.
+- The one new piece of state this distinction needed is
+  `ww.sourceEverDisplayed` — set the first time any channel of a source is
+  displayed, cleared only on that source's removal or a full workspace
+  reset, and deliberately never touched by a hide action.
+
+The default visual extent itself is still computed exactly as this
+decision originally specified: the union min/max (earliest effective
+start, latest effective end) of the contributing set, over the same
+effective (offset-applied, Time-Group-scoped) bounds this decision and the
+later Time Group/synchronization work already established — never
+"longest duration wins," and a non-contained pair of source ranges is
+correctly unioned rather than reduced to whichever source is longer.
+Manual-offset recomputation, per-Time-Group isolation, t0/workspace-
+coordinate presentation, and Absolute/Elapsed display are all unaffected.
+**Synchronization/reference-source ownership (the first-uploaded-source
+rule) is a separate concern from visual-extent participation and was not
+touched by this update.**
+
+One additional, related UX refinement landed in the same pass: the
+viewport now only auto-resets the engineer's current zoom/pan when the
+contributing set's own derived bounds actually change value — an ordinary
+rerender, or displaying a second channel from a source that was already
+contributing, leaves the current zoom untouched.
+
+Implemented in commit `4ee0bee` ("fix: derive waveform extent from visual
+source participation"). See
+[CURRENT_STATE.md — Synchronization & timing](CURRENT_STATE.md#implemented-capabilities)
+for the current-state summary.
+
 ---
 
 ## DEC-038 — Waveform channels default to hidden on open; group-level Show/Hide controls added (Phase 4A-UAT9)
