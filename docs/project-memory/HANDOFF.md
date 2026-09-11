@@ -8,6 +8,124 @@ Last updated: **2026-09-11**
 
 ## What was most recently done
 
+**Event Playback — owner UX correction: made Playback a reusable
+workspace capability, not a standalone top-level page
+([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock)'s
+own 2026-09-11 revision note).** Following owner UAT of Slices 1/2
+(Play/Pause/Resume/Restart/speed/seek all signed off) and subsequent
+workflow discussion, the owner reversed Playback's original top-level-
+menu placement — the engineer's real workflow is to open a waveform,
+inspect it, then open a future engineering-analysis page (Distance
+Protection/Overcurrent/Phasors/Differential) that EMBEDS Playback to
+drive a moving operating point, never to navigate to a "Playback"
+destination for its own sake. This is a deliberate UX architecture
+correction, not a bug fix — nothing about the Playback Controller's
+own behavior changed, confirmed directly (see Tests below: the full
+existing Playwright suite passes with ZERO changes to
+`browser-tests/playback.spec.js` itself).
+
+**What changed** (frontend-only, `frontend/index.html`; zero backend
+changes):
+
+1. **Removed**: the dedicated top-level `Playback` main-menu item
+   (`#mainNavPlaybackBtn`), its `#pagePlayback` status page, the
+   `"playback"` case in `shellSetCurrentPage()`, and its own status
+   renderer (`wwRenderPlaybackPage()`, deleted outright — every call
+   site removed with it). No `Analysis` menu was created in its place
+   (explicitly out of scope, per the task's own instruction not to
+   create it prematurely).
+2. **Extracted a genuinely reusable control-surface API**, all near
+   `wwClearWorkspace()`:
+   - `wwCreatePlaybackControlsHtml()` — the markup factory, returns
+     `{transportHtml, seekRowHtml}` (Restart/Play/Speed/readout, and
+     the seek row, as two fragments a mount point embeds into its own
+     layout).
+   - `wwWirePlaybackControls(containerEl, groupId)` — wires
+     Restart/Play/Speed/Seek within `containerEl` to the shared
+     `wwPlayback*` functions.
+   - `wwSyncPlaybackControls(containerEl, groupId)` — full sync
+     (Play/Pause label + readout + seek-slider bounds/position) on a
+     real state transition.
+   - `wwUpdatePlaybackControlsTick(containerEl, groupId)` — the cheap
+     per-tick subset (readout + seek-slider position only).
+
+   All four take an explicit `containerEl` (verified directly: none of
+   them calls `wwTimeGroupCanvasEl()` internally) — a future analysis
+   page mounts the exact same markup/wiring/sync into its own
+   container and subscribes via the pre-existing `wwPlaybackOnTick()`
+   seam, without knowing `requestAnimationFrame`/`performance.now()`/
+   how the waveform's own cursor works, exactly the task's own target
+   shape ("bind playback controls; subscribe to current playback
+   time").
+3. **The waveform Time Group toolbar became a thin consumer**:
+   `wwWireTimeGroupToolbar()` now calls
+   `wwWirePlaybackControls(canvasEl, groupId)` (one line, replacing
+   ~40 lines of inline listener wiring);
+   `wwPlaybackSyncToolbarForGroup(groupId)` resolves the canvas and
+   delegates to `wwSyncPlaybackControls()`;
+   `wwPlaybackRenderTick()` resolves the canvas and delegates to
+   `wwUpdatePlaybackControlsTick()`. Zero duplicated timing/wiring/
+   seek/speed/range logic anywhere (task's own explicit "do not
+   duplicate" list) — confirmed by new static tests asserting exactly
+   one definition of each core primitive.
+4. **The Playback Controller itself is completely unchanged**: same
+   `wwPlayback` state shape, same workspace-time coordinate, same
+   one-active-Time-Group rule, same `wwDeriveTimeGroupBounds()` range,
+   same dedicated Playback Cursor overlay (still never touching
+   `ww.timeGroupCursorState`), same digital-state local lookup, same
+   lifecycle/reset hooks (`wwClearWorkspace()`/`wwSyncTimeGroupCanvases()`
+   still call `wwPlaybackReset()` exactly as before), same speed/seek
+   re-anchoring algorithms. This was a pure internal reorganization —
+   nothing about WHAT Playback does changed, only WHERE its controls
+   are reachable from and HOW the code is organized.
+
+**Tests**:
+- `browser-tests/playback.spec.js` — **zero changes** (confirmed via
+  `git diff`) — all 12 existing Slice 1/2 tests (Play/Pause/Restart/
+  one-active-group/workspace-reset/speed/seek) pass completely
+  unmodified after the refactor, the single strongest piece of
+  evidence this was a pure internal reorganization with no externally-
+  visible behavior change.
+- `backend/tests/test_frontend_playback.py` — revised (51 tests, net
+  +5 from the prior 46): the entire `TestMainMenuPosition` class (which
+  asserted the Playback menu/page EXISTS) was replaced with
+  `TestPlaybackIsNotATopLevelPage` (asserts none of it exists — no nav
+  button, no page section, no `"playback"` routing case, no status
+  renderer) and a new `TestPlaybackIsAReusableEmbeddableCapability`
+  class (asserts the markup factory is called exactly once per canvas,
+  the wire/sync/tick functions never resolve their own container
+  internally, the waveform toolbar delegates rather than
+  re-implementing, and there is exactly one definition of each core
+  timing/seek primitive). Every other existing test class (Playback
+  Cursor separation, workspace-clear reset, one-active-group, wall-
+  clock timing, canonical coordinate, digital-state locality, no
+  backend endpoint, consumer seam, speed/seek behavior) was updated
+  only where its own `_function_body()` boundary markers shifted due
+  to the internal reorganization (e.g. `wwPlaybackUpdateTimeReadout`
+  gained a `containerEl` parameter) — their actual ASSERTIONS are
+  unchanged, still verifying the exact same invariants Slices 1/2
+  established.
+- Full backend regression: **4218 passed**, 0 failed (up from 4213);
+  `git diff --check` clean.
+- Full Playwright suite (`browser-tests/`, 28 tests) run twice after
+  this refactor — 28/28 both times, no flakes observed this round.
+
+**Files changed**: `frontend/index.html` (navigation removal +
+control-surface extraction, no net new controls/behavior),
+`backend/tests/test_frontend_playback.py` (revised),
+`docs/project-memory/DECISIONS.md` (DEC-085 revision note — Point 1
+marked superseded, a full "owner UX correction" update appended, no
+new DEC created), `docs/project-memory/CURRENT_STATE.md`/`HANDOFF.md`
+(this update). **`browser-tests/playback.spec.js`: no changes.**
+
+**Backend changes: none.** Playback remains frontend/session state
+only.
+
+**Commit status**: see this task's own final report for the exact
+commit hash and push status.
+
+## What was done in the prior session — Event Playback Slice 2: Essential Playback Controls (speed + seek)
+
 **Event Playback — Slice 2: Essential Playback Controls (speed + seek)
 ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock)'s
 own 2026-09-11 same-day update).** Adds the two controls Slice 1 had

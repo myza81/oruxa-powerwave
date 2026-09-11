@@ -35,84 +35,150 @@ def _function_body(source: str, signature: str, next_signature: str) -> str:
     return source[start:end]
 
 
-class TestMainMenuPosition:
-    """Playback must be a top-level main-menu item, immediately after
-    Calculated Channels, per the owner-approved ordering (Calculated
-    Channels / Playback / a future Analysis item, not implemented yet)."""
+class TestPlaybackIsNotATopLevelPage:
+    """Owner UX correction (post-Slice-1-UAT, supersedes the original
+    Slice 1 "Playback is a top-level page" design, see DECISIONS.md
+    DEC-085's own revision note): Playback is a shared, reusable
+    workspace capability, never a standalone application page/menu
+    destination. No dedicated Playback menu item, page section, page-
+    routing case, or page-status renderer may exist anywhere."""
 
-    def test_playback_nav_button_exists(self):
+    def test_no_dedicated_playback_nav_button_exists(self):
         source = _source()
-        assert 'id="mainNavPlaybackBtn"' in source
-        assert 'id="pagePlayback"' in source
+        assert 'id="mainNavPlaybackBtn"' not in source
 
-    def test_playback_button_immediately_follows_calculated_channels_in_nav_list(self):
+    def test_no_dedicated_playback_page_section_exists(self):
         source = _source()
-        nav_list = _function_body(source, 'class="shell-nav-list"', 'class="shell-nav-bottom"')
-        cc_index = nav_list.index('id="mainNavCalculatedChannelsBtn"')
-        playback_index = nav_list.index('id="mainNavPlaybackBtn"')
-        tools_index = nav_list.index('title="Tools -- coming soon"')
-        assert cc_index < playback_index < tools_index, (
-            "Playback must sit between Calculated Channels and the (still-disabled) "
-            "Tools/future-Analysis placeholder items"
-        )
+        assert 'id="pagePlayback"' not in source
+        assert 'id="wwPlaybackPageStatus"' not in source
 
-    def test_no_analysis_menu_item_added_yet(self):
+    def test_shellSetCurrentPage_has_no_playback_case(self):
+        source = _source()
+        assert 'page === "playback"' not in source
+        assert 'page !== "playback"' not in source
+        assert 'shellSetCurrentPage("playback")' not in source
+        assert "function wwRenderPlaybackPage" not in source
+
+    def test_no_analysis_menu_item_exists_either(self):
+        """The task's own explicit boundary: removing the Playback page
+        must not be replaced by creating the future Analysis menu
+        prematurely."""
         source = _source()
         nav_list = _function_body(source, 'class="shell-nav-list"', 'class="shell-nav-bottom"')
         assert 'id="mainNavAnalysisBtn"' not in nav_list
-        assert '<span class="shell-nav-label">Analysis</span>' not in nav_list, (
-            "Slice 1 preserves ordering/direction for a future Analysis menu item -- "
-            "it must not actually create one yet"
-        )
+        assert '<span class="shell-nav-label">Analysis</span>' not in nav_list
 
-    def test_playback_page_routes_through_shellSetCurrentPage(self):
+    def test_calculated_channels_remains_the_last_real_nav_destination(self):
+        """Confirms the nav list reverts to its pre-Slice-1 shape: a real
+        destination (Calculated Channels) immediately followed by the
+        still-disabled Tools placeholder, with nothing Playback-specific
+        spliced between them any more."""
         source = _source()
-        assert 'page !== "playback"' in source
-        assert 'document.getElementById("pagePlayback").hidden = page !== "playback";' in source
-        assert 'setShellNavCurrent("mainNavPlaybackBtn", page === "playback");' in source
-        wiring = _function_body(
-            source, 'document.getElementById("mainNavPlaybackBtn")', "\n"
-        )
-        assert 'shellSetCurrentPage("playback")' in wiring
+        nav_list = _function_body(source, 'class="shell-nav-list"', 'class="shell-nav-bottom"')
+        cc_index = nav_list.index('id="mainNavCalculatedChannelsBtn"')
+        tools_index = nav_list.index('title="Tools -- coming soon"')
+        between = nav_list[cc_index:tools_index]
+        # Exactly one shell-nav-item (Calculated Channels itself) between
+        # its own start and the Tools placeholder -- nothing spliced in.
+        assert between.count('class="shell-nav-item"') == 1
 
-    def test_playback_page_is_not_a_configuration_dashboard(self):
-        """Owner instruction: keep this page minimal -- only status text,
-        never a second copy of the transport controls."""
+
+class TestPlaybackIsAReusableEmbeddableCapability:
+    """The architecture-correction's own positive requirement: a shared,
+    container-parameterized control surface -- markup/wiring/sync all
+    live in ONE place, never duplicated per mount point, never assuming
+    "the Time Group canvas" internally."""
+
+    def test_reusable_markup_factory_exists_and_is_called_once_per_canvas(self):
         source = _source()
-        page_body = _function_body(source, 'id="pagePlayback"', "<!-- CSV/Excel ingestion Slice 3")
-        assert "wwPlaybackPageStatus" in page_body
-        assert "ww-tg-playback-play-btn" not in page_body
-        assert "ww-tg-playback-restart-btn" not in page_body
-
-
-class TestTimeGroupToolbarControls:
-    """Everyday Play/Pause/Restart controls live on each Time Group's own
-    waveform toolbar, built once by wwCreateTimeGroupCanvasDom() and wired
-    once by wwWireTimeGroupToolbar() -- the same established per-canvas
-    pattern Reset Time View/Autoscale Y/Cursor mode already use."""
-
-    def test_toolbar_template_includes_playback_controls(self):
-        source = _source()
+        assert "function wwCreatePlaybackControlsHtml()" in source
         toolbar_fn = _function_body(
             source, "function wwCreateTimeGroupCanvasDom(groupId)", "function wwEnsureTimeGroupCanvasDom"
         )
-        assert "ww-tg-playback-restart-btn" in toolbar_fn
-        assert "ww-tg-playback-play-btn" in toolbar_fn
-        assert "ww-tg-playback-time-readout" in toolbar_fn
-        # Slice 2: fixed speed selector + seek scrubber now exist too.
-        assert "ww-tg-playback-speed-select" in toolbar_fn
-        assert "ww-tg-playback-seek-slider" in toolbar_fn
-        # Never free-entry speed -- a <select>, never a text/number input.
-        assert '<select class="ww-tg-playback-speed-select"' in toolbar_fn
+        assert toolbar_fn.count("const playbackControlsHtml = wwCreatePlaybackControlsHtml();") == 1
+        assert "playbackControlsHtml.transportHtml" in toolbar_fn
+        assert "playbackControlsHtml.seekRowHtml" in toolbar_fn
+        # The markup itself (button/select/input tags) no longer lives
+        # inline in the canvas template -- only the factory call + its
+        # two returned-fragment references do.
+        assert '<button type="button" class="secondary ww-tg-playback-restart-btn"' not in toolbar_fn
 
-    def test_toolbar_wiring_binds_both_buttons(self):
+    def test_wire_sync_and_tick_functions_are_container_parameterized(self):
+        """Never an internal wwTimeGroupCanvasEl(groupId) lookup inside
+        the reusable functions themselves -- only their Time-Group-
+        specific thin wrapper is allowed to do that resolution."""
+        source = _source()
+        for signature, next_signature in [
+            ("function wwWirePlaybackControls(containerEl, groupId)", "function wwSyncPlaybackControls"),
+            ("function wwSyncPlaybackControls(containerEl, groupId)", "function wwUpdatePlaybackControlsTick"),
+            ("function wwUpdatePlaybackControlsTick(containerEl, groupId)", "function wwPlaybackUpdateTimeReadout"),
+        ]:
+            fn = _function_body(source, signature, next_signature)
+            assert "wwTimeGroupCanvasEl(" not in fn, f"{signature} must not resolve its own container"
+
+    def test_waveform_toolbar_delegates_to_the_reusable_wiring_function(self):
         source = _source()
         wiring_fn = _function_body(
             source, "function wwWireTimeGroupToolbar(canvasEl, groupId)", "function wwWireSplitMenuOutsideClickDismissal"
         )
+        assert "wwWirePlaybackControls(canvasEl, groupId);" in wiring_fn
+        # No duplicated inline listener wiring left behind.
+        assert 'querySelector(".ww-tg-playback-restart-btn")' not in wiring_fn
+        assert 'querySelector(".ww-tg-playback-speed-select")' not in wiring_fn
+
+    def test_time_group_specific_sync_and_tick_are_thin_delegating_wrappers(self):
+        source = _source()
+        sync_fn = _function_body(source, "function wwPlaybackSyncToolbarForGroup(groupId)", "function wwPlaybackSetSpeed")
+        assert "wwSyncPlaybackControls(canvasEl, groupId);" in sync_fn
+        # No re-implemented play/pause-label or readout/slider logic here.
+        assert "textContent = isPlaying" not in sync_fn
+
+        tick_fn = _function_body(source, "function wwPlaybackRenderTick()", "function wwPlaybackPlay")
+        assert "wwUpdatePlaybackControlsTick(canvasEl" in tick_fn
+
+    def test_no_duplicate_timing_or_seek_logic_outside_the_one_engine(self):
+        """The task's own explicit "Do NOT duplicate: timing logic / rAF
+        loops / seek logic / speed logic / playback state / range
+        calculation" -- confirmed by there being exactly ONE definition
+        of each core engine primitive, and exactly one place a seek
+        slider's own `input`/`change` listeners are attached (inside the
+        one reusable wiring function)."""
+        source = _source()
+        assert source.count("function wwPlaybackTick(nowMs)") == 1
+        assert source.count("function wwPlaybackHandleSeekInput(groupId, rawTime)") == 1
+        assert source.count("wwPlaybackHandleSeekInput(groupId, parseFloat(seekSlider.value))") == 1
+        assert source.count("wwPlaybackHandleSeekCommit(groupId, parseFloat(seekSlider.value))") == 1
+
+
+class TestTimeGroupToolbarControls:
+    """Everyday Play/Pause/Restart/Speed/Seek controls live on each Time
+    Group's own waveform toolbar -- markup owned by
+    wwCreatePlaybackControlsHtml(), wiring owned by
+    wwWirePlaybackControls(), both called (never re-implemented) from
+    wwCreateTimeGroupCanvasDom()/wwWireTimeGroupToolbar() -- the same
+    established per-canvas pattern Reset Time View/Autoscale Y/Cursor
+    mode already use for their OWN controls."""
+
+    def test_reusable_markup_includes_every_control(self):
+        source = _source()
+        markup_fn = _function_body(source, "function wwCreatePlaybackControlsHtml()", "function wwPlaybackState")
+        assert "ww-tg-playback-restart-btn" in markup_fn
+        assert "ww-tg-playback-play-btn" in markup_fn
+        assert "ww-tg-playback-time-readout" in markup_fn
+        assert "ww-tg-playback-speed-select" in markup_fn
+        assert "ww-tg-playback-seek-slider" in markup_fn
+        # Never free-entry speed -- a <select>, never a text/number input.
+        assert '<select class="ww-tg-playback-speed-select"' in markup_fn
+        assert 'type="number"' not in markup_fn
+
+    def test_reusable_wiring_binds_every_control(self):
+        source = _source()
+        wiring_fn = _function_body(
+            source, "function wwWirePlaybackControls(containerEl, groupId)", "function wwSyncPlaybackControls"
+        )
         assert "wwPlaybackRestart(groupId)" in wiring_fn
         assert "wwPlaybackHandlePlayPauseClick(groupId)" in wiring_fn
-        assert "wwPlaybackHandleSpeedChange(playbackSpeedSelect)" in wiring_fn
+        assert "wwPlaybackHandleSpeedChange(speedSelect)" in wiring_fn
         assert "wwPlaybackHandleSeekInput(groupId" in wiring_fn
         assert "wwPlaybackHandleSeekCommit(groupId" in wiring_fn
 
@@ -249,7 +315,9 @@ class TestCanonicalTimeCoordinateIsWorkspaceTime:
         already use, so display automatically follows whatever Time
         Mode/t0 is active without any new conversion logic."""
         source = _source()
-        fn = _function_body(source, "function wwPlaybackUpdateTimeReadout(groupId)", "function wwUpdatePlaybackCursorOverlay")
+        fn = _function_body(
+            source, "function wwPlaybackUpdateTimeReadout(containerEl, groupId)", "function wwPlaybackSyncToolbarForGroup"
+        )
         assert "wwFormatCursorPointTime(wwPlayback.currentTime, groupId)" in fn
 
     def test_play_and_restart_source_bounds_from_the_existing_time_group_bounds_function(self):
@@ -268,7 +336,7 @@ class TestDigitalStateIsResolvedLocally:
         )
         assert "fetch(" not in fn
         fn2 = _function_body(
-            source, "function wwPlaybackDigitalStateFor(sourceId, channelName, time)", "function wwRenderPlaybackPage"
+            source, "function wwPlaybackDigitalStateFor(sourceId, channelName, time)", "function wwStickyRulerElapsedUnit"
         )
         assert "fetch(" not in fn2
         assert "ww.digitalDisplayed.get" in fn2
@@ -347,15 +415,13 @@ class TestSpeedControl:
 
     def test_speed_selector_is_a_select_not_free_entry(self):
         source = _source()
-        toolbar_fn = _function_body(
-            source, "function wwCreateTimeGroupCanvasDom(groupId)", "function wwEnsureTimeGroupCanvasDom"
-        )
-        select_html = _function_body(toolbar_fn, '<select class="ww-tg-playback-speed-select"', "</select>")
+        markup_fn = _function_body(source, "function wwCreatePlaybackControlsHtml()", "function wwPlaybackState")
+        select_html = _function_body(markup_fn, '<select class="ww-tg-playback-speed-select"', "</select>")
         for option in ('value="0.25"', 'value="0.5"', 'value="1" selected', 'value="2"', 'value="4"'):
             assert option in select_html
         # No free-entry alternative (a text/number input) anywhere nearby.
-        assert 'type="number"' not in toolbar_fn
-        assert 'class="ww-tg-playback-speed-input"' not in toolbar_fn
+        assert 'type="number"' not in markup_fn
+        assert 'class="ww-tg-playback-speed-input"' not in markup_fn
 
     def test_set_speed_rejects_unsupported_values(self):
         source = _source()
@@ -460,26 +526,31 @@ class TestSeekBehavior:
     def test_seek_slider_wired_with_input_and_change_events(self):
         source = _source()
         wiring_fn = _function_body(
-            source, "function wwWireTimeGroupToolbar(canvasEl, groupId)", "function wwWireSplitMenuOutsideClickDismissal"
+            source, "function wwWirePlaybackControls(containerEl, groupId)", "function wwSyncPlaybackControls"
         )
         assert '.addEventListener("input", ()' in wiring_fn
         assert '.addEventListener("change", ()' in wiring_fn
 
     def test_restart_resets_current_time_to_start_and_syncs_the_seek_slider(self):
         source = _source()
-        restart_fn = _function_body(source, "function wwPlaybackRestart(groupId)", "function wwPlaybackSyncToolbarForGroup")
+        restart_fn = _function_body(source, "function wwPlaybackRestart(groupId)", "function wwWirePlaybackControls")
         assert "wwPlayback.currentTime = bounds.start;" in restart_fn
         assert "wwPlaybackSyncToolbarForGroup(groupId);" in restart_fn
-        # wwPlaybackSyncToolbarForGroup() itself is what actually updates
-        # the seek slider's bounds/value -- verified once, generically,
+        # wwPlaybackSyncToolbarForGroup() delegates to the reusable
+        # wwSyncPlaybackControls(), which is what actually updates the
+        # seek slider's bounds/value -- verified once, generically,
         # rather than duplicated in every caller.
-        sync_fn = _function_body(source, "function wwPlaybackSyncToolbarForGroup(groupId)", "function wwPlaybackUpdateTimeReadout")
-        assert "wwPlaybackSyncSeekSliderBounds(groupId);" in sync_fn
-        assert "wwPlaybackUpdateSeekSlider(groupId);" in sync_fn
+        sync_fn = _function_body(
+            source, "function wwSyncPlaybackControls(containerEl, groupId)", "function wwUpdatePlaybackControlsTick"
+        )
+        assert "wwPlaybackSyncSeekSliderBounds(containerEl, groupId);" in sync_fn
+        assert "wwPlaybackUpdateSeekSlider(containerEl, groupId);" in sync_fn
 
     def test_seek_slider_value_never_fights_an_active_user_drag(self):
         source = _source()
-        fn = _function_body(source, "function wwPlaybackUpdateSeekSlider(groupId)", "function wwUpdatePlaybackCursorOverlay")
+        fn = _function_body(
+            source, "function wwPlaybackUpdateSeekSlider(containerEl, groupId)", "function wwUpdatePlaybackCursorOverlay"
+        )
         assert "document.activeElement !== sliderEl" in fn
 
 

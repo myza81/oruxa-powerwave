@@ -12667,13 +12667,28 @@ existing calculated channel.
 ## DEC-085 — Event Playback is a top-level capability with ONE authoritative, frontend-only Playback Controller owning workspace-time for at most one active Time Group at a time; future analysis overlays must consume it, never build an independent playback clock
 
 Date: 2026-09-11
-Status: Approved — Slice 1 (Core Playback Engine) implemented
+Status: Approved — Slice 1/2 implemented; **Point 1 below (main-menu
+placement) is REVISED by the 2026-09-11 owner UX correction at the
+bottom of this entry — read that update before relying on Point 1.**
 Source: owner-approved Playback Architecture & Design Audit, followed by
 explicit owner decisions resolving every open question the audit raised
 for a first implementation slice ("Owner decisions resolved for Slice
 1" in that task's own prompt).
 
-Decision:
+> **⚠ Point 1 ("Main menu") immediately below reflects this decision's
+> ORIGINAL, now-superseded design** (Playback as a top-level main-menu
+> page). Following owner UAT and workflow discussion, the owner
+> reversed this specific aspect: **Playback is NOT a standalone
+> top-level page** — it is a shared, reusable workspace capability
+> meant to be embedded into future engineering-analysis pages. See the
+> "Update (2026-09-11) — owner UX correction" section at the end of
+> this entry for the full, current, authoritative statement. Points
+> 2-8 below (the Playback Controller architecture itself) are
+> UNCHANGED and remain fully in force — only the navigation/mounting
+> decision in Point 1 was reversed.
+
+Decision (as originally approved — Point 1 is superseded, see the
+correction at the end of this entry):
 
 **1. Main menu.** `Playback` is a new top-level main-menu item,
 immediately after `Calculated Channels`:
@@ -12840,6 +12855,94 @@ Files: `frontend/index.html` (speed/seek engine + toolbar markup/CSS),
 test_frontend_playback.py` (+16 tests, 2 Slice-1-era tests updated to
 match the new persist-across-Play/no-longer-absent reality). No backend
 changes; no persistence.
+
+**Update (2026-09-11) — owner UX correction: Playback is a shared,
+reusable WORKSPACE CAPABILITY, never a standalone top-level page. This
+REVISES Point 1 ("Main menu") above; every other point (2-8) is
+unchanged and stays in force.** Following owner UAT of Slices 1/2
+(Play/Pause/Resume/Restart/speed/seek all signed off as working) and
+subsequent workflow discussion, the owner reversed the ORIGINAL Point-1
+design. This is a deliberate architecture correction, not a bug fix —
+nothing about the Playback Controller's own behavior changed; only
+*where it is reachable from* changed.
+
+**What changed:**
+- **Removed**: the dedicated top-level `Playback` main-menu item
+  (`#mainNavPlaybackBtn`), the dedicated `#pagePlayback` status page,
+  the `"playback"` case in `shellSetCurrentPage()`, and its own status
+  renderer (`wwRenderPlaybackPage()`, deleted outright — nothing reads
+  it any more). No `Analysis` menu item was created in its place
+  either — Point 1's original "immediately after Calculated Channels,
+  preceding a future Analysis item" framing no longer applies to
+  anything, since there is no Playback menu item left to be positioned
+  relative to Calculated Channels.
+- **The main navigation now represents engineering tasks/destinations
+  only** (Recordings, Waveform, Table, Calculated Channels) — Playback
+  is infrastructure the workspace provides, never a destination of its
+  own, matching the owner's own stated principle for what belongs in
+  main navigation.
+- **The waveform Time Group toolbar remains** (Restart/Play-Pause/
+  Speed/Seek/current-time, exactly as Slices 1/2 shipped and UAT
+  already passed) — but is now explicitly documented as ONE consumer/
+  mount point of a shared capability, never Playback's owner. Nothing
+  about its own behavior, DOM, or CSS classes changed.
+- **New reusable control-surface API** (`frontend/index.html`, near
+  `wwClearWorkspace()`): `wwCreatePlaybackControlsHtml()` (markup
+  factory, returns `{transportHtml, seekRowHtml}`),
+  `wwWirePlaybackControls(containerEl, groupId)` (event wiring),
+  `wwSyncPlaybackControls(containerEl, groupId)` (full sync on a state
+  transition), `wwUpdatePlaybackControlsTick(containerEl, groupId)`
+  (the cheap per-tick subset) — all four take an explicit `containerEl`
+  parameter (never an internal "the Time Group canvas" lookup), so any
+  future page's own container can be wired/synced/ticked by calling
+  the SAME functions. The waveform toolbar's own
+  `wwWireTimeGroupToolbar()`/`wwPlaybackSyncToolbarForGroup()`/
+  `wwPlaybackRenderTick()` are now thin wrappers that resolve `this
+  group's own canvas` and delegate to these — zero duplicated timing/
+  wiring/sync logic, per the owner's own explicit "do not duplicate"
+  instruction.
+- **The Playback Controller itself (`wwPlayback`, `wwPlaybackState()`/
+  `wwPlaybackOnTick()`/`wwPlaybackNotifyTick()`, the workspace-time
+  coordinate, the one-active-Time-Group rule, the DEC-037 range
+  function, the dedicated Playback Cursor overlay, the digital-state
+  local lookup, the lifecycle/reset hooks) is COMPLETELY UNCHANGED** —
+  confirmed by the full existing Slice 1/2 Playwright suite (12 tests)
+  passing unmodified after this refactor, and by the full backend
+  regression passing unchanged (Playback remains frontend-only; zero
+  backend files touched).
+
+**Why**: The owner's own stated reasoning — Playback's real purpose is
+to let a future engineering-analysis page (Distance Protection,
+Overcurrent, Phasors, Differential) drive a moving operating point from
+event time, not to be a destination an engineer navigates to for its
+own sake. A standalone top-level page invited exactly the wrong mental
+model (Playback as its own feature) and the wrong architecture
+(pressure to duplicate its transport controls per future analysis page
+instead of mounting one shared surface). Making Playback's reusability
+explicit at the CODE level now — before any analysis page exists —
+prevents the class of duplication the owner explicitly warned against
+in the original audit (DEC-085's own Point 2).
+
+**Alternatives considered**: Leaving the dedicated Playback page in
+place alongside future embedded mounts (page = advanced/full controls,
+embedded = compact) — rejected by the owner as unnecessary complexity;
+one control surface, multiple mount points, is simpler and was already
+the direction Slice 2's own toolbar controls were heading. Creating the
+`Analysis` menu now as the Playback page's replacement destination —
+explicitly rejected by the owner ("Do not create the future Analysis
+menu yet unless it already exists for another reason").
+
+**Impact**: `frontend/index.html` (navigation removal + control-surface
+extraction, no net new controls/behavior); `backend/tests/
+test_frontend_playback.py` (structural tests revised: removed/replaced
+every assertion that a dedicated Playback menu/page exists, added
+assertions that none exists and that the reusable control-surface API
+is genuinely container-parameterized and non-duplicated).
+`browser-tests/playback.spec.js` unchanged (0 diff) — the full existing
+Playwright coverage passing without modification is itself the
+strongest evidence this was a pure internal refactor with zero
+externally-visible behavior change to Play/Pause/Resume/Restart/speed/
+seek. No backend changes; no persistence.
 
 ---
 

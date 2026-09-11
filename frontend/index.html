@@ -5927,21 +5927,22 @@
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><path d="M3 3h5v5H3z"/><circle cx="13.5" cy="5.5" r="2.5"/><path d="M4.5 15 8 9M13.5 9v6M11 12h5"/></svg></span>
                     <span class="shell-nav-label">Calculated Channels</span>
                 </button>
-                <!-- Event Playback Slice 1: placed immediately after
-                     Calculated Channels per owner direction, preceding a
-                     future "Analysis" top-level item (not implemented
-                     yet -- this slice only preserves the ordering/
-                     direction for it). Same shellSetCurrentPage()
-                     "hide, don't destroy" mechanism every other page
-                     already uses. The everyday Play/Pause/Restart
-                     transport controls live on each Time Group's own
-                     waveform toolbar (wwCreateTimeGroupCanvasDom()), not
-                     on this page -- this page only explains/shows
-                     current playback status (see #pagePlayback below). -->
-                <button type="button" class="shell-nav-item" id="mainNavPlaybackBtn" title="Playback">
-                    <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="7"/><path d="M7.2 6 12.5 9 7.2 12z" fill="currentColor" stroke="none"/></svg></span>
-                    <span class="shell-nav-label">Playback</span>
-                </button>
+                <!-- Owner UX correction (post-Slice-1-UAT, supersedes the
+                     Slice 1 comment this replaces): Playback is NOT a
+                     standalone top-level destination -- it is a shared
+                     reusable workspace capability (the ONE wwPlayback
+                     Controller, see its own declaration comment near
+                     wwClearWorkspace()) meant to be embedded into future
+                     engineering-analysis pages (Distance/Overcurrent/
+                     Phasors/Differential, none implemented yet), not a
+                     page of its own. No #mainNavPlaybackBtn/#pagePlayback
+                     exist any more -- the everyday Play/Pause/Restart/
+                     speed/seek transport still lives on each Time Group's
+                     own waveform toolbar (wwCreateTimeGroupCanvasDom()),
+                     which is simply ONE consumer/mount point of the
+                     shared wwPlaybackControlsHtml()/wwWirePlaybackControls()/
+                     wwSyncPlaybackControls() surface, never Playback's
+                     owner. See DECISIONS.md DEC-085's own revision note. -->
                 <button type="button" class="shell-nav-item" disabled title="Tools -- coming soon">
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><circle cx="6" cy="6" r="3"/><line x1="8.1" y1="8.1" x2="15" y2="15"/></svg></span>
                     <span class="shell-nav-label">Tools</span>
@@ -6639,29 +6640,6 @@
                     <p class="empty-state" id="wwCcPreviewEmpty">Select a calculated channel to preview its waveform.</p>
                     <div id="wwCcPreviewPanels" hidden></div>
                     <div class="ww-cc-preview-info-strip" id="wwCcPreviewInfoStrip" hidden></div>
-                </section>
-            </section>
-
-            <!-- Event Playback Slice 1: a sibling of the other top-level
-                 pages, toggled via shellSetCurrentPage() exactly like
-                 them. Deliberately minimal (owner instruction: "do NOT
-                 turn this page into a complex configuration dashboard")
-                 -- it only explains/shows current playback status. The
-                 authoritative Playback Controller state lives in
-                 wwPlayback (see its own declaration/comment below,
-                 near wwClearWorkspace()); everyday Play/Pause/Restart
-                 controls live on each Time Group's own waveform toolbar,
-                 never on this page. -->
-            <section id="pagePlayback" aria-label="Playback" hidden>
-                <div class="recordings-header">
-                    <div>
-                        <h2>Playback</h2>
-                        <p class="ww-cc-subtitle">Replay one Time Group's recording through time. Use Play/Restart on that Time Group's own waveform toolbar -- this page only shows current playback status.</p>
-                    </div>
-                </div>
-                <section class="panel">
-                    <h3>Playback status</h3>
-                    <p id="wwPlaybackPageStatus">No Time Group is currently playing.</p>
                 </section>
             </section>
 
@@ -8953,13 +8931,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // -- reached only from a Recording Events row, never from
             // permanent navigation (no #mainNav*Btn exists for it, so no
             // setShellNavCurrent() call below needs updating).
-            // Event Playback Slice 1: a FIFTH page, "playback" -- a real
-            // #mainNav*Btn exists for it (immediately after Calculated
-            // Channels), so it DOES need its own setShellNavCurrent()
-            // call below.
+            // Owner UX correction (post-Slice-1-UAT): Playback is NOT a
+            // page -- no "playback" case was ever added to this
+            // whitelist as a permanent fixture; Slice 1 briefly added
+            // one, now reverted (see the Main Sidebar Menu's own comment
+            // for the full reasoning).
             if (
                 page !== "waveform" && page !== "recordings" &&
-                page !== "calculated-channels" && page !== "data-preparation" && page !== "playback"
+                page !== "calculated-channels" && page !== "data-preparation"
             ) return;
             const wasWaveform = shell.currentPage === "waveform";
             shell.currentPage = page;
@@ -8968,7 +8947,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("pageRecordings").hidden = page !== "recordings";
             document.getElementById("pageCalculatedChannels").hidden = page !== "calculated-channels";
             document.getElementById("pageDataPreparation").hidden = page !== "data-preparation";
-            document.getElementById("pagePlayback").hidden = page !== "playback";
             // Phase 3B-UAT8 fix: the active-state CSS rule
             // (`.shell-nav-item[aria-current="page"]`) always expected
             // the token "page" (the ARIA APG convention for a current
@@ -8986,7 +8964,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             setShellNavCurrent("mainNavRecordingsBtn", page === "recordings");
             setShellNavCurrent("mainNavCalculatedChannelsBtn", page === "calculated-channels");
             setShellNavCurrent("mainNavTableBtn", page === "waveform" && shell.activeView === "table");
-            setShellNavCurrent("mainNavPlaybackBtn", page === "playback");
 
             // The (responsive-only) "Sources" drawer toggle is scoped to
             // the waveform page specifically -- there is no Workspace
@@ -9026,20 +9003,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // this page was last hidden (e.g. a channel added/removed
                 // in Waveform).
                 wwRenderCalculatedChannelsPage();
-            }
-            if (page === "playback") {
-                // Event Playback Slice 1: cheap re-render from wwPlayback's
-                // own already-held state (never a fetch -- Playback is
-                // frontend/session state only). This page does not
-                // subscribe to per-tick updates (wwPlaybackOnTick) --
-                // deliberately: it is a status/entry page, not the live
-                // transport (that lives on the waveform toolbar, which DOES
-                // update every tick), so a snapshot on page-enter plus a
-                // re-render on every Play/Pause/Restart/reset transition
-                // (see those functions' own wwRenderPlaybackPage() calls)
-                // is sufficient without adding a live 60fps consumer for a
-                // rarely-visited configuration-style page.
-                wwRenderPlaybackPage();
             }
         }
 
@@ -18618,6 +18581,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const section = document.createElement("section");
             section.className = "ww-time-group-canvas";
             section.dataset.timeGroupId = groupId;
+            // Owner UX correction: this canvas's own toolbar is ONE mount
+            // point of the shared, reusable Playback control-surface
+            // markup (wwCreatePlaybackControlsHtml(), near
+            // wwClearWorkspace()) -- never a Time-Group-canvas-specific
+            // copy of it. A future embedded-analysis page calls the SAME
+            // function for its own markup.
+            const playbackControlsHtml = wwCreatePlaybackControlsHtml();
             section.innerHTML =
                 // Sticky-toolbar UX task: header + toolbar-row share ONE
                 // sticky wrapper (never independently sticky) so they can
@@ -18678,32 +18648,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<button type="button" class="ww-icon-btn ww-tg-sync-btn" title="Synchronize Sources in this Time Group" aria-label="Synchronize Sources in this Time Group">' +
                         '<span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="2.5" y1="6" x2="9" y2="6" stroke-width="1.3"/><polyline points="6.5,3.5 9,6 6.5,8.5" stroke-width="1.3"/><line x1="15.5" y1="12" x2="9" y2="12" stroke-width="1.3"/><polyline points="11.5,9.5 9,12 11.5,14.5" stroke-width="1.3"/></svg></span>' +
                     '</button>' +
-                    // Event Playback Slice 1: minimal transport for THIS
-                    // Time Group only -- Restart (jump to bounds.start)
-                    // and one Play/Pause toggle. Pressing Play here makes
-                    // this group the ONE active Playback Controller group
-                    // (wwPlaybackPlay(groupId), see its own comment for
-                    // the single-rAF-loop/group-switch contract).
-                    '<button type="button" class="secondary ww-tg-playback-restart-btn" title="Restart playback for this Time Group (jump to start)" aria-label="Restart playback for this Time Group">Restart</button>' +
-                    '<button type="button" class="secondary ww-tg-playback-play-btn" aria-pressed="false" title="Play this Time Group" aria-label="Play this Time Group">Play</button>' +
-                    // Slice 2: fixed playback-speed selector -- ONE shared
-                    // wwPlayback.speed value (never per-group), see
-                    // wwPlaybackSetSpeed()'s own comment. Options seeded
-                    // here at their DEFAULT (1x) selected; the real current
-                    // value is applied immediately after the toolbar-
-                    // wiring pass runs for this canvas, from
-                    // wwPlayback.speed itself -- so a canvas created AFTER
-                    // the engineer has already chosen e.g. 2x starts in
-                    // sync, never reset to 1x just because it is a fresh
-                    // DOM element.
-                    '<select class="ww-tg-playback-speed-select" title="Playback speed" aria-label="Playback speed">' +
-                        '<option value="0.25">0.25×</option>' +
-                        '<option value="0.5">0.5×</option>' +
-                        '<option value="1" selected>1×</option>' +
-                        '<option value="2">2×</option>' +
-                        '<option value="4">4×</option>' +
-                    '</select>' +
-                    '<span class="ww-tg-playback-time-readout" aria-label="Current playback time">—</span>' +
+                    // This Time Group's own mount of the shared,
+                    // reusable Playback transport cluster (Restart/Play/
+                    // Speed/current-time) -- markup owned by
+                    // wwCreatePlaybackControlsHtml(), wired by
+                    // wwWirePlaybackControls(), synced by
+                    // wwSyncPlaybackControls() (all near
+                    // wwClearWorkspace()). This canvas is simply ONE
+                    // consumer of the shared wwPlayback Controller, never
+                    // its owner -- pressing Play here makes this group
+                    // the active Playback Controller group
+                    // (wwPlaybackPlay(groupId)), but a future embedded-
+                    // analysis page mounts the exact same controls the
+                    // exact same way.
+                    playbackControlsHtml.transportHtml +
                 '</div>' +
                 // Owner UX correction: the numerical A-B/Δt readout is
                 // back here (its pre-DEC-066 home) as this row's own
@@ -18718,23 +18676,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<span class="ww-tg-cursor-readout-item"><span class="ww-tg-cursor-readout-label">&Delta;t</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--delta">—</span></span>' +
                 '</div>' +
                 '</div>' +
-                // Slice 2: the seek scrubber -- a dedicated FULL-WIDTH row,
-                // sibling of `.ww-tg-toolbar-row` above (kept out of that
-                // already-packed flex row), still inside the SAME
+                // This Time Group's own mount of the shared, reusable
+                // Playback seek-scrubber row -- a dedicated FULL-WIDTH
+                // row, sibling of `.ww-tg-toolbar-row` above (kept out of
+                // that already-packed flex row), still inside the SAME
                 // `.ww-tg-sticky-top` wrapper so it stays visible while
-                // scrolling, like the transport buttons. `min`/`max` are
-                // placeholders here (0/1) -- the real Time Group bounds
-                // are applied by wwPlaybackSyncSeekSliderBounds() the
-                // first time this canvas is wired, and again on every
-                // later playback state transition. `step="any"` allows
-                // continuous
-                // (non-integer-second) seeking -- Slice 2 does not need
-                // sample-aligned granularity (task: "do not perform analog
-                // interpolation as part of Playback" -- this is a
-                // TIME-selection control only, never a data operation).
-                '<div class="ww-tg-playback-seek-row">' +
-                    '<input type="range" class="ww-tg-playback-seek-slider" min="0" max="1" step="any" value="0" aria-label="Seek playback position">' +
-                '</div>' +
+                // scrolling, like the transport buttons. See
+                // wwCreatePlaybackControlsHtml()'s own comment for why
+                // this is a SEPARATE fragment from the transport cluster
+                // above (this canvas embeds both in its own two rows; a
+                // future mount point is free to arrange them differently).
+                playbackControlsHtml.seekRowHtml +
                 '</div>' +
                 '<div class="ww-tg-panels"></div>' +
                 '<div class="ww-tg-digital-region" hidden>' +
@@ -23315,46 +23267,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const syncBtn = canvasEl.querySelector(".ww-tg-sync-btn");
             if (syncBtn) syncBtn.addEventListener("click", () => wwOpenSyncModal(groupId));
 
-            // Event Playback Slice 1: this Time Group's own transport --
-            // see wwPlaybackRestart()/wwPlaybackHandlePlayPauseClick()'s
-            // own comments (near wwClearWorkspace()) for the full
-            // Play/Pause/Restart contract.
-            const playbackRestartBtn = canvasEl.querySelector(".ww-tg-playback-restart-btn");
-            if (playbackRestartBtn) playbackRestartBtn.addEventListener("click", () => wwPlaybackRestart(groupId));
-            const playbackPlayBtn = canvasEl.querySelector(".ww-tg-playback-play-btn");
-            if (playbackPlayBtn) playbackPlayBtn.addEventListener("click", () => wwPlaybackHandlePlayPauseClick(groupId));
-
-            // Slice 2: speed selector -- a fresh canvas's own <select>
-            // starts at its own default (1x); immediately syncing it to
-            // wwPlayback's CURRENT shared value here (not just its static
-            // HTML default) means a canvas created after the engineer has
-            // already chosen e.g. 2x elsewhere starts in sync, never
-            // silently showing 1x for a brand-new Time Group.
-            const playbackSpeedSelect = canvasEl.querySelector(".ww-tg-playback-speed-select");
-            if (playbackSpeedSelect) {
-                playbackSpeedSelect.value = String(wwPlayback.speed);
-                playbackSpeedSelect.addEventListener("change", () => wwPlaybackHandleSpeedChange(playbackSpeedSelect));
-            }
-
-            // Slice 2: seek scrubber -- native `input` (continuous, during
-            // drag/keyboard) + `change` (once, on release/commit). See
-            // wwPlaybackHandleSeekInput()/Commit()'s own comments (near
-            // wwClearWorkspace()) for the full suspend-during-drag/
-            // re-anchor-and-resume-on-release contract. Bounds are synced
-            // once here (a group's own bounds are already known -- even
-            // zero-channel-displayed sources establish ww.sourceBounds --
-            // as soon as this canvas exists) and again on every later
-            // playback state transition (wwPlaybackSyncToolbarForGroup()).
-            const playbackSeekSlider = canvasEl.querySelector(".ww-tg-playback-seek-slider");
-            if (playbackSeekSlider) {
-                wwPlaybackSyncSeekSliderBounds(groupId);
-                playbackSeekSlider.addEventListener("input", () =>
-                    wwPlaybackHandleSeekInput(groupId, parseFloat(playbackSeekSlider.value))
-                );
-                playbackSeekSlider.addEventListener("change", () =>
-                    wwPlaybackHandleSeekCommit(groupId, parseFloat(playbackSeekSlider.value))
-                );
-            }
+            // This Time Group canvas is simply ONE mount point of the
+            // shared, reusable Playback control surface -- wiring is
+            // delegated entirely to wwWirePlaybackControls() (near
+            // wwClearWorkspace()), the SAME function any future embedded-
+            // analysis page's own mount point calls too. Nothing
+            // Time-Group-specific happens here beyond passing this
+            // canvas as the container and this group as the target.
+            wwWirePlaybackControls(canvasEl, groupId);
 
             for (const action of ["in", "out"]) {
                 const wrap = canvasEl.querySelector(action === "in" ? ".ww-tg-zoom-in-split" : ".ww-tg-zoom-out-split");
@@ -28807,7 +28727,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // ==================================================================
-        // Event Playback -- Slice 1 (Core Playback Engine)
+        // Event Playback -- shared, reusable workspace capability
+        //
+        // Owner UX correction (post-Slice-1-UAT): Playback is NOT a
+        // standalone application page/destination -- it is a shared
+        // service the workspace provides, meant to be EMBEDDED into
+        // future engineering-analysis pages (Distance Protection,
+        // Overcurrent, Phasors, Differential, an impedance locus, none
+        // implemented yet) so each can drive a moving operating point
+        // from the SAME playback time, never build its own independent
+        // clock. The dedicated top-level "Playback" menu/page this
+        // module originally shipped with has been retired -- see
+        // DECISIONS.md DEC-085's own revision note for the full
+        // reasoning. Nothing about the engine below changed for that
+        // removal; only its OWN former page-status renderer
+        // (wwRenderPlaybackPage(), now deleted) and its main-nav entry
+        // are gone.
         //
         // ONE authoritative Playback Controller (wwPlayback below), owning
         // the current playback time for AT MOST ONE active Time Group at a
@@ -28829,21 +28764,41 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Range: the active Time Group's own full union extent --
         // wwDeriveTimeGroupBounds(groupId), the exact same DEC-037 bounds
         // function Reset Time View already uses. Never the current visible
-        // range, never an explicit sub-range (both explicitly out of scope
-        // this slice).
+        // range, never an explicit sub-range.
         //
         // Playback Cursor is a DEDICATED overlay, structurally and in state
         // entirely separate from Cursor A/B (wwTimeGroupCursorState is
         // never read or written by anything below) -- see
         // wwUpdatePlaybackCursorOverlay()/the `.ww-tg-playback-cursor-*` CSS
-        // (near `.ww-tg-cursor-overlay`) for the rendering side.
+        // (near `.ww-tg-cursor-overlay`) for the rendering side. It is only
+        // ONE visual consumer of the shared clock -- the waveform's own
+        // way of showing "when" -- never Playback's main purpose; a future
+        // analysis page's moving operating point is just as valid a
+        // consumer, reading the SAME wwPlayback.currentTime.
         //
         // Timing: requestAnimationFrame + a performance.now() wall-clock
         // anchor (wwPlaybackTick() below) -- current time is RECOMPUTED
         // fresh from the anchor on every frame, never accumulated by adding
-        // a small per-frame delta (which drifts). Speed is fixed at 1x this
-        // slice (the `speed` field exists on wwPlayback for the state
-        // shape's own forward compatibility, but no UI sets it yet).
+        // a small per-frame delta (which drifts). Speed is one of
+        // WW_PLAYBACK_SPEEDS (Slice 2).
+        //
+        // Reusable control surface: wwCreatePlaybackControlsHtml()/
+        // wwWirePlaybackControls()/wwSyncPlaybackControls()/
+        // wwUpdatePlaybackControlsTick() (below) are the mountable
+        // Restart/Play/Speed/seek/current-time widget -- container-
+        // parameterized, never hardcoded to "the Time Group canvas"
+        // internally. The waveform Time Group toolbar
+        // (wwCreateTimeGroupCanvasDom()/wwWireTimeGroupToolbar()) is
+        // simply the FIRST, currently-only consumer/mount point of this
+        // surface, not its owner -- a future analysis page mounts the
+        // exact same markup/wiring/sync into its own container and
+        // subscribes via wwPlaybackOnTick() for its own moving point,
+        // without needing to know requestAnimationFrame/performance.now()/
+        // how the waveform's own cursor works. Analysis input eligibility
+        // and engineering-quantity computation (Va/Vb/Vc, impedance,
+        // phasors, overcurrent pickup, differential logic) belong entirely
+        // to a future Analysis layer -- Playback tells consumers WHEN
+        // only, and must never be taught WHAT any of those quantities mean.
         // ==================================================================
 
         const WW_PLAYBACK_STATE_STOPPED = "stopped";
@@ -28854,6 +28809,54 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // anything not in this list, falling back to 1x.
         const WW_PLAYBACK_SPEEDS = [0.25, 0.5, 1, 2, 4];
         const WW_PLAYBACK_DEFAULT_SPEED = 1;
+
+        // Reusable Playback control-surface MARKUP -- the exact HTML
+        // fragments any mount point embeds into its own layout, always
+        // via this ONE function (never a second, page-specific copy of
+        // the same buttons/select/slider). Two fragments, not one:
+        // `transportHtml` (Restart/Play/Speed/current-time -- naturally
+        // fits inline in a button-row-style toolbar) and `seekRowHtml`
+        // (the seek scrubber -- naturally wants its own full-width row).
+        // The waveform Time Group toolbar (wwCreateTimeGroupCanvasDom())
+        // embeds both into its own two existing rows; a future embedded-
+        // analysis page is free to arrange them differently (side by
+        // side, stacked, etc.) -- only the markup/classes/wiring are
+        // shared, never a mandated layout. Call this ONCE per mount
+        // point's own DOM subtree -- wwWirePlaybackControls()/
+        // wwSyncPlaybackControls()/wwUpdatePlaybackControlsTick() below
+        // all locate their targets by CLASS, scoped to whatever container
+        // is passed to them, so two mounts sharing one container would
+        // collide (not a concern today -- there is exactly one mount
+        // point, the waveform toolbar).
+        function wwCreatePlaybackControlsHtml() {
+            return {
+                transportHtml:
+                    '<button type="button" class="secondary ww-tg-playback-restart-btn" title="Restart playback for this Time Group (jump to start)" aria-label="Restart playback for this Time Group">Restart</button>' +
+                    '<button type="button" class="secondary ww-tg-playback-play-btn" aria-pressed="false" title="Play this Time Group" aria-label="Play this Time Group">Play</button>' +
+                    '<select class="ww-tg-playback-speed-select" title="Playback speed" aria-label="Playback speed">' +
+                        '<option value="0.25">0.25×</option>' +
+                        '<option value="0.5">0.5×</option>' +
+                        '<option value="1" selected>1×</option>' +
+                        '<option value="2">2×</option>' +
+                        '<option value="4">4×</option>' +
+                    '</select>' +
+                    '<span class="ww-tg-playback-time-readout" aria-label="Current playback time">—</span>',
+                // `min`/`max` are placeholders here (0/1) -- the real Time
+                // Group bounds are applied by
+                // wwPlaybackSyncSeekSliderBounds() the first time this
+                // mount point is wired, and again on every later playback
+                // state transition. `step="any"` allows continuous
+                // (non-integer-second) seeking -- Playback does not need
+                // sample-aligned granularity (this is a TIME-selection
+                // control only, never a data operation -- see the module
+                // header comment's own "Playback must never be taught
+                // WHAT an engineering quantity means" boundary).
+                seekRowHtml:
+                    '<div class="ww-tg-playback-seek-row">' +
+                        '<input type="range" class="ww-tg-playback-seek-slider" min="0" max="1" step="any" value="0" aria-label="Seek playback position">' +
+                    '</div>',
+            };
+        }
 
         // The one shared Playback Controller instance. `state`,
         // `activeTimeGroupId`, `currentTime` together answer "is anything
@@ -28929,13 +28932,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
         }
 
-        // Human-readable label for the toolbar/Playback-page state text.
-        function wwPlaybackStateLabel(state) {
-            if (state === WW_PLAYBACK_STATE_PLAYING) return "Playing";
-            if (state === WW_PLAYBACK_STATE_PAUSED) return "Paused";
-            return "Stopped";
-        }
-
         // Reset to a clean, fully-stopped, no-active-group state -- called
         // from wwClearWorkspace() (both "Clear workspace" and "Start New
         // Workspace") and from wwSyncTimeGroupCanvases() when the group
@@ -28969,7 +28965,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPlayback.recordingTimeAnchor = null;
             wwPlaybackSyncAllToolbarSpeedSelects();
             wwPlaybackNotifyTick();
-            wwRenderPlaybackPage();
         }
 
         // The one requestAnimationFrame callback -- recomputes currentTime
@@ -28998,7 +28993,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwPlaybackRenderTick();
                 wwPlaybackNotifyTick();
                 wwPlaybackSyncToolbarForGroup(wwPlayback.activeTimeGroupId);
-                wwRenderPlaybackPage();
                 return;
             }
 
@@ -29012,11 +29006,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // "extremely small" requirement): one DOM-overlay reposition, two
         // property/textContent writes. No Plotly call, no waveform
         // refetch, no calculated-channel recompute anywhere in this path.
+        // The waveform Time Group canvas is the only currently-wired
+        // control-surface mount point, so it is the only one ticked here
+        // -- a future SECOND mount point (a future analysis page) would
+        // drive its own wwUpdatePlaybackControlsTick() call from its own
+        // wwPlaybackOnTick() subscription (see that seam's own comment),
+        // never from this function, which stays scoped to the waveform's
+        // own built-in consumers (cursor overlay + this one toolbar).
         function wwPlaybackRenderTick() {
             if (wwPlayback.activeTimeGroupId === null) return;
             wwUpdatePlaybackCursorOverlay(wwPlayback.activeTimeGroupId, wwPlayback.currentTime);
-            wwPlaybackUpdateTimeReadout(wwPlayback.activeTimeGroupId);
-            wwPlaybackUpdateSeekSlider(wwPlayback.activeTimeGroupId);
+            const canvasEl = wwTimeGroupCanvasEl(wwPlayback.activeTimeGroupId);
+            if (canvasEl) wwUpdatePlaybackControlsTick(canvasEl, wwPlayback.activeTimeGroupId);
         }
 
         // Play -- if `groupId` is already the active, paused group, resumes
@@ -29070,7 +29071,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPlaybackSyncToolbarForGroup(groupId);
             wwPlaybackRenderTick();
             wwPlaybackNotifyTick();
-            wwRenderPlaybackPage();
             wwPlayback.rafId = requestAnimationFrame(wwPlaybackTick);
         }
 
@@ -29087,7 +29087,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             wwPlayback.state = WW_PLAYBACK_STATE_PAUSED;
             wwPlaybackSyncToolbarForGroup(wwPlayback.activeTimeGroupId);
-            wwRenderPlaybackPage();
         }
 
         function wwPlaybackHandlePlayPauseClick(groupId) {
@@ -29135,21 +29134,75 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPlaybackSyncToolbarForGroup(groupId);
             wwPlaybackRenderTick();
             wwPlaybackNotifyTick();
-            wwRenderPlaybackPage();
         }
 
-        // Syncs one Time Group's own toolbar controls (Play/Pause label,
-        // current-time readout, seek-slider bounds/position) to
+        // ---- Reusable Playback control-surface: wiring + sync ----
+        //
+        // Together with wwCreatePlaybackControlsHtml() (markup, above the
+        // wwPlayback declaration) these four functions ARE the mountable
+        // "Restart/Play/Speed/seek/current-time" widget the module header
+        // comment describes -- every one takes an explicit `containerEl`
+        // (never an internal wwTimeGroupCanvasEl() lookup), so any DOM
+        // subtree containing the SAME classes wwCreatePlaybackControlsHtml()
+        // emits can be wired/synced/ticked by calling these directly. The
+        // waveform Time Group toolbar (wwWireTimeGroupToolbar()/
+        // wwPlaybackSyncToolbarForGroup()/wwPlaybackRenderTick()) is simply
+        // the first consumer -- its own thin, group-id-only wrapper
+        // functions below resolve `wwTimeGroupCanvasEl(groupId)` and
+        // delegate here, never duplicating this logic.
+
+        // Wires Restart/Play-Pause/Speed/Seek inside `containerEl` to
+        // drive `groupId` via the shared wwPlayback* functions -- never a
+        // second timing/seek/speed implementation. Safe to call once per
+        // mount point (each control is looked up by class, scoped to
+        // `containerEl`, so two DIFFERENT containers never collide).
+        function wwWirePlaybackControls(containerEl, groupId) {
+            const restartBtn = containerEl.querySelector(".ww-tg-playback-restart-btn");
+            if (restartBtn) restartBtn.addEventListener("click", () => wwPlaybackRestart(groupId));
+            const playBtn = containerEl.querySelector(".ww-tg-playback-play-btn");
+            if (playBtn) playBtn.addEventListener("click", () => wwPlaybackHandlePlayPauseClick(groupId));
+
+            // A fresh mount's own <select> starts at its own static HTML
+            // default (1x); immediately syncing it to wwPlayback's
+            // CURRENT shared value here means a mount created after the
+            // engineer has already chosen e.g. 2x elsewhere starts in
+            // sync, never silently showing 1x for a brand-new mount.
+            const speedSelect = containerEl.querySelector(".ww-tg-playback-speed-select");
+            if (speedSelect) {
+                speedSelect.value = String(wwPlayback.speed);
+                speedSelect.addEventListener("change", () => wwPlaybackHandleSpeedChange(speedSelect));
+            }
+
+            // Native `input` (continuous, during drag/keyboard) + `change`
+            // (once, on release/commit) -- see
+            // wwPlaybackHandleSeekInput()/Commit()'s own comments for the
+            // full suspend-during-drag/re-anchor-and-resume-on-release
+            // contract. Bounds are synced once here (a group's own bounds
+            // are already known -- even zero-channel-displayed sources
+            // establish ww.sourceBounds -- as soon as ANY mount for it
+            // exists) and again on every later playback state transition
+            // (wwSyncPlaybackControls()).
+            const seekSlider = containerEl.querySelector(".ww-tg-playback-seek-slider");
+            if (seekSlider) {
+                wwPlaybackSyncSeekSliderBounds(containerEl, groupId);
+                seekSlider.addEventListener("input", () =>
+                    wwPlaybackHandleSeekInput(groupId, parseFloat(seekSlider.value))
+                );
+                seekSlider.addEventListener("change", () =>
+                    wwPlaybackHandleSeekCommit(groupId, parseFloat(seekSlider.value))
+                );
+            }
+        }
+
+        // Full sync of `containerEl`'s own mounted controls (Play/Pause
+        // label, current-time readout, seek-slider bounds/position) to
         // wwPlayback's current state -- cheap, called only on a real
         // state transition (Play/Pause/Restart/Seek-commit/reset), never
-        // on every tick (the readout/seek-slider's own per-tick refresh
-        // is separate, via wwPlaybackUpdateTimeReadout()/
-        // wwPlaybackUpdateSeekSlider(), from wwPlaybackRenderTick()).
-        function wwPlaybackSyncToolbarForGroup(groupId) {
-            if (groupId === null) return;
-            const canvasEl = wwTimeGroupCanvasEl(groupId);
-            if (!canvasEl) return;
-            const playBtn = canvasEl.querySelector(".ww-tg-playback-play-btn");
+        // on every tick (see wwUpdatePlaybackControlsTick() below for the
+        // per-tick subset).
+        function wwSyncPlaybackControls(containerEl, groupId) {
+            if (!containerEl) return;
+            const playBtn = containerEl.querySelector(".ww-tg-playback-play-btn");
             const isActive = wwPlayback.activeTimeGroupId === groupId;
             const isPlaying = isActive && wwPlayback.state === WW_PLAYBACK_STATE_PLAYING;
             if (playBtn) {
@@ -29158,15 +29211,25 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 playBtn.title = isPlaying ? "Pause playback for this Time Group" : "Play this Time Group";
                 playBtn.setAttribute("aria-label", playBtn.title);
             }
-            wwPlaybackUpdateTimeReadout(groupId);
-            wwPlaybackSyncSeekSliderBounds(groupId);
-            wwPlaybackUpdateSeekSlider(groupId);
+            wwPlaybackUpdateTimeReadout(containerEl, groupId);
+            wwPlaybackSyncSeekSliderBounds(containerEl, groupId);
+            wwPlaybackUpdateSeekSlider(containerEl, groupId);
         }
 
-        function wwPlaybackUpdateTimeReadout(groupId) {
-            const canvasEl = wwTimeGroupCanvasEl(groupId);
-            if (!canvasEl) return;
-            const readoutEl = canvasEl.querySelector(".ww-tg-playback-time-readout");
+        // The cheap PER-TICK subset of the above (readout text + seek-
+        // slider position only -- never the Play/Pause label, which only
+        // ever changes on a real state transition, already handled by
+        // wwSyncPlaybackControls()). Called from wwPlaybackRenderTick()
+        // for the waveform's own mount; a future second mount point would
+        // call this from its OWN wwPlaybackOnTick() subscription.
+        function wwUpdatePlaybackControlsTick(containerEl, groupId) {
+            wwPlaybackUpdateTimeReadout(containerEl, groupId);
+            wwPlaybackUpdateSeekSlider(containerEl, groupId);
+        }
+
+        function wwPlaybackUpdateTimeReadout(containerEl, groupId) {
+            if (!containerEl) return;
+            const readoutEl = containerEl.querySelector(".ww-tg-playback-time-readout");
             if (!readoutEl) return;
             const isActive = wwPlayback.activeTimeGroupId === groupId && Number.isFinite(wwPlayback.currentTime);
             // Reuses wwFormatCursorPointTime() -- the SAME formatter
@@ -29175,6 +29238,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // second/independent clock (task: "do not create another
             // canonical clock").
             readoutEl.textContent = isActive ? wwFormatCursorPointTime(wwPlayback.currentTime, groupId) : "—";
+        }
+
+        // Thin, Time-Group-canvas-specific wrapper around
+        // wwSyncPlaybackControls() -- resolves the ONE currently-wired
+        // mount point (this group's own canvas) and delegates. Kept as
+        // its own named function (rather than inlining
+        // wwTimeGroupCanvasEl()+wwSyncPlaybackControls() at every call
+        // site) purely so every OTHER function in this file that already
+        // says "sync this group's toolbar" reads the same way it always
+        // has; it owns no logic of its own beyond that one resolution.
+        function wwPlaybackSyncToolbarForGroup(groupId) {
+            if (groupId === null) return;
+            const canvasEl = wwTimeGroupCanvasEl(groupId);
+            if (!canvasEl) return;
+            wwSyncPlaybackControls(canvasEl, groupId);
         }
 
         // ---- Slice 2: fixed playback speed ----
@@ -29322,24 +29400,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPlaybackSyncToolbarForGroup(groupId);
             wwPlaybackRenderTick();
             wwPlaybackNotifyTick();
-            wwRenderPlaybackPage();
 
             if (wasPlaying) {
                 wwPlayback.rafId = requestAnimationFrame(wwPlaybackTick);
             }
         }
 
-        // Keeps `groupId`'s own scrubber's `min`/`max` attributes matched
-        // to its current Time Group bounds -- re-derived fresh every call
-        // (wwDeriveTimeGroupBounds() is never cached, matching every other
-        // bounds consumer in this file), never the authority for seek
-        // CLAMPING itself (wwPlaybackHandleSeekInput()/Commit() always
-        // re-derive and clamp against fresh bounds directly) -- this is a
-        // presentation-only sync of the widget's own visual range.
-        function wwPlaybackSyncSeekSliderBounds(groupId) {
-            const canvasEl = wwTimeGroupCanvasEl(groupId);
-            if (!canvasEl) return;
-            const sliderEl = canvasEl.querySelector(".ww-tg-playback-seek-slider");
+        // Keeps `containerEl`'s own mounted scrubber's `min`/`max`
+        // attributes matched to `groupId`'s current Time Group bounds --
+        // re-derived fresh every call (wwDeriveTimeGroupBounds() is never
+        // cached, matching every other bounds consumer in this file),
+        // never the authority for seek CLAMPING itself
+        // (wwPlaybackHandleSeekInput()/Commit() always re-derive and
+        // clamp against fresh bounds directly) -- this is a presentation-
+        // only sync of the widget's own visual range. Container-
+        // parameterized (never an internal wwTimeGroupCanvasEl() lookup)
+        // so any mount point can call it for its own scrubber, not only
+        // the waveform toolbar's.
+        function wwPlaybackSyncSeekSliderBounds(containerEl, groupId) {
+            if (!containerEl) return;
+            const sliderEl = containerEl.querySelector(".ww-tg-playback-seek-slider");
             if (!sliderEl) return;
             const bounds = wwDeriveTimeGroupBounds(groupId);
             if (!bounds) return;
@@ -29347,18 +29427,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             sliderEl.max = String(bounds.end);
         }
 
-        // Keeps `groupId`'s own scrubber's `value` matched to
-        // wwPlayback.currentTime whenever this group is the active one --
-        // called every tick (from wwPlaybackRenderTick()) as well as on
-        // every real state transition. Never overwrites the slider while
-        // the user is actively focused on/dragging THIS exact element --
-        // the standard "don't fight a controlled input" rule; harmless
-        // either way since a live user gesture already set the browser's
-        // own value to the same place via wwPlaybackHandleSeekInput().
-        function wwPlaybackUpdateSeekSlider(groupId) {
-            const canvasEl = wwTimeGroupCanvasEl(groupId);
-            if (!canvasEl) return;
-            const sliderEl = canvasEl.querySelector(".ww-tg-playback-seek-slider");
+        // Keeps `containerEl`'s own mounted scrubber's `value` matched to
+        // wwPlayback.currentTime whenever `groupId` is the active group --
+        // called every tick (from wwUpdatePlaybackControlsTick(), via
+        // wwPlaybackRenderTick()) as well as on every real state
+        // transition (via wwSyncPlaybackControls()). Never overwrites the
+        // slider while the user is actively focused on/dragging THIS
+        // exact element -- the standard "don't fight a controlled input"
+        // rule; harmless either way since a live user gesture already set
+        // the browser's own value to the same place via
+        // wwPlaybackHandleSeekInput(). Container-parameterized for the
+        // same reason as wwPlaybackSyncSeekSliderBounds() above.
+        function wwPlaybackUpdateSeekSlider(containerEl, groupId) {
+            if (!containerEl) return;
+            const sliderEl = containerEl.querySelector(".ww-tg-playback-seek-slider");
             if (!sliderEl) return;
             const isActive = wwPlayback.activeTimeGroupId === groupId && Number.isFinite(wwPlayback.currentTime);
             if (isActive && document.activeElement !== sliderEl) {
@@ -29452,26 +29534,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!Number.isFinite(t)) return null;
             const entry = ww.digitalDisplayed.get(wwChannelKey(sourceId, channelName));
             return wwPlaybackDigitalStateAtTime(entry, t);
-        }
-
-        // The Playback page's own status text (see #pagePlayback) -- a
-        // cheap re-render from wwPlayback's already-held state, called on
-        // page-enter (shellSetCurrentPage()) and on every real state
-        // transition above. Never a live per-tick subscriber -- see
-        // shellSetCurrentPage()'s own "playback" branch for why.
-        function wwRenderPlaybackPage() {
-            const el = document.getElementById("wwPlaybackPageStatus");
-            if (!el) return;
-            if (wwPlayback.activeTimeGroupId === null) {
-                el.textContent = "No Time Group is currently playing. Open a recording's waveform and press Play on its own toolbar to begin.";
-                return;
-            }
-            const sortedActiveIds = Array.from(wwActiveTimeGroupIds()).sort();
-            const { title } = wwTimeGroupHeaderText(wwPlayback.activeTimeGroupId, sortedActiveIds);
-            const timeLabel = Number.isFinite(wwPlayback.currentTime)
-                ? wwFormatCursorPointTime(wwPlayback.currentTime, wwPlayback.activeTimeGroupId)
-                : "—";
-            el.textContent = wwPlaybackStateLabel(wwPlayback.state) + " — " + title + " — " + timeLabel;
         }
 
         // Phase 2C-C4A: ONE shared decision for the sticky ruler's
@@ -33340,7 +33402,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         });
         document.getElementById("mainNavRecordingsBtn").addEventListener("click", () => shellSetCurrentPage("recordings"));
         document.getElementById("mainNavCalculatedChannelsBtn").addEventListener("click", () => shellSetCurrentPage("calculated-channels"));
-        document.getElementById("mainNavPlaybackBtn").addEventListener("click", () => shellSetCurrentPage("playback"));
         // Canonical Table View (DEC-079): same shape as mainNavWaveformBtn
         // above -- stays on the waveform shell page, only the local
         // Active View switches (task section 3).
