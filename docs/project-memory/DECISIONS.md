@@ -13772,6 +13772,141 @@ timing flake reproduced as passing on isolated re-run). See
 [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) for the full revised
 architecture.
 
+**Update (2026-09-12) — Phasor Playback integration: connects the
+existing, unchanged, shared `wwPlayback` controller
+([DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock))
+to the bay-centric Phasor Diagram above.** No second Playback
+controller, timer, or clock was built — exactly the "future analysis
+overlay" DEC-085 was future-proofed for. Frontend-only; zero backend
+files touched.
+
+**1. Single shared time control.** The separate "Analysis Time" number
+input + slider are REMOVED entirely. Phasor mounts the SAME reusable
+Playback control surface (`wwCreatePlaybackControlsHtml()`/
+`wwWirePlaybackControls()`/`wwSyncPlaybackControls()`/
+`wwUpdatePlaybackControlsTick()`, all unchanged) the Waveform Time Group
+toolbar already mounts, via a new `wwPhasorMountPlaybackControls(groupId)`
+that builds a fresh copy of that markup whenever the selected context's
+own resolved Time Group changes (mirroring `wwCreateTimeGroupCanvasDom()`'s
+own "one canvas per distinct group, wired once" convention, never
+re-wiring stale closures for a different group).
+
+**2. Claiming a context's group vs. the Restart button.** Selecting a
+context whose group is already `wwPlayback`'s active one reads its
+current time verbatim (never resets it). Selecting a not-yet-active
+group claims it via the existing, unchanged `wwPlaybackRestart()`
+(safely cancels any other group's rAF loop, lands at `bounds.start`,
+"stopped"), then — as a Phasor-only, ONE-TIME convenience for a bay's
+very first view — refines the landing position via the same real
+seek-input+commit pair a native scrubber drag would use
+(`wwPhasorComputeInitialClaimTime()`: prefers Cursor A's own position if
+it would not itself guarantee insufficient history, else
+`bounds.start + 0.1s`, else `bounds.start`). This refinement NEVER
+applies to the mounted Restart BUTTON itself, wired directly to the bare
+`wwPlaybackRestart()` with no follow-up seek — pressing it always lands
+honestly at `bounds.start` (task instruction: "Playback owns event
+time... do NOT silently shift Playback start forward" governs the
+Restart control's own behavior specifically, not where a bay lands the
+very first time it is opened).
+
+**3. Throttled, concurrency-safe fetch.** "One request in flight, plus
+the latest desired time — never a growing queue." A Play-driven tick
+uses a throttled fetch (~10 Hz, `WW_PHASOR_PLAYBACK_THROTTLE_MS = 100`,
+chosen against a MEASURED aggregated-endpoint latency of ~28–44 ms on a
+demanding 20 kHz/10 s/six-role fixture); every NON-playing transition
+(Pause, Restart, Playback reaching its own end, and every seek
+`input`/`change` event, whether the drag starts or ends paused) uses an
+EXACT, non-throttled fetch instead. Discovered directly, via a real
+failing Playwright test (not assumed): gating a paused seek on the SAME
+elapsed-time floor used for Play risked its own desired time getting
+stuck unfetched forever, since ticks only arrive from the rAF loop while
+actually playing — fixed by keying the decision on `playback.state`
+alone, never on whether the transition SIGNATURE changed.
+
+**4. A real architecture gap, found and fixed without touching the
+shared controller.** `wwPlaybackPause()`/`wwPlaybackSetSpeed()` mutate
+`wwPlayback` directly but never call `wwPlaybackNotifyTick()` (unlike
+Play/Restart/seek/reset, which all do) — already fully covered for the
+Waveform toolbar's own directly-wired consumer, but a second mount point
+had no other seam to learn about exactly these two transitions. Fixed
+entirely within `wwPhasorMountPlaybackControls()`, which adds its own
+listener on the mounted Play/Pause/Restart/Speed controls re-invoking
+`wwPhasorOnPlaybackTick()` directly, AFTER the shared handler already
+ran — the shared Playback controller itself was not modified.
+
+**5. Visibility and diagram-scale stability.** `wwPhasorState.
+visibleRoles` persists across every Playback-driven time change,
+resetting only on a genuine context change — tracked via a new
+`lastLoadedContextId`, fixing a pre-existing subtlety in passing (the
+context-load function already re-ran on every mere page revisit, which
+would have reset visibility even without a real context switch). Each
+family's own diagram scale is established from the first valid result
+and held FIXED for the "playback run" (never silently shrunk merely
+because a later magnitude is smaller, which would mask real magnitude
+movement) — released only when a transition lands exactly at
+`bounds.start` on a genuine Restart, or on a context switch.
+
+**6. Context switch while playing.** Selecting a different context whose
+group differs from the active one always claims the new group via
+`wwPlaybackRestart()` — safely stopping whatever the old group was doing
+first, landing statically; the engineer must press Play again (never
+auto-continues through an unresolved transition).
+
+**7. Explicitly still deferred**: Per-Unit display, sequence components,
+impedance/distance, automatic cross-source context merging, frequency
+tracking, and every real protection analysis.
+
+Reason: Directly satisfies the task's own explicit product target ("the
+Playback seek/currentTime = Phasor analysis time... never two
+independently editable time controls") while reusing 100% of the
+existing, already-shipped-and-tested Playback controller — no new
+timing/animation primitive was needed since DEC-085 already provided
+every one Phasor required (workspace-time coordinate, Time Group bounds,
+a reusable mountable control surface, a tick-subscription seam).
+
+Alternatives considered: A Phasor-specific polling timer independent of
+`wwPlayback` — rejected outright (explicit task instruction, and would
+have duplicated DEC-085's own architecture for no benefit). Modifying
+`wwPlaybackPause()`/`wwPlaybackSetSpeed()` to call
+`wwPlaybackNotifyTick()` directly — considered, but rejected in favor of
+the non-invasive, Phasor-scoped safety-net listener, since it achieves
+the identical outcome without touching already-shipped, already-tested
+core Playback code (matching "reuse existing functions, do not build a
+second engine" while treating a change to the CORE shared controller as
+requiring more caution than a purely additive Phasor-side fix). Using
+the old Cursor-A-preferring default-time heuristic verbatim to decide
+where Restart itself lands — rejected; Restart's own bare, unrefined
+`bounds.start` landing is what makes the "insufficient history reported
+honestly, Playback start never silently shifted" requirement concretely
+true, so the heuristic is applied only to a bay's first-ever claim
+instead.
+
+Impact: `frontend/index.html` only — no backend files touched.
+`test_frontend_phasor_analysis.py` revised in place: obsolete "Analysis
+Time input/slider exist" and "default time prefers Cursor A" assertions
+replaced with `TestPlaybackTimeControl` (mounts the shared control
+surface, analysis time driven by `wwPlayback`, no second clock) and
+`TestPlaybackIntegration` (shared controller functions referenced, no
+duplicate controller, aggregated endpoint only, throttle/concurrency
+invariants, exact-convergence invariant, no Quantity/Mode/PU/Plotly
+reintroduced) — 95 tests total, all passing.
+`browser-tests/phasor_analysis.spec.js`: the existing bay-centric test's
+own old "Analysis Time" input interaction replaced with the shared seek
+scrubber; a new "Phasor Analysis -- Playback integration" describe block
+added (Play/repeated-results/no-context-mutation, Pause exact
+convergence, seek-while-paused exact convergence, 4× speed throttling,
+Restart honesty, context-switch-while-playing, Waveform↔Phasor
+shared-clock interoperability) — the Engineering Context bootstrap suite
+is unchanged. Full backend regression, full frontend static suite, and
+full Playwright suite (42 tests) all pass. This session ran concurrently
+with another session's own unrelated "bare Engineering Context
+detection" fix (immediately above) — verified via `git show <their
+commit> --stat` that it never touched `frontend/index.html`,
+`test_frontend_phasor_analysis.py`, or `phasor_analysis.spec.js`, so no
+merge conflict existed once both sessions' edits settled. See
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s own "Phasor Playback
+integration" section for the full architecture.
+
 ---
 
 ## How to add a decision

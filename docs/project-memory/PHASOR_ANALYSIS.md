@@ -1,18 +1,20 @@
 # Phasor Analysis
 
 **Status: Slice 1 (Core Estimator + Selected-Time API), Slice 2
-(Analysis Page + Static Phasor Diagram), and the Phasor UAT redesign
-(bay-centric aggregation) are all implemented** — see
-[DECISIONS.md — DEC-088](DECISIONS.md#dec-088--phasor-analysis-slice-1-a-fixed-frequency-one-cycle-trailing-window-rms-fundamental-phasor-estimator-with-an-explicit-guardrail-boundary-and-a-selected-time-only-read-only-api-built-directly-on-the-existing-engineering-context-resolver-foundation)
-and [DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)
-(including its own "Update (2026-09-12)" section, which superseded the
+(Analysis Page + Static Phasor Diagram), the Phasor UAT redesign
+(bay-centric aggregation), and Phasor Playback integration are all
+implemented** — see
+[DECISIONS.md — DEC-088](DECISIONS.md#dec-088--phasor-analysis-slice-1-a-fixed-frequency-one-cycle-trailing-window-rms-fundamental-phasor-estimator-with-an-explicit-guardrail-boundary-and-a-selected-time-only-read-only-api-built-directly-on-the-existing-engineering-context-resolver-foundation),
+[DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)
+(including its own "Update (2026-09-12)" sections, which superseded the
 original Bay/Quantity/Mode page design described in DEC-089's own base
-entry — see the "Bay-centric Phasor Diagram" section below).
-Playback integration and every real protection analysis
-(Distance/Overcurrent/Differential/Sequence Components) remain
-unimplemented — this document records the engineering definition and
-architecture the audit established and these slices built, so a later
-slice does not need to re-derive it.
+entry and then connected the shared Playback controller to it — see the
+"Bay-centric Phasor Diagram" and "Phasor Playback integration" sections
+below). Every real protection analysis (Distance/Overcurrent/
+Differential/Sequence Components) remains unimplemented — this document
+records the engineering definition and architecture the audit
+established and these slices built, so a later slice does not need to
+re-derive it.
 
 ## Product definition — what Powerwave means by "a phasor"
 
@@ -599,13 +601,13 @@ above.
 
 The old two-call flow (`input-resolution`, then `phasor`) is replaced by
 ONE call to the new endpoint (`wwPhasorFetchDiagram()`). Selecting a
-context (`wwPhasorLoadForSelectedContext()`) resets
+GENUINELY DIFFERENT context (`wwPhasorLoadForSelectedContext()`) resets
 `wwPhasorState.visibleRoles` to empty, then requests the diagram; every
 role that computes `available` and has no existing visibility
-preference defaults to visible. An Analysis Time change
-(`wwPhasorOnAnalysisTimeInput()`) re-requests the diagram but never
-touches `visibleRoles` — a hidden vector stays hidden as the engineer
-scrubs time.
+preference defaults to visible. An analysis-time change — now driven
+entirely by the shared Playback controller, see "Phasor Playback
+integration" below — re-requests the diagram but never touches
+`visibleRoles` — a hidden vector stays hidden throughout playback.
 
 **Values list**: two sections, VOLTAGE and CURRENT, each listing its own
 three roles in order. An `available` role's own row is a full
@@ -662,10 +664,157 @@ on), sequence components, impedance/distance, automatic cross-source
 context merging, and a manual raw-channel picker (still never
 introduced).
 
+## Phasor Playback integration
+
+Connects the existing, unchanged, shared `wwPlayback` controller (see
+[DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock))
+to the bay-centric Phasor Diagram above — exactly the "future analysis
+overlay" DEC-085 was future-proofed for. **No second Playback controller,
+timer, or clock was built.** See
+[DECISIONS.md — DEC-089's own "Update" section for this integration](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)
+for the full approval record.
+
+### Shared clock, single time control
+
+The separate "Analysis Time" number input + slider are REMOVED entirely.
+Phasor mounts the SAME reusable Playback control surface
+(`wwCreatePlaybackControlsHtml()`/`wwWirePlaybackControls()`/
+`wwSyncPlaybackControls()`/`wwUpdatePlaybackControlsTick()`, all
+unchanged) the Waveform Time Group toolbar already mounts —
+`wwPhasorMountPlaybackControls(groupId)` builds a fresh copy of that
+markup into `#wwPhasorPlaybackMount` whenever the selected context's own
+resolved Time Group changes, mirroring `wwCreateTimeGroupCanvasDom()`'s
+own "one canvas per distinct group, wired once" convention (never
+re-wiring an existing mount for a different group, which would leave
+stale closures). The mounted seek scrubber IS Phasor's own analysis time
+control now — `wwPhasorState.analysisTime` is driven entirely from
+`wwPlayback.currentTime` whenever the selected context's own group is
+the controller's own active group.
+
+### Claiming a context's Time Group vs. the Restart button
+
+Selecting a context whose own resolved Time Group is **already**
+`wwPlayback`'s own active group reads its CURRENT time verbatim (never
+resets it — satisfies the Waveform↔Phasor interoperability requirement).
+Selecting a context whose group is **not yet** active claims it via the
+existing, unchanged `wwPlaybackRestart()` (which safely cancels any
+OTHER group's own rAF loop first, landing at `bounds.start`, "stopped"),
+then — as a Phasor-only, ONE-TIME convenience for a bay's very first
+view — refines the landing position via the same real seek-input+commit
+pair a native scrubber drag would use
+(`wwPhasorComputeInitialClaimTime()`: prefers Cursor A's own current
+position if it would not itself guarantee insufficient history, else
+`bounds.start + 0.1s`, else `bounds.start`). **This refinement is
+Phasor-specific and never applies to the mounted Restart BUTTON itself**
+— that button is wired directly to the bare `wwPlaybackRestart()`, with
+no follow-up seek, so pressing it always lands honestly at `bounds.start`
+(owner instruction: "Playback owns event time... do NOT silently shift
+Playback start forward" — that instruction governs the Restart control's
+own behavior specifically, not where a bay lands the very first time it
+is ever opened).
+
+### The one tick subscriber
+
+`wwPhasorOnPlaybackTick(currentTime, playback)`, registered ONCE at Init
+via the existing `wwPlaybackOnTick()` seam, is the only place Phasor
+reacts to shared-clock time. It no-ops whenever a DIFFERENT Time Group
+than Phasor's own resolved one is what's actually moving (Phasor's own
+bay stays static at wherever it last was). A discovered gap in the
+shared controller: `wwPlaybackPause()`/`wwPlaybackSetSpeed()` mutate
+`wwPlayback` directly but do not call `wwPlaybackNotifyTick()` (unlike
+Play/Restart/seek/reset, which all do) — their own effect was already
+fully covered for the Waveform toolbar's built-in, directly-wired
+consumer, but a second mount point had no other seam to learn about
+exactly these two transitions. Fixed entirely within Phasor's own
+mounting code (`wwPhasorMountPlaybackControls()` adds its own listener
+on the mounted Play/Pause/Restart/Speed controls that re-invokes
+`wwPhasorOnPlaybackTick()` directly, AFTER the shared handler already
+ran) — the shared controller itself was not modified.
+
+### Throttled, concurrency-safe fetch
+
+**One request in flight, plus the latest desired time — never a growing
+queue.** `wwPhasorMaybeFetchForPlayback()` (used only while
+`playback.state === "playing"`) skips a new fetch if one is already in
+flight or if fewer than `WW_PHASOR_PLAYBACK_THROTTLE_MS` (100 ms, ~10 Hz)
+have elapsed since the last one; `wwPhasorRequestExactPlaybackFetch()`
+(used for every NON-playing state — Pause, Restart, Playback reaching
+its own end, and every seek `input`/`change` event, whether the drag
+starts or ends paused) bypasses the elapsed-time floor but still respects
+"one in flight." Both funnel into the same `wwPhasorRequestDiagram()`,
+whose own trailing call re-invokes the throttle check on completion, so
+a desired-time change that arrived mid-flight is picked up immediately,
+never left waiting for a tick that (while paused) will never come.
+**Deliberately never throttled-by-elapsed-time while paused** — ticks
+only arrive from the rAF loop, which only runs while actually playing;
+gating a paused seek on an elapsed-time floor risked its own desired time
+getting stuck unfetched forever (found and fixed directly, via a real
+failing Playwright test, not assumed).
+
+**Measured** (not assumed) aggregated endpoint latency on a demanding
+20 kHz/10 s/six-role fixture: ~28–44 ms (p50 ~33 ms) — comfortably under
+the 100 ms throttle window even at 4× speed.
+
+### Diagram scaling stability during Playback
+
+`wwPhasorState.frozenVoltageScale`/`frozenCurrentScale` hold each
+family's own scale for the current "playback run" — established from the
+first valid result, then held FIXED (never silently shrunk merely
+because a later magnitude is smaller, which would mask real magnitude
+movement) and only ever adjusted to accommodate a magnitude that would
+otherwise overflow the plot's own headroom. Released back to `null`
+(re-established fresh) specifically when a transition lands exactly at
+the Time Group's own `bounds.start` on a real Restart (distinguished from
+natural end-of-range completion, which lands at `endTime`) or when the
+selected context genuinely changes. Ring labels show the value the outer
+ring itself represents under the CURRENT (possibly frozen) scale, not the
+live/current family max, so a visually-fixed ring never sits next to a
+number that jiggles every tick.
+
+### Visibility persists throughout Playback
+
+`wwPhasorState.visibleRoles` is untouched by every Playback-driven time
+change (`wwPhasorOnPlaybackTick()` never writes to it) — reset only on a
+GENUINE context change, tracked via a new `wwPhasorState.
+lastLoadedContextId` (a pre-existing subtlety fixed in passing: the old
+`wwPhasorLoadForSelectedContext()` reset visibility on every mere page
+revisit with the SAME context still selected, since that function was
+already re-run on every Analysis-page visit; this is now scoped
+correctly to an actual context change).
+
+### Partial roles, whole-result blocking, and atomic rendering — unchanged
+
+A bay with fewer than six resolvable roles continues updating whichever
+roles ARE available throughout Playback; a role that temporarily becomes
+unavailable simply stops being drawn on the next render, without
+affecting the others. The two whole-result-BLOCKING conditions
+(reference-frequency conflict, timebase incompatibility) are entirely
+unchanged — still backend-computed, still per-request. Every accepted
+fetch renders the analysis time, Voltage/Current values, SVG geometry,
+scale annotation, and role-status messages together from the SAME
+response object (`wwPhasorRenderDiagramResult()`), so the table and
+diagram can never represent different response times; the estimator's
+own one-cycle transition behavior (no instant jumps, no interpolation)
+is preserved automatically since nothing here blends between two fetched
+results.
+
+### Context switch while playing
+
+Selecting a DIFFERENT context whose own group differs from the currently
+active one always claims the new group via `wwPlaybackRestart()` (see
+above) — which safely stops whatever the OLD group was doing (playing or
+not) before the new group becomes active, landing statically. The
+engineer must press Play again to resume; Playback never continues
+through an unresolved context transition.
+
+### Explicitly still deferred
+
+Per-Unit display, sequence components, impedance/distance, automatic
+cross-source context merging, frequency tracking, and every real
+protection analysis (Distance/Overcurrent/Differential).
+
 ## Not yet implemented (future slices)
 
-- **Playback integration** — no `wwPlayback` subscription; `analysis_time`
-  is a plain request parameter, not driven by a moving clock yet.
 - **Frequency tracking / PMU-class measurement.**
 - **Precomputed vendor phasor channel support.**
 - **Per-Unit phasor display** (`unit_mode=per_unit`).

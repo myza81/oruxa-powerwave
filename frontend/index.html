@@ -5891,35 +5891,32 @@
             font-size: 0.85rem;
             padding: 6px 8px;
         }
-        .ww-phasor-time-row {
+
+        /* Phasor Playback integration: this panel mounts the SAME
+           reusable Playback control-surface markup the Waveform Time
+           Group toolbar uses (wwCreatePlaybackControlsHtml()) -- these
+           two rules only lay out THIS panel's own wrapper; every control
+           inside (buttons/select/seek slider) keeps its existing shared
+           `.ww-tg-playback-*` styling verbatim, never a Phasor-specific
+           duplicate. Hidden via the `hidden` ATTRIBUTE whenever no
+           Engineering Context has resolved a real Time Group yet --
+           plain `display: none` default is sufficient here (no
+           higher-specificity `display` rule on this class to override
+           it, unlike `.ww-phasor-body`'s own documented flex/grid fix
+           above/below). */
+        .ww-phasor-playback-panel {
+            margin-top: 10px;
+        }
+        .ww-phasor-playback-mount {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .ww-phasor-playback-transport {
             display: flex;
             align-items: center;
-            gap: 14px;
             flex-wrap: wrap;
-            padding-top: 4px;
-            border-top: 1px solid var(--panel-border);
-        }
-        /* Same [hidden]-vs-explicit-display fix as .ww-phasor-body[hidden]
-           above -- this row is also toggled via the `hidden` attribute. */
-        .ww-phasor-time-row[hidden] {
-            display: none;
-        }
-        .ww-phasor-time-field {
-            flex-direction: row;
-            align-items: center;
-            min-width: 0;
-        }
-        .ww-phasor-time-field input[type="number"] {
-            width: 110px;
-        }
-        .ww-phasor-time-unit {
-            color: var(--text-dim);
-        }
-        #wwPhasorTimeSlider {
-            flex: 1;
-            min-width: 160px;
-            accent-color: var(--accent);
-            cursor: pointer;
+            gap: 8px;
         }
 
         .ww-phasor-status-row {
@@ -6089,6 +6086,18 @@
             font-size: 0.75rem;
             color: var(--text-dim);
             text-align: center;
+        }
+        /* Phasor Playback integration: a subtle, low-effort "a fetch is
+           in flight" hint -- the LAST valid vectors/values stay fully
+           visible underneath the whole time (owner instruction: never
+           blank the diagram between frames), this is purely an
+           optional affordance layered on top, never a loading state
+           that replaces anything. */
+        .ww-phasor-updating-indicator {
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--text-dim);
+            margin-left: 6px;
         }
     </style>
 </head>
@@ -6981,11 +6990,23 @@
                  display preference layered on top of this -- it never
                  changes which roles the backend resolved or computed.
 
-                 `#wwPhasorPanel`'s own comment marks the Slice 3
-                 composition point where an embedded Playback control row
-                 will be added later without restructuring this panel --
-                 no wwPlayback/wwPlaybackOnTick wiring exists in this
-                 slice at all. -->
+                 Phasor Playback integration: `#wwPhasorPlaybackPanel`
+                 mounts the SAME reusable Playback control surface the
+                 Waveform Time Group toolbar uses
+                 (wwCreatePlaybackControlsHtml()/wwWirePlaybackControls()/
+                 wwSyncPlaybackControls()/wwUpdatePlaybackControlsTick(),
+                 all near wwClearWorkspace()) -- Phasor never builds a
+                 second clock/timer. The old, separate "Analysis Time"
+                 number input + slider are REMOVED entirely (owner
+                 instruction: never two independently editable time
+                 controls) -- the Playback seek scrubber IS Phasor's own
+                 analysis time now, one to one. `wwPhasorOnPlaybackTick()`
+                 (registered once at Init via `wwPlaybackOnTick()`) reacts
+                 to the shared controller's own ticks/transitions; it
+                 never reads `requestAnimationFrame`/`performance.now()`
+                 as a clock, only to RATE-LIMIT the `/phasor-diagram`
+                 fetch it issues in response to time the controller
+                 already computed. -->
             <section id="pageAnalysis" aria-label="Analysis" hidden>
                 <div class="recordings-header">
                     <div>
@@ -6998,10 +7019,6 @@
                         <button type="button" class="ww-analysis-type-item active" id="wwAnalysisTypePhasorBtn" data-analysis-type="phasor" aria-current="true">Phasor</button>
                     </nav>
                     <div class="ww-analysis-content">
-                        <!-- Slice 3 composition point: an embedded Playback
-                             control row will be inserted directly above
-                             .ww-phasor-controls-panel, without restructuring
-                             this section. -->
                         <section class="ww-phasor-panel" id="wwPhasorPanel">
                             <section class="panel ww-phasor-controls-panel">
                                 <div class="ww-phasor-controls-row">
@@ -7010,14 +7027,19 @@
                                         <select id="wwPhasorContextSelect"><option value="">Select a context…</option></select>
                                     </label>
                                 </div>
-                                <div class="ww-phasor-time-row" id="wwPhasorTimeRow" hidden>
-                                    <label class="ww-phasor-field ww-phasor-time-field">
-                                        <span>Analysis Time</span>
-                                        <input type="number" id="wwPhasorTimeInput" step="0.001">
-                                        <span class="ww-phasor-time-unit">s</span>
-                                    </label>
-                                    <input type="range" id="wwPhasorTimeSlider" step="0.0001" aria-label="Analysis time">
-                                </div>
+                            </section>
+
+                            <!-- Playback composition point: populated by
+                                 wwPhasorMountPlaybackControls(groupId) --
+                                 empty/hidden until an Engineering Context
+                                 resolves to a real Time Group. Reuses the
+                                 EXACT same markup/wiring/sync functions the
+                                 Waveform Time Group toolbar mounts --
+                                 Phasor is simply a second consumer of the
+                                 ONE shared wwPlayback controller. -->
+                            <section class="panel ww-phasor-playback-panel" id="wwPhasorPlaybackPanel" hidden>
+                                <h3>Playback</h3>
+                                <div class="ww-phasor-playback-mount" id="wwPhasorPlaybackMount"></div>
                             </section>
 
                             <div class="ww-phasor-status-row" id="wwPhasorStatusRow" hidden></div>
@@ -7030,7 +7052,7 @@
                                     <div class="ww-phasor-warnings" id="wwPhasorWarnings" hidden></div>
                                 </section>
                                 <section class="panel ww-phasor-diagram-panel">
-                                    <h3>Phasor Diagram</h3>
+                                    <h3>Phasor Diagram <span class="ww-phasor-updating-indicator" id="wwPhasorUpdatingIndicator" hidden>Updating…</span></h3>
                                     <div class="ww-phasor-diagram-wrap">
                                         <svg id="wwPhasorSvg" viewBox="-110 -110 220 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Phasor diagram"></svg>
                                     </div>
@@ -33770,17 +33792,31 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         //
         // State is a single small object (owner's own explicit "do not
         // create a second global time controller" instruction) --
-        // `analysisTime` is WORKSPACE time (the same coordinate Cursor A/B
-        // and ww.viewport already use); it is converted to source-relative
-        // elapsed time ONLY at the API call boundary
+        // `analysisTime` is WORKSPACE time (the same coordinate Cursor A/B,
+        // ww.viewport, and -- since the Playback integration below --
+        // `wwPlayback.currentTime` all already share); it is converted to
+        // source-relative elapsed time ONLY at the API call boundary
         // (wwWorkspaceTimeToSourceTime(), against the selected context's
         // own FIRST member -- see wwPhasorAnchorDisplaySourceIdForContext()
         // for why any one member is an adequate time-axis anchor even
         // though the backend's own internal anchor role can vary with
-        // which roles end up eligible). No wwPlayback/wwPlaybackOnTick
-        // wiring exists in this slice -- #wwPhasorPanel's own HTML comment
-        // marks where Slice 3 adds an embedded Playback control row later
-        // without restructuring this page.
+        // which roles end up eligible).
+        //
+        // Phasor Playback integration: `analysisTime` is now driven
+        // ENTIRELY by the ONE shared `wwPlayback` controller whenever this
+        // context's own resolved Time Group (`activeTimeGroupId`) is the
+        // controller's own active group -- see wwPhasorOnPlaybackTick()
+        // (subscribed once at Init via the existing `wwPlaybackOnTick()`
+        // seam) and wwPhasorLoadForSelectedContext(). Phasor never reads
+        // `requestAnimationFrame`/`performance.now()` as a clock -- the
+        // ONLY use of `performance.now()` anywhere in this block is
+        // measuring elapsed REAL time to rate-limit the `/phasor-diagram`
+        // fetch (see the throttle helpers below), never to compute a time
+        // value itself. The old, separate "Analysis Time" number input +
+        // slider are REMOVED entirely (owner instruction: never two
+        // independently editable time controls) -- the mounted Playback
+        // seek scrubber (`wwPhasorMountPlaybackControls()`) is the ONE
+        // time control now, one to one with `analysisTime`.
         //
         // `visibleRoles` (role_key -> boolean) is PURE frontend display
         // state -- which already-computed vectors are currently drawn/
@@ -33789,19 +33825,33 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // identity, resolver rules, or Measurement Groups. Toggling it
         // only re-renders from `latestDiagram` (wwPhasorRenderFromState()),
         // never re-fetches. Reset to "all available roles visible" only
-        // when the SELECTED CONTEXT itself changes (see
-        // wwPhasorLoadForSelectedContext()); left untouched across an
-        // Analysis Time change so a hidden vector stays hidden as the
-        // engineer scrubs time.
+        // when the SELECTED CONTEXT itself genuinely changes (tracked via
+        // `lastLoadedContextId`, since wwPhasorLoadForSelectedContext()
+        // itself now also runs on every mere page revisit) -- left
+        // untouched across Play/Pause/Seek/Speed/Restart/an Analysis Time
+        // change so a hidden vector stays hidden throughout playback.
+        //
+        // `frozenVoltageScale`/`frozenCurrentScale` hold this "playback
+        // run"'s own STABLE per-family diagram scale (see
+        // wwPhasorRenderDiagramSvg()) -- established from the first valid
+        // result, then held fixed (never silently shrunk) so real
+        // magnitude movement stays visible rather than being disguised by
+        // constant rescaling; released back to `null` on Restart or a
+        // genuine context switch, never merely by a value happening to
+        // fall or rise within the current headroom.
         // ==================================================================
 
         const wwPhasorState = {
             contexts: [],
             selectedContextId: null,
+            lastLoadedContextId: null, // the last contextId wwPhasorLoadForSelectedContext() actually initialized visibility/scale-lock for -- distinguishes a genuine context CHANGE from a mere page revisit with the SAME context still selected
             analysisTime: null, // workspace time, or null before a context is selected
             anchorDisplaySourceId: null, // the selected context's own first member's display source id (real or calculated pseudo-id) -- a time-axis anchor only, never a role-matching decision
+            activeTimeGroupId: null, // this context's own resolved Time Group id (or null if unresolvable) -- the ONLY group Phasor's own mounted Playback controls drive
             latestDiagram: null, // last PhasorDiagramResultOut fetched (or null on a request failure)
             visibleRoles: {}, // role_key -> boolean, frontend-only display preference
+            frozenVoltageScale: null, // this playback run's own stable Voltage-family px-per-unit scale, or null before the first valid result
+            frozenCurrentScale: null, // same, for the Current family
             requestGeneration: 0, // one shared stale-response guard for the diagram fetch
             // UAT fix (2026-09-11): true once an automatic Engineering
             // Context suggestion bootstrap has been ATTEMPTED (regardless
@@ -34110,7 +34160,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             emptyState.textContent = message;
             document.getElementById("wwPhasorStatusRow").hidden = true;
             document.getElementById("wwPhasorBody").hidden = true;
-            document.getElementById("wwPhasorTimeRow").hidden = true;
+            wwPhasorMountPlaybackControls(null);
+            wwPhasorState.activeTimeGroupId = null;
             wwPhasorState.latestDiagram = null;
         }
 
@@ -34118,67 +34169,85 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPhasorShowEmptyState(WW_PHASOR_MSG_SELECT_CONTEXT);
         }
 
-        // 1. Cursor A time, if enabled/visible/finite for the anchor's own
-        //    Time Group AND it would not guarantee "insufficient history".
-        // 2. Otherwise the Time Group's own bounds start plus a fixed
-        //    buffer comfortably larger than any realistic one-cycle window
-        //    (as low as ~16.7 ms at 60 Hz) without needing an exact
-        //    per-source nominal-frequency lookup for this UX-only
-        //    heuristic -- the backend remains the sole authority on actual
-        //    availability regardless of this guess (owner instruction: "do
-        //    not default to a time where the backend must inevitably
-        //    return insufficient history if a valid later point exists").
-        // 3. Otherwise 0.
-        const WW_PHASOR_DEFAULT_TIME_BUFFER_SECONDS = 0.1;
-        function wwPhasorComputeDefaultAnalysisTime(anchorDisplaySourceId) {
-            const groupId = wwTimeGroupIdForDisplaySourceId(anchorDisplaySourceId);
-            const bounds = groupId !== null ? wwDeriveTimeGroupBounds(groupId) : null;
-            const earliestReasonable = bounds !== null ? bounds.start + WW_PHASOR_DEFAULT_TIME_BUFFER_SECONDS : null;
-            if (groupId !== null) {
-                const cursors = wwTimeGroupCursorState(groupId);
-                if (cursors.enabled && cursors.a && cursors.a.visible && Number.isFinite(cursors.a.time)) {
-                    if (earliestReasonable === null || cursors.a.time >= earliestReasonable) {
-                        return bounds ? Math.min(Math.max(cursors.a.time, bounds.start), bounds.end) : cursors.a.time;
-                    }
-                }
+        // Mounts (or tears down) Phasor's OWN copy of the shared,
+        // reusable Playback control surface -- the EXACT same markup
+        // factory/wiring/sync functions the Waveform Time Group toolbar
+        // uses (wwCreatePlaybackControlsHtml()/wwWirePlaybackControls()/
+        // wwSyncPlaybackControls(), all near wwClearWorkspace()). Phasor
+        // is simply a SECOND consumer/mount point of the ONE shared
+        // wwPlayback controller, never its owner -- pressing Play here
+        // makes this group the active Playback Controller group, exactly
+        // like the Waveform toolbar already does for its own group.
+        //
+        // A FRESH DOM subtree is built per resolved `groupId` (mirrors
+        // wwCreateTimeGroupCanvasDom()'s own "one canvas per distinct
+        // Time Group, wired once at creation" convention) rather than
+        // re-wiring an existing mount for a DIFFERENT group -- the
+        // Restart/Play/Speed/Seek handlers wwWirePlaybackControls()
+        // installs close over `groupId` at wiring time, so reusing an
+        // old DOM subtree for a new group would leave stale listeners
+        // bound to the wrong id. `null` tears the mount down entirely
+        // (no Engineering Context selected, no resolvable Time Group, or
+        // a context with zero members -- see wwPhasorLoadForSelectedContext()).
+        function wwPhasorMountPlaybackControls(groupId) {
+            const panelEl = document.getElementById("wwPhasorPlaybackPanel");
+            const mountEl = document.getElementById("wwPhasorPlaybackMount");
+            if (!panelEl || !mountEl) return;
+            if (groupId === null) {
+                panelEl.hidden = true;
+                mountEl.innerHTML = "";
+                return;
             }
-            if (earliestReasonable !== null) return bounds ? Math.min(earliestReasonable, bounds.end) : earliestReasonable;
-            return 0;
-        }
+            const playbackControlsHtml = wwCreatePlaybackControlsHtml();
+            mountEl.innerHTML =
+                '<div class="ww-phasor-playback-transport">' + playbackControlsHtml.transportHtml + '</div>' +
+                playbackControlsHtml.seekRowHtml;
+            panelEl.hidden = false;
+            wwWirePlaybackControls(mountEl, groupId);
+            wwSyncPlaybackControls(mountEl, groupId);
 
-        function wwPhasorSyncTimeControls() {
-            const input = document.getElementById("wwPhasorTimeInput");
-            const slider = document.getElementById("wwPhasorTimeSlider");
-            const groupId = wwPhasorState.anchorDisplaySourceId !== null
-                ? wwTimeGroupIdForDisplaySourceId(wwPhasorState.anchorDisplaySourceId) : null;
-            const bounds = groupId !== null ? wwDeriveTimeGroupBounds(groupId) : null;
-            if (bounds) {
-                slider.min = String(bounds.start);
-                slider.max = String(bounds.end);
-            }
-            if (wwPhasorState.analysisTime !== null) {
-                input.value = wwPhasorState.analysisTime.toFixed(6);
-                slider.value = String(wwPhasorState.analysisTime);
-            }
-        }
-
-        function wwPhasorOnAnalysisTimeInput(rawValue) {
-            const value = Number(rawValue);
-            if (!Number.isFinite(value)) return;
-            wwPhasorState.analysisTime = value;
-            wwPhasorSyncTimeControls();
-            wwPhasorRequestDiagram();
+            // Safety net -- discovered directly (not assumed) while
+            // testing: wwPlaybackPause()/wwPlaybackSetSpeed() mutate the
+            // shared wwPlayback state directly but do NOT call
+            // wwPlaybackNotifyTick() the way wwPlaybackPlay()/
+            // wwPlaybackRestart()/the seek-input+commit pair/
+            // wwPlaybackReset() all already do -- their own direct effect
+            // is fully covered for the Waveform toolbar's own BUILT-IN
+            // consumer (wwPlaybackSyncToolbarForGroup()/
+            // wwPlaybackSyncAllToolbarSpeedSelects(), called directly
+            // inline by those two functions), but a SECOND mount point
+            // (this one) has no other seam to learn about exactly these
+            // two transitions. Rather than touch the shared controller
+            // itself (never modify what already ships/is proven by
+            // `browser-tests/playback.spec.js`), this re-runs Phasor's
+            // OWN tick-subscriber logic directly, AFTER the shared click/
+            // change handler above has already run -- covering both the
+            // UI re-sync and the exact-convergence fetch this same
+            // function already implements for every OTHER transition.
+            // Redundant (harmless, idempotent) for transitions the shared
+            // controller already notifies for -- e.g. Play -- since
+            // wwPhasorOnPlaybackTick()'s own transition/desired-time
+            // checks make a second call for the SAME state a no-op.
+            const playBtn = mountEl.querySelector(".ww-tg-playback-play-btn");
+            if (playBtn) playBtn.addEventListener("click", () => wwPhasorOnPlaybackTick(wwPlayback.currentTime, wwPlayback));
+            const restartBtn = mountEl.querySelector(".ww-tg-playback-restart-btn");
+            if (restartBtn) restartBtn.addEventListener("click", () => wwPhasorOnPlaybackTick(wwPlayback.currentTime, wwPlayback));
+            const speedSelect = mountEl.querySelector(".ww-tg-playback-speed-select");
+            if (speedSelect) speedSelect.addEventListener("change", () => wwPhasorOnPlaybackTick(wwPlayback.currentTime, wwPlayback));
         }
 
         // Selecting a context is the ONLY thing that changes WHICH roles
         // get requested -- every supported role is always requested
         // together via wwPhasorFetchDiagram(), never a per-role
-        // resolution call, never a Quantity/Mode selector. `visibleRoles`
-        // is reset here (owner instruction: a genuinely different context
-        // resets visibility to "all available roles visible") since a
-        // different context can have a genuinely different set of
-        // available roles; an Analysis Time change on the SAME context
-        // never goes through this function, so visibility survives that.
+        // resolution call, never a Quantity/Mode selector. This function
+        // also re-runs on every mere PAGE REVISIT (wwRenderAnalysisPage()
+        // -> wwPhasorLoadContexts()'s own existing "cheap refetch on every
+        // visit" precedent), so `visibleRoles`/the diagram scale lock are
+        // only reset when `contextId` genuinely DIFFERS from
+        // `lastLoadedContextId` -- owner instruction: a real context
+        // change resets visibility to "all available roles visible" and
+        // releases the frozen diagram scale, but merely navigating away
+        // and back to the SAME context must never do either.
         function wwPhasorLoadForSelectedContext() {
             const contextId = wwPhasorState.selectedContextId;
             if (!contextId) {
@@ -34186,14 +34255,228 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return;
             }
             const ctx = wwPhasorState.contexts.find((c) => c.id === contextId);
-            wwPhasorState.visibleRoles = {};
-            const anchorDisplaySourceId = wwPhasorAnchorDisplaySourceIdForContext(ctx);
-            if (anchorDisplaySourceId !== wwPhasorState.anchorDisplaySourceId || wwPhasorState.analysisTime === null) {
-                wwPhasorState.anchorDisplaySourceId = anchorDisplaySourceId;
-                wwPhasorState.analysisTime = wwPhasorComputeDefaultAnalysisTime(anchorDisplaySourceId);
+            const isNewContext = contextId !== wwPhasorState.lastLoadedContextId;
+            wwPhasorState.lastLoadedContextId = contextId;
+            if (isNewContext) {
+                wwPhasorState.visibleRoles = {};
+                wwPhasorState.frozenVoltageScale = null;
+                wwPhasorState.frozenCurrentScale = null;
             }
-            wwPhasorSyncTimeControls();
+
+            const anchorDisplaySourceId = wwPhasorAnchorDisplaySourceIdForContext(ctx);
+            wwPhasorState.anchorDisplaySourceId = anchorDisplaySourceId;
+            const groupId = anchorDisplaySourceId !== null ? wwTimeGroupIdForDisplaySourceId(anchorDisplaySourceId) : null;
+
+            if (groupId !== wwPhasorState.activeTimeGroupId) {
+                wwPhasorState.activeTimeGroupId = groupId;
+                wwPhasorMountPlaybackControls(groupId);
+            }
+
+            if (groupId === null) {
+                // Nothing for Playback to drive (e.g. a context with zero
+                // members yet) -- a single static analysis at t=0, exactly
+                // like this page's own pre-Playback behavior; a partial/
+                // empty bay is still a normal, useful (if degenerate)
+                // result -- never a page failure.
+                wwPhasorState.analysisTime = 0;
+                wwPhasorRequestDiagram();
+                return;
+            }
+
+            if (wwPlayback.activeTimeGroupId === groupId) {
+                // Already the shared controller's own active group (e.g.
+                // Waveform already has it playing/paused, or Phasor itself
+                // claimed it on a prior visit) -- read its CURRENT time
+                // verbatim, never reset it (owner instruction: Phasor must
+                // use the SAME shared time a Waveform session already
+                // established for this group).
+                wwPhasorState.analysisTime = wwPlayback.currentTime;
+                wwPhasorRequestExactPlaybackFetch();
+            } else {
+                // Claims this group SAFELY via the EXISTING, UNCHANGED
+                // wwPlaybackRestart() -- which unconditionally cancels any
+                // OTHER group's own in-flight rAF loop before this group
+                // becomes active (exactly like a real cross-group Play/
+                // Restart already does), landing at bounds.start,
+                // "stopped." Only THEN does this refine the landing
+                // position to a more useful starting point
+                // (wwPhasorComputeInitialClaimTime()) via the SAME real
+                // seek-input+commit pair the mounted scrubber's own native
+                // drag gesture would use -- now provably safe, since
+                // Restart just finished neutralizing any other group and
+                // this follow-up seek targets the SAME group Restart just
+                // claimed (wwPlaybackSeekWasPlaying correctly resolves
+                // false against a "stopped" group). This sensible
+                // starting point is a ONE-TIME convenience for a
+                // context's very FIRST claim only -- it is NOT what
+                // "Restart behavior" governs: the mounted Restart BUTTON
+                // itself is completely untouched, wired directly to the
+                // bare wwPlaybackRestart(groupId) with no follow-up seek,
+                // and always lands at the honest bounds.start (owner
+                // instruction: "do NOT silently shift Playback start
+                // forward" -- that instruction is about the Restart
+                // control's own behavior, not about where a bay lands the
+                // very first time it is ever opened).
+                wwPlaybackRestart(groupId);
+                const bounds = wwDeriveTimeGroupBounds(groupId);
+                if (bounds) {
+                    const initialTime = wwPhasorComputeInitialClaimTime(groupId, bounds);
+                    if (Math.abs(initialTime - bounds.start) > 1e-9) {
+                        wwPlaybackHandleSeekInput(groupId, initialTime);
+                        wwPlaybackHandleSeekCommit(groupId, initialTime);
+                    }
+                }
+            }
+        }
+
+        // Computes a sensible ONE-TIME starting point for a context's own
+        // Time Group's very FIRST claim (never applied to the mounted
+        // Restart BUTTON itself, which always uses the bare, unchanged
+        // wwPlaybackRestart() -- see wwPhasorLoadForSelectedContext()'s
+        // own comment). Prefers Cursor A's own CURRENT position (an
+        // already-marked point of interest, read-only -- never moved by
+        // this) if it would not itself guarantee "insufficient window
+        // history"; otherwise bounds.start plus a small fixed buffer
+        // comfortably larger than any realistic one-cycle window (as low
+        // as ~16.7 ms at 60 Hz) without needing an exact per-source
+        // nominal-frequency lookup for this UX-only heuristic; otherwise
+        // bounds.start itself. The backend remains the sole authority on
+        // actual availability regardless of this guess.
+        const WW_PHASOR_DEFAULT_TIME_BUFFER_SECONDS = 0.1;
+        function wwPhasorComputeInitialClaimTime(groupId, bounds) {
+            const earliestReasonable = bounds.start + WW_PHASOR_DEFAULT_TIME_BUFFER_SECONDS;
+            const cursors = wwTimeGroupCursorState(groupId);
+            if (cursors.enabled && cursors.a && cursors.a.visible && Number.isFinite(cursors.a.time) && cursors.a.time >= earliestReasonable) {
+                return Math.min(Math.max(cursors.a.time, bounds.start), bounds.end);
+            }
+            return Math.min(earliestReasonable, bounds.end);
+        }
+
+        // ---- Phasor Playback integration: the ONE tick subscriber ----
+        //
+        // Registered once at Init via the existing wwPlaybackOnTick()
+        // seam (never a second requestAnimationFrame loop, never a
+        // second timer) -- fires on every rendered Playback tick AND on
+        // every real state transition (Play/Pause/Restart/seek-input/
+        // seek-commit), for WHICHEVER Time Group is currently active,
+        // not only Phasor's own. This is the ONLY place Phasor issues a
+        // `/phasor-diagram` request while Playback is driving time --
+        // Playback tells Phasor WHEN; this function only reacts.
+        let wwPhasorLastPlaybackSignature = null;
+        function wwPhasorOnPlaybackTick(currentTime, playback) {
+            if (wwPhasorState.activeTimeGroupId === null) return; // no bay/group resolved for Phasor yet
+            const isOurGroup = playback.activeTimeGroupId === wwPhasorState.activeTimeGroupId;
+            const signature = playback.state + "|" + playback.activeTimeGroupId;
+            const transitioned = signature !== wwPhasorLastPlaybackSignature;
+            wwPhasorLastPlaybackSignature = signature;
+
+            const mountEl = document.getElementById("wwPhasorPlaybackMount");
+            if (mountEl && !mountEl.hidden && isOurGroup) {
+                // Full sync (Play/Pause label, seek bounds) only on a
+                // genuine transition -- the cheap per-tick subset (readout
+                // + seek position) on every other tick, mirroring the
+                // EXACT discipline wwPlaybackRenderTick() already applies
+                // for the Waveform's own mount (wwSyncPlaybackControls()
+                // is not cheap enough to call 60 times a second).
+                if (transitioned) {
+                    wwSyncPlaybackControls(mountEl, wwPhasorState.activeTimeGroupId);
+                } else {
+                    wwUpdatePlaybackControlsTick(mountEl, wwPhasorState.activeTimeGroupId);
+                }
+            }
+
+            if (!isOurGroup) return; // a DIFFERENT Time Group is what's actually moving -- Phasor's own bay stays static at wherever it last was
+
+            wwPhasorState.analysisTime = currentTime;
+
+            if (transitioned && playback.currentTime === playback.startTime && playback.state !== WW_PLAYBACK_STATE_PLAYING) {
+                // Landing exactly at this group's own bounds.start on a
+                // genuine transition is Restart's own signature (never
+                // natural end-of-range completion, which lands at
+                // endTime) -- a fresh "playback run" boundary, so the
+                // frozen diagram scale is released to re-establish from
+                // the next result (owner instruction: scales may reset on
+                // Restart).
+                wwPhasorState.frozenVoltageScale = null;
+                wwPhasorState.frozenCurrentScale = null;
+            }
+
+            if (playback.state === WW_PLAYBACK_STATE_PLAYING) {
+                // Continuous movement -- rAF ticks arrive up to 60/sec;
+                // always throttled, live feedback, never one request per
+                // frame.
+                wwPhasorMaybeFetchForPlayback();
+            } else {
+                // NOT playing -- covers Pause, Restart, Playback reaching
+                // its own endTime naturally, AND every seek `input`/
+                // `change` event of a drag that starts or ends paused.
+                // Deliberately NEVER throttled by elapsed time here (only
+                // by "one request in flight," inside
+                // wwPhasorRequestExactPlaybackFetch() itself): ticks only
+                // arrive from the rAF loop, which only runs while
+                // actually PLAYING -- if a paused seek were throttled by a
+                // time floor with nothing else to retry it later, a
+                // desired time change could get stuck unfetched forever.
+                // A native drag's own `input` event rate is already
+                // naturally bounded by human pointer movement and further
+                // coalesced by the "one in flight" guard, so this remains
+                // "never one request per DOM input event" in practice
+                // without needing an artificial delay. Also the owner's
+                // own "exact convergence when interaction stops"
+                // requirement for the genuine settle transitions (Pause/
+                // Restart/seek-commit/completion).
+                wwPhasorRequestExactPlaybackFetch();
+            }
+        }
+
+        // ---- Playback-driven throttled fetch ----
+        //
+        // "Never allow Playback to produce a growing queue of Phasor HTTP
+        // requests" (owner instruction) -- one request in flight, plus
+        // the LATEST desired time; a completed fetch immediately
+        // re-checks and re-fetches if the desired time has since moved
+        // on (wwPhasorRequestDiagram()'s own trailing call, below), so
+        // the newest value is never silently dropped, only ever coalesced
+        // with whatever arrived while a fetch was in flight or throttled.
+        // `performance.now()` here MEASURES elapsed real time purely to
+        // RATE-LIMIT an HTTP call -- it never drives a clock (wwPlayback
+        // already owns that).
+        const WW_PHASOR_PLAYBACK_THROTTLE_MS = 100; // ~10 Hz; see PHASOR_ANALYSIS.md's own measured-latency note
+        let wwPhasorPlaybackFetchInFlight = false;
+        let wwPhasorPlaybackLastFetchAtMs = 0;
+        let wwPhasorPlaybackFetchedTime = null; // the analysis time the LAST completed fetch actually used
+        let wwPhasorPlaybackForceNextFetch = false;
+
+        function wwPhasorPlaybackDesiredTimeChanged() {
+            return wwPhasorPlaybackFetchedTime === null ||
+                Math.abs(wwPhasorPlaybackFetchedTime - wwPhasorState.analysisTime) > 1e-9;
+        }
+
+        // Bypasses the throttle window entirely for the NEXT fetch (still
+        // respects "one request in flight" -- see wwPhasorMaybeFetchForPlayback()) --
+        // used exclusively for the "exact convergence when interaction
+        // stops" requirement (Pause/Restart/seek-commit/Playback
+        // completion/a context's own initial claim).
+        function wwPhasorRequestExactPlaybackFetch() {
+            wwPhasorPlaybackForceNextFetch = true;
+            wwPhasorMaybeFetchForPlayback();
+        }
+
+        function wwPhasorMaybeFetchForPlayback() {
+            const force = wwPhasorPlaybackForceNextFetch;
+            if (!force && !wwPhasorPlaybackDesiredTimeChanged()) return;
+            if (wwPhasorPlaybackFetchInFlight) return; // the in-flight fetch's own completion re-check (wwPhasorRequestDiagram()) will pick this up
+            if (!force) {
+                const elapsedMs = performance.now() - wwPhasorPlaybackLastFetchAtMs;
+                if (elapsedMs < WW_PHASOR_PLAYBACK_THROTTLE_MS) return; // too soon; the next tick will retry
+            }
+            wwPhasorPlaybackForceNextFetch = false;
             wwPhasorRequestDiagram();
+        }
+
+        function wwPhasorSetUpdatingIndicator(isUpdating) {
+            const el = document.getElementById("wwPhasorUpdatingIndicator");
+            if (el) el.hidden = !isUpdating;
         }
 
         // Any ONE member of the selected context is an adequate time-axis
@@ -34225,28 +34508,55 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // pattern this codebase already uses elsewhere (ww.epoch)
         // generalized with a page-local counter for finer-grained
         // staleness than a whole-workspace event.
+        //
+        // Playback integration: this is the ONE place that actually
+        // dispatches a `/phasor-diagram` HTTP call, whether triggered by
+        // a one-off static selection or by wwPhasorMaybeFetchForPlayback()/
+        // wwPhasorRequestExactPlaybackFetch() above. `desiredTime` is
+        // frozen at call time (a later playback tick may keep advancing
+        // `wwPhasorState.analysisTime` while this fetch is still in
+        // flight -- this fetch always targets the value it started with,
+        // never a moving target mid-request). On completion (success OR
+        // failure), the trailing wwPhasorMaybeFetchForPlayback() call
+        // immediately re-checks the (possibly now-different) desired time
+        // and fires again if needed -- "one request in flight + latest
+        // desired time," never a growing queue, never waiting for the
+        // next tick if the desired time already moved on while this one
+        // was in flight or throttled.
         async function wwPhasorRequestDiagram() {
             const contextId = wwPhasorState.selectedContextId;
             if (!contextId || wwPhasorState.analysisTime === null) return;
             const anchorDisplaySourceId = wwPhasorState.anchorDisplaySourceId;
+            const desiredTime = wwPhasorState.analysisTime;
 
             const myGeneration = ++wwPhasorState.requestGeneration;
             const epochAtStart = ww.epoch;
             const workspaceId = currentWorkspaceId();
             const analysisTimeForApi = anchorDisplaySourceId !== null
-                ? wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, wwPhasorState.analysisTime)
-                : wwPhasorState.analysisTime;
+                ? wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, desiredTime)
+                : desiredTime;
 
+            wwPhasorPlaybackFetchInFlight = true;
+            wwPhasorSetUpdatingIndicator(true);
             let diagram;
             try {
                 diagram = await wwPhasorFetchDiagram(workspaceId, contextId, analysisTimeForApi);
             } catch (error) {
+                wwPhasorPlaybackFetchInFlight = false;
+                wwPhasorPlaybackLastFetchAtMs = performance.now();
+                wwPhasorPlaybackFetchedTime = desiredTime;
                 if (myGeneration !== wwPhasorState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                wwPhasorSetUpdatingIndicator(false);
                 wwPhasorState.latestDiagram = null;
                 wwPhasorRenderDiagramResult(null);
+                wwPhasorMaybeFetchForPlayback();
                 return;
             }
+            wwPhasorPlaybackFetchInFlight = false;
+            wwPhasorPlaybackLastFetchAtMs = performance.now();
+            wwPhasorPlaybackFetchedTime = desiredTime;
             if (myGeneration !== wwPhasorState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            wwPhasorSetUpdatingIndicator(false);
 
             wwPhasorState.latestDiagram = diagram;
             // Default visibility: a role that just computed `available`
@@ -34254,7 +34564,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // context, or a role becoming available for the first time)
             // starts visible. Never overwrites a preference the engineer
             // already set -- owner instruction: visibility persists
-            // across an Analysis Time change.
+            // throughout playback.
             for (const roleKey of WW_PHASOR_DIAGRAM_ROLE_ORDER) {
                 const role = diagram.roles && diagram.roles[roleKey];
                 if (role && role.status === "available" && !(roleKey in wwPhasorState.visibleRoles)) {
@@ -34262,6 +34572,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
             }
             wwPhasorRenderDiagramResult(diagram);
+            wwPhasorMaybeFetchForPlayback();
         }
 
         function wwPhasorWholeResultBlockedMessage(diagram) {
@@ -34295,12 +34606,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const emptyState = document.getElementById("wwPhasorEmptyState");
             const statusRow = document.getElementById("wwPhasorStatusRow");
             const body = document.getElementById("wwPhasorBody");
-            const timeRow = document.getElementById("wwPhasorTimeRow");
             emptyState.hidden = true;
 
             if (!diagram) {
                 body.hidden = true;
-                timeRow.hidden = true;
                 statusRow.hidden = false;
                 statusRow.className = "ww-phasor-status-row";
                 statusRow.textContent = "Could not reach the backend.";
@@ -34308,7 +34617,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
 
             body.hidden = false;
-            timeRow.hidden = false;
             if (diagram.status === "needs_configuration") {
                 statusRow.hidden = false;
                 statusRow.className = "ww-phasor-status-row ww-phasor-status--needs-configuration";
@@ -34438,8 +34746,33 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             const voltageMax = wwPhasorFamilyMaxMagnitude(diagram, WW_PHASOR_VOLTAGE_ROLES);
             const currentMax = wwPhasorFamilyMaxMagnitude(diagram, WW_PHASOR_CURRENT_ROLES);
-            const voltageScale = voltageMax > 0 ? plotRadius / (1.15 * voltageMax) : 0;
-            const currentScale = currentMax > 0 ? plotRadius / (1.15 * currentMax) : 0;
+
+            // Playback stability policy (owner instruction): each family's
+            // own scale is established from its FIRST valid result this
+            // "run" (wwPhasorState.frozenVoltageScale/frozenCurrentScale,
+            // released to null on Restart or a genuine context switch --
+            // see wwPhasorOnPlaybackTick()/wwPhasorLoadForSelectedContext()),
+            // then held FIXED -- never silently shrunk back down merely
+            // because a later magnitude happens to be smaller, which would
+            // otherwise mask real movement behind constant rescaling. Only
+            // ever adjusted if the CURRENT magnitude would overflow the
+            // plot's own headroom under the frozen scale, in which case a
+            // new (necessarily smaller-per-unit) scale is adopted so the
+            // vector still fits.
+            if (voltageMax > 0) {
+                const neededScale = plotRadius / (1.15 * voltageMax);
+                if (wwPhasorState.frozenVoltageScale === null || voltageMax * wwPhasorState.frozenVoltageScale > plotRadius) {
+                    wwPhasorState.frozenVoltageScale = neededScale;
+                }
+            }
+            if (currentMax > 0) {
+                const neededScale = plotRadius / (1.15 * currentMax);
+                if (wwPhasorState.frozenCurrentScale === null || currentMax * wwPhasorState.frozenCurrentScale > plotRadius) {
+                    wwPhasorState.frozenCurrentScale = neededScale;
+                }
+            }
+            const voltageScale = voltageMax > 0 ? wwPhasorState.frozenVoltageScale : 0;
+            const currentScale = currentMax > 0 ? wwPhasorState.frozenCurrentScale : 0;
 
             const parts = [];
             parts.push('<line class="ww-phasor-axis" x1="-100" y1="0" x2="100" y2="0"></line>');
@@ -34447,13 +34780,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             for (const frac of [1 / 3, 2 / 3, 1]) {
                 parts.push('<circle class="ww-phasor-ring" cx="0" cy="0" r="' + (plotRadius * frac).toFixed(1) + '"></circle>');
             }
+            // Ring labels show what the OUTER RING itself represents under
+            // the current (possibly frozen-from-earlier) scale -- not the
+            // live/current family max, which would jiggle every tick right
+            // next to a visually-FIXED ring and read as inconsistent.
             let ringLabelY = -(plotRadius - 3);
-            if (voltageMax > 0) {
-                parts.push('<text class="ww-phasor-ring-label" x="3" y="' + ringLabelY.toFixed(1) + '" fill="var(--ww-phase-a)">' + wwFormatEngineeringValue(voltageMax) + '</text>');
+            if (voltageScale > 0) {
+                const voltageRingValue = plotRadius / voltageScale;
+                parts.push('<text class="ww-phasor-ring-label" x="3" y="' + ringLabelY.toFixed(1) + '" fill="var(--ww-phase-a)">' + wwFormatEngineeringValue(voltageRingValue) + '</text>');
                 ringLabelY += 8;
             }
-            if (currentMax > 0) {
-                parts.push('<text class="ww-phasor-ring-label" x="3" y="' + ringLabelY.toFixed(1) + '">' + wwFormatEngineeringValue(currentMax) + '</text>');
+            if (currentScale > 0) {
+                const currentRingValue = plotRadius / currentScale;
+                parts.push('<text class="ww-phasor-ring-label" x="3" y="' + ringLabelY.toFixed(1) + '">' + wwFormatEngineeringValue(currentRingValue) + '</text>');
             }
 
             for (const roleKey of WW_PHASOR_DIAGRAM_ROLE_ORDER) {
@@ -34514,16 +34853,29 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwPhasorResetState() {
             wwPhasorState.contexts = [];
             wwPhasorState.selectedContextId = null;
+            wwPhasorState.lastLoadedContextId = null;
             wwPhasorState.analysisTime = null;
             wwPhasorState.anchorDisplaySourceId = null;
+            wwPhasorState.activeTimeGroupId = null;
             wwPhasorState.latestDiagram = null;
             wwPhasorState.visibleRoles = {};
+            wwPhasorState.frozenVoltageScale = null;
+            wwPhasorState.frozenCurrentScale = null;
             wwPhasorState.requestGeneration += 1;
             // UAT fix (2026-09-11): a fresh workspace ("Start New
             // Workspace"/"Clear workspace") always gets its own fresh
             // automatic-suggestion bootstrap attempt -- see
             // wwPhasorRunBootstrap()'s own docstring.
             wwPhasorState.bootstrapAttempted = false;
+            // Playback integration: this workspace-wide reset never calls
+            // wwPlaybackReset() itself (wwClearWorkspace() already does
+            // that separately, once, for the ONE shared controller) --
+            // only Phasor's own mount/bookkeeping is torn down here.
+            wwPhasorPlaybackFetchInFlight = false;
+            wwPhasorPlaybackFetchedTime = null;
+            wwPhasorPlaybackForceNextFetch = false;
+            wwPhasorLastPlaybackSignature = null;
+            wwPhasorMountPlaybackControls(null);
             const contextSelect = document.getElementById("wwPhasorContextSelect");
             if (contextSelect) contextSelect.innerHTML = '<option value="">Select a context…</option>';
             const badge = document.getElementById("wwPhasorContextBadge");
@@ -34532,14 +34884,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (svg) svg.innerHTML = "";
             const scaleNote = document.getElementById("wwPhasorScaleNote");
             if (scaleNote) { scaleNote.hidden = true; scaleNote.textContent = ""; }
+            wwPhasorSetUpdatingIndicator(false);
             const valuesList = document.getElementById("wwPhasorValuesList");
             if (valuesList) valuesList.innerHTML = "";
             const statusRow = document.getElementById("wwPhasorStatusRow");
             if (statusRow) statusRow.hidden = true;
             const body = document.getElementById("wwPhasorBody");
             if (body) body.hidden = true;
-            const timeRow = document.getElementById("wwPhasorTimeRow");
-            if (timeRow) timeRow.hidden = true;
             const emptyState = document.getElementById("wwPhasorEmptyState");
             if (emptyState) { emptyState.hidden = false; emptyState.textContent = WW_PHASOR_MSG_SELECT_CONTEXT; }
         }
@@ -34560,6 +34911,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         );
         document.getElementById("statusBarWorkspaceId").textContent = currentWorkspaceId();
         document.getElementById("newWorkspaceButton").addEventListener("click", startNewWorkspace);
+        // Phasor Playback integration: the ONE, permanent subscription to
+        // the shared wwPlayback controller's own tick/transition seam
+        // (wwPlaybackOnTick(), near wwClearWorkspace()) -- registered once,
+        // here, never re-subscribed per context/page-visit (this callback
+        // itself already no-ops whenever wwPhasorState.activeTimeGroupId
+        // is null or a DIFFERENT Time Group is what's actually moving).
+        // Its own unsubscribe function is intentionally never called --
+        // Phasor's own Analysis page is never torn down/recreated like a
+        // dynamically-mounted panel would be, it is a permanent, always-
+        // present section of this single-page app for the lifetime of the
+        // tab, exactly like the Waveform Time Group toolbar's own built-in
+        // (non-unsubscribing) tick consumer.
+        wwPlaybackOnTick(wwPhasorOnPlaybackTick);
 
         // Phase 3A: App Shell wiring.
         // Phase 3B-UAT4 (section 3): Recordings is the fresh-entry
@@ -34623,8 +34987,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         });
         document.getElementById("wwPhasorContextSelect").addEventListener("change", (event) => {
             wwPhasorState.selectedContextId = event.target.value || null;
-            wwPhasorState.analysisTime = null;
-            wwPhasorState.anchorDisplaySourceId = null;
             wwPhasorRenderContextBadge();
             if (wwPhasorState.selectedContextId) {
                 wwPhasorLoadForSelectedContext();
@@ -34632,8 +34994,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwPhasorShowNoContextSelected();
             }
         });
-        document.getElementById("wwPhasorTimeInput").addEventListener("change", (event) => wwPhasorOnAnalysisTimeInput(event.target.value));
-        document.getElementById("wwPhasorTimeSlider").addEventListener("input", (event) => wwPhasorOnAnalysisTimeInput(event.target.value));
         // Bay-centric redesign: visibility toggling. Reuses the exact
         // delegated click+keydown pattern #channelGroups already
         // established (setupChannelRowToggles()) for its own row-as-

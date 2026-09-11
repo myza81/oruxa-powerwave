@@ -8,6 +8,90 @@ Last updated: **2026-09-12**
 
 ## What was most recently done
 
+**Phasor Playback integration — connects the existing, unchanged, shared
+`wwPlayback` controller ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock))
+to the bay-centric Phasor Diagram ([DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)'s
+own new "Update" section; architecture recorded in
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s own new "Phasor Playback
+integration" section).** No second Playback controller, timer, or clock
+was built — frontend-only, zero backend files touched.
+
+**What changed**: the separate "Analysis Time" number input + slider are
+REMOVED entirely. Phasor now mounts the SAME reusable Playback control
+surface (`wwCreatePlaybackControlsHtml()`/`wwWirePlaybackControls()`/
+`wwSyncPlaybackControls()`/`wwUpdatePlaybackControlsTick()`) the Waveform
+Time Group toolbar already mounts — the seek scrubber IS Phasor's own
+analysis time control now. Selecting a context whose own resolved Time
+Group is already `wwPlayback`'s active group reads its current time
+verbatim (Waveform↔Phasor share one clock across page navigation);
+selecting a not-yet-active group claims it via the existing, unchanged
+`wwPlaybackRestart()` (safely stops any other group first, lands at
+`bounds.start`), then refines the landing position via a real seek-
+input+commit pair as a ONE-TIME convenience for a bay's first view only
+— the mounted Restart BUTTON itself is untouched, always landing
+honestly at `bounds.start` (owner instruction: "Playback owns event
+time... do NOT silently shift Playback start forward" governs the
+Restart control specifically, not a bay's very first view).
+
+**Throttling/concurrency**: "one request in flight + latest desired
+time, never a growing queue." A Play-driven tick uses a throttled
+(~10 Hz, `WW_PHASOR_PLAYBACK_THROTTLE_MS = 100`) fetch; every NON-playing
+transition (Pause, Restart, Playback reaching its own end, and every
+seek `input`/`change` event) uses an EXACT, non-throttled fetch instead
+— discovered directly (via a real failing Playwright test, not assumed)
+that gating a paused seek on an elapsed-time floor could leave its own
+desired time stuck unfetched forever, since ticks only arrive from the
+rAF loop while actually playing. Measured (not assumed) aggregated
+endpoint latency on a demanding 20 kHz/10 s/six-role fixture: ~28–44 ms
+(p50 ~33 ms) — comfortably under the throttle window even at 4× speed.
+
+**A real architecture gap was found and fixed, entirely within Phasor's
+own code, without touching the shared controller**:
+`wwPlaybackPause()`/`wwPlaybackSetSpeed()` mutate `wwPlayback` directly
+but never call `wwPlaybackNotifyTick()` (unlike Play/Restart/seek/reset,
+which all do) — their own effect was already fully covered for the
+Waveform toolbar's own directly-wired consumer, but a second mount point
+had no other seam to learn about exactly these two transitions.
+`wwPhasorMountPlaybackControls()` now adds its own listener on the
+mounted Play/Pause/Restart/Speed controls that re-invokes
+`wwPhasorOnPlaybackTick()` directly, after the shared handler already
+ran — closing the gap without modifying core Playback code at all.
+
+**Visibility/scaling during Playback**: `wwPhasorState.visibleRoles`
+persists across every Playback-driven time change, resetting only on a
+genuine context change (a pre-existing subtlety fixed in passing: the
+context-load function re-runs on every mere page revisit too, now
+correctly scoped via a new `lastLoadedContextId` tracker). Each family's
+own diagram scale (`frozenVoltageScale`/`frozenCurrentScale`) is
+established from the first valid result and held FIXED for the
+"playback run" (never silently shrunk, so real magnitude movement stays
+visible), released only on a genuine Restart or context switch.
+
+**Concurrent work note**: this session ran in parallel with another
+session's own "bare Engineering Context detection" fix (see immediately
+below) — both touched `frontend/index.html`-adjacent files at different
+times; verified via `git show <their-commit> --stat` that their commit
+never touched `frontend/index.html`, `test_frontend_phasor_analysis.py`,
+or `phasor_analysis.spec.js`, so no merge conflict existed once both
+sessions' own edits settled.
+
+**Tests**: `test_frontend_phasor_analysis.py` revised in place (obsolete
+Analysis-Time-input assertions replaced; new `TestPlaybackTimeControl`/
+`TestPlaybackIntegration` classes — 95 tests total, all passing).
+`phasor_analysis.spec.js` extended with a new "Playback integration"
+describe block (Play/repeated-results/no-context-mutation, Pause exact
+convergence, seek-while-paused exact convergence, 4× speed throttling,
+Restart honesty, context-switch-while-playing, Waveform↔Phasor shared-
+clock interoperability) alongside the unchanged bay-centric/bootstrap
+suites. Full backend regression, full frontend static suite, and full
+Playwright suite (42 tests) all pass.
+
+**Files changed**: `frontend/index.html` only (no backend files
+touched). See this task's own final report for the exact commit hash and
+push status.
+
+## What was done in the prior session — Phasor UAT redesign (bay-centric) + bare Engineering Context detection fix
+
 **Phasor UAT fix -- bare Engineering Context detection for real COMTRADE
 role names.** A real uploaded event reached the Phasor Diagram bootstrap
 path correctly, but produced no Bay options because the backend

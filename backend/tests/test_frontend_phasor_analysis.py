@@ -311,23 +311,57 @@ class TestBayCentricAggregation:
         assert panel_html.count("<select") == 1  # the Bay/Engineering Context selector only
 
 
-class TestAnalysisTimeAndDefault:
-    def test_time_input_and_slider_exist(self):
-        source = _source()
-        assert 'id="wwPhasorTimeInput"' in source
-        assert 'id="wwPhasorTimeSlider"' in source
+class TestPlaybackTimeControl:
+    """Phasor Playback integration: the mounted Playback seek scrubber
+    (the EXACT reusable control surface the Waveform Time Group toolbar
+    also mounts) IS Phasor's own analysis time control now -- the old,
+    separate Analysis Time number input + slider, and the Cursor-A-
+    preferring default-time heuristic that used to feed it, are removed
+    entirely."""
 
-    def test_default_time_prefers_cursor_a_then_buffered_start(self):
+    def test_old_analysis_time_input_and_slider_removed(self):
         source = _source()
-        body = _function_body(source, "function wwPhasorComputeDefaultAnalysisTime", "function wwPhasorSyncTimeControls")
-        assert "wwTimeGroupCursorState(groupId)" in body
-        assert "cursors.a" in body
-        assert "WW_PHASOR_DEFAULT_TIME_BUFFER_SECONDS" in body
+        assert 'id="wwPhasorTimeInput"' not in source
+        assert 'id="wwPhasorTimeSlider"' not in source
+        assert "wwPhasorComputeDefaultAnalysisTime" not in source
+        assert "wwPhasorSyncTimeControls" not in source
+        assert "wwPhasorOnAnalysisTimeInput" not in source
+
+    def test_initial_claim_time_never_applies_to_the_restart_button_itself(self):
+        """wwPhasorComputeInitialClaimTime() is a ONE-TIME convenience for
+        a context's very FIRST claim only -- the mounted Restart BUTTON
+        is wired directly to the bare, unchanged wwPlaybackRestart(),
+        never followed by this heuristic, so pressing Restart always
+        lands honestly at bounds.start (see the dedicated Restart-behavior
+        test below)."""
+        source = _source()
+        wire_body = _function_body(source, "function wwPhasorMountPlaybackControls", "function wwPhasorLoadForSelectedContext")
+        assert "wwPhasorComputeInitialClaimTime" not in wire_body
+
+    def test_playback_composition_point_exists(self):
+        source = _source()
+        assert 'id="wwPhasorPlaybackPanel"' in source
+        assert 'id="wwPhasorPlaybackMount"' in source
+
+    def test_mounts_the_shared_reusable_playback_control_surface(self):
+        """Reuses wwCreatePlaybackControlsHtml()/wwWirePlaybackControls()/
+        wwSyncPlaybackControls() -- the EXACT same functions the Waveform
+        Time Group toolbar mounts -- never a Phasor-specific duplicate."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorMountPlaybackControls", "function wwPhasorLoadForSelectedContext")
+        assert "wwCreatePlaybackControlsHtml()" in body
+        assert "wwWirePlaybackControls(mountEl, groupId)" in body
+        assert "wwSyncPlaybackControls(mountEl, groupId)" in body
+
+    def test_analysis_time_driven_by_shared_playback_state(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorOnPlaybackTick", "function wwPhasorPlaybackDesiredTimeChanged")
+        assert "wwPhasorState.analysisTime = currentTime;" in body
 
     def test_analysis_time_converted_to_source_time_at_api_boundary_only(self):
         source = _source()
         body = _function_body(source, "async function wwPhasorRequestDiagram", "function wwPhasorWholeResultBlockedMessage")
-        assert "wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, wwPhasorState.analysisTime)" in body
+        assert "wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, desiredTime)" in body
 
     def test_anchor_is_any_context_member_never_a_role_matching_decision(self):
         """wwPhasorAnchorDisplaySourceIdForContext() picks a time-axis
@@ -341,11 +375,30 @@ class TestAnalysisTimeAndDefault:
         assert ".phase" not in body
         assert "engineering_type" not in body
 
+    def test_restart_claims_a_not_yet_active_group_never_a_buffered_start(self):
+        """Owner instruction: Playback owns event time -- a freshly
+        selected context claims its own resolved Time Group via the
+        EXISTING, UNCHANGED wwPlaybackRestart() (lands at bounds.start),
+        never a Phasor-specific "buffered default start" that would dodge
+        an honest insufficient-history result."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorLoadForSelectedContext", "function wwPhasorOnPlaybackTick")
+        assert "wwPlaybackRestart(groupId);" in body
+
     def test_no_second_global_time_controller(self):
+        """Phasor never builds its own timer/rAF loop -- the only
+        `performance.now()` uses in this block measure elapsed REAL time
+        to RATE-LIMIT an HTTP fetch (the throttle helpers), never to
+        compute a time value itself. (A prose comment merely EXPLAINING
+        "never a second requestAnimationFrame loop" is fine and expected;
+        only an actual call is checked here.)"""
         source = _source()
         body = _phasor_block(source)
-        assert "requestAnimationFrame" not in body
-        assert "performance.now()" not in body
+        assert "requestAnimationFrame(" not in body
+        assert "setInterval(" not in body
+        assert "new Date()" not in body
+        throttle_body = _function_body(source, "function wwPhasorMaybeFetchForPlayback", "function wwPhasorSetUpdatingIndicator")
+        assert "performance.now()" in throttle_body
 
 
 class TestValueAndAngleRendering:
@@ -403,11 +456,33 @@ class TestSvgDiagram:
         body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
         assert "wwPhasorFamilyMaxMagnitude(diagram, WW_PHASOR_VOLTAGE_ROLES)" in body
         assert "wwPhasorFamilyMaxMagnitude(diagram, WW_PHASOR_CURRENT_ROLES)" in body
-        assert "const voltageScale = voltageMax > 0 ? plotRadius / (1.15 * voltageMax) : 0;" in body
-        assert "const currentScale = currentMax > 0 ? plotRadius / (1.15 * currentMax) : 0;" in body
+        assert "const voltageScale = voltageMax > 0 ? wwPhasorState.frozenVoltageScale : 0;" in body
+        assert "const currentScale = currentMax > 0 ? wwPhasorState.frozenCurrentScale : 0;" in body
         # Exactly one scale variable per family -- never per-vector.
         assert body.count("const voltageScale") == 1
         assert body.count("const currentScale") == 1
+
+    def test_playback_stability_diagram_scale_frozen_from_first_result_never_shrinks(self):
+        """Owner instruction: avoid constant rescaling during Playback,
+        which can visually hide real magnitude movement -- each family's
+        own scale is established once (from its first valid result) and
+        only ever adjusted to EXPAND headroom (never silently shrunk back
+        down merely because a later magnitude happens to be smaller)."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert "wwPhasorState.frozenVoltageScale === null || voltageMax * wwPhasorState.frozenVoltageScale > plotRadius" in body
+        assert "wwPhasorState.frozenCurrentScale === null || currentMax * wwPhasorState.frozenCurrentScale > plotRadius" in body
+
+    def test_frozen_scale_released_on_restart_to_a_fresh_run(self):
+        """Restart is a fresh "playback run" boundary -- landing exactly
+        at the Time Group's own start releases the frozen scale so it
+        re-establishes from the next result; natural end-of-range
+        completion (a different landing time) does not."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorOnPlaybackTick", "function wwPhasorPlaybackDesiredTimeChanged")
+        assert "transitioned && playback.currentTime === playback.startTime && playback.state !== WW_PLAYBACK_STATE_PLAYING" in body
+        assert "wwPhasorState.frozenVoltageScale = null;" in body
+        assert "wwPhasorState.frozenCurrentScale = null;" in body
 
     def test_scaling_is_graphical_only_never_touches_magnitude_rms(self):
         source = _source()
@@ -516,13 +591,18 @@ class TestVisibilityState:
 
     def test_visibility_reset_only_on_context_change_not_on_time_change(self):
         """A genuinely different Engineering Context resets visibility to
-        "all available roles visible"; an Analysis Time change on the
-        SAME context must never do this."""
+        "all available roles visible" -- tracked via `lastLoadedContextId`
+        so a mere page revisit (or an Analysis Time/Playback tick) with
+        the SAME context selected never does this; wwPhasorOnPlaybackTick()
+        (the function that drives every Playback-induced time change)
+        never touches `visibleRoles` at all."""
         source = _source()
-        load_context_body = _function_body(source, "function wwPhasorLoadForSelectedContext", "function wwPhasorAnchorDisplaySourceIdForContext")
+        load_context_body = _function_body(source, "function wwPhasorLoadForSelectedContext", "function wwPhasorOnPlaybackTick")
+        assert "const isNewContext = contextId !== wwPhasorState.lastLoadedContextId;" in load_context_body
+        assert "if (isNewContext) {" in load_context_body
         assert "wwPhasorState.visibleRoles = {};" in load_context_body
-        time_input_body = source[source.index("function wwPhasorOnAnalysisTimeInput"):source.index("}", source.index("function wwPhasorOnAnalysisTimeInput"))]
-        assert "wwPhasorState.visibleRoles" not in time_input_body
+        tick_body = _function_body(source, "function wwPhasorOnPlaybackTick", "function wwPhasorPlaybackDesiredTimeChanged")
+        assert "wwPhasorState.visibleRoles" not in tick_body
 
     def test_default_visibility_never_overwrites_an_existing_preference(self):
         source = _source()
@@ -535,31 +615,115 @@ class TestVisibilityState:
         assert 'role.status !== "available"' in body
 
 
-class TestNoPlaybackIntegrationYet:
-    """Explicit scope exclusion for this slice -- Slice 3 adds this."""
+class TestPlaybackIntegration:
+    """Phasor Playback integration: Phasor consumes the ONE shared,
+    reusable `wwPlayback` controller (unchanged) -- it never builds a
+    second controller, timer, or independent time field. See
+    TestPlaybackTimeControl above for the time-control-specific checks."""
 
-    def test_no_wwplayback_reference_in_phasor_block(self):
-        """No functional coupling to the Playback controller -- a
-        COMMENT explaining the analogy to wwPlaybackReset()'s own
-        wwClearWorkspace() registration is fine (and present); an actual
-        call/property-access is not."""
+    def test_playback_controller_functions_referenced(self):
+        """Functional coupling to the shared controller IS now expected
+        (the opposite of the pre-Playback slice) -- Phasor calls the
+        real, unchanged wwPlayback* functions, never a copy of them."""
         source = _source()
         body = _phasor_block(source)
-        assert "wwPlaybackOnTick(" not in body
-        assert "wwPlayback." not in body
-        assert "wwPlayback.state" not in body
-        assert "wwWirePlaybackControls(" not in body
-        assert "wwSyncPlaybackControls(" not in body
+        assert "wwPlaybackOnTick(" in body
+        assert "wwPlaybackRestart(" in body
+        assert "wwPlayback.activeTimeGroupId" in body
+        assert "wwPlayback.currentTime" in body
+        # The tick-subscriber callback's own `playback` PARAMETER *is*
+        # `wwPlayback` itself (passed by wwPlaybackNotifyTick(currentTime,
+        # wwPlayback)) -- referenced as `playback.state` inside that one
+        # callback, never re-declared or copied.
+        assert "playback.state" in body
 
-    def test_no_play_pause_speed_seek_controls_in_phasor_panel(self):
+    def test_play_pause_speed_seek_controls_are_the_mounted_playback_surface(self):
+        """The static HTML template carries only an EMPTY composition-
+        point container (`#wwPhasorPlaybackMount`) -- the actual Play/
+        Pause/Speed/Seek controls are populated entirely at runtime by
+        wwPhasorMountPlaybackControls() calling the shared
+        wwCreatePlaybackControlsHtml() factory, never hand-rolled static
+        markup of Phasor's own."""
         source = _source()
         panel_html = source[source.index('id="wwPhasorPanel"'):source.index("</section>\n                    </div>\n                </div>\n            </section>", source.index('id="wwPhasorPanel"'))]
-        assert "wwPlaybackControls" not in panel_html
-        assert "ww-tg-playback" not in panel_html
+        assert 'id="wwPhasorPlaybackMount"></div>' in panel_html
+        assert "ww-tg-playback" not in panel_html  # only ever injected dynamically, never static
+        assert 'class="secondary ww-tg-playback-restart-btn"' not in panel_html
 
-    def test_composition_point_comment_exists_for_slice_3(self):
+    def test_no_duplicate_playback_controller_declared(self):
+        """Exactly one wwPlayback state object exists in the whole file --
+        Phasor never declares its own second copy."""
         source = _source()
-        assert "Slice 3 composition point" in source
+        assert source.count("const wwPlayback = {") == 1
+
+    def test_no_phasor_specific_timer_or_clock(self):
+        source = _source()
+        body = _phasor_block(source)
+        assert "setInterval(" not in body
+        assert "requestAnimationFrame(" not in body
+
+    def test_aggregated_endpoint_used_never_role_per_request_fan_out(self):
+        source = _source()
+        body = _phasor_block(source)
+        assert body.count('"/phasor-diagram?"') == 1
+        assert "/phasor?" not in body
+
+    def test_throttle_respects_one_request_in_flight_plus_latest_desired_time(self):
+        """"Never allow Playback to produce a growing queue of Phasor HTTP
+        requests" -- one request in flight, plus the LATEST desired time;
+        a completed fetch re-checks and re-fetches immediately if the
+        desired time has since moved on."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorMaybeFetchForPlayback", "function wwPhasorSetUpdatingIndicator")
+        assert "if (wwPhasorPlaybackFetchInFlight) return;" in body
+        assert "elapsedMs < WW_PHASOR_PLAYBACK_THROTTLE_MS" in body
+        request_body = _function_body(source, "async function wwPhasorRequestDiagram", "function wwPhasorWholeResultBlockedMessage")
+        assert "wwPhasorMaybeFetchForPlayback();" in request_body
+
+    def test_exact_convergence_on_settle_transitions(self):
+        """Pause/Restart/a seek commit landing in "paused"/Playback
+        reaching its own endTime/a live seek `input` event while already
+        paused -- every one of these is NOT "playing" and must converge
+        to the EXACT settled time, never a throttled approximation.
+        Deliberately keyed on `playback.state`, never on the transition
+        signature alone -- a seek while ALREADY paused never changes that
+        signature (paused -> paused), and ticks only arrive from the rAF
+        loop while actually playing, so gating this on "did the state
+        STRING change" would leave a paused seek's own desired time stuck
+        unfetched forever with nothing left to retry it."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorOnPlaybackTick", "function wwPhasorPlaybackDesiredTimeChanged")
+        assert "if (playback.state === WW_PLAYBACK_STATE_PLAYING) {" in body
+        assert "wwPhasorMaybeFetchForPlayback();" in body
+        assert "wwPhasorRequestExactPlaybackFetch();" in body
+
+    def test_no_second_analysis_time_field_reintroduced(self):
+        source = _source()
+        body = _phasor_block(source)
+        assert 'type="number"' not in body
+
+    def test_no_quantity_mode_or_combined_mode_selector_reintroduced(self):
+        """The bay-centric redesign already made a Quantity/Mode selector
+        obsolete (every role is always requested together) -- Playback
+        integration must not reintroduce one, nor a NEW "combined mode"
+        selector, since combined display is now inherent to every bay."""
+        source = _source()
+        body = _phasor_block(source)
+        assert "wwPhasorQuantitySelect" not in body
+        assert "wwPhasorModeSelect" not in body
+        assert "combined_mode" not in body.lower()
+        assert "combinedMode" not in body
+
+    def test_no_per_unit_or_plotly(self):
+        source = _source()
+        body = _phasor_block(source)
+        assert "unit_mode" not in body
+        assert "per_unit" not in body.lower()
+        assert "Plotly" not in body
+
+    def test_composition_point_comment_updated_for_playback(self):
+        source = _source()
+        assert "Phasor Playback integration" in source
 
 
 class TestClearWorkspaceLifecycle:

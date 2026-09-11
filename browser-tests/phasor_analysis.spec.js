@@ -1,4 +1,4 @@
-// Phasor Analysis -- bay-centric redesign (Phasor UAT redesign) real-
+// Phasor Analysis -- bay-centric redesign + Playback integration real-
 // browser coverage. See docs/development/BROWSER_SMOKE_TEST.md for the
 // general foundation this extends, and backend/tests/test_frontend_
 // phasor_analysis.py for the structural/static invariants that don't need
@@ -11,6 +11,17 @@
 // aggregated request; a partial bay is a normal result. Individual vector
 // VISIBILITY is a pure frontend display preference -- toggling it must
 // never issue a new `/phasor-diagram` request.
+//
+// Phasor Playback integration: Phasor mounts the SAME reusable Playback
+// control surface (`wwCreatePlaybackControlsHtml()`/
+// `wwWirePlaybackControls()`/`wwSyncPlaybackControls()`) the Waveform Time
+// Group toolbar uses -- there is no separate "Analysis Time" input any
+// more, the mounted seek scrubber (`.ww-tg-playback-seek-slider`) IS
+// Phasor's own analysis time control. These tests reuse the EXACT
+// `seekTo()`/`seekSliderBounds()` interaction helpers `playback.spec.js`
+// already established for that same scrubber class, and assert against
+// the ONE shared `wwPlayback` controller (`wwPlaybackState()`) -- never a
+// second, Phasor-specific clock.
 //
 // Fixture: phasor_smoke_three_phase(.cfg/.dat) -- a dedicated, committed
 // ASCII COMTRADE fixture (3 Voltage + 3 Current channels, 50 Hz, 1000 Hz
@@ -104,6 +115,24 @@ async function openAnalysisPhasor(page) {
   await expect(page.locator("#wwPhasorPanel")).toBeVisible();
 }
 
+// Reused verbatim from browser-tests/playback.spec.js's own established
+// interaction pattern for the SAME `.ww-tg-playback-seek-slider` class --
+// Phasor mounts the identical markup, so the identical technique applies.
+async function seekTo(slider, value, { commit = true } = {}) {
+  await slider.evaluate(
+    (el, args) => {
+      el.value = String(args.value);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      if (args.commit) el.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+    { value, commit }
+  );
+}
+
+async function seekSliderBounds(slider) {
+  return slider.evaluate((el) => ({ min: parseFloat(el.min), max: parseFloat(el.max) }));
+}
+
 test.describe("Phasor Analysis -- bay-centric redesign", () => {
   test("full bay: all six roles together, visibility toggles locally, persists across time change, resets on context switch", async ({ page }) => {
     const { workspaceId, sourceId, contextId } = await uploadAndCreateContext(page);
@@ -132,10 +161,16 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
     expect(valuesText).toMatch(/100\.0\s*V/); // known balanced 100 V RMS
     expect(valuesText).toMatch(/40\.0\s*A/); // known balanced 40 A RMS
 
-    // 4. A valid analysis time was chosen automatically.
-    await expect(page.locator("#wwPhasorTimeRow")).toBeVisible();
-    const initialTime = await page.locator("#wwPhasorTimeInput").inputValue();
-    expect(Number(initialTime)).toBeGreaterThan(0);
+    // 4. Playback integration: the mounted Playback control surface (NOT
+    //    a separate Analysis Time field -- that control no longer
+    //    exists) is populated, and this bay's own resolved Time Group was
+    //    automatically claimed at a valid time (bounds.start, per
+    //    wwPlaybackRestart()'s own existing semantics).
+    await expect(page.locator("#wwPhasorPlaybackPanel")).toBeVisible();
+    const seekSlider = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-seek-slider");
+    await expect(seekSlider).toBeVisible();
+    const initialTime = Number(await seekSlider.inputValue());
+    expect(Number.isFinite(initialTime)).toBe(true);
 
     // 5. Six SVG vectors (one <line>+<polygon>+<text> triple per role).
     await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
@@ -170,10 +205,10 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
     await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(3);
     expect(diagramFetchCount).toBe(0);
 
-    // 10. Change analysis time -- a real backend round-trip happens, but
-    //     the Ia/Ib/Ic visibility preference set above SURVIVES it.
-    await page.locator("#wwPhasorTimeInput").fill("1.5");
-    await page.locator("#wwPhasorTimeInput").dispatchEvent("change");
+    // 10. Change analysis time via the Playback seek scrubber -- the ONE
+    //     time control now -- a real backend round-trip happens, but the
+    //     Ia/Ib/Ic visibility preference set above SURVIVES it.
+    await seekTo(seekSlider, 1.5);
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
       expect(text).toMatch(/100\.0\s*V/);
@@ -197,10 +232,19 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
   });
 
   test("no context selected shows an explanatory empty state, not a broken diagram", async ({ page }) => {
-    await uploadFixture(page);
+    // Uses uploadAndCreateContext() (a MANUAL context, created directly
+    // via the backend API) rather than a bare uploadFixture() -- a
+    // workspace with an EXISTING context never runs the automatic
+    // suggestion bootstrap (see the "existing context -> ... no
+    // suggestion request made" scenario below), so "no context selected"
+    // is a genuinely stable state here, never a transient one a
+    // fast-enough auto-bootstrap could race past.
+    await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);
     await expect(page.locator("#wwPhasorEmptyState")).toBeVisible();
+    await expect(page.locator("#wwPhasorEmptyState")).toHaveText("Select an Engineering Context to begin.");
     await expect(page.locator("#wwPhasorBody")).toBeHidden();
+    await expect(page.locator("#wwPhasorPlaybackPanel")).toBeHidden();
     await expect(page.locator("#wwPhasorSvg")).toBeEmpty();
   });
 
@@ -243,15 +287,250 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
   });
 });
 
+// Phasor Playback integration: Phasor consumes the ONE shared, reusable
+// `wwPlayback` controller (see browser-tests/playback.spec.js for that
+// controller's own foundational coverage) -- never a second clock/timer.
+// These scenarios exercise the mounted Playback control surface end to
+// end against the real aggregated `/phasor-diagram` endpoint.
+test.describe("Phasor Analysis -- Playback integration", () => {
+  test("Play advances shared time, produces repeated aggregated results, and never mutates the Engineering Context", async ({ page }) => {
+    const { workspaceId, contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page);
+    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
+
+    // Hide Ib/Ic before playing -- visibility must survive playback.
+    await page.locator('.ww-phasor-value-row--toggle[data-role="Ib"]').click();
+    await page.locator('.ww-phasor-value-row--toggle[data-role="Ic"]').click();
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(4);
+
+    let diagramFetchCount = 0;
+    page.on("request", (request) => { if (request.url().includes("/phasor-diagram")) diagramFetchCount += 1; });
+
+    const playBtn = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-play-btn");
+    await playBtn.click();
+    await expect(playBtn).toHaveText("Pause");
+    await page.waitForTimeout(600);
+
+    // Repeated aggregated results -- more than the one static fetch this
+    // page already made before Play.
+    expect(diagramFetchCount).toBeGreaterThan(1);
+    // Hidden roles remain hidden throughout playback; the other four
+    // (Va/Vb/Vc/Ia) keep updating.
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(4);
+    await expect(page.locator('.ww-phasor-value-row--toggle[data-role="Ib"]')).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator('.ww-phasor-value-row--toggle[data-role="Ic"]')).toHaveAttribute("aria-pressed", "false");
+
+    // Visibility is a pure frontend display preference -- confirm the
+    // Engineering Context's own membership was never touched by any of
+    // this.
+    const contextResponse = await page.request.get(
+      `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/engineering-contexts/${encodeURIComponent(contextId)}`
+    );
+    expect(contextResponse.ok()).toBeTruthy();
+    const contextBody = await contextResponse.json();
+    expect(contextBody.members).toHaveLength(6);
+  });
+
+  test("Pause converges to the exact settled time and stops issuing requests", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page);
+    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
+
+    const requestedTimes = [];
+    page.on("request", (request) => {
+      const url = request.url();
+      if (!url.includes("/phasor-diagram")) return;
+      const match = url.match(/analysis_time=([-0-9.eE]+)/);
+      if (match) requestedTimes.push(Number(match[1]));
+    });
+
+    const playBtn = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-play-btn");
+    await playBtn.click();
+    await page.waitForTimeout(500);
+    await playBtn.click(); // Pause
+    await expect(playBtn).toHaveText("Play");
+
+    const pausedTime = await page.evaluate(() => wwPlaybackState().currentTime);
+
+    // The queue drains and settles -- no further requests once the exact
+    // convergence fetch (if any) completes.
+    await expect(async () => {
+      const countAtCheck = requestedTimes.length;
+      await page.waitForTimeout(250);
+      expect(requestedTimes.length).toBe(countAtCheck);
+    }).toPass({ timeout: 5000 });
+
+    // Displayed playback time equals the LAST accepted Phasor request's
+    // own analysis_time (single-source workspace -- zero alignment
+    // offset, so workspace time and the API's own source-relative
+    // analysis_time are numerically identical here).
+    expect(requestedTimes.length).toBeGreaterThan(0);
+    const lastRequestedTime = requestedTimes[requestedTimes.length - 1];
+    expect(Math.abs(lastRequestedTime - pausedTime)).toBeLessThan(0.01);
+  });
+
+  test("Seek while paused converges exactly to the released position", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page);
+    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
+
+    const seekSlider = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-seek-slider");
+    const { min, max } = await seekSliderBounds(seekSlider);
+    const target = min + (max - min) * 0.75;
+
+    let lastRequestedTime = null;
+    page.on("request", (request) => {
+      const url = request.url();
+      if (!url.includes("/phasor-diagram")) return;
+      const match = url.match(/analysis_time=([-0-9.eE]+)/);
+      if (match) lastRequestedTime = Number(match[1]);
+    });
+
+    await seekTo(seekSlider, target);
+    await expect(async () => {
+      expect(lastRequestedTime).not.toBeNull();
+      expect(Math.abs(lastRequestedTime - target)).toBeLessThan(0.01);
+    }).toPass({ timeout: 5000 });
+
+    const state = await page.evaluate(() => wwPlaybackState().state);
+    expect(state).toBe("paused"); // was not playing before the seek -- lands paused, not stopped
+  });
+
+  test("Speed selection (4x) keeps Phasor's own request rate throttled, never one request per tick", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page);
+    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
+
+    await page.locator("#wwPhasorPlaybackMount .ww-tg-playback-speed-select").selectOption("4");
+
+    let diagramFetchCount = 0;
+    page.on("request", (request) => { if (request.url().includes("/phasor-diagram")) diagramFetchCount += 1; });
+
+    await page.locator("#wwPhasorPlaybackMount .ww-tg-playback-play-btn").click();
+    await page.waitForTimeout(600);
+
+    // At 4x over ~600ms of real time (with the throttle at ~100ms), the
+    // request count must stay bounded -- nowhere near one per rAF frame
+    // (which would be dozens at 60 fps).
+    expect(diagramFetchCount).toBeGreaterThan(0);
+    expect(diagramFetchCount).toBeLessThan(15);
+  });
+
+  test("Restart lands at the Time Group's own start; insufficient history is reported honestly, never dodged", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page);
+    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
+
+    const seekSlider = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-seek-slider");
+    const { min } = await seekSliderBounds(seekSlider);
+
+    // Move away from the start first.
+    await seekTo(seekSlider, 1.5);
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+
+    await page.locator("#wwPhasorPlaybackMount .ww-tg-playback-restart-btn").click();
+    await expect(page.locator("#wwPhasorPlaybackMount .ww-tg-playback-play-btn")).toHaveText("Play");
+    await expect(async () => {
+      expect(Number(await seekSlider.inputValue())).toBeCloseTo(min, 3);
+    }).toPass({ timeout: 5000 });
+
+    // At exactly the Time Group's own start, a full one-cycle trailing
+    // window cannot exist yet -- Phasor reports this honestly rather than
+    // Playback silently shifting its own start forward to dodge it.
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toContain("Needs configuration");
+    }).toPass({ timeout: 5000 });
+  });
+
+  test("Switching Engineering Context while playing stops the old group and resolves the new one statically", async ({ page }) => {
+    const { workspaceId, contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page);
+    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
+
+    await page.locator("#wwPhasorPlaybackMount .ww-tg-playback-play-btn").click();
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => wwPlaybackState().state)).toBe("playing");
+
+    const secondSourceId = await uploadSecondSource(page);
+    const secondContext = await createFullBayContext(page, workspaceId, secondSourceId, "Bravo 1");
+    await page.locator("#mainNavAnalysisBtn").click();
+    await expect(page.locator(`#wwPhasorContextSelect option[value="${secondContext.id}"]`)).toHaveCount(1);
+    await page.locator("#wwPhasorContextSelect").selectOption(secondContext.id);
+
+    // The old group's own playback does not continue through an
+    // unresolved transition -- the shared controller now belongs to the
+    // NEW context's own group, landed statically (never auto-playing
+    // through the switch).
+    await expect(async () => {
+      const state = await page.evaluate(() => wwPlaybackState());
+      expect(state.state).not.toBe("playing");
+    }).toPass({ timeout: 5000 });
+    await expect(async () => {
+      await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
+    }).toPass({ timeout: 5000 });
+  });
+
+  test("Waveform and Phasor share one Playback clock across page navigation", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+
+    // Display a channel in Waveform and play it to a specific time.
+    const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    await row.click();
+    await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+    const channelRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
+    await expect(channelRow).toBeVisible();
+    await channelRow.click();
+    await expect(channelRow).toHaveAttribute("aria-pressed", "true");
+    const canvas = page.locator("#wwTimeGroupCanvases .ww-time-group-canvas").first();
+    await expect(canvas).toBeVisible();
+    const waveformSlider = canvas.locator(".ww-tg-playback-seek-slider");
+    await seekTo(waveformSlider, 1.25);
+    await expect(async () => {
+      const currentTime = await page.evaluate(() => wwPlaybackState().currentTime);
+      expect(Math.abs(currentTime - 1.25)).toBeLessThan(0.01);
+    }).toPass({ timeout: 5000 });
+
+    // Open Phasor -- it must reflect the SAME shared time, never reset it.
+    await openAnalysisPhasor(page);
+    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    const phasorSlider = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-seek-slider");
+    await expect(async () => {
+      expect(Number(await phasorSlider.inputValue())).toBeCloseTo(1.25, 1);
+    }).toPass({ timeout: 5000 });
+
+    // Seek further from Phasor, then confirm Waveform reflects it too.
+    await seekTo(phasorSlider, 1.8);
+    await expect(async () => {
+      const currentTime = await page.evaluate(() => wwPlaybackState().currentTime);
+      expect(Math.abs(currentTime - 1.8)).toBeLessThan(0.01);
+    }).toPass({ timeout: 5000 });
+
+    await page.locator("#mainNavWaveformBtn").click();
+    await expect(canvas).toBeVisible();
+    await expect(async () => {
+      expect(Number(await waveformSlider.inputValue())).toBeCloseTo(1.8, 1);
+    }).toPass({ timeout: 5000 });
+  });
+});
+
 // UAT fix (2026-09-11): Phasor auto-bootstraps Engineering Context
 // suggestions when a workspace has loaded sources but no contexts yet --
 // see docs/project-memory/PHASOR_ANALYSIS.md's own "Automatic Engineering
 // Context bootstrap" section. These scenarios exercise the REAL backend
 // suggestion endpoint (POST .../sources/{id}/engineering-contexts/suggest)
 // end-to-end -- the phasor_smoke_three_phase fixture's own channel names
-// (ALPHA1_VA/VB/VC/IA/IB/IC) are genuinely detectable by the existing,
-// unchanged Guardrail Slice 1 detector (verified directly against the
-// real backend before writing these tests), so no mocking is needed.
+// (ALPHA1_VA/VB/VC/IA/IB/IC) are genuinely detectable by the real
+// Guardrail Slice 1 detector, so no mocking is needed.
 test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () => {
   // ---- Scenario A: bootstrap succeeds ----
   test("no contexts + loaded source -> automatic suggestion populates the Bay selector", async ({ page }) => {

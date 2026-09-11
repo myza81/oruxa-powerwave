@@ -291,9 +291,12 @@ is **no manual raw-channel picker** anywhere in this workflow.
 exact `#channelGroups` row-as-toggle-button convention Waveform channel
 visibility already established) hides/shows it with a cheap local
 re-render only, never a new backend request. Default: every role that
-computes `available` starts visible; visibility persists across an
-Analysis Time change and resets to "all available roles visible" only
-when the selected Engineering Context itself changes. This state never
+computes `available` starts visible; visibility persists throughout
+Playback (Play/Pause/Seek/Speed/Restart/an analysis-time change) and
+resets to "all available roles visible" only when the selected
+Engineering Context genuinely changes (tracked via
+`wwPhasorState.lastLoadedContextId`, since the context-load function
+itself also re-runs on every mere page revisit). This state never
 touches Engineering Context membership, phase identity, resolver rules,
 or Measurement Groups.
 
@@ -313,15 +316,38 @@ existing `--ww-phase-a/b/c` tokens (reusing the app's own accent/warn/ok
 trio, deliberately not Cursor A/B's tokens) — phase identity and
 quantity type are both visible without inventing unrelated colors.
 
-Analysis time remains workspace time (the same coordinate Cursor A/B
-already use), converted to source-relative elapsed time only at the API
-call boundary — the conversion anchor is the selected context's own
-first member (a coordinate-conversion convenience, never a role-matching
-decision — the frontend never inspects phase/engineering_type itself).
-A single shared `requestGeneration` counter plus the existing `ww.epoch`
-guard protect the one aggregated fetch against a stale response
-overwriting a newer selection; a pure visibility toggle never touches
-this counter, since it never issues a request.
+**Phasor's analysis time is now driven by the ONE shared, pre-existing
+`wwPlayback` controller (DEC-085) — no separate "Analysis Time" input
+exists any more.** Phasor mounts the SAME reusable Playback control
+surface (`wwCreatePlaybackControlsHtml()`/`wwWirePlaybackControls()`/
+`wwSyncPlaybackControls()`) the Waveform Time Group toolbar already
+mounts; the seek scrubber IS Phasor's own time control. Selecting a
+context whose own resolved Time Group is already `wwPlayback`'s active
+group reads its current time verbatim (Waveform and Phasor share one
+clock across page navigation); selecting a not-yet-active group claims
+it via the existing, unchanged `wwPlaybackRestart()` (landing at
+`bounds.start`, honestly reporting insufficient history there if
+applicable), then refines the landing position to a more useful starting
+time as a one-time convenience — never applied to the mounted Restart
+BUTTON itself, which always uses the bare function and lands at
+`bounds.start`. A Playback tick drives a throttled (~10 Hz,
+measured endpoint latency ~28–44 ms), concurrency-safe fetch
+(`wwPhasorRequestDiagram()`, "one request in flight + latest desired
+time, never a growing queue"); Pause/Restart/a seek release/Playback
+reaching its own end all converge to an EXACT (non-throttled) fetch at
+the settled time. Each family's own diagram scale is established from
+its first valid result and held fixed for the "playback run" (never
+silently shrunk, to keep real magnitude movement visible), released only
+on Restart or a genuine context switch. Analysis time is still workspace
+time under the hood (the same coordinate Cursor A/B already use),
+converted to source-relative elapsed time only at the API call boundary
+— the conversion anchor is the selected context's own first member (a
+coordinate-conversion convenience, never a role-matching decision). A
+single shared `requestGeneration` counter plus the existing `ww.epoch`
+guard protect every fetch against a stale response overwriting a newer
+selection; a pure visibility toggle never touches this counter, since it
+never issues a request. See [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s
+own "Phasor Playback integration" section for the full architecture.
 
 **Phasor also auto-bootstraps Engineering Context suggestions**
 (unchanged by the redesign) when a workspace has loaded sources but zero
@@ -340,26 +366,24 @@ remains authoritative. The backend detector now handles the real-UAT
 bare role-only source shape (`VA`/`VB`/`VC`/`IA`/`IB`/`IC`) by creating
 one suggested "Default Context" when the roles are unambiguous.
 
-**No Playback integration, no Per-Unit display, no neutral-phasor roles
-(`Vn`/`In`), no sequence components/impedance/distance, no automatic
-cross-source context merging, no MANUAL Engineering Context creation/
-editing UI** — explicitly out of scope. The dedicated ASCII-COMTRADE
-test fixture (`phasor_smoke_three_phase.cfg/.dat`, a known three-phase
-sinusoid) backs both the static structural suite (70 tests,
-`test_frontend_phasor_analysis.py`) and the real-browser Playwright
-suite (6 tests, `phasor_analysis.spec.js` — a 12-step scenario covering
-all-six-roles load, per-vector visibility toggling with zero additional
-backend requests, visibility surviving an Analysis Time change, and
-visibility resetting on a genuine Engineering Context switch). Backend:
-55 pre-existing Slice 1/2 tests plus 16 new tests
-(`test_phasor_diagram_service.py`, `test_phasor_diagram_api.py`) for the
-aggregation function/endpoint, covering full/partial bays, one-bad-role
-isolation, and both whole-result-blocking conditions. Full backend
-regression, full frontend static suite, and full Playwright suite all
-pass (one pre-existing, unrelated `smoke.spec.js` timing flake
-reproduced as passing on isolated re-run). A real `[hidden]`-vs-
-`display:grid/flex` CSS bug was found and fixed during Slice 2's own
-Playwright testing (unrelated to the redesign, still in effect).
+**No Per-Unit display, no neutral-phasor roles (`Vn`/`In`), no sequence
+components/impedance/distance, no automatic cross-source context
+merging, no MANUAL Engineering Context creation/editing UI** —
+explicitly out of scope. The dedicated ASCII-COMTRADE test fixture
+(`phasor_smoke_three_phase.cfg/.dat`, a known three-phase sinusoid) backs
+both the static structural suite (test_frontend_phasor_analysis.py) and
+the real-browser Playwright suite (`phasor_analysis.spec.js` — the
+bay-centric scenario plus a dedicated Playback-integration describe
+block: Play/repeated-aggregated-results/no-context-mutation, Pause exact
+convergence, seek-while-paused exact convergence, 4× speed throttling,
+Restart honesty, context-switch-while-playing, and Waveform↔Phasor
+shared-clock interoperability). No backend files were touched for the
+Playback integration itself (frontend-only, consuming the existing
+`/phasor-diagram` endpoint and the existing, unchanged `wwPlayback`
+controller) — full backend regression, full frontend static suite, and
+full Playwright suite all pass. A real `[hidden]`-vs-`display:grid/flex`
+CSS bug was found and fixed during Slice 2's own Playwright testing
+(unrelated to the redesign, still in effect).
 
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test
