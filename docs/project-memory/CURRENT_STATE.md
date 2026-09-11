@@ -82,6 +82,64 @@ unchanged. See [Implemented capabilities](#implemented-capabilities)
 for the full per-decision rationale (mirrors DEC-085, not duplicated
 twice).
 
+**Analysis Guardrail Slice 1 — Engineering Context + durable phase
+identity ([DECISIONS.md — DEC-086](DECISIONS.md#dec-086--analysis-guardrail-slice-1-engineering-context-physicallogical-bay-identity-and-durable-canonical-phase-are-established-as-a-new-additive-metadata-layer-kept-fully-independent-of-measurement-groupsper-unit-and-of-no-fixed-value-until-a-later-slices-automatic-analysis-input-resolver-reads-it),
+2026-09-11) is implemented as a new, purely additive backend metadata
+layer.** `EngineeringContext` (`app.domain.engineering_context`)
+identifies a physical/logical bay/equipment — deliberately a SEPARATE
+concept from `MeasurementGroup`, which stays a kind-specific
+Per-Unit-base-configuration concern; the two coexist independently and
+a channel may belong to both. A context is **workspace-scoped, not
+source-scoped** — it may span more than one uploaded source/file, since
+a physical bay's Voltage and Current channels may legitimately arrive
+in separate files for the same event. Membership uses `ChannelRef`
+(unchanged shape) plus a separate `EngineeringContextMember` wrapper
+carrying durable, canonical phase identity
+(`app.domain.phase_identity`: `A`/`B`/`C`/`N`/`AB`/`BC`/`CA`/`unknown`/
+`not_applicable`) and provenance
+(`engineer_confirmed`/`manual`/`structured_metadata`/
+`detected_from_name`/`unknown`, an ordering — never a numerical
+confidence score — that guarantees a confirmed/manual assignment is
+never silently overwritten). Convention-aware normalization resolves
+the genuinely ambiguous raw token `"B"` (canonical B under A/B/C,
+canonical C under R/Y/B) from the OTHER phase evidence present in the
+same context, never guessing when evidence is absent/conflicting.
+Automatic single-source-only detection
+(`app.domain.engineering_context_detection`) clusters Voltage AND
+Current channels sharing one name-derived root into ONE candidate
+context (cross-kind, unlike Measurement Group detection's own
+kind-scoped clustering), reuses the exact same
+`suggested`/`confirmed`/`needs_review`/`manual` status vocabulary
+Measurement Groups already established, and is additive-only/idempotent
+— a channel already claimed by any existing context is never
+reconsidered on a re-run. No completeness requirement and no
+engineering-type restriction on membership (a single "Va" is a valid
+context; a calculated channel may be a member). New workspace-scoped
+REST surface: `GET/POST .../engineering-contexts`, `GET/PATCH/DELETE
+.../engineering-contexts/{id}`, `PATCH .../engineering-contexts/{id}/
+member-phase`, and the source-scoped, explicit-trigger-only `POST
+.../sources/{source_id}/engineering-contexts/suggest` — **no
+`/analysis/...` resolver endpoint exists yet**, out of scope for this
+slice. In-memory `EngineeringContextRegistry` mirrors
+`MeasurementGroupRegistry`'s own lifecycle discipline; removing one
+source prunes only the affected members (a context may still have
+valid members from other sources) rather than deleting the whole
+context. **No frontend changes in this slice** (deliberately deferred —
+backend/API capability was the explicit requirement; a minimal UI is
+future-slice scope). No `MeasurementGroup`/`ChannelRef`/Per-Unit/
+calculated-channel/Playback/Time-Group behavior changed — 111 new
+focused tests (`test_phase_identity.py`,
+`test_engineering_context_domain.py`,
+`test_engineering_context_detection.py`,
+`test_engineering_context_registry.py`,
+`test_engineering_context_service.py`,
+`test_engineering_context_api.py`) plus the full existing regression
+suite all pass unmodified. See
+[ANALYSIS_INPUT_GUARDRAILS.md](ANALYSIS_INPUT_GUARDRAILS.md) for the
+full architecture, including the explicitly-not-yet-implemented
+automatic resolver/requirement-definition design a later slice builds
+on top of this foundation.
+
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test
 infrastructure only, zero production code changed) establishes the

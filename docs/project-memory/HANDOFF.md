@@ -8,6 +8,98 @@ Last updated: **2026-09-11**
 
 ## What was most recently done
 
+**Analysis Guardrail Slice 1 — Engineering Context + Durable Phase
+Identity ([DECISIONS.md — DEC-086](DECISIONS.md#dec-086--analysis-guardrail-slice-1-engineering-context-physicallogical-bay-identity-and-durable-canonical-phase-are-established-as-a-new-additive-metadata-layer-kept-fully-independent-of-measurement-groupsper-unit-and-of-no-fixed-value-until-a-later-slices-automatic-analysis-input-resolver-reads-it);
+architecture recorded in
+[ANALYSIS_INPUT_GUARDRAILS.md](ANALYSIS_INPUT_GUARDRAILS.md)).**
+Backend-only, additive foundation for a future automatic
+analysis-input resolver (Distance/Impedance, Overcurrent, Phasors,
+Differential, Sequence Components) — this slice does NOT implement the
+resolver itself, any analysis requirement definitions, or any
+`/analysis/...` API; it establishes only the minimum durable metadata a
+later slice's resolver will read.
+
+**What was built** (all new files unless noted; zero changes to
+`ChannelRef`/`MeasurementGroup`/Per-Unit/calculated-channel/Playback/
+Time-Group behavior):
+
+1. `app/domain/phase_identity.py` — canonical phase vocabulary
+   (`A`/`B`/`C`/`N`/`AB`/`BC`/`CA`/`unknown`/`not_applicable`),
+   convention-aware normalization (A/B/C, R/Y/B, L1/L2/L3 — the raw
+   token `"B"` is resolved from OTHER evidence in the same context,
+   never guessed alone), and phase-source provenance ordering
+   (`engineer_confirmed`/`manual` > `structured_metadata` >
+   `detected_from_name` > `unknown` — never a numerical confidence
+   score; a locked engineer assignment is never automatically
+   overwritten).
+2. `app/domain/engineering_context.py` — `EngineeringContext`
+   (workspace-scoped, deliberately NO `source_id` — a bay may span
+   multiple sources) + `EngineeringContextMember` (`ChannelRef` +
+   `phase`/`phase_source`/`original_phase_label`; phase deliberately
+   NOT added to `ChannelRef` itself). Reuses `MeasurementGroup`'s own
+   `suggested`/`confirmed`/`needs_review`/`manual` status vocabulary
+   verbatim, per the owner's own "reuse existing conventions"
+   instruction. No completeness requirement, no engineering-type
+   membership restriction (unlike Measurement Group's kind
+   restriction) — an Engineering Context identifies equipment, not a
+   measurement kind.
+3. `app/domain/engineering_context_detection.py` — deterministic,
+   single-source-only, cross-kind (Voltage+Current together, unlike
+   Measurement Group detection's own kind-scoped clustering)
+   name-suffix clustering. Deliberately never merges bays across
+   sources automatically (owner's own "be conservative" instruction).
+4. `app/services/engineering_context_registry.py` /
+   `engineering_context_service.py` — mirrors
+   `measurement_group_registry.py`/`measurement_group_service.py`'s own
+   shape (thread-safe in-memory store, cross-context channel-uniqueness
+   invariant, create/get/list/update/delete, additive-only/idempotent
+   `generate_suggested_contexts_for_source()`, plus a new
+   `update_member_phase()` explicit manual-correction path and
+   `prune_engineering_contexts_for_source()` — unlike a Measurement
+   Group's source-scoped 1:1 removal, removing one source only prunes
+   the affected members, since a context may span sources).
+5. `app/schemas/engineering_context.py` +
+   `app/api/v1/engineering_contexts.py` — workspace-scoped REST CRUD
+   (`GET/POST .../engineering-contexts`, `GET/PATCH/DELETE
+   .../engineering-contexts/{id}`, `PATCH .../engineering-contexts/{id}/
+   member-phase`) plus the source-scoped, explicit-trigger-only `POST
+   .../sources/{source_id}/engineering-contexts/suggest`. **No
+   `/analysis/...` resolver endpoint** — explicitly out of scope.
+6. Wiring: `app/main.py` (new sibling registry + router),
+   `app/api/v1/workspaces.py` (workspace-reset releases contexts),
+   `app/api/v1/sources.py` (source-removal prunes affected context
+   membership, run after the existing calculated-channel/measurement-
+   group cleanup so a calculated-kind member's existence check reflects
+   the post-cascade truth), `app/services/errors.py` (new
+   `engineering_context_*`/`*_phase*` error taxonomy, mirrors
+   Measurement Group's own).
+
+**Tests**: 111 new focused tests across
+`test_phase_identity.py` (29), `test_engineering_context_domain.py`
+(12), `test_engineering_context_detection.py` (11 — covers every
+scenario in the owner's own test matrix: complete bay, multiple bays,
+single phase, duplicate/ambiguous role, wrong engineering type,
+structured phase metadata, unknown/ambiguous phase), `_registry.py`
+(15), `_service.py` (26 — including an explicit test proving
+re-running detection never overwrites an engineer-confirmed phase),
+`_api.py` (18 — full HTTP-level CRUD/suggest/lifecycle, using the
+existing `synth_measurement_groups` COMTRADE fixture, no new fixture
+needed). Full existing backend regression suite passes unmodified
+(measurement group/calculated-channel/channel-classification/per-unit/
+main/workspace/source suites specifically re-run first, then the full
+`tests/` suite); `git diff --check` clean.
+
+**Frontend**: none — deliberately deferred by explicit owner allowance
+("Frontend editing UI may be deferred if implementing it would enlarge
+scope significantly... backend/API capability is required" for this
+slice). No `frontend/index.html` changes, no new Playwright tests.
+
+**Files changed**: see the exact list in this task's own final report;
+summarized above. **Commit status**: see this task's own final report
+for the exact commit hash and push status.
+
+## What was done in the prior session — Event Playback: owner UX correction (reusable workspace capability)
+
 **Event Playback — owner UX correction: made Playback a reusable
 workspace capability, not a standalone top-level page
 ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock)'s

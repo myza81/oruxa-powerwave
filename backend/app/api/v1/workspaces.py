@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.schemas.source import ErrorOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
+from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.preparation_session_registry import PreparationSessionRegistry
@@ -64,6 +65,10 @@ def get_preparation_session_registry(request: Request) -> PreparationSessionRegi
     return request.app.state.preparation_session_registry
 
 
+def get_engineering_context_registry(request: Request) -> EngineeringContextRegistry:
+    return request.app.state.engineering_context_registry
+
+
 def _validate_workspace_id(workspace_id: str) -> str:
     # Same shape check as app.api.v1.sources -- never used as a filesystem
     # path, so this guards against a blank/whitespace-only id, not path
@@ -87,6 +92,7 @@ def delete_workspace(
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
     synchronization_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
     preparation_session_registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+    engineering_context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
 ) -> None:
     """Release every source this workspace owns.
 
@@ -132,12 +138,18 @@ def delete_workspace(
     exactly like it discards a fully-imported COMTRADE source, per
     DEC-072 point 1 (temporary preparation retention is scoped to the
     active session, never durable).
+
+    Analysis Guardrail Slice 1: also releases every Engineering Context
+    this workspace owns, the same way -- a context (and any phase
+    identity it carries) must not outlive the workspace it belongs to,
+    exactly like a Measurement Group.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     registry.remove_workspace(workspace_id)
     calc_registry.remove_workspace(workspace_id)
     per_unit_registry.remove_workspace(workspace_id)
     measurement_group_registry.remove_workspace(workspace_id)
+    engineering_context_registry.remove_workspace(workspace_id)
     voltage_group_config_registry.remove_workspace(workspace_id)
     current_group_config_registry.remove_workspace(workspace_id)
     remove_workspace_synchronization_state(workspace_id=workspace_id, registry=synchronization_registry)

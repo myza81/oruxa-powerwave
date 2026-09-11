@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
 from app.api.v1.calculated_channels import router as calculated_channels_v1_router
+from app.api.v1.engineering_contexts import router as engineering_contexts_v1_router
 from app.api.v1.measurement_groups import router as measurement_groups_v1_router
 from app.api.v1.per_unit import router as per_unit_v1_router
 from app.api.v1.preparation_sources import router as preparation_sources_v1_router
@@ -21,6 +22,7 @@ from app.api.v1.workspaces import router as workspaces_v1_router
 from app.config import Settings, load_settings
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
+from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.preparation_session_registry import PreparationSessionRegistry
@@ -89,6 +91,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # docstring for why an in-memory sibling registry, not
         # StorageBackend, was chosen for Slice 1.
         app.state.preparation_session_registry = PreparationSessionRegistry()
+        # Analysis Guardrail Slice 1: a ninth sibling in-memory registry --
+        # Engineering Context (physical/logical bay) identity and durable
+        # phase metadata, the foundation a later slice's automatic
+        # analysis-input resolver builds on. See
+        # app.services.engineering_context_registry's own module
+        # docstring.
+        app.state.engineering_context_registry = EngineeringContextRegistry()
         yield
 
     app = FastAPI(title="Powerwave API", lifespan=lifespan)
@@ -161,6 +170,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(measurement_groups_v1_router)
     app.include_router(synchronization_v1_router)
     app.include_router(preparation_sources_v1_router)
+    app.include_router(engineering_contexts_v1_router)
 
     @app.get("/health")
     def health():

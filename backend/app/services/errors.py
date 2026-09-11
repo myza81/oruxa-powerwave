@@ -952,3 +952,84 @@ class InvalidFillTargetError(ImportServiceError):
     (400), never a silent no-op."""
 
     code = "invalid_fill_target"
+
+
+# ---- Analysis Guardrail Slice 1: Engineering Context / durable phase
+# identity. Mirrors the Measurement Group error taxonomy above exactly --
+# see app.domain.engineering_context / app.services.engineering_context_
+# service / app.services.engineering_context_registry for the behaviour
+# each of these is raised by.
+# ----
+
+
+class EngineeringContextNotFoundError(ImportServiceError):
+    """Requested engineering_context_id does not exist in this workspace."""
+
+    code = "engineering_context_not_found"
+
+
+class EngineeringContextAlreadyExistsError(ImportServiceError):
+    """`EngineeringContextRegistry.add()` was called with a
+    (workspace_id, id) pair that already exists -- create-only, mirrors
+    `MeasurementGroupAlreadyExistsError`'s own rationale."""
+
+    code = "engineering_context_already_exists"
+
+
+class InvalidEngineeringContextStatusError(ImportServiceError):
+    """A submitted context `status` is not one of the known lifecycle
+    states (`suggested`/`confirmed`/`needs_review`/`manual`)."""
+
+    code = "invalid_engineering_context_status"
+
+
+class InvalidPhaseError(ImportServiceError):
+    """A submitted member `phase` is not one of
+    `app.domain.phase_identity.KNOWN_PHASES`."""
+
+    code = "invalid_phase"
+
+
+class InvalidPhaseSourceError(ImportServiceError):
+    """A submitted member `phase_source` is not one of
+    `app.domain.phase_identity.KNOWN_PHASE_SOURCES`."""
+
+    code = "invalid_phase_source"
+
+
+class EngineeringContextChannelNotFoundError(ImportServiceError):
+    """A submitted member's `channel_ref` does not resolve to a real
+    channel (neither an existing source channel nor an existing
+    calculated channel) in this workspace."""
+
+    code = "engineering_context_channel_not_found"
+
+
+class ChannelAlreadyInContextError(ImportServiceError):
+    """A submitted channel already belongs to a different Engineering
+    Context in this workspace -- mirrors
+    `ChannelAlreadyGroupedError`'s own initial policy of rejecting this
+    outright rather than silently reassigning ownership."""
+
+    code = "channel_already_in_context"
+
+
+class DuplicateChannelReferenceInContextError(ImportServiceError):
+    """The same channel reference was submitted more than once within a
+    single Engineering Context's own membership list."""
+
+    code = "duplicate_channel_reference_in_context"
+
+
+class PhaseAssignmentLockedError(ImportServiceError):
+    """An attempt to overwrite a member's own `engineer_confirmed`/
+    `manual` phase assignment through an automatic (non-explicit-
+    correction) path -- see
+    `app.domain.phase_identity.may_overwrite_phase_assignment()`. Not
+    currently reachable through any API endpoint in this slice (only the
+    explicit member-phase-correction endpoint writes phase, and that
+    endpoint always writes as `engineer_confirmed`), defined now so a
+    later automatic-resolver slice has a ready-made, already-tested
+    guardrail to raise rather than needing a destructive addition then."""
+
+    code = "phase_assignment_locked"

@@ -39,6 +39,8 @@ from app.schemas.waveform import WaveformRangeOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import remove_calculated_channels_for_source
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
+from app.services.engineering_context_registry import EngineeringContextRegistry
+from app.services.engineering_context_service import prune_engineering_contexts_for_source
 from app.services.errors import ChannelNotAnalogError, ChannelNotFoundError, ImportServiceError, InvalidTimeRangeError
 from app.services.import_service import import_comtrade_source
 from app.services.measurement_group_registry import MeasurementGroupRegistry
@@ -100,6 +102,10 @@ def get_per_unit_registry(request: Request) -> PerUnitRegistry:
 
 def get_measurement_group_registry(request: Request) -> MeasurementGroupRegistry:
     return request.app.state.measurement_group_registry
+
+
+def get_engineering_context_registry(request: Request) -> EngineeringContextRegistry:
+    return request.app.state.engineering_context_registry
 
 
 def get_voltage_group_config_registry(request: Request) -> VoltageGroupConfigRegistry:
@@ -678,6 +684,7 @@ def delete_source(
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
     synchronization_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
+    engineering_context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
 ) -> None:
     """Phase 5A (DEC-047, section 64): removing a source also removes
     every calculated channel grounded on it, directly or transitively --
@@ -708,6 +715,17 @@ def delete_source(
     Slice 1 of waveform time synchronization: also releases this
     source's own manual alignment offset, if any (task section 10:
     "removing a source removes its synchronization state").
+
+    Analysis Guardrail Slice 1: also prunes this source's own membership
+    out of every Engineering Context that referenced it. Unlike a
+    Measurement Group (source-scoped 1:1, always fully removed), an
+    Engineering Context may span multiple sources, so only the affected
+    members are dropped -- a context left with zero remaining members is
+    removed entirely, otherwise it survives with reduced membership. Run
+    AFTER the calculated-channel removal cascade above, so a
+    calculated-kind member's own existence check reflects the
+    post-cascade truth (see `prune_engineering_contexts_for_source()`'s
+    own docstring).
     """
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
@@ -726,3 +744,7 @@ def delete_source(
         current_config_registry=current_group_config_registry,
     )
     remove_source_alignment(workspace_id=workspace_id, source_id=source_id, registry=synchronization_registry)
+    prune_engineering_contexts_for_source(
+        workspace_id=workspace_id, source_id=source_id, registry=engineering_context_registry,
+        calculated_channel_registry=calc_registry,
+    )

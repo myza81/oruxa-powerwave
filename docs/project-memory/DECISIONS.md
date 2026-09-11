@@ -12946,6 +12946,158 @@ seek. No backend changes; no persistence.
 
 ---
 
+## DEC-086 — Analysis Guardrail Slice 1: Engineering Context (physical/logical bay) identity and durable canonical phase are established as a new, additive metadata layer, kept fully independent of Measurement Groups/Per-Unit and of no fixed value until a later slice's automatic analysis-input resolver reads it
+
+Date: 2026-09-11
+Status: Approved — implemented.
+Source: owner-approved "Analysis Input Guardrails, Engineering Context &
+Automatic Role Resolver" architecture audit
+(2026-09-11), followed by explicit owner instructions for this first
+implementation slice ("Analysis Guardrail Slice 1: Engineering Context +
+Durable Phase Identity").
+
+Decision:
+
+**1. Purpose.** Future protection/analysis engineers (Distance/
+Impedance, Overcurrent, Phasors, Differential, Sequence Components) must
+be able to select an **Engineering Context (bay) + Analysis Mode** and
+have Powerwave automatically resolve the required channels (e.g. Va/Ia
+for Alpha 1, Phase A), instead of manually picking raw channel pairs.
+Slice 1 builds none of that resolver yet -- it establishes only the
+minimum durable metadata (bay identity + canonical phase identity) a
+later slice's resolver will read.
+
+**2. Engineering Context is a NEW concept, separate from Measurement
+Group.** `app.domain.engineering_context.EngineeringContext` identifies
+a *physical/logical piece of equipment* (any engineering type, any
+number of phases, may span multiple sources); `app.domain.
+measurement_group.MeasurementGroup` identifies a *kind-specific
+measurement bank* for Per-Unit base configuration (Voltage-only or
+Current-only, one source). The two coexist independently -- a channel
+may belong to both at once, and nothing about Per-Unit resolution,
+`linked_voltage_group_id`, or Measurement Group detection is touched by
+this slice.
+
+**3. Workspace-scoped, NOT source-scoped.** Corrects the original
+audit's proposal: a physical bay may legitimately span more than one
+uploaded source/file (e.g. Alpha 1's Voltage channels in one COMTRADE
+file, its Current channels in a separately-uploaded file for the same
+event). `EngineeringContext` has no `source_id` field; each member's own
+`ChannelRef` carries its own source identity. Timebase/Time-Group
+compatibility between cross-source members is explicitly **not**
+validated in this slice -- that is resolver-slice scope.
+
+**4. Membership uses `ChannelRef` + a separate `EngineeringContextMember`
+wrapper carrying phase.** Phase is never added to `ChannelRef` itself
+(a stable identity reused across calculated-channel inputs/dependency
+graphs) -- it is contextual metadata about a channel's role *within*
+one context, living on `EngineeringContextMember.phase`/`phase_source`/
+`original_phase_label`.
+
+**5. Canonical phase representation.** One closed internal vocabulary
+(`app.domain.phase_identity`): `A`/`B`/`C`/`N`/`AB`/`BC`/`CA`/`unknown`/
+`not_applicable`. Convention-aware normalization from A/B/C, R/Y/B, and
+L1/L2/L3 source conventions: the raw single-letter token `"B"` is
+genuinely ambiguous alone (means canonical B under A/B/C, canonical C
+under R/Y/B) -- `infer_phase_convention()` resolves it from the OTHER
+phase evidence present in the same context, never guesses when evidence
+is absent or conflicting (falls back to `unknown`/`needs_review`).
+
+**6. Phase provenance, not a fake confidence score.** A small ordered
+vocabulary (`engineer_confirmed`/`manual` > `structured_metadata` >
+`detected_from_name` > `unknown`) decides whether a new candidate
+assignment may overwrite an existing one
+(`phase_identity.may_overwrite_phase_assignment()`). An
+`engineer_confirmed`/`manual` assignment is never overwritten by
+anything automatic.
+
+**7. Detection reuses the Measurement Group status vocabulary and
+lifecycle discipline.** `suggested`/`confirmed`/`needs_review`/`manual`,
+same meaning as `MeasurementGroup.status`. Automatic detection
+(`app.domain.engineering_context_detection.detect_engineering_contexts()`)
+is single-source-only (deliberately conservative -- never merges bays
+across files on name-prefix evidence alone), clusters Voltage AND
+Current channels sharing one name-derived root into ONE context (unlike
+Measurement Group detection's own kind-scoped clustering), and is
+additive-only/idempotent
+(`engineering_context_service.generate_suggested_contexts_for_source()`)
+-- a channel already claimed by any existing context (any status) is
+never reconsidered, which is what makes re-running detection safe
+against ever silently overwriting a confirmed/manual phase.
+
+**8. Membership is deliberately unrestricted by engineering type.**
+Unlike a Measurement Group (kind-compatible channels only), an
+Engineering Context accepts any real channel (source or calculated) --
+it identifies equipment, not a measurement kind. A calculated-channel
+member is allowed (no automatic phase inheritance for one, per the
+owner's explicit instruction -- manual/deferred only). No completeness
+requirement exists: a single-member context (just "Va") is exactly as
+valid as a full six-channel bay.
+
+**9. API surface is workspace-scoped metadata CRUD only.** `GET/POST
+/api/v1/workspaces/{workspace_id}/engineering-contexts`, `GET/PATCH/
+DELETE .../engineering-contexts/{id}`, `PATCH .../engineering-contexts/
+{id}/member-phase` (the explicit manual phase-correction path, always
+written as `engineer_confirmed`), and the source-scoped, explicit-
+trigger-only `POST .../sources/{source_id}/engineering-contexts/
+suggest`. **No `/analysis/...` resolver endpoint exists yet** -- out of
+scope for this slice by explicit owner instruction.
+
+**10. Lifecycle.** In-memory, workspace-scoped registry
+(`EngineeringContextRegistry`, mirrors `MeasurementGroupRegistry`'s own
+shape/locking/defensive-copy discipline), released on "Start New
+Workspace". Removing ONE source prunes only the affected members (a
+context may still have valid members from other sources) rather than
+deleting the whole context, unlike a Measurement Group's own source-
+scoped 1:1 removal.
+
+Reason: The owner's own core product principle -- "the engineer should
+select the engineering context and analysis mode; Powerwave should
+resolve the required channels automatically whenever the metadata is
+sufficient and unambiguous" -- cannot be built without first having
+somewhere durable to record *which channels belong to the same physical
+bay* and *which phase each one is*. Both facts exist today only
+transiently (Measurement Group detection discards its own phase-token
+evidence once a group is built) or not at all (no bay/equipment concept
+existed anywhere in the codebase prior to this slice, confirmed by a
+fresh repository-wide audit). Establishing this now, as a small,
+strictly additive layer, lets the resolver (a later slice) be built
+without a foundational redesign.
+
+Alternatives considered: Extending `MeasurementGroup` itself to also
+carry bay/phase identity -- rejected, would conflate a PU-math concept
+(kind-scoped, source-scoped, base-configuration-bearing) with a
+role-identity concept (kind-agnostic, may span sources), forcing every
+existing PU call site to filter by a new axis it doesn't need. Adding
+`phase` directly to `ChannelRef` -- rejected per the owner's own explicit
+instruction; `ChannelRef` is a stable identity reused unchanged
+elsewhere, phase is contextual to a role, not identity. Building the
+automatic resolver in this same slice -- rejected; explicitly out of
+scope until the durable metadata foundation exists and is itself
+reviewed.
+
+Impact: New files `backend/app/domain/phase_identity.py`,
+`backend/app/domain/engineering_context.py`, `backend/app/domain/
+engineering_context_detection.py`, `backend/app/services/
+engineering_context_registry.py`, `backend/app/services/
+engineering_context_service.py`, `backend/app/schemas/
+engineering_context.py`, `backend/app/api/v1/engineering_contexts.py`.
+Modified: `backend/app/main.py` (new sibling registry + router),
+`backend/app/api/v1/workspaces.py` (workspace-reset lifecycle hook),
+`backend/app/api/v1/sources.py` (source-removal pruning hook),
+`backend/app/services/errors.py` (new error taxonomy, mirrors
+Measurement Group's own). No frontend changes in this slice (deferred,
+per the owner's own explicit allowance -- backend/API capability is
+what this slice requires; a minimal UI is a candidate for a later
+slice). No `MeasurementGroup`/`ChannelRef`/Per-Unit/calculated-channel/
+Playback/Time-Group behavior changed. See
+[ANALYSIS_INPUT_GUARDRAILS.md](ANALYSIS_INPUT_GUARDRAILS.md) for the
+full architecture this slice implements the foundation of, including
+the explicitly out-of-scope resolver/requirement-definition design for
+later slices.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
