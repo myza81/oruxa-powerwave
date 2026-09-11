@@ -170,6 +170,40 @@ class TestUnitsCompatible:
         # V and kV are NOT treated as compatible (no conversion layer).
         assert units_compatible(["V", "kV"]) is False
 
+    # Pre-advanced-features Slice F1: engineering_type fallback, used
+    # ONLY when every unit string is blank/missing.
+    def test_blank_unit_same_engineering_type_allowed(self):
+        assert units_compatible(["", ""], ["Voltage", "Voltage"]) is True
+        assert units_compatible([None, None], ["Current", "Current"]) is True
+
+    def test_blank_unit_different_engineering_type_rejected(self):
+        assert units_compatible(["", ""], ["Voltage", "Current"]) is False
+        assert units_compatible(["", ""], ["Current", "Power"]) is False
+        assert units_compatible(["", ""], ["Voltage", "Frequency"]) is False
+
+    def test_blank_unit_all_undefined_engineering_type_stays_permissive(self):
+        assert units_compatible(["", ""], [UNDEFINED, UNDEFINED]) is True
+
+    def test_blank_unit_mixed_known_and_undefined_engineering_type_rejected(self):
+        # A known type mixed with an unclassified input is rejected --
+        # the unclassified input's true dimension is simply unproven, so
+        # this is treated the same conservative way as a genuine mismatch.
+        assert units_compatible(["", ""], ["Voltage", UNDEFINED]) is False
+
+    def test_blank_unit_no_engineering_types_supplied_preserves_original_behavior(self):
+        # Omitting engineering_types entirely (the original 1-arg call
+        # shape) must behave exactly as before this slice.
+        assert units_compatible(["", ""]) is True
+        assert units_compatible(["", ""], None) is True
+        assert units_compatible(["", ""], []) is True
+
+    def test_known_units_ignore_engineering_type_fallback(self):
+        # Step 1 (usable unit strings exist) takes priority -- the
+        # engineering_type fallback is never consulted when a unit
+        # mismatch already exists.
+        assert units_compatible(["kV", "A"], ["Voltage", "Current"]) is False
+        assert units_compatible(["kV", "kV"], ["Voltage", "Current"]) is True
+
 
 class TestTimebasesAligned:
     def test_same_reference_source_id_always_aligned(self):

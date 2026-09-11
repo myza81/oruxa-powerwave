@@ -136,6 +136,40 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _describe_calculated_channel_input(ref: ChannelRef) -> str:
+    """Human-readable label for one calculated-channel input, for
+    engineering-facing error messages only (never used as a lookup key --
+    matches the same inline pattern the `require_manual_value_null` error
+    below already uses for `bad_input`)."""
+    return ref.channel_name if ref.kind == "source" else f"calculated channel '{ref.calculated_channel_id}'"
+
+
+def _unique_ordered(items: list[str]) -> list[str]:
+    """First-occurrence-order de-duplication, for a compact error message
+    listing engineering types (`['Voltage', 'Voltage', 'Current']` ->
+    `['Voltage', 'Current']`)."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
+
+
+def _join_and(items: list[str]) -> str:
+    """Natural-language join for an engineering-facing error message
+    (`['A']` -> `'A'`, `['A', 'B']` -> `'A and B'`,
+    `['A', 'B', 'C']` -> `'A, B, and C'`)."""
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return ", ".join(items[:-1]) + f", and {items[-1]}"
+
+
 def _finite_or_none(value: float) -> float | None:
     """Phase 5B (DEC-048): sanitize a single sample value for a JSON
     response. RMS's leading warm-up region is ROUTINE, guaranteed NaN --
@@ -492,8 +526,23 @@ def create_calculated_channel(
             )
 
     if operation in MULTI_OPERATIONS:
-        if not units_compatible([r.unit for r in resolved]):
-            raise IncompatibleUnitError("All input channels must use the same unit to be combined.")
+        input_units = [r.unit for r in resolved]
+        input_engineering_types = [r.engineering_type for r in resolved]
+        if not units_compatible(input_units, input_engineering_types):
+            if any(input_units):
+                raise IncompatibleUnitError("All input channels must use the same unit to be combined.")
+            # Pre-advanced-features Slice F1: every unit is blank, so this
+            # rejection is a fallback engineering_type mismatch, not a raw
+            # unit mismatch -- an engineering-facing message names the
+            # actual conflicting inputs/types rather than the generic
+            # unit-mismatch wording above (never raw internal exception
+            # text).
+            input_names = [_describe_calculated_channel_input(ref) for ref in inputs]
+            conflicting_types = _unique_ordered(input_engineering_types)
+            raise IncompatibleUnitError(
+                f"Cannot combine {_join_and(input_names)}: their units are unspecified and their "
+                f"engineering types differ ({' vs '.join(conflicting_types)})."
+            )
         output_unit = next((r.unit for r in resolved if r.unit), "") or ""
     else:
         output_unit = resolved[0].unit

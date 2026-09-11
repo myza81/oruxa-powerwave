@@ -8,6 +8,66 @@ Last updated: **2026-09-11**
 
 ## What was most recently done
 
+**Pre-advanced-features Slice F1: calculated-channel dimensional-safety
+guardrail (no DEC — a narrow bug fix closing an audit-identified gap,
+not a new product decision).** A pre-advanced-features audit found one
+reachable engineering-safety gap: `app.domain.calculated_channel.
+units_compatible()` allowed a multi-input operation (Addition/
+Subtraction) whenever EVERY input's unit string was blank/missing,
+with no check on whether the inputs were even the same engineering
+quantity — e.g. a blank-unit Voltage channel added to a blank-unit
+Current channel was previously accepted (numerically possible,
+dimensionally meaningless). A real reachable source of blank units
+exists via CSV/Excel preparation, where an engineer can assign an
+Engineering Quantity without a Measured Unit (DEC-077/DEC-080). Known-
+unit mismatches (e.g. `V` vs `A`) were already correctly rejected —
+this closed only the blank-units-fail-open case.
+
+**Fix**: `units_compatible(units, engineering_types=None)` gained an
+optional second argument, consulted ONLY when every unit string is
+blank. Precedence: (1) any usable unit string present → existing
+unit-equality logic, completely unchanged; (2) all units blank → fall
+back to engineering_type compatibility; (3) known (non-`Undefined`)
+engineering types differ, OR a known type is mixed with an
+unclassified `Undefined` one → reject (the unclassified input's true
+dimension is simply unproven, so it gets the same conservative
+treatment as a genuine mismatch); (4) all engineering types
+`Undefined` → preserve the original permissive behavior. Omitting the
+new argument entirely (every pre-existing caller/test) is byte-for-
+byte unchanged — additive, not a breaking signature change. The one
+call site, `app.services.calculated_channel_service.
+create_calculated_channel()`, now raises `IncompatibleUnitError` with
+an engineering-facing message naming the actual conflicting channels/
+types for this new blank-unit rejection path (e.g. "Cannot combine
+BRDC_VA and BRDC_IA: their units are unspecified and their
+engineering types differ (Voltage vs Current)."); the pre-existing
+known-unit-mismatch message ("All input channels must use the same
+unit to be combined.") is unchanged.
+
+**Scope discipline**: no new unit system/library, no dimensional-
+conversion layer, no change to per-unit measurement grouping (DEC-050/
+DEC-051/DEC-052), calculated-channel time alignment/dependency
+handling, the operation set, or persistence.
+
+**Files changed**: `backend/app/domain/calculated_channel.py`
+(`units_compatible()`), `backend/app/services/calculated_channel_service.py`
+(call site + two small message-formatting helpers,
+`_describe_calculated_channel_input()`/`_unique_ordered()`/`_join_and()`),
+`backend/tests/test_calculated_channel_domain.py` (+7 focused
+`units_compatible()` cases), `backend/tests/test_calculated_channel_service.py`
+(+10 cases, new `TestBlankUnitEngineeringTypeFallback` class, including
+one verifying the known-unit-mismatch message is untouched).
+
+**Tests**: focused calculated-channel domain/service/API suite passes;
+CSV/Excel preparation suite passes; full backend regression — **4158
+passed**, 0 failed (up from 4144 before this slice); `git diff --check`
+clean.
+
+**Commit status**: see this task's own final report for the exact
+commit hash and push status.
+
+## What was done in the prior session — Per-Unit Configuration Slice 4: Source Default LL/LG voltage-base interpretation fix (calculation change, not UI-only)
+
 **Per-Unit Configuration Slice 4: Source Default LL/LG voltage-base
 interpretation fix (calculation change, not UI-only).** Closes the
 exact gap `PER_UNIT_MEASUREMENT_MODEL.md` §8 already documented as a

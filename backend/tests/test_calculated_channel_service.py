@@ -304,6 +304,191 @@ class TestUnitCompatibility:
             )
 
 
+class TestBlankUnitEngineeringTypeFallback:
+    """Pre-advanced-features Slice F1 (dimensional-safety guardrail): a
+    multi-input operation whose inputs ALL have a blank/missing unit
+    string must fall back to engineering_type compatibility rather than
+    failing open unconditionally."""
+
+    def test_blank_unit_voltage_plus_voltage_allowed(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1]),
+            channels={"VA": np.array([1.0, 2.0]), "VB": np.array([3.0, 4.0])},
+            units={"VA": "", "VB": ""},
+            engineering_types={"VA": "Voltage", "VB": "Voltage"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="V+V", operation=OP_ADDITION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="VA"),
+                ChannelRef(kind="source", source_id="src1", channel_name="VB"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert channel.values.tolist() == [4.0, 6.0]
+        assert channel.unit == ""
+
+    def test_blank_unit_current_minus_current_allowed(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1]),
+            channels={"IA": np.array([5.0, 6.0]), "IB": np.array([1.0, 2.0])},
+            units={"IA": "", "IB": ""},
+            engineering_types={"IA": "Current", "IB": "Current"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="I-I", operation=OP_SUBTRACTION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="IA"),
+                ChannelRef(kind="source", source_id="src1", channel_name="IB"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert channel.values.tolist() == [4.0, 4.0]
+
+    def test_blank_unit_voltage_plus_current_rejected(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0]),
+            channels={"BRDC_VA": np.array([1.0]), "BRDC_IA": np.array([1.0])},
+            units={"BRDC_VA": "", "BRDC_IA": ""},
+            engineering_types={"BRDC_VA": "Voltage", "BRDC_IA": "Current"},
+        ))
+        with pytest.raises(IncompatibleUnitError) as exc_info:
+            create_calculated_channel(
+                workspace_id=WS, name="bad", operation=OP_ADDITION,
+                inputs=[
+                    ChannelRef(kind="source", source_id="src1", channel_name="BRDC_VA"),
+                    ChannelRef(kind="source", source_id="src1", channel_name="BRDC_IA"),
+                ],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            )
+        message = str(exc_info.value)
+        assert "BRDC_VA" in message
+        assert "BRDC_IA" in message
+        assert "Voltage" in message
+        assert "Current" in message
+
+    def test_blank_unit_voltage_plus_frequency_rejected(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0]),
+            channels={"V": np.array([1.0]), "F": np.array([50.0])},
+            units={"V": "", "F": ""},
+            engineering_types={"V": "Voltage", "F": "Frequency"},
+        ))
+        with pytest.raises(IncompatibleUnitError):
+            create_calculated_channel(
+                workspace_id=WS, name="bad", operation=OP_ADDITION,
+                inputs=[
+                    ChannelRef(kind="source", source_id="src1", channel_name="V"),
+                    ChannelRef(kind="source", source_id="src1", channel_name="F"),
+                ],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            )
+
+    def test_blank_unit_current_minus_power_rejected(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0]),
+            channels={"I": np.array([1.0]), "P": np.array([1.0])},
+            units={"I": "", "P": ""},
+            engineering_types={"I": "Current", "P": "Power"},
+        ))
+        with pytest.raises(IncompatibleUnitError):
+            create_calculated_channel(
+                workspace_id=WS, name="bad", operation=OP_SUBTRACTION,
+                inputs=[
+                    ChannelRef(kind="source", source_id="src1", channel_name="I"),
+                    ChannelRef(kind="source", source_id="src1", channel_name="P"),
+                ],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            )
+
+    def test_blank_unit_all_undefined_engineering_type_preserves_current_behavior(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1]),
+            channels={"A": np.array([1.0, 2.0]), "B": np.array([3.0, 4.0])},
+            units={"A": "", "B": ""},
+            engineering_types={"A": "Undefined", "B": "Undefined"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="A+B", operation=OP_ADDITION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="A"),
+                ChannelRef(kind="source", source_id="src1", channel_name="B"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert channel.values.tolist() == [4.0, 6.0]
+
+    def test_blank_unit_mixed_known_and_undefined_engineering_type_rejected(self, registries):
+        # Deterministic handling of a mixed known/undefined pair -- a
+        # known type mixed with an unclassified input is rejected, the
+        # same conservative treatment as a genuine mismatch, since the
+        # unclassified input's true dimension is unproven.
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0]),
+            channels={"V": np.array([1.0]), "X": np.array([1.0])},
+            units={"V": "", "X": ""},
+            engineering_types={"V": "Voltage", "X": "Undefined"},
+        ))
+        with pytest.raises(IncompatibleUnitError):
+            create_calculated_channel(
+                workspace_id=WS, name="bad", operation=OP_ADDITION,
+                inputs=[
+                    ChannelRef(kind="source", source_id="src1", channel_name="V"),
+                    ChannelRef(kind="source", source_id="src1", channel_name="X"),
+                ],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            )
+
+    def test_known_matching_units_unaffected_by_engineering_type(self, registries):
+        # Section 5/6 regression guard: known-unit compatibility is
+        # completely unchanged by this slice.
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1]),
+            channels={"A": np.array([1.0, 2.0]), "B": np.array([3.0, 4.0])},
+            units={"A": "kV", "B": "kV"},
+            engineering_types={"A": "Voltage", "B": "Voltage"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="A+B", operation=OP_ADDITION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="A"),
+                ChannelRef(kind="source", source_id="src1", channel_name="B"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert channel.unit == "kV"
+
+    def test_known_mismatched_units_still_rejected_with_original_message(self, registries):
+        # Section 6: a known-unit mismatch (e.g. kV vs A) keeps its
+        # existing generic message -- only the blank-unit fallback case
+        # gets the new engineering-facing message.
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0]),
+            channels={"V": np.array([1.0]), "I": np.array([1.0])},
+            units={"V": "kV", "I": "A"},
+            engineering_types={"V": "Voltage", "I": "Current"},
+        ))
+        with pytest.raises(IncompatibleUnitError) as exc_info:
+            create_calculated_channel(
+                workspace_id=WS, name="bad", operation=OP_ADDITION,
+                inputs=[
+                    ChannelRef(kind="source", source_id="src1", channel_name="V"),
+                    ChannelRef(kind="source", source_id="src1", channel_name="I"),
+                ],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            )
+        assert str(exc_info.value) == "All input channels must use the same unit to be combined."
+
+
 class TestTimeBaseCompatibility:
     def test_same_source_allowed(self, registries):
         source_registry, calc_registry = registries

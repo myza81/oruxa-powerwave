@@ -462,7 +462,7 @@ def rms_sampling_dense_enough(time: np.ndarray, nominal_frequency_hz: float) -> 
     return (window / median_dt) >= MIN_SAMPLES_PER_CYCLE
 
 
-def units_compatible(units: list[str | None]) -> bool:
+def units_compatible(units: list[str | None], engineering_types: list[str] | None = None) -> bool:
     """Phase 1 unit-compatibility rule (section 32/33): every input's unit
     string must be equal (no dimensional conversion -- `kV` and `V` are
     NOT treated as compatible without a proven existing conversion layer,
@@ -470,11 +470,33 @@ def units_compatible(units: list[str | None]) -> bool:
     conservative treatment section 33 asks for: ALL missing -> allowed
     (caller then leaves the output unit blank); a MIXTURE of known and
     missing -> rejected outright, never silently allowed through.
+
+    Pre-advanced-features Slice F1 (dimensional-safety guardrail):
+    when NO input has a usable unit string at all, this used to fail
+    OPEN unconditionally -- numerically possible but dimensionally
+    meaningless for e.g. a blank-unit Voltage channel added to a
+    blank-unit Current channel. `engineering_types`, when supplied,
+    is consulted ONLY in that all-units-blank case, using the exact
+    same "known value(s) present -> every input must share the one
+    known value" shape as the unit check above (never a second/looser
+    rule): a genuine mismatch among KNOWN (non-`UNDEFINED`) engineering
+    types -- including a known type mixed with an unclassified
+    (`UNDEFINED`) one, since that unclassified input's true dimension
+    is simply unproven -- is rejected; all-`UNDEFINED` (nothing known
+    about any input) preserves the original permissive behavior.
+    Omitting `engineering_types` entirely (the default) preserves the
+    exact original behavior for any other caller -- this parameter is
+    additive, never a breaking change to this function's own contract.
     """
     known = [u for u in units if u]
-    if not known:
+    if known:
+        return len(known) == len(units) and len(set(known)) == 1
+    if not engineering_types:
         return True
-    return len(known) == len(units) and len(set(known)) == 1
+    known_types = [t for t in engineering_types if t and t != UNDEFINED]
+    if not known_types:
+        return True
+    return len(known_types) == len(engineering_types) and len(set(known_types)) == 1
 
 
 def apply_null_policy_to_values(values: np.ndarray, null_policy: str) -> np.ndarray:

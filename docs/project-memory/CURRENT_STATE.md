@@ -9,7 +9,38 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-10**. **DEC-084 (Explicit Null
+Last meaningful update: **2026-09-11**. **Pre-advanced-features Slice
+F1 (calculated-channel dimensional-safety guardrail, no DEC — a
+narrow bug fix closing an audit-identified gap, not a new product
+decision) closes a real reachable fail-open case**:
+`app.domain.calculated_channel.units_compatible()` used to allow any
+multi-input operation (Addition/Subtraction) whenever EVERY input's
+unit string was blank/missing, regardless of engineering type -- e.g.
+a blank-unit Voltage channel plus a blank-unit Current channel was
+previously accepted, which is numerically possible but dimensionally
+meaningless. `units_compatible()` gained an optional
+`engineering_types` argument (default `None`, fully backward-
+compatible -- every pre-existing 1-arg call/test is unchanged) that is
+consulted ONLY in the all-units-blank case, applying the exact same
+"known value(s) present -> every input must share it" shape the unit
+check itself already uses: a genuine mismatch among KNOWN
+(non-`Undefined`) engineering types, including a known type mixed with
+an unclassified one, is rejected; all-`Undefined` preserves the
+original permissive behavior. The one call site,
+`app.services.calculated_channel_service.create_calculated_channel()`,
+now raises `IncompatibleUnitError` with an engineering-facing message
+naming the actual conflicting channels/types for this new blank-unit
+rejection path (e.g. "Cannot combine BRDC_VA and BRDC_IA: their units
+are unspecified and their engineering types differ (Voltage vs
+Current)."); the pre-existing known-unit-mismatch message is
+unchanged. No unit system was introduced; per-unit measurement
+grouping (DEC-050/DEC-051/DEC-052), time alignment, dependency
+handling, unit prefix conversion, the operation set, and persistence
+are all untouched. 4158 backend tests pass (up from 4144). See
+[Implemented capabilities](#implemented-capabilities) (Calculated
+channels entry).
+
+**DEC-084 (Explicit Null
 Resolution and Calculated-Channel Missing-Data Policy) is now an
 IMPLEMENTED BASELINE end to end, including Data Preparation's own
 algorithmic estimation and bulk constant fill** — Data Preparation
@@ -650,7 +681,14 @@ re-confirmed by the TG-FINAL audit):
   Reverse Polarity, Absolute Value, Multiply-by-Constant, N-input Addition,
   ordered N-input Subtraction, and trailing one-cycle RMS. Multi-input
   operations require proven synchronized sample-time alignment (no
-  interpolation/resampling). Immutable after creation, with dependency-
+  interpolation/resampling), and a unit-compatibility check
+  (`app.domain.calculated_channel.units_compatible()`) that (Slice F1,
+  2026-09-11) no longer fails open when every input's unit string is
+  blank — it falls back to engineering_type compatibility in that case
+  only, rejecting e.g. a blank-unit Voltage input combined with a
+  blank-unit Current input, while all-`Undefined`/known-matching-unit
+  behavior is unchanged (no new unit system, no dimensional-conversion
+  layer). Immutable after creation, with dependency-
   aware delete/cascade. **Missing-data (null) input policy (DEC-084,
   Calc Slices 1-4, 2026-09-09) is implemented**: each calculated channel
   explicitly declares its own `null_policy` at creation time —
