@@ -12664,6 +12664,130 @@ existing calculated channel.
 
 ---
 
+## DEC-085 — Event Playback is a top-level capability with ONE authoritative, frontend-only Playback Controller owning workspace-time for at most one active Time Group at a time; future analysis overlays must consume it, never build an independent playback clock
+
+Date: 2026-09-11
+Status: Approved — Slice 1 (Core Playback Engine) implemented
+Source: owner-approved Playback Architecture & Design Audit, followed by
+explicit owner decisions resolving every open question the audit raised
+for a first implementation slice ("Owner decisions resolved for Slice
+1" in that task's own prompt).
+
+Decision:
+
+**1. Main menu.** `Playback` is a new top-level main-menu item,
+immediately after `Calculated Channels`:
+
+```text
+Calculated Channels
+Playback
+Analysis        <- future, not created yet — only ordering/direction preserved
+```
+
+The Playback page itself stays deliberately minimal (status only, never
+a second copy of the transport controls) — everyday Play/Pause/Restart
+controls live on each Time Group's own waveform toolbar
+(`wwCreateTimeGroupCanvasDom()`/`wwWireTimeGroupToolbar()`), the same
+established per-Time-Group extension point Reset Time View/Autoscale
+Y/Cursor A-B already use.
+
+**2. One authoritative Playback Controller.** A single frontend-only
+`wwPlayback` state object (never a per-Time-Group Map) drives at most
+ONE active Time Group's playback at a time — pressing Play on a
+different Time Group's toolbar stops the previous one and switches,
+never running two simultaneous animation loops. Future analysis
+overlays (impedance locus, overcurrent curve, differential plane,
+event timeline, etc. — none implemented yet) MUST read
+`wwPlaybackState()`/subscribe via `wwPlaybackOnTick()` rather than
+building any independent timing/animation loop of their own.
+
+**3. Canonical time coordinate.** `wwPlayback.currentTime` is
+**workspace time** — the exact same coordinate `ww.viewport`/
+`ww.timeGroupViewports`/Cursor A-B's own `.time` already use. Never
+t=0-relative event time, never source-native elapsed time, never a
+displayed Time-of-Day string. `t=0`/Time Mode affect DISPLAY only
+(`wwFormatCursorPointTime()`, the same formatter Cursor A/B/Δt already
+use) — Playback works correctly whether `t=0` is set or not, with zero
+new conversion logic.
+
+**4. Playback range = the active Time Group's own full union extent**
+— `wwDeriveTimeGroupBounds(groupId)`, the exact DEC-037 bounds function
+Reset Time View already uses. Never the current visible range, never an
+explicit sub-range (both deferred).
+
+**5. Playback Cursor is architecturally separate from Cursor A/B** —
+its own dedicated DOM overlay (`.ww-tg-playback-cursor-overlay`/
+`.ww-tg-playback-cursor-line`) and its own state, reusing Cursor A/B's
+pixel-conversion PRIMITIVES (`wwCursorPlotMetrics()`/
+`wwCursorTimeToPixelX()`) but never reading or writing
+`ww.timeGroupCursorState`. Cursor A's own existing t=0 interaction is
+completely unaffected.
+
+**6. Timing** — `requestAnimationFrame` + a `performance.now()`
+wall-clock anchor, recomputed fresh every frame
+(`recordingTimeAnchor + ((performance.now() - wallClockAnchorMs) /
+1000) * speed`), never accumulated by an assumed per-frame delta.
+Speed is fixed at 1× this slice (no selector yet). Playback-cursor
+interpolation is visual only — engineering values are (in a later
+slice) always resolved from real/sample-resolved data via the existing
+cursor-values endpoint, never fabricated.
+
+**7. Digital-channel state** at the current playback time is resolved
+entirely from already-loaded `ww.digitalDisplayed` transition data —
+zero backend requests per animation frame, zero duplicated arrays.
+
+**8. Frontend-only, session state, not persisted.** No backend
+Playback endpoint/service exists or was added — Playback state
+(current time, speed, playing/paused, active group) lives in-memory in
+the browser tab only, reset on `wwClearWorkspace()` (both "Clear
+workspace" and "Start New Workspace") and whenever the active Time
+Group's own topology disappears (`wwSyncTimeGroupCanvases()`).
+
+**Deferred, not decided against** — explicitly out of Slice 1's scope,
+to be addressed (or not) in a later slice on its own merits: playback
+speed selector (0.25×/0.5×/2×/4×), drag/click-to-seek, Follow Playback
+(automatic viewport scrolling), Split View `center_time` integration
+(and the Cursor-A-vs-Playback precedence question it raises), throttled
+current-analog-value polling, keyboard shortcuts. None of these are
+implemented, and this decision does not pre-approve any particular
+design for them.
+
+Reason: An owner-commissioned architecture audit (this session) found
+that the existing codebase already provides every primitive Playback
+needs — a canonical workspace-time coordinate, a proven DOM-overlay
+cursor-rendering pattern, a ready-made Time Group bounds function, an
+arbitrary-time-point/multi-channel cursor-values endpoint, and a fully
+client-side-loaded digital transition record — so the smallest correct
+design reuses all of them rather than inventing parallel timing/
+rendering machinery. Establishing ONE authoritative controller now,
+before any analysis overlay exists, prevents exactly the failure mode
+the owner explicitly warned against: several future features each
+building their own independent playback clock.
+
+Alternatives considered:
+- A per-Time-Group Playback Map (simultaneous multi-group playback) —
+  rejected for Slice 1 as premature complexity the product intent does
+  not yet ask for; deferred, not ruled out permanently.
+- Reusing Cursor A as the Playback Cursor — explicitly rejected by the
+  owner (Cursor A already drives `t=0`; conflating the two would make
+  both concepts harder to reason about).
+- A backend Playback service/endpoint — rejected; nothing about
+  ephemeral, per-tab interaction state benefits from server-side
+  storage, and the task explicitly instructed against building one
+  merely for symmetry.
+
+Impact: New top-level `Playback` page/menu item; new per-Time-Group
+toolbar controls (Restart, Play/Pause, current-time readout); new
+dedicated Playback Cursor overlay; new frontend-only `wwPlayback`
+Playback Controller (`frontend/index.html`, ~615 new lines, zero
+backend changes). Explicitly deferred: speed control, seeking, Follow
+Playback, Split View integration, current-value polling, keyboard
+shortcuts, and every analysis overlay (impedance/overcurrent/
+differential/etc.) that will eventually consume this controller under
+a future `Analysis` menu (not created yet).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
