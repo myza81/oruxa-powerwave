@@ -8,6 +8,105 @@ Last updated: **2026-09-11**
 
 ## What was most recently done
 
+**Pre-advanced-features Slice F2: realistic performance baseline (no
+DEC — measurement/test infrastructure only, zero production code
+changed).** The audit's second true pre-advanced-features blocker:
+Powerwave had no reproducible performance baseline for realistic
+waveform files through the actual import/parse path. The existing
+`backend/tests/test_dec050_slice8_performance.py` measures ONE narrow
+thing — the Per-Unit conversion overhead RATIO at the
+`extract_waveform_range()` service layer, against an `ActiveSource`
+already constructed directly in Python (no file, no parser, no HTTP).
+It was NOT modified this slice — F2 adds what it doesn't cover, rather
+than replacing it.
+
+**What was built** (all under `backend/tests/perf/`, a standalone
+benchmark, never pytest-collected — see
+`backend/tests/test_performance_baseline.py` for the small, fast
+correctness tests that DO run in normal regression):
+
+- `synthetic_comtrade.py` / `synthetic_csv.py`: deterministic fixture
+  generators (real COMTRADE 1999 BINARY row layout, copied verbatim
+  from `app.providers.comtrade._parse_binary_dat()`'s own documented
+  format; a header-less numeric CSV matching the exact shape existing
+  CSV ingestion tests already use) — sample/row count DERIVED from a
+  target file size, never hand-picked; every waveform value a pure,
+  seeded function of sample/channel index, never `np.random`. No large
+  binary fixture committed — generated into a temp dir at run time,
+  discarded after.
+- `mem_probe.py`: cross-platform peak-memory probe. `resource` is
+  POSIX-only (unavailable on this project's Windows dev machines);
+  `psutil` is not an existing dependency and the task instructed
+  against adding one; `tracemalloc` was considered and REJECTED
+  (NumPy's C-level buffer allocator doesn't route through CPython's
+  tracked allocator, so it would report near-zero for exactly the
+  allocations this baseline cares about). Reports OS-level peak
+  RSS/working-set (`getrusage().ru_maxrss` POSIX /
+  `GetProcessMemoryInfo` via `ctypes` Windows) — stdlib-only, zero new
+  dependency, explicitly documented as a monotonic high-water-mark-
+  since-process-start, never a delta.
+- `baseline_runner.py`: the orchestrator (`run --scenario <name>`).
+  Each scenario's fixture GENERATION and its IMPORT/WAVEFORM
+  measurement run in separate fresh subprocesses — otherwise
+  generating a 75 MB array in memory before writing it to disk would
+  inflate the "import" peak-memory reading with its own unrelated
+  cost, and a monotonic high-water mark never resets between
+  scenarios run in one long-lived process.
+
+**Three scenarios measured** through the REAL app (`TestClient` over
+the actual `create_app()`, real multipart upload, real
+`ComtradeProvider`/CSV-preparation conversion path, real waveform
+endpoint) — commit `0ae78b3`, Windows dev machine, 2026-09-11:
+
+- **A** (15 MB COMTRADE, 40 analog + 16 digital, 174,762 samples):
+  302 ms import, 336.8 MB peak memory, 26.1/17.6 ms waveform latency
+  (full/reduced), 68.3/72.0 KB payload.
+- **B** (75 MB COMTRADE, 64 analog + 32 digital, 561,737 samples):
+  1,657 ms import, 1,213.6 MB peak memory, 45.0/34.3 ms waveform
+  latency, 64.1/76.3 KB payload.
+- **C** (12.3 MB CSV, 20 channels, 70,690 rows): 2,343 ms import
+  (upload+configure+convert combined — convert dominates at ≈1.96 s),
+  350.4 MB peak memory, 26.9/21.0 ms waveform latency, 56.6/57.1 KB
+  payload.
+
+Full methodology, per-scenario detail, and interpretation in
+[PERFORMANCE_BASELINE.md](../development/PERFORMANCE_BASELINE.md).
+
+**Interpretation**: import performance and memory behavior both
+acceptable — even the 75 MB/562K-sample scenario stays under 1.7 s and
+≈1.2 GB, well under the task's own "100 MB → >2 GB" concern bar.
+Waveform latency/payload stay small (<50 ms, 55-80 KB) and roughly
+CONSTANT regardless of recording size once the existing min/max-
+envelope reduction engages (every measured request in this baseline)
+— read as no immediate architectural concern for a future Event
+Playback consumer, though a genuine playback loop was deliberately
+NOT simulated or implemented this slice (task boundary). CSV `convert`
+being markedly slower per-MB than COMTRADE's binary import is a real,
+honestly-reported observation (row-oriented `csv.reader` vs. a
+vectorized binary read) — not "unexpectedly enormous," recorded as a
+future-prioritization note, not a blocking issue. **No FOUND
+PERFORMANCE ISSUE this slice; no production code changed.**
+
+**Files changed**: `backend/tests/perf/mem_probe.py` (new),
+`backend/tests/perf/synthetic_comtrade.py` (new),
+`backend/tests/perf/synthetic_csv.py` (new),
+`backend/tests/perf/baseline_runner.py` (new),
+`backend/tests/test_performance_baseline.py` (new, 9 tests),
+`docs/development/PERFORMANCE_BASELINE.md` (new).
+
+**Tests**: new correctness suite passes (9/9); existing COMTRADE
+provider/sources-API/waveform-API tests pass unchanged; full backend
+regression — **4167 passed**, 0 failed (up from 4158); `git diff
+--check` clean. The 10-100 MB benchmark itself is not part of that
+regression run (never pytest-collected) — run explicitly via the
+command documented in PERFORMANCE_BASELINE.md; its own output is what
+the Results table above was built from.
+
+**Commit status**: see this task's own final report for the exact
+commit hash and push status.
+
+## What was done in the prior session — Pre-advanced-features Slice F1: calculated-channel dimensional-safety guardrail
+
 **Pre-advanced-features Slice F1: calculated-channel dimensional-safety
 guardrail (no DEC — a narrow bug fix closing an audit-identified gap,
 not a new product decision).** A pre-advanced-features audit found one

@@ -10,6 +10,40 @@
 > superseded claims, don't append to them.
 
 Last meaningful update: **2026-09-11**. **Pre-advanced-features Slice
+F2 (realistic performance baseline, no DEC — measurement/test
+infrastructure only, zero production code changed) establishes the
+reproducible import/parse/waveform performance baseline the project
+previously lacked.** The pre-existing `test_dec050_slice8_performance.py`
+only ever measured the Per-Unit conversion overhead RATIO at the
+`extract_waveform_range()` service layer against an in-memory
+`ActiveSource` — never real upload/parse/HTTP. Slice F2 adds a
+separate, standalone (never pytest-collected) benchmark,
+`backend/tests/perf/baseline_runner.py`, plus deterministic synthetic
+COMTRADE (BINARY, real row layout) and CSV fixture generators
+(`backend/tests/perf/synthetic_comtrade.py`/`synthetic_csv.py`, no
+committed large binaries), measuring three representative scenarios —
+15 MB/40+16-channel and 75 MB/64+32-channel COMTRADE, 12 MB/20-channel
+CSV — through the REAL upload → parse → in-memory registry → waveform
+endpoint path, each phase isolated in its own fresh subprocess so peak
+memory (`backend/tests/perf/mem_probe.py`: stdlib-only
+`resource.getrusage()`/`ctypes` `GetProcessMemoryInfo`, cross-platform,
+no new dependency) is never contaminated by fixture generation or a
+prior scenario. Findings (full baseline, methodology, and caveats in
+[docs/development/PERFORMANCE_BASELINE.md](../development/PERFORMANCE_BASELINE.md)):
+import completes in under 1.7 s even for the 75 MB/562K-sample
+scenario at ≈1.2 GB peak memory (well under the task's own "100 MB
+→ >2 GB" concern bar); every waveform request (full-range AND a
+reduced 2 s window, all three scenarios) completes under 50 ms with a
+55-80 KB payload, bounded by the existing min/max-envelope reduction
+regardless of recording size — read as no immediate architectural
+concern for a future Event Playback consumer, though a genuine
+playback loop was deliberately not simulated this slice. No
+production code changed; small, fast correctness tests
+(`backend/tests/test_performance_baseline.py`) run in normal
+regression, the 10-100 MB benchmark itself does not (explicit command
+only). Pre-advanced performance-readiness blocker closed.
+
+**Pre-advanced-features Slice
 F1 (calculated-channel dimensional-safety guardrail, no DEC — a
 narrow bug fix closing an audit-identified gap, not a new product
 decision) closes a real reachable fail-open case**:
@@ -757,6 +791,15 @@ re-confirmed by the TG-FINAL audit):
 - A minimal committed real-browser smoke-test foundation now protects
   critical upload/render/interaction paths — see
   [docs/development/BROWSER_SMOKE_TEST.md](../development/BROWSER_SMOKE_TEST.md).
+- **A reproducible real import/parse/waveform performance baseline
+  (Slice F2, 2026-09-11)** — `backend/tests/perf/baseline_runner.py`
+  (explicit `python tests/perf/baseline_runner.py run --scenario ...`
+  command, never pytest-collected) measures 15 MB/75 MB synthetic
+  COMTRADE and 12 MB synthetic CSV scenarios through the real upload →
+  parse → waveform-endpoint path — see
+  [docs/development/PERFORMANCE_BASELINE.md](../development/PERFORMANCE_BASELINE.md)
+  for the full methodology, results, and interpretation. No production
+  code changed.
 - **CSV/Excel preparation-source upload through canonical
   `DisturbanceRecord` conversion (verified to behave like any other
   Powerwave source across Time Groups/synchronization/calculated
