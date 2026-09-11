@@ -18,17 +18,23 @@ the resulting contexts are still stored workspace-scoped like any other.
 no upload trigger, no trigger on any other endpoint in this router,
 mirroring `app.api.v1.measurement_groups`'s own established policy.
 
-**Slice 2** adds exactly one new, read-only endpoint: `GET
-.../engineering-contexts/{id}/input-resolution`. Deliberately nested
-under one Engineering Context (not a new top-level `/analysis/...`
-router) -- the resolution result's entire input is "this context, this
-requirement," so this mirrors `app.api.v1.measurement_groups`'s own
-precedent of nesting a resource's derived views
-(`.../voltage-config`/`.../current-config`) under its own id rather than
-inventing a parallel top-level route family. This is the ONLY analysis-
-related endpoint in this codebase -- it resolves WHICH channels satisfy
-an analysis mode's required roles; it never calculates anything, and no
-`/analysis/...` calculation endpoint exists.
+**Slice 2** adds one read-only endpoint: `GET .../engineering-contexts/
+{id}/input-resolution`. Deliberately nested under one Engineering
+Context (not a new top-level `/analysis/...` router) -- the resolution
+result's entire input is "this context, this requirement," so this
+mirrors `app.api.v1.measurement_groups`'s own precedent of nesting a
+resource's derived views (`.../voltage-config`/`.../current-config`)
+under its own id rather than inventing a parallel top-level route
+family. That endpoint resolves WHICH channels satisfy an analysis
+mode's required roles; it never calculates anything.
+
+**Phasor Analysis Slice 1** adds a second, equally read-only endpoint,
+nested the same way: `GET .../engineering-contexts/{id}/phasor`. This
+is the first (and, in this slice, only) actual CALCULATION endpoint in
+this codebase -- selected-time only, engineering units only, never
+persisted. See `app.services.phasor_analysis_service`'s own docstring
+for the full estimation/guardrail architecture; this router only
+exposes it.
 """
 
 from __future__ import annotations
@@ -49,7 +55,9 @@ from app.schemas.engineering_context import (
 )
 from app.domain.analysis_input_resolution import AnalysisInputResolution
 from app.domain.analysis_requirements import get_requirement
+from app.domain.phasor import PhasorAnalysisResult
 from app.schemas.analysis_input_resolution import AnalysisInputResolutionOut, RoleSpecOut
+from app.schemas.phasor_analysis import PhasorAnalysisResultOut, PhasorRoleResultOut
 from app.schemas.source import ErrorOut
 from app.services.analysis_input_resolution_service import resolve_analysis_inputs
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
@@ -65,6 +73,7 @@ from app.services.engineering_context_service import (
     update_member_phase,
 )
 from app.services.errors import ImportServiceError
+from app.services.phasor_analysis_service import compute_phasor_analysis
 from app.services.workspace_registry import WorkspaceRegistry
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["engineering-contexts"])
@@ -341,3 +350,59 @@ def get_input_resolution(
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
     return _resolution_to_out(result)
+
+
+def _phasor_result_to_out(result: PhasorAnalysisResult) -> PhasorAnalysisResultOut:
+    return PhasorAnalysisResultOut(
+        status=result.status, analysis_kind=result.analysis_kind, mode=result.mode,
+        engineering_context_id=result.engineering_context_id, analysis_time=result.analysis_time,
+        reference_frequency_hz=result.reference_frequency_hz, window_seconds=result.window_seconds,
+        algorithm_version=result.algorithm_version,
+        roles={
+            role_key: PhasorRoleResultOut(
+                channel_ref=ChannelRefOut.from_domain(role.channel_ref), magnitude_rms=role.magnitude_rms,
+                unit=role.unit, angle_deg_absolute=role.angle_deg_absolute, angle_deg_relative=role.angle_deg_relative,
+            )
+            for role_key, role in result.roles.items()
+        },
+        warnings=result.warnings, role_reasons=result.role_reasons,
+        reason_code=result.reason_code, message=result.message,
+    )
+
+
+@router.get("/engineering-contexts/{engineering_context_id}/phasor", response_model=PhasorAnalysisResultOut)
+def get_phasor_analysis(
+    workspace_id: str,
+    engineering_context_id: str,
+    analysis_kind: str,
+    mode: str,
+    analysis_time: float,
+    reference_frequency_hz: float | None = None,
+    context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+) -> PhasorAnalysisResultOut:
+    """Read-only, selected-time-only Phasor Analysis (Slice 1). Calls
+    the input resolver first (unchanged) -- if it does not reach
+    `resolved`, its own status/reason/message is returned verbatim, no
+    estimation is attempted. `analysis_time` is elapsed seconds since
+    the start of whichever resolved role's source grounds the FIRST
+    required role (see `app.services.phasor_analysis_service`'s own
+    docstring for the exact multi-source semantics).
+    `reference_frequency_hz` is an optional explicit override; omitted,
+    every resolved role's own source must declare the SAME nominal
+    frequency or the result is `needs_configuration` /
+    `reference_frequency_conflict`. Engineering units only -- no
+    `unit_mode`/Per-Unit parameter in this slice. Never persisted."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = compute_phasor_analysis(
+            workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+            analysis_kind=analysis_kind, mode=mode, analysis_time=analysis_time,
+            reference_frequency_hz_override=reference_frequency_hz,
+            context_registry=context_registry, source_registry=source_registry,
+            calculated_channel_registry=calc_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return _phasor_result_to_out(result)

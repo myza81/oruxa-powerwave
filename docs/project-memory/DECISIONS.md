@@ -13241,6 +13241,168 @@ questions this slice deliberately left untouched.
 
 ---
 
+## DEC-088 — Phasor Analysis Slice 1: a fixed-frequency, one-cycle trailing-window RMS fundamental phasor estimator, with an explicit guardrail boundary and a selected-time-only, read-only API, built directly on the existing Engineering Context + resolver foundation
+
+Date: 2026-09-11
+Status: Approved — implemented.
+Source: owner-approved "Phasor Analysis" engineering/design audit
+(2026-09-11), followed by explicit owner instructions for "Phasor
+Analysis — Slice 1: Core Estimator + Selected-Time API."
+
+Decision:
+
+**1. Product definition.** A Powerwave phasor is an RMS fundamental-
+frequency phasor estimated from a sampled Voltage or Current waveform
+over one trailing cycle at a FIXED reference frequency. Explicitly not
+an instantaneous sample, not PMU/synchrophasor-class, not frequency-
+tracked, not a precomputed vendor magnitude/angle channel.
+
+**2. Estimator.** `X = (sqrt(2)/N) * sum(x_n * exp(-j*2*pi*f0*t_n))`;
+`magnitude_rms = abs(X)`, `angle = arg(X)`. The `sqrt(2)` (not `2`)
+normalization is what converts the correlation sum's own peak-amplitude
+result into RMS directly — proven algebraically in `app/domain/
+phasor.py`'s own module docstring and confirmed numerically against
+independently hand-derived expected values
+(`backend/tests/test_phasor_domain.py`), never against values the
+estimator itself produced.
+
+**3. Window.** Exactly one trailing cycle, half-open
+`(analysis_time - 1/f0, analysis_time]` — the identical boundary
+convention `evaluate_rms()` already established (excludes the sample
+exactly one period back, which would otherwise double-count that
+phase). Never centered, never future samples, never shortened/shifted
+near a recording's start.
+
+**4. Angle reference — the critical convention.** Absolute angle is
+referenced to `t=0` of ONE shared, source-independent absolute-time
+coordinate (true absolute epoch, reduced by one shared per-request
+`reference_epoch` purely for floating-point precision), computed once
+by the service and never reset per sliding window — proven stable
+across advancing `analysis_time` by a dedicated golden test. A
+three-phase result additionally derives a Phase-A-referenced
+`angle_deg_relative` as a DISPLAY-level transform over the authoritative
+absolute value (mirrors Per-Unit's own display-transform pattern) —
+single-phase results have no relative angle (nothing to reference).
+
+**5. Reference frequency.** Explicit request override (validated by the
+existing `nominal_frequency_valid()` 1–1000 Hz bound) takes priority;
+otherwise every resolved role's own source must declare the SAME
+`nominal_frequency`, or the result is `needs_configuration` /
+`reference_frequency_conflict` — never the first source's value, never
+an average, never a silent proceed. Off-nominal-frequency behavior
+(magnitude error, progressive angle drift) is measured, documented, and
+covered by a dedicated golden test with a closed-form predicted drift —
+explicitly NOT frequency-tracked, stated as a limitation, never
+presented as PMU-class.
+
+**6. Minimum sampling density — Phasor-specific, empirically derived.**
+`PHASOR_MIN_SAMPLES_PER_CYCLE = 8`, deliberately NOT copied from
+`calculated_channel.MIN_SAMPLES_PER_CYCLE` (`=4`, tuned for a *sliding*
+RMS's own accuracy needs). Derived from an empirical sweep at 4/8/16/32
+samples/cycle (`TestSamplingDensityStudy`): a clean sinusoid shows
+near-zero error at every tested density (the correlation is discretely
+exact for a pure single-frequency signal regardless of window-boundary
+phase); under a realistic 0.2%-amplitude noise floor, error scales down
+roughly with `1/sqrt(N)`, and 8 samples/cycle materially reduces
+noise-driven error relative to 4. An application guardrail based on
+this estimator's own measured behavior — not a claimed industry
+standard.
+
+**7. Waveform-form eligibility — stricter than RMS's own precedent,
+deliberately.** Mirrors `check_rms_eligibility()`'s metadata-first,
+detector-fallback structure: explicit `instantaneous` → eligible;
+explicit `rms`/`magnitude` → rejected, no override; `unknown` → falls
+back to the existing `classify_waveform_form()` heuristic on the
+channel's own full sample arrays. Both `LIKELY_MAGNITUDE_OR_RMS` AND
+`UNCERTAIN` are rejected — the audit's own earlier suggestion
+("uncertain → allow with a warning") is explicitly REVISED here after
+re-examining the real precedent: `check_rms_eligibility()` itself
+treats `UNCERTAIN` as blocking pending an engineer override, and Phasor
+v1 has no override mechanism at all, so honoring that real precedent
+(rather than the audit's own untested guess) means rejecting, not
+warning-and-allowing. Calculated channels follow the identical rule; no
+automatic phase inheritance is added.
+
+**8. Engineering Context / resolver integration — unchanged, reused
+verbatim.** `compute_phasor_analysis()` calls `resolve_analysis_inputs()`
+(Slice 2) first; any non-`resolved` result is returned to the caller
+verbatim (status/reason/message/per-role diagnostics), with zero
+estimation attempted and zero name-based channel search, phase
+remapping, or cross-context borrowing.
+
+**9. Multi-source.** The resolver already proves timebase compatibility
+for whatever roles it resolves together; this slice additionally
+requires nominal-frequency agreement across those same sources (a
+Phasor-specific concern the resolver has no reason to know about).
+
+**10. Unit scope — engineering units only.** No `unit_mode`/Per-Unit
+parameter in Slice 1; Per-Unit phasor display is deferred to a later
+slice.
+
+**11. Selected-time only.** One phasor at one requested `analysis_time`
+per request — never a precomputed time series, never persisted, never
+continuously-updated server state.
+
+**12. Result model — concrete, Phasor-owned, not a generic framework.**
+`PhasorAnalysisResult`/`PhasorRoleResult` (`app/domain/phasor.py`),
+carrying status/inputs/analysis_time/reference_frequency/window_seconds/
+algorithm_version/per-role magnitude+both angles/warnings/role_reasons/
+reason_code/message. Never persisted. `algorithm_version =
+"phasor_estimator_v1"`, bumped only for a genuine algorithm change.
+
+**13. API.** One new read-only endpoint, `GET .../workspaces/
+{workspace_id}/engineering-contexts/{engineering_context_id}/phasor`,
+nested under the Engineering Context exactly like the existing
+`input-resolution` endpoint. `analysis_time` is elapsed seconds since
+the start of whichever resolved role's source grounds the first
+required role.
+
+**14. No frontend, no Playback integration, no Analysis menu.**
+Explicitly out of scope for this slice.
+
+Reason: Every primitive this estimator needed already existed as
+tested, reusable precedent in this codebase — `evaluate_rms()`'s own
+window/guardrail shape, `rms_detector.py`'s own cos/sin DFT-bin
+correlation (missing only the angle), `timebases_aligned()`, and the
+Slice 1/2 resolver foundation with its own already-defined Phasor
+requirement constants. Building Slice 1 as a thin, well-tested layer
+over these primitives — rather than a new estimation framework — keeps
+the engineering claim precise (a fixed-frequency one-cycle estimate,
+nothing more) and lets the golden-vector suite prove correctness
+against independently hand-derived values before any UI exists to
+obscure a math error.
+
+Alternatives considered: A sliding DFT or continuously-updated server-
+side phasor state — rejected; unjustified for a selected-time-only
+Slice 1 whose purpose is proving correctness, not performance at scale.
+Frequency-tracked (PMU-class) estimation — rejected for this slice;
+real added complexity with its own error bounds, not required to prove
+the core engineering definition. Reusing RMS's own `MIN_SAMPLES_PER_
+CYCLE=4` without independent evidence — rejected per explicit owner
+instruction; empirically evaluated and revised upward instead.
+Allowing an engineer override for an `uncertain`/`likely-RMS`
+waveform_form (matching RMS creation's own override path) — rejected;
+no legitimate engineering reason exists to phasor-estimate a signal
+already suspected non-oscillatory, unlike RMS's own legitimate
+RMS-of-RMS smoothing use case.
+
+Impact: New files `backend/app/domain/phasor.py`, `backend/app/services/
+phasor_analysis_service.py`, `backend/app/schemas/phasor_analysis.py`.
+Modified: `backend/app/api/v1/engineering_contexts.py` (one new GET
+endpoint). No changes to `AnalysisRequirement`/`RoleSpec`/
+`AnalysisInputResolution`/`EngineeringContext`/`ChannelRef`/
+`MeasurementGroup`/Per-Unit/`evaluate_rms()`/`timebases_aligned()`/
+`classify_waveform_form()` — all reused unchanged. 55 new focused tests
+(`test_phasor_domain.py` 30, `test_phasor_analysis_service.py` 18,
+`test_phasor_analysis_api.py` 7); full existing backend regression
+suite passes unmodified. No frontend changes. See
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) for the full architecture,
+including measured performance numbers and everything still deferred
+(frontend, Playback integration, frequency tracking, precomputed
+phasors, Per-Unit display, and every real protection analysis).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

@@ -196,6 +196,66 @@ full architecture, including what's still deferred (frontend UX,
 Playback integration, digital-channel roles, Voltage↔Current
 association).
 
+**Phasor Analysis Slice 1 — Core Estimator + Selected-Time API
+([DECISIONS.md — DEC-088](DECISIONS.md#dec-088--phasor-analysis-slice-1-a-fixed-frequency-one-cycle-trailing-window-rms-fundamental-phasor-estimator-with-an-explicit-guardrail-boundary-and-a-selected-time-only-read-only-api-built-directly-on-the-existing-engineering-context-resolver-foundation),
+2026-09-11) is implemented — the first real analysis engine built on
+the Slice 1/2 guardrail foundation.** Product definition: an RMS
+fundamental-frequency phasor estimated from a sampled Voltage/Current
+waveform over one trailing cycle at a FIXED reference frequency —
+explicitly not an instantaneous sample, not PMU/synchrophasor-class,
+not frequency-tracked. Estimator (`app.domain.phasor.estimate_phasor()`):
+`X = (sqrt(2)/N) * sum(x_n * exp(-j*2*pi*f0*t_n))`, `magnitude_rms =
+abs(X)`, `angle = arg(X)` — the RMS normalization proven algebraically
+and confirmed against independently hand-derived golden values, never
+self-referential ones. Window: exactly one trailing cycle, half-open
+`(analysis_time - 1/f0, analysis_time]`, reusing `evaluate_rms()`'s own
+boundary convention exactly; an incomplete window is explicitly
+`unavailable`, never shortened/shifted. **Angle is referenced to one
+shared, source-independent absolute-time coordinate computed once per
+request — never reset per sliding window** (proven numerically stable
+as `analysis_time` advances); a three-phase result additionally derives
+a Phase-A-referenced `angle_deg_relative` as a pure display transform
+over the authoritative absolute value. Reference frequency: an explicit
+override, else every resolved role's own source must agree on
+`nominal_frequency` or the result is `needs_configuration`/
+`reference_frequency_conflict` — never hard-coded to 50 Hz, both 50 Hz
+and 60 Hz validated explicitly; off-nominal behavior (magnitude error,
+progressive angle drift) is measured and documented via a closed-form
+golden test, never hidden. `PHASOR_MIN_SAMPLES_PER_CYCLE = 8` is a
+Phasor-SPECIFIC threshold empirically derived from a 4/8/16/32-
+samples/cycle sweep (never blindly copied from RMS's own `=4`) — an
+application guardrail based on measured behavior, not a claimed
+industry standard. Waveform-form eligibility mirrors `check_rms_
+eligibility()`'s own metadata-first/detector-fallback structure, but
+STRICTER: both `likely_magnitude_or_rms` and `uncertain` detector
+outcomes are rejected outright (no override exists in this slice) — a
+deliberate revision of the original audit's own earlier "allow
+uncertain with a warning" suggestion, corrected after re-examining what
+the real RMS precedent actually does. Integrates the unchanged Slice 2
+resolver as the sole authority: any non-`resolved` status is returned
+verbatim, with zero name-based channel search/phase remapping/cross-
+context borrowing. Engineering units only (no Per-Unit `unit_mode` in
+this slice); selected-time-only (one phasor per request, never a
+time series, never persisted). One new read-only endpoint: `GET
+.../engineering-contexts/{id}/phasor?analysis_kind=...&mode=...&
+analysis_time=...&reference_frequency_hz=...(optional)`. Measured
+performance on a representative 20 kHz/10 s (200,000-sample) source:
+~0.8 ms/call for the pure estimator, ~19 ms/call for the full service
+(resolver + waveform-form detector fallback), ~33 ms/call full HTTP
+round trip — all comfortably fast for an on-demand request; no
+caching/precomputation introduced. **No frontend, no Playback
+integration, no Analysis menu, no real protection analysis
+(Distance/Overcurrent/Differential/Sequence Components)** — explicitly
+out of scope for this slice. 55 new focused tests (`test_phasor_
+domain.py` 30 — golden RMS/angle/three-phase/50-60Hz/moving-analysis-
+time-stability/off-nominal-frequency/edge-of-recording/invalid-samples/
+irregular-sampling/sampling-density-study vectors, `test_phasor_
+analysis_service.py` 18, `test_phasor_analysis_api.py` 7 — including a
+real hand-written ASCII-COMTRADE upload carrying a known three-phase
+sinusoid through the full HTTP stack) plus the full existing regression
+suite pass unmodified. See [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) for
+the full architecture.
+
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test
 infrastructure only, zero production code changed) establishes the

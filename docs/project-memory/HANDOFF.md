@@ -8,6 +8,81 @@ Last updated: **2026-09-11**
 
 ## What was most recently done
 
+**Phasor Analysis Slice 1 — Core Estimator + Selected-Time API
+([DECISIONS.md — DEC-088](DECISIONS.md#dec-088--phasor-analysis-slice-1-a-fixed-frequency-one-cycle-trailing-window-rms-fundamental-phasor-estimator-with-an-explicit-guardrail-boundary-and-a-selected-time-only-read-only-api-built-directly-on-the-existing-engineering-context-resolver-foundation);
+architecture recorded in [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)).**
+The first real analysis engine, built directly on the Slice 1/2
+Engineering Context + resolver foundation with zero changes to it.
+
+**What was built** (all new files unless noted):
+
+1. `app/domain/phasor.py` — pure estimator. `X = (sqrt(2)/N) *
+   sum(x_n * exp(-j*2*pi*f0*t_n))`, `magnitude_rms = abs(X)`,
+   `angle = arg(X)` — RMS normalization proven algebraically in the
+   module's own docstring and confirmed against independently
+   hand-derived golden values. Half-open one-cycle trailing window
+   `(analysis_time - 1/f0, analysis_time]`, reusing `evaluate_rms()`'s
+   own boundary convention exactly. Explicit `unavailable` +
+   `reason_code` for every guardrail (insufficient window history,
+   analysis_time out of range, invalid/NaN samples, irregular spacing,
+   insufficient sampling density) -- never a shortened/shifted window,
+   never silently dropped samples, never resampling/interpolation.
+   `PHASOR_MIN_SAMPLES_PER_CYCLE = 8` -- a Phasor-SPECIFIC threshold
+   empirically derived from a 4/8/16/32-samples/cycle sweep
+   (`TestSamplingDensityStudy`), deliberately NOT copied from RMS's own
+   `=4`. Also carries `PhasorAnalysisResult`/`PhasorRoleResult` (the
+   whole-analysis result shape) and `relative_angle_deg()`.
+2. `app/services/phasor_analysis_service.py` — orchestration. Calls
+   `resolve_analysis_inputs()` (Slice 2, UNCHANGED) first; any non-
+   `resolved` status is returned verbatim, zero estimation attempted.
+   Builds the shared, source-independent absolute-time coordinate every
+   resolved role's samples are projected onto (critical for the angle
+   reference to stay stable as `analysis_time` advances and to remain
+   meaningful across a multi-source three-phase context). Decides
+   reference frequency (explicit override, else unanimous agreement
+   across resolved roles' own sources -- `reference_frequency_conflict`
+   otherwise). Enforces waveform-form eligibility, mirroring `check_rms_
+   eligibility()`'s own structure but STRICTER: an `uncertain` detector
+   outcome is rejected (not "allowed with a warning" -- the earlier
+   audit's own suggestion was reconsidered and reversed after
+   re-examining what the real RMS precedent actually does, since Phasor
+   has no override mechanism to justify the more lenient treatment RMS
+   creation allows).
+3. `app/schemas/phasor_analysis.py` + one new endpoint in `app/api/v1/
+   engineering_contexts.py`: `GET .../engineering-contexts/{id}/phasor`
+   -- read-only, selected-time-only, engineering units only (no
+   `unit_mode`/Per-Unit parameter this slice), never persisted.
+
+**Performance measured directly** (not assumed from the unrelated F2
+baseline) on a representative 20 kHz/10 s (200,000-sample) source:
+~0.8 ms/call pure estimator, ~19 ms/call full service, ~33 ms/call full
+HTTP round trip -- all comfortably fast; no caching/precomputation
+introduced.
+
+**Tests**: 55 new focused tests -- `test_phasor_domain.py` (30, the
+full owner golden-vector matrix: RMS normalization, known angles
+including sign, balanced three-phase Voltage/Current, 50 Hz and 60 Hz,
+moving-analysis-time angle STABILITY -- the critical proof the angle
+reference is never reset per window --, off-nominal-frequency drift
+with a closed-form predicted value, recording-start/out-of-range edge
+cases, NaN/invalid samples, irregular sampling, the sampling-density
+study, angle normalization), `test_phasor_analysis_service.py` (18 --
+multi-source timebase/frequency-conflict/waveform-form matrix,
+calculated-channel candidate, moving-analysis-time stability at the
+service level), `test_phasor_analysis_api.py` (7 -- a real hand-written
+ASCII-COMTRADE upload carrying a known three-phase sinusoid through the
+FULL HTTP stack, asserting exact expected magnitude/angle values, plus
+resolver-pass-through and error-code tests). Full existing regression
+suite (Engineering Context, phase identity, resolver, Measurement
+Group, calculated-channel/RMS-detector, time-grouping, plus the full
+`tests/` suite) passes unmodified; `git diff --check` clean.
+
+**Files changed**: see this task's own final report for the exact list.
+**Commit status**: see this task's own final report for the exact
+commit hash and push status.
+
+## What was done in the prior session — Analysis Guardrail Slice 2: Analysis Requirements + Automatic Input Resolver
+
 **Analysis Guardrail Slice 2 — Analysis Requirements + Automatic Input
 Resolver ([DECISIONS.md — DEC-087](DECISIONS.md#dec-087--analysis-guardrail-slice-2-a-small-typed-analysisrequirementrolespec-domain-plus-a-pure-backend-authoritative-resolver-automatically-match-an-analysis-modes-required-engineering-roles-against-one-engineering-contexts-own-membership-role-identity-and-numerical-readiness-are-kept-strictly-separate);
 architecture recorded in
