@@ -1,5 +1,6 @@
-"""Static structural regression checks for Event Playback Slice 1 (Core
-Playback Engine), frontend/index.html.
+"""Static structural regression checks for Event Playback (frontend/
+index.html) -- Slice 1 (Core Playback Engine) and Slice 2 (Essential
+Playback Controls: fixed speed + seek).
 
 Same source-text substring-assertion pattern every other
 `test_frontend_*.py` file in this suite already uses -- this repo has no
@@ -8,10 +9,12 @@ Plotly-overlay BEHAVIOR is covered separately by
 `browser-tests/playback.spec.js` (Playwright, real browser) -- these
 tests only guard structural invariants a source-text assertion CAN
 meaningfully verify (ordering, presence, absence of coupling to Cursor
-A/B or to a backend endpoint).
+A/B or to a backend endpoint, the shape of the speed/seek re-anchoring
+algorithms).
 
-Playback is frontend/session state only (no backend API changes this
-slice) -- every test below is source-only; none touches the backend.
+Playback is frontend/session state only (no backend API changes in
+either slice) -- every test below is source-only; none touches the
+backend.
 """
 
 from __future__ import annotations
@@ -96,10 +99,11 @@ class TestTimeGroupToolbarControls:
         assert "ww-tg-playback-restart-btn" in toolbar_fn
         assert "ww-tg-playback-play-btn" in toolbar_fn
         assert "ww-tg-playback-time-readout" in toolbar_fn
-        # No speed/seek controls yet -- explicitly out of scope this slice.
-        assert "playback-speed" not in toolbar_fn
-        assert "playback-seek" not in toolbar_fn
-        assert "playback-scrubber" not in toolbar_fn
+        # Slice 2: fixed speed selector + seek scrubber now exist too.
+        assert "ww-tg-playback-speed-select" in toolbar_fn
+        assert "ww-tg-playback-seek-slider" in toolbar_fn
+        # Never free-entry speed -- a <select>, never a text/number input.
+        assert '<select class="ww-tg-playback-speed-select"' in toolbar_fn
 
     def test_toolbar_wiring_binds_both_buttons(self):
         source = _source()
@@ -108,6 +112,9 @@ class TestTimeGroupToolbarControls:
         )
         assert "wwPlaybackRestart(groupId)" in wiring_fn
         assert "wwPlaybackHandlePlayPauseClick(groupId)" in wiring_fn
+        assert "wwPlaybackHandleSpeedChange(playbackSpeedSelect)" in wiring_fn
+        assert "wwPlaybackHandleSeekInput(groupId" in wiring_fn
+        assert "wwPlaybackHandleSeekCommit(groupId" in wiring_fn
 
 
 class TestPlaybackCursorIsSeparateFromCursorAB:
@@ -224,11 +231,15 @@ class TestTimingUsesWallClockAnchorNotAssumedFrameInterval:
         fn = _function_body(source, "function wwPlaybackPlay(groupId)", "function wwPlaybackPause")
         assert "performance.now()" in fn
 
-    def test_speed_is_fixed_at_1x_this_slice(self):
+    def test_play_never_resets_speed(self):
+        """Slice 2 supersedes Slice 1's original 'speed is fixed at 1x'
+        rule -- Play must NOT reset `wwPlayback.speed`, since Slice 2
+        requires it to persist across Play/Pause/Restart/seek (only a
+        whole-workspace reset touches it -- see TestSpeedControl below)."""
         source = _source()
         fn = _function_body(source, "function wwPlaybackPlay(groupId)", "function wwPlaybackPause")
-        assert "wwPlayback.speed = 1;" in fn
-        assert "ww-tg-playback-speed" not in source
+        assert "wwPlayback.speed = 1;" not in fn
+        assert "wwPlayback.speed =" not in fn
 
 
 class TestCanonicalTimeCoordinateIsWorkspaceTime:
@@ -311,6 +322,176 @@ class TestPlaybackConsumerSeam:
         assert "function wwPlaybackState()" in source
         assert "function wwPlaybackOnTick(callback)" in source
         assert "function wwPlaybackNotifyTick()" in source
+
+
+# ======================================================================
+# Slice 2: Essential Playback Controls (fixed speed + seek)
+# ======================================================================
+
+
+class TestSpeedControl:
+    """Test 1/2 of the task's own focused-coverage list: the supported
+    speed set is EXACTLY 0.25/0.5/1/2/4, default 1x, never free entry."""
+
+    def test_supported_speed_set_is_exactly_the_required_five_values(self):
+        source = _source()
+        assert "const WW_PLAYBACK_SPEEDS = [0.25, 0.5, 1, 2, 4];" in source
+
+    def test_default_speed_constant_is_1x(self):
+        source = _source()
+        assert "const WW_PLAYBACK_DEFAULT_SPEED = 1;" in source
+        # The controller's own initial value uses that constant, not a
+        # second hardcoded literal.
+        state_obj = _function_body(source, "const wwPlayback = {", "};")
+        assert "speed: WW_PLAYBACK_DEFAULT_SPEED," in state_obj
+
+    def test_speed_selector_is_a_select_not_free_entry(self):
+        source = _source()
+        toolbar_fn = _function_body(
+            source, "function wwCreateTimeGroupCanvasDom(groupId)", "function wwEnsureTimeGroupCanvasDom"
+        )
+        select_html = _function_body(toolbar_fn, '<select class="ww-tg-playback-speed-select"', "</select>")
+        for option in ('value="0.25"', 'value="0.5"', 'value="1" selected', 'value="2"', 'value="4"'):
+            assert option in select_html
+        # No free-entry alternative (a text/number input) anywhere nearby.
+        assert 'type="number"' not in toolbar_fn
+        assert 'class="ww-tg-playback-speed-input"' not in toolbar_fn
+
+    def test_set_speed_rejects_unsupported_values(self):
+        source = _source()
+        fn = _function_body(source, "function wwPlaybackSetSpeed(newSpeed)", "function wwPlaybackHandleSpeedChange")
+        assert "WW_PLAYBACK_SPEEDS.includes(newSpeed)" in fn
+        assert "WW_PLAYBACK_DEFAULT_SPEED" in fn
+
+
+class TestSpeedChangeReanchoring:
+    """Tests 3-5 of the task's own focused-coverage list: no jump, no
+    second rAF loop, and a paused speed change only updates the stored
+    value (never touches anchors)."""
+
+    def test_speed_change_while_playing_reanchors_from_current_time_not_a_recompute(self):
+        """'No jump' -- the new anchor is read directly from
+        wwPlayback.currentTime (already correct every frame via the
+        existing tick loop), never a second/independent time calculation
+        that could disagree with it."""
+        source = _source()
+        fn = _function_body(source, "function wwPlaybackSetSpeed(newSpeed)", "function wwPlaybackHandleSpeedChange")
+        playing_branch = _function_body(
+            fn, "if (wwPlayback.state === WW_PLAYBACK_STATE_PLAYING) {", "wwPlayback.speed = speed;"
+        )
+        assert "wwPlayback.recordingTimeAnchor = wwPlayback.currentTime;" in playing_branch
+        assert "wwPlayback.wallClockAnchorMs = performance.now();" in playing_branch
+
+    def test_speed_change_never_creates_a_second_rAF_loop(self):
+        """The existing rAF chain is left running untouched -- no
+        cancelAnimationFrame/requestAnimationFrame call anywhere in
+        wwPlaybackSetSpeed() itself."""
+        source = _source()
+        fn = _function_body(source, "function wwPlaybackSetSpeed(newSpeed)", "function wwPlaybackHandleSpeedChange")
+        assert "requestAnimationFrame" not in fn
+        assert "cancelAnimationFrame" not in fn
+
+    def test_paused_speed_change_only_updates_the_stored_value(self):
+        """No anchor mutation outside the `state === PLAYING` guard --
+        confirms a paused/stopped speed change is a pure value update,
+        applied automatically whenever playback next resumes (via
+        wwPlaybackPlay()'s own existing resume logic), never eagerly
+        re-anchoring a non-running clock."""
+        source = _source()
+        fn = _function_body(source, "function wwPlaybackSetSpeed(newSpeed)", "function wwPlaybackHandleSpeedChange")
+        # Exactly one occurrence of each anchor assignment, both inside
+        # the PLAYING-only guard already verified above -- i.e. neither
+        # anchor is touched a second time outside that guard.
+        assert fn.count("wwPlayback.recordingTimeAnchor =") == 1
+        assert fn.count("wwPlayback.wallClockAnchorMs = performance.now();") == 1
+
+    def test_speed_persists_across_play_pause_restart(self):
+        """Play/Pause/Restart must never reset `speed` -- only a whole-
+        workspace reset does (see TestWorkspaceResetSpeedDefault)."""
+        source = _source()
+        for signature, next_signature in [
+            ("function wwPlaybackPlay(groupId)", "function wwPlaybackPause"),
+            ("function wwPlaybackPause()", "function wwPlaybackHandlePlayPauseClick"),
+            ("function wwPlaybackRestart(groupId)", "function wwPlaybackSyncToolbarForGroup"),
+        ]:
+            fn = _function_body(source, signature, next_signature)
+            assert "wwPlayback.speed =" not in fn, f"{signature} must not touch wwPlayback.speed"
+
+
+class TestSeekBehavior:
+    """Tests 6-8 of the task's own focused-coverage list: seek while
+    stopped/paused/playing, and Restart returns the slider/cursor/
+    currentTime to the range start."""
+
+    def test_seek_input_suspends_the_clock_only_on_the_first_event_of_a_gesture(self):
+        source = _source()
+        fn = _function_body(source, "function wwPlaybackHandleSeekInput(groupId, rawTime)", "function wwPlaybackHandleSeekCommit")
+        assert "if (!wwPlaybackSeekDragging) {" in fn
+        assert "cancelAnimationFrame(wwPlayback.rafId);" in fn
+        # Never re-anchors mid-drag -- that only happens on commit.
+        assert "wwPlayback.recordingTimeAnchor = clamped;" not in fn
+        assert "requestAnimationFrame(wwPlaybackTick)" not in fn
+
+    def test_seek_input_never_fabricates_or_touches_engineering_data(self):
+        """Slice 2's own explicit boundary: seeking selects a TIME only --
+        never an analog/interpolated value, never a backend call."""
+        source = _source()
+        fn = _function_body(source, "function wwPlaybackHandleSeekInput(groupId, rawTime)", "function wwPlaybackHandleSeekCommit")
+        assert "fetch(" not in fn
+        for token in ("interpolat", "Va", "Vb", "Vc", "Ia", "Ib", "Ic", "impedance", "phasor"):
+            assert token not in fn
+
+    def test_seek_commit_resumes_playing_only_if_it_was_playing_before_the_gesture(self):
+        source = _source()
+        fn = _function_body(source, "function wwPlaybackHandleSeekCommit(groupId, rawTime)", "function wwPlaybackSyncSeekSliderBounds")
+        assert "const wasPlaying = wwPlaybackSeekWasPlaying;" in fn
+        assert "if (wasPlaying) {" in fn
+        assert "wwPlayback.state = WW_PLAYBACK_STATE_PLAYING;" in fn
+        assert "wwPlayback.state = WW_PLAYBACK_STATE_PAUSED;" in fn
+        assert "if (wasPlaying) {\n                wwPlayback.rafId = requestAnimationFrame(wwPlaybackTick);" in fn
+
+    def test_seek_never_mutates_cursor_ab_state(self):
+        source = _source()
+        input_fn = _function_body(source, "function wwPlaybackHandleSeekInput(groupId, rawTime)", "function wwPlaybackHandleSeekCommit")
+        commit_fn = _function_body(source, "function wwPlaybackHandleSeekCommit(groupId, rawTime)", "function wwPlaybackSyncSeekSliderBounds")
+        for fn in (input_fn, commit_fn):
+            assert "ww.timeGroupCursorState" not in fn
+
+    def test_seek_slider_wired_with_input_and_change_events(self):
+        source = _source()
+        wiring_fn = _function_body(
+            source, "function wwWireTimeGroupToolbar(canvasEl, groupId)", "function wwWireSplitMenuOutsideClickDismissal"
+        )
+        assert '.addEventListener("input", ()' in wiring_fn
+        assert '.addEventListener("change", ()' in wiring_fn
+
+    def test_restart_resets_current_time_to_start_and_syncs_the_seek_slider(self):
+        source = _source()
+        restart_fn = _function_body(source, "function wwPlaybackRestart(groupId)", "function wwPlaybackSyncToolbarForGroup")
+        assert "wwPlayback.currentTime = bounds.start;" in restart_fn
+        assert "wwPlaybackSyncToolbarForGroup(groupId);" in restart_fn
+        # wwPlaybackSyncToolbarForGroup() itself is what actually updates
+        # the seek slider's bounds/value -- verified once, generically,
+        # rather than duplicated in every caller.
+        sync_fn = _function_body(source, "function wwPlaybackSyncToolbarForGroup(groupId)", "function wwPlaybackUpdateTimeReadout")
+        assert "wwPlaybackSyncSeekSliderBounds(groupId);" in sync_fn
+        assert "wwPlaybackUpdateSeekSlider(groupId);" in sync_fn
+
+    def test_seek_slider_value_never_fights_an_active_user_drag(self):
+        source = _source()
+        fn = _function_body(source, "function wwPlaybackUpdateSeekSlider(groupId)", "function wwUpdatePlaybackCursorOverlay")
+        assert "document.activeElement !== sliderEl" in fn
+
+
+class TestWorkspaceResetSpeedDefault:
+    """Test 10 (workspace reset) of the task's own focused-coverage list,
+    specifically the speed default the task calls out by name."""
+
+    def test_wwPlaybackReset_restores_default_speed(self):
+        source = _source()
+        fn = _function_body(source, "function wwPlaybackReset()", "function wwPlaybackTick")
+        assert "wwPlayback.speed = WW_PLAYBACK_DEFAULT_SPEED;" in fn
+        assert "wwPlaybackSyncAllToolbarSpeedSelects();" in fn
 
 
 class TestPlaybackCompletionDoesNotAutoWrap:

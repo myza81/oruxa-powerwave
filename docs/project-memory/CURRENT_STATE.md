@@ -9,41 +9,59 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-11**. **Event Playback — Slice 1
-(Core Playback Engine, [DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock))
-is implemented — the first advanced-interaction capability built after
+Last meaningful update: **2026-09-11**. **Event Playback — Slices 1
+and 2 ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock))
+are implemented — the first advanced-interaction capability built after
 completion of the pre-advanced-features foundation work (Slices F1/F2
-below).** `Playback` is a new top-level main-menu item, immediately
-after `Calculated Channels` (a future `Analysis` menu is NOT created
-yet — only ordering/direction preserved). ONE authoritative,
-frontend-only Playback Controller (`wwPlayback`, `frontend/index.html`)
-owns the current playback time for at most ONE active Time Group at a
-time — pressing Play on a different Time Group's own toolbar cleanly
-stops the previous one, never two simultaneous `requestAnimationFrame`
-loops. Canonical coordinate is **workspace time** (the same coordinate
-`ww.viewport`/Cursor A-B already use); `t=0`/Time Mode affect display
-only (reuses `wwFormatCursorPointTime()` verbatim, no new clock).
-Playback range is the active Time Group's own full union extent
-(`wwDeriveTimeGroupBounds(groupId)`, the existing DEC-037 function).
-Timing is `requestAnimationFrame` + a `performance.now()` wall-clock
-anchor, recomputed fresh every frame (never an assumed per-frame
-delta); speed is fixed at 1× this slice. The **Playback Cursor is
-architecturally separate from Cursor A/B** — its own dedicated DOM
-overlay (`.ww-tg-playback-cursor-overlay`), reusing Cursor A/B's pixel-
+below). Core Playback is now considered sufficient to begin advanced-
+analysis work unless UAT exposes a genuine problem.** `Playback` is a
+new top-level main-menu item, immediately after `Calculated Channels`
+(a future `Analysis` menu is NOT created yet — only ordering/direction
+preserved). ONE authoritative, frontend-only Playback Controller
+(`wwPlayback`, `frontend/index.html`) owns the current playback time
+for at most ONE active Time Group at a time — pressing Play on a
+different Time Group's own toolbar cleanly stops the previous one,
+never two simultaneous `requestAnimationFrame` loops; every source/
+channel in that group shares the same playback time, channels are
+never independently played. Canonical coordinate is **workspace time**
+(the same coordinate `ww.viewport`/Cursor A-B already use); `t=0`/Time
+Mode affect display only (reuses `wwFormatCursorPointTime()` verbatim,
+no new clock). Playback range is the active Time Group's own full
+union extent (`wwDeriveTimeGroupBounds(groupId)`, the existing DEC-037
+function). Timing is `requestAnimationFrame` + a `performance.now()`
+wall-clock anchor, recomputed fresh every frame (never an assumed
+per-frame delta). The **Playback Cursor is architecturally separate
+from Cursor A/B** — its own dedicated DOM overlay
+(`.ww-tg-playback-cursor-overlay`), reusing Cursor A/B's pixel-
 conversion primitives but never touching `ww.timeGroupCursorState`.
 Digital-channel state at the current playback time is resolved
 entirely from already-loaded local transition data (zero backend
-requests per frame). **Frontend/session state only — no backend
-Playback endpoint exists or was added**; state resets on
-`wwClearWorkspace()` (both "Clear workspace" and "Start New Workspace")
-and whenever the active Time Group's own topology disappears. Deferred
-to a later slice (not implemented, not decided against): speed
-selector, seeking, Follow Playback, Split View `center_time`
-integration, throttled current-value polling, keyboard shortcuts, and
+requests per frame). **Slice 2 adds the two remaining essential
+controls**: a fixed five-value speed selector (0.25×/0.5×/1×/2×/4×,
+default 1×, never free-entry — ONE controller-wide `wwPlayback.speed`,
+never per-group, persists across Play/Pause/Restart/seek; changing it
+while playing re-anchors from the already-correct `currentTime` under
+the new speed with the SAME rAF chain left running — no jump, no
+restart, no second loop) and a seek scrubber (a native
+`<input type="range">`, the dedicated seek mechanism — never a drag on
+the Playback Cursor itself, never Cursor A/B; suspends the clock for
+the duration of a drag/keyboard gesture, re-anchors and resumes
+automatically on release only if it was playing before, otherwise
+lands "paused"; selects a TIME only, never fabricates/interpolates
+engineering data). **Frontend/session state only — no backend Playback
+endpoint exists or was added**; state resets on `wwClearWorkspace()`
+(both "Clear workspace" and "Start New Workspace", including speed
+back to 1×) and whenever the active Time Group's own topology
+disappears. Deferred to a later slice (not implemented, not decided
+against): Follow Playback, Split View `center_time` integration,
+throttled current-value polling, keyboard shortcuts, event sub-range
+selection, looping, reverse playback, frame-by-frame stepping, and
 every future analysis overlay (impedance/overcurrent/differential/
 etc.), which must consume this controller rather than build an
-independent clock. New Playwright coverage
-(`browser-tests/playback.spec.js`, 5 tests) plus 30 static structural
+independent clock and which Playback itself must stay ignorant of
+(no Va/Vb/Vc, impedance, phasor, or differential knowledge anywhere in
+the controller). New Playwright coverage
+(`browser-tests/playback.spec.js`, 12 tests) plus 46 static structural
 tests (`backend/tests/test_frontend_playback.py`); full backend
 regression and the existing Playwright suite both pass unchanged. See
 [Implemented capabilities](#implemented-capabilities) for the full
@@ -840,40 +858,60 @@ re-confirmed by the TG-FINAL audit):
   [docs/development/PERFORMANCE_BASELINE.md](../development/PERFORMANCE_BASELINE.md)
   for the full methodology, results, and interpretation. No production
   code changed.
-- **Event Playback — Slice 1, Core Playback Engine (2026-09-11,
-  [DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock))**:
-  a new top-level `Playback` main-menu page (immediately after
-  Calculated Channels), and a minimal Play/Pause/Restart transport +
-  current-time readout on each Time Group's own waveform toolbar. ONE
-  authoritative, frontend-only `wwPlayback` Playback Controller drives
-  at most one active Time Group at a time (switching groups cleanly
-  stops the previous one — never two simultaneous
-  `requestAnimationFrame` loops); canonical time is **workspace time**
-  (t=0/Time Mode affect display only, via the existing
-  `wwFormatCursorPointTime()`); range is the active Time Group's own
-  full union extent (`wwDeriveTimeGroupBounds()`, the existing DEC-037
-  function); timing is `requestAnimationFrame` + a `performance.now()`
-  wall-clock anchor (speed fixed at 1× this slice). A **dedicated
-  Playback Cursor overlay is architecturally separate from Cursor
-  A/B** — reuses Cursor A/B's own pixel-conversion primitives but never
-  reads/writes `ww.timeGroupCursorState`. Digital-channel state at the
-  current playback time resolves entirely from already-loaded local
-  transition data (zero backend requests per animation frame).
-  Frontend/session state only — no backend Playback endpoint exists;
-  resets on workspace clear and whenever the active Time Group's own
-  topology disappears. Deferred to a later slice (not implemented):
-  speed selector, seeking, Follow Playback, Split View integration,
-  current-value polling, keyboard shortcuts, and every future analysis
+- **Event Playback — Slices 1 and 2 (2026-09-11,
+  [DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock)).
+  Core Playback is now considered sufficient to begin advanced-analysis
+  work unless UAT exposes a genuine problem.**: a new top-level
+  `Playback` main-menu page (immediately after Calculated Channels),
+  and a full Restart/Play↔Pause/speed/seek transport + current-time
+  readout on each Time Group's own waveform toolbar. ONE authoritative,
+  frontend-only `wwPlayback` Playback Controller drives at most one
+  active Time Group at a time (switching groups cleanly stops the
+  previous one — never two simultaneous `requestAnimationFrame` loops);
+  every source/channel in that group shares the same playback time,
+  channels are never independently played; canonical time is
+  **workspace time** (t=0/Time Mode affect display only, via the
+  existing `wwFormatCursorPointTime()`); range is the active Time
+  Group's own full union extent (`wwDeriveTimeGroupBounds()`, the
+  existing DEC-037 function); timing is `requestAnimationFrame` + a
+  `performance.now()` wall-clock anchor, recomputed fresh every frame.
+  A **dedicated Playback Cursor overlay is architecturally separate
+  from Cursor A/B** — reuses Cursor A/B's own pixel-conversion
+  primitives but never reads/writes `ww.timeGroupCursorState`.
+  Digital-channel state at the current playback time resolves entirely
+  from already-loaded local transition data (zero backend requests per
+  animation frame). **Slice 2** adds a fixed five-value speed selector
+  (0.25×/0.5×/1×/2×/4×, default 1×, never free-entry — ONE
+  controller-wide value, never per-group, persists across Play/Pause/
+  Restart/seek; a playing-state change re-anchors from the already-
+  correct `currentTime` under the new speed with the SAME rAF chain
+  left running — no jump, no restart, no second loop) and a seek
+  scrubber (a native `<input type="range">`, the dedicated seek
+  mechanism — never a drag on the Playback Cursor itself, never Cursor
+  A/B; the first `input` event of a drag/keyboard gesture suspends the
+  clock, `change` re-anchors and resumes automatically on release only
+  if it was playing before, otherwise lands "paused"; selects a TIME
+  only, never fabricates/interpolates engineering data — Playback
+  itself knows nothing of Va/Vb/Vc, impedance, phasors, or
+  differential logic). Frontend/session state only — no backend
+  Playback endpoint exists; resets on workspace clear (including speed
+  back to 1×) and whenever the active Time Group's own topology
+  disappears. Deferred to a later slice (not implemented, not decided
+  against): Follow Playback, Split View integration, current-value
+  polling, keyboard shortcuts, event sub-range selection, looping,
+  reverse playback, frame-by-frame stepping, and every future analysis
   overlay (impedance/overcurrent/differential/etc. — none exist yet;
   they will consume this controller under a future, not-yet-created
   `Analysis` menu). New committed test fixtures
   (`backend/tests/fixtures/comtrade/synth_playback*.{cfg,dat}`, a
   deterministic 4-second-duration COMTRADE pair generated by the F2
   synthetic-fixture generator — long enough for a real-browser test to
-  reliably observe motion); `browser-tests/playback.spec.js` (5
+  reliably observe motion); `browser-tests/playback.spec.js` (12
   Playwright tests: Play/Pause/Restart, one-active-group-at-a-time,
-  workspace-reset-while-playing); `backend/tests/test_frontend_playback.py`
-  (30 static structural tests). See
+  workspace-reset-while-playing, speed materially changes the advance
+  rate, speed shared across every Time Group's toolbar, seek while
+  stopped/paused/playing, pause-seek-resume); `backend/tests/
+  test_frontend_playback.py` (46 static structural tests). See
   [DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock)
   for the full per-decision rationale.
 - **CSV/Excel preparation-source upload through canonical

@@ -8,6 +8,151 @@ Last updated: **2026-09-11**
 
 ## What was most recently done
 
+**Event Playback — Slice 2: Essential Playback Controls (speed + seek)
+([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock)'s
+own 2026-09-11 same-day update).** Adds the two controls Slice 1 had
+explicitly deferred; per owner instruction, core Playback is now
+considered sufficient to begin advanced-analysis work unless UAT
+exposes a genuine problem. Deliberately lean — no other scope creep
+(the owner's own explicit concern, since Playback's main purpose is to
+later drive protection-analysis visualizations like impedance locus/
+overcurrent/phasor diagrams, none of which Playback should know
+anything about).
+
+**What was built** (frontend-only, `frontend/index.html`; zero backend
+changes, preserving Slice 1's own architecture exactly):
+
+- **Speed**: a fixed five-value selector (0.25×/0.5×/1×/2×/4×, default
+  1×, a plain `<select>` — never free-entry) on each Time Group's own
+  toolbar. `wwPlayback.speed` is ONE controller-wide value (never
+  per-group — every canvas's own selector stays in lockstep via
+  `wwPlaybackSyncAllToolbarSpeedSelects()`) that PERSISTS across Play/
+  Pause/Restart/seek; only `wwPlaybackReset()` (a whole-workspace
+  clear) restores it to 1×. `wwPlaybackSetSpeed()` implements the
+  task's own 5-step re-anchoring algorithm verbatim: `wwPlayback.
+  currentTime` already IS "the current recording time under the OLD
+  speed" (the existing tick loop keeps it correct every frame, so
+  nothing new needs calculating); `recordingTimeAnchor = currentTime`;
+  `wallClockAnchorMs = performance.now()`; apply the new speed; "keep
+  playing" falls out for free because the SAME `requestAnimationFrame`
+  chain (`wwPlayback.rafId`) is left running untouched the entire
+  time — `wwPlaybackTick()` simply reads the new anchors/speed fresh on
+  its very next scheduled frame. Result: no jump, no restart, no
+  accumulated drift, no second rAF loop, verified directly (no
+  `requestAnimationFrame`/`cancelAnimationFrame` call anywhere inside
+  `wwPlaybackSetSpeed()` itself). While paused/stopped, a speed change
+  only updates the stored value, applied automatically whenever
+  playback next resumes.
+- **Seek**: a native `<input type="range">` scrubber (`.ww-tg-playback-
+  seek-slider`), one dedicated full-width row under each Time Group's
+  own toolbar (kept out of that already-packed button row), `min`/
+  `max` = that group's own `wwDeriveTimeGroupBounds()` extent. This IS
+  the dedicated seek mechanism — never a drag on the Playback Cursor
+  line itself (owner's explicit instruction), never Cursor A/B.
+  Implements the owner's own recommended "suspend during the gesture,
+  resume on release" UX using the browser's native `input`/`change`
+  event pair, with zero custom pointer-event wiring (unlike Cursor
+  A/B's own hand-rolled DOM-drag system): the FIRST `input` event of a
+  drag/keyboard gesture (`wwPlaybackHandleSeekInput()`) snapshots
+  whether it was playing and cancels the rAF loop if so; every
+  subsequent `input` only updates the VISUAL position (`currentTime` +
+  cursor overlay + readout — "interpolation is visual only," never a
+  fabricated/interpolated engineering sample, never a backend call);
+  `change` (`wwPlaybackHandleSeekCommit()`) re-anchors under the new
+  time and resumes playing automatically ONLY if it was playing when
+  the gesture started, otherwise lands in "paused" (a deliberate,
+  specific mid-recording position, never silently "stopped" after an
+  explicit seek). Seeking a non-active Time Group's own scrubber
+  activates that group, exactly like Restart/Play already do. Bounds
+  are re-derived fresh on every seek call (never cached) purely for
+  correctness of the clamp; the widget's own `min`/`max` attributes are
+  a presentation-only sync (`wwPlaybackSyncSeekSliderBounds()`).
+- Multi-source/Time Group behavior: completely unchanged from Slice 1
+  — still one active Time Group, one common playback clock, channels
+  never independently played.
+- Current-time readout: unchanged mechanism (`wwFormatCursorPointTime()`,
+  the same formatter Cursor A/B/Δt use) — now also kept in sync through
+  speed changes and seeking, via the same `wwPlaybackSyncToolbarForGroup()`/
+  `wwPlaybackRenderTick()` hooks Slice 1 already established.
+
+**New test fixtures**: none — reuses Slice 1's own
+`synth_playback`/`synth_playback_b` (4-second duration, long enough for
+speed/seek assertions to be reliable without flaky sub-second timing).
+
+**Tests**:
+- `backend/tests/test_frontend_playback.py` — +16 new static tests
+  (46 total): exact speed set/default, `<select>` never free-entry, no
+  jump on speed change (re-anchor uses `currentTime` directly, never a
+  second calculation), no second rAF loop from a speed change, paused
+  speed change only updates the stored value, speed persists across
+  Play/Pause/Restart (3 functions checked), seek suspends only on the
+  first `input` of a gesture, seek never fabricates/touches engineering
+  data (no `fetch`, no Va/Vb/Vc/impedance/phasor tokens), seek commit's
+  playing/paused branching, seek never touches
+  `ww.timeGroupCursorState`, Restart resets the seek slider via the
+  same toolbar-sync hook, the seek slider never fights an active user
+  drag, workspace reset restores default speed. Two Slice-1-era tests
+  were UPDATED (not just left broken) to match the new reality: one
+  that asserted `wwPlayback.speed = 1;` inside `wwPlaybackPlay()` (now
+  correctly asserts the OPPOSITE — Play must never touch speed, since
+  it now persists) and one that asserted no speed/seek classes existed
+  in the toolbar template (now asserts they DO, plus that the speed
+  control is a `<select>`, never free-entry).
+- `browser-tests/playback.spec.js` — +7 new Playwright tests (12
+  total): 2x speed advances materially farther than 1x over the same
+  real interval (no exact-ratio assertion — a generous 1.3x threshold,
+  comfortably below the ~2x expected while proving a real difference);
+  speed selection shared live across two genuinely separate Time
+  Groups; seek moves the readout/cursor and playback continues from
+  the new position; seek while stopped lands in paused; seeking while
+  playing suspends mid-drag (verified via input-without-change) then
+  resumes automatically on commit; pause→seek→Play resumes from the
+  SOUGHT position, not the old paused one; Restart resets the seek
+  slider/cursor/currentTime to the range start. Numeric comparisons
+  read `wwPlaybackState().currentTime` directly (the Slice 1 consumer
+  seam) rather than parsing the formatted readout text. The seek
+  scrubber is driven via a direct `.value` write + dispatched native
+  `input`/`change` events (the standard, non-flaky way to drive an
+  `<input type="range">` in a real browser test) rather than a literal
+  pixel-accurate mouse drag.
+- Full playback suite (`playback.spec.js`, both slices, 12 tests) run
+  6 times total across this session (some standalone, some as part of
+  the full `browser-tests/` suite) — 12/12 passed every time. The full
+  `browser-tests/` suite (28 tests) was run twice and hit ONE transient
+  failure both times, always the SAME pre-existing, unrelated
+  `smoke.spec.js` test (untouched by this slice) — confirmed NOT a
+  regression: it passed 100% (6/6) in every standalone/isolated re-run,
+  matching the identical "shared long-lived dev server under sustained
+  multi-minute sequential load" flake class already documented during
+  Slice 1's own development, not a Slice 2 code issue.
+- Full backend regression: **4213 passed**, 0 failed (up from 4197);
+  `git diff --check` clean.
+
+**Files changed**: `frontend/index.html` (speed/seek engine + toolbar
+markup/CSS, no new fixtures/files), `browser-tests/playback.spec.js`,
+`backend/tests/test_frontend_playback.py`, `docs/project-memory/
+DECISIONS.md` (DEC-085 same-day update, not a new DEC), `docs/
+project-memory/CURRENT_STATE.md`/`HANDOFF.md` (this update).
+
+**Backend changes: none.** Playback remains frontend/session state
+only, per DEC-085's own conclusion, unchanged by this slice.
+
+**Explicitly still deferred** (not implemented, not decided against):
+Follow Playback (automatic viewport scrolling), Split View
+`center_time` integration (and the Cursor-A-vs-Playback precedence
+question it raises), keyboard shortcuts, throttled current-analog-
+value polling, event sub-range selection, looping, reverse playback,
+frame-by-frame stepping. Explicitly out of scope for Playback itself
+permanently (a different, future feature area): impedance locus,
+overcurrent relay curve, differential operating plane, phasor diagram,
+`AnalysisResult`, analysis input guardrails, the `Analysis` menu
+itself.
+
+**Commit status**: see this task's own final report for the exact
+commit hash and push status.
+
+## What was done in the prior session — Event Playback Slice 1: Core Playback Engine
+
 **Event Playback — Slice 1: Core Playback Engine
 ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock)).**
 The first advanced-interaction capability built after the pre-advanced-

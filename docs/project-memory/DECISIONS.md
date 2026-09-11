@@ -12786,6 +12786,61 @@ shortcuts, and every analysis overlay (impedance/overcurrent/
 differential/etc.) that will eventually consume this controller under
 a future `Analysis` menu (not created yet).
 
+**Update (2026-09-11) — Slice 2: Essential Playback Controls (fixed
+speed + seek) resolves two of Slice 1's own explicitly-deferred items;
+core Playback is now considered sufficient to begin advanced-analysis
+work unless UAT exposes a genuine problem.** Adds, to each Time Group's
+own toolbar: a fixed five-value speed selector (0.25×/0.5×/1×/2×/4×,
+default 1×, a plain `<select>` — never free-entry) and a seek scrubber
+(a native `<input type="range">`, `min`/`max` = that Time Group's own
+`wwDeriveTimeGroupBounds()` extent). Both preserve the Slice 1
+architecture exactly, with zero new backend calls, zero new Plotly
+work, and zero new rAF loops:
+
+- **Speed is ONE controller-wide value** (`wwPlayback.speed`), never
+  per-Time-Group — every canvas's own selector stays in lockstep
+  (`wwPlaybackSyncAllToolbarSpeedSelects()`) and PERSISTS across Play/
+  Pause/Restart/seek (only a whole-workspace reset restores it to 1×,
+  per the task's own "prefer reset to 1×" instruction). Changing speed
+  while playing re-anchors from `wwPlayback.currentTime` (already
+  correct every frame via the existing tick loop — nothing new to
+  calculate) under the NEW speed, leaving the SAME `requestAnimationFrame`
+  chain running untouched (no cancel/reschedule, so "no jump, no
+  restart, no second rAF loop" all fall out of the existing architecture
+  for free); while paused/stopped it only updates the stored value.
+- **Seeking is the scrubber's own dedicated mechanism** — never a drag
+  on the Playback Cursor line itself (owner's explicit instruction),
+  never Cursor A/B. Native `input` (continuous, during drag/keyboard)
+  and `change` (once, on release) events implement the owner's own
+  recommended UX with zero custom pointer-event wiring: the FIRST
+  `input` event of a gesture suspends the clock (cancels the rAF loop,
+  remembering whether it was running); every subsequent `input` only
+  updates the visual position (currentTime + cursor overlay + readout —
+  "interpolation is visual only," no engineering sample is ever
+  touched, no backend call); `change` re-anchors under the new time and
+  resumes playing automatically ONLY if it was playing when the gesture
+  started, otherwise lands in "paused" (never silently "stopped" after
+  an explicit seek). Seeking a non-active Time Group's own scrubber
+  activates that group, exactly like Restart/Play already do.
+- Multi-source/Time Group behavior is completely unchanged — still one
+  active Time Group, one common playback time, channels never
+  independently played.
+- Playback continues to know nothing about engineering quantities
+  (Va/Vb/Vc, impedance, overcurrent pickup, phasors, differential
+  logic) — seeking selects a TIME only; a future Analysis layer
+  resolves whatever engineering inputs it needs at that time
+  independently.
+
+Deferred, still not decided against: Follow Playback, Split View
+integration, keyboard shortcuts, current-value polling, event
+sub-range selection, looping, reverse playback, frame-by-frame
+stepping — none implemented, none pre-approved for a particular design.
+Files: `frontend/index.html` (speed/seek engine + toolbar markup/CSS),
+`browser-tests/playback.spec.js` (+7 tests), `backend/tests/
+test_frontend_playback.py` (+16 tests, 2 Slice-1-era tests updated to
+match the new persist-across-Play/no-longer-absent reality). No backend
+changes; no persistence.
+
 ---
 
 ## How to add a decision

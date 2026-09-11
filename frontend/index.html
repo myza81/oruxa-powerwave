@@ -5737,8 +5737,10 @@
            deliberately: distinct from Cursor A's --accent, Cursor B's
            --error, and the "Suggested event" marker's --warn, so a viewer
            can tell all three/four apart at a glance. No drag-hit-strip
-           (no `.ww-cursor-hit`-equivalent) -- seeking is out of scope for
-           this slice. */
+           (no `.ww-cursor-hit`-equivalent) -- Slice 2 adds seeking via a
+           dedicated scrubber (`.ww-tg-playback-seek-slider` below), never
+           a direct drag on this cursor line itself (owner's explicit
+           instruction). */
         .ww-tg-playback-cursor-overlay {
             position: absolute;
             top: 0; left: 0; right: 0;
@@ -5767,6 +5769,41 @@
             color: var(--text-dim);
             padding: 0 4px;
             white-space: nowrap;
+        }
+        /* Event Playback Slice 2: fixed playback-speed selector -- a
+           plain native <select> (never free-entry), narrow rather than
+           the base `select { width: 100% }` rule (that default is meant
+           for a full-width form field, not a compact toolbar control).
+           One shared wwPlayback.speed value drives every Time Group's own
+           select in lockstep (wwPlaybackSyncAllToolbarSpeedSelects()) --
+           there is only ONE Playback Controller, so speed is never a
+           per-group setting. */
+        .ww-tg-playback-speed-select {
+            width: auto;
+            min-width: 56px;
+            padding: 5px 6px;
+            font-size: var(--button-font-size-compact);
+        }
+        /* Event Playback Slice 2: the seek scrubber -- a plain native
+           <input type="range"> (drag, click-to-position, and arrow-key
+           stepping all come free from the browser; no custom pointer-
+           event wiring, unlike Cursor A/B's own hand-rolled DOM-overlay
+           drag system). A full-width row of its own, sibling of
+           `.ww-tg-toolbar-row` inside the SAME sticky-top wrapper (stays
+           visible while scrolling, like the transport buttons above it)
+           -- kept OUT of the already-packed `.ww-tg-toolbar` flex row
+           rather than squeezed in alongside nine other controls.
+           `accent-color` reuses `--ok`, the same green the Playback
+           Cursor line itself uses, so the scrubber reads as visually
+           paired with the cursor it drives. */
+        .ww-tg-playback-seek-row {
+            padding: 0 10px 6px;
+        }
+        .ww-tg-playback-seek-slider {
+            width: 100%;
+            display: block;
+            accent-color: var(--ok);
+            cursor: pointer;
         }
     </style>
 </head>
@@ -18646,11 +18683,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // and one Play/Pause toggle. Pressing Play here makes
                     // this group the ONE active Playback Controller group
                     // (wwPlaybackPlay(groupId), see its own comment for
-                    // the single-rAF-loop/group-switch contract). No
-                    // speed/seek/Follow Playback controls yet -- deferred
-                    // per this slice's own explicit scope boundary.
+                    // the single-rAF-loop/group-switch contract).
                     '<button type="button" class="secondary ww-tg-playback-restart-btn" title="Restart playback for this Time Group (jump to start)" aria-label="Restart playback for this Time Group">Restart</button>' +
                     '<button type="button" class="secondary ww-tg-playback-play-btn" aria-pressed="false" title="Play this Time Group" aria-label="Play this Time Group">Play</button>' +
+                    // Slice 2: fixed playback-speed selector -- ONE shared
+                    // wwPlayback.speed value (never per-group), see
+                    // wwPlaybackSetSpeed()'s own comment. Options seeded
+                    // here at their DEFAULT (1x) selected; the real current
+                    // value is applied immediately after the toolbar-
+                    // wiring pass runs for this canvas, from
+                    // wwPlayback.speed itself -- so a canvas created AFTER
+                    // the engineer has already chosen e.g. 2x starts in
+                    // sync, never reset to 1x just because it is a fresh
+                    // DOM element.
+                    '<select class="ww-tg-playback-speed-select" title="Playback speed" aria-label="Playback speed">' +
+                        '<option value="0.25">0.25×</option>' +
+                        '<option value="0.5">0.5×</option>' +
+                        '<option value="1" selected>1×</option>' +
+                        '<option value="2">2×</option>' +
+                        '<option value="4">4×</option>' +
+                    '</select>' +
                     '<span class="ww-tg-playback-time-readout" aria-label="Current playback time">—</span>' +
                 '</div>' +
                 // Owner UX correction: the numerical A-B/Δt readout is
@@ -18665,6 +18717,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<span class="ww-tg-cursor-readout-item ww-cursor-readout-b"><span class="ww-tg-cursor-readout-label">B</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--b">—</span></span>' +
                     '<span class="ww-tg-cursor-readout-item"><span class="ww-tg-cursor-readout-label">&Delta;t</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--delta">—</span></span>' +
                 '</div>' +
+                '</div>' +
+                // Slice 2: the seek scrubber -- a dedicated FULL-WIDTH row,
+                // sibling of `.ww-tg-toolbar-row` above (kept out of that
+                // already-packed flex row), still inside the SAME
+                // `.ww-tg-sticky-top` wrapper so it stays visible while
+                // scrolling, like the transport buttons. `min`/`max` are
+                // placeholders here (0/1) -- the real Time Group bounds
+                // are applied by wwPlaybackSyncSeekSliderBounds() the
+                // first time this canvas is wired, and again on every
+                // later playback state transition. `step="any"` allows
+                // continuous
+                // (non-integer-second) seeking -- Slice 2 does not need
+                // sample-aligned granularity (task: "do not perform analog
+                // interpolation as part of Playback" -- this is a
+                // TIME-selection control only, never a data operation).
+                '<div class="ww-tg-playback-seek-row">' +
+                    '<input type="range" class="ww-tg-playback-seek-slider" min="0" max="1" step="any" value="0" aria-label="Seek playback position">' +
                 '</div>' +
                 '</div>' +
                 '<div class="ww-tg-panels"></div>' +
@@ -23254,6 +23323,38 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (playbackRestartBtn) playbackRestartBtn.addEventListener("click", () => wwPlaybackRestart(groupId));
             const playbackPlayBtn = canvasEl.querySelector(".ww-tg-playback-play-btn");
             if (playbackPlayBtn) playbackPlayBtn.addEventListener("click", () => wwPlaybackHandlePlayPauseClick(groupId));
+
+            // Slice 2: speed selector -- a fresh canvas's own <select>
+            // starts at its own default (1x); immediately syncing it to
+            // wwPlayback's CURRENT shared value here (not just its static
+            // HTML default) means a canvas created after the engineer has
+            // already chosen e.g. 2x elsewhere starts in sync, never
+            // silently showing 1x for a brand-new Time Group.
+            const playbackSpeedSelect = canvasEl.querySelector(".ww-tg-playback-speed-select");
+            if (playbackSpeedSelect) {
+                playbackSpeedSelect.value = String(wwPlayback.speed);
+                playbackSpeedSelect.addEventListener("change", () => wwPlaybackHandleSpeedChange(playbackSpeedSelect));
+            }
+
+            // Slice 2: seek scrubber -- native `input` (continuous, during
+            // drag/keyboard) + `change` (once, on release/commit). See
+            // wwPlaybackHandleSeekInput()/Commit()'s own comments (near
+            // wwClearWorkspace()) for the full suspend-during-drag/
+            // re-anchor-and-resume-on-release contract. Bounds are synced
+            // once here (a group's own bounds are already known -- even
+            // zero-channel-displayed sources establish ww.sourceBounds --
+            // as soon as this canvas exists) and again on every later
+            // playback state transition (wwPlaybackSyncToolbarForGroup()).
+            const playbackSeekSlider = canvasEl.querySelector(".ww-tg-playback-seek-slider");
+            if (playbackSeekSlider) {
+                wwPlaybackSyncSeekSliderBounds(groupId);
+                playbackSeekSlider.addEventListener("input", () =>
+                    wwPlaybackHandleSeekInput(groupId, parseFloat(playbackSeekSlider.value))
+                );
+                playbackSeekSlider.addEventListener("change", () =>
+                    wwPlaybackHandleSeekCommit(groupId, parseFloat(playbackSeekSlider.value))
+                );
+            }
 
             for (const action of ["in", "out"]) {
                 const wrap = canvasEl.querySelector(action === "in" ? ".ww-tg-zoom-in-split" : ".ww-tg-zoom-out-split");
@@ -28748,6 +28849,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_PLAYBACK_STATE_STOPPED = "stopped";
         const WW_PLAYBACK_STATE_PLAYING = "playing";
         const WW_PLAYBACK_STATE_PAUSED = "paused";
+        // Slice 2: the ONLY selectable speeds -- a fixed set, never free
+        // entry (owner instruction). `wwPlaybackSetSpeed()` rejects
+        // anything not in this list, falling back to 1x.
+        const WW_PLAYBACK_SPEEDS = [0.25, 0.5, 1, 2, 4];
+        const WW_PLAYBACK_DEFAULT_SPEED = 1;
 
         // The one shared Playback Controller instance. `state`,
         // `activeTimeGroupId`, `currentTime` together answer "is anything
@@ -28759,14 +28865,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // slice's own throttled cursor-values calls) can detect it is
         // stale. `_listeners` backs wwPlaybackOnTick()/wwPlaybackNotifyTick()
         // -- a plain callback list, deliberately NOT a generic event-bus
-        // framework (see that pair's own comment).
+        // framework (see that pair's own comment). `speed` (Slice 2) is
+        // ONE value for the whole controller, never per-Time-Group --
+        // every canvas's own speed <select> stays in lockstep with it
+        // (wwPlaybackSyncAllToolbarSpeedSelects()) -- and PERSISTS across
+        // Play/Pause/Restart/seek (only wwPlaybackReset(), i.e. a whole-
+        // workspace clear, resets it back to WW_PLAYBACK_DEFAULT_SPEED).
         const wwPlayback = {
             state: WW_PLAYBACK_STATE_STOPPED,
             activeTimeGroupId: null,
             currentTime: null,
             startTime: null,
             endTime: null,
-            speed: 1,
+            speed: WW_PLAYBACK_DEFAULT_SPEED,
             wallClockAnchorMs: null,
             recordingTimeAnchor: null,
             generation: 0,
@@ -28834,8 +28945,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // canvas DOM on its own (wwClearWorkspace()'s innerHTML wipe,
         // wwSyncTimeGroupCanvases()'s own pruning/rebuild), so a fresh
         // wwCreateTimeGroupCanvasDom() call already produces toolbar
-        // controls in their correct default ("Play"/no readout) state --
-        // no second DOM-reset pass is needed here.
+        // controls in their correct default ("Play"/no readout/1x speed/
+        // seek slider at 0) state -- no second DOM-reset pass is needed
+        // here. Slice 2: speed resets to WW_PLAYBACK_DEFAULT_SPEED on a
+        // whole-workspace clear (task's own "prefer reset to 1x" default)
+        // -- never on a mere group-switch or Restart, which preserve the
+        // engineer's own chosen speed (see wwPlaybackPlay()/
+        // wwPlaybackRestart()'s own comments, neither of which touches
+        // `speed`).
         function wwPlaybackReset() {
             if (wwPlayback.rafId !== null) {
                 cancelAnimationFrame(wwPlayback.rafId);
@@ -28845,10 +28962,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPlayback.state = WW_PLAYBACK_STATE_STOPPED;
             wwPlayback.activeTimeGroupId = null;
             wwPlayback.currentTime = null;
+            wwPlayback.speed = WW_PLAYBACK_DEFAULT_SPEED;
             wwPlayback.startTime = null;
             wwPlayback.endTime = null;
             wwPlayback.wallClockAnchorMs = null;
             wwPlayback.recordingTimeAnchor = null;
+            wwPlaybackSyncAllToolbarSpeedSelects();
             wwPlaybackNotifyTick();
             wwRenderPlaybackPage();
         }
@@ -28890,13 +29009,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // The per-tick rendering work -- deliberately tiny (task's own
-        // "extremely small" requirement): one DOM-overlay reposition, one
-        // textContent write. No Plotly call, no waveform refetch, no
-        // calculated-channel recompute anywhere in this path.
+        // "extremely small" requirement): one DOM-overlay reposition, two
+        // property/textContent writes. No Plotly call, no waveform
+        // refetch, no calculated-channel recompute anywhere in this path.
         function wwPlaybackRenderTick() {
             if (wwPlayback.activeTimeGroupId === null) return;
             wwUpdatePlaybackCursorOverlay(wwPlayback.activeTimeGroupId, wwPlayback.currentTime);
             wwPlaybackUpdateTimeReadout(wwPlayback.activeTimeGroupId);
+            wwPlaybackUpdateSeekSlider(wwPlayback.activeTimeGroupId);
         }
 
         // Play -- if `groupId` is already the active, paused group, resumes
@@ -28935,7 +29055,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPlayback.startTime = bounds.start;
             wwPlayback.endTime = bounds.end;
             wwPlayback.currentTime = hasResumableTime ? wwPlayback.currentTime : bounds.start;
-            wwPlayback.speed = 1; // Slice 1: fixed: no speed selector yet
+            // Slice 2: `speed` is deliberately UNTOUCHED here -- it is a
+            // controller-wide setting that persists across Play/Pause/
+            // Restart/group-switch (see wwPlayback's own declaration
+            // comment); only a whole-workspace reset changes it.
             wwPlayback.wallClockAnchorMs = performance.now();
             wwPlayback.recordingTimeAnchor = wwPlayback.currentTime;
             wwPlayback.state = WW_PLAYBACK_STATE_PLAYING;
@@ -29016,11 +29139,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // Syncs one Time Group's own toolbar controls (Play/Pause label,
-        // current-time readout) to wwPlayback's current state -- cheap,
-        // called only on a real state transition (Play/Pause/Restart/
-        // reset), never on every tick (the readout's own per-tick text is
-        // updated separately, by wwPlaybackUpdateTimeReadout(), from
-        // wwPlaybackRenderTick()).
+        // current-time readout, seek-slider bounds/position) to
+        // wwPlayback's current state -- cheap, called only on a real
+        // state transition (Play/Pause/Restart/Seek-commit/reset), never
+        // on every tick (the readout/seek-slider's own per-tick refresh
+        // is separate, via wwPlaybackUpdateTimeReadout()/
+        // wwPlaybackUpdateSeekSlider(), from wwPlaybackRenderTick()).
         function wwPlaybackSyncToolbarForGroup(groupId) {
             if (groupId === null) return;
             const canvasEl = wwTimeGroupCanvasEl(groupId);
@@ -29035,6 +29159,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 playBtn.setAttribute("aria-label", playBtn.title);
             }
             wwPlaybackUpdateTimeReadout(groupId);
+            wwPlaybackSyncSeekSliderBounds(groupId);
+            wwPlaybackUpdateSeekSlider(groupId);
         }
 
         function wwPlaybackUpdateTimeReadout(groupId) {
@@ -29049,6 +29175,195 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // second/independent clock (task: "do not create another
             // canonical clock").
             readoutEl.textContent = isActive ? wwFormatCursorPointTime(wwPlayback.currentTime, groupId) : "—";
+        }
+
+        // ---- Slice 2: fixed playback speed ----
+        //
+        // ONE shared wwPlayback.speed, never per-group (see wwPlayback's
+        // own declaration comment). Re-anchoring algorithm while playing,
+        // verbatim per the task's own 5-step spec:
+        //   1. wwPlayback.currentTime already IS "the current recording
+        //      time under the OLD speed" -- the rAF loop keeps it
+        //      continuously correct every frame, so there is nothing
+        //      separate to "calculate" here.
+        //   2. recordingTimeAnchor = currentTime
+        //   3. wallClockAnchorMs = performance.now()
+        //   4. speed = newSpeed
+        //   5. "continue playing" -- the SAME rAF chain (wwPlayback.rafId)
+        //      is left running untouched; wwPlaybackTick() reads the new
+        //      anchors/speed fresh on its very next scheduled frame, so
+        //      no cancel/reschedule (and therefore no second rAF loop, no
+        //      restart) is needed at all.
+        // While paused/stopped, this only updates the stored value --
+        // exactly the task's own "changing speed simply changes the speed
+        // used when playback resumes."
+        function wwPlaybackSetSpeed(newSpeed) {
+            const speed = WW_PLAYBACK_SPEEDS.includes(newSpeed) ? newSpeed : WW_PLAYBACK_DEFAULT_SPEED;
+            if (speed === wwPlayback.speed) return;
+            if (wwPlayback.state === WW_PLAYBACK_STATE_PLAYING) {
+                wwPlayback.recordingTimeAnchor = wwPlayback.currentTime;
+                wwPlayback.wallClockAnchorMs = performance.now();
+            }
+            wwPlayback.speed = speed;
+            wwPlaybackSyncAllToolbarSpeedSelects();
+        }
+
+        function wwPlaybackHandleSpeedChange(selectEl) {
+            wwPlaybackSetSpeed(parseFloat(selectEl.value));
+        }
+
+        // Every CURRENTLY RENDERED canvas's own speed <select> reflects
+        // the ONE shared wwPlayback.speed -- called whenever that shared
+        // value changes (never per-group, unlike wwPlaybackSyncToolbarForGroup()
+        // above, since a speed change is a controller-wide event every
+        // Time Group's own toolbar must agree on).
+        function wwPlaybackSyncAllToolbarSpeedSelects() {
+            for (const groupId of wwActiveTimeGroupIds()) {
+                const canvasEl = wwTimeGroupCanvasEl(groupId);
+                if (!canvasEl) continue;
+                const selectEl = canvasEl.querySelector(".ww-tg-playback-speed-select");
+                if (selectEl && selectEl.value !== String(wwPlayback.speed)) {
+                    selectEl.value = String(wwPlayback.speed);
+                }
+            }
+        }
+
+        // ---- Slice 2: seeking ----
+        //
+        // A native <input type="range"> is the entire seek mechanism
+        // (task: "the scrubber is the dedicated seek mechanism," never a
+        // drag on the Playback Cursor itself, never Cursor A/B). Two
+        // module-level flags track an in-progress drag/keyboard gesture
+        // across its own `input` events, so the "suspend the clock during
+        // the gesture, re-anchor and resume once on release" behavior the
+        // task recommends can be implemented with the browser's own
+        // native input/change event pair -- no custom pointer-event
+        // wiring, unlike Cursor A/B's own hand-rolled drag system.
+        let wwPlaybackSeekDragging = false;
+        let wwPlaybackSeekWasPlaying = false;
+
+        // Fires on every `input` event while the user drags/types (a
+        // keyboard arrow-key nudge fires exactly one `input` then one
+        // `change`, so the same start/commit pair below handles both
+        // input modalities correctly with no separate branch). The FIRST
+        // input event of a gesture suspends the playback clock (cancels
+        // the rAF loop, remembering whether it was running) so the tick
+        // loop never fights the user's own drag position -- every
+        // subsequent input event only updates the VISUAL position
+        // (currentTime + cursor overlay + readout), never re-anchors,
+        // matching "Playback cursor interpolation is visual only" and
+        // never fabricating/analyzing engineering samples. Seeking a
+        // DIFFERENT (non-active) group's own scrubber activates that
+        // group, exactly like Restart/Play already do.
+        function wwPlaybackHandleSeekInput(groupId, rawTime) {
+            const bounds = wwDeriveTimeGroupBounds(groupId);
+            if (!bounds) return;
+            if (!wwPlaybackSeekDragging) {
+                wwPlaybackSeekDragging = true;
+                wwPlaybackSeekWasPlaying =
+                    wwPlayback.activeTimeGroupId === groupId && wwPlayback.state === WW_PLAYBACK_STATE_PLAYING;
+                if (wwPlaybackSeekWasPlaying && wwPlayback.rafId !== null) {
+                    cancelAnimationFrame(wwPlayback.rafId);
+                    wwPlayback.rafId = null;
+                }
+            }
+            const previousGroupId = wwPlayback.activeTimeGroupId;
+            const clamped = Math.max(bounds.start, Math.min(bounds.end, rawTime));
+            wwPlayback.activeTimeGroupId = groupId;
+            wwPlayback.startTime = bounds.start;
+            wwPlayback.endTime = bounds.end;
+            wwPlayback.currentTime = clamped;
+            if (previousGroupId !== null && previousGroupId !== groupId) {
+                wwHidePlaybackCursorOverlay(previousGroupId);
+            }
+            wwPlaybackRenderTick();
+            wwPlaybackNotifyTick();
+        }
+
+        // Fires once on `change` (pointer released / keyboard commit) --
+        // finalizes the seek: re-anchors under the NEW time and resumes
+        // playing (task's own recommended UX) only if playback was
+        // actually running when the gesture started; otherwise lands in
+        // "paused" (a specific, deliberately-chosen mid-recording
+        // position the engineer now cares about -- the same "paused, not
+        // stopped" semantics wwPlaybackPause() already establishes),
+        // never silently staying "stopped" after an explicit seek.
+        function wwPlaybackHandleSeekCommit(groupId, rawTime) {
+            const bounds = wwDeriveTimeGroupBounds(groupId);
+            if (!bounds) {
+                wwPlaybackSeekDragging = false;
+                return;
+            }
+            const clamped = Math.max(bounds.start, Math.min(bounds.end, rawTime));
+            const previousGroupId = wwPlayback.activeTimeGroupId;
+            const wasPlaying = wwPlaybackSeekWasPlaying;
+            wwPlaybackSeekDragging = false;
+
+            wwPlayback.generation += 1;
+            wwPlayback.activeTimeGroupId = groupId;
+            wwPlayback.startTime = bounds.start;
+            wwPlayback.endTime = bounds.end;
+            wwPlayback.currentTime = clamped;
+
+            if (wasPlaying) {
+                wwPlayback.wallClockAnchorMs = performance.now();
+                wwPlayback.recordingTimeAnchor = clamped;
+                wwPlayback.state = WW_PLAYBACK_STATE_PLAYING;
+            } else {
+                wwPlayback.wallClockAnchorMs = null;
+                wwPlayback.recordingTimeAnchor = null;
+                wwPlayback.state = WW_PLAYBACK_STATE_PAUSED;
+            }
+
+            if (previousGroupId !== null && previousGroupId !== groupId) {
+                wwHidePlaybackCursorOverlay(previousGroupId);
+                wwPlaybackSyncToolbarForGroup(previousGroupId);
+            }
+            wwPlaybackSyncToolbarForGroup(groupId);
+            wwPlaybackRenderTick();
+            wwPlaybackNotifyTick();
+            wwRenderPlaybackPage();
+
+            if (wasPlaying) {
+                wwPlayback.rafId = requestAnimationFrame(wwPlaybackTick);
+            }
+        }
+
+        // Keeps `groupId`'s own scrubber's `min`/`max` attributes matched
+        // to its current Time Group bounds -- re-derived fresh every call
+        // (wwDeriveTimeGroupBounds() is never cached, matching every other
+        // bounds consumer in this file), never the authority for seek
+        // CLAMPING itself (wwPlaybackHandleSeekInput()/Commit() always
+        // re-derive and clamp against fresh bounds directly) -- this is a
+        // presentation-only sync of the widget's own visual range.
+        function wwPlaybackSyncSeekSliderBounds(groupId) {
+            const canvasEl = wwTimeGroupCanvasEl(groupId);
+            if (!canvasEl) return;
+            const sliderEl = canvasEl.querySelector(".ww-tg-playback-seek-slider");
+            if (!sliderEl) return;
+            const bounds = wwDeriveTimeGroupBounds(groupId);
+            if (!bounds) return;
+            sliderEl.min = String(bounds.start);
+            sliderEl.max = String(bounds.end);
+        }
+
+        // Keeps `groupId`'s own scrubber's `value` matched to
+        // wwPlayback.currentTime whenever this group is the active one --
+        // called every tick (from wwPlaybackRenderTick()) as well as on
+        // every real state transition. Never overwrites the slider while
+        // the user is actively focused on/dragging THIS exact element --
+        // the standard "don't fight a controlled input" rule; harmless
+        // either way since a live user gesture already set the browser's
+        // own value to the same place via wwPlaybackHandleSeekInput().
+        function wwPlaybackUpdateSeekSlider(groupId) {
+            const canvasEl = wwTimeGroupCanvasEl(groupId);
+            if (!canvasEl) return;
+            const sliderEl = canvasEl.querySelector(".ww-tg-playback-seek-slider");
+            if (!sliderEl) return;
+            const isActive = wwPlayback.activeTimeGroupId === groupId && Number.isFinite(wwPlayback.currentTime);
+            if (isActive && document.activeElement !== sliderEl) {
+                sliderEl.value = String(wwPlayback.currentTime);
+            }
         }
 
         // Positions/shows the Playback Cursor line for `groupId` at

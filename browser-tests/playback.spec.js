@@ -224,3 +224,199 @@ test.describe("Event Playback Slice 1", () => {
     expect(consoleErrors, `Unexpected console/page errors:\n${consoleErrors.join("\n")}`).toEqual([]);
   });
 });
+
+// ---- Slice 2: Essential Playback Controls (speed + seek) ----
+//
+// Numeric comparisons read wwPlaybackState().currentTime directly (the
+// Slice 1 consumer seam) rather than parsing the formatted readout text
+// -- reliable, and exactly the public surface a future consumer would
+// read too. The seek scrubber is driven via a direct `.value` write +
+// dispatched `input`/`change` events (the standard, non-flaky way to
+// drive an `<input type="range">` in a real browser test -- a literal
+// pixel-accurate mouse drag would be far more brittle for no extra
+// coverage) rather than a mouse drag; this still exercises the REAL
+// event listeners exactly as a native drag/keyboard interaction would.
+async function seekTo(slider, value, { commit = true } = {}) {
+  await slider.evaluate(
+    (el, args) => {
+      el.value = String(args.value);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      if (args.commit) el.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+    { value, commit }
+  );
+}
+
+async function seekSliderBounds(slider) {
+  return slider.evaluate((el) => ({ min: parseFloat(el.min), max: parseFloat(el.max) }));
+}
+
+test.describe("Event Playback Slice 2", () => {
+  test("2x speed advances materially farther than 1x over the same real interval", async ({ page }) => {
+    const canvas = await uploadAndDisplayFirstChannel(page, "synth_playback");
+    const playBtn = canvas.locator(".ww-tg-playback-play-btn");
+    const restartBtn = canvas.locator(".ww-tg-playback-restart-btn");
+    const speedSelect = canvas.locator(".ww-tg-playback-speed-select");
+
+    // ---- 1x baseline ----
+    await restartBtn.click();
+    await expect(speedSelect).toHaveValue("1"); // default, unaffected by Restart
+    await playBtn.click();
+    await page.waitForTimeout(500);
+    const startTime = await page.evaluate(() => wwPlaybackState().startTime);
+    const delta1x = (await page.evaluate(() => wwPlaybackState().currentTime)) - startTime;
+    await playBtn.click(); // pause
+
+    // ---- restart, switch to 2x, play the SAME real interval ----
+    await restartBtn.click();
+    await speedSelect.selectOption("2");
+    await expect(speedSelect).toHaveValue("2");
+    await playBtn.click();
+    await page.waitForTimeout(500);
+    const delta2x = (await page.evaluate(() => wwPlaybackState().currentTime)) - startTime;
+
+    // Materially farther, never an exact 2.0x ratio assertion (real
+    // wall-clock timing jitter) -- 1.3x is a generous, non-flaky margin
+    // comfortably below the ~2x expected while still proving a real
+    // difference.
+    expect(delta2x).toBeGreaterThan(delta1x * 1.3);
+  });
+
+  test("Speed selection is shared across every Time Group's own toolbar", async ({ page }) => {
+    // One Playback Controller, one speed -- never a per-group setting
+    // (DEC-085/Slice 2's own architecture). Two separate Time Groups,
+    // same non-overlapping-fixture-pair pattern Slice 1's own Test 4
+    // uses.
+    await uploadFixture(page, "synth_playback");
+    await uploadFixture(page, "synth_playback_b");
+    const rows = page.locator("#recordingsTableBody tr[data-source-id]");
+    await expect(rows).toHaveCount(2);
+    const sourceIdA = await rows.nth(0).getAttribute("data-source-id");
+    const sourceIdB = await rows.nth(1).getAttribute("data-source-id");
+
+    for (const sourceId of [sourceIdA, sourceIdB]) {
+      await page.locator("#mainNavRecordingsBtn").click();
+      await page.locator(`#recordingsTableBody tr[data-source-id="${sourceId}"]`).click();
+      await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
+      const details = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceId}"]`);
+      await expect(details).toBeVisible();
+      if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
+      const channelRow = page
+        .locator(`#channelGroups tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="${sourceId}"]`)
+        .first();
+      await expect(channelRow).toBeVisible();
+      await channelRow.click();
+      await expect(channelRow).toHaveAttribute("aria-pressed", "true");
+    }
+
+    const canvases = page.locator("#wwTimeGroupCanvases .ww-time-group-canvas");
+    await expect(canvases).toHaveCount(2);
+    await canvases.nth(0).locator(".ww-tg-playback-speed-select").selectOption("4");
+    await expect(canvases.nth(1).locator(".ww-tg-playback-speed-select")).toHaveValue("4");
+  });
+
+  test("Seek moves the readout/cursor substantially and playback continues from there", async ({ page }) => {
+    const canvas = await uploadAndDisplayFirstChannel(page, "synth_playback");
+    const playBtn = canvas.locator(".ww-tg-playback-play-btn");
+    const readout = canvas.locator(".ww-tg-playback-time-readout");
+    const slider = canvas.locator(".ww-tg-playback-seek-slider");
+
+    const beforeReadout = await readout.textContent();
+    const { min, max } = await seekSliderBounds(slider);
+    const target = min + (max - min) * 0.75;
+
+    await seekTo(slider, target);
+
+    const afterReadout = await readout.textContent();
+    expect(afterReadout).not.toBe(beforeReadout);
+    await expect(canvas.locator(".ww-tg-playback-cursor-overlay")).toBeVisible();
+    const currentTime = await page.evaluate(() => wwPlaybackState().currentTime);
+    expect(Math.abs(currentTime - target)).toBeLessThan(0.01);
+
+    // Playback can continue from the new (sought) position.
+    await playBtn.click();
+    await page.waitForTimeout(400);
+    const afterPlayTime = await page.evaluate(() => wwPlaybackState().currentTime);
+    expect(afterPlayTime).toBeGreaterThan(target);
+  });
+
+  test("Seek while stopped lands in paused, not playing", async ({ page }) => {
+    const canvas = await uploadAndDisplayFirstChannel(page, "synth_playback");
+    const playBtn = canvas.locator(".ww-tg-playback-play-btn");
+    const slider = canvas.locator(".ww-tg-playback-seek-slider");
+    const { min, max } = await seekSliderBounds(slider);
+
+    await seekTo(slider, min + (max - min) * 0.4);
+
+    await expect(playBtn).toHaveText("Play"); // not auto-playing
+    const state = await page.evaluate(() => wwPlaybackState().state);
+    expect(state).toBe("paused");
+  });
+
+  test("Seeking while playing suspends the clock mid-drag, then resumes automatically on commit", async ({ page }) => {
+    const canvas = await uploadAndDisplayFirstChannel(page, "synth_playback");
+    const playBtn = canvas.locator(".ww-tg-playback-play-btn");
+    const slider = canvas.locator(".ww-tg-playback-seek-slider");
+    const { min, max } = await seekSliderBounds(slider);
+    const target = min + (max - min) * 0.6;
+
+    await playBtn.click();
+    await page.waitForTimeout(200);
+
+    // Mid-drag (input only, no change yet) -- currentTime tracks the
+    // drag position exactly (visual-only interpolation, no fabricated
+    // engineering data), the clock does not fight it.
+    await seekTo(slider, target, { commit: false });
+    const midDragTime = await page.evaluate(() => wwPlaybackState().currentTime);
+    expect(Math.abs(midDragTime - target)).toBeLessThan(0.01);
+
+    // Commit (change event) -- resumes playing automatically from here.
+    await slider.evaluate((el) => el.dispatchEvent(new Event("change", { bubbles: true })));
+    await expect(playBtn).toHaveText("Pause");
+    await page.waitForTimeout(300);
+    const afterResumeTime = await page.evaluate(() => wwPlaybackState().currentTime);
+    expect(afterResumeTime).toBeGreaterThan(target);
+  });
+
+  test("Pause, seek, then Play resumes from the sought position, not the old one", async ({ page }) => {
+    const canvas = await uploadAndDisplayFirstChannel(page, "synth_playback");
+    const playBtn = canvas.locator(".ww-tg-playback-play-btn");
+    const slider = canvas.locator(".ww-tg-playback-seek-slider");
+
+    await playBtn.click();
+    await page.waitForTimeout(300);
+    await playBtn.click(); // pause
+    const pausedAt = await page.evaluate(() => wwPlaybackState().currentTime);
+
+    const { min, max } = await seekSliderBounds(slider);
+    const target = min + (max - min) * 0.9; // far forward, away from pausedAt
+    await seekTo(slider, target);
+    await expect(playBtn).toHaveText("Play"); // remains paused, not auto-resumed
+
+    await playBtn.click(); // resume
+    await expect(playBtn).toHaveText("Pause");
+    await page.waitForTimeout(200);
+    const afterResume = await page.evaluate(() => wwPlaybackState().currentTime);
+
+    expect(afterResume).toBeGreaterThan(target - 0.05);
+    // Clearly resumed from the SOUGHT position, not the old paused one.
+    expect(afterResume).toBeGreaterThan(pausedAt + (target - pausedAt) * 0.5);
+  });
+
+  test("Restart returns the seek slider and cursor to the range start", async ({ page }) => {
+    const canvas = await uploadAndDisplayFirstChannel(page, "synth_playback");
+    const playBtn = canvas.locator(".ww-tg-playback-play-btn");
+    const restartBtn = canvas.locator(".ww-tg-playback-restart-btn");
+    const slider = canvas.locator(".ww-tg-playback-seek-slider");
+
+    await playBtn.click();
+    await page.waitForTimeout(400);
+    await restartBtn.click();
+
+    const startTime = await page.evaluate(() => wwPlaybackState().startTime);
+    const currentTime = await page.evaluate(() => wwPlaybackState().currentTime);
+    expect(currentTime).toBe(startTime);
+    const sliderValue = await slider.evaluate((el) => parseFloat(el.value));
+    expect(Math.abs(sliderValue - startTime)).toBeLessThan(0.01);
+  });
+});
