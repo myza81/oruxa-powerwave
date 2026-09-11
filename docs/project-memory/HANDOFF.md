@@ -8,6 +8,84 @@ Last updated: **2026-09-11**
 
 ## What was most recently done
 
+**Analysis Guardrail Slice 2 — Analysis Requirements + Automatic Input
+Resolver ([DECISIONS.md — DEC-087](DECISIONS.md#dec-087--analysis-guardrail-slice-2-a-small-typed-analysisrequirementrolespec-domain-plus-a-pure-backend-authoritative-resolver-automatically-match-an-analysis-modes-required-engineering-roles-against-one-engineering-contexts-own-membership-role-identity-and-numerical-readiness-are-kept-strictly-separate);
+architecture recorded in
+[ANALYSIS_INPUT_GUARDRAILS.md](ANALYSIS_INPUT_GUARDRAILS.md)).**
+Backend-only. Built directly on Slice 1's `EngineeringContext`/phase
+foundation — this is the reusable requirement/resolution engine future
+analyses (Phasor first, then Distance/Overcurrent/Differential/Sequence
+Components) will consume; NONE of those analyses, Phasor visualization,
+or Playback integration were implemented this slice.
+
+**What was built** (all new files unless noted; zero changes to
+`EngineeringContext`/`ChannelRef`/`MeasurementGroup`/Per-Unit/
+calculated-channel-creation/Playback/Time-Group behavior):
+
+1. `app/domain/analysis_requirements.py` — `AnalysisRequirement`/
+   `RoleSpec` typed constants (NOT a rules engine). Eight representative
+   Phasor requirements (`PHASOR_VOLTAGE_PHASE_A/B/C`,
+   `PHASOR_VOLTAGE_THREE_PHASE`, `PHASOR_CURRENT_PHASE_A/B/C`,
+   `PHASOR_CURRENT_THREE_PHASE`) — these identify waveform-sample input
+   roles for a future phasor engine, they do NOT calculate a phasor.
+2. `app/domain/analysis_input_resolution.py` — pure role-matching
+   resolver. Matches by `engineering_type`+canonical `phase` ONLY, never
+   channel name. `resolved`/`needs_configuration`
+   (`role_missing`/`phase_identity_missing` per-role reasons)/
+   `ambiguous` (never resolved by preference — raw vs. calculated, name,
+   or detection confidence all irrelevant)/`not_applicable` (reserved,
+   unreached). `numerically_ready` kept strictly separate from role
+   identity (blank-unit channel still resolves, just not
+   "numerically ready"); Per-Unit display mode has zero effect (never
+   reads `ww.unitMode`/presentation state).
+3. `app/services/analysis_input_resolution_service.py` — fetches live
+   context/source/calculated-channel metadata for the pure resolver,
+   then (only for an otherwise-fully-resolved result, only across
+   distinct sources) proves timebase compatibility by calling
+   `app.domain.calculated_channel.timebases_aligned()` completely
+   UNCHANGED — never resamples/interpolates, never a new alignment rule.
+   Downgrades to `needs_configuration`/`timebase_incompatible` on
+   failure.
+4. `app/schemas/analysis_input_resolution.py` + one new endpoint in
+   `app/api/v1/engineering_contexts.py`: `GET .../engineering-contexts/
+   {id}/input-resolution?analysis_kind=...&mode=...` — read-only, nested
+   under the Engineering Context (not a new top-level `/analysis/...`
+   router, mirroring Measurement Groups' own nested-derived-view
+   precedent). Never persisted. `app/services/errors.py` gained
+   `UnknownAnalysisRequirementError`.
+
+**No frontend changes** — the owner explicitly decided the first
+resolver-driven UI will be Phasor Analysis itself, not a generic
+Guardrail-Slice-3 selector that would be immediately replaced.
+
+**Manual override**: none introduced. Audited Slice 1's own
+`update_member_phase()`/`update_context_membership()` and confirmed
+they are sufficient to resolve every ambiguity this resolver can
+produce — correcting authoritative context/phase metadata makes the
+next resolution call deterministic, so a separate analysis-specific
+override subsystem would have been redundant.
+
+**Tests**: 40 new focused tests across `test_analysis_requirements.py`
+(9), `test_analysis_input_resolution_domain.py` (14 — covers the full
+owner test matrix: single-phase, three-phase, incomplete, wrong type,
+wrong phase, unknown phase, duplicate/ambiguous, context isolation,
+blank-unit numerical readiness, not_applicable),
+`test_analysis_input_resolution_service.py` (10 — including the
+multi-source compatible-timebase and incompatible-timebase scenarios,
+calculated-candidate resolution, raw+calculated ambiguity),
+`test_analysis_input_resolution_api.py` (7 — HTTP-level contract using
+the existing `synth_measurement_groups` fixture, no new fixture
+needed). Full existing backend regression suite (Engineering Context,
+phase identity, Measurement Group, channel classification, calculated-
+channel, timebase/alignment, plus the full `tests/` suite) passes
+unmodified; `git diff --check` clean.
+
+**Files changed**: see this task's own final report for the exact list.
+**Commit status**: see this task's own final report for the exact
+commit hash and push status.
+
+## What was done in the prior session — Analysis Guardrail Slice 1: Engineering Context + Durable Phase Identity
+
 **Analysis Guardrail Slice 1 — Engineering Context + Durable Phase
 Identity ([DECISIONS.md — DEC-086](DECISIONS.md#dec-086--analysis-guardrail-slice-1-engineering-context-physicallogical-bay-identity-and-durable-canonical-phase-are-established-as-a-new-additive-metadata-layer-kept-fully-independent-of-measurement-groupsper-unit-and-of-no-fixed-value-until-a-later-slices-automatic-analysis-input-resolver-reads-it);
 architecture recorded in

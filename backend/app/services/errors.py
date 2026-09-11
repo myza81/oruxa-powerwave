@@ -1021,6 +1021,13 @@ class DuplicateChannelReferenceInContextError(ImportServiceError):
     code = "duplicate_channel_reference_in_context"
 
 
+class UnknownAnalysisRequirementError(ImportServiceError):
+    """A requested `(analysis_kind, mode)` pair does not match any
+    declared `app.domain.analysis_requirements.AnalysisRequirement`."""
+
+    code = "unknown_analysis_requirement"
+
+
 class PhaseAssignmentLockedError(ImportServiceError):
     """An attempt to overwrite a member's own `engineer_confirmed`/
     `manual` phase assignment through an automatic (non-explicit-

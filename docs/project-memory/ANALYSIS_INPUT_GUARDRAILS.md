@@ -1,10 +1,12 @@
 # Analysis Input Guardrails, Engineering Context & Automatic Role Resolver
 
-**Status: Slice 1 (Engineering Context + durable phase identity) is
-implemented — see [DECISIONS.md — DEC-086](DECISIONS.md#dec-086--analysis-guardrail-slice-1-engineering-context-physicallogical-bay-identity-and-durable-canonical-phase-are-established-as-a-new-additive-metadata-layer-kept-fully-independent-of-measurement-groupsper-unit-and-of-no-fixed-value-until-a-later-slices-automatic-analysis-input-resolver-reads-it).
+**Status: Slice 1 (Engineering Context + durable phase identity) and
+Slice 2 (Analysis Requirements + Automatic Input Resolver) are both
+implemented** — see [DECISIONS.md — DEC-086](DECISIONS.md#dec-086--analysis-guardrail-slice-1-engineering-context-physicallogical-bay-identity-and-durable-canonical-phase-are-established-as-a-new-additive-metadata-layer-kept-fully-independent-of-measurement-groupsper-unit-and-of-no-fixed-value-until-a-later-slices-automatic-analysis-input-resolver-reads-it)
+and [DECISIONS.md — DEC-087](DECISIONS.md#dec-087--analysis-guardrail-slice-2-a-small-typed-analysisrequirementrolespec-domain-plus-a-pure-backend-authoritative-resolver-automatically-match-an-analysis-modes-required-engineering-roles-against-one-engineering-contexts-own-membership-role-identity-and-numerical-readiness-are-kept-strictly-separate).
 Everything below marked "not yet implemented" is future-slice scope,
 recorded here so a later slice does not need to re-derive the
-architecture from scratch.**
+architecture from scratch.
 
 ## Why this document exists
 
@@ -163,8 +165,8 @@ DELETE /api/v1/workspaces/{workspace_id}/engineering-contexts/{id}
 POST   /api/v1/workspaces/{workspace_id}/sources/{source_id}/engineering-contexts/suggest
 ```
 
-**No `/analysis/...` resolver endpoint exists yet** — explicitly out of
-scope for Slice 1.
+Slice 2 added exactly one new, read-only endpoint (see below); no
+calculation endpoint exists.
 
 ### Lifecycle
 
@@ -176,32 +178,159 @@ valid members referencing other sources — rather than deleting the
 whole context (unlike a Measurement Group's own source-scoped 1:1
 removal-on-source-delete behavior).
 
+## Implemented (Slice 2): Analysis Requirements + Automatic Input Resolver
+
+### Layering
+
+```text
+app/domain/analysis_requirements.py        → requirement definitions (pure)
+app/domain/analysis_input_resolution.py    → pure role-matching resolver
+app/services/analysis_input_resolution_service.py
+        → fetches context/source/calculated-channel state,
+          proves timebase compatibility, wraps the pure resolver
+app/api/v1/engineering_contexts.py         → thin GET endpoint
+```
+
+Engineering rules stay entirely backend-authoritative at every layer —
+a future analysis page (Phasor first) receives a fully-resolved (or
+precisely-diagnosed) result and never reproduces role-matching,
+ambiguity, or timebase logic of its own.
+
+### Requirement model
+
+Small, explicit typed constants — deliberately NOT a general-purpose
+rules engine:
+
+```text
+AnalysisRequirement
+├── analysis_kind        e.g. "phasor"
+├── mode                 e.g. "voltage_three_phase"
+└── required_roles: tuple[RoleSpec, ...]
+        RoleSpec
+        ├── role_key            e.g. "Va" (label only — never a matching criterion)
+        ├── engineering_type    Voltage | Current
+        ├── phase               canonical phase (app.domain.phase_identity)
+        └── representation      "sampled" (the only value Slice 2 recognizes —
+                                 NOT a claim the signal is already a phasor;
+                                 reserved for a future phase_to_phase/
+                                 sequence-component value without a shape change)
+```
+
+Eight representative Phasor input-role requirements are defined
+(`PHASOR_VOLTAGE_PHASE_A/B/C`, `PHASOR_VOLTAGE_THREE_PHASE`,
+`PHASOR_CURRENT_PHASE_A/B/C`, `PHASOR_CURRENT_THREE_PHASE`) — these
+identify which waveform samples a future phasor engine needs; they do
+NOT calculate a phasor.
+
+### Role matching — never by channel name
+
+For each required role, the resolver matches context members purely by
+`engineering_type` + canonical `phase` — **channel names play no part in
+resolution** (they may have helped an earlier detection pass; persisted
+context/phase metadata is the sole authority at resolve time). A member
+with `phase = unknown` never matches any concrete-phase role — this is
+what makes "never guess an unconfirmed phase" fall out structurally
+rather than needing a special case.
+
+### Status semantics
+
+- **`resolved`** — every required role matches exactly one candidate
+  (and, for a multi-role match spanning more than one source, their
+  timebases are proven compatible — see below).
+- **`needs_configuration`** — one or more roles are missing or
+  potentially-fixable. Per-role diagnostics
+  (`missing_role_reasons[role_key]`) distinguish `role_missing`
+  (nothing in the context matches at all) from
+  `phase_identity_missing` (a same-`engineering_type` candidate exists
+  but its own phase is unresolved) — an addition beyond the audit's own
+  flat sketch, needed for genuinely actionable diagnostics.
+  `timebase_incompatible` is a third reason, applied by the SERVICE
+  layer after an otherwise-fully-resolved result fails timebase proof.
+- **`ambiguous`** — more than one candidate matches the exact same role.
+  **Never resolved by preference** (not by raw-vs-calculated, name
+  length, detection confidence, or first-seen order) — both/all
+  candidates are returned, unchanged, for the engineer to disambiguate
+  via Slice 1's own `update_member_phase()`/membership-correction paths.
+- **`not_applicable`** — reserved for a fundamentally invalid
+  requirement (e.g. one declaring zero required roles); not reachable by
+  any of the eight known Phasor requirements today. Deliberately not
+  overused — an incomplete-but-legitimate context is always
+  `needs_configuration`, never `not_applicable`.
+
+### Timebase compatibility — reused, never reinvented
+
+The pure resolver never touches sample arrays. Only after role matching
+already narrows a multi-role requirement down to exactly one candidate
+per role does the SERVICE layer prove cross-source compatibility, reusing
+`app.domain.calculated_channel.timebases_aligned()` completely unchanged
+— same-source roles short-circuit instantly (identical
+`reference_source_id`); a genuinely different source requires proven
+identical absolute sample instants. Never resamples, never
+interpolates, never invents a new alignment rule. On failure, an
+otherwise-`resolved` result is downgraded to `needs_configuration` /
+`timebase_incompatible` — role identity was still correctly determined,
+only simultaneous evaluation is blocked.
+
+### Numerical readiness — separate from role identity
+
+`numerically_ready: bool` (whole-resolution level) is `True` only when
+`status == resolved` AND every resolved role's own channel carries a
+non-blank unit. A blank-unit Voltage-Phase-A channel still resolves as
+`Va` (Powerwave knows what signal it is) but reports
+`numerically_ready = False` — role IDENTITY and numerical CALCULATION
+readiness are never merged into one concept. Per-Unit display mode has
+zero effect on either (the resolver never reads `ww.unitMode` or any
+presentation state — Voltage stays Voltage, Current stays Current
+regardless of display units).
+
+### Calculated channels
+
+A calculated `ChannelRef` context member is resolved by its own already-
+known `engineering_type`/`unit` metadata, exactly like a raw channel —
+no automatic phase inheritance (manual/deferred, per Slice 1). If a raw
+and a calculated candidate both match one role, the result is
+`ambiguous`, exactly like two raw candidates would be — kind is never a
+tie-breaker.
+
+### Manual override — none introduced
+
+Slice 1's own `update_member_phase()` (correct a wrong/unknown phase)
+and `update_context_membership()` (remove a genuinely duplicate/wrong
+member) are sufficient to resolve every ambiguity this resolver can
+produce — correcting the authoritative context/phase metadata makes the
+NEXT resolution call deterministic. No separate, analysis-specific
+override subsystem was introduced (would have been redundant machinery
+the owner's own instruction explicitly warned against).
+
+### API surface
+
+```text
+GET /api/v1/workspaces/{workspace_id}/engineering-contexts/{engineering_context_id}/input-resolution
+    ?analysis_kind=phasor&mode=voltage_three_phase
+```
+
+Read-only, nested under one Engineering Context (not a new top-level
+`/analysis/...` router) — mirrors how Measurement Groups already nest a
+resource's derived views under its own id. Response: `status`,
+`required_roles`/`required_role_specs`, `resolved_roles`,
+`missing_roles`/`missing_role_reasons`, `ambiguous_roles`,
+`numerically_ready`, `reason_code`, `message`. Never persisted — always
+derived fresh from current context/channel state on every call.
+
 ## Not yet implemented (future slices — architecture recorded here so a later slice can build on it without redesign)
 
-These were part of the original audit's recommendation but are
-explicitly out of scope for Slice 1. Recording the intended shape here
-so a later slice's design conversation starts from an agreed foundation
-rather than re-deriving it:
-
-- **Engineering Role model** — `(engineering_type, phase, representation)`
-  triple; `representation` a closed, extensible enum starting with just
-  `single_ended`, reserving room for `phase_to_phase`/sequence-component
-  representations later without a role-shape redesign.
-- **Analysis requirement definitions** — small typed constants (e.g.
-  `DistancePhaseA requires {Voltage:A, Current:A}`), not a
-  general-purpose rules engine.
-- **Automatic resolver** — pure domain function matching required roles
-  against one Engineering Context's own membership, subject to Time
-  Group/`timebases_aligned()` compatibility (reused unchanged, never a
-  parallel timebase rule); statuses `resolved`/`needs_configuration`/
-  `ambiguous`/`not_applicable`; never silently picks among ambiguous
-  candidates.
-- **Frontend UX** — Bay + Analysis Mode selectors driving an
+- **Frontend UX** — no generic Guardrail-Slice-3 selector UI was built
+  (owner decision: the first resolver-driven UI will be Phasor Analysis
+  itself, avoiding a placeholder that would be immediately replaced).
+  When it is built: Bay + Analysis Mode selectors driving an
   auto-resolved Inputs list (✓/⚠/ambiguous-with-Resolve-link), reusing
   the same `suggested`/`confirmed`/`needs_review` badge vocabulary
-  already established for Measurement Groups. Manual raw-channel picking
-  remains an exception path, never the normal path. Not built in Slice 1
-  at all (deferred by explicit owner allowance).
+  already established for Measurement Groups.
+- **Playback integration** — a future analysis engine will evaluate a
+  resolved role's own channel AT `wwPlayback.currentTime`; the resolver
+  itself stays completely ignorant of Playback (no subscription, no
+  animation-frame-frequency re-evaluation — input resolution is
+  configuration/selection work, evaluated on demand).
 - **Digital-channel roles** (e.g. Trip/Pickup/Breaker-Open) — the model
   must extend to represent these later without a redesign; not
   implemented now. A digital channel cannot satisfy an analog role
@@ -217,7 +346,8 @@ rather than re-deriving it:
 
 ## Related documents
 
-- [DECISIONS.md — DEC-086](DECISIONS.md#dec-086--analysis-guardrail-slice-1-engineering-context-physicallogical-bay-identity-and-durable-canonical-phase-are-established-as-a-new-additive-metadata-layer-kept-fully-independent-of-measurement-groupsper-unit-and-of-no-fixed-value-until-a-later-slices-automatic-analysis-input-resolver-reads-it) — this slice's full approval record.
+- [DECISIONS.md — DEC-086](DECISIONS.md#dec-086--analysis-guardrail-slice-1-engineering-context-physicallogical-bay-identity-and-durable-canonical-phase-are-established-as-a-new-additive-metadata-layer-kept-fully-independent-of-measurement-groupsper-unit-and-of-no-fixed-value-until-a-later-slices-automatic-analysis-input-resolver-reads-it) — Slice 1's full approval record.
+- [DECISIONS.md — DEC-087](DECISIONS.md#dec-087--analysis-guardrail-slice-2-a-small-typed-analysisrequirementrolespec-domain-plus-a-pure-backend-authoritative-resolver-automatically-match-an-analysis-modes-required-engineering-roles-against-one-engineering-contexts-own-membership-role-identity-and-numerical-readiness-are-kept-strictly-separate) — Slice 2's full approval record.
 - [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) — the
   Measurement Group model this document's own Engineering Context
   concept is deliberately kept independent of.

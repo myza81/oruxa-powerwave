@@ -136,9 +136,65 @@ focused tests (`test_phase_identity.py`,
 `test_engineering_context_api.py`) plus the full existing regression
 suite all pass unmodified. See
 [ANALYSIS_INPUT_GUARDRAILS.md](ANALYSIS_INPUT_GUARDRAILS.md) for the
-full architecture, including the explicitly-not-yet-implemented
-automatic resolver/requirement-definition design a later slice builds
-on top of this foundation.
+full architecture — the automatic resolver/requirement-definition layer
+this foundation was built for is now implemented too, see immediately
+below.
+
+**Analysis Guardrail Slice 2 — Analysis Requirements + Automatic Input
+Resolver ([DECISIONS.md — DEC-087](DECISIONS.md#dec-087--analysis-guardrail-slice-2-a-small-typed-analysisrequirementrolespec-domain-plus-a-pure-backend-authoritative-resolver-automatically-match-an-analysis-modes-required-engineering-roles-against-one-engineering-contexts-own-membership-role-identity-and-numerical-readiness-are-kept-strictly-separate),
+2026-09-11) is implemented on top of Slice 1's foundation.** A small,
+typed `AnalysisRequirement`/`RoleSpec` domain
+(`app.domain.analysis_requirements`) declares eight representative
+Phasor input-role requirements (single-phase A/B/C + three-phase, for
+both Voltage and Current) — never a general-purpose rules engine; these
+identify which waveform samples a future phasor engine needs, they do
+NOT calculate a phasor. A pure resolver
+(`app.domain.analysis_input_resolution.resolve_requirement()`) matches
+each required role against one Engineering Context's own membership by
+`engineering_type` + canonical `phase` **only — never by channel name**;
+an unresolved (`unknown`) phase structurally never matches any
+concrete-phase role, so "never guess an unconfirmed phase" falls out of
+exact-value matching rather than needing a special case. Status
+vocabulary: `resolved` (every role maps to exactly one candidate and,
+for cross-source roles, a proven-compatible timebase); `needs_configuration`
+(role-level diagnostics distinguish `role_missing` from
+`phase_identity_missing` from `timebase_incompatible`);
+`ambiguous` (more than one candidate matches one role — **never
+resolved by preference**, not by raw-vs-calculated origin, name, or
+detection confidence; every candidate is returned for the engineer to
+disambiguate via Slice 1's own phase/membership-correction endpoints,
+which are sufficient — no new override subsystem was introduced);
+`not_applicable` (reserved, not reachable by any current requirement).
+**Role identity and numerical calculation readiness are kept strictly
+separate**: a blank-unit channel still resolves as its role (Powerwave
+knows what signal it is) but a whole-resolution `numerically_ready: bool`
+flag separately reports readiness; Per-Unit display mode has zero
+effect on resolution (the resolver never reads `ww.unitMode` or any
+presentation state). Timebase compatibility reuses
+`app.domain.calculated_channel.timebases_aligned()` completely
+unchanged, applied by the SERVICE layer
+(`app.services.analysis_input_resolution_service`) only AFTER role
+matching has already narrowed things to one candidate per role — same-
+source roles short-circuit instantly, never resamples/interpolates. One
+new read-only endpoint: `GET .../engineering-contexts/{id}/
+input-resolution?analysis_kind=...&mode=...`, nested under the
+Engineering Context it resolves against (mirrors Measurement Groups'
+own nested-derived-view precedent) rather than a new top-level
+`/analysis/...` router. **No generic frontend UI was built** — the
+owner decided the first resolver-driven UI will be Phasor Analysis
+itself, to avoid a placeholder that would be immediately replaced; this
+slice is backend/domain/API only. Automatic cross-source context
+detection remains deferred (Slice 1 stays single-source-only; a
+manually-confirmed multi-source context is sufficient to exercise every
+multi-source resolver scenario). 40 new focused tests
+(`test_analysis_requirements.py`, `test_analysis_input_resolution_domain.py`,
+`test_analysis_input_resolution_service.py`,
+`test_analysis_input_resolution_api.py`) plus the full existing
+regression suite pass unmodified. See
+[ANALYSIS_INPUT_GUARDRAILS.md](ANALYSIS_INPUT_GUARDRAILS.md) for the
+full architecture, including what's still deferred (frontend UX,
+Playback integration, digital-channel roles, Voltage↔Current
+association).
 
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test

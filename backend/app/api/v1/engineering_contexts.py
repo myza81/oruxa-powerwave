@@ -1,7 +1,8 @@
-"""Analysis Guardrail Slice 1: thin, workspace-scoped REST exposure of
-`app.services.engineering_context_service`. No new domain semantics, no
-new validation: every mutating endpoint below calls straight into an
-existing, already-tested service function.
+"""Analysis Guardrail Slice 1/2: thin, workspace-scoped REST exposure of
+`app.services.engineering_context_service` and (Slice 2)
+`app.services.analysis_input_resolution_service`. No new domain
+semantics, no new validation: every endpoint below calls straight into
+an existing, already-tested service function.
 
 Router prefix is workspace-scoped only (unlike
 `app.api.v1.measurement_groups`'s own source-scoped shape) -- an
@@ -17,9 +18,17 @@ the resulting contexts are still stored workspace-scoped like any other.
 no upload trigger, no trigger on any other endpoint in this router,
 mirroring `app.api.v1.measurement_groups`'s own established policy.
 
-This slice deliberately exposes NO `/analysis/...` resolver endpoint --
-context/phase metadata only, per the owner's own explicit scope
-boundary for this slice.
+**Slice 2** adds exactly one new, read-only endpoint: `GET
+.../engineering-contexts/{id}/input-resolution`. Deliberately nested
+under one Engineering Context (not a new top-level `/analysis/...`
+router) -- the resolution result's entire input is "this context, this
+requirement," so this mirrors `app.api.v1.measurement_groups`'s own
+precedent of nesting a resource's derived views
+(`.../voltage-config`/`.../current-config`) under its own id rather than
+inventing a parallel top-level route family. This is the ONLY analysis-
+related endpoint in this codebase -- it resolves WHICH channels satisfy
+an analysis mode's required roles; it never calculates anything, and no
+`/analysis/...` calculation endpoint exists.
 """
 
 from __future__ import annotations
@@ -38,7 +47,11 @@ from app.schemas.engineering_context import (
     EngineeringContextUpdateRequest,
     SuggestEngineeringContextsRequest,
 )
+from app.domain.analysis_input_resolution import AnalysisInputResolution
+from app.domain.analysis_requirements import get_requirement
+from app.schemas.analysis_input_resolution import AnalysisInputResolutionOut, RoleSpecOut
 from app.schemas.source import ErrorOut
+from app.services.analysis_input_resolution_service import resolve_analysis_inputs
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.engineering_context_service import (
@@ -68,6 +81,7 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "channel_already_in_context": status.HTTP_409_CONFLICT,
     "duplicate_channel_reference_in_context": status.HTTP_400_BAD_REQUEST,
     "phase_assignment_locked": status.HTTP_409_CONFLICT,
+    "unknown_analysis_requirement": status.HTTP_400_BAD_REQUEST,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -274,3 +288,56 @@ def delete_engineering_context(
     successful no-op, matching `delete_context()`'s own contract."""
     workspace_id = _validate_workspace_id(workspace_id)
     delete_context(workspace_id, engineering_context_id, registry=registry)
+
+
+def _resolution_to_out(result: AnalysisInputResolution) -> AnalysisInputResolutionOut:
+    requirement = get_requirement(result.analysis_kind, result.mode)
+    role_specs = (
+        [
+            RoleSpecOut(role_key=role.role_key, engineering_type=role.engineering_type, phase=role.phase, representation=role.representation)
+            for role in requirement.required_roles
+        ]
+        if requirement is not None
+        else []
+    )
+    return AnalysisInputResolutionOut(
+        status=result.status, analysis_kind=result.analysis_kind, mode=result.mode,
+        engineering_context_id=result.engineering_context_id, required_roles=result.required_roles,
+        required_role_specs=role_specs,
+        resolved_roles={key: ChannelRefOut.from_domain(ref) for key, ref in result.resolved_roles.items()},
+        missing_roles=result.missing_roles, missing_role_reasons=result.missing_role_reasons,
+        ambiguous_roles={
+            key: [ChannelRefOut.from_domain(ref) for ref in refs] for key, refs in result.ambiguous_roles.items()
+        },
+        numerically_ready=result.numerically_ready, reason_code=result.reason_code, message=result.message,
+    )
+
+
+@router.get("/engineering-contexts/{engineering_context_id}/input-resolution", response_model=AnalysisInputResolutionOut)
+def get_input_resolution(
+    workspace_id: str,
+    engineering_context_id: str,
+    analysis_kind: str,
+    mode: str,
+    context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+) -> AnalysisInputResolutionOut:
+    """Read-only. Given `analysis_kind`/`mode` (query parameters --
+    identify one `app.domain.analysis_requirements.AnalysisRequirement`)
+    and one Engineering Context, returns which channels Powerwave
+    automatically resolves for each required role -- never a channel
+    picker's worth of raw candidates, never a calculation. Always
+    derived fresh from current context/channel state; nothing here is
+    persisted or cached."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = resolve_analysis_inputs(
+            workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+            analysis_kind=analysis_kind, mode=mode,
+            context_registry=context_registry, source_registry=source_registry,
+            calculated_channel_registry=calc_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return _resolution_to_out(result)

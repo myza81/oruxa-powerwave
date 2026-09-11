@@ -13098,6 +13098,149 @@ later slices.
 
 ---
 
+## DEC-087 — Analysis Guardrail Slice 2: a small typed `AnalysisRequirement`/`RoleSpec` domain plus a pure, backend-authoritative resolver automatically match an analysis mode's required engineering roles against one Engineering Context's own membership; role identity and numerical readiness are kept strictly separate
+
+Date: 2026-09-11
+Status: Approved — implemented.
+Source: owner instructions for "Analysis Guardrail Slice 2: Analysis
+Requirements + Automatic Input Resolver", the second implementation
+slice following the owner-approved "Analysis Input Guardrails,
+Engineering Context & Automatic Role Resolver" audit and DEC-086 (Slice
+1).
+
+Decision:
+
+**1. Requirement model.** A small, explicit set of typed constants —
+`AnalysisRequirement(analysis_kind, mode, required_roles)` and
+`RoleSpec(role_key, engineering_type, phase, representation)` — never a
+general-purpose rules engine. Eight representative Phasor input-role
+requirements are defined (single-phase A/B/C and three-phase, for both
+Voltage and Current) since Phasor Analysis is the first planned
+consumer; these identify which waveform samples a future phasor engine
+needs, they do not calculate a phasor. `representation` currently
+recognizes only `"sampled"` — deliberately not claiming a raw waveform
+is already a phasor; the field exists so a future representation (e.g.
+phase-to-phase) can be added without a shape change.
+
+**2. Role matching is metadata-only, never name-based.** The resolver
+(`app.domain.analysis_input_resolution.resolve_requirement()`) matches
+each required role against context members purely by
+`engineering_type` + canonical `phase`. A member with an unresolved
+(`unknown`) phase never matches any concrete-phase role — this is a
+structural consequence of exact-value matching, not a special case, and
+is what guarantees the resolver never guesses a phase from a channel
+name at resolution time.
+
+**3. Context is the sole search boundary.** The resolver only ever
+considers the specific Engineering Context's own member list passed to
+it — never searches globally across the workspace to fill a missing
+role. A multi-source context (Slice 1) is fully supported: role
+identity matching itself doesn't care about source boundaries, since
+matching is purely by engineering_type+phase.
+
+**4. Ambiguity is never silently resolved.** More than one candidate
+matching the same role produces `status=ambiguous` with every candidate
+returned — never a preference by raw-vs-calculated origin, name, or
+detection provenance. Slice 1's own `update_member_phase()`/
+`update_context_membership()` are sufficient to resolve any ambiguity
+this resolver can produce by correcting the authoritative context/phase
+metadata; no separate, analysis-specific override subsystem was
+introduced.
+
+**5. Timebase compatibility is reused, never reinvented, and layered
+outside the pure resolver.** `app.domain.analysis_input_resolution` never
+touches sample arrays. Only the service layer
+(`app.services.analysis_input_resolution_service`), and only after role
+matching has already narrowed a multi-role requirement to exactly one
+candidate per role, proves cross-source compatibility by calling
+`app.domain.calculated_channel.timebases_aligned()` unchanged — same-
+source roles short-circuit instantly via identical
+`reference_source_id`; a genuinely different source requires proven
+identical absolute sample instants. Never resamples, never interpolates.
+An otherwise-`resolved` result whose roles fail this proof is downgraded
+to `needs_configuration` / `reason_code="timebase_incompatible"`.
+
+**6. Role identity and numerical readiness are two separate concepts.**
+A resolved role with a blank measured unit still resolves (Powerwave
+knows what signal it is); a whole-resolution `numerically_ready: bool`
+flag separately reports whether every resolved role also carries a
+usable unit. Per-Unit display mode has zero effect on resolution --
+Voltage stays Voltage, Current stays Current regardless of `ww.unitMode`
+or any other presentation state, since the resolver never reads
+presentation state at all.
+
+**7. Calculated channels are resolved by their own metadata, never
+specially privileged or excluded.** A calculated `ChannelRef` context
+member matches a role exactly like a raw channel would, using its own
+already-derived `engineering_type`; no automatic phase inheritance is
+performed. A raw and calculated candidate both matching one role is
+`ambiguous`, exactly like two raw candidates would be.
+
+**8. API surface is one new, read-only, nested endpoint.** `GET
+.../workspaces/{workspace_id}/engineering-contexts/{engineering_context_id}/
+input-resolution?analysis_kind=...&mode=...` — nested under the
+Engineering Context it resolves against (not a new top-level
+`/analysis/...` router), mirroring Measurement Groups' own precedent of
+nesting a resource's derived views under its own id. Never persisted —
+always derived fresh. No calculation endpoint exists; this endpoint only
+identifies WHICH channels satisfy an analysis mode's required roles.
+
+**9. No generic frontend UI was built.** The owner decided the first
+resolver-driven UI will be Phasor Analysis itself, to avoid building a
+placeholder Guardrail-Slice-3 selector that would be immediately
+replaced. Slice 2 is backend/domain/API only.
+
+**10. Cross-source context detection remains deferred.** Automatic
+Engineering Context detection (Slice 1) is still single-source-only; a
+manually-confirmed multi-source context is sufficient to exercise every
+multi-source resolver scenario this slice tests. Improving automatic
+cross-source suggestion is deferred until real Phasor/analysis UAT
+demonstrates a need.
+
+Reason: This is the minimum architecture that lets the owner's own
+target UX — "select Bay + Analysis Mode, Powerwave resolves the required
+channels automatically" — become real for the first consumer (Phasor)
+without inventing machinery beyond what a handful of protection/analysis
+modes actually need. Keeping role identity and numerical readiness
+strictly separate (point 6) mirrors the same principle DEC-086 already
+established for phase identity vs. Per-Unit display, and Task 1's own
+`units_compatible()` fix (blank-unit-tolerant, engineering-type-driven)
+— one consistent rule applied at every layer that touches "is this
+signal usable," rather than three different ad hoc rules.
+
+Alternatives considered: A general-purpose declarative rules engine for
+requirement definitions — rejected per the owner's own explicit
+instruction; eight typed constants fully cover the first consumer's
+needs today, and adding a ninth is trivially one more constant, not a
+schema change. Folding timebase verification into the pure domain
+resolver — rejected, since genuine timebase proof needs real sample
+arrays (I/O), which would make "pure role matching" impossible to test
+without registry/source fixtures for every scenario; keeping it a
+service-layer concern applied only to already-narrowed candidates also
+matches the owner's own "do not unnecessarily perform expensive
+alignment work" instruction. Introducing a persisted "analysis input
+override" table to resolve ambiguity — rejected; Slice 1's own context/
+phase-correction endpoints already fully cover every ambiguity case this
+resolver can produce, so a second override mechanism would be redundant
+machinery, exactly what the owner's own instruction warned against
+inventing without a genuine unmet case.
+
+Impact: New files `backend/app/domain/analysis_requirements.py`,
+`backend/app/domain/analysis_input_resolution.py`,
+`backend/app/services/analysis_input_resolution_service.py`,
+`backend/app/schemas/analysis_input_resolution.py`. Modified:
+`backend/app/api/v1/engineering_contexts.py` (one new GET endpoint),
+`backend/app/services/errors.py` (`UnknownAnalysisRequirementError`).
+No frontend changes. No changes to `EngineeringContext`/`ChannelRef`/
+`MeasurementGroup`/Per-Unit/calculated-channel-creation/Playback/Time-
+Group behavior — `timebases_aligned()` is called, never modified. See
+[ANALYSIS_INPUT_GUARDRAILS.md](ANALYSIS_INPUT_GUARDRAILS.md) for the
+full architecture, including the still-deferred frontend UX, Playback
+integration, digital-channel roles, and Voltage↔Current association
+questions this slice deliberately left untouched.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
