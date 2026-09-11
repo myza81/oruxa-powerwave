@@ -67,11 +67,20 @@ class TestPlaybackIsNotATopLevelPage:
         real `Analysis` consumer. The invariant this class actually cares
         about survives unchanged: Playback itself still has no dedicated
         page/nav destination of its own -- the Analysis menu exists for
-        Phasor, never for Playback."""
+        Phasor, never for Playback.
+
+        Further superseded by the Phasor UAT fix (2026-09-11): the nav
+        item's own visible label/tooltip changed from "Analysis" to
+        "Phasor Diagram" (too generic with only one analyzer
+        implemented) -- the destination's `id` (`mainNavAnalysisBtn`)
+        and its underlying page (`#pageAnalysis`, `<h2>Analysis</h2>`)
+        are unchanged; see test_frontend_phasor_analysis.py's own
+        `TestAnalysisMenuExists` for the full, current assertions on
+        the nav button's exact text."""
         source = _source()
         nav_list = _function_body(source, 'class="shell-nav-list"', 'class="shell-nav-bottom"')
         assert 'id="mainNavAnalysisBtn"' in nav_list
-        assert '<span class="shell-nav-label">Analysis</span>' in nav_list
+        assert '<span class="shell-nav-label">Phasor Diagram</span>' in nav_list
         assert 'id="mainNavPlaybackBtn"' not in nav_list
         assert '<span class="shell-nav-label">Playback</span>' not in nav_list
 

@@ -43,7 +43,25 @@ class TestAnalysisMenuExists:
     def test_analysis_nav_button_exists(self):
         source = _source()
         assert 'id="mainNavAnalysisBtn"' in source
-        assert "Analysis" in _function_body(source, 'id="mainNavAnalysisBtn"', "</button>")
+
+    def test_nav_tooltip_and_label_say_phasor_diagram_not_analysis(self):
+        """UAT fix (2026-09-11): the bare "Analysis" tooltip/visible label
+        was too generic with only one analyzer implemented -- both now
+        read "Phasor Diagram" (the ONE destination that exists today);
+        the page's own <h2> heading deliberately stays "Analysis" (see
+        test_page_heading_remains_analysis below) since that is what will
+        read correctly once a second analyzer exists. The `id` itself is
+        unaffected -- only the two user-facing strings changed."""
+        source = _source()
+        body = _function_body(source, 'id="mainNavAnalysisBtn"', "</button>")
+        assert 'title="Phasor Diagram"' in body
+        assert '<span class="shell-nav-label">Phasor Diagram</span>' in body
+        assert 'title="Analysis"' not in body
+        assert '<span class="shell-nav-label">Analysis</span>' not in body
+
+    def test_page_heading_remains_analysis(self):
+        source = _source()
+        assert "<h2>Analysis</h2>" in source
 
     def test_analysis_page_section_exists(self):
         source = _source()
@@ -123,6 +141,125 @@ class TestEngineeringContextPopulation:
         source = _source()
         body = _phasor_block(source)
         assert "ww-mg-badge ww-mg-badge--" in body
+
+
+class TestContextBootstrap:
+    """UAT fix (2026-09-11): when the workspace has loaded sources but no
+    Engineering Contexts yet, Phasor auto-bootstraps suggestions instead
+    of leaving the engineer to go configure one elsewhere first."""
+
+    def test_existing_contexts_skip_bootstrap_entirely(self):
+        """Owner instruction: this fix must not alter already-working
+        workflows -- if contexts.length > 0, render immediately, no
+        suggestion request."""
+        source = _source()
+        body = _function_body(source, "async function wwPhasorLoadContexts", "async function wwPhasorRunBootstrap")
+        assert "if (contexts.length > 0) {" in body
+        # The "already exists" branch returns before ever reaching
+        # wwPhasorRunBootstrap().
+        assert body.index("if (contexts.length > 0) {") < body.index("await wwPhasorRunBootstrap(")
+
+    def test_zero_contexts_triggers_bootstrap(self):
+        source = _source()
+        body = _function_body(source, "async function wwPhasorLoadContexts", "async function wwPhasorRunBootstrap")
+        assert "await wwPhasorRunBootstrap(workspaceId, epochAtStart);" in body
+
+    def test_bootstrap_reuses_existing_suggest_endpoint_no_new_detection_engine(self):
+        source = _source()
+        body = _phasor_block(source)
+        assert '"/sources/" + encodeURIComponent(sourceId) + "/engineering-contexts/suggest"' in body
+        assert "function wwPhasorFetchSuggest" in body
+        # No frontend channel-name parsing was introduced for detection.
+        bootstrap_body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
+        assert "channel_name.endsWith" not in bootstrap_body
+        assert ".match(/" not in bootstrap_body
+
+    def test_all_loaded_sources_are_considered_not_just_the_first(self):
+        source = _source()
+        body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
+        assert "for (const source of sources) {" in body
+        assert "sources[0]" not in body
+
+    def test_one_source_failure_does_not_abort_the_others(self):
+        source = _source()
+        body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
+        assert "let anyFailed = false;" in body
+        assert "anyFailed = true;" in body
+
+    def test_context_list_refetched_after_suggestions(self):
+        source = _source()
+        body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
+        assert body.count("wwPhasorFetchContexts(workspaceId)") == 1
+
+    def test_newly_suggested_contexts_populate_selector_and_auto_select_first(self):
+        source = _source()
+        body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
+        assert "wwPhasorRenderContextOptions();" in body
+        assert "wwPhasorAutoSelectFirstContext();" in body
+
+    def test_auto_select_only_happens_on_the_bootstrap_path(self):
+        """The pre-existing "contexts already existed" branch in
+        wwPhasorLoadContexts() must NOT auto-select -- owner instruction:
+        preserve existing behavior there unchanged."""
+        source = _source()
+        load_contexts_body = _function_body(source, "async function wwPhasorLoadContexts", "async function wwPhasorRunBootstrap")
+        assert "wwPhasorAutoSelectFirstContext" not in load_contexts_body
+
+    def test_suggested_and_needs_review_contexts_are_not_filtered_out(self):
+        """Detection may suggest; engineer confirmation remains
+        authoritative -- suggested/needs_review contexts still populate
+        the selector and still show their existing status badge, never
+        auto-upgraded to confirmed."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderContextOptions", "function wwPhasorRenderContextBadge")
+        assert "ctx.status" not in body  # no status-based filtering of the option list
+        assert '.filter(' not in body
+        badge_body = _function_body(source, "function wwPhasorRenderContextBadge", "function wwPhasorShowEmptyState")
+        assert '"status": "confirmed"' not in badge_body
+        assert "PATCH" not in badge_body
+
+    def test_no_repeated_suggestion_loop(self):
+        source = _source()
+        body = _phasor_block(source)
+        assert "bootstrapAttempted: false" in body
+        load_contexts_body = _function_body(source, "async function wwPhasorLoadContexts", "async function wwPhasorRunBootstrap")
+        assert "if (wwPhasorState.bootstrapAttempted) {" in load_contexts_body
+        bootstrap_body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
+        assert "wwPhasorState.bootstrapAttempted = true;" in bootstrap_body
+
+    def test_zero_sources_shows_no_source_state_not_no_context_state(self):
+        source = _source()
+        body = _phasor_block(source)
+        assert 'WW_PHASOR_MSG_NO_SOURCES = "No event sources are available. Load a recording before using Phasor Diagram."' in body
+        bootstrap_body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
+        assert "WW_PHASOR_MSG_NO_SOURCES" in bootstrap_body
+
+    def test_failed_suggestion_surfaces_actionable_backend_unreachable_message(self):
+        source = _source()
+        body = _phasor_block(source)
+        assert 'WW_PHASOR_MSG_BACKEND_UNREACHABLE = "Could not reach the backend while identifying engineering contexts."' in body
+        bootstrap_body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
+        assert "anyFailed ? WW_PHASOR_MSG_BACKEND_UNREACHABLE : WW_PHASOR_MSG_NO_SUGGESTIONS" in bootstrap_body
+
+    def test_identifying_contexts_loading_message_shown_during_bootstrap(self):
+        source = _source()
+        body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
+        assert "wwPhasorShowEmptyState(WW_PHASOR_MSG_IDENTIFYING_CONTEXTS);" in body
+
+    def test_still_no_manual_raw_channel_picker_introduced(self):
+        source = _source()
+        panel_html = source[source.index('id="wwPhasorPanel"'):source.index('id="wwPhasorSvg"')]
+        assert "wwPhasorChannelSelect" not in panel_html
+        assert "raw-channel" not in panel_html.lower()
+
+    def test_stale_bootstrap_response_is_discarded(self):
+        """Every async step inside the bootstrap re-checks the same
+        epoch/workspaceId guard every other Phasor fetch already uses --
+        a workspace change mid-bootstrap must never populate the wrong
+        workspace's own selector."""
+        source = _source()
+        body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
+        assert body.count("epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId") >= 3
 
 
 class TestResolverIntegration:

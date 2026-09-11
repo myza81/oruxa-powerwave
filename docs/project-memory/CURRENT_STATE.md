@@ -296,17 +296,47 @@ check: the Slice 1 estimator's own time coordinate was verified already
 correct (a per-request, non-window-dependent `reference_epoch`
 reduction already existed) — no production code change was needed.
 **No Playback integration, no combined Voltage+Current display, no
-Per-Unit display, no Engineering Context creation/suggestion UI**
-(Playwright coverage creates contexts directly via the backend API) —
-explicitly out of scope. New dedicated ASCII-COMTRADE test fixture
-(`phasor_smoke_three_phase.cfg/.dat`, a known three-phase sinusoid) plus
-39 new static structural tests and 3 new real-browser Playwright tests;
-2 pre-existing Playback structural tests were revised (not deleted) to
-reflect the Analysis menu's now-real, deliberate existence. Full
-existing frontend static suite (all `test_frontend_*.py`) and full
-existing Playwright suite (31 tests total) both pass unmodified/
-unchanged in behavior. See [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) for
-the full architecture.
+Per-Unit display, no MANUAL Engineering Context creation/editing UI**
+(automatic suggestion bootstrap was added by a subsequent UAT fix, see
+immediately below) — explicitly out of scope. New dedicated
+ASCII-COMTRADE test fixture (`phasor_smoke_three_phase.cfg/.dat`, a
+known three-phase sinusoid) plus 39 new static structural tests and 3
+new real-browser Playwright tests; 2 pre-existing Playback structural
+tests were revised (not deleted) to reflect the Analysis menu's now-real,
+deliberate existence. Full existing frontend static suite (all
+`test_frontend_*.py`) and full existing Playwright suite (31 tests
+total) both pass unmodified/unchanged in behavior. See
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) for the full architecture.
+
+**Phasor UAT fix (2026-09-11, same-day follow-up to Slice 2, appended to
+[DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)'s
+own Update section, no new DEC).** Two UAT-found UX issues fixed. (1)
+The sidebar tooltip/visible nav label changed from the too-generic
+"Analysis" to "Phasor Diagram" — the page's own `<h2>` heading
+deliberately stays "Analysis." (2) **Phasor now auto-bootstraps
+Engineering Context suggestions** when a workspace has loaded sources
+but zero contexts — `wwPhasorLoadContexts()` fetches the context list;
+if empty, fetches the workspace's own loaded sources, calls the
+EXISTING, UNCHANGED Guardrail Slice 1 suggestion endpoint once per
+source (never assuming one source is "the" bay), re-fetches the context
+list, and — if suggestions succeeded — auto-selects the first newly-
+created context so the engineer reaches a working Phasor view with zero
+manual context-configuration detour. If contexts already existed at
+page load, behavior is BYTE-FOR-BYTE unchanged (no bootstrap, no auto-
+selection) — the fix only ever activates for the genuinely-empty case.
+A one-shot-per-workspace guard (`wwPhasorState.bootstrapAttempted`,
+reset only on "Start New Workspace"/"Clear workspace") prevents a
+suggestion storm on repeated page visits. Suggested/needs_review
+contexts are never hidden or auto-upgraded — detection still only
+suggests, engineer confirmation remains authoritative. No cross-source
+merging, no new backend detection engine, no frontend channel-name
+parsing, no raw-channel picker were introduced. Verified directly
+against the real backend (the `phasor_smoke_three_phase` fixture's own
+channel names are genuinely detectable by the existing detector) rather
+than mocked. 15 new/revised static tests, 3 new real-browser Playwright
+tests (bootstrap succeeds, existing context skips bootstrap, no-source
+state); full frontend static suite and full Playwright suite (34 tests
+total) pass unchanged. No backend files touched.
 
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test

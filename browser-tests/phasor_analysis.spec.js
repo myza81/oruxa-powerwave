@@ -190,3 +190,79 @@ test.describe("Phasor Analysis Slice 2", () => {
     await expect(page.locator("#wwPhasorResolutionList .ww-phasor-role-ok")).toHaveCount(1); // Va only
   });
 });
+
+// UAT fix (2026-09-11): Phasor auto-bootstraps Engineering Context
+// suggestions when a workspace has loaded sources but no contexts yet --
+// see docs/project-memory/PHASOR_ANALYSIS.md's own "Automatic Engineering
+// Context bootstrap" section. These scenarios exercise the REAL backend
+// suggestion endpoint (POST .../sources/{id}/engineering-contexts/suggest)
+// end-to-end -- the phasor_smoke_three_phase fixture's own channel names
+// (ALPHA1_VA/VB/VC/IA/IB/IC) are genuinely detectable by the existing,
+// unchanged Guardrail Slice 1 detector (verified directly against the
+// real backend before writing these tests), so no mocking is needed.
+test.describe("Phasor Analysis Slice 2 -- Engineering Context bootstrap (UAT fix)", () => {
+  // ---- Scenario A: bootstrap succeeds ----
+  test("no contexts + loaded source -> automatic suggestion populates the Bay selector", async ({ page }) => {
+    // Delay the suggest POST slightly so the transient "Identifying
+    // engineering contexts…" state is reliably observable in a real
+    // browser (bootstrap otherwise completes fast enough locally that a
+    // fixed-interval poll could miss it) -- a standard Playwright
+    // technique, not a change to the app's own timing.
+    await page.route("**/engineering-contexts/suggest", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await route.continue();
+    });
+
+    await uploadFixture(page); // no manual context creation this time
+    await openAnalysisPhasor(page);
+
+    // 4. Verify the temporary context-identification state appears.
+    await expect(page.locator("#wwPhasorEmptyState")).toContainText("Identifying engineering contexts");
+
+    // 5/6. The suggestion request succeeds and the Bay selector is
+    // populated automatically, with the newly-suggested context
+    // auto-selected (owner instruction: no unnecessary extra click).
+    await expect(page.locator("#wwPhasorContextSelect option")).toHaveCount(2, { timeout: 10000 }); // blank + ALPHA1
+    await expect(page.locator("#wwPhasorContextSelect")).not.toHaveValue("");
+    await expect(page.locator("#wwPhasorContextBadge")).toContainText("Suggested");
+
+    // 7. Normal input resolution proceeds -- Va/Vb/Vc resolved, values computed.
+    await expect(page.locator("#wwPhasorResolutionList")).toContainText("Va");
+    await expect(page.locator("#wwPhasorResolutionList .ww-phasor-role-warn")).toHaveCount(0);
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+  });
+
+  // ---- Scenario B: existing context ----
+  test("existing context -> selector populated immediately, no suggestion request made", async ({ page }) => {
+    let suggestRequested = false;
+    page.on("request", (request) => {
+      if (request.url().includes("/engineering-contexts/suggest")) suggestRequested = true;
+    });
+
+    await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page);
+
+    // Selector populated immediately from the existing context -- no
+    // bootstrap ran, so (matching this fix's own explicit "preserve
+    // already-working behavior" requirement) nothing is auto-selected;
+    // the ordinary "pick a context" empty state is shown, exactly as it
+    // already was before this fix.
+    await expect(page.locator("#wwPhasorContextSelect option")).toHaveCount(2); // blank + Alpha 1
+    await expect(page.locator("#wwPhasorEmptyState")).toBeVisible();
+    await expect(page.locator("#wwPhasorEmptyState")).toHaveText("Select an Engineering Context to begin.");
+    expect(suggestRequested).toBe(false);
+  });
+
+  // ---- Scenario C: no source ----
+  test("empty workspace -> no-data message, never implies detection failed", async ({ page }) => {
+    await page.goto("/index.html");
+    await openAnalysisPhasor(page);
+
+    await expect(page.locator("#wwPhasorEmptyState")).toContainText("No event sources are available");
+    await expect(page.locator("#wwPhasorEmptyState")).not.toContainText("Engineering Context");
+    await expect(page.locator("#wwPhasorBody")).toBeHidden();
+  });
+});

@@ -300,7 +300,12 @@ don't destroy" mechanism every other page already uses. It is the home
 for every future engineering analyzer (Distance Protection/Overcurrent/
 Differential/Sequence Components) — a left-hand `.ww-analysis-type-nav`
 list is the seam those add their own entry to; today it has exactly one,
-`Phasor`, whose own panel renders directly.
+`Phasor`, whose own panel renders directly. **The sidebar tooltip and
+visible nav label read "Phasor Diagram"** (a UAT fix, 2026-09-11 — the
+bare "Analysis" text was too generic with only one analyzer
+implemented); the page's own `<h2>` heading deliberately stays
+"Analysis," since that is what will read correctly once a second
+analyzer exists.
 
 **Normal workflow, entirely resolver-driven**: Bay (Engineering Context)
 → Quantity (Voltage/Current) → Mode (Phase A/B/C/Three Phase) → the
@@ -316,6 +321,78 @@ page's normal workflow — the engineer never chooses `Va`/`Ib`/etc.
 directly; manual correction, when genuinely needed, remains an
 Engineering Context metadata edit (Slice 1's own `member-phase`
 endpoint), reached outside this page.
+
+### Automatic Engineering Context bootstrap (UAT fix, 2026-09-11)
+
+UAT found that a workspace with loaded sources but no Engineering
+Contexts yet left the Phasor page empty, telling the engineer to go
+create/suggest a context elsewhere first — poor UX for what should be a
+one-page workflow. `wwPhasorLoadContexts()` now bootstraps automatically
+when (and only when) the context list comes back genuinely empty:
+
+```text
+GET engineering-contexts
+    ↓
+contexts exist? --yes--> render immediately (UNCHANGED from before this fix)
+    |no
+    ↓
+bootstrap already attempted this workspace? --yes--> show "no suggestions" empty state
+    |no
+    ↓
+GET sources
+    ↓
+any loaded? --no--> "No event sources are available..."
+    |yes
+    ↓
+POST .../sources/{id}/engineering-contexts/suggest, for EVERY loaded
+source (never assumes one source is "the" bay, never assumes only the
+first matters; one source's own failure never blocks the others)
+    ↓
+GET engineering-contexts again
+    ↓
+contexts now exist? --yes--> populate selector, auto-select the first one
+    |no
+    ↓
+show "no suggestions found" (or "backend unreachable" if any suggest
+call failed) empty state
+```
+
+**Reuses the existing Guardrail Slice 1 suggestion endpoint verbatim** —
+no new backend detection engine, no frontend channel-name parsing. The
+suggestion service's own additive/idempotent contract is what the
+frontend leans on for safety; the frontend's OWN safety mechanism is
+`wwPhasorState.bootstrapAttempted`, a one-shot-per-workspace guard
+(reset only by `wwPhasorResetState()`, the "Start New Workspace"/"Clear
+workspace" hook) that prevents a suggestion storm on every page revisit
+— bootstrap runs at most once per workspace session, ever, regardless of
+how many times the engineer navigates to/from the Phasor page.
+
+**Suggested/needs_review contexts are never hidden or auto-upgraded** —
+they populate the Bay selector exactly like a `confirmed`/`manual`
+context, with the same `ww-mg-badge` status indicator already
+established for Measurement Groups. Detection may suggest; explicit
+engineer confirmation (via Engineering Context metadata, outside this
+page) remains authoritative, unchanged.
+
+**Auto-selection is scoped to the bootstrap path only.** Immediately
+after a successful bootstrap, the first newly-suggested context is
+auto-selected (so the engineer never needs an extra click merely because
+the context was just created) — but the PRE-EXISTING "contexts already
+existed at page load" path is completely unchanged: no auto-selection,
+still requires an explicit pick, preserving the exact behavior UAT had
+already signed off on before this fix.
+
+**Async/stale protection**: every bootstrap step (source list fetch,
+each per-source suggest call, the final context re-fetch) re-checks the
+same `epochAtStart`/`workspaceId` guard every other Phasor fetch already
+uses — a workspace change mid-bootstrap (a new upload, "Start New
+Workspace") discards the in-flight attempt rather than populating the
+wrong workspace's own selector.
+
+**No cross-source automatic merging was added** — each source's own
+suggestion request is independent; a genuinely multi-source bay still
+requires manual Engineering Context membership correction, exactly as
+Slice 1 already established.
 
 **Analysis time is workspace time**, the same coordinate Cursor A/B and
 `ww.viewport` already use — converted to the resolved anchor role's own
@@ -384,9 +461,14 @@ support, frequency tracking, and every real protection analysis.
 - **Frequency tracking / PMU-class measurement.**
 - **Precomputed vendor phasor channel support.**
 - **Per-Unit phasor display** (`unit_mode=per_unit`).
-- **Engineering Context creation/suggestion UI** — this slice's own
-  Playwright coverage creates contexts directly via the backend API;
-  no frontend affordance to create/suggest one exists yet.
+- **Manual Engineering Context creation/editing UI** — the UAT fix
+  (2026-09-11) added an AUTOMATIC suggestion bootstrap for the empty-
+  workspace case, but there is still no frontend affordance to manually
+  create a context, edit its membership, correct a phase, or re-run
+  suggestions on demand for a source that already has one; the
+  Playwright suite for genuinely manual/edge-case scenarios (ambiguous
+  membership, phase correction) still seeds state directly via the
+  backend API.
 - **Distance/Impedance, Overcurrent, Differential, Sequence Components**
   — these slices prove the estimator/resolver/UI integration only.
 

@@ -13525,6 +13525,68 @@ is unchanged and still passes. No backend changes — this slice is
 frontend-only, consuming Slice 1's API unchanged. See
 [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) for the full architecture.
 
+**Update (2026-09-11) — UAT fix: generic nav tooltip corrected; Phasor
+now auto-bootstraps Engineering Context suggestions when a workspace has
+loaded sources but no contexts yet.** UAT of the slice above described
+in this entry found two issues: (1) the sidebar tooltip/visible label
+"Analysis" told the engineer nothing about what they'd actually find
+with only one analyzer implemented; (2) a workspace with loaded sources
+but zero Engineering Contexts left the Phasor page empty, telling the
+engineer to go create/suggest one elsewhere first — a real usability
+gap, not an architecture problem.
+
+**Fix 1**: the sidebar tooltip and visible nav label now read "Phasor
+Diagram" (the one destination that exists today); the page's own `<h2>`
+heading deliberately stays "Analysis" (correct once a second analyzer
+exists); the `id` (`mainNavAnalysisBtn`) is unchanged.
+
+**Fix 2**: `wwPhasorLoadContexts()` now bootstraps automatically, but
+ONLY when the context list comes back genuinely empty — if contexts
+already exist, behavior is byte-for-byte unchanged from the original
+slice (no bootstrap, no auto-selection, same empty-state wording for
+"nothing picked yet"). The bootstrap itself: fetch the workspace's own
+loaded sources; if none, show a distinct "no event sources" message
+(never implying detection failed when there is simply no data); if
+sources exist, call the EXISTING, UNCHANGED Guardrail Slice 1 suggestion
+endpoint (`POST .../sources/{id}/engineering-contexts/suggest`) once per
+loaded source (never assuming one source is "the" bay, never assuming
+only the first matters; one source's own failure never blocks the
+others); re-fetch the context list once; if contexts now exist, populate
+the selector and auto-select the first one (so the engineer never needs
+an extra click merely because the context was just created); if still
+empty, show either an actionable "backend unreachable" message (if any
+suggest call failed) or a "nothing could be automatically suggested"
+message (if detection genuinely found nothing, e.g. channel naming
+doesn't match a recognizable phase convention). A one-shot-per-workspace
+guard (`wwPhasorState.bootstrapAttempted`, reset only by the "Start New
+Workspace"/"Clear workspace" hook) prevents a suggestion storm on every
+page revisit — bootstrap runs at most once per workspace session.
+Suggested/needs_review contexts are never hidden or auto-upgraded to
+confirmed; detection still only suggests, explicit engineer confirmation
+remains authoritative. No cross-source automatic merging was added; no
+new backend detection engine or frontend channel-name parsing was
+introduced — the existing endpoint and detector are reused verbatim.
+
+**Verified directly against the real backend** (not assumed): the
+`phasor_smoke_three_phase` fixture's own channel names are genuinely
+detectable by the existing, unchanged Guardrail Slice 1 detector, so the
+new Playwright bootstrap scenario exercises the real suggestion endpoint
+end-to-end, no mocking.
+
+Impact (this update only): `frontend/index.html` (nav button text, the
+new bootstrap functions, no backend changes). Static tests: 2 in
+`test_frontend_phasor_analysis.py`'s existing `TestAnalysisMenuExists`
+revised for the new tooltip/label, plus a new 13-test
+`TestContextBootstrap` class; 1 pre-existing assertion in
+`test_frontend_playback.py` revised (same nav-label text change, not a
+behavior change). Playwright: 3 new tests (bootstrap succeeds, existing
+context skips bootstrap, no-source state) added to
+`phasor_analysis.spec.js`; full existing Playwright suite (34 tests
+total) and full frontend static suite pass unchanged. No backend files
+were touched — the real suggestion endpoint's own behavior was verified
+manually against the actual backend before writing the new tests, not
+assumed.
+
 ---
 
 ## How to add a decision

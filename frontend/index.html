@@ -6152,18 +6152,33 @@
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><path d="M3 3h5v5H3z"/><circle cx="13.5" cy="5.5" r="2.5"/><path d="M4.5 15 8 9M13.5 9v6M11 12h5"/></svg></span>
                     <span class="shell-nav-label">Calculated Channels</span>
                 </button>
-                <!-- Phasor Analysis Slice 2: the home for every future
-                     engineering analyzer (Distance Protection/Overcurrent/
-                     Differential/Sequence Components/...) -- only Phasor
-                     exists so far, reached via the in-page analysis-type
-                     list inside #pageAnalysis itself (see that section's
-                     own comment). ONE top-level destination, not a
-                     separate button per analyzer -- mirrors how
-                     Recordings/Waveform are each their own page while
-                     Analysis hosts a growing family under one entry. -->
-                <button type="button" class="shell-nav-item" id="mainNavAnalysisBtn" title="Analysis">
+                <!-- Phasor Analysis Slice 2 (UAT fix, 2026-09-11): the home
+                     for every future engineering analyzer (Distance
+                     Protection/Overcurrent/Differential/Sequence
+                     Components/...) -- only Phasor exists so far, reached
+                     via the in-page analysis-type list inside
+                     #pageAnalysis itself (see that section's own comment).
+                     ONE top-level destination, not a separate button per
+                     analyzer -- mirrors how Recordings/Waveform are each
+                     their own page while Analysis hosts a growing family
+                     under one entry.
+
+                     UAT found the bare "Analysis" tooltip/visible label
+                     too generic (with only one analyzer implemented, it
+                     told the engineer nothing about what they'd actually
+                     find) -- the sidebar tooltip AND visible label now
+                     name the one destination that exists today, "Phasor
+                     Diagram," while the PAGE's own <h2> heading
+                     deliberately stays "Analysis" (see #pageAnalysis's own
+                     markup) since that heading is what will read
+                     correctly once a second analyzer exists. The `id`
+                     itself stays `mainNavAnalysisBtn` (an internal
+                     identifier future analyzers' own routing keys off of,
+                     never user-facing) -- only the two user-facing
+                     strings changed. -->
+                <button type="button" class="shell-nav-item" id="mainNavAnalysisBtn" title="Phasor Diagram">
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none"/><line x1="9" y1="9" x2="9" y2="2.5" stroke-width="1.5" stroke-linecap="round"/><line x1="9" y1="9" x2="14.5" y2="12.5" stroke-width="1.5" stroke-linecap="round"/><line x1="9" y1="9" x2="4" y2="13" stroke-width="1.5" stroke-linecap="round"/><circle cx="9" cy="9" r="7" fill="none" stroke-width="1" opacity="0.5"/></svg></span>
-                    <span class="shell-nav-label">Analysis</span>
+                    <span class="shell-nav-label">Phasor Diagram</span>
                 </button>
                 <!-- Owner UX correction (post-Slice-1-UAT, supersedes the
                      Slice 1 comment this replaces): Playback is NOT a
@@ -33718,7 +33733,28 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             latestResolution: null,
             latestResult: null,
             requestGeneration: 0, // one shared stale-response guard for both the resolution and phasor fetches
+            // UAT fix (2026-09-11): true once an automatic Engineering
+            // Context suggestion bootstrap has been ATTEMPTED (regardless
+            // of outcome) for the current workspace -- see
+            // wwPhasorRunBootstrap()'s own docstring for why this exists
+            // (never a repeated suggestion storm on every page revisit).
+            // Reset only by wwPhasorResetState() (the "Start New
+            // Workspace"/"Clear workspace" hook), so a fresh workspace
+            // always gets its own fresh bootstrap attempt.
+            bootstrapAttempted: false,
         };
+
+        // UAT fix (2026-09-11): the small, closed set of empty/interim
+        // messages #wwPhasorEmptyState can show -- centralized so every
+        // caller uses the exact same wording rather than inline strings
+        // drifting apart.
+        const WW_PHASOR_MSG_SELECT_CONTEXT = "Select an Engineering Context to begin.";
+        const WW_PHASOR_MSG_IDENTIFYING_CONTEXTS = "Identifying engineering contexts…";
+        const WW_PHASOR_MSG_NO_SOURCES = "No event sources are available. Load a recording before using Phasor Diagram.";
+        const WW_PHASOR_MSG_NO_SUGGESTIONS =
+            "No Engineering Contexts could be automatically suggested from the loaded recording(s). " +
+            "Create or correct one manually via Engineering Context configuration.";
+        const WW_PHASOR_MSG_BACKEND_UNREACHABLE = "Could not reach the backend while identifying engineering contexts.";
 
         const WW_PHASOR_REASON_TEXT = {
             role_missing: "No matching channel found in this context.",
@@ -33763,8 +33799,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return wwPhasorState.quantity + "_" + wwPhasorState.modeSuffix;
         }
 
-        async function wwPhasorFetchJson(url) {
-            const response = await fetch(url);
+        async function wwPhasorFetchJson(url, options) {
+            const response = await fetch(url, options);
             if (!response.ok) {
                 const body = await response.json().catch(() => null);
                 throw new Error((body && body.detail && body.detail.message) || "Request failed.");
@@ -33775,6 +33811,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwPhasorFetchContexts(workspaceId) {
             return wwPhasorFetchJson(
                 apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/engineering-contexts"
+            );
+        }
+
+        // UAT fix (2026-09-11): the existing Guardrail Slice 1 suggestion
+        // endpoint, reused verbatim -- no new backend detection engine, no
+        // frontend channel-name parsing. Single-source, exactly like the
+        // endpoint itself already is (see app.domain.engineering_context_
+        // detection's own module docstring) -- wwPhasorRunBootstrap() below
+        // calls this once per loaded source, never assuming one source is
+        // "the" bay or that only the first source matters.
+        function wwPhasorFetchSuggest(workspaceId, sourceId) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                "/sources/" + encodeURIComponent(sourceId) + "/engineering-contexts/suggest",
+                { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }
             );
         }
 
@@ -33809,6 +33860,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPhasorLoadContexts();
         }
 
+        // UAT fix (2026-09-11): if Engineering Contexts already exist,
+        // behavior is completely unchanged from before this fix (owner
+        // instruction: "this fix must not alter already-working
+        // workflows") -- render immediately, no bootstrap. Only when the
+        // list comes back genuinely EMPTY does this delegate to
+        // wwPhasorRunBootstrap(), and only once per workspace
+        // (wwPhasorState.bootstrapAttempted).
         async function wwPhasorLoadContexts() {
             const workspaceId = currentWorkspaceId();
             const epochAtStart = ww.epoch;
@@ -33816,16 +33874,128 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             try {
                 contexts = await wwPhasorFetchContexts(workspaceId);
             } catch (error) {
-                contexts = [];
+                contexts = null;
             }
             if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
-            wwPhasorState.contexts = contexts || [];
-            wwPhasorRenderContextOptions();
-            if (wwPhasorState.selectedContextId) {
-                wwPhasorRequestResolution();
-            } else {
-                wwPhasorShowNoContextSelected();
+
+            if (contexts === null) {
+                wwPhasorState.contexts = [];
+                wwPhasorRenderContextOptions();
+                wwPhasorShowEmptyState(WW_PHASOR_MSG_BACKEND_UNREACHABLE);
+                return;
             }
+
+            if (contexts.length > 0) {
+                wwPhasorState.contexts = contexts;
+                wwPhasorRenderContextOptions();
+                if (wwPhasorState.selectedContextId) {
+                    wwPhasorRequestResolution();
+                } else {
+                    wwPhasorShowNoContextSelected();
+                }
+                return;
+            }
+
+            if (wwPhasorState.bootstrapAttempted) {
+                // Already tried once this workspace session and found
+                // nothing -- never retry on every page revisit (owner
+                // instruction: "do not repeatedly call suggestion
+                // endpoints on every selector render").
+                wwPhasorState.contexts = [];
+                wwPhasorRenderContextOptions();
+                wwPhasorShowEmptyState(WW_PHASOR_MSG_NO_SUGGESTIONS);
+                return;
+            }
+
+            await wwPhasorRunBootstrap(workspaceId, epochAtStart);
+        }
+
+        // The automatic bootstrap itself -- runs ONLY when the context
+        // list just came back genuinely empty and no bootstrap has been
+        // attempted yet this workspace session. Inspects loaded sources,
+        // requests a suggestion for each (the existing Guardrail Slice 1
+        // endpoint, single-source, never cross-source merging), then
+        // re-fetches the context list once. Every async step re-checks
+        // the SAME epoch/workspaceId guard every other Phasor fetch
+        // already uses, so a workspace change mid-bootstrap (a new
+        // upload, "Start New Workspace") discards the in-flight attempt
+        // rather than populating the wrong workspace's own selector.
+        async function wwPhasorRunBootstrap(workspaceId, epochAtStart) {
+            wwPhasorState.bootstrapAttempted = true;
+            wwPhasorShowEmptyState(WW_PHASOR_MSG_IDENTIFYING_CONTEXTS);
+
+            let sources;
+            try {
+                sources = await fetchSourcesList();
+            } catch (error) {
+                sources = null;
+            }
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+
+            if (!sources || sources.length === 0) {
+                wwPhasorState.contexts = [];
+                wwPhasorRenderContextOptions();
+                wwPhasorShowEmptyState(WW_PHASOR_MSG_NO_SOURCES);
+                return;
+            }
+
+            // Every loaded source is considered -- never assume one
+            // source is "the" bay, never assume only the first source
+            // matters. One source's own suggestion failure does not
+            // block the others (best-effort across all of them).
+            let anyFailed = false;
+            for (const source of sources) {
+                try {
+                    await wwPhasorFetchSuggest(workspaceId, source.source_id);
+                } catch (error) {
+                    anyFailed = true;
+                }
+                if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            }
+
+            let contexts;
+            try {
+                contexts = await wwPhasorFetchContexts(workspaceId);
+            } catch (error) {
+                contexts = null;
+            }
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+
+            if (contexts === null) {
+                wwPhasorState.contexts = [];
+                wwPhasorRenderContextOptions();
+                wwPhasorShowEmptyState(WW_PHASOR_MSG_BACKEND_UNREACHABLE);
+                return;
+            }
+
+            wwPhasorState.contexts = contexts;
+            wwPhasorRenderContextOptions();
+
+            if (contexts.length > 0) {
+                // Owner instruction: prefer auto-selecting the first
+                // usable context after a successful automatic
+                // suggestion, so the engineer never needs an extra click
+                // merely because the context was just created. This is
+                // deliberately ONLY done on this fresh-bootstrap path --
+                // the "contexts already existed" path above is
+                // completely unchanged (still requires an explicit
+                // pick), per the owner's own "must not alter already-
+                // working workflows" instruction.
+                wwPhasorAutoSelectFirstContext();
+                return;
+            }
+
+            wwPhasorShowEmptyState(anyFailed ? WW_PHASOR_MSG_BACKEND_UNREACHABLE : WW_PHASOR_MSG_NO_SUGGESTIONS);
+        }
+
+        function wwPhasorAutoSelectFirstContext() {
+            if (wwPhasorState.contexts.length === 0) return;
+            const first = wwPhasorState.contexts[0];
+            wwPhasorState.selectedContextId = first.id;
+            const select = document.getElementById("wwPhasorContextSelect");
+            if (select) select.value = first.id;
+            wwPhasorRenderContextBadge();
+            wwPhasorRequestResolution();
         }
 
         function wwPhasorRenderContextOptions() {
@@ -33859,16 +34029,25 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             badge.innerHTML = '<span class="ww-mg-badge ww-mg-badge--' + cls + '">' + (labels[ctx.status] || escapeHtml(ctx.status)) + '</span>';
         }
 
-        function wwPhasorShowNoContextSelected() {
-            document.getElementById("wwPhasorEmptyState").hidden = false;
-            document.getElementById("wwPhasorEmptyState").textContent = wwPhasorState.contexts.length === 0
-                ? "No Engineering Contexts exist in this workspace yet. Create or suggest one from a source's own channel list before running Phasor Analysis."
-                : "Select an Engineering Context to begin.";
+        // UAT fix (2026-09-11): a small, general "show the empty state
+        // with this exact message" primitive -- every terminal/interim
+        // Phasor state (no context selected, bootstrap in progress, no
+        // sources, no suggestions found, backend unreachable) now goes
+        // through this ONE function rather than each caller duplicating
+        // the hide/show DOM wiring.
+        function wwPhasorShowEmptyState(message) {
+            const emptyState = document.getElementById("wwPhasorEmptyState");
+            emptyState.hidden = false;
+            emptyState.textContent = message;
             document.getElementById("wwPhasorStatusRow").hidden = true;
             document.getElementById("wwPhasorBody").hidden = true;
             document.getElementById("wwPhasorTimeRow").hidden = true;
             wwPhasorState.latestResolution = null;
             wwPhasorState.latestResult = null;
+        }
+
+        function wwPhasorShowNoContextSelected() {
+            wwPhasorShowEmptyState(WW_PHASOR_MSG_SELECT_CONTEXT);
         }
 
         // 1. Cursor A time, if enabled/visible/finite for the anchor's own
@@ -34226,6 +34405,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPhasorState.latestResolution = null;
             wwPhasorState.latestResult = null;
             wwPhasorState.requestGeneration += 1;
+            // UAT fix (2026-09-11): a fresh workspace ("Start New
+            // Workspace"/"Clear workspace") always gets its own fresh
+            // automatic-suggestion bootstrap attempt -- see
+            // wwPhasorRunBootstrap()'s own docstring.
+            wwPhasorState.bootstrapAttempted = false;
             const contextSelect = document.getElementById("wwPhasorContextSelect");
             if (contextSelect) contextSelect.innerHTML = '<option value="">Select a context…</option>';
             const badge = document.getElementById("wwPhasorContextBadge");
@@ -34243,7 +34427,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const timeRow = document.getElementById("wwPhasorTimeRow");
             if (timeRow) timeRow.hidden = true;
             const emptyState = document.getElementById("wwPhasorEmptyState");
-            if (emptyState) { emptyState.hidden = false; emptyState.textContent = "Select an Engineering Context to begin."; }
+            if (emptyState) { emptyState.hidden = false; emptyState.textContent = WW_PHASOR_MSG_SELECT_CONTEXT; }
         }
 
         // ------------------------------------------------------------------

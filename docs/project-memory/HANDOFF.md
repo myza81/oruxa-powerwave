@@ -8,6 +8,69 @@ Last updated: **2026-09-11**
 
 ## What was most recently done
 
+**Phasor UAT fix — generic nav tooltip corrected + automatic Engineering
+Context suggestion bootstrap ([DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)'s
+own Update section, no new DEC; architecture recorded in
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s own new "Automatic
+Engineering Context bootstrap" section).** Frontend-only, same-day
+follow-up to Phasor Analysis Slice 2. Two UAT-found UX issues fixed:
+
+1. **Tooltip/label**: sidebar tooltip + visible nav label changed from
+   the too-generic "Analysis" to "Phasor Diagram" (the one destination
+   that exists today). The page's own `<h2>` heading deliberately stays
+   "Analysis" (correct once a second analyzer exists); the `id`
+   (`mainNavAnalysisBtn`) is unchanged.
+2. **Empty-workspace bootstrap**: `wwPhasorLoadContexts()` now
+   automatically requests Engineering Context suggestions when the
+   context list comes back genuinely empty AND the workspace has loaded
+   sources -- reuses the EXISTING, UNCHANGED Guardrail Slice 1
+   suggestion endpoint (`POST .../sources/{id}/engineering-contexts/
+   suggest`) once per loaded source (never assumes one source is "the"
+   bay; one source's own failure never blocks the others), then
+   re-fetches the context list and auto-selects the first newly-
+   suggested context. **If contexts already existed at page load,
+   behavior is byte-for-byte unchanged** (no bootstrap, no auto-select)
+   -- the fix activates ONLY for the genuinely-empty case, per the
+   owner's own explicit "must not alter already-working workflows"
+   instruction. A one-shot-per-workspace guard
+   (`wwPhasorState.bootstrapAttempted`, reset only by "Start New
+   Workspace"/"Clear workspace") prevents a suggestion storm on repeated
+   page visits. Distinct terminal states: no sources at all ("No event
+   sources are available..."), suggestions found nothing ("could not be
+   automatically suggested..."), and backend-unreachable (actionable,
+   distinguishable from "genuinely nothing to suggest"). Suggested/
+   needs_review contexts are never hidden or auto-upgraded -- detection
+   still only suggests, engineer confirmation remains authoritative. No
+   cross-source merging, no new backend detection engine, no frontend
+   channel-name parsing, no raw-channel picker were introduced.
+
+**Verified directly against the real backend, not mocked**: confirmed
+via a manual smoke script that the `phasor_smoke_three_phase` fixture's
+own channel names (`ALPHA1_VA`/`VB`/`VC`/`IA`/`IB`/`IC`) are genuinely
+detected by the existing, unchanged Guardrail Slice 1 detector into one
+correctly-phased "ALPHA1" context that resolves and computes correctly
+-- so the new Playwright bootstrap scenario exercises the real
+suggestion endpoint end-to-end.
+
+**Tests**: `test_frontend_phasor_analysis.py`'s existing
+`TestAnalysisMenuExists` revised for the new tooltip/label text, plus a
+new 13-test `TestContextBootstrap` class. 1 pre-existing assertion in
+`test_frontend_playback.py` revised (same nav-label text change, not a
+behavior change -- see that test's own updated docstring). 3 new
+Playwright tests in `phasor_analysis.spec.js` (bootstrap succeeds --
+using `page.route()` to reliably observe the transient "Identifying
+engineering contexts…" state; existing context skips bootstrap entirely,
+verified via request interception; empty workspace shows the correct
+no-source message). Full frontend static suite and full Playwright
+suite (34 tests total) pass unchanged. **No backend files were
+touched.**
+
+**Files changed**: see this task's own final report for the exact list.
+**Commit status**: see this task's own final report for the exact
+commit hash and push status.
+
+## What was done in the prior session — Phasor Analysis Slice 2: Analysis Page + Static Phasor Diagram
+
 **Phasor Analysis Slice 2 — Analysis Page + Static Phasor Diagram
 ([DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules);
 architecture recorded in [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)).**
