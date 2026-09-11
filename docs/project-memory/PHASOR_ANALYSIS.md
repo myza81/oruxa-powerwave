@@ -1,11 +1,13 @@
 # Phasor Analysis
 
-**Status: Slice 1 (Core Estimator + Selected-Time API) is implemented**
-— see [DECISIONS.md — DEC-088](DECISIONS.md#dec-088--phasor-analysis-slice-1-a-fixed-frequency-one-cycle-trailing-window-rms-fundamental-phasor-estimator-with-an-explicit-guardrail-boundary-and-a-selected-time-only-read-only-api-built-directly-on-the-existing-engineering-context-resolver-foundation).
-Frontend, Playback integration, and every real protection analysis
+**Status: Slice 1 (Core Estimator + Selected-Time API) and Slice 2
+(Analysis Page + Static Phasor Diagram) are both implemented** — see
+[DECISIONS.md — DEC-088](DECISIONS.md#dec-088--phasor-analysis-slice-1-a-fixed-frequency-one-cycle-trailing-window-rms-fundamental-phasor-estimator-with-an-explicit-guardrail-boundary-and-a-selected-time-only-read-only-api-built-directly-on-the-existing-engineering-context-resolver-foundation)
+and [DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules).
+Playback integration and every real protection analysis
 (Distance/Overcurrent/Differential/Sequence Components) remain
 unimplemented — this document records the engineering definition and
-architecture the audit established and this slice built, so a later
+architecture the audit established and these slices built, so a later
 slice does not need to re-derive it.
 
 ## Product definition — what Powerwave means by "a phasor"
@@ -74,6 +76,25 @@ Voltage+Current analysis (impedance/power-factor angle) still has the
 absolute angle of both quantities available to compute their
 difference correctly. For a single-phase result, `angle_deg_relative`
 is always `null` — there is no other phase to reference against.
+
+**Verified at the start of Slice 2** (owner's own explicit pre-
+implementation check): `t_n` inside `estimate_phasor()`'s own
+`exp(-j*2*pi*f0*t_n)` is never a raw epoch-scale timestamp.
+`phasor_analysis_service.py` already computes `reference_epoch =
+min(start_epoch)` across every resolved role's own grounding source —
+a per-request constant that depends only on WHICH sources ground the
+resolved roles, never on `analysis_time` itself — and passes each
+channel `(source_start_epoch - reference_epoch) + elapsed_seconds`
+(confirmed directly at that module's own `t_shared`/`analysis_time_shared`
+lines) into the pure estimator. This `tau_n = t_n - t_ref` reduction was
+already present in Slice 1 (built for floating-point precision, not
+realized at the time to also be the exact fix this convention requires)
+and satisfies every one of the owner's stated requirements: shared
+across all compared roles, independent of the sliding window's own
+start, and empirically stable as `analysis_time` advances
+(`TestMovingAnalysisTimeStability`/`TestMovingAnalysisTimeServiceLevel`,
+both passing, both predating this check). **No production code change
+was needed or made** for this verification.
 
 ## Reference frequency
 
@@ -270,20 +291,109 @@ work, run fresh on every request when a channel's `waveform_form` is
 inherits from `check_rms_eligibility()`'s own identical behavior, not a
 new one it introduces.
 
+## Frontend: the Analysis page (Phasor Analysis Slice 2)
+
+**`Analysis` is a new, permanent top-level main-menu destination** —
+`#mainNavAnalysisBtn`, placed immediately after `Calculated Channels`,
+opening `#pageAnalysis` via the same `shellSetCurrentPage()` "hide,
+don't destroy" mechanism every other page already uses. It is the home
+for every future engineering analyzer (Distance Protection/Overcurrent/
+Differential/Sequence Components) — a left-hand `.ww-analysis-type-nav`
+list is the seam those add their own entry to; today it has exactly one,
+`Phasor`, whose own panel renders directly.
+
+**Normal workflow, entirely resolver-driven**: Bay (Engineering Context)
+→ Quantity (Voltage/Current) → Mode (Phase A/B/C/Three Phase) → the
+existing `input-resolution` endpoint (Slice 2 of the guardrail work,
+unchanged) resolves the required channels automatically and the
+Resolved Inputs list shows exactly what it decided. **The phasor
+estimator is never called until resolution status is `resolved`** — an
+`ambiguous`/`needs_configuration`/`not_applicable` result is rendered as
+an explicit, actionable message (including per-role reasons) and the
+values/diagram area stays empty with its own explanation, never a
+broken/empty SVG. There is no manual raw-channel picker anywhere in this
+page's normal workflow — the engineer never chooses `Va`/`Ib`/etc.
+directly; manual correction, when genuinely needed, remains an
+Engineering Context metadata edit (Slice 1's own `member-phase`
+endpoint), reached outside this page.
+
+**Analysis time is workspace time**, the same coordinate Cursor A/B and
+`ww.viewport` already use — converted to the resolved anchor role's own
+source-relative elapsed time ONLY at the `GET .../phasor` call boundary
+(`wwWorkspaceTimeToSourceTime()`, the exact conversion every other
+per-source endpoint in this app already performs). The default analysis
+time prefers Cursor A's own time (if enabled/visible/finite and it would
+not guarantee "insufficient history"), else the anchor's own Time Group
+bounds start plus a small fixed buffer, else 0 — Cursor A is read only
+as a convenient starting value; moving the Phasor analysis time never
+moves Cursor A, and Cursor A's own t=0/measurement semantics are
+untouched.
+
+**Angle display**: three-phase mode shows `angle_deg_relative`
+(Phase-A-referenced) as the PRIMARY number; single-phase mode shows the
+backend's own `angle_deg_absolute` — never a fabricated 0° reference for
+a lone phasor. Magnitude uses the existing `wwFormatEngineeringValue()`
+formatter, true engineering units (no Per-Unit normalization in this
+slice).
+
+**Diagram**: lightweight, hand-rolled SVG (`#wwPhasorSvg`) — axes, three
+dashed magnitude rings, and one `<line>`+arrowhead `<polygon>`+`<text>`
+label per resolved role, ALL vectors sharing one magnitude scale (plot
+radius = 1.15× the largest displayed magnitude, never per-vector
+scaling, never distorted angles). No Plotly — this diagram has no
+existing time-series-chart precedent to reuse, and the vector math
+(`x=r·cosθ, y=-r·sinθ`) is simple enough that direct SVG element
+updates are both simpler and cheaper than a Plotly figure, which matters
+directly for the still-deferred Slice 3 smooth-update requirement. Three
+new phase-identity color tokens (`--ww-phase-a/b/c`, reusing the app's
+already-accessible `--accent`/`--warn`/`--ok` trio — deliberately never
+Cursor A/B's own `--accent`/`--error` tokens, since no phase-color
+convention existed anywhere in this codebase before this slice and the
+two concepts could plausibly appear on the same future page).
+
+**Stale-request protection**: a single shared `wwPhasorState.
+requestGeneration` counter (bumped on every context/quantity/mode/time
+change) plus the existing whole-workspace `ww.epoch` guard — a slower,
+superseded response is always discarded, never applied over a newer
+selection. No second global time controller was introduced.
+
+**A caught defect**: `.ww-phasor-body`/`.ww-phasor-time-row` both use an
+explicit `display: grid`/`display: flex`, which (as CSS specificity
+works) silently overrides the browser's own default `[hidden] {
+display: none }` rule for the `hidden` ATTRIBUTE these elements are
+toggled with in JS — caught directly by
+`browser-tests/phasor_analysis.spec.js`'s own empty-state test (a
+real-browser assertion a source-text test cannot make), fixed with an
+explicit `.ww-phasor-body[hidden] { display: none }` override.
+
+**Explicitly NOT implemented in this slice**: `wwPlayback`/
+`wwPlaybackOnTick` wiring, Play/Pause/speed/seek controls (a `#wwPhasorPanel`
+composition-point comment marks exactly where Slice 3 adds an embedded
+Playback control row without restructuring this page), combined
+Voltage+Current display, Per-Unit display, precomputed-phasor-channel
+support, frequency tracking, and every real protection analysis.
+
 ## Not yet implemented (future slices)
 
-- **Frontend** — no Phasor Analysis page, no diagram, no Analysis menu.
 - **Playback integration** — no `wwPlayback` subscription; `analysis_time`
   is a plain request parameter, not driven by a moving clock yet.
+- **Combined Voltage + Current display** — the architecture stays
+  compatible (a future mode could request both quantities' own role
+  sets), but this slice never renders them together or scales Current
+  against Voltage.
 - **Frequency tracking / PMU-class measurement.**
 - **Precomputed vendor phasor channel support.**
 - **Per-Unit phasor display** (`unit_mode=per_unit`).
+- **Engineering Context creation/suggestion UI** — this slice's own
+  Playwright coverage creates contexts directly via the backend API;
+  no frontend affordance to create/suggest one exists yet.
 - **Distance/Impedance, Overcurrent, Differential, Sequence Components**
-  — this slice proves the estimator/resolver integration only.
+  — these slices prove the estimator/resolver/UI integration only.
 
 ## Related documents
 
-- [DECISIONS.md — DEC-088](DECISIONS.md#dec-088--phasor-analysis-slice-1-a-fixed-frequency-one-cycle-trailing-window-rms-fundamental-phasor-estimator-with-an-explicit-guardrail-boundary-and-a-selected-time-only-read-only-api-built-directly-on-the-existing-engineering-context-resolver-foundation) — this slice's full approval record.
+- [DECISIONS.md — DEC-088](DECISIONS.md#dec-088--phasor-analysis-slice-1-a-fixed-frequency-one-cycle-trailing-window-rms-fundamental-phasor-estimator-with-an-explicit-guardrail-boundary-and-a-selected-time-only-read-only-api-built-directly-on-the-existing-engineering-context-resolver-foundation) — Slice 1's full approval record.
+- [DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules) — Slice 2's full approval record.
 - [ANALYSIS_INPUT_GUARDRAILS.md](ANALYSIS_INPUT_GUARDRAILS.md) — the
-  Engineering Context + resolver foundation this slice is built on
+  Engineering Context + resolver foundation both slices are built on
   entirely unchanged.

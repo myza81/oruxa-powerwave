@@ -13403,6 +13403,130 @@ phasors, Per-Unit display, and every real protection analysis).
 
 ---
 
+## DEC-089 — Phasor Analysis Slice 2: `Analysis` is a new, permanent top-level menu hosting a growing family of engineering analyzers; Phasor is the first, rendering the existing Slice 1 backend as a static, selected-time page with a lightweight SVG diagram, never reimplementing backend engineering rules
+
+Date: 2026-09-11
+Status: Approved — implemented.
+Source: owner instructions for "Phasor Analysis — Slice 2: Analysis Page
++ Static Phasor Diagram," the first frontend consumer of the Slice 1/2
+Engineering Context + resolver + Phasor estimator foundation.
+
+Decision:
+
+**1. Pre-implementation check, verified, no change needed.** The
+Slice 1 estimator's `t_n` was already reduced from raw absolute epoch
+time to a stable, per-request `reference_epoch`-relative coordinate
+before ever reaching `exp(-j*2*pi*f0*t_n)` — confirmed directly against
+the actual `phasor_analysis_service.py` source lines, not from memory.
+This satisfies the owner's own stated requirements (shared across
+compared roles, independent of the sliding window, stable as
+`analysis_time` advances) without modification.
+
+**2. `Analysis` is a new, permanent top-level main-menu destination** —
+`#mainNavAnalysisBtn`, immediately after `Calculated Channels`, opening
+`#pageAnalysis` via the existing `shellSetCurrentPage()` "hide, don't
+destroy" mechanism. A left-hand `.ww-analysis-type-nav` list (currently
+one entry, `Phasor`) is the seam future analyzers (Distance Protection/
+Overcurrent/Differential/Sequence Components) add their own entry to,
+without restructuring this page.
+
+**3. Normal workflow is entirely resolver-driven; there is no manual
+raw-channel picker.** Bay (Engineering Context) → Quantity → Mode → the
+existing, unchanged `input-resolution` endpoint resolves the required
+channels automatically; the phasor estimator is never called until that
+status is `resolved`. An `ambiguous`/`needs_configuration` result is
+rendered as an explicit, per-role-actionable message — including the
+still-unresolved question of whether `waveform_form_not_eligible` is too
+conservative for real disturbance data, deliberately left visible
+(reason text, not weakened) for real-event UAT to judge.
+
+**4. Analysis time is workspace time, converted to the resolver's own
+anchor-role source-relative elapsed time only at the API call boundary**
+(`wwWorkspaceTimeToSourceTime()`), mirroring every other per-source
+endpoint's own convention. Default value: Cursor A's own time if
+enabled/visible/finite and not guaranteed to fail with insufficient
+history, else the anchor's own Time Group bounds start plus a small
+fixed buffer, else 0 — Cursor A is read only as a convenience; moving
+Phasor's own analysis time never moves Cursor A, and Cursor A's existing
+t=0/measurement semantics are untouched.
+
+**5. Angle display: three-phase primary is `angle_deg_relative`
+(Phase-A-referenced); single-phase primary is the backend's own
+`angle_deg_absolute`.** Never a fabricated 0° reference for a lone
+phasor -- both values were already computed backend-side (Slice 1) and
+this slice never recomputes either.
+
+**6. Diagram is lightweight, hand-rolled SVG, not Plotly** — one shared
+magnitude scale across every vector (plot radius = 1.15× the largest
+displayed magnitude), one `<line>`+arrowhead+label per resolved role,
+never a broken/empty diagram without an explanation. Three new phase-
+identity color tokens (`--ww-phase-a/b/c`) reuse the app's already-
+accessible `--accent`/`--warn`/`--ok` trio — deliberately NOT Cursor
+A/B's own `--accent`/`--error` tokens, since no phase-color convention
+existed anywhere in this codebase before this slice and the two
+concepts could plausibly appear together on a future page.
+
+**7. Stale-request protection** — one shared `wwPhasorState.
+requestGeneration` counter (bumped on every context/quantity/mode/time
+change), plus the existing whole-workspace `ww.epoch` guard. No second
+global time controller was introduced.
+
+**8. Explicitly deferred**: Playback integration (`wwPlayback`/
+`wwPlaybackOnTick` wiring; a `#wwPhasorPanel` composition-point comment
+marks exactly where Slice 3 adds an embedded control row without
+restructuring this page), combined Voltage+Current display, Per-Unit
+display, precomputed-phasor-channel support, frequency tracking, every
+real protection analysis, and an Engineering Context creation/suggestion
+UI (this slice's own Playwright coverage creates contexts directly via
+the backend API).
+
+Reason: This is the first real proof that the Engineering Context +
+resolver + Phasor estimator foundation (DEC-086/087/088) actually
+delivers the owner's own target workflow end-to-end — select a Bay and
+a Mode, get correct numbers and a correct diagram, with zero manual
+channel selection in the normal path. Introducing `Analysis` as a
+permanent menu now (rather than a temporary/disposable page) is
+justified because a second, third, and fourth analyzer are explicitly
+planned and the menu's own sub-nav seam costs nothing extra to add now
+versus retrofitting it later. Choosing hand-rolled SVG over Plotly for
+the diagram is justified by the audit's own reasoning (no existing
+polar/vector precedent to reuse, simpler and cheaper to update
+per-frame, which matters directly for Slice 3) — reconfirmed correct
+during implementation, not merely assumed.
+
+Alternatives considered: A Phasor-only top-level nav button (no
+`Analysis` grouping) — rejected; the owner's own explicit product
+destination is `Analysis > Phasor`, and building the flat version now
+would mean restructuring navigation for the second analyzer instead of
+just adding a list entry. Fetching/caching the Engineering Context list
+once (mirroring Calculated Channels' own persistent registry cache) —
+rejected for this slice; no incremental-sync path exists yet for
+contexts (no other UI mutates them), so a cheap refetch on every page
+visit (mirroring the Recordings page's own precedent) is simpler and
+cannot go stale. Reusing Cursor A/Cursor B's own `--accent`/`--error`
+tokens for phase colors — rejected; would create a real (if modest)
+collision risk once a future page shows both concepts together.
+
+Impact: `frontend/index.html` only (new `#mainNavAnalysisBtn` nav
+button, `#pageAnalysis` section, ~450 lines of new CSS/JS, one `wwClearWorkspace()`
+hook). New backend-adjacent test fixture
+`backend/tests/fixtures/comtrade/phasor_smoke_three_phase.(cfg|dat)`
+(hand-written, known three-phase sinusoid, used only by the new
+Playwright suite). New test files `backend/tests/test_frontend_
+phasor_analysis.py` (39 static structural tests) and `browser-tests/
+phasor_analysis.spec.js` (3 real-browser tests, including one that
+caught and proved the fix for a real `[hidden]`-vs-`display:grid/flex`
+CSS bug). Two pre-existing tests in `backend/tests/test_frontend_
+playback.py` were revised (not deleted) to reflect the Analysis menu's
+now-real existence, which they had previously asserted against as a
+Task-6-era temporary constraint — the underlying invariant those tests
+actually protect (Playback itself has no dedicated page/nav destination)
+is unchanged and still passes. No backend changes — this slice is
+frontend-only, consuming Slice 1's API unchanged. See
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) for the full architecture.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

@@ -5805,6 +5805,231 @@
             accent-color: var(--ok);
             cursor: pointer;
         }
+
+        /* Phasor Analysis Slice 2 (first Analysis-menu consumer). Three
+           dedicated phase-identity color tokens -- NOT a reuse of Cursor
+           A/--accent or Cursor B/--error (those are already-established,
+           different-meaning tokens on THIS SAME app, and a future page
+           could plausibly show Cursor A/B alongside a phasor diagram; two
+           concepts sharing one color would be confusing there). No
+           existing phase-color convention exists anywhere in this
+           codebase to reuse (audited directly), so this is a new,
+           deliberate convention this feature establishes -- reusing the
+           app's own already-accessible --accent/--warn/--ok trio (proven
+           distinguishable together elsewhere, e.g. .upload-status) rather
+           than inventing arbitrary new hex values, and deliberately never
+           --error (red), which already reads as "problem" everywhere else
+           in this app. */
+        :root {
+            --ww-phase-a: var(--accent);
+            --ww-phase-b: var(--warn);
+            --ww-phase-c: var(--ok);
+        }
+
+        .ww-analysis-shell {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+        }
+        /* The seam future analysis types (Distance Protection/Overcurrent/
+           Differential/...) plug into -- today exactly one entry. A plain
+           vertical button list, not a dropdown/flyout: the shell nav
+           itself has no existing submenu pattern to extend, and a second-
+           level in-page list is the smallest structure that already
+           supports "grows to more entries later" without inventing new
+           navigation machinery for one item. */
+        .ww-analysis-type-nav {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 160px;
+            flex-shrink: 0;
+        }
+        .ww-analysis-type-item {
+            appearance: none;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text-dim);
+            text-align: left;
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+        }
+        .ww-analysis-type-item.active {
+            background: var(--accent-wash-soft);
+            color: var(--accent);
+            border-color: var(--accent-dim);
+            font-weight: 600;
+        }
+        .ww-analysis-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .ww-phasor-controls-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .ww-phasor-controls-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+        }
+        .ww-phasor-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            min-width: 160px;
+        }
+        .ww-phasor-field select,
+        .ww-phasor-field input[type="number"] {
+            font-size: 0.85rem;
+            padding: 6px 8px;
+        }
+        .ww-phasor-time-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+            padding-top: 4px;
+            border-top: 1px solid var(--panel-border);
+        }
+        /* Same [hidden]-vs-explicit-display fix as .ww-phasor-body[hidden]
+           above -- this row is also toggled via the `hidden` attribute. */
+        .ww-phasor-time-row[hidden] {
+            display: none;
+        }
+        .ww-phasor-time-field {
+            flex-direction: row;
+            align-items: center;
+            min-width: 0;
+        }
+        .ww-phasor-time-field input[type="number"] {
+            width: 110px;
+        }
+        .ww-phasor-time-unit {
+            color: var(--text-dim);
+        }
+        #wwPhasorTimeSlider {
+            flex: 1;
+            min-width: 160px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .ww-phasor-status-row {
+            margin-top: 12px;
+            padding: 10px 12px;
+            border-radius: var(--radius);
+            font-size: 0.82rem;
+            background: var(--surface-tint);
+            border: 1px solid var(--panel-border);
+            color: var(--text-dim);
+        }
+        .ww-phasor-status-row.ww-phasor-status--ambiguous,
+        .ww-phasor-status-row.ww-phasor-status--needs-configuration {
+            background: color-mix(in srgb, var(--warn) 10%, var(--surface-tint));
+            border-color: var(--warn);
+            color: var(--warn);
+        }
+
+        .ww-phasor-body {
+            display: grid;
+            grid-template-columns: minmax(260px, 360px) 1fr;
+            gap: 16px;
+            margin-top: 12px;
+        }
+        /* `display: grid` above has higher specificity than the UA
+           stylesheet's own `[hidden] { display: none }` default, so the
+           `hidden` ATTRIBUTE this element is toggled with (see
+           wwPhasorRenderResolutionStatus()/wwPhasorShowNoContextSelected())
+           would otherwise be silently overridden, leaving the panel
+           visibly rendered despite being marked hidden -- caught directly
+           by browser-tests/phasor_analysis.spec.js's own empty-state test.
+           Same fix shape as every other `[hidden]`-toggled non-block
+           element already needs in this codebase. */
+        .ww-phasor-body[hidden] {
+            display: none;
+        }
+        @media (max-width: 900px) {
+            .ww-phasor-body { grid-template-columns: 1fr; }
+        }
+
+        .ww-phasor-resolution-row,
+        .ww-phasor-value-row {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--panel-border);
+            font-size: 0.85rem;
+        }
+        .ww-phasor-resolution-row:last-child,
+        .ww-phasor-value-row:last-child { border-bottom: none; }
+        .ww-phasor-role-label {
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .ww-phasor-role-swatch {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .ww-phasor-role-ok { color: var(--ok); }
+        .ww-phasor-role-warn { color: var(--warn); }
+        .ww-phasor-value-numbers {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .ww-phasor-value-angle {
+            color: var(--text-dim);
+            margin-left: 8px;
+        }
+        .ww-phasor-warnings {
+            margin-top: 10px;
+            font-size: 0.78rem;
+            color: var(--warn);
+        }
+
+        .ww-phasor-diagram-wrap {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            max-width: 460px;
+            margin: 0 auto;
+        }
+        #wwPhasorSvg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .ww-phasor-axis {
+            stroke: var(--panel-border);
+            stroke-width: 1;
+        }
+        .ww-phasor-ring {
+            fill: none;
+            stroke: var(--panel-border);
+            stroke-width: 0.6;
+            stroke-dasharray: 2 2;
+        }
+        .ww-phasor-vector-label {
+            font-size: 9px;
+            font-weight: 600;
+            fill: var(--text);
+        }
+        .ww-phasor-ring-label {
+            font-size: 6px;
+            fill: var(--text-dim);
+        }
     </style>
 </head>
 <body>
@@ -5926,6 +6151,19 @@
                 <button type="button" class="shell-nav-item" id="mainNavCalculatedChannelsBtn" title="Calculated Channels">
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><path d="M3 3h5v5H3z"/><circle cx="13.5" cy="5.5" r="2.5"/><path d="M4.5 15 8 9M13.5 9v6M11 12h5"/></svg></span>
                     <span class="shell-nav-label">Calculated Channels</span>
+                </button>
+                <!-- Phasor Analysis Slice 2: the home for every future
+                     engineering analyzer (Distance Protection/Overcurrent/
+                     Differential/Sequence Components/...) -- only Phasor
+                     exists so far, reached via the in-page analysis-type
+                     list inside #pageAnalysis itself (see that section's
+                     own comment). ONE top-level destination, not a
+                     separate button per analyzer -- mirrors how
+                     Recordings/Waveform are each their own page while
+                     Analysis hosts a growing family under one entry. -->
+                <button type="button" class="shell-nav-item" id="mainNavAnalysisBtn" title="Analysis">
+                    <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none"/><line x1="9" y1="9" x2="9" y2="2.5" stroke-width="1.5" stroke-linecap="round"/><line x1="9" y1="9" x2="14.5" y2="12.5" stroke-width="1.5" stroke-linecap="round"/><line x1="9" y1="9" x2="4" y2="13" stroke-width="1.5" stroke-linecap="round"/><circle cx="9" cy="9" r="7" fill="none" stroke-width="1" opacity="0.5"/></svg></span>
+                    <span class="shell-nav-label">Analysis</span>
                 </button>
                 <!-- Owner UX correction (post-Slice-1-UAT, supersedes the
                      Slice 1 comment this replaces): Playback is NOT a
@@ -6641,6 +6879,98 @@
                     <div id="wwCcPreviewPanels" hidden></div>
                     <div class="ww-cc-preview-info-strip" id="wwCcPreviewInfoStrip" hidden></div>
                 </section>
+            </section>
+
+            <!-- Phasor Analysis Slice 2: the first `Analysis` page. The
+                 left-hand `.ww-analysis-type-nav` is the seam future
+                 analyzers (Distance Protection/Overcurrent/Differential/
+                 Sequence Components) will add their own entry to -- today
+                 it has exactly one, `Phasor`, and this page renders that
+                 one type's own panel directly. Automatic Engineering
+                 Context + resolver integration is the NORMAL workflow --
+                 the Bay/Quantity/Mode selectors drive the existing
+                 input-resolution endpoint, never a manual raw-channel
+                 picker; a resolver `needs_configuration`/`ambiguous`
+                 status is surfaced as an actionable message pointing back
+                 to Engineering Context configuration, never a fallback
+                 UI worked around in this page.
+
+                 `#wwPhasorPanel`'s own comment marks the Slice 3
+                 composition point where an embedded Playback control row
+                 will be added later without restructuring this panel --
+                 no wwPlayback/wwPlaybackOnTick wiring exists in this
+                 slice at all. -->
+            <section id="pageAnalysis" aria-label="Analysis" hidden>
+                <div class="recordings-header">
+                    <div>
+                        <h2>Analysis</h2>
+                        <p class="ww-cc-subtitle">Engineering analyzers built on automatic Engineering Context resolution.</p>
+                    </div>
+                </div>
+                <div class="ww-analysis-shell">
+                    <nav class="ww-analysis-type-nav" aria-label="Analysis type">
+                        <button type="button" class="ww-analysis-type-item active" id="wwAnalysisTypePhasorBtn" data-analysis-type="phasor" aria-current="true">Phasor</button>
+                    </nav>
+                    <div class="ww-analysis-content">
+                        <!-- Slice 3 composition point: an embedded Playback
+                             control row will be inserted directly above
+                             .ww-phasor-controls-panel, without restructuring
+                             this section. -->
+                        <section class="ww-phasor-panel" id="wwPhasorPanel">
+                            <section class="panel ww-phasor-controls-panel">
+                                <div class="ww-phasor-controls-row">
+                                    <label class="ww-phasor-field">
+                                        <span>Bay / Engineering Context <span id="wwPhasorContextBadge"></span></span>
+                                        <select id="wwPhasorContextSelect"><option value="">Select a context…</option></select>
+                                    </label>
+                                    <label class="ww-phasor-field">
+                                        <span>Quantity</span>
+                                        <select id="wwPhasorQuantitySelect">
+                                            <option value="voltage">Voltage</option>
+                                            <option value="current">Current</option>
+                                        </select>
+                                    </label>
+                                    <label class="ww-phasor-field">
+                                        <span>Mode</span>
+                                        <select id="wwPhasorModeSelect">
+                                            <option value="phase_a">Phase A</option>
+                                            <option value="phase_b">Phase B</option>
+                                            <option value="phase_c">Phase C</option>
+                                            <option value="three_phase" selected>Three Phase</option>
+                                        </select>
+                                    </label>
+                                </div>
+                                <div class="ww-phasor-time-row" id="wwPhasorTimeRow" hidden>
+                                    <label class="ww-phasor-field ww-phasor-time-field">
+                                        <span>Analysis Time</span>
+                                        <input type="number" id="wwPhasorTimeInput" step="0.001">
+                                        <span class="ww-phasor-time-unit">s</span>
+                                    </label>
+                                    <input type="range" id="wwPhasorTimeSlider" step="0.0001" aria-label="Analysis time">
+                                </div>
+                            </section>
+
+                            <div class="ww-phasor-status-row" id="wwPhasorStatusRow" hidden></div>
+                            <p class="empty-state" id="wwPhasorEmptyState">Select an Engineering Context to begin.</p>
+
+                            <div class="ww-phasor-body" id="wwPhasorBody" hidden>
+                                <section class="panel ww-phasor-values-panel">
+                                    <h3>Resolved Inputs</h3>
+                                    <div id="wwPhasorResolutionList"></div>
+                                    <h3>Values</h3>
+                                    <div id="wwPhasorValuesList"></div>
+                                    <div class="ww-phasor-warnings" id="wwPhasorWarnings" hidden></div>
+                                </section>
+                                <section class="panel ww-phasor-diagram-panel">
+                                    <h3>Phasor Diagram</h3>
+                                    <div class="ww-phasor-diagram-wrap">
+                                        <svg id="wwPhasorSvg" viewBox="-110 -110 220 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Phasor diagram"></svg>
+                                    </div>
+                                </section>
+                            </div>
+                        </section>
+                    </div>
+                </div>
             </section>
 
             <!-- CSV/Excel ingestion Slice 3 (DEC-072): Data Preparation
@@ -8936,9 +9266,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // whitelist as a permanent fixture; Slice 1 briefly added
             // one, now reverted (see the Main Sidebar Menu's own comment
             // for the full reasoning).
+            // Phasor Analysis Slice 2: a FIFTH first-class page,
+            // "analysis" -- the home for every future engineering
+            // analyzer, same "hide, don't destroy" mechanism as every
+            // other page here (so switching to Recordings and back never
+            // loses the selected Bay/Quantity/Mode or refetches the
+            // Engineering Context list).
             if (
                 page !== "waveform" && page !== "recordings" &&
-                page !== "calculated-channels" && page !== "data-preparation"
+                page !== "calculated-channels" && page !== "data-preparation" &&
+                page !== "analysis"
             ) return;
             const wasWaveform = shell.currentPage === "waveform";
             shell.currentPage = page;
@@ -8947,6 +9284,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("pageRecordings").hidden = page !== "recordings";
             document.getElementById("pageCalculatedChannels").hidden = page !== "calculated-channels";
             document.getElementById("pageDataPreparation").hidden = page !== "data-preparation";
+            document.getElementById("pageAnalysis").hidden = page !== "analysis";
             // Phase 3B-UAT8 fix: the active-state CSS rule
             // (`.shell-nav-item[aria-current="page"]`) always expected
             // the token "page" (the ARIA APG convention for a current
@@ -8963,7 +9301,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             setShellNavCurrent("mainNavWaveformBtn", page === "waveform" && shell.activeView !== "table");
             setShellNavCurrent("mainNavRecordingsBtn", page === "recordings");
             setShellNavCurrent("mainNavCalculatedChannelsBtn", page === "calculated-channels");
+            setShellNavCurrent("mainNavAnalysisBtn", page === "analysis");
             setShellNavCurrent("mainNavTableBtn", page === "waveform" && shell.activeView === "table");
+
+            if (page === "analysis") {
+                wwRenderAnalysisPage();
+            }
 
             // The (responsive-only) "Sources" drawer toggle is scoped to
             // the waveform page specifically -- there is no Workspace
@@ -28478,6 +28821,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // above) rather than a second, Playback-specific "workspace
             // changed" watcher. See wwPlaybackReset()'s own comment.
             wwPlaybackReset();
+            // Phasor Analysis Slice 2: the same whole-workspace reset hook
+            // Playback itself just used above -- see wwPhasorResetState()'s
+            // own comment.
+            wwPhasorResetState();
             for (const panel of ww.panels) {
                 if (panel.plotlyReady && panel.chartEl) Plotly.purge(panel.chartEl);
             }
@@ -33337,6 +33684,568 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRebuildLayout();
         }
 
+        // ==================================================================
+        // Phasor Analysis Slice 2 (first Analysis-menu consumer; see
+        // docs/project-memory/PHASOR_ANALYSIS.md). Frontend-only exposure
+        // of the existing Slice 1/2 backend: Engineering Context list ->
+        // input-resolution -> selected-time phasor. Backend remains
+        // authoritative for every engineering decision -- this block never
+        // reimplements role matching, phase logic, or estimator math; it
+        // only renders what the backend already returned and lets the
+        // engineer pick a Bay/Quantity/Mode/Analysis Time.
+        //
+        // State is a single small object (owner's own explicit "do not
+        // create a second global time controller" instruction) --
+        // `analysisTime` is WORKSPACE time (the same coordinate Cursor A/B
+        // and ww.viewport already use); it is converted to the resolved
+        // anchor role's own source-relative elapsed time ONLY at the API
+        // call boundary (wwWorkspaceTimeToSourceTime()), mirroring how
+        // every other per-source endpoint in this app (annotation-anchor,
+        // cursor-values) already does this same conversion. No
+        // wwPlayback/wwPlaybackOnTick wiring exists in this slice --
+        // #wwPhasorPanel's own HTML comment marks where Slice 3 adds an
+        // embedded Playback control row later without restructuring this
+        // page.
+        // ==================================================================
+
+        const wwPhasorState = {
+            contexts: [],
+            selectedContextId: null,
+            quantity: "voltage",
+            modeSuffix: "three_phase",
+            analysisTime: null, // workspace time, or null before a context resolves
+            anchorDisplaySourceId: null, // the resolved anchor role's own display source id (real or calculated pseudo-id)
+            latestResolution: null,
+            latestResult: null,
+            requestGeneration: 0, // one shared stale-response guard for both the resolution and phasor fetches
+        };
+
+        const WW_PHASOR_REASON_TEXT = {
+            role_missing: "No matching channel found in this context.",
+            phase_identity_missing: "A candidate channel exists but its phase is not confirmed.",
+            ambiguous_candidates: "More than one candidate matches this role.",
+            timebase_incompatible: "Required channels are not proven to share a common sample time.",
+            reference_frequency_conflict: "Resolved sources disagree on nominal frequency.",
+            invalid_reference_frequency: "The reference frequency is outside the supported range.",
+            // Owner instruction: make this reason visible and actionable,
+            // never weaken the backend rule to make the UI "work" -- real-
+            // event UAT will determine whether this guardrail is too
+            // conservative for genuine disturbance COMTRADE channels.
+            waveform_form_not_eligible: "This channel does not look like a raw sinusoidal waveform (already RMS/magnitude, or its form could not be confirmed).",
+            channel_unavailable: "The resolved channel could not be read.",
+            insufficient_window_history: "Not enough history exists before this time for a full one-cycle window.",
+            analysis_time_out_of_range: "The selected time is outside this recording.",
+            invalid_samples_in_window: "The selected window contains invalid or missing samples.",
+            irregular_sampling_not_supported: "Sample spacing in this window is irregular.",
+            insufficient_sampling_density: "Sample rate is too low for a reliable one-cycle estimate.",
+            absolute_time_unavailable: "One or more sources has no known absolute start time.",
+            multiple_issues: "Multiple roles could not be resolved -- see details below.",
+            empty_requirement: "This analysis mode has no defined roles.",
+        };
+        function wwPhasorReasonText(code) {
+            return WW_PHASOR_REASON_TEXT[code] || code || "Unknown reason.";
+        }
+
+        // Owner instruction: no existing phase-color convention exists in
+        // this codebase to reuse (audited directly) -- see the CSS
+        // `--ww-phase-a/b/c` tokens' own comment for why this reuses the
+        // app's already-accessible --accent/--warn/--ok trio rather than
+        // Cursor A/B's own, differently-meaning tokens.
+        function wwPhasorRoleColor(roleKey) {
+            const letter = (roleKey || "").slice(-1).toUpperCase();
+            if (letter === "A") return "var(--ww-phase-a)";
+            if (letter === "B") return "var(--ww-phase-b)";
+            if (letter === "C") return "var(--ww-phase-c)";
+            return "var(--text-dim)";
+        }
+
+        function wwPhasorBackendMode() {
+            return wwPhasorState.quantity + "_" + wwPhasorState.modeSuffix;
+        }
+
+        async function wwPhasorFetchJson(url) {
+            const response = await fetch(url);
+            if (!response.ok) {
+                const body = await response.json().catch(() => null);
+                throw new Error((body && body.detail && body.detail.message) || "Request failed.");
+            }
+            return response.json();
+        }
+
+        function wwPhasorFetchContexts(workspaceId) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/engineering-contexts"
+            );
+        }
+
+        function wwPhasorFetchResolution(workspaceId, contextId, mode) {
+            const params = new URLSearchParams({ analysis_kind: "phasor", mode: mode });
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                "/engineering-contexts/" + encodeURIComponent(contextId) + "/input-resolution?" + params.toString()
+            );
+        }
+
+        function wwPhasorFetchResult(workspaceId, contextId, mode, analysisTimeSeconds) {
+            const params = new URLSearchParams({
+                analysis_kind: "phasor", mode: mode, analysis_time: String(analysisTimeSeconds),
+            });
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                "/engineering-contexts/" + encodeURIComponent(contextId) + "/phasor?" + params.toString()
+            );
+        }
+
+        // Entry point -- called every time the Analysis page is shown
+        // (shellSetCurrentPage()'s own "analysis" branch). Engineering
+        // Contexts have no other frontend mutation path yet in this
+        // slice (no incremental-sync infrastructure like Calculated
+        // Channels' own registry cache exists for them), so a cheap
+        // re-fetch on every visit -- mirroring the Recordings page's own
+        // "cheap metadata refresh on every visit, never a plot rebuild"
+        // precedent -- is simpler and safer than a cache that could go
+        // stale after a context is created/edited outside this page.
+        function wwRenderAnalysisPage() {
+            wwPhasorLoadContexts();
+        }
+
+        async function wwPhasorLoadContexts() {
+            const workspaceId = currentWorkspaceId();
+            const epochAtStart = ww.epoch;
+            let contexts;
+            try {
+                contexts = await wwPhasorFetchContexts(workspaceId);
+            } catch (error) {
+                contexts = [];
+            }
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            wwPhasorState.contexts = contexts || [];
+            wwPhasorRenderContextOptions();
+            if (wwPhasorState.selectedContextId) {
+                wwPhasorRequestResolution();
+            } else {
+                wwPhasorShowNoContextSelected();
+            }
+        }
+
+        function wwPhasorRenderContextOptions() {
+            const select = document.getElementById("wwPhasorContextSelect");
+            const options = ['<option value="">Select a context…</option>'];
+            for (const ctx of wwPhasorState.contexts) {
+                options.push('<option value="' + escapeHtml(ctx.id) + '">' + escapeHtml(ctx.display_name) + '</option>');
+            }
+            select.innerHTML = options.join("");
+            const stillExists = wwPhasorState.selectedContextId &&
+                wwPhasorState.contexts.some((c) => c.id === wwPhasorState.selectedContextId);
+            if (stillExists) {
+                select.value = wwPhasorState.selectedContextId;
+            } else {
+                wwPhasorState.selectedContextId = null;
+            }
+            wwPhasorRenderContextBadge();
+        }
+
+        function wwPhasorRenderContextBadge() {
+            const badge = document.getElementById("wwPhasorContextBadge");
+            const ctx = wwPhasorState.contexts.find((c) => c.id === wwPhasorState.selectedContextId);
+            if (!ctx) { badge.innerHTML = ""; return; }
+            // Reuses the exact Measurement Group badge vocabulary/CSS --
+            // Engineering Context shares the identical status vocabulary
+            // by design (see app.domain.engineering_context), so this is
+            // the SAME project-consistent status indicator, never a new
+            // competing one.
+            const labels = { suggested: "Suggested", confirmed: "Confirmed", needs_review: "Needs Review", manual: "Manual" };
+            const cls = ctx.status === "needs_review" ? "needs-review" : ctx.status;
+            badge.innerHTML = '<span class="ww-mg-badge ww-mg-badge--' + cls + '">' + (labels[ctx.status] || escapeHtml(ctx.status)) + '</span>';
+        }
+
+        function wwPhasorShowNoContextSelected() {
+            document.getElementById("wwPhasorEmptyState").hidden = false;
+            document.getElementById("wwPhasorEmptyState").textContent = wwPhasorState.contexts.length === 0
+                ? "No Engineering Contexts exist in this workspace yet. Create or suggest one from a source's own channel list before running Phasor Analysis."
+                : "Select an Engineering Context to begin.";
+            document.getElementById("wwPhasorStatusRow").hidden = true;
+            document.getElementById("wwPhasorBody").hidden = true;
+            document.getElementById("wwPhasorTimeRow").hidden = true;
+            wwPhasorState.latestResolution = null;
+            wwPhasorState.latestResult = null;
+        }
+
+        // 1. Cursor A time, if enabled/visible/finite for the anchor's own
+        //    Time Group AND it would not guarantee "insufficient history".
+        // 2. Otherwise the Time Group's own bounds start plus a fixed
+        //    buffer comfortably larger than any realistic one-cycle window
+        //    (as low as ~16.7 ms at 60 Hz) without needing an exact
+        //    per-source nominal-frequency lookup for this UX-only
+        //    heuristic -- the backend remains the sole authority on actual
+        //    availability regardless of this guess (owner instruction: "do
+        //    not default to a time where the backend must inevitably
+        //    return insufficient history if a valid later point exists").
+        // 3. Otherwise 0.
+        const WW_PHASOR_DEFAULT_TIME_BUFFER_SECONDS = 0.1;
+        function wwPhasorComputeDefaultAnalysisTime(anchorDisplaySourceId) {
+            const groupId = wwTimeGroupIdForDisplaySourceId(anchorDisplaySourceId);
+            const bounds = groupId !== null ? wwDeriveTimeGroupBounds(groupId) : null;
+            const earliestReasonable = bounds !== null ? bounds.start + WW_PHASOR_DEFAULT_TIME_BUFFER_SECONDS : null;
+            if (groupId !== null) {
+                const cursors = wwTimeGroupCursorState(groupId);
+                if (cursors.enabled && cursors.a && cursors.a.visible && Number.isFinite(cursors.a.time)) {
+                    if (earliestReasonable === null || cursors.a.time >= earliestReasonable) {
+                        return bounds ? Math.min(Math.max(cursors.a.time, bounds.start), bounds.end) : cursors.a.time;
+                    }
+                }
+            }
+            if (earliestReasonable !== null) return bounds ? Math.min(earliestReasonable, bounds.end) : earliestReasonable;
+            return 0;
+        }
+
+        function wwPhasorSyncTimeControls() {
+            const input = document.getElementById("wwPhasorTimeInput");
+            const slider = document.getElementById("wwPhasorTimeSlider");
+            const groupId = wwPhasorState.anchorDisplaySourceId !== null
+                ? wwTimeGroupIdForDisplaySourceId(wwPhasorState.anchorDisplaySourceId) : null;
+            const bounds = groupId !== null ? wwDeriveTimeGroupBounds(groupId) : null;
+            if (bounds) {
+                slider.min = String(bounds.start);
+                slider.max = String(bounds.end);
+            }
+            if (wwPhasorState.analysisTime !== null) {
+                input.value = wwPhasorState.analysisTime.toFixed(6);
+                slider.value = String(wwPhasorState.analysisTime);
+            }
+        }
+
+        function wwPhasorOnAnalysisTimeInput(rawValue) {
+            const value = Number(rawValue);
+            if (!Number.isFinite(value)) return;
+            wwPhasorState.analysisTime = value;
+            wwPhasorSyncTimeControls();
+            wwPhasorRequestCalculation();
+        }
+
+        // Resolution (Bay + Quantity + Mode -> which channels) -- ALWAYS
+        // runs first; the phasor estimator is never called until this
+        // reaches "resolved" (owner instruction). No channel is ever
+        // searched by name, remapped, or borrowed from another context --
+        // this function only ever renders whatever the backend already
+        // decided.
+        async function wwPhasorRequestResolution() {
+            const contextId = wwPhasorState.selectedContextId;
+            if (!contextId) {
+                wwPhasorShowNoContextSelected();
+                return;
+            }
+
+            const myGeneration = ++wwPhasorState.requestGeneration;
+            const epochAtStart = ww.epoch;
+            const workspaceId = currentWorkspaceId();
+            const mode = wwPhasorBackendMode();
+
+            let resolution;
+            try {
+                resolution = await wwPhasorFetchResolution(workspaceId, contextId, mode);
+            } catch (error) {
+                if (myGeneration !== wwPhasorState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                document.getElementById("wwPhasorEmptyState").hidden = true;
+                document.getElementById("wwPhasorBody").hidden = true;
+                document.getElementById("wwPhasorTimeRow").hidden = true;
+                const statusRow = document.getElementById("wwPhasorStatusRow");
+                statusRow.hidden = false;
+                statusRow.className = "ww-phasor-status-row";
+                statusRow.textContent = "Could not reach the backend.";
+                return;
+            }
+            if (myGeneration !== wwPhasorState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+
+            wwPhasorState.latestResolution = resolution;
+            wwPhasorRenderResolutionStatus(resolution);
+
+            if (resolution.status !== "resolved") {
+                wwPhasorState.latestResult = null;
+                wwPhasorState.anchorDisplaySourceId = null;
+                wwPhasorRenderValuesAndDiagram(null);
+                return;
+            }
+
+            const anchorRoleKey = resolution.required_roles[0];
+            const anchorRef = resolution.resolved_roles[anchorRoleKey];
+            const anchorDisplaySourceId = anchorRef.kind === "calculated" ? anchorRef.calculated_channel_id : anchorRef.source_id;
+
+            if (anchorDisplaySourceId !== wwPhasorState.anchorDisplaySourceId) {
+                wwPhasorState.anchorDisplaySourceId = anchorDisplaySourceId;
+                wwPhasorState.analysisTime = wwPhasorComputeDefaultAnalysisTime(anchorDisplaySourceId);
+            }
+            wwPhasorSyncTimeControls();
+            wwPhasorRequestCalculation();
+        }
+
+        function wwPhasorRenderResolutionStatus(resolution) {
+            const emptyState = document.getElementById("wwPhasorEmptyState");
+            const statusRow = document.getElementById("wwPhasorStatusRow");
+            const body = document.getElementById("wwPhasorBody");
+            const timeRow = document.getElementById("wwPhasorTimeRow");
+            emptyState.hidden = true;
+
+            if (resolution.status === "resolved") {
+                statusRow.hidden = true;
+                statusRow.className = "ww-phasor-status-row";
+                body.hidden = false;
+                timeRow.hidden = false;
+            } else {
+                body.hidden = false; // the Resolved Inputs list itself still renders below
+                timeRow.hidden = true;
+                statusRow.hidden = false;
+                statusRow.className = "ww-phasor-status-row ww-phasor-status--" + resolution.status.replace(/_/g, "-");
+                statusRow.innerHTML = wwPhasorResolutionStatusHtml(resolution);
+            }
+            wwPhasorRenderResolvedInputsList(resolution);
+            document.getElementById("wwPhasorValuesList").innerHTML = "";
+            document.getElementById("wwPhasorWarnings").hidden = true;
+        }
+
+        function wwPhasorResolutionStatusHtml(resolution) {
+            const lines = [];
+            if (resolution.status === "ambiguous") {
+                lines.push("<strong>Multiple candidates found.</strong> Correct the Engineering Context's phase/membership metadata to resolve automatically.");
+                for (const role of Object.keys(resolution.ambiguous_roles || {})) {
+                    const names = (resolution.ambiguous_roles[role] || [])
+                        .map((ref) => escapeHtml(ref.channel_name || ref.calculated_channel_id || "?")).join(", ");
+                    lines.push('<div>' + escapeHtml(role) + ': ' + names + '</div>');
+                }
+            } else if (resolution.status === "needs_configuration") {
+                lines.push("<strong>Needs configuration.</strong>");
+                for (const role of Object.keys(resolution.missing_role_reasons || {})) {
+                    lines.push('<div>' + escapeHtml(role) + ': ' + escapeHtml(wwPhasorReasonText(resolution.missing_role_reasons[role])) + '</div>');
+                }
+                if (Object.keys(resolution.missing_role_reasons || {}).length === 0 && resolution.message) {
+                    lines.push('<div>' + escapeHtml(resolution.message) + '</div>');
+                }
+            } else {
+                lines.push(escapeHtml(resolution.message || "This combination is not applicable."));
+            }
+            return lines.join("");
+        }
+
+        function wwPhasorRenderResolvedInputsList(resolution) {
+            const container = document.getElementById("wwPhasorResolutionList");
+            const specs = (resolution && resolution.required_role_specs) || [];
+            if (specs.length === 0) { container.innerHTML = ""; return; }
+            const rows = specs.map((spec) => {
+                const role = spec.role_key;
+                const resolvedRef = (resolution.resolved_roles || {})[role];
+                const ambiguous = (resolution.ambiguous_roles || {})[role];
+                const missingReason = (resolution.missing_role_reasons || {})[role];
+                let statusHtml;
+                let detail;
+                if (resolvedRef) {
+                    statusHtml = '<span class="ww-phasor-role-ok">✓</span>';
+                    detail = escapeHtml(resolvedRef.channel_name || resolvedRef.calculated_channel_id || "");
+                } else if (ambiguous) {
+                    statusHtml = '<span class="ww-phasor-role-warn">⚠</span>';
+                    detail = "Multiple candidates";
+                } else if (missingReason) {
+                    statusHtml = '<span class="ww-phasor-role-warn">⚠</span>';
+                    detail = escapeHtml(wwPhasorReasonText(missingReason));
+                } else {
+                    statusHtml = '<span class="ww-phasor-role-warn">⚠</span>';
+                    detail = "Not resolved";
+                }
+                return (
+                    '<div class="ww-phasor-resolution-row">' +
+                        '<span class="ww-phasor-role-label"><span class="ww-phasor-role-swatch" style="background:' + wwPhasorRoleColor(role) + '"></span>' +
+                        statusHtml + ' ' + escapeHtml(role) + '</span>' +
+                        '<span>' + detail + '</span>' +
+                    '</div>'
+                );
+            });
+            container.innerHTML = rows.join("");
+        }
+
+        // The phasor calculation itself -- only ever reached after
+        // resolution succeeded. A slower/older response here (a superseded
+        // context/mode/time selection) must never overwrite a newer one --
+        // the shared wwPhasorState.requestGeneration counter (bumped once
+        // per user-driven change, including inside wwPhasorRequestResolution()
+        // above) is the guard, same pattern this codebase already uses
+        // elsewhere (ww.epoch) generalized with a page-local counter for
+        // finer-grained staleness than a whole-workspace event.
+        async function wwPhasorRequestCalculation() {
+            const contextId = wwPhasorState.selectedContextId;
+            const anchorDisplaySourceId = wwPhasorState.anchorDisplaySourceId;
+            if (!contextId || wwPhasorState.analysisTime === null || anchorDisplaySourceId === null) return;
+
+            const myGeneration = ++wwPhasorState.requestGeneration;
+            const epochAtStart = ww.epoch;
+            const workspaceId = currentWorkspaceId();
+            const mode = wwPhasorBackendMode();
+            const analysisTimeForApi = wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, wwPhasorState.analysisTime);
+
+            let result;
+            try {
+                result = await wwPhasorFetchResult(workspaceId, contextId, mode, analysisTimeForApi);
+            } catch (error) {
+                if (myGeneration !== wwPhasorState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                wwPhasorState.latestResult = null;
+                wwPhasorRenderValuesAndDiagram({ status: "needs_configuration", message: "Could not reach the backend.", role_reasons: {} });
+                return;
+            }
+            if (myGeneration !== wwPhasorState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+
+            wwPhasorState.latestResult = result;
+            wwPhasorRenderValuesAndDiagram(result);
+        }
+
+        function wwPhasorUnavailableMessage(result) {
+            if (!result) return "No phasor result yet.";
+            const roleReasons = result.role_reasons || {};
+            if (Object.keys(roleReasons).length > 0) {
+                return Object.keys(roleReasons).map((role) => role + ": " + wwPhasorReasonText(roleReasons[role])).join(" · ");
+            }
+            if (result.reason_code) return wwPhasorReasonText(result.reason_code);
+            return result.message || "Phasor unavailable at the selected time.";
+        }
+
+        function wwPhasorFormatAngle(deg) {
+            if (!Number.isFinite(deg)) return "—";
+            const rounded = Number(deg.toFixed(1));
+            return (rounded > 0 ? "+" : "") + rounded.toFixed(1) + "°";
+        }
+
+        // Owner instruction: three-phase displays the Phase-A-referenced
+        // angle as the PRIMARY number (angle_deg_relative); single-phase
+        // shows the backend's own absolute angle -- never inventing a fake
+        // 0deg reference for a lone phasor. Both values are already
+        // computed backend-side (Slice 1) -- this never recomputes either.
+        function wwPhasorRenderValuesAndDiagram(result) {
+            const valuesEl = document.getElementById("wwPhasorValuesList");
+            const warningsEl = document.getElementById("wwPhasorWarnings");
+            const svg = document.getElementById("wwPhasorSvg");
+
+            if (!result || result.status !== "computed") {
+                valuesEl.innerHTML = '<p class="empty-state">' + escapeHtml(wwPhasorUnavailableMessage(result)) + '</p>';
+                warningsEl.hidden = true;
+                warningsEl.innerHTML = "";
+                svg.innerHTML = "";
+                return;
+            }
+
+            const roleKeys = Object.keys(result.roles);
+            const isRelative = roleKeys.length > 1;
+            const rows = roleKeys.map((roleKey) => {
+                const role = result.roles[roleKey];
+                const angle = isRelative && role.angle_deg_relative !== null ? role.angle_deg_relative : role.angle_deg_absolute;
+                return (
+                    '<div class="ww-phasor-value-row">' +
+                        '<span class="ww-phasor-role-label"><span class="ww-phasor-role-swatch" style="background:' + wwPhasorRoleColor(roleKey) + '"></span>' + escapeHtml(roleKey) + '</span>' +
+                        '<span class="ww-phasor-value-numbers">' + wwFormatEngineeringValue(role.magnitude_rms) + ' ' + escapeHtml(role.unit || "") +
+                            '<span class="ww-phasor-value-angle">∠ ' + wwPhasorFormatAngle(angle) + '</span></span>' +
+                    '</div>'
+                );
+            });
+            valuesEl.innerHTML = rows.join("");
+
+            if (result.warnings && result.warnings.length > 0) {
+                warningsEl.hidden = false;
+                warningsEl.innerHTML = result.warnings.map((w) => escapeHtml(w)).join("<br>");
+            } else {
+                warningsEl.hidden = true;
+                warningsEl.innerHTML = "";
+            }
+
+            wwPhasorRenderDiagram(result, isRelative);
+        }
+
+        // Owner instruction: one shared magnitude scale across every
+        // vector in the diagram (never per-vector), plot radius = 1.15x
+        // the largest displayed magnitude. SVG y grows downward, so the
+        // vector's own y is negated to keep the familiar "counter-
+        // clockwise = increasing angle" visual convention.
+        function wwPhasorRenderDiagram(result, isRelative) {
+            const svg = document.getElementById("wwPhasorSvg");
+            const roleKeys = Object.keys(result.roles);
+            const magnitudes = roleKeys
+                .map((k) => result.roles[k].magnitude_rms)
+                .filter((m) => Number.isFinite(m) && m > 0);
+            const maxMagnitude = magnitudes.length > 0 ? Math.max(...magnitudes) : 0;
+            const plotRadius = 100;
+            const scale = maxMagnitude > 0 ? plotRadius / (1.15 * maxMagnitude) : 0;
+
+            const parts = [];
+            parts.push('<line class="ww-phasor-axis" x1="-100" y1="0" x2="100" y2="0"></line>');
+            parts.push('<line class="ww-phasor-axis" x1="0" y1="-100" x2="0" y2="100"></line>');
+            for (const frac of [1 / 3, 2 / 3, 1]) {
+                parts.push('<circle class="ww-phasor-ring" cx="0" cy="0" r="' + (plotRadius * frac).toFixed(1) + '"></circle>');
+            }
+            if (maxMagnitude > 0) {
+                parts.push('<text class="ww-phasor-ring-label" x="3" y="-' + (plotRadius - 3).toFixed(1) + '">' + wwFormatEngineeringValue(maxMagnitude) + '</text>');
+            }
+
+            for (const roleKey of roleKeys) {
+                const role = result.roles[roleKey];
+                if (!Number.isFinite(role.magnitude_rms)) continue;
+                const angleDeg = isRelative && role.angle_deg_relative !== null ? role.angle_deg_relative : role.angle_deg_absolute;
+                const angleRad = angleDeg * Math.PI / 180;
+                const r = role.magnitude_rms * scale;
+                const x = r * Math.cos(angleRad);
+                const y = -r * Math.sin(angleRad);
+                parts.push(wwPhasorVectorSvg(x, y, wwPhasorRoleColor(roleKey), roleKey));
+            }
+            svg.innerHTML = parts.join("");
+        }
+
+        function wwPhasorVectorSvg(x, y, color, label) {
+            const angle = Math.atan2(y, x);
+            const arrowLength = 7;
+            const arrowWidth = 3.5;
+            const backX = x - arrowLength * Math.cos(angle);
+            const backY = y - arrowLength * Math.sin(angle);
+            const leftX = backX - arrowWidth * Math.sin(angle);
+            const leftY = backY + arrowWidth * Math.cos(angle);
+            const rightX = backX + arrowWidth * Math.sin(angle);
+            const rightY = backY - arrowWidth * Math.cos(angle);
+            const labelX = x + 11 * Math.cos(angle);
+            const labelY = y - 11 * Math.sin(angle);
+            return (
+                '<line x1="0" y1="0" x2="' + x.toFixed(2) + '" y2="' + y.toFixed(2) + '" stroke="' + color + '" stroke-width="2.5" stroke-linecap="round"></line>' +
+                '<polygon points="' + x.toFixed(2) + ',' + y.toFixed(2) + ' ' + leftX.toFixed(2) + ',' + leftY.toFixed(2) + ' ' + rightX.toFixed(2) + ',' + rightY.toFixed(2) + '" fill="' + color + '"></polygon>' +
+                '<text class="ww-phasor-vector-label" x="' + labelX.toFixed(2) + '" y="' + labelY.toFixed(2) + '" fill="' + color + '" text-anchor="middle">' + escapeHtml(label) + '</text>'
+            );
+        }
+
+        // "Start New Workspace"/"Clear workspace" lifecycle hook -- mirrors
+        // wwPlaybackReset()'s own registration inside wwClearWorkspace()
+        // (called from there directly). Resets selection state entirely;
+        // the context dropdown/values/diagram all go back to their
+        // pre-selection empty state the next time the Analysis page is
+        // shown or re-rendered.
+        function wwPhasorResetState() {
+            wwPhasorState.contexts = [];
+            wwPhasorState.selectedContextId = null;
+            wwPhasorState.analysisTime = null;
+            wwPhasorState.anchorDisplaySourceId = null;
+            wwPhasorState.latestResolution = null;
+            wwPhasorState.latestResult = null;
+            wwPhasorState.requestGeneration += 1;
+            const contextSelect = document.getElementById("wwPhasorContextSelect");
+            if (contextSelect) contextSelect.innerHTML = '<option value="">Select a context…</option>';
+            const badge = document.getElementById("wwPhasorContextBadge");
+            if (badge) badge.innerHTML = "";
+            const svg = document.getElementById("wwPhasorSvg");
+            if (svg) svg.innerHTML = "";
+            const valuesList = document.getElementById("wwPhasorValuesList");
+            if (valuesList) valuesList.innerHTML = "";
+            const resolutionList = document.getElementById("wwPhasorResolutionList");
+            if (resolutionList) resolutionList.innerHTML = "";
+            const statusRow = document.getElementById("wwPhasorStatusRow");
+            if (statusRow) statusRow.hidden = true;
+            const body = document.getElementById("wwPhasorBody");
+            if (body) body.hidden = true;
+            const timeRow = document.getElementById("wwPhasorTimeRow");
+            if (timeRow) timeRow.hidden = true;
+            const emptyState = document.getElementById("wwPhasorEmptyState");
+            if (emptyState) { emptyState.hidden = false; emptyState.textContent = "Select an Engineering Context to begin."; }
+        }
+
         // ------------------------------------------------------------------
         // Init
         // ------------------------------------------------------------------
@@ -33402,6 +34311,39 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         });
         document.getElementById("mainNavRecordingsBtn").addEventListener("click", () => shellSetCurrentPage("recordings"));
         document.getElementById("mainNavCalculatedChannelsBtn").addEventListener("click", () => shellSetCurrentPage("calculated-channels"));
+        document.getElementById("mainNavAnalysisBtn").addEventListener("click", () => shellSetCurrentPage("analysis"));
+
+        // Phasor Analysis Slice 2 wiring. The analysis-type nav button is
+        // a no-op today (exactly one entry, already active) -- wired now
+        // so a future second entry only needs its own button plus one
+        // more branch here, never a restructure of this handler.
+        document.getElementById("wwAnalysisTypePhasorBtn").addEventListener("click", () => {
+            for (const btn of document.querySelectorAll(".ww-analysis-type-item")) {
+                btn.classList.toggle("active", btn.dataset.analysisType === "phasor");
+                btn.setAttribute("aria-current", btn.dataset.analysisType === "phasor" ? "true" : "false");
+            }
+        });
+        document.getElementById("wwPhasorContextSelect").addEventListener("change", (event) => {
+            wwPhasorState.selectedContextId = event.target.value || null;
+            wwPhasorState.analysisTime = null;
+            wwPhasorState.anchorDisplaySourceId = null;
+            wwPhasorRenderContextBadge();
+            if (wwPhasorState.selectedContextId) {
+                wwPhasorRequestResolution();
+            } else {
+                wwPhasorShowNoContextSelected();
+            }
+        });
+        document.getElementById("wwPhasorQuantitySelect").addEventListener("change", (event) => {
+            wwPhasorState.quantity = event.target.value;
+            wwPhasorRequestResolution();
+        });
+        document.getElementById("wwPhasorModeSelect").addEventListener("change", (event) => {
+            wwPhasorState.modeSuffix = event.target.value;
+            wwPhasorRequestResolution();
+        });
+        document.getElementById("wwPhasorTimeInput").addEventListener("change", (event) => wwPhasorOnAnalysisTimeInput(event.target.value));
+        document.getElementById("wwPhasorTimeSlider").addEventListener("input", (event) => wwPhasorOnAnalysisTimeInput(event.target.value));
         // Canonical Table View (DEC-079): same shape as mainNavWaveformBtn
         // above -- stays on the waveform shell page, only the local
         // Active View switches (task section 3).

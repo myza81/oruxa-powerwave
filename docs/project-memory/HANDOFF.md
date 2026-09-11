@@ -8,6 +8,94 @@ Last updated: **2026-09-11**
 
 ## What was most recently done
 
+**Phasor Analysis Slice 2 — Analysis Page + Static Phasor Diagram
+([DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules);
+architecture recorded in [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)).**
+Frontend-only. The first real Analysis-menu consumer -- renders Slice
+1's own backend (unchanged) as a static, selected-time page.
+
+**Pre-implementation check (done first, as instructed)**: verified
+directly against the actual `phasor_analysis_service.py` source that
+the estimator's own `t_n` was ALREADY reduced to a stable,
+`analysis_time`-independent `reference_epoch`-relative coordinate
+before reaching `exp(-j*2*pi*f0*t_n)` -- satisfies every stated
+requirement (shared across compared roles, independent of the sliding
+window, stable as `analysis_time` advances). **No production code
+change was needed or made** for this check.
+
+**What was built** (all changes in `frontend/index.html` only, plus new
+tests):
+
+1. **New `Analysis` top-level menu** (`#mainNavAnalysisBtn`, after
+   Calculated Channels) -- permanent, not temporary; hosts a left-hand
+   analysis-type list (`Phasor` is the only entry today, ready for
+   Distance Protection/Overcurrent/Differential/Sequence Components
+   later without restructuring). `#pageAnalysis` wired into
+   `shellSetCurrentPage()`'s existing "hide, don't destroy" mechanism.
+2. **Bay/Quantity/Mode workflow, entirely resolver-driven** -- calls the
+   existing `input-resolution` endpoint (unchanged); the phasor
+   estimator is only called once status is `resolved`. No manual
+   raw-channel picker anywhere in the normal path.
+   `ambiguous`/`needs_configuration` render an explicit, per-role
+   reason (including `waveform_form_not_eligible`, deliberately NOT
+   weakened -- real-event UAT will judge if it's too conservative).
+3. **Analysis-time control** -- workspace time internally, converted to
+   the resolver's own anchor-role source-relative elapsed time only at
+   the API boundary (`wwWorkspaceTimeToSourceTime()`). Default prefers
+   Cursor A's own time (read-only convenience -- moving Phasor's own
+   time never moves Cursor A), else a buffered Time-Group-bounds start,
+   else 0.
+4. **Angle display**: three-phase primary = `angle_deg_relative`
+   (Phase-A-referenced); single-phase primary = the backend's own
+   `angle_deg_absolute` -- never a fabricated 0deg reference.
+5. **Lightweight hand-rolled SVG diagram** (`#wwPhasorSvg`) -- axes,
+   rings, one vector+arrowhead+label per role, ONE shared magnitude
+   scale (1.15x the largest displayed magnitude, never per-vector). No
+   Plotly. Three new `--ww-phase-a/b/c` color tokens (reuse the app's
+   own accent/warn/ok trio, deliberately not Cursor A/B's own tokens --
+   no phase-color convention existed anywhere in this codebase before
+   this slice).
+6. **Stale-request protection**: one shared `wwPhasorState.
+   requestGeneration` counter plus the existing `ww.epoch` guard. No
+   second global time controller.
+7. **`wwClearWorkspace()` hook** (`wwPhasorResetState()`, mirrors
+   `wwPlaybackReset()`'s own registration) resets all Phasor selection
+   state on "Start New Workspace"/"Clear workspace".
+
+**A real bug was found and fixed via Playwright, not by inspection**:
+`.ww-phasor-body`/`.ww-phasor-time-row` both set an explicit
+`display: grid`/`display: flex`, which silently overrides the browser's
+own default `[hidden] { display: none }` rule for the SAME `hidden`
+attribute those elements are toggled with in JS -- the empty-state
+Playwright test failed exactly because of this (element was `hidden`
+in the DOM but still visually rendered), fixed with an explicit
+`.ww-phasor-body[hidden]`/`.ww-phasor-time-row[hidden]` override. This
+is exactly the class of defect a static/source-text test cannot catch.
+
+**Tests**: 39 new static structural tests
+(`test_frontend_phasor_analysis.py`) plus 3 new real-browser Playwright
+tests (`browser-tests/phasor_analysis.spec.js`, including a dedicated
+new ASCII-COMTRADE fixture `phasor_smoke_three_phase.cfg/.dat` carrying
+a KNOWN balanced three-phase sinusoid, verified end-to-end through
+upload -> Engineering Context (created via direct API call, no
+context-creation UI exists yet) -> resolve -> compute -> SVG render,
+including a full quantity/mode-switching happy path and a
+needs_configuration state). 2 pre-existing `test_frontend_playback.py`
+tests were revised (not deleted) -- they had asserted "no Analysis menu
+exists yet" as a Task-6-era temporary constraint this slice's own
+explicit product direction now supersedes; the underlying invariant
+those tests actually protect (Playback itself has no dedicated page)
+is unchanged and still passes. Full existing frontend static suite and
+full existing Playwright suite (31 tests total) both pass unmodified.
+Full backend regression (no backend files changed) passes unchanged;
+`git diff --check` clean.
+
+**Files changed**: see this task's own final report for the exact list.
+**Commit status**: see this task's own final report for the exact
+commit hash and push status.
+
+## What was done in the prior session — Phasor Analysis Slice 1: Core Estimator + Selected-Time API
+
 **Phasor Analysis Slice 1 — Core Estimator + Selected-Time API
 ([DECISIONS.md — DEC-088](DECISIONS.md#dec-088--phasor-analysis-slice-1-a-fixed-frequency-one-cycle-trailing-window-rms-fundamental-phasor-estimator-with-an-explicit-guardrail-boundary-and-a-selected-time-only-read-only-api-built-directly-on-the-existing-engineering-context-resolver-foundation);
 architecture recorded in [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)).**

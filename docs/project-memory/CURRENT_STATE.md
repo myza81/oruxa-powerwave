@@ -243,10 +243,11 @@ performance on a representative 20 kHz/10 s (200,000-sample) source:
 ~0.8 ms/call for the pure estimator, ~19 ms/call for the full service
 (resolver + waveform-form detector fallback), ~33 ms/call full HTTP
 round trip — all comfortably fast for an on-demand request; no
-caching/precomputation introduced. **No frontend, no Playback
-integration, no Analysis menu, no real protection analysis
-(Distance/Overcurrent/Differential/Sequence Components)** — explicitly
-out of scope for this slice. 55 new focused tests (`test_phasor_
+caching/precomputation introduced. **No Playback integration, no real
+protection analysis (Distance/Overcurrent/Differential/Sequence
+Components)** — explicitly out of scope for this slice (frontend/the
+Analysis menu were out of scope for Slice 1 specifically and are now
+implemented by Slice 2, immediately below). 55 new focused tests (`test_phasor_
 domain.py` 30 — golden RMS/angle/three-phase/50-60Hz/moving-analysis-
 time-stability/off-nominal-frequency/edge-of-recording/invalid-samples/
 irregular-sampling/sampling-density-study vectors, `test_phasor_
@@ -254,6 +255,57 @@ analysis_service.py` 18, `test_phasor_analysis_api.py` 7 — including a
 real hand-written ASCII-COMTRADE upload carrying a known three-phase
 sinusoid through the full HTTP stack) plus the full existing regression
 suite pass unmodified. See [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) for
+the full architecture.
+
+**Phasor Analysis Slice 2 — Analysis Page + Static Phasor Diagram
+([DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules),
+2026-09-11) is implemented — frontend-only, the first real Analysis-menu
+consumer.** `Analysis` is a new, PERMANENT top-level main-menu
+destination (`#mainNavAnalysisBtn`, after Calculated Channels), hosting
+a left-hand analysis-type list that will grow to Distance Protection/
+Overcurrent/Differential/Sequence Components later — only `Phasor`
+exists today. Normal workflow is entirely resolver-driven and contains
+**no manual raw-channel picker**: Bay (Engineering Context) → Quantity
+→ Mode drives the existing, unchanged Slice 2 `input-resolution`
+endpoint; the phasor estimator is only ever called once that status is
+`resolved` — an `ambiguous`/`needs_configuration` result renders an
+explicit, per-role-actionable reason instead (including
+`waveform_form_not_eligible`, deliberately left as visible/actionable
+text rather than weakened, pending real-event UAT to judge whether it's
+too conservative). Analysis time is workspace time (the same coordinate
+Cursor A/B already use), converted to the resolver's own anchor-role
+source-relative elapsed time only at the API call boundary
+(`wwWorkspaceTimeToSourceTime()`); Cursor A's own time is read only as
+a convenient default (never the other way around — moving Phasor's
+analysis time never moves Cursor A). Three-phase mode displays
+`angle_deg_relative` (Phase-A-referenced) as the primary number;
+single-phase displays the backend's own `angle_deg_absolute` — never a
+fabricated 0° reference. The diagram is lightweight hand-rolled SVG
+(never Plotly — no existing polar/vector precedent to reuse, and raw
+SVG updates are cheaper per-frame, which matters for the still-deferred
+Slice 3), one shared magnitude scale across every vector, three new
+`--ww-phase-a/b/c` color tokens (reusing the app's own accent/warn/ok
+trio, deliberately not Cursor A/B's tokens). A single shared
+`requestGeneration` counter plus the existing `ww.epoch` guard protect
+against a stale response overwriting a newer selection. **A real
+`[hidden]`-vs-`display:grid/flex` CSS bug was found and fixed** during
+Playwright testing (two elements' own explicit `display` rules were
+silently overriding the `hidden` attribute they're toggled with) — the
+kind of defect only a real-browser test catches. Pre-implementation
+check: the Slice 1 estimator's own time coordinate was verified already
+correct (a per-request, non-window-dependent `reference_epoch`
+reduction already existed) — no production code change was needed.
+**No Playback integration, no combined Voltage+Current display, no
+Per-Unit display, no Engineering Context creation/suggestion UI**
+(Playwright coverage creates contexts directly via the backend API) —
+explicitly out of scope. New dedicated ASCII-COMTRADE test fixture
+(`phasor_smoke_three_phase.cfg/.dat`, a known three-phase sinusoid) plus
+39 new static structural tests and 3 new real-browser Playwright tests;
+2 pre-existing Playback structural tests were revised (not deleted) to
+reflect the Analysis menu's now-real, deliberate existence. Full
+existing frontend static suite (all `test_frontend_*.py`) and full
+existing Playwright suite (31 tests total) both pass unmodified/
+unchanged in behavior. See [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) for
 the full architecture.
 
 **Pre-advanced-features Slice

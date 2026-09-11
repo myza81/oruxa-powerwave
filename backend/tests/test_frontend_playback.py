@@ -59,28 +59,37 @@ class TestPlaybackIsNotATopLevelPage:
         assert 'shellSetCurrentPage("playback")' not in source
         assert "function wwRenderPlaybackPage" not in source
 
-    def test_no_analysis_menu_item_exists_either(self):
-        """The task's own explicit boundary: removing the Playback page
-        must not be replaced by creating the future Analysis menu
-        prematurely."""
+    def test_analysis_menu_exists_but_is_not_a_playback_destination(self):
+        """Superseded by Phasor Analysis Slice 2 (2026-09-11): the task
+        that originally wrote this test explicitly deferred creating the
+        Analysis menu ("do not create it prematurely"); Phasor Analysis
+        Slice 2 is the task that deliberately creates it, as the FIRST
+        real `Analysis` consumer. The invariant this class actually cares
+        about survives unchanged: Playback itself still has no dedicated
+        page/nav destination of its own -- the Analysis menu exists for
+        Phasor, never for Playback."""
         source = _source()
         nav_list = _function_body(source, 'class="shell-nav-list"', 'class="shell-nav-bottom"')
-        assert 'id="mainNavAnalysisBtn"' not in nav_list
-        assert '<span class="shell-nav-label">Analysis</span>' not in nav_list
+        assert 'id="mainNavAnalysisBtn"' in nav_list
+        assert '<span class="shell-nav-label">Analysis</span>' in nav_list
+        assert 'id="mainNavPlaybackBtn"' not in nav_list
+        assert '<span class="shell-nav-label">Playback</span>' not in nav_list
 
-    def test_calculated_channels_remains_the_last_real_nav_destination(self):
-        """Confirms the nav list reverts to its pre-Slice-1 shape: a real
-        destination (Calculated Channels) immediately followed by the
-        still-disabled Tools placeholder, with nothing Playback-specific
-        spliced between them any more."""
+    def test_analysis_follows_calculated_channels_before_tools_placeholder(self):
+        """Confirms the nav list's current real shape: Calculated
+        Channels, then the new Analysis destination (Phasor Analysis
+        Slice 2), then the still-disabled Tools placeholder -- nothing
+        Playback-specific spliced in anywhere."""
         source = _source()
         nav_list = _function_body(source, 'class="shell-nav-list"', 'class="shell-nav-bottom"')
         cc_index = nav_list.index('id="mainNavCalculatedChannelsBtn"')
         tools_index = nav_list.index('title="Tools -- coming soon"')
         between = nav_list[cc_index:tools_index]
-        # Exactly one shell-nav-item (Calculated Channels itself) between
-        # its own start and the Tools placeholder -- nothing spliced in.
-        assert between.count('class="shell-nav-item"') == 1
+        # Exactly two shell-nav-items (Calculated Channels itself, then
+        # Analysis) between Calculated Channels' own start and the Tools
+        # placeholder -- nothing Playback-specific spliced in.
+        assert between.count('class="shell-nav-item"') == 2
+        assert 'id="mainNavAnalysisBtn"' in between
 
 
 class TestPlaybackIsAReusableEmbeddableCapability:
