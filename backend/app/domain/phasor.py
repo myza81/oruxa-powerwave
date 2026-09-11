@@ -320,3 +320,87 @@ class PhasorAnalysisResult:
     role_reasons: dict[str, str] = field(default_factory=dict)
     reason_code: str | None = None
     message: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Phasor Diagram result -- bay-centric aggregation (Phasor UAT redesign; see
+# docs/project-memory/PHASOR_ANALYSIS.md's own "Bay-centric Phasor Diagram"
+# section). Resolves ALL SIX supported single-phase roles (Va/Vb/Vc/Ia/Ib/Ic)
+# for one Engineering Context independently -- never an all-or-nothing
+# three-phase requirement -- so a partial bay (e.g. only Va+Ia) is exactly
+# as valid a result as a complete one. Still a concrete, Phasor-owned
+# shape, never a generic cross-analysis framework; still never persisted.
+# ---------------------------------------------------------------------------
+
+#: Per-ROLE status (distinct from `PhasorDiagramResult.status`, the WHOLE-
+#: RESULT status below). One role's own missing/ambiguous/ineligible state
+#: never blocks any OTHER role -- see `app.services.phasor_analysis_
+#: service.compute_phasor_diagram()`'s own docstring for exactly which
+#: conditions map to which of these five.
+ROLE_STATUS_AVAILABLE = "available"
+ROLE_STATUS_MISSING = "missing"
+ROLE_STATUS_NEEDS_CONFIGURATION = "needs_configuration"
+ROLE_STATUS_AMBIGUOUS = "ambiguous"
+ROLE_STATUS_NOT_ELIGIBLE = "not_eligible"
+KNOWN_ROLE_STATUSES = (
+    ROLE_STATUS_AVAILABLE, ROLE_STATUS_MISSING, ROLE_STATUS_NEEDS_CONFIGURATION,
+    ROLE_STATUS_AMBIGUOUS, ROLE_STATUS_NOT_ELIGIBLE,
+)
+
+#: The fixed Va/Vb/Vc/Ia/Ib/Ic role-key order every diagram result and its
+#: own anchor-role selection uses -- Voltage before Current, A before B
+#: before C within each family, matching the order the owner's own worked
+#: examples use throughout.
+PHASOR_DIAGRAM_ROLE_ORDER = ("Va", "Vb", "Vc", "Ia", "Ib", "Ic")
+PHASOR_DIAGRAM_VOLTAGE_REFERENCE_ROLE = "Va"
+PHASOR_DIAGRAM_CURRENT_REFERENCE_ROLE = "Ia"
+
+
+@dataclass(frozen=True, slots=True)
+class PhasorDiagramRoleResult:
+    """One role's own result within the aggregated diagram. `channel_ref`
+    is populated whenever role IDENTITY is known (`available` and
+    `needs_configuration` both set it; `missing`/`ambiguous` never do,
+    `not_eligible` always does since ineligibility can only be determined
+    for a channel that was actually found). `angle_deg_absolute` is the
+    ONLY angle ever used for shared-diagram vector GEOMETRY (owner's own
+    explicit "must not destroy the true V-I angular relationship"
+    requirement) -- `angle_deg_relative` (this role's own family
+    reference role subtracted, `Va` for Voltage, `Ia` for Current) is
+    secondary/table-only information, `None` whenever that family's own
+    reference role is not itself `available`."""
+
+    status: str
+    channel_ref: ChannelRef | None = None
+    magnitude_rms: float | None = None
+    unit: str | None = None
+    angle_deg_absolute: float | None = None
+    angle_deg_relative: float | None = None
+    reason_code: str | None = None
+
+
+@dataclass(slots=True)
+class PhasorDiagramResult:
+    """The reusable, bay-centric, all-six-roles result. Never persisted --
+    always derived fresh. `status` is deliberately only ever
+    `PHASOR_STATUS_COMPUTED` or `STATUS_NEEDS_CONFIGURATION` (imported by
+    the service from `app.domain.analysis_input_resolution`, reused
+    rather than re-declared here) -- a MIXTURE of per-role outcomes
+    (some available, some missing, some ambiguous) is still, at the
+    WHOLE-RESULT level, `computed` (there is something useful to show);
+    only a genuine cross-role blocking condition (reference-frequency
+    conflict, timebase incompatibility, an invalid override, or no
+    resolved source having a known absolute start time) ever produces
+    `needs_configuration` at this level -- see the service's own
+    docstring for the full precedence."""
+
+    status: str
+    engineering_context_id: str
+    analysis_time: float
+    reference_frequency_hz: float | None = None
+    window_seconds: float | None = None
+    algorithm_version: str = ALGORITHM_VERSION
+    roles: dict[str, PhasorDiagramRoleResult] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+    reason_code: str | None = None
+    message: str = ""

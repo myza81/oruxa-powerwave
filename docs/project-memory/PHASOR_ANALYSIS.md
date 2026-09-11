@@ -1,9 +1,13 @@
 # Phasor Analysis
 
-**Status: Slice 1 (Core Estimator + Selected-Time API) and Slice 2
-(Analysis Page + Static Phasor Diagram) are both implemented** — see
+**Status: Slice 1 (Core Estimator + Selected-Time API), Slice 2
+(Analysis Page + Static Phasor Diagram), and the Phasor UAT redesign
+(bay-centric aggregation) are all implemented** — see
 [DECISIONS.md — DEC-088](DECISIONS.md#dec-088--phasor-analysis-slice-1-a-fixed-frequency-one-cycle-trailing-window-rms-fundamental-phasor-estimator-with-an-explicit-guardrail-boundary-and-a-selected-time-only-read-only-api-built-directly-on-the-existing-engineering-context-resolver-foundation)
-and [DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules).
+and [DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)
+(including its own "Update (2026-09-12)" section, which superseded the
+original Bay/Quantity/Mode page design described in DEC-089's own base
+entry — see the "Bay-centric Phasor Diagram" section below).
 Playback integration and every real protection analysis
 (Distance/Overcurrent/Differential/Sequence Components) remain
 unimplemented — this document records the engineering definition and
@@ -239,7 +243,10 @@ PhasorAnalysisResult (app.domain.phasor)
 A concrete, Phasor-owned result — deliberately NOT a generic
 cross-analysis `AnalysisResult` framework (nothing in the codebase
 needed one before a second real analysis exists to prove what should
-actually generalize). Never persisted.
+actually generalize). Never persisted. **Still the exact shape the
+original `GET .../phasor` endpoint returns, unchanged** — the bay-centric
+redesign below adds a SEPARATE result shape for its own aggregated
+endpoint, it does not replace this one.
 
 ## Algorithm version
 
@@ -291,7 +298,7 @@ work, run fresh on every request when a channel's `waveform_form` is
 inherits from `check_rms_eligibility()`'s own identical behavior, not a
 new one it introduces.
 
-## Frontend: the Analysis page (Phasor Analysis Slice 2)
+## Frontend: the Analysis page
 
 **`Analysis` is a new, permanent top-level main-menu destination** —
 `#mainNavAnalysisBtn`, placed immediately after `Calculated Channels`,
@@ -307,17 +314,14 @@ implemented); the page's own `<h2>` heading deliberately stays
 "Analysis," since that is what will read correctly once a second
 analyzer exists.
 
-**Normal workflow, entirely resolver-driven**: Bay (Engineering Context)
-→ Quantity (Voltage/Current) → Mode (Phase A/B/C/Three Phase) → the
-existing `input-resolution` endpoint (Slice 2 of the guardrail work,
-unchanged) resolves the required channels automatically and the
-Resolved Inputs list shows exactly what it decided. **The phasor
-estimator is never called until resolution status is `resolved`** — an
-`ambiguous`/`needs_configuration`/`not_applicable` result is rendered as
-an explicit, actionable message (including per-role reasons) and the
-values/diagram area stays empty with its own explanation, never a
-broken/empty SVG. There is no manual raw-channel picker anywhere in this
-page's normal workflow — the engineer never chooses `Va`/`Ib`/etc.
+**Normal workflow is bay-centric** (Phasor UAT redesign, 2026-09-12 —
+superseded the original Bay/Quantity/Mode workflow; see "Bay-centric
+Phasor Diagram" below for the full design): Bay (Engineering Context) is
+the ONLY primary control. Selecting one automatically resolves and
+computes every supported role (`Va`/`Vb`/`Vc`/`Ia`/`Ib`/`Ic`) together in
+one request; the Values list and diagram show whatever is available, a
+partial bay included. There is no manual raw-channel picker anywhere in
+this page's normal workflow — the engineer never chooses `Va`/`Ib`/etc.
 directly; manual correction, when genuinely needed, remains an
 Engineering Context metadata edit (Slice 1's own `member-phase`
 endpoint), reached outside this page.
@@ -406,33 +410,36 @@ as a convenient starting value; moving the Phasor analysis time never
 moves Cursor A, and Cursor A's own t=0/measurement semantics are
 untouched.
 
-**Angle display**: three-phase mode shows `angle_deg_relative`
-(Phase-A-referenced) as the PRIMARY number; single-phase mode shows the
-backend's own `angle_deg_absolute` — never a fabricated 0° reference for
-a lone phasor. Magnitude uses the existing `wwFormatEngineeringValue()`
-formatter, true engineering units (no Per-Unit normalization in this
-slice).
+**Angle display** (revised by the Phasor UAT redesign): the Values list
+shows `angle_deg_absolute` ONLY — never `angle_deg_relative` — since the
+diagram's own geometry always uses the absolute angle, and showing that
+same value in the table is the one choice guaranteed never to mismatch
+what the diagram actually draws. Magnitude uses the existing
+`wwFormatEngineeringValue()` formatter, true engineering units (no
+Per-Unit normalization in this slice).
 
-**Diagram**: lightweight, hand-rolled SVG (`#wwPhasorSvg`) — axes, three
-dashed magnitude rings, and one `<line>`+arrowhead `<polygon>`+`<text>`
-label per resolved role, ALL vectors sharing one magnitude scale (plot
-radius = 1.15× the largest displayed magnitude, never per-vector
-scaling, never distorted angles). No Plotly — this diagram has no
-existing time-series-chart precedent to reuse, and the vector math
-(`x=r·cosθ, y=-r·sinθ`) is simple enough that direct SVG element
-updates are both simpler and cheaper than a Plotly figure, which matters
-directly for the still-deferred Slice 3 smooth-update requirement. Three
-new phase-identity color tokens (`--ww-phase-a/b/c`, reusing the app's
-already-accessible `--accent`/`--warn`/`--ok` trio — deliberately never
-Cursor A/B's own `--accent`/`--error` tokens, since no phase-color
-convention existed anywhere in this codebase before this slice and the
-two concepts could plausibly appear on the same future page).
+**Diagram** (extended by the Phasor UAT redesign to support up to six
+vectors at once — see "Bay-centric Phasor Diagram" below for the dual-
+scale/absolute-angle design in full): lightweight, hand-rolled SVG
+(`#wwPhasorSvg`) — axes, magnitude rings, and one `<line>`+arrowhead
+`<polygon>`+`<text>` label per AVAILABLE and VISIBLE role. No Plotly —
+this diagram has no existing time-series-chart precedent to reuse, and
+the vector math (`x=r·cosθ, y=-r·sinθ`) is simple enough that direct SVG
+element updates are both simpler and cheaper than a Plotly figure, which
+matters directly for the still-deferred Playback smooth-update
+requirement. Three phase-identity color tokens (`--ww-phase-a/b/c`,
+reusing the app's already-accessible `--accent`/`--warn`/`--ok` trio —
+deliberately never Cursor A/B's own `--accent`/`--error` tokens, since no
+phase-color convention existed anywhere in this codebase before Slice 2
+and the two concepts could plausibly appear on the same future page).
 
 **Stale-request protection**: a single shared `wwPhasorState.
-requestGeneration` counter (bumped on every context/quantity/mode/time
-change) plus the existing whole-workspace `ww.epoch` guard — a slower,
-superseded response is always discarded, never applied over a newer
-selection. No second global time controller was introduced.
+requestGeneration` counter (bumped on every context/time change, or a
+selected-context change) plus the existing whole-workspace `ww.epoch`
+guard — a slower, superseded response is always discarded, never applied
+over a newer selection. No second global time controller was
+introduced. A pure visibility toggle never touches this counter at all
+— it never issues a request in the first place.
 
 **A caught defect**: `.ww-phasor-body`/`.ww-phasor-time-row` both use an
 explicit `display: grid`/`display: flex`, which (as CSS specificity
@@ -443,21 +450,216 @@ toggled with in JS — caught directly by
 real-browser assertion a source-text test cannot make), fixed with an
 explicit `.ww-phasor-body[hidden] { display: none }` override.
 
-**Explicitly NOT implemented in this slice**: `wwPlayback`/
-`wwPlaybackOnTick` wiring, Play/Pause/speed/seek controls (a `#wwPhasorPanel`
-composition-point comment marks exactly where Slice 3 adds an embedded
-Playback control row without restructuring this page), combined
-Voltage+Current display, Per-Unit display, precomputed-phasor-channel
-support, frequency tracking, and every real protection analysis.
+**Explicitly NOT implemented**: `wwPlayback`/`wwPlaybackOnTick` wiring,
+Play/Pause/speed/seek controls (a `#wwPhasorPanel` composition-point
+comment marks exactly where Playback adds an embedded control row
+without restructuring this page), Per-Unit display,
+precomputed-phasor-channel support, frequency tracking, sequence
+components, impedance/distance, and every real protection analysis.
+Combined Voltage+Current display **was** on this list at Slice 2 — the
+Phasor UAT redesign implemented it; see "Bay-centric Phasor Diagram"
+below.
+
+## Bay-centric Phasor Diagram (Phasor UAT redesign)
+
+UAT of the Slice 2 Bay/Quantity/Mode page found it too restrictive: an
+engineer had to pick one role subset (e.g. "Voltage, Three Phase") at a
+time, never seeing Voltage and Current together the way the existing
+Waveform display shows every channel at once. Owner instruction: "Once a
+bay/context is selected, Powerwave should automatically resolve all
+available supported phasor inputs for that bay and show them together
+on one diagram. The engineer then hides/shows individual vectors by
+clicking their labels/visibility controls." See
+[DECISIONS.md — DEC-089's own "Update (2026-09-12)"](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)
+for the full approval record; this section is the architecture summary.
+
+### Separation of concerns (must not be conflated)
+
+Three distinct concepts, deliberately kept separate:
+
+1. **Engineering Context** — what signals belong to the bay (Slice 1,
+   unchanged).
+2. **Analysis Input Resolver** — which signals satisfy each role (Slice
+   2, `resolve_analysis_inputs()`, unchanged — called once per role,
+   never re-implemented).
+3. **Phasor visibility state** — which VALID, already-computed vectors
+   are CURRENTLY SHOWN. Pure frontend display preference
+   (`wwPhasorState.visibleRoles`). Never modifies context membership,
+   phase identity, resolver rules, Measurement Groups, or any backend
+   metadata.
+
+### Backend aggregation: `compute_phasor_diagram()`
+
+`app/services/phasor_analysis_service.py` gained a second orchestration
+function, alongside the original `compute_phasor_analysis()` (still
+present, still tested, still backing `GET .../phasor` unchanged):
+
+```
+compute_phasor_diagram(workspace_id, engineering_context_id, analysis_time, reference_frequency_hz_override, ...)
+```
+
+For each of the six single-phase requirements
+(`PHASOR_VOLTAGE_PHASE_A/B/C`, `PHASOR_CURRENT_PHASE_A/B/C` — reused
+unchanged from DEC-087), independently:
+
+1. Call `resolve_analysis_inputs()` (unchanged). Map its outcome to a
+   new 5-value role-status vocabulary: `STATUS_AMBIGUOUS` →
+   `ambiguous`; `STATUS_NEEDS_CONFIGURATION` with reason
+   `phase_identity_missing` → `needs_configuration`; with reason
+   `role_missing` (or `STATUS_NOT_APPLICABLE`) → `missing`.
+2. For every role that reached `resolved`, fetch its own sample data via
+   the existing, unchanged `_fetch_role_candidate()`.
+3. Compute ONE reference frequency across every identity-resolved
+   candidate — identical policy to `compute_phasor_analysis()` (explicit
+   override → else unanimous `nominal_frequency` agreement → else
+   CONFLICT). A conflict blocks the WHOLE result.
+4. Per-candidate waveform-form eligibility (`_waveform_form_eligible()`,
+   unchanged) — an ineligible role gets `not_eligible`, but this does
+   NOT block any other role.
+5. **A NEW cross-role timebase check** — `timebases_aligned()` (reused
+   unchanged from `app.domain.calculated_channel`) pairwise across every
+   ELIGIBLE candidate. This does not exist in the original single-
+   requirement service because the resolver's own internal timebase
+   proof only fires when ONE requirement resolves MULTIPLE roles
+   together (e.g. `PHASOR_VOLTAGE_THREE_PHASE`); it never fires for six
+   INDEPENDENTLY resolved single-role requirements, so this module adds
+   its own check for exactly that combination. Incompatibility also
+   blocks the WHOLE result — symmetric treatment with a reference-
+   frequency conflict, since both represent "these roles cannot be
+   meaningfully combined into one diagram."
+6. The shared absolute-time coordinate (`reference_epoch`) and anchor
+   role follow the same `reference_epoch = min(start_epoch)` pattern as
+   the original service, with the anchor being whichever role is FIRST
+   in `PHASOR_DIAGRAM_ROLE_ORDER = ("Va","Vb","Vc","Ia","Ib","Ic")`
+   among the ELIGIBLE roles — gracefully degrading for a partial bay
+   (e.g. if `Va` is missing but `Vb` exists, `Vb` becomes the anchor).
+7. `estimate_phasor()` (unchanged) runs per eligible role against the
+   shared coordinate. A role whose estimate itself comes back
+   unavailable (e.g. `insufficient_window_history`) gets
+   `needs_configuration` with the estimator's own reason — again, this
+   does NOT block any other role.
+
+**Whole-result vs. per-role failure, strictly separated**: the top-level
+`status` is `computed` even when some roles are `missing`/`ambiguous`/
+`not_eligible` — there is still something useful to show. It is only
+ever `needs_configuration` for the two genuine cross-role BLOCKING
+conditions (reference-frequency conflict, timebase incompatibility) plus
+the pre-existing `invalid_reference_frequency`/`absolute_time_
+unavailable` edge cases inherited from the original service's own
+precedent. When blocked, every role whose channel identity was already
+known is reported `needs_configuration` with the SAME blocking reason —
+never left without a status, never given a fabricated numeric result.
+
+**New result shape** (`PhasorDiagramResult`, `app/domain/phasor.py` —
+additive, `PhasorAnalysisResult` untouched):
+
+```
+PhasorDiagramResult
+├── status                    "computed" | "needs_configuration"
+├── engineering_context_id, analysis_time  (echoed)
+├── reference_frequency_hz, window_seconds  (only set when computed)
+├── algorithm_version          "phasor_estimator_v1" (same estimator)
+├── roles: dict[role_key, PhasorDiagramRoleResult]
+│     ├── status               available | missing | needs_configuration
+│     │                        | ambiguous | not_eligible
+│     ├── channel_ref          (only when identity is known)
+│     ├── magnitude_rms, unit  (only when `available`)
+│     ├── angle_deg_absolute   (only when `available` -- geometry value)
+│     ├── angle_deg_relative   (only when `available`, per-family
+│     │                        reference -- secondary/table-only)
+│     └── reason_code
+├── warnings[], reason_code, message
+```
+
+A concrete, Phasor-owned aggregation shape — deliberately NOT persisted,
+and NOT a general-purpose "all analysis roles" framework (owner
+instruction).
+
+**New endpoint**, alongside the original:
+
+```
+GET /api/v1/workspaces/{workspace_id}/engineering-contexts/{engineering_context_id}/phasor-diagram
+    ?analysis_time=1.234
+    &reference_frequency_hz=50.0   (optional override)
+```
+
+No `analysis_kind`/`mode` parameters — every supported role is always
+requested together. `analysis_time` semantics match the original
+endpoint's own convention (elapsed seconds since the anchor role's own
+source start), with the anchor determined dynamically as described
+above.
+
+### Frontend: single aggregated fetch, no per-role resolution call
+
+The old two-call flow (`input-resolution`, then `phasor`) is replaced by
+ONE call to the new endpoint (`wwPhasorFetchDiagram()`). Selecting a
+context (`wwPhasorLoadForSelectedContext()`) resets
+`wwPhasorState.visibleRoles` to empty, then requests the diagram; every
+role that computes `available` and has no existing visibility
+preference defaults to visible. An Analysis Time change
+(`wwPhasorOnAnalysisTimeInput()`) re-requests the diagram but never
+touches `visibleRoles` — a hidden vector stays hidden as the engineer
+scrubs time.
+
+**Values list**: two sections, VOLTAGE and CURRENT, each listing its own
+three roles in order. An `available` role's own row is a full
+row-as-toggle-button (reusing the EXACT `#channelGroups` row-as-button
+convention Waveform channel visibility already established —
+`role="button"`, `aria-pressed`, a dimmed `.ww-phasor-value-row--hidden`
+state, no tiny icon-only hit target) showing magnitude/unit/
+`angle_deg_absolute`/an eye glyph. A non-`available` role's own row shows
+its status label (`Missing`/`Needs configuration`/`Ambiguous`/`Not
+eligible`) and reason instead, with no toggle control at all — nothing
+to show, nothing to hide.
+
+**Visibility toggling is a pure local re-render** — clicking a row
+(`wwPhasorToggleRoleVisibility()`) flips one entry in `visibleRoles` and
+calls `wwPhasorRenderFromState()`, which re-renders the SAME already-
+fetched `wwPhasorState.latestDiagram` with no network request at all.
+`wwPhasorRequestDiagram()` (the only function that fetches) and
+`wwPhasorRenderFromState()` (the only function that re-renders from
+cache) are strictly separate call paths.
+
+**Diagram scaling**: `wwPhasorFamilyMaxMagnitude()` computes ONE maximum
+magnitude per family (across every `available` role in that family,
+regardless of current visibility, so toggling a vector never rescales
+the whole diagram), each normalized independently to the same outer
+plot radius (`voltageScale`, `currentScale`). Vector geometry always
+uses `role.angle_deg_absolute` — Voltage and Current are NEVER
+independently zero-referenced, preserving the true V-I angular
+relationship. When both families are present, a transparent scale-ratio
+annotation is shown below the diagram (`#wwPhasorScaleNote`, e.g.
+"Current vectors scaled ×15.27 for display"); when only one family is
+present, no ratio is shown (nothing to compare). Current vectors are
+drawn dashed (`.ww-phasor-vector--current`), Voltage solid, both still
+colored by their own A/B/C phase swatch — quantity type and phase
+identity are both visible without inventing unrelated colors.
+
+**Time-axis anchor for the frontend's own workspace-time conversion**:
+`wwPhasorAnchorDisplaySourceIdForContext()` uses the selected context's
+own FIRST member (from the already-fetched context list, `GET
+.../engineering-contexts`) — never inspecting phase/engineering_type,
+i.e. never duplicating the resolver's own role-matching in the frontend.
+The backend's own internal anchor role can, in principle, differ (it
+depends on which roles end up eligible), but every combination the
+backend will actually compute together has already been proven
+timebase-compatible, which in practice means an equal absolute start
+time — so any member's own source produces the same elapsed-seconds
+number for a shared analysis instant.
+
+### Explicit scope exclusions (this redesign)
+
+Playback (unchanged composition-point comment), Per-Unit display,
+neutral-phasor roles (`Vn`/`In` — the existing Engineering Role/phase-
+identity infrastructure has no dedicated neutral-phasor support to build
+on), sequence components, impedance/distance, automatic cross-source
+context merging, and a manual raw-channel picker (still never
+introduced).
 
 ## Not yet implemented (future slices)
 
 - **Playback integration** — no `wwPlayback` subscription; `analysis_time`
   is a plain request parameter, not driven by a moving clock yet.
-- **Combined Voltage + Current display** — the architecture stays
-  compatible (a future mode could request both quantities' own role
-  sets), but this slice never renders them together or scales Current
-  against Voltage.
 - **Frequency tracking / PMU-class measurement.**
 - **Precomputed vendor phasor channel support.**
 - **Per-Unit phasor display** (`unit_mode=per_unit`).
@@ -475,7 +677,7 @@ support, frequency tracking, and every real protection analysis.
 ## Related documents
 
 - [DECISIONS.md — DEC-088](DECISIONS.md#dec-088--phasor-analysis-slice-1-a-fixed-frequency-one-cycle-trailing-window-rms-fundamental-phasor-estimator-with-an-explicit-guardrail-boundary-and-a-selected-time-only-read-only-api-built-directly-on-the-existing-engineering-context-resolver-foundation) — Slice 1's full approval record.
-- [DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules) — Slice 2's full approval record.
+- [DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules) — Slice 2's full approval record, including its own "Update (2026-09-12)" section covering the bay-centric redesign.
 - [ANALYSIS_INPUT_GUARDRAILS.md](ANALYSIS_INPUT_GUARDRAILS.md) — the
   Engineering Context + resolver foundation both slices are built on
   entirely unchanged.

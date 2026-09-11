@@ -4,9 +4,90 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-11**
+Last updated: **2026-09-12**
 
 ## What was most recently done
+
+**Phasor UAT redesign — bay-centric Phasor Diagram, not Quantity/Mode-
+centric ([DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)'s
+own "Update (2026-09-12)" section, no new DEC; architecture recorded in
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s own new "Bay-centric Phasor
+Diagram" section).** UAT of the Bay/Quantity/Mode page found it too
+restrictive — an engineer had to pick one role subset at a time, never
+seeing Voltage and Current together the way Waveform already shows every
+channel at once. Owner instruction: selecting a bay/context should
+automatically resolve and show ALL available supported phasor inputs
+together on one diagram; the engineer then hides/shows individual
+vectors by clicking their labels.
+
+**Backend**: a new orchestration function, `compute_phasor_diagram()`
+(`app/services/phasor_analysis_service.py`, alongside the original,
+UNCHANGED `compute_phasor_analysis()`), independently resolves all six
+single-phase requirements via the unchanged `resolve_analysis_inputs()`,
+maps outcomes to a new 5-value role-status vocabulary
+(`available`/`missing`/`needs_configuration`/`ambiguous`/
+`not_eligible`), computes one shared reference frequency, adds a NEW
+cross-role `timebases_aligned()` check (the resolver's own internal
+check never fires for six independently-resolved single-role
+requirements), and estimates each eligible role via the unchanged
+`estimate_phasor()`. Only a reference-frequency conflict or timebase
+incompatibility blocks the WHOLE combined result; one bad role never
+blocks any other. New endpoint `GET .../phasor-diagram` alongside the
+original, unchanged `GET .../phasor`. New domain types
+`PhasorDiagramResult`/`PhasorDiagramRoleResult` (`app/domain/phasor.py`,
+additive) and wire shapes (`app/schemas/phasor_analysis.py`, additive).
+16 new backend tests (`test_phasor_diagram_service.py` — 12,
+`test_phasor_diagram_api.py` — 4), covering full/partial bays,
+ambiguous-role and ineligible-role isolation, both whole-result-blocking
+conditions (with an explicit-override recovery case), a compatible
+multi-source context, and absolute-angle preservation across a genuine
+V-I phase lag. Full existing Phasor backend suite (55 tests) passes
+unchanged.
+
+**Frontend**: Quantity/Mode selectors removed entirely — the
+Engineering Context (Bay) selector is the only primary control. The old
+two-call flow (input-resolution, then phasor) is replaced by ONE call to
+the new aggregation endpoint. The Values list is now two sections
+(Voltage/Current), each row a full row-as-toggle-button (reusing the
+EXACT `#channelGroups` row-as-button convention Waveform channel
+visibility already established) showing magnitude/unit/
+`angle_deg_absolute` for an `available` role, or a status label for
+anything else. **Visibility is a new, pure frontend display-state layer**
+(`wwPhasorState.visibleRoles`) — toggling a row re-renders locally from
+the last-fetched result with ZERO new backend requests; it persists
+across an Analysis Time change and resets only when the selected context
+itself changes. The diagram now draws up to six vectors: geometry always
+uses `angle_deg_absolute` (Voltage and Current are NEVER independently
+zero-referenced, preserving the true V-I angular relationship — the
+single most safety-critical constraint of this redesign), Voltage and
+Current use SEPARATE graphical magnitude scales (never one raw shared
+radius), with a transparent scale-ratio annotation shown whenever both
+families are present, and Current vectors are drawn dashed against
+Voltage's solid, both still colored by phase. `test_frontend_
+phasor_analysis.py` revised in place (obsolete Quantity/Mode/
+resolution-list assertions replaced; new classes for bay-centric
+aggregation, visibility state, and dual-scale-diagram invariants — 70
+tests total, all passing). `phasor_analysis.spec.js` rewritten: a
+12-step bay-centric scenario (all six roles load together, hide/show
+individual vectors with zero additional requests, visibility survives an
+Analysis Time change, visibility resets on a genuine context switch)
+plus a rewritten partial-bay scenario; the bootstrap suite is otherwise
+unchanged. Full frontend static suite and full Playwright suite both
+pass (one pre-existing, unrelated `smoke.spec.js` timing flake
+reproduced as passing on isolated re-run).
+
+**Explicitly deferred**: Playback integration (still out of scope — the
+owner's own closing instruction for this task was "do NOT proceed
+automatically to Playback"), Per-Unit display, neutral-phasor roles
+(`Vn`/`In`), sequence components, impedance/distance, automatic
+cross-source context merging, and a manual raw-channel picker (still
+never introduced).
+
+**Files changed**: see this task's own final report for the exact list.
+**Commit status**: see this task's own final report for the exact
+commit hash and push status.
+
+## What was done in the prior session — Phasor UAT fix: generic nav tooltip corrected + automatic Engineering Context suggestion bootstrap
 
 **Phasor UAT fix — generic nav tooltip corrected + automatic Engineering
 Context suggestion bootstrap ([DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)'s

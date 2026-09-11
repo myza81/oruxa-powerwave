@@ -94,35 +94,31 @@ class TestAnalysisTypeSubNav:
         assert 'data-analysis-type="phasor"' in source
 
 
-class TestContextQuantityModeSelectors:
+class TestBayIsTheOnlyPrimaryControl:
+    """Phasor UAT redesign: bay-centric -- Engineering Context selection
+    is the ONLY primary control. Quantity/Mode selectors are removed
+    entirely; every supported role is always requested together."""
+
     def test_context_selector_exists(self):
         source = _source()
         assert 'id="wwPhasorContextSelect"' in source
 
-    def test_quantity_selector_has_voltage_and_current_only(self):
+    def test_quantity_selector_removed(self):
         source = _source()
-        body = _function_body(source, 'id="wwPhasorQuantitySelect"', "</select>")
-        assert '<option value="voltage">Voltage</option>' in body
-        assert '<option value="current">Current</option>' in body
-        assert "power" not in body.lower()
+        assert 'id="wwPhasorQuantitySelect"' not in source
+        assert "wwPhasorState.quantity" not in source
 
-    def test_mode_selector_has_four_modes(self):
+    def test_mode_selector_removed(self):
         source = _source()
-        body = _function_body(source, 'id="wwPhasorModeSelect"', "</select>")
-        assert '<option value="phase_a">Phase A</option>' in body
-        assert '<option value="phase_b">Phase B</option>' in body
-        assert '<option value="phase_c">Phase C</option>' in body
-        assert '<option value="three_phase" selected>Three Phase</option>' in body
+        assert 'id="wwPhasorModeSelect"' not in source
+        assert "wwPhasorState.modeSuffix" not in source
+        assert "wwPhasorBackendMode" not in source
 
-    def test_mode_maps_directly_to_backend_mode_string_no_hardcoded_channel_rules(self):
+    def test_controls_row_has_no_other_select_besides_context(self):
         source = _source()
-        body = _phasor_block(source)
-        assert 'function wwPhasorBackendMode() {\n            return wwPhasorState.quantity + "_" + wwPhasorState.modeSuffix;' in body
-        # No channel-name literal (e.g. "_VA"/"ALPHA1") appears in the
-        # mode-mapping logic -- mapping is purely a string concatenation
-        # of quantity + mode suffix, never a channel-selection rule.
-        assert "_VA" not in body
-        assert "_IA" not in body
+        body = _function_body(source, 'class="ww-phasor-controls-row"', "</section>")
+        assert body.count("<select") == 1
+        assert 'id="wwPhasorContextSelect"' in body
 
 
 class TestEngineeringContextPopulation:
@@ -262,38 +258,57 @@ class TestContextBootstrap:
         assert body.count("epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId") >= 3
 
 
-class TestResolverIntegration:
-    def test_calls_existing_input_resolution_endpoint(self):
+class TestBayCentricAggregation:
+    """Phasor UAT redesign: ONE aggregated fetch (`GET .../phasor-
+    diagram`) resolves and estimates every supported role
+    (Va/Vb/Vc/Ia/Ib/Ic) together -- no separate input-resolution call, no
+    per-role fetch, never a whole-page failure for a partial bay."""
+
+    def test_calls_the_aggregated_phasor_diagram_endpoint(self):
         source = _source()
         body = _phasor_block(source)
-        assert '"/engineering-contexts/" + encodeURIComponent(contextId) + "/input-resolution?"' in body
+        assert '"/engineering-contexts/" + encodeURIComponent(contextId) + "/phasor-diagram?"' in body
+        # The old two-call flow is gone entirely.
+        assert "/input-resolution?" not in body
+        assert '"/phasor?"' not in body
 
-    def test_phasor_not_requested_until_resolved(self):
-        source = _source()
-        body = _function_body(source, "async function wwPhasorRequestResolution", "async function wwPhasorRenderResolutionStatus".replace("async ", ""))
-        assert 'if (resolution.status !== "resolved") {' in body
-        assert "wwPhasorRequestCalculation();" in body
-
-    def test_ambiguous_state_rendered_with_candidates(self):
+    def test_single_fetch_function_no_separate_resolution_call(self):
         source = _source()
         body = _phasor_block(source)
-        assert 'resolution.status === "ambiguous"' in body
-        assert "Multiple candidates found" in body
+        assert "function wwPhasorFetchDiagram(" in body
+        assert "function wwPhasorFetchResolution" not in body
+        assert "function wwPhasorFetchResult" not in body
 
-    def test_needs_configuration_shows_backend_reason(self):
+    def test_selecting_a_context_goes_straight_to_the_diagram_fetch(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorLoadForSelectedContext", "function wwPhasorAnchorDisplaySourceIdForContext")
+        assert "wwPhasorRequestDiagram();" in body
+
+    def test_whole_result_blocked_status_shows_banner(self):
         source = _source()
         body = _phasor_block(source)
-        assert 'resolution.status === "needs_configuration"' in body
-        assert "wwPhasorReasonText" in body
+        assert 'diagram.status === "needs_configuration"' in body
+        assert "wwPhasorWholeResultBlockedMessage" in body
+
+    def test_per_role_status_vocabulary_rendered(self):
+        """One bad role (missing/ambiguous/needs_configuration/
+        not_eligible) is rendered on its OWN row and never blocks any
+        other role's own row."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorRoleStatusLabel", "function wwPhasorRenderDiagramResult")
+        for status in ("missing:", "needs_configuration:", "ambiguous:", "not_eligible:"):
+            assert status in body
 
     def test_no_manual_raw_channel_picker_in_normal_workflow(self):
-        """The engineer never picks Va/Vb/Vc/Ia/Ib/Ic directly -- only
-        Bay/Quantity/Mode selectors exist; there is no channel-name
-        <select>/<input> anywhere in the Phasor panel markup."""
+        """The engineer never picks Va/Vb/Vc/Ia/Ib/Ic directly -- the Bay
+        (Engineering Context) selector is the only channel-adjacent
+        control; there is no channel-name <select>/<input> anywhere in
+        the Phasor panel markup."""
         source = _source()
         panel_html = source[source.index('id="wwPhasorPanel"'):source.index('id="wwPhasorSvg"')]
         assert "wwPhasorChannelSelect" not in panel_html
-        assert "<select" not in panel_html.split('id="wwPhasorModeSelect"')[1].split("</select>")[1].split('id="wwPhasorTimeInput"')[0]
+        assert "raw-channel" not in panel_html.lower()
+        assert panel_html.count("<select") == 1  # the Bay/Engineering Context selector only
 
 
 class TestAnalysisTimeAndDefault:
@@ -311,8 +326,20 @@ class TestAnalysisTimeAndDefault:
 
     def test_analysis_time_converted_to_source_time_at_api_boundary_only(self):
         source = _source()
-        body = _function_body(source, "async function wwPhasorRequestCalculation", "function wwPhasorUnavailableMessage")
+        body = _function_body(source, "async function wwPhasorRequestDiagram", "function wwPhasorWholeResultBlockedMessage")
         assert "wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, wwPhasorState.analysisTime)" in body
+
+    def test_anchor_is_any_context_member_never_a_role_matching_decision(self):
+        """wwPhasorAnchorDisplaySourceIdForContext() picks a time-axis
+        conversion anchor from the context's own FIRST member -- it must
+        never inspect phase/engineering_type (that would duplicate the
+        resolver's own role-matching, which the redesign explicitly
+        forbids in the frontend)."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorAnchorDisplaySourceIdForContext", "async function wwPhasorRequestDiagram")
+        assert "ctx.members[0]" in body
+        assert ".phase" not in body
+        assert "engineering_type" not in body
 
     def test_no_second_global_time_controller(self):
         source = _source()
@@ -327,18 +354,31 @@ class TestValueAndAngleRendering:
         body = _phasor_block(source)
         assert "wwFormatEngineeringValue(role.magnitude_rms)" in body
 
-    def test_three_phase_uses_relative_angle_as_primary(self):
+    def test_table_uses_absolute_angle_only_never_relative(self):
+        """Owner instruction: the numeric table's primary angle must
+        never mismatch what the diagram itself draws -- the diagram
+        always uses `angle_deg_absolute`, so the redesigned table shows
+        ONLY that value, never `angle_deg_relative`, avoiding the
+        mismatch risk entirely."""
         source = _source()
-        body = _function_body(source, "function wwPhasorRenderValuesAndDiagram", "function wwPhasorRenderDiagram")
-        assert "const isRelative = roleKeys.length > 1;" in body
-        assert "isRelative && role.angle_deg_relative !== null ? role.angle_deg_relative : role.angle_deg_absolute" in body
+        body = _function_body(source, "function wwPhasorValueRowHtml", "function wwPhasorRenderValuesList")
+        assert "role.angle_deg_absolute" in body
+        assert "angle_deg_relative" not in body
 
-    def test_single_phase_never_fabricates_a_zero_reference(self):
+    def test_voltage_and_current_sections_exist(self):
         source = _source()
-        body = _function_body(source, "function wwPhasorRenderValuesAndDiagram", "function wwPhasorRenderDiagram")
-        # Single-phase (roleKeys.length === 1) falls through to
-        # angle_deg_absolute -- never a literal 0 substituted in.
-        assert "angle_deg_absolute" in body
+        body = _function_body(source, "function wwPhasorRenderValuesList", "function wwPhasorFamilyMaxMagnitude")
+        assert "ww-phasor-family-heading\">Voltage" in body
+        assert "ww-phasor-family-heading\">Current" in body
+        assert "WW_PHASOR_VOLTAGE_ROLES" in body
+        assert "WW_PHASOR_CURRENT_ROLES" in body
+
+    def test_all_six_roles_in_fixed_order(self):
+        source = _source()
+        body = _phasor_block(source)
+        assert 'WW_PHASOR_DIAGRAM_ROLE_ORDER = ["Va", "Vb", "Vc", "Ia", "Ib", "Ic"];' in body
+        assert 'WW_PHASOR_VOLTAGE_ROLES = ["Va", "Vb", "Vc"];' in body
+        assert 'WW_PHASOR_CURRENT_ROLES = ["Ia", "Ib", "Ic"];' in body
 
     def test_no_per_unit_normalization_in_this_slice(self):
         source = _source()
@@ -354,19 +394,62 @@ class TestSvgDiagram:
         panel_html = source[source.index('id="wwPhasorPanel"'):source.index("</section>", source.index('id="wwPhasorSvg"'))]
         assert "Plotly" not in panel_html
 
-    def test_diagram_shares_one_magnitude_scale_across_vectors(self):
+    def test_voltage_and_current_use_separate_graphical_scales(self):
+        """Owner instruction: Va/Vb/Vc share ONE scale, Ia/Ib/Ic share a
+        SEPARATE scale -- never one raw numeric radius shared across both
+        families, and never a per-vector individual scale within a
+        family."""
         source = _source()
-        body = _function_body(source, "function wwPhasorRenderDiagram", "function wwPhasorVectorSvg")
-        assert "const maxMagnitude = magnitudes.length > 0 ? Math.max(...magnitudes) : 0;" in body
-        assert "const scale = maxMagnitude > 0 ? plotRadius / (1.15 * maxMagnitude) : 0;" in body
-        # scale computed once, reused for every role -- never per-vector.
-        assert body.count("const scale") == 1
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert "wwPhasorFamilyMaxMagnitude(diagram, WW_PHASOR_VOLTAGE_ROLES)" in body
+        assert "wwPhasorFamilyMaxMagnitude(diagram, WW_PHASOR_CURRENT_ROLES)" in body
+        assert "const voltageScale = voltageMax > 0 ? plotRadius / (1.15 * voltageMax) : 0;" in body
+        assert "const currentScale = currentMax > 0 ? plotRadius / (1.15 * currentMax) : 0;" in body
+        # Exactly one scale variable per family -- never per-vector.
+        assert body.count("const voltageScale") == 1
+        assert body.count("const currentScale") == 1
+
+    def test_scaling_is_graphical_only_never_touches_magnitude_rms(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        # magnitude_rms is only ever READ (multiplied into a local pixel
+        # radius `r`), never reassigned.
+        assert "role.magnitude_rms =" not in body
+        assert "const r = role.magnitude_rms * scale;" in body
+
+    def test_scale_note_shown_only_when_both_families_present(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert "if (voltageMax > 0 && currentMax > 0) {" in body
+        assert "scaleNote.hidden = false;" in body
+        assert "Current vectors scaled" in body
+
+    def test_geometry_uses_absolute_angle_never_relative(self):
+        """Critical: the combined diagram must never independently
+        zero-reference Voltage and Current -- doing so would destroy the
+        true V-I angular relationship. Only `angle_deg_absolute` ever
+        drives vector geometry."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert "role.angle_deg_absolute * Math.PI / 180" in body
+        assert "angle_deg_relative" not in body
+
+    def test_current_vectors_are_dashed_voltage_vectors_are_solid(self):
+        source = _source()
+        body = _phasor_block(source)
+        assert "ww-phasor-vector--current" in body
+        assert "const isCurrent = roleKey.charAt(0) === \"I\";" in body
+
+    def test_hidden_roles_are_skipped_by_visibility_state(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert "if (wwPhasorState.visibleRoles[roleKey] === false) continue;" in body
 
     def test_vectors_never_show_without_explanation_when_unavailable(self):
         source = _source()
-        body = _function_body(source, "function wwPhasorRenderValuesAndDiagram", "function wwPhasorRenderDiagram")
-        assert 'svg.innerHTML = "";' in body
-        assert "wwPhasorUnavailableMessage(result)" in body
+        body = _function_body(source, "function wwPhasorRenderDiagramResult", "function wwPhasorRenderFromState")
+        assert 'statusRow.textContent = "Could not reach the backend.";' in body
+        assert "wwPhasorWholeResultBlockedMessage(diagram)" in body
 
 
 class TestStaleRequestProtection:
@@ -374,22 +457,82 @@ class TestStaleRequestProtection:
         source = _source()
         body = _phasor_block(source)
         assert "requestGeneration: 0" in body
-        assert body.count("++wwPhasorState.requestGeneration") == 2
+        # Only ONE fetch now (the aggregated diagram fetch) -- the old
+        # two-call (resolution, then calculation) flow is gone, so there
+        # is exactly one generation-bump site.
+        assert body.count("++wwPhasorState.requestGeneration") == 1
 
-    def test_resolution_fetch_checks_generation_before_applying(self):
+    def test_diagram_fetch_checks_generation_before_applying(self):
         source = _source()
-        body = _function_body(source, "async function wwPhasorRequestResolution", "function wwPhasorRenderResolutionStatus")
-        assert "if (myGeneration !== wwPhasorState.requestGeneration" in body
-
-    def test_calculation_fetch_checks_generation_before_applying(self):
-        source = _source()
-        body = _function_body(source, "async function wwPhasorRequestCalculation", "function wwPhasorUnavailableMessage")
+        body = _function_body(source, "async function wwPhasorRequestDiagram", "function wwPhasorWholeResultBlockedMessage")
         assert "if (myGeneration !== wwPhasorState.requestGeneration" in body
 
     def test_also_respects_workspace_wide_epoch_guard(self):
         source = _source()
         body = _phasor_block(source)
         assert "epochAtStart !== ww.epoch" in body
+
+
+class TestVisibilityState:
+    """Phasor UAT redesign: individual vector visibility is a PURE
+    frontend display preference -- it never re-runs the backend
+    estimator, never touches Engineering Context membership, phase
+    identity, resolver rules, or Measurement Groups."""
+
+    def test_visible_roles_state_exists_and_starts_empty(self):
+        source = _source()
+        body = _phasor_block(source)
+        assert "visibleRoles: {}," in body
+
+    def test_row_is_an_accessible_toggle_button_not_a_tiny_icon(self):
+        """Reuses the EXACT #channelGroups row-as-toggle-button
+        convention (role="button", tabindex, aria-pressed) rather than a
+        small icon-only hit target."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorValueRowHtml", "function wwPhasorRenderValuesList")
+        assert "ww-phasor-value-row--toggle" in body
+        assert 'role="button" tabindex="0" aria-pressed="' in body
+        assert "ww-phasor-value-row--hidden" in body
+
+    def test_toggle_re_renders_locally_never_refetches(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorToggleRoleVisibility", "function wwPhasorValueRowHtml")
+        assert "wwPhasorRenderFromState();" in body
+        assert "wwPhasorRequestDiagram" not in body
+        assert "fetch(" not in body
+
+    def test_render_from_state_never_fetches(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderFromState", "function wwPhasorToggleRoleVisibility")
+        assert "await" not in body
+        assert "wwPhasorFetchDiagram" not in body
+
+    def test_delegated_click_and_keydown_wiring_exists(self):
+        source = _source()
+        assert '.closest(".ww-phasor-value-row--toggle")' in source
+        assert 'event.key !== "Enter" && event.key !== " "' in source
+        assert "document.getElementById(\"wwPhasorValuesList\").addEventListener(\"click\"" in source
+        assert "document.getElementById(\"wwPhasorValuesList\").addEventListener(\"keydown\"" in source
+
+    def test_visibility_reset_only_on_context_change_not_on_time_change(self):
+        """A genuinely different Engineering Context resets visibility to
+        "all available roles visible"; an Analysis Time change on the
+        SAME context must never do this."""
+        source = _source()
+        load_context_body = _function_body(source, "function wwPhasorLoadForSelectedContext", "function wwPhasorAnchorDisplaySourceIdForContext")
+        assert "wwPhasorState.visibleRoles = {};" in load_context_body
+        time_input_body = source[source.index("function wwPhasorOnAnalysisTimeInput"):source.index("}", source.index("function wwPhasorOnAnalysisTimeInput"))]
+        assert "wwPhasorState.visibleRoles" not in time_input_body
+
+    def test_default_visibility_never_overwrites_an_existing_preference(self):
+        source = _source()
+        body = _function_body(source, "async function wwPhasorRequestDiagram", "function wwPhasorWholeResultBlockedMessage")
+        assert '!(roleKey in wwPhasorState.visibleRoles)' in body
+
+    def test_missing_or_ambiguous_roles_have_no_toggle_control(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorValueRowHtml", "function wwPhasorRenderValuesList")
+        assert 'role.status !== "available"' in body
 
 
 class TestNoPlaybackIntegrationYet:

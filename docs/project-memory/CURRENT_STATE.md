@@ -257,86 +257,103 @@ sinusoid through the full HTTP stack) plus the full existing regression
 suite pass unmodified. See [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) for
 the full architecture.
 
-**Phasor Analysis Slice 2 — Analysis Page + Static Phasor Diagram
-([DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules),
-2026-09-11) is implemented — frontend-only, the first real Analysis-menu
-consumer.** `Analysis` is a new, PERMANENT top-level main-menu
-destination (`#mainNavAnalysisBtn`, after Calculated Channels), hosting
-a left-hand analysis-type list that will grow to Distance Protection/
-Overcurrent/Differential/Sequence Components later — only `Phasor`
-exists today. Normal workflow is entirely resolver-driven and contains
-**no manual raw-channel picker**: Bay (Engineering Context) → Quantity
-→ Mode drives the existing, unchanged Slice 2 `input-resolution`
-endpoint; the phasor estimator is only ever called once that status is
-`resolved` — an `ambiguous`/`needs_configuration` result renders an
-explicit, per-role-actionable reason instead (including
-`waveform_form_not_eligible`, deliberately left as visible/actionable
-text rather than weakened, pending real-event UAT to judge whether it's
-too conservative). Analysis time is workspace time (the same coordinate
-Cursor A/B already use), converted to the resolver's own anchor-role
-source-relative elapsed time only at the API call boundary
-(`wwWorkspaceTimeToSourceTime()`); Cursor A's own time is read only as
-a convenient default (never the other way around — moving Phasor's
-analysis time never moves Cursor A). Three-phase mode displays
-`angle_deg_relative` (Phase-A-referenced) as the primary number;
-single-phase displays the backend's own `angle_deg_absolute` — never a
-fabricated 0° reference. The diagram is lightweight hand-rolled SVG
-(never Plotly — no existing polar/vector precedent to reuse, and raw
-SVG updates are cheaper per-frame, which matters for the still-deferred
-Slice 3), one shared magnitude scale across every vector, three new
-`--ww-phase-a/b/c` color tokens (reusing the app's own accent/warn/ok
-trio, deliberately not Cursor A/B's tokens). A single shared
-`requestGeneration` counter plus the existing `ww.epoch` guard protect
-against a stale response overwriting a newer selection. **A real
-`[hidden]`-vs-`display:grid/flex` CSS bug was found and fixed** during
-Playwright testing (two elements' own explicit `display` rules were
-silently overriding the `hidden` attribute they're toggled with) — the
-kind of defect only a real-browser test catches. Pre-implementation
-check: the Slice 1 estimator's own time coordinate was verified already
-correct (a per-request, non-window-dependent `reference_epoch`
-reduction already existed) — no production code change was needed.
-**No Playback integration, no combined Voltage+Current display, no
-Per-Unit display, no MANUAL Engineering Context creation/editing UI**
-(automatic suggestion bootstrap was added by a subsequent UAT fix, see
-immediately below) — explicitly out of scope. New dedicated
-ASCII-COMTRADE test fixture (`phasor_smoke_three_phase.cfg/.dat`, a
-known three-phase sinusoid) plus 39 new static structural tests and 3
-new real-browser Playwright tests; 2 pre-existing Playback structural
-tests were revised (not deleted) to reflect the Analysis menu's now-real,
-deliberate existence. Full existing frontend static suite (all
-`test_frontend_*.py`) and full existing Playwright suite (31 tests
-total) both pass unmodified/unchanged in behavior. See
-[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) for the full architecture.
+**Phasor Analysis page (`Analysis > Phasor Diagram`) is implemented and
+is BAY-CENTRIC, not Quantity/Mode-centric** — see
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) for the full architecture and
+[DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)
+(base entry, 2026-09-11) and its own "Update (2026-09-12)" section (the
+bay-centric redesign) for the approval history. `Analysis` is a
+PERMANENT top-level main-menu destination (`#mainNavAnalysisBtn`, after
+Calculated Channels; sidebar tooltip/label read "Phasor Diagram", the
+page's own `<h2>` heading stays "Analysis"), hosting a left-hand
+analysis-type list that will grow to Distance Protection/Overcurrent/
+Differential/Sequence Components later — only `Phasor` exists today.
 
-**Phasor UAT fix (2026-09-11, same-day follow-up to Slice 2, appended to
-[DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)'s
-own Update section, no new DEC).** Two UAT-found UX issues fixed. (1)
-The sidebar tooltip/visible nav label changed from the too-generic
-"Analysis" to "Phasor Diagram" — the page's own `<h2>` heading
-deliberately stays "Analysis." (2) **Phasor now auto-bootstraps
-Engineering Context suggestions** when a workspace has loaded sources
-but zero contexts — `wwPhasorLoadContexts()` fetches the context list;
-if empty, fetches the workspace's own loaded sources, calls the
-EXISTING, UNCHANGED Guardrail Slice 1 suggestion endpoint once per
-source (never assuming one source is "the" bay), re-fetches the context
-list, and — if suggestions succeeded — auto-selects the first newly-
-created context so the engineer reaches a working Phasor view with zero
-manual context-configuration detour. If contexts already existed at
-page load, behavior is BYTE-FOR-BYTE unchanged (no bootstrap, no auto-
-selection) — the fix only ever activates for the genuinely-empty case.
-A one-shot-per-workspace guard (`wwPhasorState.bootstrapAttempted`,
-reset only on "Start New Workspace"/"Clear workspace") prevents a
-suggestion storm on repeated page visits. Suggested/needs_review
-contexts are never hidden or auto-upgraded — detection still only
-suggests, engineer confirmation remains authoritative. No cross-source
-merging, no new backend detection engine, no frontend channel-name
-parsing, no raw-channel picker were introduced. Verified directly
-against the real backend (the `phasor_smoke_three_phase` fixture's own
-channel names are genuinely detectable by the existing detector) rather
-than mocked. 15 new/revised static tests, 3 new real-browser Playwright
-tests (bootstrap succeeds, existing context skips bootstrap, no-source
-state); full frontend static suite and full Playwright suite (34 tests
-total) pass unchanged. No backend files touched.
+**Selecting an Engineering Context (Bay) is the ONLY primary control** —
+there is no Quantity/Mode selector. Selecting a context requests all six
+supported single-phase roles (`Va`/`Vb`/`Vc`/`Ia`/`Ib`/`Ic`) together via
+ONE aggregated backend call (`GET .../phasor-diagram`, backed by the new
+`compute_phasor_diagram()` service function, alongside the original,
+still-unchanged `compute_phasor_analysis()`/`GET .../phasor`). A partial
+bay (e.g. only `Va`+`Ia`) is a normal, useful result — one role being
+`missing`/`ambiguous`/`needs_configuration`/`not_eligible` never blocks
+any other role's own row; a combined-diagram-blocking condition
+(reference-frequency conflict, timebase incompatibility) is the ONLY
+thing that produces a whole-result `needs_configuration` banner. There
+is **no manual raw-channel picker** anywhere in this workflow.
+
+**Individual vector visibility is a pure frontend display preference**
+(`wwPhasorState.visibleRoles`) — clicking a role's own row (reusing the
+exact `#channelGroups` row-as-toggle-button convention Waveform channel
+visibility already established) hides/shows it with a cheap local
+re-render only, never a new backend request. Default: every role that
+computes `available` starts visible; visibility persists across an
+Analysis Time change and resets to "all available roles visible" only
+when the selected Engineering Context itself changes. This state never
+touches Engineering Context membership, phase identity, resolver rules,
+or Measurement Groups.
+
+**The combined diagram's vector geometry uses `angle_deg_absolute`
+only** — Voltage and Current are never independently zero-referenced
+against their own family, preserving the true V-I angular relationship;
+the redesigned Values list shows only that same absolute angle (never
+`angle_deg_relative`), guaranteeing the table can never disagree with
+what the diagram draws. **Voltage and Current use SEPARATE graphical
+magnitude scales** (`Va`/`Vb`/`Vc` share one, `Ia`/`Ib`/`Ic` share
+another, both normalized to the same outer plot radius) — GRAPHICAL
+ONLY, `magnitude_rms` itself is never altered, and the scale ratio
+between the two families is always shown transparently alongside the
+diagram (e.g. "Current vectors scaled ×15.27 for display"). Current
+vectors are drawn dashed, Voltage solid, both still colored by the
+existing `--ww-phase-a/b/c` tokens (reusing the app's own accent/warn/ok
+trio, deliberately not Cursor A/B's tokens) — phase identity and
+quantity type are both visible without inventing unrelated colors.
+
+Analysis time remains workspace time (the same coordinate Cursor A/B
+already use), converted to source-relative elapsed time only at the API
+call boundary — the conversion anchor is the selected context's own
+first member (a coordinate-conversion convenience, never a role-matching
+decision — the frontend never inspects phase/engineering_type itself).
+A single shared `requestGeneration` counter plus the existing `ww.epoch`
+guard protect the one aggregated fetch against a stale response
+overwriting a newer selection; a pure visibility toggle never touches
+this counter, since it never issues a request.
+
+**Phasor also auto-bootstraps Engineering Context suggestions**
+(unchanged by the redesign) when a workspace has loaded sources but zero
+contexts — `wwPhasorLoadContexts()` fetches the context list; if empty,
+fetches the workspace's own loaded sources, calls the existing,
+unchanged Guardrail Slice 1 suggestion endpoint once per source (never
+assuming one source is "the" bay), re-fetches the context list, and — if
+suggestions succeeded — auto-selects the first newly-created context. If
+contexts already existed at page load, behavior is unchanged (no
+bootstrap, no auto-selection). A one-shot-per-workspace guard
+(`wwPhasorState.bootstrapAttempted`, reset only on "Start New
+Workspace"/"Clear workspace") prevents a suggestion storm on repeated
+page visits. Suggested/needs_review contexts are never hidden or
+auto-upgraded — detection still only suggests, engineer confirmation
+remains authoritative.
+
+**No Playback integration, no Per-Unit display, no neutral-phasor roles
+(`Vn`/`In`), no sequence components/impedance/distance, no automatic
+cross-source context merging, no MANUAL Engineering Context creation/
+editing UI** — explicitly out of scope. The dedicated ASCII-COMTRADE
+test fixture (`phasor_smoke_three_phase.cfg/.dat`, a known three-phase
+sinusoid) backs both the static structural suite (70 tests,
+`test_frontend_phasor_analysis.py`) and the real-browser Playwright
+suite (6 tests, `phasor_analysis.spec.js` — a 12-step scenario covering
+all-six-roles load, per-vector visibility toggling with zero additional
+backend requests, visibility surviving an Analysis Time change, and
+visibility resetting on a genuine Engineering Context switch). Backend:
+55 pre-existing Slice 1/2 tests plus 16 new tests
+(`test_phasor_diagram_service.py`, `test_phasor_diagram_api.py`) for the
+aggregation function/endpoint, covering full/partial bays, one-bad-role
+isolation, and both whole-result-blocking conditions. Full backend
+regression, full frontend static suite, and full Playwright suite all
+pass (one pre-existing, unrelated `smoke.spec.js` timing flake
+reproduced as passing on isolated re-run). A real `[hidden]`-vs-
+`display:grid/flex` CSS bug was found and fixed during Slice 2's own
+Playwright testing (unrelated to the redesign, still in effect).
 
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test

@@ -1,9 +1,16 @@
-// Phasor Analysis -- Slice 2 (Analysis Page + Static Phasor Diagram) real-
+// Phasor Analysis -- bay-centric redesign (Phasor UAT redesign) real-
 // browser coverage. See docs/development/BROWSER_SMOKE_TEST.md for the
 // general foundation this extends, and backend/tests/test_frontend_
 // phasor_analysis.py for the structural/static invariants that don't need
 // a real browser (SVG rendering, fetch/render behavior against real
 // backend responses, and stale-request protection genuinely do).
+//
+// Selecting an Engineering Context is now the ONLY primary control --
+// there is no Quantity/Mode selector any more. Every supported role
+// (Va/Vb/Vc/Ia/Ib/Ic) is resolved and estimated together via one
+// aggregated request; a partial bay is a normal result. Individual vector
+// VISIBILITY is a pure frontend display preference -- toggling it must
+// never issue a new `/phasor-diagram` request.
 //
 // Fixture: phasor_smoke_three_phase(.cfg/.dat) -- a dedicated, committed
 // ASCII COMTRADE fixture (3 Voltage + 3 Current channels, 50 Hz, 1000 Hz
@@ -40,13 +47,7 @@ async function uploadFixture(page) {
 // Context spanning all six channels directly via the backend API (no
 // context-creation UI exists in this slice) -- returns { workspaceId,
 // sourceId, contextId }.
-async function uploadAndCreateContext(page) {
-  await uploadFixture(page);
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
-  await expect(row).toBeVisible();
-  const sourceId = await row.getAttribute("data-source-id");
-  const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
-
+async function createFullBayContext(page, workspaceId, sourceId, displayName) {
   const members = [
     ["ALPHA1_VA", "A"], ["ALPHA1_VB", "B"], ["ALPHA1_VC", "C"],
     ["ALPHA1_IA", "A"], ["ALPHA1_IB", "B"], ["ALPHA1_IC", "C"],
@@ -54,13 +55,45 @@ async function uploadAndCreateContext(page) {
     channel_ref: { kind: "source", source_id: sourceId, channel_name },
     phase, phase_source: "engineer_confirmed",
   }));
-
   const response = await page.request.post(
     `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/engineering-contexts`,
-    { data: { display_name: "Alpha 1", status: "manual", members } }
+    { data: { display_name: displayName, status: "manual", members } }
   );
   expect(response.ok()).toBeTruthy();
-  const context = await response.json();
+  return response.json();
+}
+
+// Uploads a SECOND source into the SAME (already open, same-session)
+// workspace without a full page reload -- a channel can only belong to
+// one Engineering Context at a time, so testing "switching Engineering
+// Context resets visibility" needs a genuinely second source/bay, not a
+// reused one. Navigates to Recordings via the SPA nav (never
+// page.goto()) so the current JS session -- and whatever Phasor state
+// this test is mid-way through exercising -- survives. Deliberately
+// does NOT navigate back to Analysis itself -- the caller must create
+// its own Engineering Context against the returned source id FIRST,
+// then return to Analysis (wwRenderAnalysisPage() re-fetches the
+// context list fresh every time that page is shown), or a context
+// created after the Analysis page's own one-shot fetch would not
+// appear in the selector.
+async function uploadSecondSource(page) {
+  await page.locator("#mainNavRecordingsBtn").click();
+  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+  await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${STEM}.cfg`));
+  await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
+  await page.locator("#uploadModalSubmitBtn").click();
+  await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+  return page.locator("#recordingsTableBody tr[data-source-id]").last().getAttribute("data-source-id");
+}
+
+async function uploadAndCreateContext(page) {
+  await uploadFixture(page);
+  const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+  await expect(row).toBeVisible();
+  const sourceId = await row.getAttribute("data-source-id");
+  const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
+  const context = await createFullBayContext(page, workspaceId, sourceId, "Alpha 1");
   return { workspaceId, sourceId, contextId: context.id };
 }
 
@@ -71,79 +104,96 @@ async function openAnalysisPhasor(page) {
   await expect(page.locator("#wwPhasorPanel")).toBeVisible();
 }
 
-test.describe("Phasor Analysis Slice 2", () => {
-  test("full happy path: context -> Voltage three-phase -> values/diagram -> time change -> Current -> single-phase", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
+test.describe("Phasor Analysis -- bay-centric redesign", () => {
+  test("full bay: all six roles together, visibility toggles locally, persists across time change, resets on context switch", async ({ page }) => {
+    const { workspaceId, sourceId, contextId } = await uploadAndCreateContext(page);
 
     // 1. Open Analysis -> Phasor.
     await openAnalysisPhasor(page);
+
+    // No Quantity/Mode selector exists any more -- Bay is the only
+    // primary control.
+    await expect(page.locator("#wwPhasorQuantitySelect")).toHaveCount(0);
+    await expect(page.locator("#wwPhasorModeSelect")).toHaveCount(0);
 
     // 2. Choose context.
     await expect(page.locator(`#wwPhasorContextSelect option[value="${contextId}"]`)).toHaveCount(1);
     await page.locator("#wwPhasorContextSelect").selectOption(contextId);
 
-    // 3. Choose Voltage / Three Phase (both are already the defaults, but
-    //    exercise the selectors explicitly).
-    await page.locator("#wwPhasorQuantitySelect").selectOption("voltage");
-    await page.locator("#wwPhasorModeSelect").selectOption("three_phase");
+    // 3. All six roles resolved and shown together -- never a manual
+    //    channel picker, never a Quantity/Mode-scoped subset.
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text.toLowerCase()).toContain("voltage");
+      expect(text.toLowerCase()).toContain("current");
+      for (const role of ["Va", "Vb", "Vc", "Ia", "Ib", "Ic"]) expect(text).toContain(role);
+    }).toPass({ timeout: 5000 });
+    const valuesText = await page.locator("#wwPhasorValuesList").innerText();
+    expect(valuesText).toMatch(/100\.0\s*V/); // known balanced 100 V RMS
+    expect(valuesText).toMatch(/40\.0\s*A/); // known balanced 40 A RMS
 
-    // 4. Confirm Va/Vb/Vc automatically resolved -- never a manual
-    //    channel picker.
-    await expect(page.locator("#wwPhasorResolutionList")).toContainText("Va");
-    await expect(page.locator("#wwPhasorResolutionList")).toContainText("Vb");
-    await expect(page.locator("#wwPhasorResolutionList")).toContainText("Vc");
-    await expect(page.locator("#wwPhasorResolutionList")).toContainText("ALPHA1_VA");
-    await expect(page.locator("#wwPhasorResolutionList .ww-phasor-role-warn")).toHaveCount(0);
-
-    // 5. A valid analysis time was chosen automatically (non-empty,
-    //    finite) -- the control is visible and populated.
+    // 4. A valid analysis time was chosen automatically.
     await expect(page.locator("#wwPhasorTimeRow")).toBeVisible();
     const initialTime = await page.locator("#wwPhasorTimeInput").inputValue();
     expect(Number(initialTime)).toBeGreaterThan(0);
 
-    // 6. Verify numeric values -- known balanced 100 V RMS three-phase,
-    //    Phase-A-relative angles at 0/-120/+120 deg.
-    const valuesText = await page.locator("#wwPhasorValuesList").innerText();
-    expect(valuesText).toMatch(/100\.0\s*V/);
-    expect(valuesText).toContain("0.0°");
-    expect(valuesText).toMatch(/-120\.[0-9]°/);
-    expect(valuesText).toMatch(/\+119\.[0-9]°|\+120\.0°/);
+    // 5. Six SVG vectors (one <line>+<polygon>+<text> triple per role).
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
+    await expect(page.locator("#wwPhasorSvg text.ww-phasor-vector-label")).toHaveCount(6);
 
-    // 7. Verify three SVG vectors (one <line>+<polygon>+<text> triple per
-    //    resolved role).
-    await expect(page.locator("#wwPhasorSvg line")).toHaveCount(2 + 3); // 2 axes + 3 vector shafts
-    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(3); // 3 arrowheads
-    await expect(page.locator("#wwPhasorSvg text.ww-phasor-vector-label")).toHaveCount(3);
+    // 6. Both families present -> the graphical scaling ratio is shown,
+    //    transparently, alongside the diagram.
+    await expect(page.locator("#wwPhasorScaleNote")).toBeVisible();
+    await expect(page.locator("#wwPhasorScaleNote")).toContainText("Current vectors scaled");
 
-    // 8. Change analysis time.
+    // 7. Hide Vb -- toggled LOCALLY (no new /phasor-diagram request), its
+    //    vector disappears, the other five remain.
+    let diagramFetchCount = 0;
+    page.on("request", (request) => { if (request.url().includes("/phasor-diagram")) diagramFetchCount += 1; });
+    const vbRow = page.locator('.ww-phasor-value-row--toggle[data-role="Vb"]');
+    await expect(vbRow).toHaveAttribute("aria-pressed", "true");
+    await vbRow.click();
+    await expect(vbRow).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(5);
+    expect(diagramFetchCount).toBe(0);
+
+    // 8. Show Vb again.
+    await vbRow.click();
+    await expect(vbRow).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
+    expect(diagramFetchCount).toBe(0);
+
+    // 9. Hide all three Current roles -- Voltage remains fully visible.
+    for (const role of ["Ia", "Ib", "Ic"]) {
+      await page.locator(`.ww-phasor-value-row--toggle[data-role="${role}"]`).click();
+    }
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(3);
+    expect(diagramFetchCount).toBe(0);
+
+    // 10. Change analysis time -- a real backend round-trip happens, but
+    //     the Ia/Ib/Ic visibility preference set above SURVIVES it.
     await page.locator("#wwPhasorTimeInput").fill("1.5");
     await page.locator("#wwPhasorTimeInput").dispatchEvent("change");
-
-    // 9. Verify values/vectors update (still the same steady sinusoid, so
-    //    magnitude/angle stay materially the same -- proving the request
-    //    round-tripped and re-rendered, not that the numbers changed).
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
       expect(text).toMatch(/100\.0\s*V/);
     }).toPass({ timeout: 5000 });
-    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(3);
+    expect(diagramFetchCount).toBeGreaterThan(0);
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(3); // still only Voltage visible
 
-    // 10. Switch to Current.
-    await page.locator("#wwPhasorQuantitySelect").selectOption("current");
+    // 11/12. Switching to a genuinely different Engineering Context
+    //        resets visibility -- all six available roles visible again.
+    //        A channel can only belong to one Engineering Context at a
+    //        time, so this uploads a SECOND source (a second bay's own
+    //        recording) rather than reusing the first's channels.
+    const secondSourceId = await uploadSecondSource(page);
+    const secondContext = await createFullBayContext(page, workspaceId, secondSourceId, "Bravo 1");
+    await page.locator("#mainNavAnalysisBtn").click();
+    await expect(page.locator(`#wwPhasorContextSelect option[value="${secondContext.id}"]`)).toHaveCount(1);
+    await page.locator("#wwPhasorContextSelect").selectOption(secondContext.id);
     await expect(async () => {
-      const text = await page.locator("#wwPhasorValuesList").innerText();
-      expect(text).toMatch(/40\.0\s*A/);
+      await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
     }).toPass({ timeout: 5000 });
-    await expect(page.locator("#wwPhasorResolutionList")).toContainText("Ia");
-
-    // 11. Switch to single phase -- one vector, absolute angle, no
-    //     relative-angle reference invented.
-    await page.locator("#wwPhasorModeSelect").selectOption("phase_a");
-    await expect(async () => {
-      await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(1);
-    }).toPass({ timeout: 5000 });
-    await expect(page.locator("#wwPhasorValuesList")).toContainText("Ia");
-    await expect(page.locator("#wwPhasorValuesList")).not.toContainText("Ib");
   });
 
   test("no context selected shows an explanatory empty state, not a broken diagram", async ({ page }) => {
@@ -154,12 +204,10 @@ test.describe("Phasor Analysis Slice 2", () => {
     await expect(page.locator("#wwPhasorSvg")).toBeEmpty();
   });
 
-  test("needs_configuration resolution is shown with an actionable reason, never computed", async ({ page }) => {
+  test("partial bay (Voltage Phase A only) renders Va and marks the other five roles Missing, never a whole-page failure", async ({ page }) => {
     // A deliberately incomplete context (Phase A Voltage only, the other
-    // five channels left unclaimed) -- three-phase mode against it can
-    // never resolve (Vb/Vc are missing, not merely unconfirmed),
-    // exercising the needs_configuration render path with a real backend
-    // response rather than a mocked one.
+    // five channels left unclaimed) -- the bay-centric redesign treats
+    // this as a NORMAL partial result, never a whole-result failure.
     await uploadFixture(page);
     const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
     await expect(row).toBeVisible();
@@ -169,7 +217,7 @@ test.describe("Phasor Analysis Slice 2", () => {
       `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/engineering-contexts`,
       {
         data: {
-          display_name: "Bravo 1 (incomplete)", status: "manual",
+          display_name: "Bravo 1 (partial)", status: "manual",
           members: [
             { channel_ref: { kind: "source", source_id: sourceId, channel_name: "ALPHA1_VA" }, phase: "A", phase_source: "engineer_confirmed" },
           ],
@@ -181,13 +229,17 @@ test.describe("Phasor Analysis Slice 2", () => {
 
     await openAnalysisPhasor(page);
     await page.locator("#wwPhasorContextSelect").selectOption(context.id);
-    await page.locator("#wwPhasorQuantitySelect").selectOption("voltage");
-    await page.locator("#wwPhasorModeSelect").selectOption("three_phase");
 
-    await expect(page.locator("#wwPhasorStatusRow")).toBeVisible();
-    await expect(page.locator("#wwPhasorStatusRow")).toContainText("Needs configuration");
-    await expect(page.locator("#wwPhasorResolutionList")).toContainText("Va");
-    await expect(page.locator("#wwPhasorResolutionList .ww-phasor-role-ok")).toHaveCount(1); // Va only
+    // No whole-result blocking banner -- a partial bay is a normal result.
+    await expect(page.locator("#wwPhasorStatusRow")).toBeHidden();
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/); // Va computed
+      expect(text).toContain("Missing"); // Vb/Vc/Ia/Ib/Ic
+    }).toPass({ timeout: 5000 });
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(1); // only Va drawn
+    // A role with nothing to show has no visibility toggle.
+    await expect(page.locator('.ww-phasor-value-row--toggle[data-role="Vb"]')).toHaveCount(0);
   });
 });
 
@@ -200,7 +252,7 @@ test.describe("Phasor Analysis Slice 2", () => {
 // (ALPHA1_VA/VB/VC/IA/IB/IC) are genuinely detectable by the existing,
 // unchanged Guardrail Slice 1 detector (verified directly against the
 // real backend before writing these tests), so no mocking is needed.
-test.describe("Phasor Analysis Slice 2 -- Engineering Context bootstrap (UAT fix)", () => {
+test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () => {
   // ---- Scenario A: bootstrap succeeds ----
   test("no contexts + loaded source -> automatic suggestion populates the Bay selector", async ({ page }) => {
     // Delay the suggest POST slightly so the transient "Identifying
@@ -226,12 +278,11 @@ test.describe("Phasor Analysis Slice 2 -- Engineering Context bootstrap (UAT fix
     await expect(page.locator("#wwPhasorContextSelect")).not.toHaveValue("");
     await expect(page.locator("#wwPhasorContextBadge")).toContainText("Suggested");
 
-    // 7. Normal input resolution proceeds -- Va/Vb/Vc resolved, values computed.
-    await expect(page.locator("#wwPhasorResolutionList")).toContainText("Va");
-    await expect(page.locator("#wwPhasorResolutionList .ww-phasor-role-warn")).toHaveCount(0);
+    // 7. Normal aggregation proceeds -- every resolvable role computed.
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
       expect(text).toMatch(/100\.0\s*V/);
+      expect(text).toMatch(/40\.0\s*A/);
     }).toPass({ timeout: 5000 });
   });
 

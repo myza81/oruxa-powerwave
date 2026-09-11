@@ -55,9 +55,14 @@ from app.schemas.engineering_context import (
 )
 from app.domain.analysis_input_resolution import AnalysisInputResolution
 from app.domain.analysis_requirements import get_requirement
-from app.domain.phasor import PhasorAnalysisResult
+from app.domain.phasor import PhasorAnalysisResult, PhasorDiagramResult
 from app.schemas.analysis_input_resolution import AnalysisInputResolutionOut, RoleSpecOut
-from app.schemas.phasor_analysis import PhasorAnalysisResultOut, PhasorRoleResultOut
+from app.schemas.phasor_analysis import (
+    PhasorAnalysisResultOut,
+    PhasorDiagramResultOut,
+    PhasorDiagramRoleResultOut,
+    PhasorRoleResultOut,
+)
 from app.schemas.source import ErrorOut
 from app.services.analysis_input_resolution_service import resolve_analysis_inputs
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
@@ -73,7 +78,7 @@ from app.services.engineering_context_service import (
     update_member_phase,
 )
 from app.services.errors import ImportServiceError
-from app.services.phasor_analysis_service import compute_phasor_analysis
+from app.services.phasor_analysis_service import compute_phasor_analysis, compute_phasor_diagram
 from app.services.workspace_registry import WorkspaceRegistry
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["engineering-contexts"])
@@ -406,3 +411,58 @@ def get_phasor_analysis(
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
     return _phasor_result_to_out(result)
+
+
+def _phasor_diagram_result_to_out(result: PhasorDiagramResult) -> PhasorDiagramResultOut:
+    return PhasorDiagramResultOut(
+        status=result.status, engineering_context_id=result.engineering_context_id,
+        analysis_time=result.analysis_time, reference_frequency_hz=result.reference_frequency_hz,
+        window_seconds=result.window_seconds, algorithm_version=result.algorithm_version,
+        roles={
+            role_key: PhasorDiagramRoleResultOut(
+                status=role.status,
+                channel_ref=ChannelRefOut.from_domain(role.channel_ref) if role.channel_ref is not None else None,
+                magnitude_rms=role.magnitude_rms, unit=role.unit,
+                angle_deg_absolute=role.angle_deg_absolute, angle_deg_relative=role.angle_deg_relative,
+                reason_code=role.reason_code,
+            )
+            for role_key, role in result.roles.items()
+        },
+        warnings=result.warnings, reason_code=result.reason_code, message=result.message,
+    )
+
+
+@router.get("/engineering-contexts/{engineering_context_id}/phasor-diagram", response_model=PhasorDiagramResultOut)
+def get_phasor_diagram(
+    workspace_id: str,
+    engineering_context_id: str,
+    analysis_time: float,
+    reference_frequency_hz: float | None = None,
+    context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+) -> PhasorDiagramResultOut:
+    """Read-only, selected-time-only, bay-centric Phasor Diagram
+    aggregation (Phasor UAT redesign; see
+    docs/project-memory/PHASOR_ANALYSIS.md's own "Bay-centric Phasor
+    Diagram" section). Resolves and estimates ALL SIX supported roles
+    (Va/Vb/Vc/Ia/Ib/Ic) for one Engineering Context independently -- a
+    partial bay (e.g. only Va+Ia) is a normal, useful result, never a
+    whole-request failure. `status` is only ever `needs_configuration`
+    when the roles present cannot be meaningfully drawn TOGETHER
+    (conflicting declared nominal frequencies, or a proven timebase
+    incompatibility) -- one role being individually missing/ambiguous/
+    ineligible never blocks any other role's own result, see each
+    role's own `status` for that. No `unit_mode`/Per-Unit parameter in
+    this slice. Never persisted."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = compute_phasor_diagram(
+            workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+            analysis_time=analysis_time, reference_frequency_hz_override=reference_frequency_hz,
+            context_registry=context_registry, source_registry=source_registry,
+            calculated_channel_registry=calc_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return _phasor_diagram_result_to_out(result)
