@@ -71,6 +71,8 @@ _SINGLE_TOKENS = frozenset({"R", "Y", "B", "A", "C"})
 _L123_TOKENS = frozenset({"L1", "L2", "L3"})
 
 _KIND_PREFIX_LETTER = {KIND_VOLTAGE: "V", KIND_CURRENT: "I"}
+_ROOTLESS_CONTEXT_KEY = "__rootless_default_context__"
+_ROOTLESS_CONTEXT_DISPLAY_NAME = "Default Context"
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +186,17 @@ def _root_name(base_name: str, kind: str) -> str | None:
     return root or None
 
 
+def _rootless_context_key(base_name: str, kind: str) -> str | None:
+    """Returns the one source-local fallback key for bare role names.
+
+    This is deliberately narrower than "_root_name returned None": only a
+    phase-stripped base that is exactly the kind marker ("V" or "I") is a
+    bare engineering role such as VA/VB/VC or IA/IB/IC. Other unrooted or
+    malformed names remain excluded.
+    """
+    return _ROOTLESS_CONTEXT_KEY if base_name == _KIND_PREFIX_LETTER[kind] else None
+
+
 def _evidence_letters(raw_token: str, token_kind: str) -> list[str]:
     if token_kind == "pair":
         return [raw_token[0], raw_token[1]]
@@ -191,6 +204,8 @@ def _evidence_letters(raw_token: str, token_kind: str) -> list[str]:
 
 
 def _display_name(root: str) -> str:
+    if root == _ROOTLESS_CONTEXT_KEY:
+        return _ROOTLESS_CONTEXT_DISPLAY_NAME
     trimmed = root.rstrip("_- ").strip()
     return trimmed if trimmed else "Engineering Context"
 
@@ -230,7 +245,9 @@ def detect_engineering_contexts(channels: list[ChannelForDetection]) -> list[Det
         base_name, name_raw_token, name_token_kind, name_original_label = stripped
         root = _root_name(base_name, kind)
         if root is None:
-            continue
+            root = _rootless_context_key(base_name, kind)
+            if root is None:
+                continue
 
         structured = _match_structured_label(ch.phase_label, kind)
         if structured is not None:

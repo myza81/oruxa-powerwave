@@ -22,6 +22,7 @@ from app.domain.metadata import RecordingMetadata
 from app.domain.phase_identity import (
     PHASE_A,
     PHASE_B,
+    PHASE_C,
     PHASE_SOURCE_DETECTED_FROM_NAME,
     PHASE_SOURCE_ENGINEER_CONFIRMED,
     PHASE_SOURCE_STRUCTURED_METADATA,
@@ -376,6 +377,30 @@ class TestGenerateSuggestedContextsForSource:
         context = created[0]
         assert context.status == STATUS_SUGGESTED
         assert {m.channel_ref.channel_name for m in context.members} == {"ALPHA1_VA", "ALPHA1_IA"}
+
+    def test_creates_suggested_context_from_bare_roles(self, registry, source_registry, calc_registry):
+        source_registry.add(
+            _active_source(
+                "src-bare", "ws-1",
+                [
+                    ("VA", VOLTAGE), ("VB", VOLTAGE), ("VC", VOLTAGE),
+                    ("IA", CURRENT), ("IB", CURRENT), ("IC", CURRENT),
+                ],
+                phases={"VA": "A", "VB": "B", "VC": "C", "IA": "A", "IB": "B", "IC": "C"},
+            )
+        )
+
+        created = generate_suggested_contexts_for_source(
+            workspace_id="ws-1", source_id="src-bare", registry=registry,
+            source_registry=source_registry, calculated_channel_registry=calc_registry,
+        )
+
+        assert len(created) == 1
+        context = created[0]
+        assert context.display_name == "Default Context"
+        assert context.status == STATUS_SUGGESTED
+        phases = {m.channel_ref.channel_name: m.phase for m in context.members}
+        assert phases == {"VA": PHASE_A, "VB": PHASE_B, "VC": PHASE_C, "IA": PHASE_A, "IB": PHASE_B, "IC": PHASE_C}
 
     def test_unknown_source_raises(self, registry, source_registry, calc_registry):
         with pytest.raises(SourceNotFoundError):

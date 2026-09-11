@@ -8,6 +8,26 @@ Last updated: **2026-09-12**
 
 ## What was most recently done
 
+**Phasor UAT fix -- bare Engineering Context detection for real COMTRADE
+role names.** A real uploaded event reached the Phasor Diagram bootstrap
+path correctly, but produced no Bay options because the backend
+Engineering Context detector excluded rootless channel names such as
+`VA`/`VB`/`VC`/`IA`/`IB`/`IC`: after stripping the phase suffix and
+kind marker, no bay prefix remained. The detector now has one narrow
+source-local fallback for those bare engineering-role names, creating a
+neutral "Default Context" when roles are unambiguous. Rooted names such
+as `ALPHA1_VA`/`ALPHA1_IA` keep the existing path unchanged; malformed
+or non-bare names that lack a root are still excluded. Duplicate or
+conflicting bare roles produce `needs_review`, never a silent choice.
+
+**Tests added/updated**: pure detector coverage for complete bare ABC,
+partial `VA`/`IA`, bare R/Y/B, duplicate bare roles, wrong-engineering-
+type exclusion, and rooted-regression preservation; service/API coverage
+for upload + suggestion + final context list using
+`phasor_bare_three_phase.cfg` with the existing known sinusoid DAT; and
+a Playwright bootstrap regression for a bare-role upload populating the
+Bay selector and all six phasor roles.
+
 **Phasor UAT redesign — bay-centric Phasor Diagram, not Quantity/Mode-
 centric ([DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)'s
 own "Update (2026-09-12)" section, no new DEC; architecture recorded in

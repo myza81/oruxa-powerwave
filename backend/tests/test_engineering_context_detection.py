@@ -125,6 +125,88 @@ class TestWrongEngineeringTypeExcluded:
         assert names == {"ALPHA1_VA", "ALPHA1_IA"}
 
 
+class TestRootlessBareRoleFallback:
+    def test_complete_bare_abc_source_creates_default_context(self):
+        channels = [
+            ChannelForDetection("VA", VOLTAGE, phase_label="A"),
+            ChannelForDetection("VB", VOLTAGE, phase_label="B"),
+            ChannelForDetection("VC", VOLTAGE, phase_label="C"),
+            ChannelForDetection("IA", CURRENT, phase_label="A"),
+            ChannelForDetection("IB", CURRENT, phase_label="B"),
+            ChannelForDetection("IC", CURRENT, phase_label="C"),
+        ]
+        detected = detect_engineering_contexts(channels)
+        assert len(detected) == 1
+        context = detected[0]
+        assert context.display_name == "Default Context"
+        assert context.status == STATUS_SUGGESTED
+        assert {m.channel_name for m in context.members} == {"VA", "VB", "VC", "IA", "IB", "IC"}
+        assert _phase_by_channel(context, "VA") == PHASE_A
+        assert _phase_by_channel(context, "VB") == PHASE_B
+        assert _phase_by_channel(context, "VC") == PHASE_C
+        assert _phase_by_channel(context, "IA") == PHASE_A
+        for m in context.members:
+            assert m.phase_source == PHASE_SOURCE_STRUCTURED_METADATA
+
+    def test_partial_bare_va_ia_context_is_allowed(self):
+        channels = [ChannelForDetection("VA", VOLTAGE), ChannelForDetection("IA", CURRENT)]
+        detected = detect_engineering_contexts(channels)
+        assert len(detected) == 1
+        context = detected[0]
+        assert context.display_name == "Default Context"
+        assert context.status == STATUS_SUGGESTED
+        assert {m.channel_name for m in context.members} == {"VA", "IA"}
+        assert _phase_by_channel(context, "VA") == PHASE_A
+        assert _phase_by_channel(context, "IA") == PHASE_A
+
+    def test_bare_ryb_roles_normalize_under_ryb_convention(self):
+        channels = [
+            ChannelForDetection("VR", VOLTAGE),
+            ChannelForDetection("VY", VOLTAGE),
+            ChannelForDetection("VB", VOLTAGE),
+            ChannelForDetection("IR", CURRENT),
+            ChannelForDetection("IY", CURRENT),
+            ChannelForDetection("IB", CURRENT),
+        ]
+        detected = detect_engineering_contexts(channels)
+        assert len(detected) == 1
+        context = detected[0]
+        assert context.display_name == "Default Context"
+        assert context.status == STATUS_SUGGESTED
+        assert _phase_by_channel(context, "VR") == PHASE_A
+        assert _phase_by_channel(context, "VY") == PHASE_B
+        assert _phase_by_channel(context, "VB") == PHASE_C
+        assert _phase_by_channel(context, "IR") == PHASE_A
+        assert _phase_by_channel(context, "IY") == PHASE_B
+        assert _phase_by_channel(context, "IB") == PHASE_C
+        for m in context.members:
+            assert m.phase_source == PHASE_SOURCE_DETECTED_FROM_NAME
+
+    def test_duplicate_bare_role_is_needs_review_not_silently_chosen(self):
+        channels = [
+            ChannelForDetection("VA", VOLTAGE),
+            ChannelForDetection("VAN", VOLTAGE),
+            ChannelForDetection("IA", CURRENT),
+        ]
+        detected = detect_engineering_contexts(channels)
+        assert len(detected) == 1
+        context = detected[0]
+        assert context.status == STATUS_NEEDS_REVIEW
+        assert {m.channel_name for m in context.members} == {"VA", "VAN", "IA"}
+
+    def test_wrong_engineering_type_is_excluded_from_bare_fallback(self):
+        channels = [
+            ChannelForDetection("VA", VOLTAGE),
+            ChannelForDetection("IA", CURRENT),
+            ChannelForDetection("VB", POWER),
+        ]
+        detected = detect_engineering_contexts(channels)
+        assert len(detected) == 1
+        names = {m.channel_name for m in detected[0].members}
+        assert names == {"VA", "IA"}
+        assert "VB" not in names
+
+
 class TestStructuredPhaseMetadata:
     def test_structured_metadata_used_when_available_and_recognized(self):
         channels = [
@@ -188,11 +270,10 @@ class TestUngroupableChannelsExcluded:
         assert len(detected) == 1
         assert {m.channel_name for m in detected[0].members} == {"ALPHA1_VA"}
 
-    def test_channel_with_no_bay_prefix_excluded(self):
-        """"VA" alone strips to base "V", then stripping the kind letter
-        leaves an empty root -- no bay-identifying prefix, so this
-        channel is excluded from context detection entirely (still a
-        valid channel, just not automatically clusterable)."""
-        channels = [ChannelForDetection("VA", VOLTAGE)]
+    def test_non_bare_channel_with_no_bay_root_excluded(self):
+        """"METER_A" has a recognizable phase suffix but no trailing
+        kind marker before that suffix, so it is not eligible for the
+        rootless bare-role fallback."""
+        channels = [ChannelForDetection("METER_A", VOLTAGE)]
         detected = detect_engineering_contexts(channels)
         assert detected == []

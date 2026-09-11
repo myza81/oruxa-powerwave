@@ -371,6 +371,12 @@ workspace" hook) that prevents a suggestion storm on every page revisit
 — bootstrap runs at most once per workspace session, ever, regardless of
 how many times the engineer navigates to/from the Phasor page.
 
+The backend detector now also covers the proven UAT file shape where a
+source's own COMTRADE channel names are bare role names with no bay
+prefix (`VA`/`VB`/`VC`/`IA`/`IB`/`IC`, or R/Y/B equivalents). Those
+channels are suggested as one neutral "Default Context" when
+unambiguous; duplicate/conflicting roles still require review.
+
 **Suggested/needs_review contexts are never hidden or auto-upgraded** —
 they populate the Bay selector exactly like a `confirmed`/`manual`
 context, with the same `ww-mg-badge` status indicator already

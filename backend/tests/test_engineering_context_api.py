@@ -33,6 +33,18 @@ def _upload(client, workspace_id, comtrade_fixtures_dir, stem="synth_measurement
     return resp.json()["source_id"]
 
 
+def _upload_files(client, workspace_id, comtrade_fixtures_dir, cfg_stem, dat_stem):
+    cfg = (comtrade_fixtures_dir / f"{cfg_stem}.cfg").read_bytes()
+    dat = (comtrade_fixtures_dir / f"{dat_stem}.dat").read_bytes()
+    files = {
+        "cfg_file": (f"{cfg_stem}.cfg", io.BytesIO(cfg), "application/octet-stream"),
+        "dat_file": (f"{dat_stem}.dat", io.BytesIO(dat), "application/octet-stream"),
+    }
+    resp = client.post(f"/api/v1/workspaces/{workspace_id}/sources", files=files)
+    assert resp.status_code == 201, resp.text
+    return resp.json()["source_id"]
+
+
 def _contexts_url(workspace_id):
     return f"/api/v1/workspaces/{workspace_id}/engineering-contexts"
 
@@ -185,6 +197,25 @@ class TestSuggestEndpoint:
         phases = {m["channel_ref"]["channel_name"]: m["phase"] for m in n275["members"]}
         # RYB convention: raw "B" normalizes to canonical C.
         assert phases == {"N275_VR": "A", "N275_VY": "B", "N275_VB": "C"}
+
+    def test_suggest_creates_default_context_for_bare_phasor_roles(self, client, comtrade_fixtures_dir):
+        source_id = _upload_files(
+            client, "ws-1", comtrade_fixtures_dir,
+            cfg_stem="phasor_bare_three_phase", dat_stem="phasor_smoke_three_phase",
+        )
+        resp = client.post(f"/api/v1/workspaces/ws-1/sources/{source_id}/engineering-contexts/suggest", json={})
+        assert resp.status_code == 200, resp.text
+        created = resp.json()
+        assert len(created) == 1
+        context = created[0]
+        assert context["display_name"] == "Default Context"
+        assert context["status"] == "suggested"
+        phases = {m["channel_ref"]["channel_name"]: m["phase"] for m in context["members"]}
+        assert phases == {"VA": "A", "VB": "B", "VC": "C", "IA": "A", "IB": "B", "IC": "C"}
+
+        listed = client.get(_contexts_url("ws-1"))
+        assert listed.status_code == 200, listed.text
+        assert [c["id"] for c in listed.json()] == [context["id"]]
 
     def test_suggest_is_idempotent(self, client, comtrade_fixtures_dir):
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)

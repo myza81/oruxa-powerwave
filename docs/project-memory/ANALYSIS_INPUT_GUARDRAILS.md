@@ -130,6 +130,16 @@ ONE candidate context (unlike Measurement Group detection's own
 kind-scoped `(base_name, kind)` clustering, which keeps Voltage and
 Current separate).
 
+The same detector also has one deliberately narrow rootless fallback for
+COMTRADE files whose own channel names are only engineering roles, with
+no bay prefix: `VA`/`VB`/`VC`/`IA`/`IB`/`IC` (and the equivalent R/Y/B
+role names such as `VR`/`VY`/`VB`/`IR`/`IY`/`IB`) are collected into one
+source-local "Default Context" candidate when their roles are
+unambiguous. This fallback activates only when the phase-stripped name
+is exactly the kind marker (`V` or `I`); names that merely lack a valid
+root are still excluded. Duplicate/conflicting roles still produce
+`needs_review`, never a silent choice.
+
 **Single-source only, deliberately.** Detection never looks at more
 than one source's channels at once — the safest way to guarantee it
 never silently merges two different physical bays across files on

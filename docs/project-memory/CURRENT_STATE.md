@@ -9,7 +9,7 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-11**. **Event Playback
+Last meaningful update: **2026-09-12**. **Event Playback
 ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock),
 its own 2026-09-11 revision) is implemented as a shared, reusable
 WORKSPACE CAPABILITY — never a standalone top-level page.** Following
@@ -111,7 +111,11 @@ context (cross-kind, unlike Measurement Group detection's own
 kind-scoped clustering), reuses the exact same
 `suggested`/`confirmed`/`needs_review`/`manual` status vocabulary
 Measurement Groups already established, and is additive-only/idempotent
-— a channel already claimed by any existing context is never
+— and has a narrow source-local fallback for bare role-only channel
+names (`VA`/`VB`/`VC`/`IA`/`IB`/`IC`, plus R/Y/B equivalents) that
+creates one neutral "Default Context" when unambiguous; duplicate or
+conflicting bare roles still produce `needs_review`, never a silent
+choice. A channel already claimed by any existing context is never
 reconsidered on a re-run. No completeness requirement and no
 engineering-type restriction on membership (a single "Va" is a valid
 context; a calculated channel may be a member). New workspace-scoped
@@ -332,7 +336,9 @@ bootstrap, no auto-selection). A one-shot-per-workspace guard
 Workspace"/"Clear workspace") prevents a suggestion storm on repeated
 page visits. Suggested/needs_review contexts are never hidden or
 auto-upgraded — detection still only suggests, engineer confirmation
-remains authoritative.
+remains authoritative. The backend detector now handles the real-UAT
+bare role-only source shape (`VA`/`VB`/`VC`/`IA`/`IB`/`IC`) by creating
+one suggested "Default Context" when the roles are unambiguous.
 
 **No Playback integration, no Per-Unit display, no neutral-phasor roles
 (`Vn`/`In`), no sequence components/impedance/distance, no automatic
