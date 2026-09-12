@@ -79,6 +79,8 @@ class TestOvercurrentPanelStructure:
         source = _source()
         assert 'id="wwOvercurrentPlaybackPanel"' in source
         assert 'id="wwOvercurrentPlaybackMount"' in source
+        assert 'ww-analysis-playback-panel" id="wwOvercurrentPlaybackPanel"' in source
+        assert 'ww-analysis-playback-mount" id="wwOvercurrentPlaybackMount"' in source
 
     def test_characteristic_selector_exists(self):
         source = _source()

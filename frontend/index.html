@@ -5806,16 +5806,16 @@
            visible while scrolling, like the transport buttons above it)
            -- kept OUT of the already-packed `.ww-tg-toolbar` flex row
            rather than squeezed in alongside nine other controls.
-           `accent-color` reuses `--ok`, the same green the Playback
-           Cursor line itself uses, so the scrubber reads as visually
-           paired with the cursor it drives. */
+           `accent-color` reuses `--accent`, matching the compact
+           Analysis transport controls without inventing a Playback-only
+           colour. */
         .ww-tg-playback-seek-row {
             padding: 0 10px 6px;
         }
         .ww-tg-playback-seek-slider {
             width: 100%;
             display: block;
-            accent-color: var(--ok);
+            accent-color: var(--accent);
             cursor: pointer;
         }
 
@@ -5994,46 +5994,93 @@
             padding: 5px 8px;
         }
 
-        /* Phasor Playback integration, restyled into a compact single-row
-           ribbon (visual polish pass, 2026-09-12): these rules only lay
-           out THIS panel's own wrapper; every control inside (buttons/
-           select/seek slider) keeps its existing shared `.ww-tg-playback-*`
-           styling/behavior verbatim, never a Phasor-specific duplicate --
-           see PHASOR_ANALYSIS.md's own "Phasor Playback integration"
-           section for why this must stay true. `.ww-phasor-playback-
-           transport` becomes `display: contents` so its own children
-           (Restart/Play/Speed/time-readout) flatten into this ONE flex
-           row alongside the seek slider, rather than stacking as two
-           separate rows; `order` below reorders only WITHIN this mount
-           (scoped by ancestor class), never touching the shared classes'
-           own default layout used by the Waveform Time Group toolbar.
-           Hidden via the `hidden` ATTRIBUTE whenever no Engineering
-           Context has resolved a real Time Group yet -- plain
-           `display: none` default is sufficient here (no higher-
-           specificity `display` rule on this class to override it,
-           unlike `.ww-phasor-body`'s own documented flex/grid fix
-           below). */
-        .ww-phasor-playback-panel {
-            padding: 10px 14px;
+        /* Shared Analysis Playback ribbon -- one compact card/row used
+           by every Analysis analyzer that mounts wwCreatePlaybackControlsHtml()
+           (Phasor and Overcurrent today, future analyzers automatically).
+           The legacy `.ww-phasor-*` classes remain in markup for existing
+           code/tests, but layout is now owned by the neutral
+           `.ww-analysis-playback-*` seam. */
+        .ww-analysis-playback-panel {
+            padding: 8px 10px;
+            border: 1px solid var(--panel-border);
+            background: var(--panel);
+            border-radius: var(--radius);
         }
-        .ww-phasor-playback-mount {
+        .ww-analysis-playback-panel h3 {
+            margin: 0 0 6px;
+            padding: 0;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: none;
+            letter-spacing: 0;
+            color: var(--text);
+        }
+        .ww-analysis-playback-mount {
             display: flex;
             align-items: center;
             flex-wrap: wrap;
-            gap: 8px;
+            gap: 8px 10px;
+            min-width: 0;
         }
-        .ww-phasor-playback-transport {
+        .ww-analysis-playback-transport {
             display: contents;
         }
-        .ww-phasor-playback-mount .ww-tg-playback-seek-row {
+        .ww-analysis-playback-mount .ww-tg-playback-restart-btn,
+        .ww-analysis-playback-mount .ww-tg-playback-play-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            min-height: 28px;
+            padding: 4px 9px;
+            border-radius: calc(var(--radius) - 1px);
+            background: var(--accent-wash-soft);
+            color: var(--accent);
+            border-color: var(--accent-dim);
+            font-size: 0.7rem;
+            line-height: 1;
+            white-space: nowrap;
+        }
+        .ww-analysis-playback-mount .ww-tg-playback-btn-icon {
+            width: 13px;
+            height: 13px;
+            flex: 0 0 auto;
+        }
+        .ww-analysis-playback-mount .ww-tg-playback-btn-icon svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+            fill: none;
+            stroke: currentColor;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .ww-analysis-playback-mount .ww-tg-playback-speed-select {
+            flex: 0 0 auto;
+            min-height: 28px;
+            min-width: 66px;
+            padding: 4px 8px;
+            border-radius: calc(var(--radius) - 1px);
+            font-size: 0.7rem;
+            line-height: 1;
+        }
+        .ww-analysis-playback-mount .ww-tg-playback-seek-row {
             order: 1;
-            flex: 1 1 160px;
-            min-width: 120px;
+            flex: 1 1 260px;
+            min-width: 160px;
             padding: 0;
         }
-        .ww-phasor-playback-mount .ww-tg-playback-time-readout {
+        .ww-analysis-playback-mount .ww-tg-playback-seek-slider {
+            height: 18px;
+        }
+        .ww-analysis-playback-mount .ww-tg-playback-time-readout {
             order: 2;
-            margin-left: 4px;
+            margin-left: auto;
+            font-size: 0.68rem;
+            font-weight: 600;
+            color: var(--accent);
+            white-space: nowrap;
+            text-align: right;
         }
 
         .ww-phasor-status-row {
@@ -7366,8 +7413,8 @@
                  changes which roles the backend resolved or computed.
 
                  Phasor Playback integration: `#wwPhasorPlaybackPanel`
-                 mounts the SAME reusable Playback control surface the
-                 Waveform Time Group toolbar uses
+                 mounts the SAME reusable Playback control surface every
+                 Analysis analyzer uses
                  (wwCreatePlaybackControlsHtml()/wwWirePlaybackControls()/
                  wwSyncPlaybackControls()/wwUpdatePlaybackControlsTick(),
                  all near wwClearWorkspace()) -- Phasor never builds a
@@ -7413,13 +7460,12 @@
                                  wwPhasorMountPlaybackControls(groupId) --
                                  empty/hidden until an Engineering Context
                                  resolves to a real Time Group. Reuses the
-                                 EXACT same markup/wiring/sync functions the
-                                 Waveform Time Group toolbar mounts --
-                                 Phasor is simply a second consumer of the
+                                 EXACT same markup/wiring/sync functions --
+                                 Phasor is one Analysis consumer of the
                                  ONE shared wwPlayback controller. -->
-                            <section class="panel ww-phasor-playback-panel" id="wwPhasorPlaybackPanel" hidden>
+                            <section class="panel ww-phasor-playback-panel ww-analysis-playback-panel" id="wwPhasorPlaybackPanel" hidden>
                                 <h3>Playback</h3>
-                                <div class="ww-phasor-playback-mount" id="wwPhasorPlaybackMount"></div>
+                                <div class="ww-phasor-playback-mount ww-analysis-playback-mount" id="wwPhasorPlaybackMount"></div>
                             </section>
 
                             <div class="ww-phasor-status-row" id="wwPhasorStatusRow" hidden></div>
@@ -7475,9 +7521,9 @@
                                  mount uses -- Overcurrent is simply a THIRD
                                  consumer of the ONE shared wwPlayback
                                  controller. -->
-                            <section class="panel ww-phasor-playback-panel" id="wwOvercurrentPlaybackPanel" hidden>
+                            <section class="panel ww-phasor-playback-panel ww-analysis-playback-panel" id="wwOvercurrentPlaybackPanel" hidden>
                                 <h3>Playback</h3>
-                                <div class="ww-phasor-playback-mount" id="wwOvercurrentPlaybackMount"></div>
+                                <div class="ww-phasor-playback-mount ww-analysis-playback-mount" id="wwOvercurrentPlaybackMount"></div>
                             </section>
 
                             <div class="ww-phasor-status-row" id="wwOvercurrentStatusRow" hidden></div>
@@ -29714,17 +29760,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // wwUpdatePlaybackControlsTick() (below) are the mountable
         // Restart/Play/Speed/seek/current-time widget -- container-
         // parameterized, never hardcoded to "the Time Group canvas"
-        // internally. The waveform Time Group toolbar
-        // (wwCreateTimeGroupCanvasDom()/wwWireTimeGroupToolbar()) is
-        // simply the FIRST, currently-only consumer/mount point of this
-        // surface, not its owner -- a future analysis page mounts the
-        // exact same markup/wiring/sync into its own container and
-        // subscribes via wwPlaybackOnTick() for its own moving point,
+        // internally. Analysis pages mount the exact same markup/wiring/
+        // sync into their own containers and subscribe via
+        // wwPlaybackOnTick() for their own moving points,
         // without needing to know requestAnimationFrame/performance.now()/
         // how the waveform's own cursor works. Analysis input eligibility
         // and engineering-quantity computation (Va/Vb/Vc, impedance,
         // phasors, overcurrent pickup, differential logic) belong entirely
-        // to a future Analysis layer -- Playback tells consumers WHEN
+        // to the Analysis layer -- Playback tells consumers WHEN
         // only, and must never be taught WHAT any of those quantities mean.
         // ==================================================================
 
@@ -29765,8 +29808,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwCreatePlaybackControlsHtml() {
             return {
                 transportHtml:
-                    '<button type="button" class="secondary ww-tg-playback-restart-btn" title="Restart playback for this Time Group (jump to start)" aria-label="Restart playback for this Time Group">Restart</button>' +
-                    '<button type="button" class="secondary ww-tg-playback-play-btn" aria-pressed="false" title="Play this Time Group" aria-label="Play this Time Group">Play</button>' +
+                    '<button type="button" class="secondary ww-tg-playback-restart-btn" title="Restart playback for this Time Group (jump to start)" aria-label="Restart playback for this Time Group">' +
+                        '<span class="ww-tg-playback-btn-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M5.2 5.8A5.3 5.3 0 1 1 4 10.3"/><path d="M5 2.8v3.5H1.5"/></svg></span>' +
+                        '<span class="ww-tg-playback-btn-label">Restart</span>' +
+                    '</button>' +
+                    '<button type="button" class="secondary ww-tg-playback-play-btn" aria-pressed="false" title="Play this Time Group" aria-label="Play this Time Group">' +
+                        '<span class="ww-tg-playback-btn-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path class="ww-tg-playback-play-icon" d="M6 4.5 13 9 6 13.5Z" fill="currentColor" stroke="none"/></svg></span>' +
+                        '<span class="ww-tg-playback-btn-label">Play</span>' +
+                    '</button>' +
                     '<select class="ww-tg-playback-speed-select" title="Playback speed" aria-label="Playback speed">' +
                         '<option value="0.05">0.05×</option>' +
                         '<option value="0.1">0.10×</option>' +
@@ -30142,7 +30191,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const isActive = wwPlayback.activeTimeGroupId === groupId;
             const isPlaying = isActive && wwPlayback.state === WW_PLAYBACK_STATE_PLAYING;
             if (playBtn) {
-                playBtn.textContent = isPlaying ? "Pause" : "Play";
+                const labelEl = playBtn.querySelector(".ww-tg-playback-btn-label");
+                if (labelEl) labelEl.textContent = isPlaying ? "Pause" : "Play";
+                const iconEl = playBtn.querySelector(".ww-tg-playback-btn-icon");
+                if (iconEl) {
+                    iconEl.innerHTML = isPlaying
+                        ? '<svg viewBox="0 0 18 18"><path d="M6 4.5v9M12 4.5v9" stroke-width="2"/></svg>'
+                        : '<svg viewBox="0 0 18 18"><path d="M6 4.5 13 9 6 13.5Z" fill="currentColor" stroke="none"/></svg>';
+                }
                 playBtn.setAttribute("aria-pressed", String(isPlaying));
                 playBtn.title = isPlaying ? "Pause playback for this Time Group" : "Play this Time Group";
                 playBtn.setAttribute("aria-label", playBtn.title);
@@ -34588,7 +34644,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             const playbackControlsHtml = wwCreatePlaybackControlsHtml();
             mountEl.innerHTML =
-                '<div class="ww-phasor-playback-transport">' + playbackControlsHtml.transportHtml + '</div>' +
+                '<div class="ww-phasor-playback-transport ww-analysis-playback-transport">' + playbackControlsHtml.transportHtml + '</div>' +
                 playbackControlsHtml.seekRowHtml;
             panelEl.hidden = false;
             wwWirePlaybackControls(mountEl, groupId);
@@ -35875,7 +35931,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             const playbackControlsHtml = wwCreatePlaybackControlsHtml();
             mountEl.innerHTML =
-                '<div class="ww-phasor-playback-transport">' + playbackControlsHtml.transportHtml + '</div>' +
+                '<div class="ww-phasor-playback-transport ww-analysis-playback-transport">' + playbackControlsHtml.transportHtml + '</div>' +
                 playbackControlsHtml.seekRowHtml;
             panelEl.hidden = false;
             wwWirePlaybackControls(mountEl, groupId);

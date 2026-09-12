@@ -887,16 +887,17 @@ class TestAnalysisShellVisualPolish:
         select_idx = body.index('id="wwPhasorContextSelect"')
         assert label_idx < select_idx < badge_idx
 
-    def test_playback_ribbon_is_one_row_reusing_shared_markup_unmodified(self):
-        """The ribbon restyle only touches THIS mount's own wrapper
-        layout (`display: contents` + scoped `order`) -- the shared
-        `wwCreatePlaybackControlsHtml()` markup/classes Waveform's own
-        toolbar also mounts stay byte-for-byte unchanged."""
+    def test_playback_ribbon_uses_shared_analysis_mount_styling(self):
+        """The ribbon restyle lives on the shared Analysis Playback seam,
+        so Phasor and every later analyzer mounting the reusable factory
+        inherit the same compact one-row control surface."""
         source = _source()
-        css_body = _function_body(source, ".ww-phasor-playback-mount {", ".ww-phasor-status-row {")
+        css_body = _function_body(source, ".ww-analysis-playback-panel {", ".ww-phasor-status-row {")
+        assert "ww-analysis-playback-panel" in source
+        assert "ww-analysis-playback-mount" in source
         assert "display: contents;" in css_body
-        assert ".ww-phasor-playback-mount .ww-tg-playback-seek-row" in css_body
-        assert ".ww-phasor-playback-mount .ww-tg-playback-time-readout" in css_body
+        assert ".ww-analysis-playback-mount .ww-tg-playback-seek-row" in css_body
+        assert ".ww-analysis-playback-mount .ww-tg-playback-time-readout" in css_body
         markup_fn = _function_body(source, "function wwCreatePlaybackControlsHtml()", "function wwPlaybackState")
         for option in ('value="0.05"', 'value="0.1"', 'value="1" selected'):
             assert option in markup_fn

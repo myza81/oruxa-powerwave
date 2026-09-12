@@ -243,6 +243,8 @@ class TestTimeGroupToolbarControls:
         markup_fn = _function_body(source, "function wwCreatePlaybackControlsHtml()", "function wwPlaybackState")
         assert "ww-tg-playback-restart-btn" in markup_fn
         assert "ww-tg-playback-play-btn" in markup_fn
+        assert "ww-tg-playback-btn-icon" in markup_fn
+        assert "ww-tg-playback-btn-label" in markup_fn
         assert "ww-tg-playback-time-readout" in markup_fn
         assert "ww-tg-playback-speed-select" in markup_fn
         assert "ww-tg-playback-seek-slider" in markup_fn
@@ -260,6 +262,37 @@ class TestTimeGroupToolbarControls:
         assert "wwPlaybackHandleSpeedChange(speedSelect)" in wiring_fn
         assert "wwPlaybackHandleSeekInput(groupId" in wiring_fn
         assert "wwPlaybackHandleSeekCommit(groupId" in wiring_fn
+
+
+class TestSharedAnalysisPlaybackStyling:
+    """Analysis Playback visual styling must live on the shared Analysis
+    mount seam, not on one analyzer's private CSS surface."""
+
+    def test_phasor_and_overcurrent_mount_the_shared_analysis_playback_classes(self):
+        source = _source()
+        assert 'class="panel ww-phasor-playback-panel ww-analysis-playback-panel" id="wwPhasorPlaybackPanel"' in source
+        assert 'class="ww-phasor-playback-mount ww-analysis-playback-mount" id="wwPhasorPlaybackMount"' in source
+        assert 'class="panel ww-phasor-playback-panel ww-analysis-playback-panel" id="wwOvercurrentPlaybackPanel"' in source
+        assert 'class="ww-phasor-playback-mount ww-analysis-playback-mount" id="wwOvercurrentPlaybackMount"' in source
+
+    def test_mount_functions_flatten_the_shared_transport_wrapper(self):
+        source = _source()
+        assert source.count("ww-analysis-playback-transport") == 3
+        assert 'ww-phasor-playback-transport ww-analysis-playback-transport' in source
+
+    def test_shared_analysis_playback_css_is_compact_card_and_single_row(self):
+        source = _source()
+        css_body = _function_body(source, ".ww-analysis-playback-panel {", ".ww-phasor-status-row {")
+        assert "border: 1px solid var(--panel-border);" in css_body
+        assert "padding: 8px 10px;" in css_body
+        assert ".ww-analysis-playback-mount {" in css_body
+        assert "flex-wrap: wrap;" in css_body
+        assert ".ww-analysis-playback-transport {" in css_body
+        assert "display: contents;" in css_body
+        assert ".ww-analysis-playback-mount .ww-tg-playback-seek-row" in css_body
+        assert "flex: 1 1 260px;" in css_body
+        assert ".ww-analysis-playback-mount .ww-tg-playback-time-readout" in css_body
+        assert "margin-left: auto;" in css_body
 
 
 class TestPlaybackCursorIsSeparateFromCursorAB:
