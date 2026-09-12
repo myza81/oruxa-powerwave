@@ -920,6 +920,16 @@
            <label> unmodified -- only the page's own layout/operation-
            card/list-row presentation is new here. */
         #pageCalculatedChannels { display: flex; flex-direction: column; gap: 16px; padding: 20px 24px; overflow-y: auto; height: 100%; box-sizing: border-box; }
+        #pageAnalysis {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 20px 24px;
+            overflow-y: auto;
+            height: 100%;
+            box-sizing: border-box;
+        }
+        #pageAnalysis[hidden] { display: none; }
         /* Bug fix (2026-08-21, Phase 5A UAT): the SAME class of bug
            already caught and fixed for #workspaceRow[hidden]/
            #pageRecordings[hidden]/.shell-status-item[hidden]/
