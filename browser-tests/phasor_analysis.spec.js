@@ -14,10 +14,16 @@
 //
 // Phasor Playback integration: Phasor mounts the SAME reusable Playback
 // control surface (`wwCreatePlaybackControlsHtml()`/
-// `wwWirePlaybackControls()`/`wwSyncPlaybackControls()`) the Waveform Time
-// Group toolbar uses -- there is no separate "Analysis Time" input any
-// more, the mounted seek scrubber (`.ww-tg-playback-seek-slider`) IS
-// Phasor's own analysis time control. These tests reuse the EXACT
+// `wwWirePlaybackControls()`/`wwSyncPlaybackControls()`) -- there is no
+// separate "Analysis Time" input any more, the mounted seek scrubber
+// (`.ww-tg-playback-seek-slider`) IS Phasor's own analysis time control.
+// Owner product decision (2026-09-12): Playback controls are Analysis-
+// only now -- the Waveform Time Group toolbar no longer mounts this
+// surface at all (see DECISIONS.md DEC-085's own "Update (2026-09-12)"
+// section and playback.spec.js's own header comment); Phasor's own mount
+// is the sole control surface, while the Waveform Time Group canvas still
+// shows the PASSIVE Playback Cursor overlay (`.ww-tg-playback-cursor-
+// overlay`) reflecting the shared clock. These tests reuse the EXACT
 // `seekTo()`/`seekSliderBounds()` interaction helpers `playback.spec.js`
 // already established for that same scrubber class, and assert against
 // the ONE shared `wwPlayback` controller (`wwPlaybackState()`) -- never a
@@ -481,34 +487,52 @@ test.describe("Phasor Analysis -- Playback integration", () => {
   });
 
   test("Waveform and Phasor share one Playback clock across page navigation", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
+    // Owner product decision (2026-09-12): Playback controls are
+    // Analysis-only now -- Waveform has no seek slider of its own any
+    // more, only the PASSIVE Playback Cursor overlay reflecting the
+    // shared clock. This test now drives both seeks from Phasor's own
+    // mount and confirms: (a) wwPlaybackState().currentTime -- the one
+    // authoritative shared coordinate both pages read -- carries across
+    // a page navigation untouched, and (b) the Waveform canvas's own
+    // passive cursor overlay actually renders at the shared time once
+    // that page is the visible one.
+    const { sourceId, contextId } = await uploadAndCreateContext(page);
 
-    // Display a channel in Waveform and play it to a specific time.
-    const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
-    await row.click();
+    // Display a channel on Waveform so a real Time Group canvas exists
+    // (uploadAndCreateContext() creates the Engineering Context directly
+    // via the backend API, but never displays anything itself) -- this is
+    // what the passive cursor overlay assertion below needs to render
+    // into, independent of which page actually drives the seek.
+    await page.locator(`#recordingsTableBody tr[data-source-id="${sourceId}"]`).click();
     await expect(page.locator("#wwWorkspaceLoading")).toBeHidden();
     const channelRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
     await expect(channelRow).toBeVisible();
     await channelRow.click();
     await expect(channelRow).toHaveAttribute("aria-pressed", "true");
-    const canvas = page.locator("#wwTimeGroupCanvases .ww-time-group-canvas").first();
-    await expect(canvas).toBeVisible();
-    const waveformSlider = canvas.locator(".ww-tg-playback-seek-slider");
-    await seekTo(waveformSlider, 1.25);
+
+    await openAnalysisPhasor(page);
+    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    const phasorSlider = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-seek-slider");
+    await expect(phasorSlider).toBeVisible();
+    await seekTo(phasorSlider, 1.25);
     await expect(async () => {
       const currentTime = await page.evaluate(() => wwPlaybackState().currentTime);
       expect(Math.abs(currentTime - 1.25)).toBeLessThan(0.01);
     }).toPass({ timeout: 5000 });
 
-    // Open Phasor -- it must reflect the SAME shared time, never reset it.
-    await openAnalysisPhasor(page);
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
-    const phasorSlider = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-seek-slider");
-    await expect(async () => {
-      expect(Number(await phasorSlider.inputValue())).toBeCloseTo(1.25, 1);
-    }).toPass({ timeout: 5000 });
+    // Navigate to Waveform -- the shared clock must carry across
+    // unchanged, and the passive cursor overlay must now actually render
+    // (it only draws while the Waveform page itself is the visible one).
+    await page.locator("#mainNavWaveformBtn").click();
+    const canvas = page.locator("#wwTimeGroupCanvases .ww-time-group-canvas").first();
+    await expect(canvas).toBeVisible();
+    expect(await page.evaluate(() => wwPlaybackState().currentTime)).toBeCloseTo(1.25, 1);
+    await expect(canvas.locator(".ww-tg-playback-cursor-overlay")).toBeVisible();
 
-    // Seek further from Phasor, then confirm Waveform reflects it too.
+    // Back to Phasor, seek further -- confirm the shared time again
+    // carries back to Waveform correctly (both directions, not just one).
+    await page.locator("#mainNavAnalysisBtn").click();
+    await expect(page.locator(`#wwPhasorContextSelect`)).toHaveValue(contextId);
     await seekTo(phasorSlider, 1.8);
     await expect(async () => {
       const currentTime = await page.evaluate(() => wwPlaybackState().currentTime);
@@ -516,10 +540,7 @@ test.describe("Phasor Analysis -- Playback integration", () => {
     }).toPass({ timeout: 5000 });
 
     await page.locator("#mainNavWaveformBtn").click();
-    await expect(canvas).toBeVisible();
-    await expect(async () => {
-      expect(Number(await waveformSlider.inputValue())).toBeCloseTo(1.8, 1);
-    }).toPass({ timeout: 5000 });
+    expect(await page.evaluate(() => wwPlaybackState().currentTime)).toBeCloseTo(1.8, 1);
   });
 });
 

@@ -12944,6 +12944,102 @@ strongest evidence this was a pure internal refactor with zero
 externally-visible behavior change to Play/Pause/Resume/Restart/speed/
 seek. No backend changes; no persistence.
 
+**Update (2026-09-12) — Playback CONTROLS are Analysis-only; the raw
+Waveform Time Group toolbar no longer mounts them.** Source: direct
+owner instruction in-session ("the owner still sees Playback controls
+on Waveform, although the agreed product decision is that Playback
+controls must only be exposed on Analysis pages such as Phasor").
+
+**Verification performed before implementing** (per this document's own
+change-governance/conflict-resolution rules): `git log --oneline --all
+-i --grep="playback"` found no prior commit removing Playback controls
+from the Waveform toolbar; the `72952c2` "refactor: make playback a
+reusable workspace capability" commit (the update immediately above)
+explicitly states the waveform toolbar's "own visible behavior is
+completely unchanged" by that refactor; `backend/tests/
+test_frontend_playback.py`'s own `TestTimeGroupToolbarControls` class
+docstring asserted, as tested/approved behavior, "Everyday Play/Pause/
+Restart/Speed/Seek controls live on each Time Group's own waveform
+toolbar." No prior task or commit implementing an Analysis-only
+restriction was found — **this is the first time this decision has been
+made**, not a rediscovery of lost work. This is recorded transparently
+because it reverses a previously-approved, previously-shipped,
+previously-tested piece of this same decision (DEC-085's own original
+Point 1 precedent: "everyday Play/Pause/Restart controls live on each
+Time Group's own waveform toolbar") — the reversal is real and
+intentional, not a bug fix.
+
+**What changed**: `wwCreateTimeGroupCanvasDom()` no longer calls
+`wwCreatePlaybackControlsHtml()`/embeds `transportHtml`/`seekRowHtml`;
+`wwWireTimeGroupToolbar()` no longer calls `wwWirePlaybackControls()`.
+Phasor's own mount (`wwPhasorMountPlaybackControls()`) is now the ONLY
+place Restart/Play/Speed/seek render — unchanged, since it never mounted
+via the Waveform toolbar's own code path. **Explicitly preserved,
+unchanged**: the ONE `wwPlayback` controller, its workspace-time
+coordinate, the one-active-Time-Group rule, `wwCreatePlaybackControlsHtml()`/
+`wwWirePlaybackControls()`/`wwSyncPlaybackControls()`/
+`wwUpdatePlaybackControlsTick()` (still container-parameterized, still
+exactly what Phasor's mount calls), and — deliberately — the dedicated
+**Playback Cursor overlay** (`.ww-tg-playback-cursor-overlay`/
+`.ww-tg-playback-cursor-line`) on the Waveform Time Group canvas: this is
+a PASSIVE readout of the shared clock, not a control, and is not in the
+owner's own removal list (Play/Pause, Restart, speed selector, seek
+slider, "any Waveform Playback container" — read as the CONTROL
+container, not this readout). An engineer can still watch the moving
+Playback cursor on the actual waveform trace while driving Playback from
+an Analysis page.
+
+**A real, small gap this surfaced, fixed in the same change**:
+`wwUpdatePlaybackCursorOverlay()`'s own `canDraw` check requires the
+Waveform page to actually be the visible one (`document.getElementById
+("viewWaveform")`/ruler-visibility gate) — previously harmless, since
+Play/seek always originated ON the Waveform page itself (where that
+check trivially passed at the moment of the action). With Playback now
+started/sought from Analysis while Waveform is hidden, nothing
+previously re-ran that check merely because Waveform became visible
+again (a tick only fires while actively PLAYING; a paused seek from
+Analysis has no further tick once you navigate away). `shellSetCurrentPage()`
+now resyncs the active group's own overlay when the Waveform page
+becomes newly visible (`page === "waveform" && !wasWaveform`), mirroring
+the existing `wwScheduleResizeAllVisiblePlots()` call immediately above
+it — found and fixed via a real failing Playwright test (`phasor_
+analysis.spec.js`'s own "Waveform and Phasor share one Playback clock
+across page navigation"), not assumed.
+
+**Tests**: `backend/tests/test_frontend_playback.py` — a new
+`TestWaveformNoLongerMountsPlaybackControls` class guards the removal
+invariant directly (the Waveform canvas creation/wiring functions no
+longer call the shared factory/wiring functions, render no control
+markup, but still preserve the cursor overlay and every non-Playback
+toolbar control); `TestTimeGroupToolbarControls`'s own docstring
+corrected; the two superseded assertions from `TestPlaybackIsAReusable
+EmbeddableCapability` (which asserted the Waveform canvas DID call the
+shared factory/wiring functions) removed. `browser-tests/playback.spec.js`
+substantially rewritten — every test now drives Playback through
+Phasor's own mounted control surface (seeding a minimal single-phase
+Engineering Context) instead of a Waveform canvas's own controls; the
+multi-Time-Group invariant ("only one active group plays at a time") is
+now exercised directly through the shared engine's own public consumer
+seam (`wwPlaybackPlay()`/`wwPlaybackState()`) against two real,
+independently-displayed Time Groups, since only one control-surface
+mount exists at a time now. `browser-tests/phasor_analysis.spec.js`'s
+own "Waveform and Phasor share one Playback clock across page
+navigation" test rewritten to seek from Phasor in both directions and
+confirm the Waveform canvas's own passive cursor overlay actually
+renders once that page is visible. Full backend regression, full
+frontend static suite, and full Playwright suite all pass; `git diff
+--check` clean.
+
+**Impact**: `frontend/index.html` (markup/wiring removal in
+`wwCreateTimeGroupCanvasDom()`/`wwWireTimeGroupToolbar()`, the
+`shellSetCurrentPage()` overlay-resync fix, comment corrections);
+`backend/tests/test_frontend_playback.py`; `browser-tests/
+playback.spec.js`; `browser-tests/phasor_analysis.spec.js`. No backend
+files touched. Any future Analysis-only analyzer (Overcurrent/Impedance/
+Differential/Sequence Components) mounts Playback controls exactly the
+way Phasor already does — this decision does not change that pattern,
+only where on Waveform's own page it is (no longer) also mounted.
+
 ---
 
 ## DEC-086 — Analysis Guardrail Slice 1: Engineering Context (physical/logical bay) identity and durable canonical phase are established as a new, additive metadata layer, kept fully independent of Measurement Groups/Per-Unit and of no fixed value until a later slice's automatic analysis-input resolver reads it

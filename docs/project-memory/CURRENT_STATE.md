@@ -46,20 +46,30 @@ itself, never Cursor A/B; suspends the clock during a drag/keyboard
 gesture, re-anchors and resumes automatically on release only if it
 was playing before, otherwise lands "paused"; selects a TIME only,
 never fabricates/interpolates engineering data) round out the everyday
-transport. **The waveform Time Group toolbar is ONE consumer/mount
-point of a shared, reusable control-surface API — never Playback's
-owner**: `wwCreatePlaybackControlsHtml()` (markup factory),
+transport. **Playback CONTROLS are Analysis-only (owner product
+decision, 2026-09-12) — the raw Waveform Time Group toolbar no longer
+mounts them at all**, reversing the earlier "waveform toolbar is
+Playback's built-in consumer" shape (see [DECISIONS.md — DEC-085's own
+"Update (2026-09-12)"](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock)
+for the full record). The everyday transport is a shared, reusable
+control-surface API — `wwCreatePlaybackControlsHtml()` (markup factory),
 `wwWirePlaybackControls(containerEl, groupId)` (wiring),
 `wwSyncPlaybackControls(containerEl, groupId)` (state-transition sync),
 `wwUpdatePlaybackControlsTick(containerEl, groupId)` (per-tick
 refresh) — all four container-parameterized (never an internal "the
-Time Group canvas" lookup), so a future engineering-analysis page
-(Distance Protection/Overcurrent/Phasors/Differential, none implemented
-yet) mounts the exact same markup/wiring/sync into its own container
-and subscribes via the existing `wwPlaybackOnTick()` seam for its own
-moving operating point, without needing to know
-`requestAnimationFrame`/`performance.now()`/how the waveform's own
-cursor works. **Frontend/session state only — no backend Playback
+Time Group canvas" lookup), mounted today ONLY by Phasor
+(`wwPhasorMountPlaybackControls()`); a future engineering-analysis page
+(Distance Protection/Overcurrent/Differential, none implemented yet)
+mounts the exact same markup/wiring/sync into its own container and
+subscribes via the existing `wwPlaybackOnTick()` seam for its own moving
+operating point, without needing to know
+`requestAnimationFrame`/`performance.now()`/how the shared cursor works.
+The Waveform Time Group canvas still shows the **passive** Playback
+Cursor overlay (a readout of the shared clock, not a control) —
+`shellSetCurrentPage()` resyncs it for the active group whenever the
+Waveform page newly becomes visible, so it never shows a stale position
+after Playback was driven from elsewhere while Waveform was hidden.
+**Frontend/session state only — no backend Playback
 endpoint exists or was added**; state resets on `wwClearWorkspace()`
 (both "Clear workspace" and "Start New Workspace", including speed
 back to 1×) and whenever the active Time Group's own topology
@@ -1227,12 +1237,16 @@ re-confirmed by the TG-FINAL audit):
   code changed.
 - **Event Playback — a shared, reusable workspace capability (2026-09-11,
   [DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock)
-  and its own same-day owner-UX-correction revision).** No dedicated
+  and its own 2026-09-11/2026-09-12 revisions).** No dedicated
   `Playback` main-menu item or page exists (removed after owner UAT —
   see the revision note in DEC-085) — the everyday Restart/Play↔Pause/
-  speed/seek transport + current-time readout lives on each Time
-  Group's own waveform toolbar, which is ONE mount point of a shared
-  control surface, never Playback's owner. ONE authoritative,
+  speed/seek transport + current-time readout is a shared control
+  surface, mounted on Analysis pages only (Phasor today, via
+  `wwPhasorMountPlaybackControls()`) since the 2026-09-12 owner product
+  decision that reversed the original "waveform toolbar is Playback's
+  built-in mount point" shape — the Waveform Time Group toolbar itself
+  now shows only the passive Playback Cursor overlay, never the
+  controls. ONE authoritative,
   frontend-only `wwPlayback` Playback Controller drives at most one
   active Time Group at a time (switching groups cleanly stops the
   previous one — never two simultaneous `requestAnimationFrame` loops);

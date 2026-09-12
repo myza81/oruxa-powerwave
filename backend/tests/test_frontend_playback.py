@@ -105,21 +105,17 @@ class TestPlaybackIsAReusableEmbeddableCapability:
     """The architecture-correction's own positive requirement: a shared,
     container-parameterized control surface -- markup/wiring/sync all
     live in ONE place, never duplicated per mount point, never assuming
-    "the Time Group canvas" internally."""
+    "the Time Group canvas" internally. A LATER owner product decision
+    (2026-09-12) further scoped WHERE the control surface is mounted --
+    Analysis pages only (see TestWaveformNoLongerMountsPlaybackControls
+    below) -- but the reusable factory/wiring/sync functions THEMSELVES
+    are exactly what that later mount point (wwPhasorMountPlaybackControls())
+    still calls, unchanged; the tests here keep guarding that shared
+    surface's own container-parameterized shape."""
 
-    def test_reusable_markup_factory_exists_and_is_called_once_per_canvas(self):
+    def test_reusable_markup_factory_exists(self):
         source = _source()
         assert "function wwCreatePlaybackControlsHtml()" in source
-        toolbar_fn = _function_body(
-            source, "function wwCreateTimeGroupCanvasDom(groupId)", "function wwEnsureTimeGroupCanvasDom"
-        )
-        assert toolbar_fn.count("const playbackControlsHtml = wwCreatePlaybackControlsHtml();") == 1
-        assert "playbackControlsHtml.transportHtml" in toolbar_fn
-        assert "playbackControlsHtml.seekRowHtml" in toolbar_fn
-        # The markup itself (button/select/input tags) no longer lives
-        # inline in the canvas template -- only the factory call + its
-        # two returned-fragment references do.
-        assert '<button type="button" class="secondary ww-tg-playback-restart-btn"' not in toolbar_fn
 
     def test_wire_sync_and_tick_functions_are_container_parameterized(self):
         """Never an internal wwTimeGroupCanvasEl(groupId) lookup inside
@@ -133,16 +129,6 @@ class TestPlaybackIsAReusableEmbeddableCapability:
         ]:
             fn = _function_body(source, signature, next_signature)
             assert "wwTimeGroupCanvasEl(" not in fn, f"{signature} must not resolve its own container"
-
-    def test_waveform_toolbar_delegates_to_the_reusable_wiring_function(self):
-        source = _source()
-        wiring_fn = _function_body(
-            source, "function wwWireTimeGroupToolbar(canvasEl, groupId)", "function wwWireSplitMenuOutsideClickDismissal"
-        )
-        assert "wwWirePlaybackControls(canvasEl, groupId);" in wiring_fn
-        # No duplicated inline listener wiring left behind.
-        assert 'querySelector(".ww-tg-playback-restart-btn")' not in wiring_fn
-        assert 'querySelector(".ww-tg-playback-speed-select")' not in wiring_fn
 
     def test_time_group_specific_sync_and_tick_are_thin_delegating_wrappers(self):
         source = _source()
@@ -168,14 +154,89 @@ class TestPlaybackIsAReusableEmbeddableCapability:
         assert source.count("wwPlaybackHandleSeekCommit(groupId, parseFloat(seekSlider.value))") == 1
 
 
+class TestWaveformNoLongerMountsPlaybackControls:
+    """Owner product decision (2026-09-12): Playback CONTROLS (Restart/
+    Play/Speed/seek) are exposed only on Analysis pages (Phasor today) --
+    never on the raw Waveform Time Group toolbar. This reverses the
+    earlier "the waveform toolbar is Playback's built-in consumer" shape
+    (see TestPlaybackIsAReusableEmbeddableCapability above and DECISIONS.md
+    DEC-085's own "Update (2026-09-12)" section) -- the shared factory/
+    wiring/sync functions themselves are unchanged and still power
+    wwPhasorMountPlaybackControls(); this class guards that the WAVEFORM
+    canvas specifically no longer calls them, and renders none of the
+    control markup."""
+
+    def test_canvas_creation_does_not_call_the_playback_markup_factory(self):
+        source = _source()
+        toolbar_fn = _function_body(
+            source, "function wwCreateTimeGroupCanvasDom(groupId)", "function wwEnsureTimeGroupCanvasDom"
+        )
+        assert "= wwCreatePlaybackControlsHtml();" not in toolbar_fn
+        assert "playbackControlsHtml." not in toolbar_fn
+        # None of the control markup (button/select/input) is rendered.
+        assert "ww-tg-playback-restart-btn" not in toolbar_fn
+        assert "ww-tg-playback-play-btn" not in toolbar_fn
+        assert "ww-tg-playback-speed-select" not in toolbar_fn
+        assert "ww-tg-playback-seek-slider" not in toolbar_fn
+        assert "ww-tg-playback-time-readout" not in toolbar_fn
+        # The dedicated Playback Cursor overlay is a passive readout of
+        # the shared clock, not a control -- explicitly preserved (see
+        # TestPlaybackCursorIsSeparateFromCursorAB below).
+        assert "ww-tg-playback-cursor-overlay" in toolbar_fn
+
+    def test_toolbar_wiring_does_not_call_the_shared_wiring_function(self):
+        source = _source()
+        wiring_fn = _function_body(
+            source, "function wwWireTimeGroupToolbar(canvasEl, groupId)", "function wwWireSplitMenuOutsideClickDismissal"
+        )
+        assert "wwWirePlaybackControls(canvasEl, groupId);" not in wiring_fn
+        assert 'querySelector(".ww-tg-playback-restart-btn")' not in wiring_fn
+        assert 'querySelector(".ww-tg-playback-speed-select")' not in wiring_fn
+        assert 'querySelector(".ww-tg-playback-seek-slider")' not in wiring_fn
+
+    def test_shared_controller_and_reusable_functions_are_untouched(self):
+        """Preserve the ONE wwPlayback controller and the reusable
+        control-surface API -- Phasor's own mount (and any future
+        Analysis-page mount) still depends on every one of these exactly
+        as before."""
+        source = _source()
+        assert "function wwCreatePlaybackControlsHtml()" in source
+        assert "function wwWirePlaybackControls(containerEl, groupId)" in source
+        assert "function wwSyncPlaybackControls(containerEl, groupId)" in source
+        assert "function wwUpdatePlaybackControlsTick(containerEl, groupId)" in source
+        assert "function wwPlaybackPlay(groupId)" in source
+        assert "function wwPlaybackPause()" in source
+        assert "function wwPlaybackRestart(groupId)" in source
+        assert "function wwPlaybackSetSpeed(newSpeed)" in source
+        assert "const wwPlayback = {" in source
+
+    def test_cursor_ab_and_time_group_navigation_controls_still_render(self):
+        """Non-Playback Time Group toolbar controls (Zoom, Reset Time
+        View, Autoscale Y, Cursor A/B mode, t=0, Synchronize Sources) are
+        entirely unaffected by this removal."""
+        source = _source()
+        toolbar_fn = _function_body(
+            source, "function wwCreateTimeGroupCanvasDom(groupId)", "function wwEnsureTimeGroupCanvasDom"
+        )
+        assert "ww-tg-zoom-in-split" in toolbar_fn
+        assert "ww-tg-zoom-out-split" in toolbar_fn
+        assert "ww-tg-reset-view-btn" in toolbar_fn
+        assert "ww-tg-autoscale-btn" in toolbar_fn
+        assert "ww-tg-cursor-mode-btn" in toolbar_fn
+        assert "ww-tg-t0-btn" in toolbar_fn
+        assert "ww-tg-sync-btn" in toolbar_fn
+        assert "ww-tg-cursor-overlay" in toolbar_fn
+
+
 class TestTimeGroupToolbarControls:
-    """Everyday Play/Pause/Restart/Speed/Seek controls live on each Time
-    Group's own waveform toolbar -- markup owned by
+    """Everyday Play/Pause/Restart/Speed/Seek controls are the shared,
+    reusable control surface -- markup owned by
     wwCreatePlaybackControlsHtml(), wiring owned by
-    wwWirePlaybackControls(), both called (never re-implemented) from
-    wwCreateTimeGroupCanvasDom()/wwWireTimeGroupToolbar() -- the same
-    established per-canvas pattern Reset Time View/Autoscale Y/Cursor
-    mode already use for their OWN controls."""
+    wwWirePlaybackControls(). Mounted on Analysis pages only (Phasor
+    today, via wwPhasorMountPlaybackControls()) -- see
+    TestWaveformNoLongerMountsPlaybackControls above for the invariant
+    that the raw Waveform Time Group toolbar no longer mounts this
+    surface (owner product decision, 2026-09-12)."""
 
     def test_reusable_markup_includes_every_control(self):
         source = _source()

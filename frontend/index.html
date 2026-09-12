@@ -5758,11 +5758,14 @@
             pointer-events: none;
         }
         /* Compact, tabular-numeral current-time readout living directly in
-           each Time Group's own toolbar row, next to the Play/Restart
-           buttons (wwCreateTimeGroupCanvasDom()) -- reuses
-           wwFormatCursorPointTime() (the SAME formatter Cursor A/B/Δt
-           already use) so its text always matches whatever Time Mode/t0
-           the workspace is currently in, never a second clock. */
+           an Analysis page's own mounted Playback ribbon (Phasor today,
+           via wwPhasorMountPlaybackControls()), next to the Play/Restart
+           buttons -- reuses wwFormatCursorPointTime() (the SAME formatter
+           Cursor A/B/Δt already use) so its text always matches whatever
+           Time Mode/t0 the workspace is currently in, never a second
+           clock. Playback controls are Analysis-only (owner product
+           decision, 2026-09-12) -- the Waveform Time Group toolbar no
+           longer mounts this control surface at all. */
         .ww-tg-playback-time-readout {
             font-variant-numeric: tabular-nums;
             font-size: var(--button-font-size-compact);
@@ -6352,22 +6355,23 @@
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none"/><line x1="9" y1="9" x2="9" y2="2.5" stroke-width="1.5" stroke-linecap="round"/><line x1="9" y1="9" x2="14.5" y2="12.5" stroke-width="1.5" stroke-linecap="round"/><line x1="9" y1="9" x2="4" y2="13" stroke-width="1.5" stroke-linecap="round"/><circle cx="9" cy="9" r="7" fill="none" stroke-width="1" opacity="0.5"/></svg></span>
                     <span class="shell-nav-label">Phasor Diagram</span>
                 </button>
-                <!-- Owner UX correction (post-Slice-1-UAT, supersedes the
-                     Slice 1 comment this replaces): Playback is NOT a
-                     standalone top-level destination -- it is a shared
-                     reusable workspace capability (the ONE wwPlayback
-                     Controller, see its own declaration comment near
-                     wwClearWorkspace()) meant to be embedded into future
-                     engineering-analysis pages (Distance/Overcurrent/
-                     Phasors/Differential, none implemented yet), not a
-                     page of its own. No #mainNavPlaybackBtn/#pagePlayback
-                     exist any more -- the everyday Play/Pause/Restart/
-                     speed/seek transport still lives on each Time Group's
-                     own waveform toolbar (wwCreateTimeGroupCanvasDom()),
-                     which is simply ONE consumer/mount point of the
-                     shared wwPlaybackControlsHtml()/wwWirePlaybackControls()/
-                     wwSyncPlaybackControls() surface, never Playback's
-                     owner. See DECISIONS.md DEC-085's own revision note. -->
+                <!-- Owner UX correction (post-Slice-1-UAT): Playback is
+                     NOT a standalone top-level destination -- it is a
+                     shared reusable workspace capability (the ONE
+                     wwPlayback Controller, see its own declaration
+                     comment near wwClearWorkspace()) embedded into
+                     Analysis pages (Phasor today; future Distance/
+                     Overcurrent/Differential). No #mainNavPlaybackBtn/
+                     #pagePlayback exist. A LATER owner product decision
+                     (2026-09-12) further scoped WHERE the everyday
+                     Play/Pause/Restart/speed/seek transport itself is
+                     mounted: Analysis pages only, via
+                     wwPhasorMountPlaybackControls() -- the raw Waveform
+                     Time Group toolbar (wwCreateTimeGroupCanvasDom()) no
+                     longer mounts it. The shared wwPlaybackControlsHtml()/
+                     wwWirePlaybackControls()/wwSyncPlaybackControls()
+                     surface itself is unchanged either way. See
+                     DECISIONS.md DEC-085's own revision notes. -->
                 <button type="button" class="shell-nav-item" disabled title="Tools -- coming soon">
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><circle cx="6" cy="6" r="3"/><line x1="8.1" y1="8.1" x2="15" y2="15"/></svg></span>
                     <span class="shell-nav-label">Tools</span>
@@ -9528,6 +9532,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // Sidebar Menu toggle, browser resize) could not actually
                 // resize Plotly's charts.
                 wwScheduleResizeAllVisiblePlots();
+                // Owner product decision (2026-09-12): Playback controls
+                // are Analysis-only now, so an engineer commonly starts/
+                // seeks Playback from Phasor while Waveform is hidden --
+                // wwUpdatePlaybackCursorOverlay()'s own `canDraw` check
+                // requires the Waveform page to actually BE the visible
+                // one, and nothing else re-runs it merely because this
+                // page just became visible again (a Playback tick only
+                // fires while actively playing; a paused seek from
+                // Analysis has no further tick to redraw with once you
+                // navigate here). Without this, the passive Playback
+                // Cursor overlay could stay stale/hidden on arrival even
+                // though wwPlaybackState().currentTime is already correct
+                // -- resync it explicitly, exactly like the resize call
+                // immediately above.
+                if (wwPlayback.activeTimeGroupId !== null) {
+                    wwUpdatePlaybackCursorOverlay(wwPlayback.activeTimeGroupId, wwPlayback.currentTime);
+                }
             }
             if (page === "recordings") {
                 // Cheap metadata refresh (same GET .../sources call
@@ -19122,13 +19143,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const section = document.createElement("section");
             section.className = "ww-time-group-canvas";
             section.dataset.timeGroupId = groupId;
-            // Owner UX correction: this canvas's own toolbar is ONE mount
-            // point of the shared, reusable Playback control-surface
-            // markup (wwCreatePlaybackControlsHtml(), near
-            // wwClearWorkspace()) -- never a Time-Group-canvas-specific
-            // copy of it. A future embedded-analysis page calls the SAME
-            // function for its own markup.
-            const playbackControlsHtml = wwCreatePlaybackControlsHtml();
+            // Owner product decision (2026-09-12): Playback CONTROLS
+            // (Restart/Play/Speed/seek) are exposed only on Analysis
+            // pages (Phasor today, via wwPhasorMountPlaybackControls()) --
+            // never on the raw Waveform Time Group toolbar. This reverses
+            // the "waveform toolbar is the built-in Playback consumer"
+            // shape the earlier Playback slices shipped with; see
+            // DECISIONS.md's own DEC-085 "Update (2026-09-12)" section for
+            // the full record. The shared wwPlayback controller, its
+            // reusable control-surface factory/wiring/sync functions
+            // (wwCreatePlaybackControlsHtml()/wwWirePlaybackControls()/
+            // wwSyncPlaybackControls(), all near wwClearWorkspace()), and
+            // the dedicated Playback Cursor overlay directly below (a
+            // passive readout of the shared clock, not a control) are all
+            // unchanged and still fully shared infrastructure -- this
+            // canvas simply no longer MOUNTS the control surface itself.
             section.innerHTML =
                 // Sticky-toolbar UX task: header + toolbar-row share ONE
                 // sticky wrapper (never independently sticky) so they can
@@ -19189,20 +19218,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<button type="button" class="ww-icon-btn ww-tg-sync-btn" title="Synchronize Sources in this Time Group" aria-label="Synchronize Sources in this Time Group">' +
                         '<span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="2.5" y1="6" x2="9" y2="6" stroke-width="1.3"/><polyline points="6.5,3.5 9,6 6.5,8.5" stroke-width="1.3"/><line x1="15.5" y1="12" x2="9" y2="12" stroke-width="1.3"/><polyline points="11.5,9.5 9,12 11.5,14.5" stroke-width="1.3"/></svg></span>' +
                     '</button>' +
-                    // This Time Group's own mount of the shared,
-                    // reusable Playback transport cluster (Restart/Play/
-                    // Speed/current-time) -- markup owned by
-                    // wwCreatePlaybackControlsHtml(), wired by
-                    // wwWirePlaybackControls(), synced by
-                    // wwSyncPlaybackControls() (all near
-                    // wwClearWorkspace()). This canvas is simply ONE
-                    // consumer of the shared wwPlayback Controller, never
-                    // its owner -- pressing Play here makes this group
-                    // the active Playback Controller group
-                    // (wwPlaybackPlay(groupId)), but a future embedded-
-                    // analysis page mounts the exact same controls the
-                    // exact same way.
-                    playbackControlsHtml.transportHtml +
                 '</div>' +
                 // Owner UX correction: the numerical A-B/Δt readout is
                 // back here (its pre-DEC-066 home) as this row's own
@@ -19217,17 +19232,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<span class="ww-tg-cursor-readout-item"><span class="ww-tg-cursor-readout-label">&Delta;t</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--delta">—</span></span>' +
                 '</div>' +
                 '</div>' +
-                // This Time Group's own mount of the shared, reusable
-                // Playback seek-scrubber row -- a dedicated FULL-WIDTH
-                // row, sibling of `.ww-tg-toolbar-row` above (kept out of
-                // that already-packed flex row), still inside the SAME
-                // `.ww-tg-sticky-top` wrapper so it stays visible while
-                // scrolling, like the transport buttons. See
-                // wwCreatePlaybackControlsHtml()'s own comment for why
-                // this is a SEPARATE fragment from the transport cluster
-                // above (this canvas embeds both in its own two rows; a
-                // future mount point is free to arrange them differently).
-                playbackControlsHtml.seekRowHtml +
                 '</div>' +
                 '<div class="ww-tg-panels"></div>' +
                 '<div class="ww-tg-digital-region" hidden>' +
@@ -23808,15 +23812,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const syncBtn = canvasEl.querySelector(".ww-tg-sync-btn");
             if (syncBtn) syncBtn.addEventListener("click", () => wwOpenSyncModal(groupId));
 
-            // This Time Group canvas is simply ONE mount point of the
-            // shared, reusable Playback control surface -- wiring is
-            // delegated entirely to wwWirePlaybackControls() (near
-            // wwClearWorkspace()), the SAME function any future embedded-
-            // analysis page's own mount point calls too. Nothing
-            // Time-Group-specific happens here beyond passing this
-            // canvas as the container and this group as the target.
-            wwWirePlaybackControls(canvasEl, groupId);
-
+            // Owner product decision (2026-09-12): the Waveform Time
+            // Group toolbar no longer mounts the shared Playback control
+            // surface -- Playback controls are Analysis-only now (see
+            // wwCreateTimeGroupCanvasDom()'s own comment above). The
+            // reusable wwWirePlaybackControls()/wwSyncPlaybackControls()
+            // functions themselves are unchanged and still used by
+            // wwPhasorMountPlaybackControls(); this canvas simply no
+            // longer calls them.
             for (const action of ["in", "out"]) {
                 const wrap = canvasEl.querySelector(action === "in" ? ".ww-tg-zoom-in-split" : ".ww-tg-zoom-out-split");
                 if (!wrap) continue;

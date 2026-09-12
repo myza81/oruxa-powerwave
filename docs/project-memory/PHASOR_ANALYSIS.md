@@ -718,8 +718,12 @@ The separate "Analysis Time" number input + slider are REMOVED entirely.
 Phasor mounts the SAME reusable Playback control surface
 (`wwCreatePlaybackControlsHtml()`/`wwWirePlaybackControls()`/
 `wwSyncPlaybackControls()`/`wwUpdatePlaybackControlsTick()`, all
-unchanged) the Waveform Time Group toolbar already mounts —
-`wwPhasorMountPlaybackControls(groupId)` builds a fresh copy of that
+unchanged). At the time this integration shipped, the Waveform Time
+Group toolbar also mounted this surface; a LATER same-day owner product
+decision made Playback controls Analysis-only, so the Waveform toolbar
+no longer does — see this document's own "Playback controls are now
+Analysis-only" section near the end. `wwPhasorMountPlaybackControls(groupId)`
+builds a fresh copy of that
 markup into `#wwPhasorPlaybackMount` whenever the selected context's own
 resolved Time Group changes, mirroring `wwCreateTimeGroupCanvasDom()`'s
 own "one canvas per distinct group, wired once" convention (never
@@ -869,9 +873,52 @@ instruction); the shared page title/description keep the larger app-wide
 scale. The Playback ribbon is now one compact row (Restart/Play/Speed/
 seek/time) via `display: contents` + a scoped `order` on the wrapper
 only — the shared `wwCreatePlaybackControlsHtml()` markup and every
-`.ww-tg-playback-*` class Waveform's own toolbar also relies on are
-byte-for-byte unchanged. No `Polar View`/visualization-mode selector was
-added.
+`.ww-tg-playback-*` class remain byte-for-byte unchanged (as of
+2026-09-12 this is Phasor's own mount alone — see "Playback controls are
+now Analysis-only" below). No `Polar View`/visualization-mode selector
+was added.
+
+## Playback controls are now Analysis-only (2026-09-12)
+
+Owner product decision, later the same day the "Phasor Playback
+integration" section above shipped: Playback CONTROLS (Restart/Play/
+speed selector/seek slider) are exposed on Analysis pages only — the raw
+Waveform Time Group toolbar no longer mounts them. See
+[DECISIONS.md — DEC-085's own "Update (2026-09-12)"](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock)
+for the full record, including the verification performed before
+implementing (no prior task/commit for this removal existed; it directly
+reverses a previously-shipped, previously-tested piece of DEC-085's own
+original design).
+
+Phasor's own mount (`wwPhasorMountPlaybackControls()`) is completely
+unaffected — it never mounted via the Waveform toolbar's own code path,
+so this section's own architecture above is unchanged in every respect
+except one sentence's own premise ("the Waveform Time Group toolbar
+already mounts" this surface — no longer true; corrected in place
+above). `wwCreateTimeGroupCanvasDom()`/`wwWireTimeGroupToolbar()` simply
+no longer call the shared factory/wiring functions; every other shared
+Playback primitive (the controller, the coordinate, the one-active-group
+rule, the container-parameterized factory/wiring/sync functions) is
+byte-for-byte unchanged, since Phasor's mount already depended on all of
+them working exactly as they always have.
+
+**The dedicated Playback Cursor overlay is explicitly preserved** on the
+Waveform Time Group canvas — a PASSIVE readout of the shared clock, not
+a control, so it is not part of "Playback controls." An engineer can
+still watch the moving cursor on the actual waveform trace while driving
+Playback entirely from an Analysis page. This surfaced one small,
+genuine gap, fixed in the same change: the overlay only actually renders
+while the Waveform page itself is the visible one, and nothing
+previously re-checked that when merely NAVIGATING to Waveform (only an
+active Playback tick, or an action taken while already on that page, did
+before) — `shellSetCurrentPage()` now resyncs the active group's own
+overlay whenever Waveform newly becomes the visible page, mirroring the
+pre-existing `wwScheduleResizeAllVisiblePlots()` call in the same spot.
+
+Future analyzers (Impedance Locus/Overcurrent/Differential/Sequence
+Components) mount Playback controls exactly the way Phasor does today —
+this decision does not change that reusable pattern, only that Waveform
+itself is no longer also a mount point for it.
 
 ## Not yet implemented (future slices)
 
