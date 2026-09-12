@@ -167,6 +167,25 @@ class TestComputedThroughRealUpload:
         assert body["expected_operating_time_seconds"] is None
         assert body["threshold_exceeded"] is False
 
+    def test_kA_primary_recording_ct_conversion_via_http(self, client):
+        """Owner UAT golden scenario end-to-end through a real ASCII-
+        COMTRADE upload: a 2.4 kA primary channel through a 1200:1 CT
+        must resolve to a 2.0 A relay-equivalent current (2.5x a 0.8 A
+        secondary pickup), never the un-normalized 0.002 A."""
+        source_id = _upload_current_source(client, "ws-1", channels=[("ALPHA1_IA", "kA", 2.4)])
+        context = _create_context(client, "ws-1", [{"channel_ref": _ref(source_id, "ALPHA1_IA"), "phase": "A", "phase_source": "engineer_confirmed"}])
+        resp = _overcurrent(
+            client, "ws-1", context["id"], phase="A", analysis_time=1.5,
+            characteristic_id="iec_standard_inverse", tms=0.1, pickup_current_secondary=0.8,
+            recording_basis="primary", ct_primary=1200.0, ct_secondary=1.0,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["measured_rms_current"] == pytest.approx(2.4, rel=1e-3)
+        assert body["measured_rms_current_unit"] == "kA"
+        assert body["relay_secondary_current"] == pytest.approx(2.0, rel=1e-3)
+        assert body["multiple_of_pickup"] == pytest.approx(2.5, rel=1e-3)
+
     def test_missing_engineering_context_is_404(self, client):
         resp = _overcurrent(
             client, "ws-1", "ec-missing", phase="A", analysis_time=1.5,

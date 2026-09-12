@@ -82,6 +82,8 @@ import numpy as np
 
 from app.domain.calculated_channel import ChannelRef
 from app.domain.calculated_channel import evaluate_rms as evaluate_rms_array
+from app.domain.channel_classification import ENGINEERING_QUANTITY_CURRENT
+from app.domain.engineering_units import convert_array_to_canonical, convert_value_to_canonical
 
 #: Bump ONLY when the estimation algorithm/interpretation itself changes
 #: -- never for an unrelated refactor. Included, unconditionally, in
@@ -467,23 +469,71 @@ def ct_values_valid(ct_primary: float, ct_secondary: float) -> bool:
 
 
 def convert_to_relay_secondary(
-    recorded_current: float, *, recording_basis: str, ct_primary: float | None, ct_secondary: float | None,
-) -> float:
-    """`recording_basis="secondary"` -- no conversion needed, the
-    recording already IS what the relay would see. `recording_basis=
-    "primary"` -- `relay_secondary = recorded_primary * (ct_secondary /
-    ct_primary)`. `ct_primary`/`ct_secondary` must already be expressed
-    in the SAME base unit as the resolved current channel's own declared
-    `unit` (mirrors how Phasor never separately re-units a channel's own
-    magnitude_rms -- see this module's own implementation report for why
-    no additional kA/A normalization happens here). Caller (service
-    layer) is responsible for having already validated `ct_primary`/
-    `ct_secondary` via `ct_values_valid()` before calling this for the
-    primary case."""
+    recorded_current: float,
+    *,
+    recording_basis: str,
+    ct_primary: float | None,
+    ct_secondary: float | None,
+    measured_unit: str | None,
+) -> float | None:
+    """CT ratio conversion is only dimensionally valid once
+    `recorded_current` has been normalized to amperes -- `ct_primary`/
+    `ct_secondary` are plain ampere-rated CT nameplate values (product
+    convention: the CT Primary/CT Secondary form fields are always "(A)"),
+    while the recorded current carries its own declared `measured_unit`
+    (e.g. "kA") that may differ. This function normalizes via the shared
+    `app.domain.engineering_units` layer FIRST, then applies the CT ratio
+    -- see docs/project-memory/ENGINEERING_UNITS.md for why a private
+    "kA * 1000" special case here would have been the wrong fix. Returns
+    `None` (never a silently-wrong number) if `measured_unit` cannot be
+    normalized to amperes -- caller must treat that as a needs-
+    configuration condition, not fall back to treating the raw value as
+    already being in amperes.
+
+    `recording_basis="secondary"` -- no CT ratio applied, the recording
+    already IS what the relay would see (still normalized to amperes
+    first: a `secondary` recording declared in kA, e.g. `2.4 kA`, must
+    become `2400 A` before comparing against a pickup entered in
+    amperes -- never treat the raw number as already being in A).
+    `recording_basis="primary"` -- `relay_secondary = recorded_primary_A
+    * (ct_secondary / ct_primary)`. Caller (service layer) is
+    responsible for having already validated `ct_primary`/`ct_secondary`
+    via `ct_values_valid()` before calling this for the primary case."""
+    recorded_current_amperes = convert_value_to_canonical(
+        recorded_current, ENGINEERING_QUANTITY_CURRENT, measured_unit,
+    )
+    if recorded_current_amperes is None:
+        return None
     if recording_basis == RECORDING_BASIS_SECONDARY:
-        return recorded_current
+        return recorded_current_amperes
     assert ct_primary is not None and ct_secondary is not None
-    return recorded_current * (ct_secondary / ct_primary)
+    return recorded_current_amperes * (ct_secondary / ct_primary)
+
+
+def convert_array_to_relay_secondary(
+    recorded_current: np.ndarray,
+    *,
+    recording_basis: str,
+    ct_primary: float | None,
+    ct_secondary: float | None,
+    measured_unit: str | None,
+) -> np.ndarray | None:
+    """Array counterpart of `convert_to_relay_secondary()`, for the full
+    current waveform consumed by `continuous_duration_above_pickup()` --
+    the SAME unit normalization must apply to the whole array, not only
+    the single selected-time RMS sample, or the reported above-pickup
+    duration would stay dimensionally wrong even after the scalar fix.
+    Returns `None` under the same unsupported-unit condition as the
+    scalar version; never mutates `recorded_current`."""
+    recorded_current_amperes = convert_array_to_canonical(
+        recorded_current, ENGINEERING_QUANTITY_CURRENT, measured_unit,
+    )
+    if recorded_current_amperes is None:
+        return None
+    if recording_basis == RECORDING_BASIS_SECONDARY:
+        return recorded_current_amperes
+    assert ct_primary is not None and ct_secondary is not None
+    return recorded_current_amperes * (ct_secondary / ct_primary)
 
 
 # ---------------------------------------------------------------------------
@@ -501,6 +551,7 @@ REASON_INVALID_CT_VALUES = "invalid_ct_values"
 REASON_INVALID_REFERENCE_FREQUENCY = "invalid_reference_frequency"
 REASON_WAVEFORM_FORM_NOT_ELIGIBLE = "waveform_form_not_eligible"
 REASON_CHANNEL_UNAVAILABLE = "channel_unavailable"
+REASON_UNSUPPORTED_CURRENT_UNIT = "unsupported_current_unit"
 
 
 @dataclass(slots=True)

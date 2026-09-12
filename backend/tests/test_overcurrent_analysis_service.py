@@ -133,6 +133,73 @@ class TestBasicComputation:
         result = _compute(registries, pickup_current_secondary=1.0)
         assert result.status == OVERCURRENT_STATUS_COMPUTED
         assert result.multiple_of_pickup < 1.0
+
+
+class TestUnitNormalizedCtConversion:
+    """Owner UAT golden scenario (2026-09) that triggered the shared
+    `app.domain.engineering_units` module: a 2.4 kA primary current
+    through a 1200:1 CT must produce 2.0 A relay-equivalent current (a
+    2.5x pickup multiple against a 0.8 A secondary pickup), not the
+    0.002 A a raw `2.4 * (1/1200)` -- treating the declared-kA channel
+    value as if it were already amperes -- incorrectly produced."""
+
+    def test_kA_primary_recording_normalizes_before_ct_conversion(self, registries):
+        registries["source"].add(
+            _current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=2.4, unit="kA"),
+        )
+        _add_context(registries["context"], "ec-1", "ws-1", [_member("src-1", "ALPHA1_IA", PHASE_A)])
+        result = _compute(
+            registries, recording_basis="primary", ct_primary=1200.0, ct_secondary=1.0,
+            pickup_current_secondary=0.8,
+        )
+        assert result.status == OVERCURRENT_STATUS_COMPUTED
+        assert result.measured_rms_current == pytest.approx(2.4, rel=1e-3)
+        assert result.measured_rms_current_unit == "kA"
+        assert result.relay_secondary_current == pytest.approx(2.0, rel=1e-3)
+        assert result.multiple_of_pickup == pytest.approx(2.5, rel=1e-3)
+        assert result.expected_operating_time_seconds is not None
+
+    def test_kA_primary_recording_gives_dimensionally_correct_above_pickup_duration(self, registries):
+        """Same normalization must apply to the full waveform array
+        driving `continuous_duration_above_pickup()`, not only the
+        single selected-time RMS sample."""
+        registries["source"].add(
+            _current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=2.4, unit="kA"),
+        )
+        _add_context(registries["context"], "ec-1", "ws-1", [_member("src-1", "ALPHA1_IA", PHASE_A)])
+        result = _compute(
+            registries, recording_basis="primary", ct_primary=1200.0, ct_secondary=1.0,
+            pickup_current_secondary=0.8,
+        )
+        assert result.status == OVERCURRENT_STATUS_COMPUTED
+        # A steady 2.4 kA primary sinusoid is continuously above the 0.8 A
+        # secondary pickup for the whole analyzable window -- confirms the
+        # duration measurement used the SAME normalized (2.0 A) array, not
+        # the un-normalized raw values (which would fall below pickup).
+        assert result.above_pickup_duration_seconds is not None
+        assert result.above_pickup_duration_seconds > 0
+
+    def test_kA_secondary_recording_normalizes_to_amperes(self, registries):
+        # 2.4 kA secondary must become 2400 A before comparing against an
+        # amperes-denominated pickup -- never treat the raw "2.4" as 2.4 A.
+        registries["source"].add(
+            _current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=2.4, unit="kA"),
+        )
+        _add_context(registries["context"], "ec-1", "ws-1", [_member("src-1", "ALPHA1_IA", PHASE_A)])
+        result = _compute(registries, recording_basis="secondary", pickup_current_secondary=1.0)
+        assert result.status == OVERCURRENT_STATUS_COMPUTED
+        assert result.relay_secondary_current == pytest.approx(2400.0, rel=1e-3)
+        assert result.multiple_of_pickup == pytest.approx(2400.0, rel=1e-3)
+
+    def test_unsupported_current_unit_is_needs_configuration_not_silently_wrong(self, registries):
+        registries["source"].add(
+            _current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=2.4, unit="furlongs"),
+        )
+        _add_context(registries["context"], "ec-1", "ws-1", [_member("src-1", "ALPHA1_IA", PHASE_A)])
+        result = _compute(registries, recording_basis="secondary", pickup_current_secondary=1.0)
+        assert result.status == STATUS_NEEDS_CONFIGURATION
+        assert result.reason_code == "unsupported_current_unit"
+        assert result.relay_secondary_current is None
         assert result.expected_operating_time_seconds is None
         assert result.threshold_exceeded is False
 

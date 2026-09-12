@@ -29,6 +29,7 @@ from app.domain.overcurrent import (
     RECORDING_BASIS_PRIMARY,
     RECORDING_BASIS_SECONDARY,
     continuous_duration_above_pickup,
+    convert_array_to_relay_secondary,
     convert_to_relay_secondary,
     ct_values_valid,
     estimate_trailing_rms_at_time,
@@ -216,14 +217,100 @@ class TestCtConversion:
         # CT 1000:1 -- 4200 A primary -> 4.2 A secondary.
         relay_current = convert_to_relay_secondary(
             4200.0, recording_basis=RECORDING_BASIS_PRIMARY, ct_primary=1000.0, ct_secondary=1.0,
+            measured_unit="A",
         )
         assert relay_current == pytest.approx(4.2)
 
     def test_secondary_recording_passes_through_unchanged(self):
         relay_current = convert_to_relay_secondary(
             4.2, recording_basis=RECORDING_BASIS_SECONDARY, ct_primary=None, ct_secondary=None,
+            measured_unit="A",
         )
         assert relay_current == pytest.approx(4.2)
+
+    def test_kA_primary_recording_is_normalized_before_ct_ratio(self):
+        """The trigger bug: 2.4 kA primary through a 1200:1 CT must
+        become 2.0 A secondary, not 0.002 A (which is what a raw
+        `2.4 * (1/1200)` -- treating "2.4" as if it were already
+        amperes -- would incorrectly produce)."""
+        relay_current = convert_to_relay_secondary(
+            2.4, recording_basis=RECORDING_BASIS_PRIMARY, ct_primary=1200.0, ct_secondary=1.0,
+            measured_unit="kA",
+        )
+        assert relay_current == pytest.approx(2.0)
+
+    def test_kA_secondary_recording_is_normalized_to_amperes(self):
+        """A `secondary` recording declared in kA must still be
+        normalized to amperes -- 2.4 kA secondary is 2400 A, never the
+        raw number 2.4 treated as if it were already amperes."""
+        relay_current = convert_to_relay_secondary(
+            2.4, recording_basis=RECORDING_BASIS_SECONDARY, ct_primary=None, ct_secondary=None,
+            measured_unit="kA",
+        )
+        assert relay_current == pytest.approx(2400.0)
+
+    def test_case_variant_kA_alias_is_also_normalized(self):
+        relay_current = convert_to_relay_secondary(
+            2.4, recording_basis=RECORDING_BASIS_PRIMARY, ct_primary=1200.0, ct_secondary=1.0,
+            measured_unit="KA",
+        )
+        assert relay_current == pytest.approx(2.0)
+
+    def test_unsupported_unit_returns_none_never_assumes_amperes(self):
+        relay_current = convert_to_relay_secondary(
+            2.4, recording_basis=RECORDING_BASIS_PRIMARY, ct_primary=1200.0, ct_secondary=1.0,
+            measured_unit="furlongs",
+        )
+        assert relay_current is None
+
+    def test_blank_unit_returns_none(self):
+        relay_current = convert_to_relay_secondary(
+            2.4, recording_basis=RECORDING_BASIS_SECONDARY, ct_primary=None, ct_secondary=None,
+            measured_unit="",
+        )
+        assert relay_current is None
+
+    def test_none_unit_returns_none(self):
+        relay_current = convert_to_relay_secondary(
+            2.4, recording_basis=RECORDING_BASIS_SECONDARY, ct_primary=None, ct_secondary=None,
+            measured_unit=None,
+        )
+        assert relay_current is None
+
+
+class TestArrayCtConversion:
+    def test_kA_primary_array_is_normalized_before_ct_ratio(self):
+        values = np.array([1.0, 2.0, 2.4])
+        relay_values = convert_array_to_relay_secondary(
+            values, recording_basis=RECORDING_BASIS_PRIMARY, ct_primary=1200.0, ct_secondary=1.0,
+            measured_unit="kA",
+        )
+        np.testing.assert_allclose(relay_values, [1000.0 / 1200.0, 2000.0 / 1200.0, 2400.0 / 1200.0])
+
+    def test_secondary_array_normalized_to_amperes_no_ct_ratio(self):
+        values = np.array([1.0, 2.4])
+        relay_values = convert_array_to_relay_secondary(
+            values, recording_basis=RECORDING_BASIS_SECONDARY, ct_primary=None, ct_secondary=None,
+            measured_unit="kA",
+        )
+        np.testing.assert_allclose(relay_values, [1000.0, 2400.0])
+
+    def test_never_mutates_input_array(self):
+        values = np.array([1.0, 2.0, 2.4])
+        original = values.copy()
+        convert_array_to_relay_secondary(
+            values, recording_basis=RECORDING_BASIS_PRIMARY, ct_primary=1200.0, ct_secondary=1.0,
+            measured_unit="kA",
+        )
+        np.testing.assert_array_equal(values, original)
+
+    def test_unsupported_unit_returns_none(self):
+        values = np.array([1.0, 2.0])
+        relay_values = convert_array_to_relay_secondary(
+            values, recording_basis=RECORDING_BASIS_PRIMARY, ct_primary=1200.0, ct_secondary=1.0,
+            measured_unit="furlongs",
+        )
+        assert relay_values is None
 
 
 def _sine_samples(*, amp_rms, freq_hz, sample_rate_hz, duration_s, phase_deg=0.0):

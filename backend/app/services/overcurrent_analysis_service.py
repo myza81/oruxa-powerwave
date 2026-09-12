@@ -47,9 +47,11 @@ from app.domain.overcurrent import (
     REASON_INVALID_REFERENCE_FREQUENCY,
     REASON_INVALID_TMS,
     REASON_UNKNOWN_CHARACTERISTIC,
+    REASON_UNSUPPORTED_CURRENT_UNIT,
     REASON_WAVEFORM_FORM_NOT_ELIGIBLE,
     OvercurrentAnalysisResult,
     continuous_duration_above_pickup,
+    convert_array_to_relay_secondary,
     convert_to_relay_secondary,
     ct_values_valid,
     estimate_trailing_rms_at_time,
@@ -294,21 +296,39 @@ def compute_overcurrent_analysis(
     measured_rms_current = estimate.value
     relay_secondary_current = convert_to_relay_secondary(
         measured_rms_current, recording_basis=recording_basis, ct_primary=ct_primary, ct_secondary=ct_secondary,
+        measured_unit=candidate.unit,
     )
+    if relay_secondary_current is None:
+        return _short_circuit(
+            STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
+            analysis_time=analysis_time, reason_code=REASON_UNSUPPORTED_CURRENT_UNIT,
+            message=(
+                f"The resolved current channel's unit {candidate.unit!r} could not be "
+                "normalized to amperes -- Overcurrent requires a recognized current unit."
+            ),
+        )
     multiple_of_pickup = relay_secondary_current / pickup_current_secondary
     expected_operating_time_seconds = evaluate_idmt_operating_time(
         characteristic.constants, tms, multiple_of_pickup,
     )
 
     # `continuous_duration_above_pickup()` needs the FULL relay-secondary-
-    # converted array -- CT conversion is a linear scalar, so it is
-    # equivalent (and cheaper) to scale the array once here rather than
-    # re-deriving per sample.
-    if recording_basis == "primary":
-        scale = ct_secondary / ct_primary
-        relay_secondary_values = candidate.values * scale
-    else:
-        relay_secondary_values = candidate.values
+    # converted array, normalized through the SAME shared engineering-unit
+    # layer as the scalar RMS above -- otherwise the above-pickup duration
+    # would stay dimensionally wrong even after the scalar fix.
+    relay_secondary_values = convert_array_to_relay_secondary(
+        candidate.values, recording_basis=recording_basis, ct_primary=ct_primary, ct_secondary=ct_secondary,
+        measured_unit=candidate.unit,
+    )
+    if relay_secondary_values is None:
+        return _short_circuit(
+            STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, phase=phase,
+            analysis_time=analysis_time, reason_code=REASON_UNSUPPORTED_CURRENT_UNIT,
+            message=(
+                f"The resolved current channel's unit {candidate.unit!r} could not be "
+                "normalized to amperes -- Overcurrent requires a recognized current unit."
+            ),
+        )
     duration_result = continuous_duration_above_pickup(
         candidate.time, relay_secondary_values, analysis_time, reference_frequency_hz, pickup_current_secondary,
     )
