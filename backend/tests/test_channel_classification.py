@@ -11,6 +11,7 @@ import pytest
 from app.domain.channel_classification import (
     CURRENT,
     ENGINEERING_QUANTITY_ACTIVE_POWER,
+    ENGINEERING_QUANTITY_APPARENT_POWER,
     ENGINEERING_QUANTITY_CURRENT,
     ENGINEERING_QUANTITY_CURRENT_ANGLE,
     ENGINEERING_QUANTITY_FREQUENCY,
@@ -160,6 +161,7 @@ class TestEngineeringQuantityBroadCompatibilityMapping:
             (ENGINEERING_QUANTITY_CURRENT_ANGLE, CURRENT),
             (ENGINEERING_QUANTITY_ACTIVE_POWER, POWER),
             (ENGINEERING_QUANTITY_REACTIVE_POWER, POWER),
+            (ENGINEERING_QUANTITY_APPARENT_POWER, POWER),
             (ENGINEERING_QUANTITY_FREQUENCY, FREQUENCY),
             (ENGINEERING_QUANTITY_ROCOF, ROCOF),
             (ENGINEERING_QUANTITY_UNDEFINED, UNDEFINED),
@@ -171,10 +173,15 @@ class TestEngineeringQuantityBroadCompatibilityMapping:
     def test_unrecognized_quantity_maps_to_undefined_never_raises(self):
         assert broad_engineering_type("Impedance") == UNDEFINED
 
-    def test_known_engineering_quantities_is_the_closed_nine_value_set(self):
+    def test_known_engineering_quantities_is_the_closed_ten_value_set(self):
+        """Updated 2026-09-12 (shared engineering-unit hardening) --
+        "Apparent Power" added as a first-class Engineering Quantity,
+        distinct from Active/Reactive Power, though all three still map
+        to the same broad `POWER` category (see
+        `test_broad_engineering_type_mapping` below)."""
         assert set(KNOWN_ENGINEERING_QUANTITIES) == {
             "Voltage", "Voltage Angle", "Current", "Current Angle",
-            "Active Power", "Reactive Power", "Frequency", "ROCOF", "Undefined",
+            "Active Power", "Reactive Power", "Apparent Power", "Frequency", "ROCOF", "Undefined",
         }
 
 
@@ -292,6 +299,7 @@ class TestMeasuredUnitValidation:
         [
             (ENGINEERING_QUANTITY_VOLTAGE, "V"),
             (ENGINEERING_QUANTITY_VOLTAGE, "kV"),
+            (ENGINEERING_QUANTITY_VOLTAGE, "MV"),
             (ENGINEERING_QUANTITY_CURRENT, "A"),
             (ENGINEERING_QUANTITY_CURRENT, "kA"),
             (ENGINEERING_QUANTITY_VOLTAGE_ANGLE, "deg"),
@@ -306,6 +314,10 @@ class TestMeasuredUnitValidation:
             (ENGINEERING_QUANTITY_REACTIVE_POWER, "kvar"),
             (ENGINEERING_QUANTITY_REACTIVE_POWER, "Mvar"),
             (ENGINEERING_QUANTITY_REACTIVE_POWER, "Gvar"),
+            (ENGINEERING_QUANTITY_APPARENT_POWER, "VA"),
+            (ENGINEERING_QUANTITY_APPARENT_POWER, "kVA"),
+            (ENGINEERING_QUANTITY_APPARENT_POWER, "MVA"),
+            (ENGINEERING_QUANTITY_APPARENT_POWER, "GVA"),
             (ENGINEERING_QUANTITY_FREQUENCY, "Hz"),
             (ENGINEERING_QUANTITY_ROCOF, "Hz/s"),
         ],
@@ -323,6 +335,9 @@ class TestMeasuredUnitValidation:
             (ENGINEERING_QUANTITY_VOLTAGE_ANGLE, "kV"),
             (ENGINEERING_QUANTITY_ACTIVE_POWER, "Mvar"),
             (ENGINEERING_QUANTITY_REACTIVE_POWER, "MW"),
+            (ENGINEERING_QUANTITY_ACTIVE_POWER, "MVA"),
+            (ENGINEERING_QUANTITY_APPARENT_POWER, "MW"),
+            (ENGINEERING_QUANTITY_APPARENT_POWER, "Mvar"),
         ],
     )
     def test_invalid_quantity_unit_pairs(self, quantity, unit):

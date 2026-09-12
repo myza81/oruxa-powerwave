@@ -238,6 +238,17 @@ ENGINEERING_QUANTITY_CURRENT = "Current"
 ENGINEERING_QUANTITY_CURRENT_ANGLE = "Current Angle"
 ENGINEERING_QUANTITY_ACTIVE_POWER = "Active Power"
 ENGINEERING_QUANTITY_REACTIVE_POWER = "Reactive Power"
+#: Added 2026-09-12 (shared engineering-unit hardening) -- Apparent
+#: Power was previously only reachable as the generic broad `POWER`
+#: category (VA-family units already matched `_UNIT_PATTERN`/
+#: `_BASE_UNIT_TO_CATEGORY` above, but with no dedicated Engineering
+#: Quantity of its own, unlike Active/Reactive Power, which DEC-077
+#: already distinguished). Still maps to the SAME broad `POWER` type
+#: below (never made arithmetic-interchangeable with Active/Reactive
+#: Power merely by sharing that broad category -- see
+#: docs/project-memory/ENGINEERING_UNITS.md's own "Active vs Reactive
+#: vs Apparent Power separation" section).
+ENGINEERING_QUANTITY_APPARENT_POWER = "Apparent Power"
 ENGINEERING_QUANTITY_FREQUENCY = "Frequency"
 ENGINEERING_QUANTITY_ROCOF = "ROCOF"
 #: Same literal as the broad UNDEFINED above -- one constant, reused, never
@@ -255,6 +266,7 @@ KNOWN_ENGINEERING_QUANTITIES = (
     ENGINEERING_QUANTITY_CURRENT_ANGLE,
     ENGINEERING_QUANTITY_ACTIVE_POWER,
     ENGINEERING_QUANTITY_REACTIVE_POWER,
+    ENGINEERING_QUANTITY_APPARENT_POWER,
     ENGINEERING_QUANTITY_FREQUENCY,
     ENGINEERING_QUANTITY_ROCOF,
     ENGINEERING_QUANTITY_UNDEFINED,
@@ -267,6 +279,7 @@ _ENGINEERING_QUANTITY_TO_BROAD_TYPE: dict[str, str] = {
     ENGINEERING_QUANTITY_CURRENT_ANGLE: CURRENT,
     ENGINEERING_QUANTITY_ACTIVE_POWER: POWER,
     ENGINEERING_QUANTITY_REACTIVE_POWER: POWER,
+    ENGINEERING_QUANTITY_APPARENT_POWER: POWER,
     ENGINEERING_QUANTITY_FREQUENCY: FREQUENCY,
     ENGINEERING_QUANTITY_ROCOF: ROCOF,
     ENGINEERING_QUANTITY_UNDEFINED: UNDEFINED,
@@ -295,13 +308,21 @@ _NORMALIZED_TO_ENGINEERING_QUANTITY: dict[str, str] = {
 # unit system. `ENGINEERING_QUANTITY_UNDEFINED` intentionally allows only
 # blank (task section R): the controlled list is quantity-dependent, so an
 # unclassified column has no quantity to look the list up against.
+#
+# Update (2026-09-12, shared engineering-unit hardening): Voltage/Current/
+# Active/Reactive/Apparent Power are now ALL scale-convertible via
+# `app.domain.engineering_units` (see docs/project-memory/
+# ENGINEERING_UNITS.md), not just Voltage/Current as the comment above
+# originally stated -- Angle stays metadata-only (no deg<->rad
+# conversion exists), matching its own documented non-goal.
 MEASURED_UNIT_OPTIONS: dict[str, tuple[str, ...]] = {
-    ENGINEERING_QUANTITY_VOLTAGE: ("", "V", "kV"),
+    ENGINEERING_QUANTITY_VOLTAGE: ("", "V", "kV", "MV"),
     ENGINEERING_QUANTITY_VOLTAGE_ANGLE: ("", "deg", "rad"),
     ENGINEERING_QUANTITY_CURRENT: ("", "A", "kA"),
     ENGINEERING_QUANTITY_CURRENT_ANGLE: ("", "deg", "rad"),
     ENGINEERING_QUANTITY_ACTIVE_POWER: ("", "W", "kW", "MW", "GW"),
     ENGINEERING_QUANTITY_REACTIVE_POWER: ("", "var", "kvar", "Mvar", "Gvar"),
+    ENGINEERING_QUANTITY_APPARENT_POWER: ("", "VA", "kVA", "MVA", "GVA"),
     ENGINEERING_QUANTITY_FREQUENCY: ("", "Hz"),
     ENGINEERING_QUANTITY_ROCOF: ("", "Hz/s"),
     ENGINEERING_QUANTITY_UNDEFINED: ("",),
