@@ -493,3 +493,160 @@ test.describe("Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 
     expect(text).toMatch(/40\.0\s*×/);
   });
 });
+
+test.describe("Overcurrent Analysis v1 -- curve aligns exactly with the chart viewport (2026-09-12 UAT)", () => {
+  async function setupCurve(page) {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await page.locator("#wwOvercurrentCharacteristicSelect").selectOption("iec_standard_inverse");
+    await page.locator("#wwOvercurrentPickupInput").fill("1.0");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    await page.locator("#wwOvercurrentTmsInput").fill("0.1");
+    await page.locator("#wwOvercurrentTmsInput").dispatchEvent("change");
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/40\.0\s*×/);
+    }).toPass({ timeout: 5000 });
+    return contextId;
+  }
+
+  async function firstSegmentPoint(page) {
+    return page.evaluate(() => {
+      const seg = wwOvercurrentVisibleCurveSegment(wwOvercurrentState.viewport);
+      return seg ? seg[0] : null;
+    });
+  }
+  async function lastSegmentPoint(page) {
+    return page.evaluate(() => {
+      const seg = wwOvercurrentVisibleCurveSegment(wwOvercurrentState.viewport);
+      return seg ? seg[seg.length - 1] : null;
+    });
+  }
+
+  test("curve's first visible point enters exactly at the current Y Max, and updates immediately when Y Max changes", async ({ page }) => {
+    await setupCurve(page);
+
+    await page.locator("#wwOvercurrentViewYMax").fill("1000");
+    await page.locator("#wwOvercurrentViewYMax").dispatchEvent("change");
+    let first = await firstSegmentPoint(page);
+    expect(first).not.toBeNull();
+    expect(first[1]).toBeCloseTo(1000, 6);
+
+    await page.locator("#wwOvercurrentViewYMax").fill("500");
+    await page.locator("#wwOvercurrentViewYMax").dispatchEvent("change");
+    first = await firstSegmentPoint(page);
+    expect(first[1]).toBeCloseTo(500, 6);
+
+    await page.locator("#wwOvercurrentViewYMax").fill("50");
+    await page.locator("#wwOvercurrentViewYMax").dispatchEvent("change");
+    first = await firstSegmentPoint(page);
+    expect(first[1]).toBeCloseTo(50, 6);
+
+    // Not merely "<= Y Max" -- the actual mathematical boundary
+    // intersection: evaluating the SAME characteristic/TMS forward at
+    // the returned M must reproduce Y Max exactly.
+    const crossCheck = await page.evaluate(() => {
+      const seg = wwOvercurrentVisibleCurveSegment(wwOvercurrentState.viewport);
+      const constants = wwOvercurrentCurrentConstants();
+      return wwOvercurrentEvalT(constants, wwOvercurrentState.settings.tms, seg[0][0]);
+    });
+    expect(crossCheck).toBeCloseTo(50, 6);
+  });
+
+  test("curve's last visible point exits exactly at the current Y Min", async ({ page }) => {
+    await setupCurve(page);
+    // Standard Inverse's own alpha=0.02 decays far too slowly to reach
+    // any Y Min within the allowed X domain (t(200x) ~= 0.125s even at
+    // the absolute X cap) -- Extremely Inverse (alpha=2) decays fast
+    // enough to genuinely exit through the bottom boundary at the
+    // default viewport's own Y Min (0.01s), well within X Max (100x).
+    await page.locator("#wwOvercurrentCharacteristicSelect").selectOption("iec_extremely_inverse");
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/40\.0\s*×/);
+    }).toPass({ timeout: 5000 });
+
+    const last = await lastSegmentPoint(page);
+    expect(last).not.toBeNull();
+    expect(last[1]).toBeCloseTo(0.01, 6);
+    // The exact mathematical boundary intersection, not merely "close to".
+    const expectedM = await page.evaluate(() => {
+      const constants = wwOvercurrentCurrentConstants();
+      return wwOvercurrentSolveMForT(constants, wwOvercurrentState.settings.tms, 0.01);
+    });
+    expect(last[0]).toBeCloseTo(expectedM, 9);
+  });
+
+  test("curve exits exactly at the X Max right boundary when it is reached before Y Min", async ({ page }) => {
+    await setupCurve(page);
+    await page.locator("#wwOvercurrentViewXMax").fill("5");
+    await page.locator("#wwOvercurrentViewXMax").dispatchEvent("change");
+
+    const last = await lastSegmentPoint(page);
+    expect(last).not.toBeNull();
+    expect(last[0]).toBeCloseTo(5, 6);
+    const expectedT = await page.evaluate(() => {
+      const constants = wwOvercurrentCurrentConstants();
+      return wwOvercurrentEvalT(constants, wwOvercurrentState.settings.tms, 5);
+    });
+    expect(last[1]).toBeCloseTo(expectedT, 9);
+  });
+
+  test("custom zoomed viewport re-aligns the curve's entry point to the new boundary", async ({ page }) => {
+    await setupCurve(page);
+    await page.locator("#wwOvercurrentViewXMin").fill("2");
+    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
+    await page.locator("#wwOvercurrentViewXMax").fill("20");
+    await page.locator("#wwOvercurrentViewXMax").dispatchEvent("change");
+    await page.locator("#wwOvercurrentViewYMin").fill("0.1");
+    await page.locator("#wwOvercurrentViewYMin").dispatchEvent("change");
+    await page.locator("#wwOvercurrentViewYMax").fill("10");
+    await page.locator("#wwOvercurrentViewYMax").dispatchEvent("change");
+
+    const first = await firstSegmentPoint(page);
+    // At X=2..20, the top boundary (t=10s) is entered via the LEFT X
+    // edge (M=2) for Standard Inverse/TMS=0.1 -- t(2) is well below 10s
+    // -- so the exact entry point must be (2, t(2)), never (M_top, 10).
+    const tAt2 = await page.evaluate(() => {
+      const constants = wwOvercurrentCurrentConstants();
+      return wwOvercurrentEvalT(constants, wwOvercurrentState.settings.tms, 2);
+    });
+    expect(first[0]).toBeCloseTo(2, 6);
+    expect(first[1]).toBeCloseTo(tAt2, 9);
+  });
+
+  test("viewport-only changes never alter the live operating-point values", async ({ page }) => {
+    await setupCurve(page);
+    const before = await page.locator("#wwOvercurrentValuesList").innerText();
+
+    await page.locator("#wwOvercurrentViewYMax").fill("500");
+    await page.locator("#wwOvercurrentViewYMax").dispatchEvent("change");
+    await page.locator("#wwOvercurrentZoomInBtn").click();
+    await page.locator("#wwOvercurrentZoomOutBtn").click();
+    await page.locator("#wwOvercurrentResetViewBtn").click();
+
+    const after = await page.locator("#wwOvercurrentValuesList").innerText();
+    expect(after).toBe(before);
+  });
+
+  test("SVG curve path visually starts near the plot's own top-left region when entering via Y Max", async ({ page }) => {
+    await setupCurve(page);
+    await page.locator("#wwOvercurrentViewYMax").fill("1000");
+    await page.locator("#wwOvercurrentViewYMax").dispatchEvent("change");
+
+    const d = await page.locator("#wwOvercurrentSvg path.ww-oc-curve").getAttribute("d");
+    expect(d).toBeTruthy();
+    const firstCommand = d.split(" ")[0]; // "M<x>,<y>"
+    const [, coords] = firstCommand.split("M");
+    const [xPx, yPx] = coords.split(",").map(Number);
+    // The curve's first drawn pixel must sit at the plot's own TOP
+    // edge (near geo.plotTop), not somewhere well below it.
+    const plotTop = await page.evaluate(() => {
+      const geo = wwOvercurrentChartGeometry(wwOvercurrentState.viewport);
+      return geo.plotTop;
+    });
+    expect(Math.abs(yPx - plotTop)).toBeLessThan(1.0);
+    expect(Number.isFinite(xPx)).toBe(true);
+  });
+});

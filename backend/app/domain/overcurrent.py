@@ -171,6 +171,71 @@ def evaluate_idmt_operating_time(constants: IdmtConstants, tms: float, multiple_
     return tms * (constants.k / denominator + constants.c)
 
 
+def solve_multiple_of_pickup_for_operating_time(
+    constants: IdmtConstants, tms: float, operating_time_seconds: float,
+) -> float | None:
+    """The exact algebraic inverse of `evaluate_idmt_operating_time()`:
+    given a target operating time, returns the current multiple of
+    pickup `M > 1` that the SAME formula/constants evaluate back to
+    that time -- solved in closed form, never a numeric root-find, so
+    it is exact to normal floating-point precision:
+
+        evaluate_idmt_operating_time(constants, tms,
+            solve_multiple_of_pickup_for_operating_time(constants, tms, t)
+        ) == t
+
+    within floating-point tolerance for every valid `t` (see
+    `TestSolveMultipleOfPickupForOperatingTime` in
+    `test_overcurrent_domain.py` for the exact round-trip assertions
+    across all three IEC characteristics).
+
+    From `t = TMS * (k / (M^alpha - 1) + c)`:
+
+        M = (1 + k / (t / TMS - c)) ** (1 / alpha)
+
+    2026-09-12 chart-viewport-alignment UAT follow-up: added so the
+    Overcurrent chart's own visible curve segment can be generated from
+    EXACT viewport-boundary intersections (owner UAT: "the curve must
+    enter the chart exactly at the current viewport boundary", never at
+    whatever coarse pre-sampled point happens to fall inside the
+    visible range) -- see docs/project-memory/OVERCURRENT_ANALYSIS.md.
+    This does not change `evaluate_idmt_operating_time()`, the
+    characteristic curve it defines, or any protection-facing value --
+    it is the SAME formula solved for the other variable, and is used
+    ONLY for chart-rendering geometry (the frontend's own direct
+    mirror of this exact function, sourced from these same
+    backend-returned constants, computes chart viewport-boundary
+    intersections without a network round-trip per viewport change;
+    every protection-facing value -- measured current, multiple of
+    pickup, expected operating time, above-pickup duration, threshold
+    alert -- remains exclusively backend-computed).
+
+    Returns `None` (never NaN/Infinity) for a non-finite/non-positive
+    `operating_time_seconds`, a non-finite/non-positive `tms`, a
+    non-positive `k`/`alpha`, or any input that does not yield a
+    finite `M > 1` (e.g. `t` too small relative to `TMS * c` for a
+    nonzero `c` -- none of this v1's own three characteristics use
+    `c != 0`, but the general form is honored exactly as
+    `evaluate_idmt_operating_time()` itself honors it)."""
+    if not math.isfinite(operating_time_seconds) or operating_time_seconds <= 0.0:
+        return None
+    if not math.isfinite(tms) or tms <= 0.0:
+        return None
+    if constants.alpha <= 0.0 or constants.k <= 0.0:
+        return None
+    denom = operating_time_seconds / tms - constants.c
+    if denom <= 0.0:
+        return None
+    ratio = constants.k / denom
+    if not math.isfinite(ratio) or ratio <= 0.0:
+        return None
+    base = 1.0 + ratio
+    multiple = base ** (1.0 / constants.alpha)
+    if not math.isfinite(multiple) or multiple <= 1.0:
+        return None
+    return multiple
+
+
 def generate_idmt_curve_points(
     constants: IdmtConstants, tms: float, *, m_min: float = 1.01, m_max: float = 200.0, num_points: int = 90,
 ) -> list[tuple[float, float]]:

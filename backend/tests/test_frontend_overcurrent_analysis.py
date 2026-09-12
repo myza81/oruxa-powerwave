@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "index.html"
 
 
@@ -302,18 +304,129 @@ class TestChartAxesGridAndTicks:
         assert 'clip-path="url(#wwOvercurrentClip)"' in fn
 
     def test_curve_points_themselves_are_not_reclamped(self):
-        """The curve path loop maps `p[0]`/`p[1]` (the raw backend-
-        returned points) directly through the unclamped pixel functions
-        -- clamping is reserved for the single operating-point marker
-        only, confirmed by the curve-path loop never calling
+        """The curve path loop maps the visible-segment points' own
+        `p[0]`/`p[1]` directly through the unclamped pixel functions --
+        clamping is reserved for the single operating-point marker only,
+        confirmed by the curve-path loop never calling
         wwOvercurrentClampedM/T."""
         source = _source()
         fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
-        curve_loop = _function_body(fn, "const curvePath = points.map", "parts.push('<path")
+        curve_loop = _function_body(fn, "const curvePath = segment.map", "parts.push('<path")
         assert "wwOvercurrentClampedM" not in curve_loop
         assert "wwOvercurrentClampedT" not in curve_loop
         assert "wwOvercurrentPixelX(p[0], geo)" in curve_loop
         assert "wwOvercurrentPixelY(p[1], geo)" in curve_loop
+
+    def test_curve_uses_the_exact_visible_segment_never_the_raw_fetched_points(self):
+        """2026-09-12 chart-viewport-alignment UAT follow-up: the rendered
+        path's own coordinates come from `wwOvercurrentVisibleCurveSegment()`
+        (exact analytic viewport-boundary intersections), never directly
+        from the raw fetched `points` array -- `points` is retained only
+        as an availability gate (curve data confirmed fetched for this
+        characteristic/TMS), never as the source of the rendered
+        coordinates."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        curve_block = _function_body(fn, "if (points && points.length > 0) {", "// Operating point")
+        assert "const segment = wwOvercurrentVisibleCurveSegment(viewport);" in curve_block
+        assert "if (segment) {" in curve_block
+        assert "points.map" not in curve_block
+
+
+class TestVisibleCurveSegmentBoundaryExactness:
+    """2026-09-12 chart-viewport-alignment UAT follow-up: the visible
+    curve must enter/exit the chart at the EXACT mathematical viewport-
+    boundary intersection, never at whatever coarse pre-sampled point
+    happens to fall inside the visible range. See
+    `wwOvercurrentVisibleCurveSegment()`'s own docstring and
+    `backend/tests/test_overcurrent_domain.py::
+    TestSolveMultipleOfPickupForOperatingTime` for the backend's own
+    exact-inverse proof of the identical formula."""
+
+    def test_forward_and_inverse_are_direct_mirrors_of_the_backend_formula(self):
+        source = _source()
+        eval_t = _function_body(source, "function wwOvercurrentEvalT(constants, tms, m)", "function wwOvercurrentSolveMForT")
+        assert "Math.pow(m, constants.alpha) - 1.0" in eval_t
+        assert "tms * (constants.k / denominator + constants.c)" in eval_t
+
+        solve_m = _function_body(source, "function wwOvercurrentSolveMForT(constants, tms, t)", "function wwOvercurrentCurrentConstants")
+        assert "t / tms - constants.c" in solve_m
+        assert "constants.k / denom" in solve_m
+        assert "Math.pow(base, 1.0 / constants.alpha)" in solve_m
+
+    def test_constants_are_sourced_from_backend_returned_characteristics_never_hand_typed(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentCurrentConstants()", "const WW_OC_VISIBLE_SEGMENT_SAMPLE_COUNT")
+        assert "wwOvercurrentState.characteristics" in fn
+        assert "wwOvercurrentState.settings.characteristicId" in fn
+        # Never a second hand-typed k/alpha table (e.g. "k: 0.14" literals).
+        assert "0.14" not in fn
+        assert "13.5" not in fn
+        assert "80.0" not in fn
+
+    def test_visible_segment_uses_monotonic_boundary_selection_never_a_numeric_search(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentVisibleCurveSegment(viewport)", "function wwOvercurrentChartGeometry")
+        assert "wwOvercurrentSolveMForT(constants, tms, viewport.yMax)" in fn
+        assert "wwOvercurrentSolveMForT(constants, tms, viewport.yMin)" in fn
+        assert "Math.max(mTop, viewport.xMin)" in fn
+        assert "Math.min(mBottom, viewport.xMax)" in fn
+        # Exact boundary values are used directly, never re-derived/rounded.
+        assert "startM === mTop ? viewport.yMax" in fn
+        assert "endM === mBottom ? viewport.yMin" in fn
+
+    def test_visible_segment_samples_in_log_space(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentVisibleCurveSegment(viewport)", "function wwOvercurrentChartGeometry")
+        assert "Math.log(startM)" in fn
+        assert "Math.log(endM)" in fn
+        assert "Math.exp(logStart + frac * (logEnd - logStart))" in fn
+
+    def test_visible_segment_returns_null_when_no_portion_is_visible(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentVisibleCurveSegment(viewport)", "function wwOvercurrentChartGeometry")
+        assert "if (!(startM < endM)) return null;" in fn
+
+
+class TestForwardInverseFormulaMatchesBackend:
+    """Executes the frontend's own `wwOvercurrentEvalT`/
+    `wwOvercurrentSolveMForT` functions via Node and cross-checks them
+    against the exact same expected values the backend's own
+    `TestSolveMultipleOfPickupForOperatingTime` asserts -- proving the
+    two implementations stay in exact algebraic correspondence, not
+    merely that each looks reasonable in isolation."""
+
+    def test_round_trip_matches_backend_for_every_characteristic_tms_and_target_time(self):
+        import json
+        import subprocess
+
+        source = _source()
+        eval_t = _function_body(source, "function wwOvercurrentEvalT(constants, tms, m)", "function wwOvercurrentSolveMForT")
+        solve_m = _function_body(source, "function wwOvercurrentSolveMForT(constants, tms, t)", "function wwOvercurrentCurrentConstants")
+        script = eval_t + "\n" + solve_m + """
+        const characteristics = {
+            SI: { k: 0.14, alpha: 0.02, c: 0.0 },
+            VI: { k: 13.5, alpha: 1.0, c: 0.0 },
+            EI: { k: 80.0, alpha: 2.0, c: 0.0 },
+        };
+        const results = [];
+        for (const name of Object.keys(characteristics)) {
+            for (const tms of [0.025, 0.1, 0.5, 1.0, 1.2]) {
+                for (const t of [1000, 500, 100, 10, 1]) {
+                    const m = wwOvercurrentSolveMForT(characteristics[name], tms, t);
+                    const recovered = wwOvercurrentEvalT(characteristics[name], tms, m);
+                    results.push({ name, tms, t, m, recovered });
+                }
+            }
+        }
+        console.log(JSON.stringify(results));
+        """
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        rows = json.loads(result.stdout)
+        assert len(rows) == 75
+        for row in rows:
+            assert row["m"] is not None and row["m"] > 1.0
+            assert row["recovered"] == pytest.approx(row["t"], rel=1e-9)
 
 
 class TestBelowPickupPositionMarker:

@@ -5853,7 +5853,7 @@
             --ww-chart-grid-stroke: var(--panel-border);
             --ww-chart-axis-stroke: var(--text-dim);
             --ww-chart-tick-font-size: 6.5px;
-            --ww-chart-axis-title-font-size: 7.5px;
+            --ww-chart-axis-title-font-size: 0.35rem;
             --ww-chart-guide-stroke: var(--text-dim);
         }
 
@@ -6235,7 +6235,7 @@
             stroke-dasharray: 2 2;
         }
         .ww-phasor-vector-label {
-            font-size: 9px;
+            font-size: 0.4rem;
             font-weight: 600;
             fill: var(--text);
         }
@@ -34930,6 +34930,122 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return Number(v.toPrecision(6)).toString();
         }
 
+        // Chart-viewport-alignment UAT follow-up (2026-09-12): direct,
+        // deliberately-mirrored copies of the backend's own
+        // `evaluate_idmt_operating_time()`/`solve_multiple_of_pickup_
+        // for_operating_time()` (backend/app/domain/overcurrent.py) --
+        // chart-RENDERING geometry only, finding exact viewport-boundary
+        // intersections so the visible curve enters/exits exactly at the
+        // current X/Y range (owner UAT: "the curve must enter the chart
+        // exactly at the current viewport boundary", never at whatever
+        // coarse pre-sampled point happens to fall inside it) without a
+        // network round-trip on every viewport change (zoom/pan/range
+        // input must stay frontend-only, per the existing viewport
+        // architecture). Every PROTECTION-facing value -- measured
+        // current, multiple of pickup, expected operating time,
+        // above-pickup duration, threshold alert -- remains exclusively
+        // backend-computed and is only ever read from
+        // `wwOvercurrentState.latestResult`; these two functions are
+        // never used to derive or display any of those. `constants`
+        // (`k`/`alpha`/`c`) always come from `wwOvercurrentState.
+        // characteristics` -- the SAME values the backend itself
+        // returned via `/overcurrent-characteristics` -- never hand-
+        // typed here, keeping this in exact algebraic correspondence
+        // with the backend (see `test_overcurrent_domain.py::
+        // TestSolveMultipleOfPickupForOperatingTime` for the backend's
+        // own round-trip proof of the same formula).
+        function wwOvercurrentEvalT(constants, tms, m) {
+            if (!Number.isFinite(m) || m <= 1.0) return null;
+            const denominator = Math.pow(m, constants.alpha) - 1.0;
+            if (denominator <= 0.0) return null;
+            return tms * (constants.k / denominator + constants.c);
+        }
+        function wwOvercurrentSolveMForT(constants, tms, t) {
+            if (!Number.isFinite(t) || t <= 0.0) return null;
+            if (!Number.isFinite(tms) || tms <= 0.0) return null;
+            if (constants.alpha <= 0.0 || constants.k <= 0.0) return null;
+            const denom = t / tms - constants.c;
+            if (denom <= 0.0) return null;
+            const ratio = constants.k / denom;
+            if (!Number.isFinite(ratio) || ratio <= 0.0) return null;
+            const base = 1.0 + ratio;
+            const multiple = Math.pow(base, 1.0 / constants.alpha);
+            if (!Number.isFinite(multiple) || multiple <= 1.0) return null;
+            return multiple;
+        }
+        // The currently-selected characteristic's own `{k, alpha, c}` --
+        // sourced exclusively from `wwOvercurrentState.characteristics`
+        // (populated verbatim from `/overcurrent-characteristics`),
+        // never a second hand-typed constants table.
+        function wwOvercurrentCurrentConstants() {
+            const id = wwOvercurrentState.settings.characteristicId;
+            const found = (wwOvercurrentState.characteristics || []).find((c) => c.id === id);
+            if (!found) return null;
+            return { k: found.k, alpha: found.alpha, c: found.c };
+        }
+
+        //: Sample count for the ANALYTICALLY-generated visible curve
+        //: segment between its own two exact boundary points -- smooth
+        //: at every supported viewport (default, absolute-max, or a
+        //: tightly zoomed custom range), deliberately modest (never
+        //: "excessive point count", matching the same performance
+        //: instruction the backend's own curve-fetch sizing follows).
+        const WW_OC_VISIBLE_SEGMENT_SAMPLE_COUNT = 60;
+
+        // The EXACT visible portion of the characteristic curve for the
+        // CURRENT viewport -- replaces the old "clip a coarse pre-
+        // fetched/pre-sampled global curve" approach (owner UAT: a
+        // pre-sampled point merely below Y Max is NOT the same as the
+        // true Y-Max intersection). Since `t(M)` is strictly monotonic
+        // DECREASING for M>1 (higher current -> shorter operating time),
+        // the visible M-range is exactly `[max(mTop, xMin), min(mBottom,
+        // xMax)]`, where `mTop`/`mBottom` are this exact viewport's own
+        // Y-Max/Y-Min boundary intersections (solved analytically, never
+        // a numeric search) -- collapsing to an empty range (`null`)
+        // whenever the curve does not pass through the visible
+        // rectangle at all for this viewport (e.g. entirely above Y Max,
+        // entirely below Y Min, or entirely left of X Min/right of X
+        // Max). Returns an array of `[m, t]` pairs (log-spaced between
+        // the two exact endpoints for a smooth curve, per the task's own
+        // "prefer sampling in log-space" instruction), or `null` when no
+        // portion of the curve is visible.
+        function wwOvercurrentVisibleCurveSegment(viewport) {
+            const constants = wwOvercurrentCurrentConstants();
+            if (!constants) return null;
+            const tms = wwOvercurrentState.settings.tms;
+            if (!Number.isFinite(tms) || tms <= 0) return null;
+
+            const mTop = wwOvercurrentSolveMForT(constants, tms, viewport.yMax);
+            const mBottom = wwOvercurrentSolveMForT(constants, tms, viewport.yMin);
+            if (mTop === null || mBottom === null) return null;
+
+            const startM = Math.max(mTop, viewport.xMin);
+            const endM = Math.min(mBottom, viewport.xMax);
+            if (!(startM < endM)) return null;
+
+            // `startM === mTop` (exact, since Math.max returns one of its
+            // own arguments unchanged) tells us WHICH boundary the curve
+            // actually entered through -- the top Y boundary (use the
+            // exact `viewport.yMax`, never re-derived) or the left X
+            // boundary (evaluate the exact time AT that X position).
+            // Symmetric logic for the exit point below.
+            const startT = startM === mTop ? viewport.yMax : wwOvercurrentEvalT(constants, tms, startM);
+            const endT = endM === mBottom ? viewport.yMin : wwOvercurrentEvalT(constants, tms, endM);
+            if (startT === null || endT === null) return null;
+
+            const points = [[startM, startT]];
+            const logStart = Math.log(startM);
+            const logEnd = Math.log(endM);
+            for (let i = 1; i < WW_OC_VISIBLE_SEGMENT_SAMPLE_COUNT - 1; i++) {
+                const frac = i / (WW_OC_VISIBLE_SEGMENT_SAMPLE_COUNT - 1);
+                const m = Math.exp(logStart + frac * (logEnd - logStart));
+                const t = wwOvercurrentEvalT(constants, tms, m);
+                if (t !== null) points.push([m, t]);
+            }
+            points.push([endM, endT]);
+            return points;
+        }
+
         function wwOvercurrentChartGeometry(viewport) {
             const isDefault = wwOvercurrentIsDefaultViewport(viewport);
             const plotLeft = WW_OC_CHART_MARGIN.left;
@@ -35070,22 +35186,32 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 '" text-anchor="middle" transform="rotate(-90 9 ' + yTitleCenter.toFixed(1) + ')">Expected Operating Time (s)</text>'
             );
 
-            // The characteristic curve -- unclamped pixel coordinates,
-            // visually CLIPPED (never clamped/distorted) to the log
-            // region; a real TCC curve legitimately runs off-frame near
-            // M=1 for a slow TMS, exactly like a real printed TCC chart.
-            // The SAME already-fetched curve data is reused for every
-            // viewport (see `wwOvercurrentEnsureCurveAndRenderPoint` --
-            // the backend now generates curve points across the full
-            // 200x display domain in one fetch), so a zoom/range change
-            // never triggers a re-fetch or recompute.
+            // The characteristic curve -- the EXACT visible segment for
+            // this viewport (2026-09-12 UAT follow-up), computed
+            // analytically via `wwOvercurrentVisibleCurveSegment()`
+            // rather than clipping a coarse pre-fetched/pre-sampled
+            // global curve: the polyline itself now enters/exits exactly
+            // at the true viewport-boundary intersection (owner UAT: a
+            // pre-sampled point merely below Y Max is NOT the same as
+            // the true Y-Max intersection). `points` (the already-
+            // fetched backend curve, unchanged fetch/cache timing --
+            // see `wwOvercurrentEnsureCurveAndRenderPoint`) still gates
+            // WHETHER a curve is drawn at all (curve data confirmed
+            // available for this characteristic/TMS), but its own array
+            // contents no longer determine the rendered path's
+            // coordinates. The SVG `<clipPath>` below remains a pure
+            // safety net, never the primary mechanism that determines
+            // where the visible curve starts/ends.
             if (points && points.length > 0) {
-                const curvePath = points.map((p, i) => {
-                    const x = wwOvercurrentPixelX(p[0], geo);
-                    const y = wwOvercurrentPixelY(p[1], geo);
-                    return (i === 0 ? "M" : "L") + x.toFixed(2) + "," + y.toFixed(2);
-                }).join(" ");
-                parts.push('<path class="ww-oc-curve" clip-path="url(#wwOvercurrentClip)" d="' + curvePath + '"></path>');
+                const segment = wwOvercurrentVisibleCurveSegment(viewport);
+                if (segment) {
+                    const curvePath = segment.map((p, i) => {
+                        const x = wwOvercurrentPixelX(p[0], geo);
+                        const y = wwOvercurrentPixelY(p[1], geo);
+                        return (i === 0 ? "M" : "L") + x.toFixed(2) + "," + y.toFixed(2);
+                    }).join(" ");
+                    parts.push('<path class="ww-oc-curve" clip-path="url(#wwOvercurrentClip)" d="' + curvePath + '"></path>');
+                }
             }
 
             // Operating point (above pickup) / position marker (below

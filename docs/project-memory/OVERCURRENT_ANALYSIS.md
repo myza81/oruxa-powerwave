@@ -691,6 +691,124 @@ reset on). Per the task's own explicit instruction, **no new database
 persistence was added** for this — same boundary as `settings` (see
 "Configuration persistence" above).
 
+## Curve/viewport boundary alignment — UAT follow-up (2026-09-12)
+
+Further owner UAT on the adjustable-viewport work directly above: near
+pickup, the rendered curve appeared to "start" at a finite time, because
+the polyline was built from whichever coarse pre-fetched/pre-sampled
+point happened to fall inside the current Y range — not the true
+mathematical Y-boundary intersection. **The IDMT characteristic is
+mathematically unbounded as `M -> 1+` (`t -> infinity`) — this is not
+altered or capped anywhere.** What changed is only how the FINITE
+visible segment is generated for display: the curve now enters/exits
+the visible plot exactly at the configured X/Y viewport boundaries,
+never at an arbitrary sampled point. Changing Y Max from, say, 1000 s to
+500 s changes only the visible characteristic segment; it does not
+alter the underlying protection equation, and no protection-facing
+value (measured current, multiple of pickup, expected operating time,
+above-pickup duration, threshold alert) is recomputed because the chart
+viewport changed.
+
+**New backend domain helper: `solve_multiple_of_pickup_for_operating_time()`**
+(`app/domain/overcurrent.py`) — the exact closed-form algebraic inverse
+of `evaluate_idmt_operating_time()`:
+
+```
+t = TMS * (k / (M^alpha - 1) + c)        (forward, unchanged, existing)
+M = (1 + k / (t/TMS - c)) ** (1/alpha)   (inverse, new)
+```
+
+Solved algebraically, never a numeric root-find, so
+`evaluate_idmt_operating_time(inverse(t)) == t` to tight floating-point
+tolerance for every valid `t` — proved directly by
+`test_overcurrent_domain.py::TestSolveMultipleOfPickupForOperatingTime`
+(round-trips across all three IEC characteristics × 5 TMS values × 5
+target times: 1000/500/100/10/1 s). Returns `None` (never NaN/Infinity)
+for a non-finite/non-positive `t`, a non-finite/non-positive `TMS`, or
+any input that would not yield a finite `M > 1`. This is a pure function
+of the same `IdmtConstants`/`TMS` the forward formula already takes —
+it changes no existing constant, no existing evaluation, no protection
+semantics; it is the identical formula solved for the other variable.
+
+**Frontend: a direct, deliberately-mirrored copy of both formulas**
+(`wwOvercurrentEvalT()`/`wwOvercurrentSolveMForT()` in `frontend/
+index.html`), used ONLY for chart-rendering geometry — finding exact
+viewport-boundary intersections without a backend round-trip on every
+viewport change (a hard requirement: viewport/zoom changes must stay
+frontend-only and instantaneous, per the adjustable-viewport work
+above). This is the first place the frontend evaluates the IDMT formula
+itself, so three safeguards keep it from becoming a second, drifting
+implementation: (1) it is a tiny, single-formula mirror, not a
+duplicate of any guardrail/RMS/CT/validation logic; (2) its `k`/`alpha`/
+`c` constants are ALWAYS read from `wwOvercurrentState.characteristics`
+— the same values the backend itself returned via
+`/overcurrent-characteristics` — never hand-typed; (3) it is
+cross-checked against the backend's own expected values in
+`backend/tests/test_frontend_overcurrent_analysis.py::
+TestForwardInverseFormulaMatchesBackend` (executes the extracted JS via
+Node, asserts exact numeric agreement with the same 75
+characteristic/TMS/target-time combinations the backend's own inverse
+test covers). Every protection-facing value shown to the engineer
+continues to come exclusively from the backend's own computed
+`wwOvercurrentState.latestResult` — these two functions never derive or
+display any of those; they only decide where the drawn curve line goes.
+
+**`wwOvercurrentVisibleCurveSegment(viewport)`** computes the exact
+visible portion of the curve for the CURRENT viewport. Because `t(M)`
+is strictly monotonically DECREASING for `M > 1`, the visible M-range
+collapses to a simple closed form:
+
+```
+mTop    = the M where t(M) = viewport.yMax   (solved via the inverse)
+mBottom = the M where t(M) = viewport.yMin   (solved via the inverse)
+startM  = max(mTop, viewport.xMin)
+endM    = min(mBottom, viewport.xMax)
+```
+
+If `startM >= endM`, no portion of the curve is visible for this
+viewport (returns `null` — e.g. the whole curve is above Y Max, below Y
+Min, or the X range doesn't reach M > 1 at all) — no curve is drawn,
+never a distorted one. Otherwise, the exact start/end points are
+included verbatim (`startM === mTop` — an exact equality, since
+`Math.max`/`Math.min` return one of their own input values unchanged —
+tells the code WHICH boundary was actually crossed: the Y boundary uses
+the viewport's own exact `yMax`/`yMin`; the X boundary evaluates the
+exact time AT that X position via the forward formula), and the points
+between them are sampled log-spaced (60 points) for a smooth curve at
+every supported scale — from a tight custom zoom to the full 200x/1000s
+absolute domain.
+
+**Rendering sequence, corrected** — `wwOvercurrentRenderChart()` no
+longer builds the curve `<path>` by mapping the raw fetched `points`
+array through the pixel functions and relying on the SVG `<clipPath>`
+to cut it to size. The `<clipPath>` remains, purely as a rendering
+safety net; it is no longer the mechanism that determines where the
+visible curve starts or ends:
+
+```
+exact mathematical viewport intersection
+  -> sample the visible characteristic (log-spaced)
+  -> render the path
+  -> clipPath as a safety net
+```
+
+The already-fetched backend curve (`wwOvercurrentState.curveCache.points`,
+still fetched/cached exactly as before — see "Curve caching" above,
+completely unchanged fetch/cache timing and the same
+"only refetch on characteristic/TMS change" invariant) is retained only
+as an availability GATE (curve data confirmed fetched for this
+characteristic/TMS) — its own array values no longer determine the
+rendered coordinates.
+
+**Performance**: computing two inverse-solves plus two forward-evals
+(for the four boundary checks) plus 60 forward-evals (for the smooth
+in-between samples) is O(1) per render — no measurable rendering-
+latency change from the prior direct-array-mapping approach, and, as
+before, zero network requests on any viewport/zoom change (confirmed by
+`browser-tests/overcurrent_analysis.spec.js`'s existing
+"viewport changes never alter wwPlayback.currentTime or trigger a new
+curve fetch" test, still passing unmodified).
+
 ## Analysis chart styling tokens (shared with Phasor)
 
 See [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s own matching section —

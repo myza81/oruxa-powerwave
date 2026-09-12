@@ -13,6 +13,8 @@ curves), never re-derived from the implementation under test.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pytest
 
@@ -35,6 +37,7 @@ from app.domain.overcurrent import (
     get_characteristic,
     known_characteristics,
     pickup_valid,
+    solve_multiple_of_pickup_for_operating_time,
     tms_valid,
 )
 
@@ -110,6 +113,51 @@ class TestIdmtOperatingTime:
     def test_several_tms_values(self, tms):
         t = evaluate_idmt_operating_time(IEC_STANDARD_INVERSE.constants, tms=tms, multiple_of_pickup=3.0)
         assert t == pytest.approx(tms * (0.14 / (3.0 ** 0.02 - 1.0)), rel=1e-9)
+
+
+class TestSolveMultipleOfPickupForOperatingTime:
+    """2026-09-12 chart-viewport-alignment UAT follow-up: the exact
+    algebraic inverse of `evaluate_idmt_operating_time()`, used so the
+    Overcurrent chart's visible curve segment can enter/exit exactly at
+    the current chart viewport's own Y boundaries rather than at
+    whatever coarse pre-sampled point happens to fall inside it. See
+    `solve_multiple_of_pickup_for_operating_time()`'s own docstring."""
+
+    @pytest.mark.parametrize("characteristic", [IEC_STANDARD_INVERSE, IEC_VERY_INVERSE, IEC_EXTREMELY_INVERSE])
+    @pytest.mark.parametrize("tms", [0.025, 0.1, 0.5, 1.0, 1.2])
+    @pytest.mark.parametrize("target_t", [1000.0, 500.0, 100.0, 10.0, 1.0])
+    def test_round_trips_exactly_through_the_forward_formula(self, characteristic, tms, target_t):
+        """`evaluate_idmt_operating_time(inverse(t)) == t` to tight
+        floating-point tolerance, for every characteristic/TMS/target-
+        time combination the task's own final-report table asks for."""
+        m = solve_multiple_of_pickup_for_operating_time(characteristic.constants, tms, target_t)
+        assert m is not None
+        assert m > 1.0
+        assert math.isfinite(m)
+        recovered_t = evaluate_idmt_operating_time(characteristic.constants, tms, m)
+        assert recovered_t is not None
+        assert recovered_t == pytest.approx(target_t, rel=1e-9)
+
+    def test_standard_inverse_worked_example_inverted(self):
+        """Same worked example as `TestIdmtOperatingTime` above, solved
+        in the other direction: M=20, TMS=0.10 -> t~=0.226736 -> solving
+        for M given that t must recover ~20.0."""
+        m = solve_multiple_of_pickup_for_operating_time(IEC_STANDARD_INVERSE.constants, tms=0.10, operating_time_seconds=0.226736)
+        assert m == pytest.approx(20.0, rel=1e-4)
+
+    @pytest.mark.parametrize("bad_t", [0.0, -1.0, float("nan"), float("inf"), float("-inf")])
+    def test_rejects_non_positive_or_non_finite_operating_time(self, bad_t):
+        assert solve_multiple_of_pickup_for_operating_time(IEC_STANDARD_INVERSE.constants, tms=0.1, operating_time_seconds=bad_t) is None
+
+    @pytest.mark.parametrize("bad_tms", [0.0, -0.5, float("nan"), float("inf")])
+    def test_rejects_non_positive_or_non_finite_tms(self, bad_tms):
+        assert solve_multiple_of_pickup_for_operating_time(IEC_STANDARD_INVERSE.constants, tms=bad_tms, operating_time_seconds=10.0) is None
+
+    def test_never_returns_nan_or_infinity(self):
+        for characteristic in (IEC_STANDARD_INVERSE, IEC_VERY_INVERSE, IEC_EXTREMELY_INVERSE):
+            for bad_t in (0.0, -5.0, float("nan"), float("inf")):
+                m = solve_multiple_of_pickup_for_operating_time(characteristic.constants, tms=0.5, operating_time_seconds=bad_t)
+                assert m is None or math.isfinite(m)
 
 
 class TestIdmtCurvePoints:

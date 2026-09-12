@@ -8,20 +8,26 @@ Last updated: **2026-09-12**
 
 ## What was most recently done
 
-**Six sequential tasks in one session: (1) Playback speed set extended
-to 0.05x/0.10x, (2) Analysis workspace shell visual polish, (3) Playback
-controls restricted to Analysis pages (removed from the raw Waveform
-Time Group toolbar), (4) Overcurrent Analysis v1 — the second
-Analysis-menu analyzer, (5) Chart UX refinement (engineering grid + axis
-labels on both Phasor and Overcurrent charts), (6) Owner UAT follow-up —
-Phasor axis-label visibility fix + an adjustable Overcurrent chart
-viewport (user-controlled X/Y range, zoom in/out/reset, default domain
-widened to 100x/100s, absolute bounds 200x/1000s).** Commits, in order:
-`32b2fae` (speed set), `ff45165` (shell polish), `8b853fa` (Waveform
-Playback removal), `98d3f28` (Overcurrent v1), `ad00d13` (chart UX
-refinement), plus this task's own final commit(s) for the UAT follow-up
-(see this task's own final report for the exact hash). All pushed to
-`origin/main`.
+**Seven sequential tasks in one session, plus one concurrent Codex
+styling commit: (1) Playback speed set extended to 0.05x/0.10x, (2)
+Analysis workspace shell visual polish, (3) Playback controls
+restricted to Analysis pages (removed from the raw Waveform Time Group
+toolbar), (4) Overcurrent Analysis v1 — the second Analysis-menu
+analyzer, (5) Chart UX refinement (engineering grid + axis labels on
+both Phasor and Overcurrent charts), (6) Owner UAT follow-up — Phasor
+axis-label visibility fix + an adjustable Overcurrent chart viewport
+(user-controlled X/Y range, zoom in/out/reset, default domain widened
+to 100x/100s, absolute bounds 200x/1000s), (7) a further owner UAT
+follow-up on (6) — the Overcurrent curve now enters/exits the visible
+chart at the EXACT viewport boundary (analytic Y/X-boundary
+intersection) rather than at a coarse pre-sampled point.** Commits, in
+order: `32b2fae` (speed set), `ff45165` (shell polish), `8b853fa`
+(Waveform Playback removal), `98d3f28` (Overcurrent v1), `ad00d13`
+(chart UX refinement), `e07db0d` (adjustable viewport), `6b43b25`
+(Codex, concurrent — `#pageAnalysis` layout CSS only, no overlap with
+any of this session's own Overcurrent/Phasor work), plus this task's
+own final commit for (7) (see this task's own final report for the
+exact hash). All pushed to `origin/main`.
 
 **(1) Playback speed set**: `WW_PLAYBACK_SPEEDS` extended from
 `[0.25, 0.5, 1, 2, 4]` to `[0.05, 0.1, 0.25, 0.5, 1, 2, 4]` for slow
@@ -133,19 +139,54 @@ display-only:
   visible" section. No database persistence added (frontend session
   state only, same boundary as the existing `settings`/`curveCache`).
 
+**(7) Owner UAT follow-up on (6)** — the visible curve now enters/exits
+the chart at the EXACT viewport boundary, not a coarse pre-sampled
+point. New backend domain helper
+`solve_multiple_of_pickup_for_operating_time()` — the exact closed-form
+algebraic inverse of `evaluate_idmt_operating_time()`
+(`M = (1 + k/(t/TMS - c)) ** (1/alpha)`), never a numeric root-find,
+round-trip-proven to tight tolerance across all three IEC
+characteristics x 5 TMS values x 5 target times (1000/500/100/10/1 s).
+The frontend gained a direct, deliberately-mirrored copy of both the
+forward and inverse formulas (`wwOvercurrentEvalT()`/
+`wwOvercurrentSolveMForT()`) — used ONLY for chart-rendering geometry,
+sourcing `k`/`alpha`/`c` exclusively from the already-fetched
+`wwOvercurrentState.characteristics` (never hand-typed), and
+cross-checked numerically against the backend's own values via a Node
+subprocess test. `wwOvercurrentVisibleCurveSegment()` exploits the
+characteristic's own strict monotonicity to compute the visible M-range
+in closed form (`[max(mTop, xMin), min(mBottom, xMax)]`) and samples
+log-spaced between the two exact endpoints; the SVG `<clipPath>` is now
+a safety net only, not the primary mechanism that determines where the
+curve starts/ends. Zero protection-facing values changed — every
+"expected operating time"/"multiple of pickup"/etc. the engineer sees
+still comes exclusively from the backend's own computed result; only
+the drawn curve LINE changed. Zero new network calls (still purely
+frontend-only per viewport change). Full detail in
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own "Curve/
+viewport boundary alignment" section.
+
+**Also present on `main`: a concurrent Codex commit (`6b43b25`, "style:
+refine analysis page layout")** — a small, isolated `#pageAnalysis` CSS
+rule addition (flex layout + `[hidden]` fix, mirroring the existing
+`#pageCalculatedChannels` pattern), no overlap with any of this
+session's own Overcurrent/Phasor code.
+
 **Tests**: new `test_overcurrent_domain.py`/`test_overcurrent_analysis_service.py`/
 `test_overcurrent_analysis_api.py`/`test_frontend_overcurrent_analysis.py`/
-`overcurrent_analysis.spec.js` (now 17 Playwright scenarios after (5)/(6),
-including the new viewport describe block: default range values, zoom
-in/out/reset, absolute-bound capping, custom range with true-minima
-display, invalid-range rejection, Playback/curve-fetch non-interference,
-off-chart edge indicator). `test_analysis_requirements.py`/
+`overcurrent_analysis.spec.js` (now 23 Playwright scenarios after (5)/
+(6)/(7), including the viewport describe block from (6) and a new
+"curve aligns exactly with the chart viewport" describe block from (7):
+exact Y-Max/Y-Min/X-Max boundary entry/exit points, custom-zoom
+re-alignment, live-value non-interference, and a real rendered-SVG-path
+coordinate assertion). `test_analysis_requirements.py`/
 `test_frontend_phasor_analysis.py` updated for the new nav-entry/
 requirement-registry counts and, in (6), for the axis-title z-order/
 viewBox change. `browser-tests/phasor_analysis.spec.js`'s own cross-page
 shared-clock test rewritten for (3) above. Full backend regression, full
-frontend static suite, and full Playwright suite all pass across every
-task; `git diff --check` clean throughout.
+frontend static suite, and full Playwright suite all pass against the
+COMBINED codebase (this session's own work plus Codex's `6b43b25`);
+`git diff --check` clean throughout.
 
 ## What was done in the prior session — multi-upload Phasor bootstrap fix
 
