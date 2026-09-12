@@ -126,58 +126,153 @@ class TestOvercurrentPanelStructure:
         assert "Plotly" not in body
 
 
+class TestOvercurrentViewport:
+    """Adjustable-viewport UAT follow-up (2026-09-12): default display
+    domain, absolute bounds, validation, dynamic 1-2-5/decade tick
+    generation with the major/minor classification rule, zoom in/out/
+    reset, and the default-vs-custom "0" origin rule."""
+
+    def test_default_and_absolute_viewport_constants(self):
+        source = _source()
+        assert "const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };" in source
+        assert "const WW_OC_VIEWPORT_ABSOLUTE = { xMin: 0.1, xMax: 200, yMin: 0.01, yMax: 1000 };" in source
+
+    def test_state_viewport_field_initialised_to_default(self):
+        source = _source()
+        fn = _function_body(source, "const wwOvercurrentState = {", "function wwOvercurrentFetchContexts")
+        assert "viewport: { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 }," in fn
+
+    def test_reset_state_also_resets_viewport(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentResetState()", "const wwPhasorState")
+        assert 'wwOvercurrentState.viewport = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };' in fn
+
+    def test_validation_rejects_out_of_bound_and_non_finite_and_inverted(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentViewportValid(v)", "function wwOvercurrentGeneratePow125Ticks")
+        assert "Number.isFinite" in fn
+        assert "WW_OC_VIEWPORT_ABSOLUTE.xMin" in fn
+        assert "WW_OC_VIEWPORT_ABSOLUTE.xMax" in fn
+        assert "WW_OC_VIEWPORT_ABSOLUTE.yMin" in fn
+        assert "WW_OC_VIEWPORT_ABSOLUTE.yMax" in fn
+        assert "xMin < xMax" in fn
+        assert "yMin < yMax" in fn
+
+    def test_tick_generation_uses_log10_never_linear_spacing(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentGeneratePow125Ticks(min, max)", "function wwOvercurrentGenerateDecadeTicks")
+        assert "Math.log10(min)" in fn
+        assert "Math.log10(max)" in fn
+
+    def test_major_minor_classification_reproduces_owner_default_lists(self):
+        """The dynamic classification rule (exclude progression values
+        <= 2x the axis minimum from the major set) must reproduce the
+        owner's own explicit default major-tick lists exactly."""
+        import re
+        import subprocess
+        import sys
+
+        source = _source()
+        gen_pow125 = _function_body(source, "function wwOvercurrentGeneratePow125Ticks(min, max)", "function wwOvercurrentGenerateDecadeTicks")
+        gen_decade = _function_body(source, "function wwOvercurrentGenerateDecadeTicks(min, max)", "function wwOvercurrentClassifyMajors")
+        classify = _function_body(source, "function wwOvercurrentClassifyMajors(allTicks, axisMin)", "function wwOvercurrentXMajors")
+        script = gen_pow125 + "\n" + gen_decade + "\n" + classify + """
+        console.log(JSON.stringify({
+            x: wwOvercurrentClassifyMajors(wwOvercurrentGeneratePow125Ticks(0.1, 100), 0.1),
+            y: wwOvercurrentClassifyMajors(wwOvercurrentGenerateDecadeTicks(0.01, 100), 0.01),
+        }));
+        """
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        payload = re.search(r"\{.*\}", result.stdout).group(0)
+        import json
+
+        data = json.loads(payload)
+        assert data["x"] == [0.5, 1, 2, 5, 10, 20, 50, 100]
+        assert data["y"] == [0.1, 1, 10, 100]
+
+    def test_geometry_is_viewport_aware_and_gap_only_applies_to_default_view(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentChartGeometry(viewport)", "function wwOvercurrentPixelX")
+        assert "wwOvercurrentIsDefaultViewport(viewport)" in fn
+        assert "const gap = isDefault ? WW_OC_ORIGIN_GAP : 0;" in fn
+        assert "logMMin: Math.log10(viewport.xMin)" in fn
+        assert "logTMin: Math.log10(viewport.yMin)" in fn
+
+    def test_default_view_shows_zero_origin_and_minor_reference_ticks(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        default_branch = _function_body(fn, "if (geo.isDefault) {", "} else {")
+        assert "ww-oc-origin-label" in default_branch
+        assert ">0</text>" in default_branch
+        assert "ww-oc-tick-label-minor" in default_branch
+        assert "Math.log10" not in default_branch[: default_branch.index("ww-oc-tick-label-minor")]
+
+    def test_custom_view_shows_true_minimum_never_a_fake_zero(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        custom_branch = _function_body(fn, "} else {\n                const xMinPx", "// Axis titles")
+        assert ">0</text>" not in custom_branch
+        assert "ww-oc-origin-label" not in custom_branch
+        assert 'class="ww-oc-tick-label"' in custom_branch
+
+    def test_zoom_centers_in_log_space_and_clamps_to_absolute_bounds(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentZoom(factor)", "function wwOvercurrentResetViewport")
+        assert "Math.log10(v.xMin)" in fn
+        assert "WW_OC_VIEWPORT_ABSOLUTE.xMin" in fn
+        assert "WW_OC_VIEWPORT_ABSOLUTE.xMax" in fn
+        assert "WW_OC_VIEWPORT_ABSOLUTE.yMin" in fn
+        assert "WW_OC_VIEWPORT_ABSOLUTE.yMax" in fn
+        assert "wwOvercurrentRerenderChartFromState();" in fn
+
+    def test_zoom_never_refetches_curve_or_touches_playback(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentZoom(factor)", "function wwOvercurrentResetViewport")
+        assert "wwOvercurrentFetchCurve" not in fn
+        assert "wwPlayback" not in fn
+        assert "wwOvercurrentHandleSettingsChanged" not in fn
+
+    def test_reset_returns_to_exact_default_viewport(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentResetViewport()", "// ---- Settings wiring helpers")
+        assert "wwOvercurrentState.viewport = { ...WW_OC_VIEWPORT_DEFAULT };" in fn
+
+    def test_view_controls_markup_exists(self):
+        source = _source()
+        for element_id in (
+            "wwOvercurrentViewXMin", "wwOvercurrentViewXMax",
+            "wwOvercurrentViewYMin", "wwOvercurrentViewYMax",
+            "wwOvercurrentZoomInBtn", "wwOvercurrentZoomOutBtn", "wwOvercurrentResetViewBtn",
+        ):
+            assert 'id="' + element_id + '"' in source
+
+    def test_view_input_listeners_never_call_settings_changed(self):
+        source = _source()
+        fn = _function_body(source, '["wwOvercurrentViewXMin"', "wwOvercurrentSyncViewportInputs();")
+        assert "wwOvercurrentHandleSettingsChanged" not in fn
+        assert "wwOvercurrentApplyViewportFromInputs" in fn
+        assert "wwOvercurrentZoom(0.5)" in fn
+        assert "wwOvercurrentZoom(2)" in fn
+        assert "wwOvercurrentResetViewport" in fn
+
+
 class TestChartAxesGridAndTicks:
     """Chart UX refinement (2026-09-12): a full engineering chart frame
     -- axis lines, grid, and the owner's own exact displayed tick-label
     sets -- around the existing curve/operating-point geometry, which
     stays mathematically unchanged."""
 
-    _EXPECTED_X_LABELS = ["0", "0.1", "0.2", "0.5", "1", "2", "5", "10", "20"]
-    _EXPECTED_Y_LABELS = ["0", "0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2", "5", "10"]
-
-    def test_exact_displayed_x_tick_labels(self):
-        source = _source()
-        body = _function_body(source, "const WW_OC_X_TICKS", "const WW_OC_Y_TICKS")
-        for label in self._EXPECTED_X_LABELS[1:]:  # "0" is the special origin label, checked separately
-            assert '"label": "' + label + '"' in body or "label: \"" + label + "\"" in body
-
-    def test_exact_displayed_y_tick_labels(self):
-        source = _source()
-        body = _function_body(source, "const WW_OC_Y_TICKS", "const WW_OC_LOG_M_MIN")
-        for label in self._EXPECTED_Y_LABELS[1:]:
-            assert "label: \"" + label + "\"" in body
-
-    def test_visual_origin_zero_labels_are_not_log_transformed(self):
-        """The `0` labels are fixed pixel positions in a reserved gap
-        strip, never passed through `Math.log10()` -- log(0) is
-        undefined, and the owner's own instruction is explicit that this
-        is a visual-only chart-origin annotation."""
-        source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
-        assert 'ww-oc-origin-label" x="\' + geo.plotLeft +' in fn
-        assert '>0</text>' in fn
-        # Confirm the origin-label lines themselves never call Math.log10.
-        origin_start = fn.index('ww-oc-origin-label')
-        origin_block = fn[origin_start:fn.index("Axis titles")]
-        assert "Math.log10" not in origin_block
-
-    def test_valid_log_region_begins_at_the_specified_positive_values(self):
-        source = _source()
-        fn = _function_body(source, "const WW_OC_X_TICKS", "function wwOvercurrentChartGeometry")
-        assert "{ value: 0.1," in fn  # smallest real X tick
-        assert "{ value: 0.01," in fn  # smallest real Y tick
-
     def test_x_and_y_axis_lines_render(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
         assert fn.count('class="ww-oc-axis"') == 2
 
-    def test_grid_lines_render_for_every_tick(self):
+    def test_grid_lines_render_for_current_viewport_majors(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
         assert "ww-oc-gridline" in fn
-        assert "for (const tick of WW_OC_X_TICKS)" in fn
-        assert "for (const tick of WW_OC_Y_TICKS)" in fn
+        assert "for (const v of xMajors)" in fn
+        assert "for (const v of yMajors)" in fn
 
     def test_ticks_use_the_log_transform_never_linear_spacing(self):
         """Tick/grid pixel positions must come from the same
@@ -186,12 +281,12 @@ class TestChartAxesGridAndTicks:
         source = _source()
         fn = _function_body(source, "function wwOvercurrentPixelX(m, geo)", "function wwOvercurrentPixelY")
         assert "Math.log10(m)" in fn
-        assert "WW_OC_LOG_M_MIN" in fn
-        assert "WW_OC_LOG_M_MAX" in fn
+        assert "geo.logMMin" in fn
+        assert "geo.logMMax" in fn
 
     def test_axis_titles_unchanged_text(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
         assert "Current / Pickup Multiple (M)" in fn
         assert "Expected Operating Time (s)" in fn
 
@@ -202,7 +297,7 @@ class TestChartAxesGridAndTicks:
         (never distorted) via an SVG clipPath, so the underlying
         engineering math is never altered to fit the frame."""
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
         assert "clipPath" in fn
         assert 'clip-path="url(#wwOvercurrentClip)"' in fn
 
@@ -213,7 +308,7 @@ class TestChartAxesGridAndTicks:
         only, confirmed by the curve-path loop never calling
         wwOvercurrentClampedM/T."""
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
         curve_loop = _function_body(fn, "const curvePath = points.map", "parts.push('<path")
         assert "wwOvercurrentClampedM" not in curve_loop
         assert "wwOvercurrentClampedT" not in curve_loop
@@ -224,42 +319,68 @@ class TestChartAxesGridAndTicks:
 class TestBelowPickupPositionMarker:
     """Chart UX refinement: below pickup, the chart still communicates
     WHERE the current sits on the X axis -- without ever fabricating a
-    y-value/expected-operating-time point."""
+    y-value/expected-operating-time point. Adjustable-viewport UAT
+    follow-up (2026-09-12) adds a further split: on-chart (X inside the
+    current viewport) vs. off-chart (X outside it, §10)."""
 
-    def test_below_pickup_shows_position_marker_and_vertical_guide_never_a_y_value(self):
+    def test_below_pickup_on_chart_shows_position_marker_and_vertical_guide_never_a_y_value(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
-        below_branch = _function_body(fn, "} else {", "}\n            }\n\n            svg.innerHTML")
-        assert "ww-oc-position-marker" in below_branch
-        assert "ww-oc-guide" in below_branch
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        on_chart_branch = _function_body(fn, "} else if (mInRange) {", "} else {")
+        assert "ww-oc-position-marker" in on_chart_branch
+        assert "ww-oc-guide" in on_chart_branch
         # Never the same operating-point class/color used for a genuine computed result.
-        assert "ww-oc-operating-point" not in below_branch
+        assert "ww-oc-operating-point" not in on_chart_branch
+        assert "wwOvercurrentPixelY" not in on_chart_branch
+
+    def test_below_pickup_off_chart_shows_edge_indicator_never_a_fabricated_position(self):
+        """UAT §10: if the true current value is outside the visible X
+        range, never falsely clamp-and-present it as though the boundary
+        were the true value -- an edge indicator only, no position-marker
+        circle, no full-height guide (whose direction would mislead)."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        off_chart_branch = _function_body(fn, "} else {\n                    // Below pickup, off-chart", "}\n            }\n\n            svg.innerHTML")
+        assert "wwOvercurrentEdgeArrowSvg" in off_chart_branch
+        assert "ww-oc-position-marker" not in off_chart_branch
+        assert "ww-oc-guide" not in off_chart_branch
 
     def test_position_marker_x_uses_clamped_m_never_distorts_the_true_value(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
-        assert "const clampedM = wwOvercurrentClampedM(currentM);" in fn
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        assert "const clampedM = wwOvercurrentClampedM(currentM, viewport);" in fn
 
     def test_below_pickup_never_calls_pixel_y_with_a_fabricated_time(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
-        below_branch = _function_body(fn, "} else {", "}\n            }\n\n            svg.innerHTML")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        below_branch = _function_body(fn, "} else if (mInRange) {", "}\n            }\n\n            svg.innerHTML")
         assert "wwOvercurrentPixelY" not in below_branch
 
 
 class TestOperatingPointGuides:
     def test_above_pickup_still_renders_point_and_both_guides(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
         above_branch = _function_body(fn, "if (Number.isFinite(currentT)) {", "} else {")
         assert "ww-oc-operating-point" in above_branch
         assert above_branch.count("ww-oc-guide") == 2
 
     def test_guides_align_with_the_clamped_tick_coordinate(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
         above_branch = _function_body(fn, "if (Number.isFinite(currentT)) {", "} else {")
-        assert "const clampedT = wwOvercurrentClampedT(currentT);" in above_branch
+        assert "const clampedT = wwOvercurrentClampedT(currentT, viewport);" in above_branch
+
+    def test_above_pickup_off_chart_uses_edge_indicator_for_the_out_of_range_axis(self):
+        """UAT §11: if M or T lies outside the visible range, never
+        redraw the operating point at the boundary as though the
+        boundary were the true value -- an edge-indicator triangle
+        replaces the circle for whichever axis is out of range, the
+        other axis' guide is unaffected."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        assert 'wwOvercurrentEdgeArrowSvg(px, py, currentM < viewport.xMin ? "left" : "right")' in fn
+        assert 'wwOvercurrentEdgeArrowSvg(px, py, currentT < viewport.yMin ? "down" : "up")' in fn
 
 
 class TestNoRelayOperationClaims:

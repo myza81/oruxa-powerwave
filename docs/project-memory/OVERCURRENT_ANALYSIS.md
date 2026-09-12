@@ -569,6 +569,128 @@ was already in place before this refinement for a point outside the
 curve's own former data-derived range; it now clamps to the new FIXED
 tick range instead).
 
+## Adjustable chart viewport — UAT follow-up (2026-09-12)
+
+Owner UAT on the "Chart UX refinement" work above raised six points: the
+Phasor axis labels weren't reliably visible (see
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)), the chart was capped at 20×
+pickup / 10 s with no user control over the visible range, the grid was
+too busy, and there was no zoom in/out/reset. This follow-up replaces the
+single FIXED tick set described above with a **user-adjustable, but
+strictly display-only, viewport** — nothing below changes the IDMT
+calculation, pickup, TMS, measured current, CT conversion, expected
+operating time, or above-pickup duration; those all remain covered by
+the byte-for-byte-unchanged domain/service/API tests referenced above.
+
+**Default viewport and absolute bounds.** `wwOvercurrentState.viewport`
+(`{ xMin, xMax, yMin, yMax }`) replaces the old fixed tick arrays as the
+chart's source of truth, initialized to and resettable to
+`WW_OC_VIEWPORT_DEFAULT = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 }`
+— X now defaults to 100× pickup (was 20×) and Y to 100 s (was 10 s). The
+user's own X/Y Min/Max inputs and the Zoom Out control are hard-bounded
+by `WW_OC_VIEWPORT_ABSOLUTE = { xMin: 0.1, xMax: 200, yMin: 0.01, yMax: 1000 }`
+via `wwOvercurrentViewportValid()` — `0.1 <= xMin < xMax <= 200`,
+`0.01 <= yMin < yMax <= 1000`, all four values finite. `0` is never a
+valid log minimum on either axis. An invalid candidate range is rejected
+and every input reverts to the last-known-good viewport (never a
+partial/silent apply).
+
+**Dynamic major-tick generation, not a hard-coded table.**
+`wwOvercurrentGeneratePow125Ticks()` (X: 1-2-5 engineering progression)
+and `wwOvercurrentGenerateDecadeTicks()` (Y: decades) generate the full
+candidate tick set for whatever `[min, max]` the CURRENT viewport
+defines — default or custom — always through `Math.log10()`, ticks
+outside the selected range simply omitted. `wwOvercurrentClassifyMajors()`
+then applies one small rule uniformly to both axes: **the axis's own
+current minimum is the sole minor/reference tick; every other candidate
+value strictly greater than 2× that minimum is major.** This single
+dynamic rule reproduces the owner's own curated default lists exactly —
+
+```
+X majors (default 0.1 -> 100): 0.5, 1, 2, 5, 10, 20, 50, 100
+Y majors (default 0.01 -> 100): 0.1, 1, 10, 100
+```
+
+— while remaining generic for any custom viewport (e.g. X 2 -> 20 yields
+majors `5, 10, 20`; Y 0.1 -> 10 yields majors `1, 10`). Only the major
+set gets a gridline (`.ww-oc-gridline`) — deliberately a simpler grid
+than the previous full fixed-tick version, per owner feedback that the
+old grid was too busy.
+
+**The "0" origin annotation appears ONLY at the exact default viewport.**
+`wwOvercurrentIsDefaultViewport(v)` checks the current viewport for
+EXACT equality with `WW_OC_VIEWPORT_DEFAULT`. When true, the chart
+reserves the same origin-gap strip the original refinement introduced,
+draws the two visual `0` labels in it (still never passed through
+`Math.log10()`), and additionally shows the axis's own true minimum
+(0.1×/0.01 s) as a lighter `.ww-oc-tick-label-minor` reference label just
+inside the real log-mapped region. In ANY custom/zoomed viewport — even
+one a user happens to set back to `xMin: 0.1`/`yMin: 0.01` by hand
+without pressing Reset — there is no origin gap and no fake `0`; the
+viewport's own true minimum renders directly, in normal tick styling, at
+the frame edge (e.g. "2" and "0.1 s" for a `X: 2->20, Y: 0.1->10` view) —
+the lower-left corner always reflects the actual selected minimum.
+
+**Zoom in/out/reset.** `wwOvercurrentZoom(factor)` (0.5 for Zoom In, 2
+for Zoom Out) scales the viewport around its own geometric CENTER in
+log-space on both axes simultaneously, then clamps the result to
+`WW_OC_VIEWPORT_ABSOLUTE` — centering on the viewport's own midpoint
+rather than the current operating point keeps zoom well-defined even
+below pickup or before a context is selected. `wwOvercurrentResetViewport()`
+returns to `WW_OC_VIEWPORT_DEFAULT` by exact assignment (not an
+approximation), which also restores the default major-grid labeling
+described above. All three controls, plus the X/Y Min/Max number inputs
+(`wwOvercurrentApplyViewportFromInputs()`), are wired to call
+`wwOvercurrentSyncViewportInputs()` + `wwOvercurrentRerenderChartFromState()`
+only — never `wwOvercurrentHandleSettingsChanged()`, never
+`wwPlaybackSeek()`/any other `wwPlayback` mutator, and never
+`wwOvercurrentFetchCurve()`. A viewport change is a pure re-render from
+whatever curve/result data is already cached in
+`wwOvercurrentState.curveCache`/`latestResult` — confirmed directly by
+`browser-tests/overcurrent_analysis.spec.js`'s
+"viewport changes never alter wwPlayback.currentTime or trigger a new
+curve fetch" test, which counts `/overcurrent-curve` network requests
+across a zoom-in/zoom-out/reset sequence and asserts zero.
+
+**Curve data now spans the full 200× display domain in one fetch.**
+`generate_idmt_curve_points()` (`backend/app/domain/overcurrent.py`)
+default `m_max` widened from 20.0 to 200.0 (`num_points` 60 -> 90) — a
+display-rendering-support boundary only; `evaluate_idmt_operating_time()`
+itself, and every value it can be called with, is unchanged (see
+`test_overcurrent_domain.py::TestIdmtCurvePoints::test_default_domain_covers_the_full_200x_display_bound`).
+This means every possible zoom/pan the user can reach is drawn from the
+SAME already-fetched curve array — the existing "only refetch when
+`characteristicId`/`tms` differ from cache" rule (see "Curve caching"
+above) is untouched and still the only thing that triggers a network
+call; the viewport itself was never part of that cache key and still
+isn't.
+
+**Off-chart values (§10/§11): never falsify, never fabricate, never
+falsely clamp-and-present as a boundary value.** If the true `M` or `T`
+value now falls outside the user's currently selected viewport (whether
+below-pickup X-position or an above-pickup operating point), the
+marker's PIXEL position still clamps to the visible frame edge, but its
+SHAPE changes from a circle to a small outward-pointing
+`.ww-oc-edge-indicator` triangle (`wwOvercurrentEdgeArrowSvg()`) instead
+— so an edge case is never visually indistinguishable from "the value
+genuinely sits at this boundary." The true numeric value shown in the
+live-values panel is never touched by any of this; only the marker
+drawn on the chart changes. Below-pickup off-chart additionally omits
+the full-height vertical guide (its direction would mislead once the
+true X position is off-screen). The curve `<path>` itself continues to
+be clipped (via the existing `<clipPath>`), never distorted, to
+whatever the current viewport's plot rectangle is.
+
+**Persistence — frontend state only, no database.** `viewport` lives on
+`wwOvercurrentState` exactly like `settings`/`curveCache` — it survives
+a Playback time change, a phase change, and a Phasor<->Overcurrent
+switch (nothing in those paths touches it), and resets only on an
+explicit Reset-view press or `wwOvercurrentResetState()` (the same full
+analyzer-state-recreation hook `settings`/`curveCache`/etc. already
+reset on). Per the task's own explicit instruction, **no new database
+persistence was added** for this — same boundary as `settings` (see
+"Configuration persistence" above).
+
 ## Analysis chart styling tokens (shared with Phasor)
 
 See [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s own matching section —

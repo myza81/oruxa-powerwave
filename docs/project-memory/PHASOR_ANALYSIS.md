@@ -940,9 +940,35 @@ slightly stronger than the new grid (still subtle) via the shared
 `--ww-chart-axis-stroke` token. Two new text labels — "Real" (positive
 X) and "Imaginary" (positive Y, which is visually UP since every
 vector's own y is already negated for the standard complex-plane
-convention) — are painted BEFORE the per-role vector loop, so a vector
-legitimately obscures a label if their positions coincide, never the
-reverse.
+convention) — mark the axis directions. **Superseded by the UAT
+follow-up directly below: these are now ALWAYS-visible labels, painted
+LAST (after the vectors), not before them.**
+
+### Axis labels always visible — UAT follow-up (2026-09-12)
+
+Owner UAT reported the "Real"/"Imaginary" labels were not reliably
+visible. Two independent root causes, both fixed, phasor geometry itself
+(estimator, resolver, absolute-angle convention, ring/vector scaling)
+untouched:
+
+- **Z-order**: the labels were painted BEFORE the per-role vector loop,
+  so a vector could visually cover a label if their positions
+  coincided. `wwPhasorRenderDiagramSvg()` now pushes the two
+  `.ww-phasor-axis-title` elements to `parts` LAST, after every vector —
+  SVG paints later elements on top, so a vector can never obscure a
+  label again (confirmed by
+  `backend/tests/test_frontend_phasor_analysis.py::TestChartGridAndAxisLabels::test_axis_titles_painted_after_vectors_so_they_are_never_hidden`).
+- **Edge-clipping risk**: `#wwPhasorSvg`'s own `viewBox` widened from
+  `-110 -110 220 220` to `-122 -122 244 244` (rings/axes/vectors still
+  stay within ±100, unchanged) and the label positions moved outward
+  correspondingly (`x="112"`/`y="-6"` for "Real",
+  `x="3"`/`y="-112"` for "Imaginary", both up from ±102/103) — comfortable
+  clearance from the viewBox edge for the label's own font
+  ascent/descent, so it is never edge-clipped in any rendering context.
+
+Both fixes verified visually via a real Playwright screenshot (both
+labels clearly legible, "Real" drawn cleanly on top of a coincident
+vector) before being finalized.
 
 **Deliberately NOT added**: numeric tick/grid-line labels on the new
 Cartesian grid itself. A grid line's own pixel position mixes the

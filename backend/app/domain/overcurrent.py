@@ -172,7 +172,7 @@ def evaluate_idmt_operating_time(constants: IdmtConstants, tms: float, multiple_
 
 
 def generate_idmt_curve_points(
-    constants: IdmtConstants, tms: float, *, m_min: float = 1.01, m_max: float = 20.0, num_points: int = 60,
+    constants: IdmtConstants, tms: float, *, m_min: float = 1.01, m_max: float = 200.0, num_points: int = 90,
 ) -> list[tuple[float, float]]:
     """The characteristic curve itself -- log-spaced multiples of pickup
     from just above 1 (M=1 has no finite time) to `m_max`, each paired
@@ -181,7 +181,20 @@ def generate_idmt_curve_points(
     or TMS setting changes, never on every Playback tick (owner
     instruction: "avoid shipping thousands of redundant curve points on
     every Playback tick... only update the dynamic operating point where
-    practical")."""
+    practical").
+
+    `m_max`/`num_points` defaults widened (2026-09-12 chart-viewport UAT
+    follow-up, from 20.0/60) to cover the full supported DISPLAY domain
+    (frontend absolute chart bound: 200x pickup) in ONE fetch -- so an
+    engineer changing the chart's own zoom/pan viewport never triggers a
+    re-fetch (frontend-only viewport changes, per that task's own
+    explicit instruction); `num_points` scaled up proportionally to keep
+    point density roughly the same across the now ~10x-wider log range,
+    deliberately still far short of "excessive" (a per-request, not
+    per-tick, cost -- see this module's own "Performance" note in
+    docs/project-memory/OVERCURRENT_ANALYSIS.md). This is a display-
+    rendering-support boundary only -- `evaluate_idmt_operating_time()`
+    itself, and every value it can be called with, is unchanged."""
     m_values = np.geomspace(m_min, m_max, num=num_points)
     points: list[tuple[float, float]] = []
     for m in m_values:

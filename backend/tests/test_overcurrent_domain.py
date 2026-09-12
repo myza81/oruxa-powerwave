@@ -126,6 +126,17 @@ class TestIdmtCurvePoints:
         points = generate_idmt_curve_points(IEC_VERY_INVERSE.constants, tms=0.2, num_points=25)
         assert len(points) == 25
 
+    def test_default_domain_covers_the_full_200x_display_bound(self):
+        """2026-09-12 chart-viewport UAT follow-up: the default curve
+        request must span the full supported DISPLAY domain (frontend
+        absolute chart bound, 200x pickup) in one fetch, so a chart
+        zoom/pan viewport change never needs to re-fetch curve data."""
+        points = generate_idmt_curve_points(IEC_STANDARD_INVERSE.constants, tms=0.2)
+        m_values = [m for m, _t in points]
+        assert max(m_values) == pytest.approx(200.0, rel=1e-6)
+        assert min(m_values) == pytest.approx(1.01, rel=1e-6)
+        assert len(points) == 90
+
 
 class TestSettingsValidation:
     @pytest.mark.parametrize("tms", [0.025, 0.1, 1.0, 1.2])

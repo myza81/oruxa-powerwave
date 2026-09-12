@@ -8,14 +8,20 @@ Last updated: **2026-09-12**
 
 ## What was most recently done
 
-**Four sequential tasks in one session: (1) Playback speed set extended
+**Six sequential tasks in one session: (1) Playback speed set extended
 to 0.05x/0.10x, (2) Analysis workspace shell visual polish, (3) Playback
 controls restricted to Analysis pages (removed from the raw Waveform
 Time Group toolbar), (4) Overcurrent Analysis v1 — the second
-Analysis-menu analyzer.** Commits, in order: `32b2fae` (speed set),
-`ff45165` (shell polish), `8b853fa` (Waveform Playback removal),
-plus this task's own final commit(s) for Overcurrent v1 (see this task's
-own final report for the exact hash). All pushed to `origin/main`.
+Analysis-menu analyzer, (5) Chart UX refinement (engineering grid + axis
+labels on both Phasor and Overcurrent charts), (6) Owner UAT follow-up —
+Phasor axis-label visibility fix + an adjustable Overcurrent chart
+viewport (user-controlled X/Y range, zoom in/out/reset, default domain
+widened to 100x/100s, absolute bounds 200x/1000s).** Commits, in order:
+`32b2fae` (speed set), `ff45165` (shell polish), `8b853fa` (Waveform
+Playback removal), `98d3f28` (Overcurrent v1), `ad00d13` (chart UX
+refinement), plus this task's own final commit(s) for the UAT follow-up
+(see this task's own final report for the exact hash). All pushed to
+`origin/main`.
 
 **(1) Playback speed set**: `WW_PLAYBACK_SPEEDS` extended from
 `[0.25, 0.5, 1, 2, 4]` to `[0.05, 0.1, 0.25, 0.5, 1, 2, 4]` for slow
@@ -84,16 +90,62 @@ separate, and the one qualified `threshold_exceeded` alert always states
 this explicitly. Full architecture record: [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md);
 approval record: [DECISIONS.md — DEC-090](DECISIONS.md#dec-090--overcurrent-analysis-v1-the-second-analysis-menu-analyzer-iec-idmt-characteristic-evaluation-against-a-one-cycle-trailing-rms-current-at-the-shared-playback-driven-analysis-time).
 
+**(5) Chart UX refinement** — visual/chart-readability only, both
+Analysis charts, no estimator/resolver/IDMT/RMS/CT/Playback semantics
+touched. Phasor's `#wwPhasorSvg` gained a light rectilinear grid plus
+"Real"/"Imaginary" axis-direction labels. Overcurrent's chart gained a
+full axis frame, a FIXED log-scale tick set (X 0.1-20x, Y 0.01-10s), and
+a below-pickup X-axis position marker (distinct from the above-pickup
+operating point, never fabricating a y-value). See each analyzer's own
+architecture doc for the full detail; superseded in part by (6) below.
+
+**(6) Owner UAT follow-up on (5)** — two independent fixes, both
+display-only:
+
+- **Phasor axis labels weren't reliably visible.** Root cause was two
+  things at once: z-order (a vector could paint over a label) and
+  edge-clipping risk (label too close to the SVG's own viewBox edge).
+  Fixed by painting the "Real"/"Imaginary" labels LAST (after every
+  vector, so a vector can never cover them again) and widening
+  `#wwPhasorSvg`'s own `viewBox` with matching label repositioning for
+  comfortable edge clearance. Phasor geometry itself untouched.
+- **Overcurrent chart viewport is now user-adjustable**, replacing the
+  single FIXED 20x/10s tick set (5) introduced. New default domain
+  X 0.1->100x / Y 0.01->100s (was 20x/10s), absolute outer bounds
+  X 200x / Y 1000s, dynamic 1-2-5 (X) / decade (Y) major-tick
+  generation (a simpler grid than before — majors only), Zoom In/Out/
+  Reset plus X/Y Min/Max inputs with hard validation, a "0" origin
+  annotation that appears ONLY at the exact default viewport (a custom
+  view shows its own true minimum instead, never a fake 0), and
+  off-chart values (M or T outside the selected range) now render as a
+  small edge-indicator triangle rather than a falsely-clamped circle.
+  All of it is a pure frontend re-render from already-cached curve/
+  result data — confirmed zero new `/overcurrent-curve` requests across
+  a zoom/reset sequence, and `wwPlayback` is never touched by any
+  viewport control. The backend's `generate_idmt_curve_points()` default
+  `m_max` widened 20->200 (`num_points` 60->90) so the curve data itself
+  already spans the full absolute display domain in one fetch — a
+  display-rendering-support boundary only, `evaluate_idmt_operating_
+  time()` itself unchanged. Full detail in
+  [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own "Adjustable
+  chart viewport" section and
+  [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s own "Axis labels always
+  visible" section. No database persistence added (frontend session
+  state only, same boundary as the existing `settings`/`curveCache`).
+
 **Tests**: new `test_overcurrent_domain.py`/`test_overcurrent_analysis_service.py`/
 `test_overcurrent_analysis_api.py`/`test_frontend_overcurrent_analysis.py`/
-`overcurrent_analysis.spec.js` (8 Playwright scenarios: basic
-configuration, primary/secondary CT cases, Playback, seek, below-pickup,
-threshold observation, analyzer switch). `test_analysis_requirements.py`/
+`overcurrent_analysis.spec.js` (now 17 Playwright scenarios after (5)/(6),
+including the new viewport describe block: default range values, zoom
+in/out/reset, absolute-bound capping, custom range with true-minima
+display, invalid-range rejection, Playback/curve-fetch non-interference,
+off-chart edge indicator). `test_analysis_requirements.py`/
 `test_frontend_phasor_analysis.py` updated for the new nav-entry/
-requirement-registry counts. `browser-tests/phasor_analysis.spec.js`'s
-own cross-page shared-clock test rewritten for (3) above. Full backend
-regression, full frontend static suite, and full Playwright suite all
-pass across every task; `git diff --check` clean throughout.
+requirement-registry counts and, in (6), for the axis-title z-order/
+viewBox change. `browser-tests/phasor_analysis.spec.js`'s own cross-page
+shared-clock test rewritten for (3) above. Full backend regression, full
+frontend static suite, and full Playwright suite all pass across every
+task; `git diff --check` clean throughout.
 
 ## What was done in the prior session — multi-upload Phasor bootstrap fix
 

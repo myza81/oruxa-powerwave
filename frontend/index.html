@@ -6402,6 +6402,67 @@
             stroke-dasharray: 3 2;
             opacity: 0.85;
         }
+        /* Adjustable-viewport UAT follow-up (2026-09-12): the true axis
+           minimum, shown as a lighter/secondary label -- only used in the
+           default/full view, right next to the "0" origin annotation, and
+           in a custom view where it stands in for a major tick at the
+           frame edge (see `.ww-oc-tick-label` for the latter case, which
+           reuses that same class deliberately so it reads as a normal
+           boundary tick, not a special one). */
+        .ww-oc-tick-label-minor {
+            font-size: var(--ww-chart-tick-font-size);
+            fill: var(--text-dim);
+            opacity: 0.6;
+        }
+        /* Off-chart edge indicator (UAT §10/§11): a small outward-pointing
+           triangle -- deliberately NOT a circle, so it can never be
+           mistaken for a genuine plotted point sitting at the viewport
+           boundary. Used only when the true M/T value lies outside the
+           user's currently selected X/Y range; the true value itself is
+           never altered, only its on-chart marker shape changes. */
+        .ww-oc-edge-indicator {
+            fill: var(--warn);
+            stroke: var(--panel);
+            stroke-width: 0.75;
+        }
+        .ww-oc-view-controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px 10px;
+            margin: 2px 0 6px;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+        }
+        .ww-oc-view-controls-label {
+            font-weight: 600;
+        }
+        .ww-oc-view-field {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+        }
+        .ww-oc-view-field input[type="number"] {
+            width: 4.2em;
+            font-size: 0.7rem;
+            padding: 1px 3px;
+        }
+        .ww-oc-view-arrow {
+            opacity: 0.7;
+        }
+        .ww-oc-view-zoom-group {
+            display: inline-flex;
+            gap: 4px;
+        }
+        .ww-oc-zoom-btn {
+            font-size: 0.7rem;
+            line-height: 1;
+            padding: 2px 7px;
+            cursor: pointer;
+        }
+        .ww-oc-view-field input.ww-oc-view-input-invalid {
+            border-color: var(--warn);
+        }
     </style>
 </head>
 <body>
@@ -7363,7 +7424,7 @@
                                 <section class="panel ww-phasor-diagram-panel">
                                     <h3>Phasor Diagram <span class="ww-phasor-updating-indicator" id="wwPhasorUpdatingIndicator" hidden>Updating…</span></h3>
                                     <div class="ww-phasor-diagram-wrap">
-                                        <svg id="wwPhasorSvg" viewBox="-110 -110 220 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Phasor diagram"></svg>
+                                        <svg id="wwPhasorSvg" viewBox="-122 -122 244 244" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Phasor diagram"></svg>
                                     </div>
                                     <div class="ww-phasor-scale-note" id="wwPhasorScaleNote" hidden></div>
                                 </section>
@@ -7450,6 +7511,26 @@
                                 </section>
                                 <section class="panel ww-phasor-diagram-panel">
                                     <h3>Overcurrent Characteristic <span class="ww-phasor-updating-indicator" id="wwOvercurrentUpdatingIndicator" hidden>Updating…</span></h3>
+                                    <div class="ww-oc-view-controls" id="wwOvercurrentViewControls">
+                                        <span class="ww-oc-view-controls-label">View</span>
+                                        <label class="ww-oc-view-field">
+                                            <span>X</span>
+                                            <input type="number" id="wwOvercurrentViewXMin" step="0.1" inputmode="decimal" aria-label="Chart X axis minimum (current multiple)">
+                                            <span class="ww-oc-view-arrow">→</span>
+                                            <input type="number" id="wwOvercurrentViewXMax" step="1" inputmode="decimal" aria-label="Chart X axis maximum (current multiple)">
+                                        </label>
+                                        <label class="ww-oc-view-field">
+                                            <span>Y</span>
+                                            <input type="number" id="wwOvercurrentViewYMin" step="0.01" inputmode="decimal" aria-label="Chart Y axis minimum (seconds)">
+                                            <span class="ww-oc-view-arrow">→</span>
+                                            <input type="number" id="wwOvercurrentViewYMax" step="1" inputmode="decimal" aria-label="Chart Y axis maximum (seconds)">
+                                        </label>
+                                        <span class="ww-oc-view-zoom-group">
+                                            <button type="button" id="wwOvercurrentZoomOutBtn" class="ww-oc-zoom-btn" aria-label="Zoom out" title="Zoom out">−</button>
+                                            <button type="button" id="wwOvercurrentZoomInBtn" class="ww-oc-zoom-btn" aria-label="Zoom in" title="Zoom in">+</button>
+                                            <button type="button" id="wwOvercurrentResetViewBtn" class="ww-oc-zoom-btn ww-oc-reset-btn" aria-label="Reset view" title="Reset view">Reset</button>
+                                        </span>
+                                    </div>
                                     <div class="ww-oc-chart-wrap">
                                         <svg id="wwOvercurrentSvg" viewBox="0 0 320 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Overcurrent characteristic chart"></svg>
                                     </div>
@@ -34284,6 +34365,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             curveCache: null, // { characteristicId, tms, points } -- recomputed ONLY when those two settings change
             latestResult: null,
             requestGeneration: 0,
+            // Chart display viewport (frontend-only; never affects IDMT calc,
+            // pickup, TMS, measured current, CT conversion, expected operating
+            // time, or above-pickup duration -- display/view bounds only).
+            // Persists across Playback time changes, phase changes, and
+            // Phasor<->Overcurrent switches; reset only via explicit Reset
+            // press or full analyzer state recreation (2026-09-12 UAT).
+            viewport: { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 },
         };
 
         function wwOvercurrentFetchContexts(workspaceId) {
@@ -34732,15 +34820,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // simple enough that direct element updates are both simpler and
         // cheaper than a Plotly figure).
         //
-        // Chart UX refinement (2026-09-12): a FIXED axis domain (never
-        // derived from the fetched curve's own min/max) so the chart
-        // always shows the same, recognizable engineering tick set --
-        // exactly like a real printed TCC (Time-Current Characteristic)
-        // chart, whose axis grid does not rescale itself per curve. The
-        // curve/operating-point geometry is drawn INTO that fixed frame,
-        // clipped (never clamped/distorted) at the plot edges -- a real
-        // IDMT curve legitimately runs off-frame near M=1 for a slow TMS
-        // (t -> very large as M -> 1), exactly like a real TCC chart. ----
+        // Adjustable-viewport UAT follow-up (2026-09-12): the axis domain
+        // is no longer a single fixed constant -- it is now
+        // `wwOvercurrentState.viewport` (display/view bounds only; never
+        // affects IDMT calc, pickup, TMS, measured current, CT
+        // conversion, expected operating time, or above-pickup
+        // duration). The curve/operating-point geometry is drawn INTO
+        // whatever frame the current viewport defines, clipped (never
+        // clamped/distorted) at the plot edges -- a real IDMT curve
+        // legitimately runs off-frame near M=1 for a slow TMS (t -> very
+        // large as M -> 1), exactly like a real printed TCC chart. ----
         const WW_OC_CHART_MARGIN = { left: 40, right: 14, top: 12, bottom: 34 };
         const WW_OC_CHART_W = 320;
         const WW_OC_CHART_H = 240;
@@ -34748,51 +34837,121 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // for the two visual "0" origin labels (owner instruction: these
         // are visual chart-origin labels, never a real log(0) position --
         // the actual log-mapped plotting region begins AFTER this gap, at
-        // the chart's own first real tick).
+        // the chart's own first real tick). Only used in the default/
+        // full-origin view -- a custom viewport has no gap, since its own
+        // true minimum (not a fake "0") sits at the frame edge instead.
         const WW_OC_ORIGIN_GAP = 15;
 
-        const WW_OC_X_TICKS = [
-            { value: 0.1, label: "0.1" }, { value: 0.2, label: "0.2" }, { value: 0.5, label: "0.5" },
-            { value: 1, label: "1" }, { value: 2, label: "2" }, { value: 5, label: "5" },
-            { value: 10, label: "10" }, { value: 20, label: "20" },
-        ];
-        const WW_OC_Y_TICKS = [
-            { value: 0.01, label: "0.01" }, { value: 0.02, label: "0.02" }, { value: 0.05, label: "0.05" },
-            { value: 0.1, label: "0.1" }, { value: 0.2, label: "0.2" }, { value: 0.5, label: "0.5" },
-            { value: 1, label: "1" }, { value: 2, label: "2" }, { value: 5, label: "5" }, { value: 10, label: "10" },
-        ];
-        const WW_OC_LOG_M_MIN = Math.log10(WW_OC_X_TICKS[0].value);
-        const WW_OC_LOG_M_MAX = Math.log10(WW_OC_X_TICKS[WW_OC_X_TICKS.length - 1].value);
-        const WW_OC_LOG_T_MIN = Math.log10(WW_OC_Y_TICKS[0].value);
-        const WW_OC_LOG_T_MAX = Math.log10(WW_OC_Y_TICKS[WW_OC_Y_TICKS.length - 1].value);
+        // Recommended/reset display domain (owner UAT default -- X up to
+        // 100x pickup, Y up to 100s) and the absolute outer bounds the
+        // user's own X/Y range inputs and zoom-out may never exceed (X up
+        // to 200x, Y up to 1000s). Both axes' actual log-plotted region
+        // always starts at the same true minimum (0.1x / 0.01s) --
+        // ONLY the visual "0" origin annotation is a display convention,
+        // never passed through `Math.log10()`.
+        const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };
+        const WW_OC_VIEWPORT_ABSOLUTE = { xMin: 0.1, xMax: 200, yMin: 0.01, yMax: 1000 };
 
-        function wwOvercurrentChartGeometry() {
+        function wwOvercurrentIsDefaultViewport(v) {
+            return v.xMin === WW_OC_VIEWPORT_DEFAULT.xMin && v.xMax === WW_OC_VIEWPORT_DEFAULT.xMax &&
+                v.yMin === WW_OC_VIEWPORT_DEFAULT.yMin && v.yMax === WW_OC_VIEWPORT_DEFAULT.yMax;
+        }
+
+        // Hard validation for any candidate viewport (from the range
+        // inputs or a zoom step) -- rejects non-finite values and
+        // anything outside the absolute bounds; `0` is never a valid log
+        // minimum on either axis.
+        function wwOvercurrentViewportValid(v) {
+            if (!v || typeof v !== "object") return false;
+            const { xMin, xMax, yMin, yMax } = v;
+            if (![xMin, xMax, yMin, yMax].every((n) => Number.isFinite(n))) return false;
+            if (xMin < WW_OC_VIEWPORT_ABSOLUTE.xMin || xMax > WW_OC_VIEWPORT_ABSOLUTE.xMax || !(xMin < xMax)) return false;
+            if (yMin < WW_OC_VIEWPORT_ABSOLUTE.yMin || yMax > WW_OC_VIEWPORT_ABSOLUTE.yMax || !(yMin < yMax)) return false;
+            return true;
+        }
+
+        // Dynamic log-tick generation (UAT §9): a normal engineering
+        // 1-2-5 progression for the current-multiple (X) axis, and a
+        // decade progression for the time (Y) axis -- generated for
+        // whatever range is passed in, so this works identically for the
+        // default viewport and for any custom/zoomed one. Ticks outside
+        // [min, max] are simply omitted, never forced.
+        function wwOvercurrentGeneratePow125Ticks(min, max) {
+            const ticks = [];
+            const minExp = Math.floor(Math.log10(min)) - 1;
+            const maxExp = Math.ceil(Math.log10(max)) + 1;
+            for (let exp = minExp; exp <= maxExp; exp++) {
+                for (const base of [1, 2, 5]) {
+                    const v = Number((base * Math.pow(10, exp)).toPrecision(6));
+                    if (v >= min - 1e-9 && v <= max + 1e-9) ticks.push(v);
+                }
+            }
+            return [...new Set(ticks)].sort((a, b) => a - b);
+        }
+        function wwOvercurrentGenerateDecadeTicks(min, max) {
+            const ticks = [];
+            const minExp = Math.floor(Math.log10(min)) - 1;
+            const maxExp = Math.ceil(Math.log10(max)) + 1;
+            for (let exp = minExp; exp <= maxExp; exp++) {
+                const v = Number(Math.pow(10, exp).toPrecision(6));
+                if (v >= min - 1e-9 && v <= max + 1e-9) ticks.push(v);
+            }
+            return ticks;
+        }
+        // Major/minor classification: the axis's own current minimum is
+        // always treated as the sole minor/reference value (drawn much
+        // lighter, see `.ww-oc-tick-label-minor`) and never promoted to a
+        // major gridline -- every other progression value is major. This
+        // single dynamic rule reproduces the owner's own explicit default
+        // major lists exactly (X default 0.1->100 yields majors
+        // 0.5,1,2,5,10,20,50,100; Y default 0.01->100 yields majors
+        // 0.1,1,10,100) while remaining generic for any custom viewport.
+        function wwOvercurrentClassifyMajors(allTicks, axisMin) {
+            const threshold = axisMin * 2;
+            return allTicks.filter((v) => v > threshold + 1e-9);
+        }
+        function wwOvercurrentXMajors(viewport) {
+            return wwOvercurrentClassifyMajors(wwOvercurrentGeneratePow125Ticks(viewport.xMin, viewport.xMax), viewport.xMin);
+        }
+        function wwOvercurrentYMajors(viewport) {
+            return wwOvercurrentClassifyMajors(wwOvercurrentGenerateDecadeTicks(viewport.yMin, viewport.yMax), viewport.yMin);
+        }
+        function wwOvercurrentFormatTickValue(v) {
+            return Number(v.toPrecision(6)).toString();
+        }
+
+        function wwOvercurrentChartGeometry(viewport) {
+            const isDefault = wwOvercurrentIsDefaultViewport(viewport);
             const plotLeft = WW_OC_CHART_MARGIN.left;
             const plotRight = WW_OC_CHART_W - WW_OC_CHART_MARGIN.right;
             const plotTop = WW_OC_CHART_MARGIN.top;
             const plotBottom = WW_OC_CHART_H - WW_OC_CHART_MARGIN.bottom;
             // `logLeft`/`logBottom` bound the REAL logarithmic plotting
-            // region -- inset from the true frame edges by the origin
-            // gap on the two axes that need one (X's own minimum, Y's
-            // own minimum); `plotRight`/`plotTop` need no such gap, they
-            // are already real tick positions (M=20, T=10).
+            // region. In the default/full-origin view they are inset by
+            // the origin gap (so the "0" annotation has room); in any
+            // custom view there is no gap -- the viewport's own true
+            // minimum sits exactly at the frame edge.
+            const gap = isDefault ? WW_OC_ORIGIN_GAP : 0;
             return {
-                plotLeft, plotRight, plotTop, plotBottom,
-                logLeft: plotLeft + WW_OC_ORIGIN_GAP, logBottom: plotBottom - WW_OC_ORIGIN_GAP,
+                isDefault, plotLeft, plotRight, plotTop, plotBottom,
+                logLeft: plotLeft + gap, logBottom: plotBottom - gap,
+                logMMin: Math.log10(viewport.xMin), logMMax: Math.log10(viewport.xMax),
+                logTMin: Math.log10(viewport.yMin), logTMax: Math.log10(viewport.yMax),
             };
         }
 
         // Unclamped pixel mapping -- used for the curve path (then
         // visually clipped to the log region, never distorted) and for
-        // every fixed tick/gridline position (which are always within
-        // range by construction).
+        // every tick/gridline position (always within range by
+        // construction, since ticks are generated from the same
+        // viewport).
         function wwOvercurrentPixelX(m, geo) {
             const logM = Math.log10(m);
-            return geo.logLeft + ((logM - WW_OC_LOG_M_MIN) / (WW_OC_LOG_M_MAX - WW_OC_LOG_M_MIN)) * (geo.plotRight - geo.logLeft);
+            return geo.logLeft + ((logM - geo.logMMin) / (geo.logMMax - geo.logMMin)) * (geo.plotRight - geo.logLeft);
         }
         function wwOvercurrentPixelY(t, geo) {
             const logT = Math.log10(t);
-            return geo.logBottom - ((logT - WW_OC_LOG_T_MIN) / (WW_OC_LOG_T_MAX - WW_OC_LOG_T_MIN)) * (geo.logBottom - geo.plotTop);
+            return geo.logBottom - ((logT - geo.logTMin) / (geo.logTMax - geo.logTMin)) * (geo.logBottom - geo.plotTop);
         }
         // Clamped M/T -- used ONLY for the single operating-point/
         // position MARKER, which must always stay visibly within frame
@@ -34801,17 +34960,36 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // edges"). The TRUE numeric value is always shown, unclamped, in
         // the live-values panel -- only the marker's own pixel position
         // clamps, the engineering value itself is never distorted.
-        function wwOvercurrentClampedM(m) {
-            return Math.min(Math.max(m, WW_OC_X_TICKS[0].value), WW_OC_X_TICKS[WW_OC_X_TICKS.length - 1].value);
+        function wwOvercurrentClampedM(m, viewport) {
+            return Math.min(Math.max(m, viewport.xMin), viewport.xMax);
         }
-        function wwOvercurrentClampedT(t) {
-            return Math.min(Math.max(t, WW_OC_Y_TICKS[0].value), WW_OC_Y_TICKS[WW_OC_Y_TICKS.length - 1].value);
+        function wwOvercurrentClampedT(t, viewport) {
+            return Math.min(Math.max(t, viewport.yMin), viewport.yMax);
+        }
+
+        // Off-chart edge indicator (UAT §10/§11): a small outward-
+        // pointing triangle, never a circle -- so it can never be
+        // mistaken for a genuine plotted point sitting exactly at the
+        // viewport boundary. `px`/`py` are already the CLAMPED (in-frame)
+        // pixel position; only the shape differs from the normal marker.
+        function wwOvercurrentEdgeArrowSvg(px, py, direction) {
+            const s = 4.5;
+            let pts;
+            if (direction === "left") pts = [[px + s, py - s], [px + s, py + s], [px - s, py]];
+            else if (direction === "right") pts = [[px - s, py - s], [px - s, py + s], [px + s, py]];
+            else if (direction === "up") pts = [[px - s, py + s], [px + s, py + s], [px, py - s]];
+            else pts = [[px - s, py - s], [px + s, py - s], [px, py + s]];
+            const pointsStr = pts.map((p) => p[0].toFixed(2) + "," + p[1].toFixed(2)).join(" ");
+            return '<polygon class="ww-oc-edge-indicator" points="' + pointsStr + '"></polygon>';
         }
 
         function wwOvercurrentRenderChart(points, currentM, currentT) {
             const svg = document.getElementById("wwOvercurrentSvg");
             if (!svg) return;
-            const geo = wwOvercurrentChartGeometry();
+            const viewport = wwOvercurrentState.viewport;
+            const geo = wwOvercurrentChartGeometry(viewport);
+            const xMajors = wwOvercurrentXMajors(viewport);
+            const yMajors = wwOvercurrentYMajors(viewport);
             const parts = [];
 
             // Clips the CURVE only to the real log-mapped plotting
@@ -34822,42 +35000,59 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 (geo.plotRight - geo.logLeft).toFixed(2) + '" height="' + (geo.logBottom - geo.plotTop).toFixed(2) + '"></rect></clipPath>'
             );
 
-            // Grid lines -- one per major tick (never spaced as if
-            // linear -- each sits at its own true log-transformed pixel
-            // position), thin and secondary to the curve/axis frame.
-            for (const tick of WW_OC_X_TICKS) {
-                const x = wwOvercurrentPixelX(tick.value, geo);
+            // Major grid lines -- one per major tick within the CURRENT
+            // viewport (never spaced as if linear -- each sits at its own
+            // true log-transformed pixel position), thin and secondary to
+            // the curve/axis frame. Deliberately just the major set (UAT
+            // owner feedback: keep the grid simple, not busy).
+            for (const v of xMajors) {
+                const x = wwOvercurrentPixelX(v, geo);
                 parts.push('<line class="ww-oc-gridline" x1="' + x.toFixed(2) + '" y1="' + geo.plotTop + '" x2="' + x.toFixed(2) + '" y2="' + geo.logBottom + '"></line>');
             }
-            for (const tick of WW_OC_Y_TICKS) {
-                const y = wwOvercurrentPixelY(tick.value, geo);
+            for (const v of yMajors) {
+                const y = wwOvercurrentPixelY(v, geo);
                 parts.push('<line class="ww-oc-gridline" x1="' + geo.logLeft + '" y1="' + y.toFixed(2) + '" x2="' + geo.plotRight + '" y2="' + y.toFixed(2) + '"></line>');
             }
 
             // Full axis frame -- spans the WHOLE plot rectangle,
-            // including the reserved origin-gap strip (never just the
-            // log-mapped sub-region), so the chart never looks truncated.
+            // including the reserved origin-gap strip when present (never
+            // just the log-mapped sub-region), so the chart never looks
+            // truncated.
             parts.push('<line class="ww-oc-axis" x1="' + geo.plotLeft + '" y1="' + geo.plotTop + '" x2="' + geo.plotLeft + '" y2="' + geo.plotBottom + '"></line>');
             parts.push('<line class="ww-oc-axis" x1="' + geo.plotLeft + '" y1="' + geo.plotBottom + '" x2="' + geo.plotRight + '" y2="' + geo.plotBottom + '"></line>');
 
-            // Tick labels -- the exact displayed set the owner specified,
-            // each at its own true log-transformed position.
-            for (const tick of WW_OC_X_TICKS) {
-                const x = wwOvercurrentPixelX(tick.value, geo);
-                parts.push('<text class="ww-oc-tick-label" x="' + x.toFixed(2) + '" y="' + (geo.plotBottom + 9) + '" text-anchor="middle">' + tick.label + '</text>');
+            // Major tick labels, each at its own true log-transformed position.
+            for (const v of xMajors) {
+                const x = wwOvercurrentPixelX(v, geo);
+                parts.push('<text class="ww-oc-tick-label" x="' + x.toFixed(2) + '" y="' + (geo.plotBottom + 9) + '" text-anchor="middle">' + wwOvercurrentFormatTickValue(v) + '</text>');
             }
-            for (const tick of WW_OC_Y_TICKS) {
-                const y = wwOvercurrentPixelY(tick.value, geo);
-                parts.push('<text class="ww-oc-tick-label" x="' + (geo.plotLeft - 3) + '" y="' + (y + 2.2).toFixed(2) + '" text-anchor="end">' + tick.label + '</text>');
+            for (const v of yMajors) {
+                const y = wwOvercurrentPixelY(v, geo);
+                parts.push('<text class="ww-oc-tick-label" x="' + (geo.plotLeft - 3) + '" y="' + (y + 2.2).toFixed(2) + '" text-anchor="end">' + wwOvercurrentFormatTickValue(v) + '</text>');
             }
-            // Visual-origin "0" labels -- placed in the reserved gap
-            // strip at the lower-left frame corner, NEVER run through
-            // `Math.log10()` (log(0) is undefined) -- a fixed pixel
-            // position only, distinct from every real tick label above.
-            parts.push('<text class="ww-oc-origin-label" x="' + geo.plotLeft + '" y="' + (geo.plotBottom + 9) + '" text-anchor="start">0</text>');
-            parts.push('<text class="ww-oc-origin-label" x="' + (geo.plotLeft - 3) + '" y="' + (geo.plotBottom + 2.2).toFixed(2) + '" text-anchor="end">0</text>');
 
-            // Axis titles -- unchanged text, repositioned for the new margins.
+            // Lower-left edge: EITHER the visual "0" origin annotation
+            // (default/full-origin view ONLY, per UAT §8 -- never run
+            // through `Math.log10()`, a fixed pixel position only) with
+            // the true axis minimum shown alongside it as a light minor/
+            // reference tick; OR, in any custom/zoomed view, the
+            // viewport's own true minimum drawn directly at the frame
+            // edge in normal tick styling -- never a fake "0".
+            if (geo.isDefault) {
+                parts.push('<text class="ww-oc-origin-label" x="' + geo.plotLeft + '" y="' + (geo.plotBottom + 9) + '" text-anchor="start">0</text>');
+                parts.push('<text class="ww-oc-origin-label" x="' + (geo.plotLeft - 3) + '" y="' + (geo.plotBottom + 2.2).toFixed(2) + '" text-anchor="end">0</text>');
+                const xMinPx = wwOvercurrentPixelX(viewport.xMin, geo);
+                const yMinPx = wwOvercurrentPixelY(viewport.yMin, geo);
+                parts.push('<text class="ww-oc-tick-label-minor" x="' + xMinPx.toFixed(2) + '" y="' + (geo.plotBottom + 9) + '" text-anchor="middle">' + wwOvercurrentFormatTickValue(viewport.xMin) + '</text>');
+                parts.push('<text class="ww-oc-tick-label-minor" x="' + (geo.plotLeft - 3) + '" y="' + (yMinPx + 2.2).toFixed(2) + '" text-anchor="end">' + wwOvercurrentFormatTickValue(viewport.yMin) + '</text>');
+            } else {
+                const xMinPx = wwOvercurrentPixelX(viewport.xMin, geo);
+                const yMinPx = wwOvercurrentPixelY(viewport.yMin, geo);
+                parts.push('<text class="ww-oc-tick-label" x="' + xMinPx.toFixed(2) + '" y="' + (geo.plotBottom + 9) + '" text-anchor="middle">' + wwOvercurrentFormatTickValue(viewport.xMin) + '</text>');
+                parts.push('<text class="ww-oc-tick-label" x="' + (geo.plotLeft - 3) + '" y="' + (yMinPx + 2.2).toFixed(2) + '" text-anchor="end">' + wwOvercurrentFormatTickValue(viewport.yMin) + '</text>');
+            }
+
+            // Axis titles -- unchanged text/position.
             parts.push('<text class="ww-oc-axis-label" x="' + ((geo.plotLeft + geo.plotRight) / 2) + '" y="' + (WW_OC_CHART_H - 4) + '" text-anchor="middle">Current / Pickup Multiple (M)</text>');
             const yTitleCenter = (geo.plotTop + geo.plotBottom) / 2;
             parts.push(
@@ -34869,6 +35064,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // visually CLIPPED (never clamped/distorted) to the log
             // region; a real TCC curve legitimately runs off-frame near
             // M=1 for a slow TMS, exactly like a real printed TCC chart.
+            // The SAME already-fetched curve data is reused for every
+            // viewport (see `wwOvercurrentEnsureCurveAndRenderPoint` --
+            // the backend now generates curve points across the full
+            // 200x display domain in one fetch), so a zoom/range change
+            // never triggers a re-fetch or recompute.
             if (points && points.length > 0) {
                 const curvePath = points.map((p, i) => {
                     const x = wwOvercurrentPixelX(p[0], geo);
@@ -34880,35 +35080,155 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             // Operating point (above pickup) / position marker (below
             // pickup) -- gracefully handles both cases without ever
-            // generating an invalid coordinate or a fabricated y-value.
+            // generating an invalid coordinate or a fabricated y-value,
+            // and now also the case where the true value lies OUTSIDE the
+            // user's currently selected viewport (UAT §10/§11): the
+            // marker's PIXEL position clamps to the frame edge and its
+            // SHAPE changes to an edge-indicator triangle, but the true
+            // numeric value shown elsewhere (live-values panel) is never
+            // altered, and the curve itself is clipped, not distorted.
             if (Number.isFinite(currentM)) {
-                const clampedM = wwOvercurrentClampedM(currentM);
+                const mInRange = currentM >= viewport.xMin - 1e-9 && currentM <= viewport.xMax + 1e-9;
+                const clampedM = wwOvercurrentClampedM(currentM, viewport);
                 const px = wwOvercurrentPixelX(clampedM, geo);
                 if (Number.isFinite(currentT)) {
                     // Above pickup -- a genuine computed operating point:
-                    // X+Y dashed guides to their own tick coordinate, a
-                    // filled circle at the intersection.
-                    const clampedT = wwOvercurrentClampedT(currentT);
+                    // X+Y dashed guides to their own (possibly clamped)
+                    // coordinate, a filled circle at the intersection --
+                    // UNLESS either coordinate is off-chart, in which case
+                    // an edge-indicator triangle replaces the circle for
+                    // that direction so the boundary is never presented as
+                    // though it were the true value.
+                    const tInRange = currentT >= viewport.yMin - 1e-9 && currentT <= viewport.yMax + 1e-9;
+                    const clampedT = wwOvercurrentClampedT(currentT, viewport);
                     const py = wwOvercurrentPixelY(clampedT, geo);
                     parts.push('<line class="ww-oc-guide" x1="' + px.toFixed(2) + '" y1="' + py.toFixed(2) + '" x2="' + px.toFixed(2) + '" y2="' + geo.plotBottom + '"></line>');
                     parts.push('<line class="ww-oc-guide" x1="' + geo.plotLeft + '" y1="' + py.toFixed(2) + '" x2="' + px.toFixed(2) + '" y2="' + py.toFixed(2) + '"></line>');
-                    parts.push('<circle class="ww-oc-operating-point" cx="' + px.toFixed(2) + '" cy="' + py.toFixed(2) + '" r="3.5"></circle>');
-                } else {
-                    // Below pickup -- no finite operating time exists
-                    // (owner instruction: never fabricate a y-coordinate)
-                    // -- still show WHERE the current sits on the X axis:
-                    // a full-height dashed guide plus a small marker
-                    // sitting ON the axis itself (never a circle floating
-                    // at a fabricated intersection, and never the same
-                    // `--ok`-colored operating-point style, so it always
-                    // reads as "a known position," not "a computed
-                    // result").
+                    if (mInRange && tInRange) {
+                        parts.push('<circle class="ww-oc-operating-point" cx="' + px.toFixed(2) + '" cy="' + py.toFixed(2) + '" r="3.5"></circle>');
+                    } else {
+                        if (!mInRange) parts.push(wwOvercurrentEdgeArrowSvg(px, py, currentM < viewport.xMin ? "left" : "right"));
+                        if (!tInRange) parts.push(wwOvercurrentEdgeArrowSvg(px, py, currentT < viewport.yMin ? "down" : "up"));
+                    }
+                } else if (mInRange) {
+                    // Below pickup, on-chart -- no finite operating time
+                    // exists (owner instruction: never fabricate a
+                    // y-coordinate) -- still show WHERE the current sits
+                    // on the X axis: a full-height dashed guide plus a
+                    // small marker sitting ON the axis itself (never a
+                    // circle floating at a fabricated intersection, and
+                    // never the same `--ok`-colored operating-point
+                    // style, so it always reads as "a known position,"
+                    // not "a computed result").
                     parts.push('<line class="ww-oc-guide" x1="' + px.toFixed(2) + '" y1="' + geo.plotTop + '" x2="' + px.toFixed(2) + '" y2="' + geo.plotBottom + '"></line>');
                     parts.push('<circle class="ww-oc-position-marker" cx="' + px.toFixed(2) + '" cy="' + geo.plotBottom + '" r="3"></circle>');
+                } else {
+                    // Below pickup, off-chart -- the true current sits
+                    // outside the visible X range entirely; a small edge
+                    // indicator on the X axis, no full-height guide (its
+                    // direction would be misleading), and the true
+                    // multiple is preserved unaltered in the live-values
+                    // panel.
+                    parts.push(wwOvercurrentEdgeArrowSvg(px, geo.plotBottom, currentM < viewport.xMin ? "left" : "right"));
                 }
             }
 
             svg.innerHTML = parts.join("");
+        }
+
+        // Re-renders the chart from whatever curve/result data is
+        // already cached in state -- used after every viewport change
+        // (range-input apply, zoom in/out, reset) so a display-only
+        // change NEVER triggers a curve re-fetch or IDMT recompute (UAT
+        // §12/§13) and NEVER touches `wwPlayback` in any way.
+        function wwOvercurrentRerenderChartFromState() {
+            const cache = wwOvercurrentState.curveCache;
+            const points = cache ? cache.points : null;
+            const latest = wwOvercurrentState.latestResult;
+            if (latest && latest.status === "computed") {
+                wwOvercurrentRenderChart(points, latest.multiple_of_pickup, latest.expected_operating_time_seconds);
+            } else {
+                wwOvercurrentRenderChart(points, null, null);
+            }
+        }
+
+        // Writes the current viewport into the four range inputs --
+        // called after mount, reset, and every zoom step so the compact
+        // "View" controls always reflect the chart currently on screen.
+        function wwOvercurrentSyncViewportInputs() {
+            const v = wwOvercurrentState.viewport;
+            const ids = { xMin: "wwOvercurrentViewXMin", xMax: "wwOvercurrentViewXMax", yMin: "wwOvercurrentViewYMin", yMax: "wwOvercurrentViewYMax" };
+            for (const key of Object.keys(ids)) {
+                const el = document.getElementById(ids[key]);
+                if (!el) continue;
+                el.value = wwOvercurrentFormatTickValue(v[key]);
+                el.classList.remove("ww-oc-view-input-invalid");
+            }
+        }
+
+        // Reads+validates the four range inputs; applies the candidate
+        // viewport only if it passes `wwOvercurrentViewportValid`
+        // (0.1 <= xMin < xMax <= 200, 0.01 <= yMin < yMax <= 1000, all
+        // finite) -- otherwise flags the offending input(s) and reverts
+        // every input back to the last-known-good viewport, never
+        // applying a partially-invalid range.
+        function wwOvercurrentApplyViewportFromInputs() {
+            const xMinEl = document.getElementById("wwOvercurrentViewXMin");
+            const xMaxEl = document.getElementById("wwOvercurrentViewXMax");
+            const yMinEl = document.getElementById("wwOvercurrentViewYMin");
+            const yMaxEl = document.getElementById("wwOvercurrentViewYMax");
+            if (!xMinEl || !xMaxEl || !yMinEl || !yMaxEl) return;
+            const candidate = {
+                xMin: parseFloat(xMinEl.value), xMax: parseFloat(xMaxEl.value),
+                yMin: parseFloat(yMinEl.value), yMax: parseFloat(yMaxEl.value),
+            };
+            if (!wwOvercurrentViewportValid(candidate)) {
+                xMinEl.classList.toggle("ww-oc-view-input-invalid", !(candidate.xMin >= WW_OC_VIEWPORT_ABSOLUTE.xMin && candidate.xMin < candidate.xMax));
+                xMaxEl.classList.toggle("ww-oc-view-input-invalid", !(candidate.xMax <= WW_OC_VIEWPORT_ABSOLUTE.xMax && candidate.xMin < candidate.xMax));
+                yMinEl.classList.toggle("ww-oc-view-input-invalid", !(candidate.yMin >= WW_OC_VIEWPORT_ABSOLUTE.yMin && candidate.yMin < candidate.yMax));
+                yMaxEl.classList.toggle("ww-oc-view-input-invalid", !(candidate.yMax <= WW_OC_VIEWPORT_ABSOLUTE.yMax && candidate.yMin < candidate.yMax));
+                wwOvercurrentSyncViewportInputs();
+                return;
+            }
+            wwOvercurrentState.viewport = candidate;
+            wwOvercurrentSyncViewportInputs();
+            wwOvercurrentRerenderChartFromState();
+        }
+
+        // Zoom in (`factor` < 1) / out (`factor` > 1) around the
+        // viewport's own geometric center in log-space -- robust even
+        // when there is no current operating point to center on (e.g.
+        // below pickup, or no context selected yet). Clamped to the
+        // absolute bounds on both ends; a zoom step that would collapse
+        // the range below workable precision is simply clamped, never
+        // rejected outright.
+        function wwOvercurrentZoom(factor) {
+            const v = wwOvercurrentState.viewport;
+            const logXMin = Math.log10(v.xMin), logXMax = Math.log10(v.xMax);
+            const logYMin = Math.log10(v.yMin), logYMax = Math.log10(v.yMax);
+            const xCenter = (logXMin + logXMax) / 2, yCenter = (logYMin + logYMax) / 2;
+            const xHalf = ((logXMax - logXMin) / 2) * factor, yHalf = ((logYMax - logYMin) / 2) * factor;
+            let candidate = {
+                xMin: Math.pow(10, xCenter - xHalf), xMax: Math.pow(10, xCenter + xHalf),
+                yMin: Math.pow(10, yCenter - yHalf), yMax: Math.pow(10, yCenter + yHalf),
+            };
+            candidate.xMin = Math.max(candidate.xMin, WW_OC_VIEWPORT_ABSOLUTE.xMin);
+            candidate.xMax = Math.min(candidate.xMax, WW_OC_VIEWPORT_ABSOLUTE.xMax);
+            candidate.yMin = Math.max(candidate.yMin, WW_OC_VIEWPORT_ABSOLUTE.yMin);
+            candidate.yMax = Math.min(candidate.yMax, WW_OC_VIEWPORT_ABSOLUTE.yMax);
+            if (!(candidate.xMin < candidate.xMax) || !(candidate.yMin < candidate.yMax)) return;
+            wwOvercurrentState.viewport = candidate;
+            wwOvercurrentSyncViewportInputs();
+            wwOvercurrentRerenderChartFromState();
+        }
+
+        // Reset returns EXACTLY to the default viewport (X 0.1->100,
+        // Y 0.01->100) and restores the default major-grid labeling (UAT
+        // §7) -- an exact-equality reset, not an approximation.
+        function wwOvercurrentResetViewport() {
+            wwOvercurrentState.viewport = { ...WW_OC_VIEWPORT_DEFAULT };
+            wwOvercurrentSyncViewportInputs();
+            wwOvercurrentRerenderChartFromState();
         }
 
         // ---- Settings wiring helpers ----
@@ -34939,6 +35259,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentState.latestResult = null;
             wwOvercurrentState.curveCache = null;
             wwOvercurrentState.requestGeneration += 1;
+            wwOvercurrentState.viewport = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };
             wwOvercurrentPlaybackFetchInFlight = false;
             wwOvercurrentPlaybackFetchedTime = null;
             wwOvercurrentPlaybackForceNextFetch = false;
@@ -36010,13 +36331,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             parts.push('<line class="ww-phasor-axis" x1="-100" y1="0" x2="100" y2="0"></line>');
             parts.push('<line class="ww-phasor-axis" x1="0" y1="-100" x2="0" y2="100"></line>');
-            // "Real"/"Imaginary" axis-direction labels -- SVG y grows
-            // downward and every vector's own y is already negated (see
-            // this function's own header comment), so positive Imaginary
-            // (counter-clockwise from Real) is visually UP, matching the
-            // standard complex-plane convention.
-            parts.push('<text class="ww-phasor-axis-title" x="103" y="-6" text-anchor="end">Real</text>');
-            parts.push('<text class="ww-phasor-axis-title" x="3" y="-102" text-anchor="start">Imaginary</text>');
             for (const frac of [1 / 3, 2 / 3, 1]) {
                 parts.push('<circle class="ww-phasor-ring" cx="0" cy="0" r="' + (plotRadius * frac).toFixed(1) + '"></circle>');
             }
@@ -36048,6 +36362,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const y = -r * Math.sin(angleRad);
                 parts.push(wwPhasorVectorSvg(x, y, wwPhasorRoleColor(roleKey), roleKey, isCurrent));
             }
+            // "Real"/"Imaginary" axis-direction labels -- painted LAST
+            // (owner UAT: previously painted before the vectors, a
+            // real/reported vector could visually cover them; a vector
+            // must never be able to hide these). SVG y grows downward
+            // and every vector's own y is already negated (see this
+            // function's own header comment), so positive Imaginary
+            // (counter-clockwise from Real) is visually UP, matching the
+            // standard complex-plane convention. Positioned well within
+            // the SVG's own -122..122 viewBox margin (rings/axes/vectors
+            // stay within +-100) -- comfortable clearance for the
+            // label's own font ascent/descent so it is never edge-
+            // clipped, the other half of the same owner UAT report.
+            parts.push('<text class="ww-phasor-axis-title" x="112" y="-6" text-anchor="end">Real</text>');
+            parts.push('<text class="ww-phasor-axis-title" x="3" y="-112" text-anchor="start">Imaginary</text>');
             svg.innerHTML = parts.join("");
 
             if (voltageMax > 0 && currentMax > 0) {
@@ -36292,6 +36620,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentState.settings.ctSecondary = Number.isFinite(value) ? value : null;
             wwOvercurrentHandleSettingsChanged();
         });
+        // Adjustable chart viewport (2026-09-12 UAT follow-up) -- display-
+        // only: never touches `wwOvercurrentState.settings`, never
+        // triggers `wwOvercurrentHandleSettingsChanged()` or a curve
+        // re-fetch, and never touches `wwPlayback` in any way.
+        ["wwOvercurrentViewXMin", "wwOvercurrentViewXMax", "wwOvercurrentViewYMin", "wwOvercurrentViewYMax"].forEach((id) => {
+            document.getElementById(id).addEventListener("change", wwOvercurrentApplyViewportFromInputs);
+        });
+        document.getElementById("wwOvercurrentZoomInBtn").addEventListener("click", () => wwOvercurrentZoom(0.5));
+        document.getElementById("wwOvercurrentZoomOutBtn").addEventListener("click", () => wwOvercurrentZoom(2));
+        document.getElementById("wwOvercurrentResetViewBtn").addEventListener("click", wwOvercurrentResetViewport);
+        wwOvercurrentSyncViewportInputs();
         // The ONE, permanent subscription to the shared wwPlayback tick
         // seam for Overcurrent -- mirrors Phasor's own registration above
         // (never a second requestAnimationFrame loop).

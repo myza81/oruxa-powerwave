@@ -615,17 +615,28 @@ class TestChartGridAndAxisLabels:
         body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
         assert ">Imaginary</text>" in body
 
-    def test_axis_titles_painted_before_vectors_so_vectors_stay_on_top(self):
-        """The grid/axis-title elements are pushed to `parts` BEFORE the
-        per-role vector loop -- SVG paints later elements on top, so a
-        vector legitimately obscures an axis title if their positions
-        coincide, never the reverse (grid/labels must remain secondary to
-        the vectors, per owner instruction)."""
+    def test_axis_titles_painted_after_vectors_so_they_are_never_hidden(self):
+        """UAT follow-up (2026-09-12): the axis-title elements are pushed
+        to `parts` AFTER the per-role vector loop -- SVG paints later
+        elements on top, so 'Real'/'Imaginary' can never be obscured by a
+        vector, reversing the original (grid-secondary) ordering after
+        owner UAT reported the labels were not reliably visible."""
         source = _source()
         body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
         axis_title_idx = body.index("ww-phasor-axis-title")
         vector_loop_idx = body.index("for (const roleKey of WW_PHASOR_DIAGRAM_ROLE_ORDER)")
-        assert axis_title_idx < vector_loop_idx
+        assert axis_title_idx > vector_loop_idx
+
+    def test_axis_titles_positioned_within_the_svg_viewbox_margin(self):
+        """The SVG's own viewBox extends to +-122 (rings/axes/vectors stay
+        within +-100) specifically to give the axis-title labels
+        comfortable clearance from the edge -- never edge-clipped, the
+        other half of the same owner UAT report."""
+        source = _source()
+        assert 'viewBox="-122 -122 244 244"' in source
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert 'x="112"' in body  # Real
+        assert 'y="-112"' in body  # Imaginary
 
     def test_existing_rings_and_vectors_still_render(self):
         source = _source()

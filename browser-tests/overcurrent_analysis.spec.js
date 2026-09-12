@@ -228,24 +228,32 @@ test.describe("Overcurrent Analysis v1 -- below pickup", () => {
 });
 
 test.describe("Overcurrent Analysis v1 -- chart axes, grid, and ticks", () => {
-  test("full axis frame, grid lines, and the exact requested tick labels render", async ({ page }) => {
+  test("default viewport: full axis frame, major grid lines, and the owner's curated default major-tick set render", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
 
     // Axis lines (X + Y).
     await expect(page.locator("#wwOvercurrentSvg line.ww-oc-axis")).toHaveCount(2);
-    // Grid lines -- one per major tick (8 X + 10 Y).
-    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-gridline")).toHaveCount(18);
+    // Major grid lines only (2026-09-12 UAT: simpler grid) -- 8 X majors
+    // (0.5,1,2,5,10,20,50,100) + 4 Y majors (0.1,1,10,100).
+    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-gridline")).toHaveCount(12);
 
-    const xLabels = ["0.1", "0.2", "0.5", "1", "2", "5", "10", "20"];
-    const yLabels = ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2", "5", "10"];
-    for (const label of xLabels.concat(yLabels)) {
-      await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label", { hasText: new RegExp("^" + label.replace(".", "\\.") + "$") })).toHaveCount(
-        // "0.1"/"1"/"10" each legitimately appear on BOTH axes.
-        xLabels.includes(label) && yLabels.includes(label) ? 2 : 1
-      );
+    // X majors that never coincide with a Y major label.
+    for (const label of ["0.5", "2", "5", "20", "50"]) {
+      await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label", { hasText: new RegExp("^" + label.replace(".", "\\.") + "$") })).toHaveCount(1);
     }
+    // Values shared by both axes' own major set ("1", "10", "100").
+    for (const label of ["1", "10", "100"]) {
+      await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label", { hasText: new RegExp("^" + label + "$") })).toHaveCount(2);
+    }
+    // Y's own "0.1" major is a normal tick label...
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label", { hasText: /^0\.1$/ })).toHaveCount(1);
+    // ...while X's own true minimum (also 0.1) renders as the lighter
+    // minor/reference label instead, alongside Y's own true minimum (0.01).
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label-minor", { hasText: /^0\.1$/ })).toHaveCount(1);
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label-minor", { hasText: /^0\.01$/ })).toHaveCount(1);
+
     // The two special visual-origin "0" labels (X + Y), never log-transformed.
     await expect(page.locator("#wwOvercurrentSvg text.ww-oc-origin-label", { hasText: /^0$/ })).toHaveCount(2);
 
@@ -343,5 +351,145 @@ test.describe("Overcurrent Analysis v1 -- analyzer switch", () => {
 
     const currentTimeAfterSwitch = await page.evaluate(() => wwPlaybackState().currentTime);
     expect(Math.abs(currentTimeAfterSwitch - target)).toBeLessThan(0.01);
+  });
+});
+
+test.describe("Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT)", () => {
+  test("default range inputs show 0.1/100/0.01/100", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.1");
+    await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
+    await expect(page.locator("#wwOvercurrentViewYMin")).toHaveValue("0.01");
+    await expect(page.locator("#wwOvercurrentViewYMax")).toHaveValue("100");
+  });
+
+  test("zoom in narrows the viewport, zoom out widens it, reset returns exactly to default", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await page.locator("#wwOvercurrentZoomInBtn").click();
+    const xMaxAfterZoomIn = parseFloat(await page.locator("#wwOvercurrentViewXMax").inputValue());
+    expect(xMaxAfterZoomIn).toBeLessThan(100);
+
+    await page.locator("#wwOvercurrentZoomOutBtn").click();
+    await page.locator("#wwOvercurrentZoomOutBtn").click();
+    const xMaxAfterZoomOut = parseFloat(await page.locator("#wwOvercurrentViewXMax").inputValue());
+    expect(xMaxAfterZoomOut).toBeGreaterThan(xMaxAfterZoomIn);
+
+    await page.locator("#wwOvercurrentResetViewBtn").click();
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.1");
+    await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
+    await expect(page.locator("#wwOvercurrentViewYMin")).toHaveValue("0.01");
+    await expect(page.locator("#wwOvercurrentViewYMax")).toHaveValue("100");
+    // Reset also restores the default major-grid labeling.
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-origin-label", { hasText: /^0$/ })).toHaveCount(2);
+  });
+
+  test("zoom out is capped at the absolute bound (X 200, Y 1000)", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    for (let i = 0; i < 10; i++) {
+      await page.locator("#wwOvercurrentZoomOutBtn").click();
+    }
+    const xMin = parseFloat(await page.locator("#wwOvercurrentViewXMin").inputValue());
+    const xMax = parseFloat(await page.locator("#wwOvercurrentViewXMax").inputValue());
+    const yMin = parseFloat(await page.locator("#wwOvercurrentViewYMin").inputValue());
+    const yMax = parseFloat(await page.locator("#wwOvercurrentViewYMax").inputValue());
+    expect(xMin).toBeCloseTo(0.1, 5);
+    expect(xMax).toBeCloseTo(200, 3);
+    expect(yMin).toBeCloseTo(0.01, 5);
+    expect(yMax).toBeCloseTo(1000, 1);
+  });
+
+  test("custom range applies via inputs and shows the true selected minima, never a fake 0,0 origin", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await page.locator("#wwOvercurrentViewXMin").fill("2");
+    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
+    await page.locator("#wwOvercurrentViewXMax").fill("20");
+    await page.locator("#wwOvercurrentViewXMax").dispatchEvent("change");
+    await page.locator("#wwOvercurrentViewYMin").fill("0.1");
+    await page.locator("#wwOvercurrentViewYMin").dispatchEvent("change");
+    await page.locator("#wwOvercurrentViewYMax").fill("10");
+    await page.locator("#wwOvercurrentViewYMax").dispatchEvent("change");
+
+    // No fake "0" origin annotation in a custom view.
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-origin-label")).toHaveCount(0);
+    // The true minima render directly as normal tick labels at the frame edge.
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label", { hasText: /^2$/ })).toHaveCount(1);
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label", { hasText: /^0\.1$/ })).toHaveCount(1);
+  });
+
+  test("invalid range input is rejected and reverts to the last-known-good viewport", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    // xMax below xMin -- invalid, must be rejected.
+    await page.locator("#wwOvercurrentViewXMax").fill("0.05");
+    await page.locator("#wwOvercurrentViewXMax").dispatchEvent("change");
+    await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.1");
+  });
+
+  test("viewport changes never alter wwPlayback.currentTime or trigger a new curve fetch", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const slider = page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-seek-slider");
+    const { min, max } = await seekSliderBounds(slider);
+    const target = min + (max - min) * 0.4;
+    await seekTo(slider, target);
+    await expect(async () => {
+      const currentTime = await page.evaluate(() => wwPlaybackState().currentTime);
+      expect(Math.abs(currentTime - target)).toBeLessThan(0.01);
+    }).toPass({ timeout: 5000 });
+
+    let curveFetchCount = 0;
+    page.on("request", (req) => {
+      if (req.url().includes("/overcurrent-curve")) curveFetchCount++;
+    });
+
+    await page.locator("#wwOvercurrentZoomInBtn").click();
+    await page.locator("#wwOvercurrentZoomOutBtn").click();
+    await page.locator("#wwOvercurrentResetViewBtn").click();
+
+    const currentTimeAfterZoom = await page.evaluate(() => wwPlaybackState().currentTime);
+    expect(Math.abs(currentTimeAfterZoom - target)).toBeLessThan(0.01);
+    expect(curveFetchCount).toBe(0);
+  });
+
+  test("above-pickup point outside a zoomed-in X range shows an edge indicator, never a false boundary point", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await page.locator("#wwOvercurrentPickupInput").fill("1.0");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/40\.0\s*×/); // known M=40
+    }).toPass({ timeout: 5000 });
+
+    // Zoom the X range down to 2..20 -- M=40 now lies outside it.
+    await page.locator("#wwOvercurrentViewXMax").fill("20");
+    await page.locator("#wwOvercurrentViewXMax").dispatchEvent("change");
+    await page.locator("#wwOvercurrentViewXMin").fill("2");
+    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
+
+    await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point")).toHaveCount(0);
+    await expect(page.locator("#wwOvercurrentSvg polygon.ww-oc-edge-indicator")).toHaveCount(1);
+    // The true multiple is preserved, unaltered, in the live-values panel.
+    const text = await page.locator("#wwOvercurrentValuesList").innerText();
+    expect(text).toMatch(/40\.0\s*×/);
   });
 });
