@@ -237,6 +237,32 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
     }).toPass({ timeout: 5000 });
   });
 
+  test("chart UX refinement: grid lines and Real/Imaginary axis labels render alongside the existing rings/vectors", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page);
+    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+
+    // NEW: rectilinear grid + axis-direction labels.
+    await expect(page.locator("#wwPhasorSvg line.ww-phasor-grid-line")).toHaveCount(12); // 3 radii x 4 lines each
+    await expect(page.locator("#wwPhasorSvg text.ww-phasor-axis-title")).toHaveCount(2);
+    await expect(page.locator("#wwPhasorSvg text.ww-phasor-axis-title", { hasText: "Real" })).toHaveCount(1);
+    await expect(page.locator("#wwPhasorSvg text.ww-phasor-axis-title", { hasText: "Imaginary" })).toHaveCount(1);
+
+    // EXISTING elements untouched: circular rings, vectors, current
+    // (dashed) vs voltage (solid) styling, visibility toggle behavior.
+    await expect(page.locator("#wwPhasorSvg circle.ww-phasor-ring")).toHaveCount(3);
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6); // one arrowhead per available role
+    await expect(page.locator("#wwPhasorSvg line.ww-phasor-vector--current")).toHaveCount(3); // Ia/Ib/Ic dashed
+
+    const vaRow = page.locator('.ww-phasor-value-row--toggle[data-role="Va"]');
+    await vaRow.click();
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(5); // visibility toggle still works
+  });
+
   test("no context selected shows an explanatory empty state, not a broken diagram", async ({ page }) => {
     // Uses uploadAndCreateContext() (a MANUAL context, created directly
     // via the backend API) rather than a bare uploadFixture() -- a

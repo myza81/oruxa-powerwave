@@ -5829,6 +5829,24 @@
             --ww-phase-c: var(--ok);
         }
 
+        /* Chart UX refinement (2026-09-12): shared Analysis-chart visual
+           tokens -- grid-line weight, axis-line weight, tick-label/axis-
+           title typography, dashed-guide style -- reused by BOTH the
+           Phasor diagram's own Cartesian grid/axis labels and the
+           Overcurrent chart's full axis frame, so the two charts read as
+           one consistent visual language without duplicating the same
+           values twice. Chart-specific classes (`.ww-phasor-ring`,
+           `.ww-oc-curve`, `.ww-oc-operating-point`, ...) stay their own,
+           genuinely chart-specific, rules -- only the shared building
+           blocks live here. */
+        :root {
+            --ww-chart-grid-stroke: var(--panel-border);
+            --ww-chart-axis-stroke: var(--text-dim);
+            --ww-chart-tick-font-size: 6.5px;
+            --ww-chart-axis-title-font-size: 7.5px;
+            --ww-chart-guide-stroke: var(--text-dim);
+        }
+
         /* Analysis workspace shell -- reusable layout seam for every
            visual analyzer (Phasor today; Impedance Locus/Overcurrent/
            Differential/Sequence Components later), never Phasor-specific
@@ -6164,13 +6182,45 @@
             height: 100%;
             display: block;
         }
+        /* Chart UX refinement: the central Real/Imaginary axes read
+           slightly STRONGER than the new Cartesian grid lines below
+           (still subtle, never heavy) -- `--ww-chart-axis-stroke`, the
+           same token the Overcurrent chart's own axis frame uses. */
         .ww-phasor-axis {
-            stroke: var(--panel-border);
-            stroke-width: 1;
+            stroke: var(--ww-chart-axis-stroke);
+            stroke-width: 1.1;
+        }
+        /* NEW: a light rectilinear grid, at the SAME radii as the
+           existing circular rings below -- kept deliberately sparse (one
+           line per ring radius per direction, never a dense graph-paper
+           mesh) so the grid stays secondary to the vectors, per owner
+           instruction. Solid (not dashed) and lower-opacity than the
+           rings themselves, so the two guide systems (circular +
+           rectilinear) stay visually distinguishable from one another. */
+        .ww-phasor-grid-line {
+            stroke: var(--ww-chart-grid-stroke);
+            stroke-width: 0.5;
+            opacity: 0.7;
+        }
+        /* "Real"/"Imaginary" axis-direction labels -- deliberately TEXT
+           labels only, never numeric tick values on the Cartesian grid
+           itself: a grid line's own pixel position mixes the Voltage and
+           Current families' own INDEPENDENT graphical scales (see this
+           function's own header comment), so a numeric label on a grid
+           line would misleadingly imply one shared physical unit between
+           the two families. Numeric magnitude labels remain exclusively
+           on the circular RINGS below, each already annotated with its
+           own family's real engineering unit. */
+        .ww-phasor-axis-title {
+            font-size: var(--ww-chart-axis-title-font-size);
+            font-weight: 700;
+            fill: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
         }
         .ww-phasor-ring {
             fill: none;
-            stroke: var(--panel-border);
+            stroke: var(--ww-chart-grid-stroke);
             stroke-width: 0.6;
             stroke-dasharray: 2 2;
         }
@@ -6180,7 +6230,7 @@
             fill: var(--text);
         }
         .ww-phasor-ring-label {
-            font-size: 6px;
+            font-size: var(--ww-chart-tick-font-size);
             fill: var(--text-dim);
         }
         /* Owner instruction: differentiate Voltage vs Current WITHOUT
@@ -6294,19 +6344,38 @@
             height: 100%;
             display: block;
         }
+        /* Chart UX refinement: a full engineering chart frame -- bottom
+           X-axis + left Y-axis, both slightly STRONGER than the grid
+           lines below (same `--ww-chart-axis-stroke` token the Phasor
+           diagram's own central axes use). */
         .ww-oc-axis {
-            stroke: var(--panel-border);
-            stroke-width: 1;
+            stroke: var(--ww-chart-axis-stroke);
+            stroke-width: 1.1;
         }
+        /* One solid (never dashed -- dashes are reserved for the
+           operating-point GUIDES below, so the two never read as the
+           same kind of line) line per major tick, thin and light. */
         .ww-oc-gridline {
-            stroke: var(--panel-border);
+            stroke: var(--ww-chart-grid-stroke);
             stroke-width: 0.5;
-            stroke-dasharray: 2 2;
-            opacity: 0.6;
+            opacity: 0.7;
         }
         .ww-oc-axis-label {
-            font-size: 7px;
+            font-size: var(--ww-chart-axis-title-font-size);
+            font-weight: 700;
             fill: var(--text-dim);
+        }
+        /* Tick-value labels (0.1/0.2/.../20 on X, 0.01/0.02/.../10 on Y,
+           plus the two special visual-origin "0" labels) -- distinct
+           from `.ww-oc-axis-label` (the axis TITLE typography) above. */
+        .ww-oc-tick-label {
+            font-size: var(--ww-chart-tick-font-size);
+            fill: var(--text-dim);
+        }
+        .ww-oc-origin-label {
+            font-size: var(--ww-chart-tick-font-size);
+            fill: var(--text-dim);
+            opacity: 0.85;
         }
         .ww-oc-curve {
             fill: none;
@@ -6318,11 +6387,20 @@
             stroke: var(--panel);
             stroke-width: 1;
         }
+        /* Below-pickup position marker -- deliberately NOT `--ok` (that
+           color is reserved for a genuine computed operating point) --
+           muted/dim instead, since this marks a known X POSITION only,
+           never a fabricated operating point. */
+        .ww-oc-position-marker {
+            fill: var(--text-dim);
+            stroke: var(--panel);
+            stroke-width: 1;
+        }
         .ww-oc-guide {
-            stroke: var(--text-dim);
+            stroke: var(--ww-chart-guide-stroke);
             stroke-width: 0.75;
             stroke-dasharray: 3 2;
-            opacity: 0.8;
+            opacity: 0.85;
         }
     </style>
 </head>
@@ -34652,67 +34730,182 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // (mirrors Phasor's own #wwPhasorSvg precedent: no existing
         // time-series-chart precedent to reuse, and this geometry is
         // simple enough that direct element updates are both simpler and
-        // cheaper than a Plotly figure). ----
-        const WW_OC_CHART_MARGIN = { left: 34, right: 12, top: 10, bottom: 24 };
+        // cheaper than a Plotly figure).
+        //
+        // Chart UX refinement (2026-09-12): a FIXED axis domain (never
+        // derived from the fetched curve's own min/max) so the chart
+        // always shows the same, recognizable engineering tick set --
+        // exactly like a real printed TCC (Time-Current Characteristic)
+        // chart, whose axis grid does not rescale itself per curve. The
+        // curve/operating-point geometry is drawn INTO that fixed frame,
+        // clipped (never clamped/distorted) at the plot edges -- a real
+        // IDMT curve legitimately runs off-frame near M=1 for a slow TMS
+        // (t -> very large as M -> 1), exactly like a real TCC chart. ----
+        const WW_OC_CHART_MARGIN = { left: 40, right: 14, top: 12, bottom: 34 };
         const WW_OC_CHART_W = 320;
         const WW_OC_CHART_H = 240;
+        // Reserved strip at the lower-left of the plot rectangle, purely
+        // for the two visual "0" origin labels (owner instruction: these
+        // are visual chart-origin labels, never a real log(0) position --
+        // the actual log-mapped plotting region begins AFTER this gap, at
+        // the chart's own first real tick).
+        const WW_OC_ORIGIN_GAP = 15;
 
-        function wwOvercurrentChartXY(points, m, t, logMMin, logMMax, logTMin, logTMax) {
-            const plotW = WW_OC_CHART_W - WW_OC_CHART_MARGIN.left - WW_OC_CHART_MARGIN.right;
-            const plotH = WW_OC_CHART_H - WW_OC_CHART_MARGIN.top - WW_OC_CHART_MARGIN.bottom;
+        const WW_OC_X_TICKS = [
+            { value: 0.1, label: "0.1" }, { value: 0.2, label: "0.2" }, { value: 0.5, label: "0.5" },
+            { value: 1, label: "1" }, { value: 2, label: "2" }, { value: 5, label: "5" },
+            { value: 10, label: "10" }, { value: 20, label: "20" },
+        ];
+        const WW_OC_Y_TICKS = [
+            { value: 0.01, label: "0.01" }, { value: 0.02, label: "0.02" }, { value: 0.05, label: "0.05" },
+            { value: 0.1, label: "0.1" }, { value: 0.2, label: "0.2" }, { value: 0.5, label: "0.5" },
+            { value: 1, label: "1" }, { value: 2, label: "2" }, { value: 5, label: "5" }, { value: 10, label: "10" },
+        ];
+        const WW_OC_LOG_M_MIN = Math.log10(WW_OC_X_TICKS[0].value);
+        const WW_OC_LOG_M_MAX = Math.log10(WW_OC_X_TICKS[WW_OC_X_TICKS.length - 1].value);
+        const WW_OC_LOG_T_MIN = Math.log10(WW_OC_Y_TICKS[0].value);
+        const WW_OC_LOG_T_MAX = Math.log10(WW_OC_Y_TICKS[WW_OC_Y_TICKS.length - 1].value);
+
+        function wwOvercurrentChartGeometry() {
+            const plotLeft = WW_OC_CHART_MARGIN.left;
+            const plotRight = WW_OC_CHART_W - WW_OC_CHART_MARGIN.right;
+            const plotTop = WW_OC_CHART_MARGIN.top;
+            const plotBottom = WW_OC_CHART_H - WW_OC_CHART_MARGIN.bottom;
+            // `logLeft`/`logBottom` bound the REAL logarithmic plotting
+            // region -- inset from the true frame edges by the origin
+            // gap on the two axes that need one (X's own minimum, Y's
+            // own minimum); `plotRight`/`plotTop` need no such gap, they
+            // are already real tick positions (M=20, T=10).
+            return {
+                plotLeft, plotRight, plotTop, plotBottom,
+                logLeft: plotLeft + WW_OC_ORIGIN_GAP, logBottom: plotBottom - WW_OC_ORIGIN_GAP,
+            };
+        }
+
+        // Unclamped pixel mapping -- used for the curve path (then
+        // visually clipped to the log region, never distorted) and for
+        // every fixed tick/gridline position (which are always within
+        // range by construction).
+        function wwOvercurrentPixelX(m, geo) {
             const logM = Math.log10(m);
+            return geo.logLeft + ((logM - WW_OC_LOG_M_MIN) / (WW_OC_LOG_M_MAX - WW_OC_LOG_M_MIN)) * (geo.plotRight - geo.logLeft);
+        }
+        function wwOvercurrentPixelY(t, geo) {
             const logT = Math.log10(t);
-            const x = WW_OC_CHART_MARGIN.left + ((logM - logMMin) / (logMMax - logMMin)) * plotW;
-            const y = WW_OC_CHART_MARGIN.top + (1 - (logT - logTMin) / (logTMax - logTMin)) * plotH;
-            return [x, y];
+            return geo.logBottom - ((logT - WW_OC_LOG_T_MIN) / (WW_OC_LOG_T_MAX - WW_OC_LOG_T_MIN)) * (geo.logBottom - geo.plotTop);
+        }
+        // Clamped M/T -- used ONLY for the single operating-point/
+        // position MARKER, which must always stay visibly within frame
+        // (owner instruction: "clamp only the visual marker as
+        // necessary... point/guides remain visible near the plot
+        // edges"). The TRUE numeric value is always shown, unclamped, in
+        // the live-values panel -- only the marker's own pixel position
+        // clamps, the engineering value itself is never distorted.
+        function wwOvercurrentClampedM(m) {
+            return Math.min(Math.max(m, WW_OC_X_TICKS[0].value), WW_OC_X_TICKS[WW_OC_X_TICKS.length - 1].value);
+        }
+        function wwOvercurrentClampedT(t) {
+            return Math.min(Math.max(t, WW_OC_Y_TICKS[0].value), WW_OC_Y_TICKS[WW_OC_Y_TICKS.length - 1].value);
         }
 
         function wwOvercurrentRenderChart(points, currentM, currentT) {
             const svg = document.getElementById("wwOvercurrentSvg");
             if (!svg) return;
-            if (!points || points.length === 0) {
-                svg.innerHTML = "";
-                return;
-            }
-            const mValues = points.map((p) => p[0]);
-            const tValues = points.map((p) => p[1]);
-            const logMMin = Math.log10(Math.min(...mValues));
-            const logMMax = Math.log10(Math.max(...mValues));
-            const logTMin = Math.log10(Math.min(...tValues));
-            const logTMax = Math.log10(Math.max(...tValues));
-
-            const toXY = (m, t) => wwOvercurrentChartXY(points, m, t, logMMin, logMMax, logTMin, logTMax);
-            const plotLeft = WW_OC_CHART_MARGIN.left;
-            const plotRight = WW_OC_CHART_W - WW_OC_CHART_MARGIN.right;
-            const plotTop = WW_OC_CHART_MARGIN.top;
-            const plotBottom = WW_OC_CHART_H - WW_OC_CHART_MARGIN.bottom;
-
+            const geo = wwOvercurrentChartGeometry();
             const parts = [];
-            parts.push('<line class="ww-oc-axis" x1="' + plotLeft + '" y1="' + plotTop + '" x2="' + plotLeft + '" y2="' + plotBottom + '"></line>');
-            parts.push('<line class="ww-oc-axis" x1="' + plotLeft + '" y1="' + plotBottom + '" x2="' + plotRight + '" y2="' + plotBottom + '"></line>');
-            parts.push('<text class="ww-oc-axis-label" x="' + ((plotLeft + plotRight) / 2) + '" y="' + (WW_OC_CHART_H - 6) + '" text-anchor="middle">Current / Pickup Multiple (M)</text>');
+
+            // Clips the CURVE only to the real log-mapped plotting
+            // rectangle -- the axis frame/ticks/origin labels below are
+            // drawn outside this clip, so they are never themselves cut.
             parts.push(
-                '<text class="ww-oc-axis-label" x="10" y="' + ((plotTop + plotBottom) / 2) +
-                '" text-anchor="middle" transform="rotate(-90 10 ' + ((plotTop + plotBottom) / 2) + ')">Expected Operating Time (s)</text>'
+                '<clipPath id="wwOvercurrentClip"><rect x="' + geo.logLeft + '" y="' + geo.plotTop + '" width="' +
+                (geo.plotRight - geo.logLeft).toFixed(2) + '" height="' + (geo.logBottom - geo.plotTop).toFixed(2) + '"></rect></clipPath>'
             );
 
-            const curvePath = points.map((p, i) => {
-                const [x, y] = toXY(p[0], p[1]);
-                return (i === 0 ? "M" : "L") + x.toFixed(2) + "," + y.toFixed(2);
-            }).join(" ");
-            parts.push('<path class="ww-oc-curve" d="' + curvePath + '"></path>');
+            // Grid lines -- one per major tick (never spaced as if
+            // linear -- each sits at its own true log-transformed pixel
+            // position), thin and secondary to the curve/axis frame.
+            for (const tick of WW_OC_X_TICKS) {
+                const x = wwOvercurrentPixelX(tick.value, geo);
+                parts.push('<line class="ww-oc-gridline" x1="' + x.toFixed(2) + '" y1="' + geo.plotTop + '" x2="' + x.toFixed(2) + '" y2="' + geo.logBottom + '"></line>');
+            }
+            for (const tick of WW_OC_Y_TICKS) {
+                const y = wwOvercurrentPixelY(tick.value, geo);
+                parts.push('<line class="ww-oc-gridline" x1="' + geo.logLeft + '" y1="' + y.toFixed(2) + '" x2="' + geo.plotRight + '" y2="' + y.toFixed(2) + '"></line>');
+            }
 
-            // Operating point + dashed X/Y guides -- gracefully omitted
-            // (no invalid coordinates generated) whenever below pickup
-            // (currentT is null) or the point falls outside the plotted
-            // M range.
-            if (Number.isFinite(currentM) && Number.isFinite(currentT)) {
-                const clampedM = Math.min(Math.max(currentM, Math.min(...mValues)), Math.max(...mValues));
-                const clampedT = Math.min(Math.max(currentT, Math.min(...tValues)), Math.max(...tValues));
-                const [px, py] = toXY(clampedM, clampedT);
-                parts.push('<line class="ww-oc-guide" x1="' + px.toFixed(2) + '" y1="' + py.toFixed(2) + '" x2="' + px.toFixed(2) + '" y2="' + plotBottom + '"></line>');
-                parts.push('<line class="ww-oc-guide" x1="' + plotLeft + '" y1="' + py.toFixed(2) + '" x2="' + px.toFixed(2) + '" y2="' + py.toFixed(2) + '"></line>');
-                parts.push('<circle class="ww-oc-operating-point" cx="' + px.toFixed(2) + '" cy="' + py.toFixed(2) + '" r="3.5"></circle>');
+            // Full axis frame -- spans the WHOLE plot rectangle,
+            // including the reserved origin-gap strip (never just the
+            // log-mapped sub-region), so the chart never looks truncated.
+            parts.push('<line class="ww-oc-axis" x1="' + geo.plotLeft + '" y1="' + geo.plotTop + '" x2="' + geo.plotLeft + '" y2="' + geo.plotBottom + '"></line>');
+            parts.push('<line class="ww-oc-axis" x1="' + geo.plotLeft + '" y1="' + geo.plotBottom + '" x2="' + geo.plotRight + '" y2="' + geo.plotBottom + '"></line>');
+
+            // Tick labels -- the exact displayed set the owner specified,
+            // each at its own true log-transformed position.
+            for (const tick of WW_OC_X_TICKS) {
+                const x = wwOvercurrentPixelX(tick.value, geo);
+                parts.push('<text class="ww-oc-tick-label" x="' + x.toFixed(2) + '" y="' + (geo.plotBottom + 9) + '" text-anchor="middle">' + tick.label + '</text>');
+            }
+            for (const tick of WW_OC_Y_TICKS) {
+                const y = wwOvercurrentPixelY(tick.value, geo);
+                parts.push('<text class="ww-oc-tick-label" x="' + (geo.plotLeft - 3) + '" y="' + (y + 2.2).toFixed(2) + '" text-anchor="end">' + tick.label + '</text>');
+            }
+            // Visual-origin "0" labels -- placed in the reserved gap
+            // strip at the lower-left frame corner, NEVER run through
+            // `Math.log10()` (log(0) is undefined) -- a fixed pixel
+            // position only, distinct from every real tick label above.
+            parts.push('<text class="ww-oc-origin-label" x="' + geo.plotLeft + '" y="' + (geo.plotBottom + 9) + '" text-anchor="start">0</text>');
+            parts.push('<text class="ww-oc-origin-label" x="' + (geo.plotLeft - 3) + '" y="' + (geo.plotBottom + 2.2).toFixed(2) + '" text-anchor="end">0</text>');
+
+            // Axis titles -- unchanged text, repositioned for the new margins.
+            parts.push('<text class="ww-oc-axis-label" x="' + ((geo.plotLeft + geo.plotRight) / 2) + '" y="' + (WW_OC_CHART_H - 4) + '" text-anchor="middle">Current / Pickup Multiple (M)</text>');
+            const yTitleCenter = (geo.plotTop + geo.plotBottom) / 2;
+            parts.push(
+                '<text class="ww-oc-axis-label" x="9" y="' + yTitleCenter.toFixed(1) +
+                '" text-anchor="middle" transform="rotate(-90 9 ' + yTitleCenter.toFixed(1) + ')">Expected Operating Time (s)</text>'
+            );
+
+            // The characteristic curve -- unclamped pixel coordinates,
+            // visually CLIPPED (never clamped/distorted) to the log
+            // region; a real TCC curve legitimately runs off-frame near
+            // M=1 for a slow TMS, exactly like a real printed TCC chart.
+            if (points && points.length > 0) {
+                const curvePath = points.map((p, i) => {
+                    const x = wwOvercurrentPixelX(p[0], geo);
+                    const y = wwOvercurrentPixelY(p[1], geo);
+                    return (i === 0 ? "M" : "L") + x.toFixed(2) + "," + y.toFixed(2);
+                }).join(" ");
+                parts.push('<path class="ww-oc-curve" clip-path="url(#wwOvercurrentClip)" d="' + curvePath + '"></path>');
+            }
+
+            // Operating point (above pickup) / position marker (below
+            // pickup) -- gracefully handles both cases without ever
+            // generating an invalid coordinate or a fabricated y-value.
+            if (Number.isFinite(currentM)) {
+                const clampedM = wwOvercurrentClampedM(currentM);
+                const px = wwOvercurrentPixelX(clampedM, geo);
+                if (Number.isFinite(currentT)) {
+                    // Above pickup -- a genuine computed operating point:
+                    // X+Y dashed guides to their own tick coordinate, a
+                    // filled circle at the intersection.
+                    const clampedT = wwOvercurrentClampedT(currentT);
+                    const py = wwOvercurrentPixelY(clampedT, geo);
+                    parts.push('<line class="ww-oc-guide" x1="' + px.toFixed(2) + '" y1="' + py.toFixed(2) + '" x2="' + px.toFixed(2) + '" y2="' + geo.plotBottom + '"></line>');
+                    parts.push('<line class="ww-oc-guide" x1="' + geo.plotLeft + '" y1="' + py.toFixed(2) + '" x2="' + px.toFixed(2) + '" y2="' + py.toFixed(2) + '"></line>');
+                    parts.push('<circle class="ww-oc-operating-point" cx="' + px.toFixed(2) + '" cy="' + py.toFixed(2) + '" r="3.5"></circle>');
+                } else {
+                    // Below pickup -- no finite operating time exists
+                    // (owner instruction: never fabricate a y-coordinate)
+                    // -- still show WHERE the current sits on the X axis:
+                    // a full-height dashed guide plus a small marker
+                    // sitting ON the axis itself (never a circle floating
+                    // at a fabricated intersection, and never the same
+                    // `--ok`-colored operating-point style, so it always
+                    // reads as "a known position," not "a computed
+                    // result").
+                    parts.push('<line class="ww-oc-guide" x1="' + px.toFixed(2) + '" y1="' + geo.plotTop + '" x2="' + px.toFixed(2) + '" y2="' + geo.plotBottom + '"></line>');
+                    parts.push('<circle class="ww-oc-position-marker" cx="' + px.toFixed(2) + '" cy="' + geo.plotBottom + '" r="3"></circle>');
+                }
             }
 
             svg.innerHTML = parts.join("");
@@ -35801,8 +35994,29 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const currentScale = currentMax > 0 ? wwPhasorState.frozenCurrentScale : 0;
 
             const parts = [];
+            // Chart UX refinement: a light rectilinear (Cartesian) grid,
+            // painted FIRST so it sits visually BELOW the circular rings/
+            // axes/vectors that follow -- at the exact same radii as the
+            // rings below ([1/3, 2/3, 1] * plotRadius), so the two guide
+            // systems align rather than fighting for attention. Sparse by
+            // design (one line per ring radius per direction = 6 lines
+            // total) -- never a dense graph-paper mesh.
+            for (const frac of [1 / 3, 2 / 3, 1]) {
+                const d = plotRadius * frac;
+                parts.push('<line class="ww-phasor-grid-line" x1="' + (-d).toFixed(1) + '" y1="-100" x2="' + (-d).toFixed(1) + '" y2="100"></line>');
+                parts.push('<line class="ww-phasor-grid-line" x1="' + d.toFixed(1) + '" y1="-100" x2="' + d.toFixed(1) + '" y2="100"></line>');
+                parts.push('<line class="ww-phasor-grid-line" x1="-100" y1="' + (-d).toFixed(1) + '" x2="100" y2="' + (-d).toFixed(1) + '"></line>');
+                parts.push('<line class="ww-phasor-grid-line" x1="-100" y1="' + d.toFixed(1) + '" x2="100" y2="' + d.toFixed(1) + '"></line>');
+            }
             parts.push('<line class="ww-phasor-axis" x1="-100" y1="0" x2="100" y2="0"></line>');
             parts.push('<line class="ww-phasor-axis" x1="0" y1="-100" x2="0" y2="100"></line>');
+            // "Real"/"Imaginary" axis-direction labels -- SVG y grows
+            // downward and every vector's own y is already negated (see
+            // this function's own header comment), so positive Imaginary
+            // (counter-clockwise from Real) is visually UP, matching the
+            // standard complex-plane convention.
+            parts.push('<text class="ww-phasor-axis-title" x="103" y="-6" text-anchor="end">Real</text>');
+            parts.push('<text class="ww-phasor-axis-title" x="3" y="-102" text-anchor="start">Imaginary</text>');
             for (const frac of [1 / 3, 2 / 3, 1]) {
                 parts.push('<circle class="ww-phasor-ring" cx="0" cy="0" r="' + (plotRadius * frac).toFixed(1) + '"></circle>');
             }

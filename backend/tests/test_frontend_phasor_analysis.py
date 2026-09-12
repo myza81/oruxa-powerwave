@@ -583,6 +583,57 @@ class TestSvgDiagram:
         assert "wwPhasorWholeResultBlockedMessage(diagram)" in body
 
 
+class TestChartGridAndAxisLabels:
+    """Chart UX refinement (2026-09-12): a clearer coordinate system --
+    thin Cartesian grid lines, a stronger central axis, and Real/
+    Imaginary axis-direction labels -- layered around the EXISTING
+    circular rings/vectors, never replacing them."""
+
+    def test_grid_lines_render(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert "ww-phasor-grid-line" in body
+
+    def test_grid_is_sparse_matching_the_existing_ring_radii_not_dense_graph_paper(self):
+        """Owner instruction: the grid must remain secondary to the
+        vectors, never a dense graph-paper mesh -- confirmed by reusing
+        the SAME three ring fractions, never a finer/independent grid
+        resolution."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        grid_section = body[body.index("ww-phasor-grid-line") - 200 : body.index("ww-phasor-ring\" cx=")]
+        assert "for (const frac of [1 / 3, 2 / 3, 1])" in grid_section
+
+    def test_real_axis_label_renders(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert 'ww-phasor-axis-title' in body
+        assert ">Real</text>" in body
+
+    def test_imaginary_axis_label_renders(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert ">Imaginary</text>" in body
+
+    def test_axis_titles_painted_before_vectors_so_vectors_stay_on_top(self):
+        """The grid/axis-title elements are pushed to `parts` BEFORE the
+        per-role vector loop -- SVG paints later elements on top, so a
+        vector legitimately obscures an axis title if their positions
+        coincide, never the reverse (grid/labels must remain secondary to
+        the vectors, per owner instruction)."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        axis_title_idx = body.index("ww-phasor-axis-title")
+        vector_loop_idx = body.index("for (const roleKey of WW_PHASOR_DIAGRAM_ROLE_ORDER)")
+        assert axis_title_idx < vector_loop_idx
+
+    def test_existing_rings_and_vectors_still_render(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert "ww-phasor-ring" in body
+        assert "wwPhasorVectorSvg(x, y, wwPhasorRoleColor(roleKey), roleKey, isCurrent)" in body
+
+
 class TestStaleRequestProtection:
     def test_shared_request_generation_counter_exists(self):
         source = _source()

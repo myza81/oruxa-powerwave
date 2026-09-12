@@ -126,6 +126,142 @@ class TestOvercurrentPanelStructure:
         assert "Plotly" not in body
 
 
+class TestChartAxesGridAndTicks:
+    """Chart UX refinement (2026-09-12): a full engineering chart frame
+    -- axis lines, grid, and the owner's own exact displayed tick-label
+    sets -- around the existing curve/operating-point geometry, which
+    stays mathematically unchanged."""
+
+    _EXPECTED_X_LABELS = ["0", "0.1", "0.2", "0.5", "1", "2", "5", "10", "20"]
+    _EXPECTED_Y_LABELS = ["0", "0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2", "5", "10"]
+
+    def test_exact_displayed_x_tick_labels(self):
+        source = _source()
+        body = _function_body(source, "const WW_OC_X_TICKS", "const WW_OC_Y_TICKS")
+        for label in self._EXPECTED_X_LABELS[1:]:  # "0" is the special origin label, checked separately
+            assert '"label": "' + label + '"' in body or "label: \"" + label + "\"" in body
+
+    def test_exact_displayed_y_tick_labels(self):
+        source = _source()
+        body = _function_body(source, "const WW_OC_Y_TICKS", "const WW_OC_LOG_M_MIN")
+        for label in self._EXPECTED_Y_LABELS[1:]:
+            assert "label: \"" + label + "\"" in body
+
+    def test_visual_origin_zero_labels_are_not_log_transformed(self):
+        """The `0` labels are fixed pixel positions in a reserved gap
+        strip, never passed through `Math.log10()` -- log(0) is
+        undefined, and the owner's own instruction is explicit that this
+        is a visual-only chart-origin annotation."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        assert 'ww-oc-origin-label" x="\' + geo.plotLeft +' in fn
+        assert '>0</text>' in fn
+        # Confirm the origin-label lines themselves never call Math.log10.
+        origin_start = fn.index('ww-oc-origin-label')
+        origin_block = fn[origin_start:fn.index("Axis titles")]
+        assert "Math.log10" not in origin_block
+
+    def test_valid_log_region_begins_at_the_specified_positive_values(self):
+        source = _source()
+        fn = _function_body(source, "const WW_OC_X_TICKS", "function wwOvercurrentChartGeometry")
+        assert "{ value: 0.1," in fn  # smallest real X tick
+        assert "{ value: 0.01," in fn  # smallest real Y tick
+
+    def test_x_and_y_axis_lines_render(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        assert fn.count('class="ww-oc-axis"') == 2
+
+    def test_grid_lines_render_for_every_tick(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        assert "ww-oc-gridline" in fn
+        assert "for (const tick of WW_OC_X_TICKS)" in fn
+        assert "for (const tick of WW_OC_Y_TICKS)" in fn
+
+    def test_ticks_use_the_log_transform_never_linear_spacing(self):
+        """Tick/grid pixel positions must come from the same
+        `Math.log10()`-based mapping the curve itself uses -- never a
+        uniform/linear index-based spacing."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentPixelX(m, geo)", "function wwOvercurrentPixelY")
+        assert "Math.log10(m)" in fn
+        assert "WW_OC_LOG_M_MIN" in fn
+        assert "WW_OC_LOG_M_MAX" in fn
+
+    def test_axis_titles_unchanged_text(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        assert "Current / Pickup Multiple (M)" in fn
+        assert "Expected Operating Time (s)" in fn
+
+    def test_curve_is_clipped_not_clamped_or_distorted(self):
+        """A real IDMT curve legitimately runs outside the fixed display
+        window near M=1 for a slow TMS -- the curve path itself uses the
+        SAME unclamped pixel mapping as the grid/ticks, then is clipped
+        (never distorted) via an SVG clipPath, so the underlying
+        engineering math is never altered to fit the frame."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        assert "clipPath" in fn
+        assert 'clip-path="url(#wwOvercurrentClip)"' in fn
+
+    def test_curve_points_themselves_are_not_reclamped(self):
+        """The curve path loop maps `p[0]`/`p[1]` (the raw backend-
+        returned points) directly through the unclamped pixel functions
+        -- clamping is reserved for the single operating-point marker
+        only, confirmed by the curve-path loop never calling
+        wwOvercurrentClampedM/T."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        curve_loop = _function_body(fn, "const curvePath = points.map", "parts.push('<path")
+        assert "wwOvercurrentClampedM" not in curve_loop
+        assert "wwOvercurrentClampedT" not in curve_loop
+        assert "wwOvercurrentPixelX(p[0], geo)" in curve_loop
+        assert "wwOvercurrentPixelY(p[1], geo)" in curve_loop
+
+
+class TestBelowPickupPositionMarker:
+    """Chart UX refinement: below pickup, the chart still communicates
+    WHERE the current sits on the X axis -- without ever fabricating a
+    y-value/expected-operating-time point."""
+
+    def test_below_pickup_shows_position_marker_and_vertical_guide_never_a_y_value(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        below_branch = _function_body(fn, "} else {", "}\n            }\n\n            svg.innerHTML")
+        assert "ww-oc-position-marker" in below_branch
+        assert "ww-oc-guide" in below_branch
+        # Never the same operating-point class/color used for a genuine computed result.
+        assert "ww-oc-operating-point" not in below_branch
+
+    def test_position_marker_x_uses_clamped_m_never_distorts_the_true_value(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        assert "const clampedM = wwOvercurrentClampedM(currentM);" in fn
+
+    def test_below_pickup_never_calls_pixel_y_with_a_fabricated_time(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        below_branch = _function_body(fn, "} else {", "}\n            }\n\n            svg.innerHTML")
+        assert "wwOvercurrentPixelY" not in below_branch
+
+
+class TestOperatingPointGuides:
+    def test_above_pickup_still_renders_point_and_both_guides(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        above_branch = _function_body(fn, "if (Number.isFinite(currentT)) {", "} else {")
+        assert "ww-oc-operating-point" in above_branch
+        assert above_branch.count("ww-oc-guide") == 2
+
+    def test_guides_align_with_the_clamped_tick_coordinate(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        above_branch = _function_body(fn, "if (Number.isFinite(currentT)) {", "} else {")
+        assert "const clampedT = wwOvercurrentClampedT(currentT);" in above_branch
+
+
 class TestNoRelayOperationClaims:
     """Owner instruction: never say 'relay tripped'/'relay should
     trip'/'relay failed to trip' anywhere in the Overcurrent UI text."""
@@ -195,7 +331,7 @@ class TestSharedPlaybackWiringUntouched:
 class TestCurveCachingNotRefetchedPerTick:
     def test_curve_fetch_only_when_characteristic_or_tms_differs_from_cache(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentEnsureCurveAndRenderPoint(result)", "function wwOvercurrentChartXY")
+        fn = _function_body(source, "function wwOvercurrentEnsureCurveAndRenderPoint(result)", "function wwOvercurrentChartGeometry")
         assert "cache.characteristicId === s.characteristicId && cache.tms === s.tms" in fn
 
     def test_settings_change_forces_exact_not_throttled_fetch(self):

@@ -481,6 +481,105 @@ of the whole feature:
   (never a relay-emulation claim) may be introduced later if justified,
   not implemented now.
 
+## Chart UX refinement: full axis frame, fixed log grid, below-pickup position marker (2026-09-12)
+
+Visual/chart-readability only — the IDMT equations/constants, resolver
+behavior, RMS calculation semantics, CT conversion, and the expected-
+operating-time/above-pickup-duration/threshold-alert semantics above are
+all byte-for-byte unchanged (see `backend/tests/test_overcurrent_domain.py`/
+`test_overcurrent_analysis_service.py`/`test_overcurrent_analysis_api.py`,
+all still passing unmodified). The refinement is entirely in
+`wwOvercurrentRenderChart()` and its own small set of new geometry
+helpers, frontend-only.
+
+**A FIXED axis domain, never derived from the fetched curve's own data
+range.** Previously the chart's own log-scale X/Y bounds were computed
+from `Math.min`/`Math.max` over the fetched curve points themselves —
+meaning the visible axis range silently shifted per characteristic/TMS.
+The chart now uses a fixed, owner-specified tick set instead — exactly
+like a real printed TCC (Time-Current Characteristic) chart, whose axis
+grid never rescales itself per curve:
+
+```
+X ticks (Current / Pickup Multiple):  0.1, 0.2, 0.5, 1, 2, 5, 10, 20
+Y ticks (Expected Operating Time, s): 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10
+```
+
+Grid lines and tick labels are drawn at each of these values' own TRUE
+`Math.log10()`-transformed pixel position — never uniformly/linearly
+spaced, confirmed directly by
+`backend/tests/test_frontend_overcurrent_analysis.py::TestChartAxesGridAndTicks::test_ticks_use_the_log_transform_never_linear_spacing`.
+
+**The visual "0" origin labels are NOT part of the logarithmic
+transform.** `log10(0)` is undefined, so a `0` position cannot be
+computed the way every other tick is — the owner's own instruction is
+explicit that these are visual chart-origin annotations only. A small
+fixed-width "origin gap" (`WW_OC_ORIGIN_GAP`) is reserved at the
+lower-left of the plot rectangle, entirely OUTSIDE the log-mapped
+region; the two `0` labels (one per axis) sit at fixed pixel positions
+within that gap, never touched by `Math.log10()`. The real log-mapped
+plotting region begins immediately after the gap, at the chart's own
+first genuine tick (X: 0.1, Y: 0.01) — matching the owner's own "the
+valid log plotting region begins at X:0.1, Y:0.01" instruction exactly.
+The full axis frame (the two `.ww-oc-axis` lines) still spans the WHOLE
+plot rectangle, including the origin-gap strip, so the chart never looks
+visually truncated.
+
+**The curve itself is CLIPPED, never clamped or distorted, at the plot
+edges.** A real IDMT curve legitimately runs outside the fixed display
+window near `M=1` for a slow TMS (`t -> ` a large value as `M -> 1`) —
+exactly like a real printed TCC chart, where curves routinely run off
+the visible grid near the origin. The curve path uses the SAME
+unclamped pixel-mapping functions the grid/ticks use, then an SVG
+`<clipPath>` restricted to the log-mapped plot rectangle cuts it
+cleanly at the frame edge — the underlying engineering values (the
+actual `points` array from `.../overcurrent-curve`) are never
+re-scaled, clamped, or otherwise altered to force the whole curve to
+fit.
+
+**Below-pickup visualization — a genuine UX improvement, not a
+semantic change.** Previously, `M <= 1` simply omitted the operating
+point and both guides entirely. The owner found this insufficient for
+locating "where is the current, even below pickup" — the chart now
+additionally shows, whenever `currentM` is finite (a real measured
+value exists) but `currentT` is `null` (below pickup, no finite
+operating time):
+
+- a full-height vertical dashed guide at the current's own (clamped-if-
+  necessary) X position, and
+- a small marker sitting ON the X axis itself (`.ww-oc-position-marker`
+  — deliberately a DIFFERENT class/color than `.ww-oc-operating-point`,
+  so it never reads as "a computed result").
+
+**No y-coordinate is ever fabricated** — the below-pickup code path
+never calls the Y pixel-mapping function at all (confirmed directly by
+`TestBelowPickupPositionMarker::test_below_pickup_never_calls_pixel_y_with_a_fabricated_time`),
+and the live-values panel continues to show "Below pickup — —" exactly
+as before. If the true `M` value is smaller than the chart's own first
+real X tick (0.1), only the MARKER's own pixel position clamps to that
+edge — the true numeric `Multiple of pickup` value shown in the
+live-values panel is never distorted; only where the dot is drawn is
+ever adjusted.
+
+**Above-pickup behavior is otherwise unchanged**: a genuine computed
+operating point still renders a filled circle plus X+Y dashed guides to
+their own tick coordinates, using the exact same clamp-only-the-marker
+policy already established (see "OC chart frame and spacing" — clamping
+was already in place before this refinement for a point outside the
+curve's own former data-derived range; it now clamps to the new FIXED
+tick range instead).
+
+## Analysis chart styling tokens (shared with Phasor)
+
+See [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s own matching section —
+`.ww-oc-axis`/`.ww-oc-gridline`/`.ww-oc-tick-label`/`.ww-oc-axis-label`/
+`.ww-oc-guide` all consume the same shared `--ww-chart-*` CSS custom
+properties the Phasor diagram's own new grid/axis-title rules use, so
+the two charts read as one consistent visual language without
+duplicating the same values twice. Every existing, already-tested class
+name on this chart (`.ww-oc-curve`, `.ww-oc-operating-point`, ...) is
+unchanged — only the underlying token VALUES are now centralized.
+
 ## Not yet implemented (future slices)
 
 - **ANSI/IEEE curves** (C37.112 and its own distinct constants).

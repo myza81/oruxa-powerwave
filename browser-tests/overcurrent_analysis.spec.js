@@ -216,8 +216,67 @@ test.describe("Overcurrent Analysis v1 -- below pickup", () => {
       expect(text).toContain("Below pickup");
       expect(text).not.toMatch(/Infinity|NaN/);
     }).toPass({ timeout: 5000 });
+    // No fabricated operating point (no y-value exists below pickup) --
+    // but the chart UX refinement still shows WHERE the current sits on
+    // the X axis: a dim position marker on the axis + a vertical guide,
+    // never the same class/color as a genuine computed operating point.
     await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point")).toHaveCount(0);
+    await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-position-marker")).toHaveCount(1);
+    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-guide")).toHaveCount(1); // vertical only, never a horizontal one
     await expect(page.locator("#wwOvercurrentAlert")).toBeHidden();
+  });
+});
+
+test.describe("Overcurrent Analysis v1 -- chart axes, grid, and ticks", () => {
+  test("full axis frame, grid lines, and the exact requested tick labels render", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    // Axis lines (X + Y).
+    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-axis")).toHaveCount(2);
+    // Grid lines -- one per major tick (8 X + 10 Y).
+    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-gridline")).toHaveCount(18);
+
+    const xLabels = ["0.1", "0.2", "0.5", "1", "2", "5", "10", "20"];
+    const yLabels = ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2", "5", "10"];
+    for (const label of xLabels.concat(yLabels)) {
+      await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label", { hasText: new RegExp("^" + label.replace(".", "\\.") + "$") })).toHaveCount(
+        // "0.1"/"1"/"10" each legitimately appear on BOTH axes.
+        xLabels.includes(label) && yLabels.includes(label) ? 2 : 1
+      );
+    }
+    // The two special visual-origin "0" labels (X + Y), never log-transformed.
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-origin-label", { hasText: /^0$/ })).toHaveCount(2);
+
+    // Axis titles unchanged.
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-axis-label", { hasText: "Current / Pickup Multiple (M)" })).toHaveCount(1);
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-axis-label", { hasText: "Expected Operating Time (s)" })).toHaveCount(1);
+  });
+
+  test("above-pickup operating point and both dashed guides still render, curve math unchanged", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await page.locator("#wwOvercurrentPickupInput").fill("1.0");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    await page.locator("#wwOvercurrentTmsInput").fill("0.1");
+    await page.locator("#wwOvercurrentTmsInput").dispatchEvent("change");
+
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      // Same known 40 A RMS / 1 A pickup -> M=40.0, unchanged from before
+      // this chart-only refinement -- the underlying IDMT math/output is
+      // untouched.
+      expect(text).toMatch(/40\.0\s*×/);
+    }).toPass({ timeout: 5000 });
+
+    await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point")).toHaveCount(1);
+    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-guide")).toHaveCount(2);
+    await expect(page.locator("#wwOvercurrentSvg path.ww-oc-curve")).toHaveCount(1);
+
+    const text = await page.locator("#wwOvercurrentValuesList").innerText();
+    expect(text).not.toMatch(/Infinity|NaN/);
   });
 });
 

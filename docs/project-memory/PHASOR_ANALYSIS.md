@@ -920,6 +920,57 @@ Components) mount Playback controls exactly the way Phasor does today —
 this decision does not change that reusable pattern, only that Waveform
 itself is no longer also a mount point for it.
 
+## Chart UX refinement: engineering grid + axis labels (2026-09-12)
+
+Visual/chart-readability only — the estimator, resolver, absolute-angle
+geometry, and Voltage/Current graphical scaling are all byte-for-byte
+unchanged; see [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own
+matching section for the Overcurrent chart's own equivalent refinement
+(the two share a small set of visual tokens — see "Analysis chart
+styling tokens" below).
+
+`wwPhasorRenderDiagramSvg()` gained a light rectilinear (Cartesian) grid
+— one vertical/horizontal line per EXISTING ring radius (`[1/3, 2/3, 1]
+* plotRadius`, the same three fractions the circular rings already use),
+painted first so it sits visually beneath the rings/axes/vectors that
+follow — deliberately sparse (6 lines total), never a dense graph-paper
+mesh, per owner instruction that the grid stay secondary to the vectors.
+The central Real/Imaginary axis lines (`.ww-phasor-axis`) now read
+slightly stronger than the new grid (still subtle) via the shared
+`--ww-chart-axis-stroke` token. Two new text labels — "Real" (positive
+X) and "Imaginary" (positive Y, which is visually UP since every
+vector's own y is already negated for the standard complex-plane
+convention) — are painted BEFORE the per-role vector loop, so a vector
+legitimately obscures a label if their positions coincide, never the
+reverse.
+
+**Deliberately NOT added**: numeric tick/grid-line labels on the new
+Cartesian grid itself. A grid line's own pixel position mixes the
+Voltage and Current families' own INDEPENDENT graphical scales (see
+"Diagram scaling stability during Playback" above) — a numeric label on
+a grid line would misleadingly imply one shared physical unit between
+the two families, exactly what the owner's own instruction warned
+against ("do not imply engineering magnitude equivalence between
+Voltage and Current"). Numeric magnitude labels remain exclusively on
+the circular RINGS (unchanged), each already annotated with its own
+family's real engineering unit.
+
+## Analysis chart styling tokens (shared with Overcurrent)
+
+`:root` gained a small set of shared CSS custom properties —
+`--ww-chart-grid-stroke`, `--ww-chart-axis-stroke`,
+`--ww-chart-tick-font-size`, `--ww-chart-axis-title-font-size`,
+`--ww-chart-guide-stroke` — consumed by BOTH the Phasor diagram's own
+grid/axis-title rules above and the Overcurrent chart's own axis/grid/
+tick-label/guide rules (see OVERCURRENT_ANALYSIS.md). This is the reuse
+mechanism the owner's own "avoid independently styled Phasor and
+Overcurrent charts if the same visual token can be reused" instruction
+asked for — implemented as shared CSS custom properties (not a class-
+name rename), so every existing, already-tested class name
+(`.ww-phasor-ring`, `.ww-oc-curve`, `.ww-oc-operating-point`, ...) is
+completely unchanged; only the underlying color/size VALUES those
+classes already referenced are now centralized in one place.
+
 ## Not yet implemented (future slices)
 
 - **Frequency tracking / PMU-class measurement.**
