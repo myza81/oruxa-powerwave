@@ -924,6 +924,23 @@ duplicating the same values twice. Every existing, already-tested class
 name on this chart (`.ww-oc-curve`, `.ww-oc-operating-point`, ...) is
 unchanged — only the underlying token VALUES are now centralized.
 
+## Related Waveforms integration (shared Analysis primitive, 2026-09-12)
+
+Overcurrent's own `phase` selector (see "Frontend: the second Analysis-
+menu analyzer" above) drives the shared Related Waveforms panel's ONE
+active Current role — no second waveform-channel selector was
+introduced. `wwOvercurrentComputeActiveRelatedWaveformRoles()` (called
+from the end of `wwOvercurrentRenderResult()`) declares exactly one
+role, `"I" + phase.toLowerCase()` (e.g. `"Ia"`), using the
+already-resolved `channel_ref`/`measured_rms_current_unit` from the
+`/overcurrent` response — never re-derived from a channel name. No
+Voltage role is ever declared here, even though Voltage channels may
+exist in the same Engineering Context — Related Waveforms only ever
+shows what is analyzer-relevant, never everything the Bay happens to
+contain. Full shared-panel architecture (grouping, fetching, rendering,
+the Playback cursor, resize) is NOT Overcurrent's own — see
+[ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md).
+
 ## Not yet implemented (future slices)
 
 - **ANSI/IEEE curves** (C37.112 and its own distinct constants).
@@ -948,6 +965,9 @@ unchanged — only the underlying token VALUES are now centralized.
 - [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) — the first Analysis-menu
   analyzer; the resolver/Playback-integration/Analysis-shell patterns
   this document reuses throughout.
+- [ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md) — the shared Analysis
+  shell infrastructure (Engineering Context lifecycle, Playback,
+  Related Waveforms) every analyzer, including Overcurrent, consumes.
 - [ANALYSIS_INPUT_GUARDRAILS.md](ANALYSIS_INPUT_GUARDRAILS.md) — the
   Engineering Context + resolver foundation this slice is built on
   entirely unchanged.

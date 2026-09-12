@@ -1063,6 +1063,24 @@ name rename), so every existing, already-tested class name
 completely unchanged; only the underlying color/size VALUES those
 classes already referenced are now centralized in one place.
 
+## Related Waveforms integration (shared Analysis primitive, 2026-09-12)
+
+Phasor's own `visibleRoles` visibility state (see "Bay-centric Phasor
+Diagram" above) now ALSO drives the shared Related Waveforms panel's
+own active trace set — a role hidden/shown via the existing vector eye
+toggle simultaneously hides/shows the SAME role's own waveform trace,
+with no second, waveform-specific visibility control introduced.
+`wwPhasorComputeActiveRelatedWaveformRoles()` (called from the end of
+`wwPhasorRenderDiagramResult()`, the ONE render path both a fresh fetch
+and a visibility toggle already go through) filters
+`wwPhasorState.latestDiagram.roles` to `available` + visible, and
+pushes `{roleKey, engineeringType, phase, channelRef, unit, label,
+color}` for each — `channelRef`/`unit` always the already-resolved
+values from the `/phasor-diagram` response, never re-derived from a
+channel name. Full shared-panel architecture (grouping, fetching,
+rendering, the Playback cursor, resize) is NOT Phasor's own — see
+[ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md).
+
 ## Not yet implemented (future slices)
 
 - **Frequency tracking / PMU-class measurement.**
@@ -1086,3 +1104,6 @@ classes already referenced are now centralized in one place.
 - [ANALYSIS_INPUT_GUARDRAILS.md](ANALYSIS_INPUT_GUARDRAILS.md) — the
   Engineering Context + resolver foundation both slices are built on
   entirely unchanged.
+- [ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md) — the shared Analysis
+  shell infrastructure (Engineering Context lifecycle, Playback,
+  Related Waveforms) every analyzer, including Phasor, consumes.

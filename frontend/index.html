@@ -6326,6 +6326,68 @@
             color: var(--text-dim);
             align-self: center;
         }
+
+        /* Shared Analysis "Related Waveforms" panel (2026-09-12) -- ONE
+           DOM instance (#wwAnalysisRelatedWaveformsPanel), reparented
+           between #wwPhasorRelatedWaveformsAnchor/
+           #wwOvercurrentRelatedWaveformsAnchor as the active analyzer
+           changes (see wwSetActiveAnalysisType()) -- never a separate
+           per-analyzer instance. Typography stays within the same
+           <=0.75rem Analysis-workspace cap every other analyzer card
+           already uses. */
+        .ww-analysis-related-waveforms-panel {
+            padding: 10px 14px 0;
+        }
+        .ww-analysis-related-waveforms-panel h3 {
+            margin: 0 0 6px;
+        }
+        #wwAnalysisRelatedWaveformsEmptyState {
+            font-size: 0.72rem;
+            margin: 0 0 8px;
+        }
+        /* The one resizable region -- height set directly by
+           wwAnalysisWireRelatedWaveformsResize() (mirrors
+           wwSetPanelHeightImmediate()'s own "set inline style height
+           directly" convention, see the Waveform page's own per-channel
+           .ww-resize-handle precedent this reuses verbatim). Explicit
+           `display: flex` needs the matching `[hidden]` override below
+           -- the same CSS-specificity fix already applied to
+           `.ww-phasor-body`/`.ww-phasor-panel` elsewhere on this page. */
+        .ww-arw-body {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .ww-arw-body[hidden] { display: none; }
+        .ww-arw-group {
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 0;
+            min-height: 0;
+        }
+        .ww-arw-group[hidden] { display: none; }
+        .ww-arw-group-label {
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            color: var(--text-dim);
+            margin-bottom: 2px;
+            flex: 0 0 auto;
+        }
+        .ww-arw-chart {
+            flex: 1 1 0;
+            min-height: 0;
+        }
+        /* The shared resize handle sits directly below the resizable
+           body, reusing the EXACT `.ww-resize-handle` class (grip mark,
+           hover/active accent, ns-resize cursor, 8px hit area) the
+           Waveform page's own per-channel-panel resize already
+           established -- no second resize affordance/styling invented. */
+        #wwAnalysisRelatedWaveformsResizeHandle {
+            margin-top: 2px;
+        }
         /* Card internal padding standardized (12-14px, matching
            `.ww-phasor-controls-panel`/`.ww-phasor-playback-panel` above)
            -- the shared `section.panel` default (10px) is left alone
@@ -7442,6 +7504,28 @@
                         <button type="button" class="ww-analysis-type-item" id="wwAnalysisTypeOvercurrentBtn" data-analysis-type="overcurrent" aria-current="false">Overcurrent</button>
                     </nav>
                     <div class="ww-analysis-content">
+                        <!-- Shared Analysis "Related Waveforms" panel -- lives
+                             here at Init, then wwSetActiveAnalysisType() moves
+                             (reparents, never clones) this ONE node into
+                             whichever analyzer's own anchor is currently
+                             active. Belongs to the shared Analysis shell, not
+                             to Phasor or Overcurrent specifically -- see
+                             docs/project-memory/ANALYSIS_WORKSPACE.md. -->
+                        <section class="panel ww-analysis-related-waveforms-panel" id="wwAnalysisRelatedWaveformsPanel">
+                            <h3>Related Waveforms</h3>
+                            <p class="empty-state" id="wwAnalysisRelatedWaveformsEmptyState">No related waveform signals available for the current analysis.</p>
+                            <div class="ww-arw-body" id="wwAnalysisRelatedWaveformsBody" hidden>
+                                <div class="ww-arw-group" id="wwAnalysisRelatedWaveformsVoltageGroup" hidden>
+                                    <span class="ww-arw-group-label">VOLTAGE</span>
+                                    <div class="ww-arw-chart" id="wwAnalysisRelatedWaveformsVoltageChart"></div>
+                                </div>
+                                <div class="ww-arw-group" id="wwAnalysisRelatedWaveformsCurrentGroup" hidden>
+                                    <span class="ww-arw-group-label">CURRENT</span>
+                                    <div class="ww-arw-chart" id="wwAnalysisRelatedWaveformsCurrentChart"></div>
+                                </div>
+                            </div>
+                            <div class="ww-resize-handle" id="wwAnalysisRelatedWaveformsResizeHandle" role="separator" aria-orientation="horizontal" aria-label="Resize Related Waveforms panel height" tabindex="-1" hidden></div>
+                        </section>
                         <section class="ww-phasor-panel" id="wwPhasorPanel">
                             <section class="panel ww-phasor-controls-panel">
                                 <div class="ww-phasor-controls-row">
@@ -7467,6 +7551,17 @@
                                 <h3>Playback</h3>
                                 <div class="ww-phasor-playback-mount ww-analysis-playback-mount" id="wwPhasorPlaybackMount"></div>
                             </section>
+
+                            <!-- Shared Related Waveforms mount point (2026-09-12):
+                                 the ONE shared #wwAnalysisRelatedWaveformsPanel DOM
+                                 node is MOVED here (Node.appendChild on an
+                                 already-attached node reparents it, never clones
+                                 it) whenever Phasor becomes the active analyzer --
+                                 see wwSetActiveAnalysisType(). Phasor never renders
+                                 its own waveform panel; it only PUSHES its own
+                                 currently-visible roles via
+                                 wwPhasorPushRelatedWaveformRoles(). -->
+                            <div id="wwPhasorRelatedWaveformsAnchor"></div>
 
                             <div class="ww-phasor-status-row" id="wwPhasorStatusRow" hidden></div>
                             <p class="empty-state" id="wwPhasorEmptyState">Select an Engineering Context to begin.</p>
@@ -7526,6 +7621,14 @@
                                 <h3>Playback</h3>
                                 <div class="ww-phasor-playback-mount ww-analysis-playback-mount" id="wwOvercurrentPlaybackMount"></div>
                             </section>
+
+                            <!-- Shared Related Waveforms mount point -- see the
+                                 identical comment on #wwPhasorRelatedWaveformsAnchor
+                                 above. Overcurrent never renders its own waveform
+                                 panel; it only PUSHES its own currently-selected
+                                 current-phase role via
+                                 wwOvercurrentPushRelatedWaveformRoles(). -->
+                            <div id="wwOvercurrentRelatedWaveformsAnchor"></div>
 
                             <div class="ww-phasor-status-row" id="wwOvercurrentStatusRow" hidden></div>
                             <p class="empty-state" id="wwOvercurrentEmptyState">Select an Engineering Context to begin.</p>
@@ -21969,6 +22072,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             for (const panel of ww.panels) {
                 wwResizePanelPlot(panel);
             }
+            // Shared Analysis Related Waveforms panel -- the SAME
+            // general "something outside Plotly's own reliable window-
+            // resize detection changed a panel's available width/height"
+            // catch-up every other consumer of this function already
+            // gets (Workspace Sidebar drag, Main Sidebar Menu collapse/
+            // expand, real window resize). A cheap no-op guarded
+            // internally (chartEl.data check) when Related Waveforms
+            // has nothing plotted yet.
+            wwAnalysisResizeRelatedWaveformPlots();
             // Time Group Canvas: resizes EVERY active group's own ruler
             // and digital chart, not just one.
             const canResize = window.Plotly && Plotly.Plots && typeof Plotly.Plots.resize === "function";
@@ -29457,6 +29569,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // always gets a fresh per-source attempted slate, never
             // leaking into a DIFFERENT workspace's own bookkeeping.
             wwAnalysisResetContextState();
+            // Shared Related Waveforms panel: same whole-workspace reset
+            // hook -- clears roles/cached channel data/context id so a
+            // freshly-cleared workspace never shows a stale trace from
+            // the previous one. The user's own resize height is a UI
+            // preference, not workspace data, and is deliberately left
+            // untouched here.
+            wwAnalysisResetRelatedWaveformsState();
             for (const panel of ww.panels) {
                 if (panel.plotlyReady && panel.chartEl) Plotly.purge(panel.chartEl);
             }
@@ -34723,6 +34842,467 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // ==================================================================
 
         // ==================================================================
+        // Shared Analysis "Related Waveforms" panel (2026-09-12). Core
+        // architectural rule, mirroring the Engineering Context lifecycle
+        // module above: THE ANALYZER DECIDES WHAT SIGNALS ARE RELEVANT;
+        // THE SHARED ANALYSIS WORKSPACE DECIDES HOW THOSE WAVEFORMS ARE
+        // FETCHED, GROUPED, RENDERED, AND SYNCHRONIZED WITH PLAYBACK.
+        //
+        // An analyzer's ONLY responsibility is calling
+        // wwAnalysisSetRelatedWaveformRoles(roles, contextId, groupId)
+        // with its own currently-active roles -- an array of
+        // `{ roleKey, engineeringType, phase, channelRef, unit, label,
+        // color }` objects, sourced entirely from that analyzer's own
+        // already-resolved fetch result (channel_ref/unit came from the
+        // backend resolver via /phasor-diagram or /overcurrent -- this
+        // module NEVER parses a channel name or bypasses that metadata).
+        // Everything else -- deciding which channels actually need a new
+        // fetch, grouping by engineering family, Plotly rendering, the
+        // shared Playback cursor, the empty state, and the user-resizable
+        // height -- lives here, ONCE, so Phasor/Overcurrent/every future
+        // analyzer (Impedance Locus, Differential, Sequence Components)
+        // shares the identical implementation rather than building its
+        // own waveform-rendering engine.
+        // ==================================================================
+
+        const WW_ARW_MIN_HEIGHT = 150;
+        const WW_ARW_DEFAULT_HEIGHT = 280;
+        const WW_ARW_MAX_HEIGHT = 520;
+        //: Compact preview point budget -- these panels are far narrower
+        //: than a full Waveform page panel, so a modest budget is plenty;
+        //: the SAME existing /waveform endpoint's own min/max-envelope
+        //: reduction (backend/app/services/waveform_service.py) does the
+        //: actual work regardless of recording size (see docs/project-
+        //: memory/ANALYSIS_WORKSPACE.md's own "Data-fetch reuse" note).
+        const WW_ARW_POINT_BUDGET = 2000;
+
+        // Which analyzer's own panel is currently visible -- kept in
+        // sync exclusively by wwSetActiveAnalysisType(). Both Phasor's
+        // and Overcurrent's own Playback tick handlers keep computing/
+        // rendering on every tick regardless of which panel is actually
+        // shown (each one only gates on "is MY OWN Time Group the one
+        // Playback is moving," never on visibility) -- so this is the
+        // gate each analyzer's own wwXxxPushRelatedWaveformRoles() uses
+        // to avoid fighting over the ONE shared Related Waveforms state
+        // with the other, hidden analyzer on every tick.
+        let wwAnalysisActiveType = "phasor";
+
+        const wwAnalysisRelatedWaveformsState = {
+            roles: [],              // current analyzer's own active roles, canonical order preserved
+            contextId: null,        // Engineering Context these roles/waveforms belong to
+            groupId: null,          // Time Group whose extent defines the X range
+            rangeStart: null, rangeEnd: null,   // workspace time, from wwDeriveTimeGroupBounds(groupId)
+            lastSignature: null,    // short-circuits a no-op push (see wwAnalysisSetRelatedWaveformRoles)
+            channelCache: new Map(), // channelKey -> { time, values, unit } -- cleared only on a genuine context change
+            requestGeneration: 0,   // per-refresh stale-response guard (mirrors every other Analysis fetch's own epoch/generation pattern)
+            height: WW_ARW_DEFAULT_HEIGHT,
+            mounted: false,         // true once the DOM/Plotly panels exist and are safe to relayout/resize
+        };
+
+        function wwAnalysisChannelRefKey(ref) {
+            if (!ref) return "none";
+            return ref.kind === "calculated" ? "c:" + ref.calculated_channel_id : "s:" + ref.source_id + ":" + ref.channel_name;
+        }
+
+        function wwAnalysisRelatedWaveformRoleSignature(roles, contextId, groupId) {
+            const roleSig = roles.map((r) => r.roleKey + ":" + wwAnalysisChannelRefKey(r.channelRef)).sort().join(",");
+            return contextId + "|" + groupId + "|" + roleSig;
+        }
+
+        // The ONE entry point every analyzer calls. Cheap and idempotent
+        // when nothing material changed -- SAFE to call on every Playback
+        // tick's own render pass (Phasor/Overcurrent both do exactly
+        // that), since the signature short-circuit below means a steady-
+        // state tick (same channels, same context, same group) never
+        // re-fetches or re-renders anything (task's own explicit
+        // performance requirement: "changing OC settings such as TMS
+        // does not refetch unrelated waveform data").
+        function wwAnalysisSetRelatedWaveformRoles(roles, contextId, groupId) {
+            const s = wwAnalysisRelatedWaveformsState;
+            const signature = wwAnalysisRelatedWaveformRoleSignature(roles, contextId, groupId);
+            if (signature === s.lastSignature) return;
+            const contextChanged = contextId !== s.contextId;
+            s.lastSignature = signature;
+            s.roles = roles;
+            s.groupId = groupId;
+            if (contextChanged) {
+                // UAT §20: never display stale traces from the previous
+                // bay -- every cached channel belonged to the OLD
+                // context's own resolution, so none of it is valid here.
+                s.channelCache.clear();
+                s.contextId = contextId;
+            }
+            wwAnalysisRefreshRelatedWaveforms();
+        }
+
+        // "Start New Workspace"/"Clear workspace" lifecycle hook, called
+        // once from wwClearWorkspace() alongside wwAnalysisResetContextState().
+        // The user's own resize height is a UI preference, not workspace
+        // data, and is deliberately left untouched.
+        function wwAnalysisResetRelatedWaveformsState() {
+            const s = wwAnalysisRelatedWaveformsState;
+            s.roles = [];
+            s.contextId = null;
+            s.groupId = null;
+            s.rangeStart = null;
+            s.rangeEnd = null;
+            s.lastSignature = null;
+            s.channelCache.clear();
+            s.requestGeneration += 1;
+            wwAnalysisRenderRelatedWaveforms();
+        }
+
+        function wwAnalysisRelatedWaveformsGroupRoles(engineeringType) {
+            return wwAnalysisRelatedWaveformsState.roles.filter((r) => r.engineeringType === engineeringType);
+        }
+
+        // Reuses the SAME backend /waveform endpoint (and, for a
+        // calculated channel, /calculated-channels/{id}/waveform) the
+        // main Waveform page's own wwFetchChannelRange() calls -- same
+        // URL shape, same start_time/end_time/point_budget contract,
+        // same workspace-time<->source-time conversion boundary
+        // (wwWorkspaceTimeToSourceTime/wwAlignmentOffsetForDisplaySourceId).
+        // Deliberately a small, independent function rather than reusing
+        // wwFetchChannelRange() itself -- that function is coupled to the
+        // Waveform page's own per-channel-entry bookkeeping (abort
+        // controllers keyed into ww.channels/ww.calculatedChannels, the
+        // global ww.unitMode toggle), none of which this small, few-
+        // channel preview panel needs or should entangle itself with.
+        // `unit_mode` is ALWAYS "engineering" here (task's own explicit
+        // instruction: never silently apply Per-Unit in this first
+        // Related Waveforms implementation), independent of whatever the
+        // main Waveform page's own ww.unitMode is currently set to.
+        async function wwAnalysisFetchChannelWaveform(workspaceId, channelRef, startWorkspaceTime, endWorkspaceTime) {
+            const isCalculated = channelRef.kind === "calculated";
+            const displaySourceId = isCalculated ? channelRef.calculated_channel_id : channelRef.source_id;
+            const nativeStart = wwWorkspaceTimeToSourceTime(displaySourceId, startWorkspaceTime);
+            const nativeEnd = wwWorkspaceTimeToSourceTime(displaySourceId, endWorkspaceTime);
+            const url = new URL(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                (isCalculated
+                    ? "/calculated-channels/" + encodeURIComponent(channelRef.calculated_channel_id) + "/waveform"
+                    : "/sources/" + encodeURIComponent(channelRef.source_id) + "/waveform")
+            );
+            if (!isCalculated) url.searchParams.set("channel_name", channelRef.channel_name);
+            url.searchParams.set("start_time", String(nativeStart));
+            url.searchParams.set("end_time", String(nativeEnd));
+            url.searchParams.set("point_budget", String(WW_ARW_POINT_BUDGET));
+            url.searchParams.set("unit_mode", "engineering");
+            const body = await wwPhasorFetchJson(url.toString());
+            const alignmentOffset = wwAlignmentOffsetForDisplaySourceId(displaySourceId);
+            const time = alignmentOffset !== 0 ? body.time.map((t) => t + alignmentOffset) : body.time;
+            return { time, values: body.values, unit: body.unit };
+        }
+
+        // Fetches only whatever channels the CURRENT role set needs and
+        // are not already cached (task's own explicit performance
+        // requirement: "Visibility changes should fetch only newly-
+        // needed waveform data where practical or use cached data if
+        // already available") -- a role toggled off then back on inside
+        // the same context/Time Group never re-fetches. Waveform
+        // geometry itself is fetched ONCE per (context, group, channel)
+        // combination, never per Playback tick -- only the cursor moves
+        // on tick (see wwAnalysisRelatedWaveformsOnPlaybackTick() below).
+        async function wwAnalysisRefreshRelatedWaveforms() {
+            const s = wwAnalysisRelatedWaveformsState;
+            const myGeneration = ++s.requestGeneration;
+            const epochAtStart = ww.epoch;
+            const workspaceId = currentWorkspaceId();
+
+            if (s.roles.length === 0 || !s.groupId) {
+                wwAnalysisRenderRelatedWaveforms();
+                return;
+            }
+            const bounds = wwDeriveTimeGroupBounds(s.groupId);
+            if (!bounds) {
+                wwAnalysisRenderRelatedWaveforms();
+                return;
+            }
+
+            const seen = new Set();
+            const toFetch = [];
+            for (const role of s.roles) {
+                const key = wwAnalysisChannelRefKey(role.channelRef);
+                if (seen.has(key) || s.channelCache.has(key)) { seen.add(key); continue; }
+                seen.add(key);
+                toFetch.push({ key, ref: role.channelRef });
+            }
+
+            if (toFetch.length > 0) {
+                await Promise.all(toFetch.map(async (c) => {
+                    try {
+                        const data = await wwAnalysisFetchChannelWaveform(workspaceId, c.ref, bounds.start, bounds.end);
+                        if (myGeneration !== s.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                        s.channelCache.set(c.key, data);
+                    } catch (error) {
+                        // Left uncached -- rendered simply omits this one
+                        // trace rather than failing the whole panel.
+                    }
+                }));
+            }
+            if (myGeneration !== s.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+
+            s.rangeStart = bounds.start;
+            s.rangeEnd = bounds.end;
+            wwAnalysisRenderRelatedWaveforms();
+        }
+
+        const WW_ARW_PLOTLY_CONFIG = { displayModeBar: false, responsive: true };
+
+        // Plotly's own trace/layout color handling parses the color
+        // string through its OWN internal color library BEFORE ever
+        // setting an SVG attribute -- unlike this app's existing hand-
+        // rolled SVG (Phasor's diagram, the Overcurrent chart), which
+        // sets `var(--x)` directly as a real SVG presentation attribute
+        // and lets the BROWSER's own CSS cascade resolve it natively.
+        // Plotly does not understand `var(--x)` and silently falls back
+        // to its own default palette instead (caught visually during
+        // this feature's own implementation -- confirmed via a real
+        // rendered `<path>`'s computed stroke). Every CSS-custom-
+        // property color handed to Plotly is resolved to its actual
+        // value HERE, once, before being passed in.
+        function wwAnalysisResolveCssColor(cssValue) {
+            if (!cssValue) return cssValue;
+            const match = /^var\((--[\w-]+)\)$/.exec(cssValue.trim());
+            if (!match) return cssValue;
+            const resolved = getComputedStyle(document.documentElement).getPropertyValue(match[1]).trim();
+            return resolved || cssValue;
+        }
+
+        function wwAnalysisRelatedWaveformsCursorShape() {
+            const t = wwPlayback.currentTime;
+            const finite = Number.isFinite(t);
+            return {
+                type: "line", x0: finite ? t : 0, x1: finite ? t : 0, y0: 0, y1: 1,
+                xref: "x", yref: "paper", visible: finite,
+                line: { color: wwAnalysisResolveCssColor("var(--ww-chart-guide-stroke)"), width: 1 },
+            };
+        }
+
+        function wwAnalysisRelatedWaveformsLayout(unit) {
+            const s = wwAnalysisRelatedWaveformsState;
+            const gridColor = wwAnalysisResolveCssColor("var(--ww-chart-grid-stroke)");
+            return {
+                margin: { l: 44, r: 8, t: 4, b: 18 },
+                showlegend: false,
+                xaxis: {
+                    range: [s.rangeStart, s.rangeEnd], fixedrange: true,
+                    showgrid: true, gridcolor: gridColor, tickfont: { size: 9 },
+                },
+                yaxis: {
+                    title: { text: unit || "", font: { size: 9 } }, tickfont: { size: 9 },
+                    showgrid: true, gridcolor: gridColor,
+                },
+                shapes: [wwAnalysisRelatedWaveformsCursorShape()],
+                paper_bgcolor: "transparent", plot_bgcolor: "transparent",
+            };
+        }
+
+        // Canonical-order traces, one per active role in this family,
+        // colored via the SAME wwPhasorRoleColor(roleKey) every Phasor
+        // vector already uses -- no second, inconsistent phase-color
+        // scheme. A role whose channel data has not resolved (fetch
+        // still in flight, or failed) is simply omitted this render --
+        // it appears the moment its own fetch resolves, never blocking
+        // the other traces.
+        function wwAnalysisBuildRelatedWaveformTraces(groupRoles) {
+            const s = wwAnalysisRelatedWaveformsState;
+            const traces = [];
+            for (const role of groupRoles) {
+                const data = s.channelCache.get(wwAnalysisChannelRefKey(role.channelRef));
+                if (!data) continue;
+                traces.push({
+                    x: data.time, y: data.values, type: "scatter", mode: "lines",
+                    line: { width: 1.25, color: wwAnalysisResolveCssColor(role.color || wwPhasorRoleColor(role.roleKey)) },
+                    name: role.label || role.roleKey, hoverinfo: "x+y+name",
+                });
+            }
+            return traces;
+        }
+
+        // The one render path -- empty state, per-family group
+        // visibility (UAT §18: only Voltage present -> only Voltage
+        // renders, and the reverse; neither family present -> the
+        // compact explanatory empty state, never a blank large plot),
+        // and the Plotly figures themselves. Plotly.react() handles both
+        // the very first render and every subsequent update (its own
+        // documented general-purpose "make the plot look like this"
+        // call) -- never a separate newPlot/react split.
+        function wwAnalysisRenderRelatedWaveforms() {
+            const s = wwAnalysisRelatedWaveformsState;
+            const emptyState = document.getElementById("wwAnalysisRelatedWaveformsEmptyState");
+            const bodyEl = document.getElementById("wwAnalysisRelatedWaveformsBody");
+            const handleEl = document.getElementById("wwAnalysisRelatedWaveformsResizeHandle");
+            const voltageGroup = document.getElementById("wwAnalysisRelatedWaveformsVoltageGroup");
+            const currentGroup = document.getElementById("wwAnalysisRelatedWaveformsCurrentGroup");
+            if (!emptyState || !bodyEl || !voltageGroup || !currentGroup) return;
+
+            const voltageRoles = wwAnalysisRelatedWaveformsGroupRoles("Voltage");
+            const currentRoles = wwAnalysisRelatedWaveformsGroupRoles("Current");
+
+            if (voltageRoles.length === 0 && currentRoles.length === 0) {
+                emptyState.hidden = false;
+                bodyEl.hidden = true;
+                if (handleEl) handleEl.hidden = true;
+                s.mounted = false;
+                return;
+            }
+            emptyState.hidden = true;
+            bodyEl.hidden = false;
+            if (handleEl) handleEl.hidden = false;
+            bodyEl.style.height = s.height + "px";
+
+            voltageGroup.hidden = voltageRoles.length === 0;
+            currentGroup.hidden = currentRoles.length === 0;
+
+            if (voltageRoles.length > 0) {
+                const chartEl = document.getElementById("wwAnalysisRelatedWaveformsVoltageChart");
+                Plotly.react(chartEl, wwAnalysisBuildRelatedWaveformTraces(voltageRoles), wwAnalysisRelatedWaveformsLayout(voltageRoles[0].unit), WW_ARW_PLOTLY_CONFIG);
+            }
+            if (currentRoles.length > 0) {
+                const chartEl = document.getElementById("wwAnalysisRelatedWaveformsCurrentChart");
+                Plotly.react(chartEl, wwAnalysisBuildRelatedWaveformTraces(currentRoles), wwAnalysisRelatedWaveformsLayout(currentRoles[0].unit), WW_ARW_PLOTLY_CONFIG);
+            }
+            s.mounted = true;
+            // Group visibility just changed the flex-shared height each
+            // visible chart's own container actually has (one family
+            // present -> its chart now gets the FULL body height) --
+            // this codebase's own established finding is that Plotly's
+            // `responsive: true` only reliably reacts to a real `window`
+            // resize event, never an internal flex-sibling size change
+            // (see wwResizeAllVisiblePlots()'s own comment), so this
+            // needs an explicit catch-up call, exactly like every other
+            // non-window-resize layout change in this app already gets.
+            wwAnalysisResizeRelatedWaveformPlots();
+        }
+
+        // The ONE, permanent tick subscriber (registered once, in the
+        // wiring section near the bottom of this script, alongside every
+        // other wwPlaybackOnTick() consumer) -- updates ONLY the cursor
+        // shape's own x-position via a targeted Plotly.relayout(), never
+        // a full Plotly.react()/re-fetch. This is what keeps Playback
+        // smooth: waveform geometry stays static while playing, exactly
+        // like Phasor/Overcurrent's own tick handlers never re-fetch a
+        // curve/diagram shape on every tick either.
+        function wwAnalysisRelatedWaveformsOnPlaybackTick() {
+            const s = wwAnalysisRelatedWaveformsState;
+            if (!s.mounted) return;
+            const t = wwPlayback.currentTime;
+            const finite = Number.isFinite(t);
+            const update = { "shapes[0].x0": finite ? t : 0, "shapes[0].x1": finite ? t : 0, "shapes[0].visible": finite };
+            const voltageGroup = document.getElementById("wwAnalysisRelatedWaveformsVoltageGroup");
+            const currentGroup = document.getElementById("wwAnalysisRelatedWaveformsCurrentGroup");
+            if (voltageGroup && !voltageGroup.hidden) {
+                const chartEl = document.getElementById("wwAnalysisRelatedWaveformsVoltageChart");
+                if (chartEl && chartEl.data) Plotly.relayout(chartEl, update);
+            }
+            if (currentGroup && !currentGroup.hidden) {
+                const chartEl = document.getElementById("wwAnalysisRelatedWaveformsCurrentChart");
+                if (chartEl && chartEl.data) Plotly.relayout(chartEl, update);
+            }
+        }
+
+        // Presentation-only reflow for both chart elements -- mirrors
+        // wwResizePanelPlot()'s own established "Plotly.Plots.resize()
+        // never touches trace data/range" contract, called after a
+        // manual drag-resize and after a reparent (switching analyzer
+        // can change the panel's own available width/height even though
+        // the window itself did not resize).
+        function wwAnalysisResizeRelatedWaveformPlots() {
+            for (const id of ["wwAnalysisRelatedWaveformsVoltageChart", "wwAnalysisRelatedWaveformsCurrentChart"]) {
+                const chartEl = document.getElementById(id);
+                if (chartEl && chartEl.data && window.Plotly && Plotly.Plots && typeof Plotly.Plots.resize === "function") {
+                    Plotly.Plots.resize(chartEl);
+                }
+            }
+        }
+
+        function wwAnalysisClampRelatedWaveformsHeight(height) {
+            return Math.max(WW_ARW_MIN_HEIGHT, Math.min(WW_ARW_MAX_HEIGHT, height));
+        }
+
+        // User-resizable height (owner UAT addendum, 2026-09-12) -- an
+        // EXACT structural mirror of wwWireResizeHandle()'s own drag
+        // mechanics (dragStartY/dragStartHeight, pointer capture, an
+        // immediate clamped style write on every pointermove plus a
+        // single rAF-flushed Plotly resize, and an authoritative final
+        // write on pointerup/pointercancel) -- reused as a PATTERN, not
+        // literally called, since that function is parameterized on the
+        // Waveform page's own per-channel `panel` object shape
+        // (panel.groupKey/panel.chartEl) this shared, few-channel
+        // preview panel does not have. Session-local only (in-memory
+        // `wwAnalysisRelatedWaveformsState.height`, never localStorage/
+        // the backend) -- naturally preserved across a Phasor<->
+        // Overcurrent switch, a context/bay change, or any Playback
+        // state change, since none of those paths ever touch it.
+        function wwAnalysisWireRelatedWaveformsResize() {
+            const handle = document.getElementById("wwAnalysisRelatedWaveformsResizeHandle");
+            const bodyEl = document.getElementById("wwAnalysisRelatedWaveformsBody");
+            if (!handle || !bodyEl) return;
+            const s = wwAnalysisRelatedWaveformsState;
+            let dragStartY = 0;
+            let dragStartHeight = 0;
+            let rafId = null;
+
+            function applyHeight(height) {
+                const clamped = wwAnalysisClampRelatedWaveformsHeight(height);
+                s.height = clamped;
+                bodyEl.style.height = clamped + "px";
+                return clamped;
+            }
+            function flushResize() {
+                rafId = null;
+                wwAnalysisResizeRelatedWaveformPlots();
+            }
+            function onPointerMove(event) {
+                applyHeight(dragStartHeight + (event.clientY - dragStartY));
+                if (rafId === null) rafId = requestAnimationFrame(flushResize);
+            }
+            function endDrag(event) {
+                handle.removeEventListener("pointermove", onPointerMove);
+                handle.removeEventListener("pointerup", endDrag);
+                handle.removeEventListener("pointercancel", endDrag);
+                handle.classList.remove("ww-resize-active");
+                if (handle.hasPointerCapture && handle.hasPointerCapture(event.pointerId)) {
+                    handle.releasePointerCapture(event.pointerId);
+                }
+                if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+                applyHeight(dragStartHeight + (event.clientY - dragStartY));
+                wwAnalysisResizeRelatedWaveformPlots();
+            }
+            handle.addEventListener("pointerdown", (event) => {
+                if (event.button !== undefined && event.button !== 0) return;
+                dragStartY = event.clientY;
+                dragStartHeight = s.height;
+                handle.classList.add("ww-resize-active");
+                if (handle.setPointerCapture) handle.setPointerCapture(event.pointerId);
+                handle.addEventListener("pointermove", onPointerMove);
+                handle.addEventListener("pointerup", endDrag);
+                handle.addEventListener("pointercancel", endDrag);
+                event.preventDefault();
+            });
+        }
+
+        // Reparents the ONE shared panel node into whichever analyzer's
+        // own anchor is now active (Node.appendChild on an
+        // already-attached element MOVES it -- never clones/recreates
+        // it), then reflows both Plotly instances for their own possibly
+        // -changed available width. Called once at Init (default
+        // "phasor") and every wwSetActiveAnalysisType() switch.
+        function wwAnalysisMountRelatedWaveformsInto(anchorId) {
+            const panelEl = document.getElementById("wwAnalysisRelatedWaveformsPanel");
+            const anchorEl = document.getElementById(anchorId);
+            if (!panelEl || !anchorEl) return;
+            // insertBefore on a node already attached elsewhere detaches
+            // it from its old parent first (DOM spec) -- the anchor
+            // itself stays a stable, permanent empty marker for the next
+            // switch back.
+            anchorEl.parentNode.insertBefore(panelEl, anchorEl);
+            wwAnalysisResizeRelatedWaveformPlots();
+        }
+        // ==================================================================
+
+        // ==================================================================
         // Overcurrent Analysis v1 -- the SECOND Analysis-menu analyzer.
         // Reuses the shared Analysis shell, the shared wwPlayback
         // controller, and the same "Bay/Engineering Context -> Playback
@@ -34924,6 +35504,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (body) body.hidden = true;
             const emptyState = document.getElementById("wwOvercurrentEmptyState");
             if (emptyState) { emptyState.hidden = false; emptyState.textContent = message; }
+            // Nothing computed -- Related Waveforms has nothing valid to
+            // show either (never derived from a possibly-stale
+            // wwOvercurrentState.latestResult). Gated on visibility --
+            // this can fire while Overcurrent's own panel is HIDDEN
+            // (Phasor showing), and must never blank the shared panel
+            // out from under the analyzer actually on screen.
+            if (wwAnalysisActiveType === "overcurrent") {
+                wwAnalysisSetRelatedWaveformRoles([], wwOvercurrentState.selectedContextId, null);
+            }
         }
 
         function wwOvercurrentShowNoContextSelected() {
@@ -35178,6 +35767,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 valuesList.innerHTML = "";
                 alertEl.hidden = true;
                 wwOvercurrentRenderChart(null, null, null);
+                wwOvercurrentPushRelatedWaveformRoles();
                 return;
             }
             statusRow.hidden = true;
@@ -35216,6 +35806,42 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
 
             wwOvercurrentEnsureCurveAndRenderPoint(result);
+            wwOvercurrentPushRelatedWaveformRoles();
+        }
+
+        // Shared Related Waveforms integration (2026-09-12): Overcurrent's
+        // own currently-selected phase defines the ONE active current
+        // role -- reuses `wwOvercurrentState.phase` verbatim, never a
+        // second waveform-channel selector (UAT §5/§22). No Voltage
+        // group is ever declared here, even though Voltage channels may
+        // exist in the same Engineering Context -- only analyzer-
+        // relevant signals are shown. `channel_ref`/`unit` come straight
+        // from the already-resolved /overcurrent response.
+        function wwOvercurrentComputeActiveRelatedWaveformRoles() {
+            const result = wwOvercurrentState.latestResult;
+            if (!result || result.status !== "computed" || !result.channel_ref) return [];
+            // "Ia"/"Ib"/"Ic" -- the SAME role-key casing convention
+            // Phasor's own WW_PHASOR_DIAGRAM_ROLE_ORDER already
+            // established, so a role never reads as two different
+            // identities depending on which analyzer declared it.
+            const roleKey = "I" + wwOvercurrentState.phase.toLowerCase();
+            return [{
+                roleKey, engineeringType: "Current", phase: wwOvercurrentState.phase,
+                channelRef: result.channel_ref, unit: result.measured_rms_current_unit,
+                label: roleKey, color: wwPhasorRoleColor(roleKey),
+            }];
+        }
+        function wwOvercurrentPushRelatedWaveformRoles() {
+            // Gated on visibility -- see wwAnalysisActiveType's own
+            // docstring: Overcurrent's own tick handler keeps rendering
+            // while hidden (Phasor showing), and must not overwrite the
+            // shared panel with a role set nobody can currently see.
+            if (wwAnalysisActiveType !== "overcurrent") return;
+            wwAnalysisSetRelatedWaveformRoles(
+                wwOvercurrentComputeActiveRelatedWaveformRoles(),
+                wwOvercurrentState.selectedContextId,
+                wwOvercurrentState.activeTimeGroupId
+            );
         }
 
         // Curve geometry depends ONLY on characteristic/TMS -- cached and
@@ -36077,6 +36703,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPhasorMountPlaybackControls(null);
             wwPhasorState.activeTimeGroupId = null;
             wwPhasorState.latestDiagram = null;
+            // Nothing computed -- Related Waveforms has nothing valid to
+            // show either (never derived from a possibly-stale
+            // wwPhasorState.latestDiagram). Gated on visibility -- this
+            // can fire while Phasor's own panel is HIDDEN (Overcurrent
+            // showing), and must never blank the shared panel out from
+            // under the analyzer actually on screen.
+            if (wwAnalysisActiveType === "phasor") {
+                wwAnalysisSetRelatedWaveformRoles([], wwPhasorState.selectedContextId, null);
+            }
         }
 
         function wwPhasorShowNoContextSelected() {
@@ -36527,6 +37162,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 statusRow.hidden = false;
                 statusRow.className = "ww-phasor-status-row";
                 statusRow.textContent = "Could not reach the backend.";
+                wwPhasorPushRelatedWaveformRoles();
                 return;
             }
 
@@ -36551,6 +37187,47 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             wwPhasorRenderValuesList(diagram);
             wwPhasorRenderDiagramSvg(diagram);
+            wwPhasorPushRelatedWaveformRoles();
+        }
+
+        // Shared Related Waveforms integration (2026-09-12): Phasor's
+        // own currently-VISIBLE, AVAILABLE roles define the active
+        // waveform set -- reuses `wwPhasorState.visibleRoles` verbatim,
+        // never a second independent waveform-visibility state (UAT
+        // §4/§21). `channel_ref`/`unit` come straight from the already-
+        // resolved /phasor-diagram response; this never re-derives them
+        // from a channel name.
+        function wwPhasorComputeActiveRelatedWaveformRoles() {
+            const diagram = wwPhasorState.latestDiagram;
+            if (!diagram || !diagram.roles) return [];
+            const roles = [];
+            for (const roleKey of WW_PHASOR_DIAGRAM_ROLE_ORDER) {
+                const role = diagram.roles[roleKey];
+                if (!role || role.status !== "available") continue;
+                if (wwPhasorState.visibleRoles[roleKey] === false) continue;
+                roles.push({
+                    roleKey,
+                    engineeringType: roleKey.charAt(0) === "V" ? "Voltage" : "Current",
+                    phase: roleKey.slice(-1),
+                    channelRef: role.channel_ref,
+                    unit: role.unit,
+                    label: roleKey,
+                    color: wwPhasorRoleColor(roleKey),
+                });
+            }
+            return roles;
+        }
+        function wwPhasorPushRelatedWaveformRoles() {
+            // Gated on visibility -- see wwAnalysisActiveType's own
+            // docstring: Phasor's own tick handler keeps rendering while
+            // hidden (Overcurrent showing), and must not overwrite the
+            // shared panel with a role set nobody can currently see.
+            if (wwAnalysisActiveType !== "phasor") return;
+            wwAnalysisSetRelatedWaveformRoles(
+                wwPhasorComputeActiveRelatedWaveformRoles(),
+                wwPhasorState.selectedContextId,
+                wwPhasorState.activeTimeGroupId
+            );
         }
 
         // Cheap re-render from the LAST fetched diagram -- called after a
@@ -36892,6 +37569,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             onFreshContextsDiscovered: wwOvercurrentOnAnalysisFreshContextsDiscovered,
         });
 
+        // Shared Related Waveforms panel: the ONE permanent tick
+        // subscriber (cursor position only, never a re-fetch/re-render --
+        // see wwAnalysisRelatedWaveformsOnPlaybackTick()'s own docstring),
+        // the one drag-resize wiring call, and the initial mount into
+        // Phasor's own anchor (the default active analyzer on a fresh
+        // page load, matching `class="... active"` already on
+        // #wwAnalysisTypePhasorBtn in the static HTML).
+        wwPlaybackOnTick(wwAnalysisRelatedWaveformsOnPlaybackTick);
+        wwAnalysisWireRelatedWaveformsResize();
+        wwAnalysisMountRelatedWaveformsInto("wwPhasorRelatedWaveformsAnchor");
+
         // Phase 3A: App Shell wiring.
         // Phase 3B-UAT4 (section 3): Recordings is the fresh-entry
         // default page. Calling the SAME shellSetCurrentPage() every
@@ -36958,6 +37646,32 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             for (const [panelType, panelId] of Object.entries(wwAnalysisPanelsByType)) {
                 const panelEl = document.getElementById(panelId);
                 if (panelEl) panelEl.hidden = panelType !== type;
+            }
+            // Both analyzers keep computing/rendering on every shared
+            // Playback tick REGARDLESS of which one is currently visible
+            // (each one's own tick handler only gates on "is MY OWN
+            // Time Group the one moving," not on panel visibility) -- so
+            // wwAnalysisActiveType is the gate that stops the
+            // currently-HIDDEN analyzer's own tick-driven push from
+            // fighting over the shared Related Waveforms state with the
+            // visible one (own regression caught via a real Playback
+            // network-request test: without this gate, two analyzers
+            // sharing one Time Group thrash the role set every tick,
+            // causing a waveform re-fetch every tick -- exactly what
+            // task performance requirement forbids).
+            wwAnalysisActiveType = type;
+            // Shared Related Waveforms panel: reparent into the newly-
+            // active analyzer's own anchor, then ask THAT analyzer to
+            // re-push its own currently-active roles (UAT §19: switching
+            // Phasor -> Overcurrent updates the waveform set without
+            // resetting Playback time; switching back restores Phasor's
+            // own set -- neither push touches wwPlayback in any way).
+            if (type === "phasor") {
+                wwAnalysisMountRelatedWaveformsInto("wwPhasorRelatedWaveformsAnchor");
+                wwPhasorPushRelatedWaveformRoles();
+            } else if (type === "overcurrent") {
+                wwAnalysisMountRelatedWaveformsInto("wwOvercurrentRelatedWaveformsAnchor");
+                wwOvercurrentPushRelatedWaveformRoles();
             }
         }
         document.getElementById("wwAnalysisTypePhasorBtn").addEventListener("click", () => wwSetActiveAnalysisType("phasor"));

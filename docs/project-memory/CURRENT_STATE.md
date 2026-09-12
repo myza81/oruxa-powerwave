@@ -463,6 +463,34 @@ analyzer-specific by design. No backend files touched. See
 Analysis Engineering Context lifecycle" section for the full
 architecture.
 
+**Shared Analysis "Related Waveforms" panel is implemented — a third
+shared Analysis workspace primitive (2026-09-12,
+[DECISIONS.md — DEC-089's own "Update (2026-09-12)"](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)).**
+A compact, context-aware, analyzer-aware waveform preview directly
+below Playback in each analyzer's own panel — one shared DOM instance
+reparented (never cloned) between analyzers, grouped by engineering
+family (Voltage/Current, each its own y-axis/unit), driven by a shared
+vertical Playback-time cursor (`Plotly.relayout()` only, never a
+re-fetch on tick). Core invariant: **the analyzer decides WHAT signals
+are relevant (`wwAnalysisSetRelatedWaveformRoles(roles, contextId,
+groupId)`); the shared Analysis workspace decides HOW those are
+fetched, grouped, rendered, and synchronized.** Phasor's own existing
+vector-visibility toggle now also controls its waveform trace (no
+second visibility control); Overcurrent's own existing Phase selector
+drives its one Current role (no second channel selector, never a
+Voltage role). Reuses the EXISTING `/waveform` endpoint verbatim (no
+new backend endpoint), per-channel cached, never refetched per Playback
+tick. User-resizable height (a vertical drag handle reusing the
+EXISTING `.ww-resize-handle` class the Waveform page's own per-channel-
+panel resize already established) is session-local frontend state
+only. A real regression was caught and fixed during implementation:
+both analyzers' own tick handlers kept computing while hidden, causing
+the two to fight over the shared state and thrash waveform re-fetches
+every tick — fixed via an explicit `wwAnalysisActiveType` visibility
+gate. See [ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md) (new document,
+consolidating all three shared Analysis primitives) for the full
+architecture.
+
 **Overcurrent Analysis v1 (2026-09-12,
 [DECISIONS.md — DEC-090](DECISIONS.md#dec-090--overcurrent-analysis-v1-the-second-analysis-menu-analyzer-iec-idmt-characteristic-evaluation-against-a-one-cycle-trailing-rms-current-at-the-shared-playback-driven-analysis-time))
 is implemented as the SECOND Analysis-menu analyzer** — Phasor remains

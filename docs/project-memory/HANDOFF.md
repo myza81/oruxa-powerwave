@@ -8,32 +8,27 @@ Last updated: **2026-09-12**
 
 ## What was most recently done
 
-**Eight sequential tasks in one session, plus two concurrent Codex
+**Nine sequential tasks in one session, plus two concurrent Codex
 styling commits: (1) Playback speed set extended to 0.05x/0.10x, (2)
 Analysis workspace shell visual polish, (3) Playback controls
-restricted to Analysis pages (removed from the raw Waveform Time Group
-toolbar), (4) Overcurrent Analysis v1 — the second Analysis-menu
-analyzer, (5) Chart UX refinement (engineering grid + axis labels on
-both Phasor and Overcurrent charts), (6) Owner UAT follow-up — Phasor
-axis-label visibility fix + an adjustable Overcurrent chart viewport
-(user-controlled X/Y range, zoom in/out/reset, default domain widened
-to 100x/100s, absolute bounds 200x/1000s), (7) a further owner UAT
-follow-up on (6) — the Overcurrent curve now enters/exits the visible
-chart at the EXACT viewport boundary (analytic Y/X-boundary
-intersection) rather than at a coarse pre-sampled point, (8) a
+restricted to Analysis pages, (4) Overcurrent Analysis v1 — the second
+Analysis-menu analyzer, (5) Chart UX refinement, (6) Owner UAT
+follow-up — Phasor axis-label fix + an adjustable Overcurrent chart
+viewport, (7) a further owner UAT follow-up on (6) — the Overcurrent
+curve now enters/exits the chart at the EXACT viewport boundary, (8) a
 lifecycle/architecture fix — Engineering Context discovery/bootstrap
-ownership moved from Phasor to the shared Analysis workspace, fixing a
-UAT-reported bug where opening Overcurrent directly after an upload
-(without ever visiting Phasor first) could leave the Bay selector
-empty.** Commits, in order: `32b2fae` (speed set), `ff45165` (shell
-polish), `8b853fa` (Waveform Playback removal), `98d3f28` (Overcurrent
-v1), `ad00d13` (chart UX refinement), `e07db0d` (adjustable viewport),
-`6b43b25` (Codex, concurrent — `#pageAnalysis` layout CSS only),
-`26db902` (curve/viewport boundary alignment), `62c51ff` (Codex,
-concurrent — shared Analysis Playback-control styling/icon refinement,
-no overlap with this session's own context-lifecycle work), plus this
-task's own final commit for (8) (see this task's own final report for
-the exact hash). All pushed to `origin/main`.
+ownership moved from Phasor to the shared Analysis workspace, (9) a
+second shared-Analysis-primitive feature — the "Related Waveforms"
+panel (context-aware, analyzer-aware waveform preview below Playback,
+plus a user-resizable height addendum).** Commits, in order: `32b2fae`
+(speed set), `ff45165` (shell polish), `8b853fa` (Waveform Playback
+removal), `98d3f28` (Overcurrent v1), `ad00d13` (chart UX refinement),
+`e07db0d` (adjustable viewport), `6b43b25` (Codex, concurrent —
+`#pageAnalysis` layout CSS only), `26db902` (curve/viewport boundary
+alignment), `62c51ff` (Codex, concurrent — shared Analysis Playback-
+control styling/icon refinement), `e0435e9` (context lifecycle),
+plus this task's own final commit for (9) (see this task's own final
+report for the exact hash). All pushed to `origin/main`.
 
 **(1) Playback speed set**: `WW_PLAYBACK_SPEEDS` extended from
 `[0.25, 0.5, 1, 2, 4]` to `[0.05, 0.1, 0.25, 0.5, 1, 2, 4]` for slow
@@ -243,6 +238,62 @@ touched this task, so full backend regression was not re-run (per the
 task's own explicit "backend regression only if backend production
 files change" instruction) — the prior task's own full backend
 regression pass (on `26db902`) stands.
+
+**(9) Shared Analysis "Related Waveforms" panel** — a third shared
+Analysis workspace primitive, following (8)'s own established pattern.
+A compact, context-aware, analyzer-aware waveform preview directly
+below Playback in each analyzer's own panel — one shared DOM instance
+(`#wwAnalysisRelatedWaveformsPanel`), reparented (never cloned) between
+analyzers as the active type changes, grouped by engineering family
+(Voltage/Current, each its own y-axis/unit), driven by the ONE shared
+`wwPlayback.currentTime` via a targeted `Plotly.relayout()` on tick
+(never a re-fetch/re-render). **Core invariant: the analyzer decides
+WHAT signals are relevant (one call,
+`wwAnalysisSetRelatedWaveformRoles(roles, contextId, groupId)`); the
+shared Analysis workspace decides HOW those are fetched, grouped,
+rendered, and synchronized.** Phasor's own existing vector-visibility
+toggle now also controls its waveform trace (no second visibility
+control); Overcurrent's own existing Phase selector drives its one
+Current role (no second channel selector, never a Voltage role merely
+because Voltage channels exist in the context). Reuses the EXISTING
+`/waveform`/`/calculated-channels/{id}/waveform` endpoints verbatim (no
+new backend endpoint) — per-channel cached, refetched only on a
+genuine context/role/range change, never per tick. Owner UAT addendum:
+a user-resizable height via a vertical drag handle reusing the EXISTING
+`.ww-resize-handle` class the Waveform page's own per-channel-panel
+resize already established (min 150px/default 280px/max 520px,
+session-local frontend state only, never localStorage/the backend).
+
+Two real issues caught and fixed during implementation (both would
+have shipped silently broken otherwise): (a) both analyzers' own
+Playback tick handlers keep computing/rendering regardless of which
+panel is visible, so without an explicit `wwAnalysisActiveType`
+visibility gate, two analyzers sharing one Time Group fought over the
+shared role state and thrashed a waveform re-fetch on every single tick
+— caught by a Playback network-request Playwright test; (b) Plotly's
+own trace/layout color handling does not resolve `var(--x)` CSS custom
+properties the way this app's existing hand-rolled SVG charts do,
+silently falling back to Plotly's own default palette — caught
+visually and fixed with an explicit `getComputedStyle()`-based
+resolver. New document
+[ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md) consolidates all three
+shared Analysis primitives (Engineering Context lifecycle, Playback,
+Related Waveforms) in one place, since there is now enough common
+infrastructure to justify it.
+
+**Tests**: new `backend/tests/test_frontend_analysis_related_waveforms.py`
+(47 static structural tests) and `browser-tests/
+analysis_related_waveforms.spec.js` (23 Playwright scenarios: shared-
+panel structure, Phasor role/visibility integration, Overcurrent phase
+integration, shared Playback cursor sync, analyzer switch with
+Playback-time preservation, Engineering Context change, and the full
+resizable-height addendum — drag up/down, min/max bounds, survives an
+analyzer switch, cursor alignment after resize, no refetch on resize,
+narrow-viewport usability). No backend production files touched. Full
+frontend static suite and the FULL Playwright suite (101 scenarios
+across every spec file in the repo) all pass; `git diff --check` clean.
+See [DECISIONS.md — DEC-089's own second "Update (2026-09-12)"](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)
+for the full governance record.
 
 ## What was done in the prior session — multi-upload Phasor bootstrap fix
 

@@ -14128,6 +14128,82 @@ shared Analysis workspace" section and
 Analysis Engineering Context lifecycle" section for the full
 architecture.
 
+**Update (2026-09-12) — Shared Analysis "Related Waveforms" panel: a
+third shared Analysis workspace primitive, following the SAME
+architectural pattern the Engineering Context lifecycle Update
+immediately above established.** Owner product intent: a compact,
+context-aware, analyzer-aware waveform preview directly below Playback
+in every analyzer's own panel, grouped by engineering family (Voltage/
+Current), never a copy of the full Waveform page and never requiring
+manual channel selection. Core invariant: **the analyzer decides WHAT
+signals are relevant; the shared Analysis workspace decides HOW those
+waveforms are fetched, grouped, rendered, and synchronized with
+Playback.**
+
+**Fix/addition**: one shared DOM instance
+(`#wwAnalysisRelatedWaveformsPanel`), reparented (never cloned) between
+each analyzer's own anchor as the active type changes
+(`wwAnalysisMountRelatedWaveformsInto()`). An analyzer's own
+integration is a single call, `wwAnalysisSetRelatedWaveformRoles(roles,
+contextId, groupId)`, with `roles` sourced entirely from that
+analyzer's own already-resolved backend response (never a parsed
+channel name). Phasor's own existing `visibleRoles` vector-visibility
+state now ALSO drives which waveforms are shown — no second visibility
+control. Overcurrent's own existing Phase selector drives its one
+active Current role — no second channel selector, and never a Voltage
+role merely because Voltage channels exist in the same context. Data
+fetch reuses the EXISTING `/waveform`/`/calculated-channels/{id}/
+waveform` endpoints verbatim (no new backend endpoint) — per-channel
+cached, refetched only when context/roles/range genuinely change, never
+per Playback tick (the cursor alone updates on tick, via a targeted
+`Plotly.relayout()`). A user-resizable height (owner UAT addendum, a
+vertical drag handle reusing the EXISTING `.ww-resize-handle` class the
+Waveform page's own per-channel-panel resize already established) is
+session-local frontend state only, never localStorage/the backend.
+
+**A real regression caught and fixed during this feature's own
+implementation**: both analyzers' own Playback tick handlers keep
+computing/rendering regardless of which panel is currently visible
+(each one gates only on "is MY OWN Time Group the one moving," never on
+DOM visibility) — without an explicit gate, two analyzers sharing one
+Time Group would overwrite each other's own role push on every single
+tick, causing constant waveform re-fetch thrashing. Fixed by
+`wwAnalysisActiveType`, kept in sync exclusively by
+`wwSetActiveAnalysisType()`, gating every `wwXxxPushRelatedWaveformRoles()`
+call. Caught directly by a Playback network-request Playwright test
+that initially showed waveform fetches firing every tick — exactly the
+kind of real-browser-only regression a source-text test cannot catch.
+
+**Also caught**: Plotly's own trace/layout color handling does not
+understand `var(--x)` CSS custom property strings the way this app's
+existing hand-rolled SVG charts do (browser-native CSS cascade
+resolution vs. Plotly's own internal color-parsing library) — silently
+fell back to Plotly's own default color palette instead of the theme's
+phase-identity colors until fixed with an explicit
+`getComputedStyle()`-based resolver (`wwAnalysisResolveCssColor()`).
+
+Reason: establishes the same "analyzer declares, shared workspace
+executes" pattern for waveform context as the Engineering Context
+lifecycle Update already established for context discovery — the
+alternative (each analyzer building its own waveform-preview rendering)
+would have reintroduced exactly the kind of per-analyzer duplication
+this session's own prior fix was written to eliminate.
+
+Impact: `frontend/index.html` only — no backend files touched (the
+existing waveform endpoints are reused verbatim). New
+`backend/tests/test_frontend_analysis_related_waveforms.py` (47 tests)
+and `browser-tests/analysis_related_waveforms.spec.js` (23 Playwright
+scenarios: shared-panel structure, Phasor/Overcurrent integration,
+Playback cursor sync, analyzer switch, Engineering Context change, and
+the resizable-height addendum). Full frontend static suite and full
+Playwright suite (Overcurrent + Phasor + bare-context + Playback +
+Related Waveforms + everything else) all pass. See
+[ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md) (new) for the full
+shared-shell architecture, and
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md#related-waveforms-integration-shared-analysis-primitive-2026-09-12)/
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md#related-waveforms-integration-shared-analysis-primitive-2026-09-12)
+for each analyzer's own small integration point.
+
 ---
 
 ## DEC-090 — Overcurrent Analysis v1: the second Analysis-menu analyzer, IEC IDMT characteristic evaluation against a one-cycle trailing RMS current, at the shared Playback-driven analysis time
