@@ -565,6 +565,144 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
     }).toPass({ timeout: 5000 });
   });
 
+  // ---- Multi-upload bootstrap fix: source-coverage-driven discovery ----
+  test("a later-uploaded, uncovered source is discovered automatically without disturbing the already-usable bay", async ({ page }) => {
+    // 1. Upload event A -> auto-bootstrap suggests ALPHA1 (unchanged
+    //    fresh-bootstrap path).
+    await uploadFixture(page);
+    await openAnalysisPhasor(page);
+    await expect(page.locator("#wwPhasorContextSelect option")).toHaveCount(2, { timeout: 10000 }); // blank + ALPHA1
+    await expect(page.locator("#wwPhasorContextSelect")).not.toHaveValue("");
+    const alphaContextId = await page.locator("#wwPhasorContextSelect").inputValue();
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+
+    // 2. Upload event B (a second, ROOTED source, BRAVO1_*) WITHOUT
+    //    clearing the workspace -- via the SPA nav, never page.goto(),
+    //    so the current session (and ALPHA1's own selection) survives.
+    const suggestUrls = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/engineering-contexts/suggest")) suggestUrls.push(request.url());
+    });
+    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "phasor_smoke_bravo_three_phase.cfg"));
+    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
+    await page.locator("#uploadModalSubmitBtn").click();
+    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+    const bravoSourceId = await page.locator("#recordingsTableBody tr[data-source-id]").last().getAttribute("data-source-id");
+
+    // 3. Re-enter Phasor -- ALPHA1 remains selected and usable
+    //    IMMEDIATELY (never blanked/reset), while BRAVO1 (uncovered) is
+    //    discovered in the background.
+    await page.locator("#mainNavAnalysisBtn").click();
+    await expect(page.locator("#wwPhasorContextSelect")).toHaveValue(alphaContextId);
+    const valuesTextRightAfterReentry = await page.locator("#wwPhasorValuesList").innerText();
+    expect(valuesTextRightAfterReentry).toMatch(/100\.0\s*V/); // ALPHA1's own values, uninterrupted
+
+    // 4. BRAVO1 appears in the selector once discovery completes.
+    await expect(page.locator("#wwPhasorContextSelect option")).toHaveCount(3, { timeout: 10000 }); // blank + ALPHA1 + BRAVO1
+    // ALPHA1 is still the selected value -- adding BRAVO1 never jumps
+    // the engineer away from their own already-open bay.
+    await expect(page.locator("#wwPhasorContextSelect")).toHaveValue(alphaContextId);
+
+    // Exactly one suggestion request was made for BRAVO1's own new
+    // source -- never a duplicate, never one for ALPHA1 (already
+    // covered).
+    const bravoSuggestUrls = suggestUrls.filter((url) => url.includes(encodeURIComponent(bravoSourceId)));
+    expect(bravoSuggestUrls).toHaveLength(1);
+    const alphaSuggestUrls = suggestUrls.filter((url) => !url.includes(encodeURIComponent(bravoSourceId)));
+    expect(alphaSuggestUrls).toHaveLength(0);
+
+    // 5. Selecting BRAVO1 loads its own six roles correctly.
+    const bravoOption = page.locator("#wwPhasorContextSelect option", { hasText: "BRAVO1" });
+    await expect(bravoOption).toHaveCount(1);
+    const bravoContextId = await bravoOption.getAttribute("value");
+    await page.locator("#wwPhasorContextSelect").selectOption(bravoContextId);
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+      expect(text).toMatch(/40\.0\s*A/);
+    }).toPass({ timeout: 5000 });
+  });
+
+  test("removing a covered source does not block discovery of a still-uncovered one", async ({ page }) => {
+    // 1. Upload A -> auto-bootstrap covers it.
+    await uploadFixture(page);
+    await openAnalysisPhasor(page);
+    await expect(page.locator("#wwPhasorContextSelect option")).toHaveCount(2, { timeout: 10000 });
+
+    // 2. Upload B (BRAVO1) but do NOT visit Phasor again yet -- B stays
+    //    genuinely uncovered and unattempted.
+    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "phasor_smoke_bravo_three_phase.cfg"));
+    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
+    await page.locator("#uploadModalSubmitBtn").click();
+    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+
+    // 3. Remove source A entirely -- the old workspace-wide
+    //    `bootstrapAttempted` boolean would have permanently blocked ANY
+    //    further discovery for the rest of the session; the new
+    //    per-source `attemptedSourceIds` must not.
+    const alphaRow = page.locator("#recordingsTableBody tr[data-source-id]").first();
+    const alphaSourceId = await alphaRow.getAttribute("data-source-id");
+    await page.locator(`button[data-action="remove"][data-source-id="${alphaSourceId}"]`).click();
+    await expect(page.locator("#confirmOverlay")).toBeVisible();
+    await page.locator("#confirmRemoveBtn").click();
+    await expect(page.locator("#confirmOverlay")).toBeHidden();
+    await expect(page.locator(`#recordingsTableBody tr[data-source-id="${alphaSourceId}"]`)).toHaveCount(0);
+
+    // 4. Re-enter Phasor -- BRAVO1 is still discoverable and gets
+    //    suggested/selected normally.
+    await page.locator("#mainNavAnalysisBtn").click();
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+      expect(text).toMatch(/40\.0\s*A/);
+    }).toPass({ timeout: 10000 });
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
+  });
+
+  test("two bare-role sources each get their own distinct Default Context, never deduplicated by display name", async ({ page }) => {
+    const BARE_STEM = "phasor_bare_three_phase";
+
+    // Upload the SAME bare-role fixture TWICE -- two genuinely different
+    // sources, each producing its OWN "Default Context" suggestion (same
+    // display name, different ids). Coverage is keyed by source id, so
+    // neither is ever skipped as "already represented" merely because
+    // their context happens to share a display name.
+    await page.goto("/index.html");
+    for (let i = 0; i < 2; i++) {
+      await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+      await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+      await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${BARE_STEM}.cfg`));
+      await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
+      await page.locator("#uploadModalSubmitBtn").click();
+      await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+    }
+
+    await openAnalysisPhasor(page);
+    await expect(page.locator("#wwPhasorContextSelect option")).toHaveCount(3, { timeout: 10000 }); // blank + 2x "Default Context"
+    const optionValues = await page.locator("#wwPhasorContextSelect option").evaluateAll(
+      (opts) => opts.map((o) => o.value).filter((v) => v !== "")
+    );
+    expect(new Set(optionValues).size).toBe(2); // two distinct ids, never deduplicated
+    const optionLabels = await page.locator("#wwPhasorContextSelect option").allTextContents();
+    expect(optionLabels.filter((label) => label === "Default Context")).toHaveLength(2);
+
+    // Both are independently usable.
+    for (const contextId of optionValues) {
+      await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+      await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
+    }
+  });
+
   // ---- Scenario B: existing context ----
   test("existing context -> selector populated immediately, no suggestion request made", async ({ page }) => {
     let suggestRequested = false;

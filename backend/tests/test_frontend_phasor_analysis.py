@@ -140,25 +140,46 @@ class TestEngineeringContextPopulation:
 
 
 class TestContextBootstrap:
-    """UAT fix (2026-09-11): when the workspace has loaded sources but no
-    Engineering Contexts yet, Phasor auto-bootstraps suggestions instead
-    of leaving the engineer to go configure one elsewhere first."""
+    """Multi-upload bootstrap fix (2026-09-12): automatic Engineering
+    Context suggestion is SOURCE-COVERAGE driven, not workspace-empty-
+    driven -- a source uploaded AFTER the workspace's first context
+    already exists must still be discovered, never silently skipped
+    merely because `contexts.length > 0`."""
 
-    def test_existing_contexts_skip_bootstrap_entirely(self):
-        """Owner instruction: this fix must not alter already-working
-        workflows -- if contexts.length > 0, render immediately, no
-        suggestion request."""
+    def test_existing_contexts_render_immediately_discovery_runs_in_background(self):
+        """Owner instruction: an already-usable Bay selector must never
+        be blanked merely because another source is being suggested --
+        the "at least one context exists" branch renders FIRST, then
+        kicks off discovery for whatever else is uncovered, non-blocking."""
         source = _source()
-        body = _function_body(source, "async function wwPhasorLoadContexts", "async function wwPhasorRunBootstrap")
+        body = _function_body(source, "function wwPhasorHandleContextsFetched", "function wwPhasorCoveredSourceIds")
         assert "if (contexts.length > 0) {" in body
-        # The "already exists" branch returns before ever reaching
-        # wwPhasorRunBootstrap().
-        assert body.index("if (contexts.length > 0) {") < body.index("await wwPhasorRunBootstrap(")
+        assert "wwPhasorRenderContextOptions();" in body
+        assert "wwPhasorDiscoverUncoveredSources(workspaceId, epochAtStart, contexts, false);" in body
+        # The render call happens BEFORE discovery is kicked off -- never
+        # the other way around.
+        assert body.index("wwPhasorRenderContextOptions();") < body.index("wwPhasorDiscoverUncoveredSources(workspaceId, epochAtStart, contexts, false);")
 
-    def test_zero_contexts_triggers_bootstrap(self):
+    def test_zero_contexts_triggers_blocking_discovery(self):
         source = _source()
-        body = _function_body(source, "async function wwPhasorLoadContexts", "async function wwPhasorRunBootstrap")
-        assert "await wwPhasorRunBootstrap(workspaceId, epochAtStart);" in body
+        body = _function_body(source, "function wwPhasorHandleContextsFetched", "function wwPhasorCoveredSourceIds")
+        assert "wwPhasorDiscoverUncoveredSources(workspaceId, epochAtStart, contexts, true);" in body
+
+    def test_coverage_determined_from_member_source_id_never_name_or_count(self):
+        """A source is covered if and only if at least one context
+        contains a member whose channel_ref.source_id matches it --
+        never context display name, status, or count."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorCoveredSourceIds", "async function wwPhasorDiscoverUncoveredSources")
+        assert 'ref.kind === "source" && ref.source_id' in body
+        assert "display_name" not in body
+        assert ".status" not in body
+
+    def test_uncovered_sources_computed_by_set_difference_not_context_count(self):
+        source = _source()
+        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
+        assert "wwPhasorCoveredSourceIds(knownContexts)" in body
+        assert "!coveredSourceIds.has(source.source_id)" in body
 
     def test_bootstrap_reuses_existing_suggest_endpoint_no_new_detection_engine(self):
         source = _source()
@@ -166,40 +187,46 @@ class TestContextBootstrap:
         assert '"/sources/" + encodeURIComponent(sourceId) + "/engineering-contexts/suggest"' in body
         assert "function wwPhasorFetchSuggest" in body
         # No frontend channel-name parsing was introduced for detection.
-        bootstrap_body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
-        assert "channel_name.endsWith" not in bootstrap_body
-        assert ".match(/" not in bootstrap_body
+        discover_body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
+        assert "channel_name.endsWith" not in discover_body
+        assert ".match(/" not in discover_body
 
-    def test_all_loaded_sources_are_considered_not_just_the_first(self):
+    def test_all_uncovered_sources_are_considered_not_just_the_first(self):
         source = _source()
-        body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
-        assert "for (const source of sources) {" in body
+        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
+        assert "for (const source of uncoveredSources) {" in body
         assert "sources[0]" not in body
+        assert "uncoveredSources[0]" not in body
 
     def test_one_source_failure_does_not_abort_the_others(self):
         source = _source()
-        body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
+        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
         assert "let anyFailed = false;" in body
         assert "anyFailed = true;" in body
 
-    def test_context_list_refetched_after_suggestions(self):
+    def test_context_list_refetched_once_after_suggestions(self):
         source = _source()
-        body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
+        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
         assert body.count("wwPhasorFetchContexts(workspaceId)") == 1
 
-    def test_newly_suggested_contexts_populate_selector_and_auto_select_first(self):
+    def test_newly_suggested_contexts_populate_selector(self):
         source = _source()
-        body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
+        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
         assert "wwPhasorRenderContextOptions();" in body
         assert "wwPhasorAutoSelectFirstContext();" in body
 
-    def test_auto_select_only_happens_on_the_bootstrap_path(self):
-        """The pre-existing "contexts already existed" branch in
-        wwPhasorLoadContexts() must NOT auto-select -- owner instruction:
-        preserve existing behavior there unchanged."""
+    def test_auto_select_only_on_the_fresh_zero_context_path_never_when_something_already_covered(self):
+        """Owner instruction: adding an uncovered source B must not
+        unnecessarily switch the engineer away from an already-selected
+        bay A -- auto-select is scoped to `blocking && !hadContextsBefore
+        && !already selected`, never fired for the incremental/background
+        discovery path."""
         source = _source()
-        load_contexts_body = _function_body(source, "async function wwPhasorLoadContexts", "async function wwPhasorRunBootstrap")
-        assert "wwPhasorAutoSelectFirstContext" not in load_contexts_body
+        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
+        assert "if (blocking && !hadContextsBefore && !wwPhasorState.selectedContextId) {" in body
+        assert "wwPhasorAutoSelectFirstContext();" in body
+        assert "} else if (wwPhasorState.selectedContextId) {" in body
+        assert "wwPhasorLoadForSelectedContext();" in body
 
     def test_suggested_and_needs_review_contexts_are_not_filtered_out(self):
         """Detection may suggest; engineer confirmation remains
@@ -214,33 +241,57 @@ class TestContextBootstrap:
         assert '"status": "confirmed"' not in badge_body
         assert "PATCH" not in badge_body
 
-    def test_no_repeated_suggestion_loop(self):
+    def test_attempted_source_ids_are_per_source_never_a_single_workspace_boolean(self):
+        """Replaces the old workspace-wide `bootstrapAttempted` boolean --
+        a per-source Set means a LATER-uploaded source can still be
+        discovered even after an earlier source's own attempt already
+        happened; a source is marked attempted individually, never the
+        whole workspace at once."""
         source = _source()
         body = _phasor_block(source)
-        assert "bootstrapAttempted: false" in body
-        load_contexts_body = _function_body(source, "async function wwPhasorLoadContexts", "async function wwPhasorRunBootstrap")
-        assert "if (wwPhasorState.bootstrapAttempted) {" in load_contexts_body
-        bootstrap_body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
-        assert "wwPhasorState.bootstrapAttempted = true;" in bootstrap_body
+        assert "attemptedSourceIds: new Set()," in body
+        assert "bootstrapAttempted" not in body
+        discover_body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
+        assert "!wwPhasorState.attemptedSourceIds.has(source.source_id)" in discover_body
+        assert "wwPhasorState.attemptedSourceIds.add(source.source_id);" in discover_body
+
+    def test_attempted_source_ids_reset_on_workspace_clear(self):
+        source = _source()
+        reset_body = _function_body(source, "function wwPhasorResetState()", "// ------------------------------------------------------------------\n        // Init")
+        assert "wwPhasorState.attemptedSourceIds = new Set();" in reset_body
 
     def test_zero_sources_shows_no_source_state_not_no_context_state(self):
         source = _source()
         body = _phasor_block(source)
         assert 'WW_PHASOR_MSG_NO_SOURCES = "No event sources are available. Load a recording before using Phasor Diagram."' in body
-        bootstrap_body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
-        assert "WW_PHASOR_MSG_NO_SOURCES" in bootstrap_body
+        discover_body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
+        assert "WW_PHASOR_MSG_NO_SOURCES" in discover_body
 
     def test_failed_suggestion_surfaces_actionable_backend_unreachable_message(self):
         source = _source()
         body = _phasor_block(source)
         assert 'WW_PHASOR_MSG_BACKEND_UNREACHABLE = "Could not reach the backend while identifying engineering contexts."' in body
-        bootstrap_body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
-        assert "anyFailed ? WW_PHASOR_MSG_BACKEND_UNREACHABLE : WW_PHASOR_MSG_NO_SUGGESTIONS" in bootstrap_body
+        discover_body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
+        assert "anyFailed ? WW_PHASOR_MSG_BACKEND_UNREACHABLE : WW_PHASOR_MSG_NO_SUGGESTIONS" in discover_body
 
-    def test_identifying_contexts_loading_message_shown_during_bootstrap(self):
+    def test_identifying_contexts_loading_message_only_shown_when_blocking(self):
         source = _source()
-        body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
+        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
+        assert "if (blocking) {" in body
         assert "wwPhasorShowEmptyState(WW_PHASOR_MSG_IDENTIFYING_CONTEXTS);" in body
+
+    def test_non_blocking_discovery_never_calls_show_empty_state_for_a_covered_workspace(self):
+        """The incremental/background discovery path must never replace
+        an already-usable page with a full empty state -- it only ever
+        toggles the subtle, non-blocking indicator."""
+        source = _source()
+        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
+        assert "wwPhasorSetDiscoveringIndicator(true);" in body
+        assert "wwPhasorSetDiscoveringIndicator(false);" in body
+
+    def test_discovering_indicator_element_exists(self):
+        source = _source()
+        assert 'id="wwPhasorDiscoveringIndicator"' in source
 
     def test_still_no_manual_raw_channel_picker_introduced(self):
         source = _source()
@@ -248,13 +299,13 @@ class TestContextBootstrap:
         assert "wwPhasorChannelSelect" not in panel_html
         assert "raw-channel" not in panel_html.lower()
 
-    def test_stale_bootstrap_response_is_discarded(self):
-        """Every async step inside the bootstrap re-checks the same
+    def test_stale_discovery_response_is_discarded(self):
+        """Every async step inside discovery re-checks the same
         epoch/workspaceId guard every other Phasor fetch already uses --
-        a workspace change mid-bootstrap must never populate the wrong
+        a workspace change mid-discovery must never populate the wrong
         workspace's own selector."""
         source = _source()
-        body = _function_body(source, "async function wwPhasorRunBootstrap", "function wwPhasorAutoSelectFirstContext")
+        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
         assert body.count("epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId") >= 3
 
 

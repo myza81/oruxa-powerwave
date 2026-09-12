@@ -6099,6 +6099,18 @@
             color: var(--text-dim);
             margin-left: 6px;
         }
+        /* Multi-upload bootstrap fix: a subtle, non-blocking hint that a
+           LATER-uploaded, not-yet-covered source is being discovered in
+           the background -- the already-usable Bay selector/body/
+           Playback panel stay fully visible and interactive underneath
+           the whole time (owner instruction: never blank an already-
+           usable page merely because another source is being
+           suggested). */
+        .ww-phasor-discovering-indicator {
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            align-self: center;
+        }
     </style>
 </head>
 <body>
@@ -7026,6 +7038,7 @@
                                         <span>Bay / Engineering Context <span id="wwPhasorContextBadge"></span></span>
                                         <select id="wwPhasorContextSelect"><option value="">Select a context…</option></select>
                                     </label>
+                                    <span class="ww-phasor-discovering-indicator" id="wwPhasorDiscoveringIndicator" hidden>Identifying additional engineering contexts…</span>
                                 </div>
                             </section>
 
@@ -33853,15 +33866,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             frozenVoltageScale: null, // this playback run's own stable Voltage-family px-per-unit scale, or null before the first valid result
             frozenCurrentScale: null, // same, for the Current family
             requestGeneration: 0, // one shared stale-response guard for the diagram fetch
-            // UAT fix (2026-09-11): true once an automatic Engineering
-            // Context suggestion bootstrap has been ATTEMPTED (regardless
-            // of outcome) for the current workspace -- see
-            // wwPhasorRunBootstrap()'s own docstring for why this exists
-            // (never a repeated suggestion storm on every page revisit).
-            // Reset only by wwPhasorResetState() (the "Start New
-            // Workspace"/"Clear workspace" hook), so a fresh workspace
-            // always gets its own fresh bootstrap attempt.
-            bootstrapAttempted: false,
+            // Multi-upload bootstrap fix (2026-09-12): PER-SOURCE memory
+            // of which source ids a suggestion has already been
+            // ATTEMPTED for (regardless of outcome) this workspace
+            // session -- see wwPhasorDiscoverUncoveredSources()'s own
+            // docstring for why this exists (never a repeated suggestion
+            // storm on every page revisit for a source that already
+            // tried and found nothing). Deliberately per-SOURCE, never a
+            // single workspace-wide boolean -- a later-uploaded source
+            // must still get its own attempt even after an earlier
+            // source's own attempt already happened. Reset only by
+            // wwPhasorResetState() (the "Start New Workspace"/"Clear
+            // workspace" hook), so a fresh workspace always gets a fresh
+            // slate.
+            attemptedSourceIds: new Set(),
         };
 
         // The fixed six-role order the backend's own
@@ -33942,9 +33960,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // endpoint, reused verbatim -- no new backend detection engine, no
         // frontend channel-name parsing. Single-source, exactly like the
         // endpoint itself already is (see app.domain.engineering_context_
-        // detection's own module docstring) -- wwPhasorRunBootstrap() below
-        // calls this once per loaded source, never assuming one source is
-        // "the" bay or that only the first source matters.
+        // detection's own module docstring) --
+        // wwPhasorDiscoverUncoveredSources() below calls this once per
+        // UNCOVERED loaded source, never assuming one source is "the" bay
+        // or that only the first/newest source matters.
         function wwPhasorFetchSuggest(workspaceId, sourceId) {
             return wwPhasorFetchJson(
                 apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
@@ -33979,22 +33998,35 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPhasorLoadContexts();
         }
 
-        // UAT fix (2026-09-11): if Engineering Contexts already exist,
-        // behavior is completely unchanged from before this fix (owner
-        // instruction: "this fix must not alter already-working
-        // workflows") -- render immediately, no bootstrap. Only when the
-        // list comes back genuinely EMPTY does this delegate to
-        // wwPhasorRunBootstrap(), and only once per workspace
-        // (wwPhasorState.bootstrapAttempted).
-        async function wwPhasorLoadContexts() {
+        // Multi-upload bootstrap fix (2026-09-12): SOURCE-COVERAGE
+        // driven, not workspace-empty-driven. The original design
+        // treated `contexts.length > 0` as "nothing left to discover,"
+        // which silently stopped covering any source uploaded AFTER the
+        // first one ever got a context (source B's own suggestion was
+        // simply never requested). Every visit now determines coverage
+        // from actual Engineering Context MEMBERSHIP
+        // (wwPhasorCoveredSourceIds() below) and discovers whichever
+        // loaded sources are not yet covered -- never from context
+        // count, display name, or source order.
+        //
+        // If at least one context ALREADY exists, the selector/body
+        // render IMMEDIATELY from it (never blanked) while any uncovered
+        // source is discovered in the background
+        // (`{ blocking: false }`) -- a later-uploaded, not-yet-covered
+        // source must never hide an already-usable bay. If ZERO contexts
+        // exist yet, this is the original "nothing usable to preserve"
+        // case, so discovery blocks the page with the existing
+        // "Identifying engineering contexts…" state exactly as before.
+        function wwPhasorLoadContexts() {
             const workspaceId = currentWorkspaceId();
             const epochAtStart = ww.epoch;
-            let contexts;
-            try {
-                contexts = await wwPhasorFetchContexts(workspaceId);
-            } catch (error) {
-                contexts = null;
-            }
+            wwPhasorFetchContexts(workspaceId).then(
+                (contexts) => wwPhasorHandleContextsFetched(workspaceId, epochAtStart, contexts),
+                () => wwPhasorHandleContextsFetched(workspaceId, epochAtStart, null)
+            );
+        }
+
+        function wwPhasorHandleContextsFetched(workspaceId, epochAtStart, contexts) {
             if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
 
             if (contexts === null) {
@@ -34004,45 +34036,76 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return;
             }
 
+            wwPhasorState.contexts = contexts;
+
             if (contexts.length > 0) {
-                wwPhasorState.contexts = contexts;
+                // At least one usable bay already exists -- render it
+                // right away; coverage discovery for any OTHER loaded
+                // source runs quietly in the background and never blanks
+                // this.
                 wwPhasorRenderContextOptions();
                 if (wwPhasorState.selectedContextId) {
                     wwPhasorLoadForSelectedContext();
                 } else {
                     wwPhasorShowNoContextSelected();
                 }
+                wwPhasorDiscoverUncoveredSources(workspaceId, epochAtStart, contexts, false);
                 return;
             }
 
-            if (wwPhasorState.bootstrapAttempted) {
-                // Already tried once this workspace session and found
-                // nothing -- never retry on every page revisit (owner
-                // instruction: "do not repeatedly call suggestion
-                // endpoints on every selector render").
-                wwPhasorState.contexts = [];
-                wwPhasorRenderContextOptions();
-                wwPhasorShowEmptyState(WW_PHASOR_MSG_NO_SUGGESTIONS);
-                return;
-            }
-
-            await wwPhasorRunBootstrap(workspaceId, epochAtStart);
+            // Nothing usable exists yet -- the original full-page
+            // "Identifying engineering contexts…" experience, since
+            // there is nothing to preserve.
+            wwPhasorDiscoverUncoveredSources(workspaceId, epochAtStart, contexts, true);
         }
 
-        // The automatic bootstrap itself -- runs ONLY when the context
-        // list just came back genuinely empty and no bootstrap has been
-        // attempted yet this workspace session. Inspects loaded sources,
-        // requests a suggestion for each (the existing Guardrail Slice 1
-        // endpoint, single-source, never cross-source merging), then
-        // re-fetches the context list once. Every async step re-checks
+        // The set of real source ids already COVERED by at least one
+        // Engineering Context member -- determined ENTIRELY from actual
+        // membership (`channel_ref.source_id`), never from a context's
+        // own display name, status, or count. Two contexts can share the
+        // identical display name ("Default Context" for two different
+        // bare-role sources) and remain correctly distinct here, since
+        // coverage is keyed by source id, never by name. A
+        // "calculated"-kind member has no `source_id` of its own on
+        // `channel_ref` and therefore never marks any real source as
+        // covered by this check -- consistent with the task's own literal
+        // coverage definition (this fix is deliberately narrow: it does
+        // NOT attempt to trace a calculated channel back to its own
+        // grounding source for coverage purposes).
+        function wwPhasorCoveredSourceIds(contexts) {
+            const covered = new Set();
+            for (const ctx of contexts) {
+                for (const member of (ctx && ctx.members) || []) {
+                    const ref = member && member.channel_ref;
+                    if (ref && ref.kind === "source" && ref.source_id) covered.add(ref.source_id);
+                }
+            }
+            return covered;
+        }
+
+        // The automatic discovery pass -- requests a suggestion for
+        // every loaded source that is BOTH uncovered (see
+        // wwPhasorCoveredSourceIds()) AND not yet attempted this
+        // workspace session (wwPhasorState.attemptedSourceIds), then
+        // re-fetches the context list once. Never assumes one source is
+        // "the" bay, never assumes only the first/newest source matters;
+        // one source's own suggestion failure does not block the others
+        // (best-effort across all of them). Every async step re-checks
         // the SAME epoch/workspaceId guard every other Phasor fetch
-        // already uses, so a workspace change mid-bootstrap (a new
+        // already uses, so a workspace change mid-discovery (a new
         // upload, "Start New Workspace") discards the in-flight attempt
         // rather than populating the wrong workspace's own selector.
-        async function wwPhasorRunBootstrap(workspaceId, epochAtStart) {
-            wwPhasorState.bootstrapAttempted = true;
-            wwPhasorShowEmptyState(WW_PHASOR_MSG_IDENTIFYING_CONTEXTS);
-
+        //
+        // `blocking` distinguishes the two entry shapes
+        // wwPhasorHandleContextsFetched() above uses this for: `true`
+        // (zero contexts existed yet -- nothing usable to preserve, so
+        // this owns the empty-state message/loading text exactly like
+        // the original bootstrap did) vs. `false` (at least one context
+        // already renders normally -- this only ever shows a subtle,
+        // non-blocking indicator and silently re-renders the selector in
+        // place when it finishes, NEVER replacing the page with an empty
+        // state).
+        async function wwPhasorDiscoverUncoveredSources(workspaceId, epochAtStart, knownContexts, blocking) {
             let sources;
             try {
                 sources = await fetchSourcesList();
@@ -34052,18 +34115,38 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
 
             if (!sources || sources.length === 0) {
-                wwPhasorState.contexts = [];
-                wwPhasorRenderContextOptions();
-                wwPhasorShowEmptyState(WW_PHASOR_MSG_NO_SOURCES);
+                if (blocking) {
+                    wwPhasorState.contexts = [];
+                    wwPhasorRenderContextOptions();
+                    wwPhasorShowEmptyState(WW_PHASOR_MSG_NO_SOURCES);
+                }
                 return;
             }
 
-            // Every loaded source is considered -- never assume one
-            // source is "the" bay, never assume only the first source
-            // matters. One source's own suggestion failure does not
-            // block the others (best-effort across all of them).
+            const coveredSourceIds = wwPhasorCoveredSourceIds(knownContexts);
+            const uncoveredSources = sources.filter((source) =>
+                !coveredSourceIds.has(source.source_id) && !wwPhasorState.attemptedSourceIds.has(source.source_id)
+            );
+
+            if (uncoveredSources.length === 0) {
+                if (blocking) wwPhasorShowEmptyState(WW_PHASOR_MSG_NO_SUGGESTIONS);
+                return;
+            }
+
+            if (blocking) {
+                wwPhasorShowEmptyState(WW_PHASOR_MSG_IDENTIFYING_CONTEXTS);
+            } else {
+                wwPhasorSetDiscoveringIndicator(true);
+            }
+
             let anyFailed = false;
-            for (const source of sources) {
+            for (const source of uncoveredSources) {
+                // Marked attempted BEFORE the call resolves (mirrors the
+                // original bootstrap's own timing exactly) -- a
+                // transient network failure is not retried on every mere
+                // page revisit, matching the existing retry convention
+                // this fix inherits rather than invents a new one for.
+                wwPhasorState.attemptedSourceIds.add(source.source_id);
                 try {
                     await wwPhasorFetchSuggest(workspaceId, source.source_id);
                 } catch (error) {
@@ -34078,33 +34161,58 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             } catch (error) {
                 contexts = null;
             }
-            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) {
+                if (!blocking) wwPhasorSetDiscoveringIndicator(false);
+                return;
+            }
+            if (!blocking) wwPhasorSetDiscoveringIndicator(false);
 
             if (contexts === null) {
-                wwPhasorState.contexts = [];
-                wwPhasorRenderContextOptions();
-                wwPhasorShowEmptyState(WW_PHASOR_MSG_BACKEND_UNREACHABLE);
+                if (blocking) {
+                    wwPhasorState.contexts = [];
+                    wwPhasorRenderContextOptions();
+                    wwPhasorShowEmptyState(WW_PHASOR_MSG_BACKEND_UNREACHABLE);
+                }
                 return;
             }
 
+            const hadContextsBefore = knownContexts.length > 0;
             wwPhasorState.contexts = contexts;
             wwPhasorRenderContextOptions();
 
             if (contexts.length > 0) {
-                // Owner instruction: prefer auto-selecting the first
-                // usable context after a successful automatic
-                // suggestion, so the engineer never needs an extra click
-                // merely because the context was just created. This is
-                // deliberately ONLY done on this fresh-bootstrap path --
-                // the "contexts already existed" path above is
-                // completely unchanged (still requires an explicit
-                // pick), per the owner's own "must not alter already-
-                // working workflows" instruction.
-                wwPhasorAutoSelectFirstContext();
+                if (blocking && !hadContextsBefore && !wwPhasorState.selectedContextId) {
+                    // Owner instruction: prefer auto-selecting the first
+                    // usable context after a successful automatic
+                    // suggestion, so the engineer never needs an extra
+                    // click merely because the context was just created.
+                    // Deliberately ONLY for the fresh, nothing-existed-
+                    // before path -- an already-had-contexts discovery
+                    // pass NEVER auto-selects (never jumps the engineer
+                    // away from whatever bay they already had open
+                    // merely because a new one was just discovered).
+                    wwPhasorAutoSelectFirstContext();
+                } else if (wwPhasorState.selectedContextId) {
+                    wwPhasorLoadForSelectedContext();
+                } else {
+                    wwPhasorShowNoContextSelected();
+                }
                 return;
             }
 
-            wwPhasorShowEmptyState(anyFailed ? WW_PHASOR_MSG_BACKEND_UNREACHABLE : WW_PHASOR_MSG_NO_SUGGESTIONS);
+            if (blocking) {
+                wwPhasorShowEmptyState(anyFailed ? WW_PHASOR_MSG_BACKEND_UNREACHABLE : WW_PHASOR_MSG_NO_SUGGESTIONS);
+            }
+        }
+
+        // Subtle, non-blocking "discovering more sources" affordance for
+        // the ALREADY-HAD-CONTEXTS discovery pass -- the existing usable
+        // Bay selector/body/Playback panel are never hidden for this;
+        // see wwPhasorShowEmptyState() for the (unrelated, full-page)
+        // terminal states the BLOCKING/fresh-bootstrap path still uses.
+        function wwPhasorSetDiscoveringIndicator(isDiscovering) {
+            const el = document.getElementById("wwPhasorDiscoveringIndicator");
+            if (el) el.hidden = !isDiscovering;
         }
 
         function wwPhasorAutoSelectFirstContext() {
@@ -34862,11 +34970,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPhasorState.frozenVoltageScale = null;
             wwPhasorState.frozenCurrentScale = null;
             wwPhasorState.requestGeneration += 1;
-            // UAT fix (2026-09-11): a fresh workspace ("Start New
-            // Workspace"/"Clear workspace") always gets its own fresh
-            // automatic-suggestion bootstrap attempt -- see
-            // wwPhasorRunBootstrap()'s own docstring.
-            wwPhasorState.bootstrapAttempted = false;
+            // Multi-upload bootstrap fix (2026-09-12): a fresh workspace
+            // ("Start New Workspace"/"Clear workspace") always gets a
+            // fresh per-source attempted slate -- see
+            // wwPhasorDiscoverUncoveredSources()'s own docstring. Never
+            // leaks into a DIFFERENT workspace's own attempted-source
+            // bookkeeping.
+            wwPhasorState.attemptedSourceIds = new Set();
+            wwPhasorSetDiscoveringIndicator(false);
             // Playback integration: this workspace-wide reset never calls
             // wwPlaybackReset() itself (wwClearWorkspace() already does
             // that separately, once, for the ONE shared controller) --

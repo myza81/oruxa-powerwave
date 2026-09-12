@@ -8,6 +8,74 @@ Last updated: **2026-09-12**
 
 ## What was most recently done
 
+**Multi-upload Phasor bootstrap fix — automatic Engineering Context
+discovery is now SOURCE-COVERAGE driven, not workspace-empty-driven.**
+Root cause: bootstrap was gated on `contexts.length > 0`, so a source
+uploaded AFTER the workspace's first context already existed was
+silently never covered — its own suggestion was never requested, no
+matter how many times the engineer revisited the Phasor page. Confirmed
+directly (backend detector/suggestion/registry/context-list/selector all
+already worked correctly) — this was a frontend-only gap, so the fix is
+frontend-only; `engineering_context_detection.py`/`
+engineering_context_service.py`/the resolver/the estimator were not
+touched.
+
+**What changed**: `wwPhasorLoadContexts()` now always determines
+COVERAGE from actual Engineering Context membership
+(`wwPhasorCoveredSourceIds()`: a source is covered if and only if some
+context has a member whose `channel_ref.source_id` matches it — never
+display name, status, count, or order) and discovers whichever loaded
+sources are uncovered (`wwPhasorDiscoverUncoveredSources()`). When at
+least one context already exists, the selector/body render from it
+IMMEDIATELY (never blanked) while discovery for any other uncovered
+source runs quietly in the background (a subtle
+`#wwPhasorDiscoveringIndicator` text, never the full-page empty state);
+when none exist yet, discovery blocks the page exactly like the original
+bootstrap did. The single workspace-wide `wwPhasorState.
+bootstrapAttempted` boolean — which could not represent "source A was
+already tried, but source B has not" — is replaced by a per-source
+`attemptedSourceIds` `Set`, reset only on "Start New Workspace"/"Clear
+workspace." Auto-selection remains scoped to the fresh, nothing-existed-
+before path only — discovering an additional source never jumps the
+engineer away from an already-open bay.
+
+**Verified against the exact UAT scenario**: upload A, open Phasor (A
+appears), upload B without clearing the workspace, reopen Phasor (B is
+discovered automatically, A remains selected and usable throughout) —
+new dedicated Playwright coverage, plus removal (remove A while B is
+still uncovered — B remains discoverable; the old boolean would have
+permanently blocked this) and two-bare-role-sources (both get distinct
+"Default Context" ids, never deduplicated by their shared display name)
+scenarios. New fixture: `phasor_smoke_bravo_three_phase.cfg` (a second
+rooted source, `BRAVO1_*`, reusing the existing smoke `.dat`).
+
+**Tests**: `test_frontend_phasor_analysis.py`'s `TestContextBootstrap`
+class rewritten for the coverage-driven design (source-coverage
+computation, per-source attempted tracking, non-blocking vs. blocking
+discovery, auto-select scoping) — all passing alongside the full
+existing suite. `phasor_analysis.spec.js` gained three new Playwright
+tests (later-uploaded uncovered source, removal-does-not-block-
+discovery, two bare-role sources) in its existing bootstrap describe
+block; the concurrent session's own `phasor_bare_context.spec.js` was
+left untouched. Full backend regression, full frontend static suite, and
+full Playwright suite (45 tests) all pass. No backend files touched.
+
+**Concurrent work note**: this session ran in parallel with the Phasor
+Playback integration session (below) — both touched
+`frontend/index.html`/`test_frontend_phasor_analysis.py`/
+`phasor_analysis.spec.js`; re-read each file fresh immediately before
+editing and made focused, non-overlapping additive edits (Playback
+touched the diagram/time-control code; this fix touched only the
+bootstrap/discovery code) — no conflict required manual reconciliation.
+
+**Files changed**: `frontend/index.html`,
+`backend/tests/test_frontend_phasor_analysis.py`,
+`browser-tests/phasor_analysis.spec.js`, `backend/tests/fixtures/
+comtrade/phasor_smoke_bravo_three_phase.cfg` (new). See this task's own
+final report for the exact commit hash and push status.
+
+## What was done in the prior session — Phasor Playback integration
+
 **Phasor Playback integration — connects the existing, unchanged, shared
 `wwPlayback` controller ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock))
 to the bay-centric Phasor Diagram ([DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)'s

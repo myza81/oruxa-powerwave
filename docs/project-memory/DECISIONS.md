@@ -13907,6 +13907,63 @@ merge conflict existed once both sessions' edits settled. See
 [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s own "Phasor Playback
 integration" section for the full architecture.
 
+**Update (2026-09-12) — Multi-upload bootstrap fix: automatic Engineering
+Context discovery is SOURCE-COVERAGE driven, not workspace-empty-driven,
+clarifying/superseding this DEC's own earlier "Update (2026-09-11)"
+section's `contexts.length > 0` framing.** Root cause: that earlier
+bootstrap logic treated `contexts.length > 0` as "nothing left to
+discover," so a source uploaded AFTER the workspace's first context
+already existed was silently never covered — its own suggestion was
+never requested, regardless of how many times the engineer revisited the
+Phasor page. Investigation confirmed the backend detector, suggestion
+endpoint, registry, and context-list/selector all already worked
+correctly — this was a frontend-only gap.
+
+**Fix**: coverage is now determined from actual Engineering Context
+membership (`wwPhasorCoveredSourceIds()`: a source is covered if and
+only if some context has a member whose `channel_ref.source_id` matches
+it — never display name, status, count, or source order) and discovery
+targets whichever loaded sources are uncovered
+(`wwPhasorDiscoverUncoveredSources()`). When at least one context
+already exists, the Bay selector/body render from it IMMEDIATELY (never
+blanked) while discovery for any other uncovered source runs quietly in
+the background (a subtle, non-blocking indicator); when none exist yet,
+discovery still blocks the page exactly like the original bootstrap did.
+The single workspace-wide `bootstrapAttempted` boolean (which could not
+represent "source A already tried, source B has not") is replaced by a
+per-source `attemptedSourceIds` `Set`, reset only on "Start New
+Workspace"/"Clear workspace." Auto-selection remains scoped to the
+fresh, nothing-existed-before path only — discovering an additional
+source never jumps the engineer away from an already-open bay.
+
+Reason: directly fixes a real UAT-reported gap in the ORIGINAL bootstrap
+design (this DEC's own prior Update), which conflated "has the workspace
+ever had a context" with "has every loaded source been considered" —
+those are genuinely different questions once a workspace can receive
+uploads incrementally.
+
+Impact: `frontend/index.html` only — no backend files touched (per the
+task's own explicit instruction, confirmed unnecessary by direct
+investigation: the detector/suggestion/registry/resolver were all
+already correct). `test_frontend_phasor_analysis.py`'s
+`TestContextBootstrap` class rewritten for the coverage-driven design.
+`browser-tests/phasor_analysis.spec.js` gained three new tests
+(later-uploaded uncovered source discovered without disturbing an
+already-open bay, removal of a covered source never blocking discovery
+of a still-uncovered one, two bare-role sources tracked as distinct
+contexts despite sharing a display name) in its existing bootstrap
+describe block. New fixture `phasor_smoke_bravo_three_phase.cfg` (a
+second rooted source for two-source scenarios). Full backend regression,
+full frontend static suite, and full Playwright suite all pass. This
+session ran concurrently with the Phasor Playback integration session
+(immediately above) — both touched `frontend/index.html`-adjacent files;
+re-reading each shared file immediately before editing confirmed
+non-overlapping changes (Playback touched the diagram/time-control code,
+this fix touched only the bootstrap/discovery code), so no conflict
+required manual reconciliation. See
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s own "Automatic Engineering
+Context bootstrap" section for the full architecture.
+
 ---
 
 ## How to add a decision

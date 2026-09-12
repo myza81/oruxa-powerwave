@@ -328,56 +328,85 @@ directly; manual correction, when genuinely needed, remains an
 Engineering Context metadata edit (Slice 1's own `member-phase`
 endpoint), reached outside this page.
 
-### Automatic Engineering Context bootstrap (UAT fix, 2026-09-11)
+### Automatic Engineering Context bootstrap — SOURCE-COVERAGE driven (multi-upload fix, 2026-09-12)
 
-UAT found that a workspace with loaded sources but no Engineering
-Contexts yet left the Phasor page empty, telling the engineer to go
-create/suggest a context elsewhere first — poor UX for what should be a
-one-page workflow. `wwPhasorLoadContexts()` now bootstraps automatically
-when (and only when) the context list comes back genuinely empty:
+UAT originally found that a workspace with loaded sources but no
+Engineering Contexts yet left the Phasor page empty (fixed 2026-09-11,
+below). A SECOND UAT root-caused a further gap in that fix: bootstrap
+was gated on `contexts.length > 0`, so a source uploaded AFTER the
+workspace's first context already existed was silently never covered —
+its own suggestion was simply never requested, and it could never appear
+in the Bay selector no matter how many times the engineer revisited the
+page. Bootstrap is now driven by SOURCE COVERAGE, not context count:
 
 ```text
 GET engineering-contexts
     ↓
-contexts exist? --yes--> render immediately (UNCHANGED from before this fix)
-    |no
+contexts.length > 0? --yes--> render the selector/body from them
+    |                         IMMEDIATELY (never blanked), THEN discover
+    |                         any uncovered source in the BACKGROUND
+    |no                       (non-blocking; see below)
     ↓
-bootstrap already attempted this workspace? --yes--> show "no suggestions" empty state
-    |no
-    ↓
+discover uncovered sources, BLOCKING (nothing usable to preserve yet --
+the original "Identifying engineering contexts…" full-page experience)
+
+---- discovery (shared by both paths above) ----
 GET sources
     ↓
-any loaded? --no--> "No event sources are available..."
+any loaded? --no--> "No event sources are available..." (blocking path only)
     |yes
     ↓
-POST .../sources/{id}/engineering-contexts/suggest, for EVERY loaded
-source (never assumes one source is "the" bay, never assumes only the
-first matters; one source's own failure never blocks the others)
+coveredSourceIds = source ids referenced by any context member's own
+`channel_ref.source_id` (wwPhasorCoveredSourceIds() -- membership only,
+NEVER display name/status/context count/source order)
     ↓
-GET engineering-contexts again
+uncoveredSources = loaded sources NOT in coveredSourceIds AND not yet
+individually attempted this workspace session
     ↓
-contexts now exist? --yes--> populate selector, auto-select the first one
+none uncovered? --yes--> done (blocking path shows "no suggestions found")
     |no
     ↓
-show "no suggestions found" (or "backend unreachable" if any suggest
-call failed) empty state
+POST .../sources/{id}/engineering-contexts/suggest, for EVERY uncovered
+source (never assumes one source is "the" bay; one source's own failure
+never blocks the others)
+    ↓
+GET engineering-contexts again -> re-render the selector in place,
+preserving whatever was already selected
 ```
 
 **Reuses the existing Guardrail Slice 1 suggestion endpoint verbatim** —
-no new backend detection engine, no frontend channel-name parsing. The
-suggestion service's own additive/idempotent contract is what the
-frontend leans on for safety; the frontend's OWN safety mechanism is
-`wwPhasorState.bootstrapAttempted`, a one-shot-per-workspace guard
-(reset only by `wwPhasorResetState()`, the "Start New Workspace"/"Clear
-workspace" hook) that prevents a suggestion storm on every page revisit
-— bootstrap runs at most once per workspace session, ever, regardless of
-how many times the engineer navigates to/from the Phasor page.
+no new backend detection engine, no frontend channel-name parsing, no
+change to `app.domain.engineering_context_detection`. The suggestion
+service's own additive/idempotent contract is what the frontend leans on
+for safety; the frontend's OWN safety mechanism is
+`wwPhasorState.attemptedSourceIds` — a **per-source** `Set`, replacing
+the original single workspace-wide `bootstrapAttempted` boolean, which
+could not represent "source A was already tried, but source B (uploaded
+later) has not been." A source is marked attempted the moment its own
+suggestion call is dispatched (mirroring the original boolean's own
+timing precedent exactly, including for a transient network failure —
+this fix does not invent a new retry policy). Reset only by
+`wwPhasorResetState()` (the "Start New Workspace"/"Clear workspace"
+hook), so a fresh workspace always starts with an empty attempted set
+and a workspace switch never leaks another workspace's own bookkeeping.
 
-The backend detector now also covers the proven UAT file shape where a
+**An already-usable bay is never blanked for this.** When at least one
+context already exists, the selector/values/diagram render from it
+immediately; discovering any OTHER uncovered source runs quietly in the
+background (`wwPhasorDiscoverUncoveredSources(..., blocking=false)`),
+surfaced only via a small, non-blocking `#wwPhasorDiscoveringIndicator`
+text ("Identifying additional engineering contexts…") — never the
+full-page `wwPhasorShowEmptyState()` treatment, which remains reserved
+for the genuinely-nothing-exists-yet (`blocking=true`) path.
+
+The backend detector also covers the proven UAT file shape where a
 source's own COMTRADE channel names are bare role names with no bay
-prefix (`VA`/`VB`/`VC`/`IA`/`IB`/`IC`, or R/Y/B equivalents). Those
-channels are suggested as one neutral "Default Context" when
-unambiguous; duplicate/conflicting roles still require review.
+prefix (`VA`/`VB`/`VC`/`IA`/`IB`/`IC`, or R/Y/B equivalents), suggesting
+one neutral "Default Context" per source when unambiguous. **Coverage is
+keyed by source id, never by display name** — two DIFFERENT bare-role
+sources both producing a context literally named "Default Context" are
+correctly tracked as two independent, fully-usable bays; duplicate
+display names never imply a coverage/identity collision.
 
 **Suggested/needs_review contexts are never hidden or auto-upgraded** —
 they populate the Bay selector exactly like a `confirmed`/`manual`
@@ -386,20 +415,29 @@ established for Measurement Groups. Detection may suggest; explicit
 engineer confirmation (via Engineering Context metadata, outside this
 page) remains authoritative, unchanged.
 
-**Auto-selection is scoped to the bootstrap path only.** Immediately
-after a successful bootstrap, the first newly-suggested context is
-auto-selected (so the engineer never needs an extra click merely because
-the context was just created) — but the PRE-EXISTING "contexts already
-existed at page load" path is completely unchanged: no auto-selection,
-still requires an explicit pick, preserving the exact behavior UAT had
-already signed off on before this fix.
+**Auto-selection remains scoped to the fresh, nothing-existed-before
+path only.** Immediately after a successful bootstrap from a genuinely
+empty starting point, the first newly-suggested context is auto-selected
+(so the engineer never needs an extra click merely because the context
+was just created) — but discovering an ADDITIONAL uncovered source when
+a bay was already open/selected never auto-selects the new one, and
+never resets the existing selection: adding source B must never jump the
+engineer away from source A's own already-open bay.
 
-**Async/stale protection**: every bootstrap step (source list fetch,
+**Async/stale protection**: every discovery step (source list fetch,
 each per-source suggest call, the final context re-fetch) re-checks the
 same `epochAtStart`/`workspaceId` guard every other Phasor fetch already
-uses — a workspace change mid-bootstrap (a new upload, "Start New
+uses — a workspace change mid-discovery (a new upload, "Start New
 Workspace") discards the in-flight attempt rather than populating the
 wrong workspace's own selector.
+
+**Removal is naturally correct, with no special-casing needed** —
+coverage is recomputed FRESH from current context membership on every
+call, never cached beyond the per-source `attemptedSourceIds` guard
+(which only ever prevents a REDUNDANT re-suggestion, never blocks
+discovery of a DIFFERENT, still-uncovered source). Removing a covered
+source's own context does not affect any other source's own coverage
+state; a still-uncovered source remains discoverable exactly as before.
 
 **No cross-source automatic merging was added** — each source's own
 suggestion request is independent; a genuinely multi-source bay still

@@ -349,22 +349,38 @@ selection; a pure visibility toggle never touches this counter, since it
 never issues a request. See [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s
 own "Phasor Playback integration" section for the full architecture.
 
-**Phasor also auto-bootstraps Engineering Context suggestions**
-(unchanged by the redesign) when a workspace has loaded sources but zero
-contexts — `wwPhasorLoadContexts()` fetches the context list; if empty,
-fetches the workspace's own loaded sources, calls the existing,
-unchanged Guardrail Slice 1 suggestion endpoint once per source (never
-assuming one source is "the" bay), re-fetches the context list, and — if
-suggestions succeeded — auto-selects the first newly-created context. If
-contexts already existed at page load, behavior is unchanged (no
-bootstrap, no auto-selection). A one-shot-per-workspace guard
-(`wwPhasorState.bootstrapAttempted`, reset only on "Start New
-Workspace"/"Clear workspace") prevents a suggestion storm on repeated
-page visits. Suggested/needs_review contexts are never hidden or
-auto-upgraded — detection still only suggests, engineer confirmation
-remains authoritative. The backend detector now handles the real-UAT
-bare role-only source shape (`VA`/`VB`/`VC`/`IA`/`IB`/`IC`) by creating
-one suggested "Default Context" when the roles are unambiguous.
+**Phasor auto-bootstraps Engineering Context suggestions, SOURCE-
+COVERAGE driven, not workspace-empty-driven.** `wwPhasorLoadContexts()`
+fetches the context list; whenever at least one context already exists,
+the selector/body render from it IMMEDIATELY (never blanked), while any
+OTHER loaded source not yet covered by any context's own membership
+(`channel_ref.source_id`, determined via `wwPhasorCoveredSourceIds()` —
+never display name/status/count/order) is discovered quietly in the
+background (a subtle `#wwPhasorDiscoveringIndicator` text, never the
+full-page empty state). If NO context exists yet, discovery runs
+blocking, exactly like the original "Identifying engineering contexts…"
+experience. Either way: the existing, unchanged Guardrail Slice 1
+suggestion endpoint is called once per UNCOVERED source (never
+assuming one source is "the" bay); a fresh, nothing-existed-before
+bootstrap auto-selects the first newly-created context, but discovering
+an ADDITIONAL uncovered source while a bay was already open never
+auto-selects the new one and never resets the existing selection. A
+PER-SOURCE `Set` (`wwPhasorState.attemptedSourceIds`, reset only on
+"Start New Workspace"/"Clear workspace") replaces the original single
+workspace-wide `bootstrapAttempted` boolean — a source uploaded AFTER
+the workspace's first context already existed is no longer silently
+skipped forever; only a source that was individually already attempted
+is not immediately re-suggested on every mere page revisit. Suggested/
+needs_review contexts are never hidden or auto-upgraded — detection
+still only suggests, engineer confirmation remains authoritative. The
+backend detector also handles the real-UAT bare role-only source shape
+(`VA`/`VB`/`VC`/`IA`/`IB`/`IC`) by creating one suggested "Default
+Context" per source when the roles are unambiguous — two different
+bare-role sources correctly produce two independently-tracked contexts
+even though both share that same display name (coverage is keyed by
+source id, never by name). See [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s
+own "Automatic Engineering Context bootstrap" section for the full
+architecture.
 
 **No Per-Unit display, no neutral-phasor roles (`Vn`/`In`), no sequence
 components/impedance/distance, no automatic cross-source context
