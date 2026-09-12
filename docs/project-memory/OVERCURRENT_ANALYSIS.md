@@ -201,12 +201,27 @@ secondary current (`recording_basis`):
   `relay_secondary_current = recorded_current * (ct_secondary /
   ct_primary)`.
 
-`ct_primary`/`ct_secondary` must already be expressed in the SAME base
-unit as the resolved current channel's own declared `unit` — mirrors how
-Phasor never separately re-units a channel's own `magnitude_rms` (the
-raw channel value is used directly; any kA-style display prefixing is a
-FRONTEND `wwFormatEngineeringValue()` concern, exactly like Phasor's own
-Voltage/Current magnitudes, never a backend unit-normalization step).
+**Unit normalization (DEC-091, fixing a real UAT defect)**: `ct_primary`/
+`ct_secondary` are plain ampere-rated CT nameplate values (the CT
+Primary/CT Secondary form fields are always "(A)"), while the recorded
+current carries its own declared `measured_unit` (e.g. "kA") which may
+differ. Before the CT ratio is applied, `convert_to_relay_secondary()`
+first normalizes `recorded_current` to amperes via the shared
+`app.domain.engineering_units` module — see
+[ENGINEERING_UNITS.md](ENGINEERING_UNITS.md). A `secondary` recording is
+likewise normalized to amperes (never conflated with "no unit
+normalization needed"). If the declared unit cannot be normalized to
+amperes, `convert_to_relay_secondary()`/`convert_array_to_relay_secondary()`
+return `None` and the service layer reports `status=needs_configuration`,
+`reason_code="unsupported_current_unit"` — never a silently-wrong number.
+This corrects an earlier version of this document (and an earlier version
+of the code) that incorrectly assumed CT ratio application required no
+additional kA/A normalization; a real UAT defect (a 2.4 kA primary current
+through a 1200:1 CT producing 0.002 A instead of the correct 2.0 A)
+proved that assumption wrong. This is display-unaffected: the UI still
+shows `measured_rms_current`/`measured_rms_current_unit` in the
+channel's own original source unit (e.g. "2.4 kA") — only the internal
+relay-secondary calculation is normalized.
 
 ## Runtime calculation (selected-time only, never a time series, never persisted)
 
@@ -215,6 +230,7 @@ recorded waveform
         v
 one-cycle trailing RMS (estimate_trailing_rms_at_time())
         v
+unit normalization to amperes (app.domain.engineering_units) +
 recording-basis conversion (convert_to_relay_secondary())
         v
 relay-equivalent secondary current
@@ -227,9 +243,12 @@ expected operating time (None if M <= 1)
 ```
 
 `continuous_duration_above_pickup()` runs alongside, independently, over
-the SAME relay-secondary-converted array (CT conversion is a linear
-scalar, applied once to the whole array rather than re-derived per
-sample). `threshold_exceeded = above_pickup_duration_seconds >
+the SAME relay-secondary-converted array, produced by
+`convert_array_to_relay_secondary()` — the array counterpart of the
+scalar function above, applying the identical unit-normalization-then-CT-
+ratio pipeline once to the whole array rather than re-deriving it per
+sample (this keeps the above-pickup duration dimensionally correct, not
+just the selected-time RMS figure). `threshold_exceeded = above_pickup_duration_seconds >
 expected_operating_time_seconds` (only when both are available) — the
 one and only "alert" this feature computes, always qualified in its own
 UI wording (see "Explicit non-emulation boundary" below).
@@ -242,7 +261,10 @@ never-raise-for-a-guardrail-failure precedent): missing current role,
 ambiguous current role, an ineligible waveform representation, invalid
 pickup/TMS/CT values, an unrecognized characteristic id, an invalid
 reference-frequency override, insufficient RMS window history/sampling
-density, and an analysis time outside the usable range. `TMS` is bounded
+density, an analysis time outside the usable range, and (DEC-091) a
+current channel whose declared unit cannot be normalized to amperes
+(`reason_code="unsupported_current_unit"`) — never silently treated as
+already being in amperes. `TMS` is bounded
 `0.025`–`1.2` — a typical/practical application guardrail commonly cited
 across IDMT relay manufacturer documentation (cross-checked during this
 implementation), **never** claimed as an IEC 60255-151-mandated numeric

@@ -18,6 +18,17 @@ automatically be treated as authoritative merely because it is already
 implemented or already covered by passing tests. Do not silently
 reinterpret ambiguous requirements — surface the ambiguity and ask.
 
+**Implementation note (DEC-091, 2026-09-13)**: the MEASURED-channel-side
+unit scale (V/kV, A/kA) this document assumes throughout is implemented
+in `app.domain.per_unit`'s `VOLTAGE_UNIT_SCALE`/`CURRENT_UNIT_SCALE`.
+Their multiplier values are now sourced from the shared
+`app.domain.engineering_units` module (see
+[ENGINEERING_UNITS.md](ENGINEERING_UNITS.md)) rather than re-typed
+locally — a duplication cleanup only. PU's own case-insensitive lookup
+behavior (and therefore every numeric value this document describes) is
+byte-for-byte unchanged; this note exists purely so a future reader does
+not mistake the refactor for a model change.
+
 This document distinguishes, throughout, between:
 
 - **`CURRENT IMPLEMENTATION`** — what is actually deployed today (DEC-049

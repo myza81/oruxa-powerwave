@@ -4,9 +4,109 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-12**
+Last updated: **2026-09-13**
 
 ## What was most recently done
+
+**Shared engineering-unit normalization (`app/domain/engineering_units.py`,
+new), fixing a real Overcurrent UAT defect — [DECISIONS.md — DEC-091](DECISIONS.md#dec-091--shared-engineering-unit-normalization-appengineeringunits-becomes-the-one-authoritative-parsingnormalizationcanonical-conversion-layer-for-every-analyzer-fixing-a-real-overcurrent-uat-defect).**
+Owner UAT found: a `2.4 kA` primary current through a `1200:1` CT
+produced `0.002 A` instead of the correct `2.0 A`, because
+`convert_to_relay_secondary()` applied the CT ratio to the raw `2.4`
+without ever normalizing it to amperes. Explicit owner instruction: fix
+it as a shared engineering-unit architecture gap, not a private
+`kA * 1000` special case inside Overcurrent — since the same mistake is
+possible anywhere a kV/MW/Mvar/MVA-labelled value meets a number that
+assumes a specific base unit (CT/VT ratios, future Distance/
+Differential/Power calculations).
+
+Full unit-safety audit first (background Explore subagent + direct
+reads): the confirmed bug was isolated to exactly two call sites
+(`overcurrent.py::convert_to_relay_secondary()` and a duplicated inline
+array-scale block in `overcurrent_analysis_service.py`, used for the
+above-pickup-duration array). Everything else audited SAFE (Phasor:
+never does cross-unit arithmetic, a channel's unit is attached to its
+OUTPUT only) or SAFE — normalized (Per Unit, RMS/waveform via
+`apply_per_unit_to_*`) or SAFE BUT RESTRICTIVE (Calculated Channels'
+`units_compatible()` requires exact unit-string equality — `1 kA + 500 A`
+rejected outright, never converted; left unchanged per the owner's own
+"do not introduce a large redesign" instruction, recorded as a
+documented follow-up instead).
+
+New `backend/app/domain/engineering_units.py`: one authoritative module
+for parsing/alias-normalization/canonical-unit-lookup/scalar-array
+conversion, covering Voltage (V/kV/MV), Current (A/kA), Active Power
+(W/kW/MW/GW), Reactive Power (var/kvar/Mvar/Gvar), Apparent Power
+(VA/kVA/MVA/GVA — newly promoted to a first-class Engineering Quantity
+in `channel_classification.py`, was previously only reachable via the
+generic broad `POWER` category), Frequency (Hz), ROCOF (Hz/s). A
+deliberate closed, quantity-aware alias table — never generic
+`raw_unit.lower()` SI-prefix parsing — because real files carry
+inconsistent casing (`KA`/`ka`, `mw` meaning megawatt not milliwatt);
+lowercase `m`/`M`/`g`/`G` always means mega/giga in this domain (never
+milli — milli-scale power-system readings don't occur here), and
+anything not explicitly listed is `unsupported`, never guessed.
+`parse_engineering_unit()`/`scale_to_canonical()`/
+`convert_value_to_canonical()`/`convert_array_to_canonical()` — the
+array form never mutates its input and preserves NaN.
+
+Overcurrent fix: `convert_to_relay_secondary()` now takes a new
+`measured_unit` parameter and normalizes to amperes BEFORE applying the
+CT ratio (returns `None`, never a silently-wrong number, if the unit is
+unresolvable); a new `convert_array_to_relay_secondary()` replaces the
+service layer's duplicated inline scale block so
+`continuous_duration_above_pickup()` gets a dimensionally-correct array
+too (the earlier bug would have stayed live there even after a
+scalar-only fix). New `needs_configuration`/
+`reason_code="unsupported_current_unit"` guardrail. Golden scenario
+verified end-to-end — domain, service, AND a real ASCII-COMTRADE upload
+through the actual HTTP API: 2.4 kA primary, CT 1200:1, pickup 0.8 A
+secondary -> relay current 2.0 A, pickup multiple 2.5x.
+
+Per Unit (`app/domain/per_unit.py`): `VOLTAGE_UNIT_SCALE`/
+`CURRENT_UNIT_SCALE` multiplier VALUES now sourced from the shared
+module (`parse_engineering_unit(...).scale_to_canonical`) instead of
+re-typing `1000.0` a third time — but the LOOKUP breadth (PU's own
+`.strip().lower()` case-folding, which accepts a wider casing set than
+the shared table's exact-alias policy, e.g. `"Kv"`) was deliberately
+left as PU's own local policy, per the owner's explicit "do not change
+PU's numerical behavior" instruction. Every existing PU test passes
+unchanged, byte-for-byte — no PU test file was edited.
+
+New tests: `backend/tests/test_engineering_units.py` (90 tests — status
+classification, the full alias matrix, golden numeric values, array
+guardrails/never-mutates/NaN-preservation). Updated:
+`test_channel_classification.py` (Apparent Power, MV), `test_overcurrent_
+domain.py`/`test_overcurrent_analysis_service.py`/
+`test_overcurrent_analysis_api.py` (new `measured_unit` kwarg on
+existing CT-conversion calls, new kA golden-value/unsupported-unit
+tests, a new real-upload API golden test). Full backend regression
+(every test file, including Per Unit/Phasor/Calculated Channel) passes.
+New doc [ENGINEERING_UNITS.md](ENGINEERING_UNITS.md) — the authoritative
+reference for this layer, including the per-consumer audit table and the
+future-analyzer invariant ("any Analysis calculation combining or
+comparing engineering quantities must first establish quantity
+compatibility and canonical-unit normalization via this module — never
+a private per-analyzer unit-scale dictionary") a later analyzer
+(Distance/Differential/further Power calculations) must follow.
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own "Pickup basis
+and CT conversion" section updated to remove the now-incorrect claim
+that CT conversion needed no kA/A normalization.
+
+**Deliberately deferred, not forgotten**: migrating
+`voltage_group_config.py`'s `_VOLTAGE_UNIT_TO_KV` and
+`current_group_config.py`'s `_CURRENT_UNIT_TO_KA` (their own
+independently-duplicated V/kV, A/kA lookups) onto the shared module —
+PU was the only consumer explicitly named for migration; these two are
+flagged in ENGINEERING_UNITS.md's audit table as a known follow-up.
+Calculated Channels' exact-unit-equality restriction is also a
+documented follow-up candidate, not implemented this pass.
+
+Stop condition honored: the owner's own closing instruction for this
+task was "stop after this unit-hardening task — do NOT start another
+analyzer," so no new analyzer work was started.
+
+## What was done in the prior session — nine-task session: Playback speed set, Analysis shell polish, Playback-controls scoping, Overcurrent Analysis v1, chart UX refinement, adjustable Overcurrent viewport, shared Engineering Context lifecycle, Related Waveforms panel
 
 **Nine sequential tasks in one session, plus two concurrent Codex
 styling commits: (1) Playback speed set extended to 0.05x/0.10x, (2)

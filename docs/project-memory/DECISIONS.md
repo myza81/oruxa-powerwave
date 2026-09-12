@@ -14369,6 +14369,166 @@ architecture record.
 
 ---
 
+## DEC-091 — Shared engineering-unit normalization (`app.domain.engineering_units`) becomes the one authoritative parsing/normalization/canonical-conversion layer for every analyzer, fixing a real Overcurrent UAT defect
+
+Date: 2026-09-13
+Status: Approved — implemented.
+Source: owner UAT defect report + explicit owner instruction ("fix the
+immediate OC bug but do NOT patch with a private `kA x 1000` special
+case — treat this as a shared engineering-unit architecture issue"),
+with an explicit closing owner endorsement of the architecture direction
+taken ("That is the right fix direction... while also preventing the
+same class of mistake later with kV, MW, Mvar, MVA, CT/VT conversions,
+Distance, Differential, and future power calculations").
+
+Decision:
+
+**1. One shared, authoritative module —
+`backend/app/domain/engineering_units.py` — owns parsing, alias
+normalization, canonical-unit lookup, and scalar/array conversion to
+canonical units for every Engineering Quantity.** No analyzer may
+declare its own private unit-scale dictionary going forward (see
+[ENGINEERING_UNITS.md](ENGINEERING_UNITS.md) "Future-analyzer
+invariant"). Pure, framework-free, zero registry/I/O access, mirroring
+every other `app.domain` module's own layering contract.
+
+**2. Canonical calculation units**: Voltage -> V, Current -> A, Active
+Power -> W, Reactive Power -> var, Apparent Power -> VA, Frequency -> Hz,
+ROCOF -> Hz/s. The canonical calculation unit is independent of the
+display unit — a `2.4 kA` channel is genuinely `2400 A` for any
+calculation needing dimensional consistency, but the UI keeps displaying
+`2.4 kA`; canonical conversion is for calculation, never presentation.
+
+**3. Apparent Power becomes a first-class Engineering Quantity**
+(`ENGINEERING_QUANTITY_APPARENT_POWER = "Apparent Power"`, controlled
+units `VA`/`kVA`/`MVA`/`GVA` via `MEASURED_UNIT_OPTIONS`) — previously
+only reachable via the generic broad `POWER` category with no controlled
+unit list of its own. Active/Reactive/Apparent Power remain three
+mutually-exclusive Engineering Quantities despite sharing the broad
+`POWER` bucket — `100 MW + 20 Mvar` is not a valid operation in this
+model; combining them requires an explicitly-defined complex-power-aware
+operation that does not exist yet.
+
+**4. A deliberate, closed, quantity-aware alias table — never generic
+`raw_unit.lower()` SI-prefix parsing.** Real files carry inconsistent
+casing (`KA`/`ka`, `mw` meaning megawatt not milliwatt); a blind
+case-fold-then-prefix-derive rule would be actively unsafe here (a wrong
+guess is a silent 10^6x error, not a crash). Every alias entry commits to
+one explicit interpretation up front — lowercase `m`/`M`/`g`/`G` always
+means mega/giga in this domain, never milli, since milli-scale
+power-system readings do not occur in these recordings. Anything not
+explicitly listed resolves to `unsupported`, never guessed.
+
+**5. Fixed the actual Overcurrent bug using the shared layer**:
+`convert_to_relay_secondary()`/new `convert_array_to_relay_secondary()`
+(`app/domain/overcurrent.py`) now normalize the measured current to
+amperes via `engineering_units.convert_value_to_canonical()`/
+`convert_array_to_canonical()` BEFORE applying the CT ratio, for both the
+selected-time scalar RMS and the full array driving
+`continuous_duration_above_pickup()` (the earlier version only would
+have fixed the scalar figure, leaving the above-pickup duration
+dimensionally wrong). An unresolvable current unit is a new
+`needs_configuration` guardrail (`reason_code=
+"unsupported_current_unit"`), never a silently-wrong number. Golden
+scenario verified end-to-end (domain, service, and real-upload API
+tests): 2.4 kA primary, CT 1200:1, pickup 0.8 A secondary -> relay
+current 2.0 A, pickup multiple 2.5x.
+
+**6. Per Unit (`app.domain.per_unit`) partially migrated, PU's own
+numerical behavior unchanged.** PU's `VOLTAGE_UNIT_SCALE`/
+`CURRENT_UNIT_SCALE` multiplier VALUES are now sourced from
+`engineering_units.parse_engineering_unit(...).scale_to_canonical`
+(the number `1000.0` is now typed once, not three times across the
+codebase) — but PU's own LOOKUP breadth (its `.strip().lower()`
+case-folding, accepting any casing of `v`/`kv`/`a`/`ka` including
+untested fringe cases like `"Kv"`) is deliberately left as PU's own,
+more permissive, local policy layer: a full call-through to the shared
+table's exact-alias lookup would have silently narrowed PU's
+already-shipped acceptance set, which the owner's explicit "do not
+change PU's numerical behavior" instruction ruled out. All existing PU
+tests pass unchanged, byte-for-byte.
+
+**7. Phasor and Calculated Channels audited, deliberately left
+unchanged.** Phasor never performs cross-unit arithmetic (a channel's
+own `unit` is attached to its OUTPUT only, e.g. `162.4 kV` in -> `162.4
+kV` out is correct as-is) — classified SAFE, no code change; the shared
+module is available for a future Phasor calculation that does need it.
+Calculated Channels' `units_compatible()` requires EXACT unit-string
+equality for multi-input operations (`1 kA + 500 A` rejected outright,
+never converted) — classified SAFE BUT RESTRICTIVE; not redesigned in
+this pass per the owner's own "do not introduce a large redesign if it
+would expand scope excessively" instruction, recorded as a documented
+follow-up candidate instead (use quantity-compatible + convertible-unit
+normalization instead of exact-string equality, without weakening the
+existing safety property).
+
+**8. Future-analyzer invariant recorded**: any Analysis calculation
+combining or comparing engineering quantities must first establish
+quantity compatibility and canonical-unit normalization via this module
+— never a private per-analyzer unit-scale dictionary. Explicit worked
+examples for Distance (V/I -> Ω), Differential (normalize all currents to
+A), and Power (V x I via canonical units) recorded in
+[ENGINEERING_UNITS.md](ENGINEERING_UNITS.md) so a future analyzer does
+not re-derive this from scratch.
+
+Reason: the trigger defect (`2.4 kA` primary treated as `2.4 A`,
+producing a 1000x-wrong relay-equivalent current) was a real UAT finding,
+not a hypothetical. A private `kA * 1000` patch inside Overcurrent alone
+would have fixed only that one call site while leaving the identical
+mistake latent everywhere else a kV/MW/Mvar/MVA-labelled value might
+later be combined with a number that assumes a specific base unit (CT/VT
+ratios elsewhere, Distance, Differential, future Power calculations) —
+exactly the owner's own stated rationale for requiring the shared-module
+fix instead.
+
+Alternatives considered:
+- A private `kA * 1000` special case inside `overcurrent.py` only —
+  explicitly rejected by the owner's own task instruction; would have
+  fixed the symptom without addressing the shared architectural gap that
+  produced it, and would not protect any future analyzer from the same
+  mistake.
+- Fully migrating Per Unit's own unit lookup to call through the shared
+  module directly (not just sourcing its multiplier values from it) —
+  rejected after discovering PU's own case-folding accepts a strictly
+  wider set of input casings (e.g. `"Kv"`) than the shared table's
+  quantity-aware exact-alias policy; a full call-through would have
+  silently narrowed PU's already-shipped behavior, violating the owner's
+  explicit "do not change PU's numerical behavior" instruction.
+- Redesigning Calculated Channels' `units_compatible()` to accept
+  quantity-compatible + convertible units in this same change — deferred;
+  the owner's own instruction was not to expand scope excessively if it
+  would require a larger redesign, so this was recorded as a documented
+  follow-up (safe-but-restrictive) instead of implemented now.
+- Migrating `voltage_group_config.py`'s `_VOLTAGE_UNIT_TO_KV` and
+  `current_group_config.py`'s `_CURRENT_UNIT_TO_KA` (their own
+  independently-duplicated V/kV, A/kA lookups) onto the shared module in
+  this same change — deferred; PU was the only consumer explicitly named
+  for migration, and these two are flagged in
+  [ENGINEERING_UNITS.md](ENGINEERING_UNITS.md) as a known follow-up
+  rather than migrated silently.
+
+Impact: `backend/app/domain/engineering_units.py` (new — the shared
+module), `backend/app/domain/channel_classification.py` (+Apparent Power
+Engineering Quantity, +MV to Voltage's controlled unit list),
+`backend/app/domain/overcurrent.py` (`convert_to_relay_secondary()` now
+takes `measured_unit`, new `convert_array_to_relay_secondary()`, new
+`REASON_UNSUPPORTED_CURRENT_UNIT`), `backend/app/services/
+overcurrent_analysis_service.py` (both CT-conversion call sites pass
+`measured_unit=candidate.unit`, new needs-configuration guardrail
+branch), `backend/app/domain/per_unit.py` (scale values sourced from the
+shared module; lookup behavior unchanged). New tests: `backend/tests/
+test_engineering_units.py`. Updated tests: `test_channel_classification.py`
+(Apparent Power, MV), `test_overcurrent_domain.py`/
+`test_overcurrent_analysis_service.py`/`test_overcurrent_analysis_api.py`
+(new `measured_unit` kwarg on existing calls, new kA golden-value and
+unsupported-unit tests). Full backend regression (all suites, including
+Per Unit/Phasor/Calculated Channel regression) passes; no PU test
+required a behavior-preserving change. See
+[ENGINEERING_UNITS.md](ENGINEERING_UNITS.md) for the complete
+architecture record and per-consumer audit table.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

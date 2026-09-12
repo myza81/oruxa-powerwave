@@ -9,7 +9,7 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-12**. **Event Playback
+Last meaningful update: **2026-09-13**. **Event Playback
 ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock),
 its own 2026-09-11 revision) is implemented as a shared, reusable
 WORKSPACE CAPABILITY — never a standalone top-level page.** Following
@@ -537,6 +537,42 @@ the new `app/domain/overcurrent.py`/`app/services/
 overcurrent_analysis_service.py`/`app/schemas/overcurrent_analysis.py`
 modules were touched; full backend regression, full frontend static
 suite, and full Playwright suite all pass.
+
+**Shared engineering-unit normalization is implemented (2026-09-13,
+[DECISIONS.md — DEC-091](DECISIONS.md#dec-091--shared-engineering-unit-normalization-appengineeringunits-becomes-the-one-authoritative-parsingnormalizationcanonical-conversion-layer-for-every-analyzer-fixing-a-real-overcurrent-uat-defect)),
+fixing a real Overcurrent UAT defect** — a `2.4 kA` primary current
+through a `1200:1` CT produced `0.002 A` instead of the correct `2.0 A`,
+because `convert_to_relay_secondary()` applied the CT ratio to the raw
+`2.4` without ever normalizing it to amperes first. Per explicit owner
+instruction, this was fixed as a shared architecture gap (`backend/app/
+domain/engineering_units.py`, new), not a private `kA * 1000` special
+case: one authoritative module now owns parsing/alias-normalization/
+canonical-unit lookup/scalar-array conversion for Voltage (V/kV/MV),
+Current (A/kA), Active Power (W/kW/MW/GW), Reactive Power (var/kvar/
+Mvar/Gvar), Apparent Power (VA/kVA/MVA/GVA — newly first-class, was only
+reachable via the generic broad `POWER` category before), Frequency
+(Hz), and ROCOF (Hz/s). A deliberate closed, quantity-aware alias
+table — never generic `.lower()` SI-prefix parsing — since real files
+carry inconsistent casing (`KA`/`ka`, `mw` meaning megawatt not
+milliwatt); lowercase `m`/`M`/`g`/`G` always means mega/giga in this
+domain, never milli, and anything not explicitly listed is `unsupported`,
+never guessed. Overcurrent's `convert_to_relay_secondary()`/new
+`convert_array_to_relay_secondary()` now normalize the measured current
+to amperes via this module BEFORE applying the CT ratio, for both the
+selected-time RMS and the full array driving `continuous_duration_
+above_pickup()` (golden scenario verified end-to-end: 2.4 kA primary, CT
+1200:1, pickup 0.8 A secondary -> relay current 2.0 A, multiple 2.5x); an
+unresolvable unit is a new `needs_configuration`/`unsupported_current_unit`
+guardrail, never a silently-wrong number. Per Unit's own multiplier
+VALUES are now sourced from this module (its own more-permissive
+case-folded lookup breadth is deliberately unchanged, preserving all
+existing PU tests byte-for-byte). Phasor (never does cross-unit
+arithmetic) and Calculated Channels (`units_compatible()` requires exact
+unit-string equality — safe but restrictive) were audited and left
+unchanged by design. See [ENGINEERING_UNITS.md](ENGINEERING_UNITS.md)
+for the full architecture, per-consumer audit table, and the
+future-analyzer invariant a later analyzer (Distance/Differential/
+further Power calculations) must follow.
 
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test
