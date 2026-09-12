@@ -46,6 +46,7 @@ from app.domain.calculated_channel import (
     OP_SUBTRACTION,
 )
 from app.domain.channel_classification import CURRENT, VOLTAGE
+from app.domain.engineering_units import parse_engineering_unit
 from app.domain.voltage_reference import (
     KNOWN_VOLTAGE_REFERENCES,
     LINE_TO_GROUND,
@@ -82,8 +83,26 @@ STATUS_BASE_REQUIRED = "base_required"
 #: fields themselves any more (those are canonical, see module
 #: docstring) -- still used here for the measured-channel side of the
 #: division, unchanged from the original DEC-049 implementation.
-VOLTAGE_UNIT_SCALE: dict[str, float] = {"v": 1.0, "kv": 1000.0}
-CURRENT_UNIT_SCALE: dict[str, float] = {"a": 1.0, "ka": 1000.0}
+#:
+#: The multipliers themselves are sourced from the shared
+#: `app.domain.engineering_units` module (the one place "1 kV/kA = 1000
+#: V/A" is now spelled out) rather than re-typed here -- but the LOOKUP
+#: itself (which key strings are recognized, how they're case-folded)
+#: stays this module's own, intentionally more permissive, policy: PU
+#: case-folds its whole key (`.strip().lower()`), accepting any casing of
+#: "v"/"kv"/"a"/"ka" (e.g. "Kv", not itself a key in the shared quantity-
+#: aware alias table), so a straight call-through to the shared table
+#: would have silently narrowed PU's own already-shipped acceptance set --
+#: exactly what the owner's "do NOT change its numerical behavior"
+#: instruction ruled out. See docs/project-memory/ENGINEERING_UNITS.md.
+VOLTAGE_UNIT_SCALE: dict[str, float] = {
+    "v": parse_engineering_unit(VOLTAGE, "V").scale_to_canonical,
+    "kv": parse_engineering_unit(VOLTAGE, "kV").scale_to_canonical,
+}
+CURRENT_UNIT_SCALE: dict[str, float] = {
+    "a": parse_engineering_unit(CURRENT, "A").scale_to_canonical,
+    "ka": parse_engineering_unit(CURRENT, "kA").scale_to_canonical,
+}
 
 
 @dataclass(slots=True)
