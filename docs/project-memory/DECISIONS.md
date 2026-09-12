@@ -14060,6 +14060,74 @@ required manual reconciliation. See
 [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s own "Automatic Engineering
 Context bootstrap" section for the full architecture.
 
+**Update (2026-09-12) — Engineering Context discovery/bootstrap
+ownership moves from Phasor to the shared Analysis workspace; Phasor
+and Overcurrent become pure consumers of one shared context list.**
+Owner UAT: opening `Overcurrent` directly after an upload, without ever
+visiting Phasor first, could leave the Bay/Engineering Context selector
+empty. Root cause: every discovery/bootstrap function this DEC's own
+prior Updates describe (`wwPhasorFetchContexts()`,
+`wwPhasorCoveredSourceIds()`, `wwPhasorDiscoverUncoveredSources()`,
+`wwPhasorLoadContexts()`, etc.) lived entirely inside Phasor's own code
+path; Overcurrent (added by DEC-090, below) only ever read whatever
+contexts already existed, never triggering discovery itself. An
+order-dependent bug that would recur for every future analyzer
+(Impedance Locus, Differential, Sequence Components) too, unless
+ownership moved out of any one analyzer.
+
+**Fix — new architectural rule: Engineering Context discovery/bootstrap
+is owned by the Analysis WORKSPACE, never an individual analyzer.**
+Every function named above was relocated, algorithm UNCHANGED, to a new
+shared module (`wwAnalysisContextState`/`wwAnalysisRegisterContextConsumer()`/
+`wwAnalysisLoadContexts()`/`wwAnalysisDiscoverUncoveredSources()`/etc.,
+`wwAnalysis*` prefix). `wwRenderAnalysisPage()` now calls
+`wwAnalysisLoadContexts()` exactly once per Analysis-page visit,
+regardless of active analyzer tab. Phasor and Overcurrent register as
+CONSUMERS (`wwAnalysisRegisterContextConsumer({ onContexts,
+onLifecyclePhase, onDiscovering, onFreshContextsDiscovered })`) rather
+than independently fetching/discovering — mirroring the existing
+`wwPlaybackOnTick()` subscriber-registration shape, applied to context
+discovery instead of Playback ticks. Selection (`selectedContextId`),
+empty-state message text/DOM element, the discovering-indicator DOM
+element, and role resolution all stay analyzer-specific by design (an
+engineer may study a different bay in Phasor than in Overcurrent at the
+same time); only the context-LIST lifecycle moved.
+
+Reason: closes an order-dependent bug at its architectural root rather
+than adding a second, Overcurrent-specific bootstrap implementation
+(which the original DEC-090 explicitly declined to do, deferring to
+"Phasor's own established entry point" — an assumption this UAT proved
+false) — and establishes the rule needed so a THIRD analyzer never
+reintroduces the same class of bug.
+
+Impact: `frontend/index.html` only (no backend files touched — the
+existing context-list/suggest endpoints are reused verbatim).
+`wwPhasorState.attemptedSourceIds` removed (moved to
+`wwAnalysisContextState.attemptedSourceIds`); dead code removed
+(`wwOvercurrentLoadContexts()`/`wwOvercurrentHandleContextsFetched()`/
+the standalone `wwOvercurrentFetchContexts()` helper, and every
+now-superseded Phasor-only bootstrap function). New
+`WW_OVERCURRENT_MSG_IDENTIFYING_CONTEXTS`/`_NO_SOURCES`/
+`_NO_SUGGESTIONS` message constants and a new
+`#wwOvercurrentDiscoveringIndicator` element (reusing the existing
+`.ww-phasor-discovering-indicator` CSS class). `test_frontend_phasor_
+analysis.py`'s `TestContextBootstrap` migrated (algorithm assertions
+unchanged) to `TestSharedAnalysisContextLifecycle` +
+`TestSharedAnalysisContextConsumers` (the latter a structural
+regression seam proving both analyzers register via the shared
+function, never their own independent bootstrap).
+`browser-tests/overcurrent_analysis.spec.js` gained a new "shared
+Analysis Engineering Context lifecycle" describe block covering the
+exact reported bug plus later-upload/selection-preservation/duplicate-
+label/manual-coverage/stale-workspace cases. Full frontend static
+suite and the full Playwright suite (Overcurrent + Phasor + bare-
+context + Playback + everything else) all pass. See
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s own "Ownership moved to the
+shared Analysis workspace" section and
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own "Shared
+Analysis Engineering Context lifecycle" section for the full
+architecture.
+
 ---
 
 ## DEC-090 — Overcurrent Analysis v1: the second Analysis-menu analyzer, IEC IDMT characteristic evaluation against a one-cycle trailing RMS current, at the shared Playback-driven analysis time

@@ -7511,6 +7511,7 @@
                                             <option value="C">Phase C</option>
                                         </select>
                                     </label>
+                                    <span class="ww-phasor-discovering-indicator" id="wwOvercurrentDiscoveringIndicator" hidden>Identifying additional engineering contexts…</span>
                                 </div>
                             </section>
 
@@ -29451,6 +29452,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPhasorResetState();
             // Overcurrent Analysis v1: the SAME whole-workspace reset hook.
             wwOvercurrentResetState();
+            // Shared Analysis Engineering Context lifecycle (2026-09-12):
+            // the SAME whole-workspace reset hook -- a fresh workspace
+            // always gets a fresh per-source attempted slate, never
+            // leaking into a DIFFERENT workspace's own bookkeeping.
+            wwAnalysisResetContextState();
             for (const panel of ww.panels) {
                 if (panel.plotlyReady && panel.chartEl) Plotly.purge(panel.chartEl);
             }
@@ -34396,6 +34402,327 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // ==================================================================
 
         // ==================================================================
+        // Shared Analysis Engineering Context lifecycle (owner UAT fix,
+        // 2026-09-12). Root cause of the reported bug: Engineering
+        // Context discovery/bootstrap used to live entirely inside
+        // Phasor's own code path (wwPhasorLoadContexts() et al.), while
+        // Overcurrent merely read whatever contexts already existed. On
+        // a fresh upload, opening Overcurrent DIRECTLY (without ever
+        // visiting Phasor first) meant discovery/suggestion had simply
+        // never run, so the Bay selector showed nothing -- an
+        // order-dependent bug that would recur for every future
+        // analyzer too, unless ownership moved out of any one analyzer.
+        //
+        // New rule: Engineering Context discovery/bootstrap is owned by
+        // the ANALYSIS WORKSPACE, never by an individual analyzer.
+        // wwRenderAnalysisPage() (below) calls wwAnalysisLoadContexts()
+        // exactly ONCE per Analysis-page visit, regardless of which
+        // analyzer tab is currently active; Phasor/Overcurrent/every
+        // future analyzer (Impedance Locus, Differential, Sequence
+        // Components, ...) register themselves as CONSUMERS of the one
+        // shared context list this module publishes
+        // (wwAnalysisRegisterContextConsumer(), called once per analyzer
+        // in the wiring section near the bottom of this script) rather
+        // than independently fetching or discovering contexts. This is
+        // the SAME source-coverage-driven discovery logic Phasor's own
+        // original bootstrap established (a source is "covered" if any
+        // existing context has a member whose channel_ref.source_id
+        // matches it -- never context count, display name, or upload
+        // order) -- relocated here unchanged, not reinvented.
+        //
+        // What stays analyzer-specific (deliberately NOT moved here):
+        // which context is SELECTED (each analyzer keeps its own
+        // `selectedContextId` -- an engineer may study a different bay
+        // in Phasor than in Overcurrent at the same time), the empty-
+        // state MESSAGE TEXT/DOM element, and role resolution (Phasor
+        // resolves Voltage/Current phasor roles, Overcurrent resolves a
+        // single current-phase role, entirely unrelated to context
+        // discovery). This refactor is scoped to the CONTEXT LIST
+        // lifecycle only.
+        // ==================================================================
+
+        const wwAnalysisContextState = {
+            contexts: [],
+            // Source ids a suggestion has already been requested for
+            // THIS workspace session -- never re-attempted merely
+            // because the Analysis page (or an analyzer tab within it)
+            // was revisited. Reset only by wwClearWorkspace() (see the
+            // reset call alongside every other per-workspace state
+            // reset there).
+            attemptedSourceIds: new Set(),
+        };
+        const wwAnalysisContextConsumers = [];
+
+        // One-time-per-analyzer registration -- called from the wiring
+        // section near the bottom of this script, once per analyzer,
+        // mirroring the existing wwPlaybackOnTick(consumerFn) subscriber
+        // pattern. `consumer.onContexts(contexts)` is invoked with the
+        // CURRENT FULL list every time it changes (never a delta).
+        // `consumer.onLifecyclePhase(phase)` (optional) is invoked with
+        // one of the WW_ANALYSIS_CONTEXT_PHASE_* constants below ONLY
+        // for the terminal/interim states of a BLOCKING (nothing usable
+        // existed yet) bootstrap pass -- never while an already-usable
+        // list is merely being refreshed in the background.
+        // `consumer.onDiscovering(isDiscovering)` (optional) toggles a
+        // subtle "discovering more sources" affordance for the
+        // background (non-blocking) pass. `consumer.
+        // onFreshContextsDiscovered(contexts)` (optional) fires only the
+        // very first time this workspace ever gets a usable context from
+        // nothing, so each analyzer can decide its own "auto-select the
+        // first one" policy without the shared layer dictating it.
+        function wwAnalysisRegisterContextConsumer(consumer) {
+            wwAnalysisContextConsumers.push(consumer);
+        }
+
+        const WW_ANALYSIS_CONTEXT_PHASE_IDENTIFYING = "identifying";
+        const WW_ANALYSIS_CONTEXT_PHASE_NO_SOURCES = "no_sources";
+        const WW_ANALYSIS_CONTEXT_PHASE_NO_SUGGESTIONS = "no_suggestions";
+        const WW_ANALYSIS_CONTEXT_PHASE_UNREACHABLE = "unreachable";
+
+        function wwAnalysisPublishContexts(contexts) {
+            wwAnalysisContextState.contexts = contexts;
+            for (const consumer of wwAnalysisContextConsumers) consumer.onContexts(contexts);
+        }
+        function wwAnalysisPublishLifecyclePhase(phase) {
+            for (const consumer of wwAnalysisContextConsumers) {
+                if (consumer.onLifecyclePhase) consumer.onLifecyclePhase(phase);
+            }
+        }
+        function wwAnalysisSetDiscovering(isDiscovering) {
+            for (const consumer of wwAnalysisContextConsumers) {
+                if (consumer.onDiscovering) consumer.onDiscovering(isDiscovering);
+            }
+        }
+        function wwAnalysisPublishFreshContextsDiscovered(contexts) {
+            for (const consumer of wwAnalysisContextConsumers) {
+                if (consumer.onFreshContextsDiscovered) consumer.onFreshContextsDiscovered(contexts);
+            }
+        }
+
+        function wwAnalysisFetchContexts(workspaceId) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/engineering-contexts"
+            );
+        }
+
+        // The existing Guardrail Slice 1 suggestion endpoint, reused
+        // verbatim -- no new backend detection engine, no frontend
+        // channel-name parsing. Single-source, exactly like the endpoint
+        // itself already is (see app.domain.engineering_context_
+        // detection's own module docstring) -- wwAnalysisDiscoverUncoveredSources()
+        // below calls this once per UNCOVERED loaded source, never
+        // assuming one source is "the" bay or that only the first/newest
+        // source matters.
+        function wwAnalysisFetchSuggest(workspaceId, sourceId) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                "/sources/" + encodeURIComponent(sourceId) + "/engineering-contexts/suggest",
+                { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }
+            );
+        }
+
+        // The set of real source ids already COVERED by at least one
+        // Engineering Context member -- determined ENTIRELY from actual
+        // membership (channel_ref.source_id), never from a context's own
+        // display name, status, or count. Two contexts can share the
+        // identical display name ("Default Context" for two different
+        // bare-role sources) and remain correctly distinct here, since
+        // coverage is keyed by source id, never by name. A
+        // "calculated"-kind member has no source_id of its own on
+        // channel_ref and therefore never marks any real source as
+        // covered by this check -- deliberately narrow, does NOT trace a
+        // calculated channel back to its own grounding source.
+        function wwAnalysisCoveredSourceIds(contexts) {
+            const covered = new Set();
+            for (const ctx of contexts) {
+                for (const member of (ctx && ctx.members) || []) {
+                    const ref = member && member.channel_ref;
+                    if (ref && ref.kind === "source" && ref.source_id) covered.add(ref.source_id);
+                }
+            }
+            return covered;
+        }
+
+        // Entry point -- called ONCE per Analysis-page visit
+        // (wwRenderAnalysisPage()'s own single call), regardless of
+        // which analyzer tab is active. Engineering Contexts have no
+        // other frontend mutation path yet in this slice, so a cheap
+        // re-fetch on every visit -- mirroring the Recordings page's own
+        // "cheap metadata refresh on every visit, never a plot rebuild"
+        // precedent -- is simpler and safer than a cache that could go
+        // stale after a context is created/edited outside this page.
+        function wwAnalysisLoadContexts() {
+            const workspaceId = currentWorkspaceId();
+            const epochAtStart = ww.epoch;
+            wwAnalysisFetchContexts(workspaceId).then(
+                (contexts) => wwAnalysisHandleContextsFetched(workspaceId, epochAtStart, contexts),
+                () => wwAnalysisHandleContextsFetched(workspaceId, epochAtStart, null)
+            );
+        }
+
+        // Multi-upload bootstrap fix (2026-09-12, relocated unchanged
+        // from Phasor's own original implementation): SOURCE-COVERAGE
+        // driven, not workspace-empty-driven. Coverage is determined
+        // from actual Engineering Context MEMBERSHIP
+        // (wwAnalysisCoveredSourceIds() above) and discovers whichever
+        // loaded sources are not yet covered -- never from context
+        // count, display name, or source order.
+        //
+        // If at least one context ALREADY exists, every consumer is
+        // published the list IMMEDIATELY (never blanked) while any
+        // uncovered source is discovered in the background
+        // (blocking=false) -- a later-uploaded, not-yet-covered source
+        // must never hide an already-usable bay. If ZERO contexts exist
+        // yet, this is the "nothing usable to preserve" case, so
+        // discovery BLOCKS every consumer's own page with the shared
+        // "Identifying engineering contexts…" phase exactly as before.
+        function wwAnalysisHandleContextsFetched(workspaceId, epochAtStart, contexts) {
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+
+            if (contexts === null) {
+                wwAnalysisContextState.contexts = [];
+                wwAnalysisPublishContexts([]);
+                wwAnalysisPublishLifecyclePhase(WW_ANALYSIS_CONTEXT_PHASE_UNREACHABLE);
+                return;
+            }
+
+            wwAnalysisContextState.contexts = contexts;
+
+            if (contexts.length > 0) {
+                // At least one usable bay already exists -- publish it
+                // right away; coverage discovery for any OTHER loaded
+                // source runs quietly in the background and never blanks
+                // this.
+                wwAnalysisPublishContexts(contexts);
+                wwAnalysisDiscoverUncoveredSources(workspaceId, epochAtStart, contexts, false);
+                return;
+            }
+
+            // Nothing usable exists yet -- do NOT publish an empty list
+            // yet (that would prematurely show every consumer's own
+            // "select a context" empty state before discovery even
+            // starts); go straight to blocking discovery, which owns the
+            // "Identifying engineering contexts…" phase instead.
+            wwAnalysisDiscoverUncoveredSources(workspaceId, epochAtStart, contexts, true);
+        }
+
+        // The automatic discovery pass -- requests a suggestion for
+        // every loaded source that is BOTH uncovered (see
+        // wwAnalysisCoveredSourceIds()) AND not yet attempted this
+        // workspace session (wwAnalysisContextState.attemptedSourceIds),
+        // then re-fetches the context list once. Never assumes one
+        // source is "the" bay, never assumes only the first/newest
+        // source matters; one source's own suggestion failure does not
+        // block the others (best-effort across all of them, mirroring
+        // the original Phasor implementation this was relocated from
+        // unchanged). Every async step re-checks the SAME epoch/
+        // workspaceId guard every other Analysis fetch already uses, so
+        // a workspace change mid-discovery (a new upload, "Start New
+        // Workspace") discards the in-flight attempt rather than
+        // populating the wrong workspace's own selector.
+        //
+        // `blocking` distinguishes the two entry shapes
+        // wwAnalysisHandleContextsFetched() above uses this for: `true`
+        // (zero contexts existed yet -- nothing usable to preserve, so
+        // this owns the empty-state phase/message exactly like the
+        // original bootstrap did) vs. `false` (at least one context
+        // already renders normally -- this only ever shows a subtle,
+        // non-blocking indicator and silently re-publishes the list when
+        // it finishes, NEVER replacing any consumer's page with an empty
+        // state).
+        async function wwAnalysisDiscoverUncoveredSources(workspaceId, epochAtStart, knownContexts, blocking) {
+            let sources;
+            try {
+                sources = await fetchSourcesList();
+            } catch (error) {
+                sources = null;
+            }
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+
+            if (!sources || sources.length === 0) {
+                if (blocking) wwAnalysisPublishLifecyclePhase(WW_ANALYSIS_CONTEXT_PHASE_NO_SOURCES);
+                return;
+            }
+
+            const coveredSourceIds = wwAnalysisCoveredSourceIds(knownContexts);
+            const uncoveredSources = sources.filter((source) =>
+                !coveredSourceIds.has(source.source_id) && !wwAnalysisContextState.attemptedSourceIds.has(source.source_id)
+            );
+
+            if (uncoveredSources.length === 0) {
+                if (blocking) wwAnalysisPublishLifecyclePhase(WW_ANALYSIS_CONTEXT_PHASE_NO_SUGGESTIONS);
+                return;
+            }
+
+            if (blocking) {
+                wwAnalysisPublishLifecyclePhase(WW_ANALYSIS_CONTEXT_PHASE_IDENTIFYING);
+            } else {
+                wwAnalysisSetDiscovering(true);
+            }
+
+            let anyFailed = false;
+            for (const source of uncoveredSources) {
+                // Marked attempted BEFORE the call resolves (mirrors the
+                // original bootstrap's own timing exactly) -- a
+                // transient network failure is not retried on every mere
+                // page revisit, matching the existing retry convention
+                // this fix inherits rather than invents a new one for.
+                wwAnalysisContextState.attemptedSourceIds.add(source.source_id);
+                try {
+                    await wwAnalysisFetchSuggest(workspaceId, source.source_id);
+                } catch (error) {
+                    anyFailed = true;
+                }
+                if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            }
+
+            let contexts;
+            try {
+                contexts = await wwAnalysisFetchContexts(workspaceId);
+            } catch (error) {
+                contexts = null;
+            }
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) {
+                if (!blocking) wwAnalysisSetDiscovering(false);
+                return;
+            }
+            if (!blocking) wwAnalysisSetDiscovering(false);
+
+            if (contexts === null) {
+                if (blocking) wwAnalysisPublishLifecyclePhase(WW_ANALYSIS_CONTEXT_PHASE_UNREACHABLE);
+                return;
+            }
+
+            const hadContextsBefore = knownContexts.length > 0;
+            wwAnalysisPublishContexts(contexts);
+
+            if (contexts.length > 0) {
+                if (blocking && !hadContextsBefore) {
+                    // Owner instruction (relocated unchanged from
+                    // Phasor's own original implementation): prefer
+                    // auto-selecting the first usable context after a
+                    // successful automatic suggestion, so the engineer
+                    // never needs an extra click merely because the
+                    // context was just created. Deliberately ONLY for
+                    // the fresh, nothing-existed-before path -- an
+                    // already-had-contexts discovery pass NEVER fires
+                    // this (never jumps the engineer away from whatever
+                    // bay they already had open merely because a new one
+                    // was just discovered). Each consumer decides for
+                    // itself whether IT already has a selection before
+                    // acting on this.
+                    wwAnalysisPublishFreshContextsDiscovered(contexts);
+                }
+                return;
+            }
+
+            if (blocking) {
+                wwAnalysisPublishLifecyclePhase(anyFailed ? WW_ANALYSIS_CONTEXT_PHASE_UNREACHABLE : WW_ANALYSIS_CONTEXT_PHASE_NO_SUGGESTIONS);
+            }
+        }
+        // ==================================================================
+
+        // ==================================================================
         // Overcurrent Analysis v1 -- the SECOND Analysis-menu analyzer.
         // Reuses the shared Analysis shell, the shared wwPlayback
         // controller, and the same "Bay/Engineering Context -> Playback
@@ -34409,6 +34736,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         const WW_OVERCURRENT_MSG_SELECT_CONTEXT = "Select an Engineering Context to begin.";
         const WW_OVERCURRENT_MSG_BACKEND_UNREACHABLE = "Could not reach the backend to load Engineering Contexts.";
+        // Shared-Analysis-lifecycle UAT fix (2026-09-12): the SAME three
+        // bootstrap-phase messages Phasor already established, so
+        // Overcurrent's own empty state reads identically regardless of
+        // which analyzer the shared discovery pass happens to be
+        // reporting through -- see "Shared Analysis Engineering Context
+        // lifecycle" below.
+        const WW_OVERCURRENT_MSG_IDENTIFYING_CONTEXTS = "Identifying engineering contexts…";
+        const WW_OVERCURRENT_MSG_NO_SOURCES = "No event sources are available. Load a recording before using Overcurrent Analysis.";
+        const WW_OVERCURRENT_MSG_NO_SUGGESTIONS =
+            "No Engineering Contexts could be automatically suggested from the loaded recording(s). " +
+            "Create or correct one manually via Engineering Context configuration.";
 
         const wwOvercurrentState = {
             contexts: [],
@@ -34440,12 +34778,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             viewport: { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 },
         };
 
-        function wwOvercurrentFetchContexts(workspaceId) {
-            return wwPhasorFetchJson(
-                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/engineering-contexts"
-            );
-        }
-
         function wwOvercurrentFetchCharacteristics(workspaceId) {
             return wwPhasorFetchJson(
                 apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/overcurrent-characteristics"
@@ -34466,24 +34798,25 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             );
         }
 
-        // ---- Context list (no bootstrap/discovery -- Overcurrent reads
-        // whatever Engineering Contexts already exist; automatic
-        // suggestion bootstrap is Phasor's own established entry point,
-        // deliberately not re-implemented a second time here). ----
-        function wwOvercurrentLoadContexts() {
+        // ---- Characteristics list -- Overcurrent-specific (the IDMT
+        // curve dropdown), unrelated to Engineering Context discovery,
+        // so it keeps its own small entry point here. Context list
+        // fetch/bootstrap is now owned entirely by the shared Analysis
+        // lifecycle (see "Shared Analysis Engineering Context lifecycle"
+        // below) -- Overcurrent registers itself as a CONSUMER of that
+        // shared list rather than fetching/discovering its own (2026-09-12
+        // owner UAT fix: opening Overcurrent directly, before ever
+        // visiting Phasor, must populate the Bay selector exactly the
+        // same as visiting Phasor first would). ----
+        function wwOvercurrentEnsureCharacteristicsLoaded() {
+            if (wwOvercurrentState.characteristicsRequested) return;
+            wwOvercurrentState.characteristicsRequested = true;
             const workspaceId = currentWorkspaceId();
             const epochAtStart = ww.epoch;
-            wwOvercurrentFetchContexts(workspaceId).then(
-                (contexts) => wwOvercurrentHandleContextsFetched(workspaceId, epochAtStart, contexts),
-                () => wwOvercurrentHandleContextsFetched(workspaceId, epochAtStart, null)
+            wwOvercurrentFetchCharacteristics(workspaceId).then(
+                (data) => wwOvercurrentHandleCharacteristicsFetched(epochAtStart, data),
+                () => {}
             );
-            if (!wwOvercurrentState.characteristicsRequested) {
-                wwOvercurrentState.characteristicsRequested = true;
-                wwOvercurrentFetchCharacteristics(workspaceId).then(
-                    (data) => wwOvercurrentHandleCharacteristicsFetched(epochAtStart, data),
-                    () => {}
-                );
-            }
         }
 
         function wwOvercurrentHandleCharacteristicsFetched(epochAtStart, data) {
@@ -34502,14 +34835,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
         }
 
-        function wwOvercurrentHandleContextsFetched(workspaceId, epochAtStart, contexts) {
-            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
-            if (contexts === null) {
-                wwOvercurrentState.contexts = [];
-                wwOvercurrentRenderContextOptions();
-                wwOvercurrentShowEmptyState(WW_OVERCURRENT_MSG_BACKEND_UNREACHABLE);
-                return;
-            }
+        // ---- Shared Analysis Engineering Context lifecycle consumer
+        // (2026-09-12 owner UAT fix) -- Overcurrent's own reaction to the
+        // ONE shared context list the Analysis workspace publishes, and
+        // to the shared bootstrap's own terminal/interim phases. Never
+        // fetches or discovers contexts itself -- see
+        // `wwAnalysisRegisterContextConsumer()` below for the
+        // registration call and "Shared Analysis Engineering Context
+        // lifecycle" for the orchestration this consumes.
+        function wwOvercurrentOnAnalysisContexts(contexts) {
             wwOvercurrentState.contexts = contexts;
             wwOvercurrentRenderContextOptions();
             if (wwOvercurrentState.selectedContextId) {
@@ -34518,6 +34852,41 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwOvercurrentShowNoContextSelected();
             }
         }
+
+        function wwOvercurrentOnAnalysisLifecyclePhase(phase) {
+            if (phase === WW_ANALYSIS_CONTEXT_PHASE_IDENTIFYING) wwOvercurrentShowEmptyState(WW_OVERCURRENT_MSG_IDENTIFYING_CONTEXTS);
+            else if (phase === WW_ANALYSIS_CONTEXT_PHASE_NO_SOURCES) wwOvercurrentShowEmptyState(WW_OVERCURRENT_MSG_NO_SOURCES);
+            else if (phase === WW_ANALYSIS_CONTEXT_PHASE_NO_SUGGESTIONS) wwOvercurrentShowEmptyState(WW_OVERCURRENT_MSG_NO_SUGGESTIONS);
+            else if (phase === WW_ANALYSIS_CONTEXT_PHASE_UNREACHABLE) wwOvercurrentShowEmptyState(WW_OVERCURRENT_MSG_BACKEND_UNREACHABLE);
+        }
+
+        function wwOvercurrentOnAnalysisDiscovering(isDiscovering) {
+            const el = document.getElementById("wwOvercurrentDiscoveringIndicator");
+            if (el) el.hidden = !isDiscovering;
+        }
+
+        // Fresh-bootstrap-only auto-select (mirrors Phasor's own
+        // `wwPhasorOnAnalysisFreshContextsDiscovered()` policy exactly): fired ONLY
+        // when the shared lifecycle just discovered the FIRST context(s)
+        // this workspace has ever had (never for a later background
+        // discovery pass that finds an ADDITIONAL context while one is
+        // already usable/selected -- that case must never steal the
+        // engineer's current selection).
+        function wwOvercurrentOnAnalysisFreshContextsDiscovered() {
+            if (wwOvercurrentState.selectedContextId) return;
+            if (wwOvercurrentState.contexts.length === 0) return;
+            const first = wwOvercurrentState.contexts[0];
+            wwOvercurrentState.selectedContextId = first.id;
+            const select = document.getElementById("wwOvercurrentContextSelect");
+            if (select) select.value = first.id;
+            wwOvercurrentRenderContextBadge();
+            wwOvercurrentLoadForSelectedContext();
+        }
+        // Registered with the shared Analysis context lifecycle in the
+        // wiring section near the bottom of this script (alongside
+        // Phasor's own registration and both analyzers'
+        // `wwPlaybackOnTick()` subscriptions) -- see
+        // `wwAnalysisRegisterContextConsumer(...)` there.
 
         function wwOvercurrentRenderContextOptions() {
             const select = document.getElementById("wwOvercurrentContextSelect");
@@ -35488,21 +35857,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             frozenVoltageScale: null, // this playback run's own stable Voltage-family px-per-unit scale, or null before the first valid result
             frozenCurrentScale: null, // same, for the Current family
             requestGeneration: 0, // one shared stale-response guard for the diagram fetch
-            // Multi-upload bootstrap fix (2026-09-12): PER-SOURCE memory
-            // of which source ids a suggestion has already been
-            // ATTEMPTED for (regardless of outcome) this workspace
-            // session -- see wwPhasorDiscoverUncoveredSources()'s own
-            // docstring for why this exists (never a repeated suggestion
-            // storm on every page revisit for a source that already
-            // tried and found nothing). Deliberately per-SOURCE, never a
-            // single workspace-wide boolean -- a later-uploaded source
-            // must still get its own attempt even after an earlier
-            // source's own attempt already happened. Reset only by
-            // wwPhasorResetState() (the "Start New Workspace"/"Clear
-            // workspace" hook), so a fresh workspace always gets a fresh
-            // slate.
-            attemptedSourceIds: new Set(),
         };
+
+        // "Start New Workspace"/"Clear workspace" lifecycle hook for the
+        // SHARED Analysis context state (2026-09-12) -- called once from
+        // wwClearWorkspace(), alongside wwPlaybackReset()/
+        // wwPhasorResetState()/wwOvercurrentResetState(), never
+        // duplicated per-analyzer. Only resets internal bookkeeping
+        // (mirrors the original per-analyzer reset's own scope exactly
+        // -- it never pushed a DOM update either): the next
+        // wwRenderAnalysisPage() visit re-fetches and re-publishes a
+        // fresh list to every consumer, exactly like every other
+        // workspace-scoped state here.
+        function wwAnalysisResetContextState() {
+            wwAnalysisContextState.contexts = [];
+            wwAnalysisContextState.attemptedSourceIds = new Set();
+        }
 
         // The fixed six-role order the backend's own
         // PHASOR_DIAGRAM_ROLE_ORDER declares -- reused here purely for
@@ -35572,28 +35942,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return response.json();
         }
 
-        function wwPhasorFetchContexts(workspaceId) {
-            return wwPhasorFetchJson(
-                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/engineering-contexts"
-            );
-        }
-
-        // UAT fix (2026-09-11): the existing Guardrail Slice 1 suggestion
-        // endpoint, reused verbatim -- no new backend detection engine, no
-        // frontend channel-name parsing. Single-source, exactly like the
-        // endpoint itself already is (see app.domain.engineering_context_
-        // detection's own module docstring) --
-        // wwPhasorDiscoverUncoveredSources() below calls this once per
-        // UNCOVERED loaded source, never assuming one source is "the" bay
-        // or that only the first/newest source matters.
-        function wwPhasorFetchSuggest(workspaceId, sourceId) {
-            return wwPhasorFetchJson(
-                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
-                "/sources/" + encodeURIComponent(sourceId) + "/engineering-contexts/suggest",
-                { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }
-            );
-        }
-
         // Bay-centric redesign: the ONE aggregated fetch that replaces the
         // old two-call (input-resolution, then phasor) flow -- every
         // supported role's own status/value is already carried in this
@@ -35609,223 +35957,45 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // Entry point -- called every time the Analysis page is shown
         // (shellSetCurrentPage()'s own "analysis" branch). Engineering
-        // Contexts have no other frontend mutation path yet in this
-        // slice (no incremental-sync infrastructure like Calculated
-        // Channels' own registry cache exists for them), so a cheap
-        // re-fetch on every visit -- mirroring the Recordings page's own
-        // "cheap metadata refresh on every visit, never a plot rebuild"
-        // precedent -- is simpler and safer than a cache that could go
-        // stale after a context is created/edited outside this page.
+        // Context discovery/bootstrap itself is now owned entirely by
+        // the shared Analysis lifecycle (see "Shared Analysis
+        // Engineering Context lifecycle" above) -- ONE fetch/discovery
+        // pass regardless of which analyzer tab is active, never a
+        // separate one per analyzer. wwOvercurrentEnsureCharacteristicsLoaded()
+        // is unrelated to context discovery (the Overcurrent-specific
+        // IDMT characteristic dropdown) and keeps its own small entry
+        // point.
         function wwRenderAnalysisPage() {
-            wwPhasorLoadContexts();
-            wwOvercurrentLoadContexts();
+            wwAnalysisLoadContexts();
+            wwOvercurrentEnsureCharacteristicsLoaded();
         }
 
-        // Multi-upload bootstrap fix (2026-09-12): SOURCE-COVERAGE
-        // driven, not workspace-empty-driven. The original design
-        // treated `contexts.length > 0` as "nothing left to discover,"
-        // which silently stopped covering any source uploaded AFTER the
-        // first one ever got a context (source B's own suggestion was
-        // simply never requested). Every visit now determines coverage
-        // from actual Engineering Context MEMBERSHIP
-        // (wwPhasorCoveredSourceIds() below) and discovers whichever
-        // loaded sources are not yet covered -- never from context
-        // count, display name, or source order.
-        //
-        // If at least one context ALREADY exists, the selector/body
-        // render IMMEDIATELY from it (never blanked) while any uncovered
-        // source is discovered in the background
-        // (`{ blocking: false }`) -- a later-uploaded, not-yet-covered
-        // source must never hide an already-usable bay. If ZERO contexts
-        // exist yet, this is the original "nothing usable to preserve"
-        // case, so discovery blocks the page with the existing
-        // "Identifying engineering contexts…" state exactly as before.
-        function wwPhasorLoadContexts() {
-            const workspaceId = currentWorkspaceId();
-            const epochAtStart = ww.epoch;
-            wwPhasorFetchContexts(workspaceId).then(
-                (contexts) => wwPhasorHandleContextsFetched(workspaceId, epochAtStart, contexts),
-                () => wwPhasorHandleContextsFetched(workspaceId, epochAtStart, null)
-            );
-        }
-
-        function wwPhasorHandleContextsFetched(workspaceId, epochAtStart, contexts) {
-            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
-
-            if (contexts === null) {
-                wwPhasorState.contexts = [];
-                wwPhasorRenderContextOptions();
-                wwPhasorShowEmptyState(WW_PHASOR_MSG_BACKEND_UNREACHABLE);
-                return;
-            }
-
-            wwPhasorState.contexts = contexts;
-
-            if (contexts.length > 0) {
-                // At least one usable bay already exists -- render it
-                // right away; coverage discovery for any OTHER loaded
-                // source runs quietly in the background and never blanks
-                // this.
-                wwPhasorRenderContextOptions();
-                if (wwPhasorState.selectedContextId) {
-                    wwPhasorLoadForSelectedContext();
-                } else {
-                    wwPhasorShowNoContextSelected();
-                }
-                wwPhasorDiscoverUncoveredSources(workspaceId, epochAtStart, contexts, false);
-                return;
-            }
-
-            // Nothing usable exists yet -- the original full-page
-            // "Identifying engineering contexts…" experience, since
-            // there is nothing to preserve.
-            wwPhasorDiscoverUncoveredSources(workspaceId, epochAtStart, contexts, true);
-        }
-
-        // The set of real source ids already COVERED by at least one
-        // Engineering Context member -- determined ENTIRELY from actual
-        // membership (`channel_ref.source_id`), never from a context's
-        // own display name, status, or count. Two contexts can share the
-        // identical display name ("Default Context" for two different
-        // bare-role sources) and remain correctly distinct here, since
-        // coverage is keyed by source id, never by name. A
-        // "calculated"-kind member has no `source_id` of its own on
-        // `channel_ref` and therefore never marks any real source as
-        // covered by this check -- consistent with the task's own literal
-        // coverage definition (this fix is deliberately narrow: it does
-        // NOT attempt to trace a calculated channel back to its own
-        // grounding source for coverage purposes).
-        function wwPhasorCoveredSourceIds(contexts) {
-            const covered = new Set();
-            for (const ctx of contexts) {
-                for (const member of (ctx && ctx.members) || []) {
-                    const ref = member && member.channel_ref;
-                    if (ref && ref.kind === "source" && ref.source_id) covered.add(ref.source_id);
-                }
-            }
-            return covered;
-        }
-
-        // The automatic discovery pass -- requests a suggestion for
-        // every loaded source that is BOTH uncovered (see
-        // wwPhasorCoveredSourceIds()) AND not yet attempted this
-        // workspace session (wwPhasorState.attemptedSourceIds), then
-        // re-fetches the context list once. Never assumes one source is
-        // "the" bay, never assumes only the first/newest source matters;
-        // one source's own suggestion failure does not block the others
-        // (best-effort across all of them). Every async step re-checks
-        // the SAME epoch/workspaceId guard every other Phasor fetch
-        // already uses, so a workspace change mid-discovery (a new
-        // upload, "Start New Workspace") discards the in-flight attempt
-        // rather than populating the wrong workspace's own selector.
-        //
-        // `blocking` distinguishes the two entry shapes
-        // wwPhasorHandleContextsFetched() above uses this for: `true`
-        // (zero contexts existed yet -- nothing usable to preserve, so
-        // this owns the empty-state message/loading text exactly like
-        // the original bootstrap did) vs. `false` (at least one context
-        // already renders normally -- this only ever shows a subtle,
-        // non-blocking indicator and silently re-renders the selector in
-        // place when it finishes, NEVER replacing the page with an empty
-        // state).
-        async function wwPhasorDiscoverUncoveredSources(workspaceId, epochAtStart, knownContexts, blocking) {
-            let sources;
-            try {
-                sources = await fetchSourcesList();
-            } catch (error) {
-                sources = null;
-            }
-            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
-
-            if (!sources || sources.length === 0) {
-                if (blocking) {
-                    wwPhasorState.contexts = [];
-                    wwPhasorRenderContextOptions();
-                    wwPhasorShowEmptyState(WW_PHASOR_MSG_NO_SOURCES);
-                }
-                return;
-            }
-
-            const coveredSourceIds = wwPhasorCoveredSourceIds(knownContexts);
-            const uncoveredSources = sources.filter((source) =>
-                !coveredSourceIds.has(source.source_id) && !wwPhasorState.attemptedSourceIds.has(source.source_id)
-            );
-
-            if (uncoveredSources.length === 0) {
-                if (blocking) wwPhasorShowEmptyState(WW_PHASOR_MSG_NO_SUGGESTIONS);
-                return;
-            }
-
-            if (blocking) {
-                wwPhasorShowEmptyState(WW_PHASOR_MSG_IDENTIFYING_CONTEXTS);
-            } else {
-                wwPhasorSetDiscoveringIndicator(true);
-            }
-
-            let anyFailed = false;
-            for (const source of uncoveredSources) {
-                // Marked attempted BEFORE the call resolves (mirrors the
-                // original bootstrap's own timing exactly) -- a
-                // transient network failure is not retried on every mere
-                // page revisit, matching the existing retry convention
-                // this fix inherits rather than invents a new one for.
-                wwPhasorState.attemptedSourceIds.add(source.source_id);
-                try {
-                    await wwPhasorFetchSuggest(workspaceId, source.source_id);
-                } catch (error) {
-                    anyFailed = true;
-                }
-                if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
-            }
-
-            let contexts;
-            try {
-                contexts = await wwPhasorFetchContexts(workspaceId);
-            } catch (error) {
-                contexts = null;
-            }
-            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) {
-                if (!blocking) wwPhasorSetDiscoveringIndicator(false);
-                return;
-            }
-            if (!blocking) wwPhasorSetDiscoveringIndicator(false);
-
-            if (contexts === null) {
-                if (blocking) {
-                    wwPhasorState.contexts = [];
-                    wwPhasorRenderContextOptions();
-                    wwPhasorShowEmptyState(WW_PHASOR_MSG_BACKEND_UNREACHABLE);
-                }
-                return;
-            }
-
-            const hadContextsBefore = knownContexts.length > 0;
+        // ---- Shared Analysis Engineering Context lifecycle consumer
+        // (2026-09-12 owner UAT fix) -- Phasor's own reaction to the ONE
+        // shared context list the Analysis workspace publishes, and to
+        // the shared bootstrap's own terminal/interim phases. Never
+        // fetches or discovers contexts itself any more -- this SAME
+        // source-coverage-driven discovery logic was relocated,
+        // unchanged, to `wwAnalysisDiscoverUncoveredSources()` above so
+        // every analyzer (not just Phasor) benefits from it regardless
+        // of which one the engineer opens first. See
+        // `wwAnalysisRegisterContextConsumer()` for the registration
+        // call in the wiring section near the bottom of this script. ----
+        function wwPhasorOnAnalysisContexts(contexts) {
             wwPhasorState.contexts = contexts;
             wwPhasorRenderContextOptions();
-
-            if (contexts.length > 0) {
-                if (blocking && !hadContextsBefore && !wwPhasorState.selectedContextId) {
-                    // Owner instruction: prefer auto-selecting the first
-                    // usable context after a successful automatic
-                    // suggestion, so the engineer never needs an extra
-                    // click merely because the context was just created.
-                    // Deliberately ONLY for the fresh, nothing-existed-
-                    // before path -- an already-had-contexts discovery
-                    // pass NEVER auto-selects (never jumps the engineer
-                    // away from whatever bay they already had open
-                    // merely because a new one was just discovered).
-                    wwPhasorAutoSelectFirstContext();
-                } else if (wwPhasorState.selectedContextId) {
-                    wwPhasorLoadForSelectedContext();
-                } else {
-                    wwPhasorShowNoContextSelected();
-                }
-                return;
+            if (wwPhasorState.selectedContextId) {
+                wwPhasorLoadForSelectedContext();
+            } else {
+                wwPhasorShowNoContextSelected();
             }
+        }
 
-            if (blocking) {
-                wwPhasorShowEmptyState(anyFailed ? WW_PHASOR_MSG_BACKEND_UNREACHABLE : WW_PHASOR_MSG_NO_SUGGESTIONS);
-            }
+        function wwPhasorOnAnalysisLifecyclePhase(phase) {
+            if (phase === WW_ANALYSIS_CONTEXT_PHASE_IDENTIFYING) wwPhasorShowEmptyState(WW_PHASOR_MSG_IDENTIFYING_CONTEXTS);
+            else if (phase === WW_ANALYSIS_CONTEXT_PHASE_NO_SOURCES) wwPhasorShowEmptyState(WW_PHASOR_MSG_NO_SOURCES);
+            else if (phase === WW_ANALYSIS_CONTEXT_PHASE_NO_SUGGESTIONS) wwPhasorShowEmptyState(WW_PHASOR_MSG_NO_SUGGESTIONS);
+            else if (phase === WW_ANALYSIS_CONTEXT_PHASE_UNREACHABLE) wwPhasorShowEmptyState(WW_PHASOR_MSG_BACKEND_UNREACHABLE);
         }
 
         // Subtle, non-blocking "discovering more sources" affordance for
@@ -35833,12 +36003,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Bay selector/body/Playback panel are never hidden for this;
         // see wwPhasorShowEmptyState() for the (unrelated, full-page)
         // terminal states the BLOCKING/fresh-bootstrap path still uses.
-        function wwPhasorSetDiscoveringIndicator(isDiscovering) {
+        function wwPhasorOnAnalysisDiscovering(isDiscovering) {
             const el = document.getElementById("wwPhasorDiscoveringIndicator");
             if (el) el.hidden = !isDiscovering;
         }
 
-        function wwPhasorAutoSelectFirstContext() {
+        // Owner instruction (unchanged from the original implementation):
+        // prefer auto-selecting the first usable context after a
+        // successful automatic suggestion, so the engineer never needs
+        // an extra click merely because the context was just created.
+        // Fired ONLY for the fresh, nothing-existed-before path (see
+        // `wwAnalysisPublishFreshContextsDiscovered()`'s own docstring)
+        // -- never steals a selection Phasor already has.
+        function wwPhasorOnAnalysisFreshContextsDiscovered() {
+            if (wwPhasorState.selectedContextId) return;
             if (wwPhasorState.contexts.length === 0) return;
             const first = wwPhasorState.contexts[0];
             wwPhasorState.selectedContextId = first.id;
@@ -35847,6 +36025,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPhasorRenderContextBadge();
             wwPhasorLoadForSelectedContext();
         }
+        // Registered with the shared Analysis context lifecycle in the
+        // wiring section near the bottom of this script, alongside
+        // Overcurrent's own registration and both analyzers'
+        // `wwPlaybackOnTick()` subscriptions -- see
+        // `wwAnalysisRegisterContextConsumer(...)` there.
 
         function wwPhasorRenderContextOptions() {
             const select = document.getElementById("wwPhasorContextSelect");
@@ -35972,8 +36155,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // together via wwPhasorFetchDiagram(), never a per-role
         // resolution call, never a Quantity/Mode selector. This function
         // also re-runs on every mere PAGE REVISIT (wwRenderAnalysisPage()
-        // -> wwPhasorLoadContexts()'s own existing "cheap refetch on every
-        // visit" precedent), so `visibleRoles`/the diagram scale lock are
+        // -> wwAnalysisLoadContexts()'s own existing "cheap refetch on
+        // every visit" precedent), so `visibleRoles`/the diagram scale lock are
         // only reset when `contextId` genuinely DIFFERS from
         // `lastLoadedContextId` -- owner instruction: a real context
         // change resets visibility to "all available roles visible" and
@@ -36622,14 +36805,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPhasorState.frozenVoltageScale = null;
             wwPhasorState.frozenCurrentScale = null;
             wwPhasorState.requestGeneration += 1;
-            // Multi-upload bootstrap fix (2026-09-12): a fresh workspace
-            // ("Start New Workspace"/"Clear workspace") always gets a
-            // fresh per-source attempted slate -- see
-            // wwPhasorDiscoverUncoveredSources()'s own docstring. Never
-            // leaks into a DIFFERENT workspace's own attempted-source
-            // bookkeeping.
-            wwPhasorState.attemptedSourceIds = new Set();
-            wwPhasorSetDiscoveringIndicator(false);
+            // The shared Analysis context state's own attempted-source
+            // bookkeeping is reset separately by
+            // wwAnalysisResetContextState() (wwClearWorkspace() calls
+            // both, once each).
+            wwPhasorOnAnalysisDiscovering(false);
             // Playback integration: this workspace-wide reset never calls
             // wwPlaybackReset() itself (wwClearWorkspace() already does
             // that separately, once, for the ONE shared controller) --
@@ -36688,6 +36868,29 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // tab, exactly like the Waveform Time Group toolbar's own built-in
         // (non-unsubscribing) tick consumer.
         wwPlaybackOnTick(wwPhasorOnPlaybackTick);
+
+        // Shared Analysis Engineering Context lifecycle (2026-09-12
+        // owner UAT fix): each analyzer registers itself as a consumer
+        // ONCE, here, alongside its own wwPlaybackOnTick() subscription
+        // above/below -- never inside its own mid-file section, so
+        // registration always runs after every function it references
+        // (both its own callbacks and wwAnalysisRegisterContextConsumer
+        // itself) is already defined, regardless of which analyzer's
+        // section happens to appear earlier in this file. See "Shared
+        // Analysis Engineering Context lifecycle" for the orchestration
+        // this feeds.
+        wwAnalysisRegisterContextConsumer({
+            onContexts: wwPhasorOnAnalysisContexts,
+            onLifecyclePhase: wwPhasorOnAnalysisLifecyclePhase,
+            onDiscovering: wwPhasorOnAnalysisDiscovering,
+            onFreshContextsDiscovered: wwPhasorOnAnalysisFreshContextsDiscovered,
+        });
+        wwAnalysisRegisterContextConsumer({
+            onContexts: wwOvercurrentOnAnalysisContexts,
+            onLifecyclePhase: wwOvercurrentOnAnalysisLifecyclePhase,
+            onDiscovering: wwOvercurrentOnAnalysisDiscovering,
+            onFreshContextsDiscovered: wwOvercurrentOnAnalysisFreshContextsDiscovered,
+        });
 
         // Phase 3A: App Shell wiring.
         // Phase 3B-UAT4 (section 3): Recordings is the fresh-entry

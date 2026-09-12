@@ -444,6 +444,25 @@ full Playwright suite all pass. A real `[hidden]`-vs-`display:grid/flex`
 CSS bug was found and fixed during Slice 2's own Playwright testing
 (unrelated to the redesign, still in effect).
 
+**Engineering Context discovery/bootstrap is owned by the shared
+Analysis WORKSPACE, not by any individual analyzer (2026-09-12 owner
+UAT fix, [DECISIONS.md — DEC-089's own "Update (2026-09-12)"](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)).**
+Fixes a UAT-reported bug: opening `Overcurrent` directly after an
+upload (never visiting Phasor first) could leave the Bay/Engineering
+Context selector empty, since discovery/bootstrap used to live entirely
+inside Phasor's own code path. `wwRenderAnalysisPage()` now calls one
+shared `wwAnalysisLoadContexts()` regardless of which analyzer tab is
+active; Phasor/Overcurrent (and every future analyzer) register as
+CONSUMERS via `wwAnalysisRegisterContextConsumer()` rather than
+independently fetching/discovering contexts — **this is the pattern any
+future analyzer (Impedance Locus/Differential/Sequence Components) must
+follow; a `wwXxxLoadContexts()` of its own would reintroduce this same
+bug.** Selection/empty-state-message/discovering-indicator stayed
+analyzer-specific by design. No backend files touched. See
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own "Shared
+Analysis Engineering Context lifecycle" section for the full
+architecture.
+
 **Overcurrent Analysis v1 (2026-09-12,
 [DECISIONS.md — DEC-090](DECISIONS.md#dec-090--overcurrent-analysis-v1-the-second-analysis-menu-analyzer-iec-idmt-characteristic-evaluation-against-a-one-cycle-trailing-rms-current-at-the-shared-playback-driven-analysis-time))
 is implemented as the SECOND Analysis-menu analyzer** — Phasor remains

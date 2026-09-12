@@ -143,7 +143,7 @@ class TestOvercurrentViewport:
 
     def test_state_viewport_field_initialised_to_default(self):
         source = _source()
-        fn = _function_body(source, "const wwOvercurrentState = {", "function wwOvercurrentFetchContexts")
+        fn = _function_body(source, "const wwOvercurrentState = {", "function wwOvercurrentFetchCharacteristics")
         assert "viewport: { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 }," in fn
 
     def test_reset_state_also_resets_viewport(self):

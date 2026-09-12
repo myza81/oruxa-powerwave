@@ -39,6 +39,18 @@ def _phasor_block(source: str) -> str:
     return source[start:end]
 
 
+def _shared_analysis_block(source: str) -> str:
+    """The shared Analysis Engineering Context lifecycle module
+    (2026-09-12 owner UAT fix) -- context discovery/bootstrap, now owned
+    by the Analysis workspace rather than any individual analyzer. From
+    its own state declaration through the last shared function
+    (wwAnalysisDiscoverUncoveredSources), up to the Overcurrent-specific
+    message constant that immediately follows it in the file."""
+    start = source.index("const wwAnalysisContextState = {")
+    end = source.index("const WW_OVERCURRENT_MSG_SELECT_CONTEXT", start)
+    return source[start:end]
+
+
 class TestAnalysisMenuExists:
     def test_analysis_nav_button_exists(self):
         source = _source()
@@ -129,12 +141,12 @@ class TestBayIsTheOnlyPrimaryControl:
 class TestEngineeringContextPopulation:
     def test_fetches_from_the_existing_engineering_contexts_endpoint(self):
         source = _source()
-        body = _phasor_block(source)
+        body = _shared_analysis_block(source)
         assert '"/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/engineering-contexts"' in body
 
     def test_never_reimplements_context_detection(self):
         source = _source()
-        body = _phasor_block(source)
+        body = _shared_analysis_block(source)
         assert "detect_engineering_context" not in body.lower()
         assert "classify_waveform_form" not in body
 
@@ -144,94 +156,120 @@ class TestEngineeringContextPopulation:
         assert "ww-mg-badge ww-mg-badge--" in body
 
 
-class TestContextBootstrap:
-    """Multi-upload bootstrap fix (2026-09-12): automatic Engineering
-    Context suggestion is SOURCE-COVERAGE driven, not workspace-empty-
-    driven -- a source uploaded AFTER the workspace's first context
-    already exists must still be discovered, never silently skipped
-    merely because `contexts.length > 0`."""
+class TestSharedAnalysisContextLifecycle:
+    """2026-09-12 owner UAT fix -- root cause: Engineering Context
+    discovery/bootstrap used to live entirely inside Phasor's own code
+    path, while Overcurrent only ever read whatever contexts already
+    existed. Opening Overcurrent directly on a fresh upload (without
+    ever visiting Phasor first) therefore showed an empty Bay selector,
+    an order-dependent bug that would recur for every future analyzer
+    too. Fix: discovery/bootstrap moved to the shared Analysis workspace
+    (`wwAnalysisLoadContexts()` and friends, below `const
+    wwAnalysisContextState`) -- Phasor/Overcurrent are now pure
+    CONSUMERS via `wwAnalysisRegisterContextConsumer()`, migrated here
+    (logic unchanged) from the old Phasor-only `TestContextBootstrap`.
+    Multi-upload bootstrap fix (2026-09-12, itself relocated unchanged):
+    automatic Engineering Context suggestion is SOURCE-COVERAGE driven,
+    not workspace-empty-driven -- a source uploaded AFTER the
+    workspace's first context already exists must still be discovered,
+    never silently skipped merely because `contexts.length > 0`."""
 
-    def test_existing_contexts_render_immediately_discovery_runs_in_background(self):
+    def test_wwrenderanalysispage_calls_the_shared_loader_exactly_once(self):
+        """The historical bug in one assertion: a single shared fetch/
+        discovery entry point, never one per analyzer."""
+        source = _source()
+        fn = _function_body(source, "function wwRenderAnalysisPage()", "function wwPhasorOnAnalysisContexts")
+        assert fn.count("wwAnalysisLoadContexts()") == 1
+        assert "wwPhasorLoadContexts" not in fn
+        assert "wwOvercurrentLoadContexts" not in fn
+
+    def test_existing_contexts_published_immediately_discovery_runs_in_background(self):
         """Owner instruction: an already-usable Bay selector must never
         be blanked merely because another source is being suggested --
-        the "at least one context exists" branch renders FIRST, then
+        the "at least one context exists" branch publishes FIRST, then
         kicks off discovery for whatever else is uncovered, non-blocking."""
         source = _source()
-        body = _function_body(source, "function wwPhasorHandleContextsFetched", "function wwPhasorCoveredSourceIds")
+        body = _function_body(source, "function wwAnalysisHandleContextsFetched", "async function wwAnalysisDiscoverUncoveredSources")
         assert "if (contexts.length > 0) {" in body
-        assert "wwPhasorRenderContextOptions();" in body
-        assert "wwPhasorDiscoverUncoveredSources(workspaceId, epochAtStart, contexts, false);" in body
-        # The render call happens BEFORE discovery is kicked off -- never
+        assert "wwAnalysisPublishContexts(contexts);" in body
+        assert "wwAnalysisDiscoverUncoveredSources(workspaceId, epochAtStart, contexts, false);" in body
+        # The publish call happens BEFORE discovery is kicked off -- never
         # the other way around.
-        assert body.index("wwPhasorRenderContextOptions();") < body.index("wwPhasorDiscoverUncoveredSources(workspaceId, epochAtStart, contexts, false);")
+        assert body.index("wwAnalysisPublishContexts(contexts);") < body.index("wwAnalysisDiscoverUncoveredSources(workspaceId, epochAtStart, contexts, false);")
 
-    def test_zero_contexts_triggers_blocking_discovery(self):
+    def test_zero_contexts_triggers_blocking_discovery_without_a_premature_publish(self):
         source = _source()
-        body = _function_body(source, "function wwPhasorHandleContextsFetched", "function wwPhasorCoveredSourceIds")
-        assert "wwPhasorDiscoverUncoveredSources(workspaceId, epochAtStart, contexts, true);" in body
+        body = _function_body(source, "function wwAnalysisHandleContextsFetched", "async function wwAnalysisDiscoverUncoveredSources")
+        assert "wwAnalysisDiscoverUncoveredSources(workspaceId, epochAtStart, contexts, true);" in body
+        # The zero-contexts branch does not itself call wwAnalysisPublishContexts
+        # (that would prematurely show every consumer's own empty
+        # selector before discovery even starts) -- only the >0 branch above does.
+        tail = body[body.index("if (contexts.length > 0) {"):]
+        zero_branch = tail[tail.index("}\n\n"):]
+        assert "wwAnalysisPublishContexts" not in zero_branch
 
     def test_coverage_determined_from_member_source_id_never_name_or_count(self):
         """A source is covered if and only if at least one context
         contains a member whose channel_ref.source_id matches it --
         never context display name, status, or count."""
         source = _source()
-        body = _function_body(source, "function wwPhasorCoveredSourceIds", "async function wwPhasorDiscoverUncoveredSources")
+        body = _function_body(source, "function wwAnalysisCoveredSourceIds", "function wwAnalysisLoadContexts")
         assert 'ref.kind === "source" && ref.source_id' in body
         assert "display_name" not in body
         assert ".status" not in body
 
     def test_uncovered_sources_computed_by_set_difference_not_context_count(self):
         source = _source()
-        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
-        assert "wwPhasorCoveredSourceIds(knownContexts)" in body
+        body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const WW_OVERCURRENT_MSG_SELECT_CONTEXT")
+        assert "wwAnalysisCoveredSourceIds(knownContexts)" in body
         assert "!coveredSourceIds.has(source.source_id)" in body
 
     def test_bootstrap_reuses_existing_suggest_endpoint_no_new_detection_engine(self):
         source = _source()
-        body = _phasor_block(source)
+        body = _shared_analysis_block(source)
         assert '"/sources/" + encodeURIComponent(sourceId) + "/engineering-contexts/suggest"' in body
-        assert "function wwPhasorFetchSuggest" in body
+        assert "function wwAnalysisFetchSuggest" in body
         # No frontend channel-name parsing was introduced for detection.
-        discover_body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
+        discover_body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const WW_OVERCURRENT_MSG_SELECT_CONTEXT")
         assert "channel_name.endsWith" not in discover_body
         assert ".match(/" not in discover_body
 
     def test_all_uncovered_sources_are_considered_not_just_the_first(self):
         source = _source()
-        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
+        body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const WW_OVERCURRENT_MSG_SELECT_CONTEXT")
         assert "for (const source of uncoveredSources) {" in body
         assert "sources[0]" not in body
         assert "uncoveredSources[0]" not in body
 
     def test_one_source_failure_does_not_abort_the_others(self):
         source = _source()
-        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
+        body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const WW_OVERCURRENT_MSG_SELECT_CONTEXT")
         assert "let anyFailed = false;" in body
         assert "anyFailed = true;" in body
 
     def test_context_list_refetched_once_after_suggestions(self):
         source = _source()
-        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
-        assert body.count("wwPhasorFetchContexts(workspaceId)") == 1
+        body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const WW_OVERCURRENT_MSG_SELECT_CONTEXT")
+        assert body.count("wwAnalysisFetchContexts(workspaceId)") == 1
 
-    def test_newly_suggested_contexts_populate_selector(self):
+    def test_fresh_discovery_publishes_contexts_and_notifies_the_fresh_hook(self):
         source = _source()
-        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
-        assert "wwPhasorRenderContextOptions();" in body
-        assert "wwPhasorAutoSelectFirstContext();" in body
+        body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const WW_OVERCURRENT_MSG_SELECT_CONTEXT")
+        assert "wwAnalysisPublishContexts(contexts);" in body
+        assert "wwAnalysisPublishFreshContextsDiscovered(contexts);" in body
 
-    def test_auto_select_only_on_the_fresh_zero_context_path_never_when_something_already_covered(self):
+    def test_fresh_hook_only_fires_on_the_zero_context_path_never_the_background_path(self):
         """Owner instruction: adding an uncovered source B must not
         unnecessarily switch the engineer away from an already-selected
-        bay A -- auto-select is scoped to `blocking && !hadContextsBefore
-        && !already selected`, never fired for the incremental/background
-        discovery path."""
+        bay A -- the fresh-discovery hook is scoped to `blocking &&
+        !hadContextsBefore`, never fired for the incremental/background
+        discovery path. Whether to actually auto-select (given the
+        consumer's OWN current selection) is each analyzer's own policy,
+        not decided here."""
         source = _source()
-        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
-        assert "if (blocking && !hadContextsBefore && !wwPhasorState.selectedContextId) {" in body
-        assert "wwPhasorAutoSelectFirstContext();" in body
-        assert "} else if (wwPhasorState.selectedContextId) {" in body
-        assert "wwPhasorLoadForSelectedContext();" in body
+        body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const WW_OVERCURRENT_MSG_SELECT_CONTEXT")
+        assert "if (blocking && !hadContextsBefore) {" in body
+        assert "wwAnalysisPublishFreshContextsDiscovered(contexts);" in body
 
     def test_suggested_and_needs_review_contexts_are_not_filtered_out(self):
         """Detection may suggest; engineer confirmation remains
@@ -251,52 +289,64 @@ class TestContextBootstrap:
         a per-source Set means a LATER-uploaded source can still be
         discovered even after an earlier source's own attempt already
         happened; a source is marked attempted individually, never the
-        whole workspace at once."""
+        whole workspace at once. Now lives on the SHARED
+        `wwAnalysisContextState`, never duplicated per-analyzer."""
         source = _source()
-        body = _phasor_block(source)
+        body = _shared_analysis_block(source)
         assert "attemptedSourceIds: new Set()," in body
         assert "bootstrapAttempted" not in body
-        discover_body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
-        assert "!wwPhasorState.attemptedSourceIds.has(source.source_id)" in discover_body
-        assert "wwPhasorState.attemptedSourceIds.add(source.source_id);" in discover_body
+        discover_body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const WW_OVERCURRENT_MSG_SELECT_CONTEXT")
+        assert "!wwAnalysisContextState.attemptedSourceIds.has(source.source_id)" in discover_body
+        assert "wwAnalysisContextState.attemptedSourceIds.add(source.source_id);" in discover_body
 
-    def test_attempted_source_ids_reset_on_workspace_clear(self):
+    def test_attempted_source_ids_reset_once_from_wwclearworkspace(self):
         source = _source()
-        reset_body = _function_body(source, "function wwPhasorResetState()", "// ------------------------------------------------------------------\n        // Init")
-        assert "wwPhasorState.attemptedSourceIds = new Set();" in reset_body
+        reset_body = _function_body(source, "function wwAnalysisResetContextState()", "const WW_PHASOR_DIAGRAM_ROLE_ORDER")
+        assert "wwAnalysisContextState.attemptedSourceIds = new Set();" in reset_body
+        clear_body = _function_body(source, "function wwClearWorkspace(options)", "function wwSyncTimeGroupCanvases")
+        assert "wwAnalysisResetContextState();" in clear_body
+        # Never duplicated back onto either analyzer's own per-workspace reset.
+        assert "attemptedSourceIds" not in _function_body(source, "function wwPhasorResetState()", "\n        // Init\n")
+        assert "attemptedSourceIds" not in _function_body(source, "function wwOvercurrentResetState()", "const wwPhasorState")
 
-    def test_zero_sources_shows_no_source_state_not_no_context_state(self):
+    def test_zero_sources_publishes_the_no_sources_phase(self):
         source = _source()
-        body = _phasor_block(source)
-        assert 'WW_PHASOR_MSG_NO_SOURCES = "No event sources are available. Load a recording before using Phasor Diagram."' in body
-        discover_body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
-        assert "WW_PHASOR_MSG_NO_SOURCES" in discover_body
+        body = _shared_analysis_block(source)
+        assert 'WW_ANALYSIS_CONTEXT_PHASE_NO_SOURCES = "no_sources"' in body
+        discover_body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const WW_OVERCURRENT_MSG_SELECT_CONTEXT")
+        assert "WW_ANALYSIS_CONTEXT_PHASE_NO_SOURCES" in discover_body
 
-    def test_failed_suggestion_surfaces_actionable_backend_unreachable_message(self):
+    def test_failed_suggestion_surfaces_the_unreachable_phase(self):
         source = _source()
-        body = _phasor_block(source)
-        assert 'WW_PHASOR_MSG_BACKEND_UNREACHABLE = "Could not reach the backend while identifying engineering contexts."' in body
-        discover_body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
-        assert "anyFailed ? WW_PHASOR_MSG_BACKEND_UNREACHABLE : WW_PHASOR_MSG_NO_SUGGESTIONS" in discover_body
+        body = _shared_analysis_block(source)
+        assert 'WW_ANALYSIS_CONTEXT_PHASE_UNREACHABLE = "unreachable"' in body
+        discover_body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const WW_OVERCURRENT_MSG_SELECT_CONTEXT")
+        assert "anyFailed ? WW_ANALYSIS_CONTEXT_PHASE_UNREACHABLE : WW_ANALYSIS_CONTEXT_PHASE_NO_SUGGESTIONS" in discover_body
 
-    def test_identifying_contexts_loading_message_only_shown_when_blocking(self):
+    def test_identifying_phase_only_published_when_blocking(self):
         source = _source()
-        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
+        body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const WW_OVERCURRENT_MSG_SELECT_CONTEXT")
         assert "if (blocking) {" in body
-        assert "wwPhasorShowEmptyState(WW_PHASOR_MSG_IDENTIFYING_CONTEXTS);" in body
+        assert "wwAnalysisPublishLifecyclePhase(WW_ANALYSIS_CONTEXT_PHASE_IDENTIFYING);" in body
 
-    def test_non_blocking_discovery_never_calls_show_empty_state_for_a_covered_workspace(self):
+    def test_non_blocking_discovery_only_toggles_the_subtle_indicator_never_a_full_empty_state(self):
         """The incremental/background discovery path must never replace
         an already-usable page with a full empty state -- it only ever
         toggles the subtle, non-blocking indicator."""
         source = _source()
-        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
-        assert "wwPhasorSetDiscoveringIndicator(true);" in body
-        assert "wwPhasorSetDiscoveringIndicator(false);" in body
+        body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const WW_OVERCURRENT_MSG_SELECT_CONTEXT")
+        assert "wwAnalysisSetDiscovering(true);" in body
+        assert "wwAnalysisSetDiscovering(false);" in body
 
-    def test_discovering_indicator_element_exists(self):
+    def test_discovering_indicator_elements_exist_for_every_analyzer(self):
+        """Future-analyzer protection seam: every analyzer that consumes
+        the shared lifecycle owns its own discovering-indicator DOM
+        element, proving the indicator toggle is per-CONSUMER, never a
+        single Phasor-only element a future analyzer would have no way
+        to hook into."""
         source = _source()
         assert 'id="wwPhasorDiscoveringIndicator"' in source
+        assert 'id="wwOvercurrentDiscoveringIndicator"' in source
 
     def test_still_no_manual_raw_channel_picker_introduced(self):
         source = _source()
@@ -306,12 +356,98 @@ class TestContextBootstrap:
 
     def test_stale_discovery_response_is_discarded(self):
         """Every async step inside discovery re-checks the same
-        epoch/workspaceId guard every other Phasor fetch already uses --
-        a workspace change mid-discovery must never populate the wrong
-        workspace's own selector."""
+        epoch/workspaceId guard every other Analysis fetch already
+        uses -- a workspace change mid-discovery must never populate the
+        wrong workspace's own selector."""
         source = _source()
-        body = _function_body(source, "async function wwPhasorDiscoverUncoveredSources", "function wwPhasorSetDiscoveringIndicator")
+        body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const WW_OVERCURRENT_MSG_SELECT_CONTEXT")
         assert body.count("epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId") >= 3
+
+
+class TestSharedAnalysisContextConsumers:
+    """Per-analyzer CONSUMER behavior -- each analyzer's own reaction to
+    the shared list/phase/discovering/fresh-discovery signals, and the
+    future-analyzer-protection registration seam itself (owner
+    instruction: prove analyzers obtain contexts from the shared
+    lifecycle rather than inventing their own bootstrap, so a future
+    `wwImpedanceLoadContexts()`-style regression is structurally
+    impossible to miss)."""
+
+    def test_both_analyzers_register_as_consumers_of_the_shared_lifecycle(self):
+        source = _source()
+        assert source.count("wwAnalysisRegisterContextConsumer({") == 2
+        phasor_call = source[source.index("onContexts: wwPhasorOnAnalysisContexts"):]
+        phasor_call = phasor_call[: phasor_call.index("});")]
+        assert "onLifecyclePhase: wwPhasorOnAnalysisLifecyclePhase" in phasor_call
+        assert "onDiscovering: wwPhasorOnAnalysisDiscovering" in phasor_call
+        assert "onFreshContextsDiscovered: wwPhasorOnAnalysisFreshContextsDiscovered" in phasor_call
+        overcurrent_call = source[source.index("onContexts: wwOvercurrentOnAnalysisContexts"):]
+        overcurrent_call = overcurrent_call[: overcurrent_call.index("});")]
+        assert "onLifecyclePhase: wwOvercurrentOnAnalysisLifecyclePhase" in overcurrent_call
+        assert "onDiscovering: wwOvercurrentOnAnalysisDiscovering" in overcurrent_call
+        assert "onFreshContextsDiscovered: wwOvercurrentOnAnalysisFreshContextsDiscovered" in overcurrent_call
+
+    def test_neither_analyzer_defines_its_own_independent_bootstrap_entry_point(self):
+        """The structural regression seam: neither analyzer may define a
+        `wwXxxLoadContexts()`/`wwXxxDiscoverUncoveredSources()` of its
+        own again -- both must route through the shared functions."""
+        source = _source()
+        assert "function wwPhasorLoadContexts" not in source
+        assert "function wwOvercurrentLoadContexts" not in source
+        assert "function wwPhasorDiscoverUncoveredSources" not in source
+        assert "function wwOvercurrentDiscoverUncoveredSources" not in source
+        assert "function wwPhasorFetchContexts" not in source
+        assert "function wwOvercurrentFetchContexts" not in source
+
+    def test_phasor_consumer_populates_selector_and_preserves_selection(self):
+        source = _source()
+        fn = _function_body(source, "function wwPhasorOnAnalysisContexts(contexts)", "function wwPhasorOnAnalysisLifecyclePhase")
+        assert "wwPhasorState.contexts = contexts;" in fn
+        assert "wwPhasorRenderContextOptions();" in fn
+        assert "wwPhasorLoadForSelectedContext();" in fn
+        assert "wwPhasorShowNoContextSelected();" in fn
+
+    def test_overcurrent_consumer_populates_selector_and_preserves_selection(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentOnAnalysisContexts(contexts)", "function wwOvercurrentOnAnalysisLifecyclePhase")
+        assert "wwOvercurrentState.contexts = contexts;" in fn
+        assert "wwOvercurrentRenderContextOptions();" in fn
+        assert "wwOvercurrentLoadForSelectedContext();" in fn
+        assert "wwOvercurrentShowNoContextSelected();" in fn
+
+    def test_each_consumer_maps_every_lifecycle_phase_to_its_own_message(self):
+        source = _source()
+        phasor_fn = _function_body(source, "function wwPhasorOnAnalysisLifecyclePhase(phase)", "function wwPhasorOnAnalysisDiscovering")
+        for phase, message in (
+            ("WW_ANALYSIS_CONTEXT_PHASE_IDENTIFYING", "WW_PHASOR_MSG_IDENTIFYING_CONTEXTS"),
+            ("WW_ANALYSIS_CONTEXT_PHASE_NO_SOURCES", "WW_PHASOR_MSG_NO_SOURCES"),
+            ("WW_ANALYSIS_CONTEXT_PHASE_NO_SUGGESTIONS", "WW_PHASOR_MSG_NO_SUGGESTIONS"),
+            ("WW_ANALYSIS_CONTEXT_PHASE_UNREACHABLE", "WW_PHASOR_MSG_BACKEND_UNREACHABLE"),
+        ):
+            assert phase in phasor_fn and message in phasor_fn
+
+        overcurrent_fn = _function_body(source, "function wwOvercurrentOnAnalysisLifecyclePhase(phase)", "function wwOvercurrentOnAnalysisDiscovering")
+        for phase, message in (
+            ("WW_ANALYSIS_CONTEXT_PHASE_IDENTIFYING", "WW_OVERCURRENT_MSG_IDENTIFYING_CONTEXTS"),
+            ("WW_ANALYSIS_CONTEXT_PHASE_NO_SOURCES", "WW_OVERCURRENT_MSG_NO_SOURCES"),
+            ("WW_ANALYSIS_CONTEXT_PHASE_NO_SUGGESTIONS", "WW_OVERCURRENT_MSG_NO_SUGGESTIONS"),
+            ("WW_ANALYSIS_CONTEXT_PHASE_UNREACHABLE", "WW_OVERCURRENT_MSG_BACKEND_UNREACHABLE"),
+        ):
+            assert phase in overcurrent_fn and message in overcurrent_fn
+
+    def test_each_analyzer_auto_selects_only_when_it_has_no_selection_of_its_own(self):
+        """Never steals a selection an analyzer already has -- each
+        consumer's own fresh-discovery hook checks its OWN
+        selectedContextId before acting, independent of any other
+        analyzer's own selection state."""
+        source = _source()
+        phasor_fn = _function_body(source, "function wwPhasorOnAnalysisFreshContextsDiscovered()", "// Registered with the shared Analysis context lifecycle")
+        assert "if (wwPhasorState.selectedContextId) return;" in phasor_fn
+        assert "wwPhasorLoadForSelectedContext();" in phasor_fn
+
+        overcurrent_fn = _function_body(source, "function wwOvercurrentOnAnalysisFreshContextsDiscovered()", "// Registered with the shared Analysis context lifecycle")
+        assert "if (wwOvercurrentState.selectedContextId) return;" in overcurrent_fn
+        assert "wwOvercurrentLoadForSelectedContext();" in overcurrent_fn
 
 
 class TestBayCentricAggregation:

@@ -344,13 +344,17 @@ defect" note).
 a manual raw-channel picker. `wwOvercurrentState.selectedContextId` is
 entirely independent of `wwPhasorState.selectedContextId` (each analyzer
 owns its own context selection; switching between them never discards
-the other's own selection or settings) — Overcurrent reads the SAME
-workspace-level Engineering Context list Phasor does, via its own
-lightweight `GET .../engineering-contexts` call, but **does not**
-re-implement Phasor's own automatic-suggestion bootstrap/discovery
-machinery — an engineer reaching Overcurrent will typically already have
-a usable context from visiting Phasor or another flow first; Overcurrent
-simply lists whatever contexts already exist.
+the other's own selection or settings). **Superseded (2026-09-12 owner
+UAT fix)**: Overcurrent used to merely list whatever contexts already
+existed via its own `GET .../engineering-contexts` call, deliberately
+not re-implementing Phasor's own bootstrap/discovery — this assumed "an
+engineer reaching Overcurrent will typically already have a usable
+context from visiting Phasor first," which UAT proved false (opening
+Overcurrent directly after an upload, without ever visiting Phasor,
+left the Bay selector empty). See "Shared Analysis Engineering Context
+lifecycle" below for the fix — Overcurrent is now a pure CONSUMER of
+the shared, Analysis-workspace-owned context list, exactly like Phasor,
+and no longer fetches or discovers contexts itself at all.
 
 **Phase selectability**: v1 keeps all three phases (A/B/C) always
 selectable, rather than pre-checking resolver availability with three
@@ -808,6 +812,106 @@ before, zero network requests on any viewport/zoom change (confirmed by
 `browser-tests/overcurrent_analysis.spec.js`'s existing
 "viewport changes never alter wwPlayback.currentTime or trigger a new
 curve fetch" test, still passing unmodified).
+
+## Shared Analysis Engineering Context lifecycle — UAT fix (2026-09-12)
+
+**Owner UAT symptom**: after uploading an event, opening Overcurrent
+directly (without ever visiting Phasor first) could leave the Bay/
+Engineering Context selector empty even though the recording was
+already loaded and ready. **Root cause**: Engineering Context
+discovery/bootstrap (the automatic-suggestion machinery — see
+PHASOR_ANALYSIS.md's own "Automatic Engineering Context bootstrap"
+section for the algorithm) lived entirely inside Phasor's own code
+path; Overcurrent only ever read whatever contexts already existed.
+`wwRenderAnalysisPage()` started both analyzers' own loaders in
+parallel, so Overcurrent could fetch the (still-empty) context list
+before Phasor's own discovery pass ever ran, and nothing then told
+Overcurrent to refresh once Phasor's discovery finished. An order-
+dependent bug: the fix in place before this UAT round implicitly
+required visiting Phasor first.
+
+**Fix — new architectural rule**: Engineering Context discovery/
+bootstrap is owned by the shared Analysis workspace, never by any
+individual analyzer. `wwRenderAnalysisPage()` now calls
+`wwAnalysisLoadContexts()` exactly ONCE per Analysis-page visit,
+regardless of which analyzer tab is active. Overcurrent registers
+itself as a CONSUMER of the one shared, published context list —
+
+```javascript
+wwAnalysisRegisterContextConsumer({
+    onContexts: wwOvercurrentOnAnalysisContexts,
+    onLifecyclePhase: wwOvercurrentOnAnalysisLifecyclePhase,
+    onDiscovering: wwOvercurrentOnAnalysisDiscovering,
+    onFreshContextsDiscovered: wwOvercurrentOnAnalysisFreshContextsDiscovered,
+});
+```
+
+— exactly mirroring Phasor's own registration (see PHASOR_ANALYSIS.md's
+own "Ownership moved to the shared Analysis workspace" section for the
+full architecture, algorithm, and relocated-function inventory; not
+duplicated here). Overcurrent's own four consumer callbacks are thin:
+`onContexts` sets `wwOvercurrentState.contexts` and re-renders the
+selector/reloads-or-shows-no-selection exactly as before;
+`onLifecyclePhase` maps each of the four shared lifecycle phases
+(`identifying`/`no_sources`/`no_suggestions`/`unreachable`) to
+Overcurrent's own message constants (`WW_OVERCURRENT_MSG_
+IDENTIFYING_CONTEXTS`/`_NO_SOURCES`/`_NO_SUGGESTIONS`/
+`_BACKEND_UNREACHABLE`, new — Overcurrent previously only had
+`_SELECT_CONTEXT`/`_BACKEND_UNREACHABLE`) via
+`wwOvercurrentShowEmptyState()`; `onDiscovering` toggles a new
+`#wwOvercurrentDiscoveringIndicator` element (added to the panel
+markup, reusing the existing `.ww-phasor-discovering-indicator` CSS
+class Phasor's own equivalent element already uses); `onFreshContextsDiscovered`
+auto-selects the first context ONLY if Overcurrent doesn't already have
+a selection of its own (never steals a selection Phasor's own fresh-
+discovery hook already made, or vice versa — each analyzer's auto-
+select policy checks only its OWN `selectedContextId`).
+
+**Dead code removed**: `wwOvercurrentLoadContexts()`/
+`wwOvercurrentHandleContextsFetched()`/the standalone
+`wwOvercurrentFetchContexts()` helper are gone entirely — replaced by
+the thin consumer functions above.
+`wwOvercurrentEnsureCharacteristicsLoaded()` (renamed from
+`wwOvercurrentLoadContexts()`) keeps its own small, unrelated entry
+point for the Overcurrent-specific IDMT characteristic dropdown fetch,
+called separately from `wwRenderAnalysisPage()`.
+
+**Selection/state behavior preserved exactly**: `wwOvercurrentState.
+selectedContextId` remains fully independent of `wwPhasorState.
+selectedContextId`; a context already selected in Overcurrent is never
+disturbed by a later background discovery pass finding an unrelated
+source; duplicate display-name labels (two bare-role sources both
+suggesting "Default Context") remain independently selectable by
+context id, never deduplicated by name; a source already covered by a
+manual/partial context is never re-suggested; one source's own
+suggestion failure never blocks or blanks an already-usable bay; a
+workspace change mid-discovery discards the stale in-flight result via
+the same `ww.epoch`/`currentWorkspaceId()` guard every shared-lifecycle
+async step already re-checks.
+
+**No backend changes** — this was purely a frontend ownership/lifecycle
+issue; the existing `GET .../engineering-contexts`/
+`POST .../sources/{id}/engineering-contexts/suggest` endpoints are
+reused verbatim, unchanged.
+
+**Tests**: `browser-tests/overcurrent_analysis.spec.js`'s new "shared
+Analysis Engineering Context lifecycle" describe block covers the exact
+reported bug (fresh workspace, upload, open Overcurrent directly,
+Bay selector populates automatically — never visiting Phasor), the
+existing-Phasor-behavior-unchanged case, later-upload discovery with
+selection preservation, Overcurrent-first-with-a-later-source, duplicate
+display names, manual-coverage non-re-suggestion, and the stale-
+workspace-discard guard.
+`backend/tests/test_frontend_phasor_analysis.py`'s old Phasor-only
+`TestContextBootstrap` was migrated (algorithm assertions unchanged) to
+`TestSharedAnalysisContextLifecycle`, plus a new
+`TestSharedAnalysisContextConsumers` class asserting BOTH analyzers
+register via `wwAnalysisRegisterContextConsumer()` and that neither one
+defines its own independent `wwXxxLoadContexts()`/
+`wwXxxDiscoverUncoveredSources()`/`wwXxxFetchContexts()` again — a
+structural regression seam intended to catch a future analyzer
+(Impedance Locus, Differential, Sequence Components) that tries to
+invent its own bootstrap instead of registering as a consumer.
 
 ## Analysis chart styling tokens (shared with Phasor)
 

@@ -8,8 +8,8 @@ Last updated: **2026-09-12**
 
 ## What was most recently done
 
-**Seven sequential tasks in one session, plus one concurrent Codex
-styling commit: (1) Playback speed set extended to 0.05x/0.10x, (2)
+**Eight sequential tasks in one session, plus two concurrent Codex
+styling commits: (1) Playback speed set extended to 0.05x/0.10x, (2)
 Analysis workspace shell visual polish, (3) Playback controls
 restricted to Analysis pages (removed from the raw Waveform Time Group
 toolbar), (4) Overcurrent Analysis v1 — the second Analysis-menu
@@ -20,14 +20,20 @@ axis-label visibility fix + an adjustable Overcurrent chart viewport
 to 100x/100s, absolute bounds 200x/1000s), (7) a further owner UAT
 follow-up on (6) — the Overcurrent curve now enters/exits the visible
 chart at the EXACT viewport boundary (analytic Y/X-boundary
-intersection) rather than at a coarse pre-sampled point.** Commits, in
-order: `32b2fae` (speed set), `ff45165` (shell polish), `8b853fa`
-(Waveform Playback removal), `98d3f28` (Overcurrent v1), `ad00d13`
-(chart UX refinement), `e07db0d` (adjustable viewport), `6b43b25`
-(Codex, concurrent — `#pageAnalysis` layout CSS only, no overlap with
-any of this session's own Overcurrent/Phasor work), plus this task's
-own final commit for (7) (see this task's own final report for the
-exact hash). All pushed to `origin/main`.
+intersection) rather than at a coarse pre-sampled point, (8) a
+lifecycle/architecture fix — Engineering Context discovery/bootstrap
+ownership moved from Phasor to the shared Analysis workspace, fixing a
+UAT-reported bug where opening Overcurrent directly after an upload
+(without ever visiting Phasor first) could leave the Bay selector
+empty.** Commits, in order: `32b2fae` (speed set), `ff45165` (shell
+polish), `8b853fa` (Waveform Playback removal), `98d3f28` (Overcurrent
+v1), `ad00d13` (chart UX refinement), `e07db0d` (adjustable viewport),
+`6b43b25` (Codex, concurrent — `#pageAnalysis` layout CSS only),
+`26db902` (curve/viewport boundary alignment), `62c51ff` (Codex,
+concurrent — shared Analysis Playback-control styling/icon refinement,
+no overlap with this session's own context-lifecycle work), plus this
+task's own final commit for (8) (see this task's own final report for
+the exact hash). All pushed to `origin/main`.
 
 **(1) Playback speed set**: `WW_PLAYBACK_SPEEDS` extended from
 `[0.25, 0.5, 1, 2, 4]` to `[0.05, 0.1, 0.25, 0.5, 1, 2, 4]` for slow
@@ -166,27 +172,77 @@ frontend-only per viewport change). Full detail in
 [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own "Curve/
 viewport boundary alignment" section.
 
-**Also present on `main`: a concurrent Codex commit (`6b43b25`, "style:
-refine analysis page layout")** — a small, isolated `#pageAnalysis` CSS
-rule addition (flex layout + `[hidden]` fix, mirroring the existing
-`#pageCalculatedChannels` pattern), no overlap with any of this
-session's own Overcurrent/Phasor code.
+Commit `26db902`, pushed on top of Codex's `6b43b25` (`#pageAnalysis`
+CSS, no overlap).
 
-**Tests**: new `test_overcurrent_domain.py`/`test_overcurrent_analysis_service.py`/
-`test_overcurrent_analysis_api.py`/`test_frontend_overcurrent_analysis.py`/
-`overcurrent_analysis.spec.js` (now 23 Playwright scenarios after (5)/
-(6)/(7), including the viewport describe block from (6) and a new
-"curve aligns exactly with the chart viewport" describe block from (7):
-exact Y-Max/Y-Min/X-Max boundary entry/exit points, custom-zoom
-re-alignment, live-value non-interference, and a real rendered-SVG-path
-coordinate assertion). `test_analysis_requirements.py`/
-`test_frontend_phasor_analysis.py` updated for the new nav-entry/
-requirement-registry counts and, in (6), for the axis-title z-order/
-viewBox change. `browser-tests/phasor_analysis.spec.js`'s own cross-page
-shared-clock test rewritten for (3) above. Full backend regression, full
-frontend static suite, and full Playwright suite all pass against the
-COMBINED codebase (this session's own work plus Codex's `6b43b25`);
-`git diff --check` clean throughout.
+**(8) Engineering Context discovery/bootstrap lifecycle fix** — owner
+UAT: opening `Overcurrent` directly after an upload, without ever
+visiting Phasor first, could leave the Bay/Engineering Context selector
+empty even though the recording was loaded and ready. Root cause:
+discovery/bootstrap (the whole `wwPhasorFetchContexts()`/
+`wwPhasorCoveredSourceIds()`/`wwPhasorDiscoverUncoveredSources()`/
+`wwPhasorLoadContexts()` machinery from the prior session's own
+"multi-upload bootstrap fix") lived entirely inside Phasor's own code
+path; Overcurrent only ever read whatever contexts already existed,
+never triggering discovery itself — an order-dependent bug that would
+recur for every future analyzer too. **New architectural rule:
+Engineering Context discovery/bootstrap is owned by the Analysis
+WORKSPACE, never an individual analyzer.** Every function named above
+was relocated (algorithm byte-for-byte unchanged) to a new shared
+module under a `wwAnalysis*` prefix; `wwRenderAnalysisPage()` now calls
+`wwAnalysisLoadContexts()` exactly once per Analysis-page visit
+regardless of active analyzer tab; Phasor and Overcurrent register as
+CONSUMERS via `wwAnalysisRegisterContextConsumer({ onContexts,
+onLifecyclePhase, onDiscovering, onFreshContextsDiscovered })` —
+mirroring the existing `wwPlaybackOnTick()` subscriber-registration
+shape, applied to context discovery instead of Playback ticks. Context
+SELECTION (`selectedContextId`), empty-state message/DOM element, the
+discovering-indicator element, and role resolution all stayed
+analyzer-specific by design — only the context-LIST lifecycle moved.
+Dead code removed: `wwOvercurrentLoadContexts()`/
+`wwOvercurrentHandleContextsFetched()`/the standalone
+`wwOvercurrentFetchContexts()` helper, and `wwPhasorState.
+attemptedSourceIds` (moved to the shared `wwAnalysisContextState`). No
+backend files touched — the existing context-list/suggest endpoints
+are reused verbatim; this was a pure frontend ownership issue. Full
+detail in [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own
+"Shared Analysis Engineering Context lifecycle" section,
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s own "Ownership moved to the
+shared Analysis workspace" section, and
+[DECISIONS.md — DEC-089's own "Update (2026-09-12)"](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules).
+
+**Also present on `main`: a second concurrent Codex commit (`62c51ff`,
+"style: refine shared analysis playback controls")** — restyled the
+shared Playback control surface (icon+label buttons, a neutral
+`.ww-analysis-playback-*` CSS seam alongside the existing
+`.ww-phasor-playback-*` classes) both Phasor and Overcurrent mount; no
+overlap with this session's own context-lifecycle work (confirmed by
+re-reading `frontend/index.html` fresh before editing and by the full
+combined-codebase test run below).
+
+**Tests**: `test_frontend_phasor_analysis.py`'s old Phasor-only
+`TestContextBootstrap` migrated (algorithm assertions unchanged) to
+`TestSharedAnalysisContextLifecycle`, plus a new
+`TestSharedAnalysisContextConsumers` class — a structural regression
+seam proving both analyzers register via
+`wwAnalysisRegisterContextConsumer()` and that neither defines its own
+independent bootstrap again (the exact pattern a future analyzer, e.g.
+Impedance Locus, must not repeat).
+`browser-tests/overcurrent_analysis.spec.js` gained a new "shared
+Analysis Engineering Context lifecycle" describe block (7 tests): the
+exact reported bug (fresh workspace, upload, open Overcurrent directly,
+Bay selector populates automatically), existing-Phasor-behavior
+unchanged, later-upload discovery with selection preservation,
+Overcurrent-first-with-a-later-source, duplicate display-name labels,
+manual-coverage non-re-suggestion, and the stale-workspace-discard
+guard. Full frontend static suite and full Playwright suite (62+
+scenarios across Overcurrent/Phasor/bare-context/Playback) all pass
+against the COMBINED codebase (this session's own work plus both
+Codex commits); `git diff --check` clean. No backend production files
+touched this task, so full backend regression was not re-run (per the
+task's own explicit "backend regression only if backend production
+files change" instruction) — the prior task's own full backend
+regression pass (on `26db902`) stands.
 
 ## What was done in the prior session — multi-upload Phasor bootstrap fix
 

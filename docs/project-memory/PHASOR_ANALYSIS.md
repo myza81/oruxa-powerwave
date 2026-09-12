@@ -328,6 +328,70 @@ directly; manual correction, when genuinely needed, remains an
 Engineering Context metadata edit (Slice 1's own `member-phase`
 endpoint), reached outside this page.
 
+### Ownership moved to the shared Analysis workspace (2026-09-12 owner UAT fix)
+
+**Superseded, read this before the section immediately below.** The
+section below ("Automatic Engineering Context bootstrap") documents
+the ALGORITHM correctly — the discovery/coverage/suggestion logic
+itself is byte-for-byte unchanged — but its OWNERSHIP has moved.
+Owner UAT: opening `Overcurrent` directly after an upload, without
+ever visiting Phasor first, could leave the Bay/Engineering Context
+selector empty. Root cause: bootstrap lived entirely inside Phasor's
+own code path (`wwPhasorLoadContexts()` et al.); Overcurrent merely
+read whatever contexts already existed, so on a fresh workspace
+nothing had ever triggered discovery unless the engineer happened to
+open Phasor first. This was an order-dependent bug that would recur
+for every future analyzer (Impedance Locus, Differential, Sequence
+Components, ...) too, unless ownership moved out of any one analyzer.
+
+**New rule**: Engineering Context discovery/bootstrap is owned by the
+**Analysis workspace**, never by an individual analyzer. All the
+functions the section below describes (`wwPhasorFetchContexts()`,
+`wwPhasorFetchSuggest()`, `wwPhasorCoveredSourceIds()`,
+`wwPhasorDiscoverUncoveredSources()`, `wwPhasorLoadContexts()`,
+`wwPhasorHandleContextsFetched()`) were relocated, unchanged, to a new
+shared module in `frontend/index.html` (`const wwAnalysisContextState`
+through `async function wwAnalysisDiscoverUncoveredSources()`, just
+before the Overcurrent section) under the `wwAnalysis*` name prefix.
+`wwRenderAnalysisPage()` now calls `wwAnalysisLoadContexts()` exactly
+ONCE per Analysis-page visit, regardless of which analyzer tab is
+active — never once per analyzer. Phasor and Overcurrent (and every
+future analyzer) register themselves as CONSUMERS via
+`wwAnalysisRegisterContextConsumer({ onContexts, onLifecyclePhase,
+onDiscovering, onFreshContextsDiscovered })`, called once per analyzer
+in the wiring section near the bottom of the script (alongside their
+own `wwPlaybackOnTick()` subscriptions) — this is the same
+subscriber-registration SHAPE that seam already established, applied
+to context discovery instead of Playback ticks.
+
+**What stayed analyzer-specific, deliberately not moved**: which
+context is SELECTED (`wwPhasorState.selectedContextId`/
+`wwOvercurrentState.selectedContextId` remain two independent fields —
+an engineer may study a different bay in Phasor than in Overcurrent at
+the same moment), the empty-state MESSAGE TEXT and DOM element
+(`WW_PHASOR_MSG_*`/`WW_OVERCURRENT_MSG_*`, `#wwPhasorEmptyState`/
+`#wwOvercurrentEmptyState`), the discovering-indicator DOM element
+(`#wwPhasorDiscoveringIndicator`/`#wwOvercurrentDiscoveringIndicator`
+— each analyzer owns its own, so the discovering signal is
+per-CONSUMER, not a single element a future analyzer would have no way
+to hook into), and role resolution (unrelated to context-list
+lifecycle entirely). The auto-select-first-context-on-fresh-discovery
+POLICY also stayed per-analyzer (each consumer's own
+`onFreshContextsDiscovered` checks ITS OWN current selection before
+acting) — the shared layer only decides WHEN a fresh-discovery event
+happened, never WHETHER a given analyzer should act on it.
+
+`wwAnalysisContextState.attemptedSourceIds` replaces
+`wwPhasorState.attemptedSourceIds` (removed from `wwPhasorState`
+entirely) — reset once, from `wwAnalysisResetContextState()`, called
+by `wwClearWorkspace()` alongside `wwPhasorResetState()`/
+`wwOvercurrentResetState()`, never duplicated per-analyzer.
+
+See `docs/project-memory/OVERCURRENT_ANALYSIS.md`'s own "Shared
+Analysis Engineering Context lifecycle" section for the Overcurrent-
+side consumer detail, and `DECISIONS.md` — DEC-089's own "Update
+(2026-09-12)" for the governance record of this ownership move.
+
 ### Automatic Engineering Context bootstrap — SOURCE-COVERAGE driven (multi-upload fix, 2026-09-12)
 
 UAT originally found that a workspace with loaded sources but no
@@ -386,9 +450,11 @@ later) has not been." A source is marked attempted the moment its own
 suggestion call is dispatched (mirroring the original boolean's own
 timing precedent exactly, including for a transient network failure —
 this fix does not invent a new retry policy). Reset only by
-`wwPhasorResetState()` (the "Start New Workspace"/"Clear workspace"
-hook), so a fresh workspace always starts with an empty attempted set
-and a workspace switch never leaks another workspace's own bookkeeping.
+`wwAnalysisResetContextState()` (see "Ownership moved to the shared
+Analysis workspace" above — called from `wwClearWorkspace()`, the
+"Start New Workspace"/"Clear workspace" hook), so a fresh workspace
+always starts with an empty attempted set and a workspace switch never
+leaks another workspace's own bookkeeping.
 
 **An already-usable bay is never blanked for this.** When at least one
 context already exists, the selector/values/diagram render from it

@@ -650,3 +650,184 @@ test.describe("Overcurrent Analysis v1 -- curve aligns exactly with the chart vi
     expect(Number.isFinite(xPx)).toBe(true);
   });
 });
+
+test.describe("Overcurrent Analysis v1 -- shared Analysis Engineering Context lifecycle (2026-09-12 owner UAT fix)", () => {
+  // Owner UAT: after uploading an event, opening Overcurrent DIRECTLY
+  // (without ever visiting/selecting anything in Phasor) could show an
+  // empty Bay selector -- Engineering Context discovery/bootstrap used
+  // to live entirely inside Phasor's own code path. This is now owned
+  // by the shared Analysis workspace (wwAnalysisLoadContexts() and
+  // friends) -- Phasor/Overcurrent are pure consumers of the ONE
+  // published list, so opening either one first produces identical
+  // context availability. No manual context creation in these tests --
+  // relies entirely on the automatic suggestion bootstrap, exactly like
+  // phasor_analysis.spec.js's own "Engineering Context bootstrap"
+  // describe block already does for Phasor.
+
+  // ---- Case 1: the original UAT bug, direct-Overcurrent-after-upload ----
+  test("fresh workspace: upload -> open Analysis directly on Overcurrent (never visiting Phasor) -> Bay selector populates automatically", async ({ page }) => {
+    await page.route("**/engineering-contexts/suggest", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await route.continue();
+    });
+
+    await uploadFixture(page); // no manual context creation
+    await openAnalysisOvercurrent(page); // never selects/interacts with anything in Phasor's own panel
+
+    // The transient context-identification state appears on Overcurrent's
+    // own empty state (mirrors Phasor's own established UX for this).
+    await expect(page.locator("#wwOvercurrentEmptyState")).toContainText("Identifying engineering contexts");
+
+    // The Bay selector populates automatically, with the newly-
+    // suggested context auto-selected (no unnecessary extra click) --
+    // this is the exact scenario the owner reported as broken.
+    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(2, { timeout: 10000 }); // blank + ALPHA1
+    await expect(page.locator("#wwOvercurrentContextSelect")).not.toHaveValue("");
+    await expect(page.locator("#wwOvercurrentContextBadge")).toContainText("Suggested");
+
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/40\.0\s*A secondary/); // known 40 A RMS
+    }).toPass({ timeout: 5000 });
+  });
+
+  // ---- Case 2: existing behavior via Phasor must remain unchanged ----
+  test("fresh workspace: upload -> open Phasor -> context available (unchanged existing behavior)", async ({ page }) => {
+    await uploadFixture(page);
+    await page.locator("#mainNavAnalysisBtn").click();
+    await expect(page.locator("#wwPhasorPanel")).toBeVisible();
+    await expect(page.locator("#wwPhasorContextSelect option")).toHaveCount(2, { timeout: 10000 }); // blank + ALPHA1
+    await expect(page.locator("#wwPhasorContextSelect")).not.toHaveValue("");
+  });
+
+  // ---- Case 3: later upload, both analyzers stay in sync ----
+  test("upload A -> Overcurrent sees A; upload B later -> Overcurrent discovers B without visiting Phasor, A remains selected", async ({ page }) => {
+    await uploadFixture(page);
+    await openAnalysisOvercurrent(page);
+    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(2, { timeout: 10000 }); // blank + ALPHA1
+    const alphaContextId = await page.locator("#wwOvercurrentContextSelect").inputValue();
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/40\.0\s*A secondary/);
+    }).toPass({ timeout: 5000 });
+
+    const suggestUrls = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/engineering-contexts/suggest")) suggestUrls.push(request.url());
+    });
+    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "phasor_smoke_bravo_three_phase.cfg"));
+    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
+    await page.locator("#uploadModalSubmitBtn").click();
+    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+    const bravoSourceId = await page.locator("#recordingsTableBody tr[data-source-id]").last().getAttribute("data-source-id");
+
+    // Re-enter Analysis directly on Overcurrent -- never visiting Phasor.
+    await page.locator("#mainNavAnalysisBtn").click();
+    await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
+    await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(alphaContextId); // A remains selected
+    const valuesRightAfterReentry = await page.locator("#wwOvercurrentValuesList").innerText();
+    expect(valuesRightAfterReentry).toMatch(/40\.0\s*A secondary/); // uninterrupted
+
+    // BRAVO1 (B) appears once background discovery completes -- A stays selected.
+    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(3, { timeout: 10000 }); // blank + A + B
+    await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(alphaContextId);
+
+    // Exactly one suggestion request for B's own new source -- never a
+    // duplicate, never one re-requested for A (already covered), and no
+    // double-bootstrap between the shared layer and a stale per-analyzer one.
+    const bravoSuggestUrls = suggestUrls.filter((url) => url.includes(encodeURIComponent(bravoSourceId)));
+    expect(bravoSuggestUrls).toHaveLength(1);
+    const alphaSuggestUrls = suggestUrls.filter((url) => !url.includes(encodeURIComponent(bravoSourceId)));
+    expect(alphaSuggestUrls).toHaveLength(0);
+  });
+
+  // ---- Case 4: Overcurrent first with a source uploaded before it ----
+  test("A already exists -> upload B -> open Overcurrent -> B appears without ever visiting Phasor", async ({ page }) => {
+    const { contextId: alphaContextId } = await uploadAndCreateContext(page); // A via direct API (manual, confirmed)
+
+    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "phasor_smoke_bravo_three_phase.cfg"));
+    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
+    await page.locator("#uploadModalSubmitBtn").click();
+    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+
+    await openAnalysisOvercurrent(page); // never visits Phasor
+    await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(""); // nothing auto-selected yet (A was never selected before)
+    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(3, { timeout: 10000 }); // blank + A + B (BRAVO1)
+    const bravoOption = page.locator("#wwOvercurrentContextSelect option", { hasText: "BRAVO1" });
+    await expect(bravoOption).toHaveCount(1);
+    const alphaOption = page.locator(`#wwOvercurrentContextSelect option[value="${alphaContextId}"]`);
+    await expect(alphaOption).toHaveCount(1);
+  });
+
+  // ---- Case 5: duplicate display-name labels remain independently selectable ----
+  test("two bare-role sources each get their own distinct context, never deduplicated by display name", async ({ page }) => {
+    const BARE_STEM = "phasor_bare_three_phase";
+    await page.goto("/index.html");
+    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${BARE_STEM}.cfg`));
+    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
+    await page.locator("#uploadModalSubmitBtn").click();
+    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+
+    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${BARE_STEM}.cfg`));
+    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
+    await page.locator("#uploadModalSubmitBtn").click();
+    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+
+    await openAnalysisOvercurrent(page);
+    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(3, { timeout: 10000 }); // blank + two "Default Context" entries
+    const optionValues = await page.locator("#wwOvercurrentContextSelect option:not([value=''])").evaluateAll(
+      (opts) => opts.map((o) => o.value)
+    );
+    expect(new Set(optionValues).size).toBe(2); // two distinct context ids, never merged by shared label
+  });
+
+  // ---- Case 6: partial/manual coverage is respected, never re-suggested ----
+  test("a source already covered by a manual context is never re-suggested", async ({ page }) => {
+    const suggestUrls = [];
+    const { contextId, sourceId } = await uploadAndCreateContext(page);
+    page.on("request", (request) => {
+      if (request.url().includes("/engineering-contexts/suggest")) suggestUrls.push(request.url());
+    });
+    await openAnalysisOvercurrent(page);
+    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(2, { timeout: 5000 }); // blank + the manual context
+    const covered = suggestUrls.filter((url) => url.includes(encodeURIComponent(sourceId)));
+    expect(covered).toHaveLength(0);
+    await expect(page.locator(`#wwOvercurrentContextSelect option[value="${contextId}"]`)).toHaveCount(1);
+  });
+
+  // ---- Case 8: a workspace switch mid-discovery discards the stale result ----
+  test("stale discovery response from a cleared workspace never populates the new one", async ({ page }) => {
+    await page.route("**/engineering-contexts/suggest", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await route.continue();
+    });
+    await uploadFixture(page);
+    await openAnalysisOvercurrent(page);
+    await expect(page.locator("#wwOvercurrentEmptyState")).toContainText("Identifying engineering contexts");
+
+    // Clear the workspace WHILE discovery is still in flight.
+    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#newWorkspaceButton").click();
+    await expect(page.locator("#newWorkspaceConfirmOverlay")).toBeVisible();
+    await page.locator("#newWorkspaceConfirmStartBtn").click();
+    await expect(page.locator("#newWorkspaceConfirmOverlay")).toBeHidden();
+
+    await page.locator("#mainNavAnalysisBtn").click();
+    await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
+    // The now-stale ALPHA1 suggestion must never leak into the fresh,
+    // empty workspace's own selector.
+    await page.waitForTimeout(800);
+    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(1); // blank only
+  });
+});
