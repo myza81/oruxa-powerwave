@@ -851,6 +851,28 @@ Per-Unit display, sequence components, impedance/distance, automatic
 cross-source context merging, frequency tracking, and every real
 protection analysis (Distance/Overcurrent/Differential).
 
+## Analysis shell visual polish (2026-09-12)
+
+Layout/typography/spacing only — no engineering behavior, resolver,
+estimator, or Playback semantics changed. See
+[CURRENT_STATE.md](CURRENT_STATE.md)'s own "Analysis page shell received
+a visual polish pass" paragraph for the full detail; summarized here:
+the outer `.ww-analysis-shell`/`.ww-analysis-type-nav`/
+`.ww-analysis-content` structure was already analyzer-agnostic (Phasor
+already rendered as one panel nested inside it) — this pass made that
+visually obvious (compact nav, restrained borders, a consistent
+context-bar → Playback-ribbon → two-column-body vertical rhythm) and is
+the pattern a future analyzer (Impedance Locus/Overcurrent/
+Differential/Sequence Components) reuses without redesigning the shell.
+Normal Analysis-workspace UI text is capped at 0.75rem (owner
+instruction); the shared page title/description keep the larger app-wide
+scale. The Playback ribbon is now one compact row (Restart/Play/Speed/
+seek/time) via `display: contents` + a scoped `order` on the wrapper
+only — the shared `wwCreatePlaybackControlsHtml()` markup and every
+`.ww-tg-playback-*` class Waveform's own toolbar also relies on are
+byte-for-byte unchanged. No `Polar View`/visualization-mode selector was
+added.
+
 ## Not yet implemented (future slices)
 
 - **Frequency tracking / PMU-class measurement.**

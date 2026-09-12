@@ -5826,9 +5826,19 @@
             --ww-phase-c: var(--ok);
         }
 
+        /* Analysis workspace shell -- reusable layout seam for every
+           visual analyzer (Phasor today; Impedance Locus/Overcurrent/
+           Differential/Sequence Components later), never Phasor-specific
+           itself. Visual polish pass (2026-09-12): compact, restrained-
+           border, professional-engineering-tool density -- see this
+           task's own final report for the full before/after rationale.
+           Normal Analysis-workspace UI text stays <=0.75rem throughout
+           this shell and everything nested in it (owner instruction);
+           only the page title/description above keep the larger app-wide
+           scale. */
         .ww-analysis-shell {
             display: flex;
-            gap: 16px;
+            gap: 14px;
             align-items: flex-start;
         }
         /* The seam future analysis types (Distance Protection/Overcurrent/
@@ -5842,18 +5852,20 @@
             display: flex;
             flex-direction: column;
             gap: 2px;
-            min-width: 160px;
+            min-width: 150px;
+            max-width: 180px;
             flex-shrink: 0;
         }
         .ww-analysis-type-item {
             appearance: none;
             border: 1px solid transparent;
+            border-left: 3px solid transparent;
             background: transparent;
             color: var(--text-dim);
             text-align: left;
-            padding: 8px 12px;
+            padding: 7px 10px;
             border-radius: var(--radius);
-            font-size: 0.85rem;
+            font-size: 0.75rem;
             font-weight: 500;
             cursor: pointer;
         }
@@ -5861,6 +5873,7 @@
             background: var(--accent-wash-soft);
             color: var(--accent);
             border-color: var(--accent-dim);
+            border-left-color: var(--accent);
             font-weight: 600;
         }
         .ww-analysis-content {
@@ -5868,62 +5881,112 @@
             min-width: 0;
         }
 
+        /* One analyzer panel (today #wwPhasorPanel) stacks its own
+           context bar / Playback ribbon / body with a single consistent
+           vertical rhythm, rather than each section owning its own
+           ad-hoc margin-top -- the "context bar -> Playback ribbon ->
+           main body" hierarchy the product direction calls for. */
+        .ww-phasor-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        /* Card headings inside the Analysis shell -- mirrors the existing
+           `section.panel h2` convention elsewhere in this app (small
+           uppercase label, --text-dim), applied here to the h3 headings
+           this page happens to use, so "Playback"/"Inputs / Values"/
+           "Phasor Diagram" read as consistent card titles rather than
+           browser-default-sized headings. */
+        .ww-phasor-panel h3 {
+            margin: 0 0 8px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            color: var(--text-dim);
+        }
+
         .ww-phasor-controls-panel {
+            padding: 12px 14px;
             display: flex;
             flex-direction: column;
             gap: 10px;
         }
+        /* Shared context bar (reusable across future analyzers, not just
+           Phasor): "Bay / Engineering Context" label on its own line,
+           then the selector + status badge together on one aligned row
+           below it -- the badge previously sat next to the LABEL text,
+           reading detached from the control it actually describes. */
         .ww-phasor-controls-row {
             display: flex;
             flex-wrap: wrap;
+            align-items: center;
             gap: 14px;
         }
         .ww-phasor-field {
             display: flex;
             flex-direction: column;
-            gap: 4px;
-            font-size: 0.78rem;
+            gap: 5px;
+            font-size: 0.72rem;
             color: var(--text-dim);
-            min-width: 160px;
+            min-width: 220px;
         }
-        .ww-phasor-field select,
-        .ww-phasor-field input[type="number"] {
-            font-size: 0.85rem;
-            padding: 6px 8px;
+        .ww-phasor-field-control-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .ww-phasor-field select {
+            font-size: 0.75rem;
+            padding: 5px 8px;
         }
 
-        /* Phasor Playback integration: this panel mounts the SAME
-           reusable Playback control-surface markup the Waveform Time
-           Group toolbar uses (wwCreatePlaybackControlsHtml()) -- these
-           two rules only lay out THIS panel's own wrapper; every control
-           inside (buttons/select/seek slider) keeps its existing shared
-           `.ww-tg-playback-*` styling verbatim, never a Phasor-specific
-           duplicate. Hidden via the `hidden` ATTRIBUTE whenever no
-           Engineering Context has resolved a real Time Group yet --
-           plain `display: none` default is sufficient here (no
-           higher-specificity `display` rule on this class to override
-           it, unlike `.ww-phasor-body`'s own documented flex/grid fix
-           above/below). */
+        /* Phasor Playback integration, restyled into a compact single-row
+           ribbon (visual polish pass, 2026-09-12): these rules only lay
+           out THIS panel's own wrapper; every control inside (buttons/
+           select/seek slider) keeps its existing shared `.ww-tg-playback-*`
+           styling/behavior verbatim, never a Phasor-specific duplicate --
+           see PHASOR_ANALYSIS.md's own "Phasor Playback integration"
+           section for why this must stay true. `.ww-phasor-playback-
+           transport` becomes `display: contents` so its own children
+           (Restart/Play/Speed/time-readout) flatten into this ONE flex
+           row alongside the seek slider, rather than stacking as two
+           separate rows; `order` below reorders only WITHIN this mount
+           (scoped by ancestor class), never touching the shared classes'
+           own default layout used by the Waveform Time Group toolbar.
+           Hidden via the `hidden` ATTRIBUTE whenever no Engineering
+           Context has resolved a real Time Group yet -- plain
+           `display: none` default is sufficient here (no higher-
+           specificity `display` rule on this class to override it,
+           unlike `.ww-phasor-body`'s own documented flex/grid fix
+           below). */
         .ww-phasor-playback-panel {
-            margin-top: 10px;
+            padding: 10px 14px;
         }
         .ww-phasor-playback-mount {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-        .ww-phasor-playback-transport {
             display: flex;
             align-items: center;
             flex-wrap: wrap;
             gap: 8px;
         }
+        .ww-phasor-playback-transport {
+            display: contents;
+        }
+        .ww-phasor-playback-mount .ww-tg-playback-seek-row {
+            order: 1;
+            flex: 1 1 160px;
+            min-width: 120px;
+            padding: 0;
+        }
+        .ww-phasor-playback-mount .ww-tg-playback-time-readout {
+            order: 2;
+            margin-left: 4px;
+        }
 
         .ww-phasor-status-row {
-            margin-top: 12px;
-            padding: 10px 12px;
+            padding: 8px 12px;
             border-radius: var(--radius);
-            font-size: 0.82rem;
+            font-size: 0.72rem;
             background: var(--surface-tint);
             border: 1px solid var(--panel-border);
             color: var(--text-dim);
@@ -5937,9 +6000,8 @@
 
         .ww-phasor-body {
             display: grid;
-            grid-template-columns: minmax(260px, 360px) 1fr;
-            gap: 16px;
-            margin-top: 12px;
+            grid-template-columns: minmax(260px, 36%) 1fr;
+            gap: 14px;
         }
         /* `display: grid` above has higher specificity than the UA
            stylesheet's own `[hidden] { display: none }` default, so the
@@ -5955,6 +6017,13 @@
         }
         @media (max-width: 900px) {
             .ww-phasor-body { grid-template-columns: 1fr; }
+        }
+        /* Reset the UA default <p> margin -- this element sits inside
+           `.ww-phasor-panel`'s own flex-column `gap`, so its own margin
+           would otherwise stack additional whitespace on top of that
+           gap. */
+        #wwPhasorEmptyState {
+            margin: 0;
         }
 
         /* Bay-centric redesign: VOLTAGE/CURRENT family section headings
@@ -5978,9 +6047,9 @@
             align-items: center;
             justify-content: space-between;
             gap: 8px;
-            padding: 6px 0;
+            padding: 7px 6px;
             border-bottom: 1px solid var(--panel-border);
-            font-size: 0.85rem;
+            font-size: 0.75rem;
         }
         .ww-phasor-value-row:last-child { border-bottom: none; }
         /* Reuses the EXACT row-as-toggle-button convention #channelGroups
@@ -6013,6 +6082,7 @@
             display: inline-flex;
             align-items: center;
             gap: 6px;
+            min-width: 34px;
         }
         .ww-phasor-role-swatch {
             width: 10px;
@@ -6023,16 +6093,29 @@
         .ww-phasor-role-ok { color: var(--ok); }
         .ww-phasor-role-warn { color: var(--warn); }
         .ww-phasor-role-status-text {
-            font-size: 0.78rem;
+            font-size: 0.72rem;
         }
+        /* Role | Magnitude | Angle | Visibility, as clearly aligned
+           columns -- magnitude and angle are separate flex items (rather
+           than one run of text) specifically so each gets its own
+           consistent column stop, never drifting sideways as their own
+           text width varies row to row. */
         .ww-phasor-value-numbers {
-            text-align: right;
+            display: flex;
+            align-items: baseline;
+            justify-content: flex-end;
+            gap: 8px;
             font-variant-numeric: tabular-nums;
             flex: 1;
         }
+        .ww-phasor-value-magnitude {
+            min-width: 68px;
+            text-align: right;
+        }
         .ww-phasor-value-angle {
+            min-width: 58px;
+            text-align: right;
             color: var(--text-dim);
-            margin-left: 8px;
         }
         .ww-phasor-eye-icon {
             width: 18px;
@@ -6040,16 +6123,16 @@
             text-align: center;
         }
         .ww-phasor-warnings {
-            margin-top: 10px;
-            font-size: 0.78rem;
+            margin-top: 8px;
+            font-size: 0.72rem;
             color: var(--warn);
         }
 
         .ww-phasor-diagram-wrap {
             width: 100%;
             aspect-ratio: 1 / 1;
-            max-width: 460px;
-            margin: 0 auto;
+            max-width: 500px;
+            margin: 4px auto 0;
         }
         #wwPhasorSvg {
             width: 100%;
@@ -6083,7 +6166,7 @@
         }
         .ww-phasor-scale-note {
             margin-top: 8px;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             color: var(--text-dim);
             text-align: center;
         }
@@ -6107,9 +6190,17 @@
            usable page merely because another source is being
            suggested). */
         .ww-phasor-discovering-indicator {
-            font-size: 0.78rem;
+            font-size: 0.72rem;
             color: var(--text-dim);
             align-self: center;
+        }
+        /* Card internal padding standardized (12-14px, matching
+           `.ww-phasor-controls-panel`/`.ww-phasor-playback-panel` above)
+           -- the shared `section.panel` default (10px) is left alone
+           globally since many other pages depend on it unchanged. */
+        .ww-phasor-values-panel,
+        .ww-phasor-diagram-panel {
+            padding: 12px 14px;
         }
     </style>
 </head>
@@ -7035,8 +7126,11 @@
                             <section class="panel ww-phasor-controls-panel">
                                 <div class="ww-phasor-controls-row">
                                     <label class="ww-phasor-field">
-                                        <span>Bay / Engineering Context <span id="wwPhasorContextBadge"></span></span>
-                                        <select id="wwPhasorContextSelect"><option value="">Select a context…</option></select>
+                                        <span class="ww-phasor-field-label">Bay / Engineering Context</span>
+                                        <span class="ww-phasor-field-control-row">
+                                            <select id="wwPhasorContextSelect"><option value="">Select a context…</option></select>
+                                            <span id="wwPhasorContextBadge"></span>
+                                        </span>
                                     </label>
                                     <span class="ww-phasor-discovering-indicator" id="wwPhasorDiscoveringIndicator" hidden>Identifying additional engineering contexts…</span>
                                 </div>
@@ -34797,7 +34891,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     ' role="button" tabindex="0" aria-pressed="' + visible + '" data-role="' + escapeHtml(roleKey) + '"' +
                     ' aria-label="' + escapeHtml(actionLabel) + '" title="' + escapeHtml(actionLabel) + '">' +
                     '<span class="ww-phasor-role-label">' + swatch + escapeHtml(roleKey) + '</span>' +
-                    '<span class="ww-phasor-value-numbers">' + wwFormatEngineeringValue(role.magnitude_rms) + ' ' + escapeHtml(role.unit || "") +
+                    '<span class="ww-phasor-value-numbers">' +
+                        '<span class="ww-phasor-value-magnitude">' + wwFormatEngineeringValue(role.magnitude_rms) + ' ' + escapeHtml(role.unit || "") + '</span>' +
                         '<span class="ww-phasor-value-angle">∠ ' + wwPhasorFormatAngle(role.angle_deg_absolute) + '</span></span>' +
                     '<span class="ww-phasor-eye-icon" aria-hidden="true">' + (visible ? "👁" : "🚫") + '</span>' +
                 '</div>'

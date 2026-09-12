@@ -788,3 +788,94 @@ class TestClearWorkspaceLifecycle:
         body = _function_body(source, "function wwPhasorResetState()", "// ------------------------------------------------------------------\n        // Init")
         assert "wwPhasorState.selectedContextId = null;" in body
         assert "wwPhasorState.requestGeneration += 1;" in body
+
+
+class TestAnalysisShellVisualPolish:
+    """Visual polish pass (2026-09-12): reusable Analysis shell layout,
+    compact typography, restructured context bar/Playback ribbon. Behavior
+    is unchanged -- see the classes above for that coverage; these tests
+    guard the structural/typography invariants the polish task itself
+    calls out explicitly."""
+
+    def test_page_title_and_description_present(self):
+        source = _source()
+        assert "<h2>Analysis</h2>" in source
+        assert "Engineering analyzers built on automatic Engineering Context resolution." in source
+
+    def test_analyzer_nav_item_typography_is_compact(self):
+        source = _source()
+        body = _function_body(source, ".ww-analysis-type-item {", ".ww-analysis-content {")
+        assert "font-size: 0.75rem;" in body
+
+    def test_context_bar_label_and_control_row_are_structurally_separate(self):
+        """Bay/Engineering Context label sits on its own line; the
+        selector and its status badge sit together on one aligned row
+        below it -- the badge no longer floats next to the label text."""
+        source = _source()
+        body = _function_body(source, 'class="ww-phasor-controls-row"', "</section>")
+        assert 'class="ww-phasor-field-label"' in body
+        assert 'class="ww-phasor-field-control-row"' in body
+        label_idx = body.index('class="ww-phasor-field-label"')
+        badge_idx = body.index('id="wwPhasorContextBadge"')
+        select_idx = body.index('id="wwPhasorContextSelect"')
+        assert label_idx < select_idx < badge_idx
+
+    def test_playback_ribbon_is_one_row_reusing_shared_markup_unmodified(self):
+        """The ribbon restyle only touches THIS mount's own wrapper
+        layout (`display: contents` + scoped `order`) -- the shared
+        `wwCreatePlaybackControlsHtml()` markup/classes Waveform's own
+        toolbar also mounts stay byte-for-byte unchanged."""
+        source = _source()
+        css_body = _function_body(source, ".ww-phasor-playback-mount {", ".ww-phasor-status-row {")
+        assert "display: contents;" in css_body
+        assert ".ww-phasor-playback-mount .ww-tg-playback-seek-row" in css_body
+        assert ".ww-phasor-playback-mount .ww-tg-playback-time-readout" in css_body
+        markup_fn = _function_body(source, "function wwCreatePlaybackControlsHtml()", "function wwPlaybackState")
+        for option in ('value="0.05"', 'value="0.1"', 'value="1" selected'):
+            assert option in markup_fn
+
+    def test_no_polar_view_or_visualization_mode_selector(self):
+        """Only one meaningful visualization mode exists today -- a mode
+        selector is explicitly deferred until a genuine second view
+        exists (owner instruction)."""
+        source = _source()
+        body = _phasor_block(source)
+        assert "Polar View" not in body
+        assert "wwPhasorViewMode" not in body
+
+    def test_values_panel_uses_aligned_magnitude_and_angle_columns(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorValueRowHtml", "function wwPhasorRenderValuesList")
+        assert "ww-phasor-value-magnitude" in body
+        assert "ww-phasor-value-angle" in body
+
+    def test_normal_analysis_ui_text_stays_at_or_under_0_75rem(self):
+        """Explicit audit of the Analysis-page-specific selectors this
+        polish pass touched -- every one caps at 0.75rem (owner
+        instruction), excluding only the page title/description (the
+        larger app-wide heading/subtitle scale, asserted separately
+        above)."""
+        source = _source()
+        css_body = _function_body(source, ".ww-analysis-shell {", "</style>")
+        import re
+
+        analysis_selectors = (
+            ".ww-analysis-type-item",
+            ".ww-phasor-panel h3",
+            ".ww-phasor-field",
+            ".ww-phasor-field select",
+            ".ww-phasor-status-row",
+            ".ww-phasor-role-status-text",
+            ".ww-phasor-value-row",
+            ".ww-phasor-warnings",
+            ".ww-phasor-scale-note",
+            ".ww-phasor-discovering-indicator",
+        )
+        for selector in analysis_selectors:
+            start = css_body.index(selector + " {")
+            end = css_body.index("}", start)
+            block = css_body[start:end]
+            sizes = [float(m) for m in re.findall(r"font-size:\s*([\d.]+)rem", block)]
+            assert sizes, f"{selector} declares no rem font-size"
+            for size in sizes:
+                assert size <= 0.75, f"{selector} font-size {size}rem exceeds the 0.75rem Analysis-workspace cap"

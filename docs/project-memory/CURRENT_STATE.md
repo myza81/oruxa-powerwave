@@ -383,6 +383,38 @@ source id, never by name). See [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s
 own "Automatic Engineering Context bootstrap" section for the full
 architecture.
 
+**The Analysis page shell received a visual polish pass (2026-09-12) —
+layout/typography/spacing only, no workflow/behavior change.** The
+outer shell (`.ww-analysis-shell`/`.ww-analysis-type-nav`/
+`.ww-analysis-content`) was already analyzer-agnostic; this pass made it
+visibly so, establishing the reusable pattern a future analyzer
+(Impedance Locus/Overcurrent/Differential/Sequence Components) follows:
+its own panel (today `#wwPhasorPanel`) stacks context bar → Playback
+ribbon → two-column body with one consistent vertical rhythm
+(`.ww-phasor-panel { display:flex; flex-direction:column; gap:12px }`,
+replacing several ad-hoc `margin-top` rules). Normal Analysis-workspace
+UI text (nav items, field labels, selectors, Playback controls, table
+values, badges, annotations) is capped at **0.75rem** — only the shared
+page title/description keep the app's larger heading scale. The context
+bar restructures the Bay selector and its status badge onto one aligned
+row below the "Bay / Engineering Context" label (previously the badge
+sat next to the label text, reading detached from the control it
+describes). The Playback ribbon is now one compact row — Restart/Play/
+Speed/seek slider/time-readout — via `display: contents` on the mounted
+transport wrapper plus a scoped `order` on the (still byte-for-byte
+unchanged) shared `.ww-tg-playback-seek-row`/`.ww-tg-playback-time-
+readout` classes, never altering the shared markup/behavior those
+classes also serve for the Waveform Time Group toolbar. The Inputs/
+Values rows got a small, additive markup change (the magnitude text is
+now its own `<span class="ww-phasor-value-magnitude">`, alongside the
+pre-existing `.ww-phasor-value-angle`) purely so both align to
+consistent column stops — the computed values themselves are untouched.
+The Phasor Diagram panel gained more breathing room (max width 460px →
+500px). No `Polar View`/visualization-mode selector was added — deferred
+until a genuine second view exists. See this task's own final report and
+`backend/tests/test_frontend_phasor_analysis.py::TestAnalysisShellVisualPolish`
+for the full before/after and verification detail.
+
 **No Per-Unit display, no neutral-phasor roles (`Vn`/`In`), no sequence
 components/impedance/distance, no automatic cross-source context
 merging, no MANUAL Engineering Context creation/editing UI** —
