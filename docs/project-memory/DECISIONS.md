@@ -14062,6 +14062,169 @@ Context bootstrap" section for the full architecture.
 
 ---
 
+## DEC-090 — Overcurrent Analysis v1: the second Analysis-menu analyzer, IEC IDMT characteristic evaluation against a one-cycle trailing RMS current, at the shared Playback-driven analysis time
+
+Date: 2026-09-12
+Status: Approved — implemented.
+Source: owner task specification ("Implement Overcurrent Analysis v1 as
+the second analyzer within the existing reusable Analysis workspace"),
+building directly on DEC-089 (Phasor, the first Analysis-menu analyzer)
+and DEC-085 (the shared Playback controller).
+
+Decision:
+
+**1. Overcurrent is the second analyzer in the reusable Analysis
+workspace, reusing its shell/nav/context-bar/Playback-ribbon pattern
+unchanged.** `wwSetActiveAnalysisType(type)` is the one shared switcher
+both analyzer nav buttons call. No new top-level application page or
+sidebar icon was created — `Analysis` remains the one common entry
+point, exactly as DEC-089 established.
+
+**2. Product scope: IEC IDMT only, three curves** — Standard Inverse,
+Very Inverse, Extremely Inverse (`k`/`alpha` = 0.14/0.02, 13.5/1.0,
+80.0/2.0, `c=0`, all cross-verified against multiple independent
+secondary sources during implementation — see
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md) for the sources and
+a worked-example numerical verification). ANSI/IEEE curves, definite
+time, instantaneous/high-set stages, earth-fault elements, coordination
+curves, manufacturer-specific curves, relay tolerance bands, reset
+characteristics, thermal memory, and actual relay trip-state emulation
+are all explicitly out of scope for v1.
+
+**3. Powerwave performs recorded-event analysis against a configured
+characteristic — it never claims to emulate a physical relay.**
+"Expected operating time" (characteristic-derived, present-instant only)
+and "above-pickup duration" (event-recording-derived measurement) are
+kept strictly separate; a qualified `threshold_exceeded` comparison of
+the two is the only "alert" this feature computes, and its own UI
+wording always states explicitly that this does not mean the relay
+operated, should have operated, or failed to operate.
+
+**4. Current role resolution reuses the existing, unchanged Analysis
+Input Resolver** — three new `AnalysisRequirement` constants
+(`OVERCURRENT_CURRENT_PHASE_A/B/C`) were added to `app/domain/
+analysis_requirements.py`, reusing the identical single-phase-current
+`RoleSpec` shape Phasor's own `PHASOR_CURRENT_PHASE_A/B/C` already
+established, under a distinct `analysis_kind="overcurrent"`. No new
+resolver, no frontend channel-name parsing, no weakened ambiguity
+safeguards — an ambiguous or missing role is reported verbatim via the
+resolver's own status/reason vocabulary, exactly like Phasor.
+
+**5. A NEW selected-time trailing-RMS estimator, not `evaluate_rms()`
+reused directly.** `evaluate_rms()` was inspected first (per explicit
+task instruction) and confirmed to already use the exact required window
+semantics (half-open trailing, `T=1/reference_frequency`) — but its own
+interface is a whole-array sliding-window evaluator, never a selected-
+single-time evaluator for an arbitrary continuous Playback-driven
+`analysis_time`. `estimate_trailing_rms_at_time()` mirrors `app.domain.
+phasor.estimate_phasor()`'s own window/guardrail SHAPE instead (the
+precedent that already solved this exact gap for Phasor), computing true
+RMS rather than a phasor correlation.
+`continuous_duration_above_pickup()`, a separate sub-problem needing the
+RMS value at every sample up to `analysis_time`, DOES reuse `evaluate_
+rms()`'s own array form directly — a deterministic, seek-safe,
+Playback-speed-independent pure function of `analysis_time` and the full
+recorded array.
+
+**6. Pickup is always relay-secondary amperes; recording basis is
+explicit.** `recording_basis="secondary"` performs no conversion (the UI
+never misleadingly implies one occurred); `recording_basis="primary"`
+requires validated `ct_primary`/`ct_secondary` (both `>0`) and computes
+`relay_secondary_current = recorded_current * (ct_secondary /
+ct_primary)`. `%` plug-setting entry is deferred.
+
+**7. Extensible characteristic registry, deliberately not a plugin
+framework** — `OvercurrentCharacteristicDefinition` (`app/domain/
+overcurrent.py`) is a small, explicit, closed registry mirroring `app.
+domain.analysis_requirements`'s own precedent; adding a future
+characteristic is one more module-level constant, never an analyzer
+redesign.
+
+**8. Shared Playback, unchanged** — Overcurrent mounts the SAME reusable
+Playback control surface Phasor already uses
+(`wwCreatePlaybackControlsHtml()`/`wwWirePlaybackControls()`/
+`wwSyncPlaybackControls()`), the THIRD consumer of the ONE shared
+`wwPlayback` controller DEC-085 established. No second controller,
+timer, or `requestAnimationFrame` loop. The same throttled/exact-
+convergence fetch discipline Phasor's own Playback integration proved
+(`WW_OVERCURRENT_PLAYBACK_THROTTLE_MS = 100`, "one request in flight +
+latest desired time") applies unchanged; a settings change (pickup/TMS/
+characteristic/basis/CT/phase) is treated exactly like a seek — an
+immediate, exact, non-throttled re-fetch. Switching Phasor <-> Overcurrent
+never creates an unrelated time position — both read the same
+`wwPlayback.currentTime`/`activeTimeGroupId`.
+
+**9. Curve geometry is cached, never refetched per Playback tick** — the
+characteristic curve depends only on `characteristic_id`/`tms`; the
+frontend recomputes it only when those settings change, redrawing only
+the moving operating point + dashed guides on every other render.
+
+**A caught defect, fixed in the same change**: `.ww-phasor-panel`/
+`.ww-phasor-field` (from the Analysis-shell visual-polish pass) use an
+explicit `display: flex`, which silently overrides the UA stylesheet's
+own `[hidden] { display: none }` default for the `hidden` ATTRIBUTE
+`wwSetActiveAnalysisType()`/`wwOvercurrentUpdateCtFieldsVisibility()`
+toggle these elements with — caught directly by real-browser Playwright
+assertions, fixed with explicit `.ww-phasor-panel[hidden]`/
+`.ww-phasor-field[hidden]` overrides, the same fix shape
+`.ww-phasor-body[hidden]` already needed for the identical reason during
+Phasor's own bay-centric redesign.
+
+Reason: The owner's own stated objective — extend the reusable Analysis
+workspace (DEC-089) with a second real engineering analyzer, proving the
+shell/Playback-integration pattern genuinely generalizes beyond Phasor,
+while keeping the same disciplined guardrail/resolver/never-fabricate
+posture every other analysis feature in this codebase already follows.
+IEC IDMT was chosen as the v1 scope because it is the most common
+overcurrent protection characteristic family and has a single, well-
+defined closed-form equation, making it the natural first curve family
+to prove the extensible registry model against.
+
+Alternatives considered:
+- Supporting ANSI/IEEE curves alongside IEC in v1 — rejected as unwanted
+  scope expansion; the extensible registry model means adding them later
+  requires no redesign.
+- Reusing `evaluate_rms()` directly for the selected-time figure —
+  rejected after inspection: its own array-sliding-window interface
+  does not support an arbitrary continuous Playback-driven
+  `analysis_time`, exactly the gap `estimate_phasor()` already solved
+  for Phasor: mirroring that precedent's shape was the correct reuse,
+  not a literal function call.
+- A three-call-per-context-selection resolver preview to grey out
+  unresolvable phases in the selector — deferred; the existing status-
+  row guardrail-reporting pattern already gives equivalent correctness
+  without the extra round trips (see OVERCURRENT_ANALYSIS.md's own
+  "Phase selectability" note).
+- Backend-persisted Overcurrent settings — rejected for v1; session-only
+  in-memory state matches Phasor's own existing precedent
+  (`visibleRoles`/frozen-scale), and the task explicitly allowed
+  deferring persistence beyond the current workspace/session if
+  documented.
+
+Impact: `backend/app/domain/overcurrent.py` (new — IDMT curve engine,
+selected-time RMS estimator, CT conversion, above-pickup duration,
+settings validation), `backend/app/domain/analysis_requirements.py`
+(+3 constants), `backend/app/services/overcurrent_analysis_service.py`
+(new), `backend/app/schemas/overcurrent_analysis.py` (new),
+`backend/app/api/v1/engineering_contexts.py` (+3 routes), `frontend/
+index.html` (Overcurrent analyzer panel/state/fetch/render/chart, the
+shared `wwSetActiveAnalysisType()` switcher, two `[hidden]`
+CSS-specificity fixes). New tests: `backend/tests/
+test_overcurrent_domain.py`, `test_overcurrent_analysis_service.py`,
+`test_overcurrent_analysis_api.py`, `test_frontend_overcurrent_analysis.py`,
+`browser-tests/overcurrent_analysis.spec.js`; two existing test files
+updated for the new nav-entry count (`test_analysis_requirements.py`,
+`test_frontend_phasor_analysis.py`). No backend files outside the new
+Overcurrent modules were touched; Phasor's own domain/service/API/
+frontend code is unmodified except for the two shared `[hidden]` CSS
+fixes (which also apply to, and were verified against, Phasor's own
+panel). Full backend regression, full frontend static suite, and full
+Playwright suite all pass; `git diff --check` clean. See
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md) for the complete
+architecture record.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

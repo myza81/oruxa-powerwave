@@ -79,19 +79,24 @@ class TestAnalysisMenuExists:
 
 
 class TestAnalysisTypeSubNav:
-    """The seam future analyzers (Distance Protection/Overcurrent/
-    Differential/Sequence Components) plug into -- only Phasor exists in
-    this slice."""
+    """The seam future analyzers (Distance Protection/Differential/
+    Sequence Components) plug into -- Phasor and Overcurrent (Overcurrent
+    Analysis v1) are the first two."""
 
-    def test_analysis_type_nav_exists_with_exactly_one_entry(self):
+    def test_analysis_type_nav_exists_with_exactly_two_entries(self):
         source = _source()
         assert 'class="ww-analysis-type-nav"' in source
-        assert source.count('class="ww-analysis-type-item') == 1
+        assert source.count('class="ww-analysis-type-item') == 2
 
-    def test_phasor_is_the_one_analysis_type_entry(self):
+    def test_phasor_is_an_analysis_type_entry(self):
         source = _source()
         assert 'id="wwAnalysisTypePhasorBtn"' in source
         assert 'data-analysis-type="phasor"' in source
+
+    def test_overcurrent_is_an_analysis_type_entry(self):
+        source = _source()
+        assert 'id="wwAnalysisTypeOvercurrentBtn"' in source
+        assert 'data-analysis-type="overcurrent"' in source
 
 
 class TestBayIsTheOnlyPrimaryControl:

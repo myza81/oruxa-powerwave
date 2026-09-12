@@ -8,6 +8,95 @@ Last updated: **2026-09-12**
 
 ## What was most recently done
 
+**Four sequential tasks in one session: (1) Playback speed set extended
+to 0.05x/0.10x, (2) Analysis workspace shell visual polish, (3) Playback
+controls restricted to Analysis pages (removed from the raw Waveform
+Time Group toolbar), (4) Overcurrent Analysis v1 — the second
+Analysis-menu analyzer.** Commits, in order: `32b2fae` (speed set),
+`ff45165` (shell polish), `8b853fa` (Waveform Playback removal),
+plus this task's own final commit(s) for Overcurrent v1 (see this task's
+own final report for the exact hash). All pushed to `origin/main`.
+
+**(1) Playback speed set**: `WW_PLAYBACK_SPEEDS` extended from
+`[0.25, 0.5, 1, 2, 4]` to `[0.05, 0.1, 0.25, 0.5, 1, 2, 4]` for slow
+engineering-event/fault inspection — the ONE shared definition both
+Waveform's own toolbar (at the time) and Phasor's mount render their
+`<select>` from, so both picked it up with zero per-consumer code.
+`wwPlaybackSetSpeed()`/`wwPlaybackTick()`'s own re-anchoring/timing
+formulas needed no changes (both already speed-value-agnostic); Phasor's
+own throttle never reads `wwPlayback.speed` at all, so "do not change
+the Phasor computation throttle merely because playback is slower" was
+already satisfied by construction.
+
+**(2) Analysis shell visual polish**: layout/typography/spacing only —
+compact analyzer nav, a restructured context bar (Bay selector + status
+badge on one aligned row), a single-row Playback ribbon (`display:
+contents` + scoped `order` on the wrapper only, never touching the
+shared `wwCreatePlaybackControlsHtml()` markup), aligned magnitude/angle
+columns in the Values list, a larger diagram panel, and a 0.75rem
+typography cap on normal Analysis-workspace UI text. No engineering
+behavior, resolver, estimator, or Playback semantics changed. This pass
+also gave `.ww-phasor-panel`/`.ww-phasor-field` an explicit `display:
+flex` — the root cause of the `[hidden]`-CSS-specificity bug caught
+twice later in the session (see (3) and (4) below).
+
+**(3) Playback controls are now Analysis-only** — owner product
+decision reversing part of DEC-085's own original design (the Waveform
+Time Group toolbar was the BUILT-IN Playback consumer since Slice 1/2).
+Verified FIRST that no prior task/commit had ever implemented this (git
+log, DEC-085's own `72952c2` revision note, and the existing
+`TestTimeGroupToolbarControls` test docstring all confirmed the OPPOSITE
+was the previously shipped, tested design) — recorded transparently as a
+DEC-085 "Update" with that evidence, not treated as a bug fix.
+`wwCreateTimeGroupCanvasDom()`/`wwWireTimeGroupToolbar()` no longer
+mount/wire the shared control surface; Phasor's own mount is
+unaffected. The passive Playback Cursor overlay stays on the Waveform
+canvas (a readout, not a control). A real gap this surfaced: the overlay
+only renders while the Waveform page is actually visible, and nothing
+previously resynced it on merely NAVIGATING back there after Playback
+was driven from Analysis while Waveform was hidden —
+`shellSetCurrentPage()` now resyncs it on arrival, alongside the
+existing Plotly-resize call in the same spot. `browser-tests/
+playback.spec.js` rewritten to drive every test through Phasor's mount
+instead of a Waveform canvas's own controls (seeding a minimal
+single-phase Engineering Context); the one-active-group invariant now
+exercised directly via `wwPlaybackPlay()`/`wwPlaybackState()`, the
+shared engine's own public seam.
+
+**(4) Overcurrent Analysis v1** — the second Analysis-menu analyzer
+(Phasor is the first). Evaluates a recorded event's own one-cycle
+trailing RMS current, at the shared Playback-driven `analysis_time`,
+against a configured IEC IDMT characteristic (Standard/Very/Extremely
+Inverse — constants cross-verified against multiple independent
+sources, formula verified against an independently-found worked
+example). New backend: `app/domain/overcurrent.py` (curve engine,
+selected-time RMS estimator, CT conversion, above-pickup duration,
+settings validation), `app/services/overcurrent_analysis_service.py`,
+`app/schemas/overcurrent_analysis.py`, three new routes on the existing
+Engineering Context router. Current-role resolution reuses the
+unchanged resolver via three new `OVERCURRENT_CURRENT_PHASE_A/B/C`
+requirement constants (identical shape to Phasor's own current-role
+constants). Mounts the SAME shared Playback control surface Phasor
+uses — the third consumer of the one `wwPlayback` controller. Powerwave
+never claims a relay operated/should have operated/failed to operate —
+"expected operating time" and "above-pickup duration" are kept strictly
+separate, and the one qualified `threshold_exceeded` alert always states
+this explicitly. Full architecture record: [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md);
+approval record: [DECISIONS.md — DEC-090](DECISIONS.md#dec-090--overcurrent-analysis-v1-the-second-analysis-menu-analyzer-iec-idmt-characteristic-evaluation-against-a-one-cycle-trailing-rms-current-at-the-shared-playback-driven-analysis-time).
+
+**Tests**: new `test_overcurrent_domain.py`/`test_overcurrent_analysis_service.py`/
+`test_overcurrent_analysis_api.py`/`test_frontend_overcurrent_analysis.py`/
+`overcurrent_analysis.spec.js` (8 Playwright scenarios: basic
+configuration, primary/secondary CT cases, Playback, seek, below-pickup,
+threshold observation, analyzer switch). `test_analysis_requirements.py`/
+`test_frontend_phasor_analysis.py` updated for the new nav-entry/
+requirement-registry counts. `browser-tests/phasor_analysis.spec.js`'s
+own cross-page shared-clock test rewritten for (3) above. Full backend
+regression, full frontend static suite, and full Playwright suite all
+pass across every task; `git diff --check` clean throughout.
+
+## What was done in the prior session — multi-upload Phasor bootstrap fix
+
 **Multi-upload Phasor bootstrap fix — automatic Engineering Context
 discovery is now SOURCE-COVERAGE driven, not workspace-empty-driven.**
 Root cause: bootstrap was gated on `contexts.length > 0`, so a source

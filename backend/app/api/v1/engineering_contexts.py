@@ -35,6 +35,18 @@ this codebase -- selected-time only, engineering units only, never
 persisted. See `app.services.phasor_analysis_service`'s own docstring
 for the full estimation/guardrail architecture; this router only
 exposes it.
+
+**Overcurrent Analysis v1** adds the second Analysis-menu analyzer,
+following the identical nested/selected-time/never-persisted shape:
+`GET .../engineering-contexts/{id}/overcurrent` (the calculation
+endpoint), plus two workspace-scoped (not context-nested) metadata
+endpoints that depend on nothing context-specific --
+`GET .../overcurrent-characteristics` (the supported IEC IDMT curve
+registry) and `GET .../overcurrent-curve` (curve geometry for one
+characteristic/TMS pair, fetched only when those settings change, never
+per Playback tick). See `app.services.overcurrent_analysis_service`'s
+own docstring and docs/project-memory/OVERCURRENT_ANALYSIS.md for the
+full architecture.
 """
 
 from __future__ import annotations
@@ -57,6 +69,13 @@ from app.domain.analysis_input_resolution import AnalysisInputResolution
 from app.domain.analysis_requirements import get_requirement
 from app.domain.phasor import PhasorAnalysisResult, PhasorDiagramResult
 from app.schemas.analysis_input_resolution import AnalysisInputResolutionOut, RoleSpecOut
+from app.schemas.overcurrent_analysis import (
+    OvercurrentAnalysisResultOut,
+    OvercurrentCharacteristicOut,
+    OvercurrentCharacteristicsOut,
+    OvercurrentCurveOut,
+    OvercurrentCurvePointOut,
+)
 from app.schemas.phasor_analysis import (
     PhasorAnalysisResultOut,
     PhasorDiagramResultOut,
@@ -78,6 +97,12 @@ from app.services.engineering_context_service import (
     update_member_phase,
 )
 from app.services.errors import ImportServiceError
+from app.services.overcurrent_analysis_service import (
+    CurveComputationError,
+    compute_idmt_curve,
+    compute_overcurrent_analysis,
+    list_known_characteristics,
+)
 from app.services.phasor_analysis_service import compute_phasor_analysis, compute_phasor_diagram
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -466,3 +491,115 @@ def get_phasor_diagram(
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
     return _phasor_diagram_result_to_out(result)
+
+
+# ---------------------------------------------------------------------------
+# Overcurrent Analysis v1 -- the second Analysis-menu consumer (Phasor
+# remains the first). See app.services.overcurrent_analysis_service's own
+# docstring for the full estimation/guardrail architecture and
+# docs/project-memory/OVERCURRENT_ANALYSIS.md for the feature record; this
+# router only exposes it, exactly mirroring the Phasor endpoints above.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/overcurrent-characteristics", response_model=OvercurrentCharacteristicsOut)
+def get_overcurrent_characteristics() -> OvercurrentCharacteristicsOut:
+    """Static configuration metadata -- every IEC IDMT characteristic
+    this slice supports, with its own defining constants. Not nested
+    under one Engineering Context (unlike every other endpoint in this
+    router) since it depends on nothing workspace/context-specific --
+    the frontend fetches it once, never on every analysis_time or Playback-tick change."""
+    characteristics = list_known_characteristics()
+    return OvercurrentCharacteristicsOut(
+        characteristics=[
+            OvercurrentCharacteristicOut(
+                id=c.id, family=c.family, display_name=c.display_name,
+                k=c.constants.k, alpha=c.constants.alpha, c=c.constants.c, source=c.source,
+            )
+            for c in characteristics
+        ]
+    )
+
+
+@router.get("/overcurrent-curve", response_model=OvercurrentCurveOut)
+def get_overcurrent_curve(characteristic_id: str, tms: float) -> OvercurrentCurveOut:
+    """The characteristic curve itself -- depends only on `characteristic_
+    id`/`tms`, never `analysis_time` -- the frontend recomputes this ONLY
+    when those settings change, never on every Playback tick (owner
+    instruction: "avoid shipping thousands of redundant curve points on
+    every Playback tick")."""
+    try:
+        points = compute_idmt_curve(characteristic_id, tms)
+    except CurveComputationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    return OvercurrentCurveOut(
+        characteristic_id=characteristic_id, tms=tms,
+        points=[OvercurrentCurvePointOut(multiple_of_pickup=m, operating_time_seconds=t) for m, t in points],
+    )
+
+
+def _overcurrent_result_to_out(result) -> OvercurrentAnalysisResultOut:
+    return OvercurrentAnalysisResultOut(
+        status=result.status, engineering_context_id=result.engineering_context_id, phase=result.phase,
+        analysis_time=result.analysis_time, characteristic_id=result.characteristic_id, tms=result.tms,
+        pickup_current_secondary=result.pickup_current_secondary, recording_basis=result.recording_basis,
+        ct_primary=result.ct_primary, ct_secondary=result.ct_secondary,
+        reference_frequency_hz=result.reference_frequency_hz, window_seconds=result.window_seconds,
+        algorithm_version=result.algorithm_version,
+        channel_ref=ChannelRefOut.from_domain(result.channel_ref) if result.channel_ref is not None else None,
+        measured_rms_current=result.measured_rms_current, measured_rms_current_unit=result.measured_rms_current_unit,
+        relay_secondary_current=result.relay_secondary_current, multiple_of_pickup=result.multiple_of_pickup,
+        expected_operating_time_seconds=result.expected_operating_time_seconds,
+        above_pickup_duration_seconds=result.above_pickup_duration_seconds,
+        threshold_exceeded=result.threshold_exceeded,
+        warnings=result.warnings, reason_code=result.reason_code, message=result.message,
+    )
+
+
+@router.get("/engineering-contexts/{engineering_context_id}/overcurrent", response_model=OvercurrentAnalysisResultOut)
+def get_overcurrent_analysis(
+    workspace_id: str,
+    engineering_context_id: str,
+    phase: str,
+    analysis_time: float,
+    characteristic_id: str,
+    tms: float,
+    pickup_current_secondary: float,
+    recording_basis: str,
+    ct_primary: float | None = None,
+    ct_secondary: float | None = None,
+    reference_frequency_hz: float | None = None,
+    context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+) -> OvercurrentAnalysisResultOut:
+    """Read-only, selected-time-only Overcurrent Analysis (v1). Calls the
+    input resolver first (unchanged) for the ONE current phase requested
+    -- if it does not reach `resolved`, its own status/reason/message is
+    returned verbatim, no estimation is attempted. `analysis_time` is
+    elapsed seconds since the resolved role's own source start (identical
+    convention to `.../phasor`). `pickup_current_secondary` is always
+    relay-secondary amperes; `recording_basis="primary"` additionally
+    requires `ct_primary`/`ct_secondary` (both > 0) to convert the
+    recorded current to a relay-equivalent secondary value.
+    `reference_frequency_hz` is an optional explicit override; omitted,
+    uses the resolved role's own source-declared nominal frequency.
+    `expected_operating_time_seconds` is `None` whenever the current is at
+    or below pickup -- never a fabricated value. `threshold_exceeded` is
+    a qualified characteristic-analysis observation only -- see
+    `app.domain.overcurrent`'s own module footer for the explicit
+    non-emulation boundary this must never be presented as crossing.
+    Never persisted."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = compute_overcurrent_analysis(
+            workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+            phase=phase, analysis_time=analysis_time, characteristic_id=characteristic_id, tms=tms,
+            pickup_current_secondary=pickup_current_secondary, recording_basis=recording_basis,
+            ct_primary=ct_primary, ct_secondary=ct_secondary, reference_frequency_hz_override=reference_frequency_hz,
+            context_registry=context_registry, source_registry=source_registry,
+            calculated_channel_registry=calc_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return _overcurrent_result_to_out(result)

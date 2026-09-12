@@ -98,9 +98,20 @@ PHASOR_CURRENT_THREE_PHASE = AnalysisRequirement(
     (_current_role("Ia", PHASE_A), _current_role("Ib", PHASE_B), _current_role("Ic", PHASE_C)),
 )
 
+#: Overcurrent Analysis v1's own input-role requirements -- the identical
+#: single-phase-current role shape Phasor's own PHASOR_CURRENT_PHASE_A/B/C
+#: already use (same `_current_role` helper, same role keys), just under
+#: a distinct `analysis_kind` -- Overcurrent needs exactly ONE current
+#: phase resolved per analysis (the engineer's own chosen phase), never a
+#: three-phase requirement.
+OVERCURRENT_CURRENT_PHASE_A = AnalysisRequirement("overcurrent", "current_phase_a", (_current_role("Ia", PHASE_A),))
+OVERCURRENT_CURRENT_PHASE_B = AnalysisRequirement("overcurrent", "current_phase_b", (_current_role("Ib", PHASE_B),))
+OVERCURRENT_CURRENT_PHASE_C = AnalysisRequirement("overcurrent", "current_phase_c", (_current_role("Ic", PHASE_C),))
+
 _KNOWN_REQUIREMENTS: tuple[AnalysisRequirement, ...] = (
     PHASOR_VOLTAGE_PHASE_A, PHASOR_VOLTAGE_PHASE_B, PHASOR_VOLTAGE_PHASE_C, PHASOR_VOLTAGE_THREE_PHASE,
     PHASOR_CURRENT_PHASE_A, PHASOR_CURRENT_PHASE_B, PHASOR_CURRENT_PHASE_C, PHASOR_CURRENT_THREE_PHASE,
+    OVERCURRENT_CURRENT_PHASE_A, OVERCURRENT_CURRENT_PHASE_B, OVERCURRENT_CURRENT_PHASE_C,
 )
 
 _REQUIREMENTS_BY_KEY: dict[tuple[str, str], AnalysisRequirement] = {

@@ -444,6 +444,53 @@ full Playwright suite all pass. A real `[hidden]`-vs-`display:grid/flex`
 CSS bug was found and fixed during Slice 2's own Playwright testing
 (unrelated to the redesign, still in effect).
 
+**Overcurrent Analysis v1 (2026-09-12,
+[DECISIONS.md — DEC-090](DECISIONS.md#dec-090--overcurrent-analysis-v1-the-second-analysis-menu-analyzer-iec-idmt-characteristic-evaluation-against-a-one-cycle-trailing-rms-current-at-the-shared-playback-driven-analysis-time))
+is implemented as the SECOND Analysis-menu analyzer** — Phasor remains
+the first. Evaluates a recorded event's own one-cycle trailing RMS
+current, at the shared Playback-driven `analysis_time`, against a
+configured IEC IDMT characteristic (Standard/Very/Extremely Inverse;
+`t = TMS * k / ((I/Is)^alpha - 1)`, IEC 60255-151, constants cross-
+verified against multiple independent sources and a worked-example
+numerical check — see
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)). Current-role
+resolution reuses the unchanged Analysis Input Resolver via three new
+`OVERCURRENT_CURRENT_PHASE_A/B/C` requirement constants (the identical
+single-phase-current role shape Phasor's own `PHASOR_CURRENT_PHASE_A/B/C`
+already use, under a distinct `analysis_kind`). A NEW selected-time
+trailing-RMS estimator (`estimate_trailing_rms_at_time()`) mirrors
+`estimate_phasor()`'s own window/guardrail shape (inspected `evaluate_
+rms()` first, per explicit task instruction, and confirmed its own
+array-sliding-window interface does not fit an arbitrary continuous
+Playback-driven instant); a separate `continuous_duration_above_pickup()`
+DOES reuse `evaluate_rms()`'s own array form directly, and is a
+deterministic, Playback-speed-independent pure function of `analysis_time`
+and the full recorded array (verified by seeking directly to a point
+with no prior call). Pickup is always relay-secondary amperes;
+`recording_basis="primary"` requires validated CT primary/secondary
+values, `"secondary"` performs no conversion. `expected_operating_time_
+seconds` is `None` whenever at or below pickup — never a fabricated
+Infinity/NaN/0. **Powerwave never claims a relay operated, should have
+operated, or failed to operate** — "expected operating time"
+(characteristic-derived) and "above-pickup duration" (event-recording-
+derived) are kept strictly separate; a qualified `threshold_exceeded`
+comparison of the two is the only "alert," always worded as an
+observation, never a relay-operation claim. Mounts the SAME shared
+Playback control surface Phasor already uses (the THIRD consumer of the
+ONE `wwPlayback` controller, DEC-085) — switching Phasor <-> Overcurrent
+never creates an unrelated time position. Curve geometry (characteristic
++ TMS only) is cached and refetched only on a settings change, never per
+Playback tick. A second `[hidden]`-vs-`display:flex` CSS bug (this time
+on `.ww-phasor-panel`/`.ww-phasor-field`, both now shared by Overcurrent
+too) was found and fixed the same way Slice 2's own equivalent bug was.
+API: `GET .../overcurrent-characteristics`, `GET .../overcurrent-curve`,
+`GET .../engineering-contexts/{id}/overcurrent` — same router file/
+nesting convention as Phasor's own endpoints. No backend files outside
+the new `app/domain/overcurrent.py`/`app/services/
+overcurrent_analysis_service.py`/`app/schemas/overcurrent_analysis.py`
+modules were touched; full backend regression, full frontend static
+suite, and full Playwright suite all pass.
+
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test
 infrastructure only, zero production code changed) establishes the

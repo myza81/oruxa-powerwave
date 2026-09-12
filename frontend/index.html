@@ -5894,6 +5894,18 @@
             flex-direction: column;
             gap: 12px;
         }
+        /* `display: flex` above has higher specificity than the UA
+           stylesheet's own `[hidden] { display: none }` default -- the
+           SAME documented fix `.ww-phasor-body[hidden]` already needed
+           (see that rule's own comment), now also needed here since
+           Overcurrent Analysis v1's analyzer switcher
+           (wwSetActiveAnalysisType()) toggles the WHOLE panel -- shared
+           by both `#wwPhasorPanel` and `#wwOvercurrentPanel` -- via this
+           same `hidden` ATTRIBUTE. Caught directly by a real-browser
+           Playwright assertion, not assumed. */
+        .ww-phasor-panel[hidden] {
+            display: none;
+        }
         /* Card headings inside the Analysis shell -- mirrors the existing
            `section.panel h2` convention elsewhere in this app (small
            uppercase label, --text-dim), applied here to the h3 headings
@@ -5933,6 +5945,16 @@
             font-size: 0.72rem;
             color: var(--text-dim);
             min-width: 220px;
+        }
+        /* Same documented `[hidden]` CSS-specificity fix as `.ww-phasor-
+           panel`/`.ww-phasor-body` above -- Overcurrent Analysis v1's own
+           CT Primary/Secondary fields are `.ww-phasor-field` elements
+           conditionally toggled via the `hidden` ATTRIBUTE
+           (wwOvercurrentUpdateCtFieldsVisibility()), which this class's
+           own `display: flex` would otherwise silently override. Caught
+           directly by a real-browser Playwright assertion, not assumed. */
+        .ww-phasor-field[hidden] {
+            display: none;
         }
         .ww-phasor-field-control-row {
             display: flex;
@@ -6204,6 +6226,103 @@
         .ww-phasor-values-panel,
         .ww-phasor-diagram-panel {
             padding: 12px 14px;
+        }
+
+        /* Overcurrent Analysis v1 (second Analysis-menu analyzer) --
+           reuses every `.ww-phasor-*` shell/context-bar/Playback-ribbon/
+           typography class verbatim (the reusable Analysis-shell pattern
+           the polish pass established); only the settings-grid/CT-field/
+           live-values/alert/chart classes below are Overcurrent-specific,
+           since Phasor has no equivalent of any of them. Typography stays
+           within the same <=0.75rem Analysis-workspace cap. */
+        .ww-oc-settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 10px 12px;
+            margin-bottom: 10px;
+        }
+        .ww-oc-settings-grid select,
+        .ww-oc-settings-grid input[type="number"] {
+            font-size: 0.75rem;
+            padding: 5px 8px;
+        }
+        .ww-oc-values-list {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            border-top: 1px solid var(--panel-border);
+            padding-top: 8px;
+        }
+        .ww-oc-value-row {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 5px 2px;
+            font-size: 0.75rem;
+        }
+        .ww-oc-value-row-label {
+            color: var(--text-dim);
+        }
+        .ww-oc-value-row-value {
+            font-variant-numeric: tabular-nums;
+            font-weight: 600;
+            text-align: right;
+        }
+        .ww-oc-value-row--below-pickup .ww-oc-value-row-value {
+            color: var(--text-dim);
+            font-weight: 500;
+            font-style: italic;
+        }
+        .ww-oc-alert {
+            margin-top: 8px;
+            padding: 8px 10px;
+            border-radius: var(--radius);
+            font-size: 0.72rem;
+            background: color-mix(in srgb, var(--warn) 12%, var(--surface-tint));
+            border: 1px solid var(--warn);
+            color: var(--warn);
+        }
+        .ww-oc-chart-wrap {
+            width: 100%;
+            aspect-ratio: 4 / 3;
+            max-width: 560px;
+            margin: 4px auto 0;
+        }
+        #wwOvercurrentSvg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .ww-oc-axis {
+            stroke: var(--panel-border);
+            stroke-width: 1;
+        }
+        .ww-oc-gridline {
+            stroke: var(--panel-border);
+            stroke-width: 0.5;
+            stroke-dasharray: 2 2;
+            opacity: 0.6;
+        }
+        .ww-oc-axis-label {
+            font-size: 7px;
+            fill: var(--text-dim);
+        }
+        .ww-oc-curve {
+            fill: none;
+            stroke: var(--accent);
+            stroke-width: 1.5;
+        }
+        .ww-oc-operating-point {
+            fill: var(--ok);
+            stroke: var(--panel);
+            stroke-width: 1;
+        }
+        .ww-oc-guide {
+            stroke: var(--text-dim);
+            stroke-width: 0.75;
+            stroke-dasharray: 3 2;
+            opacity: 0.8;
         }
     </style>
 </head>
@@ -7124,6 +7243,7 @@
                 <div class="ww-analysis-shell">
                     <nav class="ww-analysis-type-nav" aria-label="Analysis type">
                         <button type="button" class="ww-analysis-type-item active" id="wwAnalysisTypePhasorBtn" data-analysis-type="phasor" aria-current="true">Phasor</button>
+                        <button type="button" class="ww-analysis-type-item" id="wwAnalysisTypeOvercurrentBtn" data-analysis-type="overcurrent" aria-current="false">Overcurrent</button>
                     </nav>
                     <div class="ww-analysis-content">
                         <section class="ww-phasor-panel" id="wwPhasorPanel">
@@ -7168,6 +7288,94 @@
                                         <svg id="wwPhasorSvg" viewBox="-110 -110 220 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Phasor diagram"></svg>
                                     </div>
                                     <div class="ww-phasor-scale-note" id="wwPhasorScaleNote" hidden></div>
+                                </section>
+                            </div>
+                        </section>
+
+                        <!-- Overcurrent Analysis v1 -- the SECOND Analysis-
+                             menu analyzer (Phasor remains the first). Reuses
+                             the identical Bay/Engineering-Context + Playback-
+                             ribbon + two-column-body shell pattern Phasor
+                             already established -- see docs/project-memory/
+                             OVERCURRENT_ANALYSIS.md. -->
+                        <section class="ww-phasor-panel" id="wwOvercurrentPanel" hidden>
+                            <section class="panel ww-phasor-controls-panel">
+                                <div class="ww-phasor-controls-row">
+                                    <label class="ww-phasor-field">
+                                        <span class="ww-phasor-field-label">Bay / Engineering Context</span>
+                                        <span class="ww-phasor-field-control-row">
+                                            <select id="wwOvercurrentContextSelect"><option value="">Select a context…</option></select>
+                                            <span id="wwOvercurrentContextBadge"></span>
+                                        </span>
+                                    </label>
+                                    <label class="ww-phasor-field ww-oc-phase-field">
+                                        <span class="ww-phasor-field-label">Phase</span>
+                                        <select id="wwOvercurrentPhaseSelect">
+                                            <option value="A">Phase A</option>
+                                            <option value="B">Phase B</option>
+                                            <option value="C">Phase C</option>
+                                        </select>
+                                    </label>
+                                </div>
+                            </section>
+
+                            <!-- Playback composition point: populated by
+                                 wwOvercurrentMountPlaybackControls(groupId) --
+                                 reuses the EXACT same shared control-surface
+                                 markup/wiring/sync functions Phasor's own
+                                 mount uses -- Overcurrent is simply a THIRD
+                                 consumer of the ONE shared wwPlayback
+                                 controller. -->
+                            <section class="panel ww-phasor-playback-panel" id="wwOvercurrentPlaybackPanel" hidden>
+                                <h3>Playback</h3>
+                                <div class="ww-phasor-playback-mount" id="wwOvercurrentPlaybackMount"></div>
+                            </section>
+
+                            <div class="ww-phasor-status-row" id="wwOvercurrentStatusRow" hidden></div>
+                            <p class="empty-state" id="wwOvercurrentEmptyState">Select an Engineering Context to begin.</p>
+
+                            <div class="ww-phasor-body ww-oc-body" id="wwOvercurrentBody" hidden>
+                                <section class="panel ww-phasor-values-panel">
+                                    <h3>Settings / Live Values</h3>
+                                    <div class="ww-oc-settings-grid">
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Characteristic</span>
+                                            <select id="wwOvercurrentCharacteristicSelect"></select>
+                                        </label>
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Pickup current (A secondary)</span>
+                                            <input type="number" id="wwOvercurrentPickupInput" min="0" step="0.01" value="1.00">
+                                        </label>
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">TMS</span>
+                                            <input type="number" id="wwOvercurrentTmsInput" min="0.025" max="1.2" step="0.005" value="0.10">
+                                        </label>
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Recording current basis</span>
+                                            <select id="wwOvercurrentBasisSelect">
+                                                <option value="secondary" selected>Secondary</option>
+                                                <option value="primary">Primary</option>
+                                            </select>
+                                        </label>
+                                        <label class="ww-phasor-field ww-oc-ct-field" id="wwOvercurrentCtPrimaryField" hidden>
+                                            <span class="ww-phasor-field-label">CT Primary (A)</span>
+                                            <input type="number" id="wwOvercurrentCtPrimaryInput" min="0" step="1">
+                                        </label>
+                                        <label class="ww-phasor-field ww-oc-ct-field" id="wwOvercurrentCtSecondaryField" hidden>
+                                            <span class="ww-phasor-field-label">CT Secondary (A)</span>
+                                            <input type="number" id="wwOvercurrentCtSecondaryInput" min="0" step="0.01">
+                                        </label>
+                                    </div>
+                                    <div class="ww-oc-values-list" id="wwOvercurrentValuesList"></div>
+                                    <div class="ww-oc-alert" id="wwOvercurrentAlert" hidden></div>
+                                    <div class="ww-phasor-warnings" id="wwOvercurrentWarnings" hidden></div>
+                                </section>
+                                <section class="panel ww-phasor-diagram-panel">
+                                    <h3>Overcurrent Characteristic <span class="ww-phasor-updating-indicator" id="wwOvercurrentUpdatingIndicator" hidden>Updating…</span></h3>
+                                    <div class="ww-oc-chart-wrap">
+                                        <svg id="wwOvercurrentSvg" viewBox="0 0 320 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Overcurrent characteristic chart"></svg>
+                                    </div>
+                                    <div class="ww-phasor-scale-note" id="wwOvercurrentScaleNote">Characteristic-derived analysis -- not a claim of actual relay operation.</div>
                                 </section>
                             </div>
                         </section>
@@ -29026,6 +29234,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Playback itself just used above -- see wwPhasorResetState()'s
             // own comment.
             wwPhasorResetState();
+            // Overcurrent Analysis v1: the SAME whole-workspace reset hook.
+            wwOvercurrentResetState();
             for (const panel of ww.panels) {
                 if (panel.plotlyReady && panel.chartEl) Plotly.purge(panel.chartEl);
             }
@@ -33960,6 +34170,606 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // fall or rise within the current headroom.
         // ==================================================================
 
+        // ==================================================================
+        // Overcurrent Analysis v1 -- the SECOND Analysis-menu analyzer.
+        // Reuses the shared Analysis shell, the shared wwPlayback
+        // controller, and the same "Bay/Engineering Context -> Playback
+        // ribbon -> two-column body" pattern Phasor already established --
+        // see docs/project-memory/OVERCURRENT_ANALYSIS.md. Deliberately
+        // its OWN state/fetch functions (not a Phasor extension) --
+        // mirrors the backend's own established "each analysis module
+        // owns a small, duplicated copy of the same shape, never imports
+        // another module's private helpers" convention.
+        // ==================================================================
+
+        const WW_OVERCURRENT_MSG_SELECT_CONTEXT = "Select an Engineering Context to begin.";
+        const WW_OVERCURRENT_MSG_BACKEND_UNREACHABLE = "Could not reach the backend to load Engineering Contexts.";
+
+        const wwOvercurrentState = {
+            contexts: [],
+            selectedContextId: null,
+            lastLoadedContextId: null,
+            anchorDisplaySourceId: null,
+            activeTimeGroupId: null,
+            analysisTime: null,
+            phase: "A",
+            characteristics: [],
+            characteristicsRequested: false,
+            settings: {
+                characteristicId: "iec_standard_inverse",
+                tms: 0.10,
+                pickupCurrentSecondary: 1.0,
+                recordingBasis: "secondary",
+                ctPrimary: null,
+                ctSecondary: null,
+            },
+            curveCache: null, // { characteristicId, tms, points } -- recomputed ONLY when those two settings change
+            latestResult: null,
+            requestGeneration: 0,
+        };
+
+        function wwOvercurrentFetchContexts(workspaceId) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/engineering-contexts"
+            );
+        }
+
+        function wwOvercurrentFetchCharacteristics(workspaceId) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/overcurrent-characteristics"
+            );
+        }
+
+        function wwOvercurrentFetchCurve(workspaceId, characteristicId, tms) {
+            const params = new URLSearchParams({ characteristic_id: characteristicId, tms: String(tms) });
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/overcurrent-curve?" + params.toString()
+            );
+        }
+
+        function wwOvercurrentFetchAnalysis(workspaceId, contextId, params) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                "/engineering-contexts/" + encodeURIComponent(contextId) + "/overcurrent?" + params.toString()
+            );
+        }
+
+        // ---- Context list (no bootstrap/discovery -- Overcurrent reads
+        // whatever Engineering Contexts already exist; automatic
+        // suggestion bootstrap is Phasor's own established entry point,
+        // deliberately not re-implemented a second time here). ----
+        function wwOvercurrentLoadContexts() {
+            const workspaceId = currentWorkspaceId();
+            const epochAtStart = ww.epoch;
+            wwOvercurrentFetchContexts(workspaceId).then(
+                (contexts) => wwOvercurrentHandleContextsFetched(workspaceId, epochAtStart, contexts),
+                () => wwOvercurrentHandleContextsFetched(workspaceId, epochAtStart, null)
+            );
+            if (!wwOvercurrentState.characteristicsRequested) {
+                wwOvercurrentState.characteristicsRequested = true;
+                wwOvercurrentFetchCharacteristics(workspaceId).then(
+                    (data) => wwOvercurrentHandleCharacteristicsFetched(epochAtStart, data),
+                    () => {}
+                );
+            }
+        }
+
+        function wwOvercurrentHandleCharacteristicsFetched(epochAtStart, data) {
+            if (epochAtStart !== ww.epoch || !data || !data.characteristics) return;
+            wwOvercurrentState.characteristics = data.characteristics;
+            const select = document.getElementById("wwOvercurrentCharacteristicSelect");
+            if (!select) return;
+            select.innerHTML = data.characteristics.map((c) =>
+                '<option value="' + escapeHtml(c.id) + '"' +
+                (c.id === wwOvercurrentState.settings.characteristicId ? " selected" : "") + '>' +
+                escapeHtml(c.display_name) + '</option>'
+            ).join("");
+            if (data.characteristics.length > 0 && !data.characteristics.some((c) => c.id === wwOvercurrentState.settings.characteristicId)) {
+                wwOvercurrentState.settings.characteristicId = data.characteristics[0].id;
+                select.value = wwOvercurrentState.settings.characteristicId;
+            }
+        }
+
+        function wwOvercurrentHandleContextsFetched(workspaceId, epochAtStart, contexts) {
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            if (contexts === null) {
+                wwOvercurrentState.contexts = [];
+                wwOvercurrentRenderContextOptions();
+                wwOvercurrentShowEmptyState(WW_OVERCURRENT_MSG_BACKEND_UNREACHABLE);
+                return;
+            }
+            wwOvercurrentState.contexts = contexts;
+            wwOvercurrentRenderContextOptions();
+            if (wwOvercurrentState.selectedContextId) {
+                wwOvercurrentLoadForSelectedContext();
+            } else {
+                wwOvercurrentShowNoContextSelected();
+            }
+        }
+
+        function wwOvercurrentRenderContextOptions() {
+            const select = document.getElementById("wwOvercurrentContextSelect");
+            if (!select) return;
+            const options = ['<option value="">Select a context…</option>'];
+            for (const ctx of wwOvercurrentState.contexts) {
+                options.push('<option value="' + escapeHtml(ctx.id) + '">' + escapeHtml(ctx.display_name) + '</option>');
+            }
+            select.innerHTML = options.join("");
+            const stillExists = wwOvercurrentState.selectedContextId &&
+                wwOvercurrentState.contexts.some((c) => c.id === wwOvercurrentState.selectedContextId);
+            if (stillExists) {
+                select.value = wwOvercurrentState.selectedContextId;
+            } else {
+                wwOvercurrentState.selectedContextId = null;
+            }
+            wwOvercurrentRenderContextBadge();
+        }
+
+        function wwOvercurrentRenderContextBadge() {
+            const badge = document.getElementById("wwOvercurrentContextBadge");
+            if (!badge) return;
+            const ctx = wwOvercurrentState.contexts.find((c) => c.id === wwOvercurrentState.selectedContextId);
+            if (!ctx) { badge.innerHTML = ""; return; }
+            const labels = { suggested: "Suggested", confirmed: "Confirmed", needs_review: "Needs Review", manual: "Manual" };
+            const cls = ctx.status === "needs_review" ? "needs-review" : ctx.status;
+            badge.innerHTML = '<span class="ww-mg-badge ww-mg-badge--' + cls + '">' + (labels[ctx.status] || escapeHtml(ctx.status)) + '</span>';
+        }
+
+        function wwOvercurrentShowEmptyState(message) {
+            wwOvercurrentMountPlaybackControls(null);
+            const statusRow = document.getElementById("wwOvercurrentStatusRow");
+            if (statusRow) statusRow.hidden = true;
+            const body = document.getElementById("wwOvercurrentBody");
+            if (body) body.hidden = true;
+            const emptyState = document.getElementById("wwOvercurrentEmptyState");
+            if (emptyState) { emptyState.hidden = false; emptyState.textContent = message; }
+        }
+
+        function wwOvercurrentShowNoContextSelected() {
+            wwOvercurrentState.activeTimeGroupId = null;
+            wwOvercurrentShowEmptyState(WW_OVERCURRENT_MSG_SELECT_CONTEXT);
+        }
+
+        // Reuses the exact same first-source-member anchor convention
+        // Phasor's own wwPhasorAnchorDisplaySourceIdForContext()
+        // established -- a coordinate-CONVERSION convenience only, never
+        // a role-matching decision (every combination Overcurrent could
+        // actually resolve has already been proven timebase-compatible
+        // for the ONE role it needs).
+        function wwOvercurrentAnchorDisplaySourceIdForContext(ctx) {
+            if (!ctx || !ctx.members || ctx.members.length === 0) return null;
+            const ref = ctx.members[0].channel_ref;
+            return ref.kind === "calculated" ? ref.calculated_channel_id : ref.source_id;
+        }
+
+        // Selecting a context (or revisiting the Overcurrent tab) claims
+        // its own Time Group exactly the way wwPhasorLoadForSelectedContext()
+        // does -- reusing wwPhasorComputeInitialClaimTime() directly
+        // (a generic, analyzer-agnostic "sensible first-view landing time"
+        // UX heuristic -- it reads only `groupId`/`bounds`/Cursor A, never
+        // any Phasor-owned state, so this is genuine shared logic, not a
+        // cross-module private-helper reuse).
+        function wwOvercurrentLoadForSelectedContext() {
+            const contextId = wwOvercurrentState.selectedContextId;
+            if (!contextId) {
+                wwOvercurrentShowNoContextSelected();
+                return;
+            }
+            const ctx = wwOvercurrentState.contexts.find((c) => c.id === contextId);
+            wwOvercurrentState.lastLoadedContextId = contextId;
+
+            const anchorDisplaySourceId = wwOvercurrentAnchorDisplaySourceIdForContext(ctx);
+            wwOvercurrentState.anchorDisplaySourceId = anchorDisplaySourceId;
+            const groupId = anchorDisplaySourceId !== null ? wwTimeGroupIdForDisplaySourceId(anchorDisplaySourceId) : null;
+
+            if (groupId !== wwOvercurrentState.activeTimeGroupId) {
+                wwOvercurrentState.activeTimeGroupId = groupId;
+                wwOvercurrentMountPlaybackControls(groupId);
+            }
+
+            const emptyState = document.getElementById("wwOvercurrentEmptyState");
+            if (emptyState) emptyState.hidden = true;
+            const body = document.getElementById("wwOvercurrentBody");
+            if (body) body.hidden = false;
+
+            if (groupId === null) {
+                wwOvercurrentState.analysisTime = 0;
+                wwOvercurrentRequestExactPlaybackFetch();
+                return;
+            }
+
+            if (wwPlayback.activeTimeGroupId === groupId) {
+                wwOvercurrentState.analysisTime = wwPlayback.currentTime;
+                wwOvercurrentRequestExactPlaybackFetch();
+            } else {
+                wwPlaybackRestart(groupId);
+                const bounds = wwDeriveTimeGroupBounds(groupId);
+                if (bounds) {
+                    const initialTime = wwPhasorComputeInitialClaimTime(groupId, bounds);
+                    if (Math.abs(initialTime - bounds.start) > 1e-9) {
+                        wwPlaybackHandleSeekInput(groupId, initialTime);
+                        wwPlaybackHandleSeekCommit(groupId, initialTime);
+                    }
+                }
+            }
+        }
+
+        // ---- Playback control-surface mount -- IDENTICAL pattern to
+        // wwPhasorMountPlaybackControls(): reuses the shared
+        // wwCreatePlaybackControlsHtml()/wwWirePlaybackControls()/
+        // wwSyncPlaybackControls() functions verbatim, plus the same
+        // safety-net re-sync listeners for the two shared-controller
+        // transitions (Pause/Speed-change) that do not themselves call
+        // wwPlaybackNotifyTick(). ----
+        function wwOvercurrentMountPlaybackControls(groupId) {
+            const panelEl = document.getElementById("wwOvercurrentPlaybackPanel");
+            const mountEl = document.getElementById("wwOvercurrentPlaybackMount");
+            if (!panelEl || !mountEl) return;
+            if (groupId === null) {
+                panelEl.hidden = true;
+                mountEl.innerHTML = "";
+                return;
+            }
+            const playbackControlsHtml = wwCreatePlaybackControlsHtml();
+            mountEl.innerHTML =
+                '<div class="ww-phasor-playback-transport">' + playbackControlsHtml.transportHtml + '</div>' +
+                playbackControlsHtml.seekRowHtml;
+            panelEl.hidden = false;
+            wwWirePlaybackControls(mountEl, groupId);
+            wwSyncPlaybackControls(mountEl, groupId);
+
+            const playBtn = mountEl.querySelector(".ww-tg-playback-play-btn");
+            if (playBtn) playBtn.addEventListener("click", () => wwOvercurrentOnPlaybackTick(wwPlayback.currentTime, wwPlayback));
+            const restartBtn = mountEl.querySelector(".ww-tg-playback-restart-btn");
+            if (restartBtn) restartBtn.addEventListener("click", () => wwOvercurrentOnPlaybackTick(wwPlayback.currentTime, wwPlayback));
+            const speedSelect = mountEl.querySelector(".ww-tg-playback-speed-select");
+            if (speedSelect) speedSelect.addEventListener("change", () => wwOvercurrentOnPlaybackTick(wwPlayback.currentTime, wwPlayback));
+        }
+
+        // ---- The ONE tick subscriber -- identical shape to
+        // wwPhasorOnPlaybackTick(). ----
+        let wwOvercurrentLastPlaybackSignature = null;
+        function wwOvercurrentOnPlaybackTick(currentTime, playback) {
+            if (wwOvercurrentState.activeTimeGroupId === null) return;
+            const isOurGroup = playback.activeTimeGroupId === wwOvercurrentState.activeTimeGroupId;
+            const signature = playback.state + "|" + playback.activeTimeGroupId;
+            const transitioned = signature !== wwOvercurrentLastPlaybackSignature;
+            wwOvercurrentLastPlaybackSignature = signature;
+
+            const mountEl = document.getElementById("wwOvercurrentPlaybackMount");
+            if (mountEl && !mountEl.hidden && isOurGroup) {
+                if (transitioned) {
+                    wwSyncPlaybackControls(mountEl, wwOvercurrentState.activeTimeGroupId);
+                } else {
+                    wwUpdatePlaybackControlsTick(mountEl, wwOvercurrentState.activeTimeGroupId);
+                }
+            }
+
+            if (!isOurGroup) return;
+
+            wwOvercurrentState.analysisTime = currentTime;
+
+            if (playback.state === WW_PLAYBACK_STATE_PLAYING) {
+                wwOvercurrentMaybeFetchForPlayback();
+            } else {
+                wwOvercurrentRequestExactPlaybackFetch();
+            }
+        }
+
+        // ---- Throttled, concurrency-safe fetch -- identical shape/
+        // constants to wwPhasorMaybeFetchForPlayback(): "one request in
+        // flight, plus the latest desired time, never a growing queue."
+        // Do NOT change this throttle merely because Playback speed
+        // changes elsewhere -- wwPlayback.currentTime remains the sole
+        // authoritative clock this reacts to. ----
+        const WW_OVERCURRENT_PLAYBACK_THROTTLE_MS = 100; // ~10 Hz, matching Phasor's own measured-latency precedent
+        let wwOvercurrentPlaybackFetchInFlight = false;
+        let wwOvercurrentPlaybackLastFetchAtMs = 0;
+        let wwOvercurrentPlaybackFetchedTime = null;
+        let wwOvercurrentPlaybackForceNextFetch = false;
+
+        function wwOvercurrentPlaybackDesiredTimeChanged() {
+            return wwOvercurrentPlaybackFetchedTime === null ||
+                Math.abs(wwOvercurrentPlaybackFetchedTime - wwOvercurrentState.analysisTime) > 1e-9;
+        }
+
+        function wwOvercurrentRequestExactPlaybackFetch() {
+            wwOvercurrentPlaybackForceNextFetch = true;
+            wwOvercurrentMaybeFetchForPlayback();
+        }
+
+        function wwOvercurrentMaybeFetchForPlayback() {
+            const force = wwOvercurrentPlaybackForceNextFetch;
+            if (!force && !wwOvercurrentPlaybackDesiredTimeChanged()) return;
+            if (wwOvercurrentPlaybackFetchInFlight) return;
+            if (!force) {
+                const elapsedMs = performance.now() - wwOvercurrentPlaybackLastFetchAtMs;
+                if (elapsedMs < WW_OVERCURRENT_PLAYBACK_THROTTLE_MS) return;
+            }
+            wwOvercurrentPlaybackForceNextFetch = false;
+            wwOvercurrentRequestAnalysis();
+        }
+
+        function wwOvercurrentSetUpdatingIndicator(isUpdating) {
+            const el = document.getElementById("wwOvercurrentUpdatingIndicator");
+            if (el) el.hidden = !isUpdating;
+        }
+
+        // The ONE place that actually dispatches a `/overcurrent` HTTP
+        // call -- identical staleness-guard shape to
+        // wwPhasorRequestDiagram() (requestGeneration + ww.epoch +
+        // workspace-id triple guard, `desiredTime` frozen at call time).
+        async function wwOvercurrentRequestAnalysis() {
+            const contextId = wwOvercurrentState.selectedContextId;
+            if (!contextId || wwOvercurrentState.analysisTime === null) return;
+            const anchorDisplaySourceId = wwOvercurrentState.anchorDisplaySourceId;
+            const desiredTime = wwOvercurrentState.analysisTime;
+            const s = wwOvercurrentState.settings;
+
+            const myGeneration = ++wwOvercurrentState.requestGeneration;
+            const epochAtStart = ww.epoch;
+            const workspaceId = currentWorkspaceId();
+            const analysisTimeForApi = anchorDisplaySourceId !== null
+                ? wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, desiredTime)
+                : desiredTime;
+
+            const params = new URLSearchParams({
+                phase: wwOvercurrentState.phase, analysis_time: String(analysisTimeForApi),
+                characteristic_id: s.characteristicId, tms: String(s.tms),
+                pickup_current_secondary: String(s.pickupCurrentSecondary), recording_basis: s.recordingBasis,
+            });
+            if (s.recordingBasis === "primary" && s.ctPrimary !== null && s.ctSecondary !== null) {
+                params.set("ct_primary", String(s.ctPrimary));
+                params.set("ct_secondary", String(s.ctSecondary));
+            }
+
+            wwOvercurrentPlaybackFetchInFlight = true;
+            wwOvercurrentSetUpdatingIndicator(true);
+            let result;
+            try {
+                result = await wwOvercurrentFetchAnalysis(workspaceId, contextId, params);
+            } catch (error) {
+                wwOvercurrentPlaybackFetchInFlight = false;
+                wwOvercurrentPlaybackLastFetchAtMs = performance.now();
+                wwOvercurrentPlaybackFetchedTime = desiredTime;
+                if (myGeneration !== wwOvercurrentState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                wwOvercurrentSetUpdatingIndicator(false);
+                wwOvercurrentState.latestResult = null;
+                wwOvercurrentRenderResult(null);
+                wwOvercurrentMaybeFetchForPlayback();
+                return;
+            }
+            wwOvercurrentPlaybackFetchInFlight = false;
+            wwOvercurrentPlaybackLastFetchAtMs = performance.now();
+            wwOvercurrentPlaybackFetchedTime = desiredTime;
+            if (myGeneration !== wwOvercurrentState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            wwOvercurrentSetUpdatingIndicator(false);
+            wwOvercurrentState.latestResult = result;
+            wwOvercurrentRenderResult(result);
+            wwOvercurrentMaybeFetchForPlayback();
+        }
+
+        // ---- Rendering ----
+
+        function wwOvercurrentFormatAngleFreeTime(seconds) {
+            if (!Number.isFinite(seconds)) return "—";
+            return seconds.toFixed(2) + " s";
+        }
+
+        function wwOvercurrentValueRow(label, value, opts) {
+            opts = opts || {};
+            const cls = "ww-oc-value-row" + (opts.belowPickup ? " ww-oc-value-row--below-pickup" : "");
+            return '<div class="' + cls + '"><span class="ww-oc-value-row-label">' + escapeHtml(label) + '</span>' +
+                '<span class="ww-oc-value-row-value">' + escapeHtml(value) + '</span></div>';
+        }
+
+        function wwOvercurrentRenderResult(result) {
+            const statusRow = document.getElementById("wwOvercurrentStatusRow");
+            const valuesList = document.getElementById("wwOvercurrentValuesList");
+            const alertEl = document.getElementById("wwOvercurrentAlert");
+            if (!statusRow || !valuesList || !alertEl) return;
+
+            if (!result || result.status !== "computed") {
+                statusRow.hidden = false;
+                statusRow.textContent = (result && result.message) || "Overcurrent could not be computed for this selection.";
+                statusRow.className = "ww-phasor-status-row" +
+                    (result && (result.status === "ambiguous" || result.status === "needs_configuration") ? " ww-phasor-status--needs-configuration" : "");
+                valuesList.innerHTML = "";
+                alertEl.hidden = true;
+                wwOvercurrentRenderChart(null, null, null);
+                return;
+            }
+            statusRow.hidden = true;
+
+            const belowPickup = result.expected_operating_time_seconds === null;
+            const rows = [];
+            rows.push(wwOvercurrentValueRow(
+                "Measured RMS current",
+                wwFormatEngineeringValue(result.measured_rms_current) + " " + (result.measured_rms_current_unit || "") +
+                (result.recording_basis === "primary" ? " primary" : " secondary"),
+            ));
+            rows.push(wwOvercurrentValueRow(
+                "Relay-equivalent current", wwFormatEngineeringValue(result.relay_secondary_current) + " A secondary",
+            ));
+            rows.push(wwOvercurrentValueRow("Pickup", wwFormatEngineeringValue(result.pickup_current_secondary) + " A secondary"));
+            rows.push(wwOvercurrentValueRow("Multiple of pickup", wwFormatEngineeringValue(result.multiple_of_pickup) + " ×"));
+            rows.push(wwOvercurrentValueRow(
+                "Expected operating time",
+                belowPickup ? "Below pickup — —" : wwOvercurrentFormatAngleFreeTime(result.expected_operating_time_seconds),
+                { belowPickup },
+            ));
+            rows.push(wwOvercurrentValueRow(
+                "Above-pickup duration",
+                Number.isFinite(result.above_pickup_duration_seconds) ? wwOvercurrentFormatAngleFreeTime(result.above_pickup_duration_seconds) : "—",
+            ));
+            valuesList.innerHTML = rows.join("");
+
+            if (result.threshold_exceeded) {
+                alertEl.hidden = false;
+                alertEl.textContent =
+                    "Expected operating-time threshold exceeded: the recorded overcurrent duration has exceeded the expected " +
+                    "IDMT operating time at the present current. This is a characteristic-analysis observation only -- it does " +
+                    "not mean the relay operated, should have operated, or failed to operate.";
+            } else {
+                alertEl.hidden = true;
+            }
+
+            wwOvercurrentEnsureCurveAndRenderPoint(result);
+        }
+
+        // Curve geometry depends ONLY on characteristic/TMS -- cached and
+        // recomputed ONLY when those two settings change, never on every
+        // Playback tick (owner instruction: "avoid shipping thousands of
+        // redundant curve points on every Playback tick... only update
+        // the dynamic operating point where practical"). The operating
+        // point/guides are re-drawn every render from the already-fetched
+        // curve cache with no extra network call.
+        function wwOvercurrentEnsureCurveAndRenderPoint(result) {
+            const s = wwOvercurrentState.settings;
+            const cache = wwOvercurrentState.curveCache;
+            if (cache && cache.characteristicId === s.characteristicId && cache.tms === s.tms) {
+                wwOvercurrentRenderChart(cache.points, result.multiple_of_pickup, result.expected_operating_time_seconds);
+                return;
+            }
+            const workspaceId = currentWorkspaceId();
+            const requestedCharacteristicId = s.characteristicId;
+            const requestedTms = s.tms;
+            wwOvercurrentFetchCurve(workspaceId, requestedCharacteristicId, requestedTms).then(
+                (curve) => {
+                    if (wwOvercurrentState.settings.characteristicId !== requestedCharacteristicId || wwOvercurrentState.settings.tms !== requestedTms) return;
+                    const points = curve.points.map((p) => [p.multiple_of_pickup, p.operating_time_seconds]);
+                    wwOvercurrentState.curveCache = { characteristicId: requestedCharacteristicId, tms: requestedTms, points };
+                    const latest = wwOvercurrentState.latestResult;
+                    if (latest && latest.status === "computed") {
+                        wwOvercurrentRenderChart(points, latest.multiple_of_pickup, latest.expected_operating_time_seconds);
+                    }
+                },
+                () => {}
+            );
+        }
+
+        // ---- Chart: log(M) x log(t) TCC-style plot -- hand-rolled SVG
+        // (mirrors Phasor's own #wwPhasorSvg precedent: no existing
+        // time-series-chart precedent to reuse, and this geometry is
+        // simple enough that direct element updates are both simpler and
+        // cheaper than a Plotly figure). ----
+        const WW_OC_CHART_MARGIN = { left: 34, right: 12, top: 10, bottom: 24 };
+        const WW_OC_CHART_W = 320;
+        const WW_OC_CHART_H = 240;
+
+        function wwOvercurrentChartXY(points, m, t, logMMin, logMMax, logTMin, logTMax) {
+            const plotW = WW_OC_CHART_W - WW_OC_CHART_MARGIN.left - WW_OC_CHART_MARGIN.right;
+            const plotH = WW_OC_CHART_H - WW_OC_CHART_MARGIN.top - WW_OC_CHART_MARGIN.bottom;
+            const logM = Math.log10(m);
+            const logT = Math.log10(t);
+            const x = WW_OC_CHART_MARGIN.left + ((logM - logMMin) / (logMMax - logMMin)) * plotW;
+            const y = WW_OC_CHART_MARGIN.top + (1 - (logT - logTMin) / (logTMax - logTMin)) * plotH;
+            return [x, y];
+        }
+
+        function wwOvercurrentRenderChart(points, currentM, currentT) {
+            const svg = document.getElementById("wwOvercurrentSvg");
+            if (!svg) return;
+            if (!points || points.length === 0) {
+                svg.innerHTML = "";
+                return;
+            }
+            const mValues = points.map((p) => p[0]);
+            const tValues = points.map((p) => p[1]);
+            const logMMin = Math.log10(Math.min(...mValues));
+            const logMMax = Math.log10(Math.max(...mValues));
+            const logTMin = Math.log10(Math.min(...tValues));
+            const logTMax = Math.log10(Math.max(...tValues));
+
+            const toXY = (m, t) => wwOvercurrentChartXY(points, m, t, logMMin, logMMax, logTMin, logTMax);
+            const plotLeft = WW_OC_CHART_MARGIN.left;
+            const plotRight = WW_OC_CHART_W - WW_OC_CHART_MARGIN.right;
+            const plotTop = WW_OC_CHART_MARGIN.top;
+            const plotBottom = WW_OC_CHART_H - WW_OC_CHART_MARGIN.bottom;
+
+            const parts = [];
+            parts.push('<line class="ww-oc-axis" x1="' + plotLeft + '" y1="' + plotTop + '" x2="' + plotLeft + '" y2="' + plotBottom + '"></line>');
+            parts.push('<line class="ww-oc-axis" x1="' + plotLeft + '" y1="' + plotBottom + '" x2="' + plotRight + '" y2="' + plotBottom + '"></line>');
+            parts.push('<text class="ww-oc-axis-label" x="' + ((plotLeft + plotRight) / 2) + '" y="' + (WW_OC_CHART_H - 6) + '" text-anchor="middle">Current / Pickup Multiple (M)</text>');
+            parts.push(
+                '<text class="ww-oc-axis-label" x="10" y="' + ((plotTop + plotBottom) / 2) +
+                '" text-anchor="middle" transform="rotate(-90 10 ' + ((plotTop + plotBottom) / 2) + ')">Expected Operating Time (s)</text>'
+            );
+
+            const curvePath = points.map((p, i) => {
+                const [x, y] = toXY(p[0], p[1]);
+                return (i === 0 ? "M" : "L") + x.toFixed(2) + "," + y.toFixed(2);
+            }).join(" ");
+            parts.push('<path class="ww-oc-curve" d="' + curvePath + '"></path>');
+
+            // Operating point + dashed X/Y guides -- gracefully omitted
+            // (no invalid coordinates generated) whenever below pickup
+            // (currentT is null) or the point falls outside the plotted
+            // M range.
+            if (Number.isFinite(currentM) && Number.isFinite(currentT)) {
+                const clampedM = Math.min(Math.max(currentM, Math.min(...mValues)), Math.max(...mValues));
+                const clampedT = Math.min(Math.max(currentT, Math.min(...tValues)), Math.max(...tValues));
+                const [px, py] = toXY(clampedM, clampedT);
+                parts.push('<line class="ww-oc-guide" x1="' + px.toFixed(2) + '" y1="' + py.toFixed(2) + '" x2="' + px.toFixed(2) + '" y2="' + plotBottom + '"></line>');
+                parts.push('<line class="ww-oc-guide" x1="' + plotLeft + '" y1="' + py.toFixed(2) + '" x2="' + px.toFixed(2) + '" y2="' + py.toFixed(2) + '"></line>');
+                parts.push('<circle class="ww-oc-operating-point" cx="' + px.toFixed(2) + '" cy="' + py.toFixed(2) + '" r="3.5"></circle>');
+            }
+
+            svg.innerHTML = parts.join("");
+        }
+
+        // ---- Settings wiring helpers ----
+
+        function wwOvercurrentUpdateCtFieldsVisibility() {
+            const isPrimary = wwOvercurrentState.settings.recordingBasis === "primary";
+            const primaryField = document.getElementById("wwOvercurrentCtPrimaryField");
+            const secondaryField = document.getElementById("wwOvercurrentCtSecondaryField");
+            if (primaryField) primaryField.hidden = !isPrimary;
+            if (secondaryField) secondaryField.hidden = !isPrimary;
+        }
+
+        // Any discrete settings change (characteristic/pickup/TMS/basis/
+        // CT/phase) is treated exactly like a seek -- an EXACT,
+        // non-throttled re-fetch, never waiting for the next Playback
+        // tick (there may not be one, if Playback is currently paused).
+        function wwOvercurrentHandleSettingsChanged() {
+            wwOvercurrentRequestExactPlaybackFetch();
+        }
+
+        function wwOvercurrentResetState() {
+            wwOvercurrentState.contexts = [];
+            wwOvercurrentState.selectedContextId = null;
+            wwOvercurrentState.lastLoadedContextId = null;
+            wwOvercurrentState.anchorDisplaySourceId = null;
+            wwOvercurrentState.activeTimeGroupId = null;
+            wwOvercurrentState.analysisTime = null;
+            wwOvercurrentState.latestResult = null;
+            wwOvercurrentState.curveCache = null;
+            wwOvercurrentState.requestGeneration += 1;
+            wwOvercurrentPlaybackFetchInFlight = false;
+            wwOvercurrentPlaybackFetchedTime = null;
+            wwOvercurrentPlaybackForceNextFetch = false;
+            wwOvercurrentLastPlaybackSignature = null;
+            wwOvercurrentMountPlaybackControls(null);
+            const contextSelect = document.getElementById("wwOvercurrentContextSelect");
+            if (contextSelect) contextSelect.innerHTML = '<option value="">Select a context…</option>';
+            const badge = document.getElementById("wwOvercurrentContextBadge");
+            if (badge) badge.innerHTML = "";
+            const svg = document.getElementById("wwOvercurrentSvg");
+            if (svg) svg.innerHTML = "";
+            wwOvercurrentSetUpdatingIndicator(false);
+            const valuesList = document.getElementById("wwOvercurrentValuesList");
+            if (valuesList) valuesList.innerHTML = "";
+            const alertEl = document.getElementById("wwOvercurrentAlert");
+            if (alertEl) alertEl.hidden = true;
+            const statusRow = document.getElementById("wwOvercurrentStatusRow");
+            if (statusRow) statusRow.hidden = true;
+            const body = document.getElementById("wwOvercurrentBody");
+            if (body) body.hidden = true;
+            const emptyState = document.getElementById("wwOvercurrentEmptyState");
+            if (emptyState) { emptyState.hidden = false; emptyState.textContent = WW_OVERCURRENT_MSG_SELECT_CONTEXT; }
+        }
+
         const wwPhasorState = {
             contexts: [],
             selectedContextId: null,
@@ -34102,6 +34912,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // stale after a context is created/edited outside this page.
         function wwRenderAnalysisPage() {
             wwPhasorLoadContexts();
+            wwOvercurrentLoadContexts();
         }
 
         // Multi-upload bootstrap fix (2026-09-12): SOURCE-COVERAGE
@@ -35113,6 +35924,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (emptyState) { emptyState.hidden = false; emptyState.textContent = WW_PHASOR_MSG_SELECT_CONTEXT; }
         }
 
+
         // ------------------------------------------------------------------
         // Init
         // ------------------------------------------------------------------
@@ -35193,16 +36005,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("mainNavCalculatedChannelsBtn").addEventListener("click", () => shellSetCurrentPage("calculated-channels"));
         document.getElementById("mainNavAnalysisBtn").addEventListener("click", () => shellSetCurrentPage("analysis"));
 
-        // Phasor Analysis Slice 2 wiring. The analysis-type nav button is
-        // a no-op today (exactly one entry, already active) -- wired now
-        // so a future second entry only needs its own button plus one
-        // more branch here, never a restructure of this handler.
-        document.getElementById("wwAnalysisTypePhasorBtn").addEventListener("click", () => {
+        // Analysis-type nav wiring -- Phasor and Overcurrent (the second
+        // Analysis-menu analyzer) both plug into this ONE shared switcher:
+        // toggles nav-button active state AND shows/hides the matching
+        // analyzer panel, so a future third entry only needs its own
+        // button/panel plus one more `panelsByType` line, never a
+        // restructure of this function.
+        const wwAnalysisPanelsByType = { phasor: "wwPhasorPanel", overcurrent: "wwOvercurrentPanel" };
+        function wwSetActiveAnalysisType(type) {
             for (const btn of document.querySelectorAll(".ww-analysis-type-item")) {
-                btn.classList.toggle("active", btn.dataset.analysisType === "phasor");
-                btn.setAttribute("aria-current", btn.dataset.analysisType === "phasor" ? "true" : "false");
+                const isActive = btn.dataset.analysisType === type;
+                btn.classList.toggle("active", isActive);
+                btn.setAttribute("aria-current", isActive ? "true" : "false");
             }
-        });
+            for (const [panelType, panelId] of Object.entries(wwAnalysisPanelsByType)) {
+                const panelEl = document.getElementById(panelId);
+                if (panelEl) panelEl.hidden = panelType !== type;
+            }
+        }
+        document.getElementById("wwAnalysisTypePhasorBtn").addEventListener("click", () => wwSetActiveAnalysisType("phasor"));
+        document.getElementById("wwAnalysisTypeOvercurrentBtn").addEventListener("click", () => wwSetActiveAnalysisType("overcurrent"));
         document.getElementById("wwPhasorContextSelect").addEventListener("change", (event) => {
             wwPhasorState.selectedContextId = event.target.value || null;
             wwPhasorRenderContextBadge();
@@ -35212,6 +36034,54 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwPhasorShowNoContextSelected();
             }
         });
+
+        // ---- Overcurrent Analysis v1 wiring ----
+        document.getElementById("wwOvercurrentContextSelect").addEventListener("change", (event) => {
+            wwOvercurrentState.selectedContextId = event.target.value || null;
+            wwOvercurrentRenderContextBadge();
+            if (wwOvercurrentState.selectedContextId) {
+                wwOvercurrentLoadForSelectedContext();
+            } else {
+                wwOvercurrentShowNoContextSelected();
+            }
+        });
+        document.getElementById("wwOvercurrentPhaseSelect").addEventListener("change", (event) => {
+            wwOvercurrentState.phase = event.target.value;
+            wwOvercurrentHandleSettingsChanged();
+        });
+        document.getElementById("wwOvercurrentCharacteristicSelect").addEventListener("change", (event) => {
+            wwOvercurrentState.settings.characteristicId = event.target.value;
+            wwOvercurrentHandleSettingsChanged();
+        });
+        document.getElementById("wwOvercurrentPickupInput").addEventListener("change", (event) => {
+            const value = parseFloat(event.target.value);
+            if (Number.isFinite(value)) wwOvercurrentState.settings.pickupCurrentSecondary = value;
+            wwOvercurrentHandleSettingsChanged();
+        });
+        document.getElementById("wwOvercurrentTmsInput").addEventListener("change", (event) => {
+            const value = parseFloat(event.target.value);
+            if (Number.isFinite(value)) wwOvercurrentState.settings.tms = value;
+            wwOvercurrentHandleSettingsChanged();
+        });
+        document.getElementById("wwOvercurrentBasisSelect").addEventListener("change", (event) => {
+            wwOvercurrentState.settings.recordingBasis = event.target.value;
+            wwOvercurrentUpdateCtFieldsVisibility();
+            wwOvercurrentHandleSettingsChanged();
+        });
+        document.getElementById("wwOvercurrentCtPrimaryInput").addEventListener("change", (event) => {
+            const value = parseFloat(event.target.value);
+            wwOvercurrentState.settings.ctPrimary = Number.isFinite(value) ? value : null;
+            wwOvercurrentHandleSettingsChanged();
+        });
+        document.getElementById("wwOvercurrentCtSecondaryInput").addEventListener("change", (event) => {
+            const value = parseFloat(event.target.value);
+            wwOvercurrentState.settings.ctSecondary = Number.isFinite(value) ? value : null;
+            wwOvercurrentHandleSettingsChanged();
+        });
+        // The ONE, permanent subscription to the shared wwPlayback tick
+        // seam for Overcurrent -- mirrors Phasor's own registration above
+        // (never a second requestAnimationFrame loop).
+        wwPlaybackOnTick(wwOvercurrentOnPlaybackTick);
         // Bay-centric redesign: visibility toggling. Reuses the exact
         // delegated click+keydown pattern #channelGroups already
         // established (setupChannelRowToggles()) for its own row-as-
