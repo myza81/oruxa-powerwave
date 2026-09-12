@@ -282,6 +282,65 @@ test.describe("Event Playback Slice 2", () => {
     expect(delta2x).toBeGreaterThan(delta1x * 1.3);
   });
 
+  test("0.05x and 0.10x speeds support Play/Pause/Seek/Restart like any other speed", async ({ page }) => {
+    // Extended minimum speeds (owner instruction, 2026-09-12) for slow
+    // engineering-event inspection -- e.g. watching a Phasor fault
+    // transition unfold. Real-time waits below stay short since these
+    // are the SLOWEST speeds (least simulated-time movement per real
+    // second); the point is that Play/Pause/Seek/Restart all still work
+    // correctly at these values, not a speed-ratio comparison.
+    const canvas = await uploadAndDisplayFirstChannel(page, "synth_playback");
+    const playBtn = canvas.locator(".ww-tg-playback-play-btn");
+    const restartBtn = canvas.locator(".ww-tg-playback-restart-btn");
+    const speedSelect = canvas.locator(".ww-tg-playback-speed-select");
+    const slider = canvas.locator(".ww-tg-playback-seek-slider");
+
+    // ---- Play/Pause at 0.05x ----
+    await speedSelect.selectOption("0.05");
+    await expect(speedSelect).toHaveValue("0.05");
+    await restartBtn.click();
+    await expect(speedSelect).toHaveValue("0.05"); // Restart never resets speed
+    const startTime = await page.evaluate(() => wwPlaybackState().startTime);
+
+    await playBtn.click();
+    await expect(playBtn).toHaveText("Pause");
+    await page.waitForTimeout(300);
+    const delta005 = (await page.evaluate(() => wwPlaybackState().currentTime)) - startTime;
+    expect(delta005).toBeGreaterThan(0); // clock is genuinely advancing
+    expect(delta005).toBeLessThan(0.1); // and only by a tiny, 0.05x-consistent amount
+
+    await playBtn.click(); // pause
+    await expect(playBtn).toHaveText("Play");
+    const pausedAt005 = await page.evaluate(() => wwPlaybackState().currentTime);
+    await page.waitForTimeout(150);
+    // Clock genuinely stopped -- no drift while paused.
+    expect(await page.evaluate(() => wwPlaybackState().currentTime)).toBe(pausedAt005);
+
+    // ---- Play/Pause at 0.10x (materially faster than 0.05x, still slow) ----
+    await restartBtn.click();
+    await speedSelect.selectOption("0.1");
+    await expect(speedSelect).toHaveValue("0.1");
+    await playBtn.click();
+    await page.waitForTimeout(300);
+    const delta01 = (await page.evaluate(() => wwPlaybackState().currentTime)) - startTime;
+    expect(delta01).toBeGreaterThan(delta005 * 1.3); // ~2x 0.05x's rate, generous non-flaky margin
+    await playBtn.click(); // pause
+
+    // ---- Seek while at 0.10x ----
+    const { min, max } = await seekSliderBounds(slider);
+    const target = min + (max - min) * 0.5;
+    await seekTo(slider, target);
+    const afterSeek = await page.evaluate(() => wwPlaybackState().currentTime);
+    expect(Math.abs(afterSeek - target)).toBeLessThan(0.01);
+    await expect(speedSelect).toHaveValue("0.1"); // seek never resets speed
+
+    // ---- Restart at 0.10x lands honestly back at start ----
+    await restartBtn.click();
+    const currentTime = await page.evaluate(() => wwPlaybackState().currentTime);
+    expect(currentTime).toBe(startTime);
+    await expect(speedSelect).toHaveValue("0.1"); // Restart never resets speed
+  });
+
   test("Speed selection is shared across every Time Group's own toolbar", async ({ page }) => {
     // One Playback Controller, one speed -- never a per-group setting
     // (DEC-085/Slice 2's own architecture). Two separate Time Groups,

@@ -36,9 +36,10 @@ overlay (`.ww-tg-playback-cursor-overlay`), reusing Cursor A/B's
 pixel-conversion primitives but never touching
 `ww.timeGroupCursorState`. Digital-channel state at the current
 playback time resolves entirely from already-loaded local transition
-data (zero backend requests per frame). A fixed five-value speed
-selector (0.25×/0.5×/1×/2×/4×, default 1×, never free-entry — ONE
-controller-wide `wwPlayback.speed`, persists across Play/Pause/
+data (zero backend requests per frame). A fixed seven-value speed
+selector (0.05×/0.10×/0.25×/0.5×/1×/2×/4×, default 1×, never free-entry
+— extended below 0.25× on 2026-09-12 for slow engineering-event/fault
+inspection — ONE controller-wide `wwPlayback.speed`, persists across Play/Pause/
 Restart/seek) and a seek scrubber (a native `<input type="range">`,
 the dedicated seek mechanism — never a drag on the Playback Cursor
 itself, never Cursor A/B; suspends the clock during a drag/keyboard
@@ -1215,8 +1216,10 @@ re-confirmed by the TG-FINAL audit):
   primitives but never reads/writes `ww.timeGroupCursorState`.
   Digital-channel state at the current playback time resolves entirely
   from already-loaded local transition data (zero backend requests per
-  animation frame). A fixed five-value speed selector (0.25×/0.5×/1×/
-  2×/4×, default 1×, never free-entry — ONE controller-wide value,
+  animation frame). A fixed seven-value speed selector (0.05×/0.10×/
+  0.25×/0.5×/1×/2×/4×, default 1×, never free-entry — extended below
+  0.25× on 2026-09-12 for slow engineering-event/fault inspection —
+  ONE controller-wide value,
   never per-group, persists across Play/Pause/Restart/seek; a
   playing-state change re-anchors from the already-correct
   `currentTime` under the new speed with the SAME rAF chain left

@@ -29255,10 +29255,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_PLAYBACK_STATE_STOPPED = "stopped";
         const WW_PLAYBACK_STATE_PLAYING = "playing";
         const WW_PLAYBACK_STATE_PAUSED = "paused";
-        // Slice 2: the ONLY selectable speeds -- a fixed set, never free
-        // entry (owner instruction). `wwPlaybackSetSpeed()` rejects
-        // anything not in this list, falling back to 1x.
-        const WW_PLAYBACK_SPEEDS = [0.25, 0.5, 1, 2, 4];
+        // The ONLY selectable speeds -- a fixed set, never free entry
+        // (owner instruction). `wwPlaybackSetSpeed()` rejects anything
+        // not in this list, falling back to 1x. Extended with 0.05x/0.1x
+        // (owner instruction, 2026-09-12) for slow engineering-event
+        // inspection -- e.g. Phasor fault-transition UAT, where 0.25x
+        // still advances a one-cycle window too fast to watch a vector
+        // rotate/grow smoothly. This is the ONE shared list every mount
+        // point's own speed `<select>` renders from
+        // (wwCreatePlaybackControlsHtml()) -- never a Phasor-specific
+        // speed set; Waveform and Phasor always expose identical options.
+        const WW_PLAYBACK_SPEEDS = [0.05, 0.1, 0.25, 0.5, 1, 2, 4];
         const WW_PLAYBACK_DEFAULT_SPEED = 1;
 
         // Reusable Playback control-surface MARKUP -- the exact HTML
@@ -29285,6 +29292,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<button type="button" class="secondary ww-tg-playback-restart-btn" title="Restart playback for this Time Group (jump to start)" aria-label="Restart playback for this Time Group">Restart</button>' +
                     '<button type="button" class="secondary ww-tg-playback-play-btn" aria-pressed="false" title="Play this Time Group" aria-label="Play this Time Group">Play</button>' +
                     '<select class="ww-tg-playback-speed-select" title="Playback speed" aria-label="Playback speed">' +
+                        '<option value="0.05">0.05×</option>' +
+                        '<option value="0.1">0.10×</option>' +
                         '<option value="0.25">0.25×</option>' +
                         '<option value="0.5">0.5×</option>' +
                         '<option value="1" selected>1×</option>' +

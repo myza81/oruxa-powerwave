@@ -417,11 +417,13 @@ class TestPlaybackConsumerSeam:
 
 class TestSpeedControl:
     """Test 1/2 of the task's own focused-coverage list: the supported
-    speed set is EXACTLY 0.25/0.5/1/2/4, default 1x, never free entry."""
+    speed set is EXACTLY 0.05/0.1/0.25/0.5/1/2/4, default 1x, never free
+    entry. Extended below 0.25x (owner instruction, 2026-09-12) for slow
+    engineering-event inspection (e.g. Phasor fault-transition UAT)."""
 
-    def test_supported_speed_set_is_exactly_the_required_five_values(self):
+    def test_supported_speed_set_is_exactly_the_required_seven_values(self):
         source = _source()
-        assert "const WW_PLAYBACK_SPEEDS = [0.25, 0.5, 1, 2, 4];" in source
+        assert "const WW_PLAYBACK_SPEEDS = [0.05, 0.1, 0.25, 0.5, 1, 2, 4];" in source
 
     def test_default_speed_constant_is_1x(self):
         source = _source()
@@ -435,7 +437,15 @@ class TestSpeedControl:
         source = _source()
         markup_fn = _function_body(source, "function wwCreatePlaybackControlsHtml()", "function wwPlaybackState")
         select_html = _function_body(markup_fn, '<select class="ww-tg-playback-speed-select"', "</select>")
-        for option in ('value="0.25"', 'value="0.5"', 'value="1" selected', 'value="2"', 'value="4"'):
+        for option in (
+            'value="0.05"',
+            'value="0.1"',
+            'value="0.25"',
+            'value="0.5"',
+            'value="1" selected',
+            'value="2"',
+            'value="4"',
+        ):
             assert option in select_html
         # No free-entry alternative (a text/number input) anywhere nearby.
         assert 'type="number"' not in markup_fn
