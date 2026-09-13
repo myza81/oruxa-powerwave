@@ -91,14 +91,19 @@ class TestAnalysisMenuExists:
 
 
 class TestAnalysisTypeSubNav:
-    """The seam future analyzers (Distance Protection/Differential/
-    Sequence Components) plug into -- Phasor and Overcurrent (Overcurrent
-    Analysis v1) are the first two."""
+    """The analyzer menu is a compact left-card: Phasor/Overcurrent are
+    implemented; Impedance Locus/Sequence Components are safe placeholders."""
 
-    def test_analysis_type_nav_exists_with_exactly_two_entries(self):
+    def test_analysis_type_nav_exists_with_requested_four_entries(self):
         source = _source()
         assert 'class="ww-analysis-type-nav"' in source
-        assert source.count('class="ww-analysis-type-item') == 2
+        nav = _function_body(source, 'class="ww-analysis-type-nav"', '</nav>')
+        assert "Analyzers" in nav
+        assert nav.count('class="ww-analysis-type-item') == 4
+        labels = ["Phasor", "Overcurrent", "Impedance Locus", "Sequence Components"]
+        positions = [nav.index(label) for label in labels]
+        assert positions == sorted(positions)
+        assert "Differential" not in nav
 
     def test_phasor_is_an_analysis_type_entry(self):
         source = _source()
@@ -109,6 +114,16 @@ class TestAnalysisTypeSubNav:
         source = _source()
         assert 'id="wwAnalysisTypeOvercurrentBtn"' in source
         assert 'data-analysis-type="overcurrent"' in source
+
+    def test_placeholder_analysis_type_entries_are_safe_and_selectable(self):
+        source = _source()
+        assert 'id="wwAnalysisTypeImpedanceBtn"' in source
+        assert 'data-analysis-type="impedance"' in source
+        assert 'id="wwAnalysisTypeSequenceBtn"' in source
+        assert 'data-analysis-type="sequence"' in source
+        assert 'id="wwImpedancePanel" hidden' in source
+        assert 'id="wwSequencePanel" hidden' in source
+        assert "This analyzer is not implemented yet." in source
 
 
 class TestBayIsTheOnlyPrimaryControl:
@@ -1008,7 +1023,11 @@ class TestAnalysisShellVisualPolish:
     def test_analyzer_nav_item_typography_is_compact(self):
         source = _source()
         body = _function_body(source, ".ww-analysis-type-item {", ".ww-analysis-content {")
-        assert "font-size: 0.75rem;" in body
+        assert "font-size: 0.68rem;" in body
+        assert "border-left: 3px solid transparent;" in body
+        assert "background: var(--accent-wash-soft);" in body
+        assert "border-left-color: var(--accent);" in body
+        assert ".ww-analysis-type-icon" in body
 
     def test_context_bar_label_and_control_row_are_structurally_separate(self):
         """Bay/Engineering Context label sits on its own line; the

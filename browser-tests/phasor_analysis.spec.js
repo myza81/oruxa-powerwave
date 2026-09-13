@@ -280,6 +280,35 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
     await expect(page.locator("#wwPhasorSvg")).toBeEmpty();
   });
 
+  test("analyzer menu shows requested entries and placeholder entries are safe", async ({ page }) => {
+    await page.goto("/index.html");
+    await openAnalysisPhasor(page);
+
+    const menu = page.locator(".ww-analysis-type-nav");
+    await expect(menu).toContainText("Analyzers");
+    await expect(menu.locator(".ww-analysis-type-item")).toHaveText([
+      "Phasor",
+      "Overcurrent",
+      "Impedance Locus",
+      "Sequence Components",
+    ]);
+    await expect(menu).not.toContainText("Differential");
+
+    await page.locator("#wwAnalysisTypeImpedanceBtn").click();
+    await expect(page.locator("#wwAnalysisTypeImpedanceBtn")).toHaveClass(/active/);
+    await expect(page.locator("#wwImpedancePanel")).toBeVisible();
+    await expect(page.locator("#wwImpedancePanel")).toContainText("not implemented yet");
+
+    await page.locator("#wwAnalysisTypeSequenceBtn").click();
+    await expect(page.locator("#wwAnalysisTypeSequenceBtn")).toHaveClass(/active/);
+    await expect(page.locator("#wwSequencePanel")).toBeVisible();
+    await expect(page.locator("#wwSequencePanel")).toContainText("not implemented yet");
+
+    await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
+    await expect(page.locator("#wwAnalysisTypeOvercurrentBtn")).toHaveClass(/active/);
+    await expect(page.locator("#wwOvercurrentPanel")).toBeVisible();
+  });
+
   test("partial bay (Voltage Phase A only) renders Va and marks the other five roles Missing, never a whole-page failure", async ({ page }) => {
     // A deliberately incomplete context (Phase A Voltage only, the other
     // five channels left unclaimed) -- the bay-centric redesign treats

@@ -35,18 +35,27 @@ class TestOvercurrentInAnalysisNav:
         assert 'id="wwAnalysisTypePhasorBtn"' in source
         assert 'data-analysis-type="phasor"' in source
 
-    def test_exactly_two_analysis_type_entries(self):
+    def test_analysis_type_menu_contains_implemented_and_placeholder_entries(self):
         source = _source()
-        assert source.count('class="ww-analysis-type-item') == 2
+        nav = _function_body(source, 'class="ww-analysis-type-nav"', '</nav>')
+        assert nav.count('class="ww-analysis-type-item') == 4
+        for label in ("Phasor", "Overcurrent", "Impedance Locus", "Sequence Components"):
+            assert label in nav
+        assert "Differential" not in nav
 
-    def test_analyzer_switcher_toggles_both_panels(self):
+    def test_analyzer_switcher_toggles_implemented_and_placeholder_panels(self):
         source = _source()
         fn = _function_body(source, "const wwAnalysisPanelsByType", "document.getElementById(\"wwAnalysisTypePhasorBtn\")")
         assert "phasor:" in fn
         assert "overcurrent:" in fn
+        assert "impedance:" in fn
+        assert "sequence:" in fn
         assert "wwPhasorPanel" in fn
         assert "wwOvercurrentPanel" in fn
+        assert "wwImpedancePanel" in fn
+        assert "wwSequencePanel" in fn
         assert "panelEl.hidden = panelType !== type;" in fn
+        assert "wwAnalysisSetRelatedWaveformRoles([], null, null);" in fn
 
 
 class TestOvercurrentPanelStructure:

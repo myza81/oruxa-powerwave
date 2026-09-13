@@ -5872,20 +5872,30 @@
             gap: 14px;
             align-items: flex-start;
         }
-        /* The seam future analysis types (Distance Protection/Overcurrent/
-           Differential/...) plug into -- today exactly one entry. A plain
-           vertical button list, not a dropdown/flyout: the shell nav
-           itself has no existing submenu pattern to extend, and a second-
-           level in-page list is the smallest structure that already
-           supports "grows to more entries later" without inventing new
-           navigation machinery for one item. */
+        /* Analyzer menu card: compact, soft-bordered vertical menu,
+           matching the Analysis mock while staying inside the existing
+           shared Analysis shell. Placeholder analyzers render as safe
+           placeholder panels only; no engineering behavior is fabricated. */
         .ww-analysis-type-nav {
             display: flex;
             flex-direction: column;
-            gap: 2px;
-            min-width: 150px;
-            max-width: 180px;
+            gap: 4px;
+            width: 154px;
+            min-width: 154px;
+            min-height: 520px;
+            padding: 10px 8px;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: calc(var(--radius) + 2px);
             flex-shrink: 0;
+            box-sizing: border-box;
+        }
+        .ww-analysis-type-title {
+            margin: 0 0 8px;
+            padding: 0 4px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text);
         }
         .ww-analysis-type-item {
             appearance: none;
@@ -5894,22 +5904,75 @@
             background: transparent;
             color: var(--text-dim);
             text-align: left;
-            padding: 7px 10px;
-            border-radius: var(--radius);
-            font-size: 0.75rem;
+            padding: 8px 8px 8px 9px;
+            border-radius: calc(var(--radius) - 1px);
+            font-size: 0.68rem;
             font-weight: 500;
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-height: 34px;
+            width: 100%;
+            line-height: 1.2;
+        }
+        .ww-analysis-type-item:hover {
+            background: var(--surface-tint);
+            color: var(--text);
         }
         .ww-analysis-type-item.active {
             background: var(--accent-wash-soft);
             color: var(--accent);
-            border-color: var(--accent-dim);
+            border-color: transparent;
             border-left-color: var(--accent);
             font-weight: 600;
+        }
+        .ww-analysis-type-icon {
+            width: 18px;
+            height: 18px;
+            flex: 0 0 18px;
+            color: currentColor;
+        }
+        .ww-analysis-type-icon svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.45;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .ww-analysis-type-label {
+            min-width: 0;
         }
         .ww-analysis-content {
             flex: 1;
             min-width: 0;
+        }
+        .ww-analysis-placeholder-panel {
+            padding: 16px;
+        }
+        .ww-analysis-placeholder-panel h3 {
+            margin: 0 0 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .ww-analysis-placeholder-panel p {
+            margin: 0;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+        }
+        @media (max-width: 820px) {
+            .ww-analysis-shell {
+                flex-direction: column;
+            }
+            .ww-analysis-type-nav {
+                width: 100%;
+                min-width: 0;
+                min-height: auto;
+            }
         }
 
         /* One analyzer panel (today #wwPhasorPanel) stacks its own
@@ -7568,8 +7631,23 @@
                 </div>
                 <div class="ww-analysis-shell">
                     <nav class="ww-analysis-type-nav" aria-label="Analysis type">
-                        <button type="button" class="ww-analysis-type-item active" id="wwAnalysisTypePhasorBtn" data-analysis-type="phasor" aria-current="true">Phasor</button>
-                        <button type="button" class="ww-analysis-type-item" id="wwAnalysisTypeOvercurrentBtn" data-analysis-type="overcurrent" aria-current="false">Overcurrent</button>
+                        <div class="ww-analysis-type-title">Analyzers</div>
+                        <button type="button" class="ww-analysis-type-item active" id="wwAnalysisTypePhasorBtn" data-analysis-type="phasor" aria-current="true">
+                            <span class="ww-analysis-type-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="6.2"/><path d="M9 9 13.2 5.4"/><path d="M9 3.7v10.6M3.7 9h10.6"/></svg></span>
+                            <span class="ww-analysis-type-label">Phasor</span>
+                        </button>
+                        <button type="button" class="ww-analysis-type-item" id="wwAnalysisTypeOvercurrentBtn" data-analysis-type="overcurrent" aria-current="false">
+                            <span class="ww-analysis-type-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M3 14.5h12"/><path d="M4 13c2.5-5.7 5.2-8 10-8"/><path d="M4 10.5h2.2M8 7.7h2.2M11.7 5.8h2.2"/></svg></span>
+                            <span class="ww-analysis-type-label">Overcurrent</span>
+                        </button>
+                        <button type="button" class="ww-analysis-type-item" id="wwAnalysisTypeImpedanceBtn" data-analysis-type="impedance" aria-current="false">
+                            <span class="ww-analysis-type-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M3 14.5h12"/><path d="M4 13.5 13.5 4"/><path d="M7.4 4h4.7M5.9 7.5h4.7"/></svg></span>
+                            <span class="ww-analysis-type-label">Impedance Locus</span>
+                        </button>
+                        <button type="button" class="ww-analysis-type-item" id="wwAnalysisTypeSequenceBtn" data-analysis-type="sequence" aria-current="false">
+                            <span class="ww-analysis-type-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><circle cx="6" cy="5.5" r="2.1"/><circle cx="12" cy="5.5" r="2.1"/><circle cx="9" cy="12.5" r="2.1"/><path d="M7.8 6.9 8.6 10.4M10.2 6.9 9.4 10.4M7.9 12.5H6.6"/></svg></span>
+                            <span class="ww-analysis-type-label">Sequence Components</span>
+                        </button>
                     </nav>
                     <div class="ww-analysis-content">
                         <!-- Shared Analysis "Related Waveforms" panel -- lives
@@ -7775,6 +7853,18 @@
                                     <div class="ww-phasor-scale-note" id="wwOvercurrentScaleNote">Characteristic-derived analysis -- not a claim of actual relay operation.</div>
                                 </section>
                             </div>
+                        </section>
+                        <section class="ww-phasor-panel" id="wwImpedancePanel" hidden>
+                            <section class="panel ww-analysis-placeholder-panel">
+                                <h3>Impedance Locus</h3>
+                                <p>This analyzer is not implemented yet.</p>
+                            </section>
+                        </section>
+                        <section class="ww-phasor-panel" id="wwSequencePanel" hidden>
+                            <section class="panel ww-analysis-placeholder-panel">
+                                <h3>Sequence Components</h3>
+                                <p>This analyzer is not implemented yet.</p>
+                            </section>
                         </section>
                     </div>
                 </div>
@@ -38205,13 +38295,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("mainNavCalculatedChannelsBtn").addEventListener("click", () => shellSetCurrentPage("calculated-channels"));
         document.getElementById("mainNavAnalysisBtn").addEventListener("click", () => shellSetCurrentPage("analysis"));
 
-        // Analysis-type nav wiring -- Phasor and Overcurrent (the second
-        // Analysis-menu analyzer) both plug into this ONE shared switcher:
-        // toggles nav-button active state AND shows/hides the matching
-        // analyzer panel, so a future third entry only needs its own
-        // button/panel plus one more `panelsByType` line, never a
-        // restructure of this function.
-        const wwAnalysisPanelsByType = { phasor: "wwPhasorPanel", overcurrent: "wwOvercurrentPanel" };
+        // Analysis-type nav wiring -- implemented analyzers and lightweight
+        // placeholders plug into this ONE shared switcher. Placeholder
+        // entries intentionally clear Related Waveforms and show only their
+        // own non-implemented message; no backend/Playback/chart behavior
+        // is fabricated for them.
+        const wwAnalysisPanelsByType = {
+            phasor: "wwPhasorPanel",
+            overcurrent: "wwOvercurrentPanel",
+            impedance: "wwImpedancePanel",
+            sequence: "wwSequencePanel",
+        };
         function wwSetActiveAnalysisType(type) {
             for (const btn of document.querySelectorAll(".ww-analysis-type-item")) {
                 const isActive = btn.dataset.analysisType === type;
@@ -38247,10 +38341,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             } else if (type === "overcurrent") {
                 wwAnalysisMountRelatedWaveformsInto("wwOvercurrentRelatedWaveformsAnchor");
                 wwOvercurrentPushRelatedWaveformRoles();
+            } else {
+                wwAnalysisSetRelatedWaveformRoles([], null, null);
             }
         }
         document.getElementById("wwAnalysisTypePhasorBtn").addEventListener("click", () => wwSetActiveAnalysisType("phasor"));
         document.getElementById("wwAnalysisTypeOvercurrentBtn").addEventListener("click", () => wwSetActiveAnalysisType("overcurrent"));
+        document.getElementById("wwAnalysisTypeImpedanceBtn").addEventListener("click", () => wwSetActiveAnalysisType("impedance"));
+        document.getElementById("wwAnalysisTypeSequenceBtn").addEventListener("click", () => wwSetActiveAnalysisType("sequence"));
         document.getElementById("wwPhasorContextSelect").addEventListener("change", (event) => {
             wwPhasorState.selectedContextId = event.target.value || null;
             wwPhasorRenderContextBadge();
