@@ -861,6 +861,175 @@ test.describe("Overcurrent Analysis v1 -- minor grid toggles (chart UX enhanceme
   });
 });
 
+test.describe("Overcurrent Analysis v1 -- compressed sub-pickup axis (chart geometry refinement)", () => {
+  async function gridlineXPositions(page, selector) {
+    return page.locator(selector).evaluateAll((lines) => lines.map((el) => parseFloat(el.getAttribute("x1"))));
+  }
+
+  test("default Pickup Multiple viewport: 0.1->1 occupies ~5% of plot width, 1->100 occupies ~95%", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const ratios = await page.evaluate(() => {
+      const geo = wwOvercurrentChartGeometry(wwOvercurrentState.viewport);
+      const pxAtMin = wwOvercurrentPixelX(0.1, geo);
+      const pxAtOne = wwOvercurrentPixelX(1, geo);
+      const pxAtMax = wwOvercurrentPixelX(100, geo);
+      const plotWidth = geo.plotRight - geo.logLeft;
+      return {
+        breakApplies: geo.breakApplies,
+        belowFraction: (pxAtOne - pxAtMin) / plotWidth,
+        aboveFraction: (pxAtMax - pxAtOne) / plotWidth,
+      };
+    });
+    expect(ratios.breakApplies).toBe(true);
+    expect(ratios.belowFraction).toBeCloseTo(0.05, 1);
+    expect(ratios.aboveFraction).toBeCloseTo(0.95, 1);
+  });
+
+  test("axis-break marker renders at the M=1 position in the default viewport", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const breakLines = await page.locator("#wwOvercurrentSvg line.ww-oc-axis-break").count();
+    expect(breakLines).toBe(2); // the double-diagonal-tick mark
+
+    const expectedX = await page.evaluate(() => {
+      const geo = wwOvercurrentChartGeometry(wwOvercurrentState.viewport);
+      return wwOvercurrentPixelX(1, geo);
+    });
+    const positions = await gridlineXPositions(page, "#wwOvercurrentSvg line.ww-oc-axis-break");
+    for (const x of positions) {
+      expect(Math.abs(x - expectedX)).toBeLessThan(6); // within the marker's own dx+skew offsets
+    }
+  });
+
+  test("operating point below pickup renders inside the compressed sub-pickup gutter", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    // Known 40 A RMS current; pickup 100 A -> M = 0.4, below pickup.
+    await page.locator("#wwOvercurrentPickupInput").fill("100");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toContain("Below pickup");
+    }).toPass({ timeout: 5000 });
+
+    const markerX = parseFloat(await page.locator("#wwOvercurrentSvg circle.ww-oc-position-marker").getAttribute("cx"));
+    const geo = await page.evaluate(() => wwOvercurrentChartGeometry(wwOvercurrentState.viewport));
+    // The marker's own X must sit strictly within the compressed gutter
+    // (logLeft -> breakPx), never past the M=1 break into the operating
+    // region -- proving the below-pickup value used the SAME piecewise
+    // transform, not a stray standard-log position.
+    expect(markerX).toBeGreaterThanOrEqual(geo.logLeft - 0.5);
+    expect(markerX).toBeLessThanOrEqual(geo.breakPx + 0.5);
+    // No fabricated y-value -- unchanged pre-existing semantic.
+    await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point")).toHaveCount(0);
+  });
+
+  test("no finite curve point exists at or below M=1, characteristic begins only above pickup", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const d = await page.locator("#wwOvercurrentSvg path.ww-oc-curve").getAttribute("d");
+    expect(d).toBeTruthy();
+    const firstMoveTo = d.split(" ")[0]; // "M<x>,<y>" (SVG path command, unrelated to the M= pickup-multiple variable)
+    const [, coords] = firstMoveTo.split("M");
+    const [xPx] = coords.split(",").map(Number);
+    const breakPx = await page.evaluate(() => {
+      const geo = wwOvercurrentChartGeometry(wwOvercurrentState.viewport);
+      return geo.breakPx;
+    });
+    // The curve's own first drawn pixel must be AT/AFTER the M=1 break
+    // position, never inside the compressed sub-pickup gutter.
+    expect(xPx).toBeGreaterThanOrEqual(breakPx - 0.5);
+  });
+
+  test("a custom viewport entirely at/above M=1 reverts to the ordinary single log mapping (no gutter)", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await page.locator("#wwOvercurrentViewXMin").fill("2");
+    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
+    await page.locator("#wwOvercurrentViewXMax").fill("20");
+    await page.locator("#wwOvercurrentViewXMax").dispatchEvent("change");
+
+    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-axis-break")).toHaveCount(0);
+    const breakApplies = await page.evaluate(() => wwOvercurrentChartGeometry(wwOvercurrentState.viewport).breakApplies);
+    expect(breakApplies).toBe(false);
+  });
+
+  test("a custom viewport straddling M=1 shows the break again", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await page.locator("#wwOvercurrentViewXMin").fill("0.5");
+    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
+    await page.locator("#wwOvercurrentViewXMax").fill("5");
+    await page.locator("#wwOvercurrentViewXMax").dispatchEvent("change");
+
+    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-axis-break")).toHaveCount(2);
+  });
+
+  test("Relay Current mode never shows the axis break, even with a below/above-1 spanning viewport", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
+    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-axis-break")).toHaveCount(0);
+    const breakApplies = await page.evaluate(() => wwOvercurrentChartGeometry(wwOvercurrentState.viewport).breakApplies);
+    expect(breakApplies).toBe(false);
+  });
+
+  test("viewport X Min/X Max inputs always show real engineering M values, never transformed screen coordinates", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.1");
+    await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
+
+    await page.locator("#wwOvercurrentZoomInBtn").click();
+    const xMin = parseFloat(await page.locator("#wwOvercurrentViewXMin").inputValue());
+    const xMax = parseFloat(await page.locator("#wwOvercurrentViewXMax").inputValue());
+    // Real M-domain values only -- both comfortably within the absolute
+    // 0.1-200 engineering range, never a 0-320 pixel-space number.
+    expect(xMin).toBeGreaterThanOrEqual(0.1);
+    expect(xMax).toBeLessThanOrEqual(200);
+  });
+
+  test("compressed-axis geometry never triggers a curve or waveform fetch", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    let requestCount = 0;
+    page.on("request", (req) => {
+      if (req.url().includes("/overcurrent-curve") || req.url().includes("/overcurrent?") || req.url().includes("/waveform")) requestCount++;
+    });
+
+    // Toggle the break on and off purely via viewport changes -- no
+    // settings (pickup/TMS/basis/CT/phase/characteristic) touched, so
+    // this isolates the geometry refinement itself from the pre-existing,
+    // unrelated "a settings change refetches the analysis" behavior.
+    await page.locator("#wwOvercurrentViewXMin").fill("2");
+    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
+    await page.locator("#wwOvercurrentResetViewBtn").click();
+    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
+    await page.locator("#wwOvercurrentAxisModePickupBtn").click();
+
+    expect(requestCount).toBe(0);
+  });
+});
+
 test.describe("Overcurrent Analysis v1 -- shared Analysis Engineering Context lifecycle (2026-09-12 owner UAT fix)", () => {
   // Owner UAT: after uploading an event, opening Overcurrent DIRECTLY
   // (without ever visiting/selecting anything in Phasor) could show an

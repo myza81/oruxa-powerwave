@@ -825,6 +825,182 @@ class TestMinorGridToggles:
         assert "wwOvercurrentRerenderChartFromState();" in fn
 
 
+class TestCompressedSubPickupAxis:
+    """Chart geometry refinement: in Pickup Multiple mode, whenever the
+    viewport straddles M=1 (xMin < 1 < xMax), the below-pickup region
+    (xMin -> 1) is visually compressed to ~5% of the plot width and the
+    operating region (1 -> xMax) gets ~95% -- a single, centralized
+    piecewise transform (`wwOvercurrentPixelX()`/
+    `wwOvercurrentPlotXToPickupMultiple()`) every chart element shares.
+    Relay Current mode and the Y axis are completely unaffected."""
+
+    def _harness(self, x_axis_mode="pickup_multiple"):
+        source = _source()
+        geometry_fn = _function_body(
+            source, "function wwOvercurrentChartGeometry(viewport)", "// The ONE authoritative Pickup Multiple X mapping pair"
+        )
+        pixel_x_fn = _function_body(source, "function wwOvercurrentPixelX(m, geo)", "// Inverse of `wwOvercurrentPixelX()`")
+        inverse_fn = _function_body(source, "function wwOvercurrentPlotXToPickupMultiple(x, geo)", "function wwOvercurrentPixelY")
+        is_default_fn = _function_body(source, "function wwOvercurrentIsDefaultViewport(v)", "// Hard validation")
+        preamble = f"""
+        const WW_OC_XAXIS_PICKUP_MULTIPLE = "pickup_multiple";
+        const WW_OC_XAXIS_RELAY_CURRENT = "relay_current";
+        const wwOvercurrentState = {{ xAxisMode: "{x_axis_mode}" }};
+        const WW_OC_CHART_MARGIN = {{ left: 40, right: 14, top: 12, bottom: 34 }};
+        const WW_OC_CHART_W = 320;
+        const WW_OC_CHART_H = 240;
+        const WW_OC_ORIGIN_GAP = 15;
+        const WW_OC_VIEWPORT_DEFAULT = {{ xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 }};
+        const WW_OC_SUBPICKUP_GUTTER_FRACTION = 0.05;
+        """
+        return preamble + is_default_fn + geometry_fn + pixel_x_fn + inverse_fn
+
+    def test_below_pickup_region_occupies_approximately_5_percent_of_plot_width(self):
+        import json
+        import subprocess
+
+        script = self._harness() + """
+        const viewport = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };
+        const geo = wwOvercurrentChartGeometry(viewport);
+        const pxAtMin = wwOvercurrentPixelX(viewport.xMin, geo);
+        const pxAtOne = wwOvercurrentPixelX(1, geo);
+        const plotWidth = geo.plotRight - geo.logLeft;
+        console.log(JSON.stringify({
+            belowFraction: (pxAtOne - pxAtMin) / plotWidth,
+            breakApplies: geo.breakApplies,
+        }));
+        """
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        assert data["breakApplies"] is True
+        assert data["belowFraction"] == pytest.approx(0.05, abs=0.01)
+
+    def test_operating_region_occupies_approximately_95_percent_of_plot_width(self):
+        import json
+        import subprocess
+
+        script = self._harness() + """
+        const viewport = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };
+        const geo = wwOvercurrentChartGeometry(viewport);
+        const pxAtOne = wwOvercurrentPixelX(1, geo);
+        const pxAtMax = wwOvercurrentPixelX(viewport.xMax, geo);
+        const plotWidth = geo.plotRight - geo.logLeft;
+        console.log(JSON.stringify({ aboveFraction: (pxAtMax - pxAtOne) / plotWidth }));
+        """
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        assert data["aboveFraction"] == pytest.approx(0.95, abs=0.01)
+
+    def test_m_equals_1_maps_exactly_to_the_break_boundary(self):
+        import json
+        import subprocess
+
+        script = self._harness() + """
+        const viewport = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };
+        const geo = wwOvercurrentChartGeometry(viewport);
+        console.log(JSON.stringify({ pxAtOne: wwOvercurrentPixelX(1, geo), breakPx: geo.breakPx }));
+        """
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        assert data["pxAtOne"] == pytest.approx(data["breakPx"], abs=1e-9)
+
+    def test_mapping_is_monotonic_on_both_sides_of_the_break(self):
+        import json
+        import subprocess
+
+        script = self._harness() + """
+        const viewport = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };
+        const geo = wwOvercurrentChartGeometry(viewport);
+        const belowSamples = [0.1, 0.15, 0.2, 0.3, 0.5, 0.7, 0.9, 1.0].map((m) => wwOvercurrentPixelX(m, geo));
+        const aboveSamples = [1.0, 2, 5, 10, 20, 50, 100].map((m) => wwOvercurrentPixelX(m, geo));
+        console.log(JSON.stringify({ belowSamples, aboveSamples }));
+        """
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        for samples in (data["belowSamples"], data["aboveSamples"]):
+            for a, b in zip(samples, samples[1:]):
+                assert b > a
+
+    def test_inverse_mapping_round_trips_representative_points(self):
+        import json
+        import subprocess
+
+        points = [0.1, 0.2, 0.5, 1, 1.2, 2, 5, 10, 50, 100]
+        script = self._harness() + f"""
+        const viewport = {{ xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 }};
+        const geo = wwOvercurrentChartGeometry(viewport);
+        const points = {json.dumps(points)};
+        const results = points.map((m) => {{
+            const px = wwOvercurrentPixelX(m, geo);
+            const recovered = wwOvercurrentPlotXToPickupMultiple(px, geo);
+            return {{ m, recovered }};
+        }});
+        console.log(JSON.stringify(results));
+        """
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        rows = json.loads(result.stdout)
+        assert len(rows) == len(points)
+        for row in rows:
+            assert row["recovered"] == pytest.approx(row["m"], rel=1e-9)
+
+    def test_no_break_when_viewport_excludes_values_below_1(self):
+        """Task §12: a viewport entirely at/above M=1 must revert to the
+        ordinary single log mapping -- never a forced, useless gutter."""
+        import json
+        import subprocess
+
+        script = self._harness() + """
+        const viewport = { xMin: 2, xMax: 20, yMin: 0.01, yMax: 100 };
+        const geo = wwOvercurrentChartGeometry(viewport);
+        console.log(JSON.stringify({ breakApplies: geo.breakApplies }));
+        """
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        assert data["breakApplies"] is False
+
+    def test_break_applies_whenever_viewport_straddles_1(self):
+        import json
+        import subprocess
+
+        script = self._harness() + """
+        const viewport = { xMin: 0.5, xMax: 5, yMin: 0.01, yMax: 100 };
+        const geo = wwOvercurrentChartGeometry(viewport);
+        console.log(JSON.stringify({ breakApplies: geo.breakApplies }));
+        """
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        assert data["breakApplies"] is True
+
+    def test_relay_current_mode_never_applies_the_break(self):
+        import json
+        import subprocess
+
+        script = self._harness(x_axis_mode="relay_current") + """
+        const viewport = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };
+        const geo = wwOvercurrentChartGeometry(viewport);
+        console.log(JSON.stringify({ breakApplies: geo.breakApplies }));
+        """
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        assert data["breakApplies"] is False
+
+    def test_render_chart_draws_the_break_marker_only_when_it_applies(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        assert "if (geo.breakApplies) {" in fn
+        assert "wwOvercurrentAxisBreakSvg(geo)" in fn
+
+    def test_axis_break_marker_uses_the_shared_pixel_mapping_never_a_separate_calculation(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentAxisBreakSvg(geo)", "function wwOvercurrentRenderChart")
+        assert "wwOvercurrentPixelX(1, geo)" in fn
+        assert "Math.log10" not in fn
+
+    def test_gutter_fraction_constant_is_5_percent(self):
+        source = _source()
+        assert "const WW_OC_SUBPICKUP_GUTTER_FRACTION = 0.05;" in source
+
+
 class TestPickupMultipleFixedMajorTicks:
     """Owner UAT correction (2026-09-13): the generic dynamic 1-2-5
     major-tick classifier never generates 3/4/6/7/8/9 at all, so they
@@ -917,12 +1093,17 @@ class TestPickupMultipleMinorsNeverDuplicateFixedMajors:
 
         source = _source()
         subdivisions_const = "const WW_OC_MINOR_POW125_SUBDIVISIONS = [[1, 2, 0.2], [2, 5, 0.5], [5, 10, 1]];\n"
+        sub_pickup_fn = _function_body(
+            source,
+            "function wwOvercurrentPickupMultipleSubPickupMinors(viewport)",
+            "function wwOvercurrentPickupMultipleMinors(viewport)",
+        )
         fn = _function_body(
             source,
             "function wwOvercurrentPickupMultipleMinors(viewport)",
             "// X minors are mode-aware",
         )
-        script = subdivisions_const + fn + f"\nconsole.log(JSON.stringify(wwOvercurrentPickupMultipleMinors({{ xMin: {min_val}, xMax: {max_val} }})));"
+        script = subdivisions_const + sub_pickup_fn + fn + f"\nconsole.log(JSON.stringify(wwOvercurrentPickupMultipleMinors({{ xMin: {min_val}, xMax: {max_val} }})));"
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
         return json.loads(result.stdout)
 

@@ -6590,6 +6590,16 @@
             opacity: 0.35;
             stroke-width: 0.4;
         }
+        /* Compressed sub-pickup axis break marker -- a subtle, standard
+           double-diagonal-tick affordance at the M=1 break position
+           (Pickup Multiple mode only), deliberately muted so it reads
+           as "this scale changes here" without dominating the axis or
+           resembling a curve discontinuity. */
+        .ww-oc-axis-break {
+            stroke: var(--text-dim);
+            stroke-width: 1;
+            opacity: 0.7;
+        }
         /* Pickup boundary reference line -- a distinct dotted style from
            both the major/minor gridlines (solid) and the operating-point
            guides (dashed, `--ww-chart-guide-stroke`), so it reads as its
@@ -36253,8 +36263,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // (12/14/16/18, 25/30/35/40/45, 60/70/80/90, and the same pattern
         // continued for 100-200) -- never a value that collides with one
         // of the fixed majors above.
+        // Sub-pickup (0.1-1) minor reference ticks -- compressed-axis
+        // refinement: this region is visually squeezed into ~5% of the
+        // plot width (see `WW_OC_SUBPICKUP_GUTTER_FRACTION`/
+        // `wwOvercurrentPixelX()` below), so it can only legibly hold a
+        // SPARSE minor set, never the dense 4-per-unit-interval pattern
+        // used above pickup. Reuses the SAME classic 1-2-5 progression
+        // basis already established elsewhere in this module (0.1's own
+        // "2"/"5" multiples), deliberately just two values.
+        function wwOvercurrentPickupMultipleSubPickupMinors(viewport) {
+            return [0.2, 0.5].filter((v) => v > viewport.xMin + 1e-9 && v < 1 - 1e-9);
+        }
         function wwOvercurrentPickupMultipleMinors(viewport) {
-            const ticks = [];
+            const ticks = wwOvercurrentPickupMultipleSubPickupMinors(viewport);
             for (let n = 1; n <= 9; n++) {
                 for (const step of [0.2, 0.4, 0.6, 0.8]) {
                     ticks.push(Number((n + step).toPrecision(6)));
@@ -36443,6 +36464,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return points;
         }
 
+        // Compressed sub-pickup axis (chart geometry refinement,
+        // Pickup Multiple mode only): the below-pickup region
+        // (viewport.xMin -> 1) is visually squeezed into this fraction
+        // of the plot width, so the operating region (1 -> viewport.
+        // xMax), where the IEC IDMT characteristic actually exists,
+        // gets the rest. Owner-specified ~5%, not 10-15%. Purely a
+        // display transform -- IDMT calculation/pickup/TMS/CT/RMS/
+        // Playback/engineering-unit normalization are all untouched;
+        // the underlying viewport X Min/X Max remain real engineering
+        // `M` values throughout (see wwOvercurrentApplyViewportFromInputs()/
+        // wwOvercurrentZoom(), both unchanged by this refinement).
+        const WW_OC_SUBPICKUP_GUTTER_FRACTION = 0.05;
+
         function wwOvercurrentChartGeometry(viewport) {
             const isDefault = wwOvercurrentIsDefaultViewport(viewport);
             const plotLeft = WW_OC_CHART_MARGIN.left;
@@ -36455,22 +36489,82 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // custom view there is no gap -- the viewport's own true
             // minimum sits exactly at the frame edge.
             const gap = isDefault ? WW_OC_ORIGIN_GAP : 0;
-            return {
+            const logLeft = plotLeft + gap;
+            const logBottom = plotBottom - gap;
+            // The compressed break applies ONLY to Pickup Multiple mode,
+            // and ONLY when the viewport genuinely straddles the M=1
+            // pickup threshold -- a viewport entirely at/above M=1 (task
+            // §12: "do not force a useless 5% gutter when the user's
+            // viewport explicitly excludes values below 1") reverts to
+            // the ordinary single log mapping below, unchanged from
+            // before this refinement. Relay Current mode never applies
+            // this (task §14) -- `wwOvercurrentPixelX()`/
+            // `wwOvercurrentPlotXToPickupMultiple()` below are the ONLY
+            // two places this flag is consulted, so every chart element
+            // (curve, gridlines, ticks, labels, guides, markers, edge
+            // indicators) automatically gets a consistent transform.
+            const breakApplies = wwOvercurrentState.xAxisMode !== WW_OC_XAXIS_RELAY_CURRENT &&
+                viewport.xMin < 1 - 1e-9 && viewport.xMax > 1 + 1e-9;
+            const geo = {
                 isDefault, plotLeft, plotRight, plotTop, plotBottom,
-                logLeft: plotLeft + gap, logBottom: plotBottom - gap,
+                logLeft, logBottom,
                 logMMin: Math.log10(viewport.xMin), logMMax: Math.log10(viewport.xMax),
                 logTMin: Math.log10(viewport.yMin), logTMax: Math.log10(viewport.yMax),
+                breakApplies,
             };
+            if (breakApplies) {
+                geo.breakPx = logLeft + WW_OC_SUBPICKUP_GUTTER_FRACTION * (plotRight - logLeft);
+            }
+            return geo;
         }
 
-        // Unclamped pixel mapping -- used for the curve path (then
-        // visually clipped to the log region, never distorted) and for
-        // every tick/gridline position (always within range by
-        // construction, since ticks are generated from the same
-        // viewport).
+        // The ONE authoritative Pickup Multiple X mapping pair (task's
+        // own explicit "do not sprinkle special-case 5% arithmetic
+        // throughout rendering code" instruction) -- every chart element
+        // (curve, major/minor gridlines, tick marks/labels, pickup
+        // boundary, operating point, guide line, edge indicator) goes
+        // through `wwOvercurrentPixelX()` below, which is itself the
+        // forward half of this pair; `wwOvercurrentPlotXToPickupMultiple()`
+        // is the mathematically consistent inverse (round-trips exactly,
+        // see `test_frontend_overcurrent_analysis.py::
+        // TestCompressedSubPickupAxis` for the golden-point proof).
+        // Continuous at M=1 (both branches evaluate to `geo.breakPx`
+        // there) -- the visual "break" is communicated ONLY by the
+        // separate `.ww-oc-axis-break` marker drawn in
+        // `wwOvercurrentRenderChart()`, never by an actual coordinate
+        // discontinuity that could misrepresent a value's true position.
         function wwOvercurrentPixelX(m, geo) {
             const logM = Math.log10(m);
-            return geo.logLeft + ((logM - geo.logMMin) / (geo.logMMax - geo.logMMin)) * (geo.plotRight - geo.logLeft);
+            if (!geo.breakApplies) {
+                return geo.logLeft + ((logM - geo.logMMin) / (geo.logMMax - geo.logMMin)) * (geo.plotRight - geo.logLeft);
+            }
+            if (m <= 1 + 1e-9) {
+                // Below pickup: [viewport.xMin, 1] -> [logLeft, breakPx].
+                const frac = (logM - geo.logMMin) / (0 - geo.logMMin);
+                return geo.logLeft + frac * (geo.breakPx - geo.logLeft);
+            }
+            // Operating region: [1, viewport.xMax] -> [breakPx, plotRight].
+            const frac = logM / geo.logMMax;
+            return geo.breakPx + frac * (geo.plotRight - geo.breakPx);
+        }
+        // Inverse of `wwOvercurrentPixelX()` -- given a plot-X pixel
+        // coordinate, returns the engineering Pickup Multiple value it
+        // represents. Not currently wired to any interactive hover (none
+        // exists on this chart), but kept mathematically consistent with
+        // the forward transform so a future interaction can use it
+        // directly, and so the piecewise mapping itself is provably
+        // invertible (task §9/§16).
+        function wwOvercurrentPlotXToPickupMultiple(x, geo) {
+            if (!geo.breakApplies) {
+                const frac = (x - geo.logLeft) / (geo.plotRight - geo.logLeft);
+                return Math.pow(10, geo.logMMin + frac * (geo.logMMax - geo.logMMin));
+            }
+            if (x <= geo.breakPx + 1e-9) {
+                const frac = (x - geo.logLeft) / (geo.breakPx - geo.logLeft);
+                return Math.pow(10, geo.logMMin + frac * (0 - geo.logMMin));
+            }
+            const frac = (x - geo.breakPx) / (geo.plotRight - geo.breakPx);
+            return Math.pow(10, frac * geo.logMMax);
         }
         function wwOvercurrentPixelY(t, geo) {
             const logT = Math.log10(t);
@@ -36504,6 +36598,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             else pts = [[px - s, py - s], [px + s, py - s], [px, py + s]];
             const pointsStr = pts.map((p) => p[0].toFixed(2) + "," + p[1].toFixed(2)).join(" ");
             return '<polygon class="ww-oc-edge-indicator" points="' + pointsStr + '"></polygon>';
+        }
+
+        // Axis-break affordance (compressed sub-pickup axis) -- a
+        // subtle, standard double-diagonal-tick mark straddling the
+        // M=1 break position on the X axis itself, so the chart never
+        // silently implies a single uniform log scale across the whole
+        // width. Deliberately small/muted (task's own "subtle, not
+        // visually dominant... must not look like a curve discontinuity"
+        // instruction) -- drawn once, only when
+        // `geo.breakApplies`, positioned via the SAME
+        // `wwOvercurrentPixelX()` transform every other chart element
+        // uses (never a separately hand-computed pixel position).
+        function wwOvercurrentAxisBreakSvg(geo) {
+            const x = wwOvercurrentPixelX(1, geo);
+            const y = geo.plotBottom;
+            const h = 4, dx = 2, skew = 2;
+            const stroke = (cx) =>
+                '<line class="ww-oc-axis-break" x1="' + (cx - skew).toFixed(2) + '" y1="' + (y + h).toFixed(2) +
+                '" x2="' + (cx + skew).toFixed(2) + '" y2="' + (y - h).toFixed(2) + '"></line>';
+            return stroke(x - dx) + stroke(x + dx);
         }
 
         function wwOvercurrentRenderChart(points, currentM, currentT) {
@@ -36572,6 +36686,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // truncated.
             parts.push('<line class="ww-oc-axis" x1="' + geo.plotLeft + '" y1="' + geo.plotTop + '" x2="' + geo.plotLeft + '" y2="' + geo.plotBottom + '"></line>');
             parts.push('<line class="ww-oc-axis" x1="' + geo.plotLeft + '" y1="' + geo.plotBottom + '" x2="' + geo.plotRight + '" y2="' + geo.plotBottom + '"></line>');
+
+            // Compressed sub-pickup axis break marker -- only when the
+            // viewport actually straddles M=1 (Pickup Multiple mode
+            // only; task §5/§12/§14).
+            if (geo.breakApplies) {
+                parts.push(wwOvercurrentAxisBreakSvg(geo));
+            }
 
             // Major tick labels, each at its own true log-transformed position.
             for (const v of xMajors) {
