@@ -600,6 +600,28 @@ clutter. All new state is session-local, following the exact precedent
 representation toggle and minor grid controls" section for the full
 architecture.
 
+**Overcurrent chart geometry refinement — compressed sub-pickup axis
+(2026-09-13, [DECISIONS.md — DEC-093](DECISIONS.md#dec-093--overcurrent-chart-geometry-refinement-a-compressedbroken-sub-pickup-x-axis-in-pickup-multiple-mode-visually-compresses-01--1-to-5-of-plot-width)),
+frontend-only, Pickup Multiple mode only.** The below-pickup region
+(`0.1 -> 1`, where the IEC IDMT characteristic mathematically does not
+exist) is now visually compressed to ~5% of the plot width, giving the
+operating region (`1 -> X Max`) the remaining ~95% — applied only when
+the viewport straddles `M=1`; a viewport entirely at/above `M=1` reverts
+to the ordinary single log mapping, never a forced useless gutter. A
+single piecewise-log transform (continuous at `M=1`, never a fake
+discontinuity) is centralized in `wwOvercurrentPixelX()` — the SAME
+function every chart element (curve, gridlines, ticks, pickup boundary,
+operating point, guides, edge indicators) already used, so the whole
+chart picked up the compression automatically and consistently, with
+zero call-site changes elsewhere. A small, muted double-diagonal-tick
+"axis break" marker communicates the scale change on the X axis at
+`M=1`. Viewport X Min/X Max remain true engineering `M` values
+throughout (never transformed screen coordinates); Relay Current mode
+and the Y axis are completely unaffected; zero backend requests. See
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own "Compressed
+sub-pickup axis — chart geometry refinement" section for the full
+architecture.
+
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test
 infrastructure only, zero production code changed) establishes the

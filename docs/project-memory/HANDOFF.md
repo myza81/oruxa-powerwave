@@ -8,6 +8,87 @@ Last updated: **2026-09-13**
 
 ## What was most recently done
 
+**Overcurrent chart geometry refinement — a compressed/broken sub-pickup
+X axis in Pickup Multiple mode — [DECISIONS.md — DEC-093](DECISIONS.md#dec-093--overcurrent-chart-geometry-refinement-a-compressedbroken-sub-pickup-x-axis-in-pickup-multiple-mode-visually-compresses-01--1-to-5-of-plot-width).
+Frontend-only (`frontend/index.html`); no backend file touched. Also
+folds in two small owner-requested follow-up corrections to the
+DEC-092 major-tick list made earlier the same day (see below).**
+
+The below-pickup region (`0.1 -> 1`, where the IEC IDMT characteristic
+mathematically does not exist -- `M > 1` only) previously consumed the
+same visual width as every other decade on the log axis. Now
+compressed to ~5% of the Pickup Multiple plot width, giving the
+operating region (`1 -> X Max`) the remaining ~95% -- applied ONLY when
+the viewport straddles `M=1` (a viewport entirely at/above `M=1`
+reverts to the ordinary single log mapping, never a forced/useless
+gutter). Relay Current mode and the Y axis are completely unaffected.
+
+**One centralized transform, zero scattered arithmetic**:
+`wwOvercurrentChartGeometry()` gained a `breakApplies`/`breakPx` pair,
+computed once per render; `wwOvercurrentPixelX(m, geo)` -- the SAME
+function every existing chart element (curve, major/minor gridlines,
+tick marks/labels, pickup boundary, operating point, guide line, edge
+indicator) already called -- now branches on that flag internally, so
+the WHOLE chart picked up the compressed mapping automatically and
+consistently with ZERO changes to any of those call sites. The mapping
+is continuous at `M=1` (both piecewise branches evaluate to the exact
+same pixel there) -- never a fake coordinate discontinuity; only a new,
+separate, muted double-diagonal-tick "axis break" marker
+(`.ww-oc-axis-break`) communicates the scale change visually. A new
+`wwOvercurrentPlotXToPickupMultiple(x, geo)` is the mathematically
+consistent inverse, proven to round-trip exactly for ten representative
+points (0.1 through 100).
+
+**Mathematical semantics completely unchanged**: `wwOvercurrentVisibleCurveSegment()`
+(the exact analytic curve-viewport-boundary solver) was not touched --
+it already only ever returns `M > 1` points by construction, so the
+curve's first rendered pixel is always at/after the break, never inside
+the compressed gutter, and no finite curve point at `M=1` was ever
+possible before or after this change. The below-pickup position marker
+(unchanged branch/semantic) automatically lands inside the gutter when
+`M < 1` for the same reason -- it shares the identical
+`wwOvercurrentPixelX()` transform.
+
+**Viewport values stay true engineering `M`, always** --
+`wwOvercurrentApplyViewportFromInputs()`/`wwOvercurrentZoom()`/
+`wwOvercurrentResetViewport()` are untouched; X Min/X Max are read/
+written/validated in real `M` values exactly as before. The 5%/95%
+split is a pure rendering-time transform, never exposed as a
+transformed coordinate. Sub-pickup minor ticks (when Minor X is
+enabled) stay deliberately sparse -- just `0.2`/`0.5` -- since the
+compressed gutter can only legibly hold a small set; the DEC-092 fixed
+major list is completely unaffected.
+
+**Two small follow-up corrections to DEC-092's own major-tick list**
+(made earlier the same day, each its own commit, both already pushed
+before this geometry refinement started): (1) the generic dynamic 1-2-5
+classifier never generates 3/4/6/7/8/9 at all, so Pickup Multiple mode
+now uses an explicit fixed list (`1,2,3,4,5,6,7,8,9,10,20,50,100`, `0`
+visual-only) instead, with a matching dedicated minor generator (0.2-step
+subdivisions within each unit interval below 10); (2) a further owner
+correction removed a `200` extension from that fixed list -- the
+approved set is exactly `1` through `100`, no wider.
+
+**Tests**: `backend/tests/test_frontend_overcurrent_analysis.py` -- new
+`TestCompressedSubPickupAxis` (11 tests: 5%/95% ratio proofs, exact
+break-boundary equality, monotonicity both sides, 10-point inverse
+round-trip, break-applies/doesn't-apply conditions, Relay Current
+non-impact, shared-transform assertions) plus the two major-tick
+correction test classes from the same day (`TestPickupMultipleFixedMajorTicks`,
+`TestPickupMultipleMinorsNeverDuplicateFixedMajors`, updated for the
+`200`-removal). `browser-tests/overcurrent_analysis.spec.js` -- new
+"compressed sub-pickup axis" describe block (9 scenarios, asserting
+actual rendered geometry via `page.evaluate()`, not just static
+structure). Full backend regression, full frontend static suite, the
+Overcurrent/shared-Analysis/Phasor/Playback Playwright specs, and the
+full Playwright suite all pass; `git diff --check` clean.
+
+**Stop condition honored**: the owner's own closing instruction was
+"stop after this OC chart refinement" -- no new analyzer or unrelated
+feature work was started.
+
+## What was done in the prior session — Overcurrent chart UX enhancement (X-axis representation toggle + major/minor grid controls)
+
 **Overcurrent chart UX enhancement — a Pickup Multiple/Relay Current
 X-axis representation toggle plus independently-toggleable major/minor
 logarithmic grid controls — [DECISIONS.md — DEC-092](DECISIONS.md#dec-092--overcurrent-chart-ux-enhancement-a-pickup-multiplerelay-current-x-axis-representation-toggle-and-independently-toggleable-majorminor-logarithmic-grid-controls).

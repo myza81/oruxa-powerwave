@@ -14665,6 +14665,131 @@ architecture record.
 
 ---
 
+## DEC-093 — Overcurrent chart geometry refinement: a compressed/broken sub-pickup X axis in Pickup Multiple mode visually compresses 0.1 → 1 to ~5% of plot width
+
+Date: 2026-09-13
+Status: Approved — implemented.
+Source: owner task specification ("make the Pickup Multiple x-axis more
+useful by visually compressing the sub-pickup region 0.1 → 1 to
+approximately 5% of the chart width, while preserving 0.1 as a visible
+reference... without lying about the x-axis geometry"), building
+directly on the X-axis representation toggle established in DEC-092.
+
+Decision:
+
+**1. Pickup Multiple mode's X axis uses a piecewise/broken log mapping,
+applied only when the viewport straddles M=1.** Below pickup
+(`viewport.xMin -> 1`) maps into the first ~5% of the plot width;
+the operating region (`1 -> viewport.xMax`), where the IEC IDMT
+characteristic actually exists, gets the remaining ~95%. Both halves
+independently preserve logarithmic ordering — this is not a linear
+axis and not two disconnected coordinate systems, just an honest,
+continuous (at M=1) piecewise-log transform. A viewport entirely at or
+above M=1 reverts to the ordinary single log mapping across the
+requested range, never forcing a useless compressed gutter (owner's
+own explicit instruction).
+
+**2. One centralized transform pair, never scattered arithmetic.**
+`wwOvercurrentPixelX(m, geo)` — the SAME function every existing chart
+element (curve, major/minor gridlines, tick marks/labels, pickup
+boundary, operating point, guide line, edge indicator) already called
+— now branches on a new `geo.breakApplies` flag computed once per
+render in `wwOvercurrentChartGeometry()`. Because nothing else changed
+at any of those call sites, the whole chart picked up the compressed
+mapping automatically and consistently — directly satisfying the "do
+not allow some elements to use standard log10(M) while others use the
+broken-axis transform" requirement without touching a single one of
+them individually. A new `wwOvercurrentPlotXToPickupMultiple(x, geo)`
+is the mathematically consistent inverse, proven to round-trip exactly
+for ten representative points (0.1 through 100).
+
+**3. A subtle, standard axis-break marker communicates the scale
+change without implying a data discontinuity.** A small double-
+diagonal-tick mark (`.ww-oc-axis-break`) is drawn on the X axis at the
+M=1 break position, only when the break applies — muted, distinct from
+gridlines and guides, and never resembling a curve discontinuity
+(mathematically, the curve never has a point at or below M=1 in the
+first place, unchanged from every prior Overcurrent release).
+
+**4. Mathematical semantics are completely unchanged.**
+`wwOvercurrentVisibleCurveSegment()` (the exact analytic curve-
+viewport-boundary solver) was not modified — it already only returns
+`M > 1` points by construction, so the curve's first rendered pixel is
+always at or after the break, never inside the compressed gutter. The
+below-pickup position marker (unchanged branch, unchanged semantic: a
+dim marker + vertical guide, never a fabricated y-value) automatically
+lands inside the gutter when `M < 1`, simply because it shares the same
+`wwOvercurrentPixelX()` transform every other element uses.
+
+**5. Viewport values remain true engineering M, never transformed
+screen coordinates.** `wwOvercurrentApplyViewportFromInputs()`/
+`wwOvercurrentZoom()`/`wwOvercurrentResetViewport()` are untouched — X
+Min/X Max are read/written/validated in real M values exactly as
+before; the 5%/95% split is a pure rendering-time transform, invisible
+to the user as a coordinate.
+
+**6. Sub-pickup minor ticks stay sparse, and the approved major tick
+list is untouched.** The compressed gutter can only legibly hold a
+small minor set — `wwOvercurrentPickupMultipleSubPickupMinors()` adds
+just `0.2`/`0.5` (the classic 1-2-5 progression's own minor positions
+within the 0.1-1 decade) — never the dense 4-per-unit-interval pattern
+used above pickup. The DEC-092 fixed major list
+(`1,2,3,4,5,6,7,8,9,10,20,50,100`, `0` visual-only) is completely
+unaffected; `3/4/6/7/8/9` remain major.
+
+**7. Scope strictly limited to Pickup Multiple mode.** Relay Current
+mode and the Y axis are both completely unaffected — same standard
+single-log mapping as before this refinement, confirmed by dedicated
+tests. No IDMT calculation, TMS, pickup, CT conversion, RMS, Playback,
+or Engineering Context behavior changed; this is a pure frontend
+rendering refinement.
+
+Reason: a standard logarithmic axis gives equal width to every decade,
+so the below-pickup region (where the characteristic mathematically
+does not exist) consumed disproportionate space that would be far more
+useful devoted to the operating region engineers actually study. The
+owner was explicit that this must remain an honest geometric transform
+(never a fake/discontinuous axis) — the continuous piecewise-log
+mapping plus a separate, purely decorative break marker satisfies that
+constraint directly.
+
+Alternatives considered:
+- Simply raising the viewport's own minimum from 0.1 to 0.5 or 1 —
+  explicitly rejected by the owner's own instruction; this would hide
+  the below-pickup region entirely rather than compressing it, losing
+  the ability to see where a below-pickup measurement sits relative to
+  pickup.
+- A true two-panel/disconnected axis (separate coordinate systems with
+  no continuity at M=1) — rejected in favor of a single continuous
+  piecewise transform: continuity at the boundary means no chart
+  element needs special-case logic for "which side of the break am I
+  on" beyond the existing `wwOvercurrentPixelX()` branch, and avoids
+  ever presenting a value ambiguously near the boundary.
+- Applying the same compression to Relay Current mode's own amp-
+  denominated axis — out of scope per the task's own explicit
+  instruction; Relay Current's "1" position varies with pickup, making
+  a fixed compression boundary a different (and unrequested) design
+  problem, deferred entirely.
+
+Impact: `frontend/index.html` only (chart-rendering geometry; no
+backend file changed). `wwOvercurrentChartGeometry()` extended with
+`breakApplies`/`breakPx`; `wwOvercurrentPixelX()` extended in place
+(same signature, same call sites); new `wwOvercurrentPlotXToPickupMultiple()`,
+`wwOvercurrentAxisBreakSvg()`, `wwOvercurrentPickupMultipleSubPickupMinors()`,
+`WW_OC_SUBPICKUP_GUTTER_FRACTION` constant, `.ww-oc-axis-break` CSS
+class. New tests: `backend/tests/test_frontend_overcurrent_analysis.py`
+`TestCompressedSubPickupAxis` (11 tests); `browser-tests/
+overcurrent_analysis.spec.js` new "compressed sub-pickup axis" describe
+block (9 scenarios, rendered-geometry assertions not just static
+structure). Full backend regression, full frontend static suite, the
+Overcurrent/shared-Analysis/Phasor/Playback Playwright specs, and the
+full Playwright suite all pass; `git diff --check` clean. See
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own "Compressed
+sub-pickup axis — chart geometry refinement" section for the complete
+architecture record.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
