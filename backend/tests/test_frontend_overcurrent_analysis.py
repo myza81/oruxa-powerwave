@@ -825,6 +825,141 @@ class TestMinorGridToggles:
         assert "wwOvercurrentRerenderChartFromState();" in fn
 
 
+class TestPickupMultipleFixedMajorTicks:
+    """Owner UAT correction (2026-09-13): the generic dynamic 1-2-5
+    major-tick classifier never generates 3/4/6/7/8/9 at all, so they
+    were wrongly absent from Pickup Multiple mode's always-visible major
+    grid (only reachable, if at all, as minor-gated ticks). Pickup
+    Multiple mode now uses its own FIXED, explicit major list --
+    0 (visual-only, unchanged), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50,
+    100 -- never derived from the generic progression+classification
+    rule Relay Current mode and the Y axis still use."""
+
+    def test_fixed_major_tick_constant_matches_the_owner_approved_list(self):
+        source = _source()
+        assert "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100, 200];" in source
+
+    def test_default_viewport_renders_every_owner_approved_major_via_node(self):
+        import json
+        import subprocess
+
+        source = _source()
+        const_decl = "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100, 200];\n"
+        fn = _function_body(source, "function wwOvercurrentPickupMultipleMajors(viewport)", "function wwOvercurrentFormatTickValue")
+        script = const_decl + fn + "\nconsole.log(JSON.stringify(wwOvercurrentPickupMultipleMajors({ xMin: 0.1, xMax: 100 })));"
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        majors = json.loads(result.stdout)
+        # 0 is never part of this array -- it stays the existing visual-
+        # only origin annotation, asserted separately below.
+        assert majors == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100]
+
+    def test_3_4_6_7_8_9_are_present_as_majors_never_excluded(self):
+        import json
+        import subprocess
+
+        source = _source()
+        const_decl = "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100, 200];\n"
+        fn = _function_body(source, "function wwOvercurrentPickupMultipleMajors(viewport)", "function wwOvercurrentFormatTickValue")
+        script = const_decl + fn + "\nconsole.log(JSON.stringify(wwOvercurrentPickupMultipleMajors({ xMin: 0.1, xMax: 100 })));"
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        majors = json.loads(result.stdout)
+        for expected in (3, 4, 6, 7, 8, 9):
+            assert expected in majors
+
+    def test_zero_is_never_a_real_logarithmic_coordinate(self):
+        """0 stays the existing visual-only origin label -- never part of
+        the fixed major-tick array, never passed through Math.log10()."""
+        source = _source()
+        assert "0" not in [str(v) for v in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100, 200]]
+        fn = _function_body(source, "function wwOvercurrentPickupMultipleMajors(viewport)", "function wwOvercurrentFormatTickValue")
+        assert "Math.log10" not in fn
+
+    def test_render_chart_uses_the_fixed_majors_in_pickup_multiple_mode_and_the_generic_ones_in_relay_current_mode(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        assert "const xMajors = isRelayCurrentAxis ? wwOvercurrentXMajors(viewport) : wwOvercurrentPickupMultipleMajors(viewport);" in fn
+
+    def test_default_viewport_gridline_count_reflects_the_new_fixed_major_list(self):
+        """13 Pickup Multiple X majors (1..9, 10, 20, 50, 100) + 4 Y
+        majors (0.1, 1, 10, 100) = 17 major gridlines for the default
+        viewport -- confirmed end-to-end in browser-tests/
+        overcurrent_analysis.spec.js's own "default viewport" test."""
+        import json
+        import subprocess
+
+        source = _source()
+        x_const = "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100, 200];\n"
+        x_fn = _function_body(source, "function wwOvercurrentPickupMultipleMajors(viewport)", "function wwOvercurrentFormatTickValue")
+        y_fn = _function_body(source, "function wwOvercurrentGenerateDecadeTicks(min, max)", "// Major/minor classification")
+        classify_fn = _function_body(source, "function wwOvercurrentClassifyMajors(allTicks, axisMin)", "function wwOvercurrentXMajors")
+        y_majors_fn = _function_body(source, "function wwOvercurrentYMajors(viewport)", "// Pickup Multiple mode's own FIXED")
+        script = x_const + x_fn + y_fn + classify_fn + y_majors_fn + """
+        const xMajors = wwOvercurrentPickupMultipleMajors({ xMin: 0.1, xMax: 100 });
+        const yMajors = wwOvercurrentYMajors({ yMin: 0.01, yMax: 100 });
+        console.log(JSON.stringify({ xCount: xMajors.length, yCount: yMajors.length }));
+        """
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        counts = json.loads(result.stdout)
+        assert counts["xCount"] == 13
+        assert counts["yCount"] == 4
+
+
+class TestPickupMultipleMinorsNeverDuplicateFixedMajors:
+    """The owner's own correction: 3/4/6/7/8/9 must be MAJOR, not minor.
+    Pickup Multiple mode's own dedicated minor generator must therefore
+    never emit any of the fixed major values themselves -- only genuine
+    subdivisions BETWEEN them (e.g. 1.2/1.4/1.6/1.8 between 1 and 2, the
+    owner's own explicit example)."""
+
+    def _minors(self, min_val, max_val):
+        import json
+        import subprocess
+
+        source = _source()
+        subdivisions_const = "const WW_OC_MINOR_POW125_SUBDIVISIONS = [[1, 2, 0.2], [2, 5, 0.5], [5, 10, 1]];\n"
+        fn = _function_body(
+            source,
+            "function wwOvercurrentPickupMultipleMinors(viewport)",
+            "// X minors are mode-aware",
+        )
+        script = subdivisions_const + fn + f"\nconsole.log(JSON.stringify(wwOvercurrentPickupMultipleMinors({{ xMin: {min_val}, xMax: {max_val} }})));"
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        return json.loads(result.stdout)
+
+    def test_1_to_2_matches_owner_example(self):
+        assert self._minors(1, 2) == pytest.approx([1.2, 1.4, 1.6, 1.8])
+
+    def test_3_4_6_7_8_9_never_appear_as_minors(self):
+        minors = self._minors(0.1, 100)
+        for forbidden in (3, 4, 6, 7, 8, 9):
+            assert forbidden not in minors
+
+    def test_full_default_range_never_collides_with_any_fixed_major(self):
+        minors = self._minors(0.1, 100)
+        fixed_majors = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100}
+        assert not (set(minors) & fixed_majors)
+
+    def test_generalizes_the_0_2_step_to_every_unit_interval_below_10(self):
+        minors = self._minors(0.1, 10)
+        for n in range(1, 10):
+            for step in (0.2, 0.4, 0.6, 0.8):
+                assert pytest.approx(n + step) in minors
+
+    def test_above_10_reuses_the_existing_decade_subdivision(self):
+        minors = self._minors(10, 100)
+        for expected in (12, 14, 16, 18, 25, 30, 35, 40, 45, 60, 70, 80, 90):
+            assert expected in minors
+
+
+class TestXMinorsDispatchesByAxisMode:
+    def test_relay_current_mode_keeps_the_generic_minor_generator(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentXMinors(viewport)", "function wwOvercurrentYMinors")
+        assert "WW_OC_XAXIS_RELAY_CURRENT" in fn
+        assert "wwOvercurrentGenerateMinorPow125Ticks(viewport.xMin, viewport.xMax)" in fn
+        assert "wwOvercurrentPickupMultipleMinors(viewport)" in fn
+
+
 class TestMinorTickGenerationMatrix:
     """Task §9: the classic log-log graph-paper 1-2-5 minor subdivision,
     proved via direct Node execution -- the owner's own explicit example

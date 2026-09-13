@@ -36074,11 +36074,48 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const threshold = axisMin * 2;
             return allTicks.filter((v) => v > threshold + 1e-9);
         }
+        // `wwOvercurrentXMajors()` (the generic dynamic 1-2-5 classifier
+        // above) is used for the Relay Current mode's own X axis and for
+        // the Y axis in BOTH modes -- see `WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS`
+        // below for Pickup Multiple mode's own dedicated, EXPLICIT major
+        // list (owner UAT correction: 3/4/6/7/8/9 must always be visible
+        // major gridlines in that mode, never derived from this generic
+        // rule, which would otherwise exclude/demote them).
         function wwOvercurrentXMajors(viewport) {
             return wwOvercurrentClassifyMajors(wwOvercurrentGeneratePow125Ticks(viewport.xMin, viewport.xMax), viewport.xMin);
         }
         function wwOvercurrentYMajors(viewport) {
             return wwOvercurrentClassifyMajors(wwOvercurrentGenerateDecadeTicks(viewport.yMin, viewport.yMax), viewport.yMin);
+        }
+        // Pickup Multiple mode's own FIXED, owner-approved major X tick
+        // set -- an explicit list, never derived from the generic 1-2-5
+        // progression + axis-minimum-exclusion rule above (a real UAT
+        // correction: that generic rule never generates 3/4/6/7/8/9 at
+        // all, so they were wrongly absent from the always-visible major
+        // grid). Dense integer resolution near pickup (1-9, where the
+        // characteristic's own behavior is most interesting), then the
+        // same familiar 1-2-5-per-decade pattern above 10 (10/20/50/100),
+        // extended to 200 to cover the full absolute zoom-out bound
+        // (`WW_OC_VIEWPORT_ABSOLUTE.xMax`). "0" is never part of this
+        // list -- it stays the existing visual-only origin-gap
+        // annotation (never a real log(0) coordinate, see
+        // `wwOvercurrentChartGeometry()`/the `geo.isDefault` branch in
+        // `wwOvercurrentRenderChart()`, both unchanged). Filtered to the
+        // current viewport exactly like every other tick list in this
+        // module -- responds correctly to zoom/custom-range the same way.
+        const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100, 200];
+        function wwOvercurrentPickupMultipleMajors(viewport) {
+            // Excludes a value that exactly coincides with the viewport's
+            // own minimum -- that value already gets its own dedicated
+            // label via the existing minimum-label mechanism (the
+            // `geo.isDefault`/else branch in `wwOvercurrentRenderChart()`,
+            // unchanged), which never draws a gridline for it either --
+            // mirrors the generic dynamic classifier's own established
+            // behavior (`wwOvercurrentClassifyMajors()` never treats the
+            // axis's own minimum as a major, for the exact same reason).
+            return WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS.filter(
+                (v) => v >= viewport.xMin - 1e-9 && v <= viewport.xMax + 1e-9 && Math.abs(v - viewport.xMin) > 1e-9
+            );
         }
         function wwOvercurrentFormatTickValue(v) {
             return Number(v.toPrecision(6)).toString();
@@ -36200,8 +36237,42 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             return [...new Set(ticks)].sort((a, b) => a - b);
         }
+        // Pickup Multiple mode's own dedicated minor-tick generator (UAT
+        // correction, paired with `WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS`
+        // above): below 10, the majors are now every integer 1-9, so the
+        // minor subdivisions fill each UNIT interval at a 0.2 step --
+        // 1.2/1.4/1.6/1.8 between 1 and 2 (the owner's own explicit
+        // example), identically generalized to every other integer
+        // interval up to 9-10. At/above 10 the majors are unchanged
+        // (10/20/50/100/200), so this reuses the EXISTING classic
+        // log-paper 1-2-5 decade subdivision verbatim for that portion
+        // (12/14/16/18, 25/30/35/40/45, 60/70/80/90, and the same pattern
+        // continued for 100-200) -- never a value that collides with one
+        // of the fixed majors above.
+        function wwOvercurrentPickupMultipleMinors(viewport) {
+            const ticks = [];
+            for (let n = 1; n <= 9; n++) {
+                for (const step of [0.2, 0.4, 0.6, 0.8]) {
+                    ticks.push(Number((n + step).toPrecision(6)));
+                }
+            }
+            for (let exp = 1; exp <= 2; exp++) {
+                const decade = Math.pow(10, exp);
+                for (const [start, end, step] of WW_OC_MINOR_POW125_SUBDIVISIONS) {
+                    for (let base = start + step; base < end - 1e-9; base += step) {
+                        ticks.push(Number((decade * base).toPrecision(6)));
+                    }
+                }
+            }
+            return [...new Set(ticks)].filter((v) => v >= viewport.xMin - 1e-9 && v <= viewport.xMax + 1e-9).sort((a, b) => a - b);
+        }
+        // X minors are mode-aware (Relay Current keeps the generic
+        // dynamic 1-2-5 subdivision, unchanged); Y minors are always the
+        // pure-decade set, unaffected by X-axis mode.
         function wwOvercurrentXMinors(viewport) {
-            return wwOvercurrentGenerateMinorPow125Ticks(viewport.xMin, viewport.xMax);
+            return wwOvercurrentState.xAxisMode === WW_OC_XAXIS_RELAY_CURRENT
+                ? wwOvercurrentGenerateMinorPow125Ticks(viewport.xMin, viewport.xMax)
+                : wwOvercurrentPickupMultipleMinors(viewport);
         }
         function wwOvercurrentYMinors(viewport) {
             return wwOvercurrentGenerateMinorDecadeTicks(viewport.yMin, viewport.yMax);
@@ -36436,10 +36507,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!svg) return;
             const viewport = wwOvercurrentState.viewport;
             const geo = wwOvercurrentChartGeometry(viewport);
-            const xMajors = wwOvercurrentXMajors(viewport);
-            const yMajors = wwOvercurrentYMajors(viewport);
             const isRelayCurrentAxis = wwOvercurrentState.xAxisMode === WW_OC_XAXIS_RELAY_CURRENT;
             const pickup = wwOvercurrentState.settings.pickupCurrentSecondary;
+            // Pickup Multiple mode uses its own FIXED, owner-approved
+            // major list (UAT correction: 3/4/6/7/8/9 must always be
+            // visible majors, never derived from the generic dynamic
+            // 1-2-5 classifier); Relay Current mode keeps that generic
+            // dynamic classifier unchanged (task's own explicit
+            // instruction: this fixed policy is Pickup-Multiple-specific).
+            const xMajors = isRelayCurrentAxis ? wwOvercurrentXMajors(viewport) : wwOvercurrentPickupMultipleMajors(viewport);
+            const yMajors = wwOvercurrentYMajors(viewport);
             const parts = [];
 
             // Clips the CURVE only to the real log-mapped plotting

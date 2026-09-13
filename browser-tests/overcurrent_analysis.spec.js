@@ -235,12 +235,16 @@ test.describe("Overcurrent Analysis v1 -- chart axes, grid, and ticks", () => {
 
     // Axis lines (X + Y).
     await expect(page.locator("#wwOvercurrentSvg line.ww-oc-axis")).toHaveCount(2);
-    // Major grid lines only (2026-09-12 UAT: simpler grid) -- 8 X majors
-    // (0.5,1,2,5,10,20,50,100) + 4 Y majors (0.1,1,10,100).
-    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-gridline")).toHaveCount(12);
+    // Major grid lines only (2026-09-13 owner UAT correction: Pickup
+    // Multiple mode's own FIXED, owner-approved major list) -- 13 X
+    // majors (1,2,3,4,5,6,7,8,9,10,20,50,100) + 4 Y majors
+    // (0.1,1,10,100). 3/4/6/7/8/9 are now ALWAYS-VISIBLE majors, never
+    // minor-gated -- see TestPickupMultipleFixedMajorTicks below for the
+    // dedicated coverage of this correction.
+    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-gridline")).toHaveCount(17);
 
     // X majors that never coincide with a Y major label.
-    for (const label of ["0.5", "2", "5", "20", "50"]) {
+    for (const label of ["2", "3", "4", "5", "6", "7", "8", "9", "20", "50"]) {
       await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label", { hasText: new RegExp("^" + label.replace(".", "\\.") + "$") })).toHaveCount(1);
     }
     // Values shared by both axes' own major set ("1", "10", "100").
