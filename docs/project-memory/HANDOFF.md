@@ -8,6 +8,85 @@ Last updated: **2026-09-13**
 
 ## What was most recently done
 
+**Overcurrent chart UX enhancement — a Pickup Multiple/Relay Current
+X-axis representation toggle plus independently-toggleable major/minor
+logarithmic grid controls — [DECISIONS.md — DEC-092](DECISIONS.md#dec-092--overcurrent-chart-ux-enhancement-a-pickup-multiplerelay-current-x-axis-representation-toggle-and-independently-toggleable-majorminor-logarithmic-grid-controls).
+Frontend-only (`frontend/index.html`); no backend file touched.**
+
+**Feature A — X-axis representation toggle**, default Pickup Multiple
+(unchanged `M = Irelay / Ipickup`), alternate Relay Current (amperes)
+via the exact `Irelay = M * Ipickup` relationship
+(`wwOvercurrentMultipleToRelayCurrent()`/
+`wwOvercurrentRelayCurrentToMultiple()`, golden-tested against the
+owner's own example: pickup 0.8 A, M=2.5 -> relay current 2.0 A).
+Switching is a pure re-render — reuses the already-fetched curve
+geometry and already-computed result verbatim, zero backend requests.
+The exact analytic curve-viewport-boundary solver from the prior
+"Curve/viewport boundary alignment" work (`wwOvercurrentVisibleCurveSegment()`)
+stays authoritative in the characteristic's own M domain unchanged; in
+Relay Current mode the active (amp) viewport is converted to its
+M-domain equivalent first, solved exactly as before, then the exact
+M-domain result points are transformed back to amperes — never a
+second numeric solve. `wwOvercurrentOperatingPointX(result)` is the one
+new helper that picks which already-computed backend field becomes the
+chart's operating-point coordinate; the existing clamping/edge-
+indicator/guide-line rendering needed ZERO changes, since it was
+already unit-agnostic. Each mode remembers its own X range
+independently (`savedXRangeByMode`) so switching never lands on an
+unusable range; Y stays shared (operating time means the same thing in
+both). A new pickup-boundary reference line (`.ww-oc-pickup-boundary`)
+makes the M=1/pickup-amps threshold visible on the chart for the first
+time in either mode.
+
+**Feature B — major/minor logarithmic grid**: major gridlines remain
+always visible (unchanged); two new checkboxes
+(`#wwOvercurrentMinorGridXCheckbox`/`#wwOvercurrentMinorGridYCheckbox`,
+both default OFF) independently add minor gridlines using the classic
+log-log graph-paper 1-2-5 subdivision (X: 1.2/1.4/1.6/1.8 between 1 and
+2, widening per sub-interval at every decade — the owner's own explicit
+example, proved via direct Node execution) and the standard `2..9 x
+10^decade` set (Y) — deliberately unlabeled to avoid clutter. Toggling
+is a pure re-render, zero backend requests. Both major and minor tick
+generation for both features are derived from whatever the CURRENT
+viewport is (default, zoomed, or Relay-Current-mode), never a
+hard-coded range.
+
+**Session persistence**: `xAxisMode`/`minorGridX`/`minorGridY`/
+`savedXRangeByMode` all live on `wwOvercurrentState`, in-memory only,
+exactly like `settings`/`viewport`/`curveCache` already do — survive
+Playback/phase/TMS/pickup/viewport changes, chart resize, and a
+Phasor↔Overcurrent switch; reset only via `wwOvercurrentResetState()`.
+No backend persistence added, matching every other Overcurrent chart
+preference's own documented boundary.
+
+**Tests**: `backend/tests/test_frontend_overcurrent_analysis.py` — one
+pre-existing test's literal assertion updated to match the new
+M-domain-conversion call shape (same intent, `mDomainViewport` instead
+of the raw active viewport passed to the unchanged
+`wwOvercurrentVisibleCurveSegment()`); ~27 new tests across 9 new test
+classes (toggle markup/defaults, mode-switch behavior, the exact
+conversion math via Node execution, the curve transform, the axis
+title, the pickup boundary, minor-grid toggling, and the minor-tick
+generation matrix). Every other pre-existing structural test in that
+file passes byte-for-byte unmodified. `browser-tests/
+overcurrent_analysis.spec.js` — 11 new Playwright scenarios (default
+states, mode switching with a zero-network-request assertion, pickup-
+boundary movement, relay-current invariance across a pickup change,
+minor-tick DOM positions, independent X/Y toggling, zero-request
+toggling, and preference persistence across Playback/phase/Phasor round
+trips). Full backend regression, full frontend static suite, and the
+full Playwright suite (112 scenarios) all pass — one unrelated,
+pre-existing Phasor Playback-throttle test flaked once under full-suite
+load and passed cleanly when re-run in isolation (confirmed unrelated:
+zero Phasor/backend files were touched this task). `git diff --check`
+clean.
+
+**Stop condition honored**: the owner's own closing instruction was
+"stop after this OC chart enhancement — do NOT start Distance or
+another analyzer," so no new analyzer work was started.
+
+## What was done in the prior session — shared engineering-unit normalization, fixing a real Overcurrent UAT defect
+
 **Shared engineering-unit normalization (`app/domain/engineering_units.py`,
 new), fixing a real Overcurrent UAT defect — [DECISIONS.md — DEC-091](DECISIONS.md#dec-091--shared-engineering-unit-normalization-appengineeringunits-becomes-the-one-authoritative-parsingnormalizationcanonical-conversion-layer-for-every-analyzer-fixing-a-real-overcurrent-uat-defect).**
 Owner UAT found: a `2.4 kA` primary current through a `1200:1` CT

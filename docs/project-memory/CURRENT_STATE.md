@@ -574,6 +574,32 @@ for the full architecture, per-consumer audit table, and the
 future-analyzer invariant a later analyzer (Distance/Differential/
 further Power calculations) must follow.
 
+**Overcurrent chart UX enhancement is implemented (2026-09-13,
+[DECISIONS.md — DEC-092](DECISIONS.md#dec-092--overcurrent-chart-ux-enhancement-a-pickup-multiplerelay-current-x-axis-representation-toggle-and-independently-toggleable-majorminor-logarithmic-grid-controls)),
+frontend-only, no IDMT/pickup/TMS/CT/RMS/Playback/engineering-unit
+behavior changed.** A compact toggle switches the chart's X axis
+between the existing normalized Pickup Multiple representation
+(`M = Irelay / Ipickup`, default, unchanged) and a new Relay Current
+representation (amperes), via the exact `Irelay = M * Ipickup`
+relationship — switching is a pure re-render (reuses the already-
+fetched curve geometry and already-computed result, zero backend
+requests); the exact analytic curve-boundary solve established by the
+prior "Curve/viewport boundary alignment" work stays authoritative in
+the M domain and is transformed to amperes for display, never
+re-solved numerically. Each representation remembers its own X range
+independently (Y stays shared, since operating time means the same
+thing in both) so switching never lands on an unusable range. A new
+pickup-boundary reference line makes the M=1/pickup-amps threshold
+visible on the chart for the first time. Major gridlines remain always
+visible; two new independently-toggleable minor-gridline checkboxes
+(both default OFF) add the classic log-log graph-paper 1-2-5 (X) /
+`2..9 x 10^decade` (Y) subdivision convention, unlabeled to avoid
+clutter. All new state is session-local, following the exact precedent
+`viewport`/`settings` already established. See
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own "Chart X-axis
+representation toggle and minor grid controls" section for the full
+architecture.
+
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test
 infrastructure only, zero production code changed) establishes the

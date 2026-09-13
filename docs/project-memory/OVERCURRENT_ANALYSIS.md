@@ -835,6 +835,150 @@ before, zero network requests on any viewport/zoom change (confirmed by
 "viewport changes never alter wwPlayback.currentTime or trigger a new
 curve fetch" test, still passing unmodified).
 
+## Chart X-axis representation toggle and minor grid controls — chart UX enhancement (2026-09-13, DEC-092)
+
+Two frontend-only, display-only chart enhancements — **no IEC IDMT
+calculation, TMS, pickup, CT conversion, RMS, Playback, or engineering-
+unit normalization changed by either one** (the same byte-for-byte-
+unchanged domain/service/API tests referenced throughout this document
+still pass unmodified).
+
+### Feature A — Pickup Multiple vs. Relay Current
+
+A compact toggle (`#wwOvercurrentAxisModePickupBtn`/
+`#wwOvercurrentAxisModeRelayBtn`) switches the chart's X axis between:
+
+- **Pickup Multiple** (default, unchanged from every prior release) —
+  `M = Irelay / Ipickup`, axis title "Current / Pickup Multiple (M)",
+  pickup boundary fixed at `M = 1`.
+- **Relay Current** — the SAME already-computed values re-expressed in
+  amperes via the exact relationship `Irelay = M * Ipickup`, axis title
+  "Relay Current (A secondary)", pickup boundary at the current pickup
+  value (moves when pickup changes; the operating point itself does
+  NOT move, since `relay_secondary_current` is independent of pickup —
+  only `multiple_of_pickup` depends on it).
+
+`wwOvercurrentMultipleToRelayCurrent(multiple, pickup)`/
+`wwOvercurrentRelayCurrentToMultiple(relayCurrent, pickup)` are the one
+pair of exact bidirectional conversion functions (never approximated,
+`null`-guarded against a non-finite/non-positive pickup) everything else
+in this feature is built on. Golden example (owner UAT): pickup 0.8 A,
+CT 1200:1, 2.4 kA primary → `M = 2.5`, `Irelay = 2.0` A — verified via
+direct Node execution in `backend/tests/test_frontend_overcurrent_analysis.py::
+TestAxisTransformMath`.
+
+**Switching modes is a pure re-render — zero backend requests**
+(`wwOvercurrentSetXAxisMode()`): reuses the already-fetched
+characteristic geometry (`wwOvercurrentState.curveCache`) and the
+already-computed `latestResult` verbatim, exactly like the existing
+viewport zoom/reset controls already do. `wwOvercurrentOperatingPointX(result)`
+is the one helper that decides which already-computed backend field
+(`multiple_of_pickup` or `relay_secondary_current`) becomes the chart's
+`currentM` argument — the clamping/edge-indicator/guide logic in
+`wwOvercurrentRenderChart()` itself is completely unit-agnostic and
+needed ZERO changes: it already only ever compares `currentM` against
+`viewport.xMin/xMax`, whatever those happen to mean.
+
+**Exact curve transform (never a second numeric solve)**: the
+analytic viewport-boundary solve (`wwOvercurrentVisibleCurveSegment()`,
+unchanged from the "Curve/viewport boundary alignment" work above) is
+always evaluated in the characteristic's own native M domain. In Relay
+Current mode, the ACTIVE viewport (in amperes) is converted to its
+M-domain equivalent first (`viewport.xMin/xMax` divided by the current
+pickup), solved exactly as before, then the resulting exact M-domain
+points are transformed back to amperes via `Irelay = M * Ipickup` —
+mathematically exact apart from ordinary floating-point precision, per
+the task's own explicit requirement.
+
+**Separate X-range memory per mode, shared Y** — `wwOvercurrentState.
+savedXRangeByMode` remembers each mode's own last X range (custom or
+default) so switching back restores where the user left off, rather
+than forcing a mismatched/unusable range; `viewport.yMin/yMax` (operating
+time, seconds) is never duplicated per mode since it means the same
+thing in both. Relay Current mode's own absolute bounds/default X range
+are pickup-scaled versions of the SAME multipliers Pickup Multiple mode
+already uses (`WW_OC_VIEWPORT_ABSOLUTE`/`WW_OC_VIEWPORT_DEFAULT`'s own
+0.1x/200x and 0.1x/100x, times the current pickup) — never a second,
+independently-chosen amp range. Reset restores the sensible default for
+whichever mode is currently active (Pickup Multiple: exactly `{0.1,
+100, 0.01, 100}`; Relay Current: the pickup-scaled equivalent).
+
+**Pickup boundary reference line** (new, `.ww-oc-pickup-boundary`) — a
+thin dotted vertical reference at the pickup threshold, in the current
+axis's own units, that didn't exist before this feature (there was
+previously no visual indicator of "where is pickup" on the chart at
+all). Skipped entirely if it falls outside the current viewport, never
+distorted/clamped to a misleading position.
+
+### Feature B — major/minor logarithmic grid
+
+**Major gridlines are always visible**, unconditionally, exactly as the
+"Chart UX refinement"/"Adjustable chart viewport" work above already
+established — untouched by this feature. **Minor gridlines** are a new,
+independently-toggleable addition per axis (`#wwOvercurrentMinorGridXCheckbox`/
+`#wwOvercurrentMinorGridYCheckbox`, both default OFF), styled lighter/
+thinner (`.ww-oc-gridline-minor`) so they never compete visually with
+the major set.
+
+**Minor tick generation reuses the classic "log-log graph paper" 1-2-5
+subdivision convention**, paired with the existing major 1-2-5
+progression (`wwOvercurrentGeneratePow125Ticks`) — never a single
+linear step across the whole range:
+
+```
+[1, 2)  step 0.2  -> 1.2, 1.4, 1.6, 1.8   (owner's own explicit example)
+[2, 5)  step 0.5  -> 2.5, 3, 3.5, 4, 4.5
+[5, 10) step 1    -> 6, 7, 8, 9
+```
+
+— the same pattern repeats, log-correctly, at every power of ten in
+view (`wwOvercurrentGenerateMinorPow125Ticks()`). The Y (operating-time,
+pure-decade) axis uses the standard `2..9 x 10^decade` log-paper minor
+set (`wwOvercurrentGenerateMinorDecadeTicks()`) — deliberately
+unlabeled (only major ticks get text labels), so the chart never gets
+cluttered.
+
+Toggling either minor-grid checkbox is a pure re-render
+(`wwOvercurrentRerenderChartFromState()`) — zero backend requests,
+identical discipline to the viewport/zoom controls and the axis-mode
+toggle above. Both toggles respond correctly to the actual current
+viewport (default, zoomed, or Relay-Current-mode) since
+`wwOvercurrentXMinors()`/`wwOvercurrentYMinors()` are generated from
+whatever `viewport.xMin/xMax`/`yMin/yMax` currently are, never a
+hard-coded range.
+
+### Session persistence
+
+`xAxisMode`/`minorGridX`/`minorGridY`/`savedXRangeByMode` all live on
+`wwOvercurrentState`, in-memory only — the same session-only precedent
+every other Overcurrent chart preference (`settings`/`viewport`/
+`curveCache`) already established. They survive Playback time changes,
+phase changes, pickup/TMS changes, viewport changes, chart resize, and
+a Phasor↔Overcurrent switch; reset only via `wwOvercurrentResetState()`
+(a full analyzer state recreation on new workspace/clear), exactly like
+`viewport` itself already resets there.
+
+### Tests
+
+`backend/tests/test_frontend_overcurrent_analysis.py` — new
+`TestAxisRepresentationToggleMarkupAndDefaults`/
+`TestAxisRepresentationToggleBehavior`/`TestAxisTransformMath`/
+`TestOperatingPointXPicksTheActiveModesField`/
+`TestCurveTransformForRelayCurrentMode`/`TestAxisTitleSwitchesWithMode`/
+`TestPickupBoundaryReference`/`TestMinorGridToggles`/
+`TestMinorTickGenerationMatrix` classes; one pre-existing test
+(`test_curve_uses_the_exact_visible_segment_never_the_raw_fetched_points`)
+updated to match the new M-domain-conversion call shape (`mDomainViewport`
+instead of the raw active `viewport`), same intent preserved. Every
+other pre-existing structural test in this file passes byte-for-byte
+unmodified. `browser-tests/overcurrent_analysis.spec.js` — new "X-axis
+representation toggle" and "minor grid toggles" describe blocks (11
+scenarios): default mode/toggle states, mode switching with zero
+network requests, pickup-boundary movement, relay-current invariance
+across a pickup change, minor-tick subdivision positions, independent
+X/Y toggling, zero-request toggling, and session persistence across
+Playback/phase/Phasor round trips.
+
 ## Shared Analysis Engineering Context lifecycle — UAT fix (2026-09-12)
 
 **Owner UAT symptom**: after uploading an event, opening Overcurrent
@@ -984,6 +1128,7 @@ the Playback cursor, resize) is NOT Overcurrent's own — see
 ## Related documents
 
 - [DECISIONS.md — DEC-090](DECISIONS.md#dec-090--overcurrent-analysis-v1-the-second-analysis-menu-analyzer-iec-idmt-characteristic-evaluation-against-a-one-cycle-trailing-rms-current-at-the-shared-playback-driven-analysis-time) — this slice's full approval record.
+- [DECISIONS.md — DEC-092](DECISIONS.md#dec-092--overcurrent-chart-ux-enhancement-a-pickup-multiplerelay-current-x-axis-representation-toggle-and-independently-toggleable-majorminor-logarithmic-grid-controls) — the chart X-axis representation toggle and minor grid controls (this document's own "Chart X-axis representation toggle and minor grid controls" section above).
 - [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) — the first Analysis-menu
   analyzer; the resolver/Playback-integration/Analysis-shell patterns
   this document reuses throughout.
