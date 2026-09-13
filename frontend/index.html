@@ -36094,16 +36094,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // all, so they were wrongly absent from the always-visible major
         // grid). Dense integer resolution near pickup (1-9, where the
         // characteristic's own behavior is most interesting), then the
-        // same familiar 1-2-5-per-decade pattern above 10 (10/20/50/100),
-        // extended to 200 to cover the full absolute zoom-out bound
-        // (`WW_OC_VIEWPORT_ABSOLUTE.xMax`). "0" is never part of this
-        // list -- it stays the existing visual-only origin-gap
-        // annotation (never a real log(0) coordinate, see
-        // `wwOvercurrentChartGeometry()`/the `geo.isDefault` branch in
-        // `wwOvercurrentRenderChart()`, both unchanged). Filtered to the
-        // current viewport exactly like every other tick list in this
-        // module -- responds correctly to zoom/custom-range the same way.
-        const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100, 200];
+        // same familiar 1-2-5-per-decade pattern above 10 (10/20/50/100)
+        // -- EXACTLY this set, per owner correction (2026-09-13): no
+        // extension to 200 or any other value beyond 100, even though
+        // the viewport's own absolute zoom-out bound reaches 200 (a
+        // custom/zoomed range beyond 100 simply shows no major tick past
+        // it, which is the owner-approved behavior here, not a gap to
+        // fill). "0" is never part of this list -- it stays the existing
+        // visual-only origin-gap annotation (never a real log(0)
+        // coordinate, see `wwOvercurrentChartGeometry()`/the
+        // `geo.isDefault` branch in `wwOvercurrentRenderChart()`, both
+        // unchanged). Filtered to the current viewport exactly like
+        // every other tick list in this module -- responds correctly to
+        // zoom/custom-range the same way.
+        const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100];
         function wwOvercurrentPickupMultipleMajors(viewport) {
             // Excludes a value that exactly coincides with the viewport's
             // own minimum -- that value already gets its own dedicated

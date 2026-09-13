@@ -837,14 +837,14 @@ class TestPickupMultipleFixedMajorTicks:
 
     def test_fixed_major_tick_constant_matches_the_owner_approved_list(self):
         source = _source()
-        assert "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100, 200];" in source
+        assert "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100];" in source
 
     def test_default_viewport_renders_every_owner_approved_major_via_node(self):
         import json
         import subprocess
 
         source = _source()
-        const_decl = "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100, 200];\n"
+        const_decl = "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100];\n"
         fn = _function_body(source, "function wwOvercurrentPickupMultipleMajors(viewport)", "function wwOvercurrentFormatTickValue")
         script = const_decl + fn + "\nconsole.log(JSON.stringify(wwOvercurrentPickupMultipleMajors({ xMin: 0.1, xMax: 100 })));"
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
@@ -858,7 +858,7 @@ class TestPickupMultipleFixedMajorTicks:
         import subprocess
 
         source = _source()
-        const_decl = "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100, 200];\n"
+        const_decl = "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100];\n"
         fn = _function_body(source, "function wwOvercurrentPickupMultipleMajors(viewport)", "function wwOvercurrentFormatTickValue")
         script = const_decl + fn + "\nconsole.log(JSON.stringify(wwOvercurrentPickupMultipleMajors({ xMin: 0.1, xMax: 100 })));"
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
@@ -870,7 +870,7 @@ class TestPickupMultipleFixedMajorTicks:
         """0 stays the existing visual-only origin label -- never part of
         the fixed major-tick array, never passed through Math.log10()."""
         source = _source()
-        assert "0" not in [str(v) for v in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100, 200]]
+        assert "0" not in [str(v) for v in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100]]
         fn = _function_body(source, "function wwOvercurrentPickupMultipleMajors(viewport)", "function wwOvercurrentFormatTickValue")
         assert "Math.log10" not in fn
 
@@ -888,7 +888,7 @@ class TestPickupMultipleFixedMajorTicks:
         import subprocess
 
         source = _source()
-        x_const = "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100, 200];\n"
+        x_const = "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100];\n"
         x_fn = _function_body(source, "function wwOvercurrentPickupMultipleMajors(viewport)", "function wwOvercurrentFormatTickValue")
         y_fn = _function_body(source, "function wwOvercurrentGenerateDecadeTicks(min, max)", "// Major/minor classification")
         classify_fn = _function_body(source, "function wwOvercurrentClassifyMajors(allTicks, axisMin)", "function wwOvercurrentXMajors")
