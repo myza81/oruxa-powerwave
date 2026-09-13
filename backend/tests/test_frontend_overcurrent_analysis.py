@@ -326,11 +326,18 @@ class TestChartAxesGridAndTicks:
         from the raw fetched `points` array -- `points` is retained only
         as an availability gate (curve data confirmed fetched for this
         characteristic/TMS), never as the source of the rendered
-        coordinates."""
+        coordinates. Chart UX enhancement (axis-representation toggle):
+        the segment is now solved against an M-domain-equivalent viewport
+        (`mDomainViewport`, identity in Pickup Multiple mode, pickup-
+        divided in Relay Current mode) rather than the raw active
+        viewport directly, since the exact boundary solve is always
+        defined in the characteristic's own M variable -- see
+        TestAxisRepresentationToggle below for the Relay Current
+        transform's own dedicated coverage."""
         source = _source()
         fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
         curve_block = _function_body(fn, "if (points && points.length > 0) {", "// Operating point")
-        assert "const segment = wwOvercurrentVisibleCurveSegment(viewport);" in curve_block
+        assert "wwOvercurrentVisibleCurveSegment(mDomainViewport)" in curve_block
         assert "if (segment) {" in curve_block
         assert "points.map" not in curve_block
 
@@ -581,3 +588,284 @@ class TestClearWorkspaceLifecycle:
         source = _source()
         fn = _function_body(source, "function wwClearWorkspace(options)", "for (const panel of ww.panels)")
         assert "wwOvercurrentResetState();" in fn
+
+
+class TestAxisRepresentationToggleMarkupAndDefaults:
+    """Chart UX enhancement -- Feature A: the compact X-axis representation
+    toggle. Default Pickup Multiple; a purely frontend chart-display
+    choice, never a different calculation (see TestAxisTransformMath below
+    for the exact `Irelay = M * Ipickup` proof)."""
+
+    def test_toggle_buttons_exist(self):
+        source = _source()
+        assert 'id="wwOvercurrentAxisModePickupBtn"' in source
+        assert 'id="wwOvercurrentAxisModeRelayBtn"' in source
+        assert 'data-axis-mode="pickup_multiple"' in source
+        assert 'data-axis-mode="relay_current"' in source
+
+    def test_minor_grid_checkboxes_exist(self):
+        source = _source()
+        assert 'id="wwOvercurrentMinorGridXCheckbox"' in source
+        assert 'id="wwOvercurrentMinorGridYCheckbox"' in source
+        assert 'type="checkbox"' in _function_body(source, 'id="wwOvercurrentMinorGridXCheckbox"', 'id="wwOvercurrentMinorGridYCheckbox"')
+
+    def test_default_axis_mode_is_pickup_multiple(self):
+        source = _source()
+        assert "const WW_OC_XAXIS_PICKUP_MULTIPLE = \"pickup_multiple\";" in source
+        assert "const WW_OC_XAXIS_RELAY_CURRENT = \"relay_current\";" in source
+        fn = _function_body(source, "const wwOvercurrentState = {", "function wwOvercurrentFetchCharacteristics")
+        assert "xAxisMode: WW_OC_XAXIS_PICKUP_MULTIPLE," in fn
+
+    def test_default_minor_grid_toggles_are_off(self):
+        source = _source()
+        fn = _function_body(source, "const wwOvercurrentState = {", "function wwOvercurrentFetchCharacteristics")
+        assert "minorGridX: false," in fn
+        assert "minorGridY: false," in fn
+
+    def test_reset_state_also_resets_axis_mode_and_grid_toggles(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentResetState()", "const wwPhasorState")
+        assert "wwOvercurrentState.xAxisMode = WW_OC_XAXIS_PICKUP_MULTIPLE;" in fn
+        assert "wwOvercurrentState.minorGridX = false;" in fn
+        assert "wwOvercurrentState.minorGridY = false;" in fn
+
+
+class TestAxisRepresentationToggleBehavior:
+    def test_set_axis_mode_never_touches_backend_or_playback(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentSetXAxisMode(mode)", "function wwOvercurrentSyncAxisModeButtons")
+        assert "wwOvercurrentFetchCurve" not in fn
+        assert "wwOvercurrentFetchAnalysis" not in fn
+        assert "wwPlayback" not in fn
+        assert "wwOvercurrentHandleSettingsChanged" not in fn
+        assert "wwOvercurrentRerenderChartFromState();" in fn
+
+    def test_set_axis_mode_remembers_each_modes_own_x_range(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentSetXAxisMode(mode)", "function wwOvercurrentSyncAxisModeButtons")
+        assert "wwOvercurrentState.savedXRangeByMode[wwOvercurrentState.xAxisMode] =" in fn
+        assert "const saved = wwOvercurrentState.savedXRangeByMode[mode];" in fn
+
+    def test_set_axis_mode_never_touches_y_bounds(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentSetXAxisMode(mode)", "function wwOvercurrentSyncAxisModeButtons")
+        assert "yMin: wwOvercurrentState.viewport.yMin, yMax: wwOvercurrentState.viewport.yMax," in fn
+
+    def test_toggle_wiring_never_calls_settings_changed_or_playback(self):
+        source = _source()
+        fn = _function_body(
+            source,
+            'document.getElementById("wwOvercurrentAxisModePickupBtn").addEventListener',
+            "wwPlaybackOnTick(wwOvercurrentOnPlaybackTick);",
+        )
+        assert "wwOvercurrentHandleSettingsChanged" not in fn
+        assert "wwPlaybackSeek" not in fn
+        assert "wwOvercurrentSetXAxisMode(WW_OC_XAXIS_PICKUP_MULTIPLE)" in fn
+        assert "wwOvercurrentSetXAxisMode(WW_OC_XAXIS_RELAY_CURRENT)" in fn
+
+
+class TestAxisTransformMath:
+    """Executes the frontend's own conversion helpers via Node -- proves
+    the exact bidirectional `Irelay = M * Ipickup` relationship (task's
+    own golden example: pickup 0.8 A, M=2.5 -> relay current 2.0 A) and
+    that the guardrails never divide/multiply by a non-finite or
+    non-positive pickup."""
+
+    def test_multiple_to_relay_current_matches_owner_golden_example(self):
+        import json
+        import subprocess
+
+        source = _source()
+        to_relay = _function_body(source, "function wwOvercurrentMultipleToRelayCurrent(multiple, pickup)", "function wwOvercurrentRelayCurrentToMultiple")
+        to_multiple = _function_body(source, "function wwOvercurrentRelayCurrentToMultiple(relayCurrent, pickup)", "function wwOvercurrentOperatingPointX")
+        script = to_relay + "\n" + to_multiple + """
+        console.log(JSON.stringify({
+            relay: wwOvercurrentMultipleToRelayCurrent(2.5, 0.8),
+            multiple: wwOvercurrentRelayCurrentToMultiple(2.0, 0.8),
+            nullOnBadPickup: wwOvercurrentMultipleToRelayCurrent(2.5, 0),
+            nullOnNonFinite: wwOvercurrentRelayCurrentToMultiple(NaN, 0.8),
+        }));
+        """
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        assert data["relay"] == pytest.approx(2.0)
+        assert data["multiple"] == pytest.approx(2.5)
+        assert data["nullOnBadPickup"] is None
+        assert data["nullOnNonFinite"] is None
+
+    def test_round_trip_is_exact_for_a_range_of_pickups_and_multiples(self):
+        import json
+        import subprocess
+
+        source = _source()
+        to_relay = _function_body(source, "function wwOvercurrentMultipleToRelayCurrent(multiple, pickup)", "function wwOvercurrentRelayCurrentToMultiple")
+        to_multiple = _function_body(source, "function wwOvercurrentRelayCurrentToMultiple(relayCurrent, pickup)", "function wwOvercurrentOperatingPointX")
+        script = to_relay + "\n" + to_multiple + """
+        const rows = [];
+        for (const pickup of [0.1, 0.5, 0.8, 1.0, 5.0]) {
+            for (const multiple of [1.5, 2.0, 2.5, 10.0, 40.0]) {
+                const relay = wwOvercurrentMultipleToRelayCurrent(multiple, pickup);
+                const recovered = wwOvercurrentRelayCurrentToMultiple(relay, pickup);
+                rows.push({ pickup, multiple, relay, recovered });
+            }
+        }
+        console.log(JSON.stringify(rows));
+        """
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        rows = json.loads(result.stdout)
+        assert len(rows) == 25
+        for row in rows:
+            assert row["recovered"] == pytest.approx(row["multiple"], rel=1e-12)
+
+
+class TestOperatingPointXPicksTheActiveModesField:
+    def test_operating_point_x_selects_relay_current_or_multiple_by_mode(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentOperatingPointX(result)", "function wwOvercurrentRelayCurrentAbsoluteBounds")
+        assert "result.relay_secondary_current" in fn
+        assert "result.multiple_of_pickup" in fn
+        assert "WW_OC_XAXIS_RELAY_CURRENT" in fn
+
+    def test_render_call_sites_use_the_mode_aware_helper(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentEnsureCurveAndRenderPoint(result)", "// ---- Chart: log(M) x log(t) TCC-style plot")
+        assert fn.count("wwOvercurrentOperatingPointX(") == 2
+        assert "result.multiple_of_pickup" not in fn
+        rerender_fn = _function_body(source, "function wwOvercurrentRerenderChartFromState()", "function wwOvercurrentSyncViewportInputs")
+        assert "wwOvercurrentOperatingPointX(latest)" in rerender_fn
+
+
+class TestCurveTransformForRelayCurrentMode:
+    """Task §14: the exact curve-viewport-boundary solution stays
+    authoritative in the M domain; Relay Current mode transforms the
+    exact M-domain intersections via `Irelay = M * Ipickup`, never a
+    second numeric solve."""
+
+    def test_render_chart_solves_in_m_domain_then_transforms_to_amps(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        curve_block = _function_body(fn, "if (points && points.length > 0) {", "// Operating point")
+        assert "wwOvercurrentRelayCurrentToMultiple(viewport.xMin, pickup)" in curve_block
+        assert "wwOvercurrentRelayCurrentToMultiple(viewport.xMax, pickup)" in curve_block
+        assert "wwOvercurrentMultipleToRelayCurrent(p[0], pickup)" in curve_block
+
+    def test_pickup_multiple_mode_passes_the_viewport_through_unchanged(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        curve_block = _function_body(fn, "if (points && points.length > 0) {", "// Operating point")
+        assert "isRelayCurrentAxis && Number.isFinite(pickup) && pickup > 0" in curve_block
+        assert ": viewport;" in curve_block
+
+
+class TestAxisTitleSwitchesWithMode:
+    def test_relay_current_axis_title_text_present(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        assert "Relay Current (A secondary)" in fn
+        assert 'isRelayCurrentAxis ? "Relay Current (A secondary)" : "Current / Pickup Multiple (M)"' in fn
+
+
+class TestPickupBoundaryReference:
+    def test_pickup_boundary_line_renders_at_m_equals_one_or_pickup_amps(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        assert "const pickupBoundaryX = isRelayCurrentAxis ? pickup : 1.0;" in fn
+        assert "ww-oc-pickup-boundary" in fn
+
+    def test_pickup_boundary_skipped_when_outside_viewport(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        boundary_block = _function_body(fn, "const pickupBoundaryX", "// The characteristic curve")
+        assert "pickupBoundaryX >= viewport.xMin" in boundary_block
+        assert "pickupBoundaryX <= viewport.xMax" in boundary_block
+
+
+class TestMinorGridToggles:
+    def test_major_gridlines_always_render_regardless_of_minor_toggles(self):
+        """Major gridlines are drawn unconditionally (no `if
+        (wwOvercurrentState.minorGridX/Y)` guard around the existing
+        major-tick loops) -- only the NEW minor-gridline blocks are
+        gated."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        major_x_block = _function_body(fn, "for (const v of xMajors) {\n                const x = wwOvercurrentPixelX(v, geo);\n                parts.push('<line class=\"ww-oc-gridline\"", "Minor grid lines")
+        assert "wwOvercurrentState.minorGridX" not in major_x_block
+        assert "wwOvercurrentState.minorGridY" not in major_x_block
+
+    def test_minor_gridlines_gated_independently_per_axis(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        assert "if (wwOvercurrentState.minorGridX) {" in fn
+        assert "if (wwOvercurrentState.minorGridY) {" in fn
+        assert fn.count('class="ww-oc-gridline ww-oc-gridline-minor"') == 2
+
+    def test_minor_gridlines_use_a_lighter_class_than_major(self):
+        source = _source()
+        assert ".ww-oc-gridline-minor" in source
+
+    def test_minor_x_checkbox_wiring_rerenders_without_backend_call(self):
+        source = _source()
+        fn = _function_body(
+            source,
+            'document.getElementById("wwOvercurrentMinorGridXCheckbox").addEventListener',
+            'document.getElementById("wwOvercurrentMinorGridYCheckbox").addEventListener',
+        )
+        assert "wwOvercurrentState.minorGridX = event.target.checked;" in fn
+        assert "wwOvercurrentRerenderChartFromState();" in fn
+        assert "fetch" not in fn.lower()
+
+    def test_minor_y_checkbox_wiring_rerenders_without_backend_call(self):
+        source = _source()
+        fn = _function_body(
+            source,
+            'document.getElementById("wwOvercurrentMinorGridYCheckbox").addEventListener',
+            "wwOvercurrentSyncAxisModeButtons();\n        wwOvercurrentSyncGridToggleCheckboxes();\n        // The ONE, permanent subscription",
+        )
+        assert "wwOvercurrentState.minorGridY = event.target.checked;" in fn
+        assert "wwOvercurrentRerenderChartFromState();" in fn
+
+
+class TestMinorTickGenerationMatrix:
+    """Task §9: the classic log-log graph-paper 1-2-5 minor subdivision,
+    proved via direct Node execution -- the owner's own explicit example
+    (1.2/1.4/1.6/1.8 between 1 and 2) plus the wider decade pattern, never
+    a single linear 0.2 step across the whole range."""
+
+    def test_minor_pow125_ticks_between_1_and_2_match_owner_example(self):
+        import json
+        import subprocess
+
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentGenerateMinorPow125Ticks(min, max)", "function wwOvercurrentGenerateMinorDecadeTicks")
+        const_decl = "const WW_OC_MINOR_POW125_SUBDIVISIONS = [[1, 2, 0.2], [2, 5, 0.5], [5, 10, 1]];\n"
+        script = const_decl + fn + "\nconsole.log(JSON.stringify(wwOvercurrentGenerateMinorPow125Ticks(1, 2)));"
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        ticks = json.loads(result.stdout)
+        assert ticks == pytest.approx([1.2, 1.4, 1.6, 1.8])
+
+    def test_minor_pow125_ticks_full_decade_use_log_appropriate_subdivisions(self):
+        import json
+        import subprocess
+
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentGenerateMinorPow125Ticks(min, max)", "function wwOvercurrentGenerateMinorDecadeTicks")
+        const_decl = "const WW_OC_MINOR_POW125_SUBDIVISIONS = [[1, 2, 0.2], [2, 5, 0.5], [5, 10, 1]];\n"
+        script = const_decl + fn + "\nconsole.log(JSON.stringify(wwOvercurrentGenerateMinorPow125Ticks(1, 10)));"
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        ticks = json.loads(result.stdout)
+        # Never a uniform linear 0.2 step across the whole 1->10 range --
+        # the step widens per sub-interval (0.2 within 1-2, 0.5 within
+        # 2-5, 1 within 5-10).
+        assert ticks == pytest.approx([1.2, 1.4, 1.6, 1.8, 2.5, 3.0, 3.5, 4.0, 4.5, 6, 7, 8, 9])
+
+    def test_minor_decade_ticks_are_the_standard_2_to_9_log_paper_set(self):
+        import json
+        import subprocess
+
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentGenerateMinorDecadeTicks(min, max)", "function wwOvercurrentXMinors")
+        script = fn + "\nconsole.log(JSON.stringify(wwOvercurrentGenerateMinorDecadeTicks(0.01, 100)));"
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        ticks = json.loads(result.stdout)
+        expected = [round(b * 10 ** e, 10) for e in range(-2, 2) for b in range(2, 10)]
+        assert ticks == pytest.approx(expected)

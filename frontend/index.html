@@ -6582,6 +6582,64 @@
         .ww-oc-view-field input.ww-oc-view-input-invalid {
             border-color: var(--warn);
         }
+        /* Minor gridlines (chart UX enhancement) -- lighter/thinner than
+           the always-visible major set above, so they never compete
+           visually with it (task §7 "major grid lines should be visually
+           stronger than minor grid lines"). */
+        .ww-oc-gridline-minor {
+            opacity: 0.35;
+            stroke-width: 0.4;
+        }
+        /* Pickup boundary reference line -- a distinct dotted style from
+           both the major/minor gridlines (solid) and the operating-point
+           guides (dashed, `--ww-chart-guide-stroke`), so it reads as its
+           own reference concept. M=1 in Pickup Multiple mode (fixed); the
+           current pickup value, in amperes, in Relay Current mode (moves
+           with the pickup setting). */
+        .ww-oc-pickup-boundary {
+            stroke: var(--text-dim);
+            stroke-width: 0.75;
+            stroke-dasharray: 1 2;
+            opacity: 0.6;
+        }
+        /* X-axis representation toggle + minor-grid checkboxes -- a
+           second compact control row below the existing View controls,
+           same typography scale. */
+        .ww-oc-axis-controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px 10px;
+            margin: 0 0 6px;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+        }
+        .ww-oc-axis-toggle-group {
+            display: inline-flex;
+            gap: 2px;
+        }
+        .ww-oc-axis-toggle-btn {
+            font-size: 0.7rem;
+            line-height: 1;
+            padding: 2px 7px;
+            cursor: pointer;
+            background: transparent;
+        }
+        .ww-oc-axis-toggle-btn--active {
+            background: var(--accent-wash-soft);
+            color: var(--accent);
+            border-color: var(--accent-dim);
+            font-weight: 600;
+        }
+        .ww-oc-grid-toggle-label {
+            margin-left: 4px;
+        }
+        .ww-oc-grid-toggle-field {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -7690,6 +7748,16 @@
                                             <button type="button" id="wwOvercurrentZoomInBtn" class="ww-oc-zoom-btn" aria-label="Zoom in" title="Zoom in">+</button>
                                             <button type="button" id="wwOvercurrentResetViewBtn" class="ww-oc-zoom-btn ww-oc-reset-btn" aria-label="Reset view" title="Reset view">Reset</button>
                                         </span>
+                                    </div>
+                                    <div class="ww-oc-axis-controls" id="wwOvercurrentAxisControls">
+                                        <span class="ww-oc-view-controls-label">X-axis</span>
+                                        <span class="ww-oc-axis-toggle-group" role="group" aria-label="X-axis representation">
+                                            <button type="button" id="wwOvercurrentAxisModePickupBtn" class="ww-oc-axis-toggle-btn ww-oc-axis-toggle-btn--active" data-axis-mode="pickup_multiple" aria-pressed="true">Pickup Multiple</button>
+                                            <button type="button" id="wwOvercurrentAxisModeRelayBtn" class="ww-oc-axis-toggle-btn" data-axis-mode="relay_current" aria-pressed="false">Relay Current</button>
+                                        </span>
+                                        <span class="ww-oc-view-controls-label ww-oc-grid-toggle-label">Minor grid</span>
+                                        <label class="ww-oc-grid-toggle-field"><input type="checkbox" id="wwOvercurrentMinorGridXCheckbox"> X</label>
+                                        <label class="ww-oc-grid-toggle-field"><input type="checkbox" id="wwOvercurrentMinorGridYCheckbox"> Y</label>
                                     </div>
                                     <div class="ww-oc-chart-wrap">
                                         <svg id="wwOvercurrentSvg" viewBox="0 0 320 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Overcurrent characteristic chart"></svg>
@@ -35328,6 +35396,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             "No Engineering Contexts could be automatically suggested from the loaded recording(s). " +
             "Create or correct one manually via Engineering Context configuration.";
 
+        // Chart X-axis representation toggle (2026-XX-XX chart UX
+        // enhancement): a PURE chart-display choice, never a different
+        // calculation. "Pickup Multiple" is the existing normalized M =
+        // Irelay / Ipickup representation (default, unchanged from every
+        // prior Overcurrent release); "Relay Current" re-expresses the
+        // SAME already-computed values along the exact relationship
+        // `Irelay = M * Ipickup` (see wwOvercurrentMultipleToRelayCurrent()
+        // below) -- IEC IDMT calculation, TMS, pickup, CT conversion, RMS,
+        // Playback, and engineering-unit normalization are all completely
+        // untouched by this toggle.
+        const WW_OC_XAXIS_PICKUP_MULTIPLE = "pickup_multiple";
+        const WW_OC_XAXIS_RELAY_CURRENT = "relay_current";
+
         const wwOvercurrentState = {
             contexts: [],
             selectedContextId: null,
@@ -35355,7 +35436,29 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Persists across Playback time changes, phase changes, and
             // Phasor<->Overcurrent switches; reset only via explicit Reset
             // press or full analyzer state recreation (2026-09-12 UAT).
+            // This is always the ACTIVE viewport (its own `xMin`/`xMax` are
+            // expressed in whatever unit `xAxisMode` currently means -- M
+            // for Pickup Multiple, amperes for Relay Current); `yMin`/`yMax`
+            // are unit-independent (operating time, seconds) and shared
+            // across both modes unchanged. See "Chart X-axis representation
+            // toggle" below.
             viewport: { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 },
+            // Chart X-axis representation toggle (frontend-only display
+            // preference -- never affects any backend-computed value).
+            // `savedXRangeByMode` remembers each mode's own last X range
+            // (custom or default) so switching back to a mode restores
+            // where the user left off, rather than forcing a default every
+            // time (task's own "switching modes must not create an
+            // unusable range" requirement); Y is intentionally NOT stored
+            // per-mode here since it is already shared via `viewport.yMin/
+            // yMax` directly. Both default OFF/Pickup Multiple; persist
+            // across Playback/phase/TMS/pickup/viewport changes and resize,
+            // reset only by an explicit workspace reset (see
+            // wwOvercurrentResetState()).
+            xAxisMode: WW_OC_XAXIS_PICKUP_MULTIPLE,
+            savedXRangeByMode: { [WW_OC_XAXIS_PICKUP_MULTIPLE]: null, [WW_OC_XAXIS_RELAY_CURRENT]: null },
+            minorGridX: false,
+            minorGridY: false,
         };
 
         function wwOvercurrentFetchCharacteristics(workspaceId) {
@@ -35855,7 +35958,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const s = wwOvercurrentState.settings;
             const cache = wwOvercurrentState.curveCache;
             if (cache && cache.characteristicId === s.characteristicId && cache.tms === s.tms) {
-                wwOvercurrentRenderChart(cache.points, result.multiple_of_pickup, result.expected_operating_time_seconds);
+                wwOvercurrentRenderChart(cache.points, wwOvercurrentOperatingPointX(result), result.expected_operating_time_seconds);
                 return;
             }
             const workspaceId = currentWorkspaceId();
@@ -35868,7 +35971,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     wwOvercurrentState.curveCache = { characteristicId: requestedCharacteristicId, tms: requestedTms, points };
                     const latest = wwOvercurrentState.latestResult;
                     if (latest && latest.status === "computed") {
-                        wwOvercurrentRenderChart(points, latest.multiple_of_pickup, latest.expected_operating_time_seconds);
+                        wwOvercurrentRenderChart(points, wwOvercurrentOperatingPointX(latest), latest.expected_operating_time_seconds);
                     }
                 },
                 () => {}
@@ -35979,6 +36082,174 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
         function wwOvercurrentFormatTickValue(v) {
             return Number(v.toPrecision(6)).toString();
+        }
+
+        // ---- Chart X-axis representation toggle + minor-grid support
+        // (chart UX enhancement) -- pure display helpers, none of which
+        // read/write anything the IDMT calculation, resolver, or Playback
+        // touch. See docs/project-memory/OVERCURRENT_ANALYSIS.md's own
+        // "Chart X-axis representation toggle" section for the full
+        // architecture. ----
+
+        // Exact bidirectional conversion between the two representations
+        // -- `Irelay = M * Ipickup` (owner's own exact relationship, never
+        // approximated/numerically solved). Returns `null` for a non-
+        // finite/non-positive pickup or a non-finite input, never
+        // divides/multiplies by zero or fabricates a value.
+        function wwOvercurrentMultipleToRelayCurrent(multiple, pickup) {
+            if (!Number.isFinite(multiple) || !Number.isFinite(pickup) || pickup <= 0) return null;
+            return multiple * pickup;
+        }
+        function wwOvercurrentRelayCurrentToMultiple(relayCurrent, pickup) {
+            if (!Number.isFinite(relayCurrent) || !Number.isFinite(pickup) || pickup <= 0) return null;
+            return relayCurrent / pickup;
+        }
+
+        // The operating point's own X coordinate, in whichever unit the
+        // ACTIVE axis mode currently uses -- `result.multiple_of_pickup`
+        // (Pickup Multiple) or `result.relay_secondary_current` (Relay
+        // Current). Both fields already come straight from the backend's
+        // own computed OvercurrentAnalysisResult; this never re-derives
+        // either value, only picks which already-computed field to plot.
+        function wwOvercurrentOperatingPointX(result) {
+            return wwOvercurrentState.xAxisMode === WW_OC_XAXIS_RELAY_CURRENT
+                ? result.relay_secondary_current
+                : result.multiple_of_pickup;
+        }
+
+        // Relay Current mode's own absolute X bounds/default -- scaled
+        // directly from the SAME multipliers `WW_OC_VIEWPORT_ABSOLUTE`/
+        // `WW_OC_VIEWPORT_DEFAULT` already use for Pickup Multiple (0.1x-
+        // 200x absolute, 0.1x-100x default), converted to amperes via the
+        // current pickup -- never a second, independently-chosen amp
+        // range (task's own "do not hard-code a single current range"
+        // instruction: these stay pickup-relative, not a fixed constant).
+        function wwOvercurrentRelayCurrentAbsoluteBounds() {
+            const pickup = wwOvercurrentState.settings.pickupCurrentSecondary;
+            const safePickup = Number.isFinite(pickup) && pickup > 0 ? pickup : 1.0;
+            return { xMin: WW_OC_VIEWPORT_ABSOLUTE.xMin * safePickup, xMax: WW_OC_VIEWPORT_ABSOLUTE.xMax * safePickup };
+        }
+        function wwOvercurrentRelayCurrentDefaultViewport() {
+            const pickup = wwOvercurrentState.settings.pickupCurrentSecondary;
+            const safePickup = Number.isFinite(pickup) && pickup > 0 ? pickup : 1.0;
+            return { xMin: WW_OC_VIEWPORT_DEFAULT.xMin * safePickup, xMax: WW_OC_VIEWPORT_DEFAULT.xMax * safePickup };
+        }
+        // The absolute X bounds for whichever mode is currently active --
+        // used by both the zoom-out clamp and the range-input validator so
+        // neither one ever needs its own copy of this branch.
+        function wwOvercurrentActiveXAbsoluteBounds() {
+            return wwOvercurrentState.xAxisMode === WW_OC_XAXIS_RELAY_CURRENT
+                ? wwOvercurrentRelayCurrentAbsoluteBounds()
+                : { xMin: WW_OC_VIEWPORT_ABSOLUTE.xMin, xMax: WW_OC_VIEWPORT_ABSOLUTE.xMax };
+        }
+        // Range-input validation for whichever mode is currently active --
+        // `wwOvercurrentViewportValid()` itself stays byte-for-byte
+        // unchanged (still the Pickup Multiple validator, unit tests
+        // depend on its exact literal bounds checks); Relay Current mode
+        // gets its own pickup-scaled bounds check here instead of
+        // reimplementing the same shape twice.
+        function wwOvercurrentViewportValidForActiveMode(v) {
+            if (wwOvercurrentState.xAxisMode !== WW_OC_XAXIS_RELAY_CURRENT) return wwOvercurrentViewportValid(v);
+            if (!v || typeof v !== "object") return false;
+            const { xMin, xMax, yMin, yMax } = v;
+            if (![xMin, xMax, yMin, yMax].every((n) => Number.isFinite(n))) return false;
+            const bounds = wwOvercurrentRelayCurrentAbsoluteBounds();
+            if (xMin < bounds.xMin || xMax > bounds.xMax || !(xMin < xMax)) return false;
+            if (yMin < WW_OC_VIEWPORT_ABSOLUTE.yMin || yMax > WW_OC_VIEWPORT_ABSOLUTE.yMax || !(yMin < yMax)) return false;
+            return true;
+        }
+
+        // Minor-tick generation (task §9/§10/§11): the classic "log-log
+        // graph paper" 1-2-5 subdivision convention, paired with the
+        // existing major 1-2-5 progression (`wwOvercurrentGeneratePow125Ticks`)
+        // -- within each [1,2)/[2,5)/[5,10) sub-interval of every decade,
+        // subdivide by a step scaled to that sub-interval (0.2/0.5/1 x
+        // 10^decade respectively). Reproduces the owner's own explicit
+        // example exactly: 1.2, 1.4, 1.6, 1.8 between 1 and 2. Deliberately
+        // NOT a single linear 0.2 step across the whole range -- the same
+        // pattern repeats, log-correctly, at every power of ten in view.
+        const WW_OC_MINOR_POW125_SUBDIVISIONS = [[1, 2, 0.2], [2, 5, 0.5], [5, 10, 1]];
+        function wwOvercurrentGenerateMinorPow125Ticks(min, max) {
+            const ticks = [];
+            const minExp = Math.floor(Math.log10(min)) - 1;
+            const maxExp = Math.ceil(Math.log10(max)) + 1;
+            for (let exp = minExp; exp <= maxExp; exp++) {
+                const decade = Math.pow(10, exp);
+                for (const [start, end, step] of WW_OC_MINOR_POW125_SUBDIVISIONS) {
+                    for (let base = start + step; base < end - 1e-9; base += step) {
+                        const v = Number((decade * base).toPrecision(6));
+                        if (v >= min - 1e-9 && v <= max + 1e-9) ticks.push(v);
+                    }
+                }
+            }
+            return [...new Set(ticks)].sort((a, b) => a - b);
+        }
+        // Minor ticks for a pure-decade (Y, operating time) axis -- the
+        // standard 2..9 x 10^decade log-paper minor lines. Never labeled
+        // (task §11 "do not clutter labels") -- gridlines only.
+        function wwOvercurrentGenerateMinorDecadeTicks(min, max) {
+            const ticks = [];
+            const minExp = Math.floor(Math.log10(min)) - 1;
+            const maxExp = Math.ceil(Math.log10(max)) + 1;
+            for (let exp = minExp; exp <= maxExp; exp++) {
+                const decade = Math.pow(10, exp);
+                for (let base = 2; base <= 9; base++) {
+                    const v = Number((decade * base).toPrecision(6));
+                    if (v >= min - 1e-9 && v <= max + 1e-9) ticks.push(v);
+                }
+            }
+            return [...new Set(ticks)].sort((a, b) => a - b);
+        }
+        function wwOvercurrentXMinors(viewport) {
+            return wwOvercurrentGenerateMinorPow125Ticks(viewport.xMin, viewport.xMax);
+        }
+        function wwOvercurrentYMinors(viewport) {
+            return wwOvercurrentGenerateMinorDecadeTicks(viewport.yMin, viewport.yMax);
+        }
+
+        // Switches the chart's X-axis representation -- frontend-only,
+        // zero backend requests (task §5): reuses the already-fetched
+        // characteristic geometry/data and the already-computed
+        // `latestResult` verbatim, only changing how they are PLOTTED.
+        // Remembers each mode's own last X range in `savedXRangeByMode` so
+        // switching back restores where the user left off (never forces
+        // an unusable/mismatched range); Y is left completely untouched,
+        // since operating time (seconds) means the same thing in both
+        // modes (task §12 "Y viewport can remain shared").
+        function wwOvercurrentSetXAxisMode(mode) {
+            if (mode !== WW_OC_XAXIS_PICKUP_MULTIPLE && mode !== WW_OC_XAXIS_RELAY_CURRENT) return;
+            if (mode === wwOvercurrentState.xAxisMode) return;
+            wwOvercurrentState.savedXRangeByMode[wwOvercurrentState.xAxisMode] =
+                { xMin: wwOvercurrentState.viewport.xMin, xMax: wwOvercurrentState.viewport.xMax };
+            wwOvercurrentState.xAxisMode = mode;
+            const saved = wwOvercurrentState.savedXRangeByMode[mode];
+            const defaultX = mode === WW_OC_XAXIS_RELAY_CURRENT
+                ? wwOvercurrentRelayCurrentDefaultViewport()
+                : { xMin: WW_OC_VIEWPORT_DEFAULT.xMin, xMax: WW_OC_VIEWPORT_DEFAULT.xMax };
+            const nextX = saved || defaultX;
+            wwOvercurrentState.viewport = {
+                xMin: nextX.xMin, xMax: nextX.xMax,
+                yMin: wwOvercurrentState.viewport.yMin, yMax: wwOvercurrentState.viewport.yMax,
+            };
+            wwOvercurrentSyncViewportInputs();
+            wwOvercurrentSyncAxisModeButtons();
+            wwOvercurrentRerenderChartFromState();
+        }
+        function wwOvercurrentSyncAxisModeButtons() {
+            const pickupBtn = document.getElementById("wwOvercurrentAxisModePickupBtn");
+            const relayBtn = document.getElementById("wwOvercurrentAxisModeRelayBtn");
+            if (!pickupBtn || !relayBtn) return;
+            const isRelay = wwOvercurrentState.xAxisMode === WW_OC_XAXIS_RELAY_CURRENT;
+            pickupBtn.classList.toggle("ww-oc-axis-toggle-btn--active", !isRelay);
+            pickupBtn.setAttribute("aria-pressed", String(!isRelay));
+            relayBtn.classList.toggle("ww-oc-axis-toggle-btn--active", isRelay);
+            relayBtn.setAttribute("aria-pressed", String(isRelay));
+        }
+        function wwOvercurrentSyncGridToggleCheckboxes() {
+            const xCheckbox = document.getElementById("wwOvercurrentMinorGridXCheckbox");
+            const yCheckbox = document.getElementById("wwOvercurrentMinorGridYCheckbox");
+            if (xCheckbox) xCheckbox.checked = wwOvercurrentState.minorGridX;
+            if (yCheckbox) yCheckbox.checked = wwOvercurrentState.minorGridY;
         }
 
         // Chart-viewport-alignment UAT follow-up (2026-09-12): direct,
@@ -36167,6 +36438,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const geo = wwOvercurrentChartGeometry(viewport);
             const xMajors = wwOvercurrentXMajors(viewport);
             const yMajors = wwOvercurrentYMajors(viewport);
+            const isRelayCurrentAxis = wwOvercurrentState.xAxisMode === WW_OC_XAXIS_RELAY_CURRENT;
+            const pickup = wwOvercurrentState.settings.pickupCurrentSecondary;
             const parts = [];
 
             // Clips the CURVE only to the real log-mapped plotting
@@ -36189,6 +36462,27 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             for (const v of yMajors) {
                 const y = wwOvercurrentPixelY(v, geo);
                 parts.push('<line class="ww-oc-gridline" x1="' + geo.logLeft + '" y1="' + y.toFixed(2) + '" x2="' + geo.plotRight + '" y2="' + y.toFixed(2) + '"></line>');
+            }
+
+            // Minor grid lines (chart UX enhancement, task §7/§8/§9/§10/
+            // §11) -- independently toggleable per axis, default OFF; the
+            // major grid above is ALWAYS drawn regardless of these
+            // toggles. Same log-log "graph paper" 1-2-5/decade subdivision
+            // convention as the majors -- never a single linear step
+            // across the whole range -- and deliberately unlabeled/
+            // lighter (`.ww-oc-gridline-minor`) so they never compete
+            // visually with the major set.
+            if (wwOvercurrentState.minorGridX) {
+                for (const v of wwOvercurrentXMinors(viewport)) {
+                    const x = wwOvercurrentPixelX(v, geo);
+                    parts.push('<line class="ww-oc-gridline ww-oc-gridline-minor" x1="' + x.toFixed(2) + '" y1="' + geo.plotTop + '" x2="' + x.toFixed(2) + '" y2="' + geo.logBottom + '"></line>');
+                }
+            }
+            if (wwOvercurrentState.minorGridY) {
+                for (const v of wwOvercurrentYMinors(viewport)) {
+                    const y = wwOvercurrentPixelY(v, geo);
+                    parts.push('<line class="ww-oc-gridline ww-oc-gridline-minor" x1="' + geo.logLeft + '" y1="' + y.toFixed(2) + '" x2="' + geo.plotRight + '" y2="' + y.toFixed(2) + '"></line>');
+                }
             }
 
             // Full axis frame -- spans the WHOLE plot rectangle,
@@ -36229,13 +36523,33 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 parts.push('<text class="ww-oc-tick-label" x="' + (geo.plotLeft - 3) + '" y="' + (yMinPx + 2.2).toFixed(2) + '" text-anchor="end">' + wwOvercurrentFormatTickValue(viewport.yMin) + '</text>');
             }
 
-            // Axis titles -- unchanged text/position.
-            parts.push('<text class="ww-oc-axis-label" x="' + ((geo.plotLeft + geo.plotRight) / 2) + '" y="' + (WW_OC_CHART_H - 4) + '" text-anchor="middle">Current / Pickup Multiple (M)</text>');
+            // Axis titles -- Y unchanged text/position; X switches with
+            // the axis-representation toggle (task §2/§4), both exact
+            // strings the owner specified.
+            const xAxisTitle = isRelayCurrentAxis ? "Relay Current (A secondary)" : "Current / Pickup Multiple (M)";
+            parts.push('<text class="ww-oc-axis-label" x="' + ((geo.plotLeft + geo.plotRight) / 2) + '" y="' + (WW_OC_CHART_H - 4) + '" text-anchor="middle">' + xAxisTitle + '</text>');
             const yTitleCenter = (geo.plotTop + geo.plotBottom) / 2;
             parts.push(
                 '<text class="ww-oc-axis-label" x="9" y="' + yTitleCenter.toFixed(1) +
                 '" text-anchor="middle" transform="rotate(-90 9 ' + yTitleCenter.toFixed(1) + ')">Expected Operating Time (s)</text>'
             );
+
+            // Pickup boundary reference line (task §2/§6/§13): a thin
+            // vertical reference at the pickup threshold, in the CURRENT
+            // axis's own units -- M=1 in Pickup Multiple mode (fixed,
+            // never moves), or the current pickup value in amperes in
+            // Relay Current mode (moves exactly with the pickup setting,
+            // per task §6's own worked example). Distinct styling from
+            // both the major/minor gridlines and the operating-point
+            // guides, so it reads as a reference boundary, never a
+            // computed result or a gridline. Skipped entirely if it falls
+            // outside the current viewport -- never distorted/clamped to
+            // a misleading position.
+            const pickupBoundaryX = isRelayCurrentAxis ? pickup : 1.0;
+            if (Number.isFinite(pickupBoundaryX) && pickupBoundaryX >= viewport.xMin - 1e-9 && pickupBoundaryX <= viewport.xMax + 1e-9) {
+                const boundaryPx = wwOvercurrentPixelX(pickupBoundaryX, geo);
+                parts.push('<line class="ww-oc-pickup-boundary" x1="' + boundaryPx.toFixed(2) + '" y1="' + geo.plotTop + '" x2="' + boundaryPx.toFixed(2) + '" y2="' + geo.logBottom + '"></line>');
+            }
 
             // The characteristic curve -- the EXACT visible segment for
             // this viewport (2026-09-12 UAT follow-up), computed
@@ -36253,8 +36567,27 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // coordinates. The SVG `<clipPath>` below remains a pure
             // safety net, never the primary mechanism that determines
             // where the visible curve starts/ends.
+            // Feature A transform (task §14): `wwOvercurrentVisibleCurveSegment()`
+            // is always evaluated in the characteristic's own native M
+            // (pickup-multiple) domain -- its exact analytic viewport-
+            // boundary solve is defined in terms of the IDMT equation's
+            // own M variable. In Relay Current mode the ACTIVE `viewport`
+            // is in amperes, so the equivalent M-domain viewport
+            // (`viewport.xMin/xMax` divided by the current pickup) is
+            // solved instead, then the exact M-domain result points are
+            // transformed back to amperes via `Irelay = M * Ipickup`
+            // (`wwOvercurrentMultipleToRelayCurrent()`) -- never a second,
+            // independent numeric solve -- before pixel-mapping. This
+            // stays mathematically exact apart from ordinary floating-
+            // point precision (task's own explicit requirement).
             if (points && points.length > 0) {
-                const segment = wwOvercurrentVisibleCurveSegment(viewport);
+                const mDomainViewport = isRelayCurrentAxis && Number.isFinite(pickup) && pickup > 0
+                    ? { xMin: wwOvercurrentRelayCurrentToMultiple(viewport.xMin, pickup), xMax: wwOvercurrentRelayCurrentToMultiple(viewport.xMax, pickup), yMin: viewport.yMin, yMax: viewport.yMax }
+                    : viewport;
+                let segment = wwOvercurrentVisibleCurveSegment(mDomainViewport);
+                if (segment && isRelayCurrentAxis) {
+                    segment = segment.map((p) => [wwOvercurrentMultipleToRelayCurrent(p[0], pickup), p[1]]);
+                }
                 if (segment) {
                     const curvePath = segment.map((p, i) => {
                         const x = wwOvercurrentPixelX(p[0], geo);
@@ -36333,7 +36666,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const points = cache ? cache.points : null;
             const latest = wwOvercurrentState.latestResult;
             if (latest && latest.status === "computed") {
-                wwOvercurrentRenderChart(points, latest.multiple_of_pickup, latest.expected_operating_time_seconds);
+                wwOvercurrentRenderChart(points, wwOvercurrentOperatingPointX(latest), latest.expected_operating_time_seconds);
             } else {
                 wwOvercurrentRenderChart(points, null, null);
             }
@@ -36369,9 +36702,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 xMin: parseFloat(xMinEl.value), xMax: parseFloat(xMaxEl.value),
                 yMin: parseFloat(yMinEl.value), yMax: parseFloat(yMaxEl.value),
             };
-            if (!wwOvercurrentViewportValid(candidate)) {
-                xMinEl.classList.toggle("ww-oc-view-input-invalid", !(candidate.xMin >= WW_OC_VIEWPORT_ABSOLUTE.xMin && candidate.xMin < candidate.xMax));
-                xMaxEl.classList.toggle("ww-oc-view-input-invalid", !(candidate.xMax <= WW_OC_VIEWPORT_ABSOLUTE.xMax && candidate.xMin < candidate.xMax));
+            // Feature A: validated against whichever mode's own absolute
+            // bounds are currently active (pickup-scaled amps in Relay
+            // Current mode, the flat WW_OC_VIEWPORT_ABSOLUTE otherwise) --
+            // see wwOvercurrentViewportValidForActiveMode()/
+            // wwOvercurrentActiveXAbsoluteBounds() above.
+            const xBounds = wwOvercurrentActiveXAbsoluteBounds();
+            if (!wwOvercurrentViewportValidForActiveMode(candidate)) {
+                xMinEl.classList.toggle("ww-oc-view-input-invalid", !(candidate.xMin >= xBounds.xMin && candidate.xMin < candidate.xMax));
+                xMaxEl.classList.toggle("ww-oc-view-input-invalid", !(candidate.xMax <= xBounds.xMax && candidate.xMin < candidate.xMax));
                 yMinEl.classList.toggle("ww-oc-view-input-invalid", !(candidate.yMin >= WW_OC_VIEWPORT_ABSOLUTE.yMin && candidate.yMin < candidate.yMax));
                 yMaxEl.classList.toggle("ww-oc-view-input-invalid", !(candidate.yMax <= WW_OC_VIEWPORT_ABSOLUTE.yMax && candidate.yMin < candidate.yMax));
                 wwOvercurrentSyncViewportInputs();
@@ -36399,8 +36738,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 xMin: Math.pow(10, xCenter - xHalf), xMax: Math.pow(10, xCenter + xHalf),
                 yMin: Math.pow(10, yCenter - yHalf), yMax: Math.pow(10, yCenter + yHalf),
             };
-            candidate.xMin = Math.max(candidate.xMin, WW_OC_VIEWPORT_ABSOLUTE.xMin);
-            candidate.xMax = Math.min(candidate.xMax, WW_OC_VIEWPORT_ABSOLUTE.xMax);
+            // Feature A: X clamps against whichever mode's own absolute
+            // bounds are active -- pickup-scaled amps in Relay Current
+            // mode, the flat WW_OC_VIEWPORT_ABSOLUTE (unchanged) in Pickup
+            // Multiple mode. Y is unit-independent and always uses the
+            // flat absolute bounds directly, in both modes.
+            if (wwOvercurrentState.xAxisMode === WW_OC_XAXIS_RELAY_CURRENT) {
+                const relayBounds = wwOvercurrentRelayCurrentAbsoluteBounds();
+                candidate.xMin = Math.max(candidate.xMin, relayBounds.xMin);
+                candidate.xMax = Math.min(candidate.xMax, relayBounds.xMax);
+            } else {
+                candidate.xMin = Math.max(candidate.xMin, WW_OC_VIEWPORT_ABSOLUTE.xMin);
+                candidate.xMax = Math.min(candidate.xMax, WW_OC_VIEWPORT_ABSOLUTE.xMax);
+            }
             candidate.yMin = Math.max(candidate.yMin, WW_OC_VIEWPORT_ABSOLUTE.yMin);
             candidate.yMax = Math.min(candidate.yMax, WW_OC_VIEWPORT_ABSOLUTE.yMax);
             if (!(candidate.xMin < candidate.xMax) || !(candidate.yMin < candidate.yMax)) return;
@@ -36409,11 +36759,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentRerenderChartFromState();
         }
 
-        // Reset returns EXACTLY to the default viewport (X 0.1->100,
-        // Y 0.01->100) and restores the default major-grid labeling (UAT
-        // §7) -- an exact-equality reset, not an approximation.
+        // Reset returns to the sensible default for whichever mode is
+        // CURRENTLY selected (task §12): Pickup Multiple resets EXACTLY
+        // to the default viewport (X 0.1->100, Y 0.01->100) -- an exact-
+        // equality reset, not an approximation, restoring the default
+        // major-grid labeling (UAT §7) -- while Relay Current resets to
+        // the equivalent pickup-scaled amp range with the SAME shared Y
+        // default. Both branches also clear/refresh that mode's own
+        // remembered custom range, so a subsequent mode switch does not
+        // resurrect a stale pre-reset range.
         function wwOvercurrentResetViewport() {
-            wwOvercurrentState.viewport = { ...WW_OC_VIEWPORT_DEFAULT };
+            if (wwOvercurrentState.xAxisMode === WW_OC_XAXIS_RELAY_CURRENT) {
+                const relayDefault = wwOvercurrentRelayCurrentDefaultViewport();
+                wwOvercurrentState.viewport = { xMin: relayDefault.xMin, xMax: relayDefault.xMax, yMin: WW_OC_VIEWPORT_DEFAULT.yMin, yMax: WW_OC_VIEWPORT_DEFAULT.yMax };
+                wwOvercurrentState.savedXRangeByMode[WW_OC_XAXIS_RELAY_CURRENT] = { xMin: relayDefault.xMin, xMax: relayDefault.xMax };
+            } else {
+                wwOvercurrentState.viewport = { ...WW_OC_VIEWPORT_DEFAULT };
+                wwOvercurrentState.savedXRangeByMode[WW_OC_XAXIS_PICKUP_MULTIPLE] = { xMin: WW_OC_VIEWPORT_DEFAULT.xMin, xMax: WW_OC_VIEWPORT_DEFAULT.xMax };
+            }
             wwOvercurrentSyncViewportInputs();
             wwOvercurrentRerenderChartFromState();
         }
@@ -36447,6 +36810,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentState.curveCache = null;
             wwOvercurrentState.requestGeneration += 1;
             wwOvercurrentState.viewport = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };
+            // Chart axis-mode/grid display preferences are session-local
+            // conveniences, not workspace data -- reset alongside the
+            // viewport on a full analyzer state recreation (new workspace/
+            // clear), exactly like `viewport` itself already does above.
+            wwOvercurrentState.xAxisMode = WW_OC_XAXIS_PICKUP_MULTIPLE;
+            wwOvercurrentState.savedXRangeByMode = { [WW_OC_XAXIS_PICKUP_MULTIPLE]: null, [WW_OC_XAXIS_RELAY_CURRENT]: null };
+            wwOvercurrentState.minorGridX = false;
+            wwOvercurrentState.minorGridY = false;
+            wwOvercurrentSyncAxisModeButtons();
+            wwOvercurrentSyncGridToggleCheckboxes();
             wwOvercurrentPlaybackFetchInFlight = false;
             wwOvercurrentPlaybackFetchedTime = null;
             wwOvercurrentPlaybackForceNextFetch = false;
@@ -37740,6 +38113,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwOvercurrentZoomOutBtn").addEventListener("click", () => wwOvercurrentZoom(2));
         document.getElementById("wwOvercurrentResetViewBtn").addEventListener("click", wwOvercurrentResetViewport);
         wwOvercurrentSyncViewportInputs();
+        // Chart X-axis representation toggle + minor-grid checkboxes
+        // (chart UX enhancement) -- frontend-only display preferences,
+        // exactly like the viewport controls directly above: never touch
+        // `wwOvercurrentState.settings`, never call
+        // `wwOvercurrentHandleSettingsChanged()`, never trigger a curve/
+        // waveform re-fetch, never touch `wwPlayback`.
+        document.getElementById("wwOvercurrentAxisModePickupBtn").addEventListener("click", () => wwOvercurrentSetXAxisMode(WW_OC_XAXIS_PICKUP_MULTIPLE));
+        document.getElementById("wwOvercurrentAxisModeRelayBtn").addEventListener("click", () => wwOvercurrentSetXAxisMode(WW_OC_XAXIS_RELAY_CURRENT));
+        document.getElementById("wwOvercurrentMinorGridXCheckbox").addEventListener("change", (event) => {
+            wwOvercurrentState.minorGridX = event.target.checked;
+            wwOvercurrentRerenderChartFromState();
+        });
+        document.getElementById("wwOvercurrentMinorGridYCheckbox").addEventListener("change", (event) => {
+            wwOvercurrentState.minorGridY = event.target.checked;
+            wwOvercurrentRerenderChartFromState();
+        });
+        wwOvercurrentSyncAxisModeButtons();
+        wwOvercurrentSyncGridToggleCheckboxes();
         // The ONE, permanent subscription to the shared wwPlayback tick
         // seam for Overcurrent -- mirrors Phasor's own registration above
         // (never a second requestAnimationFrame loop).

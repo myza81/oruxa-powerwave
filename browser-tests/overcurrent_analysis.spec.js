@@ -651,6 +651,212 @@ test.describe("Overcurrent Analysis v1 -- curve aligns exactly with the chart vi
   });
 });
 
+test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX enhancement)", () => {
+  test("default axis mode is Pickup Multiple", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await expect(page.locator("#wwOvercurrentAxisModePickupBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#wwOvercurrentAxisModeRelayBtn")).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-axis-label", { hasText: "Current / Pickup Multiple (M)" })).toHaveCount(1);
+  });
+
+  test("switching to Relay Current changes the axis title and X range, never fetching a new curve or waveform", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    let curveFetchCount = 0;
+    let waveformFetchCount = 0;
+    page.on("request", (req) => {
+      if (req.url().includes("/overcurrent-curve")) curveFetchCount++;
+      if (req.url().includes("/waveform")) waveformFetchCount++;
+    });
+
+    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
+    await expect(page.locator("#wwOvercurrentAxisModeRelayBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#wwOvercurrentAxisModePickupBtn")).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-axis-label", { hasText: "Relay Current (A secondary)" })).toHaveCount(1);
+    // Default pickup is 1.0 A -- Relay Current mode's own default range
+    // is the SAME 0.1x/100x multiplier scaled by pickup, i.e. identical
+    // numbers at pickup=1.0.
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.1");
+    await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
+
+    expect(curveFetchCount).toBe(0);
+    expect(waveformFetchCount).toBe(0);
+  });
+
+  test("switching back to Pickup Multiple restores the range as the user left it", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await page.locator("#wwOvercurrentZoomInBtn").click();
+    const xMaxAfterZoom = await page.locator("#wwOvercurrentViewXMax").inputValue();
+
+    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
+    await page.locator("#wwOvercurrentAxisModePickupBtn").click();
+
+    await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue(xMaxAfterZoom);
+  });
+
+  test("pickup boundary is fixed at M=1 in Pickup Multiple mode but moves with pickup in Relay Current mode", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const boundaryXAtPickup1 = await page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary").getAttribute("x1");
+
+    await page.locator("#wwOvercurrentPickupInput").fill("0.8");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/50\.0\s*×/); // 40 A / 0.8 A = 50x
+    }).toPass({ timeout: 5000 });
+
+    // Pickup Multiple mode -- the boundary stays at M=1, unaffected by
+    // the pickup change (task §6).
+    const boundaryXAfterPickupChange = await page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary").getAttribute("x1");
+    expect(boundaryXAfterPickupChange).toBe(boundaryXAtPickup1);
+
+    // Relay Current mode -- the boundary moves to the new pickup value
+    // (0.8 A), a different pixel position than the M=1 boundary was.
+    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
+    const boundaryXRelay = await page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary").getAttribute("x1");
+    expect(boundaryXRelay).not.toBe(boundaryXAtPickup1);
+  });
+
+  test("relay-equivalent current stays constant across a pickup change while the multiple changes", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    // Secondary basis, 40 A measured -- relay-equivalent current is
+    // ALWAYS 40 A regardless of pickup (task §6's own worked example:
+    // "relay current remains = 2.0 A" while the multiple/boundary move).
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/40\.0\s*A secondary/);
+    }).toPass({ timeout: 5000 });
+
+    await page.locator("#wwOvercurrentPickupInput").fill("0.5");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/80\.0\s*×/); // 40 / 0.5 = 80x
+      expect(text).toMatch(/40\.0\s*A secondary/); // relay current unchanged
+    }).toPass({ timeout: 5000 });
+  });
+
+  test("axis mode preference persists across Playback, phase change, and a Phasor round trip", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
+
+    const slider = page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-seek-slider");
+    const { min, max } = await seekSliderBounds(slider);
+    await seekTo(slider, min + (max - min) * 0.3);
+    await expect(page.locator("#wwOvercurrentAxisModeRelayBtn")).toHaveAttribute("aria-pressed", "true");
+
+    await page.locator("#wwOvercurrentPhaseSelect").selectOption("B");
+    await expect(page.locator("#wwOvercurrentAxisModeRelayBtn")).toHaveAttribute("aria-pressed", "true");
+
+    await page.locator("#wwAnalysisTypePhasorBtn").click();
+    await expect(page.locator("#wwPhasorPanel")).toBeVisible();
+    await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
+    await expect(page.locator("#wwOvercurrentPanel")).toBeVisible();
+    await expect(page.locator("#wwOvercurrentAxisModeRelayBtn")).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+test.describe("Overcurrent Analysis v1 -- minor grid toggles (chart UX enhancement)", () => {
+  test("Minor X and Minor Y are OFF by default and major gridlines still render", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await expect(page.locator("#wwOvercurrentMinorGridXCheckbox")).not.toBeChecked();
+    await expect(page.locator("#wwOvercurrentMinorGridYCheckbox")).not.toBeChecked();
+    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-gridline-minor")).toHaveCount(0);
+    const majorCount = await page.locator("#wwOvercurrentSvg line.ww-oc-gridline").count();
+    expect(majorCount).toBeGreaterThan(0);
+  });
+
+  test("enabling Minor X shows the 1.2/1.4/1.6/1.8 subdivisions between 1 and 2, disabling removes them", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await page.locator("#wwOvercurrentMinorGridXCheckbox").check();
+    const expectedXPositions = await page.evaluate(() => {
+      const geo = wwOvercurrentChartGeometry(wwOvercurrentState.viewport);
+      return [1.2, 1.4, 1.6, 1.8].map((v) => wwOvercurrentPixelX(v, geo).toFixed(2));
+    });
+    const renderedX = await page.locator("#wwOvercurrentSvg line.ww-oc-gridline-minor").evaluateAll(
+      (lines) => lines.map((el) => el.getAttribute("x1"))
+    );
+    for (const expected of expectedXPositions) {
+      expect(renderedX).toContain(expected);
+    }
+
+    await page.locator("#wwOvercurrentMinorGridXCheckbox").uncheck();
+    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-gridline-minor")).toHaveCount(0);
+  });
+
+  test("Minor X and Minor Y toggle independently", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await page.locator("#wwOvercurrentMinorGridYCheckbox").check();
+    const countYOnly = await page.locator("#wwOvercurrentSvg line.ww-oc-gridline-minor").count();
+    expect(countYOnly).toBeGreaterThan(0);
+
+    await page.locator("#wwOvercurrentMinorGridXCheckbox").check();
+    const countBoth = await page.locator("#wwOvercurrentSvg line.ww-oc-gridline-minor").count();
+    expect(countBoth).toBeGreaterThan(countYOnly);
+
+    await page.locator("#wwOvercurrentMinorGridYCheckbox").uncheck();
+    const countXOnly = await page.locator("#wwOvercurrentSvg line.ww-oc-gridline-minor").count();
+    expect(countXOnly).toBeGreaterThan(0);
+    expect(countXOnly).toBeLessThan(countBoth);
+  });
+
+  test("toggling Minor X/Y causes zero backend requests", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    let requestCount = 0;
+    page.on("request", (req) => {
+      if (req.url().includes("/overcurrent-curve") || req.url().includes("/overcurrent?") || req.url().includes("/waveform")) requestCount++;
+    });
+
+    await page.locator("#wwOvercurrentMinorGridXCheckbox").check();
+    await page.locator("#wwOvercurrentMinorGridYCheckbox").check();
+    await page.locator("#wwOvercurrentMinorGridXCheckbox").uncheck();
+    await page.locator("#wwOvercurrentMinorGridYCheckbox").uncheck();
+
+    expect(requestCount).toBe(0);
+  });
+
+  test("grid toggle preferences persist across a Phasor round trip", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await page.locator("#wwOvercurrentMinorGridXCheckbox").check();
+    await page.locator("#wwAnalysisTypePhasorBtn").click();
+    await expect(page.locator("#wwPhasorPanel")).toBeVisible();
+    await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
+    await expect(page.locator("#wwOvercurrentPanel")).toBeVisible();
+    await expect(page.locator("#wwOvercurrentMinorGridXCheckbox")).toBeChecked();
+  });
+});
+
 test.describe("Overcurrent Analysis v1 -- shared Analysis Engineering Context lifecycle (2026-09-12 owner UAT fix)", () => {
   // Owner UAT: after uploading an event, opening Overcurrent DIRECTLY
   // (without ever visiting/selecting anything in Phasor) could show an
