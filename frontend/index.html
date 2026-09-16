@@ -6773,7 +6773,7 @@
             display: flex;
             flex-wrap: wrap;
             align-items: center;
-            gap: 6px 10px;
+            gap: 8px 14px;
             margin: 2px 0 6px;
             font-size: 0.7rem;
             color: var(--text-dim);
@@ -6784,24 +6784,39 @@
         .ww-oc-view-field {
             display: inline-flex;
             align-items: center;
-            gap: 3px;
+            gap: 4px;
         }
+        /* Compact engineering-toolbar redesign (2026-09-16): mandatory
+           owner-specified control style, shared with the settings-grid
+           controls' own equivalent CSS -- background/border/radius/color
+           come from the same theme tokens so this row reads as one
+           consistent surface with the rest of the panel. Width is a
+           fixed ~52px (owner's own "approximately 48-55px" target) --
+           wide enough for "1000"/"0.1" without clipping, narrow enough to
+           keep the whole toolbar compact. */
         .ww-oc-view-field input[type="number"] {
-            width: 4.2em;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 6px 8px;
             font-size: 0.7rem;
-            padding: 1px 3px;
+            color: var(--text);
+            box-sizing: border-box;
+            width: 52px;
+            text-align: center;
         }
         .ww-oc-view-arrow {
             opacity: 0.7;
         }
         .ww-oc-view-zoom-group {
             display: inline-flex;
+            align-items: center;
             gap: 4px;
         }
         .ww-oc-zoom-btn {
             font-size: 0.7rem;
             line-height: 1;
-            padding: 2px 7px;
+            padding: 6px 10px;
             cursor: pointer;
         }
         .ww-oc-view-field input.ww-oc-view-input-invalid {
@@ -6844,50 +6859,68 @@
             display: flex;
             flex-wrap: wrap;
             align-items: center;
-            gap: 6px 10px;
+            gap: 8px 14px;
             margin: 0 0 6px;
             font-size: 0.7rem;
             color: var(--text-dim);
         }
+        /* True segmented control (2026-09-16 redesign): one shared,
+           rounded outer shape (`overflow: hidden` clips both buttons to
+           the container's own border-radius regardless of each button's
+           individual corners) so "Pickup Multiple"/"Relay Current" read
+           as two mutually-exclusive segments of ONE control, never two
+           independent buttons -- never converted to a single toggle
+           switch, per the owner's own explicit instruction. */
         .ww-oc-axis-toggle-group {
             display: inline-flex;
-            gap: 2px;
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            overflow: hidden;
         }
-        /* Real UAT bug fix (2026-09-13): this class previously set only
-           `background: transparent`, never its own `color`/`border` --
-           the GLOBAL `button { color: #fff; border: none; }` reset (see
-           `button` above) therefore leaked straight through, rendering
-           the INACTIVE toggle button as WHITE text on a transparent/
-           light panel background -- effectively invisible, not merely
-           "hard to see" (confirmed via `getComputedStyle()` in a real
-           browser: `color: rgb(255, 255, 255)` against the panel's own
-           near-white background). The click handler/state/re-render
-           pipeline were never broken -- an engineer could not SEE the
-           control well enough to know it was there to click. Mirrors
-           the established `button.secondary` pattern elsewhere in this
-           file so both states stay visible in any theme, active or not. */
+        /* Real UAT bug fix (2026-09-13, carried forward): this class must
+           always set its own `color`/`border` explicitly -- the GLOBAL
+           `button { color: #fff; border: none; }` reset (see `button`
+           above) otherwise leaks straight through and renders the
+           INACTIVE segment as invisible white-on-light text (confirmed
+           via `getComputedStyle()` in a real browser:
+           `color: rgb(255, 255, 255)`). */
         .ww-oc-axis-toggle-btn {
             font-size: 0.7rem;
             line-height: 1;
-            padding: 2px 7px;
+            padding: 6px 10px;
             cursor: pointer;
-            background: transparent;
+            background: var(--panel);
             color: var(--text-dim);
-            border: 1px solid var(--panel-border);
+            border: none;
+            border-radius: 0;
+        }
+        .ww-oc-axis-toggle-btn + .ww-oc-axis-toggle-btn {
+            border-left: 1px solid var(--panel-border);
+        }
+        .ww-oc-axis-toggle-btn:hover:not(.ww-oc-axis-toggle-btn--active) {
+            background: var(--hover-tint);
+            color: var(--text);
         }
         .ww-oc-axis-toggle-btn--active {
             background: var(--accent-wash-soft);
             color: var(--accent);
-            border-color: var(--accent-dim);
             font-weight: 600;
+            box-shadow: inset 0 0 0 1px var(--accent-dim);
         }
         .ww-oc-grid-toggle-label {
             margin-left: 4px;
+            font-weight: 600;
         }
         .ww-oc-grid-toggle-field {
             display: inline-flex;
             align-items: center;
-            gap: 3px;
+            gap: 4px;
+            cursor: pointer;
+        }
+        .ww-oc-grid-toggle-field input[type="checkbox"] {
+            width: 14px;
+            height: 14px;
+            accent-color: var(--accent);
             cursor: pointer;
         }
     </style>

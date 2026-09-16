@@ -886,38 +886,44 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
     await expect(page.locator("#wwOvercurrentSvg text.ww-oc-axis-label", { hasText: "Current / Pickup Multiple (M)" })).toHaveCount(1);
   });
 
-  test("both toggle buttons are genuinely visible (non-transparent color/border) in either state -- UAT root-cause regression (2026-09-16)", async ({ page }) => {
-    // Real root cause of the "toggle does not work" UAT report: the
-    // click handler/state/re-render pipeline all worked correctly --
+  test("both toggle buttons are genuinely visible (non-transparent color, visibly bordered group) in either state -- UAT root-cause regression (2026-09-16), carried forward through the chart-control-toolbar segmented-control redesign", async ({ page }) => {
+    // Real root cause of the original "toggle does not work" UAT report:
+    // the click handler/state/re-render pipeline all worked correctly --
     // `.ww-oc-axis-toggle-btn` simply never set its own `color`/`border`,
     // so the INACTIVE button inherited the global `button { color: #fff;
     // border: none; }` reset and rendered as invisible white text on a
     // light/transparent background. An engineer could never find a
     // control they could not see. This test fails against the pre-fix
     // CSS (color would resolve to rgb(255, 255, 255)) and passes only
-    // once the inactive button has a real, non-white text color and a
-    // visible border.
+    // once the inactive button has a real, non-white text color and the
+    // segmented control's own shared outer border is genuinely visible.
+    //
+    // Superseded (2026-09-16, chart-control-toolbar redesign): the two
+    // buttons became one true segmented control with ONE shared bordered/
+    // rounded outer shape (`.ww-oc-axis-toggle-group`) plus a thin
+    // divider between segments, rather than each button independently
+    // bordered -- the FIRST segment now has no border of its own (it has
+    // no left sibling to divide from), so the border check moved to the
+    // group container, which is still what makes the control findable.
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
 
-    const stylesFor = async (id) =>
-      page.locator(`#${id}`).evaluate((el) => {
-        const cs = getComputedStyle(el);
-        return { color: cs.color, borderColor: cs.borderColor, borderStyle: cs.borderStyle };
-      });
+    const colorOf = async (id) =>
+      page.locator(`#${id}`).evaluate((el) => getComputedStyle(el).color);
+    const groupBorderStyle = async () =>
+      page.locator("#wwOvercurrentAxisControls .ww-oc-axis-toggle-group").evaluate((el) => getComputedStyle(el).borderStyle);
+
+    expect(await groupBorderStyle()).not.toBe("none");
 
     // Default state: Pickup Multiple active, Relay Current inactive.
-    let inactive = await stylesFor("wwOvercurrentAxisModeRelayBtn");
-    expect(inactive.color).not.toBe("rgb(255, 255, 255)");
-    expect(inactive.borderStyle).not.toBe("none");
+    expect(await colorOf("wwOvercurrentAxisModeRelayBtn")).not.toBe("rgb(255, 255, 255)");
 
     await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
     // After switching: Pickup Multiple is now inactive -- it must ALSO
     // remain visible, not merely the button that happened to start active.
-    inactive = await stylesFor("wwOvercurrentAxisModePickupBtn");
-    expect(inactive.color).not.toBe("rgb(255, 255, 255)");
-    expect(inactive.borderStyle).not.toBe("none");
+    expect(await colorOf("wwOvercurrentAxisModePickupBtn")).not.toBe("rgb(255, 255, 255)");
+    expect(await groupBorderStyle()).not.toBe("none");
   });
 
   test("full UAT round trip: click Relay Current transforms every chart element, click back restores Pickup Multiple exactly", async ({ page }) => {
@@ -1681,5 +1687,153 @@ test.describe("Overcurrent Analysis v1 -- shared Analysis Engineering Context li
     // empty workspace's own selector.
     await page.waitForTimeout(800);
     await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(1); // blank only
+  });
+});
+
+test.describe("Overcurrent Analysis v1 -- chart control toolbar UI/UX redesign (2026-09-16)", () => {
+  // UI/CSS-only: View X/Y Min/Max, Zoom -/+/Reset, the Pickup Multiple /
+  // Relay Current segmented control, and the Minor grid X/Y checkboxes.
+  // No OC math/viewport-semantics/IDMT/network assertion belongs here --
+  // see the other describe blocks in this file for that unchanged
+  // behavioral coverage. This block proves the actual rendered geometry
+  // (never just source-string assertions).
+
+  function boxesOverlap(a, b) {
+    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+  }
+
+  for (const width of [1366, 1024]) {
+    test(`at ${width}px: View/X-axis/Minor-grid controls stay inside the panel, never clip, never overlap, and the page never overflows horizontally`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const { contextId } = await uploadAndCreateContext(page);
+      await openAnalysisOvercurrent(page);
+      await selectContextAndWaitForValues(page, contextId);
+
+      const overflowsHorizontally = await page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+      );
+      expect(overflowsHorizontally).toBe(false);
+
+      const panelBox = await page.locator("#wwOvercurrentViewControls").locator("xpath=..").boundingBox();
+      expect(panelBox).not.toBeNull();
+
+      const controlIds = [
+        "wwOvercurrentViewXMin", "wwOvercurrentViewXMax",
+        "wwOvercurrentViewYMin", "wwOvercurrentViewYMax",
+        "wwOvercurrentZoomOutBtn", "wwOvercurrentZoomInBtn", "wwOvercurrentResetViewBtn",
+        "wwOvercurrentAxisModePickupBtn", "wwOvercurrentAxisModeRelayBtn",
+        "wwOvercurrentMinorGridXCheckbox", "wwOvercurrentMinorGridYCheckbox",
+      ];
+      const boxes = [];
+      for (const id of controlIds) {
+        const box = await page.locator(`#${id}`).boundingBox();
+        expect(box, `#${id} should render with a real, non-clipped box`).not.toBeNull();
+        expect(box.width, `#${id} width should not be clipped to zero`).toBeGreaterThan(0);
+        expect(box.height, `#${id} height should not be clipped to zero`).toBeGreaterThan(0);
+        expect(box.x, `#${id} should stay inside the chart control panel (left edge)`).toBeGreaterThanOrEqual(panelBox.x - 1);
+        expect(box.x + box.width, `#${id} should stay inside the chart control panel (right edge)`).toBeLessThanOrEqual(panelBox.x + panelBox.width + 1);
+        boxes.push({ id, box });
+      }
+
+      // Selector/toggle labels ("View", "X-axis", "Minor grid") also
+      // participate in the overlap check -- a wrapped/clipped label
+      // overlapping the control next to it would be just as broken as
+      // two controls overlapping each other.
+      const labelHandles = await page.locator(
+        "#wwOvercurrentViewControls .ww-oc-view-controls-label, #wwOvercurrentAxisControls .ww-oc-view-controls-label"
+      ).all();
+      for (let i = 0; i < labelHandles.length; i++) {
+        const box = await labelHandles[i].boundingBox();
+        expect(box).not.toBeNull();
+        boxes.push({ id: `label-${i}`, box });
+      }
+
+      for (let i = 0; i < boxes.length; i++) {
+        for (let j = i + 1; j < boxes.length; j++) {
+          expect(
+            boxesOverlap(boxes[i].box, boxes[j].box),
+            `${boxes[i].id} should not overlap ${boxes[j].id}`
+          ).toBe(false);
+        }
+      }
+    });
+  }
+
+  test("the active segmented option is visibly, computedly different from the inactive option", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const stylesFor = (id) =>
+      page.locator(`#${id}`).evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return { color: cs.color, background: cs.backgroundColor, fontWeight: cs.fontWeight };
+      });
+
+    const activeStyles = await stylesFor("wwOvercurrentAxisModePickupBtn");
+    const inactiveStyles = await stylesFor("wwOvercurrentAxisModeRelayBtn");
+    expect(activeStyles.color).not.toBe(inactiveStyles.color);
+    expect(activeStyles.background).not.toBe(inactiveStyles.background);
+    // The shared outer group renders as one rounded/bordered shape.
+    const groupBorderWidth = await page.locator("#wwOvercurrentAxisControls .ww-oc-axis-toggle-group").evaluate(
+      (el) => getComputedStyle(el).borderTopWidth
+    );
+    expect(groupBorderWidth).not.toBe("0px");
+  });
+
+  test("minor-grid X/Y checkboxes are visible and vertically aligned with their own labels", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const xCheckbox = page.locator("#wwOvercurrentMinorGridXCheckbox");
+    const yCheckbox = page.locator("#wwOvercurrentMinorGridYCheckbox");
+    await expect(xCheckbox).toBeVisible();
+    await expect(yCheckbox).toBeVisible();
+
+    const xBox = await xCheckbox.boundingBox();
+    const xLabelBox = await xCheckbox.locator("xpath=..").boundingBox();
+    // The checkbox's own vertical center sits within its label's box --
+    // i.e. genuinely vertically aligned, not floating above/below the "X"/"Y" text.
+    const checkboxCenterY = xBox.y + xBox.height / 2;
+    expect(checkboxCenterY).toBeGreaterThanOrEqual(xLabelBox.y);
+    expect(checkboxCenterY).toBeLessThanOrEqual(xLabelBox.y + xLabelBox.height);
+  });
+
+  test("existing functionality is preserved after the redesign: axis mode switch, minor X/Y checkboxes, zoom, and reset all still work", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    // Axis mode switch.
+    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
+    await expect(page.locator("#wwOvercurrentAxisModeRelayBtn")).toHaveAttribute("aria-pressed", "true");
+    await page.locator("#wwOvercurrentAxisModePickupBtn").click();
+    await expect(page.locator("#wwOvercurrentAxisModePickupBtn")).toHaveAttribute("aria-pressed", "true");
+
+    // Minor grid checkboxes.
+    await expect(page.locator("#wwOvercurrentSvg .ww-oc-gridline-minor")).toHaveCount(0);
+    await page.locator("#wwOvercurrentMinorGridXCheckbox").check();
+    await expect(async () => {
+      expect(await page.locator("#wwOvercurrentSvg .ww-oc-gridline-minor").count()).toBeGreaterThan(0);
+    }).toPass({ timeout: 5000 });
+    await page.locator("#wwOvercurrentMinorGridXCheckbox").uncheck();
+    await page.locator("#wwOvercurrentMinorGridYCheckbox").check();
+    await expect(async () => {
+      expect(await page.locator("#wwOvercurrentSvg .ww-oc-gridline-minor").count()).toBeGreaterThan(0);
+    }).toPass({ timeout: 5000 });
+    await page.locator("#wwOvercurrentMinorGridYCheckbox").uncheck();
+
+    // Zoom in/out and reset.
+    const xMinBefore = await page.locator("#wwOvercurrentViewXMin").inputValue();
+    const xMaxBefore = await page.locator("#wwOvercurrentViewXMax").inputValue();
+    await page.locator("#wwOvercurrentZoomInBtn").click();
+    await expect(async () => {
+      expect(await page.locator("#wwOvercurrentViewXMax").inputValue()).not.toBe(xMaxBefore);
+    }).toPass({ timeout: 5000 });
+    await page.locator("#wwOvercurrentZoomOutBtn").click();
+    await page.locator("#wwOvercurrentResetViewBtn").click();
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue(xMinBefore);
+    await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue(xMaxBefore);
   });
 });

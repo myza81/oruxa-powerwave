@@ -1176,21 +1176,43 @@ class TestAxisToggleCSS:
     """UAT root-cause fix (2026-09-16): the `.ww-oc-axis-toggle-btn`
     CSS class never set `color` or `border`, so the INACTIVE button was
     invisible white text on light background — the click handler worked,
-    but the UI made the button unfindable. Verified fix: inactive state
-    now has `color: var(--text-dim)` and `border: 1px solid var(--panel-
-    border)`, matching the established `button.secondary` pattern."""
+    but the UI made the button unfindable. Superseded the same day by the
+    chart-control-toolbar redesign, which turns the two independent
+    buttons into one true segmented control (shared rounded outer shape
+    via `overflow: hidden` on `.ww-oc-axis-toggle-group`, an inner
+    divider between segments, and a hover state on the inactive segment)
+    -- the underlying regression this class guards against (an
+    unfindable, invisible inactive control) still cannot reappear under
+    the new CSS, verified below with the new selectors/properties."""
 
-    def test_inactive_toggle_button_has_visible_color_and_border(self):
+    def test_inactive_toggle_button_has_visible_color_and_a_bordered_group_shape(self):
         source = _source()
         css_section = source[source.find(".ww-oc-axis-toggle-btn {"):source.find(".ww-oc-axis-toggle-btn--active")]
         assert "color: var(--text-dim)" in css_section
-        assert "border: 1px solid var(--panel-border)" in css_section
+        assert "background: var(--panel)" in css_section
+        # The visible border now lives on the shared outer group shape
+        # (one rounded control) rather than on each individual button.
+        group_rule = _function_body(source, ".ww-oc-axis-toggle-group {", "}")
+        assert "border: 1px solid var(--panel-border)" in group_rule
+        assert "border-radius: var(--radius)" in group_rule
+        assert "overflow: hidden" in group_rule
+
+    def test_inactive_segment_has_a_hover_state(self):
+        source = _source()
+        hover_rule = _function_body(
+            source, ".ww-oc-axis-toggle-btn:hover:not(.ww-oc-axis-toggle-btn--active) {", "}"
+        )
+        assert "background: var(--hover-tint)" in hover_rule
+        assert "color: var(--text)" in hover_rule
 
     def test_active_toggle_button_color_overrides_inactive(self):
         source = _source()
         css_section = source[source.find(".ww-oc-axis-toggle-btn--active"):source.find(".ww-oc-grid-toggle-label")]
         assert "color: var(--accent)" in css_section
-        assert "border-color: var(--accent-dim)" in css_section
+        assert "background: var(--accent-wash-soft)" in css_section
+        # A visible "border" for the active segment via box-shadow (never
+        # a real border, which would disturb the shared segmented shape).
+        assert "box-shadow: inset 0 0 0 1px var(--accent-dim)" in css_section
 
     def test_axis_toggle_has_click_handlers_wired_to_set_x_axis_mode(self):
         source = _source()
@@ -1603,12 +1625,81 @@ class TestSettingsFormLayoutCorrection:
         container_block = _function_body(source, "@container ww-oc-settings-panel", "\n        .ww-oc-values-list")
         assert "grid-template-columns: minmax(0, 1fr);" in container_block
 
-    def test_viewport_controls_are_untouched_by_this_redesign(self):
-        """Task's own explicit "chart View controls are out of scope
-        unless needed for consistency" -- the existing .ww-oc-view-field
-        width/padding/font-size are unmodified."""
+
+class TestChartControlsToolbarRedesign:
+    """UI/UX-only redesign (2026-09-16) of the OC chart control toolbar --
+    View X/Y Min/Max, Zoom -/+/Reset, the Pickup Multiple/Relay Current
+    axis-mode toggle, and the Minor grid X/Y checkboxes. No OC math,
+    viewport semantics, IDMT logic, or network behavior is touched by
+    any assertion in this class -- see TestOvercurrentViewport,
+    TestAxisRepresentationToggleBehavior, and TestMinorGridToggles for
+    the untouched behavioral coverage. Markup itself was already close
+    to the target two-row toolbar shape; this redesign is CSS-only."""
+
+    def test_view_inputs_carry_the_exact_owner_mandated_css_properties(self):
         source = _source()
-        css_rule = _function_body(source, ".ww-oc-view-field input[type=\"number\"] {", "}")
-        assert "width: 4.2em;" in css_rule
+        css_rule = _function_body(source, '.ww-oc-view-field input[type="number"] {', "}")
+        assert "background: var(--panel);" in css_rule
+        assert "border: 1px solid var(--panel-border);" in css_rule
+        assert "border-radius: var(--radius);" in css_rule
+        assert "padding: 6px 8px;" in css_rule
         assert "font-size: 0.7rem;" in css_rule
-        assert "padding: 1px 3px;" in css_rule
+        assert "color: var(--text);" in css_rule
+        assert "box-sizing: border-box;" in css_rule
+
+    def test_view_input_width_is_within_the_owner_target_range(self):
+        """Target ~48-55px -- wide enough for "1000"/"0.1" without
+        clipping, per the task's own explicit examples."""
+        source = _source()
+        css_rule = _function_body(source, '.ww-oc-view-field input[type="number"] {', "}")
+        match = re.search(r"width:\s*(\d+)px;", css_rule)
+        assert match is not None
+        width = int(match.group(1))
+        assert 48 <= width <= 55
+
+    def test_view_row_and_axis_row_stay_two_wrapping_flex_rows(self):
+        """The two logical rows (View/Zoom, then X-axis/Minor grid) each
+        wrap independently -- never a single unbroken row that could
+        overflow a narrower panel, and never collapsed into one row."""
+        source = _source()
+        view_rule = _function_body(source, ".ww-oc-view-controls {", "}")
+        assert "display: flex;" in view_rule
+        assert "flex-wrap: wrap;" in view_rule
+        axis_rule = _function_body(source, ".ww-oc-axis-controls {", "}")
+        assert "display: flex;" in axis_rule
+        assert "flex-wrap: wrap;" in axis_rule
+
+    def test_zoom_and_reset_buttons_are_grouped_and_compact(self):
+        source = _source()
+        group_rule = _function_body(source, ".ww-oc-view-zoom-group {", "}")
+        assert "display: inline-flex;" in group_rule
+        btn_rule = _function_body(source, ".ww-oc-zoom-btn {", "}")
+        assert "font-size: 0.7rem;" in btn_rule
+        assert 'id="wwOvercurrentZoomOutBtn" class="ww-oc-zoom-btn"' in source
+        assert 'id="wwOvercurrentZoomInBtn" class="ww-oc-zoom-btn"' in source
+        assert 'id="wwOvercurrentResetViewBtn" class="ww-oc-zoom-btn ww-oc-reset-btn"' in source
+
+    def test_axis_toggle_group_forms_one_shared_rounded_segmented_shape(self):
+        """Never two independent buttons, never a single toggle switch --
+        one bordered/rounded outer container clips both segments to a
+        shared shape via `overflow: hidden`."""
+        source = _source()
+        group_rule = _function_body(source, ".ww-oc-axis-toggle-group {", "}")
+        assert "display: inline-flex;" in group_rule
+        assert "border-radius: var(--radius);" in group_rule
+        assert "overflow: hidden;" in group_rule
+        # Individual segments have no independent radius/border of their
+        # own -- the shared shape comes only from the group above.
+        btn_rule = _function_body(source, ".ww-oc-axis-toggle-btn {", ".ww-oc-axis-toggle-btn + .ww-oc-axis-toggle-btn")
+        assert "border-radius: 0;" in btn_rule
+
+    def test_minor_grid_checkboxes_are_compact_and_use_the_accent_color(self):
+        source = _source()
+        checkbox_rule = _function_body(source, '.ww-oc-grid-toggle-field input[type="checkbox"] {', "}")
+        assert "width: 14px;" in checkbox_rule
+        assert "height: 14px;" in checkbox_rule
+        assert "accent-color: var(--accent);" in checkbox_rule
+        field_rule = _function_body(source, ".ww-oc-grid-toggle-field {", "}")
+        assert "align-items: center;" in field_rule
+        assert 'class="ww-oc-grid-toggle-field"><input type="checkbox" id="wwOvercurrentMinorGridXCheckbox"> X</label>' in source
+        assert 'class="ww-oc-grid-toggle-field"><input type="checkbox" id="wwOvercurrentMinorGridYCheckbox"> Y</label>' in source
