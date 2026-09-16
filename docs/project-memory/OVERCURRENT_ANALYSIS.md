@@ -1077,6 +1077,99 @@ gutter, curve's first pixel never inside the gutter, break
 appears/disappears with viewport range, Relay Current non-impact,
 engineering-value-only viewport inputs, and zero network requests.
 
+## X-axis toggle CSS visibility fix and default viewport refinement (2026-09-16, DEC-094)
+
+**Root cause of the "toggle does not work" UAT report: CSS, not
+JavaScript.** Real-browser reproduction (Playwright with console-error
+capture and `getComputedStyle()` inspection, not just static source
+tests) proved the entire click -> state -> viewport -> rerender ->
+ticks/curve/operating-point pipeline established by the chart UX
+enhancement (DEC-092) worked correctly. The defect was that
+`.ww-oc-axis-toggle-btn` set only `background: transparent`, never its
+own `color`/`border` — so the INACTIVE toggle button inherited the
+page's global `button { color: #fff; border: none; }` reset and
+rendered as invisible white text on the panel's own light background.
+Confirmed directly: `getComputedStyle(relayBtn).color` returned `"rgb(255,
+255, 255)"` in the default (Relay Current inactive) state. Fixed by
+giving the class its own `color: var(--text-dim)` / `border: 1px solid
+var(--panel-border)`, matching the established `button.secondary`
+pattern already used elsewhere in this file.
+
+**Default viewport correction.** Pickup Multiple mode's default
+viewport moves from `X 0.1x-100x / Y 0.01s-100s` to `X 0.9x-100x / Y
+0.1s-100s` — the prior default devoted a full extra decade below
+pickup and below the fastest operating times to a region that added
+little value at the default zoom level. `WW_OC_VIEWPORT_DEFAULT` now
+reads `{ xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 }`; the absolute
+outer bounds (`WW_OC_VIEWPORT_ABSOLUTE`, `0.1x-200x` / `0.01s-1000s`)
+are unchanged.
+
+**Compressed sub-pickup axis threshold correction.** The DEC-093
+broken-axis gutter previously activated for any `xMin < 1`. Since the
+new 0.9 default sits just below `M=1`, that rule would have produced a
+visually pointless ~5%-wide compressed sliver for a span that barely
+needed 2% of the width in the first place. The threshold is now a
+dedicated constant, `WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD = 0.5`:
+`breakApplies` requires `xMin <= 0.5 && xMax > 1` (Pickup Multiple mode
+only, as before). The default view (`xMin = 0.9`) therefore uses the
+ordinary uncompressed log mapping and shows no axis-break marker; the
+gutter reappears the moment a user deliberately widens the view to
+0.5x or below (e.g. the prior 0.1x default, or any custom range
+reaching that far below pickup) — a clear, obviously "substantially
+below pickup" cutoff with no ambiguity against the new default.
+
+**Relay Current mode's own default is decoupled.** Prior to this fix,
+`wwOvercurrentRelayCurrentDefaultViewport()` scaled
+`WW_OC_VIEWPORT_DEFAULT.xMin/xMax` (Pickup Multiple's own constant) by
+the current pickup. Since that constant just changed to 0.9, Relay
+Current mode's own "sensible current-domain default" would have
+silently changed too — violating the task's own "do not force Pickup
+Multiple defaults onto Relay Current mode" instruction. A new,
+independent constant, `WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER = {
+xMin: 0.1, xMax: 100 }`, now backs Relay Current mode's own default
+exclusively — unchanged numeric behavior (still 0.1x-100x pickup,
+scaled to amperes).
+
+**Unaffected by this change**: `WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS`
+(the fixed major list, `1,2,3,4,5,6,7,8,9,10,20,50,100`), IDMT
+calculation, TMS, pickup, CT conversion, and the expected-operating-time
+result. This is a pure display/viewport-default correction.
+
+**Y-axis major-tick consequence** (natural, no code change): with the
+new Y default `0.1s-100s`, `wwOvercurrentClassifyMajors()`'s existing
+"the axis's own current minimum is never itself promoted to major"
+rule now excludes `0.1` from the Y major set (previously, with Y
+default `0.01s-100s`, `0.1` passed that rule and rendered as a major).
+Y majors at the new default are therefore `1, 10, 100` (3 values, was
+4); `0.1` renders as Y's own light minor/reference label instead,
+mirroring how X's own minimum has always been handled.
+
+**Parallel-work coordination note**: this investigation began while a
+concurrent session (Codex) was completing and pushing an unrelated
+"compact shared analysis playback controls" change from the same local
+clone, touching Playback panel CSS/markup/labels in the same
+`frontend/index.html` file. The two change sets were verified
+non-overlapping at the hunk level and integrated without data loss —
+see DEC-094's own "Parallel-work coordination" note for the mechanics.
+
+**Tests**: `backend/tests/test_frontend_overcurrent_analysis.py` — new
+`TestAxisToggleCSS` (3 tests: inactive-button visible color/border,
+active-button override, click handlers wired) and `TestViewportDefaults`
+(7 tests: new default constant, state-init default, reset-state
+default, break threshold constant, break-applies condition, Relay
+Current default decoupling). `browser-tests/overcurrent_analysis.spec.js`
+— two new tests in the X-axis toggle describe block (a CSS-visibility
+regression test using `getComputedStyle()`, verified to fail against
+the pre-fix CSS; and a full UAT-reproduction round trip asserting
+title/operating-point/boundary/ticks/viewport all transform on click
+and restore exactly on click-back); the compressed sub-pickup axis
+describe block's default-viewport tests reworked to assert "no break
+at the new 0.9 default" and "break still appears via a deliberately
+widened viewport," per the new threshold; default-viewport value
+assertions corrected throughout the adjustable-viewport and chart
+axes/grid/ticks describe blocks (gridline count 17 -> 16, majors/minors
+relabeled for the new Y default).
+
 ## Shared Analysis Engineering Context lifecycle — UAT fix (2026-09-12)
 
 **Owner UAT symptom**: after uploading an event, opening Overcurrent
@@ -1228,6 +1321,7 @@ the Playback cursor, resize) is NOT Overcurrent's own — see
 - [DECISIONS.md — DEC-090](DECISIONS.md#dec-090--overcurrent-analysis-v1-the-second-analysis-menu-analyzer-iec-idmt-characteristic-evaluation-against-a-one-cycle-trailing-rms-current-at-the-shared-playback-driven-analysis-time) — this slice's full approval record.
 - [DECISIONS.md — DEC-092](DECISIONS.md#dec-092--overcurrent-chart-ux-enhancement-a-pickup-multiplerelay-current-x-axis-representation-toggle-and-independently-toggleable-majorminor-logarithmic-grid-controls) — the chart X-axis representation toggle and minor grid controls (this document's own "Chart X-axis representation toggle and minor grid controls" section above).
 - [DECISIONS.md — DEC-093](DECISIONS.md#dec-093--overcurrent-chart-geometry-refinement-a-compressedbroken-sub-pickup-x-axis-in-pickup-multiple-mode-visually-compresses-01--1-to-5-of-plot-width) — the compressed sub-pickup axis (this document's own "Compressed sub-pickup axis — chart geometry refinement" section above).
+- [DECISIONS.md — DEC-094](DECISIONS.md#dec-094--overcurrent-uat-correction-the-x-axis-representation-toggles-real-root-cause-was-css-visibility-not-event-wiring-and-the-pickup-multiple-default-viewport-moves-to-09x-100x) — the axis-toggle CSS visibility fix and default viewport refinement (this document's own "X-axis toggle CSS visibility fix and default viewport refinement" section above).
 - [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) — the first Analysis-menu
   analyzer; the resolver/Playback-integration/Analysis-shell patterns
   this document reuses throughout.

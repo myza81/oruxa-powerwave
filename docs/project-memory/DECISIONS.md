@@ -14790,6 +14790,97 @@ architecture record.
 
 ---
 
+## DEC-094 — Overcurrent UAT correction: the X-axis representation toggle's real root cause was CSS visibility, not event wiring, and the Pickup Multiple default viewport moves to 0.9x-100x
+
+Date: 2026-09-16
+Status: Approved — implemented.
+Source: owner UAT report ("Pickup Multiple / Relay Current toggle does
+not work") plus a companion default-viewport refinement request.
+
+**Part A — root cause and fix.** Real-browser reproduction (Playwright,
+console-error capture, `getComputedStyle()`) proved the click handler,
+state mutation, viewport selection, chart rerender, tick generation,
+curve transformation, and operating-point transformation established
+by DEC-092 all worked correctly end-to-end — the toggle was never
+functionally broken. The actual defect: `.ww-oc-axis-toggle-btn` set
+only `background: transparent`, never its own `color`/`border`, so the
+INACTIVE button inherited the page's global `button { color: #fff;
+border: none; }` reset and rendered as **invisible white text on a
+light/transparent panel background** — confirmed via computed style
+(`color: rgb(255, 255, 255)`) and a before/after screenshot. An
+engineer could not see a control well enough to know it existed to
+click. Fixed by giving the class its own `color: var(--text-dim)` and
+`border: 1px solid var(--panel-border)`, mirroring the already-
+established `button.secondary` pattern elsewhere in this file — both
+toggle states (active/inactive) now stay visible in any theme.
+
+**Part B — default viewport refinement.** Pickup Multiple mode's
+default viewport moves from `X 0.1x-100x / Y 0.01s-100s` to `X
+0.9x-100x / Y 0.1s-100s`: the prior default showed a full extra decade
+below pickup and below the fastest operating times that added little
+value at the default zoom level. The DEC-093 compressed sub-pickup
+axis gutter's own activation rule changes from "`xMin < 1`" to "`xMin
+<= 0.5`" (a new `WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD` constant) — a
+clear, deliberate "substantially below pickup" cutoff comfortably below
+the new 0.9 default, so the default view uses an ordinary (uncompressed)
+log mapping across `0.9->100`, while the gutter remains available the
+moment a user deliberately widens the view to 0.5x or below (e.g. the
+prior 0.1x default). Relay Current mode's own default X range — needed
+no correction — is deliberately decoupled into its own constant
+(`WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER = { xMin: 0.1, xMax: 100 }`)
+so it can never be silently forced to follow Pickup Multiple's own
+default in the future. The DEC-092 fixed major-tick list, IDMT
+calculation, TMS, pickup, CT conversion, and operating-time result are
+all completely unaffected — this is a display-only correction.
+
+**Parallel-work coordination.** This task's investigation began while
+Codex was concurrently completing and pushing an unrelated "compact
+shared analysis playback controls" change (`b7450438`, touching
+`frontend/index.html`'s Playback panel CSS/markup/labels,
+`backend/tests/test_frontend_playback.py`, `browser-tests/
+playback.spec.js`) from the same local clone. Both sets of changes
+were correctly identified as non-overlapping (different regions of
+`frontend/index.html`), verified via hunk-level diff inspection, and
+integrated with zero data loss — Codex's own `git commit` naturally
+advanced local `main` to `b7450438`, after which this task's own
+changes were staged (`git apply --cached` against only the relevant
+hunks, never `git add -A`) and committed cleanly on top. No merge or
+rebase was required since local `main` and `origin/main` were already
+aligned once Codex's commit landed.
+
+Alternatives considered:
+- Assuming the toggle bug was in the event-wiring/state layer (matching
+  the owner's own phrasing "toggle does not work") and re-auditing that
+  code — rejected once real-browser reproduction with a non-default
+  pickup value showed the mode/viewport/curve/boundary all transformed
+  correctly on click; the actual defect was purely visual.
+- Keeping `xMin < 1` as the break threshold and merely changing the
+  default to 0.9 — rejected because it would still show a (now
+  visually pointless, ~2%-wide) compressed sliver for the 0.9-1 span at
+  the new default, defeating the point of the correction.
+
+Impact: `frontend/index.html` only (CSS fix + JS viewport/threshold
+constants; no backend file changed). New tests:
+`backend/tests/test_frontend_overcurrent_analysis.py`
+`TestAxisToggleCSS` (3 tests) and `TestViewportDefaults` (7 tests);
+`browser-tests/overcurrent_analysis.spec.js` new toggle-visibility and
+full-round-trip UAT-reproduction tests, plus corrected default-viewport
+assertions throughout the existing adjustable-viewport and compressed-
+axis describe blocks (the latter's default-viewport-implies-break
+tests reworked to exercise the break via a deliberately widened
+viewport instead, since the new default no longer triggers it). Full
+backend regression, full frontend static suite, focused OC/Playback/
+Analysis Playwright specs, and the full Playwright suite (126
+scenarios) all pass — one unrelated, pre-existing Phasor Engineering-
+Context-bootstrap test flaked only under full-suite resource
+contention and passed cleanly in isolation, confirmed unrelated to
+this change. `git diff --check` clean. See
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own "X-axis
+toggle CSS visibility fix and default viewport refinement" section for
+the complete architecture record.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

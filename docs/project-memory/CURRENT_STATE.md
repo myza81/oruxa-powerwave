@@ -622,6 +622,29 @@ and the Y axis are completely unaffected; zero backend requests. See
 sub-pickup axis — chart geometry refinement" section for the full
 architecture.
 
+**Overcurrent UAT correction — axis-toggle CSS visibility fix and
+default viewport refinement (2026-09-16, [DECISIONS.md — DEC-094](DECISIONS.md#dec-094--overcurrent-uat-correction-the-x-axis-representation-toggles-real-root-cause-was-css-visibility-not-event-wiring-and-the-pickup-multiple-default-viewport-moves-to-09x-100x)),
+frontend-only.** The owner's "toggle does not work" UAT report traced
+to a real-browser-confirmed CSS bug, not the event/state/rerender
+pipeline: `.ww-oc-axis-toggle-btn` never set its own `color`/`border`,
+so the inactive button inherited the page's global white-on-accent
+button reset and was genuinely invisible against the light panel
+background. Fixed with an explicit visible color/border for both
+states. Separately, Pickup Multiple mode's default viewport moved from
+`X 0.1x-100x / Y 0.01s-100s` to **`X 0.9x-100x / Y 0.1s-100s`**
+(superseding the numbers in the DEC-093 paragraph above, which remains
+historically accurate for that change's own date) — the DEC-093
+compressed sub-pickup gutter's own activation rule moved with it, from
+"`xMin < 1`" to "`xMin <= 0.5`" (`WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD`),
+so the new default shows no axis break at all (0.9-1 is already
+narrow), while the gutter still activates for any deliberately wide
+below-pickup view (0.5x or lower). Relay Current mode's own default is
+now a fully independent constant, never coupled to Pickup Multiple's.
+IDMT math, TMS, pickup, CT conversion are unaffected. See
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own "X-axis
+toggle CSS visibility fix and default viewport refinement" section for
+the full architecture.
+
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test
 infrastructure only, zero production code changed) establishes the

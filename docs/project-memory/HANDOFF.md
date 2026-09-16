@@ -4,11 +4,77 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-13**
+Last updated: **2026-09-16**
 
 ## What was most recently done
 
-**Overcurrent chart geometry refinement — a compressed/broken sub-pickup
+**Overcurrent UAT correction — axis-toggle CSS visibility fix and
+default viewport refinement — [DECISIONS.md — DEC-094](DECISIONS.md#dec-094--overcurrent-uat-correction-the-x-axis-representation-toggles-real-root-cause-was-css-visibility-not-event-wiring-and-the-pickup-multiple-default-viewport-moves-to-09x-100x).
+Frontend-only (`frontend/index.html`); no backend file touched.**
+
+Owner UAT reported "Pickup Multiple / Relay Current toggle does not
+work." Real-browser reproduction (Playwright + `getComputedStyle()`,
+not static source tests) proved the click/state/viewport/rerender/
+tick/curve/operating-point pipeline from DEC-092 all worked correctly
+— the real defect was `.ww-oc-axis-toggle-btn` never setting its own
+`color`/`border`, so the INACTIVE button inherited the page's global
+white-on-accent `button` reset and rendered as literally invisible
+white text on the light panel background (confirmed:
+`getComputedStyle(...).color === "rgb(255, 255, 255)"`). Fixed with an
+explicit visible `color`/`border` for both toggle states.
+
+Also refines the default Pickup Multiple viewport (owner companion
+request): `X 0.1x-100x / Y 0.01s-100s` -> **`X 0.9x-100x / Y
+0.1s-100s`**. The DEC-093 compressed sub-pickup gutter's own
+activation rule moves from `xMin < 1` to a dedicated
+`WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD = 0.5` constant (`xMin <= 0.5 &&
+xMax > 1`), so the new default shows the ordinary uncompressed log
+mapping (0.9-1 is already narrow — the gutter there would be visually
+pointless), while the gutter still activates for any deliberately wide
+below-pickup view. Relay Current mode's own default X range is now a
+fully independent constant (`WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER`),
+never coupled to Pickup Multiple's own default. IDMT math/TMS/pickup/
+CT conversion are unaffected — display-only.
+
+**Parallel-work coordination**: this investigation began while a
+concurrent session (Codex) was completing/pushing an unrelated
+"compact shared analysis playback controls" change
+(`b7450438`) from the SAME local clone, touching Playback panel CSS/
+markup/labels in the same `frontend/index.html`. Verified
+non-overlapping at the hunk level; integrated with zero data loss via
+selective `git apply --cached` staging (never `git add -A`) — Codex's
+own commit naturally advanced local `main` to `b7450438` first, and
+this task's own commit (`3c07b05`) landed cleanly on top with no merge
+or rebase needed. Also visible in git log from the same window:
+`953199d style: refine analyzer menu shell`, `667c342 style: redesign
+analyzer menu to match mock` — both landed without a corresponding
+DECISIONS.md/CURRENT_STATE.md entry as of this note; flagged here as a
+known documentation gap for whoever picks up that thread next (not
+authored by this session, so not documented in detail here).
+
+**Tests**: `backend/tests/test_frontend_overcurrent_analysis.py` — new
+`TestAxisToggleCSS` (3 tests) and `TestViewportDefaults` (7 tests).
+`browser-tests/overcurrent_analysis.spec.js` — new CSS-visibility
+regression test (verified to fail against the pre-fix CSS) and a full
+UAT-reproduction round-trip test; existing default-viewport assertions
+corrected throughout (adjustable-viewport, chart axes/grid/ticks, and
+compressed sub-pickup axis describe blocks). Full backend regression,
+full frontend static suite, focused OC/Playback/Analysis Playwright
+specs, and the full Playwright suite (126 scenarios) all pass — one
+unrelated, pre-existing Phasor Engineering-Context-bootstrap test
+flaked only under full-suite resource contention (confirmed passing in
+isolation). `git diff --check` clean.
+
+**Stop condition honored**: task instruction was "stop after this OC
+follow-up" — no new analyzer or unrelated feature work was started in
+that task; a SEPARATE, explicitly authorized follow-up task (shared
+Analysis Playback ribbon redesign to match an owner-supplied mock) was
+queued immediately after and is covered in a combined completion
+report, not as unrequested scope creep.
+
+## What was done in the prior session — Overcurrent chart geometry refinement (compressed/broken sub-pickup X axis)
+
+**Overcurrent chart geometry refinement, a compressed/broken sub-pickup
 X axis in Pickup Multiple mode — [DECISIONS.md — DEC-093](DECISIONS.md#dec-093--overcurrent-chart-geometry-refinement-a-compressedbroken-sub-pickup-x-axis-in-pickup-multiple-mode-visually-compresses-01--1-to-5-of-plot-width).
 Frontend-only (`frontend/index.html`); no backend file touched. Also
 folds in two small owner-requested follow-up corrections to the
