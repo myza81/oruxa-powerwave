@@ -8,12 +8,103 @@ Last updated: **2026-09-16**
 
 ## What was most recently done
 
+**Architectural correction: Manual Input decoupled entirely from
+recordings — DEC-095 amended same day, both governing docs updated
+([DECISIONS.md — DEC-095 amendment](DECISIONS.md#dec-095--a-shared-analysis-input-source-concept-recordingmanual-is-introduced-overcurrent-gets-the-first-manual-input--calculator-mode-implementation),
+[ANALYSIS_INPUT_SOURCE.md — governing invariant](ANALYSIS_INPUT_SOURCE.md#governing-invariant-owner-requirement-2026-09-16-architectural-correction),
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s "Manual Input /
+Calculator mode" section).**
+
+Owner-reported architectural defect: the Manual Input / Calculator mode
+slice below (same day) shipped with an unintended coupling —
+`wwOvercurrentShowEmptyState()` hid the WHOLE analyzer body
+(`#wwOvercurrentBody`), which at the time also contained Manual's own
+controls, whenever no Engineering Context existed yet. A genuinely
+empty workspace (no upload, no source, no context, no Time Group, no
+Playback) could therefore NOT actually reach Manual mode, contradicting
+the "standalone engineering calculator" premise the same-day DEC-095
+itself states. Governing invariant restated by the owner: **"Manual
+Input is a standalone engineering-calculator path and MUST NOT depend
+on recordings, Engineering Context, Time Groups, Playback, or waveform
+availability. Recording prerequisites are mode-specific and must never
+globally disable Manual-capable analyzers."**
+
+**Fix.** `#wwOvercurrentPanel` now splits into three independent
+regions instead of two: (1) the Input Source toggle — a permanent
+direct child of the panel, always visible, never nested inside the
+Recording-only section; (2) a new `#wwOvercurrentRecordingSection`
+wrapper holding everything that genuinely requires a recording (Bay/
+Context selector, Playback panel, Related Waveforms anchor, the
+recording-only empty state) behind ONE `hidden` attribute driven by
+`inputSource`; (3) `#wwOvercurrentBody` (Settings/Manual Input/Results/
+Chart) sits OUTSIDE that wrapper as a sibling, never hidden by any
+recording-lifecycle callback (`wwOvercurrentShowEmptyState()`/
+`wwOvercurrentLoadForSelectedContext()`/`wwOvercurrentResetState()` all
+confirmed to no longer touch it). New `recordingAvailable`/
+`inputSourceAutoSelected` state drives the Recording segment's
+`disabled` state (shown, never fully hidden, plus hint text: "No
+recording loaded. Manual mode is available.") and a ONE-TIME automatic
+Manual/Recording selection — gated on the analyzer's own tab actually
+being visible (never fires a background `/overcurrent-manual` request
+merely because the shared context list updated off-screen, and never
+fires eagerly at global page-load time either) — that a deliberate user
+click permanently overrides. Related Waveforms is now hidden/collapsed
+entirely in Manual mode (superseding the same-day original "reuse the
+shared generic empty state" choice) since a manual value structurally
+never has a waveform, not merely "none available right now." No IEC
+IDMT/CT/unit-normalization math, no persistence, and no Phasor Manual
+mode were touched — purely the input-source shell's own state/markup
+wiring. Standard CSS `[hidden]` override pitfall applied again
+(`#wwOvercurrentRecordingSection[hidden] { display: none; }`), matching
+this codebase's own established precedent.
+
+**Tests**: a new `browser-tests/overcurrent_analysis.spec.js` describe
+block ("Manual mode is a standalone engineering calculator, independent
+of recordings") — 6 scenarios against a genuinely empty, freshly-
+navigated workspace (never `uploadAndCreateContext`): Manual reachable/
+usable with zero recordings, the golden 30000 A example asserting ZERO
+recording-dependent (`/overcurrent?`, `/waveform`) requests, Recording's
+disabled/clean-state behavior, zero Engineering-Context/Time-Group/
+Playback dependency, and responsive layout at 1366px/1024px. Three
+pre-existing OC Playwright tests updated to match the corrected
+behavior: Playback-independence now driven via Phasor's own Playback
+mount (OC's own mount is inside the now-hidden Recording section while
+in Manual mode); the Related Waveforms test now asserts the panel is
+hidden rather than showing a generic empty state; the workspace-reset
+test now expects Manual (not Recording) auto-selected, since a freshly-
+reset workspace has zero recordings. A new `backend/tests/
+test_frontend_overcurrent_analysis.py` class
+(`TestManualModeIsIndependentOfRecordings`, 17 tests) statically
+verifies the markup separation/ordering, the CSS `[hidden]` override,
+the availability/auto-switch gating (including the deliberately-NOT-
+added eager global-init call), and that the manual fetch path carries
+no context/source/phase/time-group dependency. Full OC Playwright suite
+now 95 scenarios (all pass), full backend suite passes, full frontend
+static suite passes (142 tests). Two pre-existing Phasor/Playback
+Playwright tests reconfirmed unrelated flakes (pass 3/3 and 2/3 in
+isolation respectively — the same already-documented intermittent
+timing races, not a regression from this correction). `git diff
+--check` clean.
+
+**Stop condition honored**: task instruction was "stop after this
+architectural correction" — Phasor Manual mode remains explicitly
+deferred, not started; no redesign of the whole Analysis page was
+attempted; no IEC equation/CT-conversion/chart math was touched
+unnecessarily; no persistence was introduced for Manual inputs; no fake
+recordings or Engineering Contexts were created anywhere in the fix or
+its tests.
+
+## What was done in the prior session — Manual Input / Calculator mode first implementation (same day, later corrected above)
+
 **A shared Analysis Input Source concept (Recording/Manual) is
 introduced, with Manual Input / Calculator mode implemented for
 Overcurrent only — [DECISIONS.md — DEC-095](DECISIONS.md#dec-095--a-shared-analysis-input-source-concept-recordingmanual-is-introduced-overcurrent-gets-the-first-manual-input--calculator-mode-implementation),
 full architecture in [ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md)
 (new document) and [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s
-own new "Manual Input / Calculator mode" section.**
+own new "Manual Input / Calculator mode" section. **This slice's own
+recording-dependency defect was found and fixed the same day — see the
+architectural correction above; the "no new UI/text was invented"/
+"generic empty state" claims below were superseded by that fix.***
 
 An engineer can now type a hypothetical/test current value directly
 (e.g. "30000 A Primary") and see it evaluated against the SAME relay

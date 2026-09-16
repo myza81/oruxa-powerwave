@@ -1949,7 +1949,7 @@ class TestManualInputCalculatorMode:
 
     def test_set_input_source_switches_state_and_ui_never_touches_relay_settings(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentSetInputSource(mode)", "function wwOvercurrentSyncInputSourceButtons")
+        fn = _function_body(source, "function wwOvercurrentSetInputSource(mode, isAutomatic)", "function wwOvercurrentSyncInputSourceButtons")
         assert "wwOvercurrentState.inputSource = mode;" in fn
         assert "wwOvercurrentSyncInputSourceButtons();" in fn
         assert "wwOvercurrentUpdateManualSectionVisibility();" in fn
@@ -1958,7 +1958,7 @@ class TestManualInputCalculatorMode:
 
     def test_switching_to_manual_triggers_manual_recompute_switching_back_forces_exact_recording_refresh(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentSetInputSource(mode)", "function wwOvercurrentSyncInputSourceButtons")
+        fn = _function_body(source, "function wwOvercurrentSetInputSource(mode, isAutomatic)", "function wwOvercurrentSyncInputSourceButtons")
         assert "wwOvercurrentRequestManualAnalysis();" in fn
         assert "wwOvercurrentRequestExactPlaybackFetch();" in fn
 
@@ -2103,3 +2103,177 @@ class TestManualInputCalculatorMode:
         for field_id in ("wwOvercurrentManualCurrentInput", "wwOvercurrentManualUnitSelect", "wwOvercurrentManualBasisSelect"):
             assert f'document.getElementById("{field_id}").addEventListener("change"' in source
             assert f'document.getElementById("{field_id}").addEventListener("input"' not in source
+
+
+class TestManualModeIsIndependentOfRecordings:
+    """Architectural correction (2026-09-16): "Manual Input must be
+    fully independent from waveform/event recordings." Manual mode is a
+    standalone engineering calculator -- it must never require a
+    recording, Engineering Context, Time Group, or Playback source to
+    become usable. See docs/project-memory/ANALYSIS_INPUT_SOURCE.md.
+    """
+
+    def test_input_source_panel_lives_outside_and_before_the_recording_section(self):
+        """The Input Source toggle is a permanent top-level sibling of
+        the Recording-only section, never nested inside it -- otherwise
+        hiding the Recording section would also hide the very control
+        needed to switch back out of Manual mode."""
+        source = _source()
+        panel_index = source.index('id="wwOvercurrentPanel"')
+        input_source_index = source.index('class="panel ww-oc-input-source-panel"')
+        recording_section_index = source.index('id="wwOvercurrentRecordingSection"')
+        assert panel_index < input_source_index < recording_section_index
+
+    def test_recording_only_markup_lives_inside_the_recording_section(self):
+        """Bay/Context selector, Playback panel, Related Waveforms
+        anchor, and the recording empty-state all require a recording --
+        they must be nested INSIDE `#wwOvercurrentRecordingSection` so
+        the single `hidden` toggle on that container hides all of them
+        at once."""
+        source = _source()
+        section = _function_body(
+            source, 'id="wwOvercurrentRecordingSection"', 'id="wwOvercurrentBody"'
+        )
+        for required_id in (
+            "wwOvercurrentContextSelect", "wwOvercurrentPhaseSelect",
+            "wwOvercurrentPlaybackPanel", "wwOvercurrentRelatedWaveformsAnchor",
+            "wwOvercurrentEmptyState",
+        ):
+            assert required_id in section
+
+    def test_oc_body_markup_lives_outside_the_recording_section_never_gated_by_it(self):
+        """Settings/Manual Input/Results/Chart (`#wwOvercurrentBody`) must
+        NOT be nested inside `#wwOvercurrentRecordingSection` -- Manual
+        mode's own controls must never share that container's hidden
+        state."""
+        source = _source()
+        recording_section_start = source.index('id="wwOvercurrentRecordingSection"')
+        body_index = source.index('id="wwOvercurrentBody"')
+        # #wwOvercurrentBody's own <div> must close the RecordingSection's
+        # <div> first -- i.e. appear as a sibling, not a descendant. The
+        # simplest structural proxy already used by this file's own
+        # sibling-nesting checks elsewhere: the RecordingSection's closing
+        # tag comment/marker appears before wwOvercurrentBody's opening tag.
+        assert recording_section_start < body_index
+        assert "<!-- ALWAYS visible once the Overcurrent tab is" in source[:body_index]
+
+    def test_recording_section_hidden_css_override_exists(self):
+        """Precedent bug (`.ww-phasor-body[hidden]`,
+        `.ww-phasor-panel[hidden]`, `.ww-phasor-field[hidden]`): a
+        `display: flex` rule on a class defeats the browser's native
+        `[hidden] { display: none }` unless explicitly overridden."""
+        source = _source()
+        rule = _function_body(source, "#wwOvercurrentRecordingSection {", "}")
+        assert "display: flex;" in rule
+        override = _function_body(source, "#wwOvercurrentRecordingSection[hidden] {", "}")
+        assert "display: none;" in override
+
+    def test_ww_overcurrent_body_never_hidden_by_show_empty_state(self):
+        """`wwOvercurrentShowEmptyState()` used to hide the WHOLE
+        `#wwOvercurrentBody` (which, before the correction, wrongly
+        contained Manual's own controls too) -- it must no longer touch
+        `#wwOvercurrentBody` at all."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentShowEmptyState(message)", "function wwOvercurrentLoadForSelectedContext")
+        assert 'getElementById("wwOvercurrentBody")' not in fn
+
+    def test_load_for_selected_context_never_touches_ww_overcurrent_body(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentLoadForSelectedContext()", "function wwOvercurrentSetInputSource")
+        assert 'getElementById("wwOvercurrentBody")' not in fn
+
+    def test_reset_state_never_hides_ww_overcurrent_body(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentResetState()", "const wwPhasorState")
+        assert 'getElementById("wwOvercurrentBody")' not in fn
+
+    def test_empty_state_wording_never_implies_the_whole_analyzer_is_unusable(self):
+        """The four `WW_OVERCURRENT_MSG_*` constants are shown exclusively
+        inside the (now Recording-scoped) empty state -- their wording
+        must say a recording/upload is missing, never that Overcurrent
+        Analysis itself is unavailable."""
+        source = _source()
+        msg_block = _function_body(source, "WW_OVERCURRENT_MSG_NO_SOURCES", "function ")
+        assert "No recording loaded" in msg_block
+        assert "Overcurrent Analysis" not in msg_block
+
+    def test_recording_button_disabled_and_hint_driven_by_availability(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentUpdateInputSourceAvailability()", "function wwOvercurrentSyncManualInputFields")
+        assert "const available = wwOvercurrentState.contexts.length > 0;" in fn
+        assert "recordingBtn.disabled = !available;" in fn
+        assert "hint.hidden = available;" in fn
+
+    def test_availability_auto_switch_never_fires_while_a_different_analyzer_tab_is_visible(self):
+        """Guards against firing a background `/overcurrent-manual`
+        request purely because the shared context list updated while a
+        different (or no) Analysis tab is showing."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentUpdateInputSourceAvailability()", "function wwOvercurrentSyncManualInputFields")
+        assert 'if (wwAnalysisActiveType !== "overcurrent") return;' in fn
+
+    def test_availability_auto_switch_never_overrides_a_deliberate_user_choice(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentUpdateInputSourceAvailability()", "function wwOvercurrentSyncManualInputFields")
+        assert "if (!wwOvercurrentState.inputSourceAutoSelected) return;" in fn
+
+    def test_a_deliberate_manual_click_disables_future_auto_switching(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentSetInputSource(mode, isAutomatic)", "function wwOvercurrentSyncInputSourceButtons")
+        assert "if (!isAutomatic) wwOvercurrentState.inputSourceAutoSelected = false;" in fn
+
+    def test_switching_to_recording_is_blocked_while_recording_is_unavailable(self):
+        """Prevents a stale/forced click (e.g. Playwright's `force: true`,
+        or a race where the button hasn't re-disabled visually yet) from
+        ever switching into a Recording state that has nothing to show."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentSetInputSource(mode, isAutomatic)", "function wwOvercurrentSyncInputSourceButtons")
+        assert "if (mode === WW_ANALYSIS_INPUT_SOURCE_RECORDING && !wwOvercurrentState.recordingAvailable) return;" in fn
+
+    def test_global_init_does_not_eagerly_call_availability_check(self):
+        """A deliberately-NOT-added eager call: `wwOvercurrentState.contexts`
+        starts as `[]` on every raw page load, so calling the
+        availability check (and its auto-switch side effect) at global
+        Init time would fire a real `/overcurrent-manual` background
+        request on every page load, even for a user who never opens
+        Analysis at all. The lazy trigger points
+        (`wwOvercurrentOnAnalysisContexts`/`wwOvercurrentOnAnalysisLifecyclePhase`/
+        `wwSetActiveAnalysisType`) only ever fire once Analysis has
+        genuinely been rendered."""
+        source = _source()
+        init_block = source[source.rindex("wwOvercurrentUpdateManualSectionVisibility();"):]
+        # Only ONE more matching call may exist after this point in the
+        # file (the resize/init tail), and it must NOT be the
+        # availability check re-added eagerly.
+        assert "wwOvercurrentUpdateInputSourceAvailability();" not in init_block[:400]
+
+    def test_on_analysis_contexts_and_lifecycle_phase_both_refresh_availability(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentOnAnalysisContexts(contexts)", "function wwOvercurrentOnAnalysisLifecyclePhase")
+        assert "wwOvercurrentUpdateInputSourceAvailability();" in fn
+        fn2 = _function_body(source, "function wwOvercurrentOnAnalysisLifecyclePhase(phase)", "function wwOvercurrentOnAnalysisDiscovering")
+        assert "wwOvercurrentUpdateInputSourceAvailability();" in fn2
+
+    def test_set_active_analysis_type_rechecks_availability_for_overcurrent(self):
+        source = _source()
+        fn = _function_body(
+            source, "function wwSetActiveAnalysisType(type)",
+            'document.getElementById("wwAnalysisTypePhasorBtn")',
+        )
+        oc_branch_start = fn.index('else if (type === "overcurrent") {')
+        oc_branch_end = fn.index("} else {", oc_branch_start)
+        oc_branch = fn[oc_branch_start:oc_branch_end]
+        assert "wwOvercurrentUpdateInputSourceAvailability();" in oc_branch
+
+    def test_manual_endpoint_wiring_carries_no_context_or_source_dependency(self):
+        """Reconfirms the manual fetch path (already covered from a
+        different angle by `test_manual_fetch_url_targets_the_workspace_scoped_manual_endpoint`
+        above) never threads a context id, source id, phase, or time
+        group into the request -- workspace id is the only identifier
+        it needs."""
+        source = _source()
+        fn = _function_body(
+            source, "function wwOvercurrentRequestManualAnalysis()", "function wwOvercurrentRenderManualResult"
+        )
+        for forbidden in ("selectedContextId", "activeTimeGroupId", "sourceId", "phase:"):
+            assert forbidden not in fn

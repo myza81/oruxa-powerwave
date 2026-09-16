@@ -701,6 +701,36 @@ manual mode is explicitly NOT implemented this slice. See
 [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own "Manual Input /
 Calculator mode" section for the full architecture.
 
+**Architectural correction, same day (2026-09-16) — Manual Input
+decoupled from recordings entirely; DEC-095 amended.** The initial
+implementation above shipped with an unintended coupling:
+`wwOvercurrentShowEmptyState()` hid the WHOLE analyzer body (Manual
+Input's own controls included) whenever no Engineering Context existed
+yet, so a genuinely empty workspace (no upload, no source, no context)
+could not actually reach Manual mode — contradicting the "standalone
+engineering calculator" premise. **Manual Input is a standalone
+engineering-calculator path and MUST NOT depend on recordings,
+Engineering Context, Time Groups, Playback, or waveform availability;
+recording prerequisites are mode-specific and must never globally
+disable Manual-capable analyzers.** Fixed by splitting
+`#wwOvercurrentPanel` into three independent regions: the Input Source
+toggle (always visible, a permanent sibling), a new
+`#wwOvercurrentRecordingSection` wrapper holding everything that
+genuinely needs a recording (Bay/Context selector, Playback, Related
+Waveforms anchor, the recording-only empty state) behind ONE `hidden`
+toggle, and `#wwOvercurrentBody` (Settings/Manual Input/Results/Chart)
+outside it, never hidden by any recording-lifecycle callback. New
+`recordingAvailable`/`inputSourceAutoSelected` state drives the
+Recording segment's disabled state (shown, never hidden, with hint text)
+and a one-time auto-selection a deliberate user click always overrides.
+Related Waveforms is now hidden/collapsed entirely in Manual mode
+(superseding the original "generic empty state" choice) since a manual
+value structurally never has a waveform. A new empty-workspace golden
+Playwright suite (95 OC scenarios total now) exercises this without any
+upload at all. See
+[ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md#governing-invariant-owner-requirement-2026-09-16-architectural-correction)
+and DEC-095's own amendment note for the full record.
+
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test
 infrastructure only, zero production code changed) establishes the

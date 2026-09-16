@@ -15022,6 +15022,67 @@ isolation). `git diff --check` clean. Phasor Manual mode is explicitly
 NOT implemented this slice (task's own "do not implement Phasor Manual
 mode yet").
 
+**Amendment, 2026-09-16 (same day) — architectural correction: Manual
+mode decoupled from recordings.** This initial implementation shipped
+with an unintended coupling: `wwOvercurrentShowEmptyState()` hid the
+WHOLE analyzer body (`#wwOvercurrentBody`), which at the time also
+contained Manual Input's own controls, whenever no Engineering Context
+existed yet — meaning a genuinely empty workspace (no upload, no
+source, no context) could not reach Manual mode at all, contradicting
+the very "standalone engineering calculator" premise this decision
+states above. The owner's own restated invariant:
+
+> Manual Input is a standalone engineering-calculator path and MUST NOT
+> depend on recordings, Engineering Context, Time Groups, Playback, or
+> waveform availability. Recording prerequisites are mode-specific and
+> must never globally disable Manual-capable analyzers.
+
+**Fix.** `#wwOvercurrentPanel` now splits into three independent
+regions instead of two: (1) the Input Source toggle, a permanent direct
+child of the panel, always visible; (2) a new `#wwOvercurrentRecordingSection`
+wrapper containing everything that genuinely requires a recording (Bay/
+Context selector, Playback panel, Related Waveforms anchor, the
+recording-only empty state) — its own single `hidden` attribute, driven
+by `inputSource`, is now the ONE place Recording-vs-Manual visibility is
+decided; (3) `#wwOvercurrentBody` (Settings/Manual Input/Results/Chart)
+sits OUTSIDE that wrapper as a sibling, never hidden by any recording-
+lifecycle callback. New state (`recordingAvailable`,
+`inputSourceAutoSelected`) drives the Recording segment's `disabled`
+state (never fully hidden) and a one-time automatic Manual/Recording
+selection that a deliberate user click permanently overrides — see
+[ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md#markup-separation-2026-09-16-architectural-correction)
+for the full structural record. The Related Waveforms panel is now
+hidden/collapsed entirely in Manual mode (superseding this decision's
+original "reuse the shared generic empty state" choice above) — the
+cleaner of two options considered, since a manual value structurally
+never has a waveform, not merely "none available right now." No IEC
+IDMT/CT/unit-normalization math, no persistence, and no Phasor Manual
+mode were touched by this amendment — it is purely the input-source
+shell's own state/markup wiring.
+
+New/updated tests: a new `browser-tests/overcurrent_analysis.spec.js`
+describe block ("Manual mode is a standalone engineering calculator,
+independent of recordings") covering a genuinely empty workspace (no
+`uploadAndCreateContext`) end to end — Manual reachable and usable,
+the golden 30000 A example with zero recording-dependent network
+requests, Recording's disabled/clean-state behavior, zero Engineering-
+Context/Time-Group/Playback dependency, and responsive layout at
+1366px/1024px; three pre-existing OC Playwright tests updated to match
+the corrected behavior (Playback-independence now driven via Phasor's
+own Playback mount since OC's own is inside the now-hidden Recording
+section; Related Waveforms test now asserts the panel is hidden rather
+than showing a generic empty state; the workspace-reset test now
+expects Manual, not Recording, since a freshly-reset workspace has zero
+recordings); a new `backend/tests/test_frontend_overcurrent_analysis.py`
+class (`TestManualModeIsIndependentOfRecordings`) statically verifying
+the markup separation, the CSS `[hidden]` override, the availability/
+auto-switch gating, and that the manual fetch path carries no context/
+source/phase/time-group dependency. Full OC Playwright suite (95
+scenarios) and full backend suite pass; two pre-existing Phasor/Playback
+flaky tests reconfirmed unrelated (pass in isolation, 3/3 and 2/3 runs
+respectively — the same pre-existing intermittent timing races already
+on record, not a regression from this amendment).
+
 ---
 
 ## How to add a decision

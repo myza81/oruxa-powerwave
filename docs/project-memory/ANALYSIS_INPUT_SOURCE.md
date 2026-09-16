@@ -2,7 +2,8 @@
 
 **Status: implemented for Overcurrent only** (Manual Input / Calculator
 mode, 2026-09-16, see
-[DECISIONS.md — DEC-095](DECISIONS.md#dec-095--a-shared-analysis-input-source-concept-recordingmanual-is-introduced-overcurrent-gets-the-first-manual-input--calculator-mode-implementation)).
+[DECISIONS.md — DEC-095](DECISIONS.md#dec-095--a-shared-analysis-input-source-concept-recordingmanual-is-introduced-overcurrent-gets-the-first-manual-input--calculator-mode-implementation),
+amended 2026-09-16 by the architectural correction below).
 This document records the shared concept and pattern so a future
 analyzer (Phasor, Impedance Locus, Sequence Components, Distance) can
 reuse it without re-deriving the design from scratch — mirroring how
@@ -12,6 +13,31 @@ Playback, Related Waveforms). Analyzer-specific engineering behavior
 (the actual IEC IDMT/CT/unit-normalization calculation) stays documented
 in [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md) — this document is
 scoped to the input-source SHELL/pattern those docs both consume.
+
+## Governing invariant (owner requirement, 2026-09-16 architectural correction)
+
+> **Manual Input is a standalone engineering-calculator path and MUST
+> NOT depend on recordings, Engineering Context, Time Groups, Playback,
+> or waveform availability.**
+>
+> **Recording prerequisites are mode-specific and must never globally
+> disable Manual-capable analyzers.**
+
+`Manual mode = standalone engineering calculator`;
+`Recording mode = recording-dependent analysis`. Manual is never a
+sub-mode of an already-active recording analysis, and a recording-side
+prerequisite (no source uploaded, no Engineering Context resolvable, no
+Time Group, no Playback) must gate ONLY the Recording half of an
+analyzer's own panel — never the analyzer as a whole. An analyzer's own
+first implementation of this concept (Overcurrent, below) is the
+reference pattern any future Manual-capable analyzer should copy.
+
+The first implementation shipped this same day (2026-09-16) briefly got
+this wrong: `wwOvercurrentShowEmptyState()` hid the WHOLE analyzer body
+(`#wwOvercurrentBody`), which at the time also contained Manual's own
+controls, whenever no Engineering Context existed yet. That coupling
+was found and corrected the same day — see "Markup separation" below
+for the structural fix, and DEC-095's own amendment note.
 
 ## The concept
 
@@ -158,17 +184,22 @@ mode should reuse, is:
    since Playback itself remains one authoritative, shared clock
    (DEC-085) regardless of which analyzer or input source is currently
    displayed. No second timer/clock was introduced.
-9. **Shared Related Waveforms declares zero active roles in Manual
-   mode** — never fabricates a manual waveform. The shared component's
-   own EXISTING generic empty state
-   (`#wwAnalysisRelatedWaveformsEmptyState`, "No related waveform
-   signals available for the current analysis.") already covers this;
-   no new UI/text was invented, per the task's own "choose the least
-   disruptive implementation consistent with the current shared
-   component architecture" instruction. A future analyzer wanting more
-   specific wording for its own Manual mode could extend the shared
-   empty-state message to accept analyzer-supplied context, but that
-   was judged unnecessary for this first implementation.
+9. **Shared Related Waveforms panel is hidden/collapsed entirely in
+   Manual mode, never shown with a fabricated or generic-empty-state
+   waveform** (revised 2026-09-16 — supersedes this document's original
+   "reuse the shared generic empty state" choice). Both options were
+   considered again during the architectural correction: showing the
+   panel with a generic "no waveform" message still implies the panel
+   is *relevant* to Manual mode, when it structurally never can be (a
+   manual value has no waveform, ever, not just none available right
+   now). Hiding/collapsing the whole panel — the same visibility gate
+   that already hides the rest of the Recording-only section — was
+   judged the cleaner, less misleading design, and is what ships today.
+   Overcurrent still declares zero active roles in Manual mode as a
+   defense-in-depth (`wwOvercurrentComputeActiveRelatedWaveformRoles()`
+   returns `[]` whenever `inputSource !== recording`), so even if a
+   future change re-exposed the panel by mistake, it could never render
+   a fabricated waveform.
 10. **Manual values are session/UI state only** — never persisted to
     the backend/database, never written to a calculated channel, never
     touching original recording data. Reset to Recording/defaults only
@@ -176,6 +207,87 @@ mode should reuse, is:
     `wwOvercurrentResetState()`, the same "Start New Workspace"/"Clear
     workspace" hook every other analyzer-local display preference
     already uses).
+
+## Markup separation (2026-09-16 architectural correction)
+
+The concrete structural fix behind the invariant above. An analyzer's
+own panel must split into three independent regions, not two:
+
+```text
+#<analyzer>Panel
+├── Input Source toggle          -- ALWAYS visible, a direct child of
+│                                    the panel itself, never nested
+│                                    inside the Recording-only section
+│                                    below it (otherwise hiding that
+│                                    section would also hide the only
+│                                    control that could switch back out
+│                                    of Manual mode).
+├── #<analyzer>RecordingSection  -- Bay/Context selector, Playback
+│   (single `hidden` toggle,        panel, Related Waveforms anchor,
+│    driven by `inputSource`)       and the Recording-only empty state
+│                                    all live INSIDE this one wrapper.
+│                                    Its `hidden` attribute is the ONE
+│                                    place Recording-vs-Manual
+│                                    visibility is decided — every
+│                                    control inside it may assume a
+│                                    recording is the active source.
+└── #<analyzer>Body              -- Relay/analysis settings, Manual
+    (never hidden by any             Input's own fields, results list,
+     recording-lifecycle              and chart. Requires NEITHER a
+     callback)                        recording NOR Manual's own state
+                                       to render — visible the instant
+                                       the analyzer's panel itself is
+                                       open.
+```
+
+For Overcurrent specifically: `#wwOvercurrentRecordingSection` wraps
+the Bay/Context bar, `#wwOvercurrentPlaybackPanel`,
+`#wwOvercurrentRelatedWaveformsAnchor`, `#wwOvercurrentStatusRow`, and
+`#wwOvercurrentEmptyState`; `#wwOvercurrentBody` (Settings/Manual
+Input/Results/Chart) sits outside it as a sibling.
+`wwOvercurrentShowEmptyState()` — the callback every recording-lifecycle
+phase (`NO_SOURCES`/`NO_SUGGESTIONS`/`UNREACHABLE`/no context selected)
+funnels through — now touches only `#wwOvercurrentRecordingSection`'s
+own empty-state paragraph, never `#wwOvercurrentBody`. A CSS
+`[hidden]` pitfall already documented elsewhere in this codebase
+(`.ww-phasor-body[hidden]`, `.ww-phasor-panel[hidden]`,
+`.ww-phasor-field[hidden]`) applies here too: giving the Recording
+section its own `display: flex` requires an explicit
+`#wwOvercurrentRecordingSection[hidden] { display: none; }` override,
+since a class's own `display` declaration otherwise defeats the
+browser's native `[hidden]` behavior.
+
+## Recording availability and mode auto-selection
+
+Recording is "available" once at least one Engineering Context exists
+for the analyzer to select — the same signal the Bay/Context selector
+itself needs to be useful. This availability drives three things:
+
+1. The Recording segment's own `disabled` state — **never fully
+   hidden**, so the two-input-source concept stays understandable even
+   when Recording is temporarily unusable ("Recording (disabled) |
+   Manual", with hint text such as "No recording loaded. Manual mode is
+   available.").
+2. The supporting hint text's visibility.
+3. A **one-time automatic correction** of the current selection — but
+   only while the engineer has never deliberately clicked either
+   segment themselves for this analyzer instance (`inputSourceAutoSelected`
+   stays `true` until the first explicit click). A workspace with zero
+   recordings auto-selects Manual; a workspace where a recording later
+   becomes available auto-selects Recording — but only ever as long as
+   the engineer hasn't already chosen a side. A deliberate user choice
+   is never overridden merely because availability changed later.
+
+The auto-switch check itself only ever fires while the analyzer's own
+tab is genuinely the visible one (`wwAnalysisActiveType === "overcurrent"`
+for Overcurrent) — never eagerly at global page-load time, since
+`contexts` starts empty on every raw page load and an eager check would
+fire a real Manual-mode calculation request in the background before
+the user ever opens Analysis at all. It re-runs lazily at three natural
+trigger points: whenever the shared Engineering Context lifecycle
+publishes a fresh context list or phase, and once more the moment the
+engineer actually switches onto the analyzer's own tab (so a change
+that happened while the tab was hidden is still reflected promptly).
 
 ## What Overcurrent's own implementation looks like end to end
 
@@ -213,11 +325,6 @@ scenario).
 - **Persisting manual input values** across a page reload/new session —
   session/UI state only, matching every other Overcurrent chart/settings
   preference's own established ephemeral-by-design precedent.
-- **A more specific Related Waveforms empty-state message** for Manual
-  mode specifically (e.g. "Related Waveforms are available in Recording
-  mode.") — the shared component's own existing generic empty state was
-  judged sufficient for this first implementation; a future slice could
-  extend it if UAT finds the generic wording insufficiently clear.
 
 ## Related documents
 

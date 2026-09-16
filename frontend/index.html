@@ -6640,9 +6640,13 @@
                 grid-column: 1;
             }
         }
-        /* Analysis Input Source row (Manual Input / Calculator mode
+        /* Analysis Input Source panel (Manual Input / Calculator mode
            slice, see docs/project-memory/ANALYSIS_INPUT_SOURCE.md) --
-           reuses the EXACT SAME segmented-control classes
+           its own dedicated panel, a DIRECT child of `.ww-phasor-panel`
+           (`#wwOvercurrentPanel`) so it always renders regardless of
+           recording/context state (architectural correction, 2026-09-16
+           -- Manual must never be nested inside recording-dependent
+           markup). Reuses the EXACT SAME segmented-control classes
            (.ww-oc-axis-toggle-group/-btn/--active) the Pickup Multiple/
            Relay Current toggle already established, for the visual
            consistency the task's own instructions explicitly require --
@@ -6651,7 +6655,38 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .ww-oc-input-source-hint {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+        }
+        /* Disabled Recording segment (no recording/Engineering Context
+           available yet) -- visibly muted, never fully invisible, so the
+           two-input-source concept stays understandable even when one
+           side is temporarily unusable. */
+        .ww-oc-axis-toggle-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+        .ww-oc-axis-toggle-btn:disabled:hover {
+            background: var(--panel);
+            color: var(--text-dim);
+        }
+        /* The Recording-only section (Bay/Context bar, Playback,
+           Related Waveforms, recording empty-state) -- hidden ENTIRELY
+           when Manual is the active Input Source. Restates the SAME
+           `gap: 12px` its own parent `.ww-phasor-panel` already gives
+           its direct children, since these elements are now nested one
+           level deeper inside this wrapper and would otherwise lose
+           that spacing. */
+        #wwOvercurrentRecordingSection {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        #wwOvercurrentRecordingSection[hidden] {
+            display: none;
         }
         /* Manual Input / Calculator mode's own compact section -- same
            visual language (panel/border/radius/0.7rem) as the settings
@@ -8012,68 +8047,108 @@
                              already established -- see docs/project-memory/
                              OVERCURRENT_ANALYSIS.md. -->
                         <section class="ww-phasor-panel" id="wwOvercurrentPanel" hidden>
-                            <section class="panel ww-phasor-controls-panel">
-                                <div class="ww-phasor-controls-row">
-                                    <label class="ww-phasor-field">
-                                        <span class="ww-phasor-field-label">Bay / Engineering Context</span>
-                                        <span class="ww-phasor-field-control-row">
-                                            <select id="wwOvercurrentContextSelect"><option value="">Select a context…</option></select>
-                                            <span id="wwOvercurrentContextBadge"></span>
-                                        </span>
-                                    </label>
-                                    <label class="ww-phasor-field ww-oc-phase-field">
-                                        <span class="ww-phasor-field-label">Phase</span>
-                                        <select id="wwOvercurrentPhaseSelect">
-                                            <option value="A">Phase A</option>
-                                            <option value="B">Phase B</option>
-                                            <option value="C">Phase C</option>
-                                        </select>
-                                    </label>
-                                    <span class="ww-phasor-discovering-indicator" id="wwOvercurrentDiscoveringIndicator" hidden>Identifying additional engineering contexts…</span>
+                            <!-- Analysis Input Source (Recording/Manual) --
+                                 ALWAYS visible the instant the Overcurrent tab
+                                 itself is open, regardless of whether any
+                                 recording/Engineering Context exists yet
+                                 (architectural correction, 2026-09-16, see
+                                 docs/project-memory/ANALYSIS_INPUT_SOURCE.md
+                                 "Manual mode = standalone engineering
+                                 calculator" invariant). Never nested inside
+                                 the Recording-only section below -- Manual
+                                 must not be a sub-mode of an active recording
+                                 analysis. Reuses the EXACT same segmented-
+                                 control CSS classes (`.ww-oc-axis-toggle-group`/
+                                 `-btn`/`--active`) the Pickup Multiple/Relay
+                                 Current toggle already established. -->
+                            <section class="panel ww-oc-input-source-panel">
+                                <div class="ww-oc-input-source-row">
+                                    <span class="ww-oc-view-controls-label">Input Source</span>
+                                    <span class="ww-oc-axis-toggle-group" role="group" aria-label="Analysis input source">
+                                        <button type="button" id="wwOvercurrentInputSourceRecordingBtn" class="ww-oc-axis-toggle-btn ww-oc-axis-toggle-btn--active" data-input-source="recording" aria-pressed="true">Recording</button>
+                                        <button type="button" id="wwOvercurrentInputSourceManualBtn" class="ww-oc-axis-toggle-btn" data-input-source="manual" aria-pressed="false">Manual</button>
+                                    </span>
+                                    <span class="ww-oc-input-source-hint" id="wwOvercurrentInputSourceHint" hidden>No recording loaded. Manual mode is available.</span>
                                 </div>
                             </section>
 
-                            <!-- Playback composition point: populated by
-                                 wwOvercurrentMountPlaybackControls(groupId) --
-                                 reuses the EXACT same shared control-surface
-                                 markup/wiring/sync functions Phasor's own
-                                 mount uses -- Overcurrent is simply a THIRD
-                                 consumer of the ONE shared wwPlayback
-                                 controller. -->
-                            <section class="panel ww-phasor-playback-panel ww-analysis-playback-panel" id="wwOvercurrentPlaybackPanel" hidden>
-                                <div class="ww-phasor-playback-mount ww-analysis-playback-mount" id="wwOvercurrentPlaybackMount"></div>
-                            </section>
+                            <!-- Recording-only section -- everything here
+                                 requires a recording/Engineering Context and
+                                 is hidden ENTIRELY whenever Manual is the
+                                 active Input Source (architectural
+                                 correction: previously this section's own
+                                 empty state hid the WHOLE analyzer body,
+                                 including Manual's own controls, whenever no
+                                 context existed -- Manual must never depend
+                                 on this section's own state at all). Context-
+                                 list/Time-Group state underneath keeps
+                                 updating in the background regardless of
+                                 which Input Source is currently DISPLAYED
+                                 (mirrors the existing "Related Waveforms/
+                                 Playback keep computing while hidden"
+                                 precedent) -- only this container's own
+                                 VISIBILITY is gated by Input Source, so
+                                 switching back to Recording later reflects
+                                 already-current state immediately. -->
+                            <div id="wwOvercurrentRecordingSection">
+                                <section class="panel ww-phasor-controls-panel">
+                                    <div class="ww-phasor-controls-row">
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Bay / Engineering Context</span>
+                                            <span class="ww-phasor-field-control-row">
+                                                <select id="wwOvercurrentContextSelect"><option value="">Select a context…</option></select>
+                                                <span id="wwOvercurrentContextBadge"></span>
+                                            </span>
+                                        </label>
+                                        <label class="ww-phasor-field ww-oc-phase-field">
+                                            <span class="ww-phasor-field-label">Phase</span>
+                                            <select id="wwOvercurrentPhaseSelect">
+                                                <option value="A">Phase A</option>
+                                                <option value="B">Phase B</option>
+                                                <option value="C">Phase C</option>
+                                            </select>
+                                        </label>
+                                        <span class="ww-phasor-discovering-indicator" id="wwOvercurrentDiscoveringIndicator" hidden>Identifying additional engineering contexts…</span>
+                                    </div>
+                                </section>
 
-                            <!-- Shared Related Waveforms mount point -- see the
-                                 identical comment on #wwPhasorRelatedWaveformsAnchor
-                                 above. Overcurrent never renders its own waveform
-                                 panel; it only PUSHES its own currently-selected
-                                 current-phase role via
-                                 wwOvercurrentPushRelatedWaveformRoles(). -->
-                            <div id="wwOvercurrentRelatedWaveformsAnchor"></div>
+                                <!-- Playback composition point: populated by
+                                     wwOvercurrentMountPlaybackControls(groupId) --
+                                     reuses the EXACT same shared control-surface
+                                     markup/wiring/sync functions Phasor's own
+                                     mount uses -- Overcurrent is simply a THIRD
+                                     consumer of the ONE shared wwPlayback
+                                     controller. -->
+                                <section class="panel ww-phasor-playback-panel ww-analysis-playback-panel" id="wwOvercurrentPlaybackPanel" hidden>
+                                    <div class="ww-phasor-playback-mount ww-analysis-playback-mount" id="wwOvercurrentPlaybackMount"></div>
+                                </section>
 
-                            <div class="ww-phasor-status-row" id="wwOvercurrentStatusRow" hidden></div>
-                            <p class="empty-state" id="wwOvercurrentEmptyState">Select an Engineering Context to begin.</p>
+                                <!-- Shared Related Waveforms mount point -- see the
+                                     identical comment on #wwPhasorRelatedWaveformsAnchor
+                                     above. Overcurrent never renders its own waveform
+                                     panel; it only PUSHES its own currently-selected
+                                     current-phase role via
+                                     wwOvercurrentPushRelatedWaveformRoles(). Hiding
+                                     the whole #wwOvercurrentRecordingSection in
+                                     Manual mode hides/collapses this too -- the
+                                     cleaner of the two task-offered options,
+                                     since the entire Recording-only section is
+                                     already hidden regardless (see
+                                     docs/project-memory/ANALYSIS_INPUT_SOURCE.md). -->
+                                <div id="wwOvercurrentRelatedWaveformsAnchor"></div>
 
-                            <div class="ww-phasor-body ww-oc-body" id="wwOvercurrentBody" hidden>
+                                <div class="ww-phasor-status-row" id="wwOvercurrentStatusRow" hidden></div>
+                                <p class="empty-state" id="wwOvercurrentEmptyState">No recording loaded. Upload a recording to use Recording mode.</p>
+                            </div>
+
+                            <!-- ALWAYS visible once the Overcurrent tab is
+                                 open -- Relay Settings/Manual Input/Results/
+                                 Chart never require a recording. Never
+                                 hidden by wwOvercurrentShowEmptyState() any
+                                 more (architectural correction). -->
+                            <div class="ww-phasor-body ww-oc-body" id="wwOvercurrentBody">
                                 <section class="panel ww-phasor-values-panel">
                                     <h3>Settings / Live Values</h3>
-                                    <!-- Shared Analysis Input Source (Manual Input /
-                                         Calculator mode slice) -- Overcurrent's own
-                                         first implementation, see
-                                         docs/project-memory/ANALYSIS_INPUT_SOURCE.md.
-                                         Reuses the EXACT same segmented-control CSS
-                                         classes (`.ww-oc-axis-toggle-group`/`-btn`/
-                                         `--active`) the Pickup Multiple/Relay Current
-                                         toggle already established, for visual
-                                         consistency -- never a second toggle style. -->
-                                    <div class="ww-oc-input-source-row">
-                                        <span class="ww-oc-view-controls-label">Input Source</span>
-                                        <span class="ww-oc-axis-toggle-group" role="group" aria-label="Analysis input source">
-                                            <button type="button" id="wwOvercurrentInputSourceRecordingBtn" class="ww-oc-axis-toggle-btn ww-oc-axis-toggle-btn--active" data-input-source="recording" aria-pressed="true">Recording</button>
-                                            <button type="button" id="wwOvercurrentInputSourceManualBtn" class="ww-oc-axis-toggle-btn" data-input-source="manual" aria-pressed="false">Manual</button>
-                                        </span>
-                                    </div>
                                     <div class="ww-oc-settings-grid">
                                         <label class="ww-phasor-field ww-oc-field-full">
                                             <span class="ww-phasor-field-label">Characteristic</span>
@@ -35833,6 +35908,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // another module's private helpers" convention.
         // ==================================================================
 
+        // All four messages below are shown exclusively inside
+        // `#wwOvercurrentRecordingSection` (Recording mode's own empty
+        // state) -- architectural correction, 2026-09-16: Overcurrent
+        // remains fully usable with zero recordings via Manual mode (see
+        // docs/project-memory/ANALYSIS_INPUT_SOURCE.md), so none of these
+        // may ever imply the analyzer itself is unusable -- only that
+        // RECORDING mode specifically has nothing to show yet.
         const WW_OVERCURRENT_MSG_SELECT_CONTEXT = "Select an Engineering Context to begin.";
         const WW_OVERCURRENT_MSG_BACKEND_UNREACHABLE = "Could not reach the backend to load Engineering Contexts.";
         // Shared-Analysis-lifecycle UAT fix (2026-09-12): the SAME three
@@ -35842,7 +35924,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // reporting through -- see "Shared Analysis Engineering Context
         // lifecycle" below.
         const WW_OVERCURRENT_MSG_IDENTIFYING_CONTEXTS = "Identifying engineering contexts…";
-        const WW_OVERCURRENT_MSG_NO_SOURCES = "No event sources are available. Load a recording before using Overcurrent Analysis.";
+        // Reworded (architectural correction, 2026-09-16): the PRIOR
+        // wording ("Load a recording before using Overcurrent Analysis")
+        // was actively wrong once Manual mode existed -- Overcurrent IS
+        // usable with zero recordings, just not in Recording mode.
+        const WW_OVERCURRENT_MSG_NO_SOURCES = "No recording loaded. Upload a recording to use Recording mode.";
         const WW_OVERCURRENT_MSG_NO_SUGGESTIONS =
             "No Engineering Contexts could be automatically suggested from the loaded recording(s). " +
             "Create or correct one manually via Engineering Context configuration.";
@@ -35933,6 +36019,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // wwOvercurrentResetState() (full analyzer state recreation),
             // exactly like `xAxisMode`/`minorGridX` above.
             inputSource: WW_ANALYSIS_INPUT_SOURCE_RECORDING,
+            // Architectural correction (2026-09-16): whether Recording is
+            // CURRENTLY usable (at least one Engineering Context exists)
+            // -- see wwOvercurrentUpdateInputSourceAvailability(). `true`
+            // only while the CURRENT `inputSource` is itself the product
+            // of an automatic availability-driven correction, never a
+            // real user click -- see wwOvercurrentSetInputSource()'s own
+            // `isAutomatic` parameter.
+            recordingAvailable: false,
+            inputSourceAutoSelected: true,
             manual: {
                 inputCurrent: 30000,
                 inputCurrentUnit: "A",
@@ -36018,6 +36113,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // lifecycle" for the orchestration this consumes.
         function wwOvercurrentOnAnalysisContexts(contexts) {
             wwOvercurrentState.contexts = contexts;
+            wwOvercurrentUpdateInputSourceAvailability();
             wwOvercurrentRenderContextOptions();
             if (wwOvercurrentState.selectedContextId) {
                 wwOvercurrentLoadForSelectedContext();
@@ -36027,6 +36123,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwOvercurrentOnAnalysisLifecyclePhase(phase) {
+            // None of these four phases mean a usable context now exists
+            // (that is exclusively `onContexts()`'s own job, above) -- so
+            // Recording stays/becomes unavailable for every one of them.
+            wwOvercurrentUpdateInputSourceAvailability();
             if (phase === WW_ANALYSIS_CONTEXT_PHASE_IDENTIFYING) wwOvercurrentShowEmptyState(WW_OVERCURRENT_MSG_IDENTIFYING_CONTEXTS);
             else if (phase === WW_ANALYSIS_CONTEXT_PHASE_NO_SOURCES) wwOvercurrentShowEmptyState(WW_OVERCURRENT_MSG_NO_SOURCES);
             else if (phase === WW_ANALYSIS_CONTEXT_PHASE_NO_SUGGESTIONS) wwOvercurrentShowEmptyState(WW_OVERCURRENT_MSG_NO_SUGGESTIONS);
@@ -36090,11 +36190,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwOvercurrentShowEmptyState(message) {
+            // Architectural correction (2026-09-16): `#wwOvercurrentBody`
+            // (Relay Settings/Manual Input/Results/Chart) is NEVER hidden
+            // by this function any more -- it does not require a
+            // recording at all, and Manual mode's own controls live
+            // there. This function's own effect is now scoped entirely
+            // to `#wwOvercurrentRecordingSection` (Bay/Context bar,
+            // Playback, Related Waveforms, this empty-state paragraph
+            // itself), which the caller (a Recording-lifecycle consumer
+            // callback) is already implicitly reporting about.
             wwOvercurrentMountPlaybackControls(null);
             const statusRow = document.getElementById("wwOvercurrentStatusRow");
             if (statusRow) statusRow.hidden = true;
-            const body = document.getElementById("wwOvercurrentBody");
-            if (body) body.hidden = true;
             const emptyState = document.getElementById("wwOvercurrentEmptyState");
             if (emptyState) { emptyState.hidden = false; emptyState.textContent = message; }
             // Nothing computed -- Related Waveforms has nothing valid to
@@ -36152,8 +36259,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             const emptyState = document.getElementById("wwOvercurrentEmptyState");
             if (emptyState) emptyState.hidden = true;
-            const body = document.getElementById("wwOvercurrentBody");
-            if (body) body.hidden = false;
+            // `#wwOvercurrentBody` is never hidden any more (architectural
+            // correction, 2026-09-16) -- nothing to restore here.
 
             if (groupId === null) {
                 wwOvercurrentState.analysisTime = 0;
@@ -37762,12 +37869,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // `wwOvercurrentEvalT()`/`wwOvercurrentSolveMForT()`'s own
         // chart-geometry-only boundary already documents). ----
 
-        function wwOvercurrentSetInputSource(mode) {
+        // `isAutomatic` distinguishes a real user click (`false`, the
+        // default -- permanently "claims" the current mode, so no future
+        // availability change may silently move the engineer away from
+        // it) from this module's own availability-driven correction
+        // (`true` -- see wwOvercurrentUpdateInputSourceAvailability()
+        // below). Architectural correction, 2026-09-16: switching TO
+        // Recording is refused outright while no recording is available
+        // (defensive -- the button is also `disabled`, but a programmatic/
+        // synthetic call must not bypass this).
+        function wwOvercurrentSetInputSource(mode, isAutomatic) {
             if (mode !== WW_ANALYSIS_INPUT_SOURCE_RECORDING && mode !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
+            if (mode === WW_ANALYSIS_INPUT_SOURCE_RECORDING && !wwOvercurrentState.recordingAvailable) return;
+            if (!isAutomatic) wwOvercurrentState.inputSourceAutoSelected = false;
             if (mode === wwOvercurrentState.inputSource) return;
             wwOvercurrentState.inputSource = mode;
             wwOvercurrentSyncInputSourceButtons();
             wwOvercurrentUpdateManualSectionVisibility();
+            wwOvercurrentUpdateRecordingSectionVisibility();
             wwOvercurrentUpdateCtFieldsVisibility();
             wwOvercurrentPushRelatedWaveformRoles();
             if (mode === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
@@ -37798,6 +37917,61 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwOvercurrentUpdateManualSectionVisibility() {
             const section = document.getElementById("wwOvercurrentManualInputSection");
             if (section) section.hidden = wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+        }
+
+        // The Recording-only section (Bay/Context bar, Playback,
+        // Related Waveforms, recording empty-state) -- hidden ENTIRELY
+        // whenever Manual is the active Input Source (architectural
+        // correction, 2026-09-16: previously this section's own empty
+        // state hid Manual's own controls too, since they used to live
+        // INSIDE the now-recording-gated body). See
+        // docs/project-memory/ANALYSIS_INPUT_SOURCE.md.
+        function wwOvercurrentUpdateRecordingSectionVisibility() {
+            const section = document.getElementById("wwOvercurrentRecordingSection");
+            if (section) section.hidden = wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING;
+        }
+
+        // Recording is "available" once at least one Engineering Context
+        // exists for this analyzer to select -- the same signal the
+        // Bay/Context selector itself already needs to be useful (a
+        // narrower, more meaningful bar than "the workspace merely has a
+        // source file," since a source with no resolvable context still
+        // has nothing Recording mode could compute). Drives: (1) the
+        // Recording segment's own `disabled` state (never fully hidden --
+        // "the two-input-source concept should remain understandable");
+        // (2) the supporting hint text; (3) a ONE-TIME automatic
+        // correction of the CURRENT selection, but ONLY while
+        // `inputSourceAutoSelected` is still true -- i.e. only for as
+        // long as the engineer has never explicitly clicked either
+        // segment themselves. A deliberate user choice is NEVER
+        // overridden merely because availability changes later (task's
+        // own "switching must not corrupt manual values"/must not
+        // surprise the engineer requirement).
+        function wwOvercurrentUpdateInputSourceAvailability() {
+            const available = wwOvercurrentState.contexts.length > 0;
+            wwOvercurrentState.recordingAvailable = available;
+            const recordingBtn = document.getElementById("wwOvercurrentInputSourceRecordingBtn");
+            const hint = document.getElementById("wwOvercurrentInputSourceHint");
+            if (recordingBtn) recordingBtn.disabled = !available;
+            if (hint) hint.hidden = available;
+            // The button/hint above stay updated regardless of visibility
+            // (cheap, no network effect) -- but the auto-SWITCH below can
+            // itself trigger a real Manual-mode calculation request
+            // (wwOvercurrentSetInputSource() -> wwOvercurrentRequestManualAnalysis()),
+            // so it is gated on Overcurrent genuinely being the visible
+            // analyzer tab -- never fires a background request merely
+            // because the shared context list updated while Phasor (or
+            // no Analysis page at all) was showing. wwSetActiveAnalysisType()
+            // re-runs this same check the moment Overcurrent becomes
+            // visible, so a change that happened while hidden is still
+            // reflected promptly, just not before anyone can see it.
+            if (wwAnalysisActiveType !== "overcurrent") return;
+            if (!wwOvercurrentState.inputSourceAutoSelected) return;
+            if (!available && wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_RECORDING) {
+                wwOvercurrentSetInputSource(WW_ANALYSIS_INPUT_SOURCE_MANUAL, true);
+            } else if (available && wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                wwOvercurrentSetInputSource(WW_ANALYSIS_INPUT_SOURCE_RECORDING, true);
+            }
         }
 
         function wwOvercurrentSyncManualInputFields() {
@@ -37931,7 +38105,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Manual Input / Calculator mode -- session/UI state only,
             // reset alongside every other display preference above on a
             // full analyzer state recreation (new workspace/clear).
+            // `recordingAvailable`/`inputSourceAutoSelected` reset to
+            // their own pristine defaults too -- a fresh/cleared
+            // workspace has zero recordings until proven otherwise, so
+            // wwOvercurrentUpdateInputSourceAvailability() (called below,
+            // once the shared context lifecycle re-publishes for the new
+            // workspace) is free to auto-correct into Manual again.
             wwOvercurrentState.inputSource = WW_ANALYSIS_INPUT_SOURCE_RECORDING;
+            wwOvercurrentState.recordingAvailable = false;
+            wwOvercurrentState.inputSourceAutoSelected = true;
             wwOvercurrentState.manual = { inputCurrent: 30000, inputCurrentUnit: "A", inputBasis: "primary", latestResult: null };
             wwOvercurrentState.manualRequestGeneration += 1;
             wwOvercurrentSyncAxisModeButtons();
@@ -37939,6 +38121,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentSyncInputSourceButtons();
             wwOvercurrentSyncManualInputFields();
             wwOvercurrentUpdateManualSectionVisibility();
+            wwOvercurrentUpdateRecordingSectionVisibility();
+            wwOvercurrentUpdateInputSourceAvailability();
             wwOvercurrentUpdateCtFieldsVisibility();
             wwOvercurrentPlaybackFetchInFlight = false;
             wwOvercurrentPlaybackFetchedTime = null;
@@ -37958,8 +38142,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (alertEl) alertEl.hidden = true;
             const statusRow = document.getElementById("wwOvercurrentStatusRow");
             if (statusRow) statusRow.hidden = true;
-            const body = document.getElementById("wwOvercurrentBody");
-            if (body) body.hidden = true;
+            // `#wwOvercurrentBody` (Relay Settings/Manual Input/Results/
+            // Chart) is never hidden any more -- it does not require a
+            // recording at all (architectural correction, 2026-09-16).
             const emptyState = document.getElementById("wwOvercurrentEmptyState");
             if (emptyState) { emptyState.hidden = false; emptyState.textContent = WW_OVERCURRENT_MSG_SELECT_CONTEXT; }
         }
@@ -39218,6 +39403,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             } else if (type === "overcurrent") {
                 wwAnalysisMountRelatedWaveformsInto("wwOvercurrentRelatedWaveformsAnchor");
                 wwOvercurrentPushRelatedWaveformRoles();
+                // The Input Source auto-selection in
+                // wwOvercurrentUpdateInputSourceAvailability() is itself
+                // gated on Overcurrent being the VISIBLE analyzer (never
+                // fires a background Manual-mode request merely because
+                // the shared context list updated while Phasor was
+                // showing) -- re-run it now that Overcurrent has actually
+                // become visible, using whatever availability is already
+                // known, so a context that appeared/disappeared while
+                // this tab was hidden is reflected immediately.
+                wwOvercurrentUpdateInputSourceAvailability();
             } else {
                 wwAnalysisSetRelatedWaveformRoles([], null, null);
             }
@@ -39334,6 +39529,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         wwOvercurrentSyncInputSourceButtons();
         wwOvercurrentSyncManualInputFields();
         wwOvercurrentUpdateManualSectionVisibility();
+        wwOvercurrentUpdateRecordingSectionVisibility();
+        // Deliberately NOT calling wwOvercurrentUpdateInputSourceAvailability()
+        // here -- this global wiring block runs once per PAGE LOAD,
+        // regardless of whether the engineer ever visits Analysis at
+        // all; firing it here would trigger a background Manual-mode
+        // calculation request before the Overcurrent panel is even
+        // visible. It fires naturally, lazily, the first time
+        // `wwAnalysisLoadContexts()` actually resolves -- which itself
+        // only ever happens once `wwRenderAnalysisPage()` runs (i.e. the
+        // Analysis page has genuinely been visited) -- via
+        // wwOvercurrentOnAnalysisContexts()/wwOvercurrentOnAnalysisLifecyclePhase()
+        // above. Until then, the Recording segment simply has not yet
+        // been marked disabled, which is harmless since
+        // `#wwOvercurrentPanel` itself is still `hidden` at that point.
         // The ONE, permanent subscription to the shared wwPlayback tick
         // seam for Overcurrent -- mirrors Phasor's own registration above
         // (never a second requestAnimationFrame loop).

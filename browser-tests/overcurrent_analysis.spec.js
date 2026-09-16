@@ -2213,12 +2213,22 @@ test.describe("Overcurrent Analysis v1 -- Manual Input / Calculator mode (Analys
       if (req.url().includes("/overcurrent?")) analysisRequests++;
     });
 
-    const slider = page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-seek-slider");
+    // Architectural correction (2026-09-16): Overcurrent's own Playback
+    // strip is now INSIDE the Recording-only section, which is hidden
+    // entirely while Manual is active -- so Playback is driven here via
+    // PHASOR's own mount instead (Playback is genuinely shared/global,
+    // DEC-085; moving it from ANY consumer must never affect Manual OC).
+    await page.locator("#wwAnalysisTypePhasorBtn").click();
+    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    const slider = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-seek-slider");
+    await expect(slider).toBeVisible();
     const { min, max } = await seekSliderBounds(slider);
     await seekTo(slider, min + (max - min) * 0.8);
-    await page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-play-btn").click();
+    await page.locator("#wwPhasorPlaybackMount .ww-tg-playback-play-btn").click();
     await page.waitForTimeout(500);
-    await page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-play-btn").click();
+    await page.locator("#wwPhasorPlaybackMount .ww-tg-playback-play-btn").click();
+    await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
+    await expect(page.locator("#wwOvercurrentInputSourceManualBtn")).toHaveAttribute("aria-pressed", "true"); // still Manual
 
     const textAfter = await page.locator("#wwOvercurrentValuesList").innerText();
     const cxAfter = await page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker").getAttribute("cx");
@@ -2227,11 +2237,18 @@ test.describe("Overcurrent Analysis v1 -- Manual Input / Calculator mode (Analys
     expect(analysisRequests).toBe(0); // the recording endpoint must never fire while Manual is active
   });
 
-  test("Related Waveforms shows the shared neutral empty state in Manual mode, never a fabricated waveform", async ({ page }) => {
+  test("Related Waveforms panel is hidden/collapsed entirely in Manual mode, never a fabricated waveform", async ({ page }) => {
+    // Architectural correction (2026-09-16): superseding the prior
+    // "reuse the generic empty-state message" choice -- Related
+    // Waveforms now lives inside the Recording-only section, so
+    // switching to Manual hides/collapses the WHOLE panel (the cleaner
+    // of the two task-offered options, since the entire Recording-only
+    // section is already hidden regardless of Related Waveforms
+    // specifically). See docs/project-memory/ANALYSIS_INPUT_SOURCE.md.
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
-    await expect(page.locator("#wwAnalysisRelatedWaveformsEmptyState")).toBeHidden(); // Recording mode has an active role
+    await expect(page.locator("#wwAnalysisRelatedWaveformsPanel")).toBeVisible(); // Recording mode has an active role
 
     await page.locator("#wwOvercurrentInputSourceManualBtn").click();
     await enterManualCurrent(page, { current: 5, unit: "A", basis: "secondary" });
@@ -2240,7 +2257,8 @@ test.describe("Overcurrent Analysis v1 -- Manual Input / Calculator mode (Analys
       expect(text).toContain("Relay-equivalent current");
     }).toPass({ timeout: 5000 });
 
-    await expect(page.locator("#wwAnalysisRelatedWaveformsEmptyState")).toBeVisible();
+    await expect(page.locator("#wwOvercurrentRecordingSection")).toBeHidden();
+    await expect(page.locator("#wwAnalysisRelatedWaveformsPanel")).toBeHidden();
   });
 
   test("switching back to Recording restores the recording-driven point/values exactly", async ({ page }) => {
@@ -2351,10 +2369,16 @@ test.describe("Overcurrent Analysis v1 -- Manual Input / Calculator mode (Analys
     });
   }
 
-  test("a full workspace reset restores Input Source to Recording", async ({ page }) => {
+  test("a full workspace reset auto-selects Manual again (a fresh workspace has zero recordings)", async ({ page }) => {
+    // Architectural correction (2026-09-16): a freshly-reset workspace
+    // has NO recordings, exactly like a genuinely empty one -- Recording
+    // must be disabled and Manual auto-selected, never the reverse. This
+    // supersedes the prior "always resets to Recording" expectation,
+    // which assumed Recording was always meaningfully available.
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
+    await expect(page.locator("#wwOvercurrentInputSourceRecordingBtn")).toHaveAttribute("aria-pressed", "true");
     await page.locator("#wwOvercurrentInputSourceManualBtn").click();
     await expect(page.locator("#wwOvercurrentManualInputSection")).toBeVisible();
 
@@ -2366,7 +2390,153 @@ test.describe("Overcurrent Analysis v1 -- Manual Input / Calculator mode (Analys
 
     await page.locator("#mainNavAnalysisBtn").click();
     await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
-    await expect(page.locator("#wwOvercurrentInputSourceRecordingBtn")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator("#wwOvercurrentManualInputSection")).toBeHidden();
+    await expect(page.locator("#wwOvercurrentInputSourceManualBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#wwOvercurrentInputSourceRecordingBtn")).toBeDisabled();
+    await expect(page.locator("#wwOvercurrentManualInputSection")).toBeVisible();
+    await expect(page.locator("#wwOvercurrentInputSourceHint")).toBeVisible();
+    await expect(page.locator("#wwOvercurrentRecordingSection")).toBeHidden();
   });
+});
+
+test.describe("Overcurrent Analysis v1 -- Manual mode is a standalone engineering calculator, independent of recordings (2026-09-16 architectural correction)", () => {
+  // Owner requirement: "Manual Input must be fully independent from
+  // waveform/event recordings." A genuinely empty workspace -- no
+  // upload, no Engineering Context, no Time Group, no Playback source --
+  // must still let a user run a full Manual Overcurrent calculation.
+  // Deliberately does NOT call uploadAndCreateContext/uploadFixture:
+  // `page.goto("/index.html")` alone gives a fresh, empty workspace
+  // (see openAnalysisOvercurrent's own callers elsewhere in this file
+  // for the upload-based counterpart).
+
+  async function openEmptyWorkspaceOvercurrent(page) {
+    await page.goto("/index.html");
+    await openAnalysisOvercurrent(page);
+  }
+
+  test("Analysis -> Overcurrent is reachable and usable with zero recordings in the workspace", async ({ page }) => {
+    await openEmptyWorkspaceOvercurrent(page);
+    await expect(page.locator("#wwOvercurrentBody")).toBeVisible();
+    await expect(page.locator("#wwOvercurrentInputSourceManualBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#wwOvercurrentInputSourceRecordingBtn")).toBeDisabled();
+    await expect(page.locator("#wwOvercurrentInputSourceHint")).toBeVisible();
+    await expect(page.locator("#wwOvercurrentInputSourceHint")).toContainText("No recording loaded");
+    await expect(page.locator("#wwOvercurrentManualInputSection")).toBeVisible();
+    await expect(page.locator("#wwOvercurrentRecordingSection")).toBeHidden();
+  });
+
+  test("golden empty-workspace calculation: pickup 1.0 A secondary, CT 1200:1, manual 30000 A primary -> 25 A secondary, M=25x, zero recording-dependent requests", async ({ page }) => {
+    // `/overcurrent-curve` is deliberately NOT in this bucket: it only ever
+    // takes characteristic_id/tms (pure IEC curve-shape math, no context/
+    // source/waveform params) and is shared by both Recording and Manual
+    // to draw the same curve line -- it carries no recording dependency.
+    // `/overcurrent?` (the context-driven recording analysis endpoint) and
+    // `/waveform` (Related Waveforms fetches) are the actual recording-
+    // dependent requests this test must never see.
+    const recordingRequestUrls = [];
+    let manualRequests = 0;
+    page.on("request", (req) => {
+      const url = req.url();
+      if (url.includes("/overcurrent?") || url.includes("/waveform")) {
+        recordingRequestUrls.push(url);
+      }
+      if (url.includes("/overcurrent-manual")) manualRequests++;
+    });
+
+    await openEmptyWorkspaceOvercurrent(page);
+
+    await page.locator("#wwOvercurrentCharacteristicSelect").selectOption("iec_standard_inverse");
+    await page.locator("#wwOvercurrentPickupInput").fill("1.0");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    await page.locator("#wwOvercurrentPickupInput").blur();
+    await page.locator("#wwOvercurrentTmsInput").fill("0.1");
+    await page.locator("#wwOvercurrentTmsInput").dispatchEvent("change");
+    await page.locator("#wwOvercurrentTmsInput").blur();
+
+    await expect(page.locator("#wwOvercurrentCtPrimaryField")).toBeVisible(); // Manual's own default basis is Primary
+    await page.locator("#wwOvercurrentCtPrimaryInput").fill("1200");
+    await page.locator("#wwOvercurrentCtPrimaryInput").dispatchEvent("change");
+    await page.locator("#wwOvercurrentCtPrimaryInput").blur();
+    await page.locator("#wwOvercurrentCtSecondaryInput").fill("1");
+    await page.locator("#wwOvercurrentCtSecondaryInput").dispatchEvent("change");
+    await page.locator("#wwOvercurrentCtSecondaryInput").blur();
+
+    await page.locator("#wwOvercurrentManualCurrentInput").fill("30000");
+    await page.locator("#wwOvercurrentManualCurrentInput").dispatchEvent("change");
+    await page.locator("#wwOvercurrentManualCurrentInput").blur();
+
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toContain("Relay-equivalent current");
+    }).toPass({ timeout: 5000 });
+
+    const text = await page.locator("#wwOvercurrentValuesList").innerText();
+    expect(text).toMatch(/25\.0\s*A secondary/);
+    expect(text).toMatch(/25\.0\s*×/);
+    expect(text).toContain("Expected operating time");
+    expect(text).not.toContain("Not applicable");
+
+    await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker")).toHaveCount(1);
+
+    expect(manualRequests).toBeGreaterThan(0);
+    expect(recordingRequestUrls).toEqual([]);
+  });
+
+  test("Recording mode with zero recordings shows a clean neutral state, never a crash or stale Manual result relabeled as Recording", async ({ page }) => {
+    await openEmptyWorkspaceOvercurrent(page);
+    await enterManualCurrentStandalone(page, "5");
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toContain("Relay-equivalent current");
+    }).toPass({ timeout: 5000 });
+
+    // Recording stays disabled -- there is nothing to switch to, and the
+    // control must not silently let a click through onto stale Manual
+    // data mislabeled as a Recording result.
+    await expect(page.locator("#wwOvercurrentInputSourceRecordingBtn")).toBeDisabled();
+    await page.locator("#wwOvercurrentInputSourceRecordingBtn").click({ force: true });
+    await expect(page.locator("#wwOvercurrentInputSourceManualBtn")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  async function enterManualCurrentStandalone(page, current) {
+    // Secondary basis needs no CT ratio -- keeps these tests focused on
+    // the thing they're actually checking (no recording dependency),
+    // not on re-deriving the CT-conversion case the golden test already
+    // covers above.
+    await page.locator("#wwOvercurrentManualBasisSelect").selectOption("secondary");
+    await page.locator("#wwOvercurrentManualCurrentInput").fill(current);
+    await page.locator("#wwOvercurrentManualCurrentInput").dispatchEvent("change");
+    await page.locator("#wwOvercurrentManualCurrentInput").blur();
+  }
+
+  test("no Engineering Context, no Time Group, no Playback: Manual result and chart point render with zero context-selection/time-group/playback dependency", async ({ page }) => {
+    await openEmptyWorkspaceOvercurrent(page);
+    // No context selector interaction of any kind is possible or needed --
+    // the control itself lives inside the hidden #wwOvercurrentRecordingSection.
+    await expect(page.locator("#wwOvercurrentContextSelect")).toBeHidden();
+    await expect(page.locator("#wwOvercurrentPlaybackPanel")).toBeHidden();
+
+    await enterManualCurrentStandalone(page, "5");
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/5\.0\s*A secondary/);
+    }).toPass({ timeout: 5000 });
+    await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker")).toHaveCount(1);
+  });
+
+  for (const width of [1366, 1024]) {
+    test(`at ${width}px: empty-workspace Manual calculator fits cleanly, Recording shown disabled (not hidden), no overflow`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await openEmptyWorkspaceOvercurrent(page);
+      await enterManualCurrentStandalone(page, "5");
+      await expect(async () => {
+        const text = await page.locator("#wwOvercurrentValuesList").innerText();
+        expect(text).toContain("Relay-equivalent current");
+      }).toPass({ timeout: 5000 });
+
+      const overflowX = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflowX).toBeLessThanOrEqual(1);
+      await expect(page.locator("#wwOvercurrentInputSourceRecordingBtn")).toBeVisible();
+      await expect(page.locator("#wwOvercurrentInputSourceRecordingBtn")).toBeDisabled();
+    });
+  }
 });

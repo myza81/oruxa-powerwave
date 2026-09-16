@@ -1298,13 +1298,31 @@ contain. Full shared-panel architecture (grouping, fetching, rendering,
 the Playback cursor, resize) is NOT Overcurrent's own — see
 [ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md).
 
-## Manual Input / Calculator mode (2026-09-16, DEC-095)
+## Manual Input / Calculator mode (2026-09-16, DEC-095; architectural correction same day)
 
 Overcurrent is the first implementation of the shared **Analysis Input
 Source** concept — see
 [ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md) for the full
 shared shell/pattern a future analyzer's own manual mode should reuse;
 this section records Overcurrent's own engineering-specific detail.
+
+**Manual Input is a standalone engineering-calculator path and MUST NOT
+depend on recordings, Engineering Context, Time Groups, Playback, or
+waveform availability.** This is not merely a UX convenience — it
+shipped once, the same day, with an unintended coupling
+(`wwOvercurrentShowEmptyState()` hid the whole analyzer body, Manual's
+own controls included, whenever no context existed yet) and was
+corrected the same day via a markup/state-wiring restructure. See
+[ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md#markup-separation-2026-09-16-architectural-correction)
+for the structural fix and DEC-095's own amendment note. A genuinely
+empty workspace — no upload, no source, no Engineering Context, no Time
+Group, no Playback source at all — must still let an engineer open
+Overcurrent, select Manual, enter relay settings and a manual current,
+and see a computed result and chart point. This is covered end to end
+by `browser-tests/overcurrent_analysis.spec.js`'s own "Manual mode is a
+standalone engineering calculator, independent of recordings" describe
+block, run against a freshly-navigated page with zero uploads (never a
+faked/mocked recording or context).
 
 **Product definition.** A standalone hypothetical/test current value,
 evaluated against the SAME relay settings (characteristic/TMS/pickup/
@@ -1407,15 +1425,19 @@ Switching back to Recording mode forces a fresh, exact (non-throttled)
 refresh at wherever Playback currently sits — never a stale cached
 recording result from before Manual mode was entered.
 
-**Related Waveforms.** Manual mode declares zero active roles
+**Related Waveforms.** The shared panel is hidden/collapsed entirely
+whenever Manual is the active input source (revised 2026-09-16 — its
+reparented anchor, `#wwOvercurrentRelatedWaveformsAnchor`, lives inside
+`#wwOvercurrentRecordingSection`, whose own single `hidden` toggle now
+governs it), rather than shown with a generic "no waveform" message —
+see
+[ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md#markup-separation-2026-09-16-architectural-correction)
+for why hiding was chosen over reusing the shared empty state. Manual
+mode also still declares zero active roles as defense-in-depth
 (`wwOvercurrentComputeActiveRelatedWaveformRoles()` short-circuits to
-`[]`), which the shared panel's own EXISTING generic empty state
-(`#wwAnalysisRelatedWaveformsEmptyState`, "No related waveform signals
-available for the current analysis.") already renders — no new UI/text
-was invented, per the task's own "choose the least disruptive
-implementation" instruction; see
-[ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md#explicitly-deferred-not-this-slice)
-for the deferred, more analyzer-specific wording option.
+`[]` whenever `inputSource !== recording`), so the panel could never
+render a fabricated waveform even if a future change re-exposed it by
+mistake.
 
 **Persistence.** Manual input values (`wwOvercurrentState.manual.*`)
 are session/UI state only, matching every other Overcurrent chart/
