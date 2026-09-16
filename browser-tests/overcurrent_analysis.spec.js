@@ -143,6 +143,115 @@ test.describe("Overcurrent Analysis v1 -- basic configuration", () => {
   });
 });
 
+test.describe("Overcurrent Analysis v1 -- compact input control redesign (2026-09-16 owner UX request)", () => {
+  test("every settings control is visible, has its own semantic compact width, and remains fully editable/functional", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    // All controls exist and are visible -- nothing hidden/clipped by
+    // the redesign.
+    await expect(page.locator("#wwOvercurrentCharacteristicSelect")).toBeVisible();
+    await expect(page.locator("#wwOvercurrentPickupInput")).toBeVisible();
+    await expect(page.locator("#wwOvercurrentTmsInput")).toBeVisible();
+    await expect(page.locator("#wwOvercurrentBasisSelect")).toBeVisible();
+
+    // Labels remain correct/associated (unchanged text) -- all six,
+    // including the two CT fields that stay hidden until "Primary"
+    // basis is selected (allTextContents() reads DOM text regardless
+    // of visibility, so this also confirms their markup is intact).
+    const labels = await page.locator(".ww-oc-settings-grid .ww-phasor-field-label").allTextContents();
+    expect(labels).toEqual([
+      "Characteristic", "Pickup current (A secondary)", "TMS", "Recording current basis",
+      "CT Primary (A)", "CT Secondary (A)",
+    ]);
+
+    // Each field's own rendered width matches its design target (owner
+    // UX request) -- proportionate, never a uniform one-size-fits-all
+    // control.
+    const widthOf = async (locator) => (await page.locator(locator).boundingBox()).width;
+    expect(await widthOf("#wwOvercurrentCharacteristicSelect")).toBeGreaterThanOrEqual(180);
+    expect(await widthOf("#wwOvercurrentCharacteristicSelect")).toBeLessThanOrEqual(210);
+    expect(await widthOf("#wwOvercurrentPickupInput")).toBeGreaterThanOrEqual(80);
+    expect(await widthOf("#wwOvercurrentPickupInput")).toBeLessThanOrEqual(95);
+    expect(await widthOf("#wwOvercurrentTmsInput")).toBeGreaterThanOrEqual(70);
+    expect(await widthOf("#wwOvercurrentTmsInput")).toBeLessThanOrEqual(80);
+    expect(await widthOf("#wwOvercurrentBasisSelect")).toBeGreaterThanOrEqual(120);
+    expect(await widthOf("#wwOvercurrentBasisSelect")).toBeLessThanOrEqual(150);
+
+    // Compact control height target (28-30px), comfortable click area.
+    const pickupBox = await page.locator("#wwOvercurrentPickupInput").boundingBox();
+    expect(pickupBox.height).toBeGreaterThanOrEqual(26);
+    expect(pickupBox.height).toBeLessThanOrEqual(32);
+
+    // Numeric fields comfortably support realistic values without
+    // clipping (a wide-value smoke check -- overflow: visible/clip is
+    // the DOM's own concern, but this proves the value is genuinely
+    // accepted/reflected, not silently truncated).
+    await page.locator("#wwOvercurrentPickupInput").fill("0.001");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    await expect(page.locator("#wwOvercurrentPickupInput")).toHaveValue("0.001");
+
+    await page.locator("#wwOvercurrentBasisSelect").selectOption("primary");
+    await expect(page.locator("#wwOvercurrentCtPrimaryInput")).toBeVisible();
+    const ctPrimaryWidth = await widthOf("#wwOvercurrentCtPrimaryInput");
+    expect(ctPrimaryWidth).toBeGreaterThanOrEqual(90);
+    expect(ctPrimaryWidth).toBeLessThanOrEqual(110);
+    const ctSecondaryWidth = await widthOf("#wwOvercurrentCtSecondaryInput");
+    expect(ctSecondaryWidth).toBeGreaterThanOrEqual(70);
+    expect(ctSecondaryWidth).toBeLessThanOrEqual(90);
+
+    await page.locator("#wwOvercurrentCtPrimaryInput").fill("10000");
+    await page.locator("#wwOvercurrentCtPrimaryInput").dispatchEvent("change");
+    await expect(page.locator("#wwOvercurrentCtPrimaryInput")).toHaveValue("10000");
+
+    // Selects remain fully functional (value changes take effect,
+    // driving a real settings-changed recompute).
+    await page.locator("#wwOvercurrentCharacteristicSelect").selectOption("iec_very_inverse");
+    await expect(page.locator("#wwOvercurrentCharacteristicSelect")).toHaveValue("iec_very_inverse");
+
+    // No OC calculation behavior changed -- known 40 A RMS / pickup
+    // 0.001 A still produces a real, finite multiple.
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).not.toMatch(/Infinity|NaN/);
+    }).toPass({ timeout: 5000 });
+  });
+
+  test("chart viewport fields remain compact, functional, and unaffected by the settings-grid redesign", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const viewXMinBox = await page.locator("#wwOvercurrentViewXMin").boundingBox();
+    expect(viewXMinBox.width).toBeGreaterThanOrEqual(40);
+    expect(viewXMinBox.width).toBeLessThanOrEqual(60);
+
+    // Still fully functional -- a real zoom/custom-range change applies.
+    await page.locator("#wwOvercurrentViewXMin").fill("2");
+    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("2");
+    await page.locator("#wwOvercurrentResetViewBtn").click();
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.9");
+  });
+
+  test("no horizontal page overflow at a narrower laptop width (1024px)", async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 800 });
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const bodyScrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    const bodyClientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+    expect(bodyScrollWidth).toBeLessThanOrEqual(bodyClientWidth + 1); // +1 for sub-pixel rounding
+    // Every settings field remains visible (never clipped/overflowed
+    // off-panel).
+    for (const id of ["wwOvercurrentCharacteristicSelect", "wwOvercurrentPickupInput", "wwOvercurrentTmsInput", "wwOvercurrentBasisSelect"]) {
+      await expect(page.locator(`#${id}`)).toBeVisible();
+    }
+  });
+});
+
 test.describe("Overcurrent Analysis v1 -- secondary-current case", () => {
   test("secondary basis needs no CT fields and produces a valid operating point", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);

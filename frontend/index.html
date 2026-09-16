@@ -6535,16 +6535,62 @@
            live-values/alert/chart classes below are Overcurrent-specific,
            since Phasor has no equivalent of any of them. Typography stays
            within the same <=0.75rem Analysis-workspace cap. */
+        /* Compact input-control redesign (2026-09-16 owner UX request):
+           an explicit 2-column grid -- Characteristic/Pickup, TMS/Basis,
+           CT Primary/CT Secondary each their own row, matching the DOM's
+           own existing field order exactly (no markup reordering
+           needed). Previously `repeat(auto-fill, minmax(130px, 1fr))`
+           combined with the shared `.ww-phasor-field`'s own `min-width:
+           220px` (Phasor's own context-bar sizing, never intended for
+           six same-row compact fields) forced every field to roughly
+           the same bulky width regardless of what it actually held --
+           a one-character TMS value got the same visual weight as the
+           Characteristic dropdown. `min-width: 0` below removes that
+           floor SCOPED to this grid only (Phasor's own fields elsewhere
+           keep their original 220px) -- each field's own true width now
+           comes from its own INPUT/SELECT (see the per-field `#wwOvercurrent*`
+           rules further below), never a stretched, content-agnostic
+           grid cell. */
         .ww-oc-settings-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-            gap: 10px 12px;
+            grid-template-columns: 1fr 1fr;
+            column-gap: 18px;
+            row-gap: 9px;
             margin-bottom: 10px;
+        }
+        .ww-oc-settings-grid .ww-phasor-field {
+            min-width: 0;
         }
         .ww-oc-settings-grid select,
         .ww-oc-settings-grid input[type="number"] {
-            font-size: 0.75rem;
-            padding: 5px 8px;
+            width: auto;
+            font-size: 0.74rem;
+            padding: 6px 8px;
+        }
+        /* Semantic per-field widths (design targets, owner UX request) --
+           each field sized to what it actually needs to hold, never a
+           uniform one-size-fits-all control. All comfortably fit their
+           own realistic value range (e.g. CT Primary up to "10000",
+           Pickup down to "0.001") without clipping -- verified directly
+           in a real browser, not just eyeballed. */
+        #wwOvercurrentCharacteristicSelect { width: 200px; }
+        #wwOvercurrentBasisSelect { width: 140px; }
+        #wwOvercurrentPickupInput { width: 90px; }
+        #wwOvercurrentTmsInput { width: 76px; }
+        #wwOvercurrentCtPrimaryInput { width: 100px; }
+        #wwOvercurrentCtSecondaryInput { width: 80px; }
+        /* Narrow-laptop fallback -- only the genuinely small-screen case
+           stacks to one column; any normal laptop width keeps the
+           two-column form (task's own "only stack if the existing
+           breakpoint genuinely requires it" instruction). The outer
+           `.ww-phasor-body` grid (see its own `@media (max-width: 900px)`
+           rule above) already gives this settings panel its own full
+           row width below 900px, so this inner grid keeps ample room
+           for two ~200px-max columns down to a much narrower point. */
+        @media (max-width: 420px) {
+            .ww-oc-settings-grid {
+                grid-template-columns: 1fr;
+            }
         }
         .ww-oc-values-list {
             display: flex;

@@ -7,6 +7,7 @@ is covered separately by `browser-tests/overcurrent_analysis.spec.js`.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -1485,3 +1486,103 @@ class TestRelayCurrentModeSwitchZeroBackendRequests:
         ]:
             fn = _function_body(source, fn_name, next_name)
             assert "fetch(" not in fn
+
+
+class TestCompactInputControlRedesign:
+    """Owner UX request (2026-09-16): the OC settings/viewport controls
+    used to all share the same bulky ~220px min-width (Phasor's own
+    context-bar sizing, never intended for six same-row compact fields)
+    -- a one-character TMS value got the same visual weight as the
+    Characteristic dropdown. Redesigned to semantic, content-appropriate
+    per-field widths within an explicit 2-column grid. Presentation
+    only -- markup structure/ids/wiring are completely untouched, so
+    every existing functional test in this file continues to pass
+    unmodified."""
+
+    def test_settings_grid_is_an_explicit_two_column_layout(self):
+        source = _source()
+        css_rule = _function_body(source, ".ww-oc-settings-grid {", "}")
+        assert "grid-template-columns: 1fr 1fr;" in css_rule
+
+    def test_narrow_min_width_floor_is_removed_scoped_to_the_oc_grid_only(self):
+        """Phasor's own context-bar fields elsewhere must keep their
+        original 220px min-width -- only the OC settings grid's own
+        fields are freed from that floor."""
+        source = _source()
+        assert ".ww-oc-settings-grid .ww-phasor-field {" in source
+        scoped_rule = _function_body(source, ".ww-oc-settings-grid .ww-phasor-field {", "}")
+        assert "min-width: 0;" in scoped_rule
+        # The original, unscoped rule (still 220px) is untouched.
+        base_rule = _function_body(source, ".ww-phasor-field {", ".ww-phasor-field[hidden]")
+        assert "min-width: 220px;" in base_rule
+
+    def test_each_field_has_its_own_semantic_width(self):
+        """Design targets (owner UX request): Characteristic ~180-210px,
+        Recording basis ~120-150px, Pickup ~80-95px, TMS ~70-80px,
+        CT Primary ~90-110px, CT Secondary ~70-90px -- never a uniform
+        one-size-fits-all width."""
+        source = _source()
+        expectations = {
+            "#wwOvercurrentCharacteristicSelect": (180, 210),
+            "#wwOvercurrentBasisSelect": (120, 150),
+            "#wwOvercurrentPickupInput": (80, 95),
+            "#wwOvercurrentTmsInput": (70, 80),
+            "#wwOvercurrentCtPrimaryInput": (90, 110),
+            "#wwOvercurrentCtSecondaryInput": (70, 90),
+        }
+        for selector, (lo, hi) in expectations.items():
+            rule = _function_body(source, selector + " {", "}")
+            match = re.search(r"width:\s*(\d+)px;", rule)
+            assert match, f"{selector} has no explicit width rule"
+            width = int(match.group(1))
+            assert lo <= width <= hi, f"{selector} width {width}px outside target range {lo}-{hi}px"
+
+    def test_control_typography_stays_within_the_analysis_workspace_compact_cap(self):
+        source = _source()
+        css_rule = _function_body(source, ".ww-oc-settings-grid select,", "}")
+        match = re.search(r"font-size:\s*([\d.]+)rem;", css_rule)
+        assert match
+        font_size = float(match.group(1))
+        assert 0.72 <= font_size <= 0.75
+
+    def test_labels_remain_at_their_existing_compact_size(self):
+        """The shared `.ww-phasor-field` label size (0.72rem) is
+        unchanged -- this redesign touches widths/grid/control padding
+        only, never label typography."""
+        source = _source()
+        base_rule = _function_body(source, ".ww-phasor-field {", ".ww-phasor-field[hidden]")
+        assert "font-size: 0.72rem;" in base_rule
+
+    def test_all_six_settings_fields_and_their_labels_are_unchanged_in_markup(self):
+        """Presentation-only -- every field id, label text, and input
+        type/attribute (validation-relevant) must be byte-for-byte
+        identical to before this redesign."""
+        source = _source()
+        panel_markup = _function_body(source, 'id="wwOvercurrentCharacteristicSelect"', "ww-oc-values-list")
+        assert '<span class="ww-phasor-field-label">Characteristic</span>' in _source()
+        assert '<span class="ww-phasor-field-label">Pickup current (A secondary)</span>' in _source()
+        assert '<span class="ww-phasor-field-label">TMS</span>' in _source()
+        assert '<span class="ww-phasor-field-label">Recording current basis</span>' in _source()
+        assert '<span class="ww-phasor-field-label">CT Primary (A)</span>' in _source()
+        assert '<span class="ww-phasor-field-label">CT Secondary (A)</span>' in _source()
+        assert 'id="wwOvercurrentCharacteristicSelect"></select>' in source
+        assert 'type="number" id="wwOvercurrentPickupInput" min="0" step="0.01" value="1.00">' in source
+        assert 'type="number" id="wwOvercurrentTmsInput" min="0.025" max="1.2" step="0.005" value="0.10">' in source
+        assert 'type="number" id="wwOvercurrentCtPrimaryInput" min="0" step="1">' in source
+        assert 'type="number" id="wwOvercurrentCtSecondaryInput" min="0" step="0.01">' in source
+
+    def test_narrow_screen_fallback_stacks_to_one_column_only_below_420px(self):
+        source = _source()
+        assert "@media (max-width: 420px) {" in source
+        media_block = _function_body(source, "@media (max-width: 420px) {\n            .ww-oc-settings-grid {", "}\n        }")
+        assert "grid-template-columns: 1fr;" in media_block
+
+    def test_viewport_controls_are_untouched_by_this_redesign(self):
+        """Task's own explicit "do not change viewport behavior" --
+        the existing .ww-oc-view-field width/padding/font-size (already
+        within the task's own 46-55px compact target) are unmodified."""
+        source = _source()
+        css_rule = _function_body(source, ".ww-oc-view-field input[type=\"number\"] {", "}")
+        assert "width: 4.2em;" in css_rule
+        assert "font-size: 0.7rem;" in css_rule
+        assert "padding: 1px 3px;" in css_rule
