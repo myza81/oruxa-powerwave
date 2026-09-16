@@ -6052,7 +6052,7 @@
             gap: 8px;
         }
         .ww-phasor-field select {
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             padding: 5px 8px;
         }
 
@@ -6441,12 +6441,19 @@
            changes (see wwSetActiveAnalysisType()) -- never a separate
            per-analyzer instance. Typography stays within the same
            <=0.75rem Analysis-workspace cap every other analyzer card
-           already uses. */
+           already uses.
+
+           No visible "Related Waveforms" title row (2026-09-16 owner UI
+           refinement): the VOLTAGE/CURRENT group labels below already
+           identify the two waveform groups, so a redundant section
+           title added no information -- only unnecessary vertical
+           space. Top padding bumped slightly (10px -> 12px) over the
+           bare base `section.panel` default so the first visible group
+           label still reads as comfortably spaced from the panel's own
+           top edge, never cramped -- well short of the ~30px+ the
+           former h3 (own line height + 6px margin) used to occupy. */
         .ww-analysis-related-waveforms-panel {
-            padding: 10px 14px 0;
-        }
-        .ww-analysis-related-waveforms-panel h3 {
-            margin: 0 0 6px;
+            padding: 12px 14px 0;
         }
         #wwAnalysisRelatedWaveformsEmptyState {
             font-size: 0.72rem;
@@ -7717,7 +7724,6 @@
                              to Phasor or Overcurrent specifically -- see
                              docs/project-memory/ANALYSIS_WORKSPACE.md. -->
                         <section class="panel ww-analysis-related-waveforms-panel" id="wwAnalysisRelatedWaveformsPanel">
-                            <h3>Related Waveforms</h3>
                             <p class="empty-state" id="wwAnalysisRelatedWaveformsEmptyState">No related waveform signals available for the current analysis.</p>
                             <div class="ww-arw-body" id="wwAnalysisRelatedWaveformsBody" hidden>
                                 <div class="ww-arw-group" id="wwAnalysisRelatedWaveformsVoltageGroup" hidden>

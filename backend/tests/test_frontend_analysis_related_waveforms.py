@@ -367,3 +367,56 @@ class TestResizableHeight:
         assert "wwAnalysisRefreshRelatedWaveforms" not in fn
         assert "channelCache" not in fn
         assert "fetch(" not in fn
+
+
+class TestNoVisibleSectionTitle:
+    """Owner UI refinement (2026-09-16): the redundant "Related
+    Waveforms" title row is removed -- the VOLTAGE/CURRENT group labels
+    already identify the two waveform groups on their own. Purely a
+    markup/CSS change; the shared panel/anchors/state/resize/caching/
+    Playback-sync architecture covered by every other test class in this
+    file is completely untouched."""
+
+    def test_no_visible_related_waveforms_title_markup(self):
+        source = _source()
+        panel_markup = _function_body(source, 'id="wwAnalysisRelatedWaveformsPanel"', "</section>")
+        assert "<h3>" not in panel_markup
+        assert "<h3>Related Waveforms</h3>" not in panel_markup
+        # The resize handle's own aria-label ("Resize Related Waveforms
+        # panel height") legitimately still says the phrase -- that is
+        # an accessibility string, never rendered visible text, so it is
+        # explicitly excluded rather than asserting the phrase is absent
+        # entirely.
+        visible_markup = panel_markup.replace('aria-label="Resize Related Waveforms panel height"', "")
+        assert "Related Waveforms" not in visible_markup
+
+    def test_no_orphaned_title_css_rule_left_behind(self):
+        source = _source()
+        assert ".ww-analysis-related-waveforms-panel h3" not in source
+
+    def test_voltage_and_current_group_labels_remain(self):
+        source = _source()
+        panel_markup = _function_body(source, 'id="wwAnalysisRelatedWaveformsPanel"', "</section>")
+        assert '<span class="ww-arw-group-label">VOLTAGE</span>' in panel_markup
+        assert '<span class="ww-arw-group-label">CURRENT</span>' in panel_markup
+
+    def test_panel_top_padding_gives_comfortable_but_not_excessive_spacing(self):
+        """Reduced from the former title-adjacent total (panel padding +
+        h3 line height + h3 margin, ~30px+) but bumped slightly above the
+        bare base `section.panel` default (10px) so the first visible
+        group label doesn't sit flush against the panel's own top edge."""
+        source = _source()
+        css_rule = _function_body(source, ".ww-analysis-related-waveforms-panel {", "}")
+        assert "padding: 12px 14px 0;" in css_rule
+
+    def test_shared_panel_resize_and_grouping_architecture_all_still_present(self):
+        """The title removal is markup/CSS-only -- every shared-
+        architecture element it sits alongside must be completely
+        unaffected."""
+        source = _source()
+        assert source.count('id="wwAnalysisRelatedWaveformsPanel"') == 1
+        assert 'id="wwAnalysisRelatedWaveformsResizeHandle"' in source
+        assert 'id="wwAnalysisRelatedWaveformsVoltageGroup"' in source
+        assert 'id="wwAnalysisRelatedWaveformsCurrentGroup"' in source
+        assert 'id="wwPhasorRelatedWaveformsAnchor"' in source
+        assert 'id="wwOvercurrentRelatedWaveformsAnchor"' in source

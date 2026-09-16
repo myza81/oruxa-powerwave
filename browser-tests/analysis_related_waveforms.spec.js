@@ -120,6 +120,96 @@ test.describe("Related Waveforms -- shared panel structure", () => {
     await expect(page.locator("#wwAnalysisRelatedWaveformsEmptyState")).toContainText("No related waveform signals available");
     await expect(page.locator("#wwAnalysisRelatedWaveformsBody")).toBeHidden();
   });
+
+  test("no visible 'Related Waveforms' title row -- VOLTAGE/CURRENT group labels alone identify the groups (2026-09-16 owner UI refinement)", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page, contextId);
+    await waitForWaveformsRendered(page);
+
+    const panel = page.locator("#wwAnalysisRelatedWaveformsPanel");
+    await expect(panel.locator("h3", { hasText: "Related Waveforms" })).toHaveCount(0);
+    // The panel's own visible text never contains the removed title,
+    // even outside a dedicated <h3> (belt-and-braces against any other
+    // element carrying the same string).
+    const panelText = await panel.innerText();
+    expect(panelText).not.toContain("Related Waveforms");
+
+    // The useful group labels remain, visible.
+    await expect(panel.locator(".ww-arw-group-label", { hasText: "VOLTAGE" })).toBeVisible();
+    await expect(panel.locator(".ww-arw-group-label", { hasText: "CURRENT" })).toBeVisible();
+
+    // The first visible label sits comfortably below the panel's own
+    // top edge -- neither flush against it (cramped) nor pushed far
+    // down (leftover title space).
+    const panelBox = await panel.boundingBox();
+    const voltageLabelBox = await panel.locator(".ww-arw-group-label", { hasText: "VOLTAGE" }).boundingBox();
+    const topGap = voltageLabelBox.y - panelBox.y;
+    expect(topGap).toBeGreaterThan(4);
+    expect(topGap).toBeLessThan(24);
+  });
+
+  test("Overcurrent current-only view: CURRENT group begins near the panel top, no empty title space above it", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page, contextId);
+    await waitForWaveformsRendered(page);
+
+    const panel = page.locator("#wwAnalysisRelatedWaveformsPanel");
+    await expect(panel.locator(".ww-arw-group-label", { hasText: "CURRENT" })).toBeVisible();
+    const panelBox = await panel.boundingBox();
+    const currentLabelBox = await panel.locator(".ww-arw-group-label", { hasText: "CURRENT" }).boundingBox();
+    expect(currentLabelBox.y - panelBox.y).toBeLessThan(24);
+  });
+
+  test("resize handle still exists and the panel remains vertically resizable after the title removal", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page, contextId);
+    await waitForWaveformsRendered(page);
+
+    const handle = page.locator("#wwAnalysisRelatedWaveformsResizeHandle");
+    await expect(handle).toBeVisible();
+    await handle.scrollIntoViewIfNeeded();
+    const initialHeight = await page.evaluate(() => wwAnalysisRelatedWaveformsState.height);
+    const box = await handle.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 60, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForTimeout(100);
+    const resizedHeight = await page.evaluate(() => wwAnalysisRelatedWaveformsState.height);
+    expect(resizedHeight).toBeGreaterThan(initialHeight);
+  });
+
+  test("the same shared panel (with its title-less markup) is reused verbatim by both Phasor and Overcurrent", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page, contextId);
+    await waitForWaveformsRendered(page);
+    await expect(page.locator("#wwAnalysisRelatedWaveformsPanel")).toHaveCount(1);
+    await expect(page.locator("#wwAnalysisRelatedWaveformsPanel")).toBeVisible();
+    // wwAnalysisMountRelatedWaveformsInto() inserts the ONE shared panel
+    // as a SIBLING immediately before the active analyzer's own anchor
+    // (never nested inside it, never cloned) -- confirm it sits right
+    // above the Phasor anchor.
+    let order = await page.evaluate(() => {
+      const panel = document.getElementById("wwAnalysisRelatedWaveformsPanel");
+      const anchor = document.getElementById("wwPhasorRelatedWaveformsAnchor");
+      return panel.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING ? "before" : "after";
+    });
+    expect(order).toBe("before");
+
+    await openAnalysisOvercurrent(page, contextId);
+    await waitForWaveformsRendered(page);
+    // Still exactly one instance -- reparented, never cloned -- now
+    // sitting right above the Overcurrent anchor instead.
+    await expect(page.locator("#wwAnalysisRelatedWaveformsPanel")).toHaveCount(1);
+    await expect(page.locator("#wwAnalysisRelatedWaveformsPanel")).toBeVisible();
+    order = await page.evaluate(() => {
+      const panel = document.getElementById("wwAnalysisRelatedWaveformsPanel");
+      const anchor = document.getElementById("wwOvercurrentRelatedWaveformsAnchor");
+      return panel.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING ? "before" : "after";
+    });
+    expect(order).toBe("before");
+    await expect(page.locator("#wwAnalysisRelatedWaveformsPanel h3", { hasText: "Related Waveforms" })).toHaveCount(0);
+  });
 });
 
 test.describe("Related Waveforms -- Phasor integration", () => {
