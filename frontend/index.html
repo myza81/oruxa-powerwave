@@ -6062,6 +6062,16 @@
            The legacy `.ww-phasor-*` classes remain in markup for existing
            code/tests, but layout is now owned by the neutral
            `.ww-analysis-playback-*` seam. */
+        /* Compact ribbon redesign (2026-09-16, owner-supplied mock):
+           [Play][Restart][scrubber -- dominant, flexible][time][speed],
+           one row at laptop width. The transport wrapper's own
+           `display: contents` rule below (kept as-is) means every piece
+           is a DIRECT flex child of `.ww-analysis-playback-mount` and
+           can be reordered with plain CSS `order` -- no DOM/query-
+           selector restructuring needed anywhere
+           (wwWirePlaybackControls()/wwSyncPlaybackControls()/
+           wwUpdatePlaybackControlsTick() all resolve elements by class,
+           never by position, so this stays purely visual). */
         section.ww-analysis-playback-panel {
             padding: 4px 8px;
             border: 1px solid var(--panel-border);
@@ -6078,25 +6088,47 @@
         .ww-analysis-playback-transport {
             display: contents;
         }
+        /* Icon-first, minimal-chrome transport buttons -- no pill/
+           card background, no visible text label (still fully
+           accessible via the existing title/aria-label attributes,
+           unchanged) -- "Play" comes before "Restart" to match the
+           mock's own left-to-right order. */
+        .ww-analysis-playback-mount .ww-tg-playback-play-btn {
+            order: 1;
+        }
+        .ww-analysis-playback-mount .ww-tg-playback-restart-btn {
+            order: 2;
+        }
         .ww-analysis-playback-mount .ww-tg-playback-restart-btn,
         .ww-analysis-playback-mount .ww-tg-playback-play-btn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 5px;
-            min-height: 30px;
-            padding: 4px 8px;
-            border-radius: calc(var(--radius) - 1px);
-            background: var(--accent-wash-soft);
-            color: var(--accent);
-            border-color: var(--accent-dim);
-            font-size: 0.7rem;
-            line-height: 1;
-            white-space: nowrap;
+            flex: 0 0 auto;
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            border-radius: 50%;
+            background: transparent;
+            color: var(--text-dim);
+            border: none;
+        }
+        .ww-analysis-playback-mount .ww-tg-playback-restart-btn:hover,
+        .ww-analysis-playback-mount .ww-tg-playback-play-btn:hover {
+            background: var(--surface-tint);
+            color: var(--text);
+        }
+        .ww-analysis-playback-mount .ww-tg-playback-btn-label {
+            /* Visible text label removed for the compact icon-first
+               treatment -- title/aria-label (set in
+               wwCreatePlaybackControlsHtml()/wwSyncPlaybackControls())
+               already carry the accessible name independently, so
+               hiding this span never regresses a11y. */
+            display: none;
         }
         .ww-analysis-playback-mount .ww-tg-playback-btn-icon {
-            width: 13px;
-            height: 13px;
+            width: 14px;
+            height: 14px;
             flex: 0 0 auto;
         }
         .ww-analysis-playback-mount .ww-tg-playback-btn-icon svg {
@@ -6108,26 +6140,48 @@
             stroke-linecap: round;
             stroke-linejoin: round;
         }
-        .ww-analysis-playback-mount .ww-tg-playback-speed-select {
-            flex: 0 0 auto;
-            min-height: 30px;
-            min-width: 62px;
-            padding: 4px 6px;
-            border-radius: calc(var(--radius) - 1px);
-            font-size: 0.7rem;
-            line-height: 1;
-        }
+        /* Scrubber -- the one flexible/dominant element, sitting right
+           after the transport buttons (order 3, between the buttons at
+           1-2 and the time/speed group at 4-5). */
         .ww-analysis-playback-mount .ww-tg-playback-seek-row {
-            order: 1;
+            order: 3;
             flex: 1 1 auto;
             min-width: 120px;
             padding: 0;
         }
+        /* Thin neutral rail, teal/green (`--ok`) played-progress fill --
+           reuses the SAME `--ok` token the Playback Cursor line already
+           established (see `.ww-tg-playback-cursor-line` above) so the
+           scrubber's own progress color matches the on-chart cursor
+           color, never a second/competing "playback color" convention.
+           `accent-color` alone (no track/thumb pseudo-element overrides)
+           already renders a slim, two-tone native track in every
+           evergreen browser -- kept as a plain <input type="range">,
+           never a custom-built control, so drag/click-to-seek/arrow-key
+           stepping all keep working exactly as before. */
         .ww-analysis-playback-mount .ww-tg-playback-seek-slider {
-            height: 18px;
+            height: 14px;
+            accent-color: var(--ok);
+        }
+        .ww-analysis-playback-mount .ww-tg-playback-speed-select {
+            order: 5;
+            flex: 0 0 auto;
+            min-height: 22px;
+            min-width: 44px;
+            padding: 2px 4px;
+            border-radius: calc(var(--radius) - 1px);
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-dim);
+            font-size: 0.68rem;
+            line-height: 1;
+        }
+        .ww-analysis-playback-mount .ww-tg-playback-speed-select:hover,
+        .ww-analysis-playback-mount .ww-tg-playback-speed-select:focus {
+            border-color: var(--panel-border);
         }
         .ww-analysis-playback-mount .ww-tg-playback-time-readout {
-            order: 2;
+            order: 4;
             margin-left: auto;
             font-size: 0.68rem;
             font-weight: 600;
@@ -30520,12 +30574,25 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const readoutEl = containerEl.querySelector(".ww-tg-playback-time-readout");
             if (!readoutEl) return;
             const isActive = wwPlayback.activeTimeGroupId === groupId && Number.isFinite(wwPlayback.currentTime);
+            if (!isActive) {
+                readoutEl.textContent = "—";
+                return;
+            }
             // Reuses wwFormatCursorPointTime() -- the SAME formatter
             // Cursor A/B/Δt already use -- so this readout always matches
             // whatever Time Mode/t0 the workspace is currently in, never a
             // second/independent clock (task: "do not create another
-            // canonical clock").
-            readoutEl.textContent = isActive ? wwFormatCursorPointTime(wwPlayback.currentTime, groupId) : "—";
+            // canonical clock"). Compact playback ribbon redesign
+            // (2026-09-16): shown as "current / total" (mirroring the
+            // compact mock's own "1096 / 3518 ms" structure) rather than
+            // current time alone -- the "total" side reuses the SAME
+            // formatter against this group's own bounds end, so both
+            // halves always agree with whatever Time Mode/t0 is active,
+            // never a second/competing time representation.
+            const currentText = wwFormatCursorPointTime(wwPlayback.currentTime, groupId);
+            const bounds = wwDeriveTimeGroupBounds(groupId);
+            const totalText = bounds ? wwFormatCursorPointTime(bounds.end, groupId) : null;
+            readoutEl.textContent = totalText ? currentText + " / " + totalText : currentText;
         }
 
         // Thin, Time-Group-canvas-specific wrapper around

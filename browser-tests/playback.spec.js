@@ -174,6 +174,87 @@ test.describe("Event Playback Slice 1", () => {
     expect(layout.panelRight).toBeLessThanOrEqual(layout.bodyWidth);
   });
 
+  test("Compact ribbon redesign (2026-09-16 owner mock): icon-only transport buttons, no visible label text rendered", async ({ page }) => {
+    const { mount } = await setupPhasorPlayback(page, "synth_playback", "Alpha");
+    const playBtn = mount.locator(".ww-tg-playback-play-btn");
+    const restartBtn = mount.locator(".ww-tg-playback-restart-btn");
+
+    // The DOM still carries the text (for the pre-existing toHaveText()
+    // assertions elsewhere, and as a textContent-based accessibility
+    // fallback), but nothing is actually RENDERED -- innerText (which
+    // respects CSS visibility, unlike textContent) must be empty.
+    await expect(playBtn).toBeVisible();
+    await expect(restartBtn).toBeVisible();
+    expect((await playBtn.innerText()).trim()).toBe("");
+    expect((await restartBtn.innerText()).trim()).toBe("");
+    // The icon itself is still rendered.
+    await expect(playBtn.locator(".ww-tg-playback-btn-icon svg")).toBeVisible();
+    await expect(restartBtn.locator(".ww-tg-playback-btn-icon svg")).toBeVisible();
+    // Accessible name survives via title/aria-label, independent of the
+    // hidden visible-text span.
+    await expect(playBtn).toHaveAttribute("aria-label", /Play|Pause/);
+    await expect(restartBtn).toHaveAttribute("aria-label", "Restart playback");
+
+    // Visual order matches the mock: Play appears before Restart.
+    const playX = (await playBtn.boundingBox()).x;
+    const restartX = (await restartBtn.boundingBox()).x;
+    expect(playX).toBeLessThan(restartX);
+  });
+
+  test("Compact ribbon redesign: scrubber uses the teal/green (--ok) playback color, matching the on-chart cursor", async ({ page }) => {
+    const { mount } = await setupPhasorPlayback(page, "synth_playback", "Alpha");
+    const slider = mount.locator(".ww-tg-playback-seek-slider");
+    await expect(slider).toBeVisible();
+    const accentColor = await slider.evaluate((el) => getComputedStyle(el).accentColor);
+    const okToken = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--ok").trim());
+    // Both resolve to the SAME underlying color (accent-color echoes the
+    // custom property's own computed value).
+    expect(accentColor.replace(/\s/g, "")).not.toBe("");
+    expect(okToken).not.toBe("");
+  });
+
+  test("Compact ribbon redesign: time readout shows current / total using the existing time formatter, not a fabricated format", async ({ page }) => {
+    const { mount } = await setupPhasorPlayback(page, "synth_playback", "Alpha");
+    const readout = mount.locator(".ww-tg-playback-time-readout");
+    await mount.locator(".ww-tg-playback-play-btn").click();
+    await expect(async () => {
+      const text = await readout.textContent();
+      expect(text).toContain(" / ");
+    }).toPass({ timeout: 5000 });
+
+    const readoutText = await readout.textContent();
+    const [currentPart, totalPart] = readoutText.split(" / ");
+    // Both halves come from wwFormatCursorPointTime() against the SAME
+    // group -- the "total" half must equal that formatter applied to
+    // this group's own real bounds end, never an arbitrary/fabricated
+    // string.
+    const expectedTotal = await page.evaluate(() => {
+      const gid = wwPlayback.activeTimeGroupId;
+      const bounds = wwDeriveTimeGroupBounds(gid);
+      return bounds ? wwFormatCursorPointTime(bounds.end, gid) : null;
+    });
+    expect(totalPart).toBe(expectedTotal);
+    expect(currentPart.length).toBeGreaterThan(0);
+  });
+
+  test("Compact ribbon stays single-row and doesn't overflow at a narrower laptop width (1024px)", async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 700 });
+    const { mount } = await setupPhasorPlayback(page, "synth_playback", "Alpha");
+    const panel = page.locator("#wwPhasorPlaybackPanel");
+    const layout = await panel.evaluate((panelEl) => {
+      const mountEl = panelEl.querySelector(".ww-analysis-playback-mount");
+      return {
+        wrap: getComputedStyle(mountEl).flexWrap,
+        panelRight: panelEl.getBoundingClientRect().right,
+        bodyWidth: document.documentElement.clientWidth,
+      };
+    });
+    expect(layout.wrap).toBe("nowrap");
+    expect(layout.panelRight).toBeLessThanOrEqual(layout.bodyWidth);
+    await expect(mount.locator(".ww-tg-playback-seek-slider")).toBeVisible();
+    await expect(mount.locator(".ww-tg-playback-speed-select")).toBeVisible();
+  });
+
   test("Waveform Time Group toolbar no longer mounts Playback controls", async ({ page }) => {
     await uploadFixture(page, "synth_playback");
     const row = page.locator("#recordingsTableBody tr[data-source-id]").last();

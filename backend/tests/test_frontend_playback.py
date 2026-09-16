@@ -305,6 +305,89 @@ class TestSharedAnalysisPlaybackStyling:
         assert "margin-left: auto;" in css_body
 
 
+class TestCompactPlaybackRibbonRedesign:
+    """Owner-supplied compact mock (2026-09-16): [Play][Restart][scrubber
+    -- dominant][time][speed] on one row, icon-first transport buttons
+    (no visible text label), a thin teal/green scrubber, and a compact
+    right-aligned time+speed group. Purely visual -- no playback
+    behavior/clock/backend logic touched (see TestSeekBehavior/
+    TestSpeedControl/TestTimingUsesWallClockAnchorNotAssumedFrameInterval
+    etc. above, all still passing byte-for-byte unmodified)."""
+
+    def test_play_button_ordered_before_restart_button(self):
+        source = _source()
+        css_body = _function_body(source, "section.ww-analysis-playback-panel {", ".ww-phasor-status-row {")
+        play_order = _function_body(css_body, ".ww-analysis-playback-mount .ww-tg-playback-play-btn {", "}")
+        restart_order = _function_body(css_body, ".ww-analysis-playback-mount .ww-tg-playback-restart-btn {", "}")
+        assert "order: 1;" in play_order
+        assert "order: 2;" in restart_order
+
+    def test_transport_buttons_are_icon_only_no_pill_background(self):
+        source = _source()
+        css_body = _function_body(source, "section.ww-analysis-playback-panel {", ".ww-phasor-status-row {")
+        btn_rule = _function_body(
+            css_body,
+            ".ww-analysis-playback-mount .ww-tg-playback-restart-btn,\n        .ww-analysis-playback-mount .ww-tg-playback-play-btn {",
+            "}",
+        )
+        assert "background: transparent;" in btn_rule
+        assert "border: none;" in btn_rule
+        assert "border-radius: 50%;" in btn_rule
+
+    def test_button_label_span_is_visually_hidden(self):
+        source = _source()
+        css_body = _function_body(source, "section.ww-analysis-playback-panel {", ".ww-phasor-status-row {")
+        label_rule = _function_body(css_body, ".ww-analysis-playback-mount .ww-tg-playback-btn-label {", "}")
+        assert "display: none;" in label_rule
+
+    def test_buttons_still_carry_their_own_accessible_name_independent_of_the_hidden_label(self):
+        """The visible text label is hidden via CSS, but the accessible
+        name must survive via title/aria-label, set in
+        wwCreatePlaybackControlsHtml()/wwSyncPlaybackControls() -- both
+        untouched by the visual redesign."""
+        source = _source()
+        fn = _function_body(source, "function wwCreatePlaybackControlsHtml()", "const wwPlayback")
+        assert 'title="Restart playback" aria-label="Restart playback"' in fn
+        assert 'title="Play event" aria-label="Play event"' in fn
+        sync_fn = _function_body(source, "function wwSyncPlaybackControls(containerEl, groupId)", "// The cheap PER-TICK subset")
+        assert "playBtn.setAttribute(\"aria-label\", playBtn.title)" in sync_fn
+
+    def test_scrubber_is_thin_with_ok_colored_progress(self):
+        """Reuses the SAME `--ok` (green) token the Playback Cursor
+        overlay line already established, never a new competing
+        playback-color convention -- a plain native <input type=range>
+        throughout, never a custom-built control."""
+        source = _source()
+        css_body = _function_body(source, "section.ww-analysis-playback-panel {", ".ww-phasor-status-row {")
+        slider_rule = _function_body(css_body, ".ww-analysis-playback-mount .ww-tg-playback-seek-slider {", "}")
+        assert "accent-color: var(--ok);" in slider_rule
+        assert "height: 14px;" in slider_rule
+
+    def test_speed_select_is_compact_and_ordered_after_time_readout(self):
+        source = _source()
+        css_body = _function_body(source, "section.ww-analysis-playback-panel {", ".ww-phasor-status-row {")
+        speed_rule = _function_body(css_body, ".ww-analysis-playback-mount .ww-tg-playback-speed-select {", "}")
+        assert "order: 5;" in speed_rule
+        time_rule = _function_body(css_body, ".ww-analysis-playback-mount .ww-tg-playback-time-readout {", "}")
+        assert "order: 4;" in time_rule
+
+    def test_time_readout_shows_current_and_total_using_the_existing_formatter(self):
+        """Compact "current / total" structure (mirroring the mock's own
+        "1096 / 3518 ms"), but built ENTIRELY from
+        wwFormatCursorPointTime() -- the same formatter Cursor A/B/Δt and
+        the pre-redesign single-value readout already used -- never a
+        second/competing time representation, and the "total" side
+        reuses the group's own real bounds end (wwDeriveTimeGroupBounds()),
+        never a fabricated value."""
+        source = _source()
+        fn = _function_body(source, "function wwPlaybackUpdateTimeReadout(containerEl, groupId)", "// Thin, Time-Group-canvas-specific wrapper")
+        assert "wwFormatCursorPointTime(wwPlayback.currentTime, groupId)" in fn
+        assert "wwDeriveTimeGroupBounds(groupId)" in fn
+        assert "wwFormatCursorPointTime(bounds.end, groupId)" in fn
+        assert 'currentText + " / " + totalText' in fn
+        assert 'readoutEl.textContent = "—"' in fn  # inactive state unchanged
+
+
 class TestPlaybackCursorIsSeparateFromCursorAB:
     """Owner's explicit boundary: Playback Cursor must NOT reuse Cursor A/
     B -- separate DOM identity, separate state, never a read/write of
