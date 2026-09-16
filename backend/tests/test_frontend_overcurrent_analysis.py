@@ -855,10 +855,11 @@ class TestCompressedSubPickupAxis:
         pixel_x_fn = _function_body(source, "function wwOvercurrentPixelX(m, geo)", "// Inverse of `wwOvercurrentPixelX()`")
         inverse_fn = _function_body(source, "function wwOvercurrentPlotXToPickupMultiple(x, geo)", "function wwOvercurrentPixelY")
         is_default_fn = _function_body(source, "function wwOvercurrentIsDefaultViewport(v)", "// Hard validation")
+        relay_default_fn = _function_body(source, "function wwOvercurrentRelayCurrentDefaultViewport()", "function wwOvercurrentActiveXAbsoluteBounds")
         preamble = f"""
         const WW_OC_XAXIS_PICKUP_MULTIPLE = "pickup_multiple";
         const WW_OC_XAXIS_RELAY_CURRENT = "relay_current";
-        const wwOvercurrentState = {{ xAxisMode: "{x_axis_mode}" }};
+        const wwOvercurrentState = {{ xAxisMode: "{x_axis_mode}", settings: {{ pickupCurrentSecondary: 1.0 }} }};
         const WW_OC_CHART_MARGIN = {{ left: 40, right: 14, top: 12, bottom: 34 }};
         const WW_OC_CHART_W = 320;
         const WW_OC_CHART_H = 240;
@@ -866,6 +867,7 @@ class TestCompressedSubPickupAxis:
         const WW_OC_VIEWPORT_DEFAULT = {{ xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 }};
         const WW_OC_SUBPICKUP_GUTTER_FRACTION = 0.05;
         const WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD = 0.5;
+        {relay_default_fn}
         """
         return preamble + is_default_fn + geometry_fn + pixel_x_fn + inverse_fn
 
@@ -1064,10 +1066,14 @@ class TestPickupMultipleFixedMajorTicks:
         fn = _function_body(source, "function wwOvercurrentPickupMultipleMajors(viewport)", "function wwOvercurrentFormatTickValue")
         assert "Math.log10" not in fn
 
-    def test_render_chart_uses_the_fixed_majors_in_pickup_multiple_mode_and_the_generic_ones_in_relay_current_mode(self):
+    def test_render_chart_uses_the_fixed_majors_in_pickup_multiple_mode_and_the_pickup_scaled_ones_in_relay_current_mode(self):
+        """Owner UAT correction (2026-09-16): Relay Current mode's own
+        majors are now derived from the SAME fixed M-domain list, scaled
+        by pickup -- never the generic dynamic classifier -- so the two
+        representations stay visually equivalent."""
         source = _source()
         fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
-        assert "const xMajors = isRelayCurrentAxis ? wwOvercurrentXMajors(viewport) : wwOvercurrentPickupMultipleMajors(viewport);" in fn
+        assert "const xMajors = isRelayCurrentAxis ? wwOvercurrentRelayCurrentMajors(viewport) : wwOvercurrentPickupMultipleMajors(viewport);" in fn
 
     def test_default_viewport_gridline_count_reflects_the_new_fixed_major_list(self):
         """13 Pickup Multiple X majors (1..9, 10, 20, 50, 100) + 4 Y
@@ -1147,12 +1153,22 @@ class TestPickupMultipleMinorsNeverDuplicateFixedMajors:
 
 
 class TestXMinorsDispatchesByAxisMode:
-    def test_relay_current_mode_keeps_the_generic_minor_generator(self):
+    def test_relay_current_mode_derives_minors_from_the_same_m_domain_minors(self):
+        """Owner UAT correction (2026-09-16): Relay Current mode no
+        longer uses the generic dynamic minor generator -- it derives
+        its own minors from the SAME M-domain minors Pickup Multiple
+        uses, scaled by pickup (never a second/independent algorithm)."""
         source = _source()
         fn = _function_body(source, "function wwOvercurrentXMinors(viewport)", "function wwOvercurrentYMinors")
         assert "WW_OC_XAXIS_RELAY_CURRENT" in fn
-        assert "wwOvercurrentGenerateMinorPow125Ticks(viewport.xMin, viewport.xMax)" in fn
+        assert "wwOvercurrentRelayCurrentMinors(viewport)" in fn
         assert "wwOvercurrentPickupMultipleMinors(viewport)" in fn
+
+    def test_relay_current_minors_function_reuses_pickup_multiple_minors_verbatim(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRelayCurrentMinors(viewport)", "function wwOvercurrentXMinors")
+        assert "wwOvercurrentPickupMultipleMinors(mDomainViewport)" in fn
+        assert "safePickup" in fn
 
 
 class TestAxisToggleCSS:
@@ -1213,17 +1229,20 @@ class TestViewportDefaults:
         assert "viewport.xMin <= WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD + 1e-9" in fn
         assert "viewport.xMax > 1 + 1e-9" in fn
 
-    def test_relay_current_default_x_multiplier_decoupled_from_pickup_multiple(self):
-        """Relay Current mode's default X range is independent of Pickup
-        Multiple's default — task's own "do not force Pickup Multiple
-        defaults onto Relay Current mode" instruction."""
-        source = _source()
-        assert "const WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER = { xMin: 0.1, xMax: 100 };" in source
-
-    def test_relay_current_default_viewport_uses_its_own_constant(self):
+    def test_relay_current_default_viewport_is_coupled_to_pickup_multiple_scaled_by_pickup(self):
+        """Superseding owner UAT correction (2026-09-16): Relay Current
+        is related to Pickup Multiple by Irelay = M * Ipickup, so Relay
+        Current's own default X range must derive from the SAME
+        WW_OC_VIEWPORT_DEFAULT M-domain constant (0.9x-100x), scaled by
+        the current pickup -- never a hard-coded/independently-chosen
+        amp range (this replaces the prior, now-superseded, DEC-094
+        decoupling -- that task's own instruction predates this one's
+        explicit "derive from the same M-domain positions" requirement)."""
         source = _source()
         fn = _function_body(source, "function wwOvercurrentRelayCurrentDefaultViewport()", "function wwOvercurrentActiveXAbsoluteBounds")
-        assert "WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER" in fn
+        assert "WW_OC_VIEWPORT_DEFAULT.xMin * safePickup" in fn
+        assert "WW_OC_VIEWPORT_DEFAULT.xMax * safePickup" in fn
+        assert "WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER" not in source
 
 
 class TestMinorTickGenerationMatrix:
@@ -1270,3 +1289,199 @@ class TestMinorTickGenerationMatrix:
         ticks = json.loads(result.stdout)
         expected = [round(b * 10 ** e, 10) for e in range(-2, 2) for b in range(2, 10)]
         assert ticks == pytest.approx(expected)
+
+
+class TestRelayCurrentAxisAlignedWithPickupMultiple:
+    """Owner UAT correction (2026-09-16): Relay Current is related to
+    Pickup Multiple by Irelay = M * Ipickup, so Relay Current's own
+    default viewport, major ticks, and minor ticks must all derive from
+    the SAME M-domain positions Pickup Multiple uses, scaled by the
+    current pickup -- never hard-coded amp values or an independently-
+    derived current-domain classification. Golden scenario throughout:
+    pickup = 0.8 A secondary (task's own worked example)."""
+
+    def _harness(self, pickup=0.8):
+        source = _source()
+        pieces = [
+            f'const wwOvercurrentState = {{ settings: {{ pickupCurrentSecondary: {pickup} }} }};',
+            _function_body(source, "const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };", "function wwOvercurrentIsDefaultViewport"),
+            _function_body(source, "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100];", "function wwOvercurrentFormatTickValue"),
+            _function_body(source, "function wwOvercurrentRelayCurrentAbsoluteBounds()", "function wwOvercurrentActiveXAbsoluteBounds"),
+            "const WW_OC_MINOR_POW125_SUBDIVISIONS = [[1, 2, 0.2], [2, 5, 0.5], [5, 10, 1]];",
+            _function_body(source, "function wwOvercurrentPickupMultipleSubPickupMinors(viewport)", "function wwOvercurrentXMinors"),
+        ]
+        return "\n".join(pieces)
+
+    def _run(self, script):
+        import json
+        import subprocess
+
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        return json.loads(result.stdout)
+
+    def test_default_relay_current_viewport_is_0_72_to_80_at_pickup_0_8(self):
+        script = self._harness(pickup=0.8) + "\nconsole.log(JSON.stringify(wwOvercurrentRelayCurrentDefaultViewport()));"
+        viewport = self._run(script)
+        assert viewport["xMin"] == pytest.approx(0.72, rel=1e-9)
+        assert viewport["xMax"] == pytest.approx(80, rel=1e-9)
+
+    def test_relay_current_majors_are_m_domain_list_scaled_by_pickup(self):
+        script = self._harness(pickup=0.8) + """
+        const viewport = { xMin: 0.1, xMax: 200 };
+        console.log(JSON.stringify(wwOvercurrentRelayCurrentMajors(viewport)));
+        """
+        majors = self._run(script)
+        assert majors == pytest.approx([0.8, 1.6, 2.4, 3.2, 4.0, 4.8, 5.6, 6.4, 7.2, 8.0, 16, 40, 80])
+
+    def test_golden_m_to_ampere_worked_examples(self):
+        """M=1 -> 0.8 A, M=2 -> 1.6 A, M=3 -> 2.4 A, M=10 -> 8 A,
+        M=20 -> 16 A, M=50 -> 40 A, M=100 -> 80 A."""
+        script = self._harness(pickup=0.8) + """
+        const viewport = { xMin: 0.1, xMax: 200 };
+        const majors = wwOvercurrentRelayCurrentMajors(viewport);
+        console.log(JSON.stringify(majors));
+        """
+        majors = self._run(script)
+        expected_m = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100]
+        for m, tick in zip(expected_m, majors):
+            assert tick == pytest.approx(m * 0.8, rel=1e-9)
+
+    def test_relay_current_majors_never_include_the_viewports_own_minimum(self):
+        """Mirrors wwOvercurrentPickupMultipleMajors()'s own exclusion
+        rule -- the viewport's own true minimum gets its own dedicated
+        reference label instead, never a duplicate gridline."""
+        script = self._harness(pickup=0.8) + """
+        const viewport = { xMin: 0.72, xMax: 80 };
+        console.log(JSON.stringify(wwOvercurrentRelayCurrentMajors(viewport)));
+        """
+        majors = self._run(script)
+        assert 0.72 not in [pytest.approx(v) for v in majors]
+        assert majors[0] == pytest.approx(0.8, rel=1e-9)
+
+    def test_relay_current_minors_are_m_domain_minors_scaled_by_pickup(self):
+        """Between M=1 and M=2, the M-domain minors are 1.2/1.4/1.6/1.8
+        -- at pickup 0.8 A these become 0.96/1.12/1.28/1.44 A."""
+        script = self._harness(pickup=0.8) + """
+        const viewport = { xMin: 0.8, xMax: 1.6 };
+        console.log(JSON.stringify(wwOvercurrentRelayCurrentMinors(viewport)));
+        """
+        minors = self._run(script)
+        assert minors == pytest.approx([0.96, 1.12, 1.28, 1.44])
+
+    def test_relay_current_default_viewport_tracks_a_pickup_change(self):
+        """A different pickup produces a proportionally different
+        default -- never a stale/cached value from an earlier pickup."""
+        script = self._harness(pickup=1.0) + "\nconsole.log(JSON.stringify(wwOvercurrentRelayCurrentDefaultViewport()));"
+        viewport = self._run(script)
+        assert viewport["xMin"] == pytest.approx(0.9, rel=1e-9)
+        assert viewport["xMax"] == pytest.approx(100, rel=1e-9)
+
+    def test_relay_current_absolute_bounds_still_derive_from_the_shared_absolute_constant(self):
+        """Unaffected by this correction -- already correctly pickup-
+        relative before, still is."""
+        script = self._harness(pickup=0.8) + "\nconsole.log(JSON.stringify(wwOvercurrentRelayCurrentAbsoluteBounds()));"
+        bounds = self._run(script)
+        assert bounds["xMin"] == pytest.approx(0.08, rel=1e-9)
+        assert bounds["xMax"] == pytest.approx(160, rel=1e-9)
+
+
+class TestRelayCurrentPickupBoundaryVisualEquivalence:
+    """The pickup boundary in Relay Current mode (I = pickup) must
+    occupy the exact same visual X position as M=1 in Pickup Multiple
+    mode, and every M<->ampere pair must map to the same relative log
+    position -- proving the "visual equivalence" the task's own worked
+    example describes, via the real wwOvercurrentChartGeometry()/
+    wwOvercurrentPixelX() pixel math, not just the tick VALUES."""
+
+    def _harness(self):
+        source = _source()
+        pieces = [
+            "const WW_OC_XAXIS_PICKUP_MULTIPLE = \"pickup_multiple\";",
+            "const WW_OC_XAXIS_RELAY_CURRENT = \"relay_current\";",
+            _function_body(source, "const WW_OC_CHART_MARGIN = { left: 40, right: 14, top: 12, bottom: 34 };", "function wwOvercurrentGeneratePow125Ticks"),
+            _function_body(source, "function wwOvercurrentRelayCurrentAbsoluteBounds()", "function wwOvercurrentActiveXAbsoluteBounds"),
+            _function_body(source, "const WW_OC_SUBPICKUP_GUTTER_FRACTION = 0.05;", "function wwOvercurrentAxisBreakSvg"),
+        ]
+        return "\n".join(pieces)
+
+    def test_m_equals_1_and_pickup_amps_occupy_the_same_relative_position(self):
+        import json
+        import subprocess
+
+        script = self._harness() + """
+        const pickup = 0.8;
+        const wwOvercurrentState = { xAxisMode: WW_OC_XAXIS_PICKUP_MULTIPLE, settings: { pickupCurrentSecondary: pickup } };
+        const pmViewport = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };
+        const pmGeo = wwOvercurrentChartGeometry(pmViewport);
+        const pmPx = wwOvercurrentPixelX(1, pmGeo);
+
+        wwOvercurrentState.xAxisMode = WW_OC_XAXIS_RELAY_CURRENT;
+        const rcViewport = { xMin: 0.9 * pickup, xMax: 100 * pickup, yMin: 0.1, yMax: 100 };
+        const rcGeo = wwOvercurrentChartGeometry(rcViewport);
+        const rcPx = wwOvercurrentPixelX(pickup, rcGeo);
+
+        console.log(JSON.stringify({ pmPx, rcPx }));
+        """
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        assert data["rcPx"] == pytest.approx(data["pmPx"], abs=1e-6)
+
+    def test_every_worked_example_pair_maps_to_the_same_relative_position(self):
+        """M=1<->0.8A, M=2<->1.6A, M=2.5<->2.0A, M=10<->8.0A,
+        M=100<->80A -- the task's own explicit worked example."""
+        import json
+        import subprocess
+
+        pairs = [(1, 0.8), (2, 1.6), (2.5, 2.0), (10, 8.0), (100, 80)]
+        script = self._harness() + f"""
+        const pickup = 0.8;
+        const wwOvercurrentState = {{ xAxisMode: WW_OC_XAXIS_PICKUP_MULTIPLE, settings: {{ pickupCurrentSecondary: pickup }} }};
+        const pmViewport = {{ xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 }};
+        const pmGeo = wwOvercurrentChartGeometry(pmViewport);
+
+        wwOvercurrentState.xAxisMode = WW_OC_XAXIS_RELAY_CURRENT;
+        const rcViewport = {{ xMin: 0.9 * pickup, xMax: 100 * pickup, yMin: 0.1, yMax: 100 }};
+        const rcGeo = wwOvercurrentChartGeometry(rcViewport);
+
+        const pairs = {json.dumps(pairs)};
+        const results = pairs.map(([m, amps]) => ({{
+            pmPx: wwOvercurrentPixelX(m, pmGeo),
+            rcPx: wwOvercurrentPixelX(amps, rcGeo),
+        }}));
+        console.log(JSON.stringify(results));
+        """
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        rows = json.loads(result.stdout)
+        assert len(rows) == len(pairs)
+        for row in rows:
+            assert row["rcPx"] == pytest.approx(row["pmPx"], abs=1e-6)
+
+    def test_pickup_boundary_value_in_relay_current_mode_is_the_pickup_itself(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        assert "const pickupBoundaryX = isRelayCurrentAxis ? pickup : 1.0;" in fn
+
+
+class TestRelayCurrentModeSwitchZeroBackendRequests:
+    """Switching X-axis representation modes -- including with the new
+    pickup-scaled default/majors/minors -- must remain frontend-only,
+    reusing the already-fetched curve/already-computed result verbatim
+    (unchanged invariant from DEC-092, re-verified after this axis-
+    alignment correction)."""
+
+    def test_set_x_axis_mode_never_calls_fetch(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentSetXAxisMode(mode)", "function wwOvercurrentSyncAxisModeButtons")
+        assert "fetch(" not in fn
+        assert "wwOvercurrentFetchAnalysis" not in fn
+        assert "wwOvercurrentFetchCurve" not in fn
+
+    def test_relay_current_majors_minors_default_viewport_never_call_fetch(self):
+        source = _source()
+        for fn_name, next_name in [
+            ("function wwOvercurrentRelayCurrentMajors(viewport)", "function wwOvercurrentFormatTickValue"),
+            ("function wwOvercurrentRelayCurrentMinors(viewport)", "function wwOvercurrentXMinors"),
+            ("function wwOvercurrentRelayCurrentDefaultViewport()", "function wwOvercurrentActiveXAbsoluteBounds"),
+        ]:
+            fn = _function_body(source, fn_name, next_name)
+            assert "fetch(" not in fn

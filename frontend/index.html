@@ -36196,9 +36196,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // `breakApplies` threshold below). Also the source of Y's own
         // default for BOTH X-axis modes (Y is shared, see
         // `wwOvercurrentSetXAxisMode()`) -- Relay Current mode's own X
-        // default is intentionally a SEPARATE constant
-        // (`WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER`), never forced to
-        // follow this one. The absolute outer bounds the user's own X/Y
+        // default is this SAME xMin/xMax scaled through the current
+        // pickup (see `wwOvercurrentRelayCurrentDefaultViewport()`,
+        // owner UAT correction 2026-09-16: the two representations must
+        // stay visually equivalent, `Irelay = M * Ipickup`, so Relay
+        // Current's own default is deliberately COUPLED to this one,
+        // never independently chosen). The absolute outer bounds the user's own X/Y
         // range inputs and zoom-out may never exceed (X up to 200x, Y up
         // to 1000s) are unchanged, still 0.1x/0.01s -- ONLY the DEFAULT
         // moved, not the absolute floor. The visual "0" origin annotation
@@ -36206,8 +36209,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };
         const WW_OC_VIEWPORT_ABSOLUTE = { xMin: 0.1, xMax: 200, yMin: 0.01, yMax: 1000 };
 
+        // Mode-aware (owner UAT correction, 2026-09-16): Relay Current's
+        // own default viewport is now the SAME M-domain default scaled
+        // by pickup (`wwOvercurrentRelayCurrentDefaultViewport()`), so
+        // it must be recognized as "the default view" too -- otherwise
+        // the origin-gap/"0"-label treatment below (and the geometry it
+        // drives) would only ever apply to Pickup Multiple's own literal
+        // default, breaking the pixel-for-pixel visual equivalence
+        // between the two representations at their respective defaults
+        // (a real, measured ~15px origin-gap mismatch, caught by
+        // TestRelayCurrentPickupBoundaryVisualEquivalence). Pickup
+        // Multiple mode's own comparison is completely unchanged.
         function wwOvercurrentIsDefaultViewport(v) {
-            return v.xMin === WW_OC_VIEWPORT_DEFAULT.xMin && v.xMax === WW_OC_VIEWPORT_DEFAULT.xMax &&
+            const activeXDefault = wwOvercurrentState.xAxisMode === WW_OC_XAXIS_RELAY_CURRENT
+                ? wwOvercurrentRelayCurrentDefaultViewport()
+                : WW_OC_VIEWPORT_DEFAULT;
+            return v.xMin === activeXDefault.xMin && v.xMax === activeXDefault.xMax &&
                 v.yMin === WW_OC_VIEWPORT_DEFAULT.yMin && v.yMax === WW_OC_VIEWPORT_DEFAULT.yMax;
         }
 
@@ -36257,21 +36274,31 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // lighter, see `.ww-oc-tick-label-minor`) and never promoted to a
         // major gridline -- every other progression value is major. This
         // single dynamic rule reproduces the owner's own explicit default
-        // major lists exactly (Relay Current mode's own X default
-        // 0.1x->100x yields majors 0.5,1,2,5,10,20,50,100; Y default
-        // 0.1s->100s, owner UAT correction 2026-09-16, yields majors
-        // 1,10,100) while remaining generic for any custom viewport.
+        // Y-axis major list exactly (Y default 0.1s->100s, owner UAT
+        // correction 2026-09-16, yields majors 1,10,100) while remaining
+        // generic for any custom viewport. Used for the Y axis in BOTH
+        // X-axis modes; `wwOvercurrentXMajors()` below (its own former
+        // X-axis consumer) is no longer called by the Relay Current
+        // render path as of the 2026-09-16 axis-alignment correction --
+        // Relay Current mode now derives its own majors from the SAME
+        // fixed M-domain list Pickup Multiple uses, scaled by pickup
+        // (see `wwOvercurrentRelayCurrentMajors()`), kept here as a
+        // still-tested, still-available generic utility.
         function wwOvercurrentClassifyMajors(allTicks, axisMin) {
             const threshold = axisMin * 2;
             return allTicks.filter((v) => v > threshold + 1e-9);
         }
         // `wwOvercurrentXMajors()` (the generic dynamic 1-2-5 classifier
-        // above) is used for the Relay Current mode's own X axis and for
-        // the Y axis in BOTH modes -- see `WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS`
-        // below for Pickup Multiple mode's own dedicated, EXPLICIT major
-        // list (owner UAT correction: 3/4/6/7/8/9 must always be visible
-        // major gridlines in that mode, never derived from this generic
-        // rule, which would otherwise exclude/demote them).
+        // above) is no longer called by either X-axis mode's own render
+        // path as of the 2026-09-16 axis-alignment correction (Pickup
+        // Multiple has its own dedicated, EXPLICIT major list -- see
+        // `WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS` below; Relay Current now
+        // derives its own majors from that SAME fixed list scaled by
+        // pickup, see `wwOvercurrentRelayCurrentMajors()`) -- kept here,
+        // untouched, as a still-tested, still-available generic utility.
+        // The underlying `wwOvercurrentClassifyMajors()` helper it calls
+        // remains genuinely in active use, just directly, for the Y axis
+        // (`wwOvercurrentYMajors()` below) in both X-axis modes.
         function wwOvercurrentXMajors(viewport) {
             return wwOvercurrentClassifyMajors(wwOvercurrentGeneratePow125Ticks(viewport.xMin, viewport.xMax), viewport.xMin);
         }
@@ -36312,6 +36339,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 (v) => v >= viewport.xMin - 1e-9 && v <= viewport.xMax + 1e-9 && Math.abs(v - viewport.xMin) > 1e-9
             );
         }
+        // Relay Current mode's own major tick set (owner UAT correction,
+        // 2026-09-16) -- reuses the EXACT SAME fixed M-domain list above,
+        // scaled through the current pickup (`Irelay = M * Ipickup`,
+        // never an independently-derived current-domain classification).
+        // Filtering/minimum-exclusion logic mirrors
+        // `wwOvercurrentPickupMultipleMajors()` exactly, just applied to
+        // the scaled values -- e.g. pickup 0.8 A gives majors
+        // 0.8/1.6/2.4/3.2/4.0/4.8/5.6/6.4/7.2/8.0/16/40/80 A.
+        function wwOvercurrentRelayCurrentMajors(viewport) {
+            const pickup = wwOvercurrentState.settings.pickupCurrentSecondary;
+            const safePickup = Number.isFinite(pickup) && pickup > 0 ? pickup : 1.0;
+            return WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS.map((m) => m * safePickup).filter(
+                (v) => v >= viewport.xMin - 1e-9 && v <= viewport.xMax + 1e-9 && Math.abs(v - viewport.xMin) > 1e-9
+            );
+        }
         function wwOvercurrentFormatTickValue(v) {
             return Number(v.toPrecision(6)).toString();
         }
@@ -36349,24 +36391,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 : result.multiple_of_pickup;
         }
 
-        // Relay Current mode's own default X multiplier range (0.1x-100x
-        // pickup, scaled to amperes) -- DELIBERATELY its own constant,
-        // independent of `WW_OC_VIEWPORT_DEFAULT` (Pickup Multiple
-        // mode's own default, now 0.9x-100x per the owner's UAT
-        // correction below). Relay Current's own "sensible current-
-        // domain default" is untouched by that correction -- task's own
-        // explicit "do not force Pickup Multiple defaults onto Relay
-        // Current mode" instruction.
-        const WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER = { xMin: 0.1, xMax: 100 };
-
-        // Relay Current mode's own absolute X bounds/default -- scaled
-        // from the ABOVE multiplier (default) and from
-        // `WW_OC_VIEWPORT_ABSOLUTE` (absolute, 0.1x-200x, shared with
-        // Pickup Multiple mode's own absolute bound -- only the DEFAULT
-        // differs between modes), converted to amperes via the current
-        // pickup -- never a second, independently-chosen amp range
-        // (task's own "do not hard-code a single current range"
-        // instruction: these stay pickup-relative, not a fixed constant).
+        // Relay Current mode's own absolute X bounds/default -- BOTH
+        // scaled directly from the SAME M-domain constants Pickup
+        // Multiple mode itself uses (`WW_OC_VIEWPORT_ABSOLUTE`,
+        // `WW_OC_VIEWPORT_DEFAULT`), converted to amperes via the
+        // current pickup and the owner's own exact relationship
+        // (`Irelay = M * Ipickup`) -- never a second, independently-
+        // chosen/hard-coded amp range (owner UAT correction,
+        // 2026-09-16: "do not hard-code 0.9 A, 1 A, 2 A, etc. -- instead
+        // transform the M values through the configured pickup"). This
+        // is what keeps the two representations visually equivalent --
+        // Pickup Multiple's default (0.9x-100x) and Relay Current's own
+        // default (0.9*pickup - 100*pickup) sit at the exact same
+        // relative log position, so switching modes leaves the curve,
+        // pickup boundary, and grid geometry in the same screen
+        // locations, only the X numbers/labels change (task's own
+        // "visual equivalence" section).
         function wwOvercurrentRelayCurrentAbsoluteBounds() {
             const pickup = wwOvercurrentState.settings.pickupCurrentSecondary;
             const safePickup = Number.isFinite(pickup) && pickup > 0 ? pickup : 1.0;
@@ -36376,8 +36416,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const pickup = wwOvercurrentState.settings.pickupCurrentSecondary;
             const safePickup = Number.isFinite(pickup) && pickup > 0 ? pickup : 1.0;
             return {
-                xMin: WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER.xMin * safePickup,
-                xMax: WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER.xMax * safePickup,
+                xMin: WW_OC_VIEWPORT_DEFAULT.xMin * safePickup,
+                xMax: WW_OC_VIEWPORT_DEFAULT.xMax * safePickup,
             };
         }
         // The absolute X bounds for whichever mode is currently active --
@@ -36486,12 +36526,28 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             return [...new Set(ticks)].filter((v) => v >= viewport.xMin - 1e-9 && v <= viewport.xMax + 1e-9).sort((a, b) => a - b);
         }
-        // X minors are mode-aware (Relay Current keeps the generic
-        // dynamic 1-2-5 subdivision, unchanged); Y minors are always the
+        // Relay Current mode's own minor tick set (owner UAT correction,
+        // 2026-09-16) -- never a second/independent minor-grid
+        // algorithm: derives the M-domain equivalent of the current
+        // viewport (divide by pickup), reuses
+        // `wwOvercurrentPickupMultipleMinors()` VERBATIM against that
+        // M-domain viewport, then scales the results back to amperes.
+        // Mirrors `wwOvercurrentRelayCurrentMajors()`'s own approach --
+        // e.g. the 1x-2x minors (1.2/1.4/1.6/1.8) scale to
+        // 0.96/1.12/1.28/1.44 A at pickup 0.8 A.
+        function wwOvercurrentRelayCurrentMinors(viewport) {
+            const pickup = wwOvercurrentState.settings.pickupCurrentSecondary;
+            const safePickup = Number.isFinite(pickup) && pickup > 0 ? pickup : 1.0;
+            const mDomainViewport = { xMin: viewport.xMin / safePickup, xMax: viewport.xMax / safePickup };
+            return wwOvercurrentPickupMultipleMinors(mDomainViewport).map((m) => m * safePickup);
+        }
+        // X minors are mode-aware (Relay Current derives its own minors
+        // from the SAME M-domain minors, scaled by pickup -- see
+        // `wwOvercurrentRelayCurrentMinors()`); Y minors are always the
         // pure-decade set, unaffected by X-axis mode.
         function wwOvercurrentXMinors(viewport) {
             return wwOvercurrentState.xAxisMode === WW_OC_XAXIS_RELAY_CURRENT
-                ? wwOvercurrentGenerateMinorPow125Ticks(viewport.xMin, viewport.xMax)
+                ? wwOvercurrentRelayCurrentMinors(viewport)
                 : wwOvercurrentPickupMultipleMinors(viewport);
         }
         function wwOvercurrentYMinors(viewport) {
@@ -36844,10 +36900,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Pickup Multiple mode uses its own FIXED, owner-approved
             // major list (UAT correction: 3/4/6/7/8/9 must always be
             // visible majors, never derived from the generic dynamic
-            // 1-2-5 classifier); Relay Current mode keeps that generic
-            // dynamic classifier unchanged (task's own explicit
-            // instruction: this fixed policy is Pickup-Multiple-specific).
-            const xMajors = isRelayCurrentAxis ? wwOvercurrentXMajors(viewport) : wwOvercurrentPickupMultipleMajors(viewport);
+            // 1-2-5 classifier); Relay Current mode now derives its own
+            // majors from that EXACT SAME fixed M-domain list, scaled by
+            // pickup (owner UAT correction, 2026-09-16: the two
+            // representations must stay visually equivalent -- see
+            // `wwOvercurrentRelayCurrentMajors()`).
+            const xMajors = isRelayCurrentAxis ? wwOvercurrentRelayCurrentMajors(viewport) : wwOvercurrentPickupMultipleMajors(viewport);
             const yMajors = wwOvercurrentYMajors(viewport);
             const parts = [];
 
@@ -37180,12 +37238,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // to the default viewport (X 0.9->100, Y 0.1->100) -- an exact-
         // equality reset, not an approximation, restoring the default
         // major-grid labeling (UAT §7) -- while Relay Current resets to
-        // ITS OWN default X range (`WW_OC_RELAY_CURRENT_DEFAULT_X_
-        // MULTIPLIER`, deliberately independent of Pickup Multiple's own
-        // default -- 2026-09-13 owner correction) with the SAME shared Y
-        // default. Both branches also clear/refresh that mode's own
-        // remembered custom range, so a subsequent mode switch does not
-        // resurrect a stale pre-reset range.
+        // that SAME 0.9x-100x range scaled through the CURRENT pickup
+        // (`wwOvercurrentRelayCurrentDefaultViewport()`, owner UAT
+        // correction 2026-09-16: the two representations must stay
+        // visually equivalent, so Relay Current's own default is
+        // deliberately COUPLED to Pickup Multiple's, never independently
+        // chosen) with the SAME shared Y default. Both branches also
+        // clear/refresh that mode's own remembered custom range, so a
+        // subsequent mode switch does not resurrect a stale pre-reset
+        // range.
         function wwOvercurrentResetViewport() {
             if (wwOvercurrentState.xAxisMode === WW_OC_XAXIS_RELAY_CURRENT) {
                 const relayDefault = wwOvercurrentRelayCurrentDefaultViewport();

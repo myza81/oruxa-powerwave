@@ -742,14 +742,24 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
     // 6: axis title changes.
     await expect(page.locator("#wwOvercurrentSvg text.ww-oc-axis-label", { hasText: "Relay Current (A secondary)" })).toHaveCount(1);
 
-    // 7: operating point x-coordinate transforms (different pixel
-    // position -- M=50x and I=40A map to different points on the axis).
+    // 7: operating point x-coordinate transforms to the new UNIT
+    // (amperes, not M) -- but owner UAT correction (2026-09-16) means
+    // the two representations are now visually EQUIVALENT: M=50x and
+    // I=40A (= 50 * 0.8 pickup) sit at the exact SAME pixel position,
+    // since Relay Current's own default viewport is now derived from
+    // the same M-domain default scaled by pickup. The underlying VALUE
+    // changed units (confirmed via the live-values panel elsewhere),
+    // the pixel position deliberately did not.
     const relayModeOpX = await page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point").getAttribute("cx");
-    expect(relayModeOpX).not.toBe(pickupModeOpX);
+    expect(Number(relayModeOpX)).toBeCloseTo(Number(pickupModeOpX), 1);
 
-    // 8: pickup boundary transforms (M=1 fixed position -> 0.8 A position).
+    // 8: pickup boundary -- same visual-equivalence guarantee: M=1
+    // (Pickup Multiple) and I=pickup=0.8A (Relay Current) occupy the
+    // exact same pixel position (task's own "visual equivalence"
+    // section: "It should occupy the exact same visual x-position as
+    // M = 1 in Pickup Multiple mode").
     const relayModeBoundaryX = await page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary").getAttribute("x1");
-    expect(relayModeBoundaryX).not.toBe(pickupModeBoundaryX);
+    expect(Number(relayModeBoundaryX)).toBeCloseTo(Number(pickupModeBoundaryX), 1);
 
     // 9: ticks are current-domain (amperes), not M-domain -- the Pickup
     // Multiple mode's fixed 3/4/6/7/8/9 majors must NOT all still be
@@ -790,9 +800,11 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
     await expect(page.locator("#wwOvercurrentAxisModePickupBtn")).toHaveAttribute("aria-pressed", "false");
     await expect(page.locator("#wwOvercurrentSvg text.ww-oc-axis-label", { hasText: "Relay Current (A secondary)" })).toHaveCount(1);
     // Default pickup is 1.0 A -- Relay Current mode's own default range
-    // is the SAME 0.1x/100x multiplier scaled by pickup, i.e. identical
+    // is the SAME 0.9x/100x M-domain default Pickup Multiple uses,
+    // scaled by pickup (owner UAT correction 2026-09-16: the two
+    // representations must stay visually equivalent), i.e. identical
     // numbers at pickup=1.0.
-    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.1");
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.9");
     await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
 
     expect(curveFetchCount).toBe(0);
@@ -813,7 +825,7 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
     await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue(xMaxAfterZoom);
   });
 
-  test("pickup boundary is fixed at M=1 in Pickup Multiple mode but moves with pickup in Relay Current mode", async ({ page }) => {
+  test("pickup boundary is fixed at M=1 in Pickup Multiple mode, and (owner UAT correction 2026-09-16) sits at that exact same visual position in Relay Current mode too", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
@@ -832,11 +844,122 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
     const boundaryXAfterPickupChange = await page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary").getAttribute("x1");
     expect(boundaryXAfterPickupChange).toBe(boundaryXAtPickup1);
 
-    // Relay Current mode -- the boundary moves to the new pickup value
-    // (0.8 A), a different pixel position than the M=1 boundary was.
+    // Relay Current mode -- since its own default viewport is now
+    // derived from the SAME M-domain default scaled by this exact
+    // pickup (task's own "visual equivalence" requirement), the
+    // boundary (I = pickup = 0.8 A) sits at the EXACT SAME pixel
+    // position M=1 always does -- never a different, "moved" position.
+    // The underlying ENGINEERING VALUE at that position is different
+    // (0.8 A vs M=1), but the pixel geometry itself does not move.
     await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
     const boundaryXRelay = await page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary").getAttribute("x1");
-    expect(boundaryXRelay).not.toBe(boundaryXAtPickup1);
+    expect(Number(boundaryXRelay)).toBeCloseTo(Number(boundaryXAtPickup1), 1);
+  });
+
+  test("Relay Current default viewport at pickup 0.8 A is exactly 0.72 -> 80 A (owner UAT golden scenario, 2026-09-16)", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await page.locator("#wwOvercurrentPickupInput").fill("0.8");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/50\.0\s*×/);
+    }).toPass({ timeout: 5000 });
+
+    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
+    const xMin = parseFloat(await page.locator("#wwOvercurrentViewXMin").inputValue());
+    const xMax = parseFloat(await page.locator("#wwOvercurrentViewXMax").inputValue());
+    expect(xMin).toBeCloseTo(0.72, 6);
+    expect(xMax).toBeCloseTo(80, 6);
+
+    // The viewport-start reference (0.9 * pickup, mirroring Pickup
+    // Multiple's own "0.9" start reference) renders as the light
+    // minor/reference label.
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label-minor", { hasText: /^0\.72$/ })).toHaveCount(1);
+  });
+
+  test("Relay Current major tick values at pickup 0.8 A match the exact worked example", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await page.locator("#wwOvercurrentPickupInput").fill("0.8");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/50\.0\s*×/);
+    }).toPass({ timeout: 5000 });
+    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
+
+    // 0.8, 1.6, 2.4, 3.2, 4.0, 4.8, 5.6, 6.4, 7.2, 8.0, 16, 40, 80 A.
+    for (const label of ["1.6", "2.4", "3.2", "4.8", "5.6", "6.4", "7.2", "16", "40", "80"]) {
+      await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label", { hasText: new RegExp("^" + label.replace(".", "\\.") + "$") })).toHaveCount(1);
+    }
+    // "0.8", "4", "8" are each shared with a Y-axis label coincidentally
+    // only when Y happens to carry the same numeral -- assert their
+    // presence without assuming an exact count, to stay robust to the Y
+    // major set.
+    for (const label of ["0.8", "4", "8"]) {
+      const count = await page.locator("#wwOvercurrentSvg text.ww-oc-tick-label", { hasText: new RegExp("^" + label.replace(".", "\\.") + "$") }).count();
+      expect(count).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  test("switching pickup while in Relay Current mode updates ticks, boundary, and curve immediately (within the current viewport); Reset then reflects the new pickup", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
+
+    const boundaryBefore = await page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary").getAttribute("x1");
+    const curveDBefore = await page.locator("#wwOvercurrentSvg path.ww-oc-curve").getAttribute("d");
+    const xMinBefore = await page.locator("#wwOvercurrentViewXMin").inputValue();
+
+    let requestCount = 0;
+    page.on("request", (req) => {
+      if (req.url().includes("/overcurrent-curve") || req.url().includes("/waveform")) requestCount++;
+    });
+
+    // Pickup 2.0 A (not 0.8) -- deliberately stays WITHIN the current,
+    // unchanged viewport (Relay Current's own default at pickup=1.0 is
+    // 0.9-100 A), so the boundary remains on-chart and its own moved
+    // position can be observed directly, rather than going out of range
+    // (a separate, already-covered edge case -- see the existing
+    // "below pickup, off-chart" edge-indicator tests elsewhere).
+    await page.locator("#wwOvercurrentPickupInput").fill("2.0");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/20\.0\s*×/); // 40 / 2.0 = 20x
+    }).toPass({ timeout: 5000 });
+
+    // The pickup change is a real settings change (correctly refetches
+    // the analysis result), but never the curve/waveform -- the axis
+    // coordinate transform itself never triggers a backend request.
+    expect(requestCount).toBe(0);
+
+    // Tick labels/boundary/curve all update immediately, within the
+    // CURRENT (unchanged) viewport -- the viewport itself only ever
+    // moves on an explicit Reset/mode-switch, never silently on a
+    // pickup change alone (mirrors the pre-existing Pickup Multiple
+    // mode precedent: a pickup change never silently moves the
+    // viewport out from under the user).
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue(xMinBefore);
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label", { hasText: /^4$/ })).toHaveCount(1); // M=2 * 2.0A
+    const boundaryAfter = await page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary").getAttribute("x1");
+    expect(boundaryAfter).not.toBe(boundaryBefore);
+    const curveDAfter = await page.locator("#wwOvercurrentSvg path.ww-oc-curve").getAttribute("d");
+    expect(curveDAfter).not.toBe(curveDBefore);
+
+    // Reset now reflects the NEW pickup (1.8 -> 200 A), never a stale
+    // value from before the pickup change.
+    await page.locator("#wwOvercurrentResetViewBtn").click();
+    const xMinAfterReset = parseFloat(await page.locator("#wwOvercurrentViewXMin").inputValue());
+    const xMaxAfterReset = parseFloat(await page.locator("#wwOvercurrentViewXMax").inputValue());
+    expect(xMinAfterReset).toBeCloseTo(1.8, 6);
+    expect(xMaxAfterReset).toBeCloseTo(200, 6);
   });
 
   test("relay-equivalent current stays constant across a pickup change while the multiple changes", async ({ page }) => {
