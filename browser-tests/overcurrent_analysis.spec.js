@@ -207,8 +207,13 @@ test.describe("Overcurrent Analysis v1 -- below pickup", () => {
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
 
-    // Known 40 A RMS current; pickup set well above it (100 A) -> below pickup.
-    await page.locator("#wwOvercurrentPickupInput").fill("100");
+    // Known 40 A RMS current; pickup set just above it (42 A) -> M~=0.952,
+    // below pickup but still within the default viewport's own X Min
+    // (0.9, owner UAT correction 2026-09-16) -- exercises the ON-CHART
+    // below-pickup marker path, not the off-chart edge-indicator path
+    // (see the "compressed sub-pickup axis" describe block for the
+    // deliberately-widened, further-below-pickup scenario).
+    await page.locator("#wwOvercurrentPickupInput").fill("42");
     await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
 
     await expect(async () => {
@@ -228,7 +233,7 @@ test.describe("Overcurrent Analysis v1 -- below pickup", () => {
 });
 
 test.describe("Overcurrent Analysis v1 -- chart axes, grid, and ticks", () => {
-  test("default viewport: full axis frame, major grid lines, and the owner's curated default major-tick set render", async ({ page }) => {
+  test("default viewport (0.9->100 x, 0.1->100 s, owner UAT correction 2026-09-16): full axis frame, major grid lines, and the owner's curated default major-tick set render", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
@@ -237,11 +242,14 @@ test.describe("Overcurrent Analysis v1 -- chart axes, grid, and ticks", () => {
     await expect(page.locator("#wwOvercurrentSvg line.ww-oc-axis")).toHaveCount(2);
     // Major grid lines only (2026-09-13 owner UAT correction: Pickup
     // Multiple mode's own FIXED, owner-approved major list) -- 13 X
-    // majors (1,2,3,4,5,6,7,8,9,10,20,50,100) + 4 Y majors
-    // (0.1,1,10,100). 3/4/6/7/8/9 are now ALWAYS-VISIBLE majors, never
+    // majors (1,2,3,4,5,6,7,8,9,10,20,50,100, all >= the new 0.9 default
+    // X Min) + 3 Y majors (1,10,100 -- Y's own new default minimum,
+    // 0.1s, is itself excluded from the major set by the same "axis
+    // minimum is never itself promoted to major" rule X's minimum
+    // already followed). 3/4/6/7/8/9 are ALWAYS-VISIBLE majors, never
     // minor-gated -- see TestPickupMultipleFixedMajorTicks below for the
     // dedicated coverage of this correction.
-    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-gridline")).toHaveCount(17);
+    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-gridline")).toHaveCount(16);
 
     // X majors that never coincide with a Y major label.
     for (const label of ["2", "3", "4", "5", "6", "7", "8", "9", "20", "50"]) {
@@ -251,12 +259,11 @@ test.describe("Overcurrent Analysis v1 -- chart axes, grid, and ticks", () => {
     for (const label of ["1", "10", "100"]) {
       await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label", { hasText: new RegExp("^" + label + "$") })).toHaveCount(2);
     }
-    // Y's own "0.1" major is a normal tick label...
-    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label", { hasText: /^0\.1$/ })).toHaveCount(1);
-    // ...while X's own true minimum (also 0.1) renders as the lighter
-    // minor/reference label instead, alongside Y's own true minimum (0.01).
+    // X's own true minimum (0.9) and Y's own true minimum (0.1) each
+    // render as the lighter minor/reference label, never as ordinary
+    // majors.
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label-minor", { hasText: /^0\.9$/ })).toHaveCount(1);
     await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label-minor", { hasText: /^0\.1$/ })).toHaveCount(1);
-    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label-minor", { hasText: /^0\.01$/ })).toHaveCount(1);
 
     // The two special visual-origin "0" labels (X + Y), never log-transformed.
     await expect(page.locator("#wwOvercurrentSvg text.ww-oc-origin-label", { hasText: /^0$/ })).toHaveCount(2);
@@ -359,14 +366,14 @@ test.describe("Overcurrent Analysis v1 -- analyzer switch", () => {
 });
 
 test.describe("Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT)", () => {
-  test("default range inputs show 0.1/100/0.01/100", async ({ page }) => {
+  test("default range inputs show 0.9/100/0.1/100 (owner UAT correction 2026-09-16)", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
 
-    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.1");
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.9");
     await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
-    await expect(page.locator("#wwOvercurrentViewYMin")).toHaveValue("0.01");
+    await expect(page.locator("#wwOvercurrentViewYMin")).toHaveValue("0.1");
     await expect(page.locator("#wwOvercurrentViewYMax")).toHaveValue("100");
   });
 
@@ -385,9 +392,9 @@ test.describe("Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 
     expect(xMaxAfterZoomOut).toBeGreaterThan(xMaxAfterZoomIn);
 
     await page.locator("#wwOvercurrentResetViewBtn").click();
-    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.1");
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.9");
     await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
-    await expect(page.locator("#wwOvercurrentViewYMin")).toHaveValue("0.01");
+    await expect(page.locator("#wwOvercurrentViewYMin")).toHaveValue("0.1");
     await expect(page.locator("#wwOvercurrentViewYMax")).toHaveValue("100");
     // Reset also restores the default major-grid labeling.
     await expect(page.locator("#wwOvercurrentSvg text.ww-oc-origin-label", { hasText: /^0$/ })).toHaveCount(2);
@@ -441,7 +448,7 @@ test.describe("Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 
     await page.locator("#wwOvercurrentViewXMax").fill("0.05");
     await page.locator("#wwOvercurrentViewXMax").dispatchEvent("change");
     await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
-    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.1");
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.9");
   });
 
   test("viewport changes never alter wwPlayback.currentTime or trigger a new curve fetch", async ({ page }) => {
@@ -564,7 +571,8 @@ test.describe("Overcurrent Analysis v1 -- curve aligns exactly with the chart vi
     // any Y Min within the allowed X domain (t(200x) ~= 0.125s even at
     // the absolute X cap) -- Extremely Inverse (alpha=2) decays fast
     // enough to genuinely exit through the bottom boundary at the
-    // default viewport's own Y Min (0.01s), well within X Max (100x).
+    // default viewport's own Y Min (0.1s, owner UAT correction
+    // 2026-09-16 -- exit point M=9, well within X Max (100x)).
     await page.locator("#wwOvercurrentCharacteristicSelect").selectOption("iec_extremely_inverse");
     await expect(async () => {
       const text = await page.locator("#wwOvercurrentValuesList").innerText();
@@ -573,11 +581,11 @@ test.describe("Overcurrent Analysis v1 -- curve aligns exactly with the chart vi
 
     const last = await lastSegmentPoint(page);
     expect(last).not.toBeNull();
-    expect(last[1]).toBeCloseTo(0.01, 6);
+    expect(last[1]).toBeCloseTo(0.1, 6);
     // The exact mathematical boundary intersection, not merely "close to".
     const expectedM = await page.evaluate(() => {
       const constants = wwOvercurrentCurrentConstants();
-      return wwOvercurrentSolveMForT(constants, wwOvercurrentState.settings.tms, 0.01);
+      return wwOvercurrentSolveMForT(constants, wwOvercurrentState.settings.tms, 0.1);
     });
     expect(last[0]).toBeCloseTo(expectedM, 9);
   });
@@ -664,6 +672,105 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
     await expect(page.locator("#wwOvercurrentAxisModePickupBtn")).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator("#wwOvercurrentAxisModeRelayBtn")).toHaveAttribute("aria-pressed", "false");
     await expect(page.locator("#wwOvercurrentSvg text.ww-oc-axis-label", { hasText: "Current / Pickup Multiple (M)" })).toHaveCount(1);
+  });
+
+  test("both toggle buttons are genuinely visible (non-transparent color/border) in either state -- UAT root-cause regression (2026-09-16)", async ({ page }) => {
+    // Real root cause of the "toggle does not work" UAT report: the
+    // click handler/state/re-render pipeline all worked correctly --
+    // `.ww-oc-axis-toggle-btn` simply never set its own `color`/`border`,
+    // so the INACTIVE button inherited the global `button { color: #fff;
+    // border: none; }` reset and rendered as invisible white text on a
+    // light/transparent background. An engineer could never find a
+    // control they could not see. This test fails against the pre-fix
+    // CSS (color would resolve to rgb(255, 255, 255)) and passes only
+    // once the inactive button has a real, non-white text color and a
+    // visible border.
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const stylesFor = async (id) =>
+      page.locator(`#${id}`).evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return { color: cs.color, borderColor: cs.borderColor, borderStyle: cs.borderStyle };
+      });
+
+    // Default state: Pickup Multiple active, Relay Current inactive.
+    let inactive = await stylesFor("wwOvercurrentAxisModeRelayBtn");
+    expect(inactive.color).not.toBe("rgb(255, 255, 255)");
+    expect(inactive.borderStyle).not.toBe("none");
+
+    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
+    // After switching: Pickup Multiple is now inactive -- it must ALSO
+    // remain visible, not merely the button that happened to start active.
+    inactive = await stylesFor("wwOvercurrentAxisModePickupBtn");
+    expect(inactive.color).not.toBe("rgb(255, 255, 255)");
+    expect(inactive.borderStyle).not.toBe("none");
+  });
+
+  test("full UAT round trip: click Relay Current transforms every chart element, click back restores Pickup Multiple exactly", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    // Golden scenario from the task spec: pickup 0.8 A, measured 40 A ->
+    // multiple 50x (task's own illustrative numbers used 0.8/2.0/2.5 at
+    // a different measured current; this fixture's known current is 40 A
+    // secondary, so pickup 0.8 A gives multiple = 40/0.8 = 50x and the
+    // Relay Current value is the measured current itself, 40 A).
+    await page.locator("#wwOvercurrentPickupInput").fill("0.8");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/50\.0\s*×/);
+    }).toPass({ timeout: 5000 });
+
+    // 1/2/3: default Pickup Multiple, capture title + operating point.
+    await expect(page.locator("#wwOvercurrentAxisModePickupBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-axis-label", { hasText: "Current / Pickup Multiple (M)" })).toHaveCount(1);
+    const pickupModeOpX = await page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point").getAttribute("cx");
+    const pickupModeBoundaryX = await page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary").getAttribute("x1");
+    const pickupModeTickLabels = await page.locator("#wwOvercurrentSvg text.ww-oc-tick-label").allTextContents();
+    const pickupModeXMin = await page.locator("#wwOvercurrentViewXMin").inputValue();
+    const pickupModeXMax = await page.locator("#wwOvercurrentViewXMax").inputValue();
+
+    // 4/5: click Relay Current, assert visible button-state change.
+    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
+    await expect(page.locator("#wwOvercurrentAxisModeRelayBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#wwOvercurrentAxisModePickupBtn")).toHaveAttribute("aria-pressed", "false");
+
+    // 6: axis title changes.
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-axis-label", { hasText: "Relay Current (A secondary)" })).toHaveCount(1);
+
+    // 7: operating point x-coordinate transforms (different pixel
+    // position -- M=50x and I=40A map to different points on the axis).
+    const relayModeOpX = await page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point").getAttribute("cx");
+    expect(relayModeOpX).not.toBe(pickupModeOpX);
+
+    // 8: pickup boundary transforms (M=1 fixed position -> 0.8 A position).
+    const relayModeBoundaryX = await page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary").getAttribute("x1");
+    expect(relayModeBoundaryX).not.toBe(pickupModeBoundaryX);
+
+    // 9: ticks are current-domain (amperes), not M-domain -- the Pickup
+    // Multiple mode's fixed 3/4/6/7/8/9 majors must NOT all still be
+    // present verbatim once scaled by a non-1.0 pickup (0.8x scales
+    // every tick value).
+    const relayModeTickLabels = await page.locator("#wwOvercurrentSvg text.ww-oc-tick-label").allTextContents();
+    expect(relayModeTickLabels).not.toEqual(pickupModeTickLabels);
+    const relayModeXMin = await page.locator("#wwOvercurrentViewXMin").inputValue();
+    const relayModeXMax = await page.locator("#wwOvercurrentViewXMax").inputValue();
+    expect(relayModeXMin).not.toBe(pickupModeXMin);
+    expect(relayModeXMax).not.toBe(pickupModeXMax);
+
+    // 10/11: click back to Pickup Multiple, everything restores exactly.
+    await page.locator("#wwOvercurrentAxisModePickupBtn").click();
+    await expect(page.locator("#wwOvercurrentAxisModePickupBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#wwOvercurrentAxisModeRelayBtn")).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-axis-label", { hasText: "Current / Pickup Multiple (M)" })).toHaveCount(1);
+    await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point")).toHaveAttribute("cx", pickupModeOpX);
+    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary")).toHaveAttribute("x1", pickupModeBoundaryX);
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue(pickupModeXMin);
+    await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue(pickupModeXMax);
   });
 
   test("switching to Relay Current changes the axis title and X range, never fetching a new curve or waveform", async ({ page }) => {
@@ -866,10 +973,27 @@ test.describe("Overcurrent Analysis v1 -- compressed sub-pickup axis (chart geom
     return page.locator(selector).evaluateAll((lines) => lines.map((el) => parseFloat(el.getAttribute("x1"))));
   }
 
-  test("default Pickup Multiple viewport: 0.1->1 occupies ~5% of plot width, 1->100 occupies ~95%", async ({ page }) => {
+  test("default Pickup Multiple viewport (0.9->100, owner UAT correction 2026-09-16) uses the ordinary log mapping, no break", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
+
+    const ratios = await page.evaluate(() => {
+      const geo = wwOvercurrentChartGeometry(wwOvercurrentState.viewport);
+      return { breakApplies: geo.breakApplies, xMin: wwOvercurrentState.viewport.xMin };
+    });
+    expect(ratios.xMin).toBeCloseTo(0.9, 5);
+    expect(ratios.breakApplies).toBe(false);
+    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-axis-break")).toHaveCount(0);
+  });
+
+  test("widening X Min to 0.1 (well below the 0.5 threshold) activates the compressed gutter: 0.1->1 occupies ~5% of plot width, 1->100 occupies ~95%", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await page.locator("#wwOvercurrentViewXMin").fill("0.1");
+    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
 
     const ratios = await page.evaluate(() => {
       const geo = wwOvercurrentChartGeometry(wwOvercurrentState.viewport);
@@ -888,10 +1012,17 @@ test.describe("Overcurrent Analysis v1 -- compressed sub-pickup axis (chart geom
     expect(ratios.aboveFraction).toBeCloseTo(0.95, 1);
   });
 
-  test("axis-break marker renders at the M=1 position in the default viewport", async ({ page }) => {
+  test("axis-break marker renders at the M=1 position once a deliberately wide below-pickup viewport is chosen", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
+
+    // No break at the new default (0.9 is above the 0.5 threshold).
+    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-axis-break")).toHaveCount(0);
+
+    // Widen to 0.1 (well below the threshold) -- the break appears.
+    await page.locator("#wwOvercurrentViewXMin").fill("0.1");
+    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
 
     const breakLines = await page.locator("#wwOvercurrentSvg line.ww-oc-axis-break").count();
     expect(breakLines).toBe(2); // the double-diagonal-tick mark
@@ -906,11 +1037,16 @@ test.describe("Overcurrent Analysis v1 -- compressed sub-pickup axis (chart geom
     }
   });
 
-  test("operating point below pickup renders inside the compressed sub-pickup gutter", async ({ page }) => {
+  test("operating point below pickup renders inside the compressed sub-pickup gutter once the viewport is widened below the break threshold", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
-    // Known 40 A RMS current; pickup 100 A -> M = 0.4, below pickup.
+    // Known 40 A RMS current; pickup 100 A -> M = 0.4, below pickup --
+    // also below the new default's own X Min (0.9), so widen the
+    // viewport first to keep M=0.4 visible and inside the compressed
+    // gutter (task's own worked example needs a deliberately wide view).
+    await page.locator("#wwOvercurrentViewXMin").fill("0.1");
+    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
     await page.locator("#wwOvercurrentPickupInput").fill("100");
     await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
 
@@ -921,6 +1057,7 @@ test.describe("Overcurrent Analysis v1 -- compressed sub-pickup axis (chart geom
 
     const markerX = parseFloat(await page.locator("#wwOvercurrentSvg circle.ww-oc-position-marker").getAttribute("cx"));
     const geo = await page.evaluate(() => wwOvercurrentChartGeometry(wwOvercurrentState.viewport));
+    expect(geo.breakApplies).toBe(true);
     // The marker's own X must sit strictly within the compressed gutter
     // (logLeft -> breakPx), never past the M=1 break into the operating
     // region -- proving the below-pickup value used the SAME piecewise
@@ -941,13 +1078,14 @@ test.describe("Overcurrent Analysis v1 -- compressed sub-pickup axis (chart geom
     const firstMoveTo = d.split(" ")[0]; // "M<x>,<y>" (SVG path command, unrelated to the M= pickup-multiple variable)
     const [, coords] = firstMoveTo.split("M");
     const [xPx] = coords.split(",").map(Number);
-    const breakPx = await page.evaluate(() => {
+    const pxAtOne = await page.evaluate(() => {
       const geo = wwOvercurrentChartGeometry(wwOvercurrentState.viewport);
-      return geo.breakPx;
+      return wwOvercurrentPixelX(1, geo);
     });
-    // The curve's own first drawn pixel must be AT/AFTER the M=1 break
-    // position, never inside the compressed sub-pickup gutter.
-    expect(xPx).toBeGreaterThanOrEqual(breakPx - 0.5);
+    // The curve's own first drawn pixel must be AT/AFTER the M=1
+    // position, never before it -- true whether or not the compressed
+    // gutter is active for the current viewport.
+    expect(xPx).toBeGreaterThanOrEqual(pxAtOne - 0.5);
   });
 
   test("a custom viewport entirely at/above M=1 reverts to the ordinary single log mapping (no gutter)", async ({ page }) => {
@@ -994,7 +1132,7 @@ test.describe("Overcurrent Analysis v1 -- compressed sub-pickup axis (chart geom
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
 
-    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.1");
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.9");
     await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
 
     await page.locator("#wwOvercurrentZoomInBtn").click();

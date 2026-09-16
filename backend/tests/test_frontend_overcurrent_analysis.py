@@ -146,19 +146,23 @@ class TestOvercurrentViewport:
     reset, and the default-vs-custom "0" origin rule."""
 
     def test_default_and_absolute_viewport_constants(self):
+        """Owner UAT correction (2026-09-13): the Pickup Multiple default
+        moved from 0.1x-100x/0.01s-100s to 0.9x-100x/0.1s-100s -- the
+        ABSOLUTE outer bounds (the floor the user's own range inputs and
+        zoom-out may never exceed) are unchanged."""
         source = _source()
-        assert "const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };" in source
+        assert "const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };" in source
         assert "const WW_OC_VIEWPORT_ABSOLUTE = { xMin: 0.1, xMax: 200, yMin: 0.01, yMax: 1000 };" in source
 
     def test_state_viewport_field_initialised_to_default(self):
         source = _source()
         fn = _function_body(source, "const wwOvercurrentState = {", "function wwOvercurrentFetchCharacteristics")
-        assert "viewport: { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 }," in fn
+        assert "viewport: { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 }," in fn
 
     def test_reset_state_also_resets_viewport(self):
         source = _source()
         fn = _function_body(source, "function wwOvercurrentResetState()", "const wwPhasorState")
-        assert 'wwOvercurrentState.viewport = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };' in fn
+        assert 'wwOvercurrentState.viewport = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };' in fn
 
     def test_validation_rejects_out_of_bound_and_non_finite_and_inverted(self):
         source = _source()
@@ -859,8 +863,9 @@ class TestCompressedSubPickupAxis:
         const WW_OC_CHART_W = 320;
         const WW_OC_CHART_H = 240;
         const WW_OC_ORIGIN_GAP = 15;
-        const WW_OC_VIEWPORT_DEFAULT = {{ xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 }};
+        const WW_OC_VIEWPORT_DEFAULT = {{ xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 }};
         const WW_OC_SUBPICKUP_GUTTER_FRACTION = 0.05;
+        const WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD = 0.5;
         """
         return preamble + is_default_fn + geometry_fn + pixel_x_fn + inverse_fn
 
@@ -1148,6 +1153,77 @@ class TestXMinorsDispatchesByAxisMode:
         assert "WW_OC_XAXIS_RELAY_CURRENT" in fn
         assert "wwOvercurrentGenerateMinorPow125Ticks(viewport.xMin, viewport.xMax)" in fn
         assert "wwOvercurrentPickupMultipleMinors(viewport)" in fn
+
+
+class TestAxisToggleCSS:
+    """UAT root-cause fix (2026-09-16): the `.ww-oc-axis-toggle-btn`
+    CSS class never set `color` or `border`, so the INACTIVE button was
+    invisible white text on light background — the click handler worked,
+    but the UI made the button unfindable. Verified fix: inactive state
+    now has `color: var(--text-dim)` and `border: 1px solid var(--panel-
+    border)`, matching the established `button.secondary` pattern."""
+
+    def test_inactive_toggle_button_has_visible_color_and_border(self):
+        source = _source()
+        css_section = source[source.find(".ww-oc-axis-toggle-btn {"):source.find(".ww-oc-axis-toggle-btn--active")]
+        assert "color: var(--text-dim)" in css_section
+        assert "border: 1px solid var(--panel-border)" in css_section
+
+    def test_active_toggle_button_color_overrides_inactive(self):
+        source = _source()
+        css_section = source[source.find(".ww-oc-axis-toggle-btn--active"):source.find(".ww-oc-grid-toggle-label")]
+        assert "color: var(--accent)" in css_section
+        assert "border-color: var(--accent-dim)" in css_section
+
+    def test_axis_toggle_has_click_handlers_wired_to_set_x_axis_mode(self):
+        source = _source()
+        assert 'document.getElementById("wwOvercurrentAxisModePickupBtn").addEventListener("click", () => wwOvercurrentSetXAxisMode(WW_OC_XAXIS_PICKUP_MULTIPLE))' in source
+        assert 'document.getElementById("wwOvercurrentAxisModeRelayBtn").addEventListener("click", () => wwOvercurrentSetXAxisMode(WW_OC_XAXIS_RELAY_CURRENT))' in source
+
+
+class TestViewportDefaults:
+    """Owner UAT correction (2026-09-16): Pickup Multiple default viewport
+    moved from 0.1/100/0.01/100 to 0.9/100/0.1/100, and the compressed
+    sub-pickup axis break now applies only when xMin <= 0.5 (not every
+    xMin < 1). The new default's 0.9 start gives an ordinary log axis
+    across the default range, saving the compressed gutter for deliberately
+    wider below-pickup views."""
+
+    def test_default_viewport_is_0_9_to_100_x_0_1_to_100_y(self):
+        source = _source()
+        assert "const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };" in source
+
+    def test_state_init_uses_the_correct_default_viewport(self):
+        source = _source()
+        fn = _function_body(source, "const wwOvercurrentState = {", "function wwOvercurrentFetchCharacteristics")
+        assert "viewport: { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 }," in fn
+
+    def test_reset_state_resets_viewport_to_correct_default(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentResetState()", "const wwPhasorState")
+        assert 'wwOvercurrentState.viewport = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };' in fn
+
+    def test_break_threshold_constant_is_0_5(self):
+        source = _source()
+        assert "const WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD = 0.5;" in source
+
+    def test_break_applies_only_when_xmin_lte_0_5_and_xmax_gt_1(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentChartGeometry(viewport)", "// The ONE authoritative Pickup Multiple X mapping pair")
+        assert "viewport.xMin <= WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD + 1e-9" in fn
+        assert "viewport.xMax > 1 + 1e-9" in fn
+
+    def test_relay_current_default_x_multiplier_decoupled_from_pickup_multiple(self):
+        """Relay Current mode's default X range is independent of Pickup
+        Multiple's default — task's own "do not force Pickup Multiple
+        defaults onto Relay Current mode" instruction."""
+        source = _source()
+        assert "const WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER = { xMin: 0.1, xMax: 100 };" in source
+
+    def test_relay_current_default_viewport_uses_its_own_constant(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRelayCurrentDefaultViewport()", "function wwOvercurrentActiveXAbsoluteBounds")
+        assert "WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER" in fn
 
 
 class TestMinorTickGenerationMatrix:

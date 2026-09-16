@@ -6681,12 +6681,27 @@
             display: inline-flex;
             gap: 2px;
         }
+        /* Real UAT bug fix (2026-09-13): this class previously set only
+           `background: transparent`, never its own `color`/`border` --
+           the GLOBAL `button { color: #fff; border: none; }` reset (see
+           `button` above) therefore leaked straight through, rendering
+           the INACTIVE toggle button as WHITE text on a transparent/
+           light panel background -- effectively invisible, not merely
+           "hard to see" (confirmed via `getComputedStyle()` in a real
+           browser: `color: rgb(255, 255, 255)` against the panel's own
+           near-white background). The click handler/state/re-render
+           pipeline were never broken -- an engineer could not SEE the
+           control well enough to know it was there to click. Mirrors
+           the established `button.secondary` pattern elsewhere in this
+           file so both states stay visible in any theme, active or not. */
         .ww-oc-axis-toggle-btn {
             font-size: 0.7rem;
             line-height: 1;
             padding: 2px 7px;
             cursor: pointer;
             background: transparent;
+            color: var(--text-dim);
+            border: 1px solid var(--panel-border);
         }
         .ww-oc-axis-toggle-btn--active {
             background: var(--accent-wash-soft);
@@ -35529,8 +35544,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // for Pickup Multiple, amperes for Relay Current); `yMin`/`yMax`
             // are unit-independent (operating time, seconds) and shared
             // across both modes unchanged. See "Chart X-axis representation
-            // toggle" below.
-            viewport: { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 },
+            // toggle" below. Default (0.9/100/0.1/100, owner UAT
+            // correction 2026-09-13) intentionally starts just below
+            // pickup rather than a full decade below -- see
+            // `WW_OC_VIEWPORT_DEFAULT` for the full rationale.
+            viewport: { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 },
             // Chart X-axis representation toggle (frontend-only display
             // preference -- never affects any backend-computed value).
             // `savedXRangeByMode` remembers each mode's own last X range
@@ -36094,14 +36112,25 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // true minimum (not a fake "0") sits at the frame edge instead.
         const WW_OC_ORIGIN_GAP = 15;
 
-        // Recommended/reset display domain (owner UAT default -- X up to
-        // 100x pickup, Y up to 100s) and the absolute outer bounds the
-        // user's own X/Y range inputs and zoom-out may never exceed (X up
-        // to 200x, Y up to 1000s). Both axes' actual log-plotted region
-        // always starts at the same true minimum (0.1x / 0.01s) --
-        // ONLY the visual "0" origin annotation is a display convention,
-        // never passed through `Math.log10()`.
-        const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };
+        // Recommended/reset display domain, Pickup Multiple mode --
+        // X 0.9x-100x pickup, Y 0.1s-100s (owner UAT correction,
+        // 2026-09-13: the earlier 0.1x/0.01s default showed a full extra
+        // decade below pickup/below the fastest operating times that
+        // added little value at the DEFAULT zoom level -- 0.9x sits just
+        // below pickup, giving the operating region the vast majority of
+        // the default view without needing the compressed sub-pickup
+        // gutter at all, see `wwOvercurrentChartGeometry()`'s own
+        // `breakApplies` threshold below). Also the source of Y's own
+        // default for BOTH X-axis modes (Y is shared, see
+        // `wwOvercurrentSetXAxisMode()`) -- Relay Current mode's own X
+        // default is intentionally a SEPARATE constant
+        // (`WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER`), never forced to
+        // follow this one. The absolute outer bounds the user's own X/Y
+        // range inputs and zoom-out may never exceed (X up to 200x, Y up
+        // to 1000s) are unchanged, still 0.1x/0.01s -- ONLY the DEFAULT
+        // moved, not the absolute floor. The visual "0" origin annotation
+        // is a display convention, never passed through `Math.log10()`.
+        const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };
         const WW_OC_VIEWPORT_ABSOLUTE = { xMin: 0.1, xMax: 200, yMin: 0.01, yMax: 1000 };
 
         function wwOvercurrentIsDefaultViewport(v) {
@@ -36155,9 +36184,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // lighter, see `.ww-oc-tick-label-minor`) and never promoted to a
         // major gridline -- every other progression value is major. This
         // single dynamic rule reproduces the owner's own explicit default
-        // major lists exactly (X default 0.1->100 yields majors
-        // 0.5,1,2,5,10,20,50,100; Y default 0.01->100 yields majors
-        // 0.1,1,10,100) while remaining generic for any custom viewport.
+        // major lists exactly (Relay Current mode's own X default
+        // 0.1x->100x yields majors 0.5,1,2,5,10,20,50,100; Y default
+        // 0.1s->100s, owner UAT correction 2026-09-16, yields majors
+        // 1,10,100) while remaining generic for any custom viewport.
         function wwOvercurrentClassifyMajors(allTicks, axisMin) {
             const threshold = axisMin * 2;
             return allTicks.filter((v) => v > threshold + 1e-9);
@@ -36246,12 +36276,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 : result.multiple_of_pickup;
         }
 
+        // Relay Current mode's own default X multiplier range (0.1x-100x
+        // pickup, scaled to amperes) -- DELIBERATELY its own constant,
+        // independent of `WW_OC_VIEWPORT_DEFAULT` (Pickup Multiple
+        // mode's own default, now 0.9x-100x per the owner's UAT
+        // correction below). Relay Current's own "sensible current-
+        // domain default" is untouched by that correction -- task's own
+        // explicit "do not force Pickup Multiple defaults onto Relay
+        // Current mode" instruction.
+        const WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER = { xMin: 0.1, xMax: 100 };
+
         // Relay Current mode's own absolute X bounds/default -- scaled
-        // directly from the SAME multipliers `WW_OC_VIEWPORT_ABSOLUTE`/
-        // `WW_OC_VIEWPORT_DEFAULT` already use for Pickup Multiple (0.1x-
-        // 200x absolute, 0.1x-100x default), converted to amperes via the
-        // current pickup -- never a second, independently-chosen amp
-        // range (task's own "do not hard-code a single current range"
+        // from the ABOVE multiplier (default) and from
+        // `WW_OC_VIEWPORT_ABSOLUTE` (absolute, 0.1x-200x, shared with
+        // Pickup Multiple mode's own absolute bound -- only the DEFAULT
+        // differs between modes), converted to amperes via the current
+        // pickup -- never a second, independently-chosen amp range
+        // (task's own "do not hard-code a single current range"
         // instruction: these stay pickup-relative, not a fixed constant).
         function wwOvercurrentRelayCurrentAbsoluteBounds() {
             const pickup = wwOvercurrentState.settings.pickupCurrentSecondary;
@@ -36261,7 +36302,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwOvercurrentRelayCurrentDefaultViewport() {
             const pickup = wwOvercurrentState.settings.pickupCurrentSecondary;
             const safePickup = Number.isFinite(pickup) && pickup > 0 ? pickup : 1.0;
-            return { xMin: WW_OC_VIEWPORT_DEFAULT.xMin * safePickup, xMax: WW_OC_VIEWPORT_DEFAULT.xMax * safePickup };
+            return {
+                xMin: WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER.xMin * safePickup,
+                xMax: WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER.xMax * safePickup,
+            };
         }
         // The absolute X bounds for whichever mode is currently active --
         // used by both the zoom-out clamp and the range-input validator so
@@ -36554,6 +36598,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // `M` values throughout (see wwOvercurrentApplyViewportFromInputs()/
         // wwOvercurrentZoom(), both unchanged by this refinement).
         const WW_OC_SUBPICKUP_GUTTER_FRACTION = 0.05;
+        // The break only activates for a DELIBERATELY wide below-pickup
+        // view -- `xMin <= 0.5` -- never merely `xMin < 1` (owner UAT
+        // correction, 2026-09-13). See the `breakApplies` computation in
+        // `wwOvercurrentChartGeometry()` below for the full rationale.
+        const WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD = 0.5;
 
         function wwOvercurrentChartGeometry(viewport) {
             const isDefault = wwOvercurrentIsDefaultViewport(viewport);
@@ -36570,19 +36619,33 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const logLeft = plotLeft + gap;
             const logBottom = plotBottom - gap;
             // The compressed break applies ONLY to Pickup Multiple mode,
-            // and ONLY when the viewport genuinely straddles the M=1
-            // pickup threshold -- a viewport entirely at/above M=1 (task
-            // §12: "do not force a useless 5% gutter when the user's
-            // viewport explicitly excludes values below 1") reverts to
-            // the ordinary single log mapping below, unchanged from
-            // before this refinement. Relay Current mode never applies
-            // this (task §14) -- `wwOvercurrentPixelX()`/
+            // and only when the viewport is a DELIBERATELY wide
+            // below-pickup view -- `xMin <= WW_OC_SUBPICKUP_BREAK_XMIN_
+            // THRESHOLD` (0.5x), not merely "xMin < 1" (owner UAT
+            // correction, 2026-09-13): the new default viewport starts
+            // at 0.9x, where the below-pickup span (0.9->1) is already
+            // naturally narrow on an ordinary log axis and does not
+            // benefit from compression -- applying the break there
+            // produced a visually pointless ~5%-wide sliver for a span
+            // that barely needed 2% of the width in the first place. The
+            // compressed gutter remains available the moment a user
+            // deliberately widens the view to 0.5x or below (e.g. the
+            // PRIOR 0.1x default, or any custom range reaching that far
+            // below pickup), where the below-pickup span is genuinely
+            // wide enough on a standard log axis to be worth compressing
+            // -- 0.5 is a clean, obviously "substantially below pickup"
+            // cutoff, comfortably below the new 0.9 default so there is
+            // no ambiguity between the two. A viewport entirely at/above
+            // M=1 (task's own "do not force a useless 5% gutter when the
+            // viewport explicitly excludes values below 1" instruction)
+            // still never applies the break either way. Relay Current
+            // mode never applies this at all -- `wwOvercurrentPixelX()`/
             // `wwOvercurrentPlotXToPickupMultiple()` below are the ONLY
             // two places this flag is consulted, so every chart element
             // (curve, gridlines, ticks, labels, guides, markers, edge
             // indicators) automatically gets a consistent transform.
             const breakApplies = wwOvercurrentState.xAxisMode !== WW_OC_XAXIS_RELAY_CURRENT &&
-                viewport.xMin < 1 - 1e-9 && viewport.xMax > 1 + 1e-9;
+                viewport.xMin <= WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD + 1e-9 && viewport.xMax > 1 + 1e-9;
             const geo = {
                 isDefault, plotLeft, plotRight, plotTop, plotBottom,
                 logLeft, logBottom,
@@ -37041,10 +37104,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // Reset returns to the sensible default for whichever mode is
         // CURRENTLY selected (task §12): Pickup Multiple resets EXACTLY
-        // to the default viewport (X 0.1->100, Y 0.01->100) -- an exact-
+        // to the default viewport (X 0.9->100, Y 0.1->100) -- an exact-
         // equality reset, not an approximation, restoring the default
         // major-grid labeling (UAT §7) -- while Relay Current resets to
-        // the equivalent pickup-scaled amp range with the SAME shared Y
+        // ITS OWN default X range (`WW_OC_RELAY_CURRENT_DEFAULT_X_
+        // MULTIPLIER`, deliberately independent of Pickup Multiple's own
+        // default -- 2026-09-13 owner correction) with the SAME shared Y
         // default. Both branches also clear/refresh that mode's own
         // remembered custom range, so a subsequent mode switch does not
         // resurrect a stale pre-reset range.
@@ -37089,7 +37154,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentState.latestResult = null;
             wwOvercurrentState.curveCache = null;
             wwOvercurrentState.requestGeneration += 1;
-            wwOvercurrentState.viewport = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };
+            wwOvercurrentState.viewport = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };
             // Chart axis-mode/grid display preferences are session-local
             // conveniences, not workspace data -- reset alongside the
             // viewport on a full analyzer state recreation (new workspace/
