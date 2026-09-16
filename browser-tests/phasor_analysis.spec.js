@@ -237,6 +237,58 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
     }).toPass({ timeout: 5000 });
   });
 
+  test("scale legend replaces the old Imaginary-axis-adjacent numbers (owner UAT clarification, 2026-09-16)", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page);
+    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+
+    // The old bare numeric ring labels are gone.
+    await expect(page.locator("#wwPhasorSvg text.ww-phasor-ring-label")).toHaveCount(0);
+
+    // The new legend exists, with a header and one line per present
+    // family, each carrying its own value AND real engineering unit --
+    // never a bare unlabeled number.
+    const legend = page.locator("#wwPhasorSvg text.ww-phasor-scale-legend");
+    await expect(legend).toHaveCount(3); // "Scale" header + V line + I line
+    await expect(page.locator("#wwPhasorSvg text.ww-phasor-scale-legend--header", { hasText: "Scale" })).toHaveCount(1);
+    const legendTexts = await legend.allTextContents();
+    const voltageLine = legendTexts.find((t) => t.startsWith("V:"));
+    const currentLine = legendTexts.find((t) => t.startsWith("I:"));
+    expect(voltageLine).toBeTruthy();
+    expect(currentLine).toBeTruthy();
+    // Both carry a real unit (not a bare number) -- the fixture's known
+    // channels are V/A.
+    expect(voltageLine).toMatch(/^V:\s*[\d.]+\s*V$/);
+    expect(currentLine).toMatch(/^I:\s*[\d.]+\s*A$/);
+
+    // Legend sits in the quiet top-right corner, well clear of both
+    // axis-direction labels (never placed directly on an axis).
+    const legendBox = await legend.first().boundingBox();
+    const realLabelBox = await page.locator("#wwPhasorSvg text.ww-phasor-axis-title", { hasText: "Real" }).boundingBox();
+    const imaginaryLabelBox = await page.locator("#wwPhasorSvg text.ww-phasor-axis-title", { hasText: "Imaginary" }).boundingBox();
+    // Legend is above the Real label (smaller y = higher on screen).
+    expect(legendBox.y).toBeLessThan(realLabelBox.y);
+    // Legend is to the right of the Imaginary label's own horizontal position.
+    expect(legendBox.x).toBeGreaterThan(imaginaryLabelBox.x);
+
+    // Real/Imaginary axis labels remain, unaffected.
+    await expect(page.locator("#wwPhasorSvg text.ww-phasor-axis-title", { hasText: "Real" })).toHaveCount(1);
+    await expect(page.locator("#wwPhasorSvg text.ww-phasor-axis-title", { hasText: "Imaginary" })).toHaveCount(1);
+
+    // Vector rendering is unaffected -- still one polygon/label per role.
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
+    await expect(page.locator("#wwPhasorSvg text.ww-phasor-vector-label")).toHaveCount(6);
+
+    // Bottom note still conveys the scale ratio and the engineering-
+    // values-unaffected reassurance.
+    await expect(page.locator("#wwPhasorScaleNote")).toContainText("Current vectors scaled");
+    await expect(page.locator("#wwPhasorScaleNote")).toContainText("engineering values are unaffected");
+  });
+
   test("chart UX refinement: grid lines and Real/Imaginary axis labels render alongside the existing rings/vectors", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);

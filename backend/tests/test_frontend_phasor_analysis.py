@@ -706,6 +706,86 @@ class TestSvgDiagram:
         assert "scaleNote.hidden = false;" in body
         assert "Current vectors scaled" in body
 
+
+class TestScaleLegendReplacesImaginaryAxisNumbers:
+    """Owner UAT clarification (2026-09-16): the two numeric scale
+    references (what one outer ring represents for Voltage/Current) used
+    to sit right next to the Imaginary axis (x=3, same corner as the
+    axis line/label), reading as if they were axis tick values. Replaced
+    by a clearly-labeled "Scale" legend in the diagram's own quiet
+    top-right corner, each line carrying its own real engineering unit."""
+
+    def test_old_ring_label_class_and_imaginary_axis_adjacent_position_are_gone(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert "ww-phasor-ring-label" not in body
+        assert "ringLabelY" not in body  # the old Imaginary-axis-adjacent positioning variable
+        assert 'fill="var(--ww-phase-a)"' not in body  # the old phase-colored voltage ring label
+
+    def test_new_scale_legend_present_with_header_and_both_family_lines(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert 'ww-phasor-scale-legend ww-phasor-scale-legend--header' in body
+        assert '>Scale</text>' in body
+        assert '"V: " + wwFormatEngineeringValue(voltageRingValue)' in body
+        assert '"I: " + wwFormatEngineeringValue(currentRingValue)' in body
+
+    def test_legend_lines_carry_their_own_real_engineering_unit(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert "wwPhasorFamilyUnit(diagram, WW_PHASOR_VOLTAGE_ROLES)" in body
+        assert "wwPhasorFamilyUnit(diagram, WW_PHASOR_CURRENT_ROLES)" in body
+
+    def test_family_unit_helper_never_fabricates_a_unit(self):
+        source = _source()
+        fn = _function_body(source, "function wwPhasorFamilyUnit(diagram, roleKeys)", "function wwPhasorRenderDiagramSvg")
+        assert 'return "";' in fn
+        assert "role.unit" in fn
+
+    def test_legend_is_positioned_in_the_quiet_top_right_corner_not_on_either_axis(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert 'const legendX = 112;' in body
+        assert 'let legendY = -100;' in body
+
+    def test_legend_lines_are_never_phase_colored_unlike_vectors(self):
+        """The old voltage ring label used `fill="var(--ww-phase-a)"` --
+        a scale reference must never look like another colored data
+        series. Confirmed both by the absence of that literal override
+        in the legend's own code path, and by the CSS rule itself never
+        setting a phase-color fill."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        legend_section = body[body.index("const legendLines = []") : body.index("for (const roleKey of WW_PHASOR_DIAGRAM_ROLE_ORDER)")]
+        assert "var(--ww-phase-a)" not in legend_section
+        css_rule = _function_body(source, ".ww-phasor-scale-legend {", "}")
+        assert "var(--ww-phase" not in css_rule
+
+    def test_real_and_imaginary_axis_labels_remain_unchanged(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert '<text class="ww-phasor-axis-title" x="112" y="-6" text-anchor="end">Real</text>' in body
+        assert '<text class="ww-phasor-axis-title" x="3" y="-112" text-anchor="start">Imaginary</text>' in body
+
+    def test_vector_rendering_loop_is_completely_unchanged(self):
+        """The legend redesign touches only the scale-annotation code --
+        vector geometry/color/dash-style must be byte-for-byte identical."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert "const angleRad = role.angle_deg_absolute * Math.PI / 180;" in body
+        assert "const r = role.magnitude_rms * scale;" in body
+        assert "wwPhasorVectorSvg(x, y, wwPhasorRoleColor(roleKey), roleKey, isCurrent)" in body
+
+    def test_bottom_note_still_conveys_current_vectors_are_scaled_and_engineering_values_unaffected(self):
+        """Simplified (the legend now covers "separate graphical
+        scales" on its own), but the note must still explain the ratio
+        AND reassure real engineering values are unaffected -- the
+        task's own "at minimum" requirement."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert "Current vectors scaled" in body
+        assert "engineering values are unaffected" in body
+
     def test_geometry_uses_absolute_angle_never_relative(self):
         """Critical: the combined diagram must never independently
         zero-reference Voltage and Current -- doing so would destroy the

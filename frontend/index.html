@@ -6393,9 +6393,26 @@
             font-weight: 600;
             fill: var(--text);
         }
-        .ww-phasor-ring-label {
+        /* Compact scale legend (owner UAT clarification, 2026-09-16) --
+           replaces the former `.ww-phasor-ring-label` pair that used to
+           sit at x=3 right next to the Imaginary axis line/label,
+           reading as if they were axis tick values. Positioned instead
+           in the diagram's own quiet top-right corner (see
+           `wwPhasorRenderDiagramSvg()`), well clear of the plot radius
+           any vector can reach, the Real/Imaginary axis titles, and the
+           rings themselves. Deliberately muted/neutral for EVERY line
+           (never phase-colored, unlike the old voltage line's own
+           `fill="var(--ww-phase-a)"` override) -- a scale reference is
+           not another colored data series. */
+        .ww-phasor-scale-legend {
             font-size: var(--ww-chart-tick-font-size);
             fill: var(--text-dim);
+        }
+        .ww-phasor-scale-legend--header {
+            font-size: var(--ww-chart-axis-title-font-size);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
         }
         /* Owner instruction: differentiate Voltage vs Current WITHOUT
            destroying phase identity -- solid vector for Voltage, dashed
@@ -38165,6 +38182,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             return max;
         }
+        // The real engineering unit to show alongside a family's own
+        // scale-legend line -- the first available role's own `.unit`
+        // (each already-eligible role in a family is, in practice, the
+        // same unit; this never invents/normalizes a unit of its own).
+        // Empty string (never a fabricated placeholder) if no role in
+        // the family is available.
+        function wwPhasorFamilyUnit(diagram, roleKeys) {
+            for (const roleKey of roleKeys) {
+                const role = diagram.roles && diagram.roles[roleKey];
+                if (role && role.status === "available" && Number.isFinite(role.magnitude_rms) && role.unit) {
+                    return role.unit;
+                }
+            }
+            return "";
+        }
 
         // Owner instruction: Voltage and Current never share one raw
         // numeric radius (a ~159kV Va and a ~1.2kA Ia are not comparable
@@ -38238,19 +38270,43 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             for (const frac of [1 / 3, 2 / 3, 1]) {
                 parts.push('<circle class="ww-phasor-ring" cx="0" cy="0" r="' + (plotRadius * frac).toFixed(1) + '"></circle>');
             }
-            // Ring labels show what the OUTER RING itself represents under
-            // the current (possibly frozen-from-earlier) scale -- not the
-            // live/current family max, which would jiggle every tick right
-            // next to a visually-FIXED ring and read as inconsistent.
-            let ringLabelY = -(plotRadius - 3);
+            // Compact scale legend (owner UAT clarification, 2026-09-16):
+            // shows what the OUTER RING itself represents under the
+            // current (possibly frozen-from-earlier) scale -- not the
+            // live/current family max, which would jiggle every tick
+            // right next to a visually-FIXED ring and read as
+            // inconsistent. Previously drawn as two bare numbers right
+            // next to the Imaginary axis (x=3, near the axis line/
+            // label) -- easily mistaken for axis tick values, since
+            // they carried no unit and no "this is a scale" context.
+            // Now a clearly-labeled "Scale" legend in the diagram's own
+            // quiet top-right corner, each line carrying its own real
+            // engineering unit (from whichever role in that family
+            // established the max magnitude the scale itself derives
+            // from) -- explicit that these are graphical scale
+            // REFERENCES, never axis coordinates, and that Voltage/
+            // Current use separate scales (reinforced further by the
+            // bottom `#wwPhasorScaleNote` when both are present).
+            const legendLines = [];
             if (voltageScale > 0) {
                 const voltageRingValue = plotRadius / voltageScale;
-                parts.push('<text class="ww-phasor-ring-label" x="3" y="' + ringLabelY.toFixed(1) + '" fill="var(--ww-phase-a)">' + wwFormatEngineeringValue(voltageRingValue) + '</text>');
-                ringLabelY += 8;
+                const voltageUnit = wwPhasorFamilyUnit(diagram, WW_PHASOR_VOLTAGE_ROLES);
+                legendLines.push("V: " + wwFormatEngineeringValue(voltageRingValue) + (voltageUnit ? " " + voltageUnit : ""));
             }
             if (currentScale > 0) {
                 const currentRingValue = plotRadius / currentScale;
-                parts.push('<text class="ww-phasor-ring-label" x="3" y="' + ringLabelY.toFixed(1) + '">' + wwFormatEngineeringValue(currentRingValue) + '</text>');
+                const currentUnit = wwPhasorFamilyUnit(diagram, WW_PHASOR_CURRENT_ROLES);
+                legendLines.push("I: " + wwFormatEngineeringValue(currentRingValue) + (currentUnit ? " " + currentUnit : ""));
+            }
+            if (legendLines.length > 0) {
+                const legendX = 112;
+                let legendY = -100;
+                parts.push('<text class="ww-phasor-scale-legend ww-phasor-scale-legend--header" x="' + legendX + '" y="' + legendY.toFixed(1) + '" text-anchor="end">Scale</text>');
+                legendY += 9;
+                for (const line of legendLines) {
+                    parts.push('<text class="ww-phasor-scale-legend" x="' + legendX + '" y="' + legendY.toFixed(1) + '" text-anchor="end">' + escapeHtml(line) + '</text>');
+                    legendY += 8;
+                }
             }
 
             for (const roleKey of WW_PHASOR_DIAGRAM_ROLE_ORDER) {
@@ -38283,9 +38339,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             svg.innerHTML = parts.join("");
 
             if (voltageMax > 0 && currentMax > 0) {
+                // Simplified (owner UAT clarification, 2026-09-16): the
+                // "Voltage and Current use separate graphical scales"
+                // clarification used to carry the entire burden of
+                // explaining this -- the new top-right Scale legend now
+                // makes that visually obvious on its own (two distinct
+                // V:/I: reference lines). This note's own remaining job
+                // is the ONE thing the legend does not show -- the
+                // actual relative stretch factor -- plus the essential
+                // reassurance that the real engineering values (shown
+                // in the table above) are never altered by it.
                 const ratio = voltageScale > 0 ? currentScale / voltageScale : 0;
                 scaleNote.hidden = false;
-                scaleNote.textContent = "Current vectors scaled ×" + ratio.toFixed(2) + " for display (Voltage and Current use separate graphical scales; engineering values are unaffected).";
+                scaleNote.textContent = "Current vectors scaled ×" + ratio.toFixed(2) + " for display -- engineering values are unaffected.";
             } else {
                 scaleNote.hidden = true;
                 scaleNote.textContent = "";
