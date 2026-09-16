@@ -35753,6 +35753,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             curveCache: null, // { characteristicId, tms, points } -- recomputed ONLY when those two settings change
             latestResult: null,
             requestGeneration: 0,
+            // Axis-default refinement (Part B): a STABLE reference
+            // operating time for the Y-axis default/reset, captured only
+            // from an EXACT (settings/phase/context-establishment/seek)
+            // fetch -- never a throttled live-Playback tick, so the
+            // default never chases the live operating point while
+            // Playback runs. `null` until the first exact fetch resolves
+            // with a genuine (above-pickup) computed result. See
+            // `wwOvercurrentUpdateStableReferenceOperatingTime()`/
+            // `wwOvercurrentDynamicYMin()`.
+            stableReferenceOperatingTime: null,
             // Chart display viewport (frontend-only; never affects IDMT calc,
             // pickup, TMS, measured current, CT conversion, expected operating
             // time, or above-pickup duration -- display/view bounds only).
@@ -36106,7 +36116,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (elapsedMs < WW_OVERCURRENT_PLAYBACK_THROTTLE_MS) return;
             }
             wwOvercurrentPlaybackForceNextFetch = false;
-            wwOvercurrentRequestAnalysis();
+            // `force` (true for every settings/phase/context-establishment/
+            // seek-while-paused fetch, false for a throttled live-Playback
+            // tick) is threaded through so `wwOvercurrentRequestAnalysis()`
+            // can capture the axis-default "stable reference operating
+            // time" (see `wwOvercurrentUpdateStableReferenceOperatingTime()`)
+            // ONLY on an exact fetch -- never on a throttled Play-driven
+            // tick, so the Y-axis default never chases the live operating
+            // point while Playback runs (axis-default refinement, Part B).
+            wwOvercurrentRequestAnalysis(force);
         }
 
         function wwOvercurrentSetUpdatingIndicator(isUpdating) {
@@ -36118,7 +36136,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // call -- identical staleness-guard shape to
         // wwPhasorRequestDiagram() (requestGeneration + ww.epoch +
         // workspace-id triple guard, `desiredTime` frozen at call time).
-        async function wwOvercurrentRequestAnalysis() {
+        // `isExactFetch` is `true` for every settings/phase/context
+        // establishment/change and every seek-while-paused (never a live
+        // Playback tick) -- see `wwOvercurrentMaybeFetchForPlayback()`.
+        async function wwOvercurrentRequestAnalysis(isExactFetch) {
             const contextId = wwOvercurrentState.selectedContextId;
             if (!contextId || wwOvercurrentState.analysisTime === null) return;
             const anchorDisplaySourceId = wwOvercurrentState.anchorDisplaySourceId;
@@ -36164,6 +36185,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (myGeneration !== wwOvercurrentState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
             wwOvercurrentSetUpdatingIndicator(false);
             wwOvercurrentState.latestResult = result;
+            if (isExactFetch) wwOvercurrentUpdateStableReferenceOperatingTime(result);
             wwOvercurrentRenderResult(result);
             wwOvercurrentMaybeFetchForPlayback();
         }
@@ -36340,33 +36362,40 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // below pickup, giving the operating region the vast majority of
         // the default view without needing the compressed sub-pickup
         // gutter at all, see `wwOvercurrentChartGeometry()`'s own
-        // `breakApplies` threshold below). Also the source of Y's own
-        // default for BOTH X-axis modes (Y is shared, see
-        // `wwOvercurrentSetXAxisMode()`) -- Relay Current mode's own X
-        // default is this SAME xMin/xMax scaled through the current
-        // pickup (see `wwOvercurrentRelayCurrentDefaultViewport()`,
-        // owner UAT correction 2026-09-16: the two representations must
-        // stay visually equivalent, `Irelay = M * Ipickup`, so Relay
-        // Current's own default is deliberately COUPLED to this one,
-        // never independently chosen). The absolute outer bounds the user's own X/Y
-        // range inputs and zoom-out may never exceed (X up to 200x, Y up
-        // to 1000s) are unchanged, still 0.1x/0.01s -- ONLY the DEFAULT
+        // `breakApplies` threshold below). `yMin` here also remains the
+        // permanent "pristine/no-reference-yet" state AND the fallback
+        // Y default whenever no stable reference operating time has
+        // been established (see `wwOvercurrentDynamicYMin()`, axis-
+        // default refinement Part B). Relay Current mode's own X default is now
+        // `pickup - 0.1 A` (see `wwOvercurrentRelayCurrentDefaultViewport()`,
+        // axis-default refinement Part A) -- no longer scaled from this
+        // constant. The absolute outer bounds the user's own X/Y range
+        // inputs and zoom-out may never exceed (X up to 200x, Y up to
+        // 1000s) are unchanged, still 0.1x/0.01s -- ONLY the DEFAULT
         // moved, not the absolute floor. The visual "0" origin annotation
         // is a display convention, never passed through `Math.log10()`.
         const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };
         const WW_OC_VIEWPORT_ABSOLUTE = { xMin: 0.1, xMax: 200, yMin: 0.01, yMax: 1000 };
 
         // Mode-aware (owner UAT correction, 2026-09-16): Relay Current's
-        // own default viewport is now the SAME M-domain default scaled
-        // by pickup (`wwOvercurrentRelayCurrentDefaultViewport()`), so
-        // it must be recognized as "the default view" too -- otherwise
-        // the origin-gap/"0"-label treatment below (and the geometry it
+        // own default viewport is its own dynamic value
+        // (`wwOvercurrentRelayCurrentDefaultViewport()`), so it must be
+        // recognized as "the default view" too -- otherwise the
+        // origin-gap/"0"-label treatment below (and the geometry it
         // drives) would only ever apply to Pickup Multiple's own literal
-        // default, breaking the pixel-for-pixel visual equivalence
-        // between the two representations at their respective defaults
-        // (a real, measured ~15px origin-gap mismatch, caught by
-        // TestRelayCurrentPickupBoundaryVisualEquivalence). Pickup
-        // Multiple mode's own comparison is completely unchanged.
+        // default. **Y is deliberately compared against the FLAT
+        // constant here, never `wwOvercurrentDynamicYMin()`** (axis-
+        // default refinement, Part B) -- unlike X's own pickup-tracking
+        // comparison above, Y's reference-derived default changes as
+        // soon as the FIRST analysis result establishes a stable
+        // reference (essentially immediately after selecting a context,
+        // well before any Reset), which would make this cosmetic
+        // origin-gap check fail almost immediately in ordinary use if it
+        // tracked the live dynamic value. The dynamic Y default is
+        // therefore scoped exclusively to what Reset assigns (see
+        // `wwOvercurrentResetViewport()`); this comparison only ever
+        // recognizes the pristine, reference-less initial state as
+        // "default" for Y.
         function wwOvercurrentIsDefaultViewport(v) {
             const activeXDefault = wwOvercurrentState.xAxisMode === WW_OC_XAXIS_RELAY_CURRENT
                 ? wwOvercurrentRelayCurrentDefaultViewport()
@@ -36538,34 +36567,89 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 : result.multiple_of_pickup;
         }
 
-        // Relay Current mode's own absolute X bounds/default -- BOTH
-        // scaled directly from the SAME M-domain constants Pickup
-        // Multiple mode itself uses (`WW_OC_VIEWPORT_ABSOLUTE`,
-        // `WW_OC_VIEWPORT_DEFAULT`), converted to amperes via the
-        // current pickup and the owner's own exact relationship
-        // (`Irelay = M * Ipickup`) -- never a second, independently-
-        // chosen/hard-coded amp range (owner UAT correction,
-        // 2026-09-16: "do not hard-code 0.9 A, 1 A, 2 A, etc. -- instead
-        // transform the M values through the configured pickup"). This
-        // is what keeps the two representations visually equivalent --
-        // Pickup Multiple's default (0.9x-100x) and Relay Current's own
-        // default (0.9*pickup - 100*pickup) sit at the exact same
-        // relative log position, so switching modes leaves the curve,
-        // pickup boundary, and grid geometry in the same screen
-        // locations, only the X numbers/labels change (task's own
-        // "visual equivalence" section).
+        // Relay Current mode's own absolute X bounds -- scaled directly
+        // from the SAME M-domain constant Pickup Multiple mode itself
+        // uses (`WW_OC_VIEWPORT_ABSOLUTE.xMin/xMax`), converted to
+        // amperes via the current pickup and the owner's own exact
+        // relationship (`Irelay = M * Ipickup`) -- never a second,
+        // independently-chosen/hard-coded amp range. This is the
+        // absolute floor/ceiling the user's own X Min/X Max inputs and
+        // Zoom Out may never exceed; the DEFAULT (below) is a separate,
+        // narrower concern.
         function wwOvercurrentRelayCurrentAbsoluteBounds() {
             const pickup = wwOvercurrentState.settings.pickupCurrentSecondary;
             const safePickup = Number.isFinite(pickup) && pickup > 0 ? pickup : 1.0;
             return { xMin: WW_OC_VIEWPORT_ABSOLUTE.xMin * safePickup, xMax: WW_OC_VIEWPORT_ABSOLUTE.xMax * safePickup };
         }
+        // Axis-default refinement, Part A (2026-09-16): Relay Current's
+        // own default X minimum is now `pickup - 0.1 A` (owner's own
+        // exact worked examples: pickup 1.0 A -> 0.9 A; pickup 1.2 A ->
+        // 1.1 A) -- replacing the PRIOR `0.9 * pickup` multiplicative
+        // scaling (which produced 0.9 A/1.08 A for those same two
+        // pickups, not the owner's own specified values). X maximum
+        // remains `100 * pickup`, unchanged. `WW_OC_RELAY_CURRENT_
+        // XMIN_OFFSET` is a plain ampere offset, never scaled by pickup
+        // itself -- this is what makes the below-pickup margin always
+        // read as "a small fixed gap before pickup" rather than a
+        // pickup-proportional one.
+        //
+        // Safety floor (owner's own explicit requirement: never let
+        // `pickup - 0.1 <= 0` reach the real logarithmic axis): the
+        // floor reuses `wwOvercurrentRelayCurrentAbsoluteBounds().xMin`
+        // (`0.1 * pickup`) -- the SAME absolute lower zoom-out bound this
+        // mode already enforces elsewhere -- rather than inventing a new
+        // constant. This is always positive for any positive pickup, and
+        // the default can never fall below what the chart's own existing
+        // absolute-bounds validator would already reject.
+        const WW_OC_RELAY_CURRENT_XMIN_OFFSET = 0.1; // amperes
         function wwOvercurrentRelayCurrentDefaultViewport() {
             const pickup = wwOvercurrentState.settings.pickupCurrentSecondary;
             const safePickup = Number.isFinite(pickup) && pickup > 0 ? pickup : 1.0;
+            const absoluteFloor = wwOvercurrentRelayCurrentAbsoluteBounds().xMin;
             return {
-                xMin: WW_OC_VIEWPORT_DEFAULT.xMin * safePickup,
+                xMin: Math.max(absoluteFloor, safePickup - WW_OC_RELAY_CURRENT_XMIN_OFFSET),
                 xMax: WW_OC_VIEWPORT_DEFAULT.xMax * safePickup,
             };
+        }
+        // Axis-default refinement, Part B (2026-09-16): the time (Y)
+        // axis's own default minimum is now proportional to a STABLE
+        // reference operating time, never a flat subtraction
+        // (`operating_time - 0.1s`, rejected -- not scale-consistent on
+        // a logarithmic axis) and never a flat constant. "Stable" means
+        // captured only from an EXACT fetch (settings/phase/context
+        // establishment/change, or a seek release while paused) via
+        // `wwOvercurrentUpdateStableReferenceOperatingTime()` below --
+        // NEVER from a throttled live-Playback tick, so this default
+        // does not chase the live operating point while Playback runs.
+        // `0.9 x reference` reuses the exact same "just below" ratio the
+        // owner's own X-axis examples already use. The `WW_OC_VIEWPORT_
+        // ABSOLUTE.yMin` (0.01s) floor is the EXISTING absolute Y
+        // minimum, reused rather than inventing a new constant. The
+        // upper cap (`WW_OC_VIEWPORT_DEFAULT.yMax / 10`) keeps the
+        // sensible Y Max=100s default completely untouched even for an
+        // extreme near-the-curve's-own-asymptote reference time (TMS/
+        // characteristic combinations can legitimately approach
+        // infinity as M -> 1) -- Y Max itself never needs to move.
+        const WW_OC_TIME_REFERENCE_YMIN_MULTIPLIER = 0.9;
+        function wwOvercurrentDynamicYMin() {
+            const ref = wwOvercurrentState.stableReferenceOperatingTime;
+            if (!Number.isFinite(ref) || ref <= 0) return WW_OC_VIEWPORT_DEFAULT.yMin;
+            const proportional = WW_OC_TIME_REFERENCE_YMIN_MULTIPLIER * ref;
+            const floored = Math.max(WW_OC_VIEWPORT_ABSOLUTE.yMin, proportional);
+            return Math.min(floored, WW_OC_VIEWPORT_DEFAULT.yMax / 10);
+        }
+        // Captures the stable reference above -- reuses the ALREADY-
+        // COMPUTED, backend-authoritative `expected_operating_time_
+        // seconds` verbatim (never a new protection quantity, never a
+        // second characteristic evaluation). A below-pickup result
+        // (`expected_operating_time_seconds === null`), a non-`computed`
+        // status, or a fetch error leaves the existing reference
+        // untouched -- a momentary "no data" instant never clobbers a
+        // perfectly good prior reference.
+        function wwOvercurrentUpdateStableReferenceOperatingTime(result) {
+            if (!result || result.status !== "computed") return;
+            const t = result.expected_operating_time_seconds;
+            if (Number.isFinite(t) && t > 0) wwOvercurrentState.stableReferenceOperatingTime = t;
         }
         // The absolute X bounds for whichever mode is currently active --
         // used by both the zoom-out clamp and the range-input validator so
@@ -37381,26 +37465,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // Reset returns to the sensible default for whichever mode is
-        // CURRENTLY selected (task §12): Pickup Multiple resets EXACTLY
-        // to the default viewport (X 0.9->100, Y 0.1->100) -- an exact-
-        // equality reset, not an approximation, restoring the default
-        // major-grid labeling (UAT §7) -- while Relay Current resets to
-        // that SAME 0.9x-100x range scaled through the CURRENT pickup
-        // (`wwOvercurrentRelayCurrentDefaultViewport()`, owner UAT
-        // correction 2026-09-16: the two representations must stay
-        // visually equivalent, so Relay Current's own default is
-        // deliberately COUPLED to Pickup Multiple's, never independently
-        // chosen) with the SAME shared Y default. Both branches also
-        // clear/refresh that mode's own remembered custom range, so a
+        // CURRENTLY selected (task §12), using the CURRENT dynamic
+        // settings (axis-default refinement, 2026-09-16) -- never stale
+        // hard-coded numbers: Pickup Multiple resets its X to the fixed
+        // 0.9->100 constant (unchanged); Relay Current resets its X to
+        // `pickup - 0.1 A -> 100 * pickup` (`wwOvercurrentRelayCurrentDefaultViewport()`,
+        // Part A). BOTH modes reset Y to `wwOvercurrentDynamicYMin()`
+        // (Part B) -- the current stable reference operating time's own
+        // proportional default, or the flat 0.1s fallback if no
+        // reference has been established yet. Both branches also clear/
+        // refresh that mode's own remembered custom range, so a
         // subsequent mode switch does not resurrect a stale pre-reset
         // range.
         function wwOvercurrentResetViewport() {
+            const dynamicYMin = wwOvercurrentDynamicYMin();
             if (wwOvercurrentState.xAxisMode === WW_OC_XAXIS_RELAY_CURRENT) {
                 const relayDefault = wwOvercurrentRelayCurrentDefaultViewport();
-                wwOvercurrentState.viewport = { xMin: relayDefault.xMin, xMax: relayDefault.xMax, yMin: WW_OC_VIEWPORT_DEFAULT.yMin, yMax: WW_OC_VIEWPORT_DEFAULT.yMax };
+                wwOvercurrentState.viewport = { xMin: relayDefault.xMin, xMax: relayDefault.xMax, yMin: dynamicYMin, yMax: WW_OC_VIEWPORT_DEFAULT.yMax };
                 wwOvercurrentState.savedXRangeByMode[WW_OC_XAXIS_RELAY_CURRENT] = { xMin: relayDefault.xMin, xMax: relayDefault.xMax };
             } else {
-                wwOvercurrentState.viewport = { ...WW_OC_VIEWPORT_DEFAULT };
+                wwOvercurrentState.viewport = { xMin: WW_OC_VIEWPORT_DEFAULT.xMin, xMax: WW_OC_VIEWPORT_DEFAULT.xMax, yMin: dynamicYMin, yMax: WW_OC_VIEWPORT_DEFAULT.yMax };
                 wwOvercurrentState.savedXRangeByMode[WW_OC_XAXIS_PICKUP_MULTIPLE] = { xMin: WW_OC_VIEWPORT_DEFAULT.xMin, xMax: WW_OC_VIEWPORT_DEFAULT.xMax };
             }
             wwOvercurrentSyncViewportInputs();
@@ -37435,6 +37519,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentState.latestResult = null;
             wwOvercurrentState.curveCache = null;
             wwOvercurrentState.requestGeneration += 1;
+            wwOvercurrentState.stableReferenceOperatingTime = null;
             wwOvercurrentState.viewport = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };
             // Chart axis-mode/grid display preferences are session-local
             // conveniences, not workspace data -- reset alongside the

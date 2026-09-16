@@ -251,9 +251,16 @@ class TestOvercurrentViewport:
         assert "wwOvercurrentHandleSettingsChanged" not in fn
 
     def test_reset_returns_to_exact_default_viewport(self):
+        """Axis-default refinement (2026-09-16): X still resets to the
+        exact fixed Pickup Multiple constants; Y now resets to the
+        CURRENT dynamic reference-derived default
+        (`wwOvercurrentDynamicYMin()`) rather than the flat constant
+        directly, so a stable reference established since the last
+        reset is honored."""
         source = _source()
         fn = _function_body(source, "function wwOvercurrentResetViewport()", "// ---- Settings wiring helpers")
-        assert "wwOvercurrentState.viewport = { ...WW_OC_VIEWPORT_DEFAULT };" in fn
+        assert "const dynamicYMin = wwOvercurrentDynamicYMin();" in fn
+        assert "wwOvercurrentState.viewport = { xMin: WW_OC_VIEWPORT_DEFAULT.xMin, xMax: WW_OC_VIEWPORT_DEFAULT.xMax, yMin: dynamicYMin, yMax: WW_OC_VIEWPORT_DEFAULT.yMax };" in fn
 
     def test_view_controls_markup_exists(self):
         source = _source()
@@ -856,7 +863,15 @@ class TestCompressedSubPickupAxis:
         pixel_x_fn = _function_body(source, "function wwOvercurrentPixelX(m, geo)", "// Inverse of `wwOvercurrentPixelX()`")
         inverse_fn = _function_body(source, "function wwOvercurrentPlotXToPickupMultiple(x, geo)", "function wwOvercurrentPixelY")
         is_default_fn = _function_body(source, "function wwOvercurrentIsDefaultViewport(v)", "// Hard validation")
-        relay_default_fn = _function_body(source, "function wwOvercurrentRelayCurrentDefaultViewport()", "function wwOvercurrentActiveXAbsoluteBounds")
+        # Starts at `wwOvercurrentRelayCurrentAbsoluteBounds()` (not
+        # `wwOvercurrentRelayCurrentDefaultViewport()`) so this single
+        # extraction also sweeps in that function's own dependency (used
+        # internally by the Part A safety floor) plus the axis-default
+        # refinement's Part A/B constants and helpers
+        # (`WW_OC_RELAY_CURRENT_XMIN_OFFSET`, `wwOvercurrentDynamicYMin()`,
+        # `wwOvercurrentUpdateStableReferenceOperatingTime()`) that now
+        # sit textually between these two markers.
+        relay_default_fn = _function_body(source, "function wwOvercurrentRelayCurrentAbsoluteBounds()", "function wwOvercurrentActiveXAbsoluteBounds")
         preamble = f"""
         const WW_OC_XAXIS_PICKUP_MULTIPLE = "pickup_multiple";
         const WW_OC_XAXIS_RELAY_CURRENT = "relay_current";
@@ -866,6 +881,7 @@ class TestCompressedSubPickupAxis:
         const WW_OC_CHART_H = 240;
         const WW_OC_ORIGIN_GAP = 15;
         const WW_OC_VIEWPORT_DEFAULT = {{ xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 }};
+        const WW_OC_VIEWPORT_ABSOLUTE = {{ xMin: 0.1, xMax: 200, yMin: 0.01, yMax: 1000 }};
         const WW_OC_SUBPICKUP_GUTTER_FRACTION = 0.05;
         const WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD = 0.5;
         {relay_default_fn}
@@ -1252,20 +1268,22 @@ class TestViewportDefaults:
         assert "viewport.xMin <= WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD + 1e-9" in fn
         assert "viewport.xMax > 1 + 1e-9" in fn
 
-    def test_relay_current_default_viewport_is_coupled_to_pickup_multiple_scaled_by_pickup(self):
-        """Superseding owner UAT correction (2026-09-16): Relay Current
-        is related to Pickup Multiple by Irelay = M * Ipickup, so Relay
-        Current's own default X range must derive from the SAME
-        WW_OC_VIEWPORT_DEFAULT M-domain constant (0.9x-100x), scaled by
-        the current pickup -- never a hard-coded/independently-chosen
-        amp range (this replaces the prior, now-superseded, DEC-094
-        decoupling -- that task's own instruction predates this one's
-        explicit "derive from the same M-domain positions" requirement)."""
+    def test_relay_current_default_x_min_is_pickup_minus_offset_with_a_positive_floor(self):
+        """Axis-default refinement, Part A (2026-09-16, supersedes the
+        prior `0.9 * pickup` multiplicative default): Relay Current's
+        own default X minimum is now `pickup - 0.1 A` (owner's own exact
+        worked examples: pickup 1.0 A -> 0.9 A; pickup 1.2 A -> 1.1 A),
+        floored by the SAME absolute lower zoom-out bound this mode
+        already enforces (`wwOvercurrentRelayCurrentAbsoluteBounds().xMin`
+        = `0.1 * pickup`) rather than a new constant -- so `pickup - 0.1`
+        can never reach zero or negative on the real logarithmic axis.
+        X maximum remains `100 * pickup`, unchanged."""
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRelayCurrentDefaultViewport()", "function wwOvercurrentActiveXAbsoluteBounds")
-        assert "WW_OC_VIEWPORT_DEFAULT.xMin * safePickup" in fn
-        assert "WW_OC_VIEWPORT_DEFAULT.xMax * safePickup" in fn
-        assert "WW_OC_RELAY_CURRENT_DEFAULT_X_MULTIPLIER" not in source
+        assert "const WW_OC_RELAY_CURRENT_XMIN_OFFSET = 0.1;" in source
+        fn = _function_body(source, "function wwOvercurrentRelayCurrentDefaultViewport()", "function wwOvercurrentDynamicYMin")
+        assert "const absoluteFloor = wwOvercurrentRelayCurrentAbsoluteBounds().xMin;" in fn
+        assert "xMin: Math.max(absoluteFloor, safePickup - WW_OC_RELAY_CURRENT_XMIN_OFFSET)," in fn
+        assert "xMax: WW_OC_VIEWPORT_DEFAULT.xMax * safePickup," in fn
 
 
 class TestMinorTickGenerationMatrix:
@@ -1342,10 +1360,13 @@ class TestRelayCurrentAxisAlignedWithPickupMultiple:
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
         return json.loads(result.stdout)
 
-    def test_default_relay_current_viewport_is_0_72_to_80_at_pickup_0_8(self):
+    def test_default_relay_current_viewport_is_0_7_to_80_at_pickup_0_8(self):
+        """Axis-default refinement, Part A (2026-09-16): X min is now
+        `pickup - 0.1 A` (0.8 - 0.1 = 0.7 A), not the prior `0.9 *
+        pickup` (0.72 A) -- X max is unaffected (`100 * pickup` = 80 A)."""
         script = self._harness(pickup=0.8) + "\nconsole.log(JSON.stringify(wwOvercurrentRelayCurrentDefaultViewport()));"
         viewport = self._run(script)
-        assert viewport["xMin"] == pytest.approx(0.72, rel=1e-9)
+        assert viewport["xMin"] == pytest.approx(0.7, rel=1e-9)
         assert viewport["xMax"] == pytest.approx(80, rel=1e-9)
 
     def test_relay_current_majors_are_m_domain_list_scaled_by_pickup(self):
@@ -1409,75 +1430,21 @@ class TestRelayCurrentAxisAlignedWithPickupMultiple:
 
 
 class TestRelayCurrentPickupBoundaryVisualEquivalence:
-    """The pickup boundary in Relay Current mode (I = pickup) must
-    occupy the exact same visual X position as M=1 in Pickup Multiple
-    mode, and every M<->ampere pair must map to the same relative log
-    position -- proving the "visual equivalence" the task's own worked
-    example describes, via the real wwOvercurrentChartGeometry()/
-    wwOvercurrentPixelX() pixel math, not just the tick VALUES."""
-
-    def _harness(self):
-        source = _source()
-        pieces = [
-            "const WW_OC_XAXIS_PICKUP_MULTIPLE = \"pickup_multiple\";",
-            "const WW_OC_XAXIS_RELAY_CURRENT = \"relay_current\";",
-            _function_body(source, "const WW_OC_CHART_MARGIN = { left: 40, right: 14, top: 12, bottom: 34 };", "function wwOvercurrentGeneratePow125Ticks"),
-            _function_body(source, "function wwOvercurrentRelayCurrentAbsoluteBounds()", "function wwOvercurrentActiveXAbsoluteBounds"),
-            _function_body(source, "const WW_OC_SUBPICKUP_GUTTER_FRACTION = 0.05;", "function wwOvercurrentAxisBreakSvg"),
-        ]
-        return "\n".join(pieces)
-
-    def test_m_equals_1_and_pickup_amps_occupy_the_same_relative_position(self):
-        import json
-        import subprocess
-
-        script = self._harness() + """
-        const pickup = 0.8;
-        const wwOvercurrentState = { xAxisMode: WW_OC_XAXIS_PICKUP_MULTIPLE, settings: { pickupCurrentSecondary: pickup } };
-        const pmViewport = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };
-        const pmGeo = wwOvercurrentChartGeometry(pmViewport);
-        const pmPx = wwOvercurrentPixelX(1, pmGeo);
-
-        wwOvercurrentState.xAxisMode = WW_OC_XAXIS_RELAY_CURRENT;
-        const rcViewport = { xMin: 0.9 * pickup, xMax: 100 * pickup, yMin: 0.1, yMax: 100 };
-        const rcGeo = wwOvercurrentChartGeometry(rcViewport);
-        const rcPx = wwOvercurrentPixelX(pickup, rcGeo);
-
-        console.log(JSON.stringify({ pmPx, rcPx }));
-        """
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        data = json.loads(result.stdout)
-        assert data["rcPx"] == pytest.approx(data["pmPx"], abs=1e-6)
-
-    def test_every_worked_example_pair_maps_to_the_same_relative_position(self):
-        """M=1<->0.8A, M=2<->1.6A, M=2.5<->2.0A, M=10<->8.0A,
-        M=100<->80A -- the task's own explicit worked example."""
-        import json
-        import subprocess
-
-        pairs = [(1, 0.8), (2, 1.6), (2.5, 2.0), (10, 8.0), (100, 80)]
-        script = self._harness() + f"""
-        const pickup = 0.8;
-        const wwOvercurrentState = {{ xAxisMode: WW_OC_XAXIS_PICKUP_MULTIPLE, settings: {{ pickupCurrentSecondary: pickup }} }};
-        const pmViewport = {{ xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 }};
-        const pmGeo = wwOvercurrentChartGeometry(pmViewport);
-
-        wwOvercurrentState.xAxisMode = WW_OC_XAXIS_RELAY_CURRENT;
-        const rcViewport = {{ xMin: 0.9 * pickup, xMax: 100 * pickup, yMin: 0.1, yMax: 100 }};
-        const rcGeo = wwOvercurrentChartGeometry(rcViewport);
-
-        const pairs = {json.dumps(pairs)};
-        const results = pairs.map(([m, amps]) => ({{
-            pmPx: wwOvercurrentPixelX(m, pmGeo),
-            rcPx: wwOvercurrentPixelX(amps, rcGeo),
-        }}));
-        console.log(JSON.stringify(results));
-        """
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        rows = json.loads(result.stdout)
-        assert len(rows) == len(pairs)
-        for row in rows:
-            assert row["rcPx"] == pytest.approx(row["pmPx"], abs=1e-6)
+    """The pixel-for-pixel "visual equivalence" this class originally
+    proved (M=1 in Pickup Multiple mode and I=pickup in Relay Current
+    mode sitting at the exact same screen position, because both modes'
+    own DEFAULT viewports used the identical `0.9 * pickup`/`100 *
+    pickup` multiplicative scaling) is SUPERSEDED by the axis-default
+    refinement (2026-09-16, Part A): Relay Current's own default X
+    minimum is now the additive `pickup - 0.1 A` (floored), which no
+    longer sits at the same relative log position as Pickup Multiple's
+    own fixed `0.9x` default for an arbitrary pickup -- this was an
+    explicit, deliberate outcome of the owner's own new worked examples
+    (pickup 1.0 A -> 0.9 A, pickup 1.2 A -> 1.1 A), not a regression.
+    The two pixel-equivalence tests this class used to contain were
+    removed as no longer describing a real invariant; the one test that
+    never depended on that invariant (the pickup boundary's own VALUE,
+    not its pixel position relative to Pickup Multiple) remains."""
 
     def test_pickup_boundary_value_in_relay_current_mode_is_the_pickup_itself(self):
         source = _source()
@@ -1703,3 +1670,196 @@ class TestChartControlsToolbarRedesign:
         assert "align-items: center;" in field_rule
         assert 'class="ww-oc-grid-toggle-field"><input type="checkbox" id="wwOvercurrentMinorGridXCheckbox"> X</label>' in source
         assert 'class="ww-oc-grid-toggle-field"><input type="checkbox" id="wwOvercurrentMinorGridYCheckbox"> Y</label>' in source
+
+
+class TestAxisDefaultRefinement:
+    """Focused coverage for the axis-default refinement (2026-09-16):
+    Part A (Relay Current X minimum = pickup - 0.1 A, floored) and
+    Part B (Y minimum = 0.9 x a STABLE reference operating time,
+    floored/capped) -- see wwOvercurrentRelayCurrentDefaultViewport()/
+    wwOvercurrentDynamicYMin() in frontend/index.html for the full
+    rationale. No IEC IDMT calculation, TMS, pickup, CT conversion, RMS,
+    or Playback behavior is touched by any assertion here. Real-browser
+    interaction coverage (Reset, manual-viewport preservation, no
+    tick-chasing, zero extra backend requests) lives in
+    browser-tests/overcurrent_analysis.spec.js."""
+
+    def _harness(self, pickup=1.0, stable_reference=None):
+        source = _source()
+        ref_literal = "null" if stable_reference is None else repr(float(stable_reference))
+        pieces = [
+            f'const wwOvercurrentState = {{ settings: {{ pickupCurrentSecondary: {pickup} }}, stableReferenceOperatingTime: {ref_literal} }};',
+            "const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };",
+            "const WW_OC_VIEWPORT_ABSOLUTE = { xMin: 0.1, xMax: 200, yMin: 0.01, yMax: 1000 };",
+            _function_body(source, "function wwOvercurrentRelayCurrentAbsoluteBounds()", "function wwOvercurrentActiveXAbsoluteBounds"),
+        ]
+        return "\n".join(pieces)
+
+    def _run(self, script):
+        import json
+        import subprocess
+
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        return json.loads(result.stdout)
+
+    # ---- Part A: Relay Current X minimum ----
+
+    def test_relay_current_xmin_pickup_1_0_is_0_9(self):
+        script = self._harness(pickup=1.0) + "\nconsole.log(JSON.stringify(wwOvercurrentRelayCurrentDefaultViewport()));"
+        viewport = self._run(script)
+        assert viewport["xMin"] == pytest.approx(0.9, rel=1e-9)
+        assert viewport["xMax"] == pytest.approx(100, rel=1e-9)
+
+    def test_relay_current_xmin_pickup_1_2_is_1_1(self):
+        script = self._harness(pickup=1.2) + "\nconsole.log(JSON.stringify(wwOvercurrentRelayCurrentDefaultViewport()));"
+        viewport = self._run(script)
+        assert viewport["xMin"] == pytest.approx(1.1, rel=1e-9)
+        assert viewport["xMax"] == pytest.approx(120, rel=1e-9)
+
+    def test_relay_current_xmin_tiny_pickup_uses_the_positive_safety_floor(self):
+        """pickup 0.05 A: pickup - 0.1 = -0.05 A (negative) -- the floor
+        (`0.1 * pickup`, the SAME absolute lower zoom-out bound this
+        mode already enforces) must apply, never a zero/negative log
+        minimum."""
+        script = self._harness(pickup=0.05) + "\nconsole.log(JSON.stringify(wwOvercurrentRelayCurrentDefaultViewport()));"
+        viewport = self._run(script)
+        assert viewport["xMin"] > 0
+        assert viewport["xMin"] == pytest.approx(0.005, rel=1e-9)  # 0.1 * 0.05
+        assert viewport["xMax"] == pytest.approx(5, rel=1e-9)
+
+    def test_relay_current_xmin_never_non_positive_across_a_pickup_sweep(self):
+        script = self._harness(pickup=1.0) + """
+        const pickups = [0.001, 0.01, 0.05, 0.09999, 0.1, 0.5, 1.0, 1.2, 10, 500];
+        const results = pickups.map((p) => {
+            wwOvercurrentState.settings.pickupCurrentSecondary = p;
+            const xMin = wwOvercurrentRelayCurrentDefaultViewport().xMin;
+            return { xMin, isFinitePositive: Number.isFinite(xMin) && xMin > 0 };
+        });
+        console.log(JSON.stringify(results));
+        """
+        rows = self._run(script)
+        assert len(rows) == 10
+        for row in rows:
+            assert row["isFinitePositive"] is True, row
+
+    # ---- Part B: time-axis Y minimum ----
+
+    def test_y_min_reference_1_0_is_0_9(self):
+        script = self._harness(stable_reference=1.0) + "\nconsole.log(JSON.stringify(wwOvercurrentDynamicYMin()));"
+        assert self._run(script) == pytest.approx(0.9, rel=1e-9)
+
+    def test_y_min_reference_0_2_is_0_18(self):
+        script = self._harness(stable_reference=0.2) + "\nconsole.log(JSON.stringify(wwOvercurrentDynamicYMin()));"
+        assert self._run(script) == pytest.approx(0.18, rel=1e-9)
+
+    def test_y_min_reference_0_08_is_0_072_floor_not_yet_engaged(self):
+        script = self._harness(stable_reference=0.08) + "\nconsole.log(JSON.stringify(wwOvercurrentDynamicYMin()));"
+        assert self._run(script) == pytest.approx(0.072, rel=1e-9)
+
+    def test_y_min_very_small_reference_engages_the_0_01_floor(self):
+        script = self._harness(stable_reference=0.005) + "\nconsole.log(JSON.stringify(wwOvercurrentDynamicYMin()));"
+        y_min = self._run(script)
+        assert y_min == pytest.approx(0.01, rel=1e-9)
+        assert y_min > 0
+
+    def test_y_min_falls_back_to_the_flat_default_before_any_reference_is_established(self):
+        script = self._harness(stable_reference=None) + "\nconsole.log(JSON.stringify(wwOvercurrentDynamicYMin()));"
+        assert self._run(script) == pytest.approx(0.1, rel=1e-9)
+
+    def test_y_min_never_exceeds_a_tenth_of_y_max_for_an_extreme_near_asymptote_reference(self):
+        """An extreme reference (near the curve's own asymptote as M ->
+        1) must never crowd out the sensible Y Max=100s default -- Y Max
+        itself never moves; Y min is capped instead."""
+        script = self._harness(stable_reference=5000) + "\nconsole.log(JSON.stringify(wwOvercurrentDynamicYMin()));"
+        y_min = self._run(script)
+        assert y_min == pytest.approx(10, rel=1e-9)  # WW_OC_VIEWPORT_DEFAULT.yMax / 10
+        assert y_min < 100
+
+    def test_y_min_ignores_a_non_finite_or_non_positive_reference(self):
+        for bad_ref_js in ["NaN", "-1", "0", "Infinity"]:
+            script = self._harness() + f"""
+            wwOvercurrentState.stableReferenceOperatingTime = {bad_ref_js};
+            console.log(JSON.stringify(wwOvercurrentDynamicYMin()));
+            """
+            assert self._run(script) == pytest.approx(0.1, rel=1e-9)
+
+
+class TestStableReferenceOperatingTimeCapture:
+    """`wwOvercurrentUpdateStableReferenceOperatingTime()` -- captures
+    ONLY from an exact fetch's own genuine, above-pickup computed
+    result; reuses `expected_operating_time_seconds` verbatim (never a
+    new protection quantity); never clobbers a good prior value with a
+    transient below-pickup/error/non-computed instant."""
+
+    def _harness(self):
+        source = _source()
+        return "\n".join([
+            "const wwOvercurrentState = { stableReferenceOperatingTime: null };",
+            _function_body(source, "function wwOvercurrentUpdateStableReferenceOperatingTime(result)", "function wwOvercurrentActiveXAbsoluteBounds"),
+        ])
+
+    def _run(self, script):
+        import json
+        import subprocess
+
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        return json.loads(result.stdout)
+
+    def test_captures_a_genuine_computed_above_pickup_result(self):
+        script = self._harness() + """
+        wwOvercurrentUpdateStableReferenceOperatingTime({ status: "computed", expected_operating_time_seconds: 1.5 });
+        console.log(JSON.stringify(wwOvercurrentState.stableReferenceOperatingTime));
+        """
+        assert self._run(script) == pytest.approx(1.5, rel=1e-9)
+
+    def test_a_below_pickup_result_never_overwrites_an_existing_reference(self):
+        script = self._harness() + """
+        wwOvercurrentUpdateStableReferenceOperatingTime({ status: "computed", expected_operating_time_seconds: 1.5 });
+        wwOvercurrentUpdateStableReferenceOperatingTime({ status: "computed", expected_operating_time_seconds: null });
+        console.log(JSON.stringify(wwOvercurrentState.stableReferenceOperatingTime));
+        """
+        assert self._run(script) == pytest.approx(1.5, rel=1e-9)
+
+    def test_a_non_computed_status_never_overwrites_an_existing_reference(self):
+        script = self._harness() + """
+        wwOvercurrentUpdateStableReferenceOperatingTime({ status: "computed", expected_operating_time_seconds: 1.5 });
+        wwOvercurrentUpdateStableReferenceOperatingTime({ status: "needs_configuration", message: "x" });
+        console.log(JSON.stringify(wwOvercurrentState.stableReferenceOperatingTime));
+        """
+        assert self._run(script) == pytest.approx(1.5, rel=1e-9)
+
+    def test_a_null_result_never_overwrites_an_existing_reference(self):
+        script = self._harness() + """
+        wwOvercurrentUpdateStableReferenceOperatingTime({ status: "computed", expected_operating_time_seconds: 1.5 });
+        wwOvercurrentUpdateStableReferenceOperatingTime(null);
+        console.log(JSON.stringify(wwOvercurrentState.stableReferenceOperatingTime));
+        """
+        assert self._run(script) == pytest.approx(1.5, rel=1e-9)
+
+    def test_starts_null_before_any_exact_fetch_resolves(self):
+        script = self._harness() + "\nconsole.log(JSON.stringify(wwOvercurrentState.stableReferenceOperatingTime));"
+        assert self._run(script) is None
+
+
+class TestStableReferenceOnlyUpdatedByExactFetch:
+    """The stable reference must be captured from every EXACT fetch
+    (settings/phase/context establishment/change, seek-while-paused) but
+    NEVER from a throttled live-Playback tick -- see
+    wwOvercurrentMaybeFetchForPlayback()/wwOvercurrentRequestAnalysis()."""
+
+    def test_maybe_fetch_for_playback_threads_force_through_as_isexactfetch(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentMaybeFetchForPlayback()", "function wwOvercurrentSetUpdatingIndicator")
+        assert "wwOvercurrentRequestAnalysis(force);" in fn
+
+    def test_request_analysis_only_updates_the_reference_when_exact(self):
+        source = _source()
+        fn = _function_body(source, "async function wwOvercurrentRequestAnalysis(isExactFetch)", "// ---- Rendering ----")
+        assert fn.count("wwOvercurrentUpdateStableReferenceOperatingTime(result)") == 1
+        assert "if (isExactFetch) wwOvercurrentUpdateStableReferenceOperatingTime(result);" in fn
+        # The single call site sits on the SUCCESS path only, after the
+        # `catch` block's own early `return` -- never reachable from the
+        # fetch-error recovery path.
+        catch_start = fn.index("} catch (error) {")
+        catch_return = fn.index("return;", catch_start)
+        assert "wwOvercurrentUpdateStableReferenceOperatingTime" not in fn[catch_start:catch_return]

@@ -603,13 +603,26 @@ test.describe("Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 
     const xMaxAfterZoomOut = parseFloat(await page.locator("#wwOvercurrentViewXMax").inputValue());
     expect(xMaxAfterZoomOut).toBeGreaterThan(xMaxAfterZoomIn);
 
+    // Axis-default refinement (2026-09-16, Part B): Y min is now
+    // proportional to the stable reference operating time already
+    // established by `selectContextAndWaitForValues()` above, not the
+    // flat 0.1s literal -- read the live dynamic value rather than
+    // hard-coding a hand-derived one.
+    const expectedYMin = await page.evaluate(() => wwOvercurrentDynamicYMin());
+    expect(expectedYMin).not.toBeCloseTo(0.1, 3); // a real reference IS established by this point
+
     await page.locator("#wwOvercurrentResetViewBtn").click();
     await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.9");
     await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
-    await expect(page.locator("#wwOvercurrentViewYMin")).toHaveValue("0.1");
+    const yMinAfterReset = parseFloat(await page.locator("#wwOvercurrentViewYMin").inputValue());
+    expect(yMinAfterReset).toBeCloseTo(expectedYMin, 4);
     await expect(page.locator("#wwOvercurrentViewYMax")).toHaveValue("100");
-    // Reset also restores the default major-grid labeling.
-    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-origin-label", { hasText: /^0$/ })).toHaveCount(2);
+    // The "0" origin convention is scoped to the pristine, reference-
+    // less state only (see wwOvercurrentIsDefaultViewport()) -- once a
+    // real (non-round) reference-derived Y min is in effect, the chart
+    // shows the true numeric minimum instead of a fake "0", exactly
+    // like any other genuinely custom Y range.
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-origin-label", { hasText: /^0$/ })).toHaveCount(0);
   });
 
   test("zoom out is capped at the absolute bound (X 200, Y 1000)", async ({ page }) => {
@@ -714,6 +727,169 @@ test.describe("Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 
     // The true multiple is preserved, unaltered, in the live-values panel.
     const text = await page.locator("#wwOvercurrentValuesList").innerText();
     expect(text).toMatch(/40\.0\s*×/);
+  });
+});
+
+test.describe("Overcurrent Analysis v1 -- axis-default refinement (2026-09-16)", () => {
+  // Part A: Relay Current's own default X minimum is `pickup - 0.1 A`
+  // (floored), replacing the prior `0.9 * pickup` multiplicative
+  // scaling. Part B: the time-axis default minimum is proportional to a
+  // STABLE reference operating time, never a flat subtraction and never
+  // chasing the live operating point during Playback. No IEC IDMT
+  // calculation, TMS/pickup/CT/RMS semantics, or Playback clock
+  // behavior is touched by anything in this block.
+
+  test("Relay Current default X min tracks pickup - 0.1 A (golden examples: 1.0 -> 0.9, 1.2 -> 1.1)", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
+
+    await page.locator("#wwOvercurrentPickupInput").fill("1.0");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/40\.0\s*×/);
+    }).toPass({ timeout: 5000 });
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.9");
+    await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
+
+    await page.locator("#wwOvercurrentPickupInput").fill("1.2");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    await expect(async () => {
+      const value = await page.evaluate(() => wwOvercurrentRelayCurrentDefaultViewport().xMin);
+      expect(value).toBeCloseTo(1.1, 6);
+    }).toPass({ timeout: 5000 });
+  });
+
+  test("a very small pickup uses the positive safety floor -- never a zero/negative Relay Current X min", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await page.locator("#wwOvercurrentPickupInput").fill("0.05");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
+
+    const xMin = parseFloat(await page.locator("#wwOvercurrentViewXMin").inputValue());
+    expect(xMin).toBeGreaterThan(0);
+    expect(Number.isFinite(xMin)).toBe(true);
+  });
+
+  test("pickup changes never mutate the ALREADY-DISPLAYED viewport, only what Reset targets -- a manually zoomed/custom range survives a pickup change", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
+
+    // A deliberate manual custom range.
+    await page.locator("#wwOvercurrentViewXMin").fill("5");
+    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
+    await page.locator("#wwOvercurrentViewXMax").fill("50");
+    await page.locator("#wwOvercurrentViewXMax").dispatchEvent("change");
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("5");
+    await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("50");
+
+    // A pickup change must not silently overwrite the manual range.
+    await page.locator("#wwOvercurrentPickupInput").fill("1.2");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toContain("Pickup");
+    }).toPass({ timeout: 5000 });
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("5");
+    await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("50");
+
+    // Reset, not the pickup change, is what applies the new dynamic default.
+    await page.locator("#wwOvercurrentResetViewBtn").click();
+    const xMinAfterReset = parseFloat(await page.locator("#wwOvercurrentViewXMin").inputValue());
+    expect(xMinAfterReset).toBeCloseTo(1.1, 6);
+  });
+
+  test("a manually customized Y range is preserved across a TMS/characteristic change -- Playback ticks never touch it either", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await page.locator("#wwOvercurrentViewYMin").fill("5");
+    await page.locator("#wwOvercurrentViewYMin").dispatchEvent("change");
+    await expect(page.locator("#wwOvercurrentViewYMin")).toHaveValue("5");
+
+    const textBeforeTmsChange = await page.locator("#wwOvercurrentValuesList").innerText();
+    await page.locator("#wwOvercurrentTmsInput").fill("0.5");
+    await page.locator("#wwOvercurrentTmsInput").dispatchEvent("change");
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).not.toBe(textBeforeTmsChange); // the recomputed result (a different TMS changes the expected operating time) confirms the change actually took effect
+    }).toPass({ timeout: 5000 });
+    await expect(page.locator("#wwOvercurrentViewYMin")).toHaveValue("5");
+
+    // Let a few Playback ticks pass -- the manual Y range must never drift.
+    await page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-play-btn").click();
+    await page.waitForTimeout(600);
+    await page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-play-btn").click();
+    await expect(page.locator("#wwOvercurrentViewYMin")).toHaveValue("5");
+  });
+
+  test("the Y-axis default/reset value never chases the live operating point while Playback runs (stable reference, not per-tick)", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    // Capture the dynamic default once, before Playback runs.
+    const beforePlay = await page.evaluate(() => wwOvercurrentDynamicYMin());
+
+    await page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-play-btn").click();
+    await page.waitForTimeout(800); // several throttled ticks at ~10 Hz
+    await page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-play-btn").click();
+
+    const afterPlay = await page.evaluate(() => wwOvercurrentDynamicYMin());
+    // A steady-state sinusoid keeps the measured current effectively
+    // constant across this short window regardless -- the real
+    // guarantee under test is architectural (see the static test
+    // `TestStableReferenceOnlyUpdatedByExactFetch`), this is the
+    // end-to-end confirmation that a live Play run alone never moves it.
+    expect(afterPlay).toBeCloseTo(beforePlay, 6);
+  });
+
+  test("zero backend requests are caused solely by a viewport/axis-default recalculation -- Reset, zoom, and axis-mode switch after a pickup change", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const textBeforePickupChange = await page.locator("#wwOvercurrentValuesList").innerText();
+    await page.locator("#wwOvercurrentPickupInput").fill("1.2");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    // Explicit blur BEFORE waiting: leaving focus in the input after
+    // `.fill()` means the browser's own native blur-triggered "change"
+    // would otherwise fire later, on whatever UI action happens to move
+    // focus next (e.g. the axis-mode click below) -- producing a SECOND,
+    // genuine settings fetch for the SAME pickup value at an unrelated
+    // point in the test (confirmed via direct request-stack-trace
+    // inspection during this test's own development; a test-harness
+    // ordering artifact, not a production bug). Blurring here settles
+    // that duplicate within this wait, before any request counting.
+    await page.locator("#wwOvercurrentPickupInput").blur();
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).not.toBe(textBeforePickupChange); // waits for the pickup-change fetch to genuinely resolve, not merely for a static label to exist
+    }).toPass({ timeout: 5000 });
+
+    let curveRequests = 0;
+    let analysisRequests = 0;
+    page.on("request", (req) => {
+      if (req.url().includes("/overcurrent-curve")) curveRequests++;
+      if (req.url().includes("/overcurrent?")) analysisRequests++;
+    });
+
+    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
+    await page.locator("#wwOvercurrentZoomInBtn").click();
+    await page.locator("#wwOvercurrentZoomOutBtn").click();
+    await page.locator("#wwOvercurrentResetViewBtn").click();
+    await page.locator("#wwOvercurrentAxisModePickupBtn").click();
+
+    expect(curveRequests).toBe(0);
+    expect(analysisRequests).toBe(0);
   });
 });
 
@@ -961,23 +1137,26 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
     await expect(page.locator("#wwOvercurrentSvg text.ww-oc-axis-label", { hasText: "Relay Current (A secondary)" })).toHaveCount(1);
 
     // 7: operating point x-coordinate transforms to the new UNIT
-    // (amperes, not M) -- but owner UAT correction (2026-09-16) means
-    // the two representations are now visually EQUIVALENT: M=50x and
-    // I=40A (= 50 * 0.8 pickup) sit at the exact SAME pixel position,
-    // since Relay Current's own default viewport is now derived from
-    // the same M-domain default scaled by pickup. The underlying VALUE
-    // changed units (confirmed via the live-values panel elsewhere),
-    // the pixel position deliberately did not.
+    // (amperes, not M). Superseded (axis-default refinement,
+    // 2026-09-16): Relay Current's own default X minimum is now the
+    // additive `pickup - 0.1 A` rather than the multiplicative
+    // `0.9 * pickup` DEC-094 used, so the two representations' own
+    // default viewports no longer sit at the exact same relative log
+    // position -- a small pixel difference (magnitude depends on the
+    // specific pickup) is the deliberate, owner-requested outcome, not
+    // a regression; the underlying VALUE change is confirmed via the
+    // live-values panel elsewhere. Only that the point still renders at
+    // a real, valid position is asserted here.
     const relayModeOpX = await page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point").getAttribute("cx");
-    expect(Number(relayModeOpX)).toBeCloseTo(Number(pickupModeOpX), 1);
+    expect(Number(relayModeOpX)).toBeGreaterThan(0);
 
-    // 8: pickup boundary -- same visual-equivalence guarantee: M=1
-    // (Pickup Multiple) and I=pickup=0.8A (Relay Current) occupy the
-    // exact same pixel position (task's own "visual equivalence"
-    // section: "It should occupy the exact same visual x-position as
-    // M = 1 in Pickup Multiple mode").
+    // 8: pickup boundary -- same superseded-equivalence note as above:
+    // M=1 (Pickup Multiple) and I=pickup=0.8A (Relay Current) are no
+    // longer guaranteed to occupy the exact same pixel position now
+    // that the two defaults are related additively, not
+    // multiplicatively.
     const relayModeBoundaryX = await page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary").getAttribute("x1");
-    expect(Number(relayModeBoundaryX)).toBeCloseTo(Number(pickupModeBoundaryX), 1);
+    expect(Number(relayModeBoundaryX)).toBeGreaterThan(0);
 
     // 9: ticks are current-domain (amperes), not M-domain -- the Pickup
     // Multiple mode's fixed 3/4/6/7/8/9 majors must NOT all still be
@@ -1043,7 +1222,7 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
     await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue(xMaxAfterZoom);
   });
 
-  test("pickup boundary is fixed at M=1 in Pickup Multiple mode, and (owner UAT correction 2026-09-16) sits at that exact same visual position in Relay Current mode too", async ({ page }) => {
+  test("pickup boundary is fixed at M=1 in Pickup Multiple mode, unaffected by a pickup change", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
@@ -1062,19 +1241,20 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
     const boundaryXAfterPickupChange = await page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary").getAttribute("x1");
     expect(boundaryXAfterPickupChange).toBe(boundaryXAtPickup1);
 
-    // Relay Current mode -- since its own default viewport is now
-    // derived from the SAME M-domain default scaled by this exact
-    // pickup (task's own "visual equivalence" requirement), the
-    // boundary (I = pickup = 0.8 A) sits at the EXACT SAME pixel
-    // position M=1 always does -- never a different, "moved" position.
-    // The underlying ENGINEERING VALUE at that position is different
-    // (0.8 A vs M=1), but the pixel geometry itself does not move.
+    // Relay Current mode -- the pixel-equivalence DEC-094 originally
+    // established here is superseded by the axis-default refinement
+    // (2026-09-16): Relay Current's own default X minimum is now the
+    // additive `pickup - 0.1 A`, not the multiplicative `0.9 * pickup`,
+    // so the boundary (I = pickup = 0.8 A) no longer sits at the same
+    // relative log position M=1 does at pickup 1.0. The boundary still
+    // renders at a valid, in-range pixel position -- just a different
+    // one, which is the deliberate, owner-requested outcome.
     await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
     const boundaryXRelay = await page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary").getAttribute("x1");
-    expect(Number(boundaryXRelay)).toBeCloseTo(Number(boundaryXAtPickup1), 1);
+    expect(Number(boundaryXRelay)).toBeGreaterThan(0);
   });
 
-  test("Relay Current default viewport at pickup 0.8 A is exactly 0.72 -> 80 A (owner UAT golden scenario, 2026-09-16)", async ({ page }) => {
+  test("Relay Current default viewport at pickup 0.8 A is exactly 0.7 -> 80 A (axis-default refinement, 2026-09-16: X min = pickup - 0.1 A)", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
@@ -1089,13 +1269,12 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
     await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
     const xMin = parseFloat(await page.locator("#wwOvercurrentViewXMin").inputValue());
     const xMax = parseFloat(await page.locator("#wwOvercurrentViewXMax").inputValue());
-    expect(xMin).toBeCloseTo(0.72, 6);
+    expect(xMin).toBeCloseTo(0.7, 6); // 0.8 - 0.1
     expect(xMax).toBeCloseTo(80, 6);
 
-    // The viewport-start reference (0.9 * pickup, mirroring Pickup
-    // Multiple's own "0.9" start reference) renders as the light
-    // minor/reference label.
-    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label-minor", { hasText: /^0\.72$/ })).toHaveCount(1);
+    // The viewport-start reference (pickup - 0.1 A) renders as the
+    // light minor/reference label.
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label-minor", { hasText: /^0\.7$/ })).toHaveCount(1);
   });
 
   test("Relay Current major tick values at pickup 0.8 A match the exact worked example", async ({ page }) => {
@@ -1171,12 +1350,14 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
     const curveDAfter = await page.locator("#wwOvercurrentSvg path.ww-oc-curve").getAttribute("d");
     expect(curveDAfter).not.toBe(curveDBefore);
 
-    // Reset now reflects the NEW pickup (1.8 -> 200 A), never a stale
-    // value from before the pickup change.
+    // Reset now reflects the NEW pickup (axis-default refinement,
+    // 2026-09-16: X min = pickup - 0.1 A = 1.9 A, not the prior
+    // `0.9 * pickup` = 1.8 A) -- never a stale value from before the
+    // pickup change.
     await page.locator("#wwOvercurrentResetViewBtn").click();
     const xMinAfterReset = parseFloat(await page.locator("#wwOvercurrentViewXMin").inputValue());
     const xMaxAfterReset = parseFloat(await page.locator("#wwOvercurrentViewXMax").inputValue());
-    expect(xMinAfterReset).toBeCloseTo(1.8, 6);
+    expect(xMinAfterReset).toBeCloseTo(1.9, 6);
     expect(xMaxAfterReset).toBeCloseTo(200, 6);
   });
 
