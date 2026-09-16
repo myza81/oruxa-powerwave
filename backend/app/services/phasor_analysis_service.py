@@ -80,6 +80,7 @@ from app.domain.channel_classification import (
     WAVEFORM_FORM_MAGNITUDE,
     WAVEFORM_FORM_RMS,
 )
+from app.domain.engineering_units import ENGINEERING_QUANTITY_CURRENT, ENGINEERING_QUANTITY_VOLTAGE
 from app.domain.phasor import (
     PHASOR_DIAGRAM_CURRENT_REFERENCE_ROLE,
     PHASOR_DIAGRAM_ROLE_ORDER,
@@ -93,12 +94,15 @@ from app.domain.phasor import (
     ROLE_STATUS_MISSING,
     ROLE_STATUS_NEEDS_CONFIGURATION,
     ROLE_STATUS_NOT_ELIGIBLE,
+    ManualPhasorDiagramResult,
+    ManualPhasorRoleInput,
     PhasorAnalysisResult,
     PhasorDiagramResult,
     PhasorDiagramRoleResult,
     PhasorEstimate,
     PhasorRoleResult,
     estimate_phasor,
+    evaluate_manual_phasor_role,
     relative_angle_deg,
 )
 from app.domain.rms_detector import LIKELY_INSTANTANEOUS, LIKELY_MAGNITUDE_OR_RMS, classify_waveform_form
@@ -704,4 +708,52 @@ def _blocked_diagram_result(
     return PhasorDiagramResult(
         status=STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, analysis_time=analysis_time,
         roles=roles_out, reason_code=reason_code, message=message,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Manual Input / Calculator mode -- Analysis Input Source = 'manual' (see
+# docs/project-memory/ANALYSIS_INPUT_SOURCE.md). No registry/resolver/
+# workspace access at all -- a standalone engineering-calculator path.
+# Mirrors `overcurrent_analysis_service.compute_overcurrent_manual_analysis()`'s
+# own placement (a thin orchestration wrapper over pure domain
+# evaluation), extended to six independent roles across two independent
+# bases instead of Overcurrent's one value/one basis.
+# ---------------------------------------------------------------------------
+
+def compute_phasor_manual_diagram(
+    *,
+    voltage_basis: str,
+    vt_primary: float | None,
+    vt_secondary: float | None,
+    current_basis: str,
+    ct_primary: float | None,
+    ct_secondary: float | None,
+    role_inputs: dict[str, ManualPhasorRoleInput],
+) -> ManualPhasorDiagramResult:
+    """Evaluates all six roles independently via
+    `evaluate_manual_phasor_role()` -- see that function's own docstring
+    for the per-role/per-family failure isolation this relies on. The
+    Voltage and Current bases are genuinely independent (task's own hard
+    requirement): an invalid Voltage basis/VT ratio never affects
+    Current roles, and vice versa for CT. Top-level `status` is always
+    `PHASOR_STATUS_COMPUTED` -- even a result with every role `missing`
+    is still something meaningful to render (an empty diagram, exactly
+    like a partial/empty Recording-mode bay is still `computed`). Manual
+    mode has no cross-role BLOCKING concept analogous to Recording's
+    reference-frequency-conflict/timebase-incompatibility -- there is no
+    timebase or shared reference frequency for independently-entered,
+    static phasors to agree on."""
+    roles: dict[str, PhasorDiagramRoleResult] = {}
+    for role_key in PHASOR_DIAGRAM_ROLE_ORDER:
+        is_voltage = role_key.startswith("V")
+        roles[role_key] = evaluate_manual_phasor_role(
+            role_inputs[role_key],
+            engineering_quantity=ENGINEERING_QUANTITY_VOLTAGE if is_voltage else ENGINEERING_QUANTITY_CURRENT,
+            basis=voltage_basis if is_voltage else current_basis,
+            ratio_primary=vt_primary if is_voltage else ct_primary,
+            ratio_secondary=vt_secondary if is_voltage else ct_secondary,
+        )
+    return ManualPhasorDiagramResult(
+        status=PHASOR_STATUS_COMPUTED, roles=roles, message="Manual phasors evaluated.",
     )

@@ -67,7 +67,7 @@ from app.schemas.engineering_context import (
 )
 from app.domain.analysis_input_resolution import AnalysisInputResolution
 from app.domain.analysis_requirements import get_requirement
-from app.domain.phasor import PhasorAnalysisResult, PhasorDiagramResult
+from app.domain.phasor import ManualPhasorRoleInput, PhasorAnalysisResult, PhasorDiagramResult
 from app.schemas.analysis_input_resolution import AnalysisInputResolutionOut, RoleSpecOut
 from app.schemas.overcurrent_analysis import (
     OvercurrentAnalysisResultOut,
@@ -81,6 +81,7 @@ from app.schemas.phasor_analysis import (
     PhasorAnalysisResultOut,
     PhasorDiagramResultOut,
     PhasorDiagramRoleResultOut,
+    PhasorManualDiagramResultOut,
     PhasorRoleResultOut,
 )
 from app.schemas.source import ErrorOut
@@ -105,7 +106,7 @@ from app.services.overcurrent_analysis_service import (
     compute_overcurrent_manual_analysis,
     list_known_characteristics,
 )
-from app.services.phasor_analysis_service import compute_phasor_analysis, compute_phasor_diagram
+from app.services.phasor_analysis_service import compute_phasor_analysis, compute_phasor_diagram, compute_phasor_manual_diagram
 from app.services.workspace_registry import WorkspaceRegistry
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["engineering-contexts"])
@@ -493,6 +494,69 @@ def get_phasor_diagram(
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
     return _phasor_diagram_result_to_out(result)
+
+
+def _phasor_manual_diagram_result_to_out(result) -> PhasorManualDiagramResultOut:
+    return PhasorManualDiagramResultOut(
+        status=result.status, algorithm_version=result.algorithm_version,
+        roles={
+            role_key: PhasorDiagramRoleResultOut(
+                status=role.status,
+                channel_ref=None,
+                magnitude_rms=role.magnitude_rms, unit=role.unit,
+                angle_deg_absolute=role.angle_deg_absolute, angle_deg_relative=role.angle_deg_relative,
+                reason_code=role.reason_code,
+            )
+            for role_key, role in result.roles.items()
+        },
+        warnings=result.warnings, reason_code=result.reason_code, message=result.message,
+    )
+
+
+@router.get("/phasor-manual", response_model=PhasorManualDiagramResultOut)
+def get_phasor_manual_diagram(
+    workspace_id: str,
+    voltage_basis: str,
+    current_basis: str,
+    vt_primary: float | None = None,
+    vt_secondary: float | None = None,
+    ct_primary: float | None = None,
+    ct_secondary: float | None = None,
+    va_enabled: bool = False, va_magnitude: float | None = None, va_unit: str = "V", va_angle_deg: float = 0.0,
+    vb_enabled: bool = False, vb_magnitude: float | None = None, vb_unit: str = "V", vb_angle_deg: float = 0.0,
+    vc_enabled: bool = False, vc_magnitude: float | None = None, vc_unit: str = "V", vc_angle_deg: float = 0.0,
+    ia_enabled: bool = False, ia_magnitude: float | None = None, ia_unit: str = "A", ia_angle_deg: float = 0.0,
+    ib_enabled: bool = False, ib_magnitude: float | None = None, ib_unit: str = "A", ib_angle_deg: float = 0.0,
+    ic_enabled: bool = False, ic_magnitude: float | None = None, ic_unit: str = "A", ic_angle_deg: float = 0.0,
+) -> PhasorManualDiagramResultOut:
+    """Manual Input / Calculator mode (Analysis Input Source = 'manual',
+    see docs/project-memory/ANALYSIS_INPUT_SOURCE.md) -- Phasor's own
+    standalone engineering-calculator path, alongside the existing
+    recording- and Playback-driven `.../phasor-diagram` endpoint above.
+    Workspace-scoped only -- no Engineering Context, channel, waveform,
+    or Playback state is involved at all; every one of the six roles
+    (Va/Vb/Vc/Ia/Ib/Ic) is independently optional (`*_enabled=False` or
+    a missing magnitude simply reports that role as `missing`, never
+    blocking the other five). `voltage_basis`/`current_basis` are
+    genuinely independent of each other (task's own hard requirement) --
+    an invalid Voltage basis or VT/PT ratio only ever affects the three
+    Voltage roles, never Current, and vice versa for CT. Never
+    persisted."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    role_inputs = {
+        "Va": ManualPhasorRoleInput(enabled=va_enabled, magnitude=va_magnitude, unit=va_unit, angle_deg=va_angle_deg),
+        "Vb": ManualPhasorRoleInput(enabled=vb_enabled, magnitude=vb_magnitude, unit=vb_unit, angle_deg=vb_angle_deg),
+        "Vc": ManualPhasorRoleInput(enabled=vc_enabled, magnitude=vc_magnitude, unit=vc_unit, angle_deg=vc_angle_deg),
+        "Ia": ManualPhasorRoleInput(enabled=ia_enabled, magnitude=ia_magnitude, unit=ia_unit, angle_deg=ia_angle_deg),
+        "Ib": ManualPhasorRoleInput(enabled=ib_enabled, magnitude=ib_magnitude, unit=ib_unit, angle_deg=ib_angle_deg),
+        "Ic": ManualPhasorRoleInput(enabled=ic_enabled, magnitude=ic_magnitude, unit=ic_unit, angle_deg=ic_angle_deg),
+    }
+    result = compute_phasor_manual_diagram(
+        voltage_basis=voltage_basis, vt_primary=vt_primary, vt_secondary=vt_secondary,
+        current_basis=current_basis, ct_primary=ct_primary, ct_secondary=ct_secondary,
+        role_inputs=role_inputs,
+    )
+    return _phasor_manual_diagram_result_to_out(result)
 
 
 # ---------------------------------------------------------------------------

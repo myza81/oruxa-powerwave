@@ -731,6 +731,37 @@ upload at all. See
 [ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md#governing-invariant-owner-requirement-2026-09-16-architectural-correction)
 and DEC-095's own amendment note for the full record.
 
+**Phasor becomes the second Analysis Input Source implementation, same
+day (2026-09-16) — DEC-095 amended a second time.** Manual Input /
+Calculator mode implemented for Phasor, reusing the shared shell the
+architectural correction above established from day one (never the
+flawed intermediate design). Phasor's own manual value spans six
+independent roles (Va/Vb/Vc/Ia/Ib/Ic) across TWO genuinely independent
+bases — `voltageBasis` (its own VT/PT ratio) and `currentBasis` (its
+own CT ratio), a hard requirement since Voltage and Current are
+measured through physically independent instrument transformers (an
+engineer can mix Primary-basis voltages with Secondary-basis currents
+in the same diagram — proven by a dedicated mixed-basis golden test).
+This extends DEC-095 with a new general principle: **a future analyzer
+with N independent physical quantities should expect N independent
+bases in its own manual state, not one shared switch.** A new
+workspace-scoped `GET .../phasor-manual` endpoint reuses the shared
+engineering-unit layer via a new, generalized
+`convert_manual_magnitude_to_secondary()` (`app/domain/phasor.py`,
+parameterized on Voltage/Current so ONE function serves both) and
+evaluates each role fully independently
+(`evaluate_manual_phasor_role()`) — a role not entered reports the
+EXISTING `missing` status, an invalid basis/ratio blocks only its OWN
+family (`needs_configuration`), never cross-contaminating Voltage and
+Current. The result reuses `PhasorDiagramRoleResult` VERBATIM, so the
+SAME frontend renderer draws either Recording's or Manual's own result
+with zero new rendering code. Canonical internal basis is Secondary,
+matching Overcurrent's own precedent. See
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s own "Manual Input /
+Calculator mode" section and
+[ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md)'s own "What
+Phasor's own implementation looks like end to end" for the full record.
+
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test
 infrastructure only, zero production code changed) establishes the

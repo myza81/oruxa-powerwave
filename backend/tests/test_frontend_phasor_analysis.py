@@ -507,15 +507,26 @@ class TestBayCentricAggregation:
             assert status in body
 
     def test_no_manual_raw_channel_picker_in_normal_workflow(self):
-        """The engineer never picks Va/Vb/Vc/Ia/Ib/Ic directly -- the Bay
-        (Engineering Context) selector is the only channel-adjacent
-        control; there is no channel-name <select>/<input> anywhere in
-        the Phasor panel markup."""
+        """The engineer never picks Va/Vb/Vc/Ia/Ib/Ic directly against a
+        RECORDING -- the Bay (Engineering Context) selector is the only
+        channel-adjacent control in the Recording-only section; there is
+        no channel-NAME <select>/<input> anywhere in the Phasor panel
+        markup. Updated for Manual Input / Calculator mode (see
+        docs/project-memory/ANALYSIS_INPUT_SOURCE.md): the Recording
+        section itself still has exactly one `<select>` (Bay/Engineering
+        Context); the other eight belong to the separate Manual panel
+        (Voltage/Current basis, and a unit dropdown per manually-entered
+        role) -- none of them select a raw CHANNEL, only an engineering
+        basis/unit for a value the engineer typed in directly."""
         source = _source()
         panel_html = source[source.index('id="wwPhasorPanel"'):source.index('id="wwPhasorSvg"')]
         assert "wwPhasorChannelSelect" not in panel_html
         assert "raw-channel" not in panel_html.lower()
-        assert panel_html.count("<select") == 1  # the Bay/Engineering Context selector only
+        recording_section_html = _function_body(source, 'id="wwPhasorRecordingSection"', 'id="wwPhasorManualInputSection"')
+        assert recording_section_html.count("<select") == 1  # the Bay/Engineering Context selector only
+        manual_section_html = _function_body(source, 'id="wwPhasorManualInputSection"', 'class="ww-phasor-body"')
+        assert manual_section_html.count("<select") == 8  # 2 basis selects + 6 per-role unit selects
+        assert panel_html.count("<select") == 9
 
 
 class TestPlaybackTimeControl:
@@ -1182,3 +1193,226 @@ class TestAnalysisShellVisualPolish:
             assert sizes, f"{selector} declares no rem font-size"
             for size in sizes:
                 assert size <= 0.75, f"{selector} font-size {size}rem exceeds the 0.75rem Analysis-workspace cap"
+
+
+class TestManualInputCalculatorMode:
+    """Manual Input / Calculator mode -- Phasor's own implementation of
+    the shared Analysis Input Source concept (see
+    docs/project-memory/ANALYSIS_INPUT_SOURCE.md). Overcurrent's own
+    DEC-095 slice was the first; this reuses the SAME shared shell from
+    day one. No IEC/RMS/CT/VT math is re-derived here -- every assertion
+    is about UI/state wiring; the actual computation is exercised end-
+    to-end by test_phasor_diagram_service.py::TestComputePhasorManualDiagram
+    and test_phasor_diagram_api.py::TestManualPhasorDiagramEndpoint."""
+
+    def test_shared_input_source_constants_are_reused_not_redeclared(self):
+        source = _source()
+        assert source.count('const WW_ANALYSIS_INPUT_SOURCE_RECORDING = "recording";') == 1
+        assert source.count('const WW_ANALYSIS_INPUT_SOURCE_MANUAL = "manual";') == 1
+
+    def test_phasor_state_owns_its_own_input_source_and_manual_fields(self):
+        source = _source()
+        fn = _function_body(source, "const wwPhasorState = {", "// \"Start New Workspace\"")
+        assert "inputSource: WW_ANALYSIS_INPUT_SOURCE_RECORDING," in fn
+        assert "recordingAvailable: false," in fn
+        assert "inputSourceAutoSelected: true," in fn
+        assert "manualRequestGeneration: 0," in fn
+        assert "manual: {" in fn
+        assert 'voltageBasis: "primary",' in fn
+        assert 'currentBasis: "primary",' in fn
+        assert "latestResult: null," in fn
+
+    def test_input_source_panel_lives_outside_and_before_the_recording_section(self):
+        source = _source()
+        panel_index = source.index('id="wwPhasorPanel"')
+        input_source_index = source.index('class="panel ww-oc-input-source-panel"')
+        recording_section_index = source.index('id="wwPhasorRecordingSection"')
+        assert panel_index < input_source_index < recording_section_index
+
+    def test_input_source_reuses_overcurrents_own_css_classes(self):
+        """Task's own explicit "use the same segmented-control language
+        as OC" instruction -- deliberately cross-analyzer shared classes,
+        never a second competing toggle style."""
+        source = _source()
+        assert 'id="wwPhasorInputSourceRecordingBtn" class="ww-oc-axis-toggle-btn ww-oc-axis-toggle-btn--active" data-input-source="recording" aria-pressed="true">Recording<' in source
+        assert 'id="wwPhasorInputSourceManualBtn" class="ww-oc-axis-toggle-btn" data-input-source="manual" aria-pressed="false">Manual<' in source
+
+    def test_recording_only_markup_lives_inside_the_recording_section(self):
+        source = _source()
+        section = _function_body(source, 'id="wwPhasorRecordingSection"', 'id="wwPhasorManualInputSection"')
+        for required_id in ("wwPhasorContextSelect", "wwPhasorPlaybackPanel", "wwPhasorRelatedWaveformsAnchor", "wwPhasorEmptyState"):
+            assert required_id in section
+
+    def test_manual_section_declares_independent_voltage_and_current_basis(self):
+        """Task's own hard requirement: Voltage and Current basis are
+        two genuinely independent selectors, never one shared switch."""
+        source = _source()
+        section = _function_body(source, 'id="wwPhasorManualInputSection"', 'class="ww-phasor-body"')
+        assert 'id="wwPhasorManualVoltageBasisSelect"' in section
+        assert 'id="wwPhasorManualCurrentBasisSelect"' in section
+        assert 'id="wwPhasorManualVtRatioRow"' in section
+        assert 'id="wwPhasorManualCtRatioRow"' in section
+        for role_key in ("Va", "Vb", "Vc", "Ia", "Ib", "Ic"):
+            for suffix in ("Enabled", "Magnitude", "Unit", "Angle"):
+                assert f'id="wwPhasorManual{role_key}{suffix}"' in section
+
+    def test_relay_recording_fields_never_duplicated_inside_manual_section(self):
+        source = _source()
+        section = _function_body(source, 'id="wwPhasorManualInputSection"', 'class="ww-phasor-body"')
+        for forbidden_id in ("wwPhasorContextSelect", "wwPhasorPhaseSelect", "wwPhasorPlaybackMount"):
+            assert forbidden_id not in section
+
+    def test_body_lives_outside_the_manual_and_recording_sections_and_is_never_hidden_by_default(self):
+        source = _source()
+        body_index = source.index('id="wwPhasorBody"')
+        assert 'id="wwPhasorBody">' in source[body_index:body_index + 40]
+
+    def test_set_input_source_switches_state_and_gates_on_availability(self):
+        source = _source()
+        fn = _function_body(source, "function wwPhasorSetInputSource(mode, isAutomatic)", "function wwPhasorSyncInputSourceButtons")
+        assert "wwPhasorState.inputSource = mode;" in fn
+        assert "if (mode === WW_ANALYSIS_INPUT_SOURCE_RECORDING && !wwPhasorState.recordingAvailable) return;" in fn
+        assert "if (!isAutomatic) wwPhasorState.inputSourceAutoSelected = false;" in fn
+        assert "wwPhasorSyncInputSourceButtons();" in fn
+        assert "wwPhasorUpdateManualSectionVisibility();" in fn
+        assert "wwPhasorUpdateRecordingSectionVisibility();" in fn
+        assert "wwPhasorRequestManualDiagram();" in fn
+        assert "wwPhasorRequestExactPlaybackFetch();" in fn
+
+    def test_recording_section_visibility_gated_on_input_source(self):
+        source = _source()
+        fn = _function_body(source, "function wwPhasorUpdateRecordingSectionVisibility()", "function wwPhasorUpdateInputSourceAvailability")
+        assert "section.hidden = wwPhasorState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING;" in fn
+
+    def test_manual_section_visibility_gated_on_input_source(self):
+        source = _source()
+        fn = _function_body(source, "function wwPhasorUpdateManualSectionVisibility()", "function wwPhasorUpdateRecordingSectionVisibility")
+        assert "section.hidden = wwPhasorState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL;" in fn
+
+    def test_availability_check_disables_never_hides_recording_and_gates_auto_switch(self):
+        source = _source()
+        fn = _function_body(source, "function wwPhasorUpdateInputSourceAvailability()", "function wwPhasorUpdateRatioFieldsVisibility")
+        assert "const available = wwPhasorState.contexts.length > 0;" in fn
+        assert "recordingBtn.disabled = !available;" in fn
+        assert "hint.hidden = available;" in fn
+        assert 'if (wwAnalysisActiveType !== "phasor") return;' in fn
+        assert "if (!wwPhasorState.inputSourceAutoSelected) return;" in fn
+
+    def test_global_init_does_not_eagerly_call_availability_check(self):
+        """Mirrors wwOvercurrentUpdateInputSourceAvailability()'s own
+        deliberately-not-added eager call -- `wwPhasorState.contexts`
+        starts as `[]` on every raw page load, so calling this at global
+        Init time would fire a real `/phasor-manual` background request
+        on every page load, even for a user who never opens Analysis."""
+        source = _source()
+        init_block = source[source.rindex("wwPhasorUpdateRatioFieldsVisibility();"):]
+        assert "wwPhasorUpdateInputSourceAvailability();" not in init_block[:600]
+
+    def test_on_analysis_contexts_and_lifecycle_phase_both_refresh_availability(self):
+        source = _source()
+        fn = _function_body(source, "function wwPhasorOnAnalysisContexts(contexts)", "function wwPhasorOnAnalysisLifecyclePhase")
+        assert "wwPhasorUpdateInputSourceAvailability();" in fn
+        fn2 = _function_body(source, "function wwPhasorOnAnalysisLifecyclePhase(phase)", "function wwPhasorOnAnalysisDiscovering")
+        assert "wwPhasorUpdateInputSourceAvailability();" in fn2
+
+    def test_set_active_analysis_type_rechecks_availability_for_phasor(self):
+        source = _source()
+        fn = _function_body(source, "function wwSetActiveAnalysisType(type)", 'document.getElementById("wwAnalysisTypePhasorBtn")' if 'document.getElementById("wwAnalysisTypePhasorBtn")' in source else "function wwGetActiveAnalysisType")
+        phasor_branch_start = fn.index('if (type === "phasor") {')
+        phasor_branch_end = fn.index("} else if (type ===", phasor_branch_start)
+        phasor_branch = fn[phasor_branch_start:phasor_branch_end]
+        assert "wwPhasorUpdateInputSourceAvailability();" in phasor_branch
+
+    def test_related_waveform_roles_are_empty_in_manual_mode(self):
+        source = _source()
+        fn = _function_body(source, "function wwPhasorComputeActiveRelatedWaveformRoles()", "function wwPhasorPushRelatedWaveformRoles")
+        assert "if (wwPhasorState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return [];" in fn
+
+    def test_playback_tick_fetch_half_gated_off_in_manual_mode(self):
+        source = _source()
+        fn = _function_body(source, "function wwPhasorOnPlaybackTick(currentTime, playback)", "// ---- Playback-driven throttled fetch")
+        assert "if (wwPhasorState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return;" in fn
+        sync_index = fn.index("wwSyncPlaybackControls")
+        guard_index = fn.index("WW_ANALYSIS_INPUT_SOURCE_RECORDING) return;")
+        fetch_index = fn.index("wwPhasorMaybeFetchForPlayback();")
+        assert sync_index < guard_index < fetch_index
+
+    def test_render_diagram_result_never_touches_wwphasorbody_hidden(self):
+        source = _source()
+        fn = _function_body(source, "function wwPhasorRenderDiagramResult(diagram)", "function wwPhasorComputeActiveRelatedWaveformRoles")
+        assert 'getElementById("wwPhasorBody")' not in fn
+
+    def test_render_diagram_result_picks_status_row_by_active_mode(self):
+        source = _source()
+        fn = _function_body(source, "function wwPhasorRenderDiagramResult(diagram)", "function wwPhasorComputeActiveRelatedWaveformRoles")
+        assert 'wwPhasorState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL' in fn
+        assert '"wwPhasorManualStatusRow" : "wwPhasorStatusRow"' in fn
+
+    def test_active_diagram_reads_manual_or_recording_state_by_mode(self):
+        source = _source()
+        fn = _function_body(source, "function wwPhasorActiveDiagram()", "function wwPhasorRenderFromState")
+        assert "wwPhasorState.manual.latestResult" in fn
+        assert "wwPhasorState.latestDiagram" in fn
+
+    def test_manual_fetch_url_targets_the_workspace_scoped_manual_endpoint(self):
+        source = _source()
+        fn = _function_body(source, "function wwPhasorFetchManualDiagram(workspaceId, params)", "function wwPhasorRequestManualDiagram")
+        assert '"/phasor-manual?"' in fn
+        assert "/engineering-contexts/" not in fn
+
+    def test_manual_request_generation_guards_against_stale_responses(self):
+        source = _source()
+        fn = _function_body(source, "function wwPhasorRequestManualDiagram()", "// Entry point")
+        assert "++wwPhasorState.manualRequestGeneration" in fn
+        assert "myGeneration !== wwPhasorState.manualRequestGeneration" in fn
+        assert "epochAtStart !== ww.epoch" in fn
+        assert "currentWorkspaceId() !== workspaceId" in fn
+
+    def test_manual_fetch_sends_both_bases_and_all_six_roles(self):
+        source = _source()
+        fn = _function_body(source, "function wwPhasorRequestManualDiagram()", "// Entry point")
+        assert "voltage_basis: m.voltageBasis, current_basis: m.currentBasis," in fn
+        assert 'params.set(prefix + "_enabled"' in fn
+        assert 'params.set(prefix + "_magnitude"' in fn
+        assert 'params.set(prefix + "_angle_deg"' in fn
+
+    def test_reset_state_clears_input_source_and_manual_state(self):
+        source = _source()
+        fn = _function_body(source, "function wwPhasorResetState()", "// The shared Analysis context state's own attempted-source")
+        assert "wwPhasorState.inputSource = WW_ANALYSIS_INPUT_SOURCE_RECORDING;" in fn
+        assert "wwPhasorState.recordingAvailable = false;" in fn
+        assert "wwPhasorState.inputSourceAutoSelected = true;" in fn
+        assert "wwPhasorState.manual = {" in fn
+        assert "wwPhasorState.manualRequestGeneration += 1;" in fn
+
+    def test_manual_fields_use_change_event_never_per_keystroke_input_event(self):
+        """Design choice matching Overcurrent's own established
+        convention: the browser's native "change" event (blur/Enter) is
+        the debounce mechanism -- never a live per-keystroke "input"
+        listener, and never an extra timer."""
+        source = _source()
+        for field_id in (
+            "wwPhasorManualVoltageBasisSelect", "wwPhasorManualCurrentBasisSelect",
+            "wwPhasorManualVtPrimaryInput", "wwPhasorManualVtSecondaryInput",
+            "wwPhasorManualCtPrimaryInput", "wwPhasorManualCtSecondaryInput",
+        ):
+            assert f'document.getElementById("{field_id}").addEventListener("change"' in source
+            assert f'document.getElementById("{field_id}").addEventListener("input"' not in source
+        # The 6x4 role fields are wired via a loop, not 24 individual
+        # listeners -- assert the loop itself uses "change" only.
+        loop_start = source.index("for (const wwPhasorManualRoleKey of WW_PHASOR_DIAGRAM_ROLE_ORDER) {")
+        loop_end = source.index("\n        }\n", loop_start)
+        loop_body = source[loop_start:loop_end]
+        assert loop_body.count('addEventListener("change"') == 4
+        assert 'addEventListener("input"' not in loop_body
+
+    def test_css_hidden_override_exists_for_recording_section(self):
+        """Precedent bug (`.ww-phasor-body[hidden]` already documented in
+        this same file) -- a `display: flex` rule on a class defeats the
+        browser's native `[hidden] { display: none }` unless explicitly
+        overridden."""
+        source = _source()
+        rule = _function_body(source, "#wwPhasorRecordingSection {", "}")
+        assert "display: flex;" in rule
+        override = _function_body(source, "#wwPhasorRecordingSection[hidden] {", "}")
+        assert "display: none;" in override

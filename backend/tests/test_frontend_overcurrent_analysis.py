@@ -2117,11 +2117,20 @@ class TestManualModeIsIndependentOfRecordings:
         """The Input Source toggle is a permanent top-level sibling of
         the Recording-only section, never nested inside it -- otherwise
         hiding the Recording section would also hide the very control
-        needed to switch back out of Manual mode."""
+        needed to switch back out of Manual mode. Scoped to OC's own
+        panel (from `id="wwOvercurrentPanel"` to `id="wwOvercurrentRecordingSection"`)
+        rather than a bare `source.index()` -- Phasor's own Manual Input
+        slice reuses the identical `ww-oc-input-source-panel` class name
+        (task's own "same segmented-control language as OC" instruction)
+        for ITS OWN Input Source panel, which sits EARLIER in the file,
+        so an unscoped search would find Phasor's occurrence instead of
+        OC's."""
         source = _source()
         panel_index = source.index('id="wwOvercurrentPanel"')
-        input_source_index = source.index('class="panel ww-oc-input-source-panel"')
-        recording_section_index = source.index('id="wwOvercurrentRecordingSection"')
+        section = _function_body(source, 'id="wwOvercurrentPanel"', 'id="wwOvercurrentRecordingSection"')
+        assert 'class="panel ww-oc-input-source-panel"' in section
+        recording_section_index = source.index('id="wwOvercurrentRecordingSection"', panel_index)
+        input_source_index = panel_index + section.index('class="panel ww-oc-input-source-panel"')
         assert panel_index < input_source_index < recording_section_index
 
     def test_recording_only_markup_lives_inside_the_recording_section(self):

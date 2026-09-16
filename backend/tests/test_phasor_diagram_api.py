@@ -158,3 +158,123 @@ class TestErrorsViaHttp:
         assert body["reason_code"] == "reference_frequency_conflict"
         assert body["roles"]["Va"]["status"] == "needs_configuration"
         assert body["roles"]["Ia"]["status"] == "needs_configuration"
+
+
+def _phasor_manual(client, workspace_id, **params):
+    defaults = dict(voltage_basis="secondary", current_basis="secondary")
+    defaults.update(params)
+    query = {k: v for k, v in defaults.items() if v is not None}
+    return client.get(f"/api/v1/workspaces/{workspace_id}/phasor-manual", params=query)
+
+
+class TestManualPhasorDiagramEndpoint:
+    """Manual Input / Calculator mode (`GET .../phasor-manual`) --
+    workspace-scoped only, zero Engineering Context/upload needed at
+    all. See docs/project-memory/ANALYSIS_INPUT_SOURCE.md."""
+
+    def test_golden_owner_worked_example_via_http(self, client):
+        """Owner's own worked example (task §17) end-to-end through the
+        real HTTP endpoint, with zero prior upload/context/source
+        setup."""
+        resp = _phasor_manual(
+            client, "ws-manual-1",
+            voltage_basis="primary", vt_primary=132000, vt_secondary=110,
+            current_basis="primary", ct_primary=1200, ct_secondary=1,
+            va_enabled=True, va_magnitude=132, va_unit="kV", va_angle_deg=0,
+            vb_enabled=True, vb_magnitude=132, vb_unit="kV", vb_angle_deg=-120,
+            vc_enabled=True, vc_magnitude=132, vc_unit="kV", vc_angle_deg=120,
+            ia_enabled=True, ia_magnitude=1200, ia_unit="A", ia_angle_deg=-30,
+            ib_enabled=True, ib_magnitude=1200, ib_unit="A", ib_angle_deg=-150,
+            ic_enabled=True, ic_magnitude=1200, ic_unit="A", ic_angle_deg=90,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "computed"
+        assert body["algorithm_version"] == "phasor_manual_v1"
+        for role_key in ("Va", "Vb", "Vc"):
+            assert body["roles"][role_key]["status"] == "available"
+            assert body["roles"][role_key]["magnitude_rms"] == pytest.approx(110.0, rel=1e-6)
+            assert body["roles"][role_key]["unit"] == "V"
+        for role_key in ("Ia", "Ib", "Ic"):
+            assert body["roles"][role_key]["status"] == "available"
+            assert body["roles"][role_key]["magnitude_rms"] == pytest.approx(1.0, rel=1e-6)
+            assert body["roles"][role_key]["unit"] == "A"
+
+    def test_no_engineering_context_or_channel_fields_in_response(self, client):
+        resp = _phasor_manual(client, "ws-manual-1", va_enabled=True, va_magnitude=110, va_unit="V", va_angle_deg=0)
+        body = resp.json()
+        assert "engineering_context_id" not in body
+        assert "analysis_time" not in body
+        assert "reference_frequency_hz" not in body
+        assert "window_seconds" not in body
+        for role_key in body["roles"]:
+            assert "phase" not in body["roles"][role_key]
+
+    def test_mixed_basis_voltage_primary_current_secondary_via_http(self, client):
+        """Task §18's own mixed-basis golden test via real HTTP."""
+        resp = _phasor_manual(
+            client, "ws-manual-1",
+            voltage_basis="primary", vt_primary=132000, vt_secondary=110,
+            current_basis="secondary",
+            va_enabled=True, va_magnitude=132, va_unit="kV", va_angle_deg=0,
+            ia_enabled=True, ia_magnitude=1, ia_unit="A", ia_angle_deg=-30,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["roles"]["Va"]["status"] == "available"
+        assert body["roles"]["Va"]["magnitude_rms"] == pytest.approx(110.0, rel=1e-6)
+        assert body["roles"]["Ia"]["status"] == "available"
+        assert body["roles"]["Ia"]["magnitude_rms"] == pytest.approx(1.0, rel=1e-6)
+
+    def test_ka_equals_a_via_http(self, client):
+        resp_a = _phasor_manual(client, "ws-manual-1", ia_enabled=True, ia_magnitude=1200, ia_unit="A", ia_angle_deg=0)
+        resp_ka = _phasor_manual(client, "ws-manual-1", ia_enabled=True, ia_magnitude=1.2, ia_unit="kA", ia_angle_deg=0)
+        assert resp_a.json()["roles"]["Ia"]["magnitude_rms"] == pytest.approx(
+            resp_ka.json()["roles"]["Ia"]["magnitude_rms"], rel=1e-6
+        )
+
+    def test_kv_equals_v_via_http(self, client):
+        resp_v = _phasor_manual(client, "ws-manual-1", va_enabled=True, va_magnitude=132000, va_unit="V", va_angle_deg=0)
+        resp_kv = _phasor_manual(client, "ws-manual-1", va_enabled=True, va_magnitude=132, va_unit="kV", va_angle_deg=0)
+        assert resp_v.json()["roles"]["Va"]["magnitude_rms"] == pytest.approx(
+            resp_kv.json()["roles"]["Va"]["magnitude_rms"], rel=1e-6
+        )
+
+    def test_angle_normalization_240_equals_negative_120_via_http(self, client):
+        resp = _phasor_manual(client, "ws-manual-1", va_enabled=True, va_magnitude=110, va_unit="V", va_angle_deg=240)
+        assert resp.json()["roles"]["Va"]["angle_deg_absolute"] == pytest.approx(-120.0)
+
+    def test_partial_input_only_va_and_ia_via_http(self, client):
+        resp = _phasor_manual(client, "ws-manual-1", va_enabled=True, va_magnitude=110, va_unit="V", va_angle_deg=0,
+                               ia_enabled=True, ia_magnitude=1, ia_unit="A", ia_angle_deg=-30)
+        body = resp.json()
+        assert body["status"] == "computed"
+        assert body["roles"]["Va"]["status"] == "available"
+        assert body["roles"]["Ia"]["status"] == "available"
+        for role_key in ("Vb", "Vc", "Ib", "Ic"):
+            assert body["roles"][role_key]["status"] == "missing"
+            assert body["roles"][role_key]["magnitude_rms"] is None
+
+    def test_invalid_ratio_blocks_only_its_own_family_via_http(self, client):
+        resp = _phasor_manual(
+            client, "ws-manual-1",
+            voltage_basis="primary", vt_primary=0, vt_secondary=110,
+            current_basis="secondary",
+            va_enabled=True, va_magnitude=132, va_unit="kV", va_angle_deg=0,
+            ia_enabled=True, ia_magnitude=1, ia_unit="A", ia_angle_deg=-30,
+        )
+        body = resp.json()
+        assert body["status"] == "computed"
+        assert body["roles"]["Va"]["status"] == "needs_configuration"
+        assert body["roles"]["Ia"]["status"] == "available"
+
+    @pytest.mark.parametrize("bad_magnitude", [-1.0])
+    def test_invalid_magnitude_is_missing_never_a_500_via_http(self, client, bad_magnitude):
+        resp = _phasor_manual(client, "ws-manual-1", va_enabled=True, va_magnitude=bad_magnitude, va_unit="V", va_angle_deg=0)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["roles"]["Va"]["status"] == "missing"
+
+    def test_zero_magnitude_is_available_via_http(self, client):
+        resp = _phasor_manual(client, "ws-manual-1", va_enabled=True, va_magnitude=0.0, va_unit="V", va_angle_deg=0)
+        assert resp.json()["roles"]["Va"]["status"] == "available"
+        assert resp.json()["roles"]["Va"]["magnitude_rms"] == pytest.approx(0.0)

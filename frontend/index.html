@@ -6211,14 +6211,13 @@
             gap: 14px;
         }
         /* `display: grid` above has higher specificity than the UA
-           stylesheet's own `[hidden] { display: none }` default, so the
-           `hidden` ATTRIBUTE this element is toggled with (see
-           wwPhasorRenderDiagramResult()/wwPhasorShowNoContextSelected())
-           would otherwise be silently overridden, leaving the panel
-           visibly rendered despite being marked hidden -- caught directly
-           by browser-tests/phasor_analysis.spec.js's own empty-state test.
-           Same fix shape as every other `[hidden]`-toggled non-block
-           element already needs in this codebase. */
+           stylesheet's own `[hidden] { display: none }` default -- kept
+           as a defensive override even though `#wwPhasorBody` is no
+           longer toggled by any recording-lifecycle callback (Manual
+           Phasor architecture, see docs/project-memory/ANALYSIS_INPUT_SOURCE.md):
+           Values/Diagram are ALWAYS visible once the Phasor tab is open,
+           shared by both Recording and Manual, exactly like Overcurrent's
+           own `#wwOvercurrentBody`. */
         .ww-phasor-body[hidden] {
             display: none;
         }
@@ -6231,6 +6230,141 @@
            gap. */
         #wwPhasorEmptyState {
             margin: 0;
+        }
+        /* The Recording-only section (Bay/Context bar, Playback, Related
+           Waveforms, recording empty-state) -- hidden ENTIRELY whenever
+           Manual is the active Input Source. Restates the SAME `gap: 12px`
+           its own parent `.ww-phasor-panel` already gives its direct
+           children, since these elements are now nested one level deeper
+           inside this wrapper and would otherwise lose that spacing --
+           mirrors `#wwOvercurrentRecordingSection`'s own identical fix. */
+        #wwPhasorRecordingSection {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        #wwPhasorRecordingSection[hidden] {
+            display: none;
+        }
+        /* Manual Phasors panel -- same visual language (panel/border/
+           radius/0.7rem/box-sizing) as Overcurrent's own Manual Input
+           section, per the owner task's own explicit styling-consistency
+           instruction; hidden entirely outside Manual mode via the
+           `hidden` ATTRIBUTE (no independent `display` override needed --
+           `.panel` itself has no competing `display` declaration). */
+        .ww-phasor-manual-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .ww-phasor-manual-family {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .ww-phasor-manual-family + .ww-phasor-manual-family {
+            border-top: 1px solid var(--panel-border);
+            padding-top: 10px;
+        }
+        .ww-phasor-manual-family-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .ww-phasor-manual-family-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-dim);
+        }
+        .ww-phasor-manual-basis-select {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 6px 8px;
+            font-size: 0.7rem;
+            color: var(--text);
+            box-sizing: border-box;
+        }
+        .ww-phasor-manual-ratio-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .ww-phasor-manual-ratio-row[hidden] {
+            display: none;
+        }
+        .ww-phasor-manual-ratio-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 0.68rem;
+            color: var(--text-dim);
+            flex: 1 1 140px;
+            min-width: 0;
+        }
+        .ww-phasor-manual-ratio-field input {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 6px 8px;
+            font-size: 0.7rem;
+            color: var(--text);
+            box-sizing: border-box;
+            width: 100%;
+        }
+        .ww-phasor-manual-role-rows {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .ww-phasor-manual-role-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .ww-phasor-manual-role-enable {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.7rem;
+            color: var(--text);
+            flex: 0 0 auto;
+            min-width: 46px;
+        }
+        .ww-phasor-manual-role-row input[type="number"],
+        .ww-phasor-manual-role-row select {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 6px 8px;
+            font-size: 0.7rem;
+            color: var(--text);
+            box-sizing: border-box;
+        }
+        .ww-phasor-manual-role-row input[type="number"] {
+            flex: 1 1 90px;
+            min-width: 0;
+        }
+        .ww-phasor-manual-role-row select {
+            flex: 0 0 auto;
+        }
+        .ww-phasor-manual-role-row input[type="number"]:focus,
+        .ww-phasor-manual-role-row select:focus {
+            outline: none;
+            border-color: var(--accent-dim);
+        }
+        .ww-phasor-manual-angle-label,
+        .ww-phasor-manual-angle-unit {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            flex: 0 0 auto;
+        }
+        @media (max-width: 480px) {
+            .ww-phasor-manual-role-row input[type="number"] {
+                flex-basis: 100%;
+            }
         }
 
         /* Bay-centric redesign: VOLTAGE/CURRENT family section headings
@@ -7986,45 +8120,250 @@
                             <div class="ww-resize-handle" id="wwAnalysisRelatedWaveformsResizeHandle" role="separator" aria-orientation="horizontal" aria-label="Resize Related Waveforms panel height" tabindex="-1" hidden></div>
                         </section>
                         <section class="ww-phasor-panel" id="wwPhasorPanel">
-                            <section class="panel ww-phasor-controls-panel">
-                                <div class="ww-phasor-controls-row">
-                                    <label class="ww-phasor-field">
-                                        <span class="ww-phasor-field-label">Bay / Engineering Context</span>
-                                        <span class="ww-phasor-field-control-row">
-                                            <select id="wwPhasorContextSelect"><option value="">Select a context…</option></select>
-                                            <span id="wwPhasorContextBadge"></span>
-                                        </span>
-                                    </label>
-                                    <span class="ww-phasor-discovering-indicator" id="wwPhasorDiscoveringIndicator" hidden>Identifying additional engineering contexts…</span>
+                            <!-- Analysis Input Source (Recording/Manual) --
+                                 ALWAYS visible the instant the Phasor tab
+                                 itself is open, regardless of whether any
+                                 recording/Engineering Context exists yet
+                                 (see docs/project-memory/ANALYSIS_INPUT_SOURCE.md
+                                 "Manual mode = standalone engineering
+                                 calculator" invariant, and its own
+                                 architectural-correction record -- Phasor
+                                 reuses that same shape from day one, never
+                                 the flawed intermediate design Overcurrent
+                                 briefly shipped). Never nested inside the
+                                 Recording-only section below -- Manual must
+                                 not be a sub-mode of an active recording
+                                 analysis. Reuses the EXACT same segmented-
+                                 control CSS classes Overcurrent's own Input
+                                 Source toggle already established
+                                 (`.ww-oc-axis-toggle-group`/`-btn`/`--active`,
+                                 `.ww-oc-input-source-row`/`-hint`) --
+                                 deliberately cross-analyzer shared classes
+                                 here, since section 3 of the owner task
+                                 explicitly asked for "the same segmented-
+                                 control language as OC." -->
+                            <section class="panel ww-oc-input-source-panel">
+                                <div class="ww-oc-input-source-row">
+                                    <span class="ww-oc-view-controls-label">Input Source</span>
+                                    <span class="ww-oc-axis-toggle-group" role="group" aria-label="Analysis input source">
+                                        <button type="button" id="wwPhasorInputSourceRecordingBtn" class="ww-oc-axis-toggle-btn ww-oc-axis-toggle-btn--active" data-input-source="recording" aria-pressed="true">Recording</button>
+                                        <button type="button" id="wwPhasorInputSourceManualBtn" class="ww-oc-axis-toggle-btn" data-input-source="manual" aria-pressed="false">Manual</button>
+                                    </span>
+                                    <span class="ww-oc-input-source-hint" id="wwPhasorInputSourceHint" hidden>No recording loaded. Manual mode is available.</span>
                                 </div>
                             </section>
 
-                            <!-- Playback composition point: populated by
-                                 wwPhasorMountPlaybackControls(groupId) --
-                                 empty/hidden until an Engineering Context
-                                 resolves to a real Time Group. Reuses the
-                                 EXACT same markup/wiring/sync functions --
-                                 Phasor is one Analysis consumer of the
-                                 ONE shared wwPlayback controller. -->
-                            <section class="panel ww-phasor-playback-panel ww-analysis-playback-panel" id="wwPhasorPlaybackPanel" hidden>
-                                <div class="ww-phasor-playback-mount ww-analysis-playback-mount" id="wwPhasorPlaybackMount"></div>
+                            <!-- Recording-only section -- everything here
+                                 requires a recording/Engineering Context and
+                                 is hidden ENTIRELY whenever Manual is the
+                                 active Input Source. Context-list/Time-Group
+                                 state underneath keeps updating in the
+                                 background regardless of which Input Source
+                                 is currently DISPLAYED -- only this
+                                 container's own VISIBILITY is gated. -->
+                            <div id="wwPhasorRecordingSection">
+                                <section class="panel ww-phasor-controls-panel">
+                                    <div class="ww-phasor-controls-row">
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Bay / Engineering Context</span>
+                                            <span class="ww-phasor-field-control-row">
+                                                <select id="wwPhasorContextSelect"><option value="">Select a context…</option></select>
+                                                <span id="wwPhasorContextBadge"></span>
+                                            </span>
+                                        </label>
+                                        <span class="ww-phasor-discovering-indicator" id="wwPhasorDiscoveringIndicator" hidden>Identifying additional engineering contexts…</span>
+                                    </div>
+                                </section>
+
+                                <!-- Playback composition point: populated by
+                                     wwPhasorMountPlaybackControls(groupId) --
+                                     empty/hidden until an Engineering Context
+                                     resolves to a real Time Group. Reuses the
+                                     EXACT same markup/wiring/sync functions --
+                                     Phasor is one Analysis consumer of the
+                                     ONE shared wwPlayback controller. -->
+                                <section class="panel ww-phasor-playback-panel ww-analysis-playback-panel" id="wwPhasorPlaybackPanel" hidden>
+                                    <div class="ww-phasor-playback-mount ww-analysis-playback-mount" id="wwPhasorPlaybackMount"></div>
+                                </section>
+
+                                <!-- Shared Related Waveforms mount point (2026-09-12):
+                                     the ONE shared #wwAnalysisRelatedWaveformsPanel DOM
+                                     node is MOVED here (Node.appendChild on an
+                                     already-attached node reparents it, never clones
+                                     it) whenever Phasor becomes the active analyzer --
+                                     see wwSetActiveAnalysisType(). Phasor never renders
+                                     its own waveform panel; it only PUSHES its own
+                                     currently-visible roles via
+                                     wwPhasorPushRelatedWaveformRoles(). Hiding the
+                                     whole #wwPhasorRecordingSection in Manual mode
+                                     hides/collapses this too -- never a fabricated
+                                     Manual waveform. -->
+                                <div id="wwPhasorRelatedWaveformsAnchor"></div>
+
+                                <div class="ww-phasor-status-row" id="wwPhasorStatusRow" hidden></div>
+                                <p class="empty-state" id="wwPhasorEmptyState">Select an Engineering Context to begin.</p>
+                            </div>
+
+                            <!-- Manual Input / Calculator mode -- Manual
+                                 input source only (hidden in Recording).
+                                 Voltage and Current each own a fully
+                                 INDEPENDENT Primary/Secondary basis
+                                 selector -- never one shared basis switch
+                                 (task's own hard requirement). VT/PT and CT
+                                 ratio fields only render meaningfully when
+                                 their own family's basis is Primary (kept
+                                 in the DOM either way; visibility toggled
+                                 in JS). Angle defaults below (0/-120/+120)
+                                 are a balanced-three-phase convenience
+                                 only -- every role stays independently
+                                 enable-able/editable. -->
+                            <section class="panel ww-phasor-manual-panel" id="wwPhasorManualInputSection" hidden>
+                                <h3>Manual Phasors</h3>
+                                <!-- Manual mode's own top-level status message
+                                     (e.g. "Could not reach the backend.") --
+                                     deliberately a SEPARATE element from
+                                     #wwPhasorStatusRow, which lives inside
+                                     #wwPhasorRecordingSection and is therefore
+                                     invisible whenever Manual is active. -->
+                                <div class="ww-phasor-status-row" id="wwPhasorManualStatusRow" hidden></div>
+
+                                <div class="ww-phasor-manual-family">
+                                    <div class="ww-phasor-manual-family-header">
+                                        <span class="ww-phasor-manual-family-label">Voltage basis</span>
+                                        <select id="wwPhasorManualVoltageBasisSelect" class="ww-phasor-manual-basis-select" aria-label="Voltage basis">
+                                            <option value="primary" selected>Primary</option>
+                                            <option value="secondary">Secondary</option>
+                                        </select>
+                                    </div>
+                                    <div class="ww-phasor-manual-ratio-row" id="wwPhasorManualVtRatioRow">
+                                        <label class="ww-phasor-manual-ratio-field">
+                                            <span>VT/PT Primary</span>
+                                            <input type="number" id="wwPhasorManualVtPrimaryInput" min="0" step="1" placeholder="e.g. 132000">
+                                        </label>
+                                        <label class="ww-phasor-manual-ratio-field">
+                                            <span>VT/PT Secondary</span>
+                                            <input type="number" id="wwPhasorManualVtSecondaryInput" min="0" step="0.1" placeholder="e.g. 110">
+                                        </label>
+                                    </div>
+                                    <div class="ww-phasor-manual-role-rows">
+                                        <div class="ww-phasor-manual-role-row" data-role="Va">
+                                            <label class="ww-phasor-manual-role-enable">
+                                                <input type="checkbox" id="wwPhasorManualVaEnabled" aria-label="Enable Va">
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-a)"></span>Va
+                                            </label>
+                                            <input type="number" id="wwPhasorManualVaMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Va magnitude">
+                                            <select id="wwPhasorManualVaUnit" aria-label="Va unit">
+                                                <option value="kV" selected>kV</option>
+                                                <option value="V">V</option>
+                                            </select>
+                                            <span class="ww-phasor-manual-angle-label">∠</span>
+                                            <input type="number" id="wwPhasorManualVaAngle" step="0.1" value="0" aria-label="Va angle degrees">
+                                            <span class="ww-phasor-manual-angle-unit">°</span>
+                                        </div>
+                                        <div class="ww-phasor-manual-role-row" data-role="Vb">
+                                            <label class="ww-phasor-manual-role-enable">
+                                                <input type="checkbox" id="wwPhasorManualVbEnabled" aria-label="Enable Vb">
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-b)"></span>Vb
+                                            </label>
+                                            <input type="number" id="wwPhasorManualVbMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Vb magnitude">
+                                            <select id="wwPhasorManualVbUnit" aria-label="Vb unit">
+                                                <option value="kV" selected>kV</option>
+                                                <option value="V">V</option>
+                                            </select>
+                                            <span class="ww-phasor-manual-angle-label">∠</span>
+                                            <input type="number" id="wwPhasorManualVbAngle" step="0.1" value="-120" aria-label="Vb angle degrees">
+                                            <span class="ww-phasor-manual-angle-unit">°</span>
+                                        </div>
+                                        <div class="ww-phasor-manual-role-row" data-role="Vc">
+                                            <label class="ww-phasor-manual-role-enable">
+                                                <input type="checkbox" id="wwPhasorManualVcEnabled" aria-label="Enable Vc">
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-c)"></span>Vc
+                                            </label>
+                                            <input type="number" id="wwPhasorManualVcMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Vc magnitude">
+                                            <select id="wwPhasorManualVcUnit" aria-label="Vc unit">
+                                                <option value="kV" selected>kV</option>
+                                                <option value="V">V</option>
+                                            </select>
+                                            <span class="ww-phasor-manual-angle-label">∠</span>
+                                            <input type="number" id="wwPhasorManualVcAngle" step="0.1" value="120" aria-label="Vc angle degrees">
+                                            <span class="ww-phasor-manual-angle-unit">°</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="ww-phasor-manual-family">
+                                    <div class="ww-phasor-manual-family-header">
+                                        <span class="ww-phasor-manual-family-label">Current basis</span>
+                                        <select id="wwPhasorManualCurrentBasisSelect" class="ww-phasor-manual-basis-select" aria-label="Current basis">
+                                            <option value="primary" selected>Primary</option>
+                                            <option value="secondary">Secondary</option>
+                                        </select>
+                                    </div>
+                                    <div class="ww-phasor-manual-ratio-row" id="wwPhasorManualCtRatioRow">
+                                        <label class="ww-phasor-manual-ratio-field">
+                                            <span>CT Primary</span>
+                                            <input type="number" id="wwPhasorManualCtPrimaryInput" min="0" step="1" placeholder="e.g. 1200">
+                                        </label>
+                                        <label class="ww-phasor-manual-ratio-field">
+                                            <span>CT Secondary</span>
+                                            <input type="number" id="wwPhasorManualCtSecondaryInput" min="0" step="0.01" placeholder="e.g. 1">
+                                        </label>
+                                    </div>
+                                    <div class="ww-phasor-manual-role-rows">
+                                        <div class="ww-phasor-manual-role-row" data-role="Ia">
+                                            <label class="ww-phasor-manual-role-enable">
+                                                <input type="checkbox" id="wwPhasorManualIaEnabled" aria-label="Enable Ia">
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-a)"></span>Ia
+                                            </label>
+                                            <input type="number" id="wwPhasorManualIaMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Ia magnitude">
+                                            <select id="wwPhasorManualIaUnit" aria-label="Ia unit">
+                                                <option value="A" selected>A</option>
+                                                <option value="kA">kA</option>
+                                            </select>
+                                            <span class="ww-phasor-manual-angle-label">∠</span>
+                                            <input type="number" id="wwPhasorManualIaAngle" step="0.1" value="0" aria-label="Ia angle degrees">
+                                            <span class="ww-phasor-manual-angle-unit">°</span>
+                                        </div>
+                                        <div class="ww-phasor-manual-role-row" data-role="Ib">
+                                            <label class="ww-phasor-manual-role-enable">
+                                                <input type="checkbox" id="wwPhasorManualIbEnabled" aria-label="Enable Ib">
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-b)"></span>Ib
+                                            </label>
+                                            <input type="number" id="wwPhasorManualIbMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Ib magnitude">
+                                            <select id="wwPhasorManualIbUnit" aria-label="Ib unit">
+                                                <option value="A" selected>A</option>
+                                                <option value="kA">kA</option>
+                                            </select>
+                                            <span class="ww-phasor-manual-angle-label">∠</span>
+                                            <input type="number" id="wwPhasorManualIbAngle" step="0.1" value="-120" aria-label="Ib angle degrees">
+                                            <span class="ww-phasor-manual-angle-unit">°</span>
+                                        </div>
+                                        <div class="ww-phasor-manual-role-row" data-role="Ic">
+                                            <label class="ww-phasor-manual-role-enable">
+                                                <input type="checkbox" id="wwPhasorManualIcEnabled" aria-label="Enable Ic">
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-c)"></span>Ic
+                                            </label>
+                                            <input type="number" id="wwPhasorManualIcMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Ic magnitude">
+                                            <select id="wwPhasorManualIcUnit" aria-label="Ic unit">
+                                                <option value="A" selected>A</option>
+                                                <option value="kA">kA</option>
+                                            </select>
+                                            <span class="ww-phasor-manual-angle-label">∠</span>
+                                            <input type="number" id="wwPhasorManualIcAngle" step="0.1" value="120" aria-label="Ic angle degrees">
+                                            <span class="ww-phasor-manual-angle-unit">°</span>
+                                        </div>
+                                    </div>
+                                </div>
                             </section>
 
-                            <!-- Shared Related Waveforms mount point (2026-09-12):
-                                 the ONE shared #wwAnalysisRelatedWaveformsPanel DOM
-                                 node is MOVED here (Node.appendChild on an
-                                 already-attached node reparents it, never clones
-                                 it) whenever Phasor becomes the active analyzer --
-                                 see wwSetActiveAnalysisType(). Phasor never renders
-                                 its own waveform panel; it only PUSHES its own
-                                 currently-visible roles via
-                                 wwPhasorPushRelatedWaveformRoles(). -->
-                            <div id="wwPhasorRelatedWaveformsAnchor"></div>
-
-                            <div class="ww-phasor-status-row" id="wwPhasorStatusRow" hidden></div>
-                            <p class="empty-state" id="wwPhasorEmptyState">Select an Engineering Context to begin.</p>
-
-                            <div class="ww-phasor-body" id="wwPhasorBody" hidden>
+                            <!-- ALWAYS visible once the Phasor tab is open
+                                 -- Values/Diagram never require a recording;
+                                 the SAME renderer serves whichever mode
+                                 (Recording or Manual) is currently active.
+                                 Never hidden by wwPhasorShowEmptyState() any
+                                 more -- that function's own effect is now
+                                 scoped to #wwPhasorRecordingSection alone. -->
+                            <div class="ww-phasor-body" id="wwPhasorBody">
                                 <section class="panel ww-phasor-values-panel">
                                     <h3>Inputs / Values</h3>
                                     <div id="wwPhasorValuesList"></div>
@@ -38161,6 +38500,38 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             frozenVoltageScale: null, // this playback run's own stable Voltage-family px-per-unit scale, or null before the first valid result
             frozenCurrentScale: null, // same, for the Current family
             requestGeneration: 0, // one shared stale-response guard for the diagram fetch
+
+            // Analysis Input Source (Recording/Manual) -- see
+            // docs/project-memory/ANALYSIS_INPUT_SOURCE.md. Mirrors
+            // wwOvercurrentState's own three fields verbatim (per-analyzer
+            // state, never a shared/global input-source object).
+            inputSource: WW_ANALYSIS_INPUT_SOURCE_RECORDING,
+            recordingAvailable: false,
+            inputSourceAutoSelected: true,
+            manualRequestGeneration: 0,
+            // Manual Input / Calculator mode -- session/UI state only,
+            // never persisted. Voltage and Current each own a FULLY
+            // INDEPENDENT basis + VT/PT or CT ratio (task's own hard
+            // requirement: no shared Primary/Secondary switch). Angle
+            // defaults (0/-120/+120) are a balanced-three-phase
+            // convenience only.
+            manual: {
+                voltageBasis: "primary",
+                voltageRatioPrimary: null,
+                voltageRatioSecondary: null,
+                currentBasis: "primary",
+                currentRatioPrimary: null,
+                currentRatioSecondary: null,
+                roles: {
+                    Va: { enabled: false, magnitude: null, unit: "kV", angleDeg: 0 },
+                    Vb: { enabled: false, magnitude: null, unit: "kV", angleDeg: -120 },
+                    Vc: { enabled: false, magnitude: null, unit: "kV", angleDeg: 120 },
+                    Ia: { enabled: false, magnitude: null, unit: "A", angleDeg: 0 },
+                    Ib: { enabled: false, magnitude: null, unit: "A", angleDeg: -120 },
+                    Ic: { enabled: false, magnitude: null, unit: "A", angleDeg: 120 },
+                },
+                latestResult: null, // last ManualPhasorDiagramResultOut fetched -- kept fully separate from `latestDiagram` above (Recording/Manual state isolation)
+            },
         };
 
         // "Start New Workspace"/"Clear workspace" lifecycle hook for the
@@ -38259,6 +38630,183 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             );
         }
 
+        // ---- Manual Input / Calculator mode (Analysis Input Source =
+        // 'manual') -- see docs/project-memory/ANALYSIS_INPUT_SOURCE.md.
+        // Reuses the SAME shared `WW_ANALYSIS_INPUT_SOURCE_*` constants
+        // and the SAME per-analyzer state-object pattern Overcurrent's
+        // own Manual Input slice already established -- this is the
+        // SECOND analyzer to implement the shared concept, never a
+        // parallel/competing design. Phasor Manual mode is fully usable
+        // with zero recordings/Engineering Context/Time Group/Playback
+        // -- see this analyzer's own architecture, from day one, never
+        // the flawed intermediate coupling Overcurrent briefly shipped
+        // and then corrected. ----
+
+        function wwPhasorSetInputSource(mode, isAutomatic) {
+            if (mode !== WW_ANALYSIS_INPUT_SOURCE_RECORDING && mode !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
+            if (mode === WW_ANALYSIS_INPUT_SOURCE_RECORDING && !wwPhasorState.recordingAvailable) return;
+            if (!isAutomatic) wwPhasorState.inputSourceAutoSelected = false;
+            if (mode === wwPhasorState.inputSource) return;
+            wwPhasorState.inputSource = mode;
+            wwPhasorSyncInputSourceButtons();
+            wwPhasorUpdateManualSectionVisibility();
+            wwPhasorUpdateRecordingSectionVisibility();
+            wwPhasorPushRelatedWaveformRoles();
+            if (mode === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                wwPhasorRequestManualDiagram();
+            } else {
+                // Restores the Recording/Playback-driven diagram FRESHLY --
+                // an exact, non-throttled re-fetch at wherever Playback
+                // currently sits, rather than re-rendering a potentially
+                // stale cached result from before Manual mode was entered.
+                wwPhasorRequestExactPlaybackFetch();
+            }
+        }
+
+        function wwPhasorSyncInputSourceButtons() {
+            const recordingBtn = document.getElementById("wwPhasorInputSourceRecordingBtn");
+            const manualBtn = document.getElementById("wwPhasorInputSourceManualBtn");
+            if (!recordingBtn || !manualBtn) return;
+            const isManual = wwPhasorState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+            recordingBtn.classList.toggle("ww-oc-axis-toggle-btn--active", !isManual);
+            recordingBtn.setAttribute("aria-pressed", String(!isManual));
+            manualBtn.classList.toggle("ww-oc-axis-toggle-btn--active", isManual);
+            manualBtn.setAttribute("aria-pressed", String(isManual));
+        }
+
+        function wwPhasorUpdateManualSectionVisibility() {
+            const section = document.getElementById("wwPhasorManualInputSection");
+            if (section) section.hidden = wwPhasorState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+        }
+
+        // The Recording-only section (Bay/Context bar, Playback, Related
+        // Waveforms, recording empty-state) -- hidden ENTIRELY whenever
+        // Manual is the active Input Source. Mirrors
+        // wwOvercurrentUpdateRecordingSectionVisibility() exactly.
+        function wwPhasorUpdateRecordingSectionVisibility() {
+            const section = document.getElementById("wwPhasorRecordingSection");
+            if (section) section.hidden = wwPhasorState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING;
+        }
+
+        // Recording is "available" once at least one Engineering Context
+        // exists for this analyzer to select -- see
+        // wwOvercurrentUpdateInputSourceAvailability()'s own docstring
+        // for the full rationale this mirrors verbatim (disabled-never-
+        // hidden Recording segment, one-time auto-switch gated on both
+        // `wwAnalysisActiveType` and `inputSourceAutoSelected`, never an
+        // eager call at global page-load time).
+        function wwPhasorUpdateInputSourceAvailability() {
+            const available = wwPhasorState.contexts.length > 0;
+            wwPhasorState.recordingAvailable = available;
+            const recordingBtn = document.getElementById("wwPhasorInputSourceRecordingBtn");
+            const hint = document.getElementById("wwPhasorInputSourceHint");
+            if (recordingBtn) recordingBtn.disabled = !available;
+            if (hint) hint.hidden = available;
+            if (wwAnalysisActiveType !== "phasor") return;
+            if (!wwPhasorState.inputSourceAutoSelected) return;
+            if (!available && wwPhasorState.inputSource === WW_ANALYSIS_INPUT_SOURCE_RECORDING) {
+                wwPhasorSetInputSource(WW_ANALYSIS_INPUT_SOURCE_MANUAL, true);
+            } else if (available && wwPhasorState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                wwPhasorSetInputSource(WW_ANALYSIS_INPUT_SOURCE_RECORDING, true);
+            }
+        }
+
+        // VT/PT and CT ratio fields only render meaningfully when their
+        // OWN family's basis is Primary -- each family's ratio visibility
+        // is independent of the other's (task's own hard "Voltage and
+        // Current basis are independent" requirement).
+        function wwPhasorUpdateRatioFieldsVisibility() {
+            const vtRow = document.getElementById("wwPhasorManualVtRatioRow");
+            if (vtRow) vtRow.hidden = wwPhasorState.manual.voltageBasis !== "primary";
+            const ctRow = document.getElementById("wwPhasorManualCtRatioRow");
+            if (ctRow) ctRow.hidden = wwPhasorState.manual.currentBasis !== "primary";
+        }
+
+        function wwPhasorSyncManualInputFields() {
+            const m = wwPhasorState.manual;
+            const voltageBasisSelect = document.getElementById("wwPhasorManualVoltageBasisSelect");
+            if (voltageBasisSelect) voltageBasisSelect.value = m.voltageBasis;
+            const currentBasisSelect = document.getElementById("wwPhasorManualCurrentBasisSelect");
+            if (currentBasisSelect) currentBasisSelect.value = m.currentBasis;
+            const vtPrimaryInput = document.getElementById("wwPhasorManualVtPrimaryInput");
+            if (vtPrimaryInput) vtPrimaryInput.value = m.voltageRatioPrimary === null ? "" : String(m.voltageRatioPrimary);
+            const vtSecondaryInput = document.getElementById("wwPhasorManualVtSecondaryInput");
+            if (vtSecondaryInput) vtSecondaryInput.value = m.voltageRatioSecondary === null ? "" : String(m.voltageRatioSecondary);
+            const ctPrimaryInput = document.getElementById("wwPhasorManualCtPrimaryInput");
+            if (ctPrimaryInput) ctPrimaryInput.value = m.currentRatioPrimary === null ? "" : String(m.currentRatioPrimary);
+            const ctSecondaryInput = document.getElementById("wwPhasorManualCtSecondaryInput");
+            if (ctSecondaryInput) ctSecondaryInput.value = m.currentRatioSecondary === null ? "" : String(m.currentRatioSecondary);
+            for (const roleKey of WW_PHASOR_DIAGRAM_ROLE_ORDER) {
+                const role = m.roles[roleKey];
+                const enabledEl = document.getElementById("wwPhasorManual" + roleKey + "Enabled");
+                if (enabledEl) enabledEl.checked = role.enabled;
+                const magnitudeEl = document.getElementById("wwPhasorManual" + roleKey + "Magnitude");
+                if (magnitudeEl) magnitudeEl.value = role.magnitude === null ? "" : String(role.magnitude);
+                const unitEl = document.getElementById("wwPhasorManual" + roleKey + "Unit");
+                if (unitEl) unitEl.value = role.unit;
+                const angleEl = document.getElementById("wwPhasorManual" + roleKey + "Angle");
+                if (angleEl) angleEl.value = String(role.angleDeg);
+            }
+        }
+
+        // Cheap client-side pre-flight only -- at least one role must be
+        // enabled with a numeric magnitude before a request is worth
+        // sending at all (avoids a request for a totally blank form).
+        // Per-role validity (blank/negative/NaN/Infinity) and ratio
+        // validity are still authoritative on the backend -- never
+        // duplicated client-side beyond this cheap "is there anything to
+        // compute" check.
+        function wwPhasorManualHasAnyInput() {
+            const m = wwPhasorState.manual;
+            return WW_PHASOR_DIAGRAM_ROLE_ORDER.some((roleKey) => m.roles[roleKey].enabled);
+        }
+
+        function wwPhasorFetchManualDiagram(workspaceId, params) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/phasor-manual?" + params.toString()
+            );
+        }
+
+        function wwPhasorRequestManualDiagram() {
+            if (wwPhasorState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
+            if (!wwPhasorManualHasAnyInput()) {
+                wwPhasorState.manual.latestResult = null;
+                wwPhasorRenderFromState();
+                return;
+            }
+            const m = wwPhasorState.manual;
+            const myGeneration = ++wwPhasorState.manualRequestGeneration;
+            const epochAtStart = ww.epoch;
+            const workspaceId = currentWorkspaceId();
+            const params = new URLSearchParams({
+                voltage_basis: m.voltageBasis, current_basis: m.currentBasis,
+            });
+            if (m.voltageRatioPrimary !== null) params.set("vt_primary", String(m.voltageRatioPrimary));
+            if (m.voltageRatioSecondary !== null) params.set("vt_secondary", String(m.voltageRatioSecondary));
+            if (m.currentRatioPrimary !== null) params.set("ct_primary", String(m.currentRatioPrimary));
+            if (m.currentRatioSecondary !== null) params.set("ct_secondary", String(m.currentRatioSecondary));
+            for (const roleKey of WW_PHASOR_DIAGRAM_ROLE_ORDER) {
+                const role = m.roles[roleKey];
+                const prefix = roleKey.toLowerCase();
+                params.set(prefix + "_enabled", String(role.enabled));
+                if (role.magnitude !== null) params.set(prefix + "_magnitude", String(role.magnitude));
+                params.set(prefix + "_unit", role.unit);
+                if (role.angleDeg !== null) params.set(prefix + "_angle_deg", String(role.angleDeg));
+            }
+            wwPhasorFetchManualDiagram(workspaceId, params).then(
+                (result) => {
+                    if (myGeneration !== wwPhasorState.manualRequestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                    wwPhasorState.manual.latestResult = result;
+                    wwPhasorRenderFromState();
+                },
+                () => {
+                    if (myGeneration !== wwPhasorState.manualRequestGeneration) return;
+                    wwPhasorState.manual.latestResult = null;
+                    wwPhasorRenderFromState();
+                }
+            );
+        }
+
         // Entry point -- called every time the Analysis page is shown
         // (shellSetCurrentPage()'s own "analysis" branch). Engineering
         // Context discovery/bootstrap itself is now owned entirely by
@@ -38287,6 +38835,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // call in the wiring section near the bottom of this script. ----
         function wwPhasorOnAnalysisContexts(contexts) {
             wwPhasorState.contexts = contexts;
+            wwPhasorUpdateInputSourceAvailability();
             wwPhasorRenderContextOptions();
             if (wwPhasorState.selectedContextId) {
                 wwPhasorLoadForSelectedContext();
@@ -38296,6 +38845,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwPhasorOnAnalysisLifecyclePhase(phase) {
+            wwPhasorUpdateInputSourceAvailability();
             if (phase === WW_ANALYSIS_CONTEXT_PHASE_IDENTIFYING) wwPhasorShowEmptyState(WW_PHASOR_MSG_IDENTIFYING_CONTEXTS);
             else if (phase === WW_ANALYSIS_CONTEXT_PHASE_NO_SOURCES) wwPhasorShowEmptyState(WW_PHASOR_MSG_NO_SOURCES);
             else if (phase === WW_ANALYSIS_CONTEXT_PHASE_NO_SUGGESTIONS) wwPhasorShowEmptyState(WW_PHASOR_MSG_NO_SUGGESTIONS);
@@ -38377,7 +38927,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             emptyState.hidden = false;
             emptyState.textContent = message;
             document.getElementById("wwPhasorStatusRow").hidden = true;
-            document.getElementById("wwPhasorBody").hidden = true;
+            // `#wwPhasorBody` (Inputs/Values, Diagram) is never hidden any
+            // more -- it does not require a recording at all (architectural
+            // correction: Manual mode's own result renders there too, and
+            // this function's own effect is now scoped entirely to
+            // `#wwPhasorRecordingSection`'s own empty-state paragraph,
+            // which the caller -- a Recording-lifecycle consumer callback
+            // -- is already implicitly reporting about).
             wwPhasorMountPlaybackControls(null);
             wwPhasorState.activeTimeGroupId = null;
             wwPhasorState.latestDiagram = null;
@@ -38616,6 +39172,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             wwPhasorState.analysisTime = currentTime;
 
+            // Manual Input / Calculator mode (task's own explicit
+            // requirement): the Playback transport UI above stays synced
+            // regardless of mode (shared/global, per DEC-085), but the
+            // RECORDING diagram pipeline must never fetch/recompute while
+            // Manual is the active input source -- Manual's own vectors
+            // must remain completely stable while Playback moves. No
+            // separate timer is introduced; this is purely a gate on the
+            // existing fetch-triggering logic below. Mirrors
+            // wwOvercurrentOnPlaybackTick()'s own identical gate.
+            if (wwPhasorState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return;
+
             if (transitioned && playback.currentTime === playback.startTime && playback.state !== WW_PLAYBACK_STATE_PLAYING) {
                 // Landing exactly at this group's own bounds.start on a
                 // genuine transition is Restart's own signature (never
@@ -38829,27 +39396,44 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // the SVG. Called once after every fetch (wwPhasorRequestDiagram()
         // above), and again -- cheaply, with NO re-fetch -- by
         // wwPhasorRenderFromState() whenever only visibility changes.
+        // Shared by BOTH Recording and Manual mode -- never a second
+        // renderer (task §15/§16). `#wwPhasorBody` is no longer touched
+        // here at all (architectural correction, mirroring Overcurrent's
+        // own: Values/Diagram are ALWAYS visible once the Phasor tab is
+        // open, independent of recording/context state). The top-level
+        // status message uses whichever mode is CURRENTLY active's own
+        // element -- `#wwPhasorStatusRow` lives inside
+        // `#wwPhasorRecordingSection` (invisible in Manual mode),
+        // `#wwPhasorManualStatusRow` lives inside the Manual panel
+        // (invisible in Recording mode) -- so a "could not reach the
+        // backend" message from either mode is always visible to
+        // whichever mode actually produced it, and the other mode's own
+        // stale status never lingers visible after a switch.
         function wwPhasorRenderDiagramResult(diagram) {
             const emptyState = document.getElementById("wwPhasorEmptyState");
-            const statusRow = document.getElementById("wwPhasorStatusRow");
-            const body = document.getElementById("wwPhasorBody");
+            const isManual = wwPhasorState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+            const statusRow = document.getElementById(isManual ? "wwPhasorManualStatusRow" : "wwPhasorStatusRow");
+            const otherStatusRow = document.getElementById(isManual ? "wwPhasorStatusRow" : "wwPhasorManualStatusRow");
+            if (otherStatusRow) otherStatusRow.hidden = true;
             emptyState.hidden = true;
 
             if (!diagram) {
-                body.hidden = true;
-                statusRow.hidden = false;
-                statusRow.className = "ww-phasor-status-row";
-                statusRow.textContent = "Could not reach the backend.";
+                if (statusRow) {
+                    statusRow.hidden = false;
+                    statusRow.className = "ww-phasor-status-row";
+                    statusRow.textContent = "Could not reach the backend.";
+                }
                 wwPhasorPushRelatedWaveformRoles();
                 return;
             }
 
-            body.hidden = false;
             if (diagram.status === "needs_configuration") {
-                statusRow.hidden = false;
-                statusRow.className = "ww-phasor-status-row ww-phasor-status--needs-configuration";
-                statusRow.textContent = wwPhasorWholeResultBlockedMessage(diagram);
-            } else {
+                if (statusRow) {
+                    statusRow.hidden = false;
+                    statusRow.className = "ww-phasor-status-row ww-phasor-status--needs-configuration";
+                    statusRow.textContent = wwPhasorWholeResultBlockedMessage(diagram);
+                }
+            } else if (statusRow) {
                 statusRow.hidden = true;
                 statusRow.className = "ww-phasor-status-row";
             }
@@ -38876,6 +39460,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // resolved /phasor-diagram response; this never re-derives them
         // from a channel name.
         function wwPhasorComputeActiveRelatedWaveformRoles() {
+            // Manual mode never has a waveform -- a manually-entered
+            // phasor has no channel/time series at all (task §22: "no
+            // manual waveform synthesis"). This is defense-in-depth: the
+            // shared panel is already hidden/collapsed entirely in
+            // Manual mode since its reparented anchor lives inside
+            // #wwPhasorRecordingSection.
+            if (wwPhasorState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return [];
             const diagram = wwPhasorState.latestDiagram;
             if (!diagram || !diagram.roles) return [];
             const roles = [];
@@ -38908,15 +39499,27 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             );
         }
 
+        // Whichever mode is CURRENTLY active owns the "last fetched
+        // result" this reads -- `wwPhasorState.latestDiagram` for
+        // Recording, `wwPhasorState.manual.latestResult` for Manual,
+        // kept fully separate (Recording/Manual state isolation, task
+        // §M). Never re-fetches; a role's own status/magnitude/angle
+        // only ever changes via wwPhasorRequestDiagram()/
+        // wwPhasorRequestManualDiagram().
+        function wwPhasorActiveDiagram() {
+            return wwPhasorState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL
+                ? wwPhasorState.manual.latestResult
+                : wwPhasorState.latestDiagram;
+        }
+
         // Cheap re-render from the LAST fetched diagram -- called after a
-        // visibility toggle. Never re-fetches; a role's own status/
-        // magnitude/angle only ever changes via wwPhasorRequestDiagram().
+        // visibility toggle.
         function wwPhasorRenderFromState() {
-            wwPhasorRenderDiagramResult(wwPhasorState.latestDiagram);
+            wwPhasorRenderDiagramResult(wwPhasorActiveDiagram());
         }
 
         function wwPhasorToggleRoleVisibility(roleKey) {
-            const diagram = wwPhasorState.latestDiagram;
+            const diagram = wwPhasorActiveDiagram();
             const role = diagram && diagram.roles && diagram.roles[roleKey];
             if (!role || role.status !== "available") return; // nothing to toggle -- defensive, a non-available row is never rendered as a toggle target
             wwPhasorState.visibleRoles[roleKey] = wwPhasorState.visibleRoles[roleKey] === false;
@@ -39209,6 +39812,32 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPhasorState.frozenVoltageScale = null;
             wwPhasorState.frozenCurrentScale = null;
             wwPhasorState.requestGeneration += 1;
+            // Manual Input / Calculator mode -- session/UI state only,
+            // reset alongside every other display preference above on a
+            // full analyzer state recreation (new workspace/clear).
+            // `recordingAvailable`/`inputSourceAutoSelected` reset to
+            // their own pristine defaults too -- a fresh/cleared
+            // workspace has zero recordings until proven otherwise, so
+            // wwPhasorUpdateInputSourceAvailability() (called below, once
+            // the shared context lifecycle re-publishes for the new
+            // workspace) is free to auto-correct into Manual again.
+            wwPhasorState.inputSource = WW_ANALYSIS_INPUT_SOURCE_RECORDING;
+            wwPhasorState.recordingAvailable = false;
+            wwPhasorState.inputSourceAutoSelected = true;
+            wwPhasorState.manual = {
+                voltageBasis: "primary", voltageRatioPrimary: null, voltageRatioSecondary: null,
+                currentBasis: "primary", currentRatioPrimary: null, currentRatioSecondary: null,
+                roles: {
+                    Va: { enabled: false, magnitude: null, unit: "kV", angleDeg: 0 },
+                    Vb: { enabled: false, magnitude: null, unit: "kV", angleDeg: -120 },
+                    Vc: { enabled: false, magnitude: null, unit: "kV", angleDeg: 120 },
+                    Ia: { enabled: false, magnitude: null, unit: "A", angleDeg: 0 },
+                    Ib: { enabled: false, magnitude: null, unit: "A", angleDeg: -120 },
+                    Ic: { enabled: false, magnitude: null, unit: "A", angleDeg: 120 },
+                },
+                latestResult: null,
+            };
+            wwPhasorState.manualRequestGeneration += 1;
             // The shared Analysis context state's own attempted-source
             // bookkeeping is reset separately by
             // wwAnalysisResetContextState() (wwClearWorkspace() calls
@@ -39236,10 +39865,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (valuesList) valuesList.innerHTML = "";
             const statusRow = document.getElementById("wwPhasorStatusRow");
             if (statusRow) statusRow.hidden = true;
-            const body = document.getElementById("wwPhasorBody");
-            if (body) body.hidden = true;
+            const manualStatusRow = document.getElementById("wwPhasorManualStatusRow");
+            if (manualStatusRow) manualStatusRow.hidden = true;
+            // `#wwPhasorBody` is never hidden any more -- see
+            // wwPhasorShowEmptyState()'s own comment.
             const emptyState = document.getElementById("wwPhasorEmptyState");
             if (emptyState) { emptyState.hidden = false; emptyState.textContent = WW_PHASOR_MSG_SELECT_CONTEXT; }
+            wwPhasorSyncInputSourceButtons();
+            wwPhasorSyncManualInputFields();
+            wwPhasorUpdateManualSectionVisibility();
+            wwPhasorUpdateRecordingSectionVisibility();
+            wwPhasorUpdateRatioFieldsVisibility();
+            wwPhasorUpdateInputSourceAvailability();
         }
 
 
@@ -39400,6 +40037,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (type === "phasor") {
                 wwAnalysisMountRelatedWaveformsInto("wwPhasorRelatedWaveformsAnchor");
                 wwPhasorPushRelatedWaveformRoles();
+                // Mirrors wwOvercurrentUpdateInputSourceAvailability()'s
+                // own re-check directly below -- re-run now that Phasor
+                // has actually become visible, so a context change that
+                // happened while this tab was hidden is reflected
+                // promptly, never before anyone can see it.
+                wwPhasorUpdateInputSourceAvailability();
             } else if (type === "overcurrent") {
                 wwAnalysisMountRelatedWaveformsInto("wwOvercurrentRelatedWaveformsAnchor");
                 wwOvercurrentPushRelatedWaveformRoles();
@@ -39566,6 +40209,86 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             event.preventDefault();
             wwPhasorToggleRoleVisibility(row.dataset.role);
         });
+        // Analysis Input Source segmented control -- Recording/Manual.
+        document.getElementById("wwPhasorInputSourceRecordingBtn").addEventListener("click", () => wwPhasorSetInputSource(WW_ANALYSIS_INPUT_SOURCE_RECORDING));
+        document.getElementById("wwPhasorInputSourceManualBtn").addEventListener("click", () => wwPhasorSetInputSource(WW_ANALYSIS_INPUT_SOURCE_MANUAL));
+        // Manual Phasors -- Voltage/Current basis selectors are fully
+        // INDEPENDENT of each other (task's own hard requirement):
+        // changing one never touches the other's own state or ratio
+        // fields. "change" only (fires on blur/Enter), matching every
+        // other Manual Input field's own established convention.
+        document.getElementById("wwPhasorManualVoltageBasisSelect").addEventListener("change", (event) => {
+            wwPhasorState.manual.voltageBasis = event.target.value;
+            wwPhasorUpdateRatioFieldsVisibility();
+            wwPhasorRequestManualDiagram();
+        });
+        document.getElementById("wwPhasorManualCurrentBasisSelect").addEventListener("change", (event) => {
+            wwPhasorState.manual.currentBasis = event.target.value;
+            wwPhasorUpdateRatioFieldsVisibility();
+            wwPhasorRequestManualDiagram();
+        });
+        document.getElementById("wwPhasorManualVtPrimaryInput").addEventListener("change", (event) => {
+            const value = parseFloat(event.target.value);
+            wwPhasorState.manual.voltageRatioPrimary = Number.isFinite(value) ? value : null;
+            wwPhasorRequestManualDiagram();
+        });
+        document.getElementById("wwPhasorManualVtSecondaryInput").addEventListener("change", (event) => {
+            const value = parseFloat(event.target.value);
+            wwPhasorState.manual.voltageRatioSecondary = Number.isFinite(value) ? value : null;
+            wwPhasorRequestManualDiagram();
+        });
+        document.getElementById("wwPhasorManualCtPrimaryInput").addEventListener("change", (event) => {
+            const value = parseFloat(event.target.value);
+            wwPhasorState.manual.currentRatioPrimary = Number.isFinite(value) ? value : null;
+            wwPhasorRequestManualDiagram();
+        });
+        document.getElementById("wwPhasorManualCtSecondaryInput").addEventListener("change", (event) => {
+            const value = parseFloat(event.target.value);
+            wwPhasorState.manual.currentRatioSecondary = Number.isFinite(value) ? value : null;
+            wwPhasorRequestManualDiagram();
+        });
+        // One enable-checkbox/magnitude/unit/angle group per role -- a
+        // loop over the SAME six-role order the backend/renderer both
+        // already use, rather than 24 hand-written near-identical
+        // listeners. Each role is independently enable-able/editable
+        // (task's own partial-input policy) -- editing one role's own
+        // fields never touches any other role's state.
+        for (const wwPhasorManualRoleKey of WW_PHASOR_DIAGRAM_ROLE_ORDER) {
+            document.getElementById("wwPhasorManual" + wwPhasorManualRoleKey + "Enabled").addEventListener("change", (event) => {
+                wwPhasorState.manual.roles[wwPhasorManualRoleKey].enabled = event.target.checked;
+                wwPhasorRequestManualDiagram();
+            });
+            document.getElementById("wwPhasorManual" + wwPhasorManualRoleKey + "Magnitude").addEventListener("change", (event) => {
+                const value = parseFloat(event.target.value);
+                wwPhasorState.manual.roles[wwPhasorManualRoleKey].magnitude = Number.isFinite(value) ? value : null;
+                wwPhasorRequestManualDiagram();
+            });
+            document.getElementById("wwPhasorManual" + wwPhasorManualRoleKey + "Unit").addEventListener("change", (event) => {
+                wwPhasorState.manual.roles[wwPhasorManualRoleKey].unit = event.target.value;
+                wwPhasorRequestManualDiagram();
+            });
+            document.getElementById("wwPhasorManual" + wwPhasorManualRoleKey + "Angle").addEventListener("change", (event) => {
+                const value = parseFloat(event.target.value);
+                wwPhasorState.manual.roles[wwPhasorManualRoleKey].angleDeg = Number.isFinite(value) ? value : null;
+                wwPhasorRequestManualDiagram();
+            });
+        }
+        wwPhasorSyncInputSourceButtons();
+        wwPhasorSyncManualInputFields();
+        wwPhasorUpdateManualSectionVisibility();
+        wwPhasorUpdateRecordingSectionVisibility();
+        wwPhasorUpdateRatioFieldsVisibility();
+        // Deliberately NOT calling wwPhasorUpdateInputSourceAvailability()
+        // here -- mirrors wwOvercurrentUpdateInputSourceAvailability()'s
+        // own identical reasoning directly below: this global wiring
+        // block runs once per PAGE LOAD regardless of whether the
+        // engineer ever visits Analysis at all; firing it here would
+        // trigger a background Manual-mode calculation request before
+        // the Phasor panel is even visible. It fires naturally, lazily,
+        // the first time `wwAnalysisLoadContexts()` actually resolves --
+        // via wwPhasorOnAnalysisContexts()/wwPhasorOnAnalysisLifecyclePhase()
+        // above -- and again the moment Phasor genuinely becomes the
+        // visible analyzer tab (wwSetActiveAnalysisType()).
         // Canonical Table View (DEC-079): same shape as mainNavWaveformBtn
         // above -- stays on the waveform shell page, only the local
         // Active View switches (task section 3).

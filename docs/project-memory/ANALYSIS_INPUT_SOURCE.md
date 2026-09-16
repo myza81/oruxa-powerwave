@@ -1,11 +1,14 @@
 # Analysis Input Source — shared architecture
 
-**Status: implemented for Overcurrent only** (Manual Input / Calculator
-mode, 2026-09-16, see
+**Status: implemented for Overcurrent and Phasor.** Overcurrent shipped
+first (Manual Input / Calculator mode, 2026-09-16, see
 [DECISIONS.md — DEC-095](DECISIONS.md#dec-095--a-shared-analysis-input-source-concept-recordingmanual-is-introduced-overcurrent-gets-the-first-manual-input--calculator-mode-implementation),
-amended 2026-09-16 by the architectural correction below).
+amended 2026-09-16 by the architectural correction below); Phasor is
+the second implementation, reusing the SAME shared shell from day one
+(DEC-095's own second amendment, same day — see "What Phasor's own
+implementation looks like end to end" below).
 This document records the shared concept and pattern so a future
-analyzer (Phasor, Impedance Locus, Sequence Components, Distance) can
+analyzer (Impedance Locus, Sequence Components, Distance) can
 reuse it without re-deriving the design from scratch — mirroring how
 [ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md) records the other three
 shared Analysis-workspace primitives (Engineering Context lifecycle,
@@ -78,14 +81,18 @@ result + chart
 `WW_ANALYSIS_INPUT_SOURCE_RECORDING`/`WW_ANALYSIS_INPUT_SOURCE_MANUAL`
 (frontend, `frontend/index.html`, declared once near the other shared
 Analysis-workspace constants) — deliberately named `WW_ANALYSIS_*`, not
-`WW_OC_*`, even though Overcurrent is this concept's first and (this
-slice) only implementation. A future analyzer's own manual mode reuses
-these SAME two constants rather than inventing its own vocabulary.
+`WW_OC_*`, even though Overcurrent was this concept's first
+implementation. **Confirmed reusable exactly as designed**: Phasor's own
+Manual Input slice imports these SAME two constants verbatim (asserted
+directly by a static test that both declarations count to exactly `1`
+in the file) rather than inventing its own vocabulary — the first real
+proof this concept generalizes beyond its original analyzer.
 
 **Input-source selection itself is per-analyzer, never shared/global.**
 Each analyzer owns its OWN `inputSource` field and its OWN manual-value
-state (today: `wwOvercurrentState.inputSource`/`wwOvercurrentState.manual`)
-— exactly like `selectedContextId` is already per-analyzer
+state (`wwOvercurrentState.inputSource`/`wwOvercurrentState.manual`,
+`wwPhasorState.inputSource`/`wwPhasorState.manual`) — exactly like
+`selectedContextId` is already per-analyzer
 (`wwOvercurrentState.selectedContextId` is independent of
 `wwPhasorState.selectedContextId`). An engineer may run Phasor against
 live recording data while Overcurrent runs a Manual what-if calculation
@@ -93,6 +100,38 @@ in the very same workspace, or vice versa. A single shared mutable
 "current input source" object across all analyzers was considered and
 rejected for exactly this reason — see DEC-095's own "Alternatives
 considered."
+
+**A per-analyzer manual state object may itself need MULTIPLE
+independent bases, not just one.** Overcurrent's own manual value has
+exactly one basis (Primary/Secondary current). Phasor's manual state
+has TWO, genuinely independent of each other:
+`wwPhasorState.manual.voltageBasis` (governs Va/Vb/Vc, with its own
+VT/PT ratio) and `wwPhasorState.manual.currentBasis` (governs Ia/Ib/Ic,
+with its own CT ratio) — changing one never touches the other's own
+basis, ratio, or values. **This is a hard rule, not a stylistic
+preference**: a single shared "Primary | Secondary" switch covering
+both quantities was considered and explicitly rejected (see "What
+Phasor's own implementation looks like end to end" below), since
+Voltage and Current are measured through physically different
+instrument transformers (VT/PT vs. CT) with independently-chosen
+ratios — an engineer must be able to enter, for example, Primary-basis
+voltages alongside Secondary-basis currents in the same diagram. **A
+future analyzer with N independent physical quantities should expect N
+independent bases in its own manual state, not one shared switch,
+whenever those quantities are measured through independent
+instrumentation.**
+
+**Manual basis controls must never reinterpret Recording data.**
+Recording mode's own interpretation of a resolved channel's values
+continues to come entirely from that channel's own recording/
+configuration metadata (or, for Overcurrent, its own separate
+`recordingBasis` field, populated independently of Manual's `manual.*`
+state) — Manual's own basis/ratio fields are a completely separate
+piece of state that the Recording pipeline never reads, and vice versa.
+Toggling `wwPhasorState.manual.voltageBasis` has ZERO effect on how the
+currently-selected Engineering Context's own Va/Vb/Vc are computed, and
+toggling Recording's own basis/settings has zero effect on Manual's own
+entered values.
 
 ## Backend pattern
 
@@ -311,27 +350,115 @@ and in a real browser
 (`browser-tests/overcurrent_analysis.spec.js`'s own "golden example"
 scenario).
 
+## What Phasor's own implementation looks like end to end
+
+```text
+GET /api/v1/workspaces/{workspace_id}/phasor-manual
+    ?voltage_basis=primary&vt_primary=132000&vt_secondary=110
+    &current_basis=primary&ct_primary=1200&ct_secondary=1
+    &va_enabled=true&va_magnitude=132&va_unit=kV&va_angle_deg=0
+    &vb_enabled=true&vb_magnitude=132&vb_unit=kV&vb_angle_deg=-120
+    &vc_enabled=true&vc_magnitude=132&vc_unit=kV&vc_angle_deg=120
+    &ia_enabled=true&ia_magnitude=1200&ia_unit=A&ia_angle_deg=-30
+    &ib_enabled=true&ib_magnitude=1200&ib_unit=A&ib_angle_deg=-150
+    &ic_enabled=true&ic_magnitude=1200&ic_unit=A&ic_angle_deg=90
+```
+
+Workspace-scoped only (like `.../overcurrent-manual`) — never nested
+under an Engineering Context. Every one of the six roles
+(Va/Vb/Vc/Ia/Ib/Ic) is independently optional (`*_enabled=false`, or a
+missing magnitude, simply reports that role `missing` — never blocking
+the other five, task's own explicit partial-input policy). `roles` in
+the response reuses `PhasorDiagramRoleResultOut` VERBATIM — the exact
+same type Recording mode's own `/phasor-diagram` response uses — so the
+SAME frontend renderer (`wwPhasorRenderDiagramResult()`/
+`wwPhasorRenderDiagramSvg()`) consumes either result unmodified, with
+zero new rendering code.
+
+**Canonical internal phasor representation: Secondary**, matching
+Overcurrent's own DEC-095 precedent (never a Phasor-specific reason to
+prefer one basis — Phasor's Recording-mode result carries no basis
+concept at all to match against, so consistency across analyzers was
+the only real constraint). `convert_manual_magnitude_to_secondary()`
+(`app/domain/phasor.py`) normalizes a Primary-basis entry via its own
+family's VT/PT or CT ratio (`secondary = primary_value_in_canonical_unit
+* (ratio_secondary / ratio_primary)`) before it ever reaches the
+renderer; a Secondary-basis entry skips the ratio step entirely. One
+function serves BOTH Voltage and Current (parameterized on
+`engineering_quantity`) — Overcurrent never needed this generalization
+since it only ever deals with one quantity.
+
+**Per-role, per-family failure isolation** (`evaluate_manual_phasor_role()`):
+an invalid or missing role never affects any other role's own
+independent evaluation. An invalid Voltage basis or VT/PT ratio blocks
+every role in the VOLTAGE family only (`ROLE_STATUS_NEEDS_CONFIGURATION`,
+the SAME role status Recording mode already uses for its own per-role
+failures) — Current roles are completely unaffected, and vice versa for
+an invalid CT ratio. A role that is simply not entered reuses the
+EXISTING `ROLE_STATUS_MISSING` status. **No new role-status vocabulary
+was introduced** — the shared renderer needed zero changes to support
+Manual mode's own failure modes.
+
+**Angle normalization** reuses the EXISTING, previously-private
+`_normalize_angle_deg()` Recording mode's own `angle_deg_relative`
+computation already established (`(-180, 180]` convention) — never a
+second, Manual-only normalization function. `240°` entered reports as
+`-120°`, exactly as the owner's own example specifies.
+
+**Alternatives considered** for the Voltage/Current basis question
+(see "Naming convention" above for the resulting hard rule): a single
+shared `wwPhasorState.manual.basis` covering both quantities was
+considered and rejected — VT/PT and CT are physically independent
+instrument transformers with independently-chosen ratios, and an
+engineer must be able to mix Primary-basis voltages with Secondary-
+basis currents (or vice versa) in the same diagram; forcing one shared
+switch would make that combination impossible to express.
+
+Golden worked example (owner's own): VT 132000/110, CT 1200/1, Primary
+Va/Vb/Vc = 132 kV ∠ 0°/-120°/+120°, Primary Ia/Ib/Ic = 1200 A ∠
+-30°/-150°/+90° → normalizes to 110 V / 1 A Secondary-equivalent for
+every role, angles unchanged. Verified end-to-end via a real HTTP call
+with zero prior upload/context/source setup
+(`test_phasor_diagram_api.py::TestManualPhasorDiagramEndpoint::test_golden_owner_worked_example_via_http`)
+and in a real browser
+(`browser-tests/phasor_analysis.spec.js`'s own "golden owner worked
+example" scenario) — both independently confirm the same normalized
+values. The task's own mixed-basis case (Voltage Primary, Current
+Secondary) is separately golden-tested at every layer, proving the two
+basis selectors are genuinely independent, not merely independently
+labeled.
+
 ## Explicitly deferred (not this slice)
 
-- **Phasor Manual mode** (and every other future analyzer's own manual
-  mode) — the task's own explicit "do not implement Phasor Manual mode
-  yet" instruction. This document exists so that future slice can reuse
-  the pattern above without re-deriving it.
+- **Impedance Locus, Sequence Components, and Distance's own Manual
+  mode** — not started; this document exists so those future slices can
+  reuse the pattern above (including, where relevant, Phasor's own
+  "N independent bases for N independent physical quantities" extension)
+  without re-deriving it.
 - **A generic cross-analyzer "Analysis Input Source" backend
   abstraction/base class** — deliberately not built; see "Backend
   pattern" above for what IS shared today (the engineering-unit layer,
   the analyzer's own existing calculation primitives) versus what stays
   analyzer-specific (the endpoint, the result shape).
 - **Persisting manual input values** across a page reload/new session —
-  session/UI state only, matching every other Overcurrent chart/settings
-  preference's own established ephemeral-by-design precedent.
+  session/UI state only, matching every other analyzer's own
+  established ephemeral-by-design precedent.
+- **Automatic CT/VT ratio lookup from a Recording's own metadata** —
+  the engineer always enters VT/PT and CT ratios manually in this
+  slice; Recording-basis auto-detection remains a separate, unstarted
+  problem, deliberately not solved here (task's own explicit "if
+  Recording basis is genuinely unknown, preserve current behavior; do
+  not solve that separate problem in this task" instruction).
 
 ## Related documents
 
-- [DECISIONS.md — DEC-095](DECISIONS.md#dec-095--a-shared-analysis-input-source-concept-recordingmanual-is-introduced-overcurrent-gets-the-first-manual-input--calculator-mode-implementation) — this slice's full approval record.
+- [DECISIONS.md — DEC-095](DECISIONS.md#dec-095--a-shared-analysis-input-source-concept-recordingmanual-is-introduced-overcurrent-gets-the-first-manual-input--calculator-mode-implementation) — this slice's full approval record, including the Phasor amendment.
 - [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md) — Overcurrent's own
   engineering definition/architecture, including the Manual Input
   calculation path's own detailed record.
+- [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) — Phasor's own engineering
+  definition/architecture, including the Manual Input / Calculator
+  mode's own detailed record.
 - [ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md) — the other three
   shared Analysis-workspace primitives (Engineering Context lifecycle,
   Playback, Related Waveforms) this concept's own frontend pattern

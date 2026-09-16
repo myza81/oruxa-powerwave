@@ -28,6 +28,8 @@ from app.domain.engineering_context import EngineeringContext, EngineeringContex
 from app.domain.metadata import RecordingMetadata
 from app.domain.phase_identity import PHASE_A, PHASE_B, PHASE_C, PHASE_SOURCE_ENGINEER_CONFIRMED
 from app.domain.phasor import (
+    MANUAL_BASIS_PRIMARY,
+    MANUAL_BASIS_SECONDARY,
     PHASOR_STATUS_COMPUTED,
     REASON_REFERENCE_FREQUENCY_CONFLICT,
     ROLE_STATUS_AMBIGUOUS,
@@ -35,6 +37,7 @@ from app.domain.phasor import (
     ROLE_STATUS_MISSING,
     ROLE_STATUS_NEEDS_CONFIGURATION,
     ROLE_STATUS_NOT_ELIGIBLE,
+    ManualPhasorRoleInput,
 )
 from app.domain.analysis_input_resolution import STATUS_NEEDS_CONFIGURATION
 from app.domain.source import ActiveSource, AnalogChannelSummary, SourceMetadata
@@ -42,7 +45,7 @@ from app.domain.timing import SamplingInformation, TimingInformation
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.errors import EngineeringContextNotFoundError
-from app.services.phasor_analysis_service import compute_phasor_diagram
+from app.services.phasor_analysis_service import compute_phasor_diagram, compute_phasor_manual_diagram
 from app.services.workspace_registry import WorkspaceRegistry
 
 SAMPLE_RATE_HZ = 5000.0
@@ -285,3 +288,112 @@ class TestMultiSourceCompatibleContext:
         assert result.status == PHASOR_STATUS_COMPUTED
         assert result.roles["Va"].status == ROLE_STATUS_AVAILABLE
         assert result.roles["Ia"].status == ROLE_STATUS_AVAILABLE
+
+
+def _missing_role() -> ManualPhasorRoleInput:
+    return ManualPhasorRoleInput(enabled=False)
+
+
+def _role(magnitude: float, unit: str, angle_deg: float) -> ManualPhasorRoleInput:
+    return ManualPhasorRoleInput(enabled=True, magnitude=magnitude, unit=unit, angle_deg=angle_deg)
+
+
+class TestComputePhasorManualDiagram:
+    """Manual Input / Calculator mode -- no registries, no workspace, no
+    Engineering Context at all (Analysis Input Source = 'manual'; see
+    docs/project-memory/ANALYSIS_INPUT_SOURCE.md). Mirrors
+    `TestManualOvercurrentAnalysis`'s own service-level test shape."""
+
+    def _all_missing(self) -> dict[str, ManualPhasorRoleInput]:
+        return {key: _missing_role() for key in ("Va", "Vb", "Vc", "Ia", "Ib", "Ic")}
+
+    def test_golden_owner_worked_example(self):
+        """Task's own §17 golden example: VT 132000/110, CT 1200/1,
+        Primary-basis 132 kV/1200 A phasors normalize to their
+        Secondary-equivalent 110 V/1 A."""
+        role_inputs = self._all_missing()
+        role_inputs["Va"] = _role(132.0, "kV", 0.0)
+        role_inputs["Vb"] = _role(132.0, "kV", -120.0)
+        role_inputs["Vc"] = _role(132.0, "kV", 120.0)
+        role_inputs["Ia"] = _role(1200.0, "A", -30.0)
+        role_inputs["Ib"] = _role(1200.0, "A", -150.0)
+        role_inputs["Ic"] = _role(1200.0, "A", 90.0)
+        result = compute_phasor_manual_diagram(
+            voltage_basis=MANUAL_BASIS_PRIMARY, vt_primary=132000.0, vt_secondary=110.0,
+            current_basis=MANUAL_BASIS_PRIMARY, ct_primary=1200.0, ct_secondary=1.0,
+            role_inputs=role_inputs,
+        )
+        assert result.status == PHASOR_STATUS_COMPUTED
+        for role_key in ("Va", "Vb", "Vc"):
+            assert result.roles[role_key].status == ROLE_STATUS_AVAILABLE
+            assert result.roles[role_key].magnitude_rms == pytest.approx(110.0, rel=1e-9)
+            assert result.roles[role_key].unit == "V"
+        for role_key in ("Ia", "Ib", "Ic"):
+            assert result.roles[role_key].status == ROLE_STATUS_AVAILABLE
+            assert result.roles[role_key].magnitude_rms == pytest.approx(1.0, rel=1e-9)
+            assert result.roles[role_key].unit == "A"
+
+    def test_mixed_basis_voltage_primary_current_secondary(self):
+        """Task's own §18 mixed-basis golden test -- proves the two
+        basis selectors are truly independent."""
+        role_inputs = self._all_missing()
+        role_inputs["Va"] = _role(132.0, "kV", 0.0)
+        role_inputs["Ia"] = _role(1.0, "A", -30.0)
+        result = compute_phasor_manual_diagram(
+            voltage_basis=MANUAL_BASIS_PRIMARY, vt_primary=132000.0, vt_secondary=110.0,
+            current_basis=MANUAL_BASIS_SECONDARY, ct_primary=None, ct_secondary=None,
+            role_inputs=role_inputs,
+        )
+        assert result.roles["Va"].status == ROLE_STATUS_AVAILABLE
+        assert result.roles["Va"].magnitude_rms == pytest.approx(110.0, rel=1e-9)
+        assert result.roles["Ia"].status == ROLE_STATUS_AVAILABLE
+        assert result.roles["Ia"].magnitude_rms == pytest.approx(1.0, rel=1e-9)
+
+    def test_invalid_vt_ratio_blocks_only_voltage_roles(self):
+        role_inputs = self._all_missing()
+        role_inputs["Va"] = _role(132.0, "kV", 0.0)
+        role_inputs["Ia"] = _role(1.0, "A", -30.0)
+        result = compute_phasor_manual_diagram(
+            voltage_basis=MANUAL_BASIS_PRIMARY, vt_primary=0.0, vt_secondary=110.0,
+            current_basis=MANUAL_BASIS_SECONDARY, ct_primary=None, ct_secondary=None,
+            role_inputs=role_inputs,
+        )
+        assert result.status == PHASOR_STATUS_COMPUTED  # never a whole-result block
+        assert result.roles["Va"].status == ROLE_STATUS_NEEDS_CONFIGURATION
+        assert result.roles["Ia"].status == ROLE_STATUS_AVAILABLE  # current family unaffected
+
+    def test_invalid_ct_ratio_blocks_only_current_roles(self):
+        role_inputs = self._all_missing()
+        role_inputs["Va"] = _role(110.0, "V", 0.0)
+        role_inputs["Ia"] = _role(1200.0, "A", -30.0)
+        result = compute_phasor_manual_diagram(
+            voltage_basis=MANUAL_BASIS_SECONDARY, vt_primary=None, vt_secondary=None,
+            current_basis=MANUAL_BASIS_PRIMARY, ct_primary=None, ct_secondary=None,
+            role_inputs=role_inputs,
+        )
+        assert result.status == PHASOR_STATUS_COMPUTED
+        assert result.roles["Va"].status == ROLE_STATUS_AVAILABLE  # voltage family unaffected
+        assert result.roles["Ia"].status == ROLE_STATUS_NEEDS_CONFIGURATION
+
+    def test_all_missing_is_still_computed_with_every_role_missing(self):
+        result = compute_phasor_manual_diagram(
+            voltage_basis=MANUAL_BASIS_SECONDARY, vt_primary=None, vt_secondary=None,
+            current_basis=MANUAL_BASIS_SECONDARY, ct_primary=None, ct_secondary=None,
+            role_inputs=self._all_missing(),
+        )
+        assert result.status == PHASOR_STATUS_COMPUTED
+        for role_key in ("Va", "Vb", "Vc", "Ia", "Ib", "Ic"):
+            assert result.roles[role_key].status == ROLE_STATUS_MISSING
+
+    def test_one_invalid_row_never_corrupts_other_valid_rows(self):
+        role_inputs = self._all_missing()
+        role_inputs["Va"] = _role(-5.0, "V", 0.0)  # invalid: negative
+        role_inputs["Vb"] = _role(110.0, "V", -120.0)  # valid
+        result = compute_phasor_manual_diagram(
+            voltage_basis=MANUAL_BASIS_SECONDARY, vt_primary=None, vt_secondary=None,
+            current_basis=MANUAL_BASIS_SECONDARY, ct_primary=None, ct_secondary=None,
+            role_inputs=role_inputs,
+        )
+        assert result.roles["Va"].status == ROLE_STATUS_MISSING
+        assert result.roles["Vb"].status == ROLE_STATUS_AVAILABLE
+        assert result.roles["Vb"].magnitude_rms == pytest.approx(110.0)

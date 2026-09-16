@@ -95,11 +95,13 @@ measurement, and must never be presented as one.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 import numpy as np
 
 from app.domain.calculated_channel import ChannelRef
+from app.domain.engineering_units import ENGINEERING_QUANTITY_VOLTAGE, convert_value_to_canonical
 
 #: Bump ONLY when the estimation algorithm/interpretation itself
 #: changes (e.g. a future frequency-tracked estimator) -- never for an
@@ -404,3 +406,183 @@ class PhasorDiagramResult:
     warnings: list[str] = field(default_factory=list)
     reason_code: str | None = None
     message: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Manual Input / Calculator mode (Analysis Input Source = 'manual') --
+# a standalone engineering-calculator path, fully decoupled from
+# recordings/Engineering Context/Time Groups/Playback -- see
+# docs/project-memory/ANALYSIS_INPUT_SOURCE.md's own governing invariant
+# (DEC-095, extended to Phasor). Mirrors `app.domain.overcurrent`'s own
+# Manual Input precedent, extended from Overcurrent's single current
+# value/single basis to Phasor's six independent roles
+# (Va/Vb/Vc/Ia/Ib/Ic) across TWO genuinely independent bases (Voltage,
+# Current) -- see this module's own "canonical internal phasor
+# representation" note on `convert_manual_magnitude_to_secondary()`
+# below for why one shared conversion function serves both quantities.
+# ---------------------------------------------------------------------------
+
+#: Bumped only if Manual Phasor's own computation/interpretation itself
+#: changes -- independent of `ALGORITHM_VERSION` above, since Manual
+#: mode uses no estimator/window/reference-frequency concept at all (a
+#: manually-entered magnitude+angle is not derived from any waveform).
+MANUAL_ALGORITHM_VERSION = "phasor_manual_v1"
+
+MANUAL_BASIS_PRIMARY = "primary"
+MANUAL_BASIS_SECONDARY = "secondary"
+KNOWN_MANUAL_BASES = (MANUAL_BASIS_PRIMARY, MANUAL_BASIS_SECONDARY)
+
+REASON_INVALID_MANUAL_BASIS = "invalid_manual_basis"
+REASON_INVALID_MANUAL_MAGNITUDE = "invalid_manual_magnitude"
+REASON_UNSUPPORTED_MANUAL_UNIT = "unsupported_manual_unit"
+REASON_INVALID_RATIO = "invalid_ratio"
+
+
+def manual_basis_valid(basis: str) -> bool:
+    return basis in KNOWN_MANUAL_BASES
+
+
+def manual_magnitude_valid(magnitude: float) -> bool:
+    """Manual Phasor's own guardrail for a directly-entered magnitude --
+    `>= 0`, deliberately NOT `> 0` like Overcurrent's pickup/manual-
+    current guardrails (a zero pickup or zero test current has no
+    meaningful protection interpretation there) -- a genuinely
+    zero-magnitude phasor (a de-energized phase, for instance) is a
+    valid, if degenerate, Manual Phasor input here."""
+    return math.isfinite(magnitude) and magnitude >= 0.0
+
+
+def manual_ratio_valid(ratio_primary: float, ratio_secondary: float) -> bool:
+    """VT/PT or CT ratio validity -- mirrors
+    `app.domain.overcurrent.ct_values_valid()`'s own exact shape
+    (finite, strictly positive). Defined independently here, never
+    imported from Overcurrent's own analyzer-owned module, since Phasor
+    needs the identical check for BOTH the Voltage (VT/PT) and Current
+    (CT) ratio independently."""
+    return (
+        math.isfinite(ratio_primary) and math.isfinite(ratio_secondary)
+        and ratio_primary > 0.0 and ratio_secondary > 0.0
+    )
+
+
+def convert_manual_magnitude_to_secondary(
+    magnitude: float,
+    *,
+    unit: str,
+    engineering_quantity: str,
+    basis: str,
+    ratio_primary: float | None,
+    ratio_secondary: float | None,
+) -> float | None:
+    """Normalizes a manually-entered Voltage or Current magnitude to its
+    Secondary-equivalent value, in the quantity's own canonical unit ('V'
+    or 'A') -- Manual Phasor's chosen internal canonical basis (see
+    docs/project-memory/ANALYSIS_INPUT_SOURCE.md's own "canonical
+    internal phasor representation" section for why Secondary was
+    chosen: it matches Overcurrent's own DEC-095 precedent, and Phasor's
+    Recording-mode result carries no basis concept of its own to prefer
+    one way or the other -- consistency across analyzers is the only
+    real constraint here, not a Phasor-specific engineering reason).
+    Mirrors `app.domain.overcurrent.convert_to_relay_secondary()`'s own
+    two-step shape (engineering-unit normalization FIRST, then ratio
+    scaling) but generalized over `engineering_quantity` so this ONE
+    function serves both Voltage (VT/PT ratio) and Current (CT ratio) --
+    Overcurrent never needed this generalization since it only ever
+    deals with one quantity. Returns `None` (never a silently-wrong
+    number) if `unit` cannot be normalized -- caller must treat that as
+    a needs-configuration condition, never a silent fallback to treating
+    the raw value as already canonical."""
+    canonical = convert_value_to_canonical(magnitude, engineering_quantity, unit)
+    if canonical is None:
+        return None
+    if basis == MANUAL_BASIS_SECONDARY:
+        return canonical
+    assert ratio_primary is not None and ratio_secondary is not None
+    return canonical * (ratio_secondary / ratio_primary)
+
+
+@dataclass(frozen=True, slots=True)
+class ManualPhasorRoleInput:
+    """One role's own raw manual input, before validation/conversion.
+    `enabled=False` (or a `None` magnitude) means the engineer has not
+    entered this role at all -- deliberately distinct from an
+    entered-but-invalid value, which still has `enabled=True` (task's
+    own "Va/Vb/Vc/Ia/Ib/Ic may be independently present" partial-input
+    policy)."""
+
+    enabled: bool
+    magnitude: float | None = None
+    unit: str = "A"
+    angle_deg: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ManualPhasorDiagramResult:
+    """Manual Input / Calculator mode's own result shape --
+    deliberately has NO `engineering_context_id`/`analysis_time`/
+    `reference_frequency_hz`/`window_seconds`, none of which exist for a
+    standalone set of manually-entered phasors with no recording/time
+    series (mirrors `app.domain.overcurrent.ManualOvercurrentAnalysisResult`'s
+    own field-omission rationale). Reuses `PhasorDiagramRoleResult`
+    VERBATIM for `roles` -- that dataclass carries no context-only
+    required field, so it is genuinely shared, not duplicated, between
+    the Recording-mode diagram and this Manual-mode one; the SAME
+    frontend renderer consumes either result unmodified."""
+
+    status: str
+    algorithm_version: str = MANUAL_ALGORITHM_VERSION
+    roles: dict[str, PhasorDiagramRoleResult] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+    reason_code: str | None = None
+    message: str = ""
+
+
+def evaluate_manual_phasor_role(
+    role_input: ManualPhasorRoleInput,
+    *,
+    engineering_quantity: str,
+    basis: str,
+    ratio_primary: float | None,
+    ratio_secondary: float | None,
+) -> PhasorDiagramRoleResult:
+    """One role's own fully independent evaluation -- an invalid or
+    missing role NEVER blocks any other role (task's own "missing
+    phasors do not block the whole diagram" / "invalid one-row input
+    must not corrupt other valid phasors" requirement). An invalid
+    Voltage basis or VT/PT ratio blocks every role in the VOLTAGE family
+    only (never Current, and vice versa for CT) -- reuses the EXISTING
+    `ROLE_STATUS_NEEDS_CONFIGURATION` role status for that family-level
+    block, never a new whole-result-blocking concept; a role that is
+    simply not entered reuses the EXISTING `ROLE_STATUS_MISSING` status
+    the Recording-mode diagram already uses for the identical row-
+    rendering treatment (no toggle, a plain status label) -- the shared
+    frontend renderer needs zero new status vocabulary for Manual
+    mode."""
+    if not manual_basis_valid(basis):
+        if not role_input.enabled or role_input.magnitude is None:
+            return PhasorDiagramRoleResult(status=ROLE_STATUS_MISSING)
+        return PhasorDiagramRoleResult(status=ROLE_STATUS_NEEDS_CONFIGURATION, reason_code=REASON_INVALID_MANUAL_BASIS)
+    if not role_input.enabled or role_input.magnitude is None:
+        return PhasorDiagramRoleResult(status=ROLE_STATUS_MISSING)
+    if (
+        not manual_magnitude_valid(role_input.magnitude)
+        or role_input.angle_deg is None
+        or not math.isfinite(role_input.angle_deg)
+    ):
+        return PhasorDiagramRoleResult(status=ROLE_STATUS_MISSING, reason_code=REASON_INVALID_MANUAL_MAGNITUDE)
+    if basis == MANUAL_BASIS_PRIMARY:
+        if ratio_primary is None or ratio_secondary is None or not manual_ratio_valid(ratio_primary, ratio_secondary):
+            return PhasorDiagramRoleResult(status=ROLE_STATUS_NEEDS_CONFIGURATION, reason_code=REASON_INVALID_RATIO)
+    magnitude_secondary = convert_manual_magnitude_to_secondary(
+        role_input.magnitude, unit=role_input.unit, engineering_quantity=engineering_quantity,
+        basis=basis, ratio_primary=ratio_primary, ratio_secondary=ratio_secondary,
+    )
+    if magnitude_secondary is None:
+        return PhasorDiagramRoleResult(status=ROLE_STATUS_NEEDS_CONFIGURATION, reason_code=REASON_UNSUPPORTED_MANUAL_UNIT)
+    canonical_unit = "V" if engineering_quantity == ENGINEERING_QUANTITY_VOLTAGE else "A"
+    return PhasorDiagramRoleResult(
+        status=ROLE_STATUS_AVAILABLE,
+        magnitude_rms=magnitude_secondary,
+        unit=canonical_unit,
+        angle_deg_absolute=_normalize_angle_deg(role_input.angle_deg),
+    )

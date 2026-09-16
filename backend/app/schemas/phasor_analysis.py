@@ -74,3 +74,19 @@ class PhasorDiagramResultOut(BaseModel):
     warnings: list[str]
     reason_code: str | None
     message: str
+
+
+#: Manual Input / Calculator mode (Analysis Input Source = 'manual') --
+#: see docs/project-memory/ANALYSIS_INPUT_SOURCE.md. Deliberately has no
+#: `engineering_context_id`/`analysis_time`/`reference_frequency_hz`/
+#: `window_seconds` fields, mirroring
+#: `OvercurrentManualAnalysisResultOut`'s own field-omission rationale --
+#: none of those concepts exist for a standalone set of manually-entered
+#: phasors. Reuses `PhasorDiagramRoleResultOut` verbatim for `roles`.
+class PhasorManualDiagramResultOut(BaseModel):
+    status: PhasorDiagramStatus
+    algorithm_version: str
+    roles: dict[str, PhasorDiagramRoleResultOut]
+    warnings: list[str]
+    reason_code: str | None
+    message: str

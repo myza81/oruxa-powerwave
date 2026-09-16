@@ -14,15 +14,30 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from app.domain.engineering_units import ENGINEERING_QUANTITY_CURRENT, ENGINEERING_QUANTITY_VOLTAGE
 from app.domain.phasor import (
+    MANUAL_ALGORITHM_VERSION,
+    MANUAL_BASIS_PRIMARY,
+    MANUAL_BASIS_SECONDARY,
     PHASOR_MIN_SAMPLES_PER_CYCLE,
     REASON_ANALYSIS_TIME_OUT_OF_RANGE,
     REASON_INSUFFICIENT_WINDOW_HISTORY,
+    REASON_INVALID_MANUAL_MAGNITUDE,
+    REASON_INVALID_RATIO,
     REASON_INVALID_SAMPLES_IN_WINDOW,
     REASON_IRREGULAR_SAMPLING_NOT_SUPPORTED,
     REASON_INSUFFICIENT_SAMPLING_DENSITY,
+    REASON_UNSUPPORTED_MANUAL_UNIT,
+    ROLE_STATUS_AVAILABLE,
+    ROLE_STATUS_MISSING,
+    ROLE_STATUS_NEEDS_CONFIGURATION,
+    ManualPhasorRoleInput,
     _normalize_angle_deg,
+    convert_manual_magnitude_to_secondary,
     estimate_phasor,
+    evaluate_manual_phasor_role,
+    manual_magnitude_valid,
+    manual_ratio_valid,
     relative_angle_deg,
 )
 
@@ -359,3 +374,190 @@ class TestAngleNormalization:
         assert _normalize_angle_deg(540.0) == pytest.approx(180.0)
         assert _normalize_angle_deg(-540.0) == pytest.approx(180.0)
         assert _normalize_angle_deg(0.0) == pytest.approx(0.0)
+
+
+class TestManualMagnitudeValid:
+    """`>= 0`, deliberately not `> 0` -- a genuinely zero-magnitude
+    manual phasor (e.g. a de-energized phase) is a valid input, unlike
+    Overcurrent's pickup/manual-current guardrails."""
+
+    def test_zero_is_valid(self):
+        assert manual_magnitude_valid(0.0) is True
+
+    def test_positive_is_valid(self):
+        assert manual_magnitude_valid(132.0) is True
+
+    @pytest.mark.parametrize("bad", [-1.0, float("nan"), float("inf"), float("-inf")])
+    def test_negative_nan_infinity_rejected(self, bad):
+        assert manual_magnitude_valid(bad) is False
+
+
+class TestManualRatioValid:
+    def test_positive_finite_pair_is_valid(self):
+        assert manual_ratio_valid(132000.0, 110.0) is True
+
+    @pytest.mark.parametrize("primary,secondary", [
+        (0.0, 110.0), (132000.0, 0.0), (-132000.0, 110.0), (132000.0, -110.0),
+        (float("nan"), 110.0), (132000.0, float("inf")),
+    ])
+    def test_zero_negative_nan_infinity_rejected(self, primary, secondary):
+        assert manual_ratio_valid(primary, secondary) is False
+
+
+class TestConvertManualMagnitudeToSecondary:
+    """Golden worked example (owner's own, task §17): VT 132000/110,
+    CT 1200/1 -> Primary-basis 132 kV/1200 A each normalize to their
+    Secondary-equivalent 110 V/1 A."""
+
+    def test_voltage_primary_basis_applies_vt_ratio(self):
+        result = convert_manual_magnitude_to_secondary(
+            132.0, unit="kV", engineering_quantity=ENGINEERING_QUANTITY_VOLTAGE,
+            basis=MANUAL_BASIS_PRIMARY, ratio_primary=132000.0, ratio_secondary=110.0,
+        )
+        assert result == pytest.approx(110.0, rel=1e-9)
+
+    def test_current_primary_basis_applies_ct_ratio(self):
+        result = convert_manual_magnitude_to_secondary(
+            1200.0, unit="A", engineering_quantity=ENGINEERING_QUANTITY_CURRENT,
+            basis=MANUAL_BASIS_PRIMARY, ratio_primary=1200.0, ratio_secondary=1.0,
+        )
+        assert result == pytest.approx(1.0, rel=1e-9)
+
+    def test_secondary_basis_bypasses_ratio_entirely(self):
+        result = convert_manual_magnitude_to_secondary(
+            110.0, unit="V", engineering_quantity=ENGINEERING_QUANTITY_VOLTAGE,
+            basis=MANUAL_BASIS_SECONDARY, ratio_primary=None, ratio_secondary=None,
+        )
+        assert result == pytest.approx(110.0, rel=1e-9)
+
+    def test_ka_equals_a_for_current(self):
+        via_a = convert_manual_magnitude_to_secondary(
+            1200.0, unit="A", engineering_quantity=ENGINEERING_QUANTITY_CURRENT,
+            basis=MANUAL_BASIS_SECONDARY, ratio_primary=None, ratio_secondary=None,
+        )
+        via_ka = convert_manual_magnitude_to_secondary(
+            1.2, unit="kA", engineering_quantity=ENGINEERING_QUANTITY_CURRENT,
+            basis=MANUAL_BASIS_SECONDARY, ratio_primary=None, ratio_secondary=None,
+        )
+        assert via_a == pytest.approx(via_ka, rel=1e-9)
+
+    def test_kv_equals_v_for_voltage(self):
+        via_v = convert_manual_magnitude_to_secondary(
+            132000.0, unit="V", engineering_quantity=ENGINEERING_QUANTITY_VOLTAGE,
+            basis=MANUAL_BASIS_SECONDARY, ratio_primary=None, ratio_secondary=None,
+        )
+        via_kv = convert_manual_magnitude_to_secondary(
+            132.0, unit="kV", engineering_quantity=ENGINEERING_QUANTITY_VOLTAGE,
+            basis=MANUAL_BASIS_SECONDARY, ratio_primary=None, ratio_secondary=None,
+        )
+        assert via_v == pytest.approx(via_kv, rel=1e-9)
+
+    def test_unsupported_unit_returns_none(self):
+        result = convert_manual_magnitude_to_secondary(
+            100.0, unit="furlongs", engineering_quantity=ENGINEERING_QUANTITY_VOLTAGE,
+            basis=MANUAL_BASIS_SECONDARY, ratio_primary=None, ratio_secondary=None,
+        )
+        assert result is None
+
+
+class TestEvaluateManualPhasorRole:
+    """Per-role evaluation -- an invalid/missing role must never affect
+    any other role's own independent evaluation (task's own explicit
+    partial-input and per-row-isolation requirements)."""
+
+    def test_disabled_role_is_missing_with_no_reason(self):
+        role = evaluate_manual_phasor_role(
+            ManualPhasorRoleInput(enabled=False),
+            engineering_quantity=ENGINEERING_QUANTITY_VOLTAGE, basis=MANUAL_BASIS_SECONDARY,
+            ratio_primary=None, ratio_secondary=None,
+        )
+        assert role.status == ROLE_STATUS_MISSING
+        assert role.reason_code is None
+        assert role.magnitude_rms is None
+
+    def test_enabled_but_blank_magnitude_is_missing(self):
+        role = evaluate_manual_phasor_role(
+            ManualPhasorRoleInput(enabled=True, magnitude=None, unit="V", angle_deg=0.0),
+            engineering_quantity=ENGINEERING_QUANTITY_VOLTAGE, basis=MANUAL_BASIS_SECONDARY,
+            ratio_primary=None, ratio_secondary=None,
+        )
+        assert role.status == ROLE_STATUS_MISSING
+
+    @pytest.mark.parametrize("bad_magnitude", [-1.0, float("nan"), float("inf")])
+    def test_enabled_invalid_magnitude_is_missing_with_reason(self, bad_magnitude):
+        role = evaluate_manual_phasor_role(
+            ManualPhasorRoleInput(enabled=True, magnitude=bad_magnitude, unit="V", angle_deg=0.0),
+            engineering_quantity=ENGINEERING_QUANTITY_VOLTAGE, basis=MANUAL_BASIS_SECONDARY,
+            ratio_primary=None, ratio_secondary=None,
+        )
+        assert role.status == ROLE_STATUS_MISSING
+        assert role.reason_code == REASON_INVALID_MANUAL_MAGNITUDE
+
+    def test_enabled_invalid_angle_is_missing_with_reason(self):
+        role = evaluate_manual_phasor_role(
+            ManualPhasorRoleInput(enabled=True, magnitude=100.0, unit="V", angle_deg=float("nan")),
+            engineering_quantity=ENGINEERING_QUANTITY_VOLTAGE, basis=MANUAL_BASIS_SECONDARY,
+            ratio_primary=None, ratio_secondary=None,
+        )
+        assert role.status == ROLE_STATUS_MISSING
+        assert role.reason_code == REASON_INVALID_MANUAL_MAGNITUDE
+
+    def test_primary_basis_with_invalid_ratio_is_needs_configuration(self):
+        role = evaluate_manual_phasor_role(
+            ManualPhasorRoleInput(enabled=True, magnitude=132.0, unit="kV", angle_deg=0.0),
+            engineering_quantity=ENGINEERING_QUANTITY_VOLTAGE, basis=MANUAL_BASIS_PRIMARY,
+            ratio_primary=0.0, ratio_secondary=110.0,
+        )
+        assert role.status == ROLE_STATUS_NEEDS_CONFIGURATION
+        assert role.reason_code == REASON_INVALID_RATIO
+
+    def test_primary_basis_with_missing_ratio_is_needs_configuration(self):
+        role = evaluate_manual_phasor_role(
+            ManualPhasorRoleInput(enabled=True, magnitude=132.0, unit="kV", angle_deg=0.0),
+            engineering_quantity=ENGINEERING_QUANTITY_VOLTAGE, basis=MANUAL_BASIS_PRIMARY,
+            ratio_primary=None, ratio_secondary=None,
+        )
+        assert role.status == ROLE_STATUS_NEEDS_CONFIGURATION
+        assert role.reason_code == REASON_INVALID_RATIO
+
+    def test_unsupported_unit_is_needs_configuration(self):
+        role = evaluate_manual_phasor_role(
+            ManualPhasorRoleInput(enabled=True, magnitude=100.0, unit="furlongs", angle_deg=0.0),
+            engineering_quantity=ENGINEERING_QUANTITY_VOLTAGE, basis=MANUAL_BASIS_SECONDARY,
+            ratio_primary=None, ratio_secondary=None,
+        )
+        assert role.status == ROLE_STATUS_NEEDS_CONFIGURATION
+        assert role.reason_code == REASON_UNSUPPORTED_MANUAL_UNIT
+
+    def test_valid_secondary_role_is_available(self):
+        role = evaluate_manual_phasor_role(
+            ManualPhasorRoleInput(enabled=True, magnitude=110.0, unit="V", angle_deg=-120.0),
+            engineering_quantity=ENGINEERING_QUANTITY_VOLTAGE, basis=MANUAL_BASIS_SECONDARY,
+            ratio_primary=None, ratio_secondary=None,
+        )
+        assert role.status == ROLE_STATUS_AVAILABLE
+        assert role.magnitude_rms == pytest.approx(110.0)
+        assert role.unit == "V"
+        assert role.angle_deg_absolute == pytest.approx(-120.0)
+
+    def test_valid_primary_role_normalizes_to_secondary_and_normalizes_angle(self):
+        """Also proves angle normalization: 240 deg entered -> -120 deg
+        reported (task's own explicit example)."""
+        role = evaluate_manual_phasor_role(
+            ManualPhasorRoleInput(enabled=True, magnitude=1200.0, unit="A", angle_deg=240.0),
+            engineering_quantity=ENGINEERING_QUANTITY_CURRENT, basis=MANUAL_BASIS_PRIMARY,
+            ratio_primary=1200.0, ratio_secondary=1.0,
+        )
+        assert role.status == ROLE_STATUS_AVAILABLE
+        assert role.magnitude_rms == pytest.approx(1.0)
+        assert role.unit == "A"
+        assert role.angle_deg_absolute == pytest.approx(-120.0)
+
+    def test_zero_magnitude_is_available_not_rejected(self):
+        role = evaluate_manual_phasor_role(
+            ManualPhasorRoleInput(enabled=True, magnitude=0.0, unit="V", angle_deg=0.0),
+            engineering_quantity=ENGINEERING_QUANTITY_VOLTAGE, basis=MANUAL_BASIS_SECONDARY,
+            ratio_primary=None, ratio_secondary=None,
+        )
+        assert role.status == ROLE_STATUS_AVAILABLE
+        assert role.magnitude_rms == pytest.approx(0.0)

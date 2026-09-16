@@ -2,8 +2,8 @@
 
 **Status: Slice 1 (Core Estimator + Selected-Time API), Slice 2
 (Analysis Page + Static Phasor Diagram), the Phasor UAT redesign
-(bay-centric aggregation), and Phasor Playback integration are all
-implemented** — see
+(bay-centric aggregation), Phasor Playback integration, and Manual
+Input / Calculator mode are all implemented** — see
 [DECISIONS.md — DEC-088](DECISIONS.md#dec-088--phasor-analysis-slice-1-a-fixed-frequency-one-cycle-trailing-window-rms-fundamental-phasor-estimator-with-an-explicit-guardrail-boundary-and-a-selected-time-only-read-only-api-built-directly-on-the-existing-engineering-context-resolver-foundation),
 [DECISIONS.md — DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)
 (including its own "Update (2026-09-12)" sections, which superseded the
@@ -1081,6 +1081,161 @@ channel name. Full shared-panel architecture (grouping, fetching,
 rendering, the Playback cursor, resize) is NOT Phasor's own — see
 [ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md).
 
+## Manual Input / Calculator mode (2026-09-16, DEC-095 second amendment)
+
+Phasor is the SECOND implementation of the shared **Analysis Input
+Source** concept (Overcurrent shipped first, same day) — see
+[ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md) for the full
+shared shell/pattern this reuses verbatim (segmented control, the
+Recording/Manual state-isolation contract, the markup-separation
+pattern, the availability/auto-select logic); this section records
+Phasor's own engineering-specific detail.
+
+**Product definition.** A standalone set of manually-entered phasors
+(Va/Vb/Vc/Ia/Ib/Ic, each independently optional), evaluated with no
+waveform, Engineering Context, Time Group, or Playback dependency at
+all, then rendered on the SAME diagram/values list Recording mode
+already uses. Selecting Manual mode requires nothing but the Phasor
+tab itself being open — a genuinely empty workspace (zero uploads) is
+fully usable.
+
+**Two genuinely independent bases, not one shared switch.** Voltage
+(`wwPhasorState.manual.voltageBasis`, its own VT/PT ratio) and Current
+(`wwPhasorState.manual.currentBasis`, its own CT ratio) are completely
+separate pieces of state — changing one never touches the other's own
+basis, ratio, or entered values. This is a hard requirement, not a
+convenience: VT/PT and CT are physically independent instrument
+transformers, and an engineer must be able to enter, say, Primary-basis
+voltages alongside Secondary-basis currents in the same diagram (the
+task's own explicit mixed-basis golden test). See
+[ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md#naming-convention--shared-not-analyzer-specific)
+for the full rationale, including why this was extended into a general
+"N independent physical quantities → N independent bases" principle for
+future analyzers.
+
+**Canonical internal representation: Secondary**, matching
+Overcurrent's own DEC-095 precedent (no Phasor-specific reason to
+prefer one basis over the other — Recording mode's own result carries
+no basis concept to match against at all). `convert_manual_magnitude_to_secondary()`
+(`app/domain/phasor.py`) is a NEW, small, generalized function —
+parameterized on `engineering_quantity` (Voltage or Current) — that
+serves BOTH families with one implementation, mirroring
+`convert_to_relay_secondary()`'s own two-step shape (engineering-unit
+normalization via the shared `app.domain.engineering_units` layer
+FIRST, then ratio scaling) but generalized where Overcurrent never
+needed to be, since it only ever handles current.
+
+**Per-role, per-family failure isolation** (`evaluate_manual_phasor_role()`,
+`app/domain/phasor.py`): a role that is not entered reports
+`ROLE_STATUS_MISSING` (the EXISTING status Recording mode's own partial-
+bay results already use) without affecting any other role. An invalid
+Voltage basis or VT/PT ratio reports `ROLE_STATUS_NEEDS_CONFIGURATION`
+(likewise EXISTING) on every Voltage role ONLY — Current roles stay
+completely available, and vice versa for an invalid CT ratio. **No new
+role-status vocabulary was introduced anywhere in this slice.**
+
+**Result shape reuses `PhasorDiagramRoleResult`/`PhasorDiagramRoleResultOut`
+VERBATIM** for `roles` — genuinely shared, not duplicated, since that
+type carries no context-only required field. The wrapping
+`ManualPhasorDiagramResult`/`PhasorManualDiagramResultOut` deliberately
+omits `engineering_context_id`/`analysis_time`/`reference_frequency_hz`/
+`window_seconds` (mirroring `ManualOvercurrentAnalysisResult`'s own
+field-omission rationale) — none of those concepts exist for a
+standalone set of manually-entered phasors.
+
+**API.**
+
+```
+GET /api/v1/workspaces/{workspace_id}/phasor-manual
+    ?voltage_basis=primary&vt_primary=132000&vt_secondary=110
+    &current_basis=primary&ct_primary=1200&ct_secondary=1
+    &va_enabled=true&va_magnitude=132&va_unit=kV&va_angle_deg=0
+    (... vb_*/vc_*/ia_*/ib_*/ic_* likewise, each fully optional)
+```
+
+Workspace-scoped only (never nested under an Engineering Context, like
+`.../overcurrent-manual`). Every one of the six roles is independently
+optional — `*_enabled=false` or a missing magnitude simply reports
+`missing` for that one role, never blocking the other five (task's own
+explicit partial-bay-style policy, extended from Recording mode's own
+identical "a partial bay is a normal result" precedent).
+
+**Golden worked example** (owner's own): VT 132000/110, CT 1200/1,
+Primary Va/Vb/Vc = 132 kV ∠ 0°/-120°/+120°, Primary Ia/Ib/Ic = 1200 A ∠
+-30°/-150°/+90° → every Voltage role normalizes to 110 V, every Current
+role to 1 A, angles unchanged. Verified end-to-end via a real HTTP call
+with zero prior upload/context/source setup
+(`test_phasor_diagram_api.py::TestManualPhasorDiagramEndpoint::test_golden_owner_worked_example_via_http`)
+and in a real browser (`browser-tests/phasor_analysis.spec.js`'s own
+"golden owner worked example" scenario). The task's own mixed-basis
+case (Voltage Primary, Current Secondary) is separately golden-tested
+at every layer (domain/service/API/browser), proving the two basis
+selectors are genuinely independent.
+
+**Angle normalization** reuses the EXISTING, previously-private
+`_normalize_angle_deg()` function this module's own `angle_deg_relative`
+computation already established (`(-180, 180]` convention, e.g. `540°
+-> 180°`) — never a second, Manual-only normalization function. `240°`
+entered reports as `-120°`.
+
+**Frontend.** A compact "Input Source: Recording | Manual" segmented
+control reuses OC's own `.ww-oc-axis-toggle-group`/`-btn`/`--active`/
+`-panel`/`-row`/`-hint` CSS classes VERBATIM — deliberately cross-
+analyzer shared classes (task's own explicit "use the same segmented-
+control language as OC" instruction), never a second competing toggle
+style. The Manual Phasors panel groups Voltage (basis selector, VT/PT
+ratio row shown only when Primary, Va/Vb/Vc rows) and Current (same
+shape, CT ratio) as two visually separated sub-sections. Every manual
+field recomputes on the native `change` event, matching every other
+Analysis settings field's own established convention. The SAME diagram
+renderer (`wwPhasorRenderDiagramSvg()`/`wwPhasorRenderValuesList()`)
+draws either Recording's or Manual's own result unmodified —
+`wwPhasorActiveDiagram()` picks `wwPhasorState.latestDiagram` (Recording)
+or `wwPhasorState.manual.latestResult` (Manual) by the currently active
+`inputSource`, and both results are kept in fully separate state fields
+so switching modes never cross-contaminates values or results.
+
+**Playback independence.** The shared Playback tick handler's own
+fetch-triggering half is gated off entirely while Manual is the active
+input source (the transport-UI-sync half stays unconditional, since
+Playback remains one shared, authoritative clock per DEC-085) — Manual
+mode's own vectors never move while Playback runs, mirroring
+Overcurrent's own identical gate.
+
+**Related Waveforms.** The shared panel is hidden/collapsed entirely
+in Manual mode (its reparented anchor lives inside
+`#wwPhasorRecordingSection`, which Manual mode hides as a whole) —
+Phasor also declares zero active roles as defense-in-depth
+(`wwPhasorComputeActiveRelatedWaveformRoles()` returns `[]` whenever
+`inputSource !== recording`), matching Overcurrent's own "hide, never a
+generic empty state" choice from the architectural correction.
+
+**Markup separation.** `#wwPhasorPanel` splits into the same three
+regions Overcurrent's own architectural correction established: the
+Input Source toggle (always visible, a direct sibling), a new
+`#wwPhasorRecordingSection` wrapping the Bay/Context bar,
+`#wwPhasorPlaybackPanel`, `#wwPhasorRelatedWaveformsAnchor`,
+`#wwPhasorStatusRow`, and `#wwPhasorEmptyState` behind ONE `hidden`
+toggle, and `#wwPhasorBody` (Inputs/Values, Diagram) outside it as a
+sibling, never hidden by any recording-lifecycle callback. Phasor
+implemented this shape from day one — it never shipped the flawed
+"Manual coupled to the recording empty-state" design Overcurrent
+briefly had. One small addition beyond Overcurrent's own pattern: a
+SEPARATE `#wwPhasorManualStatusRow` (inside the Manual panel itself)
+carries Manual's own top-level status messages (e.g. a fetch failure),
+since `#wwPhasorStatusRow` lives inside the now-hidden
+`#wwPhasorRecordingSection` and would otherwise be invisible whenever
+Manual is active — `wwPhasorRenderDiagramResult()` picks whichever
+status row belongs to the currently active mode.
+
+**Persistence.** Manual input values (`wwPhasorState.manual.*`) are
+session/UI state only, matching every other Phasor display preference's
+own established ephemeral-by-design precedent — never persisted,
+never written to a calculated channel, never touching original
+recording data. Reset to Recording/defaults only by
+`wwPhasorResetState()` (the same "Start New Workspace"/"Clear
+workspace" hook every other analyzer-local state already uses).
+
 ## Not yet implemented (future slices)
 
 - **Frequency tracking / PMU-class measurement.**
@@ -1107,3 +1262,7 @@ rendering, the Playback cursor, resize) is NOT Phasor's own — see
 - [ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md) — the shared Analysis
   shell infrastructure (Engineering Context lifecycle, Playback,
   Related Waveforms) every analyzer, including Phasor, consumes.
+- [ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md) — the shared
+  Recording/Manual Analysis Input Source concept (DEC-095), including
+  Phasor's own "What Phasor's own implementation looks like end to end"
+  section.

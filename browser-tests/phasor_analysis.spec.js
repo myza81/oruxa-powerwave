@@ -327,7 +327,13 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
     await openAnalysisPhasor(page);
     await expect(page.locator("#wwPhasorEmptyState")).toBeVisible();
     await expect(page.locator("#wwPhasorEmptyState")).toHaveText("Select an Engineering Context to begin.");
-    await expect(page.locator("#wwPhasorBody")).toBeHidden();
+    // `#wwPhasorBody` (Inputs/Values, Diagram) is no longer hidden here --
+    // architectural correction, see docs/project-memory/ANALYSIS_INPUT_SOURCE.md:
+    // it is ALWAYS visible once the Phasor tab is open, independent of
+    // recording/context state (Recording remains the active input source
+    // in this scenario -- a context DOES exist -- but none is selected
+    // yet, so there is simply nothing to plot).
+    await expect(page.locator("#wwPhasorBody")).toBeVisible();
     await expect(page.locator("#wwPhasorPlaybackPanel")).toBeHidden();
     await expect(page.locator("#wwPhasorSvg")).toBeEmpty();
   });
@@ -853,12 +859,371 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
   });
 
   // ---- Scenario C: no source ----
-  test("empty workspace -> no-data message, never implies detection failed", async ({ page }) => {
+  // Updated by the Manual Input / Calculator mode architectural work
+  // (see docs/project-memory/ANALYSIS_INPUT_SOURCE.md): a genuinely
+  // empty workspace now auto-selects Manual, which hides the WHOLE
+  // Recording-only section (Bay/Context bar, Playback, Related
+  // Waveforms, and this "no event sources" empty-state paragraph along
+  // with it) rather than showing that message as the page's own
+  // headline state -- Phasor remains fully usable as a standalone
+  // calculator regardless. `#wwPhasorBody` (Inputs/Values, Diagram) is
+  // therefore no longer hidden here at all; see the dedicated "Manual
+  // Input / Calculator mode" describe block below for full empty-
+  // workspace coverage.
+  test("empty workspace -> Manual auto-selected, Recording-only section (including the no-sources message) hidden, Phasor remains usable", async ({ page }) => {
     await page.goto("/index.html");
     await openAnalysisPhasor(page);
 
+    await expect(page.locator("#wwPhasorInputSourceManualBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#wwPhasorInputSourceRecordingBtn")).toBeDisabled();
+    await expect(page.locator("#wwPhasorRecordingSection")).toBeHidden();
     await expect(page.locator("#wwPhasorEmptyState")).toContainText("No event sources are available");
     await expect(page.locator("#wwPhasorEmptyState")).not.toContainText("Engineering Context");
-    await expect(page.locator("#wwPhasorBody")).toBeHidden();
+    await expect(page.locator("#wwPhasorBody")).toBeVisible();
+    await expect(page.locator("#wwPhasorManualInputSection")).toBeVisible();
   });
+});
+
+test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input Source)", () => {
+  // Phasor's own implementation of the shared Analysis Input Source
+  // concept (see docs/project-memory/ANALYSIS_INPUT_SOURCE.md) --
+  // Overcurrent's own DEC-095 slice was the first; this is the second,
+  // reusing the SAME shared shell from day one (never the flawed
+  // intermediate "Manual coupled to recording lifecycle" design
+  // Overcurrent briefly shipped and then corrected). No IEC/RMS/CT/VT
+  // math is re-derived in this file -- every assertion here is end-to-
+  // end through the SAME production backend endpoint/domain functions
+  // backend/tests/test_phasor_diagram_api.py's own
+  // TestManualPhasorDiagramEndpoint already golden-tests directly.
+
+  async function enterRole(page, roleKey, { magnitude, unit, angleDeg, enabled = true } = {}) {
+    if (enabled) await page.locator(`#wwPhasorManual${roleKey}Enabled`).check();
+    if (unit !== undefined) await page.locator(`#wwPhasorManual${roleKey}Unit`).selectOption(unit);
+    if (magnitude !== undefined) {
+      await page.locator(`#wwPhasorManual${roleKey}Magnitude`).fill(String(magnitude));
+      await page.locator(`#wwPhasorManual${roleKey}Magnitude`).dispatchEvent("change");
+      // Same harness finding documented elsewhere in this suite: `.fill()`
+      // leaves focus in the field, so an explicit blur settles the
+      // browser's own native blur-triggered "change" before the next
+      // action (never a production concern).
+      await page.locator(`#wwPhasorManual${roleKey}Magnitude`).blur();
+    }
+    if (angleDeg !== undefined) {
+      await page.locator(`#wwPhasorManual${roleKey}Angle`).fill(String(angleDeg));
+      await page.locator(`#wwPhasorManual${roleKey}Angle`).dispatchEvent("change");
+      await page.locator(`#wwPhasorManual${roleKey}Angle`).blur();
+    }
+  }
+
+  async function setRatio(page, prefix, { primary, secondary }) {
+    if (primary !== undefined) {
+      await page.locator(`#wwPhasorManual${prefix}PrimaryInput`).fill(String(primary));
+      await page.locator(`#wwPhasorManual${prefix}PrimaryInput`).dispatchEvent("change");
+    }
+    if (secondary !== undefined) {
+      await page.locator(`#wwPhasorManual${prefix}SecondaryInput`).fill(String(secondary));
+      await page.locator(`#wwPhasorManual${prefix}SecondaryInput`).dispatchEvent("change");
+    }
+  }
+
+  async function openEmptyWorkspacePhasor(page) {
+    await page.goto("/index.html");
+    await openAnalysisPhasor(page);
+  }
+
+  test("empty workspace: Manual auto-selected, Recording shown disabled with hint, Phasor fully usable with zero recordings", async ({ page }) => {
+    await openEmptyWorkspacePhasor(page);
+    await expect(page.locator("#wwPhasorBody")).toBeVisible();
+    await expect(page.locator("#wwPhasorInputSourceManualBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#wwPhasorInputSourceRecordingBtn")).toBeDisabled();
+    await expect(page.locator("#wwPhasorInputSourceHint")).toBeVisible();
+    await expect(page.locator("#wwPhasorInputSourceHint")).toContainText("No recording loaded");
+    await expect(page.locator("#wwPhasorManualInputSection")).toBeVisible();
+    await expect(page.locator("#wwPhasorRecordingSection")).toBeHidden();
+  });
+
+  test("golden owner worked example: VT 132000/110, CT 1200/1, Primary Va/Vb/Vc=132kV, Ia/Ib/Ic=1200A -> 110 V / 1 A secondary, zero recording-dependent requests", async ({ page }) => {
+    const recordingRequestUrls = [];
+    page.on("request", (req) => {
+      const url = req.url();
+      if (url.includes("/phasor-diagram") || url.includes("/waveform") || url.includes("/phasor?")) recordingRequestUrls.push(url);
+    });
+
+    await openEmptyWorkspacePhasor(page);
+
+    await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("primary");
+    await setRatio(page, "Vt", { primary: 132000, secondary: 110 });
+    await enterRole(page, "Va", { magnitude: 132, unit: "kV", angleDeg: 0 });
+    await enterRole(page, "Vb", { magnitude: 132, unit: "kV", angleDeg: -120 });
+    await enterRole(page, "Vc", { magnitude: 132, unit: "kV", angleDeg: 120 });
+
+    await page.locator("#wwPhasorManualCurrentBasisSelect").selectOption("primary");
+    await setRatio(page, "Ct", { primary: 1200, secondary: 1 });
+    await enterRole(page, "Ia", { magnitude: 1200, unit: "A", angleDeg: -30 });
+    await enterRole(page, "Ib", { magnitude: 1200, unit: "A", angleDeg: -150 });
+    await enterRole(page, "Ic", { magnitude: 1200, unit: "A", angleDeg: 90 });
+
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toContain("Va");
+    }).toPass({ timeout: 5000 });
+
+    const text = await page.locator("#wwPhasorValuesList").innerText();
+    for (const [role, angle] of [["Va", "0.0"], ["Vb", "-120.0"], ["Vc", "+120.0"]]) {
+      expect(text).toMatch(new RegExp(`${role}[\\s\\S]*?110\\.0\\s*V[\\s\\S]*?${angle.replace("+", "\\+")}`));
+    }
+    for (const [role, angle] of [["Ia", "-30.0"], ["Ib", "-150.0"], ["Ic", "\\+90.0"]]) {
+      expect(text).toMatch(new RegExp(`${role}[\\s\\S]*?1\\.0\\s*A[\\s\\S]*?${angle}`));
+    }
+
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
+    expect(recordingRequestUrls).toEqual([]);
+  });
+
+  test("mixed basis: Voltage Primary, Current Secondary -- the two selectors are truly independent", async ({ page }) => {
+    await openEmptyWorkspacePhasor(page);
+
+    await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("primary");
+    await setRatio(page, "Vt", { primary: 132000, secondary: 110 });
+    await enterRole(page, "Va", { magnitude: 132, unit: "kV", angleDeg: 0 });
+
+    await page.locator("#wwPhasorManualCurrentBasisSelect").selectOption("secondary");
+    await expect(page.locator("#wwPhasorManualCtRatioRow")).toBeHidden();
+    await enterRole(page, "Ia", { magnitude: 1, unit: "A", angleDeg: -30 });
+
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/Va[\s\S]*?110\.0\s*V/);
+      expect(text).toMatch(/Ia[\s\S]*?1\.0\s*A/);
+    }).toPass({ timeout: 5000 });
+  });
+
+  test("VT/PT and CT ratio fields only appear when their own family's basis is Primary", async ({ page }) => {
+    await openEmptyWorkspacePhasor(page);
+    await expect(page.locator("#wwPhasorManualVtRatioRow")).toBeVisible(); // default basis is Primary
+    await expect(page.locator("#wwPhasorManualCtRatioRow")).toBeVisible();
+
+    await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("secondary");
+    await expect(page.locator("#wwPhasorManualVtRatioRow")).toBeHidden();
+    await expect(page.locator("#wwPhasorManualCtRatioRow")).toBeVisible(); // Current basis untouched
+
+    await page.locator("#wwPhasorManualCurrentBasisSelect").selectOption("secondary");
+    await expect(page.locator("#wwPhasorManualCtRatioRow")).toBeHidden();
+  });
+
+  test("kA equals A, kV equals V (shared engineering-unit layer)", async ({ page }) => {
+    await openEmptyWorkspacePhasor(page);
+    await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("secondary");
+    await page.locator("#wwPhasorManualCurrentBasisSelect").selectOption("secondary");
+
+    // The backend always reports the canonical base unit ('V'/'A',
+    // never auto-rescaled to kV/kA for display) -- entering the SAME
+    // physical magnitude via a different declared unit must therefore
+    // produce byte-for-byte identical rendered output.
+    await enterRole(page, "Va", { magnitude: 132000, unit: "V", angleDeg: 0 });
+    await enterRole(page, "Ia", { magnitude: 1200, unit: "A", angleDeg: 0 });
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/Va[\s\S]*?132000\.0\s*V/);
+      expect(text).toMatch(/Ia[\s\S]*?1200\.0\s*A/);
+    }).toPass({ timeout: 5000 });
+    const textV = await page.locator("#wwPhasorValuesList").innerText();
+
+    await enterRole(page, "Va", { magnitude: 132, unit: "kV" });
+    await enterRole(page, "Ia", { magnitude: 1.2, unit: "kA" });
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/Va[\s\S]*?132000\.0\s*V/);
+      expect(text).toMatch(/Ia[\s\S]*?1200\.0\s*A/);
+    }).toPass({ timeout: 5000 });
+    const textKv = await page.locator("#wwPhasorValuesList").innerText();
+    expect(textKv).toBe(textV);
+  });
+
+  test("angle normalization: 240 degrees entered reports as -120 degrees", async ({ page }) => {
+    await openEmptyWorkspacePhasor(page);
+    await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: 110, unit: "V", angleDeg: 240 });
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/Va[\s\S]*?-120\.0°/);
+    }).toPass({ timeout: 5000 });
+  });
+
+  test("partial input: only Va and Ia enabled -- the other four roles report Missing, never blocking the two valid ones", async ({ page }) => {
+    await openEmptyWorkspacePhasor(page);
+    await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("secondary");
+    await page.locator("#wwPhasorManualCurrentBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: 110, unit: "V", angleDeg: 0 });
+    await enterRole(page, "Ia", { magnitude: 1, unit: "A", angleDeg: -30 });
+
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/Va[\s\S]*?110\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+    const text = await page.locator("#wwPhasorValuesList").innerText();
+    for (const role of ["Vb", "Vc", "Ib", "Ic"]) {
+      expect(text).toMatch(new RegExp(`${role}[\\s\\S]{0,20}Missing`));
+    }
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(2);
+  });
+
+  test("invalid VT ratio blocks only Voltage roles; Current roles remain available", async ({ page }) => {
+    await openEmptyWorkspacePhasor(page);
+    await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("primary");
+    await setRatio(page, "Vt", { primary: 0, secondary: 110 });
+    await enterRole(page, "Va", { magnitude: 132, unit: "kV", angleDeg: 0 });
+
+    await page.locator("#wwPhasorManualCurrentBasisSelect").selectOption("secondary");
+    await enterRole(page, "Ia", { magnitude: 1, unit: "A", angleDeg: -30 });
+
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/Ia[\s\S]*?1\.0\s*A/);
+    }).toPass({ timeout: 5000 });
+    const text = await page.locator("#wwPhasorValuesList").innerText();
+    expect(text).toMatch(/Va[\s\S]{0,30}Needs configuration/);
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(1); // only Ia plotted
+  });
+
+  test("invalid magnitude (negative) on one row never corrupts other valid rows, and no fabricated vector is plotted", async ({ page }) => {
+    await openEmptyWorkspacePhasor(page);
+    await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: -5, unit: "V", angleDeg: 0 });
+    await enterRole(page, "Vb", { magnitude: 110, unit: "V", angleDeg: -120 });
+
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/Vb[\s\S]*?110\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+    const text = await page.locator("#wwPhasorValuesList").innerText();
+    expect(text).toMatch(/Va[\s\S]{0,20}Missing/);
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(1); // only Vb plotted
+  });
+
+  test("Related Waveforms panel is hidden/collapsed entirely in Manual mode, never a fabricated waveform", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page);
+    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await expect(page.locator("#wwAnalysisRelatedWaveformsPanel")).toBeVisible();
+
+    await page.locator("#wwPhasorInputSourceManualBtn").click();
+    await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: 110, unit: "V", angleDeg: 0 });
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/Va[\s\S]*?110\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+
+    await expect(page.locator("#wwPhasorRecordingSection")).toBeHidden();
+    await expect(page.locator("#wwAnalysisRelatedWaveformsPanel")).toBeHidden();
+  });
+
+  test("Playback movement does not move the Manual result or vectors", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page);
+    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await expect(page.locator("#wwPhasorInputSourceRecordingBtn")).toHaveAttribute("aria-pressed", "true");
+
+    await page.locator("#wwPhasorInputSourceManualBtn").click();
+    await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: 110, unit: "V", angleDeg: 0 });
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/Va[\s\S]*?110\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+
+    const textBefore = await page.locator("#wwPhasorValuesList").innerText();
+
+    let diagramRequests = 0;
+    page.on("request", (req) => {
+      if (req.url().includes("/phasor-diagram")) diagramRequests++;
+    });
+
+    // Drive Playback via Overcurrent's own mount, which shares the SAME
+    // Time Group this context resolved to -- Phasor's own mount is
+    // hidden while Manual is active, so this is the only way to move
+    // the shared clock while proving Manual stays inert.
+    await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
+    await page.locator("#wwOvercurrentContextSelect").selectOption(contextId);
+    const slider = page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-seek-slider");
+    await expect(slider).toBeVisible();
+    const { min, max } = await seekSliderBounds(slider);
+    await seekTo(slider, min + (max - min) * 0.8);
+    await page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-play-btn").click();
+    await page.waitForTimeout(500);
+    await page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-play-btn").click();
+
+    await page.locator("#wwAnalysisTypePhasorBtn").click();
+    await expect(page.locator("#wwPhasorInputSourceManualBtn")).toHaveAttribute("aria-pressed", "true");
+    const textAfter = await page.locator("#wwPhasorValuesList").innerText();
+    expect(textAfter).toBe(textBefore);
+    expect(diagramRequests).toBe(0);
+  });
+
+  test("switching back to Recording restores the recording-driven diagram exactly; Manual/Recording state never cross-contaminates", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page);
+    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+    const recordingText = await page.locator("#wwPhasorValuesList").innerText();
+
+    await page.locator("#wwPhasorInputSourceManualBtn").click();
+    await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: 250, unit: "V", angleDeg: 45 });
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/250\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+
+    await page.locator("#wwPhasorInputSourceRecordingBtn").click();
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+    const restoredText = await page.locator("#wwPhasorValuesList").innerText();
+    expect(restoredText).toBe(recordingText);
+
+    // Manual's own values are untouched by the round trip.
+    await page.locator("#wwPhasorInputSourceManualBtn").click();
+    await expect(page.locator("#wwPhasorManualVaMagnitude")).toHaveValue("250");
+    await expect(page.locator("#wwPhasorManualVaAngle")).toHaveValue("45");
+  });
+
+  test("Recording mode with zero recordings shows a clean neutral state, never a crash or stale Manual result relabeled as Recording", async ({ page }) => {
+    await openEmptyWorkspacePhasor(page);
+    await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: 110, unit: "V", angleDeg: 0 });
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/110\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+
+    await expect(page.locator("#wwPhasorInputSourceRecordingBtn")).toBeDisabled();
+    await page.locator("#wwPhasorInputSourceRecordingBtn").click({ force: true });
+    await expect(page.locator("#wwPhasorInputSourceManualBtn")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  for (const width of [1366, 1024]) {
+    test(`at ${width}px: Manual Phasors panel fits cleanly, Recording shown disabled (not hidden), no overflow`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await openEmptyWorkspacePhasor(page);
+      await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("secondary");
+      await enterRole(page, "Va", { magnitude: 110, unit: "V", angleDeg: 0 });
+      await expect(async () => {
+        const text = await page.locator("#wwPhasorValuesList").innerText();
+        expect(text).toMatch(/110\.0\s*V/);
+      }).toPass({ timeout: 5000 });
+
+      const overflowX = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflowX).toBeLessThanOrEqual(1);
+      await expect(page.locator("#wwPhasorInputSourceRecordingBtn")).toBeVisible();
+      await expect(page.locator("#wwPhasorInputSourceRecordingBtn")).toBeDisabled();
+      await expect(page.locator("#wwPhasorManualVoltageBasisSelect")).toBeVisible();
+      await expect(page.locator("#wwPhasorManualCurrentBasisSelect")).toBeVisible();
+    });
+  }
 });

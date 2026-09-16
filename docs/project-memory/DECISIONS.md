@@ -15083,6 +15083,107 @@ flaky tests reconfirmed unrelated (pass in isolation, 3/3 and 2/3 runs
 respectively — the same pre-existing intermittent timing races already
 on record, not a regression from this amendment).
 
+**Second amendment, 2026-09-16 (same day) — Phasor becomes the second
+Analysis Input Source implementation, extending the concept to
+multiple independent bases.** Owner task: implement Manual Input /
+Calculator mode for Phasor, reusing the shared shell the architectural
+correction above established (never the flawed intermediate design).
+Phasor's own manual value is structurally different from Overcurrent's:
+six independent roles (Va/Vb/Vc/Ia/Ib/Ic) across TWO physical
+quantities, each measured through its own independent instrument
+transformer (VT/PT for Voltage, CT for Current). The owner's hard
+requirement: **Voltage basis and Current basis are genuinely
+independent selectors — never one shared Primary/Secondary switch** —
+so an engineer can enter, for example, Primary-basis voltages alongside
+Secondary-basis currents in the same diagram (proven by a dedicated
+mixed-basis golden test at every layer). This extends DEC-095's own
+concept with a new general principle: **a future analyzer with N
+independent physical quantities should expect N independent bases in
+its own manual state, not one shared switch, whenever those quantities
+are measured through independent instrumentation.**
+
+**Implementation.** A new workspace-scoped endpoint,
+`GET .../phasor-manual`, accepts each of the six roles independently
+(`{role}_enabled`/`{role}_magnitude`/`{role}_unit`/`{role}_angle_deg`)
+plus `voltage_basis`/`vt_primary`/`vt_secondary` and
+`current_basis`/`ct_primary`/`ct_secondary`. A new, small, GENERALIZED
+domain function, `convert_manual_magnitude_to_secondary()`
+(`app/domain/phasor.py`), serves BOTH Voltage and Current with one
+implementation (parameterized on `engineering_quantity`) — mirroring
+`convert_to_relay_secondary()`'s own two-step shape (shared
+engineering-unit normalization, then ratio scaling) but generalized
+where Overcurrent never needed to be. `evaluate_manual_phasor_role()`
+evaluates each role fully independently: a role not entered reports the
+EXISTING `ROLE_STATUS_MISSING`; an invalid basis/ratio blocks every
+role in that role's OWN family only (`ROLE_STATUS_NEEDS_CONFIGURATION`)
+— Voltage and Current failures never cross-contaminate. **No new role-
+status vocabulary was introduced.** The result (`ManualPhasorDiagramResult`)
+reuses `PhasorDiagramRoleResult`/`PhasorDiagramRoleResultOut` VERBATIM
+for `roles`, so the SAME frontend renderer
+(`wwPhasorRenderDiagramSvg()`/`wwPhasorRenderValuesList()`) draws either
+Recording's or Manual's own result with zero new rendering code —
+`wwPhasorActiveDiagram()` simply picks which of two fully-separate
+state fields (`wwPhasorState.latestDiagram` vs.
+`wwPhasorState.manual.latestResult`) the currently active `inputSource`
+should read.
+
+**Canonical internal basis: Secondary** — chosen for consistency with
+Overcurrent's own DEC-095 precedent (Phasor's Recording-mode result
+carries no basis concept at all to weigh against, so there was no
+Phasor-specific reason to prefer Primary instead). Angle normalization
+reuses the EXISTING, previously-private `_normalize_angle_deg()`
+function (`(-180, 180]` convention) Phasor's own `angle_deg_relative`
+computation already established — never a second normalization
+function. The frontend reuses Overcurrent's own segmented-control CSS
+classes verbatim (`.ww-oc-axis-toggle-group`/`-btn`/`--active`/`-panel`/
+`-row`/`-hint`) per the task's own explicit "same segmented-control
+language as OC" instruction, and implements the three-region markup
+split (Input Source toggle / `#wwPhasorRecordingSection` / always-
+visible `#wwPhasorBody`) from day one — Phasor never had the coupling
+bug Overcurrent's own first Manual Input slice briefly shipped. One
+addition beyond Overcurrent's own pattern: a separate
+`#wwPhasorManualStatusRow` (inside the Manual panel) carries Manual's
+own top-level status messages, since the Recording-scoped
+`#wwPhasorStatusRow` is invisible whenever Manual is active.
+
+Reason: proves the shared Analysis Input Source concept genuinely
+generalizes beyond its first analyzer, and establishes the "N
+independent bases for N independent quantities" pattern a future
+analyzer with multiple independently-measured quantities (e.g. a
+distance/impedance analyzer with its own CT and VT) can reuse without
+re-deriving it.
+
+New tests: `backend/tests/test_phasor_domain.py`
+(`TestManualMagnitudeValid`, `TestManualRatioValid`,
+`TestConvertManualMagnitudeToSecondary`, `TestEvaluateManualPhasorRole`),
+`backend/tests/test_phasor_diagram_service.py`
+(`TestComputePhasorManualDiagram`, including the golden worked example
+and the mixed-basis case), `backend/tests/test_phasor_diagram_api.py`
+(`TestManualPhasorDiagramEndpoint`, including the golden 132kV/1200A
+primary -> 110V/1A secondary scenario end-to-end via real HTTP with
+zero prior upload), `backend/tests/test_frontend_phasor_analysis.py`
+(`TestManualInputCalculatorMode`), and a new
+`browser-tests/phasor_analysis.spec.js` describe block (15 real-browser
+scenarios: empty-workspace availability, the golden example with a
+zero-recording-dependent-request assertion, mixed basis, ratio-field
+conditional visibility, kA/A and kV/V unit equivalence, angle
+normalization, partial input, invalid-ratio family isolation, invalid-
+magnitude row isolation, Related Waveforms hidden, Playback
+independence, Recording/Manual state isolation, Recording-unavailable
+clean state, and responsive geometry at 1366px/1024px). One pre-
+existing Phasor Playwright test's own stale `#wwPhasorBody` visibility
+assertions were updated to match the corrected always-visible
+behavior; one pre-existing Overcurrent static test
+(`test_input_source_panel_lives_outside_and_before_the_recording_section`)
+was fixed to scope its own search to OC's own panel boundaries, since
+an unscoped `source.index()` now matches Phasor's own (earlier-in-file)
+reuse of the identical `ww-oc-input-source-panel` class name. Full
+Phasor Playwright suite (34 scenarios) and full backend suite pass;
+pre-existing Phasor Playback-timing-sensitive tests reconfirmed
+unrelated flakes (pass in isolation). `git diff --check` clean. No
+Impedance Locus/Sequence Components/Distance Manual mode implemented
+this slice.
+
 ---
 
 ## How to add a decision
