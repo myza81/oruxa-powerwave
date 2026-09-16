@@ -6062,26 +6062,17 @@
            The legacy `.ww-phasor-*` classes remain in markup for existing
            code/tests, but layout is now owned by the neutral
            `.ww-analysis-playback-*` seam. */
-        .ww-analysis-playback-panel {
-            padding: 8px 10px;
+        section.ww-analysis-playback-panel {
+            padding: 4px 8px;
             border: 1px solid var(--panel-border);
             background: var(--panel);
             border-radius: var(--radius);
         }
-        .ww-analysis-playback-panel h3 {
-            margin: 0 0 6px;
-            padding: 0;
-            font-size: 0.72rem;
-            font-weight: 700;
-            text-transform: none;
-            letter-spacing: 0;
-            color: var(--text);
-        }
         .ww-analysis-playback-mount {
             display: flex;
             align-items: center;
-            flex-wrap: wrap;
-            gap: 8px 10px;
+            flex-wrap: nowrap;
+            gap: 6px;
             min-width: 0;
         }
         .ww-analysis-playback-transport {
@@ -6093,8 +6084,8 @@
             align-items: center;
             justify-content: center;
             gap: 5px;
-            min-height: 28px;
-            padding: 4px 9px;
+            min-height: 30px;
+            padding: 4px 8px;
             border-radius: calc(var(--radius) - 1px);
             background: var(--accent-wash-soft);
             color: var(--accent);
@@ -6119,17 +6110,17 @@
         }
         .ww-analysis-playback-mount .ww-tg-playback-speed-select {
             flex: 0 0 auto;
-            min-height: 28px;
-            min-width: 66px;
-            padding: 4px 8px;
+            min-height: 30px;
+            min-width: 62px;
+            padding: 4px 6px;
             border-radius: calc(var(--radius) - 1px);
             font-size: 0.7rem;
             line-height: 1;
         }
         .ww-analysis-playback-mount .ww-tg-playback-seek-row {
             order: 1;
-            flex: 1 1 260px;
-            min-width: 160px;
+            flex: 1 1 auto;
+            min-width: 120px;
             padding: 0;
         }
         .ww-analysis-playback-mount .ww-tg-playback-seek-slider {
@@ -7693,7 +7684,6 @@
                                  Phasor is one Analysis consumer of the
                                  ONE shared wwPlayback controller. -->
                             <section class="panel ww-phasor-playback-panel ww-analysis-playback-panel" id="wwPhasorPlaybackPanel" hidden>
-                                <h3>Playback</h3>
                                 <div class="ww-phasor-playback-mount ww-analysis-playback-mount" id="wwPhasorPlaybackMount"></div>
                             </section>
 
@@ -7763,7 +7753,6 @@
                                  consumer of the ONE shared wwPlayback
                                  controller. -->
                             <section class="panel ww-phasor-playback-panel ww-analysis-playback-panel" id="wwOvercurrentPlaybackPanel" hidden>
-                                <h3>Playback</h3>
                                 <div class="ww-phasor-playback-mount ww-analysis-playback-mount" id="wwOvercurrentPlaybackMount"></div>
                             </section>
 
@@ -30100,11 +30089,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwCreatePlaybackControlsHtml() {
             return {
                 transportHtml:
-                    '<button type="button" class="secondary ww-tg-playback-restart-btn" title="Restart playback for this Time Group (jump to start)" aria-label="Restart playback for this Time Group">' +
+                    '<button type="button" class="secondary ww-tg-playback-restart-btn" title="Restart playback" aria-label="Restart playback">' +
                         '<span class="ww-tg-playback-btn-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M5.2 5.8A5.3 5.3 0 1 1 4 10.3"/><path d="M5 2.8v3.5H1.5"/></svg></span>' +
                         '<span class="ww-tg-playback-btn-label">Restart</span>' +
                     '</button>' +
-                    '<button type="button" class="secondary ww-tg-playback-play-btn" aria-pressed="false" title="Play this Time Group" aria-label="Play this Time Group">' +
+                    '<button type="button" class="secondary ww-tg-playback-play-btn" aria-pressed="false" title="Play event" aria-label="Play event">' +
                         '<span class="ww-tg-playback-btn-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path class="ww-tg-playback-play-icon" d="M6 4.5 13 9 6 13.5Z" fill="currentColor" stroke="none"/></svg></span>' +
                         '<span class="ww-tg-playback-btn-label">Play</span>' +
                     '</button>' +
@@ -30117,7 +30106,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         '<option value="2">2×</option>' +
                         '<option value="4">4×</option>' +
                     '</select>' +
-                    '<span class="ww-tg-playback-time-readout" aria-label="Current playback time">—</span>',
+                    '<span class="ww-tg-playback-time-readout" aria-label="Current event time">—</span>',
                 // `min`/`max` are placeholders here (0/1) -- the real Time
                 // Group bounds are applied by
                 // wwPlaybackSyncSeekSliderBounds() the first time this
@@ -30130,7 +30119,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // WHAT an engineering quantity means" boundary).
                 seekRowHtml:
                     '<div class="ww-tg-playback-seek-row">' +
-                        '<input type="range" class="ww-tg-playback-seek-slider" min="0" max="1" step="any" value="0" aria-label="Seek playback position">' +
+                        '<input type="range" class="ww-tg-playback-seek-slider" min="0" max="1" step="any" value="0" aria-label="Seek event time">' +
                     '</div>',
             };
         }
@@ -30492,7 +30481,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         : '<svg viewBox="0 0 18 18"><path d="M6 4.5 13 9 6 13.5Z" fill="currentColor" stroke="none"/></svg>';
                 }
                 playBtn.setAttribute("aria-pressed", String(isPlaying));
-                playBtn.title = isPlaying ? "Pause playback for this Time Group" : "Play this Time Group";
+                playBtn.title = isPlaying ? "Pause event" : "Play event";
                 playBtn.setAttribute("aria-label", playBtn.title);
             }
             wwPlaybackUpdateTimeReadout(containerEl, groupId);

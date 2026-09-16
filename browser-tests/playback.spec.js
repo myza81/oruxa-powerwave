@@ -139,6 +139,41 @@ async function setupPhasorPlayback(page, stem, displayName) {
 }
 
 test.describe("Event Playback Slice 1", () => {
+  test("Analysis Playback ribbon is compact, titleless, and single-row at laptop width", async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    const { mount } = await setupPhasorPlayback(page, "synth_playback", "Alpha");
+    const panel = page.locator("#wwPhasorPlaybackPanel");
+
+    await expect(panel.locator("h3", { hasText: "Playback" })).toHaveCount(0);
+    await expect(mount.locator(".ww-tg-playback-restart-btn")).toHaveText(/Restart/);
+    await expect(mount.locator(".ww-tg-playback-play-btn")).toHaveText(/Play|Pause/);
+    await expect(mount.locator(".ww-tg-playback-speed-select")).toBeVisible();
+    await expect(mount.locator(".ww-tg-playback-seek-slider")).toBeVisible();
+    await expect(mount.locator(".ww-tg-playback-time-readout")).toBeVisible();
+
+    const layout = await panel.evaluate((panelEl) => {
+      const mountEl = panelEl.querySelector(".ww-analysis-playback-mount");
+      const items = Array.from(mountEl.querySelectorAll(
+        ".ww-tg-playback-restart-btn, .ww-tg-playback-play-btn, .ww-tg-playback-speed-select, .ww-tg-playback-seek-row, .ww-tg-playback-time-readout",
+      ));
+      const centers = items.map((el) => {
+        const rect = el.getBoundingClientRect();
+        return rect.top + rect.height / 2;
+      });
+      return {
+        panelHeight: panelEl.getBoundingClientRect().height,
+        centerSpread: Math.max(...centers) - Math.min(...centers),
+        panelRight: panelEl.getBoundingClientRect().right,
+        bodyWidth: document.documentElement.clientWidth,
+        wrap: getComputedStyle(mountEl).flexWrap,
+      };
+    });
+    expect(layout.wrap).toBe("nowrap");
+    expect(layout.centerSpread).toBeLessThanOrEqual(2);
+    expect(layout.panelHeight).toBeLessThanOrEqual(45);
+    expect(layout.panelRight).toBeLessThanOrEqual(layout.bodyWidth);
+  });
+
   test("Waveform Time Group toolbar no longer mounts Playback controls", async ({ page }) => {
     await uploadFixture(page, "synth_playback");
     const row = page.locator("#recordingsTableBody tr[data-source-id]").last();

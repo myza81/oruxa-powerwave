@@ -275,6 +275,14 @@ class TestSharedAnalysisPlaybackStyling:
         assert 'class="panel ww-phasor-playback-panel ww-analysis-playback-panel" id="wwOvercurrentPlaybackPanel"' in source
         assert 'class="ww-phasor-playback-mount ww-analysis-playback-mount" id="wwOvercurrentPlaybackMount"' in source
 
+    def test_analysis_playback_panels_have_no_visible_title_row(self):
+        source = _source()
+        phasor_panel = _function_body(source, 'id="wwPhasorPlaybackPanel"', 'id="wwPhasorRelatedWaveformsAnchor"')
+        overcurrent_panel = _function_body(source, 'id="wwOvercurrentPlaybackPanel"', 'id="wwOvercurrentRelatedWaveformsAnchor"')
+        assert "<h3>Playback</h3>" not in phasor_panel
+        assert "<h3>Playback</h3>" not in overcurrent_panel
+        assert ".ww-analysis-playback-panel h3" not in source
+
     def test_mount_functions_flatten_the_shared_transport_wrapper(self):
         source = _source()
         assert source.count("ww-analysis-playback-transport") == 3
@@ -282,15 +290,17 @@ class TestSharedAnalysisPlaybackStyling:
 
     def test_shared_analysis_playback_css_is_compact_card_and_single_row(self):
         source = _source()
-        css_body = _function_body(source, ".ww-analysis-playback-panel {", ".ww-phasor-status-row {")
+        css_body = _function_body(source, "section.ww-analysis-playback-panel {", ".ww-phasor-status-row {")
         assert "border: 1px solid var(--panel-border);" in css_body
-        assert "padding: 8px 10px;" in css_body
+        assert "padding: 4px 8px;" in css_body
         assert ".ww-analysis-playback-mount {" in css_body
-        assert "flex-wrap: wrap;" in css_body
+        assert "flex-wrap: nowrap;" in css_body
+        assert "gap: 6px;" in css_body
         assert ".ww-analysis-playback-transport {" in css_body
         assert "display: contents;" in css_body
         assert ".ww-analysis-playback-mount .ww-tg-playback-seek-row" in css_body
-        assert "flex: 1 1 260px;" in css_body
+        assert "flex: 1 1 auto;" in css_body
+        assert "min-width: 120px;" in css_body
         assert ".ww-analysis-playback-mount .ww-tg-playback-time-readout" in css_body
         assert "margin-left: auto;" in css_body
 
