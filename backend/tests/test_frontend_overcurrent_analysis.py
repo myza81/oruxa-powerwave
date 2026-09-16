@@ -1488,99 +1488,125 @@ class TestRelayCurrentModeSwitchZeroBackendRequests:
             assert "fetch(" not in fn
 
 
-class TestCompactInputControlRedesign:
-    """Owner UX request (2026-09-16): the OC settings/viewport controls
-    used to all share the same bulky ~220px min-width (Phasor's own
-    context-bar sizing, never intended for six same-row compact fields)
-    -- a one-character TMS value got the same visual weight as the
-    Characteristic dropdown. Redesigned to semantic, content-appropriate
-    per-field widths within an explicit 2-column grid. Presentation
-    only -- markup structure/ids/wiring are completely untouched, so
-    every existing functional test in this file continues to pass
+class TestSettingsFormLayoutCorrection:
+    """Owner UAT correction (2026-09-16): the PRIOR redesign gave each
+    settings field a fixed pixel width (200px/140px/90px/etc), which
+    could exceed its actual grid cell inside the real (often narrower
+    than a full viewport) settings card -- overflowing into the
+    neighboring column. Corrected to a container-responsive grid
+    (`minmax(0, 1fr)` columns + `width: 100%` controls) so a control can
+    never be wider than the space genuinely available to it, and the
+    owner-mandated exact control CSS is restored. Presentation/layout
+    only -- field ids, input types/attributes/validation are untouched,
+    so every existing functional test in this file continues to pass
     unmodified."""
 
-    def test_settings_grid_is_an_explicit_two_column_layout(self):
+    def test_settings_grid_uses_container_responsive_columns_never_fixed_widths(self):
         source = _source()
         css_rule = _function_body(source, ".ww-oc-settings-grid {", "}")
-        assert "grid-template-columns: 1fr 1fr;" in css_rule
+        assert "grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);" in css_rule
+        # The old brittle fixed-pixel-per-field rules are gone entirely.
+        for selector in [
+            "#wwOvercurrentCharacteristicSelect { width:",
+            "#wwOvercurrentBasisSelect { width:",
+            "#wwOvercurrentPickupInput { width:",
+            "#wwOvercurrentTmsInput { width:",
+            "#wwOvercurrentCtPrimaryInput { width:",
+            "#wwOvercurrentCtSecondaryInput { width:",
+        ]:
+            assert selector not in source
 
-    def test_narrow_min_width_floor_is_removed_scoped_to_the_oc_grid_only(self):
-        """Phasor's own context-bar fields elsewhere must keep their
-        original 220px min-width -- only the OC settings grid's own
-        fields are freed from that floor."""
+    def test_field_wrapper_allows_its_grid_track_to_shrink_below_content_size(self):
         source = _source()
-        assert ".ww-oc-settings-grid .ww-phasor-field {" in source
         scoped_rule = _function_body(source, ".ww-oc-settings-grid .ww-phasor-field {", "}")
         assert "min-width: 0;" in scoped_rule
-        # The original, unscoped rule (still 220px) is untouched.
+        # Phasor's own context-bar fields elsewhere keep their original
+        # 220px min-width -- this override is scoped to the OC grid only.
         base_rule = _function_body(source, ".ww-phasor-field {", ".ww-phasor-field[hidden]")
         assert "min-width: 220px;" in base_rule
 
-    def test_each_field_has_its_own_semantic_width(self):
-        """Design targets (owner UX request): Characteristic ~180-210px,
-        Recording basis ~120-150px, Pickup ~80-95px, TMS ~70-80px,
-        CT Primary ~90-110px, CT Secondary ~70-90px -- never a uniform
-        one-size-fits-all width."""
+    def test_controls_use_the_exact_owner_mandated_css_properties(self):
+        """Acceptance criteria (2026-09-16, not a suggestion): every
+        settings control must carry exactly these six properties --
+        the SAME values the page's own global `select {}` baseline
+        already uses, not the prior pass's own compact override."""
         source = _source()
-        expectations = {
-            "#wwOvercurrentCharacteristicSelect": (180, 210),
-            "#wwOvercurrentBasisSelect": (120, 150),
-            "#wwOvercurrentPickupInput": (80, 95),
-            "#wwOvercurrentTmsInput": (70, 80),
-            "#wwOvercurrentCtPrimaryInput": (90, 110),
-            "#wwOvercurrentCtSecondaryInput": (70, 90),
-        }
-        for selector, (lo, hi) in expectations.items():
-            rule = _function_body(source, selector + " {", "}")
-            match = re.search(r"width:\s*(\d+)px;", rule)
-            assert match, f"{selector} has no explicit width rule"
-            width = int(match.group(1))
-            assert lo <= width <= hi, f"{selector} width {width}px outside target range {lo}-{hi}px"
+        css_rule = _function_body(source, ".ww-oc-settings-grid select,", ":focus")
+        assert "background: var(--panel);" in css_rule
+        assert "border: 1px solid var(--panel-border);" in css_rule
+        assert "border-radius: var(--radius);" in css_rule
+        assert "padding: 8px 10px;" in css_rule
+        assert "font-size: 0.7rem;" in css_rule
+        assert "color: var(--text);" in css_rule
+        assert "width: 100%;" in css_rule
+        assert "box-sizing: border-box;" in css_rule
 
-    def test_control_typography_stays_within_the_analysis_workspace_compact_cap(self):
+    def test_focus_state_is_preserved(self):
         source = _source()
-        css_rule = _function_body(source, ".ww-oc-settings-grid select,", "}")
-        match = re.search(r"font-size:\s*([\d.]+)rem;", css_rule)
-        assert match
-        font_size = float(match.group(1))
-        assert 0.72 <= font_size <= 0.75
+        focus_rule = _function_body(source, ".ww-oc-settings-grid select:focus,", "}")
+        assert "outline: none;" in focus_rule
+        assert "border-color: var(--accent-dim);" in focus_rule
 
-    def test_labels_remain_at_their_existing_compact_size(self):
-        """The shared `.ww-phasor-field` label size (0.72rem) is
-        unchanged -- this redesign touches widths/grid/control padding
-        only, never label typography."""
+    def test_characteristic_and_basis_span_the_full_row_never_squeezed_to_half_width(self):
         source = _source()
-        base_rule = _function_body(source, ".ww-phasor-field {", ".ww-phasor-field[hidden]")
-        assert "font-size: 0.72rem;" in base_rule
+        assert 'class="ww-phasor-field ww-oc-field-full">\n                                            <span class="ww-phasor-field-label">Characteristic</span>' in source
+        assert 'class="ww-phasor-field ww-oc-field-full">\n                                            <span class="ww-phasor-field-label">Recording current basis</span>' in source
+        css_rule = _function_body(source, ".ww-oc-field-full {", "}")
+        assert "grid-column: 1 / -1;" in css_rule
+        # Pickup/TMS and the two CT fields deliberately do NOT get this
+        # class -- they fall through to the grid's own 2-column
+        # auto-flow, pairing two-per-row.
+        pickup_label = _function_body(source, '<span class="ww-phasor-field-label">Pickup current</span>', "</label>")
+        assert "ww-oc-field-full" not in source[source.index('id="wwOvercurrentPickupInput"') - 300 : source.index('id="wwOvercurrentPickupInput"')]
 
-    def test_all_six_settings_fields_and_their_labels_are_unchanged_in_markup(self):
-        """Presentation-only -- every field id, label text, and input
-        type/attribute (validation-relevant) must be byte-for-byte
-        identical to before this redesign."""
+    def test_pickup_label_shortened_with_unit_moved_inline_next_to_the_value(self):
+        """Replaces the former "Pickup current (A secondary)" label
+        (which wrapped to two lines in a narrow column) -- the unit
+        stays fully explicit, just positioned next to the VALUE."""
         source = _source()
-        panel_markup = _function_body(source, 'id="wwOvercurrentCharacteristicSelect"', "ww-oc-values-list")
-        assert '<span class="ww-phasor-field-label">Characteristic</span>' in _source()
-        assert '<span class="ww-phasor-field-label">Pickup current (A secondary)</span>' in _source()
-        assert '<span class="ww-phasor-field-label">TMS</span>' in _source()
-        assert '<span class="ww-phasor-field-label">Recording current basis</span>' in _source()
-        assert '<span class="ww-phasor-field-label">CT Primary (A)</span>' in _source()
-        assert '<span class="ww-phasor-field-label">CT Secondary (A)</span>' in _source()
+        assert '<span class="ww-phasor-field-label">Pickup current</span>' in source
+        assert '<span class="ww-phasor-field-label">Pickup current (A secondary)</span>' not in source
+        assert '<span class="ww-oc-field-unit">A secondary</span>' in source
+        input_row_rule = _function_body(source, ".ww-oc-field-input-row {", "}")
+        assert "display: flex;" in input_row_rule
+        assert "min-width: 0;" in input_row_rule
+
+    def test_other_five_labels_unchanged(self):
+        source = _source()
+        assert '<span class="ww-phasor-field-label">Characteristic</span>' in source
+        assert '<span class="ww-phasor-field-label">TMS</span>' in source
+        assert '<span class="ww-phasor-field-label">Recording current basis</span>' in source
+        assert '<span class="ww-phasor-field-label">CT Primary (A)</span>' in source
+        assert '<span class="ww-phasor-field-label">CT Secondary (A)</span>' in source
+
+    def test_field_ids_types_and_validation_attributes_are_byte_for_byte_unchanged(self):
+        """Presentation/layout only -- every functionally-relevant
+        attribute (id, type, min/max/step/value) is untouched."""
+        source = _source()
         assert 'id="wwOvercurrentCharacteristicSelect"></select>' in source
         assert 'type="number" id="wwOvercurrentPickupInput" min="0" step="0.01" value="1.00">' in source
         assert 'type="number" id="wwOvercurrentTmsInput" min="0.025" max="1.2" step="0.005" value="0.10">' in source
         assert 'type="number" id="wwOvercurrentCtPrimaryInput" min="0" step="1">' in source
         assert 'type="number" id="wwOvercurrentCtSecondaryInput" min="0" step="0.01">' in source
+        assert 'id="wwOvercurrentBasisSelect">' in source
 
-    def test_narrow_screen_fallback_stacks_to_one_column_only_below_420px(self):
+    def test_responsive_fallback_uses_a_container_query_scoped_to_the_settings_card_not_the_viewport(self):
+        """Owner's own explicit instruction: "the important dimension is
+        the actual width of the SETTINGS / LIVE VALUES card... do not
+        use a global page-wide breakpoint." A CSS container query
+        (`container-type` on `.ww-phasor-values-panel` itself) responds
+        to the CARD's own rendered width, never the browser viewport."""
         source = _source()
-        assert "@media (max-width: 420px) {" in source
-        media_block = _function_body(source, "@media (max-width: 420px) {\n            .ww-oc-settings-grid {", "}\n        }")
-        assert "grid-template-columns: 1fr;" in media_block
+        panel_rule = _function_body(source, ".ww-phasor-values-panel {", "}")
+        assert "container-type: inline-size;" in panel_rule
+        assert "@container ww-oc-settings-panel" in source
+        container_block = _function_body(source, "@container ww-oc-settings-panel", "\n        .ww-oc-values-list")
+        assert "grid-template-columns: minmax(0, 1fr);" in container_block
 
     def test_viewport_controls_are_untouched_by_this_redesign(self):
-        """Task's own explicit "do not change viewport behavior" --
-        the existing .ww-oc-view-field width/padding/font-size (already
-        within the task's own 46-55px compact target) are unmodified."""
+        """Task's own explicit "chart View controls are out of scope
+        unless needed for consistency" -- the existing .ww-oc-view-field
+        width/padding/font-size are unmodified."""
         source = _source()
         css_rule = _function_body(source, ".ww-oc-view-field input[type=\"number\"] {", "}")
         assert "width: 4.2em;" in css_rule

@@ -6535,61 +6535,109 @@
            live-values/alert/chart classes below are Overcurrent-specific,
            since Phasor has no equivalent of any of them. Typography stays
            within the same <=0.75rem Analysis-workspace cap. */
-        /* Compact input-control redesign (2026-09-16 owner UX request):
-           an explicit 2-column grid -- Characteristic/Pickup, TMS/Basis,
-           CT Primary/CT Secondary each their own row, matching the DOM's
-           own existing field order exactly (no markup reordering
-           needed). Previously `repeat(auto-fill, minmax(130px, 1fr))`
-           combined with the shared `.ww-phasor-field`'s own `min-width:
-           220px` (Phasor's own context-bar sizing, never intended for
-           six same-row compact fields) forced every field to roughly
-           the same bulky width regardless of what it actually held --
-           a one-character TMS value got the same visual weight as the
-           Characteristic dropdown. `min-width: 0` below removes that
-           floor SCOPED to this grid only (Phasor's own fields elsewhere
-           keep their original 220px) -- each field's own true width now
-           comes from its own INPUT/SELECT (see the per-field `#wwOvercurrent*`
-           rules further below), never a stretched, content-agnostic
-           grid cell. */
+        /* Settings form layout redesign (2026-09-16 owner UAT
+           correction): the PRIOR redesign gave each field a FIXED pixel
+           width (200px/140px/90px/etc) independent of its actual grid
+           cell -- inside the real (often much narrower than a full
+           browser viewport) `.ww-phasor-values-panel` card, those fixed
+           widths could exceed the column they sat in, overflowing into
+           the neighboring column/off the card edge. Root cause: fixed
+           widths are NOT container-responsive. Fixed by switching every
+           control to `width: 100%` of its own grid cell (`minmax(0,
+           1fr)` columns + `min-width: 0` on the field wrapper -- the
+           standard CSS Grid "let a track shrink below its content's
+           intrinsic size" fix, since a `select`'s own text content
+           would otherwise refuse to shrink a `1fr` track past its
+           un-wrapped width) -- a control can never again be wider than
+           the space actually available to it, at any panel width. */
         .ww-oc-settings-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            column-gap: 18px;
-            row-gap: 9px;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 8px 10px;
             margin-bottom: 10px;
         }
         .ww-oc-settings-grid .ww-phasor-field {
             min-width: 0;
         }
+        /* Characteristic and Recording current basis are long-text
+           selects that must never be squeezed into a half-width column
+           (task's own "do not force long selects into half-width
+           columns" instruction) -- each spans the full row. Pickup/TMS
+           and CT Primary/CT Secondary (no `--full` class) fall through
+           to the grid's own default 2-column auto-flow, which -- given
+           the field order already in the DOM -- naturally pairs them
+           two-per-row exactly as required, with no markup reordering. */
+        .ww-oc-field-full {
+            grid-column: 1 / -1;
+        }
+        /* Owner-mandated control appearance (2026-09-16, exact
+           acceptance criteria -- NOT a suggestion): these six
+           properties are the SAME values the page's own global
+           `select {}` rule already establishes elsewhere (this
+           redesign intentionally returns OC's own settings controls to
+           that shared baseline, rather than the previous pass's own
+           compact 0.74rem/6px-8px override). `width: 100%`/`box-sizing:
+           border-box` (the latter also already the page-wide default
+           via the top-of-file `* { box-sizing: border-box; }` rule,
+           restated here per spec) are what make the control fill --
+           but never exceed -- its own grid cell. */
         .ww-oc-settings-grid select,
         .ww-oc-settings-grid input[type="number"] {
-            width: auto;
-            font-size: 0.74rem;
-            padding: 6px 8px;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 8px 10px;
+            font-size: 0.7rem;
+            color: var(--text);
+            width: 100%;
+            box-sizing: border-box;
         }
-        /* Semantic per-field widths (design targets, owner UX request) --
-           each field sized to what it actually needs to hold, never a
-           uniform one-size-fits-all control. All comfortably fit their
-           own realistic value range (e.g. CT Primary up to "10000",
-           Pickup down to "0.001") without clipping -- verified directly
-           in a real browser, not just eyeballed. */
-        #wwOvercurrentCharacteristicSelect { width: 200px; }
-        #wwOvercurrentBasisSelect { width: 140px; }
-        #wwOvercurrentPickupInput { width: 90px; }
-        #wwOvercurrentTmsInput { width: 76px; }
-        #wwOvercurrentCtPrimaryInput { width: 100px; }
-        #wwOvercurrentCtSecondaryInput { width: 80px; }
-        /* Narrow-laptop fallback -- only the genuinely small-screen case
-           stacks to one column; any normal laptop width keeps the
-           two-column form (task's own "only stack if the existing
-           breakpoint genuinely requires it" instruction). The outer
-           `.ww-phasor-body` grid (see its own `@media (max-width: 900px)`
-           rule above) already gives this settings panel its own full
-           row width below 900px, so this inner grid keeps ample room
-           for two ~200px-max columns down to a much narrower point. */
-        @media (max-width: 420px) {
+        .ww-oc-settings-grid select:focus,
+        .ww-oc-settings-grid input[type="number"]:focus {
+            outline: none;
+            border-color: var(--accent-dim);
+        }
+        /* Compact inline unit suffix (owner UAT correction) -- replaces
+           the former "Pickup current (A secondary)" label, which wrapped
+           to two lines in a narrow column. The engineering unit stays
+           fully explicit, just moved next to the VALUE instead of
+           stacked into the label text above it. */
+        .ww-oc-field-input-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+        }
+        .ww-oc-field-input-row input {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .ww-oc-field-unit {
+            flex: 0 0 auto;
+            font-size: 0.66rem;
+            color: var(--text-dim);
+            white-space: nowrap;
+        }
+        /* Panel-width (not raw viewport-width) responsive fallback --
+           owner's own explicit "the important dimension is the actual
+           width of the SETTINGS / LIVE VALUES card... do not use a
+           global page-wide breakpoint that fails when the sidebar is
+           narrow but the browser is still wide" instruction. A
+           container query is scoped to `.ww-phasor-values-panel` itself
+           (its own layout width, whatever the rest of the page/sidebar
+           is doing), never the page viewport -- the two-column form
+           stays as long as the CARD itself has room, only stacking to
+           one column once the card genuinely cannot fit it. */
+        .ww-phasor-values-panel {
+            container-type: inline-size;
+            container-name: ww-oc-settings-panel;
+        }
+        @container ww-oc-settings-panel (max-width: 300px) {
             .ww-oc-settings-grid {
-                grid-template-columns: 1fr;
+                grid-template-columns: minmax(0, 1fr);
+            }
+            .ww-oc-field-full {
+                grid-column: 1;
             }
         }
         .ww-oc-values-list {
@@ -7909,19 +7957,22 @@
                                 <section class="panel ww-phasor-values-panel">
                                     <h3>Settings / Live Values</h3>
                                     <div class="ww-oc-settings-grid">
-                                        <label class="ww-phasor-field">
+                                        <label class="ww-phasor-field ww-oc-field-full">
                                             <span class="ww-phasor-field-label">Characteristic</span>
                                             <select id="wwOvercurrentCharacteristicSelect"></select>
                                         </label>
                                         <label class="ww-phasor-field">
-                                            <span class="ww-phasor-field-label">Pickup current (A secondary)</span>
-                                            <input type="number" id="wwOvercurrentPickupInput" min="0" step="0.01" value="1.00">
+                                            <span class="ww-phasor-field-label">Pickup current</span>
+                                            <span class="ww-oc-field-input-row">
+                                                <input type="number" id="wwOvercurrentPickupInput" min="0" step="0.01" value="1.00">
+                                                <span class="ww-oc-field-unit">A secondary</span>
+                                            </span>
                                         </label>
                                         <label class="ww-phasor-field">
                                             <span class="ww-phasor-field-label">TMS</span>
                                             <input type="number" id="wwOvercurrentTmsInput" min="0.025" max="1.2" step="0.005" value="0.10">
                                         </label>
-                                        <label class="ww-phasor-field">
+                                        <label class="ww-phasor-field ww-oc-field-full">
                                             <span class="ww-phasor-field-label">Recording current basis</span>
                                             <select id="wwOvercurrentBasisSelect">
                                                 <option value="secondary" selected>Secondary</option>

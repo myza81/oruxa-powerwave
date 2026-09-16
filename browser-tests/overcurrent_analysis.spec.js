@@ -143,79 +143,176 @@ test.describe("Overcurrent Analysis v1 -- basic configuration", () => {
   });
 });
 
-test.describe("Overcurrent Analysis v1 -- compact input control redesign (2026-09-16 owner UX request)", () => {
-  test("every settings control is visible, has its own semantic compact width, and remains fully editable/functional", async ({ page }) => {
+test.describe("Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT)", () => {
+  async function setupWithPrimaryBasis(page) {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await page.locator("#wwOvercurrentBasisSelect").selectOption("primary");
+    await expect(page.locator("#wwOvercurrentCtPrimaryInput")).toBeVisible();
+    return contextId;
+  }
+
+  // The task's own explicit acceptance test: every settings control's
+  // rendered box must sit entirely WITHIN the settings card -- never
+  // wider than its own grid cell, never spilling into the neighbor
+  // column or off the card edge. Checked directly against real
+  // getBoundingClientRect() geometry, not just static CSS source.
+  async function assertAllControlsWithinPanel(page) {
+    const panelBox = await page.locator("#wwOvercurrentBody .ww-phasor-values-panel").boundingBox();
+    const controlIds = [
+      "wwOvercurrentCharacteristicSelect", "wwOvercurrentPickupInput", "wwOvercurrentTmsInput",
+      "wwOvercurrentBasisSelect", "wwOvercurrentCtPrimaryInput", "wwOvercurrentCtSecondaryInput",
+    ];
+    for (const id of controlIds) {
+      const locator = page.locator(`#${id}`);
+      if (!(await locator.isVisible())) continue;
+      const box = await locator.boundingBox();
+      expect(box.x, `${id}.left >= panel.left`).toBeGreaterThanOrEqual(panelBox.x - 0.5);
+      expect(box.x + box.width, `${id}.right <= panel.right`).toBeLessThanOrEqual(panelBox.x + panelBox.width + 0.5);
+    }
+  }
+
+  // General rectangle-overlap test (true = the two boxes intersect) --
+  // deliberately layout-mode-agnostic: two fields placed SIDE BY SIDE
+  // (2-column mode) never overlap because their x-ranges are disjoint;
+  // two fields STACKED (1-column fallback, a genuinely narrow card)
+  // never overlap because their y-ranges are disjoint. Either way,
+  // "never overlap" is the real acceptance criterion -- not "must
+  // always be side by side," which the container-query fallback
+  // deliberately overrides once the card is too narrow for that.
+  function boxesOverlap(a, b) {
+    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+  }
+
+  for (const viewportWidth of [1366, 1024]) {
+    test(`all settings controls stay within the panel and never overlap each other, at ${viewportWidth}px`, async ({ page }) => {
+      await page.setViewportSize({ width: viewportWidth, height: 900 });
+      await setupWithPrimaryBasis(page);
+
+      await assertAllControlsWithinPanel(page);
+
+      const boxOf = async (id) => page.locator(`#${id}`).boundingBox();
+      const pickupBox = await boxOf("wwOvercurrentPickupInput");
+      const tmsBox = await boxOf("wwOvercurrentTmsInput");
+      expect(boxesOverlap(pickupBox, tmsBox), "Pickup and TMS must never overlap").toBe(false);
+
+      const ctPrimaryBox = await boxOf("wwOvercurrentCtPrimaryInput");
+      const ctSecondaryBox = await boxOf("wwOvercurrentCtSecondaryInput");
+      expect(boxesOverlap(ctPrimaryBox, ctSecondaryBox), "CT Primary and CT Secondary must never overlap").toBe(false);
+
+      // Characteristic and Recording basis are marked full-width
+      // (`grid-column: 1 / -1`) regardless of column count -- at 2
+      // columns their own right edge sits past the halfway point of
+      // the card; at 1 column (narrow fallback) the whole card IS one
+      // column, so this remains true either way.
+      const panelBox = await page.locator("#wwOvercurrentBody .ww-phasor-values-panel").boundingBox();
+      const characteristicBox = await boxOf("wwOvercurrentCharacteristicSelect");
+      const basisBox = await boxOf("wwOvercurrentBasisSelect");
+      const halfway = panelBox.x + panelBox.width / 2;
+      expect(characteristicBox.x + characteristicBox.width).toBeGreaterThan(halfway);
+      expect(basisBox.x + basisBox.width).toBeGreaterThan(halfway);
+
+      // No page-level horizontal overflow.
+      const bodyScrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+      const bodyClientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+      expect(bodyScrollWidth).toBeLessThanOrEqual(bodyClientWidth + 1);
+    });
+  }
+
+  test("owner-mandated exact control CSS is applied (computed style, not just source)", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
 
-    // All controls exist and are visible -- nothing hidden/clipped by
-    // the redesign.
-    await expect(page.locator("#wwOvercurrentCharacteristicSelect")).toBeVisible();
-    await expect(page.locator("#wwOvercurrentPickupInput")).toBeVisible();
-    await expect(page.locator("#wwOvercurrentTmsInput")).toBeVisible();
-    await expect(page.locator("#wwOvercurrentBasisSelect")).toBeVisible();
+    const styles = await page.locator("#wwOvercurrentPickupInput").evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { borderWidth: cs.borderTopWidth, borderRadius: cs.borderRadius, paddingTop: cs.paddingTop, paddingLeft: cs.paddingLeft, fontSize: cs.fontSize };
+    });
+    expect(styles.borderWidth).toBe("1px");
+    expect(styles.paddingTop).toBe("8px");
+    expect(styles.paddingLeft).toBe("10px");
+    // 0.7rem at the default 16px root -> 11.2px.
+    expect(parseFloat(styles.fontSize)).toBeCloseTo(11.2, 0);
+  });
 
-    // Labels remain correct/associated (unchanged text) -- all six,
-    // including the two CT fields that stay hidden until "Primary"
-    // basis is selected (allTextContents() reads DOM text regardless
-    // of visibility, so this also confirms their markup is intact).
-    const labels = await page.locator(".ww-oc-settings-grid .ww-phasor-field-label").allTextContents();
-    expect(labels).toEqual([
-      "Characteristic", "Pickup current (A secondary)", "TMS", "Recording current basis",
-      "CT Primary (A)", "CT Secondary (A)",
-    ]);
+  test("selected text and numeric values remain fully visible, never clipped or overlapping the select arrow", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
 
-    // Each field's own rendered width matches its design target (owner
-    // UX request) -- proportionate, never a uniform one-size-fits-all
-    // control.
-    const widthOf = async (locator) => (await page.locator(locator).boundingBox()).width;
-    expect(await widthOf("#wwOvercurrentCharacteristicSelect")).toBeGreaterThanOrEqual(180);
-    expect(await widthOf("#wwOvercurrentCharacteristicSelect")).toBeLessThanOrEqual(210);
-    expect(await widthOf("#wwOvercurrentPickupInput")).toBeGreaterThanOrEqual(80);
-    expect(await widthOf("#wwOvercurrentPickupInput")).toBeLessThanOrEqual(95);
-    expect(await widthOf("#wwOvercurrentTmsInput")).toBeGreaterThanOrEqual(70);
-    expect(await widthOf("#wwOvercurrentTmsInput")).toBeLessThanOrEqual(80);
-    expect(await widthOf("#wwOvercurrentBasisSelect")).toBeGreaterThanOrEqual(120);
-    expect(await widthOf("#wwOvercurrentBasisSelect")).toBeLessThanOrEqual(150);
+    // Longest characteristic option text.
+    await page.locator("#wwOvercurrentCharacteristicSelect").selectOption("iec_extremely_inverse");
+    await expect(page.locator("#wwOvercurrentCharacteristicSelect")).toHaveValue("iec_extremely_inverse");
+    const selectBox = await page.locator("#wwOvercurrentCharacteristicSelect").boundingBox();
+    // A native <select> reserves its own arrow area; a comfortably-
+    // wide full-row control (never a half-width squeeze) is the
+    // structural guarantee against overlap here.
+    expect(selectBox.width).toBeGreaterThan(150);
 
-    // Compact control height target (28-30px), comfortable click area.
-    const pickupBox = await page.locator("#wwOvercurrentPickupInput").boundingBox();
-    expect(pickupBox.height).toBeGreaterThanOrEqual(26);
-    expect(pickupBox.height).toBeLessThanOrEqual(32);
-
-    // Numeric fields comfortably support realistic values without
-    // clipping (a wide-value smoke check -- overflow: visible/clip is
-    // the DOM's own concern, but this proves the value is genuinely
-    // accepted/reflected, not silently truncated).
-    await page.locator("#wwOvercurrentPickupInput").fill("0.001");
-    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
-    await expect(page.locator("#wwOvercurrentPickupInput")).toHaveValue("0.001");
+    // Realistic numeric values across the full requested range, none
+    // silently truncated/rejected.
+    const numericCases = [
+      ["wwOvercurrentPickupInput", "0.001"],
+      ["wwOvercurrentPickupInput", "5"],
+      ["wwOvercurrentTmsInput", "0.10"],
+    ];
+    for (const [id, value] of numericCases) {
+      await page.locator(`#${id}`).fill(value);
+      await page.locator(`#${id}`).dispatchEvent("change");
+      await expect(page.locator(`#${id}`)).toHaveValue(value);
+    }
 
     await page.locator("#wwOvercurrentBasisSelect").selectOption("primary");
-    await expect(page.locator("#wwOvercurrentCtPrimaryInput")).toBeVisible();
-    const ctPrimaryWidth = await widthOf("#wwOvercurrentCtPrimaryInput");
-    expect(ctPrimaryWidth).toBeGreaterThanOrEqual(90);
-    expect(ctPrimaryWidth).toBeLessThanOrEqual(110);
-    const ctSecondaryWidth = await widthOf("#wwOvercurrentCtSecondaryInput");
-    expect(ctSecondaryWidth).toBeGreaterThanOrEqual(70);
-    expect(ctSecondaryWidth).toBeLessThanOrEqual(90);
+    for (const [id, value] of [["wwOvercurrentCtPrimaryInput", "1200"], ["wwOvercurrentCtPrimaryInput", "10000"], ["wwOvercurrentCtSecondaryInput", "1"]]) {
+      await page.locator(`#${id}`).fill(value);
+      await page.locator(`#${id}`).dispatchEvent("change");
+      await expect(page.locator(`#${id}`)).toHaveValue(value);
+    }
 
-    await page.locator("#wwOvercurrentCtPrimaryInput").fill("10000");
-    await page.locator("#wwOvercurrentCtPrimaryInput").dispatchEvent("change");
-    await expect(page.locator("#wwOvercurrentCtPrimaryInput")).toHaveValue("10000");
-
-    // Selects remain fully functional (value changes take effect,
-    // driving a real settings-changed recompute).
-    await page.locator("#wwOvercurrentCharacteristicSelect").selectOption("iec_very_inverse");
-    await expect(page.locator("#wwOvercurrentCharacteristicSelect")).toHaveValue("iec_very_inverse");
-
-    // No OC calculation behavior changed -- known 40 A RMS / pickup
-    // 0.001 A still produces a real, finite multiple.
+    // No OC calculation behavior changed.
     await expect(async () => {
       const text = await page.locator("#wwOvercurrentValuesList").innerText();
       expect(text).not.toMatch(/Infinity|NaN/);
     }).toPass({ timeout: 5000 });
+  });
+
+  test("Pickup current label is compact (no unit in the label text) with the unit shown inline next to the value", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const pickupLabel = page.locator(".ww-oc-settings-grid .ww-phasor-field-label", { hasText: "Pickup current" });
+    await expect(pickupLabel).toHaveText("Pickup current"); // exact -- no "(A secondary)" suffix
+    await expect(page.locator(".ww-oc-field-unit", { hasText: "A secondary" })).toBeVisible();
+
+    // The label never wraps to two lines within the card.
+    const labelBox = await pickupLabel.boundingBox();
+    const labelLineHeight = await pickupLabel.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
+    expect(labelBox.height).toBeLessThanOrEqual(labelLineHeight * 1.5);
+  });
+
+  test("panel-width (container-query) responsive fallback stacks to one column when the card itself is forced narrow, independent of the browser viewport", async ({ page }) => {
+    // A WIDE browser viewport -- the important dimension is the CARD's
+    // own width, not the page/viewport (owner's own explicit
+    // instruction), so this deliberately keeps the viewport wide while
+    // forcing the card narrow via a direct style override.
+    await page.setViewportSize({ width: 1366, height: 900 });
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const wideColumns = await page.locator(".ww-oc-settings-grid").evaluate((el) => getComputedStyle(el).gridTemplateColumns);
+    expect(wideColumns.trim().split(/\s+/)).toHaveLength(2); // two columns at normal card width
+
+    await page.locator("#wwOvercurrentBody .ww-phasor-values-panel").evaluate((el) => { el.style.width = "260px"; });
+    await expect(async () => {
+      const narrowColumns = await page.locator(".ww-oc-settings-grid").evaluate((el) => getComputedStyle(el).gridTemplateColumns);
+      expect(narrowColumns.trim().split(/\s+/)).toHaveLength(1); // stacked to one column
+    }).toPass({ timeout: 2000 });
+
+    // Still no overlap/overflow once forced narrow.
+    await assertAllControlsWithinPanel(page);
   });
 
   test("chart viewport fields remain compact, functional, and unaffected by the settings-grid redesign", async ({ page }) => {
@@ -235,20 +332,26 @@ test.describe("Overcurrent Analysis v1 -- compact input control redesign (2026-0
     await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.9");
   });
 
-  test("no horizontal page overflow at a narrower laptop width (1024px)", async ({ page }) => {
-    await page.setViewportSize({ width: 1024, height: 800 });
+  test("Live Values section renders correctly below the redesigned settings grid, with unchanged calculations", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
+    await page.locator("#wwOvercurrentPickupInput").fill("1.0");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
 
-    const bodyScrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
-    const bodyClientWidth = await page.evaluate(() => document.documentElement.clientWidth);
-    expect(bodyScrollWidth).toBeLessThanOrEqual(bodyClientWidth + 1); // +1 for sub-pixel rounding
-    // Every settings field remains visible (never clipped/overflowed
-    // off-panel).
-    for (const id of ["wwOvercurrentCharacteristicSelect", "wwOvercurrentPickupInput", "wwOvercurrentTmsInput", "wwOvercurrentBasisSelect"]) {
-      await expect(page.locator(`#${id}`)).toBeVisible();
-    }
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toContain("Measured RMS current");
+      expect(text).toContain("Relay-equivalent current");
+      expect(text).toContain("Pickup");
+      expect(text).toContain("Multiple of pickup");
+      expect(text).toMatch(/40\.0\s*×/); // known 40 A / 1.0 A pickup, unchanged math
+    }).toPass({ timeout: 5000 });
+
+    // Sits below the settings grid, not overlapping it.
+    const gridBox = await page.locator(".ww-oc-settings-grid").boundingBox();
+    const valuesBox = await page.locator("#wwOvercurrentValuesList").boundingBox();
+    expect(valuesBox.y).toBeGreaterThanOrEqual(gridBox.y + gridBox.height - 1);
   });
 });
 
