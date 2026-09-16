@@ -43,21 +43,24 @@ from app.domain.overcurrent import (
     OVERCURRENT_STATUS_COMPUTED,
     REASON_CHANNEL_UNAVAILABLE,
     REASON_INVALID_CT_VALUES,
+    REASON_INVALID_INPUT_CURRENT,
     REASON_INVALID_PICKUP,
     REASON_INVALID_REFERENCE_FREQUENCY,
     REASON_INVALID_TMS,
     REASON_UNKNOWN_CHARACTERISTIC,
     REASON_UNSUPPORTED_CURRENT_UNIT,
     REASON_WAVEFORM_FORM_NOT_ELIGIBLE,
+    ManualOvercurrentAnalysisResult,
     OvercurrentAnalysisResult,
     continuous_duration_above_pickup,
     convert_array_to_relay_secondary,
     convert_to_relay_secondary,
     ct_values_valid,
     estimate_trailing_rms_at_time,
-    evaluate_idmt_operating_time,
+    evaluate_multiple_and_operating_time,
     generate_idmt_curve_points,
     get_characteristic,
+    input_current_valid,
     known_characteristics,
     pickup_valid,
     tms_valid,
@@ -307,9 +310,8 @@ def compute_overcurrent_analysis(
                 "normalized to amperes -- Overcurrent requires a recognized current unit."
             ),
         )
-    multiple_of_pickup = relay_secondary_current / pickup_current_secondary
-    expected_operating_time_seconds = evaluate_idmt_operating_time(
-        characteristic.constants, tms, multiple_of_pickup,
+    multiple_of_pickup, expected_operating_time_seconds = evaluate_multiple_and_operating_time(
+        characteristic.constants, tms, relay_secondary_current, pickup_current_secondary,
     )
 
     # `continuous_duration_above_pickup()` needs the FULL relay-secondary-
@@ -389,3 +391,79 @@ def compute_idmt_curve(characteristic_id: str, tms: float) -> list[tuple[float, 
     if not tms_valid(tms):
         raise CurveComputationError("TMS (Time Multiplier Setting) must be a finite number in the supported range.")
     return generate_idmt_curve_points(characteristic.constants, tms)
+
+
+# ---------------------------------------------------------------------------
+# Manual Input / Calculator mode (Analysis Input Source = "manual") --
+# see docs/project-memory/ANALYSIS_INPUT_SOURCE.md for the shared
+# architecture, and app.domain.overcurrent.ManualOvercurrentAnalysisResult
+# for the result shape's own rationale. Pure validation + calculation, no
+# registry/I/O access at all (no Engineering Context, no channel, no
+# waveform, no Playback) -- routed through this service layer anyway,
+# mirroring `compute_idmt_curve()`'s own "consistent, testable seam"
+# precedent immediately above. Reuses the EXACT SAME `convert_to_relay_
+# secondary()`/`evaluate_multiple_and_operating_time()` domain functions
+# `compute_overcurrent_analysis()` (the recording-driven path above)
+# already calls -- never a second, manual-only calculation engine.
+# ---------------------------------------------------------------------------
+
+
+def compute_overcurrent_manual_analysis(
+    *,
+    characteristic_id: str,
+    tms: float,
+    pickup_current_secondary: float,
+    input_current: float,
+    input_current_unit: str,
+    input_basis: str,
+    ct_primary: float | None,
+    ct_secondary: float | None,
+) -> ManualOvercurrentAnalysisResult:
+    """Never raises -- every failure mode (unknown characteristic,
+    invalid TMS/pickup/CT/basis/input current, an input unit that cannot
+    be normalized to amperes) is returned as a `ManualOvercurrentAnalysisResult`
+    with an explicit `status`/`reason_code`, mirroring `compute_overcurrent_
+    analysis()`'s own never-raise-for-a-guardrail-failure precedent."""
+
+    def _short_circuit(reason_code: str, message: str) -> ManualOvercurrentAnalysisResult:
+        return ManualOvercurrentAnalysisResult(
+            status=STATUS_NEEDS_CONFIGURATION, reason_code=reason_code, message=message,
+        )
+
+    characteristic = get_characteristic(characteristic_id)
+    if characteristic is None:
+        return _short_circuit(REASON_UNKNOWN_CHARACTERISTIC, f"Unknown Overcurrent characteristic id {characteristic_id!r}.")
+    if not tms_valid(tms):
+        return _short_circuit(REASON_INVALID_TMS, "TMS (Time Multiplier Setting) must be a finite number in the supported range.")
+    if not pickup_valid(pickup_current_secondary):
+        return _short_circuit(REASON_INVALID_PICKUP, "Pickup current (secondary amperes) must be a finite number greater than zero.")
+    if input_basis not in KNOWN_RECORDING_BASES:
+        return _short_circuit("invalid_recording_basis", "Manual input basis must be 'primary' or 'secondary'.")
+    if input_basis == "primary":
+        if ct_primary is None or ct_secondary is None or not ct_values_valid(ct_primary, ct_secondary):
+            return _short_circuit(REASON_INVALID_CT_VALUES, "CT primary and CT secondary current must both be finite numbers greater than zero.")
+    if not input_current_valid(input_current):
+        return _short_circuit(REASON_INVALID_INPUT_CURRENT, "Manual input current must be a finite number greater than zero.")
+
+    relay_secondary_current = convert_to_relay_secondary(
+        input_current, recording_basis=input_basis, ct_primary=ct_primary, ct_secondary=ct_secondary,
+        measured_unit=input_current_unit,
+    )
+    if relay_secondary_current is None:
+        return _short_circuit(
+            REASON_UNSUPPORTED_CURRENT_UNIT,
+            f"The manual input unit {input_current_unit!r} could not be normalized to amperes -- "
+            "Overcurrent requires a recognized current unit.",
+        )
+    multiple_of_pickup, expected_operating_time_seconds = evaluate_multiple_and_operating_time(
+        characteristic.constants, tms, relay_secondary_current, pickup_current_secondary,
+    )
+    return ManualOvercurrentAnalysisResult(
+        status=OVERCURRENT_STATUS_COMPUTED, characteristic_id=characteristic_id, tms=tms,
+        pickup_current_secondary=pickup_current_secondary, input_basis=input_basis,
+        ct_primary=ct_primary, ct_secondary=ct_secondary,
+        input_current=input_current, input_current_unit=input_current_unit,
+        relay_secondary_current=relay_secondary_current, multiple_of_pickup=multiple_of_pickup,
+        expected_operating_time_seconds=expected_operating_time_seconds,
+        message="Overcurrent evaluated for the manually entered input current.",
+    )

@@ -1298,6 +1298,134 @@ contain. Full shared-panel architecture (grouping, fetching, rendering,
 the Playback cursor, resize) is NOT Overcurrent's own — see
 [ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md).
 
+## Manual Input / Calculator mode (2026-09-16, DEC-095)
+
+Overcurrent is the first implementation of the shared **Analysis Input
+Source** concept — see
+[ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md) for the full
+shared shell/pattern a future analyzer's own manual mode should reuse;
+this section records Overcurrent's own engineering-specific detail.
+
+**Product definition.** A standalone hypothetical/test current value,
+evaluated against the SAME relay settings (characteristic/TMS/pickup/
+recording basis/CT) via the SAME calculation primitives the recording-
+driven path above already uses — never a second, manual-only
+calculation engine, and never a claim about the actual recorded event.
+Selecting Manual mode does not require an Engineering Context, a
+resolved current-role channel, a waveform, or Playback at all.
+
+**Shared calculation, not duplicated.** `evaluate_multiple_and_operating_time()`
+(`app/domain/overcurrent.py`) is a new, tiny extracted function — `M =
+relay_secondary_current / pickup_current_secondary` immediately paired
+with its own `evaluate_idmt_operating_time()` call — factored OUT of
+`compute_overcurrent_analysis()`'s own previously-inline two-line
+composition specifically so both the recording path and the new manual
+path call the identical function (confirmed byte-for-byte behavior-
+preserving by the full existing recording-path test suite passing
+unmodified). `convert_to_relay_secondary()` (unit normalization + CT
+ratio, unchanged since DEC-091) is reused verbatim for the manually-
+entered value too — the manual value's own declared unit (e.g. "kA")
+is normalized through the SAME shared `app.domain.engineering_units`
+layer, never a second local conversion table.
+
+**New pure validation function**: `input_current_valid()` mirrors
+`pickup_valid()`'s own exact shape (finite, strictly positive) —
+rejects blank/NaN/Infinity/negative/zero before any calculation is
+attempted, both client-side (frontend pre-flight, avoiding a network
+call for an obviously-invalid value) and server-side (authoritative).
+
+**Result shape — genuinely narrower, not the recording shape reused
+by convention.** `ManualOvercurrentAnalysisResult` (`app/domain/
+overcurrent.py`) deliberately has NO `engineering_context_id`/`phase`/
+`analysis_time`/`channel_ref`/`above_pickup_duration_seconds`/
+`threshold_exceeded` fields — none of those concepts exist for a
+standalone value with no recording/time series (above-pickup DURATION
+specifically requires a time series to measure "how long"; a single
+manual value has no such history). It DOES share the recording result's
+own `multiple_of_pickup`/`relay_secondary_current`/`expected_operating_
+time_seconds` field names by deliberate design, so the existing chart-
+rendering code (`wwOvercurrentOperatingPointX()`,
+`wwOvercurrentEnsureCurveAndRenderPoint()`) needed zero changes to
+support it beyond threading a purely cosmetic `isManual` flag through
+for the marker's own visual treatment.
+
+**API.**
+
+```
+GET /api/v1/workspaces/{workspace_id}/overcurrent-manual
+    ?characteristic_id=iec_standard_inverse&tms=0.10
+    &pickup_current_secondary=1.0
+    &input_current=30000&input_current_unit=A&recording_basis=primary
+    (&ct_primary=1200&ct_secondary=1, required only when recording_basis=primary)
+```
+
+Workspace-scoped only (like `.../overcurrent-characteristics`/
+`.../overcurrent-curve`) — never nested under an Engineering Context,
+since a manual value has no context/channel/phase/time at all.
+`recording_basis` here describes the MANUALLY ENTERED value's own basis
+(never inferred) — reusing the identical query-parameter name/
+vocabulary `.../overcurrent` already uses for the same underlying
+concept.
+
+**Golden worked example** (owner's own): pickup 1.0 A secondary, CT
+1200:1, manual input 30000 A primary → 30000 A (already amperes, no
+normalization needed) → CT ratio applied (`30000 * (1/1200)`) → 25 A
+secondary → `M = 25/1.0 = 25` → expected operating time from the
+selected IEC characteristic/TMS. Verified end-to-end via a real HTTP
+call with zero prior upload/context/source setup
+(`test_overcurrent_analysis_api.py::TestManualAnalysisEndpoint::
+test_golden_30000_a_primary_via_http`) and in a real browser
+(`browser-tests/overcurrent_analysis.spec.js`'s own "golden example"
+scenario) — both independently confirm `25.0 A secondary`/`25.0 ×`/a
+finite operating time matching `evaluate_idmt_operating_time()`'s own
+already-trusted golden values.
+
+**Frontend.** A compact "Input Source: Recording | Manual" segmented
+control reuses the EXACT SAME `.ww-oc-axis-toggle-group`/`-btn`/
+`--active` CSS classes the existing Pickup Multiple/Relay Current
+toggle already established (visual consistency, never a second toggle
+style). The Manual Input section (current value, unit A/kA, basis
+Primary/Secondary) never duplicates the Relay Settings controls; CT
+Primary/Secondary FIELD VISIBILITY becomes an OR of both modes' own
+current basis need (`wwOvercurrentCtFieldsNeeded()`) so switching
+Manual's own Basis to Primary never hides the CT inputs regardless of
+what the shared "Recording current basis" dropdown currently reads —
+the underlying CT VALUES themselves stay the one shared, authoritative
+pair either way. Every manual field recomputes on the native `change`
+event (blur/Enter) — the SAME convention every other OC settings field
+already uses — a deliberate choice over a live per-keystroke listener
+or a new debounce timer.
+
+**Playback independence.** The existing shared Playback tick handler's
+own fetch-triggering half (`wwOvercurrentMaybeFetchForPlayback()`/
+`wwOvercurrentRequestExactPlaybackFetch()`) is gated off entirely while
+Manual is the active input source; the transport-UI-sync half (Play/
+Pause/seek-slider position) stays unconditional, since Playback remains
+one shared, authoritative clock (DEC-085) regardless of which input
+source is currently displayed. No second timer/clock was introduced.
+Switching back to Recording mode forces a fresh, exact (non-throttled)
+refresh at wherever Playback currently sits — never a stale cached
+recording result from before Manual mode was entered.
+
+**Related Waveforms.** Manual mode declares zero active roles
+(`wwOvercurrentComputeActiveRelatedWaveformRoles()` short-circuits to
+`[]`), which the shared panel's own EXISTING generic empty state
+(`#wwAnalysisRelatedWaveformsEmptyState`, "No related waveform signals
+available for the current analysis.") already renders — no new UI/text
+was invented, per the task's own "choose the least disruptive
+implementation" instruction; see
+[ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md#explicitly-deferred-not-this-slice)
+for the deferred, more analyzer-specific wording option.
+
+**Persistence.** Manual input values (`wwOvercurrentState.manual.*`)
+are session/UI state only, matching every other Overcurrent chart/
+settings preference's own established ephemeral-by-design precedent —
+never persisted to the backend/database, never written to a calculated
+channel, never touching original recording data. Reset to Recording/
+defaults only by `wwOvercurrentResetState()` (the same "Start New
+Workspace"/"Clear workspace" hook every other analyzer-local display
+preference already uses).
+
 ## Not yet implemented (future slices)
 
 - **ANSI/IEEE curves** (C37.112 and its own distinct constants).
@@ -1322,6 +1450,8 @@ the Playback cursor, resize) is NOT Overcurrent's own — see
 - [DECISIONS.md — DEC-092](DECISIONS.md#dec-092--overcurrent-chart-ux-enhancement-a-pickup-multiplerelay-current-x-axis-representation-toggle-and-independently-toggleable-majorminor-logarithmic-grid-controls) — the chart X-axis representation toggle and minor grid controls (this document's own "Chart X-axis representation toggle and minor grid controls" section above).
 - [DECISIONS.md — DEC-093](DECISIONS.md#dec-093--overcurrent-chart-geometry-refinement-a-compressedbroken-sub-pickup-x-axis-in-pickup-multiple-mode-visually-compresses-01--1-to-5-of-plot-width) — the compressed sub-pickup axis (this document's own "Compressed sub-pickup axis — chart geometry refinement" section above).
 - [DECISIONS.md — DEC-094](DECISIONS.md#dec-094--overcurrent-uat-correction-the-x-axis-representation-toggles-real-root-cause-was-css-visibility-not-event-wiring-and-the-pickup-multiple-default-viewport-moves-to-09x-100x) — the axis-toggle CSS visibility fix and default viewport refinement (this document's own "X-axis toggle CSS visibility fix and default viewport refinement" section above).
+- [DECISIONS.md — DEC-095](DECISIONS.md#dec-095--a-shared-analysis-input-source-concept-recordingmanual-is-introduced-overcurrent-gets-the-first-manual-input--calculator-mode-implementation) — Manual Input / Calculator mode (this document's own "Manual Input / Calculator mode" section above).
+- [ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md) — the shared Analysis Input Source concept/pattern a future analyzer's own manual mode should reuse.
 - [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) — the first Analysis-menu
   analyzer; the resolver/Playback-integration/Analysis-shell patterns
   this document reuses throughout.

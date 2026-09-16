@@ -8,8 +8,81 @@ Last updated: **2026-09-16**
 
 ## What was most recently done
 
-**Overcurrent UAT correction — axis-toggle CSS visibility fix and
-default viewport refinement — [DECISIONS.md — DEC-094](DECISIONS.md#dec-094--overcurrent-uat-correction-the-x-axis-representation-toggles-real-root-cause-was-css-visibility-not-event-wiring-and-the-pickup-multiple-default-viewport-moves-to-09x-100x).
+**A shared Analysis Input Source concept (Recording/Manual) is
+introduced, with Manual Input / Calculator mode implemented for
+Overcurrent only — [DECISIONS.md — DEC-095](DECISIONS.md#dec-095--a-shared-analysis-input-source-concept-recordingmanual-is-introduced-overcurrent-gets-the-first-manual-input--calculator-mode-implementation),
+full architecture in [ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md)
+(new document) and [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s
+own new "Manual Input / Calculator mode" section.**
+
+An engineer can now type a hypothetical/test current value directly
+(e.g. "30000 A Primary") and see it evaluated against the SAME relay
+settings (characteristic/TMS/pickup/CT) via the SAME calculation engine
+and the SAME chart Recording mode already uses — no waveform, channel,
+Engineering Context, or Playback dependency. A new workspace-scoped `GET
+.../overcurrent-manual` endpoint reuses, verbatim, the existing
+`convert_to_relay_secondary()` (CT ratio + shared engineering-unit
+normalization, unchanged since DEC-091) and a newly-extracted
+`evaluate_multiple_and_operating_time()` (factored out of the recording
+path's own previously-inline `M = I/Is` + `evaluate_idmt_operating_
+time()` composition specifically so both paths call the identical
+function — confirmed behavior-preserving by the full existing recording-
+path test suite passing unmodified). The new `ManualOvercurrentAnalysisResult`
+deliberately omits `engineering_context_id`/`phase`/`analysis_time`/
+`channel_ref`/`above_pickup_duration_seconds`/`threshold_exceeded` (none
+of those concepts exist for a standalone value with no time series) but
+shares `multiple_of_pickup`/`relay_secondary_current`/`expected_
+operating_time_seconds` field names by design, so the existing chart-
+rendering code needed zero changes beyond a purely cosmetic `isManual`
+flag for a distinct dashed marker (`.ww-oc-manual-marker`) plus an SVG
+`<title>Manual input point</title>` tooltip — never a second chart, and
+never a second manual-only calculation engine.
+
+A new "Input Source: Recording | Manual" segmented control reuses the
+EXACT SAME CSS classes the existing Pickup Multiple/Relay Current
+toggle already established. The shared Playback tick handler's own
+fetch-triggering half is gated off entirely while Manual is active (the
+transport-UI-sync half stays unconditional, since Playback remains
+shared/global per DEC-085) — confirmed via a real-browser test asserting
+ZERO `.../overcurrent` requests fire while Playback runs in Manual mode.
+Shared Related Waveforms declares zero active roles in Manual mode,
+which its own EXISTING generic empty state already renders — no new
+UI/text invented, per the task's own "least disruptive implementation"
+instruction. Manual values are session/UI state only (never persisted,
+never a calculated channel, never touching original recording data).
+
+The shared concept itself (`WW_ANALYSIS_INPUT_SOURCE_RECORDING`/
+`WW_ANALYSIS_INPUT_SOURCE_MANUAL`) is deliberately named `WW_ANALYSIS_*`,
+not `WW_OC_*`, so a future analyzer's own manual mode (Phasor, Impedance
+Locus, Sequence Components, Distance — explicitly NOT implemented this
+slice, per the task's own "do not implement Phasor Manual mode yet")
+can reuse it directly; input-source SELECTION itself stays per-analyzer
+state, exactly like `selectedContextId` already is.
+
+**Tests**: `backend/tests/test_overcurrent_domain.py`
+(`TestEvaluateMultipleAndOperatingTime`, `input_current_valid`
+coverage), `backend/tests/test_overcurrent_analysis_service.py`
+(`TestManualOvercurrentAnalysis`, 13 tests, zero registries needed),
+`backend/tests/test_overcurrent_analysis_api.py`
+(`TestManualAnalysisEndpoint`, including the golden 30000 A primary /
+1200:1 CT / 1.0 A pickup -> 25 A secondary, M=25x scenario end-to-end
+via real HTTP with zero prior upload), `backend/tests/
+test_frontend_overcurrent_analysis.py` (`TestManualInputCalculatorMode`,
+25 tests), and a new `browser-tests/overcurrent_analysis.spec.js`
+describe block (14 real-browser scenarios). Full backend regression,
+full frontend static suite, and the full OC Playwright suite (89
+scenarios) all pass; Phasor/Related-Waveforms Playwright suites pass
+(two pre-existing, already-documented flaky-under-load Phasor tests,
+confirmed unrelated and passing in isolation). `git diff --check`
+clean.
+
+**Stop condition honored**: task instruction was "stop after this first
+Manual Input slice" — Phasor/other analyzers' own manual mode is
+explicitly deferred, not started.
+
+## What was done in the prior session — Overcurrent UAT correction: axis-toggle CSS visibility fix and default viewport refinement
+
+**[DECISIONS.md — DEC-094](DECISIONS.md#dec-094--overcurrent-uat-correction-the-x-axis-representation-toggles-real-root-cause-was-css-visibility-not-event-wiring-and-the-pickup-multiple-default-viewport-moves-to-09x-100x).
 Frontend-only (`frontend/index.html`); no backend file touched.**
 
 Owner UAT reported "Pickup Multiple / Relay Current toggle does not

@@ -238,6 +238,25 @@ def solve_multiple_of_pickup_for_operating_time(
     return multiple
 
 
+def evaluate_multiple_and_operating_time(
+    constants: IdmtConstants, tms: float, relay_secondary_current: float, pickup_current_secondary: float,
+) -> tuple[float, float | None]:
+    """`multiple_of_pickup = relay_secondary_current / pickup_current_
+    secondary`, paired immediately with its own `evaluate_idmt_operating_
+    time()` call -- the ONE place this composition happens, shared
+    verbatim between the recording-driven (waveform trailing-RMS) and
+    manual (direct engineering-value entry, see `ManualOvercurrentAnalysisResult`
+    below) input paths, added for the Manual Input / Calculator mode
+    slice (see docs/project-memory/ANALYSIS_INPUT_SOURCE.md) so a future
+    analyzer's own manual mode never needs a second copy of this
+    two-line composition, and so this codebase never grows a second,
+    manual-only calculation engine. Never duplicates the IEC formula
+    itself, which stays entirely inside `evaluate_idmt_operating_time()`."""
+    multiple_of_pickup = relay_secondary_current / pickup_current_secondary
+    expected_operating_time_seconds = evaluate_idmt_operating_time(constants, tms, multiple_of_pickup)
+    return multiple_of_pickup, expected_operating_time_seconds
+
+
 def generate_idmt_curve_points(
     constants: IdmtConstants, tms: float, *, m_min: float = 1.01, m_max: float = 200.0, num_points: int = 90,
 ) -> list[tuple[float, float]]:
@@ -461,6 +480,15 @@ def pickup_valid(pickup_current_secondary: float) -> bool:
     return math.isfinite(pickup_current_secondary) and pickup_current_secondary > 0.0
 
 
+def input_current_valid(input_current: float) -> bool:
+    """Manual Input / Calculator mode's own guardrail for the directly-
+    entered engineering current value -- mirrors `pickup_valid()`'s
+    exact shape (finite, strictly positive; rejects blank/NaN/Infinity/
+    negative/zero, per the Manual Input slice's own explicit guardrail
+    list)."""
+    return math.isfinite(input_current) and input_current > 0.0
+
+
 def ct_values_valid(ct_primary: float, ct_secondary: float) -> bool:
     return (
         math.isfinite(ct_primary) and math.isfinite(ct_secondary)
@@ -552,6 +580,7 @@ REASON_INVALID_REFERENCE_FREQUENCY = "invalid_reference_frequency"
 REASON_WAVEFORM_FORM_NOT_ELIGIBLE = "waveform_form_not_eligible"
 REASON_CHANNEL_UNAVAILABLE = "channel_unavailable"
 REASON_UNSUPPORTED_CURRENT_UNIT = "unsupported_current_unit"
+REASON_INVALID_INPUT_CURRENT = "invalid_input_current"
 
 
 @dataclass(slots=True)
@@ -594,6 +623,49 @@ class OvercurrentAnalysisResult:
     above_pickup_duration_seconds: float | None = None
     threshold_exceeded: bool = False
     warnings: list[str] = field(default_factory=list)
+    reason_code: str | None = None
+    message: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Manual Input / Calculator mode (Analysis Input Source = "manual") --
+# see docs/project-memory/ANALYSIS_INPUT_SOURCE.md for the shared
+# architecture this belongs to. A standalone hypothetical/test current
+# value, evaluated against the SAME relay settings and the SAME two
+# calculation primitives (`convert_to_relay_secondary()`,
+# `evaluate_multiple_and_operating_time()`) the recording-driven path
+# above already uses -- never a second, manual-only calculation engine.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class ManualOvercurrentAnalysisResult:
+    """Deliberately has NO `engineering_context_id`/`phase`/
+    `analysis_time`/`channel_ref`/`above_pickup_duration_seconds`/
+    `threshold_exceeded` fields -- none of those concepts exist for a
+    standalone manually-entered current with no associated recording,
+    channel, or time series (above-pickup DURATION specifically requires
+    a time series to measure "how long"; a single manual value has no
+    such history). `input_basis` is the MANUALLY ENTERED value's own
+    basis (never inferred -- the caller must always supply it
+    explicitly), reusing the identical primary/secondary vocabulary
+    `OvercurrentAnalysisResult.recording_basis` already uses for the
+    same underlying concept (does this current need the CT ratio applied
+    or not). Never persisted, exactly like `OvercurrentAnalysisResult`."""
+
+    status: str
+    characteristic_id: str | None = None
+    tms: float | None = None
+    pickup_current_secondary: float | None = None
+    input_basis: str | None = None
+    ct_primary: float | None = None
+    ct_secondary: float | None = None
+    algorithm_version: str = ALGORITHM_VERSION
+    input_current: float | None = None
+    input_current_unit: str | None = None
+    relay_secondary_current: float | None = None
+    multiple_of_pickup: float | None = None
+    expected_operating_time_seconds: float | None = None
     reason_code: str | None = None
     message: str = ""
 

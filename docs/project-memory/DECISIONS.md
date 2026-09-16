@@ -14881,6 +14881,149 @@ the complete architecture record.
 
 ---
 
+## DEC-095 — A shared Analysis Input Source concept (Recording/Manual) is introduced; Overcurrent gets the first Manual Input / Calculator mode implementation
+
+Date: 2026-09-16
+Status: Approved — implemented.
+Source: owner task ("introduces the first reusable Analysis Input Source
+architecture and implements Manual Input / Calculator mode for
+Overcurrent only").
+
+**Decision.** Every Analysis-menu analyzer may support two Analysis
+Input Sources:
+
+```text
+recording   -- the existing waveform/Playback-driven behavior (default,
+               unchanged for every analyzer)
+manual      -- a directly-entered engineering value, evaluated against
+               the SAME analysis settings via the SAME calculation
+               engine, with no waveform/channel/Playback dependency
+```
+
+The concept is deliberately named `WW_ANALYSIS_INPUT_SOURCE_RECORDING`/
+`WW_ANALYSIS_INPUT_SOURCE_MANUAL` (frontend) rather than `WW_OC_*`, even
+though Overcurrent is the first and (this slice) only implementation —
+a future analyzer's own manual mode (Phasor, Impedance Locus, Sequence
+Components, Distance) reuses these SAME two constants. Each analyzer
+still owns its OWN `inputSource` selection and its OWN manual-value
+state (e.g. `wwOvercurrentState.inputSource`/`wwOvercurrentState.manual`)
+— input-source selection is per-analyzer, exactly like `selectedContextId`
+already is; an engineer may run Phasor on live recording data while
+Overcurrent runs a Manual what-if calculation, or vice versa. See
+[ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md) for the full
+architecture record.
+
+**Overcurrent's own implementation.** A new workspace-scoped (not
+Engineering-Context-nested) endpoint, `GET .../overcurrent-manual`,
+accepts a manually-entered current value (`input_current`/
+`input_current_unit`/`recording_basis` — the SAME basis vocabulary/
+query-parameter name `.../overcurrent` already uses for the identical
+underlying concept) plus the SAME relay settings
+(`characteristic_id`/`tms`/`pickup_current_secondary`/`ct_primary`/
+`ct_secondary`) `.../overcurrent` takes, and returns a new
+`ManualOvercurrentAnalysisResult` — deliberately without
+`engineering_context_id`/`phase`/`analysis_time`/`channel_ref`/
+`above_pickup_duration_seconds`/`threshold_exceeded`, none of which
+exist for a standalone value with no recording/time series. It reuses,
+verbatim, the SAME two domain functions the recording-driven
+`compute_overcurrent_analysis()` already calls —
+`convert_to_relay_secondary()` (shared engineering-unit normalization +
+CT ratio, unchanged since DEC-091) and a newly-extracted
+`evaluate_multiple_and_operating_time()` (the `multiple_of_pickup =
+I/Is` + `evaluate_idmt_operating_time()` composition,
+extracted from the recording path's own inline code so BOTH paths call
+the identical function, never two independently-typed copies) — never
+a second, manual-only calculation engine. The IEC IDMT formula itself,
+the characteristic registry, and the curve-generation function are
+completely untouched.
+
+On the frontend, a compact "Input Source" segmented control (reusing
+the EXACT SAME `.ww-oc-axis-toggle-group`/`-btn`/`--active` CSS classes
+the existing Pickup Multiple/Relay Current toggle already established,
+for visual consistency) sits above the shared Relay Settings grid;
+Manual mode reveals a "Manual Input" section (current value, unit
+A/kA, basis Primary/Secondary) that is never duplicated with the
+Relay Settings controls. The manual result reuses the SAME chart
+(`wwOvercurrentRenderChart()`, `wwOvercurrentEnsureCurveAndRenderPoint()`)
+and the SAME `wwOvercurrentOperatingPointX()`/tick/axis-mode logic the
+recording path already uses — the manual result object shares the
+recording result's own `multiple_of_pickup`/`relay_secondary_current`/
+`expected_operating_time_seconds` field names by design, so no
+chart-rendering code needed to change beyond threading a purely
+cosmetic `isManual` flag through for a distinct dashed marker
+(`.ww-oc-manual-marker`) plus an SVG `<title>Manual input point</title>`
+tooltip — never a second chart. The shared Playback tick handler's own
+fetch-triggering half is gated off entirely while Manual is active (the
+transport-UI-sync half stays unconditional, since Playback remains
+shared/global per DEC-085) — Manual mode's own result/chart point
+never depends on `wwPlayback.currentTime` and never moves while
+Playback runs. The shared Related Waveforms panel receives zero active
+roles in Manual mode, which its own EXISTING generic empty state
+already renders — no new UI/text was invented, per the task's own
+"choose the least disruptive implementation" instruction. Manual input
+values are session/UI state only — never persisted, never written to a
+calculated channel, never touching original recording data.
+
+Reason: the analyzer should not care whether its normalized input came
+from waveform extraction or manual entry — only the SOURCE of the
+current changes; the same IEC IDMT/CT/unit-normalization engine and the
+same chart must serve both, or the codebase would grow a second,
+divergent calculation path per analyzer per input mode.
+
+Alternatives considered:
+- A manual-only frontend calculation (mirroring the existing chart-
+  geometry-only `wwOvercurrentEvalT()`/`wwOvercurrentSolveMForT()`
+  mirror functions) — rejected: every protection-facing value in this
+  app remains exclusively backend-computed, an established, repeated
+  discipline this slice does not weaken.
+- Reusing the existing `.../overcurrent` endpoint with synthetic/
+  placeholder Engineering-Context-shaped parameters — rejected: it
+  would force an Engineering Context/channel/phase concept onto a
+  standalone hypothetical value that has none of those, and would
+  require a fake context to exist for every manual calculation.
+- A single shared `wwAnalysisInputSource` object across all analyzers —
+  rejected: input-source selection is a genuinely per-analyzer choice
+  (task's own "do not make the shared state OC-specific if avoidable"
+  was about naming/reuse of the CONCEPT, not about forcing one shared
+  mutable selection across analyzers that may legitimately differ).
+
+Impact: `backend/app/domain/overcurrent.py` (new
+`evaluate_multiple_and_operating_time()`, `input_current_valid()`,
+`ManualOvercurrentAnalysisResult`, `REASON_INVALID_INPUT_CURRENT`; the
+recording path's own inline calculation refactored to call the new
+shared function, byte-for-byte-identical behavior), `backend/app/
+services/overcurrent_analysis_service.py` (new
+`compute_overcurrent_manual_analysis()`), `backend/app/schemas/
+overcurrent_analysis.py` (new `OvercurrentManualAnalysisResultOut`),
+`backend/app/api/v1/engineering_contexts.py` (new `GET
+.../overcurrent-manual`), `frontend/index.html` (shared
+`WW_ANALYSIS_INPUT_SOURCE_*` constants, OC state/markup/CSS/rendering).
+New tests: `backend/tests/test_overcurrent_domain.py`
+(`TestEvaluateMultipleAndOperatingTime`, `input_current_valid`
+coverage), `backend/tests/test_overcurrent_analysis_service.py`
+(`TestManualOvercurrentAnalysis`), `backend/tests/
+test_overcurrent_analysis_api.py` (`TestManualAnalysisEndpoint`,
+including the golden 30000 A primary / 1200:1 CT / 1.0 A pickup -> 25 A
+secondary, M=25x scenario end-to-end via real HTTP with zero prior
+upload), `backend/tests/test_frontend_overcurrent_analysis.py`
+(`TestManualInputCalculatorMode`), and a new `browser-tests/
+overcurrent_analysis.spec.js` describe block (14 real-browser
+scenarios: segmented-control defaults, section visibility, the golden
+example, kA/A unit equivalence, secondary-basis CT bypass, below-pickup
+wording, the distinct manual chart marker, Playback independence
+(including a zero-recording-request assertion), the shared Related
+Waveforms empty state, Recording-mode restoration, invalid-input
+handling, responsive geometry at 1366px/1024px, and a full workspace
+reset). Full backend regression, full frontend static suite, and the
+full OC Playwright suite (89 scenarios) all pass; Phasor/Related-
+Waveforms Playwright suites pass (two pre-existing, already-documented
+flaky-under-load Phasor tests, confirmed unrelated and passing in
+isolation). `git diff --check` clean. Phasor Manual mode is explicitly
+NOT implemented this slice (task's own "do not implement Phasor Manual
+mode yet").
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

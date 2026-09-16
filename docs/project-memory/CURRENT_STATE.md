@@ -9,7 +9,7 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-13**. **Event Playback
+Last meaningful update: **2026-09-16**. **Event Playback
 ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock),
 its own 2026-09-11 revision) is implemented as a shared, reusable
 WORKSPACE CAPABILITY — never a standalone top-level page.** Following
@@ -638,12 +638,68 @@ compressed sub-pickup gutter's own activation rule moved with it, from
 "`xMin < 1`" to "`xMin <= 0.5`" (`WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD`),
 so the new default shows no axis break at all (0.9-1 is already
 narrow), while the gutter still activates for any deliberately wide
-below-pickup view (0.5x or lower). Relay Current mode's own default is
-now a fully independent constant, never coupled to Pickup Multiple's.
-IDMT math, TMS, pickup, CT conversion are unaffected. See
-[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own "X-axis
-toggle CSS visibility fix and default viewport refinement" section for
-the full architecture.
+below-pickup view (0.5x or lower). Relay Current mode's own default was
+made a fully independent constant at the time of this correction
+(superseded the same day by a further axis-default refinement below,
+which recoupled Relay Current's own default to `pickup - 0.1 A` and
+then again by DEC-095's Manual Input work, which left that formula
+unchanged — see the "Axis-default refinement" paragraph below for the
+current, accurate behavior). IDMT math, TMS, pickup, CT conversion are
+unaffected. See [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s
+own "X-axis toggle CSS visibility fix and default viewport refinement"
+section for the full architecture.
+
+**Overcurrent axis-default refinement (2026-09-16, frontend-only,
+no DEC — a follow-up UI/UX refinement, not a new product decision).**
+Part A: Relay Current mode's own default X minimum is now `pickup -
+0.1 A` (floored at the mode's own existing absolute lower bound, `0.1 *
+pickup`) — replacing the `0.9 * pickup` multiplicative default the
+paragraph above established; X maximum stays `100 * pickup`. Part B:
+the time-axis default minimum is now proportional to a STABLE reference
+operating time (`0.9x`, floored at 0.01s, capped at Y Max / 10) instead
+of the flat `0.1` constant — the reference is captured only from an
+EXACT (settings/phase/context-establishment/seek) fetch, never a
+throttled Playback tick, so the default never chases the live operating
+point while Playback runs; a manually customized viewport is never
+overwritten by a settings change, only by an explicit Reset. The chart's
+own "0" origin-gap cosmetic convention is deliberately scoped to the
+pristine, reference-less initial state only (comparing Y against the
+flat constant, never the live dynamic default) — a real design decision
+made to avoid the origin-gap disappearing almost immediately in ordinary
+use, documented as a known, accepted trade-off. IDMT math, TMS, pickup,
+CT conversion are unaffected. See
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md) for the full record.
+
+**A shared Analysis Input Source concept (Recording/Manual) is
+introduced, with Manual Input / Calculator mode implemented for
+Overcurrent only (2026-09-16, [DECISIONS.md — DEC-095](DECISIONS.md#dec-095--a-shared-analysis-input-source-concept-recordingmanual-is-introduced-overcurrent-gets-the-first-manual-input--calculator-mode-implementation)).**
+An engineer can type a hypothetical/test current value directly (e.g.
+"30000 A Primary") and see it evaluated against the SAME relay settings
+via the SAME calculation engine and the SAME chart Recording mode
+already uses — no waveform/channel/Engineering-Context/Playback
+dependency. A new workspace-scoped `GET .../overcurrent-manual`
+endpoint reuses the existing `convert_to_relay_secondary()` and a
+newly-extracted `evaluate_multiple_and_operating_time()` (factored out
+of the recording path's own previously-inline calculation so both paths
+call the identical function) — never a second, manual-only calculation
+engine. The new `ManualOvercurrentAnalysisResult` omits recording-only
+concepts (`engineering_context_id`/`phase`/`analysis_time`/
+`channel_ref`/`above_pickup_duration_seconds`/`threshold_exceeded`) but
+shares the recording result's own `multiple_of_pickup`/
+`relay_secondary_current`/`expected_operating_time_seconds` field names,
+so the existing chart-rendering code needed zero changes beyond a
+cosmetic `isManual` flag for a distinct dashed marker. Playback's own
+fetch-triggering half is gated off entirely while Manual is active
+(never drives the manual result); shared Related Waveforms declares
+zero active roles in Manual mode, reusing its own existing generic
+empty state. Manual values are session/UI state only. The shared
+concept itself (`WW_ANALYSIS_INPUT_SOURCE_RECORDING`/
+`WW_ANALYSIS_INPUT_SOURCE_MANUAL`) is deliberately named `WW_ANALYSIS_*`,
+not `WW_OC_*`, for future analyzer reuse — Phasor/other analyzers' own
+manual mode is explicitly NOT implemented this slice. See
+[ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md) (new document) and
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own "Manual Input /
+Calculator mode" section for the full architecture.
 
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test

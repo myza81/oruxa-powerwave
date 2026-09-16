@@ -122,7 +122,20 @@ class TestOvercurrentPanelStructure:
         fn = _function_body(source, "function wwOvercurrentUpdateCtFieldsVisibility()", "function wwOvercurrentHandleSettingsChanged")
         assert "wwOvercurrentCtPrimaryField" in fn
         assert "wwOvercurrentCtSecondaryField" in fn
+        assert "wwOvercurrentCtFieldsNeeded()" in fn
+
+    def test_ct_fields_needed_considers_both_recording_and_manual_basis(self):
+        """Manual Input / Calculator mode (2026-09-16): CT Primary/
+        Secondary are shared, never duplicated between modes (task §5) --
+        their FIELDS become visible whenever EITHER the shared Recording
+        basis OR Manual's own basis needs them, so switching Manual's own
+        Basis selector to Primary never hides the CT inputs regardless of
+        what the shared "Recording current basis" dropdown reads."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentCtFieldsNeeded()", "function wwOvercurrentUpdateCtFieldsVisibility")
         assert 'recordingBasis === "primary"' in fn
+        assert "manual.inputBasis === \"primary\"" in fn
+        assert "WW_ANALYSIS_INPUT_SOURCE_MANUAL" in fn
 
     def test_numeric_result_fields_render(self):
         source = _source()
@@ -136,7 +149,7 @@ class TestOvercurrentPanelStructure:
     def test_characteristic_chart_exists_not_plotly(self):
         source = _source()
         assert 'id="wwOvercurrentSvg"' in source
-        body = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentUpdateCtFieldsVisibility")
+        body = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentUpdateCtFieldsVisibility")
         assert "Plotly" not in body
 
 
@@ -218,7 +231,7 @@ class TestOvercurrentViewport:
 
     def test_default_view_shows_zero_origin_and_minor_reference_ticks(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         default_branch = _function_body(fn, "if (geo.isDefault) {", "} else {")
         assert "ww-oc-origin-label" in default_branch
         assert ">0</text>" in default_branch
@@ -227,7 +240,7 @@ class TestOvercurrentViewport:
 
     def test_custom_view_shows_true_minimum_never_a_fake_zero(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         custom_branch = _function_body(fn, "} else {\n                const xMinPx", "// Axis titles")
         assert ">0</text>" not in custom_branch
         assert "ww-oc-origin-label" not in custom_branch
@@ -289,12 +302,12 @@ class TestChartAxesGridAndTicks:
 
     def test_x_and_y_axis_lines_render(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         assert fn.count('class="ww-oc-axis"') == 2
 
     def test_grid_lines_render_for_current_viewport_majors(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         assert "ww-oc-gridline" in fn
         assert "for (const v of xMajors)" in fn
         assert "for (const v of yMajors)" in fn
@@ -311,7 +324,7 @@ class TestChartAxesGridAndTicks:
 
     def test_axis_titles_unchanged_text(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         assert "Current / Pickup Multiple (M)" in fn
         assert "Expected Operating Time (s)" in fn
 
@@ -322,7 +335,7 @@ class TestChartAxesGridAndTicks:
         (never distorted) via an SVG clipPath, so the underlying
         engineering math is never altered to fit the frame."""
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         assert "clipPath" in fn
         assert 'clip-path="url(#wwOvercurrentClip)"' in fn
 
@@ -333,7 +346,7 @@ class TestChartAxesGridAndTicks:
         confirmed by the curve-path loop never calling
         wwOvercurrentClampedM/T."""
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         curve_loop = _function_body(fn, "const curvePath = segment.map", "parts.push('<path")
         assert "wwOvercurrentClampedM" not in curve_loop
         assert "wwOvercurrentClampedT" not in curve_loop
@@ -356,7 +369,7 @@ class TestChartAxesGridAndTicks:
         TestAxisRepresentationToggle below for the Relay Current
         transform's own dedicated coverage."""
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         curve_block = _function_body(fn, "if (points && points.length > 0) {", "// Operating point")
         assert "wwOvercurrentVisibleCurveSegment(mDomainViewport)" in curve_block
         assert "if (segment) {" in curve_block
@@ -468,7 +481,7 @@ class TestBelowPickupPositionMarker:
 
     def test_below_pickup_on_chart_shows_position_marker_and_vertical_guide_never_a_y_value(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         on_chart_branch = _function_body(fn, "} else if (mInRange) {", "} else {")
         assert "ww-oc-position-marker" in on_chart_branch
         assert "ww-oc-guide" in on_chart_branch
@@ -482,7 +495,7 @@ class TestBelowPickupPositionMarker:
         were the true value -- an edge indicator only, no position-marker
         circle, no full-height guide (whose direction would mislead)."""
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         off_chart_branch = _function_body(fn, "} else {\n                    // Below pickup, off-chart", "}\n            }\n\n            svg.innerHTML")
         assert "wwOvercurrentEdgeArrowSvg" in off_chart_branch
         assert "ww-oc-position-marker" not in off_chart_branch
@@ -490,12 +503,12 @@ class TestBelowPickupPositionMarker:
 
     def test_position_marker_x_uses_clamped_m_never_distorts_the_true_value(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         assert "const clampedM = wwOvercurrentClampedM(currentM, viewport);" in fn
 
     def test_below_pickup_never_calls_pixel_y_with_a_fabricated_time(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         below_branch = _function_body(fn, "} else if (mInRange) {", "}\n            }\n\n            svg.innerHTML")
         assert "wwOvercurrentPixelY" not in below_branch
 
@@ -503,14 +516,14 @@ class TestBelowPickupPositionMarker:
 class TestOperatingPointGuides:
     def test_above_pickup_still_renders_point_and_both_guides(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         above_branch = _function_body(fn, "if (Number.isFinite(currentT)) {", "} else {")
         assert "ww-oc-operating-point" in above_branch
         assert above_branch.count("ww-oc-guide") == 2
 
     def test_guides_align_with_the_clamped_tick_coordinate(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         above_branch = _function_body(fn, "if (Number.isFinite(currentT)) {", "} else {")
         assert "const clampedT = wwOvercurrentClampedT(currentT, viewport);" in above_branch
 
@@ -521,7 +534,7 @@ class TestOperatingPointGuides:
         replaces the circle for whichever axis is out of range, the
         other axis' guide is unaffected."""
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         assert 'wwOvercurrentEdgeArrowSvg(px, py, currentM < viewport.xMin ? "left" : "right")' in fn
         assert 'wwOvercurrentEdgeArrowSvg(px, py, currentT < viewport.yMin ? "down" : "up")' in fn
 
@@ -764,7 +777,7 @@ class TestCurveTransformForRelayCurrentMode:
 
     def test_render_chart_solves_in_m_domain_then_transforms_to_amps(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         curve_block = _function_body(fn, "if (points && points.length > 0) {", "// Operating point")
         assert "wwOvercurrentRelayCurrentToMultiple(viewport.xMin, pickup)" in curve_block
         assert "wwOvercurrentRelayCurrentToMultiple(viewport.xMax, pickup)" in curve_block
@@ -772,7 +785,7 @@ class TestCurveTransformForRelayCurrentMode:
 
     def test_pickup_multiple_mode_passes_the_viewport_through_unchanged(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         curve_block = _function_body(fn, "if (points && points.length > 0) {", "// Operating point")
         assert "isRelayCurrentAxis && Number.isFinite(pickup) && pickup > 0" in curve_block
         assert ": viewport;" in curve_block
@@ -781,7 +794,7 @@ class TestCurveTransformForRelayCurrentMode:
 class TestAxisTitleSwitchesWithMode:
     def test_relay_current_axis_title_text_present(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         assert "Relay Current (A secondary)" in fn
         assert 'isRelayCurrentAxis ? "Relay Current (A secondary)" : "Current / Pickup Multiple (M)"' in fn
 
@@ -789,13 +802,13 @@ class TestAxisTitleSwitchesWithMode:
 class TestPickupBoundaryReference:
     def test_pickup_boundary_line_renders_at_m_equals_one_or_pickup_amps(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         assert "const pickupBoundaryX = isRelayCurrentAxis ? pickup : 1.0;" in fn
         assert "ww-oc-pickup-boundary" in fn
 
     def test_pickup_boundary_skipped_when_outside_viewport(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         boundary_block = _function_body(fn, "const pickupBoundaryX", "// The characteristic curve")
         assert "pickupBoundaryX >= viewport.xMin" in boundary_block
         assert "pickupBoundaryX <= viewport.xMax" in boundary_block
@@ -808,14 +821,14 @@ class TestMinorGridToggles:
         major-tick loops) -- only the NEW minor-gridline blocks are
         gated."""
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         major_x_block = _function_body(fn, "for (const v of xMajors) {\n                const x = wwOvercurrentPixelX(v, geo);\n                parts.push('<line class=\"ww-oc-gridline\"", "Minor grid lines")
         assert "wwOvercurrentState.minorGridX" not in major_x_block
         assert "wwOvercurrentState.minorGridY" not in major_x_block
 
     def test_minor_gridlines_gated_independently_per_axis(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         assert "if (wwOvercurrentState.minorGridX) {" in fn
         assert "if (wwOvercurrentState.minorGridY) {" in fn
         assert fn.count('class="ww-oc-gridline ww-oc-gridline-minor"') == 2
@@ -840,7 +853,7 @@ class TestMinorGridToggles:
         fn = _function_body(
             source,
             'document.getElementById("wwOvercurrentMinorGridYCheckbox").addEventListener',
-            "wwOvercurrentSyncAxisModeButtons();\n        wwOvercurrentSyncGridToggleCheckboxes();\n        // The ONE, permanent subscription",
+            "wwOvercurrentSyncAxisModeButtons();",
         )
         assert "wwOvercurrentState.minorGridY = event.target.checked;" in fn
         assert "wwOvercurrentRerenderChartFromState();" in fn
@@ -1019,7 +1032,7 @@ class TestCompressedSubPickupAxis:
 
     def test_render_chart_draws_the_break_marker_only_when_it_applies(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         assert "if (geo.breakApplies) {" in fn
         assert "wwOvercurrentAxisBreakSvg(geo)" in fn
 
@@ -1089,7 +1102,7 @@ class TestPickupMultipleFixedMajorTicks:
         by pickup -- never the generic dynamic classifier -- so the two
         representations stay visually equivalent."""
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         assert "const xMajors = isRelayCurrentAxis ? wwOvercurrentRelayCurrentMajors(viewport) : wwOvercurrentPickupMultipleMajors(viewport);" in fn
 
     def test_default_viewport_gridline_count_reflects_the_new_fixed_major_list(self):
@@ -1448,7 +1461,7 @@ class TestRelayCurrentPickupBoundaryVisualEquivalence:
 
     def test_pickup_boundary_value_in_relay_current_mode_is_the_pickup_itself(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT)", "function wwOvercurrentRerenderChartFromState")
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
         assert "const pickupBoundaryX = isRelayCurrentAxis ? pickup : 1.0;" in fn
 
 
@@ -1863,3 +1876,230 @@ class TestStableReferenceOnlyUpdatedByExactFetch:
         catch_start = fn.index("} catch (error) {")
         catch_return = fn.index("return;", catch_start)
         assert "wwOvercurrentUpdateStableReferenceOperatingTime" not in fn[catch_start:catch_return]
+
+
+class TestManualInputCalculatorMode:
+    """Manual Input / Calculator mode -- the first implementation of the
+    shared Analysis Input Source concept (see
+    docs/project-memory/ANALYSIS_INPUT_SOURCE.md). No IEC IDMT
+    calculation, CT conversion, or engineering-unit normalization is
+    duplicated here -- every assertion in this class is about UI/state
+    wiring; the actual calculation is exercised end-to-end by
+    test_overcurrent_analysis_api.py::TestManualAnalysisEndpoint and
+    test_overcurrent_analysis_service.py::TestManualOvercurrentAnalysis."""
+
+    def test_shared_input_source_constants_are_not_oc_specific(self):
+        """Task's own explicit "do not make the shared state OC-specific
+        if avoidable" -- named `WW_ANALYSIS_*`, not `WW_OC_*`, so a
+        future analyzer's own manual mode reuses these SAME two
+        constants."""
+        source = _source()
+        assert 'const WW_ANALYSIS_INPUT_SOURCE_RECORDING = "recording";' in source
+        assert 'const WW_ANALYSIS_INPUT_SOURCE_MANUAL = "manual";' in source
+
+    def test_oc_state_owns_its_own_input_source_and_manual_fields(self):
+        """Input-source selection is per-analyzer (mirrors
+        `selectedContextId`'s own established precedent) -- OC's manual
+        value state lives on `wwOvercurrentState`, never a shared/global
+        object a future analyzer could accidentally collide with."""
+        source = _source()
+        fn = _function_body(source, "const wwOvercurrentState = {", "function wwOvercurrentFetchCharacteristics")
+        assert "inputSource: WW_ANALYSIS_INPUT_SOURCE_RECORDING," in fn
+        assert "manual: {" in fn
+        assert "inputCurrent: 30000," in fn
+        assert 'inputCurrentUnit: "A",' in fn
+        assert 'inputBasis: "primary",' in fn
+        assert "latestResult: null," in fn
+
+    def test_input_source_segmented_control_markup(self):
+        source = _source()
+        assert 'id="wwOvercurrentInputSourceRecordingBtn" class="ww-oc-axis-toggle-btn ww-oc-axis-toggle-btn--active" data-input-source="recording" aria-pressed="true">Recording<' in source
+        assert 'id="wwOvercurrentInputSourceManualBtn" class="ww-oc-axis-toggle-btn" data-input-source="manual" aria-pressed="false">Manual<' in source
+        # Reuses the EXACT same segmented-control classes the Pickup
+        # Multiple/Relay Current toggle already established -- visual
+        # consistency, never a second toggle style (task §4).
+        group_rule = _function_body(source, ".ww-oc-axis-toggle-group {", "}")
+        assert "border-radius: var(--radius);" in group_rule
+        assert "overflow: hidden;" in group_rule
+
+    def test_manual_input_section_markup_and_default_hidden(self):
+        source = _source()
+        assert 'id="wwOvercurrentManualInputSection" hidden>' in source
+        assert 'id="wwOvercurrentManualCurrentInput" min="0" step="1" value="30000"' in source
+        assert 'id="wwOvercurrentManualUnitSelect"' in source
+        assert '<option value="A" selected>A</option>' in source
+        assert '<option value="kA">kA</option>' in source
+        assert 'id="wwOvercurrentManualBasisSelect"' in source
+        assert '<option value="primary" selected>Primary</option>' in source
+        assert '<option value="secondary">Secondary</option>' in source
+
+    def test_relay_settings_are_never_duplicated_inside_the_manual_section(self):
+        """Task §5: Characteristic/Pickup/TMS/Recording basis/CT must
+        never be repeated inside the Manual Input section -- only the
+        current VALUE'S OWN source/basis/unit fields live there."""
+        source = _source()
+        manual_section = _function_body(
+            source, 'id="wwOvercurrentManualInputSection"', '<div class="ww-oc-values-list"'
+        )
+        for forbidden_id in (
+            "wwOvercurrentCharacteristicSelect", "wwOvercurrentPickupInput", "wwOvercurrentTmsInput",
+            "wwOvercurrentBasisSelect", "wwOvercurrentCtPrimaryInput", "wwOvercurrentCtSecondaryInput",
+        ):
+            assert forbidden_id not in manual_section
+
+    def test_set_input_source_switches_state_and_ui_never_touches_relay_settings(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentSetInputSource(mode)", "function wwOvercurrentSyncInputSourceButtons")
+        assert "wwOvercurrentState.inputSource = mode;" in fn
+        assert "wwOvercurrentSyncInputSourceButtons();" in fn
+        assert "wwOvercurrentUpdateManualSectionVisibility();" in fn
+        assert "wwOvercurrentUpdateCtFieldsVisibility();" in fn
+        assert "wwOvercurrentState.settings" not in fn  # never touches the shared relay settings object
+
+    def test_switching_to_manual_triggers_manual_recompute_switching_back_forces_exact_recording_refresh(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentSetInputSource(mode)", "function wwOvercurrentSyncInputSourceButtons")
+        assert "wwOvercurrentRequestManualAnalysis();" in fn
+        assert "wwOvercurrentRequestExactPlaybackFetch();" in fn
+
+    def test_handle_settings_changed_dispatches_by_active_input_source(self):
+        """Task §5's own "switching mode must not alter relay settings" +
+        "settings stay authoritative in both modes" -- ONE shared
+        settings-changed handler, dispatching to whichever pipeline is
+        currently active."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentHandleSettingsChanged()", "// ---- Manual Input")
+        assert "WW_ANALYSIS_INPUT_SOURCE_MANUAL" in fn
+        assert "wwOvercurrentRequestManualAnalysis();" in fn
+        assert "wwOvercurrentRequestExactPlaybackFetch();" in fn
+
+    def test_manual_input_validity_guard_rejects_blank_nan_infinity_negative_zero(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentManualInputIsValid()", "function wwOvercurrentRequestManualAnalysis")
+        assert "Number.isFinite(value)" in fn
+        assert "value > 0" in fn
+
+    def test_request_manual_analysis_never_fires_for_invalid_input(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRequestManualAnalysis()", "function wwOvercurrentRenderManualResult")
+        assert "if (!wwOvercurrentManualInputIsValid())" in fn
+        assert "wwOvercurrentFetchManualAnalysis" in fn
+        # The early-invalid branch returns before ever reaching the fetch call.
+        invalid_branch = _function_body(fn, "if (!wwOvercurrentManualInputIsValid()) {", "}")
+        assert "wwOvercurrentFetchManualAnalysis" not in invalid_branch
+
+    def test_manual_fetch_reuses_the_shared_ct_settings_never_a_second_ct_input(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRequestManualAnalysis()", "function wwOvercurrentRenderManualResult")
+        assert "s.ctPrimary" in fn
+        assert "s.ctSecondary" in fn
+        assert "recording_basis: m.inputBasis," in fn
+
+    def test_manual_fetch_url_targets_the_workspace_scoped_manual_endpoint(self):
+        source = _source()
+        fn = _function_body(
+            source, "function wwOvercurrentFetchManualAnalysis(workspaceId, params)", "// ---- Characteristics list",
+        )
+        assert '"/overcurrent-manual?"' in fn
+        assert "/engineering-contexts/" not in fn
+
+    def test_manual_request_generation_guards_against_stale_responses(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRequestManualAnalysis()", "function wwOvercurrentRenderManualResult")
+        assert "++wwOvercurrentState.manualRequestGeneration" in fn
+        assert "myGeneration !== wwOvercurrentState.manualRequestGeneration" in fn
+        assert "epochAtStart !== ww.epoch" in fn
+        assert "currentWorkspaceId() !== workspaceId" in fn
+
+    def test_render_manual_result_shows_exactly_the_three_task_specified_rows(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderManualResult(result)", "function wwOvercurrentResetState")
+        assert '"Relay-equivalent current"' in fn
+        assert '"Multiple of pickup"' in fn
+        assert '"Expected operating time"' in fn
+        # None of the recording-only rows ever appear in Manual mode.
+        for forbidden_row in ("Measured RMS current", '"Pickup"', "Above-pickup duration"):
+            assert forbidden_row not in fn
+
+    def test_render_manual_result_below_pickup_wording(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderManualResult(result)", "function wwOvercurrentResetState")
+        assert '"< 1 ×"' in fn
+        assert '"Not applicable / below pickup"' in fn
+
+    def test_render_manual_result_guards_against_being_called_while_not_in_manual_mode(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderManualResult(result)", "function wwOvercurrentResetState")
+        assert "if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;" in fn
+
+    def test_render_result_guards_against_being_called_while_in_manual_mode(self):
+        """The reverse guard -- a stale/late-resolving RECORDING fetch
+        must never clobber the Manual UI."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderResult(result)", "function wwOvercurrentComputeActiveRelatedWaveformRoles")
+        assert "if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return;" in fn
+
+    def test_manual_result_never_shows_the_threshold_alert(self):
+        """No above-pickup-DURATION concept exists for a standalone
+        manual value -- the qualified threshold_exceeded alert never
+        applies in Manual mode."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderManualResult(result)", "function wwOvercurrentResetState")
+        assert "alertEl.hidden = true;" in fn
+        assert "threshold_exceeded" not in fn
+
+    def test_playback_tick_gated_off_entirely_in_manual_mode(self):
+        """Task §12: manual OC calculation must not depend on
+        wwPlayback.currentTime, and the operating point must remain
+        stable while Playback moves -- the fetch-triggering half of the
+        tick handler is gated on the active input source; the transport-
+        UI-sync half above stays unconditional (shared/global Playback)."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentOnPlaybackTick(currentTime, playback)", "// ---- Throttled")
+        assert 'if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return;' in fn
+        # The guard sits AFTER the transport-controls sync block (still
+        # runs regardless of mode) but BEFORE the fetch-triggering branch.
+        guard_index = fn.index("WW_ANALYSIS_INPUT_SOURCE_RECORDING) return;")
+        sync_index = fn.index("wwSyncPlaybackControls")
+        fetch_index = fn.index("wwOvercurrentMaybeFetchForPlayback();")
+        assert sync_index < guard_index < fetch_index
+
+    def test_related_waveform_roles_are_empty_in_manual_mode_never_a_fabricated_waveform(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentComputeActiveRelatedWaveformRoles()", "function wwOvercurrentPushRelatedWaveformRoles")
+        assert "if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return [];" in fn
+
+    def test_ensure_curve_and_render_point_is_shared_verbatim_between_both_modes(self):
+        """No separate manual-only chart-rendering path -- the SAME
+        function, threading only a cosmetic `isManual` flag through to
+        wwOvercurrentRenderChart() for its own "Manual input point"
+        treatment (task §2: never a second, manual-only engine)."""
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentEnsureCurveAndRenderPoint(result)", "// ---- Chart:")
+        assert "const isManual = wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;" in fn
+        assert fn.count("wwOvercurrentRenderChart(") >= 2
+
+    def test_manual_operating_point_gets_a_distinct_visual_marker_and_tooltip(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
+        assert "ww-oc-manual-marker" in fn
+        assert "<title>Manual input point</title>" in fn
+        css_rule = _function_body(source, ".ww-oc-manual-marker {", "}")
+        assert "stroke-dasharray" in css_rule
+
+    def test_reset_state_clears_input_source_and_manual_state(self):
+        source = _source()
+        fn = _function_body(source, "function wwOvercurrentResetState()", "const wwPhasorState")
+        assert "wwOvercurrentState.inputSource = WW_ANALYSIS_INPUT_SOURCE_RECORDING;" in fn
+        assert "wwOvercurrentState.manual = { inputCurrent: 30000, inputCurrentUnit: \"A\", inputBasis: \"primary\", latestResult: null };" in fn
+
+    def test_manual_fields_use_change_event_never_per_keystroke_input_event(self):
+        """Design choice (documented in the task's own final report): the
+        browser's native "change" event (fires on blur/Enter, matching
+        every OTHER OC settings field's own established convention) is
+        the debounce mechanism -- never a live per-keystroke "input"
+        listener, and never an extra timer."""
+        source = _source()
+        for field_id in ("wwOvercurrentManualCurrentInput", "wwOvercurrentManualUnitSelect", "wwOvercurrentManualBasisSelect"):
+            assert f'document.getElementById("{field_id}").addEventListener("change"' in source
+            assert f'document.getElementById("{field_id}").addEventListener("input"' not in source

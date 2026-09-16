@@ -34,8 +34,10 @@ from app.domain.overcurrent import (
     ct_values_valid,
     estimate_trailing_rms_at_time,
     evaluate_idmt_operating_time,
+    evaluate_multiple_and_operating_time,
     generate_idmt_curve_points,
     get_characteristic,
+    input_current_valid,
     known_characteristics,
     pickup_valid,
     solve_multiple_of_pickup_for_operating_time,
@@ -210,6 +212,52 @@ class TestSettingsValidation:
     @pytest.mark.parametrize("primary,secondary", [(0.0, 1.0), (1000.0, 0.0), (-1000.0, 1.0), (1000.0, -1.0)])
     def test_ct_values_invalid(self, primary, secondary):
         assert ct_values_valid(primary, secondary) is False
+
+    @pytest.mark.parametrize("current", [0.001, 1.0, 30000.0])
+    def test_input_current_valid_positive(self, current):
+        assert input_current_valid(current) is True
+
+    @pytest.mark.parametrize("current", [0.0, -1.0, float("inf"), float("nan")])
+    def test_input_current_invalid(self, current):
+        """Manual Input / Calculator mode's own explicit guardrail list:
+        blank (never reaches this function, rejected earlier as NaN by
+        the caller's own parse step)/NaN/Infinity/negative/zero."""
+        assert input_current_valid(current) is False
+
+
+class TestEvaluateMultipleAndOperatingTime:
+    """The shared composition Manual Input / Calculator mode reuses
+    verbatim from the recording-driven path -- see
+    docs/project-memory/ANALYSIS_INPUT_SOURCE.md."""
+
+    def test_matches_the_separately_computed_multiple_and_operating_time(self):
+        constants = IEC_STANDARD_INVERSE.constants
+        tms = 0.10
+        relay_secondary_current = 25.0
+        pickup = 1.0
+        multiple, operating_time = evaluate_multiple_and_operating_time(constants, tms, relay_secondary_current, pickup)
+        assert multiple == pytest.approx(25.0, rel=1e-12)
+        assert operating_time == pytest.approx(evaluate_idmt_operating_time(constants, tms, 25.0), rel=1e-12)
+
+    def test_below_pickup_returns_a_finite_multiple_and_a_none_operating_time(self):
+        constants = IEC_STANDARD_INVERSE.constants
+        multiple, operating_time = evaluate_multiple_and_operating_time(constants, 0.10, 0.5, 1.0)
+        assert multiple == pytest.approx(0.5)
+        assert operating_time is None
+
+    def test_never_duplicates_the_idmt_formula_itself(self):
+        """Cross-checks across all three IEC characteristics -- the
+        SAME `evaluate_idmt_operating_time()` this module's own golden
+        tests already trust, never a second, independently-typed
+        formula."""
+        for characteristic in known_characteristics():
+            multiple, operating_time = evaluate_multiple_and_operating_time(
+                characteristic.constants, 0.20, 8.0, 1.0,
+            )
+            assert multiple == pytest.approx(8.0)
+            assert operating_time == pytest.approx(
+                evaluate_idmt_operating_time(characteristic.constants, 0.20, 8.0), rel=1e-12,
+            )
 
 
 class TestCtConversion:

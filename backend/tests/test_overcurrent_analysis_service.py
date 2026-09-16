@@ -26,7 +26,8 @@ from app.domain.analysis_input_resolution import STATUS_NEEDS_CONFIGURATION
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.errors import EngineeringContextNotFoundError
-from app.services.overcurrent_analysis_service import compute_overcurrent_analysis
+from app.domain.overcurrent import IEC_STANDARD_INVERSE, evaluate_idmt_operating_time
+from app.services.overcurrent_analysis_service import compute_overcurrent_analysis, compute_overcurrent_manual_analysis
 from app.services.workspace_registry import WorkspaceRegistry
 
 SAMPLE_RATE_HZ = 5000.0
@@ -322,3 +323,112 @@ class TestAbovePickupDurationIntegration:
         assert result.threshold_exceeded == (
             result.above_pickup_duration_seconds > result.expected_operating_time_seconds
         )
+
+
+class TestManualOvercurrentAnalysis:
+    """Manual Input / Calculator mode (Analysis Input Source = 'manual')
+    -- see docs/project-memory/ANALYSIS_INPUT_SOURCE.md. Pure validation
+    + calculation, no registries at all -- reuses the SAME `convert_to_
+    relay_secondary()`/`evaluate_multiple_and_operating_time()` domain
+    functions `compute_overcurrent_analysis()` (the recording-driven
+    path above) already calls."""
+
+    def _manual(self, **overrides):
+        kwargs = dict(
+            characteristic_id="iec_standard_inverse", tms=0.10, pickup_current_secondary=1.0,
+            input_current=30000.0, input_current_unit="A", input_basis="primary",
+            ct_primary=1200.0, ct_secondary=1.0,
+        )
+        kwargs.update(overrides)
+        return compute_overcurrent_manual_analysis(**kwargs)
+
+    def test_golden_30000_a_primary_through_1200_to_1_ct_pickup_1_0(self):
+        """Owner's own worked example: pickup 1.0 A secondary, CT
+        1200:1, manual input 30000 A primary -> 25 A secondary, M=25.
+        Expected operating time is cross-checked against the SAME
+        trusted `evaluate_idmt_operating_time()` every other golden test
+        in this codebase already relies on -- never a hard-coded guess."""
+        result = self._manual()
+        assert result.status == "computed"
+        assert result.relay_secondary_current == pytest.approx(25.0, rel=1e-9)
+        assert result.multiple_of_pickup == pytest.approx(25.0, rel=1e-9)
+        expected_time = evaluate_idmt_operating_time(IEC_STANDARD_INVERSE.constants, 0.10, 25.0)
+        assert result.expected_operating_time_seconds == pytest.approx(expected_time, rel=1e-9)
+        assert result.expected_operating_time_seconds is not None and result.expected_operating_time_seconds > 0
+
+    def test_30_ka_primary_equals_30000_a_primary(self):
+        """Reuses the shared engineering-unit layer -- 30 kA and 30000 A
+        must normalize to the identical relay-secondary current."""
+        result_ka = self._manual(input_current=30.0, input_current_unit="kA")
+        result_a = self._manual(input_current=30000.0, input_current_unit="A")
+        assert result_ka.status == "computed"
+        assert result_a.status == "computed"
+        assert result_ka.relay_secondary_current == pytest.approx(result_a.relay_secondary_current, rel=1e-9)
+        assert result_ka.multiple_of_pickup == pytest.approx(result_a.multiple_of_pickup, rel=1e-9)
+
+    def test_secondary_basis_bypasses_ct_conversion(self):
+        """A secondary-basis manual current must equal the relay-
+        secondary current exactly -- the CT ratio must never be
+        applied."""
+        result = self._manual(input_current=2.5, input_current_unit="A", input_basis="secondary",
+                               ct_primary=None, ct_secondary=None)
+        assert result.status == "computed"
+        assert result.relay_secondary_current == pytest.approx(2.5, rel=1e-9)
+
+    def test_below_pickup_has_no_finite_operating_time(self):
+        result = self._manual(input_current=0.5, input_current_unit="A", input_basis="secondary",
+                               ct_primary=None, ct_secondary=None, pickup_current_secondary=1.0)
+        assert result.status == "computed"
+        assert result.multiple_of_pickup == pytest.approx(0.5, rel=1e-9)
+        assert result.expected_operating_time_seconds is None
+
+    @pytest.mark.parametrize("bad_current", [0.0, -1.0, float("nan"), float("inf")])
+    def test_invalid_input_current_rejected(self, bad_current):
+        result = self._manual(input_current=bad_current, input_current_unit="A", input_basis="secondary",
+                               ct_primary=None, ct_secondary=None)
+        assert result.status == "needs_configuration"
+        assert result.reason_code == "invalid_input_current"
+
+    def test_unknown_characteristic_rejected(self):
+        result = self._manual(characteristic_id="nonexistent")
+        assert result.status == "needs_configuration"
+        assert result.reason_code == "unknown_characteristic"
+
+    def test_invalid_tms_rejected(self):
+        result = self._manual(tms=-1.0)
+        assert result.status == "needs_configuration"
+        assert result.reason_code == "invalid_tms"
+
+    def test_invalid_pickup_rejected(self):
+        result = self._manual(pickup_current_secondary=0.0)
+        assert result.status == "needs_configuration"
+        assert result.reason_code == "invalid_pickup"
+
+    def test_primary_basis_without_ct_values_rejected(self):
+        result = self._manual(input_basis="primary", ct_primary=None, ct_secondary=None)
+        assert result.status == "needs_configuration"
+        assert result.reason_code == "invalid_ct_values"
+
+    def test_invalid_ct_ratio_rejected(self):
+        result = self._manual(input_basis="primary", ct_primary=0.0, ct_secondary=1.0)
+        assert result.status == "needs_configuration"
+        assert result.reason_code == "invalid_ct_values"
+
+    def test_unsupported_unit_rejected(self):
+        result = self._manual(input_current_unit="furlongs-per-fortnight")
+        assert result.status == "needs_configuration"
+        assert result.reason_code == "unsupported_current_unit"
+
+    def test_never_reads_or_touches_any_registry_state(self):
+        """A pure function -- calling it with wildly different
+        characteristic/pickup/current combinations never raises, never
+        needs a workspace/context/source, confirming Manual mode's own
+        complete independence from Engineering Context/Playback/channel
+        state (task's own explicit requirement)."""
+        for pickup in (0.1, 1.0, 10.0):
+            for current in (1.0, 100.0, 100000.0):
+                result = self._manual(
+                    input_current=current, input_current_unit="A", input_basis="secondary",
+                    ct_primary=None, ct_secondary=None, pickup_current_secondary=pickup,
+                )
+                assert result.status == "computed"

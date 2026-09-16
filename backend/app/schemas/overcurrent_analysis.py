@@ -67,3 +67,31 @@ class OvercurrentCurveOut(BaseModel):
     characteristic_id: str
     tms: float
     points: list[OvercurrentCurvePointOut]
+
+
+OvercurrentManualAnalysisStatus = Literal["computed", "needs_configuration"]
+
+
+class OvercurrentManualAnalysisResultOut(BaseModel):
+    """Manual Input / Calculator mode (Analysis Input Source = 'manual')
+    -- see docs/project-memory/ANALYSIS_INPUT_SOURCE.md. Deliberately has
+    no `engineering_context_id`/`phase`/`analysis_time`/`channel_ref`/
+    `above_pickup_duration_seconds`/`threshold_exceeded` fields, mirroring
+    `app.domain.overcurrent.ManualOvercurrentAnalysisResult`'s own
+    rationale for omitting them."""
+
+    status: OvercurrentManualAnalysisStatus
+    characteristic_id: str | None
+    tms: float | None
+    pickup_current_secondary: float | None
+    input_basis: OvercurrentRecordingBasis | None
+    ct_primary: float | None
+    ct_secondary: float | None
+    algorithm_version: str
+    input_current: float | None
+    input_current_unit: str | None
+    relay_secondary_current: float | None
+    multiple_of_pickup: float | None
+    expected_operating_time_seconds: float | None
+    reason_code: str | None
+    message: str

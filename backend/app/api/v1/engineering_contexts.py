@@ -75,6 +75,7 @@ from app.schemas.overcurrent_analysis import (
     OvercurrentCharacteristicsOut,
     OvercurrentCurveOut,
     OvercurrentCurvePointOut,
+    OvercurrentManualAnalysisResultOut,
 )
 from app.schemas.phasor_analysis import (
     PhasorAnalysisResultOut,
@@ -101,6 +102,7 @@ from app.services.overcurrent_analysis_service import (
     CurveComputationError,
     compute_idmt_curve,
     compute_overcurrent_analysis,
+    compute_overcurrent_manual_analysis,
     list_known_characteristics,
 )
 from app.services.phasor_analysis_service import compute_phasor_analysis, compute_phasor_diagram
@@ -536,6 +538,54 @@ def get_overcurrent_curve(characteristic_id: str, tms: float) -> OvercurrentCurv
         characteristic_id=characteristic_id, tms=tms,
         points=[OvercurrentCurvePointOut(multiple_of_pickup=m, operating_time_seconds=t) for m, t in points],
     )
+
+
+def _overcurrent_manual_result_to_out(result) -> OvercurrentManualAnalysisResultOut:
+    return OvercurrentManualAnalysisResultOut(
+        status=result.status, characteristic_id=result.characteristic_id, tms=result.tms,
+        pickup_current_secondary=result.pickup_current_secondary, input_basis=result.input_basis,
+        ct_primary=result.ct_primary, ct_secondary=result.ct_secondary, algorithm_version=result.algorithm_version,
+        input_current=result.input_current, input_current_unit=result.input_current_unit,
+        relay_secondary_current=result.relay_secondary_current, multiple_of_pickup=result.multiple_of_pickup,
+        expected_operating_time_seconds=result.expected_operating_time_seconds,
+        reason_code=result.reason_code, message=result.message,
+    )
+
+
+@router.get("/overcurrent-manual", response_model=OvercurrentManualAnalysisResultOut)
+def get_overcurrent_manual_analysis(
+    workspace_id: str,
+    characteristic_id: str,
+    tms: float,
+    pickup_current_secondary: float,
+    input_current: float,
+    input_current_unit: str,
+    recording_basis: str,
+    ct_primary: float | None = None,
+    ct_secondary: float | None = None,
+) -> OvercurrentManualAnalysisResultOut:
+    """Manual Input / Calculator mode (Analysis Input Source = 'manual',
+    see docs/project-memory/ANALYSIS_INPUT_SOURCE.md) -- the SECOND
+    Analysis Input Source Overcurrent v1 supports, alongside the existing
+    recording- and Playback-driven `.../overcurrent` endpoint above. Workspace-
+    scoped only (like `.../overcurrent-characteristics`/`.../overcurrent-
+    curve`) -- no Engineering Context, channel, waveform, or Playback
+    state is involved at all; this is a standalone hypothetical/test
+    current value evaluated against the SAME relay settings.
+    `recording_basis` here describes the MANUALLY ENTERED value's own
+    basis (never inferred by the caller) -- reusing the identical query-
+    parameter name/vocabulary `.../overcurrent` already uses for the same
+    underlying concept, so a frontend client can share its own basis-
+    handling code between the two endpoints. `recording_basis='primary'`
+    additionally requires `ct_primary`/`ct_secondary` (both > 0), exactly
+    like `.../overcurrent`. Never persisted."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    result = compute_overcurrent_manual_analysis(
+        characteristic_id=characteristic_id, tms=tms, pickup_current_secondary=pickup_current_secondary,
+        input_current=input_current, input_current_unit=input_current_unit, input_basis=recording_basis,
+        ct_primary=ct_primary, ct_secondary=ct_secondary,
+    )
+    return _overcurrent_manual_result_to_out(result)
 
 
 def _overcurrent_result_to_out(result) -> OvercurrentAnalysisResultOut:

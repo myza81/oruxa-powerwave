@@ -208,3 +208,89 @@ class TestComputedThroughRealUpload:
         assert "should trip" not in text
         assert "relay operated" not in text
         assert "failed to trip" not in text
+
+
+class TestManualAnalysisEndpoint:
+    """Manual Input / Calculator mode (`GET .../overcurrent-manual`) --
+    workspace-scoped only, no Engineering Context/upload needed at all."""
+
+    def _manual(self, client, workspace_id="ws-manual-1", **params):
+        defaults = dict(
+            characteristic_id="iec_standard_inverse", tms=0.10, pickup_current_secondary=1.0,
+            input_current=30000.0, input_current_unit="A", recording_basis="primary",
+            ct_primary=1200.0, ct_secondary=1.0,
+        )
+        defaults.update(params)
+        # `None` values are OMITTED entirely (never sent as an empty-string
+        # query param, which FastAPI would reject as an invalid float) --
+        # mirrors `_overcurrent()`'s own established convention above of
+        # simply not passing ct_primary/ct_secondary at all when unused.
+        query = {k: v for k, v in defaults.items() if v is not None}
+        return client.get(f"/api/v1/workspaces/{workspace_id}/overcurrent-manual", params=query)
+
+    def test_golden_30000_a_primary_via_http(self, client):
+        """Owner's own worked example end-to-end through the real HTTP
+        endpoint, with zero prior upload/context/source setup."""
+        resp = self._manual(client)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "computed"
+        assert body["algorithm_version"] == "overcurrent_idmt_v1"
+        assert body["relay_secondary_current"] == pytest.approx(25.0, rel=1e-6)
+        assert body["multiple_of_pickup"] == pytest.approx(25.0, rel=1e-6)
+        assert body["expected_operating_time_seconds"] is not None
+        assert body["expected_operating_time_seconds"] > 0
+        assert body["input_basis"] == "primary"
+        assert body["input_current"] == pytest.approx(30000.0)
+        assert body["input_current_unit"] == "A"
+
+    def test_no_engineering_context_or_channel_fields_in_response(self, client):
+        """The response shape must never carry recording-only concepts
+        that don't exist for a standalone manual value."""
+        resp = self._manual(client)
+        body = resp.json()
+        for absent_field in ("engineering_context_id", "phase", "analysis_time", "channel_ref", "above_pickup_duration_seconds", "threshold_exceeded"):
+            assert absent_field not in body
+
+    def test_30_ka_equals_30000_a_via_http(self, client):
+        resp_ka = self._manual(client, input_current=30.0, input_current_unit="kA")
+        resp_a = self._manual(client, input_current=30000.0, input_current_unit="A")
+        assert resp_ka.json()["relay_secondary_current"] == pytest.approx(resp_a.json()["relay_secondary_current"], rel=1e-6)
+
+    def test_secondary_basis_bypasses_ct_via_http(self, client):
+        resp = self._manual(client, input_current=2.5, input_current_unit="A", recording_basis="secondary",
+                             ct_primary=None, ct_secondary=None)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["relay_secondary_current"] == pytest.approx(2.5, rel=1e-6)
+
+    def test_below_pickup_via_http(self, client):
+        resp = self._manual(client, input_current=0.5, input_current_unit="A", recording_basis="secondary",
+                             ct_primary=None, ct_secondary=None, pickup_current_secondary=1.0)
+        body = resp.json()
+        assert body["multiple_of_pickup"] == pytest.approx(0.5, rel=1e-6)
+        assert body["expected_operating_time_seconds"] is None
+
+    @pytest.mark.parametrize("bad_current", [0.0, -1.0])
+    def test_invalid_input_current_via_http(self, client, bad_current):
+        resp = self._manual(client, input_current=bad_current, input_current_unit="A", recording_basis="secondary",
+                             ct_primary=None, ct_secondary=None)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "needs_configuration"
+        assert body["reason_code"] == "invalid_input_current"
+
+    def test_missing_required_query_param_is_422(self, client):
+        resp = client.get(
+            "/api/v1/workspaces/ws-manual-1/overcurrent-manual",
+            params={"characteristic_id": "iec_standard_inverse", "tms": 0.1, "pickup_current_secondary": 1.0},
+        )
+        assert resp.status_code == 422
+
+    def test_no_relay_operation_claims_in_response_wording(self, client):
+        resp = self._manual(client, tms=0.025)
+        assert resp.status_code == 200, resp.text
+        text = resp.text.lower()
+        assert "tripped" not in text
+        assert "should trip" not in text
+        assert "relay operated" not in text
+        assert "failed to trip" not in text

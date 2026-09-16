@@ -2018,3 +2018,355 @@ test.describe("Overcurrent Analysis v1 -- chart control toolbar UI/UX redesign (
     await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue(xMaxBefore);
   });
 });
+
+test.describe("Overcurrent Analysis v1 -- Manual Input / Calculator mode (Analysis Input Source)", () => {
+  // The first implementation of the shared Analysis Input Source concept
+  // (Recording/Manual) -- see docs/project-memory/ANALYSIS_INPUT_SOURCE.md.
+  // No IEC IDMT/CT/unit-normalization math is re-derived in this file --
+  // every assertion here is end-to-end through the SAME production
+  // backend endpoint/domain functions Recording mode already uses.
+
+  async function enterManualCurrent(page, { current, unit, basis }) {
+    if (basis !== undefined) {
+      await page.locator("#wwOvercurrentManualBasisSelect").selectOption(basis);
+    }
+    if (unit !== undefined) {
+      await page.locator("#wwOvercurrentManualUnitSelect").selectOption(unit);
+    }
+    if (current !== undefined) {
+      await page.locator("#wwOvercurrentManualCurrentInput").fill(String(current));
+      await page.locator("#wwOvercurrentManualCurrentInput").dispatchEvent("change");
+      // See the axis-default-refinement task's own documented test-
+      // harness finding: `.fill()` leaves focus in the field, so an
+      // explicit blur is needed to settle the browser's own native
+      // blur-triggered "change" before the next action (never a
+      // production concern -- purely a Playwright interaction detail).
+      await page.locator("#wwOvercurrentManualCurrentInput").blur();
+    }
+  }
+
+  test("default Input Source is Recording; segmented control is visually consistent with the Pickup Multiple/Relay Current toggle", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await expect(page.locator("#wwOvercurrentInputSourceRecordingBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#wwOvercurrentInputSourceManualBtn")).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator("#wwOvercurrentManualInputSection")).toBeHidden();
+
+    const groupBorderWidth = await page.locator("#wwOvercurrentInputSourceRecordingBtn").locator("xpath=..").evaluate(
+      (el) => getComputedStyle(el).borderTopWidth
+    );
+    expect(groupBorderWidth).not.toBe("0px");
+  });
+
+  test("switching to Manual reveals the Manual Input section; relay settings are untouched", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    const pickupBefore = await page.locator("#wwOvercurrentPickupInput").inputValue();
+    const tmsBefore = await page.locator("#wwOvercurrentTmsInput").inputValue();
+
+    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+    await expect(page.locator("#wwOvercurrentManualInputSection")).toBeVisible();
+    await expect(page.locator("#wwOvercurrentInputSourceManualBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#wwOvercurrentInputSourceRecordingBtn")).toHaveAttribute("aria-pressed", "false");
+
+    await expect(page.locator("#wwOvercurrentPickupInput")).toHaveValue(pickupBefore);
+    await expect(page.locator("#wwOvercurrentTmsInput")).toHaveValue(tmsBefore);
+  });
+
+  test("golden example: pickup 1.0 A secondary, CT 1200:1, manual 30000 A primary -> 25 A secondary, M=25x", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+
+    await page.locator("#wwOvercurrentPickupInput").fill("1.0");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    await page.locator("#wwOvercurrentPickupInput").blur();
+
+    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+    await expect(page.locator("#wwOvercurrentCtPrimaryField")).toBeVisible(); // Manual's own default basis is Primary
+    await page.locator("#wwOvercurrentCtPrimaryInput").fill("1200");
+    await page.locator("#wwOvercurrentCtPrimaryInput").dispatchEvent("change");
+    await page.locator("#wwOvercurrentCtPrimaryInput").blur();
+    await page.locator("#wwOvercurrentCtSecondaryInput").fill("1");
+    await page.locator("#wwOvercurrentCtSecondaryInput").dispatchEvent("change");
+    await page.locator("#wwOvercurrentCtSecondaryInput").blur();
+    await enterManualCurrent(page, { current: 30000 });
+
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toContain("Relay-equivalent current");
+    }).toPass({ timeout: 5000 });
+
+    const text = await page.locator("#wwOvercurrentValuesList").innerText();
+    expect(text).toMatch(/25\.0\s*A secondary/);
+    expect(text).toMatch(/25\.0\s*×/);
+    expect(text).toContain("Expected operating time");
+    expect(text).not.toContain("Not applicable");
+    expect(text).not.toContain("Measured RMS current");
+    expect(text).not.toContain("Above-pickup duration");
+  });
+
+  test("30 kA primary is identical to 30000 A primary (shared engineering-unit layer)", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+    await page.locator("#wwOvercurrentCtPrimaryInput").fill("1200");
+    await page.locator("#wwOvercurrentCtPrimaryInput").dispatchEvent("change");
+    await page.locator("#wwOvercurrentCtSecondaryInput").fill("1");
+    await page.locator("#wwOvercurrentCtSecondaryInput").dispatchEvent("change");
+    await page.locator("#wwOvercurrentCtSecondaryInput").blur();
+
+    await enterManualCurrent(page, { current: 30000, unit: "A" });
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/25\.0\s*A secondary/);
+    }).toPass({ timeout: 5000 });
+    const textA = await page.locator("#wwOvercurrentValuesList").innerText();
+
+    await enterManualCurrent(page, { current: 30, unit: "kA" });
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/25\.0\s*A secondary/);
+    }).toPass({ timeout: 5000 });
+    const textKa = await page.locator("#wwOvercurrentValuesList").innerText();
+
+    expect(textKa).toBe(textA);
+  });
+
+  test("Secondary basis bypasses CT conversion entirely", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+    await enterManualCurrent(page, { current: 2.5, unit: "A", basis: "secondary" });
+    await expect(page.locator("#wwOvercurrentCtPrimaryField")).toBeHidden();
+
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/2\.5\s*A secondary/);
+    }).toPass({ timeout: 5000 });
+  });
+
+  test("below-pickup manual input shows the qualified wording, never a fabricated operating time", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await page.locator("#wwOvercurrentPickupInput").fill("10");
+    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
+    await page.locator("#wwOvercurrentPickupInput").blur();
+
+    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+    await enterManualCurrent(page, { current: 2, unit: "A", basis: "secondary" });
+
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/<\s*1\s*×/);
+    }).toPass({ timeout: 5000 });
+    const text = await page.locator("#wwOvercurrentValuesList").innerText();
+    expect(text).toContain("Not applicable / below pickup");
+  });
+
+  test("manual operating point renders on the SAME chart with a distinct manual marker, no second chart", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point")).toHaveCount(1);
+
+    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+    await enterManualCurrent(page, { current: 5, unit: "A", basis: "secondary" });
+
+    await expect(async () => {
+      const count = await page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker").count();
+      expect(count).toBe(1);
+    }).toPass({ timeout: 5000 });
+    await expect(page.locator("#wwOvercurrentSvg")).toHaveCount(1); // still the one chart
+    const title = await page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker title").textContent();
+    expect(title).toBe("Manual input point");
+  });
+
+  test("Playback movement does not move the manual result or chart point", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+    await enterManualCurrent(page, { current: 5, unit: "A", basis: "secondary" });
+    await expect(async () => {
+      // Waits for the SPECIFIC entered value (5.0 A), not merely for the
+      // "Relay-equivalent current" label -- the default 30000 A manual
+      // value (auto-computed the instant Manual mode was entered) would
+      // otherwise satisfy a weaker wait before this fill's own request
+      // has resolved.
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toMatch(/5\.0\s*A secondary/);
+    }).toPass({ timeout: 5000 });
+
+    const textBefore = await page.locator("#wwOvercurrentValuesList").innerText();
+    const cxBefore = await page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker").getAttribute("cx");
+
+    let analysisRequests = 0;
+    page.on("request", (req) => {
+      if (req.url().includes("/overcurrent?")) analysisRequests++;
+    });
+
+    const slider = page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-seek-slider");
+    const { min, max } = await seekSliderBounds(slider);
+    await seekTo(slider, min + (max - min) * 0.8);
+    await page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-play-btn").click();
+    await page.waitForTimeout(500);
+    await page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-play-btn").click();
+
+    const textAfter = await page.locator("#wwOvercurrentValuesList").innerText();
+    const cxAfter = await page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker").getAttribute("cx");
+    expect(textAfter).toBe(textBefore);
+    expect(cxAfter).toBe(cxBefore);
+    expect(analysisRequests).toBe(0); // the recording endpoint must never fire while Manual is active
+  });
+
+  test("Related Waveforms shows the shared neutral empty state in Manual mode, never a fabricated waveform", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await expect(page.locator("#wwAnalysisRelatedWaveformsEmptyState")).toBeHidden(); // Recording mode has an active role
+
+    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+    await enterManualCurrent(page, { current: 5, unit: "A", basis: "secondary" });
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toContain("Relay-equivalent current");
+    }).toPass({ timeout: 5000 });
+
+    await expect(page.locator("#wwAnalysisRelatedWaveformsEmptyState")).toBeVisible();
+  });
+
+  test("switching back to Recording restores the recording-driven point/values exactly", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toContain("Measured RMS current");
+    }).toPass({ timeout: 5000 });
+    const recordingTextBefore = await page.locator("#wwOvercurrentValuesList").innerText();
+    const recordingOpXBefore = await page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point").getAttribute("cx");
+
+    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+    await enterManualCurrent(page, { current: 5, unit: "A", basis: "secondary" });
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toContain("Relay-equivalent current");
+    }).toPass({ timeout: 5000 });
+
+    await page.locator("#wwOvercurrentInputSourceRecordingBtn").click();
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toContain("Measured RMS current");
+    }).toPass({ timeout: 5000 });
+    const recordingTextAfter = await page.locator("#wwOvercurrentValuesList").innerText();
+    const recordingOpXAfter = await page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point").getAttribute("cx");
+    expect(recordingTextAfter).toBe(recordingTextBefore);
+    expect(recordingOpXAfter).toBe(recordingOpXBefore);
+    await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker")).toHaveCount(0);
+  });
+
+  test("invalid manual input (blank, negative, zero) is handled safely -- no crash, no plotted point, no request", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+    await enterManualCurrent(page, { current: 5, unit: "A", basis: "secondary" });
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toContain("Relay-equivalent current");
+    }).toPass({ timeout: 5000 });
+
+    let manualRequests = 0;
+    page.on("request", (req) => {
+      if (req.url().includes("/overcurrent-manual")) manualRequests++;
+    });
+
+    for (const badValue of ["", "-1", "0"]) {
+      await page.locator("#wwOvercurrentManualCurrentInput").fill(badValue);
+      await page.locator("#wwOvercurrentManualCurrentInput").dispatchEvent("change");
+      await page.locator("#wwOvercurrentManualCurrentInput").blur();
+      await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker")).toHaveCount(0);
+      await expect(page.locator("#wwOvercurrentSvg polygon.ww-oc-edge-indicator")).toHaveCount(0);
+    }
+    expect(manualRequests).toBe(0); // rejected client-side before ever reaching the backend
+
+    // Recovering with a valid value still works afterward.
+    await enterManualCurrent(page, { current: 5 });
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toContain("Relay-equivalent current");
+    }).toPass({ timeout: 5000 });
+  });
+
+  for (const width of [1366, 1024]) {
+    test(`at ${width}px: Manual Input section fits cleanly, no overflow, no clipping, no overlap`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const { contextId } = await uploadAndCreateContext(page);
+      await openAnalysisOvercurrent(page);
+      await selectContextAndWaitForValues(page, contextId);
+      await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+      await expect(page.locator("#wwOvercurrentManualInputSection")).toBeVisible();
+
+      const overflowsHorizontally = await page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+      );
+      expect(overflowsHorizontally).toBe(false);
+
+      const panelBox = await page.locator("#wwOvercurrentManualInputSection").locator("xpath=..").boundingBox();
+      const controlIds = [
+        "wwOvercurrentInputSourceRecordingBtn", "wwOvercurrentInputSourceManualBtn",
+        "wwOvercurrentManualCurrentInput", "wwOvercurrentManualUnitSelect", "wwOvercurrentManualBasisSelect",
+      ];
+      const boxes = [];
+      for (const id of controlIds) {
+        const box = await page.locator(`#${id}`).boundingBox();
+        expect(box, `#${id} should render with a real, non-clipped box`).not.toBeNull();
+        expect(box.width).toBeGreaterThan(0);
+        expect(box.height).toBeGreaterThan(0);
+        expect(box.x).toBeGreaterThanOrEqual(panelBox.x - 1);
+        expect(box.x + box.width).toBeLessThanOrEqual(panelBox.x + panelBox.width + 1);
+        boxes.push({ id, box });
+      }
+      function overlaps(a, b) {
+        return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+      }
+      for (let i = 0; i < boxes.length; i++) {
+        for (let j = i + 1; j < boxes.length; j++) {
+          expect(overlaps(boxes[i].box, boxes[j].box), `${boxes[i].id} should not overlap ${boxes[j].id}`).toBe(false);
+        }
+      }
+
+      // The chart remains usable alongside the taller left panel.
+      const svgBox = await page.locator("#wwOvercurrentSvg").boundingBox();
+      expect(svgBox.width).toBeGreaterThan(50);
+      expect(svgBox.height).toBeGreaterThan(50);
+    });
+  }
+
+  test("a full workspace reset restores Input Source to Recording", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisOvercurrent(page);
+    await selectContextAndWaitForValues(page, contextId);
+    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
+    await expect(page.locator("#wwOvercurrentManualInputSection")).toBeVisible();
+
+    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#newWorkspaceButton").click();
+    await expect(page.locator("#newWorkspaceConfirmOverlay")).toBeVisible();
+    await page.locator("#newWorkspaceConfirmStartBtn").click();
+    await expect(page.locator("#newWorkspaceConfirmOverlay")).toBeHidden();
+
+    await page.locator("#mainNavAnalysisBtn").click();
+    await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
+    await expect(page.locator("#wwOvercurrentInputSourceRecordingBtn")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#wwOvercurrentManualInputSection")).toBeHidden();
+  });
+});

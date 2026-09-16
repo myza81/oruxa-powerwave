@@ -6640,6 +6640,63 @@
                 grid-column: 1;
             }
         }
+        /* Analysis Input Source row (Manual Input / Calculator mode
+           slice, see docs/project-memory/ANALYSIS_INPUT_SOURCE.md) --
+           reuses the EXACT SAME segmented-control classes
+           (.ww-oc-axis-toggle-group/-btn/--active) the Pickup Multiple/
+           Relay Current toggle already established, for the visual
+           consistency the task's own instructions explicitly require --
+           never a second toggle style. */
+        .ww-oc-input-source-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        /* Manual Input / Calculator mode's own compact section -- same
+           visual language (panel/border/radius/0.7rem) as the settings
+           grid immediately above; hidden entirely outside Manual mode. */
+        .ww-oc-manual-input-section {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 8px 10px;
+            margin-bottom: 10px;
+        }
+        .ww-oc-manual-input-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+        }
+        .ww-oc-manual-input-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .ww-oc-manual-input-row input[type="number"],
+        .ww-oc-manual-input-row select {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 8px 10px;
+            font-size: 0.7rem;
+            color: var(--text);
+            box-sizing: border-box;
+        }
+        .ww-oc-manual-input-row input[type="number"] {
+            flex: 1 1 90px;
+            min-width: 70px;
+        }
+        .ww-oc-manual-input-row select {
+            flex: 0 0 auto;
+        }
+        .ww-oc-manual-input-row input[type="number"]:focus,
+        .ww-oc-manual-input-row select:focus {
+            outline: none;
+            border-color: var(--accent-dim);
+        }
         .ww-oc-values-list {
             display: flex;
             flex-direction: column;
@@ -6739,6 +6796,18 @@
             fill: var(--text-dim);
             stroke: var(--panel);
             stroke-width: 1;
+        }
+        /* Manual Input / Calculator mode's own point/marker modifier --
+           a distinct dashed ring so it always reads as "a manual/test
+           point," never mistaken for a genuine recording-driven result
+           (task's own explicit requirement). Applies to EITHER the
+           above-pickup operating point or the below-pickup position
+           marker -- whichever is currently drawn -- never a second
+           chart element. */
+        .ww-oc-manual-marker {
+            stroke: var(--accent);
+            stroke-width: 1.25;
+            stroke-dasharray: 1.5 1;
         }
         .ww-oc-guide {
             stroke: var(--ww-chart-guide-stroke);
@@ -7989,6 +8058,22 @@
                             <div class="ww-phasor-body ww-oc-body" id="wwOvercurrentBody" hidden>
                                 <section class="panel ww-phasor-values-panel">
                                     <h3>Settings / Live Values</h3>
+                                    <!-- Shared Analysis Input Source (Manual Input /
+                                         Calculator mode slice) -- Overcurrent's own
+                                         first implementation, see
+                                         docs/project-memory/ANALYSIS_INPUT_SOURCE.md.
+                                         Reuses the EXACT same segmented-control CSS
+                                         classes (`.ww-oc-axis-toggle-group`/`-btn`/
+                                         `--active`) the Pickup Multiple/Relay Current
+                                         toggle already established, for visual
+                                         consistency -- never a second toggle style. -->
+                                    <div class="ww-oc-input-source-row">
+                                        <span class="ww-oc-view-controls-label">Input Source</span>
+                                        <span class="ww-oc-axis-toggle-group" role="group" aria-label="Analysis input source">
+                                            <button type="button" id="wwOvercurrentInputSourceRecordingBtn" class="ww-oc-axis-toggle-btn ww-oc-axis-toggle-btn--active" data-input-source="recording" aria-pressed="true">Recording</button>
+                                            <button type="button" id="wwOvercurrentInputSourceManualBtn" class="ww-oc-axis-toggle-btn" data-input-source="manual" aria-pressed="false">Manual</button>
+                                        </span>
+                                    </div>
                                     <div class="ww-oc-settings-grid">
                                         <label class="ww-phasor-field ww-oc-field-full">
                                             <span class="ww-phasor-field-label">Characteristic</span>
@@ -8019,6 +8104,29 @@
                                         <label class="ww-phasor-field ww-oc-ct-field" id="wwOvercurrentCtSecondaryField" hidden>
                                             <span class="ww-phasor-field-label">CT Secondary (A)</span>
                                             <input type="number" id="wwOvercurrentCtSecondaryInput" min="0" step="0.01">
+                                        </label>
+                                    </div>
+                                    <!-- Manual Input / Calculator mode -- Manual
+                                         input source only (hidden in Recording).
+                                         Relay settings above (Characteristic/
+                                         Pickup/TMS/basis/CT) are NEVER duplicated
+                                         here -- only the source of the measured/
+                                         test current changes. -->
+                                    <div class="ww-oc-manual-input-section" id="wwOvercurrentManualInputSection" hidden>
+                                        <div class="ww-oc-manual-input-label">Manual Input</div>
+                                        <label class="ww-phasor-field ww-oc-field-full">
+                                            <span class="ww-phasor-field-label">Input current</span>
+                                            <span class="ww-oc-manual-input-row">
+                                                <input type="number" id="wwOvercurrentManualCurrentInput" min="0" step="1" value="30000" aria-label="Manual input current value">
+                                                <select id="wwOvercurrentManualUnitSelect" aria-label="Manual input current unit">
+                                                    <option value="A" selected>A</option>
+                                                    <option value="kA">kA</option>
+                                                </select>
+                                                <select id="wwOvercurrentManualBasisSelect" aria-label="Manual input current basis">
+                                                    <option value="primary" selected>Primary</option>
+                                                    <option value="secondary">Secondary</option>
+                                                </select>
+                                            </span>
                                         </label>
                                     </div>
                                     <div class="ww-oc-values-list" id="wwOvercurrentValuesList"></div>
@@ -35267,6 +35375,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         //: memory/ANALYSIS_WORKSPACE.md's own "Data-fetch reuse" note).
         const WW_ARW_POINT_BUDGET = 2000;
 
+        // Shared Analysis Input Source concept (Manual Input / Calculator
+        // mode slice, see docs/project-memory/ANALYSIS_INPUT_SOURCE.md) --
+        // an analyzer's own current INPUT can come from the recording/
+        // Playback-driven waveform (default, existing behavior for every
+        // analyzer) or from a directly-entered engineering value (a
+        // standalone hypothetical/test calculation against the SAME
+        // relay/analysis settings). Deliberately named `WW_ANALYSIS_*`,
+        // not `WW_OC_*`, even though Overcurrent is this concept's first
+        // implementation -- a future analyzer's own manual mode (Phasor,
+        // Impedance Locus, Sequence Components, Distance) reuses these
+        // SAME two constants rather than inventing its own vocabulary.
+        // Each analyzer still owns its OWN `inputSource` state field
+        // (e.g. `wwOvercurrentState.inputSource`) and its own manual-
+        // value state -- input-source selection is per-analyzer, exactly
+        // like `selectedContextId` already is (an engineer may want
+        // Phasor showing live recording data while Overcurrent runs a
+        // Manual what-if calculation, or vice versa).
+        const WW_ANALYSIS_INPUT_SOURCE_RECORDING = "recording";
+        const WW_ANALYSIS_INPUT_SOURCE_MANUAL = "manual";
+
         // Which analyzer's own panel is currently visible -- kept in
         // sync exclusively by wwSetActiveAnalysisType(). Both Phasor's
         // and Overcurrent's own Playback tick handlers keep computing/
@@ -35795,6 +35923,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             savedXRangeByMode: { [WW_OC_XAXIS_PICKUP_MULTIPLE]: null, [WW_OC_XAXIS_RELAY_CURRENT]: null },
             minorGridX: false,
             minorGridY: false,
+            // Manual Input / Calculator mode (Analysis Input Source =
+            // WW_ANALYSIS_INPUT_SOURCE_MANUAL) -- session/UI state only,
+            // never persisted (task's own explicit "temporary state
+            // only" requirement). `inputSource` never affects Characteristic/
+            // TMS/Pickup/Recording basis/CT -- those `settings` above stay
+            // the SAME shared, authoritative relay configuration in both
+            // modes. Reset to Recording/defaults only by
+            // wwOvercurrentResetState() (full analyzer state recreation),
+            // exactly like `xAxisMode`/`minorGridX` above.
+            inputSource: WW_ANALYSIS_INPUT_SOURCE_RECORDING,
+            manual: {
+                inputCurrent: 30000,
+                inputCurrentUnit: "A",
+                inputBasis: "primary",
+                latestResult: null,
+            },
+            manualRequestGeneration: 0,
         };
 
         function wwOvercurrentFetchCharacteristics(workspaceId) {
@@ -35814,6 +35959,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return wwPhasorFetchJson(
                 apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
                 "/engineering-contexts/" + encodeURIComponent(contextId) + "/overcurrent?" + params.toString()
+            );
+        }
+
+        // Manual Input / Calculator mode -- workspace-scoped only, no
+        // Engineering Context/channel/waveform/Playback involved at all
+        // (see docs/project-memory/ANALYSIS_INPUT_SOURCE.md).
+        function wwOvercurrentFetchManualAnalysis(workspaceId, params) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/overcurrent-manual?" + params.toString()
             );
         }
 
@@ -36078,6 +36232,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             wwOvercurrentState.analysisTime = currentTime;
 
+            // Manual Input / Calculator mode (task's own explicit
+            // requirement): the Playback transport UI above stays synced
+            // regardless of mode (shared/global, per DEC-085), but the
+            // RECORDING analysis pipeline must never fetch/recompute
+            // while Manual is the active input source -- the manual
+            // result/chart point must remain completely stable while
+            // Playback moves. No separate timer is introduced; this is
+            // purely a gate on the existing fetch-triggering branch below.
+            if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return;
+
             if (playback.state === WW_PLAYBACK_STATE_PLAYING) {
                 wwOvercurrentMaybeFetchForPlayback();
             } else {
@@ -36205,6 +36369,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwOvercurrentRenderResult(result) {
+            // A stale/late-resolving recording fetch (in flight at the
+            // moment the user switched to Manual mode) must never
+            // clobber the Manual UI -- Manual mode has its own dedicated
+            // wwOvercurrentRenderManualResult() below.
+            if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return;
             const statusRow = document.getElementById("wwOvercurrentStatusRow");
             const valuesList = document.getElementById("wwOvercurrentValuesList");
             const alertEl = document.getElementById("wwOvercurrentAlert");
@@ -36269,6 +36438,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // relevant signals are shown. `channel_ref`/`unit` come straight
         // from the already-resolved /overcurrent response.
         function wwOvercurrentComputeActiveRelatedWaveformRoles() {
+            // Manual Input / Calculator mode (task's own explicit
+            // requirement): never fabricate a manual waveform -- declare
+            // zero active roles, which the shared Related Waveforms
+            // panel already renders as its own existing, generic empty
+            // state (`#wwAnalysisRelatedWaveformsEmptyState`). The least
+            // disruptive choice consistent with the shared component's
+            // own "analyzer decides WHAT is relevant" architecture --
+            // no new UI/text was invented for this.
+            if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return [];
             const result = wwOvercurrentState.latestResult;
             if (!result || result.status !== "computed" || !result.channel_ref) return [];
             // "Ia"/"Ib"/"Ic" -- the SAME role-key casing convention
@@ -36295,18 +36473,37 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             );
         }
 
+        // Whichever result the chart/live-values should currently show --
+        // the recording/Playback-driven result, or the Manual Input /
+        // Calculator mode result -- keyed off the ONE `inputSource` flag
+        // (Analysis Input Source, see docs/project-memory/ANALYSIS_INPUT_SOURCE.md).
+        function wwOvercurrentActiveResult() {
+            return wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL
+                ? wwOvercurrentState.manual.latestResult
+                : wwOvercurrentState.latestResult;
+        }
+
         // Curve geometry depends ONLY on characteristic/TMS -- cached and
         // recomputed ONLY when those two settings change, never on every
         // Playback tick (owner instruction: "avoid shipping thousands of
         // redundant curve points on every Playback tick... only update
         // the dynamic operating point where practical"). The operating
         // point/guides are re-drawn every render from the already-fetched
-        // curve cache with no extra network call.
+        // curve cache with no extra network call. Shared verbatim between
+        // both Analysis Input Source modes -- `result` may be either a
+        // recording-driven `OvercurrentAnalysisResult` or a Manual Input
+        // `ManualOvercurrentAnalysisResult`; both carry the identical
+        // `multiple_of_pickup`/`relay_secondary_current`/`expected_
+        // operating_time_seconds` field names `wwOvercurrentOperatingPointX()`
+        // reads, so this function needed no change to support Manual mode
+        // beyond threading the `isManual` flag through to the renderer for
+        // its own purely visual "Manual input point" treatment.
         function wwOvercurrentEnsureCurveAndRenderPoint(result) {
+            const isManual = wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;
             const s = wwOvercurrentState.settings;
             const cache = wwOvercurrentState.curveCache;
             if (cache && cache.characteristicId === s.characteristicId && cache.tms === s.tms) {
-                wwOvercurrentRenderChart(cache.points, wwOvercurrentOperatingPointX(result), result.expected_operating_time_seconds);
+                wwOvercurrentRenderChart(cache.points, wwOvercurrentOperatingPointX(result), result.expected_operating_time_seconds, isManual);
                 return;
             }
             const workspaceId = currentWorkspaceId();
@@ -36317,9 +36514,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     if (wwOvercurrentState.settings.characteristicId !== requestedCharacteristicId || wwOvercurrentState.settings.tms !== requestedTms) return;
                     const points = curve.points.map((p) => [p.multiple_of_pickup, p.operating_time_seconds]);
                     wwOvercurrentState.curveCache = { characteristicId: requestedCharacteristicId, tms: requestedTms, points };
-                    const latest = wwOvercurrentState.latestResult;
+                    // Re-reads BOTH the active result AND mode fresh --
+                    // never the closed-over `result`/`isManual` above --
+                    // so a mode switch that happens while this curve fetch
+                    // is still in flight can never mis-render the WRONG
+                    // mode's own point once it resolves.
+                    const latest = wwOvercurrentActiveResult();
+                    const nowManual = wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;
                     if (latest && latest.status === "computed") {
-                        wwOvercurrentRenderChart(points, wwOvercurrentOperatingPointX(latest), latest.expected_operating_time_seconds);
+                        wwOvercurrentRenderChart(points, wwOvercurrentOperatingPointX(latest), latest.expected_operating_time_seconds, nowManual);
                     }
                 },
                 () => {}
@@ -37121,7 +37324,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return stroke(x - dx) + stroke(x + dx);
         }
 
-        function wwOvercurrentRenderChart(points, currentM, currentT) {
+        function wwOvercurrentRenderChart(points, currentM, currentT, isManual) {
             const svg = document.getElementById("wwOvercurrentSvg");
             if (!svg) return;
             const viewport = wwOvercurrentState.viewport;
@@ -37330,7 +37533,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     parts.push('<line class="ww-oc-guide" x1="' + px.toFixed(2) + '" y1="' + py.toFixed(2) + '" x2="' + px.toFixed(2) + '" y2="' + geo.plotBottom + '"></line>');
                     parts.push('<line class="ww-oc-guide" x1="' + geo.plotLeft + '" y1="' + py.toFixed(2) + '" x2="' + px.toFixed(2) + '" y2="' + py.toFixed(2) + '"></line>');
                     if (mInRange && tInRange) {
-                        parts.push('<circle class="ww-oc-operating-point" cx="' + px.toFixed(2) + '" cy="' + py.toFixed(2) + '" r="3.5"></circle>');
+                        // Manual Input / Calculator mode (task's own
+                        // explicit requirement): the operating point must
+                        // clearly indicate it is a manual/test point, not
+                        // a genuine recording-driven result -- an added
+                        // modifier class (distinct dash pattern, see CSS)
+                        // plus a native SVG <title> tooltip, never a
+                        // second chart.
+                        const manualClass = isManual ? " ww-oc-manual-marker" : "";
+                        const manualTitle = isManual ? "<title>Manual input point</title>" : "";
+                        parts.push('<circle class="ww-oc-operating-point' + manualClass + '" cx="' + px.toFixed(2) + '" cy="' + py.toFixed(2) + '" r="3.5">' + manualTitle + '</circle>');
                     } else {
                         if (!mInRange) parts.push(wwOvercurrentEdgeArrowSvg(px, py, currentM < viewport.xMin ? "left" : "right"));
                         if (!tInRange) parts.push(wwOvercurrentEdgeArrowSvg(px, py, currentT < viewport.yMin ? "down" : "up"));
@@ -37346,7 +37558,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // style, so it always reads as "a known position,"
                     // not "a computed result").
                     parts.push('<line class="ww-oc-guide" x1="' + px.toFixed(2) + '" y1="' + geo.plotTop + '" x2="' + px.toFixed(2) + '" y2="' + geo.plotBottom + '"></line>');
-                    parts.push('<circle class="ww-oc-position-marker" cx="' + px.toFixed(2) + '" cy="' + geo.plotBottom + '" r="3"></circle>');
+                    const belowPickupManualClass = isManual ? " ww-oc-manual-marker" : "";
+                    const belowPickupManualTitle = isManual ? "<title>Manual input point</title>" : "";
+                    parts.push('<circle class="ww-oc-position-marker' + belowPickupManualClass + '" cx="' + px.toFixed(2) + '" cy="' + geo.plotBottom + '" r="3">' + belowPickupManualTitle + '</circle>');
                 } else {
                     // Below pickup, off-chart -- the true current sits
                     // outside the visible X range entirely; a small edge
@@ -37369,11 +37583,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwOvercurrentRerenderChartFromState() {
             const cache = wwOvercurrentState.curveCache;
             const points = cache ? cache.points : null;
-            const latest = wwOvercurrentState.latestResult;
+            const isManual = wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+            const latest = wwOvercurrentActiveResult();
             if (latest && latest.status === "computed") {
-                wwOvercurrentRenderChart(points, wwOvercurrentOperatingPointX(latest), latest.expected_operating_time_seconds);
+                wwOvercurrentRenderChart(points, wwOvercurrentOperatingPointX(latest), latest.expected_operating_time_seconds, isManual);
             } else {
-                wwOvercurrentRenderChart(points, null, null);
+                wwOvercurrentRenderChart(points, null, null, isManual);
             }
         }
 
@@ -37493,20 +37708,204 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // ---- Settings wiring helpers ----
 
+        // CT Primary/Secondary are shared, never duplicated between
+        // Recording and Manual mode (task §5) -- their FIELDS become
+        // visible whenever EITHER mode's own current basis needs them
+        // (Recording's `settings.recordingBasis`, or Manual's own
+        // `manual.inputBasis` while Manual is active), so switching
+        // Manual's own Basis selector to "Primary" never hides the CT
+        // inputs a user would need to fill in, regardless of what the
+        // shared "Recording current basis" dropdown currently reads.
+        function wwOvercurrentCtFieldsNeeded() {
+            const isManual = wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+            return wwOvercurrentState.settings.recordingBasis === "primary" ||
+                (isManual && wwOvercurrentState.manual.inputBasis === "primary");
+        }
+
         function wwOvercurrentUpdateCtFieldsVisibility() {
-            const isPrimary = wwOvercurrentState.settings.recordingBasis === "primary";
+            const isPrimary = wwOvercurrentCtFieldsNeeded();
             const primaryField = document.getElementById("wwOvercurrentCtPrimaryField");
             const secondaryField = document.getElementById("wwOvercurrentCtSecondaryField");
             if (primaryField) primaryField.hidden = !isPrimary;
             if (secondaryField) secondaryField.hidden = !isPrimary;
         }
 
-        // Any discrete settings change (characteristic/pickup/TMS/basis/
-        // CT/phase) is treated exactly like a seek -- an EXACT,
+        // Any discrete RELAY SETTINGS change (characteristic/pickup/TMS/
+        // basis/CT/phase) is treated exactly like a seek -- an EXACT,
         // non-throttled re-fetch, never waiting for the next Playback
         // tick (there may not be one, if Playback is currently paused).
+        // Dispatches to whichever Analysis Input Source pipeline is
+        // ACTIVE (task §5's own "switching mode must not alter relay
+        // settings" + "settings stay authoritative in both modes") --
+        // the shared settings themselves are always updated regardless
+        // of mode; only which recompute pipeline fires depends on
+        // `inputSource`.
         function wwOvercurrentHandleSettingsChanged() {
-            wwOvercurrentRequestExactPlaybackFetch();
+            if (wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                wwOvercurrentRequestManualAnalysis();
+            } else {
+                wwOvercurrentRequestExactPlaybackFetch();
+            }
+        }
+
+        // ---- Manual Input / Calculator mode (Analysis Input Source) --
+        // see docs/project-memory/ANALYSIS_INPUT_SOURCE.md for the full
+        // shared architecture. A standalone hypothetical/test current
+        // value, evaluated against the SAME relay settings via the SAME
+        // backend calculation engine (`.../overcurrent-manual`, which
+        // itself reuses the identical `convert_to_relay_secondary()`/
+        // `evaluate_multiple_and_operating_time()` domain functions the
+        // recording path's own `.../overcurrent` endpoint calls) -- never
+        // a second, manual-only calculation engine, and never computed
+        // client-side (every protection-facing value in this app remains
+        // exclusively backend-computed, the same established discipline
+        // `wwOvercurrentEvalT()`/`wwOvercurrentSolveMForT()`'s own
+        // chart-geometry-only boundary already documents). ----
+
+        function wwOvercurrentSetInputSource(mode) {
+            if (mode !== WW_ANALYSIS_INPUT_SOURCE_RECORDING && mode !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
+            if (mode === wwOvercurrentState.inputSource) return;
+            wwOvercurrentState.inputSource = mode;
+            wwOvercurrentSyncInputSourceButtons();
+            wwOvercurrentUpdateManualSectionVisibility();
+            wwOvercurrentUpdateCtFieldsVisibility();
+            wwOvercurrentPushRelatedWaveformRoles();
+            if (mode === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                wwOvercurrentRequestManualAnalysis();
+            } else {
+                // Restores the recording/Playback-driven point FRESHLY
+                // (task §11: "restore the existing waveform/playback-
+                // driven OC point") -- an exact, non-throttled re-fetch
+                // at wherever Playback currently sits, exactly like a
+                // seek/settings-change, rather than re-rendering a
+                // potentially stale cached result from before Manual
+                // mode was entered.
+                wwOvercurrentRequestExactPlaybackFetch();
+            }
+        }
+
+        function wwOvercurrentSyncInputSourceButtons() {
+            const recordingBtn = document.getElementById("wwOvercurrentInputSourceRecordingBtn");
+            const manualBtn = document.getElementById("wwOvercurrentInputSourceManualBtn");
+            if (!recordingBtn || !manualBtn) return;
+            const isManual = wwOvercurrentState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+            recordingBtn.classList.toggle("ww-oc-axis-toggle-btn--active", !isManual);
+            recordingBtn.setAttribute("aria-pressed", String(!isManual));
+            manualBtn.classList.toggle("ww-oc-axis-toggle-btn--active", isManual);
+            manualBtn.setAttribute("aria-pressed", String(isManual));
+        }
+
+        function wwOvercurrentUpdateManualSectionVisibility() {
+            const section = document.getElementById("wwOvercurrentManualInputSection");
+            if (section) section.hidden = wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+        }
+
+        function wwOvercurrentSyncManualInputFields() {
+            const m = wwOvercurrentState.manual;
+            const currentInput = document.getElementById("wwOvercurrentManualCurrentInput");
+            const unitSelect = document.getElementById("wwOvercurrentManualUnitSelect");
+            const basisSelect = document.getElementById("wwOvercurrentManualBasisSelect");
+            if (currentInput) currentInput.value = String(m.inputCurrent);
+            if (unitSelect) unitSelect.value = m.inputCurrentUnit;
+            if (basisSelect) basisSelect.value = m.inputBasis;
+        }
+
+        // Guardrails (task §14): blank/NaN/Infinity/negative/zero are all
+        // rejected HERE, before any request is ever sent -- "avoid
+        // sending requests while the numeric value is incomplete/
+        // invalid" (task §8). Unsupported unit / invalid CT ratio are
+        // still validated authoritatively by the backend (§15's own
+        // "reuse the shared engineering-unit layer, never a second
+        // local dictionary" -- this frontend check is a cheap pre-flight
+        // only, never a duplicate of that validation).
+        function wwOvercurrentManualInputIsValid() {
+            const value = wwOvercurrentState.manual.inputCurrent;
+            return Number.isFinite(value) && value > 0;
+        }
+
+        function wwOvercurrentRequestManualAnalysis() {
+            if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
+            if (!wwOvercurrentManualInputIsValid()) {
+                wwOvercurrentState.manual.latestResult = null;
+                wwOvercurrentRenderManualResult(null);
+                return;
+            }
+            const s = wwOvercurrentState.settings;
+            const m = wwOvercurrentState.manual;
+            const myGeneration = ++wwOvercurrentState.manualRequestGeneration;
+            const epochAtStart = ww.epoch;
+            const workspaceId = currentWorkspaceId();
+            const params = new URLSearchParams({
+                characteristic_id: s.characteristicId, tms: String(s.tms),
+                pickup_current_secondary: String(s.pickupCurrentSecondary),
+                input_current: String(m.inputCurrent), input_current_unit: m.inputCurrentUnit,
+                recording_basis: m.inputBasis,
+            });
+            if (m.inputBasis === "primary" && s.ctPrimary !== null && s.ctSecondary !== null) {
+                params.set("ct_primary", String(s.ctPrimary));
+                params.set("ct_secondary", String(s.ctSecondary));
+            }
+            wwOvercurrentFetchManualAnalysis(workspaceId, params).then(
+                (result) => {
+                    if (myGeneration !== wwOvercurrentState.manualRequestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                    wwOvercurrentState.manual.latestResult = result;
+                    wwOvercurrentUpdateStableReferenceOperatingTime(result);
+                    wwOvercurrentRenderManualResult(result);
+                },
+                () => {
+                    if (myGeneration !== wwOvercurrentState.manualRequestGeneration) return;
+                    wwOvercurrentState.manual.latestResult = null;
+                    wwOvercurrentRenderManualResult(null);
+                }
+            );
+        }
+
+        // Mirrors wwOvercurrentRenderResult()'s own structure, scoped to
+        // the SHORTER result set task §9 specifies (no Measured RMS
+        // current/Pickup/Above-pickup duration rows -- none of those
+        // concepts exist for a standalone manual value) -- reuses the
+        // SAME #wwOvercurrentValuesList container (never a duplicate
+        // DOM structure) and the SAME wwOvercurrentValueRow()/
+        // wwOvercurrentFormatAngleFreeTime() formatting helpers Recording
+        // mode already uses.
+        function wwOvercurrentRenderManualResult(result) {
+            if (wwOvercurrentState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
+            const statusRow = document.getElementById("wwOvercurrentStatusRow");
+            const valuesList = document.getElementById("wwOvercurrentValuesList");
+            const alertEl = document.getElementById("wwOvercurrentAlert");
+            if (!statusRow || !valuesList || !alertEl) return;
+
+            if (!result || result.status !== "computed") {
+                statusRow.hidden = false;
+                statusRow.textContent = (result && result.message) || "Enter a valid manual input current to calculate.";
+                statusRow.className = "ww-phasor-status-row" +
+                    (result && result.status === "needs_configuration" ? " ww-phasor-status--needs-configuration" : "");
+                valuesList.innerHTML = "";
+                alertEl.hidden = true;
+                wwOvercurrentRenderChart(null, null, null, true);
+                return;
+            }
+            statusRow.hidden = true;
+
+            const belowPickup = result.expected_operating_time_seconds === null;
+            const rows = [];
+            rows.push(wwOvercurrentValueRow(
+                "Relay-equivalent current", wwFormatEngineeringValue(result.relay_secondary_current) + " A secondary",
+            ));
+            rows.push(wwOvercurrentValueRow(
+                "Multiple of pickup", belowPickup ? "< 1 ×" : wwFormatEngineeringValue(result.multiple_of_pickup) + " ×",
+            ));
+            rows.push(wwOvercurrentValueRow(
+                "Expected operating time",
+                belowPickup ? "Not applicable / below pickup" : wwOvercurrentFormatAngleFreeTime(result.expected_operating_time_seconds),
+                { belowPickup },
+            ));
+            valuesList.innerHTML = rows.join("");
+            // Manual mode has no above-pickup-DURATION concept (no time
+            // series exists to measure "how long") -- the qualified
+            // exceeded-threshold alert therefore never applies here.
+            alertEl.hidden = true;
+            wwOvercurrentEnsureCurveAndRenderPoint(result);
         }
 
         function wwOvercurrentResetState() {
@@ -37529,8 +37928,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentState.savedXRangeByMode = { [WW_OC_XAXIS_PICKUP_MULTIPLE]: null, [WW_OC_XAXIS_RELAY_CURRENT]: null };
             wwOvercurrentState.minorGridX = false;
             wwOvercurrentState.minorGridY = false;
+            // Manual Input / Calculator mode -- session/UI state only,
+            // reset alongside every other display preference above on a
+            // full analyzer state recreation (new workspace/clear).
+            wwOvercurrentState.inputSource = WW_ANALYSIS_INPUT_SOURCE_RECORDING;
+            wwOvercurrentState.manual = { inputCurrent: 30000, inputCurrentUnit: "A", inputBasis: "primary", latestResult: null };
+            wwOvercurrentState.manualRequestGeneration += 1;
             wwOvercurrentSyncAxisModeButtons();
             wwOvercurrentSyncGridToggleCheckboxes();
+            wwOvercurrentSyncInputSourceButtons();
+            wwOvercurrentSyncManualInputFields();
+            wwOvercurrentUpdateManualSectionVisibility();
+            wwOvercurrentUpdateCtFieldsVisibility();
             wwOvercurrentPlaybackFetchInFlight = false;
             wwOvercurrentPlaybackFetchedTime = null;
             wwOvercurrentPlaybackForceNextFetch = false;
@@ -38870,6 +39279,29 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentState.settings.ctSecondary = Number.isFinite(value) ? value : null;
             wwOvercurrentHandleSettingsChanged();
         });
+        // Analysis Input Source segmented control -- Recording/Manual.
+        document.getElementById("wwOvercurrentInputSourceRecordingBtn").addEventListener("click", () => wwOvercurrentSetInputSource(WW_ANALYSIS_INPUT_SOURCE_RECORDING));
+        document.getElementById("wwOvercurrentInputSourceManualBtn").addEventListener("click", () => wwOvercurrentSetInputSource(WW_ANALYSIS_INPUT_SOURCE_MANUAL));
+        // Manual Input / Calculator mode's own fields -- "change" only
+        // (fires on blur/Enter, never per keystroke), matching every
+        // other OC settings input's own established convention; see
+        // wwOvercurrentRequestManualAnalysis()'s own pre-flight validity
+        // guard for why this never sends a request for an incomplete/
+        // invalid value.
+        document.getElementById("wwOvercurrentManualCurrentInput").addEventListener("change", (event) => {
+            const value = parseFloat(event.target.value);
+            wwOvercurrentState.manual.inputCurrent = value; // may be NaN -- wwOvercurrentManualInputIsValid() rejects it before any request
+            wwOvercurrentRequestManualAnalysis();
+        });
+        document.getElementById("wwOvercurrentManualUnitSelect").addEventListener("change", (event) => {
+            wwOvercurrentState.manual.inputCurrentUnit = event.target.value;
+            wwOvercurrentRequestManualAnalysis();
+        });
+        document.getElementById("wwOvercurrentManualBasisSelect").addEventListener("change", (event) => {
+            wwOvercurrentState.manual.inputBasis = event.target.value;
+            wwOvercurrentUpdateCtFieldsVisibility();
+            wwOvercurrentRequestManualAnalysis();
+        });
         // Adjustable chart viewport (2026-09-12 UAT follow-up) -- display-
         // only: never touches `wwOvercurrentState.settings`, never
         // triggers `wwOvercurrentHandleSettingsChanged()` or a curve
@@ -38899,6 +39331,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         });
         wwOvercurrentSyncAxisModeButtons();
         wwOvercurrentSyncGridToggleCheckboxes();
+        wwOvercurrentSyncInputSourceButtons();
+        wwOvercurrentSyncManualInputFields();
+        wwOvercurrentUpdateManualSectionVisibility();
         // The ONE, permanent subscription to the shared wwPlayback tick
         // seam for Overcurrent -- mirrors Phasor's own registration above
         // (never a second requestAnimationFrame loop).
