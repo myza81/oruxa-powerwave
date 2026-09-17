@@ -56,20 +56,15 @@ class TestAnalysisMenuExists:
         source = _source()
         assert 'id="mainNavAnalysisBtn"' in source
 
-    def test_nav_tooltip_and_label_say_phasor_diagram_not_analysis(self):
-        """UAT fix (2026-09-11): the bare "Analysis" tooltip/visible label
-        was too generic with only one analyzer implemented -- both now
-        read "Phasor Diagram" (the ONE destination that exists today);
-        the page's own <h2> heading deliberately stays "Analysis" (see
-        test_page_heading_remains_analysis below) since that is what will
-        read correctly once a second analyzer exists. The `id` itself is
-        unaffected -- only the two user-facing strings changed."""
+    def test_nav_tooltip_and_label_say_analysis(self):
+        """The top-level sidebar item names the shared Analysis workspace;
+        the Phasor analyzer's own internal/user-facing name is unchanged."""
         source = _source()
         body = _function_body(source, 'id="mainNavAnalysisBtn"', "</button>")
-        assert 'title="Phasor Diagram"' in body
-        assert '<span class="shell-nav-label">Phasor Diagram</span>' in body
-        assert 'title="Analysis"' not in body
-        assert '<span class="shell-nav-label">Analysis</span>' not in body
+        assert 'title="Analysis"' in body
+        assert '<span class="shell-nav-label">Analysis</span>' in body
+        assert 'title="Phasor Diagram"' not in body
+        assert '<span class="shell-nav-label">Phasor Diagram</span>' not in body
 
     def test_page_heading_remains_analysis(self):
         source = _source()

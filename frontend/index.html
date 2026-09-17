@@ -7305,22 +7305,16 @@
                      their own page while Analysis hosts a growing family
                      under one entry.
 
-                     UAT found the bare "Analysis" tooltip/visible label
-                     too generic (with only one analyzer implemented, it
-                     told the engineer nothing about what they'd actually
-                     find) -- the sidebar tooltip AND visible label now
-                     name the one destination that exists today, "Phasor
-                     Diagram," while the PAGE's own <h2> heading
-                     deliberately stays "Analysis" (see #pageAnalysis's own
-                     markup) since that heading is what will read
-                     correctly once a second analyzer exists. The `id`
+                     The sidebar tooltip and visible label now name the
+                     shared "Analysis" workspace. The Phasor analyzer
+                     inside that workspace remains named "Phasor"; the `id`
                      itself stays `mainNavAnalysisBtn` (an internal
                      identifier future analyzers' own routing keys off of,
-                     never user-facing) -- only the two user-facing
-                     strings changed. -->
-                <button type="button" class="shell-nav-item" id="mainNavAnalysisBtn" title="Phasor Diagram">
+                     never user-facing) -- only the top-level user-facing
+                     strings change. -->
+                <button type="button" class="shell-nav-item" id="mainNavAnalysisBtn" title="Analysis">
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none"/><line x1="9" y1="9" x2="9" y2="2.5" stroke-width="1.5" stroke-linecap="round"/><line x1="9" y1="9" x2="14.5" y2="12.5" stroke-width="1.5" stroke-linecap="round"/><line x1="9" y1="9" x2="4" y2="13" stroke-width="1.5" stroke-linecap="round"/><circle cx="9" cy="9" r="7" fill="none" stroke-width="1" opacity="0.5"/></svg></span>
-                    <span class="shell-nav-label">Phasor Diagram</span>
+                    <span class="shell-nav-label">Analysis</span>
                 </button>
                 <!-- Owner UX correction (post-Slice-1-UAT): Playback is
                      NOT a standalone top-level destination -- it is a
