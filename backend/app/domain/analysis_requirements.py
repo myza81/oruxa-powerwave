@@ -108,10 +108,32 @@ OVERCURRENT_CURRENT_PHASE_A = AnalysisRequirement("overcurrent", "current_phase_
 OVERCURRENT_CURRENT_PHASE_B = AnalysisRequirement("overcurrent", "current_phase_b", (_current_role("Ib", PHASE_B),))
 OVERCURRENT_CURRENT_PHASE_C = AnalysisRequirement("overcurrent", "current_phase_c", (_current_role("Ic", PHASE_C),))
 
+#: Impedance Locus v1's own input-role requirements -- NOT actually used
+#: for role RESOLUTION (see `app.services.impedance_analysis_service`'s
+#: own docstring: Impedance Recording mode reuses the existing bay-centric
+#: `compute_phasor_diagram()` verbatim rather than resolving its own Va/Ia
+#: pair independently, per the task's own explicit "do not create a second
+#: FFT/DFT/RMS estimator; reuse the authoritative Phasor calculation
+#: primitives" instruction). Declared here anyway, under their own
+#: `"impedance"` analysis_kind, purely so this module's own registry stays
+#: the single closed source of truth for every analysis mode's required
+#: roles (mirrors Overcurrent's own precedent of declaring its role shape
+#: here even though Overcurrent, too, calls the resolver directly rather
+#: than through Phasor) -- a future Distance Protection analyzer reusing
+#: this same Voltage+Current-per-phase shape can reference these directly.
+IMPEDANCE_VOLTAGE_PHASE_A = AnalysisRequirement("impedance", "voltage_phase_a", (_voltage_role("Va", PHASE_A),))
+IMPEDANCE_VOLTAGE_PHASE_B = AnalysisRequirement("impedance", "voltage_phase_b", (_voltage_role("Vb", PHASE_B),))
+IMPEDANCE_VOLTAGE_PHASE_C = AnalysisRequirement("impedance", "voltage_phase_c", (_voltage_role("Vc", PHASE_C),))
+IMPEDANCE_CURRENT_PHASE_A = AnalysisRequirement("impedance", "current_phase_a", (_current_role("Ia", PHASE_A),))
+IMPEDANCE_CURRENT_PHASE_B = AnalysisRequirement("impedance", "current_phase_b", (_current_role("Ib", PHASE_B),))
+IMPEDANCE_CURRENT_PHASE_C = AnalysisRequirement("impedance", "current_phase_c", (_current_role("Ic", PHASE_C),))
+
 _KNOWN_REQUIREMENTS: tuple[AnalysisRequirement, ...] = (
     PHASOR_VOLTAGE_PHASE_A, PHASOR_VOLTAGE_PHASE_B, PHASOR_VOLTAGE_PHASE_C, PHASOR_VOLTAGE_THREE_PHASE,
     PHASOR_CURRENT_PHASE_A, PHASOR_CURRENT_PHASE_B, PHASOR_CURRENT_PHASE_C, PHASOR_CURRENT_THREE_PHASE,
     OVERCURRENT_CURRENT_PHASE_A, OVERCURRENT_CURRENT_PHASE_B, OVERCURRENT_CURRENT_PHASE_C,
+    IMPEDANCE_VOLTAGE_PHASE_A, IMPEDANCE_VOLTAGE_PHASE_B, IMPEDANCE_VOLTAGE_PHASE_C,
+    IMPEDANCE_CURRENT_PHASE_A, IMPEDANCE_CURRENT_PHASE_B, IMPEDANCE_CURRENT_PHASE_C,
 )
 
 _REQUIREMENTS_BY_KEY: dict[tuple[str, str], AnalysisRequirement] = {

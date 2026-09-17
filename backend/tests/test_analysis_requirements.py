@@ -5,6 +5,12 @@ Slice 2): the small, closed set of typed AnalysisRequirement constants.
 from __future__ import annotations
 
 from app.domain.analysis_requirements import (
+    IMPEDANCE_CURRENT_PHASE_A,
+    IMPEDANCE_CURRENT_PHASE_B,
+    IMPEDANCE_CURRENT_PHASE_C,
+    IMPEDANCE_VOLTAGE_PHASE_A,
+    IMPEDANCE_VOLTAGE_PHASE_B,
+    IMPEDANCE_VOLTAGE_PHASE_C,
     OVERCURRENT_CURRENT_PHASE_A,
     OVERCURRENT_CURRENT_PHASE_B,
     OVERCURRENT_CURRENT_PHASE_C,
@@ -24,19 +30,29 @@ from app.domain.phase_identity import PHASE_A, PHASE_B, PHASE_C
 
 class TestKnownRequirements:
     def test_at_least_eleven_representative_requirements(self):
-        """8 Phasor + 3 Overcurrent (current_phase_a/b/c) -- Overcurrent
-        v1 reuses the identical single-phase-current role shape under
-        its own `analysis_kind`, see OVERCURRENT_CURRENT_PHASE_A/B/C's
-        own docstring."""
-        assert len(known_requirements()) == 11
+        """8 Phasor + 3 Overcurrent (current_phase_a/b/c) + 6 Impedance
+        (voltage_phase_a/b/c + current_phase_a/b/c) -- Overcurrent and
+        Impedance each reuse the identical single-phase Voltage/Current
+        role shape under their own `analysis_kind`, see
+        OVERCURRENT_CURRENT_PHASE_A/B/C's and
+        IMPEDANCE_VOLTAGE_PHASE_A/B/C's own docstrings."""
+        assert len(known_requirements()) == 17
 
-    def test_two_distinct_analysis_kinds(self):
+    def test_three_distinct_analysis_kinds(self):
         kinds = {r.analysis_kind for r in known_requirements()}
-        assert kinds == {"phasor", "overcurrent"}
+        assert kinds == {"phasor", "overcurrent", "impedance"}
 
     def test_overcurrent_requirements_are_overcurrent_kind(self):
         for req in (OVERCURRENT_CURRENT_PHASE_A, OVERCURRENT_CURRENT_PHASE_B, OVERCURRENT_CURRENT_PHASE_C):
             assert req.analysis_kind == "overcurrent"
+            assert req in known_requirements()
+
+    def test_impedance_requirements_are_impedance_kind(self):
+        for req in (
+            IMPEDANCE_VOLTAGE_PHASE_A, IMPEDANCE_VOLTAGE_PHASE_B, IMPEDANCE_VOLTAGE_PHASE_C,
+            IMPEDANCE_CURRENT_PHASE_A, IMPEDANCE_CURRENT_PHASE_B, IMPEDANCE_CURRENT_PHASE_C,
+        ):
+            assert req.analysis_kind == "impedance"
             assert req in known_requirements()
 
 

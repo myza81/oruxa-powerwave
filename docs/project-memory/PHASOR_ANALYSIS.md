@@ -1301,8 +1301,13 @@ workspace" hook every other analyzer-local state already uses).
   Playwright suite for genuinely manual/edge-case scenarios (ambiguous
   membership, phase correction) still seeds state directly via the
   backend API.
-- **Distance/Impedance, Overcurrent, Differential, Sequence Components**
-  — these slices prove the estimator/resolver/UI integration only.
+- **Distance Protection, Differential, Sequence Components** — not
+  implemented. Overcurrent (DEC-090) and Impedance Locus (DEC-096, which
+  reuses this document's own `compute_phasor_diagram()` directly for its
+  Recording mode — see
+  [IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md)) are now
+  implemented; this line originally listed them as unimplemented at the
+  time this section was written.
 
 ## Related documents
 

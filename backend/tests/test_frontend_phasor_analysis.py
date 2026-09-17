@@ -384,8 +384,11 @@ class TestSharedAnalysisContextConsumers:
     impossible to miss)."""
 
     def test_both_analyzers_register_as_consumers_of_the_shared_lifecycle(self):
+        """Now THREE consumers -- Impedance Locus v1 registers itself the
+        same way Phasor/Overcurrent already do (see
+        docs/project-memory/IMPEDANCE_LOCUS_ANALYSIS.md)."""
         source = _source()
-        assert source.count("wwAnalysisRegisterContextConsumer({") == 2
+        assert source.count("wwAnalysisRegisterContextConsumer({") == 3
         phasor_call = source[source.index("onContexts: wwPhasorOnAnalysisContexts"):]
         phasor_call = phasor_call[: phasor_call.index("});")]
         assert "onLifecyclePhase: wwPhasorOnAnalysisLifecyclePhase" in phasor_call
@@ -396,6 +399,11 @@ class TestSharedAnalysisContextConsumers:
         assert "onLifecyclePhase: wwOvercurrentOnAnalysisLifecyclePhase" in overcurrent_call
         assert "onDiscovering: wwOvercurrentOnAnalysisDiscovering" in overcurrent_call
         assert "onFreshContextsDiscovered: wwOvercurrentOnAnalysisFreshContextsDiscovered" in overcurrent_call
+        impedance_call = source[source.index("onContexts: wwImpedanceOnAnalysisContexts"):]
+        impedance_call = impedance_call[: impedance_call.index("});")]
+        assert "onLifecyclePhase: wwImpedanceOnAnalysisLifecyclePhase" in impedance_call
+        assert "onDiscovering: wwImpedanceOnAnalysisDiscovering" in impedance_call
+        assert "onFreshContextsDiscovered: wwImpedanceOnAnalysisFreshContextsDiscovered" in impedance_call
 
     def test_neither_analyzer_defines_its_own_independent_bootstrap_entry_point(self):
         """The structural regression seam: neither analyzer may define a

@@ -9,7 +9,9 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-16**. **Event Playback
+Last meaningful update: **2026-09-17** (Impedance Locus v1, DEC-096 —
+see its own entry below in [Implemented capabilities](#implemented-capabilities)).
+**Event Playback
 ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock),
 its own 2026-09-11 revision) is implemented as a shared, reusable
 WORKSPACE CAPABILITY — never a standalone top-level page.** Following
@@ -742,6 +744,71 @@ The full existing backend regression suite and the full Playwright suite
 See
 [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s own "Diagram scaling stability
 during Playback" section for the full technical record.
+
+**Impedance Locus v1 is implemented (2026-09-17,
+[DECISIONS.md — DEC-096](DECISIONS.md#dec-096--impedance-locus-v1-the-third-analysis-menu-analyzer-apparent-phase-impedance-measurementvisualization-explicitly-not-distance-protection)),
+the THIRD Analysis-menu analyzer** — activates the pre-existing
+`Impedance Locus` navigation placeholder (preserving analyzer order:
+Phasor, Overcurrent, Impedance Locus, Sequence Components). Calculates
+apparent phase impedance `Za=Va/Ia`/`Zb=Vb/Ib`/`Zc=Vc/Ic` via direct
+phasor division (`R=|Z|cos(theta)`, `X=|Z|sin(theta)`, using each
+phasor's own absolute angle — never an RMS-scalar approximation), and
+visualizes it on an equal-scale R-X Cartesian plane, all four quadrants
+valid, never clamped. **Explicitly measurement/visualization only — NOT
+Distance Protection**: no protection zones, mho/quadrilateral
+characteristics, fault loops, residual-current (k0) compensation,
+phase-to-phase loops, directional logic, or trip evaluation exist
+anywhere in this slice. Recording mode reuses the existing, unchanged
+`phasor_analysis_service.compute_phasor_diagram()` verbatim (zero
+duplicated FFT/DFT/RMS estimation code) — extracting whichever Voltage/
+Current role pair the selected phase (`A`/`B`/`C`, default `A`,
+Engineering-Context-resolved, never inferred from a channel name) needs.
+A numerical-validity low-current guardrail
+(`app.domain.impedance.MIN_CURRENT_A = 1e-3`, 1 mA — explicitly not a
+relay pickup threshold) reports `needs_configuration`/
+`current_too_small` rather than an unbounded `|Z|`. `recording_basis`
+(what the resolved channels already represent) and `impedance_basis`
+(the independent desired output basis) require VT/CT ratios only when
+they genuinely differ — matching the trivial same-basis case the task's
+own golden example uses; Manual mode mirrors Manual Phasor's own two-
+independent-basis architecture (Voltage/VT, Current/CT), always
+normalized to Secondary-canonical first via the SAME, verbatim-reused
+`convert_manual_magnitude_to_secondary()`, with `impedance_basis` acting
+as a THIRD, independent output basis on top. The R-X plot uses one
+shared px-per-ohm factor for both axes (structurally impossible to
+scale R and X independently) and an automatic nice-tick viewport with
+headroom. Recording mode adds a genuine locus/trajectory — a new
+`GET .../impedance-locus` endpoint samples up to 300 evenly-spaced,
+independent, deterministic Impedance calculations across the active
+Time Group's own extent, fetched by the frontend only on a context/
+phase/settings/time-range change (never per Playback tick, verified by
+a static test) — while the live current point remains a separate,
+~10 Hz-throttled, Playback-synchronized fetch identical in shape to
+Phasor's/Overcurrent's own. Analysis Input Source (Recording/Manual) is
+the THIRD real implementation of the DEC-095 shared shell, reusing
+`WW_ANALYSIS_INPUT_SOURCE_RECORDING`/`WW_ANALYSIS_INPUT_SOURCE_MANUAL`
+and the three-region markup separation verbatim, implemented correctly
+from day one. New backend modules only
+(`app/domain/impedance.py`/`app/services/impedance_analysis_service.py`/
+`app/schemas/impedance_analysis.py`); `app/domain/analysis_requirements.py`
+and `app/api/v1/engineering_contexts.py` gained additive-only entries —
+zero existing Phasor/Overcurrent/Playback/Engineering-Context production
+behavior changed. 33 new domain tests, 16 new API tests (via a real
+three-phase ASCII-COMTRADE upload), and 23 new frontend structural tests
+pass; two pre-existing structural tests (shared-consumer-count,
+mounted-transport-count) were updated for the third registered
+analyzer, mirroring the identical precedent Overcurrent's own addition
+already set. Full backend regression suite (5247 tests) passes. **No
+real-browser Playwright coverage was added this slice** — flagged
+honestly for owner UAT, not claimed as verified; see
+[IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md)'s own "Known
+limitations" section. `Zab`/`Zbc`/`Zca`, Distance Protection (zones/
+mho/quadrilateral/ground compensation/directional logic/trip
+interpretation), Sequence Components, and automatic Recording-basis
+detection from recording metadata all remain unimplemented, reserved
+for future, separate slices that this feature's own `ImpedancePoint`/
+R-X-plane foundation is deliberately structured to support without
+requiring this module itself to change.
 
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test

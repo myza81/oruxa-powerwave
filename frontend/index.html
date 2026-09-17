@@ -6901,6 +6901,85 @@
             outline: none;
             border-color: var(--accent-dim);
         }
+        /* Impedance Locus v1 -- Manual Input's own two independent
+           groups (Voltage/Current, each its own basis + VT/PT or CT
+           ratio), mirroring Manual Phasor's own two-family layout.
+           Reuses `.ww-oc-manual-input-section`/`-row` verbatim for the
+           shared outer shape/field styling; only this section's own
+           group subdivision is Impedance-specific. */
+        .ww-imp-manual-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        .ww-imp-manual-group:last-child {
+            margin-bottom: 0;
+        }
+        .ww-imp-manual-group-title {
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+        /* Impedance Locus v1 -- the R-X plane. Equal geometric scale for
+           R and X is essential (never independent X/Y graphical scales --
+           a future Distance characteristic reuses this same plot) --
+           achieved simply by using ONE shared px-per-ohm factor for both
+           axes when computing point coordinates (see
+           wwImpedanceComputeViewport()); the SVG/CSS below only needs to
+           stay visually square, never scale one axis independently.
+           Reuses the SAME shared chart styling tokens
+           (`--ww-chart-grid-stroke`/`--ww-chart-axis-stroke`/
+           `--ww-chart-tick-font-size`/`--ww-chart-axis-title-font-size`)
+           the Phasor diagram and Overcurrent chart already established --
+           never a third independently-styled chart. */
+        .ww-imp-axis {
+            stroke: var(--ww-chart-axis-stroke);
+            stroke-width: 1.1;
+        }
+        .ww-imp-grid-line {
+            stroke: var(--ww-chart-grid-stroke);
+            stroke-width: 0.5;
+            opacity: 0.7;
+        }
+        .ww-imp-axis-title {
+            font-size: var(--ww-chart-axis-title-font-size);
+            font-weight: 700;
+            fill: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .ww-imp-tick-label {
+            font-size: var(--ww-chart-tick-font-size);
+            fill: var(--text-dim);
+        }
+        /* Recording-mode locus/trajectory -- a static path (never built
+           by accumulating animation-frame samples during Playback, see
+           wwImpedanceFetchLocus()), with the current Playback-time point
+           highlighted separately below. */
+        .ww-imp-locus-path {
+            fill: none;
+            stroke: var(--ww-phase-a);
+            stroke-width: 1;
+            opacity: 0.55;
+        }
+        .ww-imp-point {
+            fill: var(--ww-phase-a);
+            stroke: var(--panel);
+            stroke-width: 0.8;
+        }
+        /* Manual mode's own single point -- a distinct dashed ring,
+           mirroring Overcurrent's own `.ww-oc-manual-marker` convention,
+           so a manual/test point never reads as a genuine recording
+           result. */
+        .ww-imp-point--manual {
+            fill: none;
+            stroke: var(--ww-phase-a);
+            stroke-width: 1.4;
+            stroke-dasharray: 2 1.4;
+        }
         .ww-oc-values-list {
             display: flex;
             flex-direction: column;
@@ -8598,11 +8677,199 @@
                                 </section>
                             </div>
                         </section>
+                        <!-- Impedance Locus v1 -- the THIRD Analysis-menu
+                             analyzer (Phasor, Overcurrent, then Impedance
+                             Locus). Measurement/visualization only -- NOT
+                             Distance Protection (no zones/mho/quadrilateral/
+                             fault-loop logic anywhere in this panel). Reuses
+                             the identical Bay/Engineering-Context + Playback-
+                             ribbon + Input-Source-shell pattern Phasor/
+                             Overcurrent already established -- see
+                             docs/project-memory/IMPEDANCE_LOCUS_ANALYSIS.md. -->
                         <section class="ww-phasor-panel" id="wwImpedancePanel" hidden>
-                            <section class="panel ww-analysis-placeholder-panel">
-                                <h3>Impedance Locus</h3>
-                                <p>This analyzer is not implemented yet.</p>
+                            <!-- Analysis Input Source (Recording/Manual) --
+                                 ALWAYS visible, never nested inside the
+                                 Recording-only section below (see
+                                 docs/project-memory/ANALYSIS_INPUT_SOURCE.md). -->
+                            <section class="panel ww-oc-input-source-panel">
+                                <div class="ww-oc-input-source-row">
+                                    <span class="ww-oc-view-controls-label">Input Source</span>
+                                    <span class="ww-oc-axis-toggle-group" role="group" aria-label="Analysis input source">
+                                        <button type="button" id="wwImpedanceInputSourceRecordingBtn" class="ww-oc-axis-toggle-btn ww-oc-axis-toggle-btn--active" data-input-source="recording" aria-pressed="true">Recording</button>
+                                        <button type="button" id="wwImpedanceInputSourceManualBtn" class="ww-oc-axis-toggle-btn" data-input-source="manual" aria-pressed="false">Manual</button>
+                                    </span>
+                                    <span class="ww-oc-input-source-hint" id="wwImpedanceInputSourceHint" hidden>No recording loaded. Manual mode is available.</span>
+                                </div>
                             </section>
+
+                            <!-- Recording-only section -- Bay/Context and
+                                 Playback only; Phase/Impedance-basis settings
+                                 live in the always-visible body below since
+                                 both modes use them (Manual uses Phase purely
+                                 as a result label). -->
+                            <div id="wwImpedanceRecordingSection">
+                                <section class="panel ww-phasor-controls-panel">
+                                    <div class="ww-phasor-controls-row">
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Bay / Engineering Context</span>
+                                            <span class="ww-phasor-field-control-row">
+                                                <select id="wwImpedanceContextSelect"><option value="">Select a context…</option></select>
+                                                <span id="wwImpedanceContextBadge"></span>
+                                            </span>
+                                        </label>
+                                        <span class="ww-phasor-discovering-indicator" id="wwImpedanceDiscoveringIndicator" hidden>Identifying additional engineering contexts…</span>
+                                    </div>
+                                </section>
+
+                                <!-- Playback composition point: populated by
+                                     wwImpedanceMountPlaybackControls(groupId) --
+                                     reuses the EXACT same shared control-surface
+                                     markup/wiring/sync functions Phasor/
+                                     Overcurrent already use. -->
+                                <section class="panel ww-phasor-playback-panel ww-analysis-playback-panel" id="wwImpedancePlaybackPanel" hidden>
+                                    <div class="ww-phasor-playback-mount ww-analysis-playback-mount" id="wwImpedancePlaybackMount"></div>
+                                </section>
+
+                                <div id="wwImpedanceRelatedWaveformsAnchor"></div>
+
+                                <div class="ww-phasor-status-row" id="wwImpedanceStatusRow" hidden></div>
+                                <p class="empty-state" id="wwImpedanceEmptyState">No recording loaded. Upload a recording to use Recording mode.</p>
+                            </div>
+
+                            <!-- ALWAYS visible once the Impedance Locus tab is
+                                 open -- Phase/Basis settings, Manual Input,
+                                 Results, and the R-X plot never require a
+                                 recording. Never hidden by
+                                 wwImpedanceShowEmptyState(). -->
+                            <div class="ww-phasor-body ww-oc-body" id="wwImpedanceBody">
+                                <section class="panel ww-phasor-values-panel">
+                                    <h3>Settings / Results</h3>
+                                    <div class="ww-oc-settings-grid">
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Phase</span>
+                                            <select id="wwImpedancePhaseSelect">
+                                                <option value="A">Phase A</option>
+                                                <option value="B">Phase B</option>
+                                                <option value="C">Phase C</option>
+                                            </select>
+                                        </label>
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Impedance basis (output)</span>
+                                            <select id="wwImpedanceOutputBasisSelect">
+                                                <option value="secondary" selected>Secondary</option>
+                                                <option value="primary">Primary</option>
+                                            </select>
+                                        </label>
+                                        <label class="ww-phasor-field ww-oc-field-full" id="wwImpedanceRecordingBasisField">
+                                            <span class="ww-phasor-field-label">Recording basis (as recorded)</span>
+                                            <select id="wwImpedanceRecordingBasisSelect">
+                                                <option value="secondary" selected>Secondary</option>
+                                                <option value="primary">Primary</option>
+                                            </select>
+                                        </label>
+                                        <label class="ww-phasor-field ww-oc-ct-field" id="wwImpedanceVtPrimaryField" hidden>
+                                            <span class="ww-phasor-field-label">VT Primary (V)</span>
+                                            <input type="number" id="wwImpedanceVtPrimaryInput" min="0" step="1">
+                                        </label>
+                                        <label class="ww-phasor-field ww-oc-ct-field" id="wwImpedanceVtSecondaryField" hidden>
+                                            <span class="ww-phasor-field-label">VT Secondary (V)</span>
+                                            <input type="number" id="wwImpedanceVtSecondaryInput" min="0" step="0.01">
+                                        </label>
+                                        <label class="ww-phasor-field ww-oc-ct-field" id="wwImpedanceCtPrimaryField" hidden>
+                                            <span class="ww-phasor-field-label">CT Primary (A)</span>
+                                            <input type="number" id="wwImpedanceCtPrimaryInput" min="0" step="1">
+                                        </label>
+                                        <label class="ww-phasor-field ww-oc-ct-field" id="wwImpedanceCtSecondaryField" hidden>
+                                            <span class="ww-phasor-field-label">CT Secondary (A)</span>
+                                            <input type="number" id="wwImpedanceCtSecondaryInput" min="0" step="0.01">
+                                        </label>
+                                    </div>
+
+                                    <!-- Manual Input / Calculator mode -- Manual
+                                         input source only (hidden in Recording).
+                                         Voltage and Current each own a FULLY
+                                         INDEPENDENT basis + VT/PT or CT ratio,
+                                         mirroring Manual Phasor's own hard
+                                         requirement (see
+                                         docs/project-memory/ANALYSIS_INPUT_SOURCE.md). -->
+                                    <div class="ww-oc-manual-input-section ww-imp-manual-input-section" id="wwImpedanceManualInputSection" hidden>
+                                        <div class="ww-oc-manual-input-label">Manual Input</div>
+                                        <div class="ww-imp-manual-group">
+                                            <div class="ww-imp-manual-group-title">Voltage</div>
+                                            <label class="ww-phasor-field ww-oc-field-full">
+                                                <span class="ww-phasor-field-label">Basis</span>
+                                                <select id="wwImpedanceManualVoltageBasisSelect">
+                                                    <option value="primary" selected>Primary</option>
+                                                    <option value="secondary">Secondary</option>
+                                                </select>
+                                            </label>
+                                            <label class="ww-phasor-field ww-oc-ct-field" id="wwImpedanceManualVtPrimaryField">
+                                                <span class="ww-phasor-field-label">VT Primary</span>
+                                                <input type="number" id="wwImpedanceManualVtPrimaryInput" min="0" step="1" value="132000">
+                                            </label>
+                                            <label class="ww-phasor-field ww-oc-ct-field" id="wwImpedanceManualVtSecondaryField">
+                                                <span class="ww-phasor-field-label">VT Secondary</span>
+                                                <input type="number" id="wwImpedanceManualVtSecondaryInput" min="0" step="0.01" value="110">
+                                            </label>
+                                            <label class="ww-phasor-field">
+                                                <span class="ww-phasor-field-label">Magnitude</span>
+                                                <span class="ww-oc-manual-input-row">
+                                                    <input type="number" id="wwImpedanceManualVoltageMagnitudeInput" min="0" step="0.01" value="132" aria-label="Manual voltage magnitude">
+                                                    <select id="wwImpedanceManualVoltageUnitSelect" aria-label="Manual voltage unit">
+                                                        <option value="V">V</option>
+                                                        <option value="kV" selected>kV</option>
+                                                    </select>
+                                                </span>
+                                            </label>
+                                            <label class="ww-phasor-field">
+                                                <span class="ww-phasor-field-label">Angle (°)</span>
+                                                <input type="number" id="wwImpedanceManualVoltageAngleInput" step="0.1" value="0" aria-label="Manual voltage angle">
+                                            </label>
+                                        </div>
+                                        <div class="ww-imp-manual-group">
+                                            <div class="ww-imp-manual-group-title">Current</div>
+                                            <label class="ww-phasor-field ww-oc-field-full">
+                                                <span class="ww-phasor-field-label">Basis</span>
+                                                <select id="wwImpedanceManualCurrentBasisSelect">
+                                                    <option value="primary" selected>Primary</option>
+                                                    <option value="secondary">Secondary</option>
+                                                </select>
+                                            </label>
+                                            <label class="ww-phasor-field ww-oc-ct-field" id="wwImpedanceManualCtPrimaryField">
+                                                <span class="ww-phasor-field-label">CT Primary</span>
+                                                <input type="number" id="wwImpedanceManualCtPrimaryInput" min="0" step="1" value="1200">
+                                            </label>
+                                            <label class="ww-phasor-field ww-oc-ct-field" id="wwImpedanceManualCtSecondaryField">
+                                                <span class="ww-phasor-field-label">CT Secondary</span>
+                                                <input type="number" id="wwImpedanceManualCtSecondaryInput" min="0" step="0.01" value="1">
+                                            </label>
+                                            <label class="ww-phasor-field">
+                                                <span class="ww-phasor-field-label">Magnitude</span>
+                                                <span class="ww-oc-manual-input-row">
+                                                    <input type="number" id="wwImpedanceManualCurrentMagnitudeInput" min="0" step="0.01" value="1.2" aria-label="Manual current magnitude">
+                                                    <select id="wwImpedanceManualCurrentUnitSelect" aria-label="Manual current unit">
+                                                        <option value="A">A</option>
+                                                        <option value="kA" selected>kA</option>
+                                                    </select>
+                                                </span>
+                                            </label>
+                                            <label class="ww-phasor-field">
+                                                <span class="ww-phasor-field-label">Angle (°)</span>
+                                                <input type="number" id="wwImpedanceManualCurrentAngleInput" step="0.1" value="-30" aria-label="Manual current angle">
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="ww-oc-values-list" id="wwImpedanceValuesList"></div>
+                                </section>
+                                <section class="panel ww-phasor-diagram-panel">
+                                    <h3>R-X Plane <span class="ww-phasor-updating-indicator" id="wwImpedanceUpdatingIndicator" hidden>Updating…</span></h3>
+                                    <div class="ww-phasor-diagram-wrap">
+                                        <svg id="wwImpedanceSvg" viewBox="-130 -130 260 260" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Impedance R-X plane"></svg>
+                                    </div>
+                                    <div class="ww-phasor-scale-note" id="wwImpedanceScaleNote">Measurement/visualization only -- not a distance-protection zone evaluation.</div>
+                                </section>
+                            </div>
                         </section>
                         <section class="ww-phasor-panel" id="wwSequencePanel" hidden>
                             <section class="panel ww-analysis-placeholder-panel">
@@ -30476,6 +30743,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPhasorResetState();
             // Overcurrent Analysis v1: the SAME whole-workspace reset hook.
             wwOvercurrentResetState();
+            // Impedance Locus v1: the SAME whole-workspace reset hook.
+            wwImpedanceResetState();
             // Shared Analysis Engineering Context lifecycle (2026-09-12):
             // the SAME whole-workspace reset hook -- a fresh workspace
             // always gets a fresh per-source attempted slate, never
@@ -38180,6 +38449,842 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (emptyState) { emptyState.hidden = false; emptyState.textContent = WW_OVERCURRENT_MSG_SELECT_CONTEXT; }
         }
 
+        // =====================================================================
+        // Impedance Locus v1 -- the THIRD Analysis-menu analyzer (Phasor,
+        // Overcurrent, then Impedance Locus). Measurement/visualization
+        // only -- NOT Distance Protection (no zones/mho/quadrilateral/
+        // fault-loop logic anywhere in this module). Recording mode
+        // reuses the shared Bay/Engineering-Context + Playback + Analysis
+        // Input Source shell exactly like Overcurrent; the R-X plot is a
+        // hand-rolled SVG mirroring the Phasor diagram's own approach
+        // (equal-scale Cartesian geometry, no existing chart precedent to
+        // reuse). See docs/project-memory/IMPEDANCE_LOCUS_ANALYSIS.md.
+        // =====================================================================
+
+        const WW_IMPEDANCE_MSG_SELECT_CONTEXT = "Select an Engineering Context to begin.";
+        const WW_IMPEDANCE_MSG_BACKEND_UNREACHABLE = "Could not reach the backend to load Engineering Contexts.";
+        const WW_IMPEDANCE_MSG_IDENTIFYING_CONTEXTS = "Identifying engineering contexts…";
+        const WW_IMPEDANCE_MSG_NO_SOURCES = "No recording loaded. Upload a recording to use Recording mode.";
+        const WW_IMPEDANCE_MSG_NO_SUGGESTIONS =
+            "No engineering contexts could be suggested automatically for the loaded source(s). Manual mode is available.";
+
+        const wwImpedanceState = {
+            contexts: [],
+            selectedContextId: null,
+            lastLoadedContextId: null,
+            anchorDisplaySourceId: null,
+            activeTimeGroupId: null,
+            analysisTime: null,
+            phase: "A",
+            settings: {
+                recordingBasis: "secondary",
+                outputBasis: "secondary",
+                vtPrimary: null,
+                vtSecondary: null,
+                ctPrimary: null,
+                ctSecondary: null,
+            },
+            latestResult: null,
+            requestGeneration: 0,
+            // Static locus/trajectory (task's own section 18-19) --
+            // fetched ONLY on a context/phase/settings/time-range change,
+            // never on every Playback tick. Keyed by a signature string
+            // so a redundant re-fetch (e.g. a mere page revisit) is a
+            // cheap no-op.
+            locusPoints: [],
+            locusSignature: null,
+            locusRequestGeneration: 0,
+            inputSource: WW_ANALYSIS_INPUT_SOURCE_RECORDING,
+            recordingAvailable: false,
+            inputSourceAutoSelected: true,
+            manual: {
+                voltageBasis: "primary",
+                voltageRatioPrimary: 132000,
+                voltageRatioSecondary: 110,
+                voltageMagnitude: 132,
+                voltageUnit: "kV",
+                voltageAngleDeg: 0,
+                currentBasis: "primary",
+                currentRatioPrimary: 1200,
+                currentRatioSecondary: 1,
+                currentMagnitude: 1.2,
+                currentUnit: "kA",
+                currentAngleDeg: -30,
+                latestResult: null,
+            },
+            manualRequestGeneration: 0,
+        };
+
+        function wwImpedanceFetchAnalysis(workspaceId, contextId, params) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                "/engineering-contexts/" + encodeURIComponent(contextId) + "/impedance?" + params.toString()
+            );
+        }
+        function wwImpedanceFetchLocus(workspaceId, contextId, params) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                "/engineering-contexts/" + encodeURIComponent(contextId) + "/impedance-locus?" + params.toString()
+            );
+        }
+        function wwImpedanceFetchManual(workspaceId, params) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/impedance-manual?" + params.toString()
+            );
+        }
+
+        function wwImpedanceOnAnalysisContexts(contexts) {
+            wwImpedanceState.contexts = contexts;
+            wwImpedanceUpdateInputSourceAvailability();
+            wwImpedanceRenderContextOptions();
+            if (wwImpedanceState.selectedContextId) {
+                wwImpedanceLoadForSelectedContext();
+            } else {
+                wwImpedanceShowNoContextSelected();
+            }
+        }
+        function wwImpedanceOnAnalysisLifecyclePhase(phase) {
+            wwImpedanceUpdateInputSourceAvailability();
+            if (phase === WW_ANALYSIS_CONTEXT_PHASE_IDENTIFYING) wwImpedanceShowEmptyState(WW_IMPEDANCE_MSG_IDENTIFYING_CONTEXTS);
+            else if (phase === WW_ANALYSIS_CONTEXT_PHASE_NO_SOURCES) wwImpedanceShowEmptyState(WW_IMPEDANCE_MSG_NO_SOURCES);
+            else if (phase === WW_ANALYSIS_CONTEXT_PHASE_NO_SUGGESTIONS) wwImpedanceShowEmptyState(WW_IMPEDANCE_MSG_NO_SUGGESTIONS);
+            else if (phase === WW_ANALYSIS_CONTEXT_PHASE_UNREACHABLE) wwImpedanceShowEmptyState(WW_IMPEDANCE_MSG_BACKEND_UNREACHABLE);
+        }
+        function wwImpedanceOnAnalysisDiscovering(isDiscovering) {
+            const el = document.getElementById("wwImpedanceDiscoveringIndicator");
+            if (el) el.hidden = !isDiscovering;
+        }
+        function wwImpedanceOnAnalysisFreshContextsDiscovered() {
+            if (wwImpedanceState.selectedContextId) return;
+            if (wwImpedanceState.contexts.length === 0) return;
+            const first = wwImpedanceState.contexts[0];
+            wwImpedanceState.selectedContextId = first.id;
+            const select = document.getElementById("wwImpedanceContextSelect");
+            if (select) select.value = first.id;
+            wwImpedanceRenderContextBadge();
+            wwImpedanceLoadForSelectedContext();
+        }
+        // Registered with the shared Analysis context lifecycle in the
+        // wiring section near the bottom of this script -- see
+        // `wwAnalysisRegisterContextConsumer(...)` there.
+
+        function wwImpedanceRenderContextOptions() {
+            const select = document.getElementById("wwImpedanceContextSelect");
+            if (!select) return;
+            const options = ['<option value="">Select a context…</option>'];
+            for (const ctx of wwImpedanceState.contexts) {
+                options.push('<option value="' + escapeHtml(ctx.id) + '">' + escapeHtml(ctx.display_name) + '</option>');
+            }
+            select.innerHTML = options.join("");
+            const stillExists = wwImpedanceState.selectedContextId &&
+                wwImpedanceState.contexts.some((c) => c.id === wwImpedanceState.selectedContextId);
+            if (stillExists) {
+                select.value = wwImpedanceState.selectedContextId;
+            } else {
+                wwImpedanceState.selectedContextId = null;
+            }
+            wwImpedanceRenderContextBadge();
+        }
+        function wwImpedanceRenderContextBadge() {
+            const badge = document.getElementById("wwImpedanceContextBadge");
+            if (!badge) return;
+            const ctx = wwImpedanceState.contexts.find((c) => c.id === wwImpedanceState.selectedContextId);
+            if (!ctx) { badge.innerHTML = ""; return; }
+            const labels = { suggested: "Suggested", confirmed: "Confirmed", needs_review: "Needs Review", manual: "Manual" };
+            const cls = ctx.status === "needs_review" ? "needs-review" : ctx.status;
+            badge.innerHTML = '<span class="ww-mg-badge ww-mg-badge--' + cls + '">' + (labels[ctx.status] || escapeHtml(ctx.status)) + '</span>';
+        }
+        function wwImpedanceShowEmptyState(message) {
+            wwImpedanceMountPlaybackControls(null);
+            const statusRow = document.getElementById("wwImpedanceStatusRow");
+            if (statusRow) statusRow.hidden = true;
+            const emptyState = document.getElementById("wwImpedanceEmptyState");
+            if (emptyState) { emptyState.hidden = false; emptyState.textContent = message; }
+            if (wwAnalysisActiveType === "impedance") {
+                wwAnalysisSetRelatedWaveformRoles([], wwImpedanceState.selectedContextId, null);
+            }
+        }
+        function wwImpedanceShowNoContextSelected() {
+            wwImpedanceState.activeTimeGroupId = null;
+            wwImpedanceShowEmptyState(WW_IMPEDANCE_MSG_SELECT_CONTEXT);
+        }
+        function wwImpedanceAnchorDisplaySourceIdForContext(ctx) {
+            if (!ctx || !ctx.members || ctx.members.length === 0) return null;
+            const ref = ctx.members[0].channel_ref;
+            return ref.kind === "calculated" ? ref.calculated_channel_id : ref.source_id;
+        }
+        function wwImpedanceLoadForSelectedContext() {
+            const contextId = wwImpedanceState.selectedContextId;
+            if (!contextId) {
+                wwImpedanceShowNoContextSelected();
+                return;
+            }
+            const ctx = wwImpedanceState.contexts.find((c) => c.id === contextId);
+            wwImpedanceState.lastLoadedContextId = contextId;
+
+            const anchorDisplaySourceId = wwImpedanceAnchorDisplaySourceIdForContext(ctx);
+            wwImpedanceState.anchorDisplaySourceId = anchorDisplaySourceId;
+            const groupId = anchorDisplaySourceId !== null ? wwTimeGroupIdForDisplaySourceId(anchorDisplaySourceId) : null;
+
+            if (groupId !== wwImpedanceState.activeTimeGroupId) {
+                wwImpedanceState.activeTimeGroupId = groupId;
+                wwImpedanceMountPlaybackControls(groupId);
+                wwImpedanceInvalidateLocus();
+            }
+
+            const emptyState = document.getElementById("wwImpedanceEmptyState");
+            if (emptyState) emptyState.hidden = true;
+
+            if (groupId === null) {
+                wwImpedanceState.analysisTime = 0;
+                wwImpedanceRequestExactPlaybackFetch();
+                return;
+            }
+
+            if (wwPlayback.activeTimeGroupId === groupId) {
+                wwImpedanceState.analysisTime = wwPlayback.currentTime;
+                wwImpedanceRequestExactPlaybackFetch();
+            } else {
+                wwPlaybackRestart(groupId);
+                const bounds = wwDeriveTimeGroupBounds(groupId);
+                if (bounds) {
+                    const initialTime = wwPhasorComputeInitialClaimTime(groupId, bounds);
+                    if (Math.abs(initialTime - bounds.start) > 1e-9) {
+                        wwPlaybackHandleSeekInput(groupId, initialTime);
+                        wwPlaybackHandleSeekCommit(groupId, initialTime);
+                    }
+                }
+            }
+            wwImpedanceMaybeFetchLocus();
+        }
+
+        // ---- Playback control-surface mount -- identical pattern to
+        // wwPhasorMountPlaybackControls()/wwOvercurrentMountPlaybackControls(). ----
+        function wwImpedanceMountPlaybackControls(groupId) {
+            const panelEl = document.getElementById("wwImpedancePlaybackPanel");
+            const mountEl = document.getElementById("wwImpedancePlaybackMount");
+            if (!panelEl || !mountEl) return;
+            if (groupId === null) {
+                panelEl.hidden = true;
+                mountEl.innerHTML = "";
+                return;
+            }
+            const playbackControlsHtml = wwCreatePlaybackControlsHtml();
+            mountEl.innerHTML =
+                '<div class="ww-phasor-playback-transport ww-analysis-playback-transport">' + playbackControlsHtml.transportHtml + '</div>' +
+                playbackControlsHtml.seekRowHtml;
+            panelEl.hidden = false;
+            wwWirePlaybackControls(mountEl, groupId);
+            wwSyncPlaybackControls(mountEl, groupId);
+
+            const playBtn = mountEl.querySelector(".ww-tg-playback-play-btn");
+            if (playBtn) playBtn.addEventListener("click", () => wwImpedanceOnPlaybackTick(wwPlayback.currentTime, wwPlayback));
+            const restartBtn = mountEl.querySelector(".ww-tg-playback-restart-btn");
+            if (restartBtn) restartBtn.addEventListener("click", () => wwImpedanceOnPlaybackTick(wwPlayback.currentTime, wwPlayback));
+            const speedSelect = mountEl.querySelector(".ww-tg-playback-speed-select");
+            if (speedSelect) speedSelect.addEventListener("change", () => wwImpedanceOnPlaybackTick(wwPlayback.currentTime, wwPlayback));
+        }
+
+        // ---- The ONE tick subscriber -- identical shape to
+        // wwPhasorOnPlaybackTick()/wwOvercurrentOnPlaybackTick(). Only the
+        // CURRENT-POINT fetch is throttled/driven per tick -- the static
+        // locus itself is never touched here (task's own "no per-frame
+        // backend requests" for the locus). ----
+        let wwImpedanceLastPlaybackSignature = null;
+        function wwImpedanceOnPlaybackTick(currentTime, playback) {
+            if (wwImpedanceState.activeTimeGroupId === null) return;
+            const isOurGroup = playback.activeTimeGroupId === wwImpedanceState.activeTimeGroupId;
+            const signature = playback.state + "|" + playback.activeTimeGroupId;
+            const transitioned = signature !== wwImpedanceLastPlaybackSignature;
+            wwImpedanceLastPlaybackSignature = signature;
+
+            const mountEl = document.getElementById("wwImpedancePlaybackMount");
+            if (mountEl && !mountEl.hidden && isOurGroup) {
+                if (transitioned) {
+                    wwSyncPlaybackControls(mountEl, wwImpedanceState.activeTimeGroupId);
+                } else {
+                    wwUpdatePlaybackControlsTick(mountEl, wwImpedanceState.activeTimeGroupId);
+                }
+            }
+
+            if (!isOurGroup) return;
+            wwImpedanceState.analysisTime = currentTime;
+
+            if (wwImpedanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return;
+
+            if (playback.state === WW_PLAYBACK_STATE_PLAYING) {
+                wwImpedanceMaybeFetchForPlayback();
+            } else {
+                wwImpedanceRequestExactPlaybackFetch();
+            }
+        }
+
+        // ---- Throttled, concurrency-safe current-point fetch -- identical
+        // shape/constants to wwPhasorMaybeFetchForPlayback()/
+        // wwOvercurrentMaybeFetchForPlayback(). ----
+        const WW_IMPEDANCE_PLAYBACK_THROTTLE_MS = 100; // ~10 Hz
+        let wwImpedancePlaybackFetchInFlight = false;
+        let wwImpedancePlaybackLastFetchAtMs = 0;
+        let wwImpedancePlaybackFetchedTime = null;
+        let wwImpedancePlaybackForceNextFetch = false;
+
+        function wwImpedancePlaybackDesiredTimeChanged() {
+            return wwImpedancePlaybackFetchedTime === null ||
+                Math.abs(wwImpedancePlaybackFetchedTime - wwImpedanceState.analysisTime) > 1e-9;
+        }
+        function wwImpedanceRequestExactPlaybackFetch() {
+            wwImpedancePlaybackForceNextFetch = true;
+            wwImpedanceMaybeFetchForPlayback();
+        }
+        function wwImpedanceMaybeFetchForPlayback() {
+            const force = wwImpedancePlaybackForceNextFetch;
+            if (!force && !wwImpedancePlaybackDesiredTimeChanged()) return;
+            if (wwImpedancePlaybackFetchInFlight) return;
+            if (!force) {
+                const elapsedMs = performance.now() - wwImpedancePlaybackLastFetchAtMs;
+                if (elapsedMs < WW_IMPEDANCE_PLAYBACK_THROTTLE_MS) return;
+            }
+            wwImpedancePlaybackForceNextFetch = false;
+            wwImpedanceRequestAnalysis();
+        }
+
+        function wwImpedanceSetUpdatingIndicator(isUpdating) {
+            const el = document.getElementById("wwImpedanceUpdatingIndicator");
+            if (el) el.hidden = !isUpdating;
+        }
+
+        function wwImpedanceBasisParams(s) {
+            const params = { recording_basis: s.recordingBasis, impedance_basis: s.outputBasis };
+            if (s.recordingBasis !== s.outputBasis && s.vtPrimary !== null && s.vtSecondary !== null && s.ctPrimary !== null && s.ctSecondary !== null) {
+                params.vt_primary = String(s.vtPrimary);
+                params.vt_secondary = String(s.vtSecondary);
+                params.ct_primary = String(s.ctPrimary);
+                params.ct_secondary = String(s.ctSecondary);
+            }
+            return params;
+        }
+
+        // The ONE place that dispatches a `/impedance` HTTP call for the
+        // CURRENT (Playback-time) point -- identical staleness-guard shape
+        // to wwPhasorRequestDiagram()/wwOvercurrentRequestAnalysis().
+        async function wwImpedanceRequestAnalysis() {
+            const contextId = wwImpedanceState.selectedContextId;
+            if (!contextId || wwImpedanceState.analysisTime === null) return;
+            const anchorDisplaySourceId = wwImpedanceState.anchorDisplaySourceId;
+            const desiredTime = wwImpedanceState.analysisTime;
+            const s = wwImpedanceState.settings;
+
+            const myGeneration = ++wwImpedanceState.requestGeneration;
+            const epochAtStart = ww.epoch;
+            const workspaceId = currentWorkspaceId();
+            const analysisTimeForApi = anchorDisplaySourceId !== null
+                ? wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, desiredTime)
+                : desiredTime;
+
+            const params = new URLSearchParams(Object.assign(
+                { phase: wwImpedanceState.phase, analysis_time: String(analysisTimeForApi) },
+                wwImpedanceBasisParams(s)
+            ));
+
+            wwImpedancePlaybackFetchInFlight = true;
+            wwImpedanceSetUpdatingIndicator(true);
+            let result;
+            try {
+                result = await wwImpedanceFetchAnalysis(workspaceId, contextId, params);
+            } catch (error) {
+                wwImpedancePlaybackFetchInFlight = false;
+                wwImpedancePlaybackLastFetchAtMs = performance.now();
+                wwImpedancePlaybackFetchedTime = desiredTime;
+                if (myGeneration !== wwImpedanceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                wwImpedanceSetUpdatingIndicator(false);
+                wwImpedanceState.latestResult = null;
+                wwImpedanceRenderResult(null);
+                wwImpedanceMaybeFetchForPlayback();
+                return;
+            }
+            wwImpedancePlaybackFetchInFlight = false;
+            wwImpedancePlaybackLastFetchAtMs = performance.now();
+            wwImpedancePlaybackFetchedTime = desiredTime;
+            if (myGeneration !== wwImpedanceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            wwImpedanceSetUpdatingIndicator(false);
+            wwImpedanceState.latestResult = result;
+            wwImpedanceRenderResult(result);
+            wwImpedanceMaybeFetchForPlayback();
+        }
+
+        // ---- Static locus/trajectory (task's own section 18-19) --
+        // fetched ONLY when context/phase/settings/time-range change,
+        // never per Playback tick. Cached via a signature string exactly
+        // like the shared Related Waveforms panel's own
+        // `s.lastSignature` short-circuit convention. ----
+        function wwImpedanceLocusSignature() {
+            const s = wwImpedanceState.settings;
+            return [
+                wwImpedanceState.selectedContextId, wwImpedanceState.activeTimeGroupId, wwImpedanceState.phase,
+                s.recordingBasis, s.outputBasis, s.vtPrimary, s.vtSecondary, s.ctPrimary, s.ctSecondary,
+            ].join("|");
+        }
+        function wwImpedanceInvalidateLocus() {
+            wwImpedanceState.locusPoints = [];
+            wwImpedanceState.locusSignature = null;
+        }
+        const WW_IMPEDANCE_LOCUS_POINT_COUNT = 120;
+        async function wwImpedanceMaybeFetchLocus() {
+            const contextId = wwImpedanceState.selectedContextId;
+            const groupId = wwImpedanceState.activeTimeGroupId;
+            if (!contextId || groupId === null) { wwImpedanceInvalidateLocus(); wwImpedanceRenderPlot(); return; }
+            const bounds = wwDeriveTimeGroupBounds(groupId);
+            if (!bounds) { wwImpedanceInvalidateLocus(); wwImpedanceRenderPlot(); return; }
+            const signature = wwImpedanceLocusSignature();
+            if (signature === wwImpedanceState.locusSignature) return;
+
+            const anchorDisplaySourceId = wwImpedanceState.anchorDisplaySourceId;
+            const startForApi = anchorDisplaySourceId !== null ? wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, bounds.start) : bounds.start;
+            const endForApi = anchorDisplaySourceId !== null ? wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, bounds.end) : bounds.end;
+            const s = wwImpedanceState.settings;
+            const params = new URLSearchParams(Object.assign(
+                {
+                    phase: wwImpedanceState.phase, start_time: String(startForApi), end_time: String(endForApi),
+                    point_count: String(WW_IMPEDANCE_LOCUS_POINT_COUNT),
+                },
+                wwImpedanceBasisParams(s)
+            ));
+            const myGeneration = ++wwImpedanceState.locusRequestGeneration;
+            const epochAtStart = ww.epoch;
+            const workspaceId = currentWorkspaceId();
+            let result;
+            try {
+                result = await wwImpedanceFetchLocus(workspaceId, contextId, params);
+            } catch (error) {
+                return;
+            }
+            if (myGeneration !== wwImpedanceState.locusRequestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            wwImpedanceState.locusPoints = result.points || [];
+            wwImpedanceState.locusSignature = signature;
+            wwImpedanceRenderPlot();
+        }
+
+        // ---- Rendering ----
+
+        function wwImpedanceFormatOhm(value) {
+            if (!Number.isFinite(value)) return "—";
+            return wwFormatEngineeringValue(value) + " Ω";
+        }
+        function wwImpedanceValueRow(label, value) {
+            return '<div class="ww-oc-value-row"><span class="ww-oc-value-row-label">' + escapeHtml(label) + '</span>' +
+                '<span class="ww-oc-value-row-value">' + escapeHtml(value) + '</span></div>';
+        }
+        const WW_IMPEDANCE_STATUS_LABELS = {
+            missing: "Missing", needs_configuration: "Needs configuration", ambiguous: "Ambiguous", not_eligible: "Not eligible",
+        };
+
+        function wwImpedanceRenderResult(result) {
+            if (wwImpedanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return;
+            const statusRow = document.getElementById("wwImpedanceStatusRow");
+            const valuesList = document.getElementById("wwImpedanceValuesList");
+            if (!statusRow || !valuesList) return;
+
+            if (!result || result.status !== "computed") {
+                statusRow.hidden = false;
+                statusRow.textContent = (result && result.message) ||
+                    (result && WW_IMPEDANCE_STATUS_LABELS[result.status]) ||
+                    "Impedance could not be computed for this selection.";
+                statusRow.className = "ww-phasor-status-row" +
+                    (result && result.status !== "computed" ? " ww-phasor-status--needs-configuration" : "");
+                valuesList.innerHTML = "";
+                wwImpedancePushRelatedWaveformRoles();
+                wwImpedanceRenderPlot();
+                return;
+            }
+            statusRow.hidden = true;
+            const rows = [];
+            rows.push(wwImpedanceValueRow("Phase impedance", "Z" + result.phase.toLowerCase()));
+            rows.push(wwImpedanceValueRow("Basis", result.impedance_basis === "primary" ? "Primary" : "Secondary"));
+            rows.push(wwImpedanceValueRow("R", wwImpedanceFormatOhm(result.resistance_ohm)));
+            rows.push(wwImpedanceValueRow("X", wwImpedanceFormatOhm(result.reactance_ohm)));
+            rows.push(wwImpedanceValueRow("|Z|", wwImpedanceFormatOhm(result.magnitude_ohm)));
+            rows.push(wwImpedanceValueRow("Angle", (result.angle_deg >= 0 ? "+" : "") + result.angle_deg.toFixed(2) + "°"));
+            valuesList.innerHTML = rows.join("");
+            wwImpedancePushRelatedWaveformRoles();
+            wwImpedanceRenderPlot();
+        }
+
+        function wwImpedanceComputeActiveRelatedWaveformRoles() {
+            if (wwImpedanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return [];
+            const result = wwImpedanceState.latestResult;
+            if (!result || result.status !== "computed") return [];
+            const phase = wwImpedanceState.phase;
+            const roles = [];
+            if (result.voltage_magnitude_rms !== null && result.voltage_magnitude_rms !== undefined) {
+                const key = "V" + phase.toLowerCase();
+                roles.push({ roleKey: key, engineeringType: "Voltage", phase, unit: result.voltage_unit, label: key, color: wwPhasorRoleColor(key) });
+            }
+            if (result.current_magnitude_rms !== null && result.current_magnitude_rms !== undefined) {
+                const key = "I" + phase.toLowerCase();
+                roles.push({ roleKey: key, engineeringType: "Current", phase, unit: result.current_unit, label: key, color: wwPhasorRoleColor(key) });
+            }
+            return roles;
+        }
+        function wwImpedancePushRelatedWaveformRoles() {
+            if (wwAnalysisActiveType !== "impedance") return;
+            wwAnalysisSetRelatedWaveformRoles(
+                wwImpedanceComputeActiveRelatedWaveformRoles(), wwImpedanceState.selectedContextId, wwImpedanceState.activeTimeGroupId
+            );
+        }
+
+        // ---- R-X plane plot -- equal geometric scale for R and X
+        // (task's own section 14 hard requirement: never independent X/Y
+        // graphical scales). One shared px-per-ohm factor computed from
+        // whichever points are currently relevant (task's own section 15
+        // automatic, nice-tick, headroom-aware viewport). ----
+        const WW_IMPEDANCE_PLOT_RADIUS = 100;
+        function wwImpedanceNiceLimit(maxAbs) {
+            if (!Number.isFinite(maxAbs) || maxAbs <= 0) return 10;
+            const target = maxAbs * 1.3;
+            const magnitude = Math.pow(10, Math.floor(Math.log10(target)));
+            for (const mult of [1, 2, 5, 10]) {
+                const candidate = mult * magnitude;
+                if (candidate >= target - 1e-9) return candidate;
+            }
+            return 10 * magnitude;
+        }
+        function wwImpedanceCollectRelevantPoints() {
+            const points = [];
+            if (wwImpedanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                const r = wwImpedanceState.manual.latestResult;
+                if (r && r.status === "computed") points.push({ r: r.resistance_ohm, x: r.reactance_ohm });
+                return points;
+            }
+            const current = wwImpedanceState.latestResult;
+            if (current && current.status === "computed") points.push({ r: current.resistance_ohm, x: current.reactance_ohm });
+            for (const p of wwImpedanceState.locusPoints) {
+                if (p.status === "computed") points.push({ r: p.resistance_ohm, x: p.reactance_ohm });
+            }
+            return points;
+        }
+        function wwImpedanceFormatTick(value) {
+            const abs = Math.abs(value);
+            if (abs >= 1000) return (value / 1000).toFixed(abs >= 10000 ? 0 : 1) + "k";
+            if (abs >= 1) return value.toFixed(abs >= 100 ? 0 : 1);
+            return value.toPrecision(2);
+        }
+        function wwImpedanceRenderPlot() {
+            const svg = document.getElementById("wwImpedanceSvg");
+            const scaleNote = document.getElementById("wwImpedanceScaleNote");
+            if (!svg) return;
+            const points = wwImpedanceCollectRelevantPoints();
+            const maxAbs = points.reduce((m, p) => Math.max(m, Math.abs(p.r), Math.abs(p.x)), 0);
+            const limit = wwImpedanceNiceLimit(maxAbs);
+            const pxPerOhm = WW_IMPEDANCE_PLOT_RADIUS / limit;
+            const toSvg = (r, x) => [r * pxPerOhm, -x * pxPerOhm];
+
+            const parts = [];
+            // Bounding square + half gridlines -- deliberately sparse,
+            // mirroring the Phasor diagram's own "grid stays secondary"
+            // instruction.
+            for (const frac of [0.5, 1.0]) {
+                const d = WW_IMPEDANCE_PLOT_RADIUS * frac;
+                parts.push('<rect class="ww-imp-grid-line" x="' + (-d) + '" y="' + (-d) + '" width="' + (2 * d) + '" height="' + (2 * d) + '" fill="none"></rect>');
+            }
+            // R and X axes through the origin.
+            parts.push('<line class="ww-imp-axis" x1="' + (-WW_IMPEDANCE_PLOT_RADIUS - 8) + '" y1="0" x2="' + (WW_IMPEDANCE_PLOT_RADIUS + 8) + '" y2="0"></line>');
+            parts.push('<line class="ww-imp-axis" x1="0" y1="' + (-WW_IMPEDANCE_PLOT_RADIUS - 8) + '" x2="0" y2="' + (WW_IMPEDANCE_PLOT_RADIUS + 8) + '"></line>');
+            // Tick labels at the axis extremes (+-limit).
+            parts.push('<text class="ww-imp-tick-label" x="' + (WW_IMPEDANCE_PLOT_RADIUS - 2) + '" y="10" text-anchor="end">' + wwImpedanceFormatTick(limit) + '</text>');
+            parts.push('<text class="ww-imp-tick-label" x="' + (-WW_IMPEDANCE_PLOT_RADIUS + 2) + '" y="10" text-anchor="start">' + wwImpedanceFormatTick(-limit) + '</text>');
+            parts.push('<text class="ww-imp-tick-label" x="4" y="' + (-WW_IMPEDANCE_PLOT_RADIUS + 4) + '" text-anchor="start">' + wwImpedanceFormatTick(limit) + '</text>');
+            parts.push('<text class="ww-imp-tick-label" x="4" y="' + (WW_IMPEDANCE_PLOT_RADIUS - 1) + '" text-anchor="start">' + wwImpedanceFormatTick(-limit) + '</text>');
+
+            // Locus path -- Recording mode only, contiguous `computed` runs.
+            if (wwImpedanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_RECORDING) {
+                let path = "";
+                let drawing = false;
+                for (const p of wwImpedanceState.locusPoints) {
+                    if (p.status !== "computed") { drawing = false; continue; }
+                    const [x, y] = toSvg(p.resistance_ohm, p.reactance_ohm);
+                    path += (drawing ? " L " : " M ") + x.toFixed(2) + "," + y.toFixed(2);
+                    drawing = true;
+                }
+                if (path) parts.push('<path class="ww-imp-locus-path" d="' + path.trim() + '"></path>');
+            }
+
+            // Current point.
+            if (wwImpedanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                const r = wwImpedanceState.manual.latestResult;
+                if (r && r.status === "computed") {
+                    const [x, y] = toSvg(r.resistance_ohm, r.reactance_ohm);
+                    parts.push(
+                        '<circle class="ww-imp-point--manual" cx="' + x.toFixed(2) + '" cy="' + y.toFixed(2) + '" r="3.2">' +
+                        '<title>Manual input point\nZ' + escapeHtml(r.phase_label.toLowerCase()) +
+                        '\nR = ' + wwImpedanceFormatOhm(r.resistance_ohm) + '\nX = ' + wwImpedanceFormatOhm(r.reactance_ohm) +
+                        '\n|Z| = ' + wwImpedanceFormatOhm(r.magnitude_ohm) + '\n∠ = ' + r.angle_deg.toFixed(2) + '°</title></circle>'
+                    );
+                }
+            } else {
+                const current = wwImpedanceState.latestResult;
+                if (current && current.status === "computed") {
+                    const [x, y] = toSvg(current.resistance_ohm, current.reactance_ohm);
+                    parts.push(
+                        '<circle class="ww-imp-point" cx="' + x.toFixed(2) + '" cy="' + y.toFixed(2) + '" r="3">' +
+                        '<title>Z' + escapeHtml(current.phase.toLowerCase()) +
+                        '\nR = ' + wwImpedanceFormatOhm(current.resistance_ohm) + '\nX = ' + wwImpedanceFormatOhm(current.reactance_ohm) +
+                        '\n|Z| = ' + wwImpedanceFormatOhm(current.magnitude_ohm) + '\n∠ = ' + current.angle_deg.toFixed(2) + '°</title></circle>'
+                    );
+                }
+            }
+
+            // Axis titles LAST, painted on top (mirrors the Phasor
+            // diagram's own "labels painted after vectors" fix).
+            parts.push('<text class="ww-imp-axis-title" x="' + (WW_IMPEDANCE_PLOT_RADIUS + 10) + '" y="-6" text-anchor="end">R (Ω)</text>');
+            parts.push('<text class="ww-imp-axis-title" x="4" y="' + (-WW_IMPEDANCE_PLOT_RADIUS - 12) + '" text-anchor="start">X (Ω)</text>');
+
+            svg.innerHTML = parts.join("");
+            if (scaleNote) {
+                scaleNote.textContent = points.length > 0
+                    ? "Viewport ±" + wwImpedanceFormatTick(limit) + " Ω -- measurement/visualization only, not a distance-protection zone evaluation."
+                    : "Measurement/visualization only -- not a distance-protection zone evaluation.";
+            }
+        }
+
+        // ---- Input Source (Recording/Manual) -- identical pattern to
+        // wwOvercurrentSetInputSource()/wwPhasorSetInputSource(). ----
+        function wwImpedanceCtVtFieldsNeeded() {
+            const s = wwImpedanceState.settings;
+            return s.recordingBasis !== s.outputBasis;
+        }
+        function wwImpedanceUpdateCtVtFieldsVisibility() {
+            const needed = wwImpedanceCtVtFieldsNeeded();
+            for (const id of ["wwImpedanceVtPrimaryField", "wwImpedanceVtSecondaryField", "wwImpedanceCtPrimaryField", "wwImpedanceCtSecondaryField"]) {
+                const el = document.getElementById(id);
+                if (el) el.hidden = !needed;
+            }
+        }
+        function wwImpedanceUpdateManualRatioFieldsVisibility() {
+            const m = wwImpedanceState.manual;
+            const vtPrimary = document.getElementById("wwImpedanceManualVtPrimaryField");
+            const vtSecondary = document.getElementById("wwImpedanceManualVtSecondaryField");
+            const ctPrimary = document.getElementById("wwImpedanceManualCtPrimaryField");
+            const ctSecondary = document.getElementById("wwImpedanceManualCtSecondaryField");
+            if (vtPrimary) vtPrimary.hidden = m.voltageBasis !== "primary";
+            if (vtSecondary) vtSecondary.hidden = m.voltageBasis !== "primary";
+            if (ctPrimary) ctPrimary.hidden = m.currentBasis !== "primary";
+            if (ctSecondary) ctSecondary.hidden = m.currentBasis !== "primary";
+        }
+
+        function wwImpedanceHandleSettingsChanged() {
+            wwImpedanceUpdateCtVtFieldsVisibility();
+            wwImpedanceInvalidateLocus();
+            if (wwImpedanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                wwImpedanceRequestManualAnalysis();
+            } else {
+                wwImpedanceRequestExactPlaybackFetch();
+                wwImpedanceMaybeFetchLocus();
+            }
+        }
+        function wwImpedanceHandlePhaseChanged() {
+            wwImpedanceHandleSettingsChanged();
+        }
+
+        function wwImpedanceSetInputSource(mode, isAutomatic) {
+            if (mode !== WW_ANALYSIS_INPUT_SOURCE_RECORDING && mode !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
+            if (mode === WW_ANALYSIS_INPUT_SOURCE_RECORDING && !wwImpedanceState.recordingAvailable) return;
+            if (!isAutomatic) wwImpedanceState.inputSourceAutoSelected = false;
+            if (mode === wwImpedanceState.inputSource) return;
+            wwImpedanceState.inputSource = mode;
+            wwImpedanceSyncInputSourceButtons();
+            wwImpedanceUpdateManualSectionVisibility();
+            wwImpedanceUpdateRecordingSectionVisibility();
+            wwImpedancePushRelatedWaveformRoles();
+            wwImpedanceRenderPlot();
+            if (mode === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                wwImpedanceRequestManualAnalysis();
+            } else {
+                wwImpedanceRequestExactPlaybackFetch();
+                wwImpedanceMaybeFetchLocus();
+            }
+        }
+        function wwImpedanceSyncInputSourceButtons() {
+            const recordingBtn = document.getElementById("wwImpedanceInputSourceRecordingBtn");
+            const manualBtn = document.getElementById("wwImpedanceInputSourceManualBtn");
+            if (!recordingBtn || !manualBtn) return;
+            const isManual = wwImpedanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+            recordingBtn.classList.toggle("ww-oc-axis-toggle-btn--active", !isManual);
+            recordingBtn.setAttribute("aria-pressed", String(!isManual));
+            manualBtn.classList.toggle("ww-oc-axis-toggle-btn--active", isManual);
+            manualBtn.setAttribute("aria-pressed", String(isManual));
+        }
+        function wwImpedanceUpdateManualSectionVisibility() {
+            const section = document.getElementById("wwImpedanceManualInputSection");
+            if (section) section.hidden = wwImpedanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+        }
+        function wwImpedanceUpdateRecordingSectionVisibility() {
+            const section = document.getElementById("wwImpedanceRecordingSection");
+            if (section) section.hidden = wwImpedanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING;
+        }
+        function wwImpedanceUpdateInputSourceAvailability() {
+            const available = wwImpedanceState.contexts.length > 0;
+            wwImpedanceState.recordingAvailable = available;
+            const recordingBtn = document.getElementById("wwImpedanceInputSourceRecordingBtn");
+            const hint = document.getElementById("wwImpedanceInputSourceHint");
+            if (recordingBtn) recordingBtn.disabled = !available;
+            if (hint) hint.hidden = available;
+            if (wwAnalysisActiveType !== "impedance") return;
+            if (!wwImpedanceState.inputSourceAutoSelected) return;
+            if (!available && wwImpedanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_RECORDING) {
+                wwImpedanceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_MANUAL, true);
+            } else if (available && wwImpedanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                wwImpedanceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_RECORDING, true);
+            }
+        }
+
+        // ---- Manual Input / Calculator mode ----
+        function wwImpedanceManualInputIsValid() {
+            const m = wwImpedanceState.manual;
+            return Number.isFinite(m.voltageMagnitude) && m.voltageMagnitude >= 0 &&
+                Number.isFinite(m.voltageAngleDeg) &&
+                Number.isFinite(m.currentMagnitude) && m.currentMagnitude >= 0 &&
+                Number.isFinite(m.currentAngleDeg);
+        }
+        function wwImpedanceRequestManualAnalysis() {
+            if (wwImpedanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
+            if (!wwImpedanceManualInputIsValid()) {
+                wwImpedanceState.manual.latestResult = null;
+                wwImpedanceRenderManualResult(null);
+                return;
+            }
+            const m = wwImpedanceState.manual;
+            const myGeneration = ++wwImpedanceState.manualRequestGeneration;
+            const epochAtStart = ww.epoch;
+            const workspaceId = currentWorkspaceId();
+            const params = new URLSearchParams({
+                phase_label: wwImpedanceState.phase,
+                voltage_basis: m.voltageBasis, current_basis: m.currentBasis, impedance_basis: wwImpedanceState.settings.outputBasis,
+                voltage_enabled: "true", voltage_magnitude: String(m.voltageMagnitude), voltage_unit: m.voltageUnit, voltage_angle_deg: String(m.voltageAngleDeg),
+                current_enabled: "true", current_magnitude: String(m.currentMagnitude), current_unit: m.currentUnit, current_angle_deg: String(m.currentAngleDeg),
+            });
+            if (m.voltageBasis === "primary" && m.voltageRatioPrimary !== null && m.voltageRatioSecondary !== null) {
+                params.set("vt_primary", String(m.voltageRatioPrimary));
+                params.set("vt_secondary", String(m.voltageRatioSecondary));
+            }
+            if (m.currentBasis === "primary" && m.currentRatioPrimary !== null && m.currentRatioSecondary !== null) {
+                params.set("ct_primary", String(m.currentRatioPrimary));
+                params.set("ct_secondary", String(m.currentRatioSecondary));
+            }
+            wwImpedanceFetchManual(workspaceId, params).then(
+                (result) => {
+                    if (myGeneration !== wwImpedanceState.manualRequestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                    wwImpedanceState.manual.latestResult = result;
+                    wwImpedanceRenderManualResult(result);
+                },
+                () => {
+                    if (myGeneration !== wwImpedanceState.manualRequestGeneration) return;
+                    wwImpedanceState.manual.latestResult = null;
+                    wwImpedanceRenderManualResult(null);
+                }
+            );
+        }
+        function wwImpedanceRenderManualResult(result) {
+            if (wwImpedanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
+            const statusRow = document.getElementById("wwImpedanceStatusRow");
+            const valuesList = document.getElementById("wwImpedanceValuesList");
+            if (!statusRow || !valuesList) return;
+            if (!result || result.status !== "computed") {
+                statusRow.hidden = false;
+                statusRow.textContent = (result && result.message) ||
+                    (result && WW_IMPEDANCE_STATUS_LABELS[result.status]) || "Enter valid Voltage/Current values to calculate.";
+                statusRow.className = "ww-phasor-status-row" + (result && result.status !== "computed" ? " ww-phasor-status--needs-configuration" : "");
+                valuesList.innerHTML = "";
+                wwImpedanceRenderPlot();
+                return;
+            }
+            statusRow.hidden = true;
+            const rows = [];
+            rows.push(wwImpedanceValueRow("Phase impedance", "Z" + result.phase_label.toLowerCase()));
+            rows.push(wwImpedanceValueRow("Basis", result.impedance_basis === "primary" ? "Primary" : "Secondary"));
+            rows.push(wwImpedanceValueRow("R", wwImpedanceFormatOhm(result.resistance_ohm)));
+            rows.push(wwImpedanceValueRow("X", wwImpedanceFormatOhm(result.reactance_ohm)));
+            rows.push(wwImpedanceValueRow("|Z|", wwImpedanceFormatOhm(result.magnitude_ohm)));
+            rows.push(wwImpedanceValueRow("Angle", (result.angle_deg >= 0 ? "+" : "") + result.angle_deg.toFixed(2) + "°"));
+            valuesList.innerHTML = rows.join("");
+            wwImpedanceRenderPlot();
+        }
+
+        function wwImpedanceSyncSettingsFields() {
+            const s = wwImpedanceState.settings;
+            const m = wwImpedanceState.manual;
+            const setVal = (id, value) => { const el = document.getElementById(id); if (el) el.value = String(value); };
+            setVal("wwImpedancePhaseSelect", wwImpedanceState.phase);
+            setVal("wwImpedanceRecordingBasisSelect", s.recordingBasis);
+            setVal("wwImpedanceOutputBasisSelect", s.outputBasis);
+            if (s.vtPrimary !== null) setVal("wwImpedanceVtPrimaryInput", s.vtPrimary);
+            if (s.vtSecondary !== null) setVal("wwImpedanceVtSecondaryInput", s.vtSecondary);
+            if (s.ctPrimary !== null) setVal("wwImpedanceCtPrimaryInput", s.ctPrimary);
+            if (s.ctSecondary !== null) setVal("wwImpedanceCtSecondaryInput", s.ctSecondary);
+            setVal("wwImpedanceManualVoltageBasisSelect", m.voltageBasis);
+            setVal("wwImpedanceManualVtPrimaryInput", m.voltageRatioPrimary);
+            setVal("wwImpedanceManualVtSecondaryInput", m.voltageRatioSecondary);
+            setVal("wwImpedanceManualVoltageMagnitudeInput", m.voltageMagnitude);
+            setVal("wwImpedanceManualVoltageUnitSelect", m.voltageUnit);
+            setVal("wwImpedanceManualVoltageAngleInput", m.voltageAngleDeg);
+            setVal("wwImpedanceManualCurrentBasisSelect", m.currentBasis);
+            setVal("wwImpedanceManualCtPrimaryInput", m.currentRatioPrimary);
+            setVal("wwImpedanceManualCtSecondaryInput", m.currentRatioSecondary);
+            setVal("wwImpedanceManualCurrentMagnitudeInput", m.currentMagnitude);
+            setVal("wwImpedanceManualCurrentUnitSelect", m.currentUnit);
+            setVal("wwImpedanceManualCurrentAngleInput", m.currentAngleDeg);
+        }
+
+        function wwImpedanceResetState() {
+            wwImpedanceState.contexts = [];
+            wwImpedanceState.selectedContextId = null;
+            wwImpedanceState.lastLoadedContextId = null;
+            wwImpedanceState.anchorDisplaySourceId = null;
+            wwImpedanceState.activeTimeGroupId = null;
+            wwImpedanceState.analysisTime = null;
+            wwImpedanceState.phase = "A";
+            wwImpedanceState.settings = { recordingBasis: "secondary", outputBasis: "secondary", vtPrimary: null, vtSecondary: null, ctPrimary: null, ctSecondary: null };
+            wwImpedanceState.latestResult = null;
+            wwImpedanceState.requestGeneration += 1;
+            wwImpedanceInvalidateLocus();
+            wwImpedanceState.locusRequestGeneration += 1;
+            wwImpedanceState.inputSource = WW_ANALYSIS_INPUT_SOURCE_RECORDING;
+            wwImpedanceState.recordingAvailable = false;
+            wwImpedanceState.inputSourceAutoSelected = true;
+            wwImpedanceState.manual = {
+                voltageBasis: "primary", voltageRatioPrimary: 132000, voltageRatioSecondary: 110,
+                voltageMagnitude: 132, voltageUnit: "kV", voltageAngleDeg: 0,
+                currentBasis: "primary", currentRatioPrimary: 1200, currentRatioSecondary: 1,
+                currentMagnitude: 1.2, currentUnit: "kA", currentAngleDeg: -30,
+                latestResult: null,
+            };
+            wwImpedanceState.manualRequestGeneration += 1;
+            wwImpedanceSyncSettingsFields();
+            wwImpedanceSyncInputSourceButtons();
+            wwImpedanceUpdateManualSectionVisibility();
+            wwImpedanceUpdateRecordingSectionVisibility();
+            wwImpedanceUpdateInputSourceAvailability();
+            wwImpedanceUpdateCtVtFieldsVisibility();
+            wwImpedanceUpdateManualRatioFieldsVisibility();
+            wwImpedancePlaybackFetchInFlight = false;
+            wwImpedancePlaybackFetchedTime = null;
+            wwImpedancePlaybackForceNextFetch = false;
+            wwImpedanceLastPlaybackSignature = null;
+            wwImpedanceMountPlaybackControls(null);
+            const contextSelect = document.getElementById("wwImpedanceContextSelect");
+            if (contextSelect) contextSelect.innerHTML = '<option value="">Select a context…</option>';
+            const badge = document.getElementById("wwImpedanceContextBadge");
+            if (badge) badge.innerHTML = "";
+            const svg = document.getElementById("wwImpedanceSvg");
+            if (svg) svg.innerHTML = "";
+            wwImpedanceSetUpdatingIndicator(false);
+            const valuesList = document.getElementById("wwImpedanceValuesList");
+            if (valuesList) valuesList.innerHTML = "";
+            const statusRow = document.getElementById("wwImpedanceStatusRow");
+            if (statusRow) statusRow.hidden = true;
+            const emptyState = document.getElementById("wwImpedanceEmptyState");
+            if (emptyState) { emptyState.hidden = false; emptyState.textContent = WW_IMPEDANCE_MSG_SELECT_CONTEXT; }
+        }
+
         const wwPhasorState = {
             contexts: [],
             selectedContextId: null,
@@ -39666,6 +40771,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             onDiscovering: wwOvercurrentOnAnalysisDiscovering,
             onFreshContextsDiscovered: wwOvercurrentOnAnalysisFreshContextsDiscovered,
         });
+        wwAnalysisRegisterContextConsumer({
+            onContexts: wwImpedanceOnAnalysisContexts,
+            onLifecyclePhase: wwImpedanceOnAnalysisLifecyclePhase,
+            onDiscovering: wwImpedanceOnAnalysisDiscovering,
+            onFreshContextsDiscovered: wwImpedanceOnAnalysisFreshContextsDiscovered,
+        });
+        // Impedance Locus v1: the THIRD consumer of the ONE shared
+        // wwPlayback controller (DEC-085) -- mirrors Phasor's/
+        // Overcurrent's own registration immediately above/below.
+        wwPlaybackOnTick(wwImpedanceOnPlaybackTick);
 
         // Shared Related Waveforms panel: the ONE permanent tick
         // subscriber (cursor position only, never a re-fetch/re-render --
@@ -39790,6 +40905,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // known, so a context that appeared/disappeared while
                 // this tab was hidden is reflected immediately.
                 wwOvercurrentUpdateInputSourceAvailability();
+            } else if (type === "impedance") {
+                wwAnalysisMountRelatedWaveformsInto("wwImpedanceRelatedWaveformsAnchor");
+                wwImpedancePushRelatedWaveformRoles();
+                // Mirrors wwOvercurrentUpdateInputSourceAvailability()'s/
+                // wwPhasorUpdateInputSourceAvailability()'s own re-check --
+                // re-run now that Impedance Locus has actually become
+                // visible, so a context change that happened while this
+                // tab was hidden is reflected promptly.
+                wwImpedanceUpdateInputSourceAvailability();
             } else {
                 wwAnalysisSetRelatedWaveformRoles([], null, null);
             }
@@ -39924,6 +41048,90 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // seam for Overcurrent -- mirrors Phasor's own registration above
         // (never a second requestAnimationFrame loop).
         wwPlaybackOnTick(wwOvercurrentOnPlaybackTick);
+
+        // ---- Impedance Locus v1 wiring -- mirrors the Overcurrent/
+        // Phasor wiring blocks above exactly. ----
+        document.getElementById("wwImpedanceContextSelect").addEventListener("change", (event) => {
+            wwImpedanceState.selectedContextId = event.target.value || null;
+            wwImpedanceRenderContextBadge();
+            wwImpedanceInvalidateLocus();
+            if (wwImpedanceState.selectedContextId) {
+                wwImpedanceLoadForSelectedContext();
+            } else {
+                wwImpedanceShowNoContextSelected();
+            }
+        });
+        document.getElementById("wwImpedancePhaseSelect").addEventListener("change", (event) => {
+            wwImpedanceState.phase = event.target.value;
+            wwImpedanceHandlePhaseChanged();
+        });
+        document.getElementById("wwImpedanceOutputBasisSelect").addEventListener("change", (event) => {
+            wwImpedanceState.settings.outputBasis = event.target.value;
+            wwImpedanceHandleSettingsChanged();
+        });
+        document.getElementById("wwImpedanceRecordingBasisSelect").addEventListener("change", (event) => {
+            wwImpedanceState.settings.recordingBasis = event.target.value;
+            wwImpedanceHandleSettingsChanged();
+        });
+        [
+            ["wwImpedanceVtPrimaryInput", "vtPrimary"], ["wwImpedanceVtSecondaryInput", "vtSecondary"],
+            ["wwImpedanceCtPrimaryInput", "ctPrimary"], ["wwImpedanceCtSecondaryInput", "ctSecondary"],
+        ].forEach(([id, key]) => {
+            document.getElementById(id).addEventListener("change", (event) => {
+                const value = parseFloat(event.target.value);
+                wwImpedanceState.settings[key] = Number.isFinite(value) ? value : null;
+                wwImpedanceHandleSettingsChanged();
+            });
+        });
+        // Analysis Input Source segmented control -- Recording/Manual.
+        document.getElementById("wwImpedanceInputSourceRecordingBtn").addEventListener("click", () => wwImpedanceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_RECORDING));
+        document.getElementById("wwImpedanceInputSourceManualBtn").addEventListener("click", () => wwImpedanceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_MANUAL));
+        // Manual Input's own fields -- "change" only, matching every other
+        // Analysis settings field's own established convention (see
+        // docs/project-memory/ANALYSIS_INPUT_SOURCE.md).
+        document.getElementById("wwImpedanceManualVoltageBasisSelect").addEventListener("change", (event) => {
+            wwImpedanceState.manual.voltageBasis = event.target.value;
+            wwImpedanceUpdateManualRatioFieldsVisibility();
+            wwImpedanceRequestManualAnalysis();
+        });
+        document.getElementById("wwImpedanceManualCurrentBasisSelect").addEventListener("change", (event) => {
+            wwImpedanceState.manual.currentBasis = event.target.value;
+            wwImpedanceUpdateManualRatioFieldsVisibility();
+            wwImpedanceRequestManualAnalysis();
+        });
+        [
+            ["wwImpedanceManualVtPrimaryInput", "voltageRatioPrimary"], ["wwImpedanceManualVtSecondaryInput", "voltageRatioSecondary"],
+            ["wwImpedanceManualCtPrimaryInput", "currentRatioPrimary"], ["wwImpedanceManualCtSecondaryInput", "currentRatioSecondary"],
+            ["wwImpedanceManualVoltageMagnitudeInput", "voltageMagnitude"], ["wwImpedanceManualVoltageAngleInput", "voltageAngleDeg"],
+            ["wwImpedanceManualCurrentMagnitudeInput", "currentMagnitude"], ["wwImpedanceManualCurrentAngleInput", "currentAngleDeg"],
+        ].forEach(([id, key]) => {
+            document.getElementById(id).addEventListener("change", (event) => {
+                const value = parseFloat(event.target.value);
+                wwImpedanceState.manual[key] = value; // may be NaN -- wwImpedanceManualInputIsValid() rejects it before any request
+                wwImpedanceRequestManualAnalysis();
+            });
+        });
+        document.getElementById("wwImpedanceManualVoltageUnitSelect").addEventListener("change", (event) => {
+            wwImpedanceState.manual.voltageUnit = event.target.value;
+            wwImpedanceRequestManualAnalysis();
+        });
+        document.getElementById("wwImpedanceManualCurrentUnitSelect").addEventListener("change", (event) => {
+            wwImpedanceState.manual.currentUnit = event.target.value;
+            wwImpedanceRequestManualAnalysis();
+        });
+        wwImpedanceSyncSettingsFields();
+        wwImpedanceSyncInputSourceButtons();
+        wwImpedanceUpdateManualSectionVisibility();
+        wwImpedanceUpdateRecordingSectionVisibility();
+        wwImpedanceUpdateCtVtFieldsVisibility();
+        wwImpedanceUpdateManualRatioFieldsVisibility();
+        // Deliberately NOT calling wwImpedanceUpdateInputSourceAvailability()
+        // here -- mirrors wwOvercurrentUpdateInputSourceAvailability()'s own
+        // identical deferral above (this global wiring block runs once per
+        // PAGE LOAD; the real check fires lazily via
+        // wwImpedanceOnAnalysisContexts()/wwImpedanceOnAnalysisLifecyclePhase()
+        // the first time the shared context lifecycle actually resolves).
+
         // Bay-centric redesign: visibility toggling. Reuses the exact
         // delegated click+keydown pattern #channelGroups already
         // established (setupChannelRowToggles()) for its own row-as-

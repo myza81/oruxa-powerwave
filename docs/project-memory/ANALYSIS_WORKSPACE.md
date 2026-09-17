@@ -1,16 +1,17 @@
 # Analysis Workspace — shared infrastructure
 
-**Status: three shared primitives implemented** — Engineering Context
-lifecycle, shared Playback, and shared Related Waveforms. This document
-records the architecture common to every Analysis-menu analyzer
-(Phasor, Overcurrent, and every future one — Impedance Locus,
-Differential, Sequence Components, Directional) so a new analyzer never
-needs to re-derive or re-implement any of it. Analyzer-specific
-engineering behaviour (role resolution, estimator/characteristic math,
-alert semantics) stays documented in each analyzer's own
-[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)/[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)
+**Status: three shared primitives implemented, now consumed by THREE
+analyzers** — Engineering Context lifecycle, shared Playback, and shared
+Related Waveforms. This document records the architecture common to
+every Analysis-menu analyzer (Phasor, Overcurrent, Impedance Locus, and
+every future one — Differential, Sequence Components, Directional) so a
+new analyzer never needs to re-derive or re-implement any of it.
+Analyzer-specific engineering behaviour (role resolution, estimator/
+characteristic math, alert semantics) stays documented in each
+analyzer's own
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)/[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)/[IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md)
 — this document is scoped to the shell/lifecycle infrastructure those
-two documents both consume.
+three documents all consume.
 
 ## The shape
 
@@ -22,7 +23,7 @@ Analysis
 └── Analyzer-specific visualization
     ├── Phasor
     ├── Overcurrent
-    ├── future Impedance Locus
+    ├── Impedance Locus                    (DEC-096, 2026-09-17)
     ├── future Differential
     └── other analyzers
 ```
@@ -239,8 +240,11 @@ operation (`Plotly.Plots.resize()`, never `Plotly.react()`).
 
 ## Future-analyzer contract
 
-A future analyzer (Impedance Locus, Differential, Sequence Components,
-Directional) integrating with this shell needs to:
+Impedance Locus (2026-09-17, DEC-096) is the first real proof that this
+contract generalizes beyond Phasor/Overcurrent — it integrated with all
+three shared primitives with zero changes to any of them. A future
+analyzer (Differential, Sequence Components, Directional) integrating
+with this shell needs to:
 
 1. Register as an Engineering Context consumer
    (`wwAnalysisRegisterContextConsumer()`).
@@ -267,6 +271,7 @@ add one is caught immediately.
 
 - [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)
 - [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)
+- [IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md)
 - [DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock)
   (Playback), [DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)
   (Context lifecycle + Related Waveforms Updates).

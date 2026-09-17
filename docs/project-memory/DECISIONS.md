@@ -15215,6 +15215,186 @@ this slice.
 
 ---
 
+## DEC-096 — Impedance Locus v1, the THIRD Analysis-menu analyzer: apparent phase impedance measurement/visualization, explicitly not Distance Protection
+
+Date: 2026-09-17
+Status: Approved — implemented.
+Source: owner task ("implements the first version of the Impedance Locus
+analyzer... calculate apparent phase impedance from voltage/current
+phasors and visualize the result on an R-X plane... This analyzer is
+NOT Distance Protection").
+
+**Decision.** Powerwave gains a third Analysis-menu analyzer, Impedance
+Locus, activating the existing placeholder entry (`#wwAnalysisTypeImpedanceBtn`,
+preserving analyzer order: Phasor, Overcurrent, Impedance Locus, Sequence
+Components). Scope is strictly `Za = Va/Ia`, `Zb = Vb/Ib`, `Zc = Vc/Ic`
+via direct phasor division (`R = |Z|cos(theta)`, `X = |Z|sin(theta)`,
+`theta = theta_V - theta_I` on each phasor's own absolute angle) — all
+four R-X quadrants valid, never clamped. Explicitly **not** Distance
+Protection: no protection zones, mho/quadrilateral characteristics,
+fault loops, residual-current (k0) compensation, phase-to-phase loops
+(`Zab`/`Zbc`/`Zca`), fault classification, directional logic, load
+encroachment, power swing detection, or trip-decision claims exist
+anywhere in this slice — those are reserved for a future, separate
+Distance Protection analyzer.
+
+**Recording mode reuses the existing Phasor estimator, never a second
+one.** `app.services.impedance_analysis_service.compute_impedance_
+analysis()` calls the existing, unchanged `phasor_analysis_service.
+compute_phasor_diagram()` (the same bay-centric aggregator Phasor's own
+page already uses) and reads out whichever Voltage/Current role pair the
+selected phase needs — zero duplicated FFT/DFT/RMS code, and automatic
+inheritance of that function's own reference-frequency/timebase/
+waveform-form guardrails. `app.domain.analysis_requirements` gained
+`IMPEDANCE_VOLTAGE_PHASE_A/B/C`/`IMPEDANCE_CURRENT_PHASE_A/B/C` under
+their own `analysis_kind="impedance"` (declared for registry
+completeness/future reuse; the service itself resolves via
+`compute_phasor_diagram()`, not a second `resolve_analysis_inputs()`
+call).
+
+**Low-current guardrail is numerical validity, not a relay pickup
+threshold.** `app.domain.impedance.MIN_CURRENT_A = 1e-3` (1 mA) — below
+this floor, `status="needs_configuration"`/`reason_code=
+"current_too_small"`, never a fabricated huge/infinite `|Z|`. Chosen
+because `|Z|` is already meaningless for plotting at 1 mA for any
+realistic voltage, well before genuine floating-point instability. Not
+claimed as, and never presented as, a protection-relay pickup/
+sensitivity specification.
+
+**Primary/Secondary basis is explicit and, for Recording mode, an
+optimization the task's own golden example depends on.** `recording_
+basis` (what the resolved channels already represent) and `impedance_
+basis` (the desired OUTPUT) are independent; when they already match, no
+VT/CT ratio is required at all — `Z = V/I` is returned directly (matches
+the task's own basis-agnostic golden example). Manual mode mirrors
+Manual Phasor's architecture instead: Voltage and Current each carry
+their OWN independent basis + VT/PT or CT ratio (reusing `convert_
+manual_magnitude_to_secondary()` verbatim — never a duplicated
+conversion formula), always normalized to Secondary-canonical
+internally before division, with `impedance_basis` then acting as a
+THIRD, independent output basis for the result — proven by the task's
+own required example (Voltage Primary, Current Secondary, Impedance
+output Primary). The conversion formula (`Z_primary = Z_secondary *
+(VT_ratio/CT_ratio)`) was verified, not blindly adopted, against this
+codebase's own existing ratio convention (`convert_to_relay_secondary()`/
+`convert_manual_magnitude_to_secondary()`'s own established direction) —
+see [IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md)'s own
+"Basis conversion formula" section for the full derivation.
+
+**Za/Zb/Zc phase selection** is a shared `Phase [A|B|C]` control
+(default A) — Recording mode resolves phase roles entirely through the
+existing Engineering Context / durable canonical-phase-identity
+machinery (never inferred from a channel name); Manual mode uses it only
+to label the result (e.g. "Zb"), with zero Engineering Context
+dependency.
+
+**R-X plot uses one shared px-per-ohm factor for both axes** —
+structurally impossible to set an independent X/Y graphical scale, since
+both axes read the same `pxPerOhm` variable (`wwImpedanceRenderPlot()`).
+Origin at R=0/X=0, +R right, -R left, +X up, -X down, axis labels `R (Ω)`/
+`X (Ω)`. Viewport is automatic: `wwImpedanceNiceLimit()` picks the
+smallest nice `1×/2×/5×/10×`-per-decade value `>= 1.3×` the largest
+`|R|`/`|X|` currently relevant, giving the point(s) headroom without an
+oversized fixed range.
+
+**Manual mode shows exactly one point** (dashed-ring marker, mirroring
+Overcurrent's `.ww-oc-manual-marker` convention) — never a synthesized
+locus/history from one manual value.
+
+**Recording mode adds a genuine locus/trajectory, per the analyzer's own
+name.** A new `GET .../impedance-locus` endpoint samples up to
+`point_count` (default 120, hard-capped at `MAX_LOCUS_POINTS=300`)
+evenly-spaced Impedance calculations across the active Time Group's own
+full extent — each an independent, deterministic call (never built by
+accumulating animation-frame samples during Playback, and never
+Playback-speed-dependent). The frontend fetches this ONLY on a context/
+phase/settings/time-range change (`wwImpedanceMaybeFetchLocus()`'s own
+signature-based short-circuit, mirroring the shared Related Waveforms
+panel's identical convention) — verified by a static test that the
+Playback-tick handler itself never calls the locus fetch. The live
+current-point fetch (`GET .../impedance`) remains a SEPARATE, throttled
+(~10 Hz), Playback-synchronized call, identical in shape to Phasor's/
+Overcurrent's own current-value fetch — no analyzer-specific timer
+exists.
+
+**Analysis Input Source (Recording/Manual) is the THIRD real
+implementation** of the shared shell DEC-095 established — reuses
+`WW_ANALYSIS_INPUT_SOURCE_RECORDING`/`WW_ANALYSIS_INPUT_SOURCE_MANUAL`
+verbatim, the identical three-region markup separation (always-visible
+Input Source toggle / Recording-only section / always-visible Body),
+implemented from day one (never the flawed intermediate coupling
+Overcurrent briefly shipped and later corrected). See
+[ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md) for the pattern
+this reuses and
+[IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md) for the full
+architecture record.
+
+**Reusable foundation for a future Distance Protection analyzer.**
+`app.domain.impedance` (the pure calculation engine:
+`compute_impedance_point()`/`convert_impedance_basis()`) never imports or
+references any zone/characteristic/fault-loop concept — a future
+Distance Protection analyzer is expected to sit alongside it (its own
+domain/service/schema/endpoint modules, own `analysis_kind="distance"`
+requirement constants), consuming `ImpedancePoint` as a building block,
+never requiring this module to change. Explicitly not built this slice.
+
+**API.** `GET .../engineering-contexts/{id}/impedance` (selected-time,
+one phase), `GET .../engineering-contexts/{id}/impedance-locus` (the
+static trajectory), `GET .../impedance-manual` (workspace-scoped, never
+context-nested) — same nested/selected-time/never-persisted router
+convention Phasor's/Overcurrent's own endpoints already established, in
+the same `app/api/v1/engineering_contexts.py` file.
+
+**Tests.** `backend/tests/test_impedance_domain.py` (33 tests — golden
+worked example, all-four-quadrant geometry, low-current guardrail,
+basis-conversion formula matrix including the equal-VT/CT-ratio sanity
+property, Manual per-quantity/per-family isolation),
+`backend/tests/test_impedance_analysis_api.py` (16 tests — real
+three-phase ASCII-COMTRADE-upload golden/phase-B/phase-C/basis-
+conversion/low-current/locus/manual scenarios via real HTTP, zero prior
+setup for Manual), `backend/tests/test_frontend_impedance_analysis.py`
+(23 structural tests — markup separation, shared-constant reuse, locus-
+never-per-tick, equal-scale-plot invariant, no protection-zone
+identifiers). Two pre-existing static tests
+(`test_frontend_phasor_analysis.py::TestSharedAnalysisContextConsumers`,
+`test_frontend_playback.py::TestSharedAnalysisPlaybackStyling`) were
+updated for the THIRD registered consumer/mounted transport, mirroring
+the exact precedent Overcurrent's own addition already set for these
+same two tests; `test_analysis_requirements.py`'s own registry-count
+assertions were updated from 11 to 17 known requirements and from two to
+three known `analysis_kind`s. Full backend regression suite (5247 tests)
+passes. **No real-browser Playwright coverage was added this slice** —
+see [IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md)'s own
+"Known limitations" section; this is flagged honestly for owner UAT
+rather than claimed as verified.
+
+**Alternatives considered.** A second, Impedance-owned phasor
+estimator/resolver call was considered and rejected — the task's own
+explicit "do not create a second FFT/DFT/RMS estimator; reuse the
+authoritative Phasor calculation primitives/backend service" instruction,
+and `compute_phasor_diagram()` already provides exactly the Va/Vb/Vc/
+Ia/Ib/Ic pairing this feature needs with zero modification. A single
+shared Primary/Secondary switch covering both Voltage and Current in
+Manual mode (mirroring Overcurrent's own simpler single-quantity case)
+was considered and rejected, for the identical reason DEC-095's own
+Phasor amendment rejected it: VT/PT and CT are physically independent
+instrument transformers, and an engineer must be able to mix bases.
+
+**Impact.** New backend modules: `app/domain/impedance.py`,
+`app/services/impedance_analysis_service.py`,
+`app/schemas/impedance_analysis.py`; additive-only changes to
+`app/domain/analysis_requirements.py` and
+`app/api/v1/engineering_contexts.py` (new endpoints only, zero existing
+endpoint behavior touched). Frontend: `frontend/index.html` gains a new
+Impedance Locus panel/module (markup + CSS + JS), replacing the prior
+inert placeholder; zero Phasor/Overcurrent/Playback/Engineering-Context
+production behavior changed. No backend files outside the new Impedance
+modules and the two additive registry entries were touched. Distance
+Protection, Sequence Components, and every other future analyzer remain
+unimplemented, unaffected by this slice.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

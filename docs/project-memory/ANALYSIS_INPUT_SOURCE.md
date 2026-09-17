@@ -1,14 +1,22 @@
 # Analysis Input Source — shared architecture
 
-**Status: implemented for Overcurrent and Phasor.** Overcurrent shipped
-first (Manual Input / Calculator mode, 2026-09-16, see
+**Status: implemented for Overcurrent, Phasor, and Impedance Locus.**
+Overcurrent shipped first (Manual Input / Calculator mode, 2026-09-16,
+see
 [DECISIONS.md — DEC-095](DECISIONS.md#dec-095--a-shared-analysis-input-source-concept-recordingmanual-is-introduced-overcurrent-gets-the-first-manual-input--calculator-mode-implementation),
 amended 2026-09-16 by the architectural correction below); Phasor is
 the second implementation, reusing the SAME shared shell from day one
 (DEC-095's own second amendment, same day — see "What Phasor's own
-implementation looks like end to end" below).
+implementation looks like end to end" below); Impedance Locus is the
+third, same-day-shape implementation
+([DECISIONS.md — DEC-096](DECISIONS.md#dec-096--impedance-locus-v1-the-third-analysis-menu-analyzer-apparent-phase-impedance-measurementvisualization-explicitly-not-distance-protection),
+2026-09-17), extending Phasor's own "N independent bases for N
+independent physical quantities" principle with one more independent
+axis — see
+[IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md)'s own
+"Primary/Secondary basis" section for the full detail.
 This document records the shared concept and pattern so a future
-analyzer (Impedance Locus, Sequence Components, Distance) can
+analyzer (Sequence Components, Distance) can
 reuse it without re-deriving the design from scratch — mirroring how
 [ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md) records the other three
 shared Analysis-workspace primitives (Engineering Context lifecycle,
@@ -430,10 +438,11 @@ labeled.
 
 ## Explicitly deferred (not this slice)
 
-- **Impedance Locus, Sequence Components, and Distance's own Manual
-  mode** — not started; this document exists so those future slices can
-  reuse the pattern above (including, where relevant, Phasor's own
-  "N independent bases for N independent physical quantities" extension)
+- **Sequence Components and Distance's own Manual mode** — not started;
+  this document exists so those future slices can reuse the pattern
+  above (including, where relevant, Phasor's own "N independent bases
+  for N independent physical quantities" extension, and Impedance
+  Locus's own further extension to a THIRD, independent OUTPUT basis)
   without re-deriving it.
 - **A generic cross-analyzer "Analysis Input Source" backend
   abstraction/base class** — deliberately not built; see "Backend
@@ -453,12 +462,16 @@ labeled.
 ## Related documents
 
 - [DECISIONS.md — DEC-095](DECISIONS.md#dec-095--a-shared-analysis-input-source-concept-recordingmanual-is-introduced-overcurrent-gets-the-first-manual-input--calculator-mode-implementation) — this slice's full approval record, including the Phasor amendment.
+- [DECISIONS.md — DEC-096](DECISIONS.md#dec-096--impedance-locus-v1-the-third-analysis-menu-analyzer-apparent-phase-impedance-measurementvisualization-explicitly-not-distance-protection) — Impedance Locus's own approval record, the third implementation.
 - [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md) — Overcurrent's own
   engineering definition/architecture, including the Manual Input
   calculation path's own detailed record.
 - [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md) — Phasor's own engineering
   definition/architecture, including the Manual Input / Calculator
   mode's own detailed record.
+- [IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md) — Impedance
+  Locus's own engineering definition/architecture, including the third,
+  independent OUTPUT basis extension this feature adds.
 - [ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md) — the other three
   shared Analysis-workspace primitives (Engineering Context lifecycle,
   Playback, Related Waveforms) this concept's own frontend pattern

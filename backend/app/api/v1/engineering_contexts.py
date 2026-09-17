@@ -69,6 +69,12 @@ from app.domain.analysis_input_resolution import AnalysisInputResolution
 from app.domain.analysis_requirements import get_requirement
 from app.domain.phasor import ManualPhasorRoleInput, PhasorAnalysisResult, PhasorDiagramResult
 from app.schemas.analysis_input_resolution import AnalysisInputResolutionOut, RoleSpecOut
+from app.schemas.impedance_analysis import (
+    ImpedanceAnalysisResultOut,
+    ImpedanceLocusOut,
+    ImpedanceLocusPointOut,
+    ManualImpedanceResultOut,
+)
 from app.schemas.overcurrent_analysis import (
     OvercurrentAnalysisResultOut,
     OvercurrentCharacteristicOut,
@@ -99,6 +105,7 @@ from app.services.engineering_context_service import (
     update_member_phase,
 )
 from app.services.errors import ImportServiceError
+from app.services.impedance_analysis_service import compute_impedance_analysis, compute_impedance_locus, compute_impedance_manual
 from app.services.overcurrent_analysis_service import (
     CurveComputationError,
     compute_idmt_curve,
@@ -717,3 +724,172 @@ def get_overcurrent_analysis(
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
     return _overcurrent_result_to_out(result)
+
+
+# ---------------------------------------------------------------------------
+# Impedance Locus v1 -- the THIRD Analysis-menu analyzer (Phasor,
+# Overcurrent, then Impedance Locus). See `app.services.impedance_
+# analysis_service`'s own docstring and docs/project-memory/
+# IMPEDANCE_LOCUS_ANALYSIS.md for the full architecture; this router only
+# exposes it, mirroring the Phasor/Overcurrent endpoints above exactly.
+# ---------------------------------------------------------------------------
+
+
+def _impedance_result_to_out(result) -> ImpedanceAnalysisResultOut:
+    return ImpedanceAnalysisResultOut(
+        status=result.status, engineering_context_id=result.engineering_context_id, phase=result.phase,
+        analysis_time=result.analysis_time, recording_basis=result.recording_basis, impedance_basis=result.impedance_basis,
+        vt_primary=result.vt_primary, vt_secondary=result.vt_secondary, ct_primary=result.ct_primary, ct_secondary=result.ct_secondary,
+        reference_frequency_hz=result.reference_frequency_hz, window_seconds=result.window_seconds,
+        algorithm_version=result.algorithm_version,
+        voltage_magnitude_rms=result.voltage_magnitude_rms, voltage_unit=result.voltage_unit,
+        current_magnitude_rms=result.current_magnitude_rms, current_unit=result.current_unit,
+        resistance_ohm=result.resistance_ohm, reactance_ohm=result.reactance_ohm,
+        magnitude_ohm=result.magnitude_ohm, angle_deg=result.angle_deg,
+        warnings=result.warnings, reason_code=result.reason_code, message=result.message,
+    )
+
+
+@router.get("/engineering-contexts/{engineering_context_id}/impedance", response_model=ImpedanceAnalysisResultOut)
+def get_impedance_analysis(
+    workspace_id: str,
+    engineering_context_id: str,
+    phase: str,
+    analysis_time: float,
+    recording_basis: str,
+    impedance_basis: str,
+    vt_primary: float | None = None,
+    vt_secondary: float | None = None,
+    ct_primary: float | None = None,
+    ct_secondary: float | None = None,
+    reference_frequency_hz: float | None = None,
+    context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+) -> ImpedanceAnalysisResultOut:
+    """Read-only, selected-time-only Impedance Locus (v1) for ONE phase
+    (`Za`/`Zb`/`Zc`). Reuses the existing, unchanged `compute_phasor_
+    diagram()` to resolve Voltage/Current -- never a second phasor
+    estimator. `Z = V/I` via direct phasor division (`R = |Z|cos(theta)`,
+    `X = |Z|sin(theta)`), never an RMS-scalar approximation.
+    `recording_basis` is the basis the resolved channels' own values
+    already represent; `impedance_basis` is the INDEPENDENT desired
+    output basis -- `vt_primary`/`vt_secondary`/`ct_primary`/
+    `ct_secondary` are required only when the two differ. Reports
+    `needs_configuration`/`current_too_small` (never an unbounded `|Z|`)
+    whenever the resolved current is below the numerical-validity floor.
+    This is measurement/visualization only -- NOT Distance Protection
+    (no zones/mho/quadrilateral/fault-loop logic exists here). Never
+    persisted."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = compute_impedance_analysis(
+            workspace_id=workspace_id, engineering_context_id=engineering_context_id, phase=phase, analysis_time=analysis_time,
+            reference_frequency_hz_override=reference_frequency_hz,
+            recording_basis=recording_basis, impedance_basis=impedance_basis,
+            vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return _impedance_result_to_out(result)
+
+
+@router.get("/engineering-contexts/{engineering_context_id}/impedance-locus", response_model=ImpedanceLocusOut)
+def get_impedance_locus(
+    workspace_id: str,
+    engineering_context_id: str,
+    phase: str,
+    start_time: float,
+    end_time: float,
+    point_count: int,
+    recording_basis: str,
+    impedance_basis: str,
+    vt_primary: float | None = None,
+    vt_secondary: float | None = None,
+    ct_primary: float | None = None,
+    ct_secondary: float | None = None,
+    reference_frequency_hz: float | None = None,
+    context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+) -> ImpedanceLocusOut:
+    """The static impedance locus/trajectory over `[start_time, end_time]`
+    (task's own section 18-19) -- `point_count` evenly-sampled points
+    (clamped to `impedance_analysis_service.MAX_LOCUS_POINTS`), each an
+    independent selected-time Impedance calculation. Deterministic and
+    Playback-speed-independent: the frontend fetches this ONLY on a
+    context/phase/settings/time-range change, never on every Playback
+    tick (mirrors `.../overcurrent-curve`'s own caching precedent). A
+    point outside the recording's own valid window is still returned,
+    with whatever `status`/`reason_code` it naturally produces -- the
+    caller renders only `computed` points as the path."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        points = compute_impedance_locus(
+            workspace_id=workspace_id, engineering_context_id=engineering_context_id, phase=phase,
+            start_time=start_time, end_time=end_time, point_count=point_count,
+            reference_frequency_hz_override=reference_frequency_hz,
+            recording_basis=recording_basis, impedance_basis=impedance_basis,
+            vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return ImpedanceLocusOut(
+        engineering_context_id=engineering_context_id, phase=phase,
+        points=[
+            ImpedanceLocusPointOut(
+                analysis_time=p.analysis_time, status=p.status, resistance_ohm=p.resistance_ohm, reactance_ohm=p.reactance_ohm,
+                magnitude_ohm=p.magnitude_ohm, angle_deg=p.angle_deg, reason_code=p.reason_code,
+            )
+            for p in points
+        ],
+    )
+
+
+def _impedance_manual_result_to_out(result) -> ManualImpedanceResultOut:
+    return ManualImpedanceResultOut(
+        status=result.status, phase_label=result.phase_label, impedance_basis=result.impedance_basis,
+        algorithm_version=result.algorithm_version,
+        voltage_magnitude_secondary=result.voltage_magnitude_secondary, current_magnitude_secondary=result.current_magnitude_secondary,
+        resistance_ohm=result.resistance_ohm, reactance_ohm=result.reactance_ohm,
+        magnitude_ohm=result.magnitude_ohm, angle_deg=result.angle_deg,
+        reason_code=result.reason_code, message=result.message,
+    )
+
+
+@router.get("/impedance-manual", response_model=ManualImpedanceResultOut)
+def get_impedance_manual(
+    workspace_id: str,
+    phase_label: str,
+    voltage_basis: str,
+    current_basis: str,
+    impedance_basis: str,
+    vt_primary: float | None = None,
+    vt_secondary: float | None = None,
+    ct_primary: float | None = None,
+    ct_secondary: float | None = None,
+    voltage_enabled: bool = False, voltage_magnitude: float | None = None, voltage_unit: str = "V", voltage_angle_deg: float = 0.0,
+    current_enabled: bool = False, current_magnitude: float | None = None, current_unit: str = "A", current_angle_deg: float = 0.0,
+) -> ManualImpedanceResultOut:
+    """Manual Input / Calculator mode (Analysis Input Source = 'manual',
+    see docs/project-memory/ANALYSIS_INPUT_SOURCE.md) -- Impedance's own
+    standalone engineering-calculator path. Workspace-scoped only -- no
+    Engineering Context, channel, waveform, or Playback state is involved
+    at all. `voltage_basis`/`current_basis` are genuinely independent
+    INPUT bases (reusing the identical Manual Phasor normalization via
+    `convert_manual_magnitude_to_secondary()`); `impedance_basis` is a
+    THIRD, independent OUTPUT basis for the calculated impedance (task's
+    own section 11 -- e.g. Voltage entered Primary, Current entered
+    Secondary, Impedance requested Primary is a valid combination). Never
+    persisted."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    voltage_input = ManualPhasorRoleInput(enabled=voltage_enabled, magnitude=voltage_magnitude, unit=voltage_unit, angle_deg=voltage_angle_deg)
+    current_input = ManualPhasorRoleInput(enabled=current_enabled, magnitude=current_magnitude, unit=current_unit, angle_deg=current_angle_deg)
+    result = compute_impedance_manual(
+        phase_label=phase_label, voltage_basis=voltage_basis, vt_primary=vt_primary, vt_secondary=vt_secondary,
+        current_basis=current_basis, ct_primary=ct_primary, ct_secondary=ct_secondary, impedance_basis=impedance_basis,
+        voltage_input=voltage_input, current_input=current_input,
+    )
+    return _impedance_manual_result_to_out(result)
