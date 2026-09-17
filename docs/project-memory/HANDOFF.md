@@ -8,6 +8,72 @@ Last updated: **2026-09-17**
 
 ## What was most recently done
 
+**Phasor graphical-scaling bug fix — Voltage/Current diagram scales are
+now fully isolated per Input Source (Recording vs Manual); Scale legend
+enhanced with a per-ring breakdown ([PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s
+own "Diagram scaling stability during Playback" section updated).**
+
+Owner-reported defect: Manual `Va=110V∠45°`/`Ia=10A∠90°` showed correct
+values in the Values panel but rendered under a stale diagram scale
+(observed: `I: ... 11500.0 A`), collapsing the Current vector to a
+near-invisible sliver. **Root cause**: `wwPhasorState.frozenVoltageScale`/
+`frozenCurrentScale` — DEC-089's Recording-Playback-stability freeze
+(scale established from the first valid result, held fixed for the
+"playback run", released only on Restart-to-`bounds.start` or a genuine
+context switch) — were read/written by `wwPhasorRenderDiagramSvg()`
+UNCONDITIONALLY, regardless of `wwPhasorState.inputSource`. Manual Input
+has no playback/ticking concept at all, so a scale established under one
+Input Source (a large Recording current, or an earlier, larger Manual
+test value) silently carried into the other; Voltage had the identical
+vulnerability through the same shared fields.
+
+**Fix**: gated the freeze read/write on `inputSource` — Manual now
+always computes `plotRadius / (1.15 * familyMax)` fresh from its own
+currently-enabled values on every render and never touches the
+Recording-owned frozen fields; Recording's own freeze policy is
+byte-for-byte unchanged. Switching Recording↔Manual (or editing a Manual
+value) immediately recomputes that mode's own scale from its own family
+only, with zero cross-mode leakage in either direction. Disabled/
+missing/`needs_configuration` roles were already excluded from scale
+derivation and remain so; an all-zero-magnitude family already safely
+produced no Scale-legend line for itself (no divide-by-zero), unaffected
+by this bug. Frontend-only (`frontend/index.html`); no backend files
+touched, no engineering value (`magnitude_rms`) ever altered.
+
+**Enhancement** (same task, requested mid-task, deliberately NOT
+reverting the 2026-09-16 owner UAT removal of on-ring numeric labels):
+the corner Scale legend now shows each present family's inner/middle/
+outer ring value (e.g. `V: 36.7 / 73.3 / 110.0 V`) instead of only the
+outermost one, via one shared `wwPhasorRingFracs` fraction set the grid
+lines/rings themselves already used — never putting labels back on the
+rings/axes, never implying one shared unit between the Real/Imaginary
+axes.
+
+**Tests**: `backend/tests/test_frontend_phasor_analysis.py` — new
+`TestManualScaleNeverSharesRecordingFrozenState` (3 tests), revised
+`TestSvgDiagram`/`TestScaleLegendReplacesImaginaryAxisNumbers`/
+`TestChartGridAndAxisLabels` assertions for the new code shape (151
+tests in this file, all passing). `browser-tests/phasor_analysis.spec.js`
+— new "Manual graphical scale is derived fresh..." scenario (the owner's
+exact repro against the fixture's known 100V/40A Recording scale, plus
+the reverse switch-back-to-Recording check), a disabled-large-vector
+isolation test, an all-zero-Voltage-family safety test, and a
+Primary-basis canonical-secondary-scale assertion added to the existing
+golden worked-example test (37 tests in this file, all passing). Full
+existing backend regression suite and full Playwright suite (159
+scenarios across every spec) pass unmodified. `git diff --check` clean.
+
+**Stop condition honored**: task instruction was "stop after this Phasor
+graphical-scaling investigation/fix" — no other analyzer's scaling
+(Overcurrent's chart axes, unrelated) was touched; no IDMT/RMS/CT/VT
+math, Playback controller, Engineering Context resolver, or backend
+files were touched; the ring-label-vs-corner-legend design tension with
+the prior owner UAT decision was surfaced and resolved by explicit user
+choice (extend the corner legend) before implementation, not silently
+decided.
+
+## What was done in the prior session
+
 **Overcurrent chart-axis simplification — true positive log axes replace
 the cosmetic-zero / broken-origin convention (DEC-094 amended;
 [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s current chart-axis

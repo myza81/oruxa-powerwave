@@ -747,6 +747,25 @@ drawn dashed (`.ww-phasor-vector--current`), Voltage solid, both still
 colored by their own A/B/C phase swatch — quantity type and phase
 identity are both visible without inventing unrelated colors.
 
+**Scale legend, with a per-ring breakdown (owner UAT clarification,
+2026-09-16; extended 2026-09-17).** A compact "Scale" legend sits in the
+diagram's own quiet top-right corner (`.ww-phasor-scale-legend`) — a bare
+numeric ring label used to sit right next to the Imaginary axis line/
+label instead, which read as if it were an axis tick value, and was
+removed for exactly that reason; it must not be reintroduced. Each
+present family gets one legend line listing its own inner/middle/outer
+ring value (matching the SAME `[1/3, 2/3, 1]` fractions the grid lines
+and circular rings themselves are drawn at, via one shared
+`wwPhasorRingFracs` constant, so the legend's numbers always correspond
+to what is actually drawn) with its own real engineering unit, e.g.
+`V: 36.7 / 73.3 / 110.0 V`. This lets an engineer read an intermediate
+ring's real value directly, not only the outermost one, WITHOUT putting
+numeric labels back on the rings/axes themselves — the Real/Imaginary
+axis titles stay plain, unit-less text, since those two axes carry two
+independent physical quantities (Voltage and Current) at two independent
+scales, and a number on the axis line itself would misleadingly imply
+one shared unit between them.
+
 **Time-axis anchor for the frontend's own workspace-time conversion**:
 `wwPhasorAnchorDisplaySourceIdForContext()` uses the selected context's
 own FIRST member (from the already-fetched context list, `GET
@@ -863,7 +882,7 @@ failing Playwright test, not assumed).
 20 kHz/10 s/six-role fixture: ~28–44 ms (p50 ~33 ms) — comfortably under
 the 100 ms throttle window even at 4× speed.
 
-### Diagram scaling stability during Playback
+### Diagram scaling stability during Playback — RECORDING-only
 
 `wwPhasorState.frozenVoltageScale`/`frozenCurrentScale` hold each
 family's own scale for the current "playback run" — established from the
@@ -874,10 +893,39 @@ otherwise overflow the plot's own headroom. Released back to `null`
 (re-established fresh) specifically when a transition lands exactly at
 the Time Group's own `bounds.start` on a real Restart (distinguished from
 natural end-of-range completion, which lands at `endTime`) or when the
-selected context genuinely changes. Ring labels show the value the outer
-ring itself represents under the CURRENT (possibly frozen) scale, not the
-live/current family max, so a visually-fixed ring never sits next to a
-number that jiggles every tick.
+selected context genuinely changes. The corner Scale legend (see "Chart
+UX refinement" below) shows the value each ring itself represents under
+the CURRENT (possibly frozen) scale, not the live/current family max, so
+a visually-fixed ring never sits next to a number that jiggles every
+tick.
+
+**Bug fix (2026-09-17) — this policy is a RECORDING-Playback-only
+concept and must never apply to Manual Input.** `wwPhasorRenderDiagramSvg()`
+used to read/write these two fields UNCONDITIONALLY regardless of
+`wwPhasorState.inputSource`, so a scale established from one Input
+Source (a large Recording fault current, or an earlier, larger Manual
+test value) silently carried over into the other. Owner-reported repro:
+Manual `Va=110V∠45°`/`Ia=10A∠90°` rendered under a scale left over from
+elsewhere (e.g. a prior Recording session's own larger current), showing
+a `Scale` legend around `I: ... / ... / 11500.0 A` and collapsing the
+Current vector to a near-invisible sliver — while the Values panel
+itself was always correct (`magnitude_rms` is never touched by this bug;
+only the diagram's own graphical scale was stale). Voltage had the
+identical vulnerability through the same shared fields. Fixed by gating
+the freeze read/write on `wwPhasorState.inputSource`: Manual now NEVER
+reads or writes `frozenVoltageScale`/`frozenCurrentScale` — it always
+computes `plotRadius / (1.15 * familyMax)` fresh from its own currently-
+enabled values on every render, exactly like the diagram did before
+Playback integration ever introduced the freeze concept. Recording's own
+freeze policy above is completely unchanged. Net effect: switching
+Recording↔Manual, or editing a Manual value, immediately recomputes that
+mode's own scale from its own family only, in both directions — with
+zero cross-mode leakage. See
+`backend/tests/test_frontend_phasor_analysis.py::TestManualScaleNeverSharesRecordingFrozenState`
+and `browser-tests/phasor_analysis.spec.js`'s own "Manual graphical scale
+is derived fresh..." scenario (exercises the owner's exact repro values
+against a real Recording fixture, including switching back to Recording
+to prove isolation in both directions).
 
 ### Visibility persists throughout Playback
 
@@ -1193,7 +1241,11 @@ draws either Recording's or Manual's own result unmodified —
 `wwPhasorActiveDiagram()` picks `wwPhasorState.latestDiagram` (Recording)
 or `wwPhasorState.manual.latestResult` (Manual) by the currently active
 `inputSource`, and both results are kept in fully separate state fields
-so switching modes never cross-contaminates values or results.
+so switching modes never cross-contaminates values or results. The
+diagram's own GRAPHICAL SCALE is a separate concern from these result
+fields — see "Diagram scaling stability during Playback"'s own 2026-09-17
+bug-fix note above for why an isolated result object was not, by itself,
+enough to prevent a stale scale from leaking between modes.
 
 **Playback independence.** The shared Playback tick handler's own
 fetch-triggering half is gated off entirely while Manual is the active

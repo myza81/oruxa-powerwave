@@ -39327,42 +39327,74 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const voltageMax = wwPhasorFamilyMaxMagnitude(diagram, WW_PHASOR_VOLTAGE_ROLES);
             const currentMax = wwPhasorFamilyMaxMagnitude(diagram, WW_PHASOR_CURRENT_ROLES);
 
-            // Playback stability policy (owner instruction): each family's
-            // own scale is established from its FIRST valid result this
-            // "run" (wwPhasorState.frozenVoltageScale/frozenCurrentScale,
-            // released to null on Restart or a genuine context switch --
-            // see wwPhasorOnPlaybackTick()/wwPhasorLoadForSelectedContext()),
-            // then held FIXED -- never silently shrunk back down merely
-            // because a later magnitude happens to be smaller, which would
-            // otherwise mask real movement behind constant rescaling. Only
-            // ever adjusted if the CURRENT magnitude would overflow the
-            // plot's own headroom under the frozen scale, in which case a
-            // new (necessarily smaller-per-unit) scale is adopted so the
-            // vector still fits.
-            if (voltageMax > 0) {
-                const neededScale = plotRadius / (1.15 * voltageMax);
-                if (wwPhasorState.frozenVoltageScale === null || voltageMax * wwPhasorState.frozenVoltageScale > plotRadius) {
-                    wwPhasorState.frozenVoltageScale = neededScale;
+            // Bug fix (2026-09-17): the Playback-stability freeze below is a
+            // RECORDING-ONLY concept (DEC-089's 2026-09-12 amendment) -- it
+            // exists solely so a continuously-ticking Playback run never
+            // masks real magnitude movement behind constant rescaling.
+            // Manual Input has no playback/ticking concept at all; it is a
+            // static, engineer-edited calculator value, and previously
+            // shared these SAME frozen fields with Recording regardless of
+            // `inputSource`, so a scale established from one mode (e.g. a
+            // large Recording fault current, or an earlier, larger Manual
+            // test value) silently carried over into the other and could
+            // collapse a small vector to near-invisibility (owner-reported:
+            // Manual Ia=10A rendering under an ~11500A scale). Manual now
+            // NEVER reads or writes `frozenVoltageScale`/`frozenCurrentScale`
+            // -- it always derives its own scale fresh from its own
+            // currently-enabled values, so switching Recording<->Manual (or
+            // editing a Manual value) immediately recomputes the scale from
+            // the newly-active family only, with zero cross-mode leakage in
+            // either direction.
+            const isManual = wwPhasorState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+            let voltageScale = 0;
+            let currentScale = 0;
+            if (isManual) {
+                if (voltageMax > 0) voltageScale = plotRadius / (1.15 * voltageMax);
+                if (currentMax > 0) currentScale = plotRadius / (1.15 * currentMax);
+            } else {
+                // Playback stability policy (owner instruction): each family's
+                // own scale is established from its FIRST valid result this
+                // "run" (wwPhasorState.frozenVoltageScale/frozenCurrentScale,
+                // released to null on Restart or a genuine context switch --
+                // see wwPhasorOnPlaybackTick()/wwPhasorLoadForSelectedContext()),
+                // then held FIXED -- never silently shrunk back down merely
+                // because a later magnitude happens to be smaller, which would
+                // otherwise mask real movement behind constant rescaling. Only
+                // ever adjusted if the CURRENT magnitude would overflow the
+                // plot's own headroom under the frozen scale, in which case a
+                // new (necessarily smaller-per-unit) scale is adopted so the
+                // vector still fits.
+                if (voltageMax > 0) {
+                    const neededScale = plotRadius / (1.15 * voltageMax);
+                    if (wwPhasorState.frozenVoltageScale === null || voltageMax * wwPhasorState.frozenVoltageScale > plotRadius) {
+                        wwPhasorState.frozenVoltageScale = neededScale;
+                    }
                 }
-            }
-            if (currentMax > 0) {
-                const neededScale = plotRadius / (1.15 * currentMax);
-                if (wwPhasorState.frozenCurrentScale === null || currentMax * wwPhasorState.frozenCurrentScale > plotRadius) {
-                    wwPhasorState.frozenCurrentScale = neededScale;
+                if (currentMax > 0) {
+                    const neededScale = plotRadius / (1.15 * currentMax);
+                    if (wwPhasorState.frozenCurrentScale === null || currentMax * wwPhasorState.frozenCurrentScale > plotRadius) {
+                        wwPhasorState.frozenCurrentScale = neededScale;
+                    }
                 }
+                voltageScale = voltageMax > 0 ? wwPhasorState.frozenVoltageScale : 0;
+                currentScale = currentMax > 0 ? wwPhasorState.frozenCurrentScale : 0;
             }
-            const voltageScale = voltageMax > 0 ? wwPhasorState.frozenVoltageScale : 0;
-            const currentScale = currentMax > 0 ? wwPhasorState.frozenCurrentScale : 0;
 
             const parts = [];
+            // Shared ring/grid fraction set -- the grid lines, the circular
+            // rings, and the corner Scale legend's own inner/middle/outer
+            // breakdown (below) all derive from this SAME set, so the
+            // legend's numbers always correspond exactly to the rings
+            // actually drawn.
+            const wwPhasorRingFracs = [1 / 3, 2 / 3, 1];
             // Chart UX refinement: a light rectilinear (Cartesian) grid,
             // painted FIRST so it sits visually BELOW the circular rings/
             // axes/vectors that follow -- at the exact same radii as the
-            // rings below ([1/3, 2/3, 1] * plotRadius), so the two guide
-            // systems align rather than fighting for attention. Sparse by
-            // design (one line per ring radius per direction = 6 lines
-            // total) -- never a dense graph-paper mesh.
-            for (const frac of [1 / 3, 2 / 3, 1]) {
+            // rings below, so the two guide systems align rather than
+            // fighting for attention. Sparse by design (one line per ring
+            // radius per direction = 6 lines total) -- never a dense
+            // graph-paper mesh.
+            for (const frac of wwPhasorRingFracs) {
                 const d = plotRadius * frac;
                 parts.push('<line class="ww-phasor-grid-line" x1="' + (-d).toFixed(1) + '" y1="-100" x2="' + (-d).toFixed(1) + '" y2="100"></line>');
                 parts.push('<line class="ww-phasor-grid-line" x1="' + d.toFixed(1) + '" y1="-100" x2="' + d.toFixed(1) + '" y2="100"></line>');
@@ -39371,36 +39403,46 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             parts.push('<line class="ww-phasor-axis" x1="-100" y1="0" x2="100" y2="0"></line>');
             parts.push('<line class="ww-phasor-axis" x1="0" y1="-100" x2="0" y2="100"></line>');
-            for (const frac of [1 / 3, 2 / 3, 1]) {
+            for (const frac of wwPhasorRingFracs) {
                 parts.push('<circle class="ww-phasor-ring" cx="0" cy="0" r="' + (plotRadius * frac).toFixed(1) + '"></circle>');
             }
-            // Compact scale legend (owner UAT clarification, 2026-09-16):
-            // shows what the OUTER RING itself represents under the
-            // current (possibly frozen-from-earlier) scale -- not the
-            // live/current family max, which would jiggle every tick
-            // right next to a visually-FIXED ring and read as
+            // Compact scale legend (owner UAT clarification, 2026-09-16,
+            // extended 2026-09-17 with a per-ring breakdown): shows what
+            // EACH of the three concentric rings represents under the
+            // current (possibly frozen-from-earlier, Recording-only) scale
+            // -- not the live/current family max, which would jiggle every
+            // tick right next to a visually-FIXED ring and read as
             // inconsistent. Previously drawn as two bare numbers right
-            // next to the Imaginary axis (x=3, near the axis line/
-            // label) -- easily mistaken for axis tick values, since
-            // they carried no unit and no "this is a scale" context.
-            // Now a clearly-labeled "Scale" legend in the diagram's own
-            // quiet top-right corner, each line carrying its own real
+            // next to the Imaginary axis (x=3, near the axis line/label)
+            // -- easily mistaken for axis tick values, since they carried
+            // no unit and no "this is a scale" context; that on-ring
+            // class/placement was deliberately removed and must not be
+            // reintroduced (see the removal note on the CSS rule this
+            // legend uses, above). Still a clearly-labeled "Scale" legend in the
+            // diagram's own quiet top-right corner, each line now listing
+            // its family's inner/middle/outer ring value (matching the
+            // exact [1/3, 2/3, 1] ring radii drawn above) so an engineer
+            // can read an intermediate ring's real value directly, never
+            // only the outermost one -- each carrying its own real
             // engineering unit (from whichever role in that family
             // established the max magnitude the scale itself derives
-            // from) -- explicit that these are graphical scale
-            // REFERENCES, never axis coordinates, and that Voltage/
-            // Current use separate scales (reinforced further by the
-            // bottom `#wwPhasorScaleNote` when both are present).
+            // from), explicit that these are graphical scale REFERENCES,
+            // never axis coordinates, and that Voltage/Current use
+            // separate scales (reinforced further by the bottom
+            // `#wwPhasorScaleNote` when both are present). The Real/
+            // Imaginary axis titles stay plain text, never unit-suffixed --
+            // two independent physical quantities share those axes at two
+            // independent scales, so no single unit is ever implied there.
             const legendLines = [];
             if (voltageScale > 0) {
-                const voltageRingValue = plotRadius / voltageScale;
                 const voltageUnit = wwPhasorFamilyUnit(diagram, WW_PHASOR_VOLTAGE_ROLES);
-                legendLines.push("V: " + wwFormatEngineeringValue(voltageRingValue) + (voltageUnit ? " " + voltageUnit : ""));
+                const values = wwPhasorRingFracs.map((frac) => wwFormatEngineeringValue((plotRadius * frac) / voltageScale));
+                legendLines.push("V: " + values.join(" / ") + (voltageUnit ? " " + voltageUnit : ""));
             }
             if (currentScale > 0) {
-                const currentRingValue = plotRadius / currentScale;
                 const currentUnit = wwPhasorFamilyUnit(diagram, WW_PHASOR_CURRENT_ROLES);
-                legendLines.push("I: " + wwFormatEngineeringValue(currentRingValue) + (currentUnit ? " " + currentUnit : ""));
+                const values = wwPhasorRingFracs.map((frac) => wwFormatEngineeringValue((plotRadius * frac) / currentScale));
+                legendLines.push("I: " + values.join(" / ") + (currentUnit ? " " + currentUnit : ""));
             }
             if (legendLines.length > 0) {
                 const legendX = 112;

@@ -694,6 +694,55 @@ Calculator mode" section and
 [ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md)'s own "What
 Phasor's own implementation looks like end to end" for the full record.
 
+**Bug fix (2026-09-17) — Phasor's Voltage/Current graphical diagram
+scales are now fully isolated per Input Source; a Scale-legend
+enhancement adds a per-ring breakdown.** Owner-reported defect: Manual
+`Va=110V∠45°`/`Ia=10A∠90°` rendered correctly in the Values panel but
+under a stale diagram scale (e.g. `I: ... 11500.0 A`) inherited from
+elsewhere, collapsing the Current vector to a near-invisible sliver.
+Root cause: `wwPhasorState.frozenVoltageScale`/`frozenCurrentScale` —
+DEC-089's own Recording-Playback-stability freeze (established from the
+first valid result, held fixed for the "playback run") — were shared,
+unconditional fields `wwPhasorRenderDiagramSvg()` read/wrote regardless
+of `inputSource`, so a scale established under one Input Source (a large
+Recording current, or an earlier, larger Manual test value) silently
+carried into the other; Voltage had the identical vulnerability. Fixed
+by gating the freeze on `inputSource`: Manual now always derives its own
+scale fresh from its own currently-enabled values every render (never
+reads/writes the Recording-owned frozen fields); Recording's own freeze
+policy is completely unchanged. **Invariant going forward: Voltage and
+Current graphical scales are independent and derive only from the valid
+active phasors of their own family and active Input Source — never from
+stale/default/other-mode/other-basis data.** Disabled/missing/
+`needs_configuration` roles were already excluded from scale derivation
+(`wwPhasorFamilyMaxMagnitude()` only considers `available` roles) and
+remain so; an all-zero-magnitude family already safely produces no
+Scale-legend line for itself (no divide-by-zero) without affecting the
+other family, and was unaffected by this bug. Separately, the corner
+Scale legend (owner UAT clarification, 2026-09-16 — replaced a bare
+numeric ring label that sat next to the Imaginary axis and read like an
+axis tick) now shows each present family's inner/middle/outer ring value
+(e.g. `V: 36.7 / 73.3 / 110.0 V`) instead of only the outermost one, via
+one shared `wwPhasorRingFracs` fraction set also used by the grid lines/
+rings themselves — deliberately NOT reintroducing on-ring numeric labels
+(that removed design stays removed) and never implying one shared unit
+between the Real/Imaginary axes, which still carry two independent
+physical quantities at two independent scales. Frontend-only
+(`frontend/index.html`); no backend files touched. New static coverage:
+`backend/tests/test_frontend_phasor_analysis.py::TestManualScaleNeverSharesRecordingFrozenState`
+plus a revised `TestScaleLegendReplacesImaginaryAxisNumbers`. New/revised
+`browser-tests/phasor_analysis.spec.js` scenarios: the owner's exact
+repro (Recording's known 100V/40A fixture scale must not survive into
+Manual's 110V/10A, and switching back to Recording restores its own
+scale exactly), a disabled-large-vector isolation case, an all-zero-
+Voltage-family safety case, and a Primary-basis scale-uses-canonical-
+secondary assertion added to the existing golden worked-example test.
+The full existing backend regression suite and the full Playwright suite
+(159 scenarios across all specs, phasor_analysis.spec.js's own 37) pass.
+See
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)'s own "Diagram scaling stability
+during Playback" section for the full technical record.
+
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test
 infrastructure only, zero production code changed) establishes the

@@ -669,11 +669,11 @@ class TestSvgDiagram:
         body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
         assert "wwPhasorFamilyMaxMagnitude(diagram, WW_PHASOR_VOLTAGE_ROLES)" in body
         assert "wwPhasorFamilyMaxMagnitude(diagram, WW_PHASOR_CURRENT_ROLES)" in body
-        assert "const voltageScale = voltageMax > 0 ? wwPhasorState.frozenVoltageScale : 0;" in body
-        assert "const currentScale = currentMax > 0 ? wwPhasorState.frozenCurrentScale : 0;" in body
-        # Exactly one scale variable per family -- never per-vector.
-        assert body.count("const voltageScale") == 1
-        assert body.count("const currentScale") == 1
+        assert "voltageScale = voltageMax > 0 ? wwPhasorState.frozenVoltageScale : 0;" in body
+        assert "currentScale = currentMax > 0 ? wwPhasorState.frozenCurrentScale : 0;" in body
+        # Exactly one scale variable declaration per family -- never per-vector.
+        assert body.count("let voltageScale") == 1
+        assert body.count("let currentScale") == 1
 
     def test_playback_stability_diagram_scale_frozen_from_first_result_never_shrinks(self):
         """Owner instruction: avoid constant rescaling during Playback,
@@ -713,6 +713,45 @@ class TestSvgDiagram:
         assert "Current vectors scaled" in body
 
 
+class TestManualScaleNeverSharesRecordingFrozenState:
+    """Bug fix (2026-09-17): `frozenVoltageScale`/`frozenCurrentScale` are a
+    RECORDING-Playback-only stability concept (DEC-089's 2026-09-12
+    amendment). They used to be read/written unconditionally, so a scale
+    established from one Input Source (a large Recording fault current,
+    or an earlier, larger Manual test value) silently carried over into
+    the other -- owner-reported repro: Manual Va=110V/Ia=10A rendering
+    under a stale ~180V/~11500A scale, collapsing the Current vector.
+    Manual must always derive its own scale fresh from its own currently-
+    enabled values; Recording's existing playback-stability freeze must
+    stay completely unchanged."""
+
+    def test_manual_branch_never_reads_or_writes_frozen_scale_fields(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert "const isManual = wwPhasorState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;" in body
+        manual_branch = body[body.index("if (isManual) {") : body.index("} else {")]
+        assert "frozenVoltageScale" not in manual_branch
+        assert "frozenCurrentScale" not in manual_branch
+        assert "voltageScale = plotRadius / (1.15 * voltageMax);" in manual_branch
+        assert "currentScale = plotRadius / (1.15 * currentMax);" in manual_branch
+
+    def test_recording_branch_keeps_the_existing_freeze_policy_unchanged(self):
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        recording_branch = body[body.index("} else {") : body.index("const parts = [];")]
+        assert "wwPhasorState.frozenVoltageScale === null || voltageMax * wwPhasorState.frozenVoltageScale > plotRadius" in recording_branch
+        assert "wwPhasorState.frozenCurrentScale === null || currentMax * wwPhasorState.frozenCurrentScale > plotRadius" in recording_branch
+
+    def test_scale_variables_are_declared_once_outside_either_branch(self):
+        """`voltageScale`/`currentScale` must be a single pair of `let`
+        bindings assigned inside whichever branch runs -- never two
+        independent declarations that could desync."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert body.count("let voltageScale = 0;") == 1
+        assert body.count("let currentScale = 0;") == 1
+
+
 class TestScaleLegendReplacesImaginaryAxisNumbers:
     """Owner UAT clarification (2026-09-16): the two numeric scale
     references (what one outer ring represents for Voltage/Current) used
@@ -733,8 +772,27 @@ class TestScaleLegendReplacesImaginaryAxisNumbers:
         body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
         assert 'ww-phasor-scale-legend ww-phasor-scale-legend--header' in body
         assert '>Scale</text>' in body
-        assert '"V: " + wwFormatEngineeringValue(voltageRingValue)' in body
-        assert '"I: " + wwFormatEngineeringValue(currentRingValue)' in body
+        assert 'legendLines.push("V: " + values.join(" / ")' in body
+        assert 'legendLines.push("I: " + values.join(" / ")' in body
+
+    def test_scale_legend_shows_inner_middle_outer_ring_breakdown(self):
+        """Enhancement (2026-09-17): each family's legend line lists all
+        three ring values (matching the exact [1/3, 2/3, 1] ring radii
+        actually drawn), not only the outermost one -- an engineer can
+        read an intermediate ring's real value directly off the legend.
+        Deliberately still in the corner legend, never back on the rings
+        themselves (see TestScaleLegendReplacesImaginaryAxisNumbers's own
+        "old ring label" removal test above -- that removal stays in
+        effect)."""
+        source = _source()
+        body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert "const wwPhasorRingFracs = [1 / 3, 2 / 3, 1];" in body
+        assert "wwPhasorRingFracs.map((frac) => wwFormatEngineeringValue((plotRadius * frac) / voltageScale))" in body
+        assert "wwPhasorRingFracs.map((frac) => wwFormatEngineeringValue((plotRadius * frac) / currentScale))" in body
+        assert "ww-phasor-ring-label" not in body
+        # The grid lines and rings reuse the SAME fraction set as the
+        # legend, so the legend's numbers always match what is drawn.
+        assert body.count("for (const frac of wwPhasorRingFracs)") == 2
 
     def test_legend_lines_carry_their_own_real_engineering_unit(self):
         source = _source()
@@ -834,12 +892,14 @@ class TestChartGridAndAxisLabels:
     def test_grid_is_sparse_matching_the_existing_ring_radii_not_dense_graph_paper(self):
         """Owner instruction: the grid must remain secondary to the
         vectors, never a dense graph-paper mesh -- confirmed by reusing
-        the SAME three ring fractions, never a finer/independent grid
-        resolution."""
+        the SAME three ring fractions (`wwPhasorRingFracs`, also reused by
+        the Scale legend's own per-ring breakdown), never a finer/
+        independent grid resolution."""
         source = _source()
         body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
+        assert "const wwPhasorRingFracs = [1 / 3, 2 / 3, 1];" in body
         grid_section = body[body.index("ww-phasor-grid-line") - 200 : body.index("ww-phasor-ring\" cx=")]
-        assert "for (const frac of [1 / 3, 2 / 3, 1])" in grid_section
+        assert "for (const frac of wwPhasorRingFracs)" in grid_section
 
     def test_real_axis_label_renders(self):
         source = _source()

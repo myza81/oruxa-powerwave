@@ -260,10 +260,11 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
     const currentLine = legendTexts.find((t) => t.startsWith("I:"));
     expect(voltageLine).toBeTruthy();
     expect(currentLine).toBeTruthy();
-    // Both carry a real unit (not a bare number) -- the fixture's known
-    // channels are V/A.
-    expect(voltageLine).toMatch(/^V:\s*[\d.]+\s*V$/);
-    expect(currentLine).toMatch(/^I:\s*[\d.]+\s*A$/);
+    // Each line shows the inner/middle/outer ring breakdown (three
+    // numbers, one per ring) and carries a real unit (not a bare number)
+    // -- the fixture's known channels are V/A.
+    expect(voltageLine).toMatch(/^V:\s*[\d.]+\s*\/\s*[\d.]+\s*\/\s*[\d.]+\s*V$/);
+    expect(currentLine).toMatch(/^I:\s*[\d.]+\s*\/\s*[\d.]+\s*\/\s*[\d.]+\s*A$/);
 
     // Legend sits in the quiet top-right corner, well clear of both
     // axis-direction labels (never placed directly on an axis).
@@ -978,6 +979,17 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
 
     await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
     expect(recordingRequestUrls).toEqual([]);
+
+    // Graphical scale is derived from the CANONICAL secondary values
+    // (110V/1A), never the raw entered Primary magnitudes (132kV/1200A)
+    // -- basis conversion must happen before scale derivation, not after.
+    const legendTexts = await page.locator("#wwPhasorSvg text.ww-phasor-scale-legend").allTextContents();
+    const voltageLine = legendTexts.find((t) => t.startsWith("V:"));
+    const currentLine = legendTexts.find((t) => t.startsWith("I:"));
+    expect(voltageLine).toMatch(/126\.5/); // 1.15 * 110V secondary
+    expect(currentLine).toMatch(/1\.1/); // 1.15 * 1A secondary (toFixed(1) => "1.1")
+    expect(voltageLine).not.toMatch(/151800/); // NOT 1.15 * 132000V primary
+    expect(currentLine).not.toMatch(/1380/); // NOT 1.15 * 1200A primary
   });
 
   test("mixed basis: Voltage Primary, Current Secondary -- the two selectors are truly independent", async ({ page }) => {
@@ -1101,6 +1113,59 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
     await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(1); // only Vb plotted
   });
 
+  test("disabled large vector never inflates the Current scale -- only the enabled Ia drives it", async ({ page }) => {
+    await openEmptyWorkspacePhasor(page);
+    await page.locator("#wwPhasorManualCurrentBasisSelect").selectOption("secondary");
+    await enterRole(page, "Ia", { magnitude: 10, unit: "A", angleDeg: 0 });
+    // Ib's own magnitude/unit/angle are filled in, but its checkbox is
+    // left UNCHECKED -- a disabled role must report Missing and be
+    // completely excluded from the family's own scale derivation.
+    await enterRole(page, "Ib", { magnitude: 10000, unit: "A", angleDeg: -120, enabled: false });
+
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/Ia[\s\S]*?10\.0\s*A/);
+    }).toPass({ timeout: 5000 });
+    const text = await page.locator("#wwPhasorValuesList").innerText();
+    expect(text).toMatch(/Ib[\s\S]{0,20}Missing/);
+
+    const legendTexts = await page.locator("#wwPhasorSvg text.ww-phasor-scale-legend").allTextContents();
+    const currentLine = legendTexts.find((t) => t.startsWith("I:"));
+    expect(currentLine).toMatch(/11\.5/); // 1.15 * 10A -- Ia alone
+    expect(currentLine).not.toMatch(/11500/); // NOT 1.15 * 10000A from the disabled Ib
+    await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(1); // only Ia plotted
+  });
+
+  test("all-zero-magnitude Voltage family renders safely -- no NaN/divide-by-zero, zero remains a valid value, Current stays unaffected", async ({ page }) => {
+    await openEmptyWorkspacePhasor(page);
+    await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("secondary");
+    await page.locator("#wwPhasorManualCurrentBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: 0, unit: "V", angleDeg: 0 });
+    await enterRole(page, "Ia", { magnitude: 10, unit: "A", angleDeg: 90 });
+
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/Ia[\s\S]*?10\.0\s*A/);
+    }).toPass({ timeout: 5000 });
+    const text = await page.locator("#wwPhasorValuesList").innerText();
+    // A genuine zero magnitude is a VALID Manual Phasor input (e.g. a
+    // de-energized phase), never treated as Missing/invalid.
+    expect(text).toMatch(/Va[\s\S]*?0\.0\s*V/);
+    expect(text).not.toMatch(/NaN/);
+
+    // No "V:" legend line is drawn for an all-zero Voltage family
+    // (nothing to scale a ring to -- safe fallback, never a divide by
+    // zero), but Current's own scale is completely unaffected.
+    const legendTexts = await page.locator("#wwPhasorSvg text.ww-phasor-scale-legend").allTextContents();
+    expect(legendTexts.some((t) => t.startsWith("V:"))).toBe(false);
+    const currentLine = legendTexts.find((t) => t.startsWith("I:"));
+    expect(currentLine).toMatch(/11\.5/);
+
+    // No SVG attribute is NaN anywhere in the diagram.
+    const svgContent = await page.locator("#wwPhasorSvg").innerHTML();
+    expect(svgContent).not.toMatch(/NaN/);
+  });
+
   test("Related Waveforms panel is hidden/collapsed entirely in Manual mode, never a fabricated waveform", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);
@@ -1191,6 +1256,74 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
     await page.locator("#wwPhasorInputSourceManualBtn").click();
     await expect(page.locator("#wwPhasorManualVaMagnitude")).toHaveValue("250");
     await expect(page.locator("#wwPhasorManualVaAngle")).toHaveValue("45");
+  });
+
+  test("Manual graphical scale is derived fresh from Manual's own values, never inherited from Recording's frozen scale (owner-reported bug fix)", async ({ page }) => {
+    // Owner-reported defect: Manual Va=110V/45deg, Ia=10A/90deg rendered
+    // under a graphical scale left over from Recording (this fixture's
+    // own known balanced 100V/40A), collapsing the Current vector to
+    // near-invisibility (the Values panel itself was always correct --
+    // only the DIAGRAM's own graphical scale was stale). Proves the fix:
+    // switching Input Source immediately recomputes each family's scale
+    // from the NOW-active mode's own values only, in both directions.
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page);
+    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+      expect(text).toMatch(/40\.0\s*A/);
+    }).toPass({ timeout: 5000 });
+
+    // Recording's own scale, established from the 100V/40A fixture --
+    // outer ring = 1.15 * 40A = 46.0A.
+    const recordingLegendTexts = await page.locator("#wwPhasorSvg text.ww-phasor-scale-legend").allTextContents();
+    const recordingCurrentLine = recordingLegendTexts.find((t) => t.startsWith("I:"));
+    expect(recordingCurrentLine).toMatch(/46\.0/);
+
+    // Switch to Manual and enter ONLY the owner's own repro values --
+    // every other role stays disabled.
+    await page.locator("#wwPhasorInputSourceManualBtn").click();
+    await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("secondary");
+    await page.locator("#wwPhasorManualCurrentBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: 110, unit: "V", angleDeg: 45 });
+    await enterRole(page, "Ia", { magnitude: 10, unit: "A", angleDeg: 90 });
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/Va[\s\S]*?110\.0\s*V/);
+      expect(text).toMatch(/Ia[\s\S]*?10\.0\s*A/);
+    }).toPass({ timeout: 5000 });
+
+    // The scale must now derive ONLY from Manual's own 110V/10A --
+    // outer ring = 1.15 * 110V = 126.5V, 1.15 * 10A = 11.5A -- NEVER the
+    // recording's stale 100V/40A values.
+    const manualLegendTexts = await page.locator("#wwPhasorSvg text.ww-phasor-scale-legend").allTextContents();
+    const manualVoltageLine = manualLegendTexts.find((t) => t.startsWith("V:"));
+    const manualCurrentLine = manualLegendTexts.find((t) => t.startsWith("I:"));
+    expect(manualVoltageLine).toMatch(/126\.5/);
+    expect(manualCurrentLine).toMatch(/11\.5/);
+    expect(manualCurrentLine).not.toMatch(/46\.0/);
+
+    // Geometry: the Current vector is NOT collapsed near the origin --
+    // its rendered endpoint reaches a substantial fraction of the
+    // 90-unit plot radius (owner requirement: "Ia is not collapsed near
+    // origin"; before the fix this was a ~4-unit sliver).
+    const iaLine = page.locator("#wwPhasorSvg line.ww-phasor-vector--current").first();
+    const x2 = Number(await iaLine.getAttribute("x2"));
+    const y2 = Number(await iaLine.getAttribute("y2"));
+    expect(Math.hypot(x2, y2)).toBeGreaterThan(50);
+
+    // Switching back to Recording restores ITS OWN scale exactly --
+    // Manual's own edits never contaminate Recording's in the other
+    // direction either.
+    await page.locator("#wwPhasorInputSourceRecordingBtn").click();
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+    const restoredLegendTexts = await page.locator("#wwPhasorSvg text.ww-phasor-scale-legend").allTextContents();
+    const restoredCurrentLine = restoredLegendTexts.find((t) => t.startsWith("I:"));
+    expect(restoredCurrentLine).toMatch(/46\.0/);
   });
 
   test("Recording mode with zero recordings shows a clean neutral state, never a crash or stale Manual result relabeled as Recording", async ({ page }) => {
