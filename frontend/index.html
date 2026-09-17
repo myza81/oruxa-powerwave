@@ -6251,46 +6251,76 @@
            radius/0.7rem/box-sizing) as Overcurrent's own Manual Input
            section, per the owner task's own explicit styling-consistency
            instruction; hidden entirely outside Manual mode via the
-           `hidden` ATTRIBUTE (no independent `display` override needed --
-           `.panel` itself has no competing `display` declaration). */
+           `hidden` ATTRIBUTE. `.ww-phasor-manual-panel` declares its own
+           `display: flex` below, which (same specificity as the UA
+           `[hidden]{display:none}` default) would otherwise win by cascade
+           order -- an explicit `[hidden]` override is required, mirroring
+           `.ww-phasor-body[hidden]`/`#wwPhasorRecordingSection[hidden]`
+           above (the same class of bug found twice before in this file;
+           this was the third, previously-missed instance -- root cause of
+           "Manual Phasors form still visible in Recording mode"). */
         .ww-phasor-manual-panel {
             display: flex;
             flex-direction: column;
+            gap: 8px;
+        }
+        .ww-phasor-manual-panel[hidden] {
+            display: none;
+        }
+        /* Two compact cards (Voltage / Current) side by side on larger
+           screens; each card is its own bordered/panel-tinted subsection
+           so the two families read as visually separate groups without a
+           second nested `.panel`. Stacks to one column on narrower
+           screens (same 900px breakpoint `.ww-phasor-body` already uses
+           for its own two-column -> single-column collapse). */
+        .ww-phasor-manual-families {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
             gap: 10px;
+            align-items: start;
+        }
+        @media (max-width: 900px) {
+            .ww-phasor-manual-families {
+                grid-template-columns: 1fr;
+            }
         }
         .ww-phasor-manual-family {
             display: flex;
             flex-direction: column;
             gap: 6px;
-        }
-        .ww-phasor-manual-family + .ww-phasor-manual-family {
-            border-top: 1px solid var(--panel-border);
-            padding-top: 10px;
+            background: var(--surface-tint);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 8px 10px;
+            box-sizing: border-box;
+            min-width: 0;
         }
         .ww-phasor-manual-family-header {
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 8px;
             flex-wrap: wrap;
         }
         .ww-phasor-manual-family-label {
-            font-size: 0.7rem;
+            font-size: 0.72rem;
             font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
             color: var(--text-dim);
         }
         .ww-phasor-manual-basis-select {
             background: var(--panel);
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
-            padding: 6px 8px;
+            padding: 4px 6px;
             font-size: 0.7rem;
             color: var(--text);
             box-sizing: border-box;
         }
         .ww-phasor-manual-ratio-row {
             display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
+            gap: 6px;
         }
         .ww-phasor-manual-ratio-row[hidden] {
             display: none;
@@ -6298,58 +6328,59 @@
         .ww-phasor-manual-ratio-field {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 2px;
             font-size: 0.68rem;
             color: var(--text-dim);
-            flex: 1 1 140px;
+            flex: 1 1 0;
             min-width: 0;
         }
         .ww-phasor-manual-ratio-field input {
             background: var(--panel);
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
-            padding: 6px 8px;
+            padding: 4px 6px;
             font-size: 0.7rem;
             color: var(--text);
             box-sizing: border-box;
             width: 100%;
+            min-width: 0;
         }
+        /* Compact grid/table-like role rows -- `display: contents` on each
+           `.ww-phasor-manual-role-row` (Va/Vb/Vc or Ia/Ib/Ic) folds its own
+           children directly into the PARENT `.ww-phasor-manual-role-rows`
+           grid, so all three rows share one column track and stay pixel-
+           aligned (enable, magnitude, unit, angle) without a real
+           `<table>`. Columns shrink gracefully (`minmax(0, …)`) rather
+           than overflow at narrow widths. */
         .ww-phasor-manual-role-rows {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
+            display: grid;
+            grid-template-columns: minmax(44px, auto) minmax(0, 1fr) minmax(48px, auto) auto minmax(0, 60px) auto;
+            column-gap: 6px;
+            row-gap: 4px;
+            align-items: center;
         }
         .ww-phasor-manual-role-row {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            flex-wrap: wrap;
+            display: contents;
         }
         .ww-phasor-manual-role-enable {
             display: flex;
             align-items: center;
-            gap: 5px;
+            gap: 4px;
             font-size: 0.7rem;
             color: var(--text);
-            flex: 0 0 auto;
-            min-width: 46px;
+            min-width: 0;
         }
         .ww-phasor-manual-role-row input[type="number"],
         .ww-phasor-manual-role-row select {
             background: var(--panel);
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
-            padding: 6px 8px;
+            padding: 4px 6px;
             font-size: 0.7rem;
             color: var(--text);
             box-sizing: border-box;
-        }
-        .ww-phasor-manual-role-row input[type="number"] {
-            flex: 1 1 90px;
+            width: 100%;
             min-width: 0;
-        }
-        .ww-phasor-manual-role-row select {
-            flex: 0 0 auto;
         }
         .ww-phasor-manual-role-row input[type="number"]:focus,
         .ww-phasor-manual-role-row select:focus {
@@ -6360,11 +6391,15 @@
         .ww-phasor-manual-angle-unit {
             font-size: 0.7rem;
             color: var(--text-dim);
-            flex: 0 0 auto;
+            text-align: center;
         }
         @media (max-width: 480px) {
-            .ww-phasor-manual-role-row input[type="number"] {
-                flex-basis: 100%;
+            .ww-phasor-manual-role-rows {
+                grid-template-columns: minmax(40px, auto) minmax(0, 1fr) minmax(40px, auto) auto minmax(0, 48px) auto;
+                column-gap: 4px;
+            }
+            .ww-phasor-manual-family {
+                padding: 6px 8px;
             }
         }
 
@@ -8230,6 +8265,12 @@
                                      invisible whenever Manual is active. -->
                                 <div class="ww-phasor-status-row" id="wwPhasorManualStatusRow" hidden></div>
 
+                                <!-- Two compact cards side by side on wide
+                                     screens, stacked on narrow ones (see
+                                     `.ww-phasor-manual-families` CSS) -- pure
+                                     layout wrapper, no new IDs/state; nothing
+                                     inside either card changed shape. -->
+                                <div class="ww-phasor-manual-families">
                                 <div class="ww-phasor-manual-family">
                                     <div class="ww-phasor-manual-family-header">
                                         <span class="ww-phasor-manual-family-label">Voltage basis</span>
@@ -8356,6 +8397,7 @@
                                             <span class="ww-phasor-manual-angle-unit">°</span>
                                         </div>
                                     </div>
+                                </div>
                                 </div>
                             </section>
 
