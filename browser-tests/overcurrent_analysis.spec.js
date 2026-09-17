@@ -329,7 +329,7 @@ test.describe("Overcurrent Analysis v1 -- settings form layout correction (2026-
     await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
     await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("2");
     await page.locator("#wwOvercurrentResetViewBtn").click();
-    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.9");
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.1");
   });
 
   test("Live Values section renders correctly below the redesigned settings grid, with unchanged calculations", async ({ page }) => {
@@ -421,10 +421,8 @@ test.describe("Overcurrent Analysis v1 -- below pickup", () => {
 
     // Known 40 A RMS current; pickup set just above it (42 A) -> M~=0.952,
     // below pickup but still within the default viewport's own X Min
-    // (0.9, owner UAT correction 2026-09-16) -- exercises the ON-CHART
-    // below-pickup marker path, not the off-chart edge-indicator path
-    // (see the "compressed sub-pickup axis" describe block for the
-    // deliberately-widened, further-below-pickup scenario).
+    // (0.1) -- exercises the on-chart below-pickup marker path, not the
+    // off-chart edge-indicator path.
     await page.locator("#wwOvercurrentPickupInput").fill("42");
     await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
 
@@ -445,40 +443,26 @@ test.describe("Overcurrent Analysis v1 -- below pickup", () => {
 });
 
 test.describe("Overcurrent Analysis v1 -- chart axes, grid, and ticks", () => {
-  test("default viewport (0.9->100 x, 0.1->100 s, owner UAT correction 2026-09-16): full axis frame, major grid lines, and the owner's curated default major-tick set render", async ({ page }) => {
+  test("default viewport (0.1->100 x, 0.1->100 s): full axis frame, major grid lines, and the owner's curated default major-tick set render", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
 
     // Axis lines (X + Y).
     await expect(page.locator("#wwOvercurrentSvg line.ww-oc-axis")).toHaveCount(2);
-    // Major grid lines only (2026-09-13 owner UAT correction: Pickup
-    // Multiple mode's own FIXED, owner-approved major list) -- 13 X
-    // majors (1,2,3,4,5,6,7,8,9,10,20,50,100, all >= the new 0.9 default
-    // X Min) + 3 Y majors (1,10,100 -- Y's own new default minimum,
-    // 0.1s, is itself excluded from the major set by the same "axis
-    // minimum is never itself promoted to major" rule X's minimum
-    // already followed). 3/4/6/7/8/9 are ALWAYS-VISIBLE majors, never
-    // minor-gated -- see TestPickupMultipleFixedMajorTicks below for the
-    // dedicated coverage of this correction.
-    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-gridline")).toHaveCount(16);
+    // 14 X majors (0.1,1,2,3,4,5,6,7,8,9,10,20,50,100) + 4 Y majors
+    // (0.1,1,10,100). Shared labels appear once per axis.
+    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-gridline")).toHaveCount(18);
 
     // X majors that never coincide with a Y major label.
     for (const label of ["2", "3", "4", "5", "6", "7", "8", "9", "20", "50"]) {
       await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label", { hasText: new RegExp("^" + label.replace(".", "\\.") + "$") })).toHaveCount(1);
     }
-    // Values shared by both axes' own major set ("1", "10", "100").
-    for (const label of ["1", "10", "100"]) {
+    // Values shared by both axes' own major set ("0.1", "1", "10", "100").
+    for (const label of ["0.1", "1", "10", "100"]) {
       await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label", { hasText: new RegExp("^" + label + "$") })).toHaveCount(2);
     }
-    // X's own true minimum (0.9) and Y's own true minimum (0.1) each
-    // render as the lighter minor/reference label, never as ordinary
-    // majors.
-    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label-minor", { hasText: /^0\.9$/ })).toHaveCount(1);
-    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label-minor", { hasText: /^0\.1$/ })).toHaveCount(1);
-
-    // The two special visual-origin "0" labels (X + Y), never log-transformed.
-    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-origin-label", { hasText: /^0$/ })).toHaveCount(2);
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-origin-label", { hasText: /^0$/ })).toHaveCount(0);
 
     // Axis titles unchanged.
     await expect(page.locator("#wwOvercurrentSvg text.ww-oc-axis-label", { hasText: "Current / Pickup Multiple (M)" })).toHaveCount(1);
@@ -578,12 +562,12 @@ test.describe("Overcurrent Analysis v1 -- analyzer switch", () => {
 });
 
 test.describe("Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 UAT)", () => {
-  test("default range inputs show 0.9/100/0.1/100 (owner UAT correction 2026-09-16)", async ({ page }) => {
+  test("default range inputs show 0.1/100/0.1/100", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
 
-    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.9");
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.1");
     await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
     await expect(page.locator("#wwOvercurrentViewYMin")).toHaveValue("0.1");
     await expect(page.locator("#wwOvercurrentViewYMax")).toHaveValue("100");
@@ -603,25 +587,11 @@ test.describe("Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 
     const xMaxAfterZoomOut = parseFloat(await page.locator("#wwOvercurrentViewXMax").inputValue());
     expect(xMaxAfterZoomOut).toBeGreaterThan(xMaxAfterZoomIn);
 
-    // Axis-default refinement (2026-09-16, Part B): Y min is now
-    // proportional to the stable reference operating time already
-    // established by `selectContextAndWaitForValues()` above, not the
-    // flat 0.1s literal -- read the live dynamic value rather than
-    // hard-coding a hand-derived one.
-    const expectedYMin = await page.evaluate(() => wwOvercurrentDynamicYMin());
-    expect(expectedYMin).not.toBeCloseTo(0.1, 3); // a real reference IS established by this point
-
     await page.locator("#wwOvercurrentResetViewBtn").click();
-    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.9");
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.1");
     await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
-    const yMinAfterReset = parseFloat(await page.locator("#wwOvercurrentViewYMin").inputValue());
-    expect(yMinAfterReset).toBeCloseTo(expectedYMin, 4);
+    await expect(page.locator("#wwOvercurrentViewYMin")).toHaveValue("0.1");
     await expect(page.locator("#wwOvercurrentViewYMax")).toHaveValue("100");
-    // The "0" origin convention is scoped to the pristine, reference-
-    // less state only (see wwOvercurrentIsDefaultViewport()) -- once a
-    // real (non-round) reference-derived Y min is in effect, the chart
-    // shows the true numeric minimum instead of a fake "0", exactly
-    // like any other genuinely custom Y range.
     await expect(page.locator("#wwOvercurrentSvg text.ww-oc-origin-label", { hasText: /^0$/ })).toHaveCount(0);
   });
 
@@ -673,7 +643,7 @@ test.describe("Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 
     await page.locator("#wwOvercurrentViewXMax").fill("0.05");
     await page.locator("#wwOvercurrentViewXMax").dispatchEvent("change");
     await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
-    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.9");
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.1");
   });
 
   test("viewport changes never alter wwPlayback.currentTime or trigger a new curve fetch", async ({ page }) => {
@@ -730,16 +700,8 @@ test.describe("Overcurrent Analysis v1 -- adjustable chart viewport (2026-09-12 
   });
 });
 
-test.describe("Overcurrent Analysis v1 -- axis-default refinement (2026-09-16)", () => {
-  // Part A: Relay Current's own default X minimum is `pickup - 0.1 A`
-  // (floored), replacing the prior `0.9 * pickup` multiplicative
-  // scaling. Part B: the time-axis default minimum is proportional to a
-  // STABLE reference operating time, never a flat subtraction and never
-  // chasing the live operating point during Playback. No IEC IDMT
-  // calculation, TMS/pickup/CT/RMS semantics, or Playback clock
-  // behavior is touched by anything in this block.
-
-  test("Relay Current default X min tracks pickup - 0.1 A (golden examples: 1.0 -> 0.9, 1.2 -> 1.1)", async ({ page }) => {
+test.describe("Overcurrent Analysis v1 -- true log axis defaults", () => {
+  test("Relay Current default X range tracks 0.1x pickup to 100x pickup", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
@@ -751,18 +713,19 @@ test.describe("Overcurrent Analysis v1 -- axis-default refinement (2026-09-16)",
       const text = await page.locator("#wwOvercurrentValuesList").innerText();
       expect(text).toMatch(/40\.0\s*×/);
     }).toPass({ timeout: 5000 });
-    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.9");
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.1");
     await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
 
     await page.locator("#wwOvercurrentPickupInput").fill("1.2");
     await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
     await expect(async () => {
-      const value = await page.evaluate(() => wwOvercurrentRelayCurrentDefaultViewport().xMin);
-      expect(value).toBeCloseTo(1.1, 6);
+      const value = await page.evaluate(() => wwOvercurrentRelayCurrentDefaultViewport());
+      expect(value.xMin).toBeCloseTo(0.12, 6);
+      expect(value.xMax).toBeCloseTo(120, 6);
     }).toPass({ timeout: 5000 });
   });
 
-  test("a very small pickup uses the positive safety floor -- never a zero/negative Relay Current X min", async ({ page }) => {
+  test("a very small pickup still uses a positive Relay Current X min", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
@@ -800,10 +763,10 @@ test.describe("Overcurrent Analysis v1 -- axis-default refinement (2026-09-16)",
     await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("5");
     await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("50");
 
-    // Reset, not the pickup change, is what applies the new dynamic default.
+    // Reset, not the pickup change, is what applies the new default.
     await page.locator("#wwOvercurrentResetViewBtn").click();
     const xMinAfterReset = parseFloat(await page.locator("#wwOvercurrentViewXMin").inputValue());
-    expect(xMinAfterReset).toBeCloseTo(1.1, 6);
+    expect(xMinAfterReset).toBeCloseTo(0.12, 6);
   });
 
   test("a manually customized Y range is preserved across a TMS/characteristic change -- Playback ticks never touch it either", async ({ page }) => {
@@ -831,25 +794,18 @@ test.describe("Overcurrent Analysis v1 -- axis-default refinement (2026-09-16)",
     await expect(page.locator("#wwOvercurrentViewYMin")).toHaveValue("5");
   });
 
-  test("the Y-axis default/reset value never chases the live operating point while Playback runs (stable reference, not per-tick)", async ({ page }) => {
+  test("the Y-axis default/reset value stays fixed while Playback runs", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
-
-    // Capture the dynamic default once, before Playback runs.
-    const beforePlay = await page.evaluate(() => wwOvercurrentDynamicYMin());
 
     await page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-play-btn").click();
     await page.waitForTimeout(800); // several throttled ticks at ~10 Hz
     await page.locator("#wwOvercurrentPlaybackMount .ww-tg-playback-play-btn").click();
 
-    const afterPlay = await page.evaluate(() => wwOvercurrentDynamicYMin());
-    // A steady-state sinusoid keeps the measured current effectively
-    // constant across this short window regardless -- the real
-    // guarantee under test is architectural (see the static test
-    // `TestStableReferenceOnlyUpdatedByExactFetch`), this is the
-    // end-to-end confirmation that a live Play run alone never moves it.
-    expect(afterPlay).toBeCloseTo(beforePlay, 6);
+    await page.locator("#wwOvercurrentResetViewBtn").click();
+    await expect(page.locator("#wwOvercurrentViewYMin")).toHaveValue("0.1");
+    await expect(page.locator("#wwOvercurrentViewYMax")).toHaveValue("100");
   });
 
   test("zero backend requests are caused solely by a viewport/axis-default recalculation -- Reset, zoom, and axis-mode switch after a pickup change", async ({ page }) => {
@@ -1136,27 +1092,14 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
     // 6: axis title changes.
     await expect(page.locator("#wwOvercurrentSvg text.ww-oc-axis-label", { hasText: "Relay Current (A secondary)" })).toHaveCount(1);
 
-    // 7: operating point x-coordinate transforms to the new UNIT
-    // (amperes, not M). Superseded (axis-default refinement,
-    // 2026-09-16): Relay Current's own default X minimum is now the
-    // additive `pickup - 0.1 A` rather than the multiplicative
-    // `0.9 * pickup` DEC-094 used, so the two representations' own
-    // default viewports no longer sit at the exact same relative log
-    // position -- a small pixel difference (magnitude depends on the
-    // specific pickup) is the deliberate, owner-requested outcome, not
-    // a regression; the underlying VALUE change is confirmed via the
-    // live-values panel elsewhere. Only that the point still renders at
-    // a real, valid position is asserted here.
+    // 7: operating point x-coordinate transforms to amperes while staying
+    // pixel-equivalent to the same M-domain position.
     const relayModeOpX = await page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point").getAttribute("cx");
-    expect(Number(relayModeOpX)).toBeGreaterThan(0);
+    expect(relayModeOpX).toBe(pickupModeOpX);
 
-    // 8: pickup boundary -- same superseded-equivalence note as above:
-    // M=1 (Pickup Multiple) and I=pickup=0.8A (Relay Current) are no
-    // longer guaranteed to occupy the exact same pixel position now
-    // that the two defaults are related additively, not
-    // multiplicatively.
+    // 8: pickup boundary: M=1 and I=pickup share the same pixel.
     const relayModeBoundaryX = await page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary").getAttribute("x1");
-    expect(Number(relayModeBoundaryX)).toBeGreaterThan(0);
+    expect(relayModeBoundaryX).toBe(pickupModeBoundaryX);
 
     // 9: ticks are current-domain (amperes), not M-domain -- the Pickup
     // Multiple mode's fixed 3/4/6/7/8/9 majors must NOT all still be
@@ -1197,11 +1140,8 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
     await expect(page.locator("#wwOvercurrentAxisModePickupBtn")).toHaveAttribute("aria-pressed", "false");
     await expect(page.locator("#wwOvercurrentSvg text.ww-oc-axis-label", { hasText: "Relay Current (A secondary)" })).toHaveCount(1);
     // Default pickup is 1.0 A -- Relay Current mode's own default range
-    // is the SAME 0.9x/100x M-domain default Pickup Multiple uses,
-    // scaled by pickup (owner UAT correction 2026-09-16: the two
-    // representations must stay visually equivalent), i.e. identical
-    // numbers at pickup=1.0.
-    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.9");
+    // is the same 0.1x/100x M-domain default scaled by pickup.
+    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.1");
     await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
 
     expect(curveFetchCount).toBe(0);
@@ -1241,20 +1181,13 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
     const boundaryXAfterPickupChange = await page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary").getAttribute("x1");
     expect(boundaryXAfterPickupChange).toBe(boundaryXAtPickup1);
 
-    // Relay Current mode -- the pixel-equivalence DEC-094 originally
-    // established here is superseded by the axis-default refinement
-    // (2026-09-16): Relay Current's own default X minimum is now the
-    // additive `pickup - 0.1 A`, not the multiplicative `0.9 * pickup`,
-    // so the boundary (I = pickup = 0.8 A) no longer sits at the same
-    // relative log position M=1 does at pickup 1.0. The boundary still
-    // renders at a valid, in-range pixel position -- just a different
-    // one, which is the deliberate, owner-requested outcome.
+    // Relay Current mode -- I=pickup is geometrically equivalent to M=1.
     await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
     const boundaryXRelay = await page.locator("#wwOvercurrentSvg line.ww-oc-pickup-boundary").getAttribute("x1");
-    expect(Number(boundaryXRelay)).toBeGreaterThan(0);
+    expect(boundaryXRelay).toBe(boundaryXAtPickup1);
   });
 
-  test("Relay Current default viewport at pickup 0.8 A is exactly 0.7 -> 80 A (axis-default refinement, 2026-09-16: X min = pickup - 0.1 A)", async ({ page }) => {
+  test("Relay Current default viewport at pickup 0.8 A is exactly 0.08 -> 80 A", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
@@ -1269,12 +1202,10 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
     await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
     const xMin = parseFloat(await page.locator("#wwOvercurrentViewXMin").inputValue());
     const xMax = parseFloat(await page.locator("#wwOvercurrentViewXMax").inputValue());
-    expect(xMin).toBeCloseTo(0.7, 6); // 0.8 - 0.1
+    expect(xMin).toBeCloseTo(0.08, 6); // 0.1 * pickup
     expect(xMax).toBeCloseTo(80, 6);
 
-    // The viewport-start reference (pickup - 0.1 A) renders as the
-    // light minor/reference label.
-    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label-minor", { hasText: /^0\.7$/ })).toHaveCount(1);
+    await expect(page.locator("#wwOvercurrentSvg text.ww-oc-tick-label", { hasText: /^0\.08$/ })).toHaveCount(1);
   });
 
   test("Relay Current major tick values at pickup 0.8 A match the exact worked example", async ({ page }) => {
@@ -1319,9 +1250,9 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
       if (req.url().includes("/overcurrent-curve") || req.url().includes("/waveform")) requestCount++;
     });
 
-    // Pickup 2.0 A (not 0.8) -- deliberately stays WITHIN the current,
+    // Pickup 2.0 A (not 0.8) -- deliberately stays within the current,
     // unchanged viewport (Relay Current's own default at pickup=1.0 is
-    // 0.9-100 A), so the boundary remains on-chart and its own moved
+    // 0.1-100 A), so the boundary remains on-chart and its own moved
     // position can be observed directly, rather than going out of range
     // (a separate, already-covered edge case -- see the existing
     // "below pickup, off-chart" edge-indicator tests elsewhere).
@@ -1350,14 +1281,12 @@ test.describe("Overcurrent Analysis v1 -- X-axis representation toggle (chart UX
     const curveDAfter = await page.locator("#wwOvercurrentSvg path.ww-oc-curve").getAttribute("d");
     expect(curveDAfter).not.toBe(curveDBefore);
 
-    // Reset now reflects the NEW pickup (axis-default refinement,
-    // 2026-09-16: X min = pickup - 0.1 A = 1.9 A, not the prior
-    // `0.9 * pickup` = 1.8 A) -- never a stale value from before the
-    // pickup change.
+    // Reset now reflects the new pickup -- never a stale value from
+    // before the pickup change.
     await page.locator("#wwOvercurrentResetViewBtn").click();
     const xMinAfterReset = parseFloat(await page.locator("#wwOvercurrentViewXMin").inputValue());
     const xMaxAfterReset = parseFloat(await page.locator("#wwOvercurrentViewXMax").inputValue());
-    expect(xMinAfterReset).toBeCloseTo(1.9, 6);
+    expect(xMinAfterReset).toBeCloseTo(0.2, 6);
     expect(xMaxAfterReset).toBeCloseTo(200, 6);
   });
 
@@ -1487,914 +1416,6 @@ test.describe("Overcurrent Analysis v1 -- minor grid toggles (chart UX enhanceme
     await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
     await expect(page.locator("#wwOvercurrentPanel")).toBeVisible();
     await expect(page.locator("#wwOvercurrentMinorGridXCheckbox")).toBeChecked();
-  });
-});
-
-test.describe("Overcurrent Analysis v1 -- compressed sub-pickup axis (chart geometry refinement)", () => {
-  async function gridlineXPositions(page, selector) {
-    return page.locator(selector).evaluateAll((lines) => lines.map((el) => parseFloat(el.getAttribute("x1"))));
-  }
-
-  test("default Pickup Multiple viewport (0.9->100, owner UAT correction 2026-09-16) uses the ordinary log mapping, no break", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-
-    const ratios = await page.evaluate(() => {
-      const geo = wwOvercurrentChartGeometry(wwOvercurrentState.viewport);
-      return { breakApplies: geo.breakApplies, xMin: wwOvercurrentState.viewport.xMin };
-    });
-    expect(ratios.xMin).toBeCloseTo(0.9, 5);
-    expect(ratios.breakApplies).toBe(false);
-    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-axis-break")).toHaveCount(0);
-  });
-
-  test("widening X Min to 0.1 (well below the 0.5 threshold) activates the compressed gutter: 0.1->1 occupies ~5% of plot width, 1->100 occupies ~95%", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-
-    await page.locator("#wwOvercurrentViewXMin").fill("0.1");
-    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
-
-    const ratios = await page.evaluate(() => {
-      const geo = wwOvercurrentChartGeometry(wwOvercurrentState.viewport);
-      const pxAtMin = wwOvercurrentPixelX(0.1, geo);
-      const pxAtOne = wwOvercurrentPixelX(1, geo);
-      const pxAtMax = wwOvercurrentPixelX(100, geo);
-      const plotWidth = geo.plotRight - geo.logLeft;
-      return {
-        breakApplies: geo.breakApplies,
-        belowFraction: (pxAtOne - pxAtMin) / plotWidth,
-        aboveFraction: (pxAtMax - pxAtOne) / plotWidth,
-      };
-    });
-    expect(ratios.breakApplies).toBe(true);
-    expect(ratios.belowFraction).toBeCloseTo(0.05, 1);
-    expect(ratios.aboveFraction).toBeCloseTo(0.95, 1);
-  });
-
-  test("axis-break marker renders at the M=1 position once a deliberately wide below-pickup viewport is chosen", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-
-    // No break at the new default (0.9 is above the 0.5 threshold).
-    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-axis-break")).toHaveCount(0);
-
-    // Widen to 0.1 (well below the threshold) -- the break appears.
-    await page.locator("#wwOvercurrentViewXMin").fill("0.1");
-    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
-
-    const breakLines = await page.locator("#wwOvercurrentSvg line.ww-oc-axis-break").count();
-    expect(breakLines).toBe(2); // the double-diagonal-tick mark
-
-    const expectedX = await page.evaluate(() => {
-      const geo = wwOvercurrentChartGeometry(wwOvercurrentState.viewport);
-      return wwOvercurrentPixelX(1, geo);
-    });
-    const positions = await gridlineXPositions(page, "#wwOvercurrentSvg line.ww-oc-axis-break");
-    for (const x of positions) {
-      expect(Math.abs(x - expectedX)).toBeLessThan(6); // within the marker's own dx+skew offsets
-    }
-  });
-
-  test("operating point below pickup renders inside the compressed sub-pickup gutter once the viewport is widened below the break threshold", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-    // Known 40 A RMS current; pickup 100 A -> M = 0.4, below pickup --
-    // also below the new default's own X Min (0.9), so widen the
-    // viewport first to keep M=0.4 visible and inside the compressed
-    // gutter (task's own worked example needs a deliberately wide view).
-    await page.locator("#wwOvercurrentViewXMin").fill("0.1");
-    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
-    await page.locator("#wwOvercurrentPickupInput").fill("100");
-    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
-
-    await expect(async () => {
-      const text = await page.locator("#wwOvercurrentValuesList").innerText();
-      expect(text).toContain("Below pickup");
-    }).toPass({ timeout: 5000 });
-
-    const markerX = parseFloat(await page.locator("#wwOvercurrentSvg circle.ww-oc-position-marker").getAttribute("cx"));
-    const geo = await page.evaluate(() => wwOvercurrentChartGeometry(wwOvercurrentState.viewport));
-    expect(geo.breakApplies).toBe(true);
-    // The marker's own X must sit strictly within the compressed gutter
-    // (logLeft -> breakPx), never past the M=1 break into the operating
-    // region -- proving the below-pickup value used the SAME piecewise
-    // transform, not a stray standard-log position.
-    expect(markerX).toBeGreaterThanOrEqual(geo.logLeft - 0.5);
-    expect(markerX).toBeLessThanOrEqual(geo.breakPx + 0.5);
-    // No fabricated y-value -- unchanged pre-existing semantic.
-    await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point")).toHaveCount(0);
-  });
-
-  test("no finite curve point exists at or below M=1, characteristic begins only above pickup", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-
-    const d = await page.locator("#wwOvercurrentSvg path.ww-oc-curve").getAttribute("d");
-    expect(d).toBeTruthy();
-    const firstMoveTo = d.split(" ")[0]; // "M<x>,<y>" (SVG path command, unrelated to the M= pickup-multiple variable)
-    const [, coords] = firstMoveTo.split("M");
-    const [xPx] = coords.split(",").map(Number);
-    const pxAtOne = await page.evaluate(() => {
-      const geo = wwOvercurrentChartGeometry(wwOvercurrentState.viewport);
-      return wwOvercurrentPixelX(1, geo);
-    });
-    // The curve's own first drawn pixel must be AT/AFTER the M=1
-    // position, never before it -- true whether or not the compressed
-    // gutter is active for the current viewport.
-    expect(xPx).toBeGreaterThanOrEqual(pxAtOne - 0.5);
-  });
-
-  test("a custom viewport entirely at/above M=1 reverts to the ordinary single log mapping (no gutter)", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-
-    await page.locator("#wwOvercurrentViewXMin").fill("2");
-    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
-    await page.locator("#wwOvercurrentViewXMax").fill("20");
-    await page.locator("#wwOvercurrentViewXMax").dispatchEvent("change");
-
-    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-axis-break")).toHaveCount(0);
-    const breakApplies = await page.evaluate(() => wwOvercurrentChartGeometry(wwOvercurrentState.viewport).breakApplies);
-    expect(breakApplies).toBe(false);
-  });
-
-  test("a custom viewport straddling M=1 shows the break again", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-
-    await page.locator("#wwOvercurrentViewXMin").fill("0.5");
-    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
-    await page.locator("#wwOvercurrentViewXMax").fill("5");
-    await page.locator("#wwOvercurrentViewXMax").dispatchEvent("change");
-
-    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-axis-break")).toHaveCount(2);
-  });
-
-  test("Relay Current mode never shows the axis break, even with a below/above-1 spanning viewport", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-
-    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
-    await expect(page.locator("#wwOvercurrentSvg line.ww-oc-axis-break")).toHaveCount(0);
-    const breakApplies = await page.evaluate(() => wwOvercurrentChartGeometry(wwOvercurrentState.viewport).breakApplies);
-    expect(breakApplies).toBe(false);
-  });
-
-  test("viewport X Min/X Max inputs always show real engineering M values, never transformed screen coordinates", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-
-    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue("0.9");
-    await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue("100");
-
-    await page.locator("#wwOvercurrentZoomInBtn").click();
-    const xMin = parseFloat(await page.locator("#wwOvercurrentViewXMin").inputValue());
-    const xMax = parseFloat(await page.locator("#wwOvercurrentViewXMax").inputValue());
-    // Real M-domain values only -- both comfortably within the absolute
-    // 0.1-200 engineering range, never a 0-320 pixel-space number.
-    expect(xMin).toBeGreaterThanOrEqual(0.1);
-    expect(xMax).toBeLessThanOrEqual(200);
-  });
-
-  test("compressed-axis geometry never triggers a curve or waveform fetch", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-
-    let requestCount = 0;
-    page.on("request", (req) => {
-      if (req.url().includes("/overcurrent-curve") || req.url().includes("/overcurrent?") || req.url().includes("/waveform")) requestCount++;
-    });
-
-    // Toggle the break on and off purely via viewport changes -- no
-    // settings (pickup/TMS/basis/CT/phase/characteristic) touched, so
-    // this isolates the geometry refinement itself from the pre-existing,
-    // unrelated "a settings change refetches the analysis" behavior.
-    await page.locator("#wwOvercurrentViewXMin").fill("2");
-    await page.locator("#wwOvercurrentViewXMin").dispatchEvent("change");
-    await page.locator("#wwOvercurrentResetViewBtn").click();
-    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
-    await page.locator("#wwOvercurrentAxisModePickupBtn").click();
-
-    expect(requestCount).toBe(0);
-  });
-});
-
-test.describe("Overcurrent Analysis v1 -- shared Analysis Engineering Context lifecycle (2026-09-12 owner UAT fix)", () => {
-  // Owner UAT: after uploading an event, opening Overcurrent DIRECTLY
-  // (without ever visiting/selecting anything in Phasor) could show an
-  // empty Bay selector -- Engineering Context discovery/bootstrap used
-  // to live entirely inside Phasor's own code path. This is now owned
-  // by the shared Analysis workspace (wwAnalysisLoadContexts() and
-  // friends) -- Phasor/Overcurrent are pure consumers of the ONE
-  // published list, so opening either one first produces identical
-  // context availability. No manual context creation in these tests --
-  // relies entirely on the automatic suggestion bootstrap, exactly like
-  // phasor_analysis.spec.js's own "Engineering Context bootstrap"
-  // describe block already does for Phasor.
-
-  // ---- Case 1: the original UAT bug, direct-Overcurrent-after-upload ----
-  test("fresh workspace: upload -> open Analysis directly on Overcurrent (never visiting Phasor) -> Bay selector populates automatically", async ({ page }) => {
-    await page.route("**/engineering-contexts/suggest", async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      await route.continue();
-    });
-
-    await uploadFixture(page); // no manual context creation
-    await openAnalysisOvercurrent(page); // never selects/interacts with anything in Phasor's own panel
-
-    // The transient context-identification state appears on Overcurrent's
-    // own empty state (mirrors Phasor's own established UX for this).
-    await expect(page.locator("#wwOvercurrentEmptyState")).toContainText("Identifying engineering contexts");
-
-    // The Bay selector populates automatically, with the newly-
-    // suggested context auto-selected (no unnecessary extra click) --
-    // this is the exact scenario the owner reported as broken.
-    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(2, { timeout: 10000 }); // blank + ALPHA1
-    await expect(page.locator("#wwOvercurrentContextSelect")).not.toHaveValue("");
-    await expect(page.locator("#wwOvercurrentContextBadge")).toContainText("Suggested");
-
-    await expect(async () => {
-      const text = await page.locator("#wwOvercurrentValuesList").innerText();
-      expect(text).toMatch(/40\.0\s*A secondary/); // known 40 A RMS
-    }).toPass({ timeout: 5000 });
-  });
-
-  // ---- Case 2: existing behavior via Phasor must remain unchanged ----
-  test("fresh workspace: upload -> open Phasor -> context available (unchanged existing behavior)", async ({ page }) => {
-    await uploadFixture(page);
-    await page.locator("#mainNavAnalysisBtn").click();
-    await expect(page.locator("#wwPhasorPanel")).toBeVisible();
-    await expect(page.locator("#wwPhasorContextSelect option")).toHaveCount(2, { timeout: 10000 }); // blank + ALPHA1
-    await expect(page.locator("#wwPhasorContextSelect")).not.toHaveValue("");
-  });
-
-  // ---- Case 3: later upload, both analyzers stay in sync ----
-  test("upload A -> Overcurrent sees A; upload B later -> Overcurrent discovers B without visiting Phasor, A remains selected", async ({ page }) => {
-    await uploadFixture(page);
-    await openAnalysisOvercurrent(page);
-    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(2, { timeout: 10000 }); // blank + ALPHA1
-    const alphaContextId = await page.locator("#wwOvercurrentContextSelect").inputValue();
-    await expect(async () => {
-      const text = await page.locator("#wwOvercurrentValuesList").innerText();
-      expect(text).toMatch(/40\.0\s*A secondary/);
-    }).toPass({ timeout: 5000 });
-
-    const suggestUrls = [];
-    page.on("request", (request) => {
-      if (request.url().includes("/engineering-contexts/suggest")) suggestUrls.push(request.url());
-    });
-    await page.locator("#mainNavRecordingsBtn").click();
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
-    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
-    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "phasor_smoke_bravo_three_phase.cfg"));
-    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
-    await page.locator("#uploadModalSubmitBtn").click();
-    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-    const bravoSourceId = await page.locator("#recordingsTableBody tr[data-source-id]").last().getAttribute("data-source-id");
-
-    // Re-enter Analysis directly on Overcurrent -- never visiting Phasor.
-    await page.locator("#mainNavAnalysisBtn").click();
-    await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
-    await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(alphaContextId); // A remains selected
-    const valuesRightAfterReentry = await page.locator("#wwOvercurrentValuesList").innerText();
-    expect(valuesRightAfterReentry).toMatch(/40\.0\s*A secondary/); // uninterrupted
-
-    // BRAVO1 (B) appears once background discovery completes -- A stays selected.
-    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(3, { timeout: 10000 }); // blank + A + B
-    await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(alphaContextId);
-
-    // Exactly one suggestion request for B's own new source -- never a
-    // duplicate, never one re-requested for A (already covered), and no
-    // double-bootstrap between the shared layer and a stale per-analyzer one.
-    const bravoSuggestUrls = suggestUrls.filter((url) => url.includes(encodeURIComponent(bravoSourceId)));
-    expect(bravoSuggestUrls).toHaveLength(1);
-    const alphaSuggestUrls = suggestUrls.filter((url) => !url.includes(encodeURIComponent(bravoSourceId)));
-    expect(alphaSuggestUrls).toHaveLength(0);
-  });
-
-  // ---- Case 4: Overcurrent first with a source uploaded before it ----
-  test("A already exists -> upload B -> open Overcurrent -> B appears without ever visiting Phasor", async ({ page }) => {
-    const { contextId: alphaContextId } = await uploadAndCreateContext(page); // A via direct API (manual, confirmed)
-
-    await page.locator("#mainNavRecordingsBtn").click();
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
-    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
-    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "phasor_smoke_bravo_three_phase.cfg"));
-    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
-    await page.locator("#uploadModalSubmitBtn").click();
-    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-
-    await openAnalysisOvercurrent(page); // never visits Phasor
-    await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(""); // nothing auto-selected yet (A was never selected before)
-    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(3, { timeout: 10000 }); // blank + A + B (BRAVO1)
-    const bravoOption = page.locator("#wwOvercurrentContextSelect option", { hasText: "BRAVO1" });
-    await expect(bravoOption).toHaveCount(1);
-    const alphaOption = page.locator(`#wwOvercurrentContextSelect option[value="${alphaContextId}"]`);
-    await expect(alphaOption).toHaveCount(1);
-  });
-
-  // ---- Case 5: duplicate display-name labels remain independently selectable ----
-  test("two bare-role sources each get their own distinct context, never deduplicated by display name", async ({ page }) => {
-    const BARE_STEM = "phasor_bare_three_phase";
-    await page.goto("/index.html");
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
-    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
-    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${BARE_STEM}.cfg`));
-    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
-    await page.locator("#uploadModalSubmitBtn").click();
-    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-
-    await page.locator("#mainNavRecordingsBtn").click();
-    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
-    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
-    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${BARE_STEM}.cfg`));
-    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
-    await page.locator("#uploadModalSubmitBtn").click();
-    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-
-    await openAnalysisOvercurrent(page);
-    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(3, { timeout: 10000 }); // blank + two "Default Context" entries
-    const optionValues = await page.locator("#wwOvercurrentContextSelect option:not([value=''])").evaluateAll(
-      (opts) => opts.map((o) => o.value)
-    );
-    expect(new Set(optionValues).size).toBe(2); // two distinct context ids, never merged by shared label
-  });
-
-  // ---- Case 6: partial/manual coverage is respected, never re-suggested ----
-  test("a source already covered by a manual context is never re-suggested", async ({ page }) => {
-    const suggestUrls = [];
-    const { contextId, sourceId } = await uploadAndCreateContext(page);
-    page.on("request", (request) => {
-      if (request.url().includes("/engineering-contexts/suggest")) suggestUrls.push(request.url());
-    });
-    await openAnalysisOvercurrent(page);
-    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(2, { timeout: 5000 }); // blank + the manual context
-    const covered = suggestUrls.filter((url) => url.includes(encodeURIComponent(sourceId)));
-    expect(covered).toHaveLength(0);
-    await expect(page.locator(`#wwOvercurrentContextSelect option[value="${contextId}"]`)).toHaveCount(1);
-  });
-
-  // ---- Case 8: a workspace switch mid-discovery discards the stale result ----
-  test("stale discovery response from a cleared workspace never populates the new one", async ({ page }) => {
-    await page.route("**/engineering-contexts/suggest", async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      await route.continue();
-    });
-    await uploadFixture(page);
-    await openAnalysisOvercurrent(page);
-    await expect(page.locator("#wwOvercurrentEmptyState")).toContainText("Identifying engineering contexts");
-
-    // Clear the workspace WHILE discovery is still in flight.
-    await page.locator("#mainNavRecordingsBtn").click();
-    await page.locator("#newWorkspaceButton").click();
-    await expect(page.locator("#newWorkspaceConfirmOverlay")).toBeVisible();
-    await page.locator("#newWorkspaceConfirmStartBtn").click();
-    await expect(page.locator("#newWorkspaceConfirmOverlay")).toBeHidden();
-
-    await page.locator("#mainNavAnalysisBtn").click();
-    await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
-    // The now-stale ALPHA1 suggestion must never leak into the fresh,
-    // empty workspace's own selector.
-    await page.waitForTimeout(800);
-    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(1); // blank only
-  });
-});
-
-test.describe("Overcurrent Analysis v1 -- chart control toolbar UI/UX redesign (2026-09-16)", () => {
-  // UI/CSS-only: View X/Y Min/Max, Zoom -/+/Reset, the Pickup Multiple /
-  // Relay Current segmented control, and the Minor grid X/Y checkboxes.
-  // No OC math/viewport-semantics/IDMT/network assertion belongs here --
-  // see the other describe blocks in this file for that unchanged
-  // behavioral coverage. This block proves the actual rendered geometry
-  // (never just source-string assertions).
-
-  function boxesOverlap(a, b) {
-    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
-  }
-
-  for (const width of [1366, 1024]) {
-    test(`at ${width}px: View/X-axis/Minor-grid controls stay inside the panel, never clip, never overlap, and the page never overflows horizontally`, async ({ page }) => {
-      await page.setViewportSize({ width, height: 900 });
-      const { contextId } = await uploadAndCreateContext(page);
-      await openAnalysisOvercurrent(page);
-      await selectContextAndWaitForValues(page, contextId);
-
-      const overflowsHorizontally = await page.evaluate(
-        () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
-      );
-      expect(overflowsHorizontally).toBe(false);
-
-      const panelBox = await page.locator("#wwOvercurrentViewControls").locator("xpath=..").boundingBox();
-      expect(panelBox).not.toBeNull();
-
-      const controlIds = [
-        "wwOvercurrentViewXMin", "wwOvercurrentViewXMax",
-        "wwOvercurrentViewYMin", "wwOvercurrentViewYMax",
-        "wwOvercurrentZoomOutBtn", "wwOvercurrentZoomInBtn", "wwOvercurrentResetViewBtn",
-        "wwOvercurrentAxisModePickupBtn", "wwOvercurrentAxisModeRelayBtn",
-        "wwOvercurrentMinorGridXCheckbox", "wwOvercurrentMinorGridYCheckbox",
-      ];
-      const boxes = [];
-      for (const id of controlIds) {
-        const box = await page.locator(`#${id}`).boundingBox();
-        expect(box, `#${id} should render with a real, non-clipped box`).not.toBeNull();
-        expect(box.width, `#${id} width should not be clipped to zero`).toBeGreaterThan(0);
-        expect(box.height, `#${id} height should not be clipped to zero`).toBeGreaterThan(0);
-        expect(box.x, `#${id} should stay inside the chart control panel (left edge)`).toBeGreaterThanOrEqual(panelBox.x - 1);
-        expect(box.x + box.width, `#${id} should stay inside the chart control panel (right edge)`).toBeLessThanOrEqual(panelBox.x + panelBox.width + 1);
-        boxes.push({ id, box });
-      }
-
-      // Selector/toggle labels ("View", "X-axis", "Minor grid") also
-      // participate in the overlap check -- a wrapped/clipped label
-      // overlapping the control next to it would be just as broken as
-      // two controls overlapping each other.
-      const labelHandles = await page.locator(
-        "#wwOvercurrentViewControls .ww-oc-view-controls-label, #wwOvercurrentAxisControls .ww-oc-view-controls-label"
-      ).all();
-      for (let i = 0; i < labelHandles.length; i++) {
-        const box = await labelHandles[i].boundingBox();
-        expect(box).not.toBeNull();
-        boxes.push({ id: `label-${i}`, box });
-      }
-
-      for (let i = 0; i < boxes.length; i++) {
-        for (let j = i + 1; j < boxes.length; j++) {
-          expect(
-            boxesOverlap(boxes[i].box, boxes[j].box),
-            `${boxes[i].id} should not overlap ${boxes[j].id}`
-          ).toBe(false);
-        }
-      }
-    });
-  }
-
-  test("the active segmented option is visibly, computedly different from the inactive option", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-
-    const stylesFor = (id) =>
-      page.locator(`#${id}`).evaluate((el) => {
-        const cs = getComputedStyle(el);
-        return { color: cs.color, background: cs.backgroundColor, fontWeight: cs.fontWeight };
-      });
-
-    const activeStyles = await stylesFor("wwOvercurrentAxisModePickupBtn");
-    const inactiveStyles = await stylesFor("wwOvercurrentAxisModeRelayBtn");
-    expect(activeStyles.color).not.toBe(inactiveStyles.color);
-    expect(activeStyles.background).not.toBe(inactiveStyles.background);
-    // The shared outer group renders as one rounded/bordered shape.
-    const groupBorderWidth = await page.locator("#wwOvercurrentAxisControls .ww-oc-axis-toggle-group").evaluate(
-      (el) => getComputedStyle(el).borderTopWidth
-    );
-    expect(groupBorderWidth).not.toBe("0px");
-  });
-
-  test("minor-grid X/Y checkboxes are visible and vertically aligned with their own labels", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-
-    const xCheckbox = page.locator("#wwOvercurrentMinorGridXCheckbox");
-    const yCheckbox = page.locator("#wwOvercurrentMinorGridYCheckbox");
-    await expect(xCheckbox).toBeVisible();
-    await expect(yCheckbox).toBeVisible();
-
-    const xBox = await xCheckbox.boundingBox();
-    const xLabelBox = await xCheckbox.locator("xpath=..").boundingBox();
-    // The checkbox's own vertical center sits within its label's box --
-    // i.e. genuinely vertically aligned, not floating above/below the "X"/"Y" text.
-    const checkboxCenterY = xBox.y + xBox.height / 2;
-    expect(checkboxCenterY).toBeGreaterThanOrEqual(xLabelBox.y);
-    expect(checkboxCenterY).toBeLessThanOrEqual(xLabelBox.y + xLabelBox.height);
-  });
-
-  test("existing functionality is preserved after the redesign: axis mode switch, minor X/Y checkboxes, zoom, and reset all still work", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-
-    // Axis mode switch.
-    await page.locator("#wwOvercurrentAxisModeRelayBtn").click();
-    await expect(page.locator("#wwOvercurrentAxisModeRelayBtn")).toHaveAttribute("aria-pressed", "true");
-    await page.locator("#wwOvercurrentAxisModePickupBtn").click();
-    await expect(page.locator("#wwOvercurrentAxisModePickupBtn")).toHaveAttribute("aria-pressed", "true");
-
-    // Minor grid checkboxes.
-    await expect(page.locator("#wwOvercurrentSvg .ww-oc-gridline-minor")).toHaveCount(0);
-    await page.locator("#wwOvercurrentMinorGridXCheckbox").check();
-    await expect(async () => {
-      expect(await page.locator("#wwOvercurrentSvg .ww-oc-gridline-minor").count()).toBeGreaterThan(0);
-    }).toPass({ timeout: 5000 });
-    await page.locator("#wwOvercurrentMinorGridXCheckbox").uncheck();
-    await page.locator("#wwOvercurrentMinorGridYCheckbox").check();
-    await expect(async () => {
-      expect(await page.locator("#wwOvercurrentSvg .ww-oc-gridline-minor").count()).toBeGreaterThan(0);
-    }).toPass({ timeout: 5000 });
-    await page.locator("#wwOvercurrentMinorGridYCheckbox").uncheck();
-
-    // Zoom in/out and reset.
-    const xMinBefore = await page.locator("#wwOvercurrentViewXMin").inputValue();
-    const xMaxBefore = await page.locator("#wwOvercurrentViewXMax").inputValue();
-    await page.locator("#wwOvercurrentZoomInBtn").click();
-    await expect(async () => {
-      expect(await page.locator("#wwOvercurrentViewXMax").inputValue()).not.toBe(xMaxBefore);
-    }).toPass({ timeout: 5000 });
-    await page.locator("#wwOvercurrentZoomOutBtn").click();
-    await page.locator("#wwOvercurrentResetViewBtn").click();
-    await expect(page.locator("#wwOvercurrentViewXMin")).toHaveValue(xMinBefore);
-    await expect(page.locator("#wwOvercurrentViewXMax")).toHaveValue(xMaxBefore);
-  });
-});
-
-test.describe("Overcurrent Analysis v1 -- Manual Input / Calculator mode (Analysis Input Source)", () => {
-  // The first implementation of the shared Analysis Input Source concept
-  // (Recording/Manual) -- see docs/project-memory/ANALYSIS_INPUT_SOURCE.md.
-  // No IEC IDMT/CT/unit-normalization math is re-derived in this file --
-  // every assertion here is end-to-end through the SAME production
-  // backend endpoint/domain functions Recording mode already uses.
-
-  async function enterManualCurrent(page, { current, unit, basis }) {
-    if (basis !== undefined) {
-      await page.locator("#wwOvercurrentManualBasisSelect").selectOption(basis);
-    }
-    if (unit !== undefined) {
-      await page.locator("#wwOvercurrentManualUnitSelect").selectOption(unit);
-    }
-    if (current !== undefined) {
-      await page.locator("#wwOvercurrentManualCurrentInput").fill(String(current));
-      await page.locator("#wwOvercurrentManualCurrentInput").dispatchEvent("change");
-      // See the axis-default-refinement task's own documented test-
-      // harness finding: `.fill()` leaves focus in the field, so an
-      // explicit blur is needed to settle the browser's own native
-      // blur-triggered "change" before the next action (never a
-      // production concern -- purely a Playwright interaction detail).
-      await page.locator("#wwOvercurrentManualCurrentInput").blur();
-    }
-  }
-
-  test("default Input Source is Recording; segmented control is visually consistent with the Pickup Multiple/Relay Current toggle", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-
-    await expect(page.locator("#wwOvercurrentInputSourceRecordingBtn")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator("#wwOvercurrentInputSourceManualBtn")).toHaveAttribute("aria-pressed", "false");
-    await expect(page.locator("#wwOvercurrentManualInputSection")).toBeHidden();
-
-    const groupBorderWidth = await page.locator("#wwOvercurrentInputSourceRecordingBtn").locator("xpath=..").evaluate(
-      (el) => getComputedStyle(el).borderTopWidth
-    );
-    expect(groupBorderWidth).not.toBe("0px");
-  });
-
-  test("switching to Manual reveals the Manual Input section; relay settings are untouched", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-
-    const pickupBefore = await page.locator("#wwOvercurrentPickupInput").inputValue();
-    const tmsBefore = await page.locator("#wwOvercurrentTmsInput").inputValue();
-
-    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
-    await expect(page.locator("#wwOvercurrentManualInputSection")).toBeVisible();
-    await expect(page.locator("#wwOvercurrentInputSourceManualBtn")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator("#wwOvercurrentInputSourceRecordingBtn")).toHaveAttribute("aria-pressed", "false");
-
-    await expect(page.locator("#wwOvercurrentPickupInput")).toHaveValue(pickupBefore);
-    await expect(page.locator("#wwOvercurrentTmsInput")).toHaveValue(tmsBefore);
-  });
-
-  test("golden example: pickup 1.0 A secondary, CT 1200:1, manual 30000 A primary -> 25 A secondary, M=25x", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-
-    await page.locator("#wwOvercurrentPickupInput").fill("1.0");
-    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
-    await page.locator("#wwOvercurrentPickupInput").blur();
-
-    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
-    await expect(page.locator("#wwOvercurrentCtPrimaryField")).toBeVisible(); // Manual's own default basis is Primary
-    await page.locator("#wwOvercurrentCtPrimaryInput").fill("1200");
-    await page.locator("#wwOvercurrentCtPrimaryInput").dispatchEvent("change");
-    await page.locator("#wwOvercurrentCtPrimaryInput").blur();
-    await page.locator("#wwOvercurrentCtSecondaryInput").fill("1");
-    await page.locator("#wwOvercurrentCtSecondaryInput").dispatchEvent("change");
-    await page.locator("#wwOvercurrentCtSecondaryInput").blur();
-    await enterManualCurrent(page, { current: 30000 });
-
-    await expect(async () => {
-      const text = await page.locator("#wwOvercurrentValuesList").innerText();
-      expect(text).toContain("Relay-equivalent current");
-    }).toPass({ timeout: 5000 });
-
-    const text = await page.locator("#wwOvercurrentValuesList").innerText();
-    expect(text).toMatch(/25\.0\s*A secondary/);
-    expect(text).toMatch(/25\.0\s*×/);
-    expect(text).toContain("Expected operating time");
-    expect(text).not.toContain("Not applicable");
-    expect(text).not.toContain("Measured RMS current");
-    expect(text).not.toContain("Above-pickup duration");
-  });
-
-  test("30 kA primary is identical to 30000 A primary (shared engineering-unit layer)", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
-    await page.locator("#wwOvercurrentCtPrimaryInput").fill("1200");
-    await page.locator("#wwOvercurrentCtPrimaryInput").dispatchEvent("change");
-    await page.locator("#wwOvercurrentCtSecondaryInput").fill("1");
-    await page.locator("#wwOvercurrentCtSecondaryInput").dispatchEvent("change");
-    await page.locator("#wwOvercurrentCtSecondaryInput").blur();
-
-    await enterManualCurrent(page, { current: 30000, unit: "A" });
-    await expect(async () => {
-      const text = await page.locator("#wwOvercurrentValuesList").innerText();
-      expect(text).toMatch(/25\.0\s*A secondary/);
-    }).toPass({ timeout: 5000 });
-    const textA = await page.locator("#wwOvercurrentValuesList").innerText();
-
-    await enterManualCurrent(page, { current: 30, unit: "kA" });
-    await expect(async () => {
-      const text = await page.locator("#wwOvercurrentValuesList").innerText();
-      expect(text).toMatch(/25\.0\s*A secondary/);
-    }).toPass({ timeout: 5000 });
-    const textKa = await page.locator("#wwOvercurrentValuesList").innerText();
-
-    expect(textKa).toBe(textA);
-  });
-
-  test("Secondary basis bypasses CT conversion entirely", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
-    await enterManualCurrent(page, { current: 2.5, unit: "A", basis: "secondary" });
-    await expect(page.locator("#wwOvercurrentCtPrimaryField")).toBeHidden();
-
-    await expect(async () => {
-      const text = await page.locator("#wwOvercurrentValuesList").innerText();
-      expect(text).toMatch(/2\.5\s*A secondary/);
-    }).toPass({ timeout: 5000 });
-  });
-
-  test("below-pickup manual input shows the qualified wording, never a fabricated operating time", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-    await page.locator("#wwOvercurrentPickupInput").fill("10");
-    await page.locator("#wwOvercurrentPickupInput").dispatchEvent("change");
-    await page.locator("#wwOvercurrentPickupInput").blur();
-
-    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
-    await enterManualCurrent(page, { current: 2, unit: "A", basis: "secondary" });
-
-    await expect(async () => {
-      const text = await page.locator("#wwOvercurrentValuesList").innerText();
-      expect(text).toMatch(/<\s*1\s*×/);
-    }).toPass({ timeout: 5000 });
-    const text = await page.locator("#wwOvercurrentValuesList").innerText();
-    expect(text).toContain("Not applicable / below pickup");
-  });
-
-  test("manual operating point renders on the SAME chart with a distinct manual marker, no second chart", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-    await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point")).toHaveCount(1);
-
-    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
-    await enterManualCurrent(page, { current: 5, unit: "A", basis: "secondary" });
-
-    await expect(async () => {
-      const count = await page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker").count();
-      expect(count).toBe(1);
-    }).toPass({ timeout: 5000 });
-    await expect(page.locator("#wwOvercurrentSvg")).toHaveCount(1); // still the one chart
-    const title = await page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker title").textContent();
-    expect(title).toBe("Manual input point");
-  });
-
-  test("Playback movement does not move the manual result or chart point", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
-    await enterManualCurrent(page, { current: 5, unit: "A", basis: "secondary" });
-    await expect(async () => {
-      // Waits for the SPECIFIC entered value (5.0 A), not merely for the
-      // "Relay-equivalent current" label -- the default 30000 A manual
-      // value (auto-computed the instant Manual mode was entered) would
-      // otherwise satisfy a weaker wait before this fill's own request
-      // has resolved.
-      const text = await page.locator("#wwOvercurrentValuesList").innerText();
-      expect(text).toMatch(/5\.0\s*A secondary/);
-    }).toPass({ timeout: 5000 });
-
-    const textBefore = await page.locator("#wwOvercurrentValuesList").innerText();
-    const cxBefore = await page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker").getAttribute("cx");
-
-    let analysisRequests = 0;
-    page.on("request", (req) => {
-      if (req.url().includes("/overcurrent?")) analysisRequests++;
-    });
-
-    // Architectural correction (2026-09-16): Overcurrent's own Playback
-    // strip is now INSIDE the Recording-only section, which is hidden
-    // entirely while Manual is active -- so Playback is driven here via
-    // PHASOR's own mount instead (Playback is genuinely shared/global,
-    // DEC-085; moving it from ANY consumer must never affect Manual OC).
-    await page.locator("#wwAnalysisTypePhasorBtn").click();
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
-    const slider = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-seek-slider");
-    await expect(slider).toBeVisible();
-    const { min, max } = await seekSliderBounds(slider);
-    await seekTo(slider, min + (max - min) * 0.8);
-    await page.locator("#wwPhasorPlaybackMount .ww-tg-playback-play-btn").click();
-    await page.waitForTimeout(500);
-    await page.locator("#wwPhasorPlaybackMount .ww-tg-playback-play-btn").click();
-    await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
-    await expect(page.locator("#wwOvercurrentInputSourceManualBtn")).toHaveAttribute("aria-pressed", "true"); // still Manual
-
-    const textAfter = await page.locator("#wwOvercurrentValuesList").innerText();
-    const cxAfter = await page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker").getAttribute("cx");
-    expect(textAfter).toBe(textBefore);
-    expect(cxAfter).toBe(cxBefore);
-    expect(analysisRequests).toBe(0); // the recording endpoint must never fire while Manual is active
-  });
-
-  test("Related Waveforms panel is hidden/collapsed entirely in Manual mode, never a fabricated waveform", async ({ page }) => {
-    // Architectural correction (2026-09-16): superseding the prior
-    // "reuse the generic empty-state message" choice -- Related
-    // Waveforms now lives inside the Recording-only section, so
-    // switching to Manual hides/collapses the WHOLE panel (the cleaner
-    // of the two task-offered options, since the entire Recording-only
-    // section is already hidden regardless of Related Waveforms
-    // specifically). See docs/project-memory/ANALYSIS_INPUT_SOURCE.md.
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-    await expect(page.locator("#wwAnalysisRelatedWaveformsPanel")).toBeVisible(); // Recording mode has an active role
-
-    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
-    await enterManualCurrent(page, { current: 5, unit: "A", basis: "secondary" });
-    await expect(async () => {
-      const text = await page.locator("#wwOvercurrentValuesList").innerText();
-      expect(text).toContain("Relay-equivalent current");
-    }).toPass({ timeout: 5000 });
-
-    await expect(page.locator("#wwOvercurrentRecordingSection")).toBeHidden();
-    await expect(page.locator("#wwAnalysisRelatedWaveformsPanel")).toBeHidden();
-  });
-
-  test("switching back to Recording restores the recording-driven point/values exactly", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-    await expect(async () => {
-      const text = await page.locator("#wwOvercurrentValuesList").innerText();
-      expect(text).toContain("Measured RMS current");
-    }).toPass({ timeout: 5000 });
-    const recordingTextBefore = await page.locator("#wwOvercurrentValuesList").innerText();
-    const recordingOpXBefore = await page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point").getAttribute("cx");
-
-    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
-    await enterManualCurrent(page, { current: 5, unit: "A", basis: "secondary" });
-    await expect(async () => {
-      const text = await page.locator("#wwOvercurrentValuesList").innerText();
-      expect(text).toContain("Relay-equivalent current");
-    }).toPass({ timeout: 5000 });
-
-    await page.locator("#wwOvercurrentInputSourceRecordingBtn").click();
-    await expect(async () => {
-      const text = await page.locator("#wwOvercurrentValuesList").innerText();
-      expect(text).toContain("Measured RMS current");
-    }).toPass({ timeout: 5000 });
-    const recordingTextAfter = await page.locator("#wwOvercurrentValuesList").innerText();
-    const recordingOpXAfter = await page.locator("#wwOvercurrentSvg circle.ww-oc-operating-point").getAttribute("cx");
-    expect(recordingTextAfter).toBe(recordingTextBefore);
-    expect(recordingOpXAfter).toBe(recordingOpXBefore);
-    await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker")).toHaveCount(0);
-  });
-
-  test("invalid manual input (blank, negative, zero) is handled safely -- no crash, no plotted point, no request", async ({ page }) => {
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
-    await enterManualCurrent(page, { current: 5, unit: "A", basis: "secondary" });
-    await expect(async () => {
-      const text = await page.locator("#wwOvercurrentValuesList").innerText();
-      expect(text).toContain("Relay-equivalent current");
-    }).toPass({ timeout: 5000 });
-
-    let manualRequests = 0;
-    page.on("request", (req) => {
-      if (req.url().includes("/overcurrent-manual")) manualRequests++;
-    });
-
-    for (const badValue of ["", "-1", "0"]) {
-      await page.locator("#wwOvercurrentManualCurrentInput").fill(badValue);
-      await page.locator("#wwOvercurrentManualCurrentInput").dispatchEvent("change");
-      await page.locator("#wwOvercurrentManualCurrentInput").blur();
-      await expect(page.locator("#wwOvercurrentSvg circle.ww-oc-manual-marker")).toHaveCount(0);
-      await expect(page.locator("#wwOvercurrentSvg polygon.ww-oc-edge-indicator")).toHaveCount(0);
-    }
-    expect(manualRequests).toBe(0); // rejected client-side before ever reaching the backend
-
-    // Recovering with a valid value still works afterward.
-    await enterManualCurrent(page, { current: 5 });
-    await expect(async () => {
-      const text = await page.locator("#wwOvercurrentValuesList").innerText();
-      expect(text).toContain("Relay-equivalent current");
-    }).toPass({ timeout: 5000 });
-  });
-
-  for (const width of [1366, 1024]) {
-    test(`at ${width}px: Manual Input section fits cleanly, no overflow, no clipping, no overlap`, async ({ page }) => {
-      await page.setViewportSize({ width, height: 900 });
-      const { contextId } = await uploadAndCreateContext(page);
-      await openAnalysisOvercurrent(page);
-      await selectContextAndWaitForValues(page, contextId);
-      await page.locator("#wwOvercurrentInputSourceManualBtn").click();
-      await expect(page.locator("#wwOvercurrentManualInputSection")).toBeVisible();
-
-      const overflowsHorizontally = await page.evaluate(
-        () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
-      );
-      expect(overflowsHorizontally).toBe(false);
-
-      const panelBox = await page.locator("#wwOvercurrentManualInputSection").locator("xpath=..").boundingBox();
-      const controlIds = [
-        "wwOvercurrentInputSourceRecordingBtn", "wwOvercurrentInputSourceManualBtn",
-        "wwOvercurrentManualCurrentInput", "wwOvercurrentManualUnitSelect", "wwOvercurrentManualBasisSelect",
-      ];
-      const boxes = [];
-      for (const id of controlIds) {
-        const box = await page.locator(`#${id}`).boundingBox();
-        expect(box, `#${id} should render with a real, non-clipped box`).not.toBeNull();
-        expect(box.width).toBeGreaterThan(0);
-        expect(box.height).toBeGreaterThan(0);
-        expect(box.x).toBeGreaterThanOrEqual(panelBox.x - 1);
-        expect(box.x + box.width).toBeLessThanOrEqual(panelBox.x + panelBox.width + 1);
-        boxes.push({ id, box });
-      }
-      function overlaps(a, b) {
-        return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
-      }
-      for (let i = 0; i < boxes.length; i++) {
-        for (let j = i + 1; j < boxes.length; j++) {
-          expect(overlaps(boxes[i].box, boxes[j].box), `${boxes[i].id} should not overlap ${boxes[j].id}`).toBe(false);
-        }
-      }
-
-      // The chart remains usable alongside the taller left panel.
-      const svgBox = await page.locator("#wwOvercurrentSvg").boundingBox();
-      expect(svgBox.width).toBeGreaterThan(50);
-      expect(svgBox.height).toBeGreaterThan(50);
-    });
-  }
-
-  test("a full workspace reset auto-selects Manual again (a fresh workspace has zero recordings)", async ({ page }) => {
-    // Architectural correction (2026-09-16): a freshly-reset workspace
-    // has NO recordings, exactly like a genuinely empty one -- Recording
-    // must be disabled and Manual auto-selected, never the reverse. This
-    // supersedes the prior "always resets to Recording" expectation,
-    // which assumed Recording was always meaningfully available.
-    const { contextId } = await uploadAndCreateContext(page);
-    await openAnalysisOvercurrent(page);
-    await selectContextAndWaitForValues(page, contextId);
-    await expect(page.locator("#wwOvercurrentInputSourceRecordingBtn")).toHaveAttribute("aria-pressed", "true");
-    await page.locator("#wwOvercurrentInputSourceManualBtn").click();
-    await expect(page.locator("#wwOvercurrentManualInputSection")).toBeVisible();
-
-    await page.locator("#mainNavRecordingsBtn").click();
-    await page.locator("#newWorkspaceButton").click();
-    await expect(page.locator("#newWorkspaceConfirmOverlay")).toBeVisible();
-    await page.locator("#newWorkspaceConfirmStartBtn").click();
-    await expect(page.locator("#newWorkspaceConfirmOverlay")).toBeHidden();
-
-    await page.locator("#mainNavAnalysisBtn").click();
-    await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
-    await expect(page.locator("#wwOvercurrentInputSourceManualBtn")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator("#wwOvercurrentInputSourceRecordingBtn")).toBeDisabled();
-    await expect(page.locator("#wwOvercurrentManualInputSection")).toBeVisible();
-    await expect(page.locator("#wwOvercurrentInputSourceHint")).toBeVisible();
-    await expect(page.locator("#wwOvercurrentRecordingSection")).toBeHidden();
   });
 });
 

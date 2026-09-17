@@ -14668,12 +14668,19 @@ architecture record.
 ## DEC-093 — Overcurrent chart geometry refinement: a compressed/broken sub-pickup X axis in Pickup Multiple mode visually compresses 0.1 → 1 to ~5% of plot width
 
 Date: 2026-09-13
-Status: Approved — implemented.
+Status: Approved — implemented; **retired by 2026-09-17 owner decision
+recorded under DEC-094's amendment.**
 Source: owner task specification ("make the Pickup Multiple x-axis more
 useful by visually compressing the sub-pickup region 0.1 → 1 to
 approximately 5% of the chart width, while preserving 0.1 as a visible
 reference... without lying about the x-axis geometry"), building
 directly on the X-axis representation toggle established in DEC-092.
+
+**Retirement note (2026-09-17).** The owner subsequently decided to
+remove the cosmetic-zero / broken-origin treatment entirely and use true
+logarithmic axes starting from positive values only. The DEC-093
+piecewise/broken X transform, sub-pickup gutter, and axis-break marker
+are no longer current behavior.
 
 Decision:
 
@@ -14793,7 +14800,8 @@ architecture record.
 ## DEC-094 — Overcurrent UAT correction: the X-axis representation toggle's real root cause was CSS visibility, not event wiring, and the Pickup Multiple default viewport moves to 0.9x-100x
 
 Date: 2026-09-16
-Status: Approved — implemented.
+Status: Approved — implemented; amended 2026-09-17 for current axis
+defaults.
 Source: owner UAT report ("Pickup Multiple / Relay Current toggle does
 not work") plus a companion default-viewport refinement request.
 
@@ -14832,6 +14840,27 @@ so it can never be silently forced to follow Pickup Multiple's own
 default in the future. The DEC-092 fixed major-tick list, IDMT
 calculation, TMS, pickup, CT conversion, and operating-time result are
 all completely unaffected — this is a display-only correction.
+
+**Amendment (2026-09-17) — true positive log axes replace the cosmetic
+zero / broken-origin convention.** Owner decision: remove the visual
+`0`, reserved origin gap, special default pixel offset, compressed /
+broken sub-pickup axis treatment, and stable-reference Y-min default.
+Current default/reset policy is:
+
+```text
+Pickup Multiple X: 0.1 -> 100
+Relay Current X:   0.1 * pickup -> 100 * pickup
+Y:                 0.1 s -> 100 s
+```
+
+Relay Current major ticks derive from the same M-domain positions as
+Pickup Multiple, scaled by pickup, never from hard-coded absolute amp
+values. This restores pixel equivalence for M=1 ↔ I=pickup and M=10 ↔
+I=10*pickup. Reset is deterministic and independent of the current
+operating point; manual X/Y viewport edits still survive Playback and
+settings/current changes until Reset. IDMT equations, curve generation,
+pickup semantics, operating-point calculation, Manual Input, and
+Recording Input remain unchanged.
 
 **Parallel-work coordination.** This task's investigation began while
 Codex was concurrently completing and pushing an unrelated "compact

@@ -6970,17 +6970,12 @@
             font-weight: 700;
             fill: var(--text-dim);
         }
-        /* Tick-value labels (0.1/0.2/.../20 on X, 0.01/0.02/.../10 on Y,
-           plus the two special visual-origin "0" labels) -- distinct
+        /* Tick-value labels (0.1/0.2/.../20 on X, 0.01/0.02/.../10 on Y)
+           -- distinct
            from `.ww-oc-axis-label` (the axis TITLE typography) above. */
         .ww-oc-tick-label {
             font-size: var(--ww-chart-tick-font-size);
             fill: var(--text-dim);
-        }
-        .ww-oc-origin-label {
-            font-size: var(--ww-chart-tick-font-size);
-            fill: var(--text-dim);
-            opacity: 0.85;
         }
         .ww-oc-curve {
             fill: none;
@@ -7018,18 +7013,6 @@
             stroke-width: 0.75;
             stroke-dasharray: 3 2;
             opacity: 0.85;
-        }
-        /* Adjustable-viewport UAT follow-up (2026-09-12): the true axis
-           minimum, shown as a lighter/secondary label -- only used in the
-           default/full view, right next to the "0" origin annotation, and
-           in a custom view where it stands in for a major tick at the
-           frame edge (see `.ww-oc-tick-label` for the latter case, which
-           reuses that same class deliberately so it reads as a normal
-           boundary tick, not a special one). */
-        .ww-oc-tick-label-minor {
-            font-size: var(--ww-chart-tick-font-size);
-            fill: var(--text-dim);
-            opacity: 0.6;
         }
         /* Off-chart edge indicator (UAT §10/§11): a small outward-pointing
            triangle -- deliberately NOT a circle, so it can never be
@@ -7104,16 +7087,6 @@
         .ww-oc-gridline-minor {
             opacity: 0.35;
             stroke-width: 0.4;
-        }
-        /* Compressed sub-pickup axis break marker -- a subtle, standard
-           double-diagonal-tick affordance at the M=1 break position
-           (Pickup Multiple mode only), deliberately muted so it reads
-           as "this scale changes here" without dominating the axis or
-           resembling a curve discontinuity. */
-        .ww-oc-axis-break {
-            stroke: var(--text-dim);
-            stroke-width: 1;
-            opacity: 0.7;
         }
         /* Pickup boundary reference line -- a distinct dotted style from
            both the major/minor gridlines (solid) and the operating-point
@@ -36351,16 +36324,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             curveCache: null, // { characteristicId, tms, points } -- recomputed ONLY when those two settings change
             latestResult: null,
             requestGeneration: 0,
-            // Axis-default refinement (Part B): a STABLE reference
-            // operating time for the Y-axis default/reset, captured only
-            // from an EXACT (settings/phase/context-establishment/seek)
-            // fetch -- never a throttled live-Playback tick, so the
-            // default never chases the live operating point while
-            // Playback runs. `null` until the first exact fetch resolves
-            // with a genuine (above-pickup) computed result. See
-            // `wwOvercurrentUpdateStableReferenceOperatingTime()`/
-            // `wwOvercurrentDynamicYMin()`.
-            stableReferenceOperatingTime: null,
             // Chart display viewport (frontend-only; never affects IDMT calc,
             // pickup, TMS, measured current, CT conversion, expected operating
             // time, or above-pickup duration -- display/view bounds only).
@@ -36372,11 +36335,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // for Pickup Multiple, amperes for Relay Current); `yMin`/`yMax`
             // are unit-independent (operating time, seconds) and shared
             // across both modes unchanged. See "Chart X-axis representation
-            // toggle" below. Default (0.9/100/0.1/100, owner UAT
-            // correction 2026-09-13) intentionally starts just below
-            // pickup rather than a full decade below -- see
-            // `WW_OC_VIEWPORT_DEFAULT` for the full rationale.
-            viewport: { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 },
+            // toggle" below. Default is a true log viewport:
+            // Pickup Multiple X 0.1..100, Y 0.1..100 s.
+            viewport: { xMin: 0.1, xMax: 100, yMin: 0.1, yMax: 100 },
             // Chart X-axis representation toggle (frontend-only display
             // preference -- never affects any backend-computed value).
             // `savedXRangeByMode` remembers each mode's own last X range
@@ -36771,14 +36732,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (elapsedMs < WW_OVERCURRENT_PLAYBACK_THROTTLE_MS) return;
             }
             wwOvercurrentPlaybackForceNextFetch = false;
-            // `force` (true for every settings/phase/context-establishment/
-            // seek-while-paused fetch, false for a throttled live-Playback
-            // tick) is threaded through so `wwOvercurrentRequestAnalysis()`
-            // can capture the axis-default "stable reference operating
-            // time" (see `wwOvercurrentUpdateStableReferenceOperatingTime()`)
-            // ONLY on an exact fetch -- never on a throttled Play-driven
-            // tick, so the Y-axis default never chases the live operating
-            // point while Playback runs (axis-default refinement, Part B).
             wwOvercurrentRequestAnalysis(force);
         }
 
@@ -36840,7 +36793,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (myGeneration !== wwOvercurrentState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
             wwOvercurrentSetUpdatingIndicator(false);
             wwOvercurrentState.latestResult = result;
-            if (isExactFetch) wwOvercurrentUpdateStableReferenceOperatingTime(result);
             wwOvercurrentRenderResult(result);
             wwOvercurrentMaybeFetchForPlayback();
         }
@@ -37039,57 +36991,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_OC_CHART_MARGIN = { left: 40, right: 14, top: 12, bottom: 34 };
         const WW_OC_CHART_W = 320;
         const WW_OC_CHART_H = 240;
-        // Reserved strip at the lower-left of the plot rectangle, purely
-        // for the two visual "0" origin labels (owner instruction: these
-        // are visual chart-origin labels, never a real log(0) position --
-        // the actual log-mapped plotting region begins AFTER this gap, at
-        // the chart's own first real tick). Only used in the default/
-        // full-origin view -- a custom viewport has no gap, since its own
-        // true minimum (not a fake "0") sits at the frame edge instead.
-        const WW_OC_ORIGIN_GAP = 15;
-
-        // Recommended/reset display domain, Pickup Multiple mode --
-        // X 0.9x-100x pickup, Y 0.1s-100s (owner UAT correction,
-        // 2026-09-13: the earlier 0.1x/0.01s default showed a full extra
-        // decade below pickup/below the fastest operating times that
-        // added little value at the DEFAULT zoom level -- 0.9x sits just
-        // below pickup, giving the operating region the vast majority of
-        // the default view without needing the compressed sub-pickup
-        // gutter at all, see `wwOvercurrentChartGeometry()`'s own
-        // `breakApplies` threshold below). `yMin` here also remains the
-        // permanent "pristine/no-reference-yet" state AND the fallback
-        // Y default whenever no stable reference operating time has
-        // been established (see `wwOvercurrentDynamicYMin()`, axis-
-        // default refinement Part B). Relay Current mode's own X default is now
-        // `pickup - 0.1 A` (see `wwOvercurrentRelayCurrentDefaultViewport()`,
-        // axis-default refinement Part A) -- no longer scaled from this
-        // constant. The absolute outer bounds the user's own X/Y range
-        // inputs and zoom-out may never exceed (X up to 200x, Y up to
-        // 1000s) are unchanged, still 0.1x/0.01s -- ONLY the DEFAULT
-        // moved, not the absolute floor. The visual "0" origin annotation
-        // is a display convention, never passed through `Math.log10()`.
-        const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };
+        // Recommended/reset display domain, Pickup Multiple mode:
+        // true log X 0.1x..100x pickup, true log Y 0.1s..100s.
+        // No cosmetic zero/origin gap is reserved; the plot begins at
+        // the first positive viewport value.
+        const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.1, xMax: 100, yMin: 0.1, yMax: 100 };
         const WW_OC_VIEWPORT_ABSOLUTE = { xMin: 0.1, xMax: 200, yMin: 0.01, yMax: 1000 };
 
-        // Mode-aware (owner UAT correction, 2026-09-16): Relay Current's
-        // own default viewport is its own dynamic value
-        // (`wwOvercurrentRelayCurrentDefaultViewport()`), so it must be
-        // recognized as "the default view" too -- otherwise the
-        // origin-gap/"0"-label treatment below (and the geometry it
-        // drives) would only ever apply to Pickup Multiple's own literal
-        // default. **Y is deliberately compared against the FLAT
-        // constant here, never `wwOvercurrentDynamicYMin()`** (axis-
-        // default refinement, Part B) -- unlike X's own pickup-tracking
-        // comparison above, Y's reference-derived default changes as
-        // soon as the FIRST analysis result establishes a stable
-        // reference (essentially immediately after selecting a context,
-        // well before any Reset), which would make this cosmetic
-        // origin-gap check fail almost immediately in ordinary use if it
-        // tracked the live dynamic value. The dynamic Y default is
-        // therefore scoped exclusively to what Reset assigns (see
-        // `wwOvercurrentResetViewport()`); this comparison only ever
-        // recognizes the pristine, reference-less initial state as
-        // "default" for Y.
         function wwOvercurrentIsDefaultViewport(v) {
             const activeXDefault = wwOvercurrentState.xAxisMode === WW_OC_XAXIS_RELAY_CURRENT
                 ? wwOvercurrentRelayCurrentDefaultViewport()
@@ -37139,21 +37047,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             return ticks;
         }
-        // Major/minor classification: the axis's own current minimum is
-        // always treated as the sole minor/reference value (drawn much
-        // lighter, see `.ww-oc-tick-label-minor`) and never promoted to a
-        // major gridline -- every other progression value is major. This
-        // single dynamic rule reproduces the owner's own explicit default
-        // Y-axis major list exactly (Y default 0.1s->100s, owner UAT
-        // correction 2026-09-16, yields majors 1,10,100) while remaining
-        // generic for any custom viewport. Used for the Y axis in BOTH
-        // X-axis modes; `wwOvercurrentXMajors()` below (its own former
-        // X-axis consumer) is no longer called by the Relay Current
-        // render path as of the 2026-09-16 axis-alignment correction --
-        // Relay Current mode now derives its own majors from the SAME
-        // fixed M-domain list Pickup Multiple uses, scaled by pickup
-        // (see `wwOvercurrentRelayCurrentMajors()`), kept here as a
-        // still-tested, still-available generic utility.
+        // Generic helper retained for non-default/custom uses; the main
+        // OC render path uses explicit positive log-domain tick lists so
+        // the first grid line can sit exactly on the axis minimum.
         function wwOvercurrentClassifyMajors(allTicks, axisMin) {
             const threshold = axisMin * 2;
             return allTicks.filter((v) => v > threshold + 1e-9);
@@ -37173,7 +37069,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return wwOvercurrentClassifyMajors(wwOvercurrentGeneratePow125Ticks(viewport.xMin, viewport.xMax), viewport.xMin);
         }
         function wwOvercurrentYMajors(viewport) {
-            return wwOvercurrentClassifyMajors(wwOvercurrentGenerateDecadeTicks(viewport.yMin, viewport.yMax), viewport.yMin);
+            return wwOvercurrentGenerateDecadeTicks(viewport.yMin, viewport.yMax);
         }
         // Pickup Multiple mode's own FIXED, owner-approved major X tick
         // set -- an explicit list, never derived from the generic 1-2-5
@@ -37183,30 +37079,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // grid). Dense integer resolution near pickup (1-9, where the
         // characteristic's own behavior is most interesting), then the
         // same familiar 1-2-5-per-decade pattern above 10 (10/20/50/100)
-        // -- EXACTLY this set, per owner correction (2026-09-13): no
-        // extension to 200 or any other value beyond 100, even though
-        // the viewport's own absolute zoom-out bound reaches 200 (a
-        // custom/zoomed range beyond 100 simply shows no major tick past
-        // it, which is the owner-approved behavior here, not a gap to
-        // fill). "0" is never part of this list -- it stays the existing
-        // visual-only origin-gap annotation (never a real log(0)
-        // coordinate, see `wwOvercurrentChartGeometry()`/the
-        // `geo.isDefault` branch in `wwOvercurrentRenderChart()`, both
-        // unchanged). Filtered to the current viewport exactly like
-        // every other tick list in this module -- responds correctly to
-        // zoom/custom-range the same way.
-        const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100];
+        // -- EXACTLY this positive set by default: no fake 0, no broken
+        // origin, and no hard-coded amp values. Filtered to the current
+        // viewport exactly like every other tick list in this module.
+        const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [0.1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100];
         function wwOvercurrentPickupMultipleMajors(viewport) {
-            // Excludes a value that exactly coincides with the viewport's
-            // own minimum -- that value already gets its own dedicated
-            // label via the existing minimum-label mechanism (the
-            // `geo.isDefault`/else branch in `wwOvercurrentRenderChart()`,
-            // unchanged), which never draws a gridline for it either --
-            // mirrors the generic dynamic classifier's own established
-            // behavior (`wwOvercurrentClassifyMajors()` never treats the
-            // axis's own minimum as a major, for the exact same reason).
             return WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS.filter(
-                (v) => v >= viewport.xMin - 1e-9 && v <= viewport.xMax + 1e-9 && Math.abs(v - viewport.xMin) > 1e-9
+                (v) => v >= viewport.xMin - 1e-9 && v <= viewport.xMax + 1e-9
             );
         }
         // Relay Current mode's own major tick set (owner UAT correction,
@@ -37221,7 +37100,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const pickup = wwOvercurrentState.settings.pickupCurrentSecondary;
             const safePickup = Number.isFinite(pickup) && pickup > 0 ? pickup : 1.0;
             return WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS.map((m) => m * safePickup).filter(
-                (v) => v >= viewport.xMin - 1e-9 && v <= viewport.xMax + 1e-9 && Math.abs(v - viewport.xMin) > 1e-9
+                (v) => v >= viewport.xMin - 1e-9 && v <= viewport.xMax + 1e-9
             );
         }
         function wwOvercurrentFormatTickValue(v) {
@@ -37275,75 +37154,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const safePickup = Number.isFinite(pickup) && pickup > 0 ? pickup : 1.0;
             return { xMin: WW_OC_VIEWPORT_ABSOLUTE.xMin * safePickup, xMax: WW_OC_VIEWPORT_ABSOLUTE.xMax * safePickup };
         }
-        // Axis-default refinement, Part A (2026-09-16): Relay Current's
-        // own default X minimum is now `pickup - 0.1 A` (owner's own
-        // exact worked examples: pickup 1.0 A -> 0.9 A; pickup 1.2 A ->
-        // 1.1 A) -- replacing the PRIOR `0.9 * pickup` multiplicative
-        // scaling (which produced 0.9 A/1.08 A for those same two
-        // pickups, not the owner's own specified values). X maximum
-        // remains `100 * pickup`, unchanged. `WW_OC_RELAY_CURRENT_
-        // XMIN_OFFSET` is a plain ampere offset, never scaled by pickup
-        // itself -- this is what makes the below-pickup margin always
-        // read as "a small fixed gap before pickup" rather than a
-        // pickup-proportional one.
-        //
-        // Safety floor (owner's own explicit requirement: never let
-        // `pickup - 0.1 <= 0` reach the real logarithmic axis): the
-        // floor reuses `wwOvercurrentRelayCurrentAbsoluteBounds().xMin`
-        // (`0.1 * pickup`) -- the SAME absolute lower zoom-out bound this
-        // mode already enforces elsewhere -- rather than inventing a new
-        // constant. This is always positive for any positive pickup, and
-        // the default can never fall below what the chart's own existing
-        // absolute-bounds validator would already reject.
-        const WW_OC_RELAY_CURRENT_XMIN_OFFSET = 0.1; // amperes
+        // Relay Current defaults are geometrically equivalent to Pickup
+        // Multiple defaults: Irelay = M * Ipickup, so 0.1x..100x becomes
+        // 0.1*pickup..100*pickup. No absolute amp values are hard-coded.
         function wwOvercurrentRelayCurrentDefaultViewport() {
             const pickup = wwOvercurrentState.settings.pickupCurrentSecondary;
             const safePickup = Number.isFinite(pickup) && pickup > 0 ? pickup : 1.0;
-            const absoluteFloor = wwOvercurrentRelayCurrentAbsoluteBounds().xMin;
             return {
-                xMin: Math.max(absoluteFloor, safePickup - WW_OC_RELAY_CURRENT_XMIN_OFFSET),
+                xMin: WW_OC_VIEWPORT_DEFAULT.xMin * safePickup,
                 xMax: WW_OC_VIEWPORT_DEFAULT.xMax * safePickup,
             };
-        }
-        // Axis-default refinement, Part B (2026-09-16): the time (Y)
-        // axis's own default minimum is now proportional to a STABLE
-        // reference operating time, never a flat subtraction
-        // (`operating_time - 0.1s`, rejected -- not scale-consistent on
-        // a logarithmic axis) and never a flat constant. "Stable" means
-        // captured only from an EXACT fetch (settings/phase/context
-        // establishment/change, or a seek release while paused) via
-        // `wwOvercurrentUpdateStableReferenceOperatingTime()` below --
-        // NEVER from a throttled live-Playback tick, so this default
-        // does not chase the live operating point while Playback runs.
-        // `0.9 x reference` reuses the exact same "just below" ratio the
-        // owner's own X-axis examples already use. The `WW_OC_VIEWPORT_
-        // ABSOLUTE.yMin` (0.01s) floor is the EXISTING absolute Y
-        // minimum, reused rather than inventing a new constant. The
-        // upper cap (`WW_OC_VIEWPORT_DEFAULT.yMax / 10`) keeps the
-        // sensible Y Max=100s default completely untouched even for an
-        // extreme near-the-curve's-own-asymptote reference time (TMS/
-        // characteristic combinations can legitimately approach
-        // infinity as M -> 1) -- Y Max itself never needs to move.
-        const WW_OC_TIME_REFERENCE_YMIN_MULTIPLIER = 0.9;
-        function wwOvercurrentDynamicYMin() {
-            const ref = wwOvercurrentState.stableReferenceOperatingTime;
-            if (!Number.isFinite(ref) || ref <= 0) return WW_OC_VIEWPORT_DEFAULT.yMin;
-            const proportional = WW_OC_TIME_REFERENCE_YMIN_MULTIPLIER * ref;
-            const floored = Math.max(WW_OC_VIEWPORT_ABSOLUTE.yMin, proportional);
-            return Math.min(floored, WW_OC_VIEWPORT_DEFAULT.yMax / 10);
-        }
-        // Captures the stable reference above -- reuses the ALREADY-
-        // COMPUTED, backend-authoritative `expected_operating_time_
-        // seconds` verbatim (never a new protection quantity, never a
-        // second characteristic evaluation). A below-pickup result
-        // (`expected_operating_time_seconds === null`), a non-`computed`
-        // status, or a fetch error leaves the existing reference
-        // untouched -- a momentary "no data" instant never clobbers a
-        // perfectly good prior reference.
-        function wwOvercurrentUpdateStableReferenceOperatingTime(result) {
-            if (!result || result.status !== "computed") return;
-            const t = result.expected_operating_time_seconds;
-            if (Number.isFinite(t) && t > 0) wwOvercurrentState.stableReferenceOperatingTime = t;
         }
         // The absolute X bounds for whichever mode is currently active --
         // used by both the zoom-out clamp and the range-input validator so
@@ -37413,24 +37233,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
         // Pickup Multiple mode's own dedicated minor-tick generator (UAT
         // correction, paired with `WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS`
-        // above): below 10, the majors are now every integer 1-9, so the
-        // minor subdivisions fill each UNIT interval at a 0.2 step --
-        // 1.2/1.4/1.6/1.8 between 1 and 2 (the owner's own explicit
-        // example), identically generalized to every other integer
-        // interval up to 9-10. At/above 10 the majors are unchanged
-        // (10/20/50/100/200), so this reuses the EXISTING classic
-        // log-paper 1-2-5 decade subdivision verbatim for that portion
-        // (12/14/16/18, 25/30/35/40/45, 60/70/80/90, and the same pattern
-        // continued for 100-200) -- never a value that collides with one
-        // of the fixed majors above.
-        // Sub-pickup (0.1-1) minor reference ticks -- compressed-axis
-        // refinement: this region is visually squeezed into ~5% of the
-        // plot width (see `WW_OC_SUBPICKUP_GUTTER_FRACTION`/
-        // `wwOvercurrentPixelX()` below), so it can only legibly hold a
-        // SPARSE minor set, never the dense 4-per-unit-interval pattern
-        // used above pickup. Reuses the SAME classic 1-2-5 progression
-        // basis already established elsewhere in this module (0.1's own
-        // "2"/"5" multiples), deliberately just two values.
+        // above): below 10, the majors are every integer 1-9, so the
+        // minor subdivisions fill each unit interval at a 0.2 step. The
+        // 0.1..1 decade stays sparse (0.2/0.5) for readability.
         function wwOvercurrentPickupMultipleSubPickupMinors(viewport) {
             return [0.2, 0.5].filter((v) => v > viewport.xMin + 1e-9 && v < 1 - 1e-9);
         }
@@ -37640,126 +37445,37 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return points;
         }
 
-        // Compressed sub-pickup axis (chart geometry refinement,
-        // Pickup Multiple mode only): the below-pickup region
-        // (viewport.xMin -> 1) is visually squeezed into this fraction
-        // of the plot width, so the operating region (1 -> viewport.
-        // xMax), where the IEC IDMT characteristic actually exists,
-        // gets the rest. Owner-specified ~5%, not 10-15%. Purely a
-        // display transform -- IDMT calculation/pickup/TMS/CT/RMS/
-        // Playback/engineering-unit normalization are all untouched;
-        // the underlying viewport X Min/X Max remain real engineering
-        // `M` values throughout (see wwOvercurrentApplyViewportFromInputs()/
-        // wwOvercurrentZoom(), both unchanged by this refinement).
-        const WW_OC_SUBPICKUP_GUTTER_FRACTION = 0.05;
-        // The break only activates for a DELIBERATELY wide below-pickup
-        // view -- `xMin <= 0.5` -- never merely `xMin < 1` (owner UAT
-        // correction, 2026-09-13). See the `breakApplies` computation in
-        // `wwOvercurrentChartGeometry()` below for the full rationale.
-        const WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD = 0.5;
-
         function wwOvercurrentChartGeometry(viewport) {
-            const isDefault = wwOvercurrentIsDefaultViewport(viewport);
             const plotLeft = WW_OC_CHART_MARGIN.left;
             const plotRight = WW_OC_CHART_W - WW_OC_CHART_MARGIN.right;
             const plotTop = WW_OC_CHART_MARGIN.top;
             const plotBottom = WW_OC_CHART_H - WW_OC_CHART_MARGIN.bottom;
-            // `logLeft`/`logBottom` bound the REAL logarithmic plotting
-            // region. In the default/full-origin view they are inset by
-            // the origin gap (so the "0" annotation has room); in any
-            // custom view there is no gap -- the viewport's own true
-            // minimum sits exactly at the frame edge.
-            const gap = isDefault ? WW_OC_ORIGIN_GAP : 0;
-            const logLeft = plotLeft + gap;
-            const logBottom = plotBottom - gap;
-            // The compressed break applies ONLY to Pickup Multiple mode,
-            // and only when the viewport is a DELIBERATELY wide
-            // below-pickup view -- `xMin <= WW_OC_SUBPICKUP_BREAK_XMIN_
-            // THRESHOLD` (0.5x), not merely "xMin < 1" (owner UAT
-            // correction, 2026-09-13): the new default viewport starts
-            // at 0.9x, where the below-pickup span (0.9->1) is already
-            // naturally narrow on an ordinary log axis and does not
-            // benefit from compression -- applying the break there
-            // produced a visually pointless ~5%-wide sliver for a span
-            // that barely needed 2% of the width in the first place. The
-            // compressed gutter remains available the moment a user
-            // deliberately widens the view to 0.5x or below (e.g. the
-            // PRIOR 0.1x default, or any custom range reaching that far
-            // below pickup), where the below-pickup span is genuinely
-            // wide enough on a standard log axis to be worth compressing
-            // -- 0.5 is a clean, obviously "substantially below pickup"
-            // cutoff, comfortably below the new 0.9 default so there is
-            // no ambiguity between the two. A viewport entirely at/above
-            // M=1 (task's own "do not force a useless 5% gutter when the
-            // viewport explicitly excludes values below 1" instruction)
-            // still never applies the break either way. Relay Current
-            // mode never applies this at all -- `wwOvercurrentPixelX()`/
-            // `wwOvercurrentPlotXToPickupMultiple()` below are the ONLY
-            // two places this flag is consulted, so every chart element
-            // (curve, gridlines, ticks, labels, guides, markers, edge
-            // indicators) automatically gets a consistent transform.
-            const breakApplies = wwOvercurrentState.xAxisMode !== WW_OC_XAXIS_RELAY_CURRENT &&
-                viewport.xMin <= WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD + 1e-9 && viewport.xMax > 1 + 1e-9;
             const geo = {
-                isDefault, plotLeft, plotRight, plotTop, plotBottom,
-                logLeft, logBottom,
+                plotLeft, plotRight, plotTop, plotBottom,
+                logLeft: plotLeft, logBottom: plotBottom,
                 logMMin: Math.log10(viewport.xMin), logMMax: Math.log10(viewport.xMax),
                 logTMin: Math.log10(viewport.yMin), logTMax: Math.log10(viewport.yMax),
-                breakApplies,
             };
-            if (breakApplies) {
-                geo.breakPx = logLeft + WW_OC_SUBPICKUP_GUTTER_FRACTION * (plotRight - logLeft);
-            }
             return geo;
         }
 
-        // The ONE authoritative Pickup Multiple X mapping pair (task's
-        // own explicit "do not sprinkle special-case 5% arithmetic
-        // throughout rendering code" instruction) -- every chart element
-        // (curve, major/minor gridlines, tick marks/labels, pickup
-        // boundary, operating point, guide line, edge indicator) goes
-        // through `wwOvercurrentPixelX()` below, which is itself the
-        // forward half of this pair; `wwOvercurrentPlotXToPickupMultiple()`
-        // is the mathematically consistent inverse (round-trips exactly,
-        // see `test_frontend_overcurrent_analysis.py::
-        // TestCompressedSubPickupAxis` for the golden-point proof).
-        // Continuous at M=1 (both branches evaluate to `geo.breakPx`
-        // there) -- the visual "break" is communicated ONLY by the
-        // separate `.ww-oc-axis-break` marker drawn in
-        // `wwOvercurrentRenderChart()`, never by an actual coordinate
-        // discontinuity that could misrepresent a value's true position.
+        // The ONE authoritative X mapping pair. Every chart element uses
+        // this true logarithmic transform; there is no cosmetic origin
+        // gap and no broken/compressed sub-range.
         function wwOvercurrentPixelX(m, geo) {
             const logM = Math.log10(m);
-            if (!geo.breakApplies) {
-                return geo.logLeft + ((logM - geo.logMMin) / (geo.logMMax - geo.logMMin)) * (geo.plotRight - geo.logLeft);
-            }
-            if (m <= 1 + 1e-9) {
-                // Below pickup: [viewport.xMin, 1] -> [logLeft, breakPx].
-                const frac = (logM - geo.logMMin) / (0 - geo.logMMin);
-                return geo.logLeft + frac * (geo.breakPx - geo.logLeft);
-            }
-            // Operating region: [1, viewport.xMax] -> [breakPx, plotRight].
-            const frac = logM / geo.logMMax;
-            return geo.breakPx + frac * (geo.plotRight - geo.breakPx);
+            return geo.logLeft + ((logM - geo.logMMin) / (geo.logMMax - geo.logMMin)) * (geo.plotRight - geo.logLeft);
         }
         // Inverse of `wwOvercurrentPixelX()` -- given a plot-X pixel
         // coordinate, returns the engineering Pickup Multiple value it
         // represents. Not currently wired to any interactive hover (none
         // exists on this chart), but kept mathematically consistent with
         // the forward transform so a future interaction can use it
-        // directly, and so the piecewise mapping itself is provably
-        // invertible (task §9/§16).
+        // directly, and so the true-log mapping itself is provably
+        // invertible.
         function wwOvercurrentPlotXToPickupMultiple(x, geo) {
-            if (!geo.breakApplies) {
-                const frac = (x - geo.logLeft) / (geo.plotRight - geo.logLeft);
-                return Math.pow(10, geo.logMMin + frac * (geo.logMMax - geo.logMMin));
-            }
-            if (x <= geo.breakPx + 1e-9) {
-                const frac = (x - geo.logLeft) / (geo.breakPx - geo.logLeft);
-                return Math.pow(10, geo.logMMin + frac * (0 - geo.logMMin));
-            }
-            const frac = (x - geo.breakPx) / (geo.plotRight - geo.breakPx);
-            return Math.pow(10, frac * geo.logMMax);
+            const frac = (x - geo.logLeft) / (geo.plotRight - geo.logLeft);
+            return Math.pow(10, geo.logMMin + frac * (geo.logMMax - geo.logMMin));
         }
         function wwOvercurrentPixelY(t, geo) {
             const logT = Math.log10(t);
@@ -37795,26 +37511,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return '<polygon class="ww-oc-edge-indicator" points="' + pointsStr + '"></polygon>';
         }
 
-        // Axis-break affordance (compressed sub-pickup axis) -- a
-        // subtle, standard double-diagonal-tick mark straddling the
-        // M=1 break position on the X axis itself, so the chart never
-        // silently implies a single uniform log scale across the whole
-        // width. Deliberately small/muted (task's own "subtle, not
-        // visually dominant... must not look like a curve discontinuity"
-        // instruction) -- drawn once, only when
-        // `geo.breakApplies`, positioned via the SAME
-        // `wwOvercurrentPixelX()` transform every other chart element
-        // uses (never a separately hand-computed pixel position).
-        function wwOvercurrentAxisBreakSvg(geo) {
-            const x = wwOvercurrentPixelX(1, geo);
-            const y = geo.plotBottom;
-            const h = 4, dx = 2, skew = 2;
-            const stroke = (cx) =>
-                '<line class="ww-oc-axis-break" x1="' + (cx - skew).toFixed(2) + '" y1="' + (y + h).toFixed(2) +
-                '" x2="' + (cx + skew).toFixed(2) + '" y2="' + (y - h).toFixed(2) + '"></line>';
-            return stroke(x - dx) + stroke(x + dx);
-        }
-
         function wwOvercurrentRenderChart(points, currentM, currentT, isManual) {
             const svg = document.getElementById("wwOvercurrentSvg");
             if (!svg) return;
@@ -37835,8 +37531,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const parts = [];
 
             // Clips the CURVE only to the real log-mapped plotting
-            // rectangle -- the axis frame/ticks/origin labels below are
-            // drawn outside this clip, so they are never themselves cut.
+            // rectangle -- the axis frame/ticks below are drawn outside
+            // this clip, so they are never themselves cut.
             parts.push(
                 '<clipPath id="wwOvercurrentClip"><rect x="' + geo.logLeft + '" y="' + geo.plotTop + '" width="' +
                 (geo.plotRight - geo.logLeft).toFixed(2) + '" height="' + (geo.logBottom - geo.plotTop).toFixed(2) + '"></rect></clipPath>'
@@ -37877,19 +37573,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
             }
 
-            // Full axis frame -- spans the WHOLE plot rectangle,
-            // including the reserved origin-gap strip when present (never
-            // just the log-mapped sub-region), so the chart never looks
-            // truncated.
+            // Full axis frame -- spans the same rectangle as the true
+            // logarithmic plotting region.
             parts.push('<line class="ww-oc-axis" x1="' + geo.plotLeft + '" y1="' + geo.plotTop + '" x2="' + geo.plotLeft + '" y2="' + geo.plotBottom + '"></line>');
             parts.push('<line class="ww-oc-axis" x1="' + geo.plotLeft + '" y1="' + geo.plotBottom + '" x2="' + geo.plotRight + '" y2="' + geo.plotBottom + '"></line>');
-
-            // Compressed sub-pickup axis break marker -- only when the
-            // viewport actually straddles M=1 (Pickup Multiple mode
-            // only; task §5/§12/§14).
-            if (geo.breakApplies) {
-                parts.push(wwOvercurrentAxisBreakSvg(geo));
-            }
 
             // Major tick labels, each at its own true log-transformed position.
             for (const v of xMajors) {
@@ -37899,27 +37586,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             for (const v of yMajors) {
                 const y = wwOvercurrentPixelY(v, geo);
                 parts.push('<text class="ww-oc-tick-label" x="' + (geo.plotLeft - 3) + '" y="' + (y + 2.2).toFixed(2) + '" text-anchor="end">' + wwOvercurrentFormatTickValue(v) + '</text>');
-            }
-
-            // Lower-left edge: EITHER the visual "0" origin annotation
-            // (default/full-origin view ONLY, per UAT §8 -- never run
-            // through `Math.log10()`, a fixed pixel position only) with
-            // the true axis minimum shown alongside it as a light minor/
-            // reference tick; OR, in any custom/zoomed view, the
-            // viewport's own true minimum drawn directly at the frame
-            // edge in normal tick styling -- never a fake "0".
-            if (geo.isDefault) {
-                parts.push('<text class="ww-oc-origin-label" x="' + geo.plotLeft + '" y="' + (geo.plotBottom + 9) + '" text-anchor="start">0</text>');
-                parts.push('<text class="ww-oc-origin-label" x="' + (geo.plotLeft - 3) + '" y="' + (geo.plotBottom + 2.2).toFixed(2) + '" text-anchor="end">0</text>');
-                const xMinPx = wwOvercurrentPixelX(viewport.xMin, geo);
-                const yMinPx = wwOvercurrentPixelY(viewport.yMin, geo);
-                parts.push('<text class="ww-oc-tick-label-minor" x="' + xMinPx.toFixed(2) + '" y="' + (geo.plotBottom + 9) + '" text-anchor="middle">' + wwOvercurrentFormatTickValue(viewport.xMin) + '</text>');
-                parts.push('<text class="ww-oc-tick-label-minor" x="' + (geo.plotLeft - 3) + '" y="' + (yMinPx + 2.2).toFixed(2) + '" text-anchor="end">' + wwOvercurrentFormatTickValue(viewport.yMin) + '</text>');
-            } else {
-                const xMinPx = wwOvercurrentPixelX(viewport.xMin, geo);
-                const yMinPx = wwOvercurrentPixelY(viewport.yMin, geo);
-                parts.push('<text class="ww-oc-tick-label" x="' + xMinPx.toFixed(2) + '" y="' + (geo.plotBottom + 9) + '" text-anchor="middle">' + wwOvercurrentFormatTickValue(viewport.xMin) + '</text>');
-                parts.push('<text class="ww-oc-tick-label" x="' + (geo.plotLeft - 3) + '" y="' + (yMinPx + 2.2).toFixed(2) + '" text-anchor="end">' + wwOvercurrentFormatTickValue(viewport.yMin) + '</text>');
             }
 
             // Axis titles -- Y unchanged text/position; X switches with
@@ -38170,27 +37836,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentRerenderChartFromState();
         }
 
-        // Reset returns to the sensible default for whichever mode is
-        // CURRENTLY selected (task §12), using the CURRENT dynamic
-        // settings (axis-default refinement, 2026-09-16) -- never stale
-        // hard-coded numbers: Pickup Multiple resets its X to the fixed
-        // 0.9->100 constant (unchanged); Relay Current resets its X to
-        // `pickup - 0.1 A -> 100 * pickup` (`wwOvercurrentRelayCurrentDefaultViewport()`,
-        // Part A). BOTH modes reset Y to `wwOvercurrentDynamicYMin()`
-        // (Part B) -- the current stable reference operating time's own
-        // proportional default, or the flat 0.1s fallback if no
-        // reference has been established yet. Both branches also clear/
-        // refresh that mode's own remembered custom range, so a
-        // subsequent mode switch does not resurrect a stale pre-reset
-        // range.
+        // Reset returns to the deterministic default for whichever X
+        // representation is currently selected. Y is always 0.1..100 s,
+        // independent of the operating point.
         function wwOvercurrentResetViewport() {
-            const dynamicYMin = wwOvercurrentDynamicYMin();
             if (wwOvercurrentState.xAxisMode === WW_OC_XAXIS_RELAY_CURRENT) {
                 const relayDefault = wwOvercurrentRelayCurrentDefaultViewport();
-                wwOvercurrentState.viewport = { xMin: relayDefault.xMin, xMax: relayDefault.xMax, yMin: dynamicYMin, yMax: WW_OC_VIEWPORT_DEFAULT.yMax };
+                wwOvercurrentState.viewport = { xMin: relayDefault.xMin, xMax: relayDefault.xMax, yMin: WW_OC_VIEWPORT_DEFAULT.yMin, yMax: WW_OC_VIEWPORT_DEFAULT.yMax };
                 wwOvercurrentState.savedXRangeByMode[WW_OC_XAXIS_RELAY_CURRENT] = { xMin: relayDefault.xMin, xMax: relayDefault.xMax };
             } else {
-                wwOvercurrentState.viewport = { xMin: WW_OC_VIEWPORT_DEFAULT.xMin, xMax: WW_OC_VIEWPORT_DEFAULT.xMax, yMin: dynamicYMin, yMax: WW_OC_VIEWPORT_DEFAULT.yMax };
+                wwOvercurrentState.viewport = { xMin: WW_OC_VIEWPORT_DEFAULT.xMin, xMax: WW_OC_VIEWPORT_DEFAULT.xMax, yMin: WW_OC_VIEWPORT_DEFAULT.yMin, yMax: WW_OC_VIEWPORT_DEFAULT.yMax };
                 wwOvercurrentState.savedXRangeByMode[WW_OC_XAXIS_PICKUP_MULTIPLE] = { xMin: WW_OC_VIEWPORT_DEFAULT.xMin, xMax: WW_OC_VIEWPORT_DEFAULT.xMax };
             }
             wwOvercurrentSyncViewportInputs();
@@ -38407,7 +38062,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 (result) => {
                     if (myGeneration !== wwOvercurrentState.manualRequestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
                     wwOvercurrentState.manual.latestResult = result;
-                    wwOvercurrentUpdateStableReferenceOperatingTime(result);
                     wwOvercurrentRenderManualResult(result);
                 },
                 () => {
@@ -38476,8 +38130,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentState.latestResult = null;
             wwOvercurrentState.curveCache = null;
             wwOvercurrentState.requestGeneration += 1;
-            wwOvercurrentState.stableReferenceOperatingTime = null;
-            wwOvercurrentState.viewport = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };
+            wwOvercurrentState.viewport = { xMin: 0.1, xMax: 100, yMin: 0.1, yMax: 100 };
             // Chart axis-mode/grid display preferences are session-local
             // conveniences, not workspace data -- reset alongside the
             // viewport on a full analyzer state recreation (new workspace/

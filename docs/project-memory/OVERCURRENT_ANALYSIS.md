@@ -509,6 +509,31 @@ of the whole feature:
 
 ## Chart UX refinement: full axis frame, fixed log grid, below-pickup position marker (2026-09-12)
 
+**Current chart-axis policy (2026-09-17, owner decision).** The prior
+cosmetic-zero/origin-gap convention and the DEC-093 compressed/broken
+sub-pickup X-axis treatment are retired. The chart now uses true
+logarithmic axes beginning at positive values only:
+
+```text
+Pickup Multiple X: 0.1 -> 100
+Relay Current X:   0.1 * pickup -> 100 * pickup
+Y:                 0.1 s -> 100 s
+```
+
+There is no fake visual `0`, no reserved origin strip, no broken-axis
+pixel offset, and no compressed 0.1->1 region. The first grid line
+aligns with the plot boundary because the first rendered tick is the
+actual log minimum. Relay Current ticks derive from the same M-domain
+tick positions scaled by pickup, never hard-coded amp values, so M=1
+and I=pickup share a pixel, as do M=10 and I=10*pickup. Reset restores
+these deterministic defaults and no longer derives Y min from
+`expected_operating_time_seconds`, a stable reference operating time,
+`0.9 * reference`, or a YMax/10 cap. Manual viewports still survive
+Playback and settings/current changes until Reset. This is strictly a
+viewport/tick/rendering change; IEC equations, curve generation,
+pickup semantics, operating-point calculation, Manual Input, and
+Recording Input are unchanged.
+
 Visual/chart-readability only — the IDMT equations/constants, resolver
 behavior, RMS calculation semantics, CT conversion, and the expected-
 operating-time/above-pickup-duration/threshold-alert semantics above are
@@ -981,6 +1006,12 @@ Playback/phase/Phasor round trips.
 
 ## Compressed sub-pickup axis — chart geometry refinement (2026-09-13, DEC-093)
 
+**Retired by the 2026-09-17 owner decision.** This section is retained
+as historical context only. The current chart no longer uses a
+piecewise/broken X mapping, compressed sub-pickup gutter, or axis-break
+marker; `wwOvercurrentPixelX()` is again a single true-log transform
+over the active positive X viewport.
+
 A normal logarithmic X axis gives equal visual width to every decade
 (0.1→1, 1→10, 10→100), so the below-pickup region — where the IEC IDMT
 characteristic mathematically does not exist (`M > 1` only) — consumed
@@ -1078,6 +1109,13 @@ appears/disappears with viewport range, Relay Current non-impact,
 engineering-value-only viewport inputs, and zero network requests.
 
 ## X-axis toggle CSS visibility fix and default viewport refinement (2026-09-16, DEC-094)
+
+**Amended by the 2026-09-17 owner decision.** The CSS visibility fix in
+this section remains current. The 0.9x Pickup Multiple default, the
+Relay Current `pickup - 0.1 A` follow-up, the dynamic stable-reference
+Y default, and the cosmetic-zero/origin-gap convention described below
+are superseded. Current defaults are Pickup Multiple X `0.1 -> 100`,
+Relay Current X `0.1 * pickup -> 100 * pickup`, and Y `0.1 -> 100 s`.
 
 **Root cause of the "toggle does not work" UAT report: CSS, not
 JavaScript.** Real-browser reproduction (Playwright with console-error

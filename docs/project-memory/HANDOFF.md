@@ -4,9 +4,34 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-16**
+Last updated: **2026-09-17**
 
 ## What was most recently done
+
+**Overcurrent chart-axis simplification — true positive log axes replace
+the cosmetic-zero / broken-origin convention (DEC-094 amended;
+[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s current chart-axis
+policy updated).**
+
+Owner decision: retire the fake visual `0`, reserved origin gap, DEC-093
+compressed/broken sub-pickup X transform, axis-break marker, and dynamic
+stable-reference Y default. Current defaults/reset are deterministic:
+Pickup Multiple X `0.1 -> 100`, Relay Current X `0.1 * pickup -> 100 *
+pickup`, and Y `0.1 -> 100 s`. Relay Current ticks are the same M-domain
+positions scaled by pickup, so M=1 aligns with I=pickup and M=10 aligns
+with I=10*pickup. Manual/custom viewports still survive Playback and
+settings/current changes until Reset. No IDMT equations, characteristic
+generation, pickup semantics, operating-point calculation, Manual Input,
+or Recording Input behavior was changed.
+
+Tests/docs updated accordingly: old origin-gap/compressed-axis/stable-Y
+assertions removed or replaced, focused static coverage now asserts no
+origin-gap symbols/labels, deterministic defaults, Relay Current pickup-
+scaled defaults, and pixel equivalence. Browser coverage was adjusted for
+the new first visible ticks/default ranges and retired the compressed-axis
+describe block. No production deploy was performed.
+
+## What was done in the prior session
 
 **Phasor becomes the second Analysis Input Source implementation —
 Manual Input / Calculator mode, DEC-095 amended a second time, same

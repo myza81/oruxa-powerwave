@@ -600,75 +600,7 @@ clutter. All new state is session-local, following the exact precedent
 representation toggle and minor grid controls" section for the full
 architecture.
 
-**Overcurrent chart geometry refinement — compressed sub-pickup axis
-(2026-09-13, [DECISIONS.md — DEC-093](DECISIONS.md#dec-093--overcurrent-chart-geometry-refinement-a-compressedbroken-sub-pickup-x-axis-in-pickup-multiple-mode-visually-compresses-01--1-to-5-of-plot-width)),
-frontend-only, Pickup Multiple mode only.** The below-pickup region
-(`0.1 -> 1`, where the IEC IDMT characteristic mathematically does not
-exist) is now visually compressed to ~5% of the plot width, giving the
-operating region (`1 -> X Max`) the remaining ~95% — applied only when
-the viewport straddles `M=1`; a viewport entirely at/above `M=1` reverts
-to the ordinary single log mapping, never a forced useless gutter. A
-single piecewise-log transform (continuous at `M=1`, never a fake
-discontinuity) is centralized in `wwOvercurrentPixelX()` — the SAME
-function every chart element (curve, gridlines, ticks, pickup boundary,
-operating point, guides, edge indicators) already used, so the whole
-chart picked up the compression automatically and consistently, with
-zero call-site changes elsewhere. A small, muted double-diagonal-tick
-"axis break" marker communicates the scale change on the X axis at
-`M=1`. Viewport X Min/X Max remain true engineering `M` values
-throughout (never transformed screen coordinates); Relay Current mode
-and the Y axis are completely unaffected; zero backend requests. See
-[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s own "Compressed
-sub-pickup axis — chart geometry refinement" section for the full
-architecture.
-
-**Overcurrent UAT correction — axis-toggle CSS visibility fix and
-default viewport refinement (2026-09-16, [DECISIONS.md — DEC-094](DECISIONS.md#dec-094--overcurrent-uat-correction-the-x-axis-representation-toggles-real-root-cause-was-css-visibility-not-event-wiring-and-the-pickup-multiple-default-viewport-moves-to-09x-100x)),
-frontend-only.** The owner's "toggle does not work" UAT report traced
-to a real-browser-confirmed CSS bug, not the event/state/rerender
-pipeline: `.ww-oc-axis-toggle-btn` never set its own `color`/`border`,
-so the inactive button inherited the page's global white-on-accent
-button reset and was genuinely invisible against the light panel
-background. Fixed with an explicit visible color/border for both
-states. Separately, Pickup Multiple mode's default viewport moved from
-`X 0.1x-100x / Y 0.01s-100s` to **`X 0.9x-100x / Y 0.1s-100s`**
-(superseding the numbers in the DEC-093 paragraph above, which remains
-historically accurate for that change's own date) — the DEC-093
-compressed sub-pickup gutter's own activation rule moved with it, from
-"`xMin < 1`" to "`xMin <= 0.5`" (`WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD`),
-so the new default shows no axis break at all (0.9-1 is already
-narrow), while the gutter still activates for any deliberately wide
-below-pickup view (0.5x or lower). Relay Current mode's own default was
-made a fully independent constant at the time of this correction
-(superseded the same day by a further axis-default refinement below,
-which recoupled Relay Current's own default to `pickup - 0.1 A` and
-then again by DEC-095's Manual Input work, which left that formula
-unchanged — see the "Axis-default refinement" paragraph below for the
-current, accurate behavior). IDMT math, TMS, pickup, CT conversion are
-unaffected. See [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)'s
-own "X-axis toggle CSS visibility fix and default viewport refinement"
-section for the full architecture.
-
-**Overcurrent axis-default refinement (2026-09-16, frontend-only,
-no DEC — a follow-up UI/UX refinement, not a new product decision).**
-Part A: Relay Current mode's own default X minimum is now `pickup -
-0.1 A` (floored at the mode's own existing absolute lower bound, `0.1 *
-pickup`) — replacing the `0.9 * pickup` multiplicative default the
-paragraph above established; X maximum stays `100 * pickup`. Part B:
-the time-axis default minimum is now proportional to a STABLE reference
-operating time (`0.9x`, floored at 0.01s, capped at Y Max / 10) instead
-of the flat `0.1` constant — the reference is captured only from an
-EXACT (settings/phase/context-establishment/seek) fetch, never a
-throttled Playback tick, so the default never chases the live operating
-point while Playback runs; a manually customized viewport is never
-overwritten by a settings change, only by an explicit Reset. The chart's
-own "0" origin-gap cosmetic convention is deliberately scoped to the
-pristine, reference-less initial state only (comparing Y against the
-flat constant, never the live dynamic default) — a real design decision
-made to avoid the origin-gap disappearing almost immediately in ordinary
-use, documented as a known, accepted trade-off. IDMT math, TMS, pickup,
-CT conversion are unaffected. See
-[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md) for the full record.
+**Overcurrent chart-axis simplification (2026-09-17, frontend-only).** The cosmetic zero-origin/origin-gap convention and the DEC-093 compressed/broken sub-pickup X-axis treatment are retired. Overcurrent charts now use true logarithmic axes that start at positive values only: Pickup Multiple X defaults to `0.1 -> 100`, Relay Current X defaults to `0.1 * pickup -> 100 * pickup`, and Y defaults to `0.1 -> 100 s`. Reset restores those deterministic defaults and no longer depends on `expected_operating_time_seconds`, a stable reference operating time, `0.9 x reference`, or a YMax/10 cap. Relay Current ticks derive from the same M-domain positions scaled by pickup, so M=1 aligns pixel-for-pixel with I=pickup and M=10 aligns with I=10*pickup. Viewport, axis-mode, zoom, and grid changes remain frontend-only and cause zero backend requests; manual custom X/Y ranges still survive playback and settings changes until Reset. IDMT equations, characteristic generation, pickup semantics, operating-point calculation, Manual Input, and Recording Input are unchanged. See [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md) and [DECISIONS.md — DEC-094](DECISIONS.md#dec-094--overcurrent-uat-correction-the-x-axis-representation-toggles-real-root-cause-was-css-visibility-not-event-wiring-and-the-pickup-multiple-default-viewport-moves-to-09x-100x) for the current axis policy and retired-history note.
 
 **A shared Analysis Input Source concept (Recording/Manual) is
 introduced, with Manual Input / Calculator mode implemented for

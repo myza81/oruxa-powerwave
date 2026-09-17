@@ -157,26 +157,24 @@ class TestOvercurrentViewport:
     """Adjustable-viewport UAT follow-up (2026-09-12): default display
     domain, absolute bounds, validation, dynamic 1-2-5/decade tick
     generation with the major/minor classification rule, zoom in/out/
-    reset, and the default-vs-custom "0" origin rule."""
+    reset, and true positive log-axis minima."""
 
     def test_default_and_absolute_viewport_constants(self):
-        """Owner UAT correction (2026-09-13): the Pickup Multiple default
-        moved from 0.1x-100x/0.01s-100s to 0.9x-100x/0.1s-100s -- the
-        ABSOLUTE outer bounds (the floor the user's own range inputs and
-        zoom-out may never exceed) are unchanged."""
+        """Owner axis simplification: the Pickup Multiple default is the
+        true log range 0.1x-100x and Y is 0.1s-100s."""
         source = _source()
-        assert "const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };" in source
+        assert "const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.1, xMax: 100, yMin: 0.1, yMax: 100 };" in source
         assert "const WW_OC_VIEWPORT_ABSOLUTE = { xMin: 0.1, xMax: 200, yMin: 0.01, yMax: 1000 };" in source
 
     def test_state_viewport_field_initialised_to_default(self):
         source = _source()
         fn = _function_body(source, "const wwOvercurrentState = {", "function wwOvercurrentFetchCharacteristics")
-        assert "viewport: { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 }," in fn
+        assert "viewport: { xMin: 0.1, xMax: 100, yMin: 0.1, yMax: 100 }," in fn
 
     def test_reset_state_also_resets_viewport(self):
         source = _source()
         fn = _function_body(source, "function wwOvercurrentResetState()", "const wwPhasorState")
-        assert 'wwOvercurrentState.viewport = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };' in fn
+        assert 'wwOvercurrentState.viewport = { xMin: 0.1, xMax: 100, yMin: 0.1, yMax: 100 };' in fn
 
     def test_validation_rejects_out_of_bound_and_non_finite_and_inverted(self):
         source = _source()
@@ -210,7 +208,7 @@ class TestOvercurrentViewport:
         script = gen_pow125 + "\n" + gen_decade + "\n" + classify + """
         console.log(JSON.stringify({
             x: wwOvercurrentClassifyMajors(wwOvercurrentGeneratePow125Ticks(0.1, 100), 0.1),
-            y: wwOvercurrentClassifyMajors(wwOvercurrentGenerateDecadeTicks(0.01, 100), 0.01),
+            y: wwOvercurrentGenerateDecadeTicks(0.1, 100),
         }));
         """
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
@@ -221,30 +219,26 @@ class TestOvercurrentViewport:
         assert data["x"] == [0.5, 1, 2, 5, 10, 20, 50, 100]
         assert data["y"] == [0.1, 1, 10, 100]
 
-    def test_geometry_is_viewport_aware_and_gap_only_applies_to_default_view(self):
+    def test_geometry_is_viewport_aware_with_no_origin_gap(self):
         source = _source()
         fn = _function_body(source, "function wwOvercurrentChartGeometry(viewport)", "function wwOvercurrentPixelX")
-        assert "wwOvercurrentIsDefaultViewport(viewport)" in fn
-        assert "const gap = isDefault ? WW_OC_ORIGIN_GAP : 0;" in fn
+        assert "WW_OC_ORIGIN_GAP" not in source
+        assert "breakApplies" not in fn
+        assert "logLeft: plotLeft" in fn
+        assert "logBottom: plotBottom" in fn
         assert "logMMin: Math.log10(viewport.xMin)" in fn
         assert "logTMin: Math.log10(viewport.yMin)" in fn
 
-    def test_default_view_shows_zero_origin_and_minor_reference_ticks(self):
+    def test_chart_has_no_visual_zero_origin_labels(self):
         source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
-        default_branch = _function_body(fn, "if (geo.isDefault) {", "} else {")
-        assert "ww-oc-origin-label" in default_branch
-        assert ">0</text>" in default_branch
-        assert "ww-oc-tick-label-minor" in default_branch
-        assert "Math.log10" not in default_branch[: default_branch.index("ww-oc-tick-label-minor")]
+        assert "ww-oc-origin-label" not in source
+        assert "ww-oc-tick-label-minor" not in source
 
-    def test_custom_view_shows_true_minimum_never_a_fake_zero(self):
+    def test_render_path_has_no_fake_zero_branch(self):
         source = _source()
         fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
-        custom_branch = _function_body(fn, "} else {\n                const xMinPx", "// Axis titles")
-        assert ">0</text>" not in custom_branch
-        assert "ww-oc-origin-label" not in custom_branch
-        assert 'class="ww-oc-tick-label"' in custom_branch
+        assert "geo.isDefault" not in fn
+        assert ">0</text>" not in fn
 
     def test_zoom_centers_in_log_space_and_clamps_to_absolute_bounds(self):
         source = _source()
@@ -264,16 +258,12 @@ class TestOvercurrentViewport:
         assert "wwOvercurrentHandleSettingsChanged" not in fn
 
     def test_reset_returns_to_exact_default_viewport(self):
-        """Axis-default refinement (2026-09-16): X still resets to the
-        exact fixed Pickup Multiple constants; Y now resets to the
-        CURRENT dynamic reference-derived default
-        (`wwOvercurrentDynamicYMin()`) rather than the flat constant
-        directly, so a stable reference established since the last
-        reset is honored."""
+        """Reset restores deterministic defaults, independent of the
+        current operating point."""
         source = _source()
         fn = _function_body(source, "function wwOvercurrentResetViewport()", "// ---- Settings wiring helpers")
-        assert "const dynamicYMin = wwOvercurrentDynamicYMin();" in fn
-        assert "wwOvercurrentState.viewport = { xMin: WW_OC_VIEWPORT_DEFAULT.xMin, xMax: WW_OC_VIEWPORT_DEFAULT.xMax, yMin: dynamicYMin, yMax: WW_OC_VIEWPORT_DEFAULT.yMax };" in fn
+        assert "wwOvercurrentDynamicYMin" not in source
+        assert "wwOvercurrentState.viewport = { xMin: WW_OC_VIEWPORT_DEFAULT.xMin, xMax: WW_OC_VIEWPORT_DEFAULT.xMax, yMin: WW_OC_VIEWPORT_DEFAULT.yMin, yMax: WW_OC_VIEWPORT_DEFAULT.yMax };" in fn
 
     def test_view_controls_markup_exists(self):
         source = _source()
@@ -859,446 +849,6 @@ class TestMinorGridToggles:
         assert "wwOvercurrentRerenderChartFromState();" in fn
 
 
-class TestCompressedSubPickupAxis:
-    """Chart geometry refinement: in Pickup Multiple mode, whenever the
-    viewport straddles M=1 (xMin < 1 < xMax), the below-pickup region
-    (xMin -> 1) is visually compressed to ~5% of the plot width and the
-    operating region (1 -> xMax) gets ~95% -- a single, centralized
-    piecewise transform (`wwOvercurrentPixelX()`/
-    `wwOvercurrentPlotXToPickupMultiple()`) every chart element shares.
-    Relay Current mode and the Y axis are completely unaffected."""
-
-    def _harness(self, x_axis_mode="pickup_multiple"):
-        source = _source()
-        geometry_fn = _function_body(
-            source, "function wwOvercurrentChartGeometry(viewport)", "// The ONE authoritative Pickup Multiple X mapping pair"
-        )
-        pixel_x_fn = _function_body(source, "function wwOvercurrentPixelX(m, geo)", "// Inverse of `wwOvercurrentPixelX()`")
-        inverse_fn = _function_body(source, "function wwOvercurrentPlotXToPickupMultiple(x, geo)", "function wwOvercurrentPixelY")
-        is_default_fn = _function_body(source, "function wwOvercurrentIsDefaultViewport(v)", "// Hard validation")
-        # Starts at `wwOvercurrentRelayCurrentAbsoluteBounds()` (not
-        # `wwOvercurrentRelayCurrentDefaultViewport()`) so this single
-        # extraction also sweeps in that function's own dependency (used
-        # internally by the Part A safety floor) plus the axis-default
-        # refinement's Part A/B constants and helpers
-        # (`WW_OC_RELAY_CURRENT_XMIN_OFFSET`, `wwOvercurrentDynamicYMin()`,
-        # `wwOvercurrentUpdateStableReferenceOperatingTime()`) that now
-        # sit textually between these two markers.
-        relay_default_fn = _function_body(source, "function wwOvercurrentRelayCurrentAbsoluteBounds()", "function wwOvercurrentActiveXAbsoluteBounds")
-        preamble = f"""
-        const WW_OC_XAXIS_PICKUP_MULTIPLE = "pickup_multiple";
-        const WW_OC_XAXIS_RELAY_CURRENT = "relay_current";
-        const wwOvercurrentState = {{ xAxisMode: "{x_axis_mode}", settings: {{ pickupCurrentSecondary: 1.0 }} }};
-        const WW_OC_CHART_MARGIN = {{ left: 40, right: 14, top: 12, bottom: 34 }};
-        const WW_OC_CHART_W = 320;
-        const WW_OC_CHART_H = 240;
-        const WW_OC_ORIGIN_GAP = 15;
-        const WW_OC_VIEWPORT_DEFAULT = {{ xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 }};
-        const WW_OC_VIEWPORT_ABSOLUTE = {{ xMin: 0.1, xMax: 200, yMin: 0.01, yMax: 1000 }};
-        const WW_OC_SUBPICKUP_GUTTER_FRACTION = 0.05;
-        const WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD = 0.5;
-        {relay_default_fn}
-        """
-        return preamble + is_default_fn + geometry_fn + pixel_x_fn + inverse_fn
-
-    def test_below_pickup_region_occupies_approximately_5_percent_of_plot_width(self):
-        import json
-        import subprocess
-
-        script = self._harness() + """
-        const viewport = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };
-        const geo = wwOvercurrentChartGeometry(viewport);
-        const pxAtMin = wwOvercurrentPixelX(viewport.xMin, geo);
-        const pxAtOne = wwOvercurrentPixelX(1, geo);
-        const plotWidth = geo.plotRight - geo.logLeft;
-        console.log(JSON.stringify({
-            belowFraction: (pxAtOne - pxAtMin) / plotWidth,
-            breakApplies: geo.breakApplies,
-        }));
-        """
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        data = json.loads(result.stdout)
-        assert data["breakApplies"] is True
-        assert data["belowFraction"] == pytest.approx(0.05, abs=0.01)
-
-    def test_operating_region_occupies_approximately_95_percent_of_plot_width(self):
-        import json
-        import subprocess
-
-        script = self._harness() + """
-        const viewport = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };
-        const geo = wwOvercurrentChartGeometry(viewport);
-        const pxAtOne = wwOvercurrentPixelX(1, geo);
-        const pxAtMax = wwOvercurrentPixelX(viewport.xMax, geo);
-        const plotWidth = geo.plotRight - geo.logLeft;
-        console.log(JSON.stringify({ aboveFraction: (pxAtMax - pxAtOne) / plotWidth }));
-        """
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        data = json.loads(result.stdout)
-        assert data["aboveFraction"] == pytest.approx(0.95, abs=0.01)
-
-    def test_m_equals_1_maps_exactly_to_the_break_boundary(self):
-        import json
-        import subprocess
-
-        script = self._harness() + """
-        const viewport = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };
-        const geo = wwOvercurrentChartGeometry(viewport);
-        console.log(JSON.stringify({ pxAtOne: wwOvercurrentPixelX(1, geo), breakPx: geo.breakPx }));
-        """
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        data = json.loads(result.stdout)
-        assert data["pxAtOne"] == pytest.approx(data["breakPx"], abs=1e-9)
-
-    def test_mapping_is_monotonic_on_both_sides_of_the_break(self):
-        import json
-        import subprocess
-
-        script = self._harness() + """
-        const viewport = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };
-        const geo = wwOvercurrentChartGeometry(viewport);
-        const belowSamples = [0.1, 0.15, 0.2, 0.3, 0.5, 0.7, 0.9, 1.0].map((m) => wwOvercurrentPixelX(m, geo));
-        const aboveSamples = [1.0, 2, 5, 10, 20, 50, 100].map((m) => wwOvercurrentPixelX(m, geo));
-        console.log(JSON.stringify({ belowSamples, aboveSamples }));
-        """
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        data = json.loads(result.stdout)
-        for samples in (data["belowSamples"], data["aboveSamples"]):
-            for a, b in zip(samples, samples[1:]):
-                assert b > a
-
-    def test_inverse_mapping_round_trips_representative_points(self):
-        import json
-        import subprocess
-
-        points = [0.1, 0.2, 0.5, 1, 1.2, 2, 5, 10, 50, 100]
-        script = self._harness() + f"""
-        const viewport = {{ xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 }};
-        const geo = wwOvercurrentChartGeometry(viewport);
-        const points = {json.dumps(points)};
-        const results = points.map((m) => {{
-            const px = wwOvercurrentPixelX(m, geo);
-            const recovered = wwOvercurrentPlotXToPickupMultiple(px, geo);
-            return {{ m, recovered }};
-        }});
-        console.log(JSON.stringify(results));
-        """
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        rows = json.loads(result.stdout)
-        assert len(rows) == len(points)
-        for row in rows:
-            assert row["recovered"] == pytest.approx(row["m"], rel=1e-9)
-
-    def test_no_break_when_viewport_excludes_values_below_1(self):
-        """Task §12: a viewport entirely at/above M=1 must revert to the
-        ordinary single log mapping -- never a forced, useless gutter."""
-        import json
-        import subprocess
-
-        script = self._harness() + """
-        const viewport = { xMin: 2, xMax: 20, yMin: 0.01, yMax: 100 };
-        const geo = wwOvercurrentChartGeometry(viewport);
-        console.log(JSON.stringify({ breakApplies: geo.breakApplies }));
-        """
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        data = json.loads(result.stdout)
-        assert data["breakApplies"] is False
-
-    def test_break_applies_whenever_viewport_straddles_1(self):
-        import json
-        import subprocess
-
-        script = self._harness() + """
-        const viewport = { xMin: 0.5, xMax: 5, yMin: 0.01, yMax: 100 };
-        const geo = wwOvercurrentChartGeometry(viewport);
-        console.log(JSON.stringify({ breakApplies: geo.breakApplies }));
-        """
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        data = json.loads(result.stdout)
-        assert data["breakApplies"] is True
-
-    def test_relay_current_mode_never_applies_the_break(self):
-        import json
-        import subprocess
-
-        script = self._harness(x_axis_mode="relay_current") + """
-        const viewport = { xMin: 0.1, xMax: 100, yMin: 0.01, yMax: 100 };
-        const geo = wwOvercurrentChartGeometry(viewport);
-        console.log(JSON.stringify({ breakApplies: geo.breakApplies }));
-        """
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        data = json.loads(result.stdout)
-        assert data["breakApplies"] is False
-
-    def test_render_chart_draws_the_break_marker_only_when_it_applies(self):
-        source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
-        assert "if (geo.breakApplies) {" in fn
-        assert "wwOvercurrentAxisBreakSvg(geo)" in fn
-
-    def test_axis_break_marker_uses_the_shared_pixel_mapping_never_a_separate_calculation(self):
-        source = _source()
-        fn = _function_body(source, "function wwOvercurrentAxisBreakSvg(geo)", "function wwOvercurrentRenderChart")
-        assert "wwOvercurrentPixelX(1, geo)" in fn
-        assert "Math.log10" not in fn
-
-    def test_gutter_fraction_constant_is_5_percent(self):
-        source = _source()
-        assert "const WW_OC_SUBPICKUP_GUTTER_FRACTION = 0.05;" in source
-
-
-class TestPickupMultipleFixedMajorTicks:
-    """Owner UAT correction (2026-09-13): the generic dynamic 1-2-5
-    major-tick classifier never generates 3/4/6/7/8/9 at all, so they
-    were wrongly absent from Pickup Multiple mode's always-visible major
-    grid (only reachable, if at all, as minor-gated ticks). Pickup
-    Multiple mode now uses its own FIXED, explicit major list --
-    0 (visual-only, unchanged), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50,
-    100 -- never derived from the generic progression+classification
-    rule Relay Current mode and the Y axis still use."""
-
-    def test_fixed_major_tick_constant_matches_the_owner_approved_list(self):
-        source = _source()
-        assert "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100];" in source
-
-    def test_default_viewport_renders_every_owner_approved_major_via_node(self):
-        import json
-        import subprocess
-
-        source = _source()
-        const_decl = "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100];\n"
-        fn = _function_body(source, "function wwOvercurrentPickupMultipleMajors(viewport)", "function wwOvercurrentFormatTickValue")
-        script = const_decl + fn + "\nconsole.log(JSON.stringify(wwOvercurrentPickupMultipleMajors({ xMin: 0.1, xMax: 100 })));"
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        majors = json.loads(result.stdout)
-        # 0 is never part of this array -- it stays the existing visual-
-        # only origin annotation, asserted separately below.
-        assert majors == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100]
-
-    def test_3_4_6_7_8_9_are_present_as_majors_never_excluded(self):
-        import json
-        import subprocess
-
-        source = _source()
-        const_decl = "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100];\n"
-        fn = _function_body(source, "function wwOvercurrentPickupMultipleMajors(viewport)", "function wwOvercurrentFormatTickValue")
-        script = const_decl + fn + "\nconsole.log(JSON.stringify(wwOvercurrentPickupMultipleMajors({ xMin: 0.1, xMax: 100 })));"
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        majors = json.loads(result.stdout)
-        for expected in (3, 4, 6, 7, 8, 9):
-            assert expected in majors
-
-    def test_zero_is_never_a_real_logarithmic_coordinate(self):
-        """0 stays the existing visual-only origin label -- never part of
-        the fixed major-tick array, never passed through Math.log10()."""
-        source = _source()
-        assert "0" not in [str(v) for v in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100]]
-        fn = _function_body(source, "function wwOvercurrentPickupMultipleMajors(viewport)", "function wwOvercurrentFormatTickValue")
-        assert "Math.log10" not in fn
-
-    def test_render_chart_uses_the_fixed_majors_in_pickup_multiple_mode_and_the_pickup_scaled_ones_in_relay_current_mode(self):
-        """Owner UAT correction (2026-09-16): Relay Current mode's own
-        majors are now derived from the SAME fixed M-domain list, scaled
-        by pickup -- never the generic dynamic classifier -- so the two
-        representations stay visually equivalent."""
-        source = _source()
-        fn = _function_body(source, "function wwOvercurrentRenderChart(points, currentM, currentT, isManual)", "function wwOvercurrentRerenderChartFromState")
-        assert "const xMajors = isRelayCurrentAxis ? wwOvercurrentRelayCurrentMajors(viewport) : wwOvercurrentPickupMultipleMajors(viewport);" in fn
-
-    def test_default_viewport_gridline_count_reflects_the_new_fixed_major_list(self):
-        """13 Pickup Multiple X majors (1..9, 10, 20, 50, 100) + 4 Y
-        majors (0.1, 1, 10, 100) = 17 major gridlines for the default
-        viewport -- confirmed end-to-end in browser-tests/
-        overcurrent_analysis.spec.js's own "default viewport" test."""
-        import json
-        import subprocess
-
-        source = _source()
-        x_const = "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100];\n"
-        x_fn = _function_body(source, "function wwOvercurrentPickupMultipleMajors(viewport)", "function wwOvercurrentFormatTickValue")
-        y_fn = _function_body(source, "function wwOvercurrentGenerateDecadeTicks(min, max)", "// Major/minor classification")
-        classify_fn = _function_body(source, "function wwOvercurrentClassifyMajors(allTicks, axisMin)", "function wwOvercurrentXMajors")
-        y_majors_fn = _function_body(source, "function wwOvercurrentYMajors(viewport)", "// Pickup Multiple mode's own FIXED")
-        script = x_const + x_fn + y_fn + classify_fn + y_majors_fn + """
-        const xMajors = wwOvercurrentPickupMultipleMajors({ xMin: 0.1, xMax: 100 });
-        const yMajors = wwOvercurrentYMajors({ yMin: 0.01, yMax: 100 });
-        console.log(JSON.stringify({ xCount: xMajors.length, yCount: yMajors.length }));
-        """
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        counts = json.loads(result.stdout)
-        assert counts["xCount"] == 13
-        assert counts["yCount"] == 4
-
-
-class TestPickupMultipleMinorsNeverDuplicateFixedMajors:
-    """The owner's own correction: 3/4/6/7/8/9 must be MAJOR, not minor.
-    Pickup Multiple mode's own dedicated minor generator must therefore
-    never emit any of the fixed major values themselves -- only genuine
-    subdivisions BETWEEN them (e.g. 1.2/1.4/1.6/1.8 between 1 and 2, the
-    owner's own explicit example)."""
-
-    def _minors(self, min_val, max_val):
-        import json
-        import subprocess
-
-        source = _source()
-        subdivisions_const = "const WW_OC_MINOR_POW125_SUBDIVISIONS = [[1, 2, 0.2], [2, 5, 0.5], [5, 10, 1]];\n"
-        sub_pickup_fn = _function_body(
-            source,
-            "function wwOvercurrentPickupMultipleSubPickupMinors(viewport)",
-            "function wwOvercurrentPickupMultipleMinors(viewport)",
-        )
-        fn = _function_body(
-            source,
-            "function wwOvercurrentPickupMultipleMinors(viewport)",
-            "// X minors are mode-aware",
-        )
-        script = subdivisions_const + sub_pickup_fn + fn + f"\nconsole.log(JSON.stringify(wwOvercurrentPickupMultipleMinors({{ xMin: {min_val}, xMax: {max_val} }})));"
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        return json.loads(result.stdout)
-
-    def test_1_to_2_matches_owner_example(self):
-        assert self._minors(1, 2) == pytest.approx([1.2, 1.4, 1.6, 1.8])
-
-    def test_3_4_6_7_8_9_never_appear_as_minors(self):
-        minors = self._minors(0.1, 100)
-        for forbidden in (3, 4, 6, 7, 8, 9):
-            assert forbidden not in minors
-
-    def test_full_default_range_never_collides_with_any_fixed_major(self):
-        minors = self._minors(0.1, 100)
-        fixed_majors = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100}
-        assert not (set(minors) & fixed_majors)
-
-    def test_generalizes_the_0_2_step_to_every_unit_interval_below_10(self):
-        minors = self._minors(0.1, 10)
-        for n in range(1, 10):
-            for step in (0.2, 0.4, 0.6, 0.8):
-                assert pytest.approx(n + step) in minors
-
-    def test_above_10_reuses_the_existing_decade_subdivision(self):
-        minors = self._minors(10, 100)
-        for expected in (12, 14, 16, 18, 25, 30, 35, 40, 45, 60, 70, 80, 90):
-            assert expected in minors
-
-
-class TestXMinorsDispatchesByAxisMode:
-    def test_relay_current_mode_derives_minors_from_the_same_m_domain_minors(self):
-        """Owner UAT correction (2026-09-16): Relay Current mode no
-        longer uses the generic dynamic minor generator -- it derives
-        its own minors from the SAME M-domain minors Pickup Multiple
-        uses, scaled by pickup (never a second/independent algorithm)."""
-        source = _source()
-        fn = _function_body(source, "function wwOvercurrentXMinors(viewport)", "function wwOvercurrentYMinors")
-        assert "WW_OC_XAXIS_RELAY_CURRENT" in fn
-        assert "wwOvercurrentRelayCurrentMinors(viewport)" in fn
-        assert "wwOvercurrentPickupMultipleMinors(viewport)" in fn
-
-    def test_relay_current_minors_function_reuses_pickup_multiple_minors_verbatim(self):
-        source = _source()
-        fn = _function_body(source, "function wwOvercurrentRelayCurrentMinors(viewport)", "function wwOvercurrentXMinors")
-        assert "wwOvercurrentPickupMultipleMinors(mDomainViewport)" in fn
-        assert "safePickup" in fn
-
-
-class TestAxisToggleCSS:
-    """UAT root-cause fix (2026-09-16): the `.ww-oc-axis-toggle-btn`
-    CSS class never set `color` or `border`, so the INACTIVE button was
-    invisible white text on light background — the click handler worked,
-    but the UI made the button unfindable. Superseded the same day by the
-    chart-control-toolbar redesign, which turns the two independent
-    buttons into one true segmented control (shared rounded outer shape
-    via `overflow: hidden` on `.ww-oc-axis-toggle-group`, an inner
-    divider between segments, and a hover state on the inactive segment)
-    -- the underlying regression this class guards against (an
-    unfindable, invisible inactive control) still cannot reappear under
-    the new CSS, verified below with the new selectors/properties."""
-
-    def test_inactive_toggle_button_has_visible_color_and_a_bordered_group_shape(self):
-        source = _source()
-        css_section = source[source.find(".ww-oc-axis-toggle-btn {"):source.find(".ww-oc-axis-toggle-btn--active")]
-        assert "color: var(--text-dim)" in css_section
-        assert "background: var(--panel)" in css_section
-        # The visible border now lives on the shared outer group shape
-        # (one rounded control) rather than on each individual button.
-        group_rule = _function_body(source, ".ww-oc-axis-toggle-group {", "}")
-        assert "border: 1px solid var(--panel-border)" in group_rule
-        assert "border-radius: var(--radius)" in group_rule
-        assert "overflow: hidden" in group_rule
-
-    def test_inactive_segment_has_a_hover_state(self):
-        source = _source()
-        hover_rule = _function_body(
-            source, ".ww-oc-axis-toggle-btn:hover:not(.ww-oc-axis-toggle-btn--active) {", "}"
-        )
-        assert "background: var(--hover-tint)" in hover_rule
-        assert "color: var(--text)" in hover_rule
-
-    def test_active_toggle_button_color_overrides_inactive(self):
-        source = _source()
-        css_section = source[source.find(".ww-oc-axis-toggle-btn--active"):source.find(".ww-oc-grid-toggle-label")]
-        assert "color: var(--accent)" in css_section
-        assert "background: var(--accent-wash-soft)" in css_section
-        # A visible "border" for the active segment via box-shadow (never
-        # a real border, which would disturb the shared segmented shape).
-        assert "box-shadow: inset 0 0 0 1px var(--accent-dim)" in css_section
-
-    def test_axis_toggle_has_click_handlers_wired_to_set_x_axis_mode(self):
-        source = _source()
-        assert 'document.getElementById("wwOvercurrentAxisModePickupBtn").addEventListener("click", () => wwOvercurrentSetXAxisMode(WW_OC_XAXIS_PICKUP_MULTIPLE))' in source
-        assert 'document.getElementById("wwOvercurrentAxisModeRelayBtn").addEventListener("click", () => wwOvercurrentSetXAxisMode(WW_OC_XAXIS_RELAY_CURRENT))' in source
-
-
-class TestViewportDefaults:
-    """Owner UAT correction (2026-09-16): Pickup Multiple default viewport
-    moved from 0.1/100/0.01/100 to 0.9/100/0.1/100, and the compressed
-    sub-pickup axis break now applies only when xMin <= 0.5 (not every
-    xMin < 1). The new default's 0.9 start gives an ordinary log axis
-    across the default range, saving the compressed gutter for deliberately
-    wider below-pickup views."""
-
-    def test_default_viewport_is_0_9_to_100_x_0_1_to_100_y(self):
-        source = _source()
-        assert "const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };" in source
-
-    def test_state_init_uses_the_correct_default_viewport(self):
-        source = _source()
-        fn = _function_body(source, "const wwOvercurrentState = {", "function wwOvercurrentFetchCharacteristics")
-        assert "viewport: { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 }," in fn
-
-    def test_reset_state_resets_viewport_to_correct_default(self):
-        source = _source()
-        fn = _function_body(source, "function wwOvercurrentResetState()", "const wwPhasorState")
-        assert 'wwOvercurrentState.viewport = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };' in fn
-
-    def test_break_threshold_constant_is_0_5(self):
-        source = _source()
-        assert "const WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD = 0.5;" in source
-
-    def test_break_applies_only_when_xmin_lte_0_5_and_xmax_gt_1(self):
-        source = _source()
-        fn = _function_body(source, "function wwOvercurrentChartGeometry(viewport)", "// The ONE authoritative Pickup Multiple X mapping pair")
-        assert "viewport.xMin <= WW_OC_SUBPICKUP_BREAK_XMIN_THRESHOLD + 1e-9" in fn
-        assert "viewport.xMax > 1 + 1e-9" in fn
-
-    def test_relay_current_default_x_min_is_pickup_minus_offset_with_a_positive_floor(self):
-        """Axis-default refinement, Part A (2026-09-16, supersedes the
-        prior `0.9 * pickup` multiplicative default): Relay Current's
-        own default X minimum is now `pickup - 0.1 A` (owner's own exact
-        worked examples: pickup 1.0 A -> 0.9 A; pickup 1.2 A -> 1.1 A),
-        floored by the SAME absolute lower zoom-out bound this mode
-        already enforces (`wwOvercurrentRelayCurrentAbsoluteBounds().xMin`
-        = `0.1 * pickup`) rather than a new constant -- so `pickup - 0.1`
-        can never reach zero or negative on the real logarithmic axis.
-        X maximum remains `100 * pickup`, unchanged."""
-        source = _source()
-        assert "const WW_OC_RELAY_CURRENT_XMIN_OFFSET = 0.1;" in source
-        fn = _function_body(source, "function wwOvercurrentRelayCurrentDefaultViewport()", "function wwOvercurrentDynamicYMin")
-        assert "const absoluteFloor = wwOvercurrentRelayCurrentAbsoluteBounds().xMin;" in fn
-        assert "xMin: Math.max(absoluteFloor, safePickup - WW_OC_RELAY_CURRENT_XMIN_OFFSET)," in fn
-        assert "xMax: WW_OC_VIEWPORT_DEFAULT.xMax * safePickup," in fn
-
-
 class TestMinorTickGenerationMatrix:
     """Task §9: the classic log-log graph-paper 1-2-5 minor subdivision,
     proved via direct Node execution -- the owner's own explicit example
@@ -1346,7 +896,7 @@ class TestMinorTickGenerationMatrix:
 
 
 class TestRelayCurrentAxisAlignedWithPickupMultiple:
-    """Owner UAT correction (2026-09-16): Relay Current is related to
+    """Relay Current is related to
     Pickup Multiple by Irelay = M * Ipickup, so Relay Current's own
     default viewport, major ticks, and minor ticks must all derive from
     the SAME M-domain positions Pickup Multiple uses, scaled by the
@@ -1358,8 +908,8 @@ class TestRelayCurrentAxisAlignedWithPickupMultiple:
         source = _source()
         pieces = [
             f'const wwOvercurrentState = {{ settings: {{ pickupCurrentSecondary: {pickup} }} }};',
-            _function_body(source, "const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };", "function wwOvercurrentIsDefaultViewport"),
-            _function_body(source, "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100];", "function wwOvercurrentFormatTickValue"),
+            _function_body(source, "const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.1, xMax: 100, yMin: 0.1, yMax: 100 };", "function wwOvercurrentIsDefaultViewport"),
+            _function_body(source, "const WW_OC_PICKUP_MULTIPLE_MAJOR_TICKS = [0.1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100];", "function wwOvercurrentFormatTickValue"),
             _function_body(source, "function wwOvercurrentRelayCurrentAbsoluteBounds()", "function wwOvercurrentActiveXAbsoluteBounds"),
             "const WW_OC_MINOR_POW125_SUBDIVISIONS = [[1, 2, 0.2], [2, 5, 0.5], [5, 10, 1]];",
             _function_body(source, "function wwOvercurrentPickupMultipleSubPickupMinors(viewport)", "function wwOvercurrentXMinors"),
@@ -1373,47 +923,40 @@ class TestRelayCurrentAxisAlignedWithPickupMultiple:
         result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
         return json.loads(result.stdout)
 
-    def test_default_relay_current_viewport_is_0_7_to_80_at_pickup_0_8(self):
-        """Axis-default refinement, Part A (2026-09-16): X min is now
-        `pickup - 0.1 A` (0.8 - 0.1 = 0.7 A), not the prior `0.9 *
-        pickup` (0.72 A) -- X max is unaffected (`100 * pickup` = 80 A)."""
+    def test_default_relay_current_viewport_is_0_08_to_80_at_pickup_0_8(self):
         script = self._harness(pickup=0.8) + "\nconsole.log(JSON.stringify(wwOvercurrentRelayCurrentDefaultViewport()));"
         viewport = self._run(script)
-        assert viewport["xMin"] == pytest.approx(0.7, rel=1e-9)
+        assert viewport["xMin"] == pytest.approx(0.08, rel=1e-9)
         assert viewport["xMax"] == pytest.approx(80, rel=1e-9)
 
     def test_relay_current_majors_are_m_domain_list_scaled_by_pickup(self):
         script = self._harness(pickup=0.8) + """
-        const viewport = { xMin: 0.1, xMax: 200 };
+        const viewport = { xMin: 0.08, xMax: 80 };
         console.log(JSON.stringify(wwOvercurrentRelayCurrentMajors(viewport)));
         """
         majors = self._run(script)
-        assert majors == pytest.approx([0.8, 1.6, 2.4, 3.2, 4.0, 4.8, 5.6, 6.4, 7.2, 8.0, 16, 40, 80])
+        assert majors == pytest.approx([0.08, 0.8, 1.6, 2.4, 3.2, 4.0, 4.8, 5.6, 6.4, 7.2, 8.0, 16, 40, 80])
 
     def test_golden_m_to_ampere_worked_examples(self):
         """M=1 -> 0.8 A, M=2 -> 1.6 A, M=3 -> 2.4 A, M=10 -> 8 A,
         M=20 -> 16 A, M=50 -> 40 A, M=100 -> 80 A."""
         script = self._harness(pickup=0.8) + """
-        const viewport = { xMin: 0.1, xMax: 200 };
+        const viewport = { xMin: 0.08, xMax: 80 };
         const majors = wwOvercurrentRelayCurrentMajors(viewport);
         console.log(JSON.stringify(majors));
         """
         majors = self._run(script)
-        expected_m = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100]
+        expected_m = [0.1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100]
         for m, tick in zip(expected_m, majors):
             assert tick == pytest.approx(m * 0.8, rel=1e-9)
 
-    def test_relay_current_majors_never_include_the_viewports_own_minimum(self):
-        """Mirrors wwOvercurrentPickupMultipleMajors()'s own exclusion
-        rule -- the viewport's own true minimum gets its own dedicated
-        reference label instead, never a duplicate gridline."""
+    def test_relay_current_majors_include_the_viewports_own_minimum(self):
         script = self._harness(pickup=0.8) + """
-        const viewport = { xMin: 0.72, xMax: 80 };
+        const viewport = { xMin: 0.08, xMax: 80 };
         console.log(JSON.stringify(wwOvercurrentRelayCurrentMajors(viewport)));
         """
         majors = self._run(script)
-        assert 0.72 not in [pytest.approx(v) for v in majors]
-        assert majors[0] == pytest.approx(0.8, rel=1e-9)
+        assert majors[0] == pytest.approx(0.08, rel=1e-9)
 
     def test_relay_current_minors_are_m_domain_minors_scaled_by_pickup(self):
         """Between M=1 and M=2, the M-domain minors are 1.2/1.4/1.6/1.8
@@ -1430,7 +973,7 @@ class TestRelayCurrentAxisAlignedWithPickupMultiple:
         default -- never a stale/cached value from an earlier pickup."""
         script = self._harness(pickup=1.0) + "\nconsole.log(JSON.stringify(wwOvercurrentRelayCurrentDefaultViewport()));"
         viewport = self._run(script)
-        assert viewport["xMin"] == pytest.approx(0.9, rel=1e-9)
+        assert viewport["xMin"] == pytest.approx(0.1, rel=1e-9)
         assert viewport["xMax"] == pytest.approx(100, rel=1e-9)
 
     def test_relay_current_absolute_bounds_still_derive_from_the_shared_absolute_constant(self):
@@ -1443,21 +986,39 @@ class TestRelayCurrentAxisAlignedWithPickupMultiple:
 
 
 class TestRelayCurrentPickupBoundaryVisualEquivalence:
-    """The pixel-for-pixel "visual equivalence" this class originally
-    proved (M=1 in Pickup Multiple mode and I=pickup in Relay Current
-    mode sitting at the exact same screen position, because both modes'
-    own DEFAULT viewports used the identical `0.9 * pickup`/`100 *
-    pickup` multiplicative scaling) is SUPERSEDED by the axis-default
-    refinement (2026-09-16, Part A): Relay Current's own default X
-    minimum is now the additive `pickup - 0.1 A` (floored), which no
-    longer sits at the same relative log position as Pickup Multiple's
-    own fixed `0.9x` default for an arbitrary pickup -- this was an
-    explicit, deliberate outcome of the owner's own new worked examples
-    (pickup 1.0 A -> 0.9 A, pickup 1.2 A -> 1.1 A), not a regression.
-    The two pixel-equivalence tests this class used to contain were
-    removed as no longer describing a real invariant; the one test that
-    never depended on that invariant (the pickup boundary's own VALUE,
-    not its pixel position relative to Pickup Multiple) remains."""
+    """Relay Current and Pickup Multiple default viewports are
+    geometrically equivalent: M=1 and I=pickup share a pixel, as do
+    M=10 and I=10*pickup."""
+
+    def _run(self, script):
+        import json
+        import subprocess
+
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+        return json.loads(result.stdout)
+
+    def test_default_viewports_are_pixel_equivalent_at_m_1_and_m_10(self):
+        source = _source()
+        geometry_fn = _function_body(source, "function wwOvercurrentChartGeometry(viewport)", "function wwOvercurrentPixelX")
+        pixel_x_fn = _function_body(source, "function wwOvercurrentPixelX(m, geo)", "// Inverse of `wwOvercurrentPixelX()`")
+        script = f"""
+        const WW_OC_CHART_MARGIN = {{ left: 40, right: 14, top: 12, bottom: 34 }};
+        const WW_OC_CHART_W = 320;
+        const WW_OC_CHART_H = 240;
+        {geometry_fn}
+        {pixel_x_fn}
+        const pickupGeo = wwOvercurrentChartGeometry({{ xMin: 0.1, xMax: 100, yMin: 0.1, yMax: 100 }});
+        const relayGeo = wwOvercurrentChartGeometry({{ xMin: 0.12, xMax: 120, yMin: 0.1, yMax: 100 }});
+        console.log(JSON.stringify({{
+            m1: wwOvercurrentPixelX(1, pickupGeo),
+            iPickup: wwOvercurrentPixelX(1.2, relayGeo),
+            m10: wwOvercurrentPixelX(10, pickupGeo),
+            i10Pickup: wwOvercurrentPixelX(12, relayGeo),
+        }}));
+        """
+        positions = self._run(script)
+        assert positions["m1"] == pytest.approx(positions["iPickup"], rel=1e-9)
+        assert positions["m10"] == pytest.approx(positions["i10Pickup"], rel=1e-9)
 
     def test_pickup_boundary_value_in_relay_current_mode_is_the_pickup_itself(self):
         source = _source()
@@ -1683,199 +1244,6 @@ class TestChartControlsToolbarRedesign:
         assert "align-items: center;" in field_rule
         assert 'class="ww-oc-grid-toggle-field"><input type="checkbox" id="wwOvercurrentMinorGridXCheckbox"> X</label>' in source
         assert 'class="ww-oc-grid-toggle-field"><input type="checkbox" id="wwOvercurrentMinorGridYCheckbox"> Y</label>' in source
-
-
-class TestAxisDefaultRefinement:
-    """Focused coverage for the axis-default refinement (2026-09-16):
-    Part A (Relay Current X minimum = pickup - 0.1 A, floored) and
-    Part B (Y minimum = 0.9 x a STABLE reference operating time,
-    floored/capped) -- see wwOvercurrentRelayCurrentDefaultViewport()/
-    wwOvercurrentDynamicYMin() in frontend/index.html for the full
-    rationale. No IEC IDMT calculation, TMS, pickup, CT conversion, RMS,
-    or Playback behavior is touched by any assertion here. Real-browser
-    interaction coverage (Reset, manual-viewport preservation, no
-    tick-chasing, zero extra backend requests) lives in
-    browser-tests/overcurrent_analysis.spec.js."""
-
-    def _harness(self, pickup=1.0, stable_reference=None):
-        source = _source()
-        ref_literal = "null" if stable_reference is None else repr(float(stable_reference))
-        pieces = [
-            f'const wwOvercurrentState = {{ settings: {{ pickupCurrentSecondary: {pickup} }}, stableReferenceOperatingTime: {ref_literal} }};',
-            "const WW_OC_VIEWPORT_DEFAULT = { xMin: 0.9, xMax: 100, yMin: 0.1, yMax: 100 };",
-            "const WW_OC_VIEWPORT_ABSOLUTE = { xMin: 0.1, xMax: 200, yMin: 0.01, yMax: 1000 };",
-            _function_body(source, "function wwOvercurrentRelayCurrentAbsoluteBounds()", "function wwOvercurrentActiveXAbsoluteBounds"),
-        ]
-        return "\n".join(pieces)
-
-    def _run(self, script):
-        import json
-        import subprocess
-
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        return json.loads(result.stdout)
-
-    # ---- Part A: Relay Current X minimum ----
-
-    def test_relay_current_xmin_pickup_1_0_is_0_9(self):
-        script = self._harness(pickup=1.0) + "\nconsole.log(JSON.stringify(wwOvercurrentRelayCurrentDefaultViewport()));"
-        viewport = self._run(script)
-        assert viewport["xMin"] == pytest.approx(0.9, rel=1e-9)
-        assert viewport["xMax"] == pytest.approx(100, rel=1e-9)
-
-    def test_relay_current_xmin_pickup_1_2_is_1_1(self):
-        script = self._harness(pickup=1.2) + "\nconsole.log(JSON.stringify(wwOvercurrentRelayCurrentDefaultViewport()));"
-        viewport = self._run(script)
-        assert viewport["xMin"] == pytest.approx(1.1, rel=1e-9)
-        assert viewport["xMax"] == pytest.approx(120, rel=1e-9)
-
-    def test_relay_current_xmin_tiny_pickup_uses_the_positive_safety_floor(self):
-        """pickup 0.05 A: pickup - 0.1 = -0.05 A (negative) -- the floor
-        (`0.1 * pickup`, the SAME absolute lower zoom-out bound this
-        mode already enforces) must apply, never a zero/negative log
-        minimum."""
-        script = self._harness(pickup=0.05) + "\nconsole.log(JSON.stringify(wwOvercurrentRelayCurrentDefaultViewport()));"
-        viewport = self._run(script)
-        assert viewport["xMin"] > 0
-        assert viewport["xMin"] == pytest.approx(0.005, rel=1e-9)  # 0.1 * 0.05
-        assert viewport["xMax"] == pytest.approx(5, rel=1e-9)
-
-    def test_relay_current_xmin_never_non_positive_across_a_pickup_sweep(self):
-        script = self._harness(pickup=1.0) + """
-        const pickups = [0.001, 0.01, 0.05, 0.09999, 0.1, 0.5, 1.0, 1.2, 10, 500];
-        const results = pickups.map((p) => {
-            wwOvercurrentState.settings.pickupCurrentSecondary = p;
-            const xMin = wwOvercurrentRelayCurrentDefaultViewport().xMin;
-            return { xMin, isFinitePositive: Number.isFinite(xMin) && xMin > 0 };
-        });
-        console.log(JSON.stringify(results));
-        """
-        rows = self._run(script)
-        assert len(rows) == 10
-        for row in rows:
-            assert row["isFinitePositive"] is True, row
-
-    # ---- Part B: time-axis Y minimum ----
-
-    def test_y_min_reference_1_0_is_0_9(self):
-        script = self._harness(stable_reference=1.0) + "\nconsole.log(JSON.stringify(wwOvercurrentDynamicYMin()));"
-        assert self._run(script) == pytest.approx(0.9, rel=1e-9)
-
-    def test_y_min_reference_0_2_is_0_18(self):
-        script = self._harness(stable_reference=0.2) + "\nconsole.log(JSON.stringify(wwOvercurrentDynamicYMin()));"
-        assert self._run(script) == pytest.approx(0.18, rel=1e-9)
-
-    def test_y_min_reference_0_08_is_0_072_floor_not_yet_engaged(self):
-        script = self._harness(stable_reference=0.08) + "\nconsole.log(JSON.stringify(wwOvercurrentDynamicYMin()));"
-        assert self._run(script) == pytest.approx(0.072, rel=1e-9)
-
-    def test_y_min_very_small_reference_engages_the_0_01_floor(self):
-        script = self._harness(stable_reference=0.005) + "\nconsole.log(JSON.stringify(wwOvercurrentDynamicYMin()));"
-        y_min = self._run(script)
-        assert y_min == pytest.approx(0.01, rel=1e-9)
-        assert y_min > 0
-
-    def test_y_min_falls_back_to_the_flat_default_before_any_reference_is_established(self):
-        script = self._harness(stable_reference=None) + "\nconsole.log(JSON.stringify(wwOvercurrentDynamicYMin()));"
-        assert self._run(script) == pytest.approx(0.1, rel=1e-9)
-
-    def test_y_min_never_exceeds_a_tenth_of_y_max_for_an_extreme_near_asymptote_reference(self):
-        """An extreme reference (near the curve's own asymptote as M ->
-        1) must never crowd out the sensible Y Max=100s default -- Y Max
-        itself never moves; Y min is capped instead."""
-        script = self._harness(stable_reference=5000) + "\nconsole.log(JSON.stringify(wwOvercurrentDynamicYMin()));"
-        y_min = self._run(script)
-        assert y_min == pytest.approx(10, rel=1e-9)  # WW_OC_VIEWPORT_DEFAULT.yMax / 10
-        assert y_min < 100
-
-    def test_y_min_ignores_a_non_finite_or_non_positive_reference(self):
-        for bad_ref_js in ["NaN", "-1", "0", "Infinity"]:
-            script = self._harness() + f"""
-            wwOvercurrentState.stableReferenceOperatingTime = {bad_ref_js};
-            console.log(JSON.stringify(wwOvercurrentDynamicYMin()));
-            """
-            assert self._run(script) == pytest.approx(0.1, rel=1e-9)
-
-
-class TestStableReferenceOperatingTimeCapture:
-    """`wwOvercurrentUpdateStableReferenceOperatingTime()` -- captures
-    ONLY from an exact fetch's own genuine, above-pickup computed
-    result; reuses `expected_operating_time_seconds` verbatim (never a
-    new protection quantity); never clobbers a good prior value with a
-    transient below-pickup/error/non-computed instant."""
-
-    def _harness(self):
-        source = _source()
-        return "\n".join([
-            "const wwOvercurrentState = { stableReferenceOperatingTime: null };",
-            _function_body(source, "function wwOvercurrentUpdateStableReferenceOperatingTime(result)", "function wwOvercurrentActiveXAbsoluteBounds"),
-        ])
-
-    def _run(self, script):
-        import json
-        import subprocess
-
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-        return json.loads(result.stdout)
-
-    def test_captures_a_genuine_computed_above_pickup_result(self):
-        script = self._harness() + """
-        wwOvercurrentUpdateStableReferenceOperatingTime({ status: "computed", expected_operating_time_seconds: 1.5 });
-        console.log(JSON.stringify(wwOvercurrentState.stableReferenceOperatingTime));
-        """
-        assert self._run(script) == pytest.approx(1.5, rel=1e-9)
-
-    def test_a_below_pickup_result_never_overwrites_an_existing_reference(self):
-        script = self._harness() + """
-        wwOvercurrentUpdateStableReferenceOperatingTime({ status: "computed", expected_operating_time_seconds: 1.5 });
-        wwOvercurrentUpdateStableReferenceOperatingTime({ status: "computed", expected_operating_time_seconds: null });
-        console.log(JSON.stringify(wwOvercurrentState.stableReferenceOperatingTime));
-        """
-        assert self._run(script) == pytest.approx(1.5, rel=1e-9)
-
-    def test_a_non_computed_status_never_overwrites_an_existing_reference(self):
-        script = self._harness() + """
-        wwOvercurrentUpdateStableReferenceOperatingTime({ status: "computed", expected_operating_time_seconds: 1.5 });
-        wwOvercurrentUpdateStableReferenceOperatingTime({ status: "needs_configuration", message: "x" });
-        console.log(JSON.stringify(wwOvercurrentState.stableReferenceOperatingTime));
-        """
-        assert self._run(script) == pytest.approx(1.5, rel=1e-9)
-
-    def test_a_null_result_never_overwrites_an_existing_reference(self):
-        script = self._harness() + """
-        wwOvercurrentUpdateStableReferenceOperatingTime({ status: "computed", expected_operating_time_seconds: 1.5 });
-        wwOvercurrentUpdateStableReferenceOperatingTime(null);
-        console.log(JSON.stringify(wwOvercurrentState.stableReferenceOperatingTime));
-        """
-        assert self._run(script) == pytest.approx(1.5, rel=1e-9)
-
-    def test_starts_null_before_any_exact_fetch_resolves(self):
-        script = self._harness() + "\nconsole.log(JSON.stringify(wwOvercurrentState.stableReferenceOperatingTime));"
-        assert self._run(script) is None
-
-
-class TestStableReferenceOnlyUpdatedByExactFetch:
-    """The stable reference must be captured from every EXACT fetch
-    (settings/phase/context establishment/change, seek-while-paused) but
-    NEVER from a throttled live-Playback tick -- see
-    wwOvercurrentMaybeFetchForPlayback()/wwOvercurrentRequestAnalysis()."""
-
-    def test_maybe_fetch_for_playback_threads_force_through_as_isexactfetch(self):
-        source = _source()
-        fn = _function_body(source, "function wwOvercurrentMaybeFetchForPlayback()", "function wwOvercurrentSetUpdatingIndicator")
-        assert "wwOvercurrentRequestAnalysis(force);" in fn
-
-    def test_request_analysis_only_updates_the_reference_when_exact(self):
-        source = _source()
-        fn = _function_body(source, "async function wwOvercurrentRequestAnalysis(isExactFetch)", "// ---- Rendering ----")
-        assert fn.count("wwOvercurrentUpdateStableReferenceOperatingTime(result)") == 1
-        assert "if (isExactFetch) wwOvercurrentUpdateStableReferenceOperatingTime(result);" in fn
-        # The single call site sits on the SUCCESS path only, after the
-        # `catch` block's own early `return` -- never reachable from the
-        # fetch-error recovery path.
-        catch_start = fn.index("} catch (error) {")
-        catch_return = fn.index("return;", catch_start)
-        assert "wwOvercurrentUpdateStableReferenceOperatingTime" not in fn[catch_start:catch_return]
 
 
 class TestManualInputCalculatorMode:
