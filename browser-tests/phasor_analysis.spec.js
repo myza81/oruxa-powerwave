@@ -353,10 +353,14 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
     ]);
     await expect(menu).not.toContainText("Differential");
 
+    // Impedance Locus v1 is now a REAL analyzer (implemented 2026-09-17,
+    // see docs/project-memory/IMPEDANCE_LOCUS_ANALYSIS.md) -- only
+    // Sequence Components remains an inert placeholder below.
     await page.locator("#wwAnalysisTypeImpedanceBtn").click();
     await expect(page.locator("#wwAnalysisTypeImpedanceBtn")).toHaveClass(/active/);
     await expect(page.locator("#wwImpedancePanel")).toBeVisible();
-    await expect(page.locator("#wwImpedancePanel")).toContainText("not implemented yet");
+    await expect(page.locator("#wwImpedancePanel")).not.toContainText("not implemented yet");
+    await expect(page.locator("#wwImpedanceInputSourceRecordingBtn")).toBeVisible();
 
     await page.locator("#wwAnalysisTypeSequenceBtn").click();
     await expect(page.locator("#wwAnalysisTypeSequenceBtn")).toHaveClass(/active/);

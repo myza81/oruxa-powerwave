@@ -62,6 +62,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from app.domain.calculated_channel import ChannelRef
 from app.domain.phasor import (
     ManualPhasorRoleInput,
     convert_manual_magnitude_to_secondary,
@@ -220,6 +221,20 @@ def convert_impedance_basis(
 
 @dataclass(slots=True)
 class ImpedanceAnalysisResult:
+    """`voltage_channel_ref`/`current_channel_ref` are populated whenever
+    that quantity's own role resolved to a known channel identity
+    (`available` OR the whole-result-blocked `needs_configuration` case
+    below, mirroring `PhasorDiagramRoleResult.channel_ref`'s own
+    "identity known" precedent) -- this is what lets the shared Related
+    Waveforms panel (`wwAnalysisSetRelatedWaveformRoles()`) know WHICH
+    channel to fetch for this phase's Voltage/Current traces. Without
+    these, the frontend has no channel identity to push, which is
+    exactly the root cause of a real UAT-reported bug: Related Waveforms
+    rendered empty axes with no trace, because every pushed role's own
+    `channelRef` was `undefined` (see docs/project-memory/
+    IMPEDANCE_LOCUS_ANALYSIS.md's own "Related Waveforms" section for the
+    full incident record)."""
+
     status: str
     engineering_context_id: str
     phase: str
@@ -233,8 +248,10 @@ class ImpedanceAnalysisResult:
     reference_frequency_hz: float | None = None
     window_seconds: float | None = None
     algorithm_version: str = ALGORITHM_VERSION
+    voltage_channel_ref: ChannelRef | None = None
     voltage_magnitude_rms: float | None = None
     voltage_unit: str | None = None
+    current_channel_ref: ChannelRef | None = None
     current_magnitude_rms: float | None = None
     current_unit: str | None = None
     resistance_ohm: float | None = None

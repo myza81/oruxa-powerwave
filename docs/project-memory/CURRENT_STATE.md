@@ -9,8 +9,10 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-17** (Impedance Locus v1, DEC-096 —
-see its own entry below in [Implemented capabilities](#implemented-capabilities)).
+Last meaningful update: **2026-09-17** (Impedance Locus v1, DEC-096, and
+its own same-day UAT correction — Related Waveforms blank-trace bug and
+premature full-locus display, both fixed — see their own entries below
+in [Implemented capabilities](#implemented-capabilities)).
 **Event Playback
 ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock),
 its own 2026-09-11 revision) is implemented as a shared, reusable
@@ -809,6 +811,47 @@ detection from recording metadata all remain unimplemented, reserved
 for future, separate slices that this feature's own `ImpedancePoint`/
 R-X-plane foundation is deliberately structured to support without
 requiring this module itself to change.
+
+**Impedance Locus UAT correction, same day (2026-09-17) — Related
+Waveforms blank-trace bug and premature full-locus display both
+fixed.** The first real-browser (Playwright) verification this feature
+ever received (`browser-tests/impedance_analysis.spec.js`, new, 10
+scenarios) surfaced two owner-reported bugs the original v1 slice's own
+static-tests-only coverage had missed. **(1)** Related Waveforms
+rendered empty axes with no Va/Ia trace in Recording mode — root cause:
+the pushed role objects never carried `channelRef`, so the shared
+panel's own cache key collapsed every role onto the same synthetic
+`"none"` key, one (failing) fetch was attempted, and both traces stayed
+uncached. Fixed by adding `voltage_channel_ref`/`current_channel_ref` to
+`ImpedanceAnalysisResult` (sourced from `compute_phasor_diagram()`'s
+own already-resolved channel identity — never re-derived from a channel
+name) and threading them through to the frontend role push, which now
+also gates on channel-identity-known rather than the whole impedance
+`status`, so the Voltage/Current traces stay visible even when the
+low-current guardrail blocks the Ω result. **(2)** The full impedance
+locus was visible immediately instead of only up to the current
+Playback time — fixed with a new `wwImpedanceVisibleLocusCutoffTime()`
+that chronologically clips the DRAWN locus path to the already-fetched
+exact current point's own `analysis_time` (the same instant that draws
+the marker, so trail and marker can never disagree) — the full locus is
+still computed/cached upfront exactly as before (zero change to the
+fetch/cache/no-per-tick-refetch performance model), and the R-X
+viewport intentionally stays sized from the FULL cached locus (a
+stable, non-jumping scale from the first render) while only the drawn
+path itself grows chronologically. Restart/Seek/Play/Pause/end-of-event
+all fall out of this one mechanism with zero special-casing. Two
+pre-existing Playwright tests needed scoping fixes as a direct
+consequence (an unscoped `.ww-oc-settings-grid` locator in
+`overcurrent_analysis.spec.js` now also matches Impedance's own reuse of
+that class; `phasor_analysis.spec.js`'s own analyzer-menu test still
+asserted the Impedance panel said "not implemented yet"), mirroring
+precedents already established elsewhere in this project. Full backend
+suite (5254 tests) and full Playwright suite (169 scenarios across every
+spec) pass. No IEC/RMS/CT/VT/impedance math, basis conversion,
+low-current guardrail, or R/X equal-scale geometry was touched. See
+[IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md)'s own
+"Related Waveforms and chronological locus reveal — UAT correction"
+section for the full record.
 
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test

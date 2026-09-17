@@ -134,6 +134,37 @@ class TestRecordingImpedanceViaHttp:
         assert body["resistance_ohm"] == pytest.approx(86.6025, rel=1e-2)
         assert body["reactance_ohm"] == pytest.approx(50.0, rel=1e-2)
 
+    def test_channel_refs_are_populated_for_related_waveforms(self, client):
+        """UAT-reported bug fix: Related Waveforms needs `channel_ref` on
+        each quantity to know WHICH channel to fetch -- without it, both
+        traces render blank. See docs/project-memory/
+        IMPEDANCE_LOCUS_ANALYSIS.md's own "Related Waveforms" section."""
+        workspace_id, context_id = self._bay_with_known_zabc(client)
+        resp = _impedance(client, workspace_id, context_id, phase="A", analysis_time=1.5)
+        body = resp.json()
+        assert body["voltage_channel_ref"] is not None
+        assert body["voltage_channel_ref"]["channel_name"] == "ZBAY_VA"
+        assert body["current_channel_ref"] is not None
+        assert body["current_channel_ref"]["channel_name"] == "ZBAY_IA"
+
+    def test_channel_refs_populated_even_when_current_too_small(self, client):
+        """`voltage_channel_ref`/`current_channel_ref` should still be
+        known (identity was resolved) even when the low-current guardrail
+        blocks the numeric result -- mirrors `PhasorDiagramRoleResult`'s
+        own "channel_ref populated whenever identity is known" precedent."""
+        workspace_id = "ws-imp-lowcurrent-channelref"
+        source_id = _upload_sine_source(workspace_id=workspace_id, client=client, channels=[
+            ("ZBAY_VA", "V", 100.0, 0.0), ("ZBAY_VB", "V", 100.0, -120.0), ("ZBAY_VC", "V", 100.0, 120.0),
+            ("ZBAY_IA", "A", 1e-6, -30.0), ("ZBAY_IB", "A", 1e-6, -150.0), ("ZBAY_IC", "A", 1e-6, 90.0),
+        ])
+        context = _create_full_bay(client, workspace_id, source_id)
+        resp = _impedance(client, workspace_id, context["id"], phase="A", analysis_time=1.5)
+        body = resp.json()
+        assert body["status"] == "needs_configuration"
+        assert body["reason_code"] == "current_too_small"
+        assert body["voltage_channel_ref"] is not None
+        assert body["current_channel_ref"] is not None
+
     def test_phase_b_uses_vb_ib(self, client):
         workspace_id, context_id = self._bay_with_known_zabc(client)
         resp = _impedance(client, workspace_id, context_id, phase="B", analysis_time=1.5)

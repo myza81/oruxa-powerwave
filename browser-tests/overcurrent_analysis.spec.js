@@ -143,6 +143,14 @@ test.describe("Overcurrent Analysis v1 -- basic configuration", () => {
   });
 });
 
+// Locators scoped to `#wwOvercurrentBody .ww-oc-settings-grid` below
+// (2026-09-17, Impedance Locus chronology fix) -- Impedance Locus v1
+// reuses the identical `.ww-oc-settings-grid` class for its own Phase/
+// basis settings grid (both panels coexist in the DOM, only the active
+// one is unhidden), so an unscoped `.ww-oc-settings-grid` locator now
+// resolves to two elements. Mirrors the exact precedent already set
+// when Phasor's own reuse of `.ww-oc-input-source-panel` required the
+// same fix for a different pre-existing test.
 test.describe("Overcurrent Analysis v1 -- settings form layout correction (2026-09-16 owner UAT)", () => {
   async function setupWithPrimaryBasis(page) {
     const { contextId } = await uploadAndCreateContext(page);
@@ -302,12 +310,12 @@ test.describe("Overcurrent Analysis v1 -- settings form layout correction (2026-
     await openAnalysisOvercurrent(page);
     await selectContextAndWaitForValues(page, contextId);
 
-    const wideColumns = await page.locator(".ww-oc-settings-grid").evaluate((el) => getComputedStyle(el).gridTemplateColumns);
+    const wideColumns = await page.locator("#wwOvercurrentBody .ww-oc-settings-grid").evaluate((el) => getComputedStyle(el).gridTemplateColumns);
     expect(wideColumns.trim().split(/\s+/)).toHaveLength(2); // two columns at normal card width
 
     await page.locator("#wwOvercurrentBody .ww-phasor-values-panel").evaluate((el) => { el.style.width = "260px"; });
     await expect(async () => {
-      const narrowColumns = await page.locator(".ww-oc-settings-grid").evaluate((el) => getComputedStyle(el).gridTemplateColumns);
+      const narrowColumns = await page.locator("#wwOvercurrentBody .ww-oc-settings-grid").evaluate((el) => getComputedStyle(el).gridTemplateColumns);
       expect(narrowColumns.trim().split(/\s+/)).toHaveLength(1); // stacked to one column
     }).toPass({ timeout: 2000 });
 
@@ -349,7 +357,7 @@ test.describe("Overcurrent Analysis v1 -- settings form layout correction (2026-
     }).toPass({ timeout: 5000 });
 
     // Sits below the settings grid, not overlapping it.
-    const gridBox = await page.locator(".ww-oc-settings-grid").boundingBox();
+    const gridBox = await page.locator("#wwOvercurrentBody .ww-oc-settings-grid").boundingBox();
     const valuesBox = await page.locator("#wwOvercurrentValuesList").boundingBox();
     expect(valuesBox.y).toBeGreaterThanOrEqual(gridBox.y + gridBox.height - 1);
   });

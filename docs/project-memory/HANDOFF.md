@@ -8,6 +8,105 @@ Last updated: **2026-09-17**
 
 ## What was most recently done
 
+**Impedance Locus UAT correction — Related Waveforms blank-trace bug and
+premature full-locus display both fixed
+([IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md)'s own
+"Related Waveforms and chronological locus reveal — UAT correction"
+section, same day as v1 itself, no new DEC — a bug-fix correction to
+DEC-096's own implementation, not a new architectural decision).**
+
+Owner UAT reported two issues right after v1 shipped: (1) Related
+Waveforms panels rendered axes but no Voltage/Current trace was ever
+visible; (2) the full impedance locus was visible immediately, even
+before Playback had progressed.
+
+**Root cause 1 (found, not guessed — traced exactly)**:
+`wwImpedanceComputeActiveRelatedWaveformRoles()` pushed role objects
+with no `channelRef` field. The shared Related Waveforms panel's own
+`wwAnalysisChannelRefKey(undefined)` collapses to the same synthetic
+`"none"` cache key for every role, so Voltage and Current collided onto
+one key, only one (failing) fetch was ever attempted
+(`channelRef.kind` accessed on `undefined` threw, silently caught), and
+neither trace ever populated — the axes/grid still rendered (the Plotly
+figure existed), but zero trace data did. **Fix**:
+`app.domain.impedance.ImpedanceAnalysisResult` gained `voltage_channel_ref`/
+`current_channel_ref` (sourced from `compute_phasor_diagram()`'s own
+already-resolved channel identity — the analyzer already read this
+role's magnitude/angle, it simply never carried the identity through),
+wired to `ImpedanceAnalysisResultOut` and the `.../impedance` API
+mapper, and the frontend push now uses `channelRef: result.voltage_channel_ref`/
+`result.current_channel_ref` directly. **Additional deliberate
+correction**: the role-push gate was relaxed from `status === "computed"`
+to per-quantity channel-identity-known, so the Voltage/Current traces
+stay visible even when the low-current guardrail blocks the Ω result —
+exactly when an engineer most needs to see them, to diagnose *why*.
+
+**Root cause 2**: `wwImpedanceRenderPlot()`'s locus-path loop drew the
+ENTIRE cached `locusPoints` array unconditionally, with no relationship
+to `wwPlayback.currentTime`. **Fix**: a new
+`wwImpedanceVisibleLocusCutoffTime()` reads the already-fetched exact
+current point's own `analysis_time` (the SAME instant that draws the
+marker — task's own "use nearest deterministic cached point or existing
+exact point fetch, consistently" requirement, satisfied by using the
+identical source for both) as the chronological cutoff; the locus-path
+loop skips any point past that cutoff. **The fetch/cache performance
+model is completely unchanged** — the full locus is still computed/
+cached exactly once per context/phase/settings/time-range change, never
+per Playback tick (verified unchanged by the existing
+`TestImpedanceLocusIsStaticNotPerTick` static test); only the DRAWING
+step became chronologically aware. The R-X viewport deliberately stays
+sized from the FULL cached locus (never the chronologically-visible
+subset) — a stable, non-jumping scale from the very first render,
+satisfying "show full R-X axes/grid" at the initial state, with only the
+drawn PATH itself growing chronologically. Restart/Seek/Play/Pause/
+end-of-event all fall out of this one mechanism with zero special-
+casing (Restart never calls `wwImpedanceInvalidateLocus()`, so the
+cached locus survives; a seek's own exact fetch updates the cutoff
+immediately).
+
+**Real-browser Playwright coverage added** (`browser-tests/
+impedance_analysis.spec.js`, new, 10 scenarios) — closes this feature's
+own "no real-browser coverage" gap noted at v1 ship time; it was
+precisely that gap that let bug 1 go undetected through static tests
+alone. Verified the new Related-Waveforms test actually catches the
+regression (temporarily reverted the `channelRef` fix, confirmed the
+test failed with the exact reported symptom, restored the fix, confirmed
+green again). New static regression tests:
+`test_frontend_impedance_analysis.py::TestImpedanceRelatedWaveformsChannelRefRegression`/
+`TestImpedanceLocusChronologyRegression` (5), plus 2 new backend API
+tests. **Two pre-existing Playwright tests needed fixing as a direct
+consequence** (same pattern already established twice before in this
+project): `overcurrent_analysis.spec.js`'s settings-grid-width tests
+(unscoped `.ww-oc-settings-grid` now also matches Impedance's own reuse
+of that class — scoped to `#wwOvercurrentBody .ww-oc-settings-grid`),
+and `phasor_analysis.spec.js`'s analyzer-menu test (stale "not
+implemented yet" assertion for the now-real Impedance panel).
+
+**Files**: `backend/app/domain/impedance.py` (+2 fields),
+`backend/app/schemas/impedance_analysis.py` (+2 fields),
+`backend/app/api/v1/engineering_contexts.py` (mapper only),
+`backend/tests/test_impedance_analysis_api.py` (+2 tests),
+`backend/tests/test_frontend_impedance_analysis.py` (+5 tests),
+`frontend/index.html` (role-push + new cutoff helper + locus-loop
+filter), new `browser-tests/impedance_analysis.spec.js` (10 tests),
+`browser-tests/overcurrent_analysis.spec.js` (2 locators scoped),
+`browser-tests/phasor_analysis.spec.js` (1 stale assertion updated).
+
+**Validation**: full backend suite (5254 tests) passes; full Playwright
+suite (169 scenarios across every spec — Impedance, Related Waveforms,
+Playback, Phasor, Overcurrent, and every other existing spec) passes;
+`git diff --check` clean.
+
+**Stop condition honored**: task instruction was "Stop after this
+correction slice" — no IEC/RMS/CT/VT/impedance math, basis conversion,
+low-current guardrail, R/X equal-scale geometry, Manual mode behavior,
+phase identity, or Phasor estimator was touched; no analyzer-specific
+Playback timer was introduced (the existing throttled exact-fetch
+mechanism was reused, never replaced); the analyzer was not redesigned
+beyond this scope.
+
+## What was done in the prior session
+
 **Impedance Locus v1 implemented — the THIRD Analysis-menu analyzer
 ([DECISIONS.md — DEC-096](DECISIONS.md#dec-096--impedance-locus-v1-the-third-analysis-menu-analyzer-apparent-phase-impedance-measurementvisualization-explicitly-not-distance-protection),
 [IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md) new

@@ -145,8 +145,8 @@ def compute_impedance_analysis(
             analysis_time=analysis_time, recording_basis=recording_basis, impedance_basis=impedance_basis,
             vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
             reference_frequency_hz=diagram.reference_frequency_hz, window_seconds=diagram.window_seconds,
-            voltage_magnitude_rms=voltage_role.magnitude_rms, voltage_unit=voltage_role.unit,
-            current_magnitude_rms=current_role.magnitude_rms, current_unit=current_role.unit,
+            voltage_channel_ref=voltage_role.channel_ref, voltage_magnitude_rms=voltage_role.magnitude_rms, voltage_unit=voltage_role.unit,
+            current_channel_ref=current_role.channel_ref, current_magnitude_rms=current_role.magnitude_rms, current_unit=current_role.unit,
             reason_code=REASON_CURRENT_TOO_SMALL, message="Current too small for reliable impedance calculation.",
         )
 
@@ -160,8 +160,8 @@ def compute_impedance_analysis(
         analysis_time=analysis_time, recording_basis=recording_basis, impedance_basis=impedance_basis,
         vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
         reference_frequency_hz=diagram.reference_frequency_hz, window_seconds=diagram.window_seconds,
-        voltage_magnitude_rms=voltage_role.magnitude_rms, voltage_unit=voltage_role.unit,
-        current_magnitude_rms=current_role.magnitude_rms, current_unit=current_role.unit,
+        voltage_channel_ref=voltage_role.channel_ref, voltage_magnitude_rms=voltage_role.magnitude_rms, voltage_unit=voltage_role.unit,
+        current_channel_ref=current_role.channel_ref, current_magnitude_rms=current_role.magnitude_rms, current_unit=current_role.unit,
         resistance_ohm=point_out.resistance_ohm, reactance_ohm=point_out.reactance_ohm,
         magnitude_ohm=point_out.magnitude_ohm, angle_deg=point_out.angle_deg,
         message="Impedance computed.",

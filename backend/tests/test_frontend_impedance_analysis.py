@@ -213,3 +213,62 @@ class TestImpedanceWiredIntoSharedInfrastructure:
         source = _source()
         fn = _function_body(source, "function wwImpedanceComputeActiveRelatedWaveformRoles", "function wwImpedancePushRelatedWaveformRoles")
         assert "if (wwImpedanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return [];" in fn
+
+
+class TestImpedanceRelatedWaveformsChannelRefRegression:
+    """UAT fix (2026-09-17): Related Waveforms rendered blank axes with
+    no Va/Ia trace, because the pushed role objects never carried
+    `channelRef` -- `wwAnalysisChannelRefKey(undefined)` collapses to the
+    same synthetic `"none"` key for every role, so only one (failing)
+    fetch was ever attempted. See docs/project-memory/
+    IMPEDANCE_LOCUS_ANALYSIS.md's own "Related Waveforms" section."""
+
+    def test_both_roles_carry_channel_ref_from_the_backend_response(self):
+        source = _source()
+        fn = _function_body(source, "function wwImpedanceComputeActiveRelatedWaveformRoles", "function wwImpedancePushRelatedWaveformRoles")
+        assert "channelRef: result.voltage_channel_ref" in fn
+        assert "channelRef: result.current_channel_ref" in fn
+
+    def test_role_gate_is_channel_identity_not_overall_computed_status(self):
+        """A role's own channel is just as real (and just as useful to
+        plot) when the overall impedance `status` is blocked (e.g. the
+        low-current guardrail) -- gating on `result.voltage_channel_ref`/
+        `result.current_channel_ref` directly, never on
+        `result.status === "computed"`, is what lets an engineer see the
+        Voltage/Current traces while diagnosing exactly why the current
+        is near zero."""
+        source = _source()
+        fn = _function_body(source, "function wwImpedanceComputeActiveRelatedWaveformRoles", "function wwImpedancePushRelatedWaveformRoles")
+        assert 'result.status !== "computed"' not in fn
+        assert "if (result.voltage_channel_ref)" in fn
+        assert "if (result.current_channel_ref)" in fn
+
+
+class TestImpedanceLocusChronologyRegression:
+    """UAT fix (2026-09-17): the full cached locus was drawn immediately,
+    even before Playback had progressed. The full locus is still
+    computed/cached upfront (performance model preserved); only the
+    DRAWN portion is chronologically clipped."""
+
+    def test_cutoff_helper_reads_the_already_fetched_exact_point(self):
+        source = _source()
+        fn = _function_body(source, "function wwImpedanceVisibleLocusCutoffTime", "function wwImpedanceRenderPlot")
+        assert "wwImpedanceState.latestResult" in fn
+        assert "result.analysis_time" in fn
+
+    def test_locus_path_loop_applies_the_cutoff(self):
+        source = _source()
+        fn = _function_body(source, "function wwImpedanceRenderPlot", "// ---- Input Source (Recording/Manual)")
+        assert "wwImpedanceVisibleLocusCutoffTime()" in fn
+        assert "p.analysis_time > cutoffTime" in fn
+
+    def test_viewport_sizing_still_uses_the_full_cached_locus(self):
+        """The VIEWPORT (axis scale/headroom) intentionally stays based
+        on the full cached locus, not just the visible portion -- a
+        stable, non-jumping scale from the very first render, per the
+        task's own "show full R-X axes/grid" initial-state requirement.
+        Only the drawn PATH is chronologically clipped, never the scale."""
+        source = _source()
+        fn = _function_body(source, "function wwImpedanceCollectRelevantPoints", "function wwImpedanceFormatTick")
+        assert "cutoffTime" not in fn
+        assert "wwPlayback" not in fn

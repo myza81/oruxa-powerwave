@@ -1,14 +1,25 @@
 # Impedance Locus Analysis
 
-**Status: v1 implemented** — the THIRD Analysis-menu analyzer (Phasor,
-Overcurrent, then Impedance Locus). Measurement/visualization only — this
-is explicitly **NOT Distance Protection**: no protection zones, mho/
-quadrilateral characteristics, fault loops, residual-current (k0)
-compensation, phase-to-phase loops, directional logic, or trip
-evaluation exist anywhere in this feature. A future, separate Distance
-Protection analyzer is expected to reuse this same `ImpedancePoint`/R-X-
-plane foundation — see "Reusable foundation for a future Distance
-Protection analyzer" below.
+**Status: v1 implemented and UAT-corrected** — the THIRD Analysis-menu
+analyzer (Phasor, Overcurrent, then Impedance Locus). Measurement/
+visualization only — this is explicitly **NOT Distance Protection**: no
+protection zones, mho/quadrilateral characteristics, fault loops,
+residual-current (k0) compensation, phase-to-phase loops, directional
+logic, or trip evaluation exist anywhere in this feature. A future,
+separate Distance Protection analyzer is expected to reuse this same
+`ImpedancePoint`/R-X-plane foundation — see "Reusable foundation for a
+future Distance Protection analyzer" below.
+
+**2026-09-17 UAT correction** (own section below, "Related Waveforms and
+chronological locus reveal — UAT correction"): two owner-reported bugs
+were fixed the same day — Related Waveforms rendered blank axes with no
+Voltage/Current trace, and the full impedance locus was visible
+immediately instead of only up to the current Playback time. Both are
+now fixed; see that section for the full root-cause and fix record. This
+is the FIRST time this feature received real-browser (Playwright)
+verification — the original v1 slice's own "no real-browser coverage"
+gap (noted in "Known limitations" below) is what let the Related
+Waveforms bug go undetected through static tests alone.
 
 ## Product definition
 
@@ -202,6 +213,12 @@ Two logically separate concerns, both backed by dedicated endpoints:
    frontend renders only contiguous `computed` runs as the path,
    starting a new SVG subpath (`M x,y`) after any gap, so an invalid
    stretch is a visible break, never a straight line jumping across it.
+   **The full locus may be (and is) computed/cached upfront for
+   performance, but only the portion up to `wwPlayback.currentTime` is
+   ever displayed** (via the already-fetched exact current point's own
+   `analysis_time` as the chronological cutoff — see "Related Waveforms
+   and chronological locus reveal — UAT correction" below for the full
+   record of this 2026-09-17 fix).
 
 ### Locus caching — fetched on settings change, never per Playback tick
 
@@ -218,6 +235,135 @@ invalidate and re-fetch it. This mirrors Overcurrent's own
 `.../overcurrent-curve` caching precedent (curve geometry fetched only
 on a characteristic/TMS change, never per tick) applied to a time-series
 locus instead of a characteristic curve.
+
+## Related Waveforms and chronological locus reveal — UAT correction (2026-09-17)
+
+Two owner-reported bugs, found together via the first real-browser
+verification this feature ever received, both fixed the same day.
+
+### Bug 1 — Related Waveforms rendered blank axes with no trace
+
+**Root cause**: `wwImpedanceComputeActiveRelatedWaveformRoles()` pushed
+role objects with no `channelRef` field at all. The shared Related
+Waveforms panel's own cache key
+(`wwAnalysisChannelRefKey(role.channelRef)`) collapses `undefined` to
+the same synthetic `"none"` string for every role — so BOTH the Voltage
+and Current roles collided onto one cache key, only one fetch was ever
+attempted (`wwAnalysisFetchChannelWaveform(workspaceId, undefined, ...)`),
+and that fetch threw immediately (`channelRef.kind` on `undefined`),
+silently caught and left uncached. The axes/grid still rendered (the
+Plotly figure itself was created), but no trace data ever populated —
+exactly the reported symptom.
+
+**Fix**: `app.domain.impedance.ImpedanceAnalysisResult` gained
+`voltage_channel_ref`/`current_channel_ref` fields (populated from
+`compute_phasor_diagram()`'s own already-resolved
+`PhasorDiagramRoleResult.channel_ref`, which this analyzer already reads
+for magnitude/angle — the identity was always available, it simply
+wasn't being carried into the result object). Wired through
+`ImpedanceAnalysisResultOut` and the `.../impedance` API mapper.
+`wwImpedanceComputeActiveRelatedWaveformRoles()` now pushes
+`channelRef: result.voltage_channel_ref`/`result.current_channel_ref`
+directly from the already-resolved backend response — never re-derived
+from a channel name, matching every other analyzer's own established
+convention.
+
+**A deliberate additional correction, beyond the literal bug report**:
+the role-push gate was relaxed from `result.status === "computed"` to
+per-quantity `if (result.voltage_channel_ref)` / `if (result.current_channel_ref)`.
+A role's own channel identity is resolved independently of whether the
+FULL impedance calculation succeeds (e.g. the low-current guardrail
+blocks the Ω result but the Voltage/Current channels themselves are
+perfectly real) — gating on overall `status` would have hidden exactly
+the waveform traces an engineer most needs when diagnosing *why* a
+guardrail tripped. Verified directly:
+`test_impedance_analysis_api.py::TestRecordingImpedanceViaHttp::
+test_channel_refs_populated_even_when_current_too_small`.
+
+### Bug 2 — the full locus was visible before Playback progressed
+
+**Root cause**: `wwImpedanceRenderPlot()`'s locus-path-drawing loop
+iterated the ENTIRE cached `wwImpedanceState.locusPoints` array
+unconditionally, with no relationship to `wwPlayback.currentTime` at
+all — the whole event's trajectory rendered the instant the locus fetch
+resolved, regardless of where Playback actually was.
+
+**Fix**: a new `wwImpedanceVisibleLocusCutoffTime()` returns
+`wwImpedanceState.latestResult.analysis_time` (or `null` before any
+exact point has ever been fetched) — the SAME already-fetched, already-
+throttled current-point result that draws the marker itself (task's own
+"use nearest deterministic cached point or existing exact point fetch,
+consistently" requirement, satisfied by choosing the SAME source for
+both the trail's endpoint and the marker, so they can never disagree
+about which instant they represent). The locus-path loop now skips any
+point with `analysis_time > cutoffTime` (a small `1e-6` epsilon absorbs
+floating-point noise between the independently-sampled locus grid and
+the exact-fetched cutoff instant). Both `analysis_time` values are
+already in the identical coordinate (native/source-relative elapsed
+time, both derived via the SAME `wwImpedanceState.anchorDisplaySourceId`
+anchor conversion), so no further conversion was needed.
+
+**The full locus/performance model is completely unchanged** —
+`wwImpedanceMaybeFetchLocus()` still fetches/caches the WHOLE locus
+exactly once per context/phase/settings/time-range change, still never
+refetches per Playback tick (unchanged `signature` short-circuit,
+verified by `TestImpedanceLocusIsStaticNotPerTick`). Only the DRAWING
+step became chronologically aware; the fetch/cache step was never
+touched. Because the current-point fetch is throttled to ~10 Hz while
+playing (unchanged, pre-existing architecture — see "Recording mode —
+current point + static locus" above), the trail's own visible growth is
+tied to that same ~10 Hz cadence, not a separate 60 fps render loop —
+deliberately, so the trail's endpoint and the marker are always derived
+from the identical fetched instant and can never desynchronize.
+
+**The VIEWPORT (axis scale/headroom) intentionally stays based on the
+FULL cached locus**, not just the chronologically-visible portion —
+`wwImpedanceCollectRelevantPoints()` (used only for `wwImpedanceNiceLimit()`
+sizing) was deliberately left unchanged. This means the R-X axes are
+already scaled to the eventual full-event range from the very first
+render (satisfying the task's own "show full R-X axes/grid" initial-
+state requirement) and never visibly rescale/jump as more of the trail
+is progressively revealed — only the PATH drawn within that stable
+viewport grows chronologically. Restart/Seek/Play/Pause all fall out of
+this one mechanism with zero special-casing: Restart re-lands the exact
+fetch at `bounds.start` (collapsing the cutoff, never touching the
+cached locus itself — `wwImpedanceInvalidateLocus()` is not called on
+Restart); a seek's own exact, non-throttled fetch updates the cutoff
+immediately (never animating through skipped history); reaching
+`bounds.end` naturally reveals the entire cached locus once the cutoff
+exceeds every sampled point's own time.
+
+**Real-browser verification** (`browser-tests/impedance_analysis.spec.js`,
+new — 10 scenarios): Related Waveforms Va/Ia trace geometry before Play,
+Phase A→B trace switching, 1366px/1024px responsiveness, initial-state
+(cached-but-not-drawn) locus, Play growing the trail then Pause freezing
+it, Seek immediately expanding the trail, Restart collapsing it (cached
+locus count unchanged), full reveal at the event end, zero
+`/impedance-locus`/`/waveform` requests during Playback ticks, and
+Manual mode's own unaffected one-point/no-trail behavior. Confirmed to
+actually catch the Bug 1 regression (verified by temporarily reverting
+the `channelRef` fix and re-running — the trace-visibility test failed
+exactly as expected, then passed again once restored). New static
+regression tests:
+`test_frontend_impedance_analysis.py::TestImpedanceRelatedWaveformsChannelRefRegression`/
+`TestImpedanceLocusChronologyRegression` (5 tests), plus two new backend
+API tests
+(`test_impedance_analysis_api.py::TestRecordingImpedanceViaHttp::
+test_channel_refs_are_populated_for_related_waveforms`/
+`test_channel_refs_populated_even_when_current_too_small`). Two
+pre-existing Playwright tests needed fixing as a DIRECT consequence of
+this slice (both mirror precedents already established elsewhere in
+this project):
+`overcurrent_analysis.spec.js`'s own settings-grid-width tests (an
+unscoped `.ww-oc-settings-grid` locator now also matches Impedance's own
+reuse of that class — scoped to `#wwOvercurrentBody .ww-oc-settings-grid`,
+mirroring the earlier `.ww-oc-input-source-panel` collision fix), and
+`phasor_analysis.spec.js`'s own analyzer-menu test (previously asserted
+the Impedance panel still said "not implemented yet," true before v1
+shipped, stale after it). No IEC/RMS/CT/VT/impedance math, basis
+conversion, low-current guardrail, or R/X equal-scale geometry was
+touched by this correction — see [DECISIONS.md](DECISIONS.md) for
+whether this amends DEC-096 formally.
 
 ## Validation / guardrails
 
@@ -329,25 +475,34 @@ its THIRD real implementation:
   "change" event convention for every Manual field — all identical in
   shape to Overcurrent's/Phasor's own implementations.
 - Related Waveforms: Recording mode declares the selected phase's own
-  Voltage+Current role pair (`Va`+`Ia` for Phase A, etc.) via
+  Voltage+Current role pair (`Va`+`Ia` for Phase A, etc.), each carrying
+  `channelRef` straight from the already-resolved backend response
+  (`result.voltage_channel_ref`/`result.current_channel_ref` — see the
+  "Related Waveforms and chronological locus reveal — UAT correction"
+  section below for why this specific field is what actually makes the
+  shared panel's own fetch work) via
   `wwImpedanceComputeActiveRelatedWaveformRoles()`; Manual mode declares
   zero roles (hides/collapses the shared panel, mirroring Overcurrent's/
   Phasor's own corrected choice — never a fabricated manual waveform).
+  The full recording waveform geometry renders immediately once
+  Recording mode + Engineering Context + phase are all resolved —
+  Playback state never controls whether the traces themselves exist,
+  only where the shared cursor overlay currently sits (see
+  [ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md)'s own "Shared Related
+  Waveforms" section for that unchanged, pre-existing architecture).
 - Playback's own fetch-triggering half is gated off entirely while
   Manual is active (`wwImpedanceOnPlaybackTick()`'s own early return);
   the transport-UI-sync half stays unconditional per DEC-085.
 
 ## Known limitations / explicitly deferred (not this slice)
 
-- **No real-browser Playwright coverage was added this slice** — only
-  static structural regression tests
-  (`backend/tests/test_frontend_impedance_analysis.py`) exist for the
-  frontend; visual rendering, real pointer interaction, and the
-  Playback-integration timing behavior were reasoned through and unit/
-  API-tested at the backend layer, but not confirmed in a real browser.
-  Flagged for owner UAT, mirroring the honesty precedent this project
-  already applies to every prior slice that shipped without a browser
-  available.
+- **Real-browser Playwright coverage now exists** (`browser-tests/
+  impedance_analysis.spec.js`, 10 scenarios, added 2026-09-17 alongside
+  the "Related Waveforms and chronological locus reveal" UAT correction
+  above) — the original v1 slice's own "no real-browser coverage" gap is
+  CLOSED. It was this exact gap that let the Related Waveforms blank-
+  trace bug ship undetected through static tests alone; see that
+  section's own record for the incident this closes.
 - Distance Protection (zones, mho/quadrilateral, fault loops, ground
   compensation, directional logic, trip interpretation) — not started;
   a future, separate analyzer.

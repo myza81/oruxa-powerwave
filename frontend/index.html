@@ -38909,19 +38909,44 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwImpedanceRenderPlot();
         }
 
+        // UAT fix: `channelRef` is what actually lets the shared Related
+        // Waveforms panel know WHICH channel to fetch
+        // (`wwAnalysisFetchChannelWaveform()`/`wwAnalysisChannelRefKey()`
+        // both key entirely off it) -- omitting it (the original bug)
+        // meant every pushed role collapsed onto the same synthetic
+        // "none" cache key, so only one (failing) fetch was ever
+        // attempted and both traces stayed blank. `channel_ref` always
+        // comes straight from the already-resolved backend response,
+        // never re-derived from a channel name (see
+        // docs/project-memory/IMPEDANCE_LOCUS_ANALYSIS.md's own "Related
+        // Waveforms" section for the full incident record). Gated on
+        // channel IDENTITY being known, not on the overall impedance
+        // `status` -- a role's own channel is just as real (and just as
+        // useful to see plotted) when the IMPEDANCE calculation itself
+        // is blocked (e.g. the low-current guardrail): the engineer
+        // diagnosing "why is my current near zero" needs the waveform
+        // trace precisely in that situation, mirroring how Overcurrent's
+        // own Related Waveforms role never depends on whether the IDMT
+        // result itself computed.
         function wwImpedanceComputeActiveRelatedWaveformRoles() {
             if (wwImpedanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return [];
             const result = wwImpedanceState.latestResult;
-            if (!result || result.status !== "computed") return [];
+            if (!result) return [];
             const phase = wwImpedanceState.phase;
             const roles = [];
-            if (result.voltage_magnitude_rms !== null && result.voltage_magnitude_rms !== undefined) {
+            if (result.voltage_channel_ref) {
                 const key = "V" + phase.toLowerCase();
-                roles.push({ roleKey: key, engineeringType: "Voltage", phase, unit: result.voltage_unit, label: key, color: wwPhasorRoleColor(key) });
+                roles.push({
+                    roleKey: key, engineeringType: "Voltage", phase, channelRef: result.voltage_channel_ref,
+                    unit: result.voltage_unit, label: key, color: wwPhasorRoleColor(key),
+                });
             }
-            if (result.current_magnitude_rms !== null && result.current_magnitude_rms !== undefined) {
+            if (result.current_channel_ref) {
                 const key = "I" + phase.toLowerCase();
-                roles.push({ roleKey: key, engineeringType: "Current", phase, unit: result.current_unit, label: key, color: wwPhasorRoleColor(key) });
+                roles.push({
+                    roleKey: key, engineeringType: "Current", phase, channelRef: result.current_channel_ref,
+                    unit: result.current_unit, label: key, color: wwPhasorRoleColor(key),
+                });
             }
             return roles;
         }
@@ -38968,6 +38993,29 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (abs >= 1) return value.toFixed(abs >= 100 ? 0 : 1);
             return value.toPrecision(2);
         }
+        // UAT fix: chronological locus reveal. The full locus may be
+        // (and is) computed/cached upfront for performance -- but only
+        // the portion up to the authoritative Playback time should ever
+        // be DRAWN. `wwImpedanceState.latestResult.analysis_time` is the
+        // deterministic cutoff -- the SAME already-fetched exact-point
+        // result (task section 13's own "existing exact point fetch,
+        // used consistently") that also draws the current marker below,
+        // so the trail's own endpoint and the marker can never disagree
+        // about which instant they represent. Both `analysis_time` here
+        // and every `ImpedanceLocusPointOut.analysis_time` are already
+        // in the SAME coordinate (native/source-relative elapsed time --
+        // both were derived via the identical `wwWorkspaceTimeToSourceTime()`
+        // anchor conversion, see `wwImpedanceRequestAnalysis()`/
+        // `wwImpedanceMaybeFetchLocus()`), so no further conversion is
+        // needed here. `null` (no exact point fetched yet -- the very
+        // first render before Playback has ever settled anywhere) means
+        // nothing is chronologically confirmed yet: no trail at all,
+        // matching the task's own "no meaningful future trail" initial-
+        // state requirement.
+        function wwImpedanceVisibleLocusCutoffTime() {
+            const result = wwImpedanceState.latestResult;
+            return result ? result.analysis_time : null;
+        }
         function wwImpedanceRenderPlot() {
             const svg = document.getElementById("wwImpedanceSvg");
             const scaleNote = document.getElementById("wwImpedanceScaleNote");
@@ -38995,15 +39043,27 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             parts.push('<text class="ww-imp-tick-label" x="4" y="' + (-WW_IMPEDANCE_PLOT_RADIUS + 4) + '" text-anchor="start">' + wwImpedanceFormatTick(limit) + '</text>');
             parts.push('<text class="ww-imp-tick-label" x="4" y="' + (WW_IMPEDANCE_PLOT_RADIUS - 1) + '" text-anchor="start">' + wwImpedanceFormatTick(-limit) + '</text>');
 
-            // Locus path -- Recording mode only, contiguous `computed` runs.
+            // Locus path -- Recording mode only, contiguous `computed`
+            // runs, chronologically clipped to `wwImpedanceVisibleLocusCutoffTime()`
+            // (UAT fix: the full cached locus must never be shown before
+            // Playback has actually progressed to it -- see task's own
+            // "Impedance Locus" behavior model). A small epsilon absorbs
+            // ordinary floating-point noise between the sampled locus
+            // grid and the exact-fetched cutoff instant, so the CURRENT
+            // point's own sample (when it lands near a locus grid point)
+            // is never flickeringly excluded.
+            const WW_IMPEDANCE_LOCUS_CUTOFF_EPS = 1e-6;
             if (wwImpedanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_RECORDING) {
+                const cutoffTime = wwImpedanceVisibleLocusCutoffTime();
                 let path = "";
                 let drawing = false;
-                for (const p of wwImpedanceState.locusPoints) {
-                    if (p.status !== "computed") { drawing = false; continue; }
-                    const [x, y] = toSvg(p.resistance_ohm, p.reactance_ohm);
-                    path += (drawing ? " L " : " M ") + x.toFixed(2) + "," + y.toFixed(2);
-                    drawing = true;
+                if (cutoffTime !== null) {
+                    for (const p of wwImpedanceState.locusPoints) {
+                        if (p.status !== "computed" || p.analysis_time > cutoffTime + WW_IMPEDANCE_LOCUS_CUTOFF_EPS) { drawing = false; continue; }
+                        const [x, y] = toSvg(p.resistance_ohm, p.reactance_ohm);
+                        path += (drawing ? " L " : " M ") + x.toFixed(2) + "," + y.toFixed(2);
+                        drawing = true;
+                    }
                 }
                 if (path) parts.push('<path class="ww-imp-locus-path" d="' + path.trim() + '"></path>');
             }
