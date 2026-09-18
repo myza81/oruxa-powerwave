@@ -80,21 +80,22 @@ class TestPlaybackIsNotATopLevelPage:
         assert 'id="mainNavPlaybackBtn"' not in nav_list
         assert '<span class="shell-nav-label">Playback</span>' not in nav_list
 
-    def test_analysis_follows_calculated_channels_before_tools_placeholder(self):
+    def test_analysis_follows_calculated_channels_as_final_main_nav_item(self):
         """Confirms the nav list's current real shape: Calculated
         Channels, then the new Analysis destination (Phasor Analysis
-        Slice 2), then the still-disabled Tools placeholder -- nothing
-        Playback-specific spliced in anywhere."""
+        Slice 2) -- nothing Playback-specific spliced in anywhere."""
         source = _source()
         nav_list = _function_body(source, 'class="shell-nav-list"', 'class="shell-nav-bottom"')
         cc_index = nav_list.index('id="mainNavCalculatedChannelsBtn"')
-        tools_index = nav_list.index('title="Tools -- coming soon"')
-        between = nav_list[cc_index:tools_index]
-        # Exactly two shell-nav-items (Calculated Channels itself, then
-        # Analysis) between Calculated Channels' own start and the Tools
-        # placeholder -- nothing Playback-specific spliced in.
-        assert between.count('class="shell-nav-item"') == 2
-        assert 'id="mainNavAnalysisBtn"' in between
+        analysis_index = nav_list.index('id="mainNavAnalysisBtn"')
+        tail = nav_list[cc_index:]
+        # Analysis immediately follows Calculated Channels, with nothing
+        # Playback-specific spliced in and no premature placeholders after it.
+        assert cc_index < analysis_index
+        assert 'class="shell-nav-item"' not in nav_list[analysis_index + len('id="mainNavAnalysisBtn"'):]
+        assert 'id="mainNavAnalysisBtn"' in tail
+        assert '<span class="shell-nav-label">Tools</span>' not in nav_list
+        assert '<span class="shell-nav-label">Reports</span>' not in nav_list
 
 
 class TestPlaybackIsAReusableEmbeddableCapability:
