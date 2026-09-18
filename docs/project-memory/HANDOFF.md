@@ -4,9 +4,149 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-17**
+Last updated: **2026-09-18**
 
 ## What was most recently done
+
+**Sequence Components v1 — the FOURTH Analysis-menu analyzer
+([SEQUENCE_COMPONENTS_ANALYSIS.md](SEQUENCE_COMPONENTS_ANALYSIS.md),
+[DECISIONS.md — DEC-097](DECISIONS.md#dec-097--sequence-components-v1-the-fourth-analysis-menu-analyzer-positivenegativezero-sequence-voltage-and-current-calculationvisualization)).**
+
+Activated the pre-existing `Sequence Components` nav placeholder
+(order preserved: Phasor, Overcurrent, Impedance Locus, Sequence
+Components). Calculates positive-/negative-/zero-sequence Voltage and
+Current (classical Fortescue transform, `a = exp(j*120deg)`) from
+three-phase phasors, visualized on one combined polar diagram with two
+independent per-family graphical scales. Calculation + visualization
+only — explicitly no protection interpretation (no unbalance limits,
+negative-sequence relay claims, ground-fault analysis, fault
+classification, sequence-network diagrams, or sequence impedance).
+
+**Architecture, in one paragraph**: Recording mode reuses the existing,
+unchanged `phasor_analysis_service.compute_phasor_diagram()` verbatim —
+zero duplicated FFT/DFT/RMS code, same pattern Impedance Locus's own
+Recording mode already established. Unlike Phasor's own six-independent-
+role diagram, a sequence transform mathematically requires a COMPLETE
+three-phase set per family, so a new `_evaluate_family()` helper in
+`app.services.sequence_components_analysis_service` requires Va+Vb+Vc
+(or Ia+Ib+Ic) all `available` before calling the transform, reporting
+the worst of the three roles' own statuses otherwise (Voltage and
+Current evaluated fully independently — one family's own incompleteness
+never blocks the other). `app.domain.sequence_components` is this
+codebase's first module needing genuine complex-number arithmetic
+(stdlib `complex`/`cmath` — every prior module hand-rolled real/
+imaginary bookkeeping for a hot per-sample estimator loop this feature
+does not have). Manual mode reuses the Manual Phasor six-role, two-
+independent-basis architecture VERBATIM (`evaluate_manual_phasor_role()`/
+`convert_manual_magnitude_to_secondary()`, both `app.domain.phasor`) —
+never a direct V0/V1/V2 entry field, since a sequence value is only ever
+meaningful when derived from a genuine phase-domain set; both Recording
+and Manual funnel through the SAME `_evaluate_family()` helper, so there
+is exactly ONE authoritative symmetrical-component implementation.
+Sequence ratios (`|V2|/|V1|`, `|V0|/|V1|`, `|I2|/|I1|`, `|I0|/|I1|`) are
+descriptive only, guarded against a near-zero positive-sequence
+denominator (`MIN_POSITIVE_SEQUENCE_MAGNITUDE = 1e-9`) — reports
+"Unavailable" rather than `Infinity`/`NaN`. Color identity is sequence-
+based (three new `--ww-seq-positive/-negative/-zero` tokens in
+`frontend/theme.css`), never reusing the phase A/B/C tokens. The
+Recording-Playback-stability diagram-scale freeze is gated on
+`inputSource` from day one (this analyzer never had the Manual/
+Recording scale-leak bug Phasor's own diagram once had and later
+fixed).
+
+**API**: `GET .../engineering-contexts/{id}/sequence-components`
+(Recording, both families together), `GET .../sequence-components-manual`
+(workspace-scoped Manual) — same router file/nesting convention every
+prior analyzer's own endpoints already established.
+
+**Tests**: `test_sequence_components_domain.py` (18 — golden balanced-
+positive/pure-zero/pure-negative-sequence vectors, a Fortescue
+conservation-identity check on unbalanced input, angle normalization,
+the near-zero-ratio guardrail), `test_sequence_components_analysis_api.py`
+(17 — real ASCII-COMTRADE-upload Recording scenarios + zero-prior-setup
+Manual scenarios via real HTTP), `test_frontend_sequence_components_
+analysis.py` (29 structural tests), plus four pre-existing static tests
+updated for the fourth registered consumer/analyzer entry
+(`TestSharedAnalysisContextConsumers`, the renamed no-more-placeholder
+tests in `test_frontend_phasor_analysis.py`/`test_frontend_impedance_
+analysis.py`, `TestSharedAnalysisPlaybackStyling`) and
+`test_analysis_requirements.py`'s registry-count assertions (17→23
+requirements, 3→4 `analysis_kind`s). Full backend regression passes.
+**Real-browser Playwright coverage added from day one**
+(`browser-tests/sequence_components_analysis.spec.js`, 14 scenarios —
+navigation, empty-workspace Manual golden flow, pure-zero/pure-negative
+Manual scenarios, Manual basis conversion, independent Voltage/Current
+bases, incomplete-family guardrail, Recording golden flow + Related
+Waveforms, Playback Play/Pause, visibility toggle, Recording↔Manual
+state isolation, responsive layout at 1366px/1024px) — deliberately
+closing the exact "no Playwright coverage" gap Impedance Locus v1's own
+first slice left open; one stale `phasor_analysis.spec.js` assertion
+("Sequence Components still says not implemented yet") was updated to
+its opposite.
+
+**Two pre-existing, unrelated flaky Playwright tests were found,
+diagnosed, and reported during this session's own regression
+verification — NOT fixed, per Change Governance (report, don't silently
+patch unrelated pre-existing issues). Both are `[OPEN]` for a future,
+separate task:**
+1. `phasor_analysis.spec.js` — "a later-uploaded, uncovered source is
+   discovered automatically without disturbing the already-usable bay."
+   Root cause: uploading a second source triggers a synchronization-
+   state refresh that can reassign a DIFFERENT `time_group_id` to an
+   already-Playback-active Time Group's own source, so
+   `wwPlayback.activeTimeGroupId` (the OLD id) no longer matches the
+   freshly-recomputed `groupId`, forcing an unwanted full Restart-to-
+   `bounds.start` reclaim on re-entry. Reproduced on a clean `git
+   stash`-restored baseline (2 of 3 runs passed, 1 failed) — confirmed
+   pre-existing, unrelated to this slice.
+2. `impedance_analysis.spec.js` — "initial state: current point
+   visible, full future locus not visible" — failed once in a long
+   (167-test, ~8 min) combined run, passed reliably in isolation; a
+   timing/load-sensitive `toPass({timeout: 5000})` race, not
+   investigated further.
+
+**Files**: new `backend/app/domain/sequence_components.py`,
+`backend/app/services/sequence_components_analysis_service.py`,
+`backend/app/schemas/sequence_components_analysis.py`,
+`backend/tests/test_sequence_components_domain.py`,
+`backend/tests/test_sequence_components_analysis_api.py`,
+`backend/tests/test_frontend_sequence_components_analysis.py`,
+`browser-tests/sequence_components_analysis.spec.js`; modified
+`backend/app/domain/analysis_requirements.py` (+6 requirement
+constants), `backend/app/api/v1/engineering_contexts.py` (+2 endpoints),
+`backend/tests/test_analysis_requirements.py`,
+`backend/tests/test_frontend_phasor_analysis.py`,
+`backend/tests/test_frontend_impedance_analysis.py`,
+`backend/tests/test_frontend_playback.py`,
+`browser-tests/phasor_analysis.spec.js` (1 stale assertion),
+`frontend/index.html` (new panel markup + JS module, ~1400 lines),
+`frontend/theme.css` (+6 color-token lines); new doc
+`docs/project-memory/SEQUENCE_COMPONENTS_ANALYSIS.md`; updated
+`docs/project-memory/ANALYSIS_INPUT_SOURCE.md`,
+`docs/project-memory/ANALYSIS_WORKSPACE.md`,
+`docs/project-memory/DECISIONS.md` (DEC-097),
+`docs/project-memory/CURRENT_STATE.md`.
+
+**Validation**: full backend suite passes; Sequence Components'
+own Playwright spec (14/14) plus the full Analysis-related Playwright
+regression (167 scenarios across phasor/overcurrent/impedance/playback/
+related-waveforms/bare-context/sequence specs, 166/167 passing — the
+one failure is the pre-existing, reproduced-as-flaky-on-baseline
+Phasor re-entry test above, not a regression) all pass; `node --check`
+on the extracted inline `<script>` confirms JS syntax validity after
+every edit.
+
+**Stop condition honored**: task instruction was "Stop after Sequence
+Components v1" — no distance protection, unbalance trip threshold,
+negative-sequence relay, ground-fault relay logic, fault classification,
+sequence-network diagrams, or sequence impedance were introduced
+anywhere; no analyzer-specific Playback timer was introduced (the
+existing throttled exact-fetch mechanism was reused verbatim); Phasor/
+Overcurrent/Impedance Locus/Playback/Engineering-Context production
+behavior is unchanged (confirmed by full regression, not merely
+assumed).
+
+## What was done in the prior session — Impedance Locus UAT correction: Related Waveforms blank-trace bug and premature full-locus display
 
 **Impedance Locus UAT correction — Related Waveforms blank-trace bug and
 premature full-locus display both fixed

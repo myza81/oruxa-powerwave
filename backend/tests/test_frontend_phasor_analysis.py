@@ -110,7 +110,11 @@ class TestAnalysisTypeSubNav:
         assert 'id="wwAnalysisTypeOvercurrentBtn"' in source
         assert 'data-analysis-type="overcurrent"' in source
 
-    def test_placeholder_analysis_type_entries_are_safe_and_selectable(self):
+    def test_analysis_type_entries_are_safe_and_selectable(self):
+        """Every Analysis-menu entry is now a real, implemented analyzer
+        (Sequence Components v1 activated the last remaining placeholder)
+        -- each nav button/panel pair still exists and starts hidden
+        (only the default-active Phasor tab shows on load)."""
         source = _source()
         assert 'id="wwAnalysisTypeImpedanceBtn"' in source
         assert 'data-analysis-type="impedance"' in source
@@ -118,7 +122,6 @@ class TestAnalysisTypeSubNav:
         assert 'data-analysis-type="sequence"' in source
         assert 'id="wwImpedancePanel" hidden' in source
         assert 'id="wwSequencePanel" hidden' in source
-        assert "This analyzer is not implemented yet." in source
 
 
 class TestBayIsTheOnlyPrimaryControl:
@@ -384,11 +387,11 @@ class TestSharedAnalysisContextConsumers:
     impossible to miss)."""
 
     def test_both_analyzers_register_as_consumers_of_the_shared_lifecycle(self):
-        """Now THREE consumers -- Impedance Locus v1 registers itself the
-        same way Phasor/Overcurrent already do (see
-        docs/project-memory/IMPEDANCE_LOCUS_ANALYSIS.md)."""
+        """Now FOUR consumers -- Sequence Components v1 registers itself
+        the same way Phasor/Overcurrent/Impedance Locus already do (see
+        docs/project-memory/SEQUENCE_COMPONENTS_ANALYSIS.md)."""
         source = _source()
-        assert source.count("wwAnalysisRegisterContextConsumer({") == 3
+        assert source.count("wwAnalysisRegisterContextConsumer({") == 4
         phasor_call = source[source.index("onContexts: wwPhasorOnAnalysisContexts"):]
         phasor_call = phasor_call[: phasor_call.index("});")]
         assert "onLifecyclePhase: wwPhasorOnAnalysisLifecyclePhase" in phasor_call
@@ -399,6 +402,11 @@ class TestSharedAnalysisContextConsumers:
         assert "onLifecyclePhase: wwOvercurrentOnAnalysisLifecyclePhase" in overcurrent_call
         assert "onDiscovering: wwOvercurrentOnAnalysisDiscovering" in overcurrent_call
         assert "onFreshContextsDiscovered: wwOvercurrentOnAnalysisFreshContextsDiscovered" in overcurrent_call
+        sequence_call = source[source.index("onContexts: wwSequenceOnAnalysisContexts"):]
+        sequence_call = sequence_call[: sequence_call.index("});")]
+        assert "onLifecyclePhase: wwSequenceOnAnalysisLifecyclePhase" in sequence_call
+        assert "onDiscovering: wwSequenceOnAnalysisDiscovering" in sequence_call
+        assert "onFreshContextsDiscovered: wwSequenceOnAnalysisFreshContextsDiscovered" in sequence_call
         impedance_call = source[source.index("onContexts: wwImpedanceOnAnalysisContexts"):]
         impedance_call = impedance_call[: impedance_call.index("});")]
         assert "onLifecyclePhase: wwImpedanceOnAnalysisLifecyclePhase" in impedance_call

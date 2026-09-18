@@ -9,10 +9,9 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-17** (Impedance Locus v1, DEC-096, and
-its own same-day UAT correction — Related Waveforms blank-trace bug and
-premature full-locus display, both fixed — see their own entries below
-in [Implemented capabilities](#implemented-capabilities)).
+Last meaningful update: **2026-09-18** (Sequence Components v1, DEC-097
+— the fourth Analysis-menu analyzer; see its own entry below in
+[Implemented capabilities](#implemented-capabilities)).
 **Event Playback
 ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock),
 its own 2026-09-11 revision) is implemented as a shared, reusable
@@ -806,11 +805,12 @@ honestly for owner UAT, not claimed as verified; see
 [IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md)'s own "Known
 limitations" section. `Zab`/`Zbc`/`Zca`, Distance Protection (zones/
 mho/quadrilateral/ground compensation/directional logic/trip
-interpretation), Sequence Components, and automatic Recording-basis
-detection from recording metadata all remain unimplemented, reserved
-for future, separate slices that this feature's own `ImpedancePoint`/
-R-X-plane foundation is deliberately structured to support without
-requiring this module itself to change.
+interpretation), and automatic Recording-basis detection from recording
+metadata all remain unimplemented, reserved for future, separate slices
+that this feature's own `ImpedancePoint`/R-X-plane foundation is
+deliberately structured to support without requiring this module itself
+to change. (Sequence Components, listed here as unimplemented in the
+prior revision of this document, is now implemented — see below.)
 
 **Impedance Locus UAT correction, same day (2026-09-17) — Related
 Waveforms blank-trace bug and premature full-locus display both
@@ -852,6 +852,75 @@ low-current guardrail, or R/X equal-scale geometry was touched. See
 [IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md)'s own
 "Related Waveforms and chronological locus reveal — UAT correction"
 section for the full record.
+
+**Sequence Components v1 is implemented (2026-09-18,
+[DECISIONS.md — DEC-097](DECISIONS.md#dec-097--sequence-components-v1-the-fourth-analysis-menu-analyzer-positivenegativezero-sequence-voltage-and-current-calculationvisualization)),
+the FOURTH Analysis-menu analyzer** — activates the pre-existing
+`Sequence Components` navigation placeholder (order preserved: Phasor,
+Overcurrent, Impedance Locus, Sequence Components). Calculates the
+classical Fortescue symmetrical-component transform
+(`a = exp(j*120deg)`, `X0=(Xa+Xb+Xc)/3`, `X1=(Xa+a*Xb+a^2*Xc)/3`,
+`X2=(Xa+a^2*Xb+a*Xc)/3`) independently for Voltage (Va/Vb/Vc → V0/V1/V2)
+and Current (Ia/Ib/Ic → I0/I1/I2), visualized on one combined polar
+phasor diagram with two independent per-family graphical scales.
+**Explicitly measurement/calculation/visualization only — NOT protection
+interpretation**: no unbalance limits, negative-sequence relay operation
+claims, ground-fault analysis, fault classification, sequence-network
+diagrams, or sequence impedance exist anywhere in this slice. Recording
+mode reuses the existing, unchanged `phasor_analysis_service.
+compute_phasor_diagram()` verbatim (zero duplicated FFT/DFT/RMS
+estimation code) — the SAME bay-centric aggregator Phasor's own page and
+Impedance Locus's own Recording mode already use. Unlike Phasor's own
+per-role-independent diagram, Sequence Components mathematically
+requires a COMPLETE three-phase set per family before computing anything
+(`app.services.sequence_components_analysis_service._evaluate_family()`)
+— Voltage and Current families are evaluated fully independently, one
+family's own incompleteness (missing/needs_configuration/ambiguous/
+not_eligible) never blocking the other. Introduces this codebase's first
+genuine complex-number arithmetic (`app.domain.sequence_components`,
+stdlib `complex`/`cmath`) — every prior module hand-rolled real/
+imaginary bookkeeping for a hot per-sample loop this feature does not
+have. Manual mode reuses the Manual Phasor architecture verbatim
+(identical six-role, two-independent-basis phase-domain entry form —
+never a direct V0/V1/V2 field, since a sequence value is only ever
+meaningful when derived from a genuine phase-domain set) via
+`evaluate_manual_phasor_role()`/`convert_manual_magnitude_to_secondary()`
+(both `app.domain.phasor`, reused verbatim); both Recording and Manual
+funnel through the identical `_evaluate_family()` helper, so there is
+exactly ONE authoritative symmetrical-component implementation for both
+input sources. Sequence ratios (`|V2|/|V1|`, `|V0|/|V1|`, `|I2|/|I1|`,
+`|I0|/|I1|`, all percentages) are purely descriptive, guarded against a
+near-zero positive-sequence denominator
+(`MIN_POSITIVE_SEQUENCE_MAGNITUDE = 1e-9`, numerical validity only,
+never a protection threshold) — reports an explicit "Unavailable"
+rather than `Infinity`/`NaN`. Color identity is sequence-based
+(`--ww-seq-positive`/`--ww-seq-negative`/`--ww-seq-zero`, new dedicated
+`frontend/theme.css` tokens), deliberately never reusing the
+`--ww-phase-a/b/c` phase-identity tokens. The Recording-Playback-
+stability diagram-scale freeze is gated on `inputSource` from day one —
+this analyzer never had the Manual/Recording scale-leak bug Phasor's own
+diagram once had and later fixed; there was nothing to fix here, only a
+precedent to follow. API: `GET .../engineering-contexts/{id}/
+sequence-components`, `GET .../sequence-components-manual` — same
+router file/nesting convention as every prior analyzer's own endpoints.
+No backend files outside the new `app/domain/sequence_components.py`/
+`app/services/sequence_components_analysis_service.py`/`app/schemas/
+sequence_components_analysis.py` modules were touched (plus additive-
+only entries in `app/domain/analysis_requirements.py` and `app/api/v1/
+engineering_contexts.py`); full backend regression, full frontend
+structural suite, and full Playwright suite all pass. **Real-browser
+Playwright coverage was added from day one**
+(`browser-tests/sequence_components_analysis.spec.js`, 14 scenarios) —
+deliberately closing the exact "no Playwright coverage" gap Impedance
+Locus v1's own first slice left open. Two pre-existing, unrelated flaky
+Playwright tests (one in `phasor_analysis.spec.js`, one in
+`impedance_analysis.spec.js`) were found, diagnosed, and reported
+(not silently fixed) during this session's own regression verification
+— see [DECISIONS.md — DEC-097](DECISIONS.md#dec-097--sequence-components-v1-the-fourth-analysis-menu-analyzer-positivenegativezero-sequence-voltage-and-current-calculationvisualization)'s
+own closing section for the full diagnosis; both remain `[OPEN]` for a
+future, separate task. See
+[SEQUENCE_COMPONENTS_ANALYSIS.md](SEQUENCE_COMPONENTS_ANALYSIS.md) for
+the full architecture.
 
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test

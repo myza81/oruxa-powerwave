@@ -105,6 +105,19 @@
        BOTH +Peak and -Peak; the label prefix/glyph, not color, is what
        distinguishes maximum from minimum. */
     --annotation-peak-accent: #2f8f6f;
+
+    /* Sequence Components v1: positive/negative/zero-sequence identity --
+       a distinct hue family from --accent/--warn/--ok (already claimed by
+       phase A/B/C, --ww-phase-a/b/c in index.html) and from --error (red,
+       already "problem" app-wide). Sequence identity is a DIFFERENT
+       concept from phase identity (a Va/Vb/Vc reading vs. its own V0/V1/V2
+       decomposition can appear side by side), so it deliberately does not
+       borrow any phase-A/B/C color. Violet/teal/magenta, distinct enough
+       from --annotation-peak-accent's own muted teal-green not to be
+       mistaken for a Peak marker. */
+    --ww-seq-positive: #6d28d9;
+    --ww-seq-negative: #0e7490;
+    --ww-seq-zero: #a21caf;
 }
 
 :root[data-theme="dark"] {
@@ -162,6 +175,14 @@
        dark-surface contrast, same teal-green family so it reads as "the
        same marker" across themes. */
     --annotation-peak-accent: #5fc9a0;
+
+    /* Sequence Components v1: same rationale as Light's own
+       --ww-seq-positive/-negative/-zero above -- brightened toward --text
+       for dark-surface contrast, same violet/teal/magenta family so it
+       reads as "the same identity" across themes. */
+    --ww-seq-positive: #a78bfa;
+    --ww-seq-negative: #22d3ee;
+    --ww-seq-zero: #e879f9;
 }
 
 /* Phase 3B-UAT9: slim, borderless scrollbars -- one shared rule set for

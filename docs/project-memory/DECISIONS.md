@@ -15395,6 +15395,238 @@ unimplemented, unaffected by this slice.
 
 ---
 
+## DEC-097 — Sequence Components v1, the FOURTH Analysis-menu analyzer: positive/negative/zero-sequence Voltage and Current calculation/visualization
+
+Date: 2026-09-18
+Status: Approved — implemented.
+Source: owner task ("implements the first version of the Sequence
+Components analyzer... Calculate positive-, negative-, and zero-sequence
+voltage and current components from three-phase phasors... calculation +
+visualization only. Do not implement protection interpretation,
+unbalance limits, relay operation claims, or fault classification.").
+
+**Decision.** Powerwave gains a fourth Analysis-menu analyzer, Sequence
+Components, activating the existing placeholder entry
+(`#wwAnalysisTypeSequenceBtn`, preserving analyzer order: Phasor,
+Overcurrent, Impedance Locus, Sequence Components). Scope is the
+classical Fortescue transform (`a = exp(j*120 deg)`, `X0=(Xa+Xb+Xc)/3`,
+`X1=(Xa+a*Xb+a^2*Xc)/3`, `X2=(Xa+a^2*Xb+a*Xc)/3`), applied independently
+to Voltage (Va/Vb/Vc → V0/V1/V2) and Current (Ia/Ib/Ic → I0/I1/I2).
+Explicitly **not** protection interpretation: no unbalance limits, no
+negative-sequence relay operation claims, no ground-fault analysis, no
+fault classification, no sequence-network diagrams, no sequence
+impedance exist anywhere in this slice — those are reserved for a
+future, separate analyzer built on top of V0/V1/V2/I0/I1/I2 as its own
+input.
+
+**Recording mode reuses the existing Phasor estimator, never a second
+one.** `app.services.sequence_components_analysis_service.compute_
+sequence_analysis()` calls the existing, unchanged `phasor_analysis_
+service.compute_phasor_diagram()` (the same bay-centric aggregator
+Phasor's own page and Impedance Locus's own Recording mode already use)
+and reads out the already-resolved/estimated Va/Vb/Vc and Ia/Ib/Ic roles
+— zero duplicated FFT/DFT/RMS code. `app.domain.analysis_requirements`
+gained `SEQUENCE_VOLTAGE_PHASE_A/B/C`/`SEQUENCE_CURRENT_PHASE_A/B/C`
+under their own `analysis_kind="sequence_components"` (declared for
+registry completeness/future reuse, mirroring Impedance's own identical
+precedent — the service itself resolves via `compute_phasor_diagram()`,
+not a second `resolve_analysis_inputs()` call).
+
+**Complete-phase-set requirement — the one hard difference from Phasor's
+own per-role-independent diagram.** A sequence-component transform is
+mathematically meaningless without all three phases of ONE family
+present, so `_evaluate_family()` requires Va+Vb+Vc (or Ia+Ib+Ic) all
+`available` before computing anything; an incomplete family reports the
+worst of its three roles' own statuses (`missing`/`needs_configuration`/
+`ambiguous`/`not_eligible`, reusing Impedance's own status-precedence
+shape, generalized from two roles to three). Voltage and Current
+families are evaluated completely independently — one family's own
+incompleteness never blocks or degrades the other, proven by the task's
+own worked example (Voltage complete, Current incomplete → Voltage
+computed, Current reports Missing).
+
+**Complex-number arithmetic, introduced for the first time in this
+codebase.** No prior module needed genuine complex numbers (`app.domain.
+phasor` hand-rolls real/imaginary bookkeeping for its own hot per-sample
+estimation loop). Since a symmetrical-component transform is exactly one
+linear combination of three rotated phasors per analysis (never a
+per-sample loop), `app.domain.sequence_components` uses the stdlib
+`complex`/`cmath` directly — chosen for directness/checkability against
+the textbook definition, not performance; there was no reason to
+hand-roll real/imaginary arithmetic here the way the hot-loop estimator
+needs to.
+
+**Sequence ratios are descriptive only, guarded against division by a
+near-zero positive sequence.** `negative_sequence_ratio_percent =
+|X2|/|X1|*100`, `zero_sequence_ratio_percent = |X0|/|X1|*100` — never
+compared against a protection threshold. `MIN_POSITIVE_SEQUENCE_
+MAGNITUDE = 1e-9` guards the division only (numerical validity, not an
+unbalance limit); below it, the ratio is `None`/"Unavailable", never
+`Infinity`/`NaN`. Deliberately much smaller than Impedance's own
+`MIN_CURRENT_A` (1 mA) — this floor only needs to exclude genuine
+floating-point zero, not a physically-meaningless measurement range.
+
+**Manual entry stays phase-domain, reusing the Manual Phasor
+architecture verbatim — never a direct V0/V1/V2 entry field** (task's
+own explicit instruction). The identical six-role (Va/Vb/Vc/Ia/Ib/Ic),
+two-independent-basis Manual Phasor form and its backend normalization
+(`evaluate_manual_phasor_role()`/`convert_manual_magnitude_to_
+secondary()`, both `app.domain.phasor`) are reused verbatim per role.
+Since that function already returns a `PhasorDiagramRoleResult` — the
+identical shape `compute_phasor_diagram()`'s own `roles` dict uses —
+Manual mode's six per-role evaluations feed into the SAME
+`_evaluate_family()` helper Recording mode uses: one authoritative
+symmetrical-component implementation for both input sources, never a
+duplicated formula (task's own section 21 requirement, "avoid Recording
+transform in Python / Manual transform separately in JS").
+
+**Visualization mirrors Phasor's own diagram geometry, substituting
+sequence roles for phase roles.** Six vectors (V1/V2/V0/I1/I2/I0) on one
+combined polar plane; Voltage and Current share the SAME two independent
+graphical scales Phasor's own diagram already establishes (never letting
+one family affect the other), reusing `wwPhasorVectorSvg()` verbatim.
+**Color identity is sequence-based, never phase-based** (task's own
+explicit "do not reuse phase A/B/C colors in a way that implies phase
+identity") — three new dedicated tokens, `--ww-seq-positive`/
+`--ww-seq-negative`/`--ww-seq-zero` (`frontend/theme.css`, violet/teal/
+magenta, light+dark variants), distinct from `--ww-phase-a/b/c`,
+`--error`, and `--annotation-peak-accent`.
+
+**Scale-freeze-gated-on-input-source is implemented correctly from day
+one.** Follows the corrected Phasor invariant the task itself names
+(section 11): Manual always recomputes its own family scale fresh;
+Recording preserves the SAME Playback-stability freeze policy Phasor's
+diagram uses, gated on `inputSource` from the first line of code — this
+analyzer never had the Manual/Recording scale-leak bug Phasor's own
+diagram once had and later fixed; there was nothing to fix here, only a
+precedent to follow, guarded by a dedicated static test
+(`TestSequenceScaleNeverLeaksBetweenRecordingAndManual`).
+
+**Related Waveforms shows source phase quantities, never the sequence
+values themselves** (task's own section 15) — V0/V1/V2/I0/I1/I2 have no
+waveform/time series of their own; the pushed roles are always Va/Vb/Vc/
+Ia/Ib/Ic, with channel identity carried through independent of
+calculation status, mirroring Impedance's own "identity known,
+independent of overall status" precedent (the fix for a real UAT bug
+Impedance's own first slice hit — implemented correctly here from day
+one).
+
+**Analysis Input Source (Recording/Manual) is the FOURTH real
+implementation** of the shared shell DEC-095 established — reuses
+`WW_ANALYSIS_INPUT_SOURCE_RECORDING`/`WW_ANALYSIS_INPUT_SOURCE_MANUAL`
+verbatim, the identical three-region markup separation, implemented from
+day one. Registers as an Engineering Context consumer and a Playback
+tick subscriber the same way every prior analyzer does — never its own
+context-discovery bootstrap (the exact regression
+`TestSharedAnalysisContextConsumers` exists to catch).
+
+**API.** `GET .../engineering-contexts/{id}/sequence-components`
+(selected-time, both families together), `GET
+.../sequence-components-manual` (workspace-scoped, never context-
+nested) — same nested/selected-time/never-persisted router convention
+every prior analyzer's own endpoints already established, in the same
+`app/api/v1/engineering_contexts.py` file. See
+[SEQUENCE_COMPONENTS_ANALYSIS.md](SEQUENCE_COMPONENTS_ANALYSIS.md) for
+the full response shape.
+
+**Tests.** `backend/tests/test_sequence_components_domain.py` (18 tests
+— golden balanced-positive/pure-zero/pure-negative-sequence vectors
+each proved two ways, a Fortescue conservation-identity sanity check on
+unbalanced input, angle normalization, the near-zero-ratio guardrail),
+`backend/tests/test_sequence_components_analysis_api.py` (17 tests —
+real three-phase ASCII-COMTRADE-upload golden/incomplete-family/ratio
+scenarios via real HTTP for Recording, zero-prior-setup golden/mixed-
+basis/incomplete-family/invalid-basis scenarios for Manual),
+`backend/tests/test_frontend_sequence_components_analysis.py` (29
+structural tests — markup separation, shared-constant/shared-role-order
+reuse, complete-set-from-family (never individual phase) reads,
+descriptive-ratio-only formatting, dedicated color tokens never
+overlapping phase tokens, scale-never-leaks, shared-context-consumer
+registration, Playback integration, Related-Waveforms source-domain-not-
+sequence-domain roles, no protection-interpretation keywords). Four
+pre-existing static tests were updated for the FOURTH registered
+consumer/mounted transport/analyzer entry
+(`test_frontend_phasor_analysis.py::TestSharedAnalysisContextConsumers`,
+`::TestAnalysisTypeSubNav` (renamed — no placeholder remains anywhere),
+`test_frontend_impedance_analysis.py::TestImpedanceNavAndPanel` (renamed
+— Sequence is no longer a placeholder either), `test_frontend_
+playback.py::TestSharedAnalysisPlaybackStyling`), mirroring the exact
+precedent Impedance's own addition already set for these same tests;
+`test_analysis_requirements.py`'s own registry-count assertions were
+updated from 17 to 23 known requirements and from three to four known
+`analysis_kind`s. Full backend regression suite passes. **Real-browser
+Playwright coverage was added from day one**
+(`browser-tests/sequence_components_analysis.spec.js`, 14 scenarios:
+navigation, empty-workspace Manual golden flow, pure-zero/pure-negative
+Manual scenarios, Manual basis conversion, independent Voltage/Current
+bases, incomplete-family guardrail, Recording golden flow + Related
+Waveforms, Playback Play/Pause, visibility toggle, Recording↔Manual
+state isolation, responsive layout at 1366px/1024px) — deliberately
+closing the exact gap the task itself named ("do not repeat the
+Impedance v1 browser-coverage gap"); one pre-existing Playwright
+assertion in `phasor_analysis.spec.js` (asserting Sequence Components
+still showed "not implemented yet") was updated to assert the opposite,
+mirroring the identical update Impedance's own activation already made
+there for itself.
+
+**Two pre-existing, unrelated flaky Playwright tests were found and
+diagnosed (not fixed) during this session's own regression verification
+— reported here per Change Governance, not silently patched:**
+1. `phasor_analysis.spec.js` — "a later-uploaded, uncovered source is
+   discovered automatically without disturbing the already-usable bay."
+   Root cause identified: uploading a second source triggers a
+   synchronization-state refresh that can reassign a DIFFERENT
+   `time_group_id` to an already-Playback-active Time Group's own
+   source; `wwPlayback.activeTimeGroupId` (the OLD id) then no longer
+   matches the freshly-recomputed `groupId` any analyzer's own
+   `LoadForSelectedContext()` derives, forcing an unwanted full
+   Restart-to-`bounds.start` reclaim on re-entry instead of the intended
+   "already active, read current time" path — reproduced on a
+   completely clean `git stash`-restored baseline (2 of 3 runs passed, 1
+   failed), confirming this is pre-existing and unrelated to this
+   slice, not a regression introduced by it.
+2. `impedance_analysis.spec.js` — "initial state: current point visible,
+   full future locus not visible" failed once in a long (167-test, 8m)
+   combined run but passed reliably in isolation — a timing/load-
+   sensitive `toPass({timeout: 5000})` race, not investigated further
+   (out of this slice's own scope).
+
+Neither is fixed by this slice (Change Governance: report, don't
+silently patch unrelated pre-existing issues) — both are `[OPEN]` items
+for a future, separate task.
+
+**Alternatives considered.** A direct V0/V1/V2 Manual entry field
+(bypassing phase-domain input) was considered and rejected — the task's
+own explicit "reuse the Manual Phasor input architecture instead of
+inventing a separate sequence-entry model" instruction, and a sequence
+transform is only ever meaningful when derived FROM a genuine three-
+phase phasor set, never entered directly (an engineer does not measure
+"V1" with an instrument). A relative-angle-referenced diagram (each
+family independently zero-referenced) was considered and rejected for
+the same reason Phasor's own combined diagram already rejected it — it
+would destroy the true inter-sequence/inter-family angular relationship
+the transform itself depends on. A second, Sequence-owned phasor
+estimator was considered and rejected — the task's own explicit "do not
+create another DFT/phasor-estimation path" instruction, and
+`compute_phasor_diagram()` already provides exactly the Va/Vb/Vc/Ia/Ib/
+Ic pairing this feature needs with zero modification.
+
+**Impact.** New backend modules: `app/domain/sequence_components.py`,
+`app/services/sequence_components_analysis_service.py`,
+`app/schemas/sequence_components_analysis.py`; additive-only changes to
+`app/domain/analysis_requirements.py` and
+`app/api/v1/engineering_contexts.py` (new endpoints only, zero existing
+endpoint behavior touched). Frontend: `frontend/index.html` gains a new
+Sequence Components panel/module (markup + JS), replacing the prior
+inert placeholder; `frontend/theme.css` gains three new color tokens
+(additive only). Zero Phasor/Overcurrent/Impedance/Playback/Engineering-
+Context production behavior changed. No backend files outside the new
+Sequence Components modules and the two additive registry entries were
+touched. Distance Protection and every other future analyzer remain
+unimplemented, unaffected by this slice.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

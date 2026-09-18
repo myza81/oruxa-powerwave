@@ -281,11 +281,12 @@ class TestSharedAnalysisPlaybackStyling:
         assert ".ww-analysis-playback-panel h3" not in source
 
     def test_mount_functions_flatten_the_shared_transport_wrapper(self):
-        """Now FOUR occurrences: the shared CSS declaration plus three
-        mount functions (Phasor, Overcurrent, and Impedance Locus v1 --
-        see docs/project-memory/IMPEDANCE_LOCUS_ANALYSIS.md)."""
+        """Now FIVE occurrences: the shared CSS declaration plus four
+        mount functions (Phasor, Overcurrent, Impedance Locus, and
+        Sequence Components v1 -- see docs/project-memory/
+        SEQUENCE_COMPONENTS_ANALYSIS.md)."""
         source = _source()
-        assert source.count("ww-analysis-playback-transport") == 4
+        assert source.count("ww-analysis-playback-transport") == 5
         assert 'ww-phasor-playback-transport ww-analysis-playback-transport' in source
 
     def test_shared_analysis_playback_css_is_compact_card_and_single_row(self):

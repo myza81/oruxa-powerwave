@@ -21,6 +21,12 @@ from app.domain.analysis_requirements import (
     PHASOR_VOLTAGE_PHASE_C,
     PHASOR_VOLTAGE_THREE_PHASE,
     REPRESENTATION_SAMPLED,
+    SEQUENCE_CURRENT_PHASE_A,
+    SEQUENCE_CURRENT_PHASE_B,
+    SEQUENCE_CURRENT_PHASE_C,
+    SEQUENCE_VOLTAGE_PHASE_A,
+    SEQUENCE_VOLTAGE_PHASE_B,
+    SEQUENCE_VOLTAGE_PHASE_C,
     get_requirement,
     known_requirements,
 )
@@ -31,16 +37,18 @@ from app.domain.phase_identity import PHASE_A, PHASE_B, PHASE_C
 class TestKnownRequirements:
     def test_at_least_eleven_representative_requirements(self):
         """8 Phasor + 3 Overcurrent (current_phase_a/b/c) + 6 Impedance
-        (voltage_phase_a/b/c + current_phase_a/b/c) -- Overcurrent and
-        Impedance each reuse the identical single-phase Voltage/Current
-        role shape under their own `analysis_kind`, see
-        OVERCURRENT_CURRENT_PHASE_A/B/C's and
-        IMPEDANCE_VOLTAGE_PHASE_A/B/C's own docstrings."""
-        assert len(known_requirements()) == 17
+        (voltage_phase_a/b/c + current_phase_a/b/c) + 6 Sequence
+        Components (voltage_phase_a/b/c + current_phase_a/b/c) --
+        Overcurrent, Impedance, and Sequence Components each reuse the
+        identical single-phase Voltage/Current role shape under their own
+        `analysis_kind`, see OVERCURRENT_CURRENT_PHASE_A/B/C's,
+        IMPEDANCE_VOLTAGE_PHASE_A/B/C's, and SEQUENCE_VOLTAGE_PHASE_A/B/C's
+        own docstrings."""
+        assert len(known_requirements()) == 23
 
     def test_three_distinct_analysis_kinds(self):
         kinds = {r.analysis_kind for r in known_requirements()}
-        assert kinds == {"phasor", "overcurrent", "impedance"}
+        assert kinds == {"phasor", "overcurrent", "impedance", "sequence_components"}
 
     def test_overcurrent_requirements_are_overcurrent_kind(self):
         for req in (OVERCURRENT_CURRENT_PHASE_A, OVERCURRENT_CURRENT_PHASE_B, OVERCURRENT_CURRENT_PHASE_C):
@@ -53,6 +61,14 @@ class TestKnownRequirements:
             IMPEDANCE_CURRENT_PHASE_A, IMPEDANCE_CURRENT_PHASE_B, IMPEDANCE_CURRENT_PHASE_C,
         ):
             assert req.analysis_kind == "impedance"
+            assert req in known_requirements()
+
+    def test_sequence_components_requirements_are_sequence_components_kind(self):
+        for req in (
+            SEQUENCE_VOLTAGE_PHASE_A, SEQUENCE_VOLTAGE_PHASE_B, SEQUENCE_VOLTAGE_PHASE_C,
+            SEQUENCE_CURRENT_PHASE_A, SEQUENCE_CURRENT_PHASE_B, SEQUENCE_CURRENT_PHASE_C,
+        ):
+            assert req.analysis_kind == "sequence_components"
             assert req in known_requirements()
 
 

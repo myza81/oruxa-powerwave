@@ -1,6 +1,7 @@
 # Analysis Input Source — shared architecture
 
-**Status: implemented for Overcurrent, Phasor, and Impedance Locus.**
+**Status: implemented for Overcurrent, Phasor, Impedance Locus, and
+Sequence Components.**
 Overcurrent shipped first (Manual Input / Calculator mode, 2026-09-16,
 see
 [DECISIONS.md — DEC-095](DECISIONS.md#dec-095--a-shared-analysis-input-source-concept-recordingmanual-is-introduced-overcurrent-gets-the-first-manual-input--calculator-mode-implementation),
@@ -14,9 +15,18 @@ third, same-day-shape implementation
 independent physical quantities" principle with one more independent
 axis — see
 [IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md)'s own
-"Primary/Secondary basis" section for the full detail.
+"Primary/Secondary basis" section for the full detail. Sequence
+Components is the fourth
+([DECISIONS.md — DEC-097](DECISIONS.md#dec-097--sequence-components-v1-the-fourth-analysis-menu-analyzer-positivenegativezero-sequence-voltage-and-current-calculationvisualization),
+2026-09-18) — reuses Phasor's own six-role, two-independent-basis Manual
+Phasor form VERBATIM (never a separate sequence-entry model; a
+sequence transform is only ever meaningful when derived from a genuine
+phase-domain three-phase set) rather than extending it with a new axis
+the way Impedance did — see
+[SEQUENCE_COMPONENTS_ANALYSIS.md](SEQUENCE_COMPONENTS_ANALYSIS.md)'s own
+"Manual Input / Calculator mode" section for the full detail.
 This document records the shared concept and pattern so a future
-analyzer (Sequence Components, Distance) can
+analyzer (Distance) can
 reuse it without re-deriving the design from scratch — mirroring how
 [ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md) records the other three
 shared Analysis-workspace primitives (Engineering Context lifecycle,
@@ -438,12 +448,13 @@ labeled.
 
 ## Explicitly deferred (not this slice)
 
-- **Sequence Components and Distance's own Manual mode** — not started;
-  this document exists so those future slices can reuse the pattern
-  above (including, where relevant, Phasor's own "N independent bases
-  for N independent physical quantities" extension, and Impedance
-  Locus's own further extension to a THIRD, independent OUTPUT basis)
-  without re-deriving it.
+- **Distance's own Manual mode** — not started; this document exists so
+  that future slice can reuse the pattern above (including, where
+  relevant, Phasor's own "N independent bases for N independent physical
+  quantities" extension, and Impedance Locus's own further extension to
+  a THIRD, independent OUTPUT basis) without re-deriving it. Sequence
+  Components' own Manual mode is now implemented — see
+  [SEQUENCE_COMPONENTS_ANALYSIS.md](SEQUENCE_COMPONENTS_ANALYSIS.md).
 - **A generic cross-analyzer "Analysis Input Source" backend
   abstraction/base class** — deliberately not built; see "Backend
   pattern" above for what IS shared today (the engineering-unit layer,

@@ -90,6 +90,11 @@ from app.schemas.phasor_analysis import (
     PhasorManualDiagramResultOut,
     PhasorRoleResultOut,
 )
+from app.schemas.sequence_components_analysis import (
+    SequenceAnalysisResultOut,
+    SequenceFamilyResultOut,
+    SequenceManualResultOut,
+)
 from app.schemas.source import ErrorOut
 from app.services.analysis_input_resolution_service import resolve_analysis_inputs
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
@@ -114,6 +119,7 @@ from app.services.overcurrent_analysis_service import (
     list_known_characteristics,
 )
 from app.services.phasor_analysis_service import compute_phasor_analysis, compute_phasor_diagram, compute_phasor_manual_diagram
+from app.services.sequence_components_analysis_service import compute_sequence_analysis, compute_sequence_manual
 from app.services.workspace_registry import WorkspaceRegistry
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["engineering-contexts"])
@@ -895,3 +901,122 @@ def get_impedance_manual(
         voltage_input=voltage_input, current_input=current_input,
     )
     return _impedance_manual_result_to_out(result)
+
+
+# ---------------------------------------------------------------------------
+# Sequence Components v1 -- the FOURTH Analysis-menu analyzer (Phasor,
+# Overcurrent, Impedance Locus, then Sequence Components). See
+# `app.services.sequence_components_analysis_service`'s own docstring and
+# docs/project-memory/SEQUENCE_COMPONENTS_ANALYSIS.md for the full
+# architecture; this router only exposes it, mirroring the Impedance Locus
+# endpoints above exactly.
+# ---------------------------------------------------------------------------
+
+
+def _sequence_family_result_to_out(result) -> SequenceFamilyResultOut:
+    return SequenceFamilyResultOut(
+        status=result.status,
+        zero_sequence_magnitude=result.zero_sequence_magnitude, zero_sequence_angle_deg=result.zero_sequence_angle_deg,
+        positive_sequence_magnitude=result.positive_sequence_magnitude, positive_sequence_angle_deg=result.positive_sequence_angle_deg,
+        negative_sequence_magnitude=result.negative_sequence_magnitude, negative_sequence_angle_deg=result.negative_sequence_angle_deg,
+        negative_sequence_ratio_percent=result.negative_sequence_ratio_percent, zero_sequence_ratio_percent=result.zero_sequence_ratio_percent,
+        unit=result.unit,
+        phase_a_channel_ref=ChannelRefOut.from_domain(result.phase_a_channel_ref) if result.phase_a_channel_ref is not None else None,
+        phase_b_channel_ref=ChannelRefOut.from_domain(result.phase_b_channel_ref) if result.phase_b_channel_ref is not None else None,
+        phase_c_channel_ref=ChannelRefOut.from_domain(result.phase_c_channel_ref) if result.phase_c_channel_ref is not None else None,
+        reason_code=result.reason_code, message=result.message,
+    )
+
+
+def _sequence_result_to_out(result) -> SequenceAnalysisResultOut:
+    return SequenceAnalysisResultOut(
+        status=result.status, engineering_context_id=result.engineering_context_id, analysis_time=result.analysis_time,
+        reference_frequency_hz=result.reference_frequency_hz, window_seconds=result.window_seconds,
+        algorithm_version=result.algorithm_version,
+        voltage_sequences=_sequence_family_result_to_out(result.voltage_sequences),
+        current_sequences=_sequence_family_result_to_out(result.current_sequences),
+        warnings=result.warnings, reason_code=result.reason_code, message=result.message,
+    )
+
+
+@router.get("/engineering-contexts/{engineering_context_id}/sequence-components", response_model=SequenceAnalysisResultOut)
+def get_sequence_components_analysis(
+    workspace_id: str,
+    engineering_context_id: str,
+    analysis_time: float,
+    reference_frequency_hz: float | None = None,
+    context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+) -> SequenceAnalysisResultOut:
+    """Read-only, selected-time-only positive/negative/zero-sequence
+    Voltage and Current, for one Engineering Context. Reuses the
+    existing, unchanged `compute_phasor_diagram()` to resolve Va/Vb/Vc
+    and Ia/Ib/Ic -- never a second phasor estimator. Voltage and Current
+    are evaluated fully independently, each requiring its own complete
+    three-phase set (`needs_configuration`/`missing`/`ambiguous`/
+    `not_eligible` otherwise, per that family alone -- one family's own
+    incompleteness never blocks the other). Calculation and
+    visualization only -- no unbalance limits, negative-sequence relay
+    interpretation, or fault classification exist here. Never
+    persisted."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = compute_sequence_analysis(
+            workspace_id=workspace_id, engineering_context_id=engineering_context_id, analysis_time=analysis_time,
+            reference_frequency_hz_override=reference_frequency_hz,
+            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return _sequence_result_to_out(result)
+
+
+@router.get("/sequence-components-manual", response_model=SequenceManualResultOut)
+def get_sequence_components_manual(
+    workspace_id: str,
+    voltage_basis: str,
+    current_basis: str,
+    vt_primary: float | None = None,
+    vt_secondary: float | None = None,
+    ct_primary: float | None = None,
+    ct_secondary: float | None = None,
+    va_enabled: bool = False, va_magnitude: float | None = None, va_unit: str = "V", va_angle_deg: float = 0.0,
+    vb_enabled: bool = False, vb_magnitude: float | None = None, vb_unit: str = "V", vb_angle_deg: float = 0.0,
+    vc_enabled: bool = False, vc_magnitude: float | None = None, vc_unit: str = "V", vc_angle_deg: float = 0.0,
+    ia_enabled: bool = False, ia_magnitude: float | None = None, ia_unit: str = "A", ia_angle_deg: float = 0.0,
+    ib_enabled: bool = False, ib_magnitude: float | None = None, ib_unit: str = "A", ib_angle_deg: float = 0.0,
+    ic_enabled: bool = False, ic_magnitude: float | None = None, ic_unit: str = "A", ic_angle_deg: float = 0.0,
+) -> SequenceManualResultOut:
+    """Manual Input / Calculator mode (Analysis Input Source = 'manual',
+    see docs/project-memory/ANALYSIS_INPUT_SOURCE.md) -- Sequence
+    Components' own standalone engineering-calculator path. Workspace-
+    scoped only -- no Engineering Context, channel, waveform, or Playback
+    state is involved at all. Reuses the identical six-role
+    (Va/Vb/Vc/Ia/Ib/Ic), two-independent-basis (`voltage_basis`/
+    `current_basis`, each with its own VT/CT ratio) Manual Phasor
+    normalization -- never a duplicated conversion formula. Each family
+    still requires all three of its own phases to be entered and valid
+    before a sequence result is computed; an incomplete family reports
+    `missing`/`needs_configuration` without blocking the other family.
+    Never persisted."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    role_inputs = {
+        "Va": ManualPhasorRoleInput(enabled=va_enabled, magnitude=va_magnitude, unit=va_unit, angle_deg=va_angle_deg),
+        "Vb": ManualPhasorRoleInput(enabled=vb_enabled, magnitude=vb_magnitude, unit=vb_unit, angle_deg=vb_angle_deg),
+        "Vc": ManualPhasorRoleInput(enabled=vc_enabled, magnitude=vc_magnitude, unit=vc_unit, angle_deg=vc_angle_deg),
+        "Ia": ManualPhasorRoleInput(enabled=ia_enabled, magnitude=ia_magnitude, unit=ia_unit, angle_deg=ia_angle_deg),
+        "Ib": ManualPhasorRoleInput(enabled=ib_enabled, magnitude=ib_magnitude, unit=ib_unit, angle_deg=ib_angle_deg),
+        "Ic": ManualPhasorRoleInput(enabled=ic_enabled, magnitude=ic_magnitude, unit=ic_unit, angle_deg=ic_angle_deg),
+    }
+    result = compute_sequence_manual(
+        voltage_basis=voltage_basis, vt_primary=vt_primary, vt_secondary=vt_secondary,
+        current_basis=current_basis, ct_primary=ct_primary, ct_secondary=ct_secondary,
+        role_inputs=role_inputs,
+    )
+    return SequenceManualResultOut(
+        status=result.status, algorithm_version=result.algorithm_version,
+        voltage_sequences=_sequence_family_result_to_out(result.voltage_sequences),
+        current_sequences=_sequence_family_result_to_out(result.current_sequences),
+        warnings=result.warnings, reason_code=result.reason_code, message=result.message,
+    )

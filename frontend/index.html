@@ -8846,11 +8846,252 @@
                                 </section>
                             </div>
                         </section>
+                        <!-- Sequence Components v1 -- the FOURTH Analysis-
+                             menu analyzer (Phasor, Overcurrent, Impedance
+                             Locus, then Sequence Components). Reuses the
+                             identical Input-Source-toggle + Recording-only-
+                             section + always-visible-body shell every prior
+                             analyzer established -- see docs/project-memory/
+                             SEQUENCE_COMPONENTS_ANALYSIS.md and
+                             ANALYSIS_INPUT_SOURCE.md. -->
                         <section class="ww-phasor-panel" id="wwSequencePanel" hidden>
-                            <section class="panel ww-analysis-placeholder-panel">
-                                <h3>Sequence Components</h3>
-                                <p>This analyzer is not implemented yet.</p>
+                            <!-- Analysis Input Source (Recording/Manual) --
+                                 ALWAYS visible the instant the Sequence
+                                 Components tab itself is open, regardless of
+                                 whether any recording/Engineering Context
+                                 exists yet (see docs/project-memory/
+                                 ANALYSIS_INPUT_SOURCE.md "Manual mode =
+                                 standalone engineering calculator"
+                                 invariant) -- implemented correctly from day
+                                 one, mirroring Impedance Locus's own
+                                 precedent, never the flawed intermediate
+                                 design Overcurrent briefly shipped. -->
+                            <section class="panel ww-oc-input-source-panel">
+                                <div class="ww-oc-input-source-row">
+                                    <span class="ww-oc-view-controls-label">Input Source</span>
+                                    <span class="ww-oc-axis-toggle-group" role="group" aria-label="Analysis input source">
+                                        <button type="button" id="wwSequenceInputSourceRecordingBtn" class="ww-oc-axis-toggle-btn ww-oc-axis-toggle-btn--active" data-input-source="recording" aria-pressed="true">Recording</button>
+                                        <button type="button" id="wwSequenceInputSourceManualBtn" class="ww-oc-axis-toggle-btn" data-input-source="manual" aria-pressed="false">Manual</button>
+                                    </span>
+                                    <span class="ww-oc-input-source-hint" id="wwSequenceInputSourceHint" hidden>No recording loaded. Manual mode is available.</span>
+                                </div>
                             </section>
+
+                            <!-- Recording-only section -- everything here
+                                 requires a recording/Engineering Context and
+                                 is hidden ENTIRELY whenever Manual is the
+                                 active Input Source. -->
+                            <div id="wwSequenceRecordingSection">
+                                <section class="panel ww-phasor-controls-panel">
+                                    <div class="ww-phasor-controls-row">
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Bay / Engineering Context</span>
+                                            <span class="ww-phasor-field-control-row">
+                                                <select id="wwSequenceContextSelect"><option value="">Select a context…</option></select>
+                                                <span id="wwSequenceContextBadge"></span>
+                                            </span>
+                                        </label>
+                                        <span class="ww-phasor-discovering-indicator" id="wwSequenceDiscoveringIndicator" hidden>Identifying additional engineering contexts…</span>
+                                    </div>
+                                </section>
+
+                                <!-- Playback composition point: populated by
+                                     wwSequenceMountPlaybackControls(groupId) --
+                                     reuses the EXACT same shared control-
+                                     surface markup/wiring/sync functions
+                                     every other analyzer's own mount uses. -->
+                                <section class="panel ww-phasor-playback-panel ww-analysis-playback-panel" id="wwSequencePlaybackPanel" hidden>
+                                    <div class="ww-phasor-playback-mount ww-analysis-playback-mount" id="wwSequencePlaybackMount"></div>
+                                </section>
+
+                                <!-- Shared Related Waveforms mount point --
+                                     see the identical comment on
+                                     #wwPhasorRelatedWaveformsAnchor. Sequence
+                                     Components pushes the SOURCE phase
+                                     quantities (Va/Vb/Vc, Ia/Ib/Ic) it
+                                     derives V0/V1/V2/I0/I1/I2 from -- never
+                                     the sequence values themselves, which
+                                     have no waveform/time series of their
+                                     own. -->
+                                <div id="wwSequenceRelatedWaveformsAnchor"></div>
+
+                                <div class="ww-phasor-status-row" id="wwSequenceStatusRow" hidden></div>
+                                <p class="empty-state" id="wwSequenceEmptyState">Select an Engineering Context to begin.</p>
+                            </div>
+
+                            <!-- Manual Input / Calculator mode -- Manual
+                                 input source only (hidden in Recording).
+                                 Identical six-role, two-independent-basis
+                                 shape to Manual Phasor (reused verbatim,
+                                 never a separate sequence-entry model per
+                                 the task's own explicit instruction) -- a
+                                 sequence-component transform mathematically
+                                 requires the full phase-domain Va/Vb/Vc (and
+                                 Ia/Ib/Ic) set, so Manual entry stays
+                                 phase-domain here too, never a direct
+                                 V0/V1/V2 entry field. -->
+                            <section class="panel ww-phasor-manual-panel" id="wwSequenceManualInputSection" hidden>
+                                <h3>Manual Phasors</h3>
+                                <div class="ww-phasor-status-row" id="wwSequenceManualStatusRow" hidden></div>
+                                <div class="ww-phasor-manual-families">
+                                <div class="ww-phasor-manual-family">
+                                    <div class="ww-phasor-manual-family-header">
+                                        <span class="ww-phasor-manual-family-label">Voltage basis</span>
+                                        <select id="wwSequenceManualVoltageBasisSelect" class="ww-phasor-manual-basis-select" aria-label="Voltage basis">
+                                            <option value="primary" selected>Primary</option>
+                                            <option value="secondary">Secondary</option>
+                                        </select>
+                                    </div>
+                                    <div class="ww-phasor-manual-ratio-row" id="wwSequenceManualVtRatioRow">
+                                        <label class="ww-phasor-manual-ratio-field">
+                                            <span>VT/PT Primary</span>
+                                            <input type="number" id="wwSequenceManualVtPrimaryInput" min="0" step="1" placeholder="e.g. 132000">
+                                        </label>
+                                        <label class="ww-phasor-manual-ratio-field">
+                                            <span>VT/PT Secondary</span>
+                                            <input type="number" id="wwSequenceManualVtSecondaryInput" min="0" step="0.1" placeholder="e.g. 110">
+                                        </label>
+                                    </div>
+                                    <div class="ww-phasor-manual-role-rows">
+                                        <div class="ww-phasor-manual-role-row" data-role="Va">
+                                            <label class="ww-phasor-manual-role-enable">
+                                                <input type="checkbox" id="wwSequenceManualVaEnabled" aria-label="Enable Va">
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-a)"></span>Va
+                                            </label>
+                                            <input type="number" id="wwSequenceManualVaMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Va magnitude">
+                                            <select id="wwSequenceManualVaUnit" aria-label="Va unit">
+                                                <option value="kV" selected>kV</option>
+                                                <option value="V">V</option>
+                                            </select>
+                                            <span class="ww-phasor-manual-angle-label">∠</span>
+                                            <input type="number" id="wwSequenceManualVaAngle" step="0.1" value="0" aria-label="Va angle degrees">
+                                            <span class="ww-phasor-manual-angle-unit">°</span>
+                                        </div>
+                                        <div class="ww-phasor-manual-role-row" data-role="Vb">
+                                            <label class="ww-phasor-manual-role-enable">
+                                                <input type="checkbox" id="wwSequenceManualVbEnabled" aria-label="Enable Vb">
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-b)"></span>Vb
+                                            </label>
+                                            <input type="number" id="wwSequenceManualVbMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Vb magnitude">
+                                            <select id="wwSequenceManualVbUnit" aria-label="Vb unit">
+                                                <option value="kV" selected>kV</option>
+                                                <option value="V">V</option>
+                                            </select>
+                                            <span class="ww-phasor-manual-angle-label">∠</span>
+                                            <input type="number" id="wwSequenceManualVbAngle" step="0.1" value="-120" aria-label="Vb angle degrees">
+                                            <span class="ww-phasor-manual-angle-unit">°</span>
+                                        </div>
+                                        <div class="ww-phasor-manual-role-row" data-role="Vc">
+                                            <label class="ww-phasor-manual-role-enable">
+                                                <input type="checkbox" id="wwSequenceManualVcEnabled" aria-label="Enable Vc">
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-c)"></span>Vc
+                                            </label>
+                                            <input type="number" id="wwSequenceManualVcMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Vc magnitude">
+                                            <select id="wwSequenceManualVcUnit" aria-label="Vc unit">
+                                                <option value="kV" selected>kV</option>
+                                                <option value="V">V</option>
+                                            </select>
+                                            <span class="ww-phasor-manual-angle-label">∠</span>
+                                            <input type="number" id="wwSequenceManualVcAngle" step="0.1" value="120" aria-label="Vc angle degrees">
+                                            <span class="ww-phasor-manual-angle-unit">°</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="ww-phasor-manual-family">
+                                    <div class="ww-phasor-manual-family-header">
+                                        <span class="ww-phasor-manual-family-label">Current basis</span>
+                                        <select id="wwSequenceManualCurrentBasisSelect" class="ww-phasor-manual-basis-select" aria-label="Current basis">
+                                            <option value="primary" selected>Primary</option>
+                                            <option value="secondary">Secondary</option>
+                                        </select>
+                                    </div>
+                                    <div class="ww-phasor-manual-ratio-row" id="wwSequenceManualCtRatioRow">
+                                        <label class="ww-phasor-manual-ratio-field">
+                                            <span>CT Primary</span>
+                                            <input type="number" id="wwSequenceManualCtPrimaryInput" min="0" step="1" placeholder="e.g. 1200">
+                                        </label>
+                                        <label class="ww-phasor-manual-ratio-field">
+                                            <span>CT Secondary</span>
+                                            <input type="number" id="wwSequenceManualCtSecondaryInput" min="0" step="0.01" placeholder="e.g. 1">
+                                        </label>
+                                    </div>
+                                    <div class="ww-phasor-manual-role-rows">
+                                        <div class="ww-phasor-manual-role-row" data-role="Ia">
+                                            <label class="ww-phasor-manual-role-enable">
+                                                <input type="checkbox" id="wwSequenceManualIaEnabled" aria-label="Enable Ia">
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-a)"></span>Ia
+                                            </label>
+                                            <input type="number" id="wwSequenceManualIaMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Ia magnitude">
+                                            <select id="wwSequenceManualIaUnit" aria-label="Ia unit">
+                                                <option value="A" selected>A</option>
+                                                <option value="kA">kA</option>
+                                            </select>
+                                            <span class="ww-phasor-manual-angle-label">∠</span>
+                                            <input type="number" id="wwSequenceManualIaAngle" step="0.1" value="0" aria-label="Ia angle degrees">
+                                            <span class="ww-phasor-manual-angle-unit">°</span>
+                                        </div>
+                                        <div class="ww-phasor-manual-role-row" data-role="Ib">
+                                            <label class="ww-phasor-manual-role-enable">
+                                                <input type="checkbox" id="wwSequenceManualIbEnabled" aria-label="Enable Ib">
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-b)"></span>Ib
+                                            </label>
+                                            <input type="number" id="wwSequenceManualIbMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Ib magnitude">
+                                            <select id="wwSequenceManualIbUnit" aria-label="Ib unit">
+                                                <option value="A" selected>A</option>
+                                                <option value="kA">kA</option>
+                                            </select>
+                                            <span class="ww-phasor-manual-angle-label">∠</span>
+                                            <input type="number" id="wwSequenceManualIbAngle" step="0.1" value="-120" aria-label="Ib angle degrees">
+                                            <span class="ww-phasor-manual-angle-unit">°</span>
+                                        </div>
+                                        <div class="ww-phasor-manual-role-row" data-role="Ic">
+                                            <label class="ww-phasor-manual-role-enable">
+                                                <input type="checkbox" id="wwSequenceManualIcEnabled" aria-label="Enable Ic">
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-c)"></span>Ic
+                                            </label>
+                                            <input type="number" id="wwSequenceManualIcMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Ic magnitude">
+                                            <select id="wwSequenceManualIcUnit" aria-label="Ic unit">
+                                                <option value="A" selected>A</option>
+                                                <option value="kA">kA</option>
+                                            </select>
+                                            <span class="ww-phasor-manual-angle-label">∠</span>
+                                            <input type="number" id="wwSequenceManualIcAngle" step="0.1" value="120" aria-label="Ic angle degrees">
+                                            <span class="ww-phasor-manual-angle-unit">°</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                </div>
+                            </section>
+
+                            <!-- ALWAYS visible once the Sequence Components
+                                 tab is open -- Values/Ratios/Diagram never
+                                 require a recording; the SAME renderer serves
+                                 whichever mode (Recording or Manual) is
+                                 currently active. -->
+                            <div class="ww-phasor-body" id="wwSequenceBody">
+                                <section class="panel ww-phasor-values-panel">
+                                    <h3>Sequence Values</h3>
+                                    <div id="wwSequenceValuesList"></div>
+                                    <!-- Sequence ratios -- descriptive only
+                                         (task's own explicit "never compare
+                                         against protection thresholds in v1"
+                                         instruction); a near-zero positive
+                                         sequence shows an explicit
+                                         "unavailable" text, never
+                                         Infinity/NaN. -->
+                                    <div class="ww-phasor-family-heading">Sequence ratios</div>
+                                    <div id="wwSequenceRatiosList"></div>
+                                    <div class="ww-phasor-warnings" id="wwSequenceWarnings" hidden></div>
+                                </section>
+                                <section class="panel ww-phasor-diagram-panel">
+                                    <h3>Sequence Phasors <span class="ww-phasor-updating-indicator" id="wwSequenceUpdatingIndicator" hidden>Updating…</span></h3>
+                                    <div class="ww-phasor-diagram-wrap">
+                                        <svg id="wwSequenceSvg" viewBox="-122 -122 244 244" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sequence phasor diagram"></svg>
+                                    </div>
+                                    <div class="ww-phasor-scale-note" id="wwSequenceScaleNote" hidden></div>
+                                </section>
+                            </div>
                         </section>
                     </div>
                 </div>
@@ -30720,6 +30961,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentResetState();
             // Impedance Locus v1: the SAME whole-workspace reset hook.
             wwImpedanceResetState();
+            // Sequence Components v1: the SAME whole-workspace reset hook.
+            wwSequenceResetState();
             // Shared Analysis Engineering Context lifecycle (2026-09-12):
             // the SAME whole-workspace reset hook -- a fresh workspace
             // always gets a fresh per-source attempted slate, never
@@ -40753,6 +40996,972 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPhasorUpdateInputSourceAvailability();
         }
 
+        // ===================================================================
+        // Sequence Components v1 -- the FOURTH Analysis-menu analyzer
+        // (Phasor, Overcurrent, Impedance Locus, then Sequence Components).
+        // See docs/project-memory/SEQUENCE_COMPONENTS_ANALYSIS.md for the
+        // full architecture. Recording mode reuses the existing
+        // `/sequence-components` endpoint (itself built on the unchanged
+        // `compute_phasor_diagram()`, never a second phasor estimator);
+        // Manual mode reuses the SAME six-role, two-independent-basis
+        // Manual Phasor entry shape (`WW_PHASOR_DIAGRAM_ROLE_ORDER`,
+        // `wwPhasorFetchJson()`) via a new `/sequence-components-manual`
+        // endpoint. This module mirrors `wwPhasorState`/`wwPhasor*` very
+        // closely (same Input-Source shell, same playback-throttled-fetch
+        // pattern, same frozen-per-family-scale-gated-on-inputSource
+        // diagram rendering -- implemented correctly from day one, never
+        // the Manual/Recording scale-leak bug Phasor's own diagram once
+        // had) -- but each of the six drawn roles is a SEQUENCE quantity
+        // (V1/V2/V0/I1/I2/I0), never a phase quantity, so role identity/
+        // color/value-lookup all key off "family + positive/negative/
+        // zero" rather than "family + A/B/C". Reuses
+        // `wwPhasorVectorSvg()`/`wwPhasorAnchorDisplaySourceIdForContext()`/
+        // `wwPhasorComputeInitialClaimTime()`/`wwPhasorFetchJson()`/
+        // `wwPhasorReasonText()`/`wwPhasorRoleStatusLabel()`/
+        // `wwPhasorFormatAngle()`/`wwPhasorRoleColor()` (for the SOURCE
+        // Va/Vb/Vc/Ia/Ib/Ic Related-Waveforms roles only) verbatim --
+        // these are all generic, Phasor-state-free helpers.
+        // ===================================================================
+
+        const wwSequenceState = {
+            contexts: [],
+            selectedContextId: null,
+            lastLoadedContextId: null,
+            analysisTime: null,
+            anchorDisplaySourceId: null,
+            activeTimeGroupId: null,
+            latestResult: null, // last SequenceAnalysisResultOut fetched (or null on a request failure)
+            visibleRoles: {}, // "V1"/"V2"/"V0"/"I1"/"I2"/"I0" -> boolean, frontend-only display preference -- never changes calculated results (task's own section 12)
+            frozenVoltageScale: null, // this playback run's own stable Voltage-family px-per-unit scale (V1/V2/V0 share it), or null before the first valid result
+            frozenCurrentScale: null, // same, for the Current family (I1/I2/I0)
+            requestGeneration: 0,
+
+            // Analysis Input Source (Recording/Manual) -- per-analyzer
+            // state, mirrors wwPhasorState's own three fields verbatim.
+            inputSource: WW_ANALYSIS_INPUT_SOURCE_RECORDING,
+            recordingAvailable: false,
+            inputSourceAutoSelected: true,
+            manualRequestGeneration: 0,
+            // Manual Input -- phase-domain (Va/Vb/Vc/Ia/Ib/Ic), identical
+            // shape to wwPhasorState.manual (task's own "reuse the Manual
+            // Phasor input architecture instead of inventing a separate
+            // sequence-entry model" instruction) -- Voltage and Current
+            // each own a fully independent basis/ratio.
+            manual: {
+                voltageBasis: "primary",
+                voltageRatioPrimary: null,
+                voltageRatioSecondary: null,
+                currentBasis: "primary",
+                currentRatioPrimary: null,
+                currentRatioSecondary: null,
+                roles: {
+                    Va: { enabled: false, magnitude: null, unit: "kV", angleDeg: 0 },
+                    Vb: { enabled: false, magnitude: null, unit: "kV", angleDeg: -120 },
+                    Vc: { enabled: false, magnitude: null, unit: "kV", angleDeg: 120 },
+                    Ia: { enabled: false, magnitude: null, unit: "A", angleDeg: 0 },
+                    Ib: { enabled: false, magnitude: null, unit: "A", angleDeg: -120 },
+                    Ic: { enabled: false, magnitude: null, unit: "A", angleDeg: 120 },
+                },
+                latestResult: null, // last SequenceManualResultOut fetched -- kept fully separate from `latestResult` above (Recording/Manual state isolation)
+            },
+        };
+
+        const WW_SEQUENCE_ROLE_ORDER = ["V1", "V2", "V0", "I1", "I2", "I0"];
+        const WW_SEQUENCE_VOLTAGE_ROLES = ["V1", "V2", "V0"];
+        const WW_SEQUENCE_CURRENT_ROLES = ["I1", "I2", "I0"];
+
+        const WW_SEQUENCE_MSG_SELECT_CONTEXT = "Select an Engineering Context to begin.";
+        const WW_SEQUENCE_MSG_IDENTIFYING_CONTEXTS = "Identifying engineering contexts…";
+        const WW_SEQUENCE_MSG_NO_SOURCES = "No event sources are available. Load a recording before using Sequence Components.";
+        const WW_SEQUENCE_MSG_NO_SUGGESTIONS =
+            "No Engineering Contexts could be automatically suggested from the loaded recording(s). " +
+            "Create or correct one manually via Engineering Context configuration.";
+        const WW_SEQUENCE_MSG_BACKEND_UNREACHABLE = "Could not reach the backend while identifying engineering contexts.";
+
+        // Sequence identity color -- V1/I1 (positive), V2/I2 (negative),
+        // V0/I0 (zero) -- deliberately the NEW --ww-seq-positive/-negative/
+        // -zero tokens (theme.css), never phase A/B/C colors (task's own
+        // section 13 "do not reuse phase A/B/C colors in a way that
+        // implies phase identity").
+        function wwSequenceRoleColor(roleKey) {
+            const suffix = (roleKey || "").slice(-1);
+            if (suffix === "1") return "var(--ww-seq-positive)";
+            if (suffix === "2") return "var(--ww-seq-negative)";
+            if (suffix === "0") return "var(--ww-seq-zero)";
+            return "var(--text-dim)";
+        }
+
+        // Reads ONE sequence role's own value out of whichever family
+        // (`voltage_sequences`/`current_sequences`) result object owns it
+        // -- `result` is either a `SequenceAnalysisResultOut` (Recording)
+        // or a `SequenceManualResultOut` (Manual), both sharing the
+        // identical per-family shape. Returns `null` only if `result`
+        // itself (or its family) is missing entirely.
+        function wwSequenceFamilyForRole(result, roleKey) {
+            if (!result) return null;
+            return roleKey.charAt(0) === "V" ? result.voltage_sequences : result.current_sequences;
+        }
+        const WW_SEQUENCE_PREFIX_BY_SUFFIX = { "1": "positive_sequence", "2": "negative_sequence", "0": "zero_sequence" };
+        function wwSequenceRoleValue(result, roleKey) {
+            const family = wwSequenceFamilyForRole(result, roleKey);
+            if (!family) return null;
+            if (family.status !== "computed") {
+                return { available: false, status: family.status, reasonCode: family.reason_code, unit: family.unit };
+            }
+            const prefix = WW_SEQUENCE_PREFIX_BY_SUFFIX[roleKey.slice(-1)];
+            return {
+                available: true,
+                magnitude: family[prefix + "_magnitude"],
+                angleDeg: family[prefix + "_angle_deg"],
+                unit: family.unit,
+            };
+        }
+
+        // ---- Input Source (Recording/Manual) -- identical pattern to
+        // Phasor's own (docs/project-memory/ANALYSIS_INPUT_SOURCE.md). ----
+
+        function wwSequenceSetInputSource(mode, isAutomatic) {
+            if (mode !== WW_ANALYSIS_INPUT_SOURCE_RECORDING && mode !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
+            if (mode === WW_ANALYSIS_INPUT_SOURCE_RECORDING && !wwSequenceState.recordingAvailable) return;
+            if (!isAutomatic) wwSequenceState.inputSourceAutoSelected = false;
+            if (mode === wwSequenceState.inputSource) return;
+            wwSequenceState.inputSource = mode;
+            wwSequenceSyncInputSourceButtons();
+            wwSequenceUpdateManualSectionVisibility();
+            wwSequenceUpdateRecordingSectionVisibility();
+            wwSequencePushRelatedWaveformRoles();
+            if (mode === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                wwSequenceRequestManualAnalysis();
+            } else {
+                wwSequenceRequestExactPlaybackFetch();
+            }
+        }
+
+        function wwSequenceSyncInputSourceButtons() {
+            const recordingBtn = document.getElementById("wwSequenceInputSourceRecordingBtn");
+            const manualBtn = document.getElementById("wwSequenceInputSourceManualBtn");
+            if (!recordingBtn || !manualBtn) return;
+            const isManual = wwSequenceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+            recordingBtn.classList.toggle("ww-oc-axis-toggle-btn--active", !isManual);
+            recordingBtn.setAttribute("aria-pressed", String(!isManual));
+            manualBtn.classList.toggle("ww-oc-axis-toggle-btn--active", isManual);
+            manualBtn.setAttribute("aria-pressed", String(isManual));
+        }
+
+        function wwSequenceUpdateManualSectionVisibility() {
+            const section = document.getElementById("wwSequenceManualInputSection");
+            if (section) section.hidden = wwSequenceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+        }
+
+        function wwSequenceUpdateRecordingSectionVisibility() {
+            const section = document.getElementById("wwSequenceRecordingSection");
+            if (section) section.hidden = wwSequenceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING;
+        }
+
+        function wwSequenceUpdateInputSourceAvailability() {
+            const available = wwSequenceState.contexts.length > 0;
+            wwSequenceState.recordingAvailable = available;
+            const recordingBtn = document.getElementById("wwSequenceInputSourceRecordingBtn");
+            const hint = document.getElementById("wwSequenceInputSourceHint");
+            if (recordingBtn) recordingBtn.disabled = !available;
+            if (hint) hint.hidden = available;
+            if (wwAnalysisActiveType !== "sequence") return;
+            if (!wwSequenceState.inputSourceAutoSelected) return;
+            if (!available && wwSequenceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_RECORDING) {
+                wwSequenceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_MANUAL, true);
+            } else if (available && wwSequenceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                wwSequenceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_RECORDING, true);
+            }
+        }
+
+        function wwSequenceUpdateRatioFieldsVisibility() {
+            const vtRow = document.getElementById("wwSequenceManualVtRatioRow");
+            if (vtRow) vtRow.hidden = wwSequenceState.manual.voltageBasis !== "primary";
+            const ctRow = document.getElementById("wwSequenceManualCtRatioRow");
+            if (ctRow) ctRow.hidden = wwSequenceState.manual.currentBasis !== "primary";
+        }
+
+        // ---- Manual Input / Calculator mode ----
+
+        function wwSequenceSyncManualInputFields() {
+            const m = wwSequenceState.manual;
+            const voltageBasisSelect = document.getElementById("wwSequenceManualVoltageBasisSelect");
+            if (voltageBasisSelect) voltageBasisSelect.value = m.voltageBasis;
+            const currentBasisSelect = document.getElementById("wwSequenceManualCurrentBasisSelect");
+            if (currentBasisSelect) currentBasisSelect.value = m.currentBasis;
+            const vtPrimaryInput = document.getElementById("wwSequenceManualVtPrimaryInput");
+            if (vtPrimaryInput) vtPrimaryInput.value = m.voltageRatioPrimary === null ? "" : String(m.voltageRatioPrimary);
+            const vtSecondaryInput = document.getElementById("wwSequenceManualVtSecondaryInput");
+            if (vtSecondaryInput) vtSecondaryInput.value = m.voltageRatioSecondary === null ? "" : String(m.voltageRatioSecondary);
+            const ctPrimaryInput = document.getElementById("wwSequenceManualCtPrimaryInput");
+            if (ctPrimaryInput) ctPrimaryInput.value = m.currentRatioPrimary === null ? "" : String(m.currentRatioPrimary);
+            const ctSecondaryInput = document.getElementById("wwSequenceManualCtSecondaryInput");
+            if (ctSecondaryInput) ctSecondaryInput.value = m.currentRatioSecondary === null ? "" : String(m.currentRatioSecondary);
+            for (const roleKey of WW_PHASOR_DIAGRAM_ROLE_ORDER) {
+                const role = m.roles[roleKey];
+                const enabledEl = document.getElementById("wwSequenceManual" + roleKey + "Enabled");
+                if (enabledEl) enabledEl.checked = role.enabled;
+                const magnitudeEl = document.getElementById("wwSequenceManual" + roleKey + "Magnitude");
+                if (magnitudeEl) magnitudeEl.value = role.magnitude === null ? "" : String(role.magnitude);
+                const unitEl = document.getElementById("wwSequenceManual" + roleKey + "Unit");
+                if (unitEl) unitEl.value = role.unit;
+                const angleEl = document.getElementById("wwSequenceManual" + roleKey + "Angle");
+                if (angleEl) angleEl.value = String(role.angleDeg);
+            }
+        }
+
+        function wwSequenceManualHasAnyInput() {
+            const m = wwSequenceState.manual;
+            return WW_PHASOR_DIAGRAM_ROLE_ORDER.some((roleKey) => m.roles[roleKey].enabled);
+        }
+
+        function wwSequenceFetchManualAnalysis(workspaceId, params) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/sequence-components-manual?" + params.toString()
+            );
+        }
+
+        function wwSequenceRequestManualAnalysis() {
+            if (wwSequenceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
+            if (!wwSequenceManualHasAnyInput()) {
+                wwSequenceState.manual.latestResult = null;
+                wwSequenceRenderFromState();
+                return;
+            }
+            const m = wwSequenceState.manual;
+            const myGeneration = ++wwSequenceState.manualRequestGeneration;
+            const epochAtStart = ww.epoch;
+            const workspaceId = currentWorkspaceId();
+            const params = new URLSearchParams({ voltage_basis: m.voltageBasis, current_basis: m.currentBasis });
+            if (m.voltageRatioPrimary !== null) params.set("vt_primary", String(m.voltageRatioPrimary));
+            if (m.voltageRatioSecondary !== null) params.set("vt_secondary", String(m.voltageRatioSecondary));
+            if (m.currentRatioPrimary !== null) params.set("ct_primary", String(m.currentRatioPrimary));
+            if (m.currentRatioSecondary !== null) params.set("ct_secondary", String(m.currentRatioSecondary));
+            for (const roleKey of WW_PHASOR_DIAGRAM_ROLE_ORDER) {
+                const role = m.roles[roleKey];
+                const prefix = roleKey.toLowerCase();
+                params.set(prefix + "_enabled", String(role.enabled));
+                if (role.magnitude !== null) params.set(prefix + "_magnitude", String(role.magnitude));
+                params.set(prefix + "_unit", role.unit);
+                if (role.angleDeg !== null) params.set(prefix + "_angle_deg", String(role.angleDeg));
+            }
+            wwSequenceFetchManualAnalysis(workspaceId, params).then(
+                (result) => {
+                    if (myGeneration !== wwSequenceState.manualRequestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                    wwSequenceState.manual.latestResult = result;
+                    wwSequenceRenderFromState();
+                },
+                () => {
+                    if (myGeneration !== wwSequenceState.manualRequestGeneration) return;
+                    wwSequenceState.manual.latestResult = null;
+                    wwSequenceRenderFromState();
+                }
+            );
+        }
+
+        // ---- Shared Analysis Engineering Context lifecycle consumer --
+        // Sequence Components never fetches or discovers contexts itself
+        // (see wwRenderAnalysisPage()'s own docstring / OVERCURRENT_
+        // ANALYSIS.md's "Shared Analysis Engineering Context lifecycle"
+        // section) -- registered in the wiring section near the bottom of
+        // this script alongside every other analyzer. ----
+
+        function wwSequenceOnAnalysisContexts(contexts) {
+            wwSequenceState.contexts = contexts;
+            wwSequenceUpdateInputSourceAvailability();
+            wwSequenceRenderContextOptions();
+            if (wwSequenceState.selectedContextId) {
+                wwSequenceLoadForSelectedContext();
+            } else {
+                wwSequenceShowNoContextSelected();
+            }
+        }
+
+        function wwSequenceOnAnalysisLifecyclePhase(phase) {
+            wwSequenceUpdateInputSourceAvailability();
+            if (phase === WW_ANALYSIS_CONTEXT_PHASE_IDENTIFYING) wwSequenceShowEmptyState(WW_SEQUENCE_MSG_IDENTIFYING_CONTEXTS);
+            else if (phase === WW_ANALYSIS_CONTEXT_PHASE_NO_SOURCES) wwSequenceShowEmptyState(WW_SEQUENCE_MSG_NO_SOURCES);
+            else if (phase === WW_ANALYSIS_CONTEXT_PHASE_NO_SUGGESTIONS) wwSequenceShowEmptyState(WW_SEQUENCE_MSG_NO_SUGGESTIONS);
+            else if (phase === WW_ANALYSIS_CONTEXT_PHASE_UNREACHABLE) wwSequenceShowEmptyState(WW_SEQUENCE_MSG_BACKEND_UNREACHABLE);
+        }
+
+        function wwSequenceOnAnalysisDiscovering(isDiscovering) {
+            const el = document.getElementById("wwSequenceDiscoveringIndicator");
+            if (el) el.hidden = !isDiscovering;
+        }
+
+        function wwSequenceOnAnalysisFreshContextsDiscovered() {
+            if (wwSequenceState.selectedContextId) return;
+            if (wwSequenceState.contexts.length === 0) return;
+            const first = wwSequenceState.contexts[0];
+            wwSequenceState.selectedContextId = first.id;
+            const select = document.getElementById("wwSequenceContextSelect");
+            if (select) select.value = first.id;
+            wwSequenceRenderContextBadge();
+            wwSequenceLoadForSelectedContext();
+        }
+
+        function wwSequenceRenderContextOptions() {
+            const select = document.getElementById("wwSequenceContextSelect");
+            if (!select) return;
+            const options = ['<option value="">Select a context…</option>'];
+            for (const ctx of wwSequenceState.contexts) {
+                options.push('<option value="' + escapeHtml(ctx.id) + '">' + escapeHtml(ctx.display_name) + '</option>');
+            }
+            select.innerHTML = options.join("");
+            const stillExists = wwSequenceState.selectedContextId &&
+                wwSequenceState.contexts.some((c) => c.id === wwSequenceState.selectedContextId);
+            if (stillExists) {
+                select.value = wwSequenceState.selectedContextId;
+            } else {
+                wwSequenceState.selectedContextId = null;
+            }
+            wwSequenceRenderContextBadge();
+        }
+
+        function wwSequenceRenderContextBadge() {
+            const badge = document.getElementById("wwSequenceContextBadge");
+            if (!badge) return;
+            const ctx = wwSequenceState.contexts.find((c) => c.id === wwSequenceState.selectedContextId);
+            if (!ctx) { badge.innerHTML = ""; return; }
+            const labels = { suggested: "Suggested", confirmed: "Confirmed", needs_review: "Needs Review", manual: "Manual" };
+            const cls = ctx.status === "needs_review" ? "needs-review" : ctx.status;
+            badge.innerHTML = '<span class="ww-mg-badge ww-mg-badge--' + cls + '">' + (labels[ctx.status] || escapeHtml(ctx.status)) + '</span>';
+        }
+
+        function wwSequenceShowEmptyState(message) {
+            const emptyState = document.getElementById("wwSequenceEmptyState");
+            if (emptyState) { emptyState.hidden = false; emptyState.textContent = message; }
+            const statusRow = document.getElementById("wwSequenceStatusRow");
+            if (statusRow) statusRow.hidden = true;
+            wwSequenceMountPlaybackControls(null);
+            wwSequenceState.activeTimeGroupId = null;
+            wwSequenceState.latestResult = null;
+            if (wwAnalysisActiveType === "sequence") {
+                wwAnalysisSetRelatedWaveformRoles([], wwSequenceState.selectedContextId, null);
+            }
+        }
+
+        function wwSequenceShowNoContextSelected() {
+            wwSequenceShowEmptyState(WW_SEQUENCE_MSG_SELECT_CONTEXT);
+        }
+
+        // Mounts (or tears down) Sequence Components' OWN copy of the
+        // shared, reusable Playback control surface -- identical pattern
+        // to wwPhasorMountPlaybackControls()/wwImpedanceMountPlaybackControls().
+        function wwSequenceMountPlaybackControls(groupId) {
+            const panelEl = document.getElementById("wwSequencePlaybackPanel");
+            const mountEl = document.getElementById("wwSequencePlaybackMount");
+            if (!panelEl || !mountEl) return;
+            if (groupId === null) {
+                panelEl.hidden = true;
+                mountEl.innerHTML = "";
+                return;
+            }
+            const playbackControlsHtml = wwCreatePlaybackControlsHtml();
+            mountEl.innerHTML =
+                '<div class="ww-phasor-playback-transport ww-analysis-playback-transport">' + playbackControlsHtml.transportHtml + '</div>' +
+                playbackControlsHtml.seekRowHtml;
+            panelEl.hidden = false;
+            wwWirePlaybackControls(mountEl, groupId);
+            wwSyncPlaybackControls(mountEl, groupId);
+            // Safety net -- identical to wwPhasorMountPlaybackControls()'s
+            // own (see its comment for the full rationale): re-runs this
+            // analyzer's own tick-subscriber logic directly after Pause/
+            // SetSpeed, which do not themselves call wwPlaybackNotifyTick().
+            const playBtn = mountEl.querySelector(".ww-tg-playback-play-btn");
+            if (playBtn) playBtn.addEventListener("click", () => wwSequenceOnPlaybackTick(wwPlayback.currentTime, wwPlayback));
+            const restartBtn = mountEl.querySelector(".ww-tg-playback-restart-btn");
+            if (restartBtn) restartBtn.addEventListener("click", () => wwSequenceOnPlaybackTick(wwPlayback.currentTime, wwPlayback));
+            const speedSelect = mountEl.querySelector(".ww-tg-playback-speed-select");
+            if (speedSelect) speedSelect.addEventListener("change", () => wwSequenceOnPlaybackTick(wwPlayback.currentTime, wwPlayback));
+        }
+
+        function wwSequenceLoadForSelectedContext() {
+            const contextId = wwSequenceState.selectedContextId;
+            if (!contextId) {
+                wwSequenceShowNoContextSelected();
+                return;
+            }
+            const ctx = wwSequenceState.contexts.find((c) => c.id === contextId);
+            const isNewContext = contextId !== wwSequenceState.lastLoadedContextId;
+            wwSequenceState.lastLoadedContextId = contextId;
+            if (isNewContext) {
+                wwSequenceState.visibleRoles = {};
+                wwSequenceState.frozenVoltageScale = null;
+                wwSequenceState.frozenCurrentScale = null;
+            }
+
+            // Reuses wwPhasorAnchorDisplaySourceIdForContext() verbatim --
+            // a generic, Phasor-state-free coordinate-conversion helper.
+            const anchorDisplaySourceId = wwPhasorAnchorDisplaySourceIdForContext(ctx);
+            wwSequenceState.anchorDisplaySourceId = anchorDisplaySourceId;
+            const groupId = anchorDisplaySourceId !== null ? wwTimeGroupIdForDisplaySourceId(anchorDisplaySourceId) : null;
+
+            if (groupId !== wwSequenceState.activeTimeGroupId) {
+                wwSequenceState.activeTimeGroupId = groupId;
+                wwSequenceMountPlaybackControls(groupId);
+            }
+
+            if (groupId === null) {
+                wwSequenceState.analysisTime = 0;
+                wwSequenceRequestAnalysis();
+                return;
+            }
+
+            if (wwPlayback.activeTimeGroupId === groupId) {
+                wwSequenceState.analysisTime = wwPlayback.currentTime;
+                wwSequenceRequestExactPlaybackFetch();
+            } else {
+                wwPlaybackRestart(groupId);
+                const bounds = wwDeriveTimeGroupBounds(groupId);
+                if (bounds) {
+                    // Reuses wwPhasorComputeInitialClaimTime() verbatim --
+                    // a generic (groupId, bounds) -> time heuristic with no
+                    // Phasor-specific state inside it.
+                    const initialTime = wwPhasorComputeInitialClaimTime(groupId, bounds);
+                    if (Math.abs(initialTime - bounds.start) > 1e-9) {
+                        wwPlaybackHandleSeekInput(groupId, initialTime);
+                        wwPlaybackHandleSeekCommit(groupId, initialTime);
+                    }
+                }
+            }
+        }
+
+        // ---- Playback integration: the ONE tick subscriber -- identical
+        // shape to wwPhasorOnPlaybackTick()/wwImpedanceOnPlaybackTick(). ----
+        let wwSequenceLastPlaybackSignature = null;
+        function wwSequenceOnPlaybackTick(currentTime, playback) {
+            if (wwSequenceState.activeTimeGroupId === null) return;
+            const isOurGroup = playback.activeTimeGroupId === wwSequenceState.activeTimeGroupId;
+            const signature = playback.state + "|" + playback.activeTimeGroupId;
+            const transitioned = signature !== wwSequenceLastPlaybackSignature;
+            wwSequenceLastPlaybackSignature = signature;
+
+            const mountEl = document.getElementById("wwSequencePlaybackMount");
+            if (mountEl && !mountEl.hidden && isOurGroup) {
+                if (transitioned) {
+                    wwSyncPlaybackControls(mountEl, wwSequenceState.activeTimeGroupId);
+                } else {
+                    wwUpdatePlaybackControlsTick(mountEl, wwSequenceState.activeTimeGroupId);
+                }
+            }
+
+            if (!isOurGroup) return;
+
+            wwSequenceState.analysisTime = currentTime;
+
+            // Manual Input / Calculator mode: the RECORDING fetch pipeline
+            // must never fetch/recompute while Manual is the active input
+            // source -- mirrors wwPhasorOnPlaybackTick()'s own identical
+            // gate.
+            if (wwSequenceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return;
+
+            if (transitioned && playback.currentTime === playback.startTime && playback.state !== WW_PLAYBACK_STATE_PLAYING) {
+                // A fresh "playback run" boundary (Restart) -- release the
+                // frozen per-family scale to re-establish from the next
+                // result (task's own section 11 "follow the recently
+                // corrected Phasor invariant").
+                wwSequenceState.frozenVoltageScale = null;
+                wwSequenceState.frozenCurrentScale = null;
+            }
+
+            if (playback.state === WW_PLAYBACK_STATE_PLAYING) {
+                wwSequenceMaybeFetchForPlayback();
+            } else {
+                wwSequenceRequestExactPlaybackFetch();
+            }
+        }
+
+        // ---- Throttled, concurrency-safe fetch -- identical shape to
+        // wwPhasorMaybeFetchForPlayback()/wwImpedanceMaybeFetchForPlayback(). ----
+        const WW_SEQUENCE_PLAYBACK_THROTTLE_MS = 100; // ~10 Hz, same as every other Analysis-menu analyzer
+        let wwSequencePlaybackFetchInFlight = false;
+        let wwSequencePlaybackLastFetchAtMs = 0;
+        let wwSequencePlaybackFetchedTime = null;
+        let wwSequencePlaybackForceNextFetch = false;
+
+        function wwSequencePlaybackDesiredTimeChanged() {
+            return wwSequencePlaybackFetchedTime === null ||
+                Math.abs(wwSequencePlaybackFetchedTime - wwSequenceState.analysisTime) > 1e-9;
+        }
+
+        function wwSequenceRequestExactPlaybackFetch() {
+            wwSequencePlaybackForceNextFetch = true;
+            wwSequenceMaybeFetchForPlayback();
+        }
+
+        function wwSequenceMaybeFetchForPlayback() {
+            const force = wwSequencePlaybackForceNextFetch;
+            if (!force && !wwSequencePlaybackDesiredTimeChanged()) return;
+            if (wwSequencePlaybackFetchInFlight) return;
+            if (!force) {
+                const elapsedMs = performance.now() - wwSequencePlaybackLastFetchAtMs;
+                if (elapsedMs < WW_SEQUENCE_PLAYBACK_THROTTLE_MS) return;
+            }
+            wwSequencePlaybackForceNextFetch = false;
+            wwSequenceRequestAnalysis();
+        }
+
+        function wwSequenceSetUpdatingIndicator(isUpdating) {
+            const el = document.getElementById("wwSequenceUpdatingIndicator");
+            if (el) el.hidden = !isUpdating;
+        }
+
+        function wwSequenceFetchAnalysis(workspaceId, contextId, analysisTimeSeconds) {
+            const params = new URLSearchParams({ analysis_time: String(analysisTimeSeconds) });
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                "/engineering-contexts/" + encodeURIComponent(contextId) + "/sequence-components?" + params.toString()
+            );
+        }
+
+        // The ONE place that actually dispatches a `/sequence-components`
+        // HTTP call -- identical staleness-guard/throttle-completion shape
+        // to wwPhasorRequestDiagram()/wwImpedanceRequestAnalysis().
+        async function wwSequenceRequestAnalysis() {
+            const contextId = wwSequenceState.selectedContextId;
+            if (!contextId || wwSequenceState.analysisTime === null) return;
+            const anchorDisplaySourceId = wwSequenceState.anchorDisplaySourceId;
+            const desiredTime = wwSequenceState.analysisTime;
+
+            const myGeneration = ++wwSequenceState.requestGeneration;
+            const epochAtStart = ww.epoch;
+            const workspaceId = currentWorkspaceId();
+            const analysisTimeForApi = anchorDisplaySourceId !== null
+                ? wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, desiredTime)
+                : desiredTime;
+
+            wwSequencePlaybackFetchInFlight = true;
+            wwSequenceSetUpdatingIndicator(true);
+            let result;
+            try {
+                result = await wwSequenceFetchAnalysis(workspaceId, contextId, analysisTimeForApi);
+            } catch (error) {
+                wwSequencePlaybackFetchInFlight = false;
+                wwSequencePlaybackLastFetchAtMs = performance.now();
+                wwSequencePlaybackFetchedTime = desiredTime;
+                if (myGeneration !== wwSequenceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                wwSequenceSetUpdatingIndicator(false);
+                wwSequenceState.latestResult = null;
+                wwSequenceRenderResult(null);
+                wwSequenceMaybeFetchForPlayback();
+                return;
+            }
+            wwSequencePlaybackFetchInFlight = false;
+            wwSequencePlaybackLastFetchAtMs = performance.now();
+            wwSequencePlaybackFetchedTime = desiredTime;
+            if (myGeneration !== wwSequenceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            wwSequenceSetUpdatingIndicator(false);
+
+            wwSequenceState.latestResult = result;
+            // Default visibility: a role that just computed and has no
+            // existing preference yet starts visible -- never overwrites a
+            // preference the engineer already set (visibility persists
+            // throughout Playback, task's own section 12).
+            for (const roleKey of WW_SEQUENCE_ROLE_ORDER) {
+                const value = wwSequenceRoleValue(result, roleKey);
+                if (value && value.available && !(roleKey in wwSequenceState.visibleRoles)) {
+                    wwSequenceState.visibleRoles[roleKey] = true;
+                }
+            }
+            wwSequenceRenderResult(result);
+            wwSequenceMaybeFetchForPlayback();
+        }
+
+        // ---- Shared Related Waveforms integration -- pushes the SOURCE
+        // phase quantities (Va/Vb/Vc, Ia/Ib/Ic) the sequence transform was
+        // derived from (task's own section 15), never the V1/V2/V0/I1/I2/
+        // I0 sequence values themselves (which have no waveform/time
+        // series of their own). Channel identity comes straight from the
+        // already-resolved result -- never re-derived from a channel name
+        // -- and is pushed whenever known, independent of that family's
+        // own `status` (mirrors ImpedanceAnalysisResult's own "identity
+        // known regardless of status" precedent). ----
+        function wwSequenceComputeActiveRelatedWaveformRoles() {
+            if (wwSequenceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return [];
+            const result = wwSequenceState.latestResult;
+            if (!result) return [];
+            const roles = [];
+            const pushRole = (roleKey, engineeringType, phase, channelRef, unit) => {
+                if (!channelRef) return;
+                roles.push({ roleKey, engineeringType, phase, channelRef, unit, label: roleKey, color: wwPhasorRoleColor(roleKey) });
+            };
+            const v = result.voltage_sequences;
+            if (v) {
+                pushRole("Va", "Voltage", "A", v.phase_a_channel_ref, v.unit);
+                pushRole("Vb", "Voltage", "B", v.phase_b_channel_ref, v.unit);
+                pushRole("Vc", "Voltage", "C", v.phase_c_channel_ref, v.unit);
+            }
+            const i = result.current_sequences;
+            if (i) {
+                pushRole("Ia", "Current", "A", i.phase_a_channel_ref, i.unit);
+                pushRole("Ib", "Current", "B", i.phase_b_channel_ref, i.unit);
+                pushRole("Ic", "Current", "C", i.phase_c_channel_ref, i.unit);
+            }
+            return roles;
+        }
+        function wwSequencePushRelatedWaveformRoles() {
+            if (wwAnalysisActiveType !== "sequence") return;
+            wwAnalysisSetRelatedWaveformRoles(
+                wwSequenceComputeActiveRelatedWaveformRoles(),
+                wwSequenceState.selectedContextId,
+                wwSequenceState.activeTimeGroupId
+            );
+        }
+
+        function wwSequenceActiveResult() {
+            return wwSequenceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL
+                ? wwSequenceState.manual.latestResult
+                : wwSequenceState.latestResult;
+        }
+
+        function wwSequenceRenderFromState() {
+            wwSequenceRenderResult(wwSequenceActiveResult());
+        }
+
+        function wwSequenceToggleRoleVisibility(roleKey) {
+            const value = wwSequenceRoleValue(wwSequenceActiveResult(), roleKey);
+            if (!value || !value.available) return;
+            wwSequenceState.visibleRoles[roleKey] = wwSequenceState.visibleRoles[roleKey] === false;
+            wwSequenceRenderFromState();
+        }
+
+        // ---- Rendering ----
+
+        function wwSequenceWholeResultBlockedMessage(result) {
+            if (result.reason_code) return wwPhasorReasonText(result.reason_code);
+            return result.message || "This Engineering Context's roles cannot currently be combined into one result.";
+        }
+
+        function wwSequenceFamilyReasonText(value) {
+            if (value && value.reasonCode) return wwPhasorReasonText(value.reasonCode);
+            return "Requires all three phases to be available.";
+        }
+
+        function wwSequenceValueRowHtml(result, roleKey) {
+            const value = wwSequenceRoleValue(result, roleKey);
+            const swatch = '<span class="ww-phasor-role-swatch" style="background:' + wwSequenceRoleColor(roleKey) + '"></span>';
+            if (!value || !value.available) {
+                const statusText = value ? wwPhasorRoleStatusLabel(value.status) : "Missing";
+                const reasonText = wwSequenceFamilyReasonText(value);
+                return (
+                    '<div class="ww-phasor-value-row ww-phasor-value-row--unavailable">' +
+                        '<span class="ww-phasor-role-label">' + swatch + escapeHtml(roleKey) + '</span>' +
+                        '<span class="ww-phasor-value-numbers"><span class="ww-phasor-role-status-text ww-phasor-role-warn" title="' + escapeHtml(reasonText) + '">' + escapeHtml(statusText) + '</span></span>' +
+                        '<span class="ww-phasor-eye-icon" aria-hidden="true"></span>' +
+                    '</div>'
+                );
+            }
+            // Reuses the EXACT row-as-toggle-button convention Phasor's own
+            // Values list already established (itself reused from
+            // #channelGroups).
+            const visible = wwSequenceState.visibleRoles[roleKey] !== false;
+            const actionLabel = (visible ? "Hide " : "Show ") + roleKey + " vector";
+            return (
+                '<div class="ww-phasor-value-row ww-phasor-value-row--toggle' + (visible ? "" : " ww-phasor-value-row--hidden") + '"' +
+                    ' role="button" tabindex="0" aria-pressed="' + visible + '" data-role="' + escapeHtml(roleKey) + '"' +
+                    ' aria-label="' + escapeHtml(actionLabel) + '" title="' + escapeHtml(actionLabel) + '">' +
+                    '<span class="ww-phasor-role-label">' + swatch + escapeHtml(roleKey) + '</span>' +
+                    '<span class="ww-phasor-value-numbers">' +
+                        '<span class="ww-phasor-value-magnitude">' + wwFormatEngineeringValue(value.magnitude) + ' ' + escapeHtml(value.unit || "") + '</span>' +
+                        '<span class="ww-phasor-value-angle">∠ ' + wwPhasorFormatAngle(value.angleDeg) + '</span></span>' +
+                    '<span class="ww-phasor-eye-icon" aria-hidden="true">' + (visible ? "👁" : "🚫") + '</span>' +
+                '</div>'
+            );
+        }
+
+        function wwSequenceRenderValuesList(result) {
+            const container = document.getElementById("wwSequenceValuesList");
+            if (!container) return;
+            const sections = [
+                ['<div class="ww-phasor-family-heading">Voltage sequences</div>', WW_SEQUENCE_VOLTAGE_ROLES],
+                ['<div class="ww-phasor-family-heading">Current sequences</div>', WW_SEQUENCE_CURRENT_ROLES],
+            ];
+            const parts = [];
+            for (const [heading, roleKeys] of sections) {
+                parts.push(heading);
+                for (const roleKey of roleKeys) parts.push(wwSequenceValueRowHtml(result, roleKey));
+            }
+            container.innerHTML = parts.join("");
+        }
+
+        // Sequence ratios -- descriptive only (task's own explicit "never
+        // compare against protection thresholds in v1" instruction). A
+        // near-zero positive sequence reports an explicit "Unavailable"
+        // text, never Infinity/NaN (backend guardrail, task's own section
+        // 18 -- this is purely a display of whatever the backend already
+        // decided, never a second client-side guardrail).
+        function wwSequenceFormatRatio(percent) {
+            if (percent === null || percent === undefined || !Number.isFinite(percent)) return "Unavailable";
+            return (Math.round(percent * 100) / 100) + "%";
+        }
+        function wwSequenceRatioRowHtml(label, percent) {
+            return (
+                '<div class="ww-phasor-value-row">' +
+                    '<span class="ww-phasor-role-label">' + escapeHtml(label) + '</span>' +
+                    '<span class="ww-phasor-value-numbers"><span class="ww-phasor-value-magnitude">' + wwSequenceFormatRatio(percent) + '</span></span>' +
+                '</div>'
+            );
+        }
+        function wwSequenceRenderRatiosList(result) {
+            const container = document.getElementById("wwSequenceRatiosList");
+            if (!container) return;
+            const v = (result && result.voltage_sequences) || {};
+            const i = (result && result.current_sequences) || {};
+            container.innerHTML = [
+                wwSequenceRatioRowHtml("V2 / V1", v.negative_sequence_ratio_percent),
+                wwSequenceRatioRowHtml("V0 / V1", v.zero_sequence_ratio_percent),
+                wwSequenceRatioRowHtml("I2 / I1", i.negative_sequence_ratio_percent),
+                wwSequenceRatioRowHtml("I0 / I1", i.zero_sequence_ratio_percent),
+            ].join("");
+        }
+
+        // The one render path for a fetched result -- identical top-level
+        // shape to wwPhasorRenderDiagramResult(): status banner (only for
+        // the whole-result-BLOCKED case), Values, Ratios, and the SVG.
+        // Shared by BOTH Recording and Manual mode.
+        function wwSequenceRenderResult(result) {
+            const emptyState = document.getElementById("wwSequenceEmptyState");
+            const isManual = wwSequenceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+            const statusRow = document.getElementById(isManual ? "wwSequenceManualStatusRow" : "wwSequenceStatusRow");
+            const otherStatusRow = document.getElementById(isManual ? "wwSequenceStatusRow" : "wwSequenceManualStatusRow");
+            if (otherStatusRow) otherStatusRow.hidden = true;
+            if (emptyState) emptyState.hidden = true;
+
+            if (!result) {
+                if (statusRow) {
+                    statusRow.hidden = false;
+                    statusRow.className = "ww-phasor-status-row";
+                    statusRow.textContent = "Could not reach the backend.";
+                }
+                wwSequenceRenderValuesList(null);
+                wwSequenceRenderRatiosList(null);
+                wwSequencePushRelatedWaveformRoles();
+                return;
+            }
+
+            if (result.status === "needs_configuration") {
+                if (statusRow) {
+                    statusRow.hidden = false;
+                    statusRow.className = "ww-phasor-status-row ww-phasor-status--needs-configuration";
+                    statusRow.textContent = wwSequenceWholeResultBlockedMessage(result);
+                }
+            } else if (statusRow) {
+                statusRow.hidden = true;
+                statusRow.className = "ww-phasor-status-row";
+            }
+
+            const warningsEl = document.getElementById("wwSequenceWarnings");
+            if (warningsEl) {
+                if (result.warnings && result.warnings.length > 0) {
+                    warningsEl.hidden = false;
+                    warningsEl.innerHTML = result.warnings.map((w) => escapeHtml(w)).join("<br>");
+                } else {
+                    warningsEl.hidden = true;
+                    warningsEl.innerHTML = "";
+                }
+            }
+
+            wwSequenceRenderValuesList(result);
+            wwSequenceRenderRatiosList(result);
+            wwSequenceRenderDiagramSvg(result);
+            wwSequencePushRelatedWaveformRoles();
+        }
+
+        function wwSequenceFamilyMaxMagnitude(result, roleKeys) {
+            let max = 0;
+            for (const roleKey of roleKeys) {
+                const value = wwSequenceRoleValue(result, roleKey);
+                if (value && value.available && Number.isFinite(value.magnitude) && value.magnitude > max) max = value.magnitude;
+            }
+            return max;
+        }
+        function wwSequenceFamilyUnit(result, roleKeys) {
+            for (const roleKey of roleKeys) {
+                const value = wwSequenceRoleValue(result, roleKey);
+                if (value && value.available && value.unit) return value.unit;
+            }
+            return "";
+        }
+
+        // Sequence components within one family share ONE graphical scale
+        // (task's own section 10 "Voltage scale derived from max(|V0|,
+        // |V1|,|V2|)"); Voltage and Current use INDEPENDENT scales (never
+        // letting one affect the other), both normalized to the same
+        // outer plot radius -- identical geometry/legend/vector-drawing
+        // shape to wwPhasorRenderDiagramSvg(), reusing wwPhasorVectorSvg()
+        // verbatim. Manual always recomputes fresh from its own currently-
+        // enabled values; Recording preserves the SAME frozen-per-family-
+        // scale Playback-stability policy Phasor's own diagram uses,
+        // gated on `inputSource` from day one (task's own section 11 --
+        // never repeating the Manual/Recording scale-leak bug Phasor's
+        // own diagram once had and later fixed).
+        function wwSequenceRenderDiagramSvg(result) {
+            const svg = document.getElementById("wwSequenceSvg");
+            const scaleNote = document.getElementById("wwSequenceScaleNote");
+            if (!svg) return;
+            const plotRadius = 90;
+
+            const voltageMax = wwSequenceFamilyMaxMagnitude(result, WW_SEQUENCE_VOLTAGE_ROLES);
+            const currentMax = wwSequenceFamilyMaxMagnitude(result, WW_SEQUENCE_CURRENT_ROLES);
+
+            const isManual = wwSequenceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+            let voltageScale = 0;
+            let currentScale = 0;
+            if (isManual) {
+                if (voltageMax > 0) voltageScale = plotRadius / (1.15 * voltageMax);
+                if (currentMax > 0) currentScale = plotRadius / (1.15 * currentMax);
+            } else {
+                if (voltageMax > 0) {
+                    const neededScale = plotRadius / (1.15 * voltageMax);
+                    if (wwSequenceState.frozenVoltageScale === null || voltageMax * wwSequenceState.frozenVoltageScale > plotRadius) {
+                        wwSequenceState.frozenVoltageScale = neededScale;
+                    }
+                }
+                if (currentMax > 0) {
+                    const neededScale = plotRadius / (1.15 * currentMax);
+                    if (wwSequenceState.frozenCurrentScale === null || currentMax * wwSequenceState.frozenCurrentScale > plotRadius) {
+                        wwSequenceState.frozenCurrentScale = neededScale;
+                    }
+                }
+                voltageScale = voltageMax > 0 ? wwSequenceState.frozenVoltageScale : 0;
+                currentScale = currentMax > 0 ? wwSequenceState.frozenCurrentScale : 0;
+            }
+
+            const parts = [];
+            const wwSequenceRingFracs = [1 / 3, 2 / 3, 1];
+            for (const frac of wwSequenceRingFracs) {
+                const d = plotRadius * frac;
+                parts.push('<line class="ww-phasor-grid-line" x1="' + (-d).toFixed(1) + '" y1="-100" x2="' + (-d).toFixed(1) + '" y2="100"></line>');
+                parts.push('<line class="ww-phasor-grid-line" x1="' + d.toFixed(1) + '" y1="-100" x2="' + d.toFixed(1) + '" y2="100"></line>');
+                parts.push('<line class="ww-phasor-grid-line" x1="-100" y1="' + (-d).toFixed(1) + '" x2="100" y2="' + (-d).toFixed(1) + '"></line>');
+                parts.push('<line class="ww-phasor-grid-line" x1="-100" y1="' + d.toFixed(1) + '" x2="100" y2="' + d.toFixed(1) + '"></line>');
+            }
+            parts.push('<line class="ww-phasor-axis" x1="-100" y1="0" x2="100" y2="0"></line>');
+            parts.push('<line class="ww-phasor-axis" x1="0" y1="-100" x2="0" y2="100"></line>');
+            for (const frac of wwSequenceRingFracs) {
+                parts.push('<circle class="ww-phasor-ring" cx="0" cy="0" r="' + (plotRadius * frac).toFixed(1) + '"></circle>');
+            }
+            const legendLines = [];
+            if (voltageScale > 0) {
+                const voltageUnit = wwSequenceFamilyUnit(result, WW_SEQUENCE_VOLTAGE_ROLES);
+                const values = wwSequenceRingFracs.map((frac) => wwFormatEngineeringValue((plotRadius * frac) / voltageScale));
+                legendLines.push("V: " + values.join(" / ") + (voltageUnit ? " " + voltageUnit : ""));
+            }
+            if (currentScale > 0) {
+                const currentUnit = wwSequenceFamilyUnit(result, WW_SEQUENCE_CURRENT_ROLES);
+                const values = wwSequenceRingFracs.map((frac) => wwFormatEngineeringValue((plotRadius * frac) / currentScale));
+                legendLines.push("I: " + values.join(" / ") + (currentUnit ? " " + currentUnit : ""));
+            }
+            if (legendLines.length > 0) {
+                const legendX = 112;
+                let legendY = -100;
+                parts.push('<text class="ww-phasor-scale-legend ww-phasor-scale-legend--header" x="' + legendX + '" y="' + legendY.toFixed(1) + '" text-anchor="end">Scale</text>');
+                legendY += 9;
+                for (const line of legendLines) {
+                    parts.push('<text class="ww-phasor-scale-legend" x="' + legendX + '" y="' + legendY.toFixed(1) + '" text-anchor="end">' + escapeHtml(line) + '</text>');
+                    legendY += 8;
+                }
+            }
+
+            for (const roleKey of WW_SEQUENCE_ROLE_ORDER) {
+                const value = wwSequenceRoleValue(result, roleKey);
+                if (!value || !value.available) continue;
+                if (wwSequenceState.visibleRoles[roleKey] === false) continue;
+                if (!Number.isFinite(value.magnitude) || !Number.isFinite(value.angleDeg)) continue;
+                const isCurrent = roleKey.charAt(0) === "I";
+                const scale = isCurrent ? currentScale : voltageScale;
+                const angleRad = value.angleDeg * Math.PI / 180;
+                const r = value.magnitude * scale;
+                const x = r * Math.cos(angleRad);
+                const y = -r * Math.sin(angleRad);
+                // Reuses wwPhasorVectorSvg() verbatim -- solid for Voltage,
+                // dashed for Current, same as every other Analysis-menu
+                // diagram.
+                parts.push(wwPhasorVectorSvg(x, y, wwSequenceRoleColor(roleKey), roleKey, isCurrent));
+            }
+            parts.push('<text class="ww-phasor-axis-title" x="112" y="-6" text-anchor="end">Real</text>');
+            parts.push('<text class="ww-phasor-axis-title" x="3" y="-112" text-anchor="start">Imaginary</text>');
+            svg.innerHTML = parts.join("");
+
+            if (voltageMax > 0 && currentMax > 0) {
+                const ratio = voltageScale > 0 ? currentScale / voltageScale : 0;
+                if (scaleNote) {
+                    scaleNote.hidden = false;
+                    scaleNote.textContent = "Current vectors scaled ×" + ratio.toFixed(2) + " for display -- engineering values are unaffected.";
+                }
+            } else if (scaleNote) {
+                scaleNote.hidden = true;
+                scaleNote.textContent = "";
+            }
+        }
+
+        // "Start New Workspace"/"Clear workspace" lifecycle hook -- mirrors
+        // wwPhasorResetState()'s/wwImpedanceResetState()'s own registration
+        // inside wwClearWorkspace().
+        function wwSequenceResetState() {
+            wwSequenceState.contexts = [];
+            wwSequenceState.selectedContextId = null;
+            wwSequenceState.lastLoadedContextId = null;
+            wwSequenceState.analysisTime = null;
+            wwSequenceState.anchorDisplaySourceId = null;
+            wwSequenceState.activeTimeGroupId = null;
+            wwSequenceState.latestResult = null;
+            wwSequenceState.visibleRoles = {};
+            wwSequenceState.frozenVoltageScale = null;
+            wwSequenceState.frozenCurrentScale = null;
+            wwSequenceState.requestGeneration += 1;
+            wwSequenceState.inputSource = WW_ANALYSIS_INPUT_SOURCE_RECORDING;
+            wwSequenceState.recordingAvailable = false;
+            wwSequenceState.inputSourceAutoSelected = true;
+            wwSequenceState.manual = {
+                voltageBasis: "primary", voltageRatioPrimary: null, voltageRatioSecondary: null,
+                currentBasis: "primary", currentRatioPrimary: null, currentRatioSecondary: null,
+                roles: {
+                    Va: { enabled: false, magnitude: null, unit: "kV", angleDeg: 0 },
+                    Vb: { enabled: false, magnitude: null, unit: "kV", angleDeg: -120 },
+                    Vc: { enabled: false, magnitude: null, unit: "kV", angleDeg: 120 },
+                    Ia: { enabled: false, magnitude: null, unit: "A", angleDeg: 0 },
+                    Ib: { enabled: false, magnitude: null, unit: "A", angleDeg: -120 },
+                    Ic: { enabled: false, magnitude: null, unit: "A", angleDeg: 120 },
+                },
+                latestResult: null,
+            };
+            wwSequenceState.manualRequestGeneration += 1;
+            wwSequenceOnAnalysisDiscovering(false);
+            wwSequencePlaybackFetchInFlight = false;
+            wwSequencePlaybackFetchedTime = null;
+            wwSequencePlaybackForceNextFetch = false;
+            wwSequenceLastPlaybackSignature = null;
+            wwSequenceMountPlaybackControls(null);
+            const contextSelect = document.getElementById("wwSequenceContextSelect");
+            if (contextSelect) contextSelect.innerHTML = '<option value="">Select a context…</option>';
+            const badge = document.getElementById("wwSequenceContextBadge");
+            if (badge) badge.innerHTML = "";
+            const svg = document.getElementById("wwSequenceSvg");
+            if (svg) svg.innerHTML = "";
+            const scaleNote = document.getElementById("wwSequenceScaleNote");
+            if (scaleNote) { scaleNote.hidden = true; scaleNote.textContent = ""; }
+            wwSequenceSetUpdatingIndicator(false);
+            const valuesList = document.getElementById("wwSequenceValuesList");
+            if (valuesList) valuesList.innerHTML = "";
+            const ratiosList = document.getElementById("wwSequenceRatiosList");
+            if (ratiosList) ratiosList.innerHTML = "";
+            const statusRow = document.getElementById("wwSequenceStatusRow");
+            if (statusRow) statusRow.hidden = true;
+            const manualStatusRow = document.getElementById("wwSequenceManualStatusRow");
+            if (manualStatusRow) manualStatusRow.hidden = true;
+            const emptyState = document.getElementById("wwSequenceEmptyState");
+            if (emptyState) { emptyState.hidden = false; emptyState.textContent = WW_SEQUENCE_MSG_SELECT_CONTEXT; }
+            wwSequenceSyncInputSourceButtons();
+            wwSequenceSyncManualInputFields();
+            wwSequenceUpdateManualSectionVisibility();
+            wwSequenceUpdateRecordingSectionVisibility();
+            wwSequenceUpdateRatioFieldsVisibility();
+            wwSequenceUpdateInputSourceAvailability();
+        }
+
 
         // ------------------------------------------------------------------
         // Init
@@ -40816,6 +42025,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // wwPlayback controller (DEC-085) -- mirrors Phasor's/
         // Overcurrent's own registration immediately above/below.
         wwPlaybackOnTick(wwImpedanceOnPlaybackTick);
+        wwAnalysisRegisterContextConsumer({
+            onContexts: wwSequenceOnAnalysisContexts,
+            onLifecyclePhase: wwSequenceOnAnalysisLifecyclePhase,
+            onDiscovering: wwSequenceOnAnalysisDiscovering,
+            onFreshContextsDiscovered: wwSequenceOnAnalysisFreshContextsDiscovered,
+        });
+        // Sequence Components v1: the FOURTH consumer of the ONE shared
+        // wwPlayback controller (DEC-085) -- mirrors Phasor's/
+        // Overcurrent's/Impedance Locus's own registration immediately
+        // above.
+        wwPlaybackOnTick(wwSequenceOnPlaybackTick);
 
         // Shared Related Waveforms panel: the ONE permanent tick
         // subscriber (cursor position only, never a re-fetch/re-render --
@@ -40949,6 +42169,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // visible, so a context change that happened while this
                 // tab was hidden is reflected promptly.
                 wwImpedanceUpdateInputSourceAvailability();
+            } else if (type === "sequence") {
+                wwAnalysisMountRelatedWaveformsInto("wwSequenceRelatedWaveformsAnchor");
+                wwSequencePushRelatedWaveformRoles();
+                // Mirrors every other analyzer's own re-check above -- see
+                // their identical comments for the full rationale.
+                wwSequenceUpdateInputSourceAvailability();
             } else {
                 wwAnalysisSetRelatedWaveformRoles([], null, null);
             }
@@ -41266,6 +42492,99 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // via wwPhasorOnAnalysisContexts()/wwPhasorOnAnalysisLifecyclePhase()
         // above -- and again the moment Phasor genuinely becomes the
         // visible analyzer tab (wwSetActiveAnalysisType()).
+
+        // ---- Sequence Components v1 wiring -- mirrors the Phasor/
+        // Overcurrent/Impedance Locus wiring immediately above. ----
+        document.getElementById("wwSequenceContextSelect").addEventListener("change", (event) => {
+            wwSequenceState.selectedContextId = event.target.value || null;
+            wwSequenceRenderContextBadge();
+            if (wwSequenceState.selectedContextId) {
+                wwSequenceLoadForSelectedContext();
+            } else {
+                wwSequenceShowNoContextSelected();
+            }
+        });
+        // Values list -- reuses the EXACT row-as-toggle-button convention
+        // Phasor's own Values list already established.
+        document.getElementById("wwSequenceValuesList").addEventListener("click", (event) => {
+            const row = event.target.closest(".ww-phasor-value-row--toggle");
+            if (!row) return;
+            wwSequenceToggleRoleVisibility(row.dataset.role);
+        });
+        document.getElementById("wwSequenceValuesList").addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            const row = event.target.closest(".ww-phasor-value-row--toggle");
+            if (!row || event.target !== row) return;
+            event.preventDefault();
+            wwSequenceToggleRoleVisibility(row.dataset.role);
+        });
+        // Analysis Input Source segmented control -- Recording/Manual.
+        document.getElementById("wwSequenceInputSourceRecordingBtn").addEventListener("click", () => wwSequenceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_RECORDING));
+        document.getElementById("wwSequenceInputSourceManualBtn").addEventListener("click", () => wwSequenceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_MANUAL));
+        // Manual Phasors -- Voltage/Current basis selectors are fully
+        // INDEPENDENT of each other, identical to Manual Phasor's own.
+        document.getElementById("wwSequenceManualVoltageBasisSelect").addEventListener("change", (event) => {
+            wwSequenceState.manual.voltageBasis = event.target.value;
+            wwSequenceUpdateRatioFieldsVisibility();
+            wwSequenceRequestManualAnalysis();
+        });
+        document.getElementById("wwSequenceManualCurrentBasisSelect").addEventListener("change", (event) => {
+            wwSequenceState.manual.currentBasis = event.target.value;
+            wwSequenceUpdateRatioFieldsVisibility();
+            wwSequenceRequestManualAnalysis();
+        });
+        document.getElementById("wwSequenceManualVtPrimaryInput").addEventListener("change", (event) => {
+            const value = parseFloat(event.target.value);
+            wwSequenceState.manual.voltageRatioPrimary = Number.isFinite(value) ? value : null;
+            wwSequenceRequestManualAnalysis();
+        });
+        document.getElementById("wwSequenceManualVtSecondaryInput").addEventListener("change", (event) => {
+            const value = parseFloat(event.target.value);
+            wwSequenceState.manual.voltageRatioSecondary = Number.isFinite(value) ? value : null;
+            wwSequenceRequestManualAnalysis();
+        });
+        document.getElementById("wwSequenceManualCtPrimaryInput").addEventListener("change", (event) => {
+            const value = parseFloat(event.target.value);
+            wwSequenceState.manual.currentRatioPrimary = Number.isFinite(value) ? value : null;
+            wwSequenceRequestManualAnalysis();
+        });
+        document.getElementById("wwSequenceManualCtSecondaryInput").addEventListener("change", (event) => {
+            const value = parseFloat(event.target.value);
+            wwSequenceState.manual.currentRatioSecondary = Number.isFinite(value) ? value : null;
+            wwSequenceRequestManualAnalysis();
+        });
+        // One enable-checkbox/magnitude/unit/angle group per role -- a
+        // loop over the SAME six-role order Manual Phasor already uses,
+        // rather than 24 hand-written near-identical listeners.
+        for (const wwSequenceManualRoleKey of WW_PHASOR_DIAGRAM_ROLE_ORDER) {
+            document.getElementById("wwSequenceManual" + wwSequenceManualRoleKey + "Enabled").addEventListener("change", (event) => {
+                wwSequenceState.manual.roles[wwSequenceManualRoleKey].enabled = event.target.checked;
+                wwSequenceRequestManualAnalysis();
+            });
+            document.getElementById("wwSequenceManual" + wwSequenceManualRoleKey + "Magnitude").addEventListener("change", (event) => {
+                const value = parseFloat(event.target.value);
+                wwSequenceState.manual.roles[wwSequenceManualRoleKey].magnitude = Number.isFinite(value) ? value : null;
+                wwSequenceRequestManualAnalysis();
+            });
+            document.getElementById("wwSequenceManual" + wwSequenceManualRoleKey + "Unit").addEventListener("change", (event) => {
+                wwSequenceState.manual.roles[wwSequenceManualRoleKey].unit = event.target.value;
+                wwSequenceRequestManualAnalysis();
+            });
+            document.getElementById("wwSequenceManual" + wwSequenceManualRoleKey + "Angle").addEventListener("change", (event) => {
+                const value = parseFloat(event.target.value);
+                wwSequenceState.manual.roles[wwSequenceManualRoleKey].angleDeg = Number.isFinite(value) ? value : null;
+                wwSequenceRequestManualAnalysis();
+            });
+        }
+        wwSequenceSyncInputSourceButtons();
+        wwSequenceSyncManualInputFields();
+        wwSequenceUpdateManualSectionVisibility();
+        wwSequenceUpdateRecordingSectionVisibility();
+        wwSequenceUpdateRatioFieldsVisibility();
+        // Deliberately NOT calling wwSequenceUpdateInputSourceAvailability()
+        // here -- same reasoning as wwPhasorUpdateInputSourceAvailability()
+        // immediately above.
+
         // Canonical Table View (DEC-079): same shape as mainNavWaveformBtn
         // above -- stays on the waveform shell page, only the local
         // Active View switches (task section 3).

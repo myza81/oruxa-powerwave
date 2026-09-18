@@ -35,10 +35,17 @@ class TestImpedanceNavAndPanel:
         panel = _function_body(source, 'id="wwImpedancePanel"', '<section class="ww-phasor-panel" id="wwSequencePanel"')
         assert "This analyzer is not implemented yet." not in panel
 
-    def test_sequence_components_nav_still_a_placeholder(self):
+    def test_sequence_components_nav_no_longer_a_placeholder(self):
+        """Sequence Components v1 activated the last remaining placeholder
+        -- see docs/project-memory/SEQUENCE_COMPONENTS_ANALYSIS.md."""
         source = _source()
         panel = _function_body(source, 'id="wwSequencePanel"', "</section>\n                    </div>\n                </div>\n            </section>")
-        assert "This analyzer is not implemented yet." in panel
+        assert "This analyzer is not implemented yet." not in panel
+        assert 'id="wwSequenceInputSourceRecordingBtn"' in panel
+        assert 'id="wwSequenceInputSourceManualBtn"' in panel
+        assert 'id="wwSequenceRecordingSection"' in panel
+        assert 'id="wwSequenceManualInputSection"' in panel
+        assert 'id="wwSequenceBody"' in panel
 
     def test_analyzer_order_preserved(self):
         source = _source()
