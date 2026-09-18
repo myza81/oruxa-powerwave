@@ -5,10 +5,14 @@ analyzer (Phasor, Overcurrent, then Impedance Locus). Measurement/
 visualization only — this is explicitly **NOT Distance Protection**: no
 protection zones, mho/quadrilateral characteristics, fault loops,
 residual-current (k0) compensation, phase-to-phase loops, directional
-logic, or trip evaluation exist anywhere in this feature. A future,
-separate Distance Protection analyzer is expected to reuse this same
-`ImpedancePoint`/R-X-plane foundation — see "Reusable foundation for a
-future Distance Protection analyzer" below.
+logic, or trip evaluation exist anywhere in this feature. **Distance
+Protection v1 is now implemented** (2026-09-18, DEC-099) as the fifth,
+separate Analysis-menu analyzer, reusing this feature's own
+`ImpedancePoint`/R-X-plane foundation exactly as anticipated below — see
+[DISTANCE_PROTECTION_ANALYSIS.md](DISTANCE_PROTECTION_ANALYSIS.md) and
+"Reusable foundation for a future Distance Protection analyzer" below
+(kept for its own historical/architectural record; every "NOT built"
+note in that section is now realized).
 
 **2026-09-17 UAT correction** (own section below, "Related Waveforms and
 chronological locus reveal — UAT correction"): two owner-reported bugs
@@ -392,8 +396,11 @@ via a real three-phase ASCII-COMTRADE upload.
 
 ## Reusable foundation for a future Distance Protection analyzer
 
-Deliberately architected in three separable layers, per the task's own
-explicit requirement:
+**Realized 2026-09-18 (DEC-099)** — kept below for its own historical/
+architectural record; see
+[DISTANCE_PROTECTION_ANALYSIS.md](DISTANCE_PROTECTION_ANALYSIS.md) for
+the actual implementation. Deliberately architected in three separable
+layers, per the task's own explicit requirement:
 
 ```
 shared phasor input (compute_phasor_diagram(), unchanged)
@@ -407,25 +414,25 @@ R-X visualization (wwImpedanceRenderPlot() -- equal-scale Cartesian SVG)
        ↓
 Impedance Locus analyzer (this feature)
 
-later:
+then (realized 2026-09-18, DEC-099):
 ImpedanceResult
        +
-distance characteristic engine (NOT built)
+distance characteristic engine (app.domain.distance_protection)
        ↓
-Distance Protection analyzer (NOT built, separate analysis_kind)
+Distance Protection analyzer (separate analysis_kind="distance")
 ```
 
 `app.domain.impedance` never imports or references any zone/
-characteristic/fault-loop concept — a future Distance Protection module
-would sit ALONGSIDE it (its own `app/domain/distance_protection.py`,
-own service, own endpoints, own `analysis_kind="distance"` requirement
-constants), consuming `ImpedancePoint`/`compute_impedance_point()` as a
+characteristic/fault-loop concept — Distance Protection's own module
+(`app/domain/distance_protection.py`, own service, own endpoints, own
+`analysis_kind="distance"` requirement constants) sits ALONGSIDE it,
+consuming `compute_impedance_point()`/`convert_impedance_basis()` as a
 building block, never modifying this module to add zone-specific
-fields. The R-X plot's own equal-scale SVG geometry
-(`wwImpedanceRenderPlot()`'s `pxPerOhm` mechanism) is likewise written
-generically enough that a future zone-characteristic overlay could draw
-its own shapes on the SAME coordinate transform, without this module
-needing to change.
+fields — confirmed exactly as anticipated. The R-X plot's own
+equal-scale SVG geometry (`WW_IMPEDANCE_PLOT_RADIUS`/
+`wwImpedanceNiceLimit()`) is reused directly by Distance Protection's
+own `wwDistanceRenderPlot()` to draw Mho/Quadrilateral zone shapes on
+the SAME coordinate transform — this module itself needed zero changes.
 
 ## API
 
@@ -503,10 +510,14 @@ its THIRD real implementation:
   CLOSED. It was this exact gap that let the Related Waveforms blank-
   trace bug ship undetected through static tests alone; see that
   section's own record for the incident this closes.
-- Distance Protection (zones, mho/quadrilateral, fault loops, ground
-  compensation, directional logic, trip interpretation) — not started;
-  a future, separate analyzer.
-- `Zab`/`Zbc`/`Zca` (phase-to-phase loops) — not started.
+- Distance Protection (phase-phase `Zab`/`Zbc`/`Zca` fault loops, Mho/
+  Quadrilateral zone characteristics) is now implemented as its own,
+  separate analyzer — see
+  [DISTANCE_PROTECTION_ANALYSIS.md](DISTANCE_PROTECTION_ANALYSIS.md).
+  Ground-loop (AG/BG/CG) compensation, directional supervision beyond
+  the characteristic itself, and trip interpretation remain unstarted —
+  a future, separate enhancement on top of that module's own foundation,
+  never this one.
 - Manual Engineering Context creation/editing UI — unrelated pre-existing
   gap, unaffected by this slice.
 - Automatic Recording-basis detection from a recording's own metadata —
@@ -530,3 +541,7 @@ its THIRD real implementation:
   extends to cover Voltage (VT/PT) as well as Current.
 - [DECISIONS.md — DEC-096](DECISIONS.md#dec-096--impedance-locus-v1-the-third-analysis-menu-analyzer-apparent-phase-impedance-measurementvisualization-explicitly-not-distance-protection) —
   this slice's approval record.
+- [DISTANCE_PROTECTION_ANALYSIS.md](DISTANCE_PROTECTION_ANALYSIS.md) —
+  the separate, fifth analyzer that reuses this feature's own
+  `compute_impedance_point()`/`convert_impedance_basis()`/R-X-plot
+  coordinate transform exactly as anticipated above.

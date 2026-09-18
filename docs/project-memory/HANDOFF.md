@@ -4,11 +4,126 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-19**
+Last updated: **2026-09-18**
 
 ## What was most recently done
 
-**Analysis browser-test/runtime hardening pass — the two `[OPEN]`
+**Distance Protection v1 is implemented — the FIFTH Analysis-menu
+analyzer ([DECISIONS.md — DEC-099](DECISIONS.md#dec-099--distance-protection-v1-the-fifth-analysis-menu-analyzer-mho-and-quadrilateral-zone-characteristic-evaluation-on-phase-phase-fault-loop-impedance)).**
+New nav entry (order preserved: Phasor, Overcurrent, Impedance Locus,
+Sequence Components, Distance Protection). **A separate analyzer from
+Impedance Locus** — own panel (`wwDistancePanel`), own state
+(`wwDistanceState`), own R-X plot `<svg>` instance; never merged into
+Impedance Locus's own panel/state/plot.
+
+**Fault-loop impedance is full complex phasor subtraction, never phase
+impedance**: `Zab=(Va-Vb)/(Ia-Ib)`, `Zbc=(Vb-Vc)/(Ib-Ic)`,
+`Zca=(Vc-Va)/(Ic-Ia)` (`app.domain.distance_protection.
+compute_loop_impedance()`), reusing the existing `app.domain.impedance.
+compute_impedance_point()` unchanged for the division/low-current-
+guardrail/basis-conversion step — the only new math is the phasor
+subtraction. Golden balanced result: `Va=100∠0°,Vb=100∠-120°,
+Vc=100∠120°`, `Ia=10∠-20°,Ib=10∠-140°,Ic=10∠100°` →
+`Zab=Zbc=Zca=10Ω∠20°` (independently `cmath`-verified, reused
+throughout the whole test suite). Proven genuinely different from
+`Za=Va/Ia` phase impedance on an asymmetric case.
+
+**Mho and Quadrilateral characteristics.** Mho: standard forward circle,
+diameter from origin to `reach_ohm ∠ characteristic_angle_deg`.
+Quadrilateral: a **self-derived, non-vendor-specific** rotated-rectangle
+geometry (never copied from a proprietary vendor model) — rotate R/X
+into a frame aligned with the characteristic angle, then an axis-aligned
+box in that frame; degenerates to the classic axis-aligned box at
+`theta=90°`. Both golden-tested (inside/boundary/outside/reverse/
+negative-R/negative-X cases). Zone 1/2/3 evaluated **completely
+independently** — no priority suppression, more than one may legitimately
+report Operated at once.
+
+**`Operated`/`Not Operated` — owner decision, explicitly NEVER
+`Inside`/`Outside`.** Pure geometric element state; never a relay trip/
+breaker/full-relay-logic claim. `Configured delay` is informational
+only in v1 — no timer accumulation anywhere. A dedicated static test
+suite guards both the terminology and the total absence of any
+"Relay tripped"/"Trip issued"/"Breaker opened" string.
+
+**Recording mode reuses `compute_phasor_diagram()` verbatim** (zero
+duplicated estimation code), resolving only the selected loop's own
+four roles. **Manual mode is fully standalone**, asking only for the
+selected loop's own relevant phase pair (never phase C for AB, etc.) —
+two independent bases (Voltage, Current), each shared by its own loop's
+two legs. R-X plot reuses Impedance Locus's own equal-scale coordinate
+transform verbatim (`WW_IMPEDANCE_PLOT_RADIUS`/`wwImpedanceNiceLimit()`)
+— Mho draws as a true SVG `<circle>`, Quadrilateral as a 4-point
+`<polygon>`; new restrained slate-family `--ww-dist-zone1/2/3` color
+tokens (strongest→lightest). Recording trajectory reuses the Impedance
+Locus locus concept exactly — locus points carry no zone state, only
+the current Playback point drives Operated/Not-Operated.
+
+**Two genuine implementation bugs caught and fixed during this slice's
+own Playwright hardening** (both scoped entirely to new Distance
+Protection code): (1) a zone-setting change was wastefully invalidating/
+re-fetching the full 120-point locus on every keystroke — fixed to only
+re-request the current point and redraw the static zone geometry;
+(2) a `.ww-dist-zone-field[hidden]` CSS override bug (the same
+author-`display`-beats-UA-`[hidden]` class already documented/fixed
+elsewhere in this codebase).
+
+**Tests**: 37 domain (`test_distance_protection_domain.py`), 19 API
+(`test_distance_protection_analysis_api.py`), 34 frontend structural
+(`test_frontend_distance_protection_analysis.py`) — all new. Five
+pre-existing static tests updated for the fifth analyzer
+(`test_analysis_requirements.py` registry counts 23→29 / 4→5 kinds,
+`test_frontend_phasor_analysis.py`, `test_frontend_overcurrent_analysis.py`,
+`test_frontend_playback.py`, `test_frontend_impedance_analysis.py`).
+Full backend regression passes. **Real-browser Playwright coverage from
+day one** (`browser-tests/distance_protection_analysis.spec.js`, 19
+scenarios — Manual empty-workspace golden AB/BC/CA flows, Mho/
+Quadrilateral zone-state geometry, characteristic-switch-preserves-
+impedance, Recording Related Waveforms/locus/Playback/zone-state-live-
+update, R-X geometry at 1366px/1024px, Recording/Manual isolation), run
+2x clean in isolation plus as part of a combined 8-spec regression
+(185/187 passed — the 2 failures are pre-existing Phasor-only flakes,
+confirmed unrelated by isolated re-runs, see below). One pre-existing
+Playwright assertion (`phasor_analysis.spec.js`'s fixed 4-entry nav
+list) updated to 5 entries, mirroring Sequence Components' own prior
+identical update.
+
+**Three pre-existing, unrelated flaky Playwright tests observed and
+reported (not fixed), per Change Governance** — see
+[DECISIONS.md — DEC-099](DECISIONS.md#dec-099--distance-protection-v1-the-fifth-analysis-menu-analyzer-mho-and-quadrilateral-zone-characteristic-evaluation-on-phase-phase-fault-loop-impedance)'s
+own closing section for the full diagnosis: `phasor_analysis.spec.js`'s
+"Speed selection (4x)..." and "golden owner worked example..." tests
+(both failed once in each of two long combined runs, both passed
+cleanly in isolation both times, neither touches any Distance Protection
+code); `playback.spec.js`'s "Clearing the workspace while playing..."
+test (failed once in the FIRST combined run with a stray 404 console
+error, passed in isolation AND did not recur in the second combined
+run — consistent with transient resource contention, not a regression).
+`[OPEN]` for a future, separate task.
+
+**Files**: new `backend/app/domain/distance_protection.py`,
+`backend/app/services/distance_protection_analysis_service.py`,
+`backend/app/schemas/distance_protection_analysis.py`,
+`backend/tests/test_distance_protection_domain.py`,
+`backend/tests/test_distance_protection_analysis_api.py`,
+`backend/tests/test_frontend_distance_protection_analysis.py`,
+`browser-tests/distance_protection_analysis.spec.js`; additive-only
+changes to `backend/app/domain/analysis_requirements.py` and
+`backend/app/api/v1/engineering_contexts.py`; `frontend/index.html`
+(new nav entry, panel markup, ~1100 lines new JS, new CSS) and
+`frontend/theme.css` (3 new zone color tokens); docs
+`docs/project-memory/DISTANCE_PROTECTION_ANALYSIS.md` (new),
+`ANALYSIS_INPUT_SOURCE.md`, `ANALYSIS_WORKSPACE.md`, `DECISIONS.md`
+(DEC-099), `CURRENT_STATE.md` (this file).
+
+**Stop condition honored**: v1 only — no AG/BG/CG, no k0/zero-sequence
+compensation, no memory/negative-sequence polarization, no load
+encroachment, no power swing blocking, no directional supervision
+beyond the characteristic itself, no relay trip output, no breaker
+operation, no timer accumulation, no vendor-specific relay logic, no
+fault classification anywhere in this slice.
+
+## What was done in the prior session — Analysis browser-test/runtime hardening pass
 flaky-Playwright items from the Sequence Components session are closed
 ([DECISIONS.md — DEC-098](DECISIONS.md#dec-098--analysis-browser-testruntime-hardening-shared-playback-follows-a-time-group-relabel-transparently-the-impedance-locus-cache-race-was-test-only)).**
 A focused, no-new-features hardening task: eliminate the two known

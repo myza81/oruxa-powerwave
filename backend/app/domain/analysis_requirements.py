@@ -146,6 +146,24 @@ SEQUENCE_CURRENT_PHASE_A = AnalysisRequirement("sequence_components", "current_p
 SEQUENCE_CURRENT_PHASE_B = AnalysisRequirement("sequence_components", "current_phase_b", (_current_role("Ib", PHASE_B),))
 SEQUENCE_CURRENT_PHASE_C = AnalysisRequirement("sequence_components", "current_phase_c", (_current_role("Ic", PHASE_C),))
 
+#: Distance Protection v1's own input-role requirements -- NOT actually
+#: used for role RESOLUTION (see `app.services.distance_protection_
+#: analysis_service`'s own docstring: Distance Protection Recording mode
+#: reuses the existing bay-centric `compute_phasor_diagram()` verbatim,
+#: extracting whichever two-Voltage/two-Current role pair the selected
+#: fault loop needs, rather than resolving its own roles independently).
+#: Declared here anyway, under their own `"distance"` analysis_kind
+#: (per DEC-096's own pre-documented naming), purely so this module's
+#: own registry stays the single closed source of truth for every
+#: analysis mode's required roles -- mirrors Impedance's and Sequence
+#: Components' own identical precedent immediately above.
+DISTANCE_VOLTAGE_PHASE_A = AnalysisRequirement("distance", "voltage_phase_a", (_voltage_role("Va", PHASE_A),))
+DISTANCE_VOLTAGE_PHASE_B = AnalysisRequirement("distance", "voltage_phase_b", (_voltage_role("Vb", PHASE_B),))
+DISTANCE_VOLTAGE_PHASE_C = AnalysisRequirement("distance", "voltage_phase_c", (_voltage_role("Vc", PHASE_C),))
+DISTANCE_CURRENT_PHASE_A = AnalysisRequirement("distance", "current_phase_a", (_current_role("Ia", PHASE_A),))
+DISTANCE_CURRENT_PHASE_B = AnalysisRequirement("distance", "current_phase_b", (_current_role("Ib", PHASE_B),))
+DISTANCE_CURRENT_PHASE_C = AnalysisRequirement("distance", "current_phase_c", (_current_role("Ic", PHASE_C),))
+
 _KNOWN_REQUIREMENTS: tuple[AnalysisRequirement, ...] = (
     PHASOR_VOLTAGE_PHASE_A, PHASOR_VOLTAGE_PHASE_B, PHASOR_VOLTAGE_PHASE_C, PHASOR_VOLTAGE_THREE_PHASE,
     PHASOR_CURRENT_PHASE_A, PHASOR_CURRENT_PHASE_B, PHASOR_CURRENT_PHASE_C, PHASOR_CURRENT_THREE_PHASE,
@@ -154,6 +172,8 @@ _KNOWN_REQUIREMENTS: tuple[AnalysisRequirement, ...] = (
     IMPEDANCE_CURRENT_PHASE_A, IMPEDANCE_CURRENT_PHASE_B, IMPEDANCE_CURRENT_PHASE_C,
     SEQUENCE_VOLTAGE_PHASE_A, SEQUENCE_VOLTAGE_PHASE_B, SEQUENCE_VOLTAGE_PHASE_C,
     SEQUENCE_CURRENT_PHASE_A, SEQUENCE_CURRENT_PHASE_B, SEQUENCE_CURRENT_PHASE_C,
+    DISTANCE_VOLTAGE_PHASE_A, DISTANCE_VOLTAGE_PHASE_B, DISTANCE_VOLTAGE_PHASE_C,
+    DISTANCE_CURRENT_PHASE_A, DISTANCE_CURRENT_PHASE_B, DISTANCE_CURRENT_PHASE_C,
 )
 
 _REQUIREMENTS_BY_KEY: dict[tuple[str, str], AnalysisRequirement] = {

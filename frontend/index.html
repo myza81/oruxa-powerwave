@@ -6980,6 +6980,139 @@
             stroke-width: 1.4;
             stroke-dasharray: 2 1.4;
         }
+        /* Distance Protection v1 -- reuses the R-X plane above VERBATIM
+           (same equal-scale coordinate transform, same axis/grid/tick
+           classes -- see wwDistanceRenderPlot()'s own reuse of
+           wwImpedanceNiceLimit()-equivalent math) so the impedance locus
+           and the distance-zone geometry can never disagree about scale.
+           Zone boundary strokes use the SAME strongest/medium/lightest
+           `--ww-dist-zone1/2/3` tokens as the Zone Settings cards below,
+           so a zone's own card and its own drawn boundary always read as
+           "the same zone" at a glance. */
+        .ww-dist-zone-boundary {
+            fill: none;
+            stroke-width: 1.3;
+            opacity: 0.85;
+        }
+        .ww-dist-zone-boundary--zone1 { stroke: var(--ww-dist-zone1); }
+        .ww-dist-zone-boundary--zone2 { stroke: var(--ww-dist-zone2); }
+        .ww-dist-zone-boundary--zone3 { stroke: var(--ww-dist-zone3); }
+        .ww-dist-locus-path {
+            fill: none;
+            stroke: var(--ww-phase-a);
+            stroke-width: 1;
+            opacity: 0.55;
+        }
+        .ww-dist-point {
+            fill: var(--ww-phase-a);
+            stroke: var(--panel);
+            stroke-width: 0.8;
+        }
+        /* Operated point styling -- geometric state only, deliberately
+           NOT alarm-red (--error is reserved for genuine problems
+           app-wide, and "Operated" here never means a relay tripped). A
+           thicker outline distinguishes it from the Not-Operated marker
+           without borrowing an alarm color. */
+        .ww-dist-point--operated {
+            stroke: var(--ww-dist-zone1);
+            stroke-width: 1.6;
+        }
+        .ww-dist-point--manual {
+            fill: none;
+            stroke: var(--ww-phase-a);
+            stroke-width: 1.4;
+            stroke-dasharray: 2 1.4;
+        }
+        /* Zone Settings -- compact, responsive 3-card grid (owner
+           instruction: avoid a huge vertically-stacked form). Falls back
+           to a single column via the same container-query pattern
+           `.ww-oc-settings-grid` uses, scoped to the settings panel's own
+           width rather than the page viewport. */
+        .ww-dist-zone-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+            margin: 8px 0 10px;
+        }
+        @container ww-oc-settings-panel (max-width: 480px) {
+            .ww-dist-zone-grid {
+                grid-template-columns: minmax(0, 1fr);
+            }
+        }
+        .ww-dist-zone-card {
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 0;
+            border-top: 3px solid var(--zone-color, var(--panel-border));
+        }
+        .ww-dist-zone-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+        }
+        .ww-dist-zone-card-title {
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: var(--zone-color, var(--text));
+        }
+        .ww-dist-zone-field {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        /* Bug fix, same class already documented/fixed elsewhere in this
+           file (see `.ww-annotation-guidance[hidden]`'s own comment):
+           author CSS's `display: flex` above beats the UA stylesheet's
+           default `[hidden] { display: none }` rule by ORIGIN alone --
+           without this override, `wwDistanceUpdateCharacteristicFieldsVisibility()`'s
+           own `el.hidden = true` on the non-active characteristic's own
+           reach fields would set the attribute but the field would stay
+           visually visible. */
+        .ww-dist-zone-field[hidden] { display: none; }
+        .ww-dist-zone-field span {
+            font-size: 0.62rem;
+            color: var(--text-dim);
+        }
+        .ww-dist-zone-field input,
+        .ww-dist-zone-field select {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 5px 6px;
+            font-size: 0.68rem;
+            color: var(--text);
+            width: 100%;
+            box-sizing: border-box;
+        }
+        /* Zone State results -- Operated/Not-Operated is geometric
+           element state only (never a trip claim, see
+           docs/project-memory/DISTANCE_PROTECTION_ANALYSIS.md) --
+           deliberately styled with the SAME neutral/zone-color pairing
+           as the plot markers above, never --error/--ok (which this
+           codebase reserves for genuine problem/pass semantics
+           app-wide). */
+        .ww-dist-zone-state-badge {
+            display: inline-block;
+            padding: 1px 7px;
+            border-radius: 999px;
+            font-size: 0.66rem;
+            font-weight: 700;
+            border: 1px solid var(--panel-border);
+        }
+        .ww-dist-zone-state-badge--operated {
+            color: var(--panel);
+            background: var(--zone-color, var(--text-dim));
+            border-color: var(--zone-color, var(--text-dim));
+        }
+        .ww-dist-zone-state-badge--not-operated {
+            color: var(--text-dim);
+            background: transparent;
+        }
         .ww-oc-values-list {
             display: flex;
             flex-direction: column;
@@ -8155,6 +8288,10 @@
                             <span class="ww-analysis-type-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><circle cx="6" cy="5.5" r="2.1"/><circle cx="12" cy="5.5" r="2.1"/><circle cx="9" cy="12.5" r="2.1"/><path d="M7.8 6.9 8.6 10.4M10.2 6.9 9.4 10.4M7.9 12.5H6.6"/></svg></span>
                             <span class="ww-analysis-type-label">Sequence Components</span>
                         </button>
+                        <button type="button" class="ww-analysis-type-item" id="wwAnalysisTypeDistanceBtn" data-analysis-type="distance" aria-current="false">
+                            <span class="ww-analysis-type-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="6.4" fill="none"/><path d="M9 9 3.4 9"/><path d="M9 9 12.8 5.2"/></svg></span>
+                            <span class="ww-analysis-type-label">Distance Protection</span>
+                        </button>
                     </nav>
                     <div class="ww-analysis-content">
                         <!-- Shared Analysis "Related Waveforms" panel -- lives
@@ -9090,6 +9227,305 @@
                                         <svg id="wwSequenceSvg" viewBox="-122 -122 244 244" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sequence phasor diagram"></svg>
                                     </div>
                                     <div class="ww-phasor-scale-note" id="wwSequenceScaleNote" hidden></div>
+                                </section>
+                            </div>
+                        </section>
+                        <!-- Distance Protection v1 -- the FIFTH Analysis-
+                             menu analyzer (Phasor, Overcurrent, Impedance
+                             Locus, Sequence Components, then Distance
+                             Protection). A SEPARATE analyzer from
+                             Impedance Locus -- "Impedance Locus = what
+                             impedance did the system present?" vs
+                             "Distance Protection = how does the configured
+                             distance characteristic interpret that
+                             impedance?" -- own state, own R-X plot
+                             instance (same equal-scale coordinate
+                             transform, never a second inconsistent
+                             renderer). See docs/project-memory/
+                             DISTANCE_PROTECTION_ANALYSIS.md. -->
+                        <section class="ww-phasor-panel" id="wwDistancePanel" hidden>
+                            <section class="panel ww-oc-input-source-panel">
+                                <div class="ww-oc-input-source-row">
+                                    <span class="ww-oc-view-controls-label">Input Source</span>
+                                    <span class="ww-oc-axis-toggle-group" role="group" aria-label="Analysis input source">
+                                        <button type="button" id="wwDistanceInputSourceRecordingBtn" class="ww-oc-axis-toggle-btn ww-oc-axis-toggle-btn--active" data-input-source="recording" aria-pressed="true">Recording</button>
+                                        <button type="button" id="wwDistanceInputSourceManualBtn" class="ww-oc-axis-toggle-btn" data-input-source="manual" aria-pressed="false">Manual</button>
+                                    </span>
+                                    <span class="ww-oc-input-source-hint" id="wwDistanceInputSourceHint" hidden>No recording loaded. Manual mode is available.</span>
+                                </div>
+                            </section>
+
+                            <div id="wwDistanceRecordingSection">
+                                <section class="panel ww-phasor-controls-panel">
+                                    <div class="ww-phasor-controls-row">
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Bay / Engineering Context</span>
+                                            <span class="ww-phasor-field-control-row">
+                                                <select id="wwDistanceContextSelect"><option value="">Select a context…</option></select>
+                                                <span id="wwDistanceContextBadge"></span>
+                                            </span>
+                                        </label>
+                                        <span class="ww-phasor-discovering-indicator" id="wwDistanceDiscoveringIndicator" hidden>Identifying additional engineering contexts…</span>
+                                    </div>
+                                </section>
+
+                                <section class="panel ww-phasor-playback-panel ww-analysis-playback-panel" id="wwDistancePlaybackPanel" hidden>
+                                    <div class="ww-phasor-playback-mount ww-analysis-playback-mount" id="wwDistancePlaybackMount"></div>
+                                </section>
+
+                                <!-- Shared Related Waveforms mount point --
+                                     pushes the selected loop's own four
+                                     source quantities (e.g. AB -> Va, Vb,
+                                     Ia, Ib) -- never phase C for AB/BC's
+                                     own third phase, etc. -->
+                                <div id="wwDistanceRelatedWaveformsAnchor"></div>
+
+                                <div class="ww-phasor-status-row" id="wwDistanceStatusRow" hidden></div>
+                                <p class="empty-state" id="wwDistanceEmptyState">No recording loaded. Upload a recording to use Recording mode.</p>
+                            </div>
+
+                            <!-- ALWAYS visible once the Distance Protection
+                                 tab is open -- Loop/Characteristic/Basis/
+                                 Zone settings, Manual Input, Results, and
+                                 the R-X plot never require a recording. -->
+                            <div class="ww-phasor-body ww-oc-body" id="wwDistanceBody">
+                                <section class="panel ww-phasor-values-panel">
+                                    <h3>Settings / Results</h3>
+                                    <div class="ww-oc-settings-grid">
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Fault loop</span>
+                                            <select id="wwDistanceLoopSelect">
+                                                <option value="AB">AB</option>
+                                                <option value="BC">BC</option>
+                                                <option value="CA">CA</option>
+                                            </select>
+                                        </label>
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Characteristic</span>
+                                            <select id="wwDistanceCharacteristicSelect">
+                                                <option value="mho">Mho</option>
+                                                <option value="quadrilateral">Quadrilateral</option>
+                                            </select>
+                                        </label>
+                                        <label class="ww-phasor-field">
+                                            <span class="ww-phasor-field-label">Impedance basis (output)</span>
+                                            <select id="wwDistanceOutputBasisSelect">
+                                                <option value="secondary" selected>Secondary</option>
+                                                <option value="primary">Primary</option>
+                                            </select>
+                                        </label>
+                                        <label class="ww-phasor-field ww-oc-field-full" id="wwDistanceRecordingBasisField">
+                                            <span class="ww-phasor-field-label">Recording basis (as recorded)</span>
+                                            <select id="wwDistanceRecordingBasisSelect">
+                                                <option value="secondary" selected>Secondary</option>
+                                                <option value="primary">Primary</option>
+                                            </select>
+                                        </label>
+                                        <label class="ww-phasor-field ww-oc-ct-field" id="wwDistanceVtPrimaryField" hidden>
+                                            <span class="ww-phasor-field-label">VT Primary (V)</span>
+                                            <input type="number" id="wwDistanceVtPrimaryInput" min="0" step="1">
+                                        </label>
+                                        <label class="ww-phasor-field ww-oc-ct-field" id="wwDistanceVtSecondaryField" hidden>
+                                            <span class="ww-phasor-field-label">VT Secondary (V)</span>
+                                            <input type="number" id="wwDistanceVtSecondaryInput" min="0" step="0.01">
+                                        </label>
+                                        <label class="ww-phasor-field ww-oc-ct-field" id="wwDistanceCtPrimaryField" hidden>
+                                            <span class="ww-phasor-field-label">CT Primary (A)</span>
+                                            <input type="number" id="wwDistanceCtPrimaryInput" min="0" step="1">
+                                        </label>
+                                        <label class="ww-phasor-field ww-oc-ct-field" id="wwDistanceCtSecondaryField" hidden>
+                                            <span class="ww-phasor-field-label">CT Secondary (A)</span>
+                                            <input type="number" id="wwDistanceCtSecondaryInput" min="0" step="0.01">
+                                        </label>
+                                    </div>
+
+                                    <!-- Zone settings -- compact 3-card
+                                         grid (never a vertically-stacked
+                                         form). Zone 1/2/3 are evaluated
+                                         completely independently -- more
+                                         than one may legitimately report
+                                         Operated at once; there is
+                                         deliberately no priority/exclusion
+                                         wiring here. `Characteristic angle`
+                                         is the ONE shared angle field for
+                                         both Mho and Quadrilateral (see
+                                         `ZoneSettings`'s own docstring in
+                                         app.domain.distance_protection);
+                                         only the reach fields below it
+                                         differ per characteristic and are
+                                         shown/hidden by
+                                         wwDistanceUpdateCharacteristicFieldsVisibility(). -->
+                                    <div class="ww-phasor-family-heading">Zone settings</div>
+                                    <div class="ww-dist-zone-grid">
+                                        <div class="ww-dist-zone-card" style="--zone-color: var(--ww-dist-zone1)">
+                                            <div class="ww-dist-zone-card-header">
+                                                <span class="ww-dist-zone-card-title">Zone 1</span>
+                                                <label class="ww-phasor-manual-role-enable"><input type="checkbox" id="wwDistanceZone1Enabled" aria-label="Enable Zone 1">Enabled</label>
+                                            </div>
+                                            <label class="ww-dist-zone-field"><span>Configured delay (s)</span><input type="number" id="wwDistanceZone1DelayInput" min="0" step="0.01" value="0"></label>
+                                            <label class="ww-dist-zone-field"><span>Characteristic angle (°)</span><input type="number" id="wwDistanceZone1AngleInput" step="0.1" value="90"></label>
+                                            <label class="ww-dist-zone-field" id="wwDistanceZone1ReachField"><span>Reach |Z| (Ω)</span><input type="number" id="wwDistanceZone1ReachInput" min="0" step="0.01"></label>
+                                            <label class="ww-dist-zone-field" id="wwDistanceZone1ReactiveReachField" hidden><span>Reactive reach (Ω)</span><input type="number" id="wwDistanceZone1ReactiveReachInput" min="0" step="0.01"></label>
+                                            <label class="ww-dist-zone-field" id="wwDistanceZone1ResistiveForwardField" hidden><span>Resistive reach forward (Ω)</span><input type="number" id="wwDistanceZone1ResistiveForwardInput" min="0" step="0.01"></label>
+                                            <label class="ww-dist-zone-field" id="wwDistanceZone1ResistiveReverseField" hidden><span>Resistive reach reverse (Ω)</span><input type="number" id="wwDistanceZone1ResistiveReverseInput" min="0" step="0.01"></label>
+                                        </div>
+                                        <div class="ww-dist-zone-card" style="--zone-color: var(--ww-dist-zone2)">
+                                            <div class="ww-dist-zone-card-header">
+                                                <span class="ww-dist-zone-card-title">Zone 2</span>
+                                                <label class="ww-phasor-manual-role-enable"><input type="checkbox" id="wwDistanceZone2Enabled" aria-label="Enable Zone 2">Enabled</label>
+                                            </div>
+                                            <label class="ww-dist-zone-field"><span>Configured delay (s)</span><input type="number" id="wwDistanceZone2DelayInput" min="0" step="0.01" value="0.4"></label>
+                                            <label class="ww-dist-zone-field"><span>Characteristic angle (°)</span><input type="number" id="wwDistanceZone2AngleInput" step="0.1" value="90"></label>
+                                            <label class="ww-dist-zone-field" id="wwDistanceZone2ReachField"><span>Reach |Z| (Ω)</span><input type="number" id="wwDistanceZone2ReachInput" min="0" step="0.01"></label>
+                                            <label class="ww-dist-zone-field" id="wwDistanceZone2ReactiveReachField" hidden><span>Reactive reach (Ω)</span><input type="number" id="wwDistanceZone2ReactiveReachInput" min="0" step="0.01"></label>
+                                            <label class="ww-dist-zone-field" id="wwDistanceZone2ResistiveForwardField" hidden><span>Resistive reach forward (Ω)</span><input type="number" id="wwDistanceZone2ResistiveForwardInput" min="0" step="0.01"></label>
+                                            <label class="ww-dist-zone-field" id="wwDistanceZone2ResistiveReverseField" hidden><span>Resistive reach reverse (Ω)</span><input type="number" id="wwDistanceZone2ResistiveReverseInput" min="0" step="0.01"></label>
+                                        </div>
+                                        <div class="ww-dist-zone-card" style="--zone-color: var(--ww-dist-zone3)">
+                                            <div class="ww-dist-zone-card-header">
+                                                <span class="ww-dist-zone-card-title">Zone 3</span>
+                                                <label class="ww-phasor-manual-role-enable"><input type="checkbox" id="wwDistanceZone3Enabled" aria-label="Enable Zone 3">Enabled</label>
+                                            </div>
+                                            <label class="ww-dist-zone-field"><span>Configured delay (s)</span><input type="number" id="wwDistanceZone3DelayInput" min="0" step="0.01" value="1"></label>
+                                            <label class="ww-dist-zone-field"><span>Characteristic angle (°)</span><input type="number" id="wwDistanceZone3AngleInput" step="0.1" value="90"></label>
+                                            <label class="ww-dist-zone-field" id="wwDistanceZone3ReachField"><span>Reach |Z| (Ω)</span><input type="number" id="wwDistanceZone3ReachInput" min="0" step="0.01"></label>
+                                            <label class="ww-dist-zone-field" id="wwDistanceZone3ReactiveReachField" hidden><span>Reactive reach (Ω)</span><input type="number" id="wwDistanceZone3ReactiveReachInput" min="0" step="0.01"></label>
+                                            <label class="ww-dist-zone-field" id="wwDistanceZone3ResistiveForwardField" hidden><span>Resistive reach forward (Ω)</span><input type="number" id="wwDistanceZone3ResistiveForwardInput" min="0" step="0.01"></label>
+                                            <label class="ww-dist-zone-field" id="wwDistanceZone3ResistiveReverseField" hidden><span>Resistive reach reverse (Ω)</span><input type="number" id="wwDistanceZone3ResistiveReverseInput" min="0" step="0.01"></label>
+                                        </div>
+                                    </div>
+
+                                    <!-- Manual Input / Calculator mode --
+                                         Manual input source only. TWO
+                                         independent bases (Voltage,
+                                         Current -- mirrors Impedance's own
+                                         "N independent bases for N
+                                         independent physical quantities"
+                                         principle), each shared by its
+                                         loop's own two legs (e.g. AB's
+                                         Va/Vb share ONE Voltage basis) --
+                                         never four independent bases. Only
+                                         the relevant phase pair for the
+                                         selected loop is asked for -- role
+                                         labels are updated live by
+                                         wwDistanceUpdateManualRoleLabels()
+                                         whenever the loop changes, never
+                                         requiring the unrelated third
+                                         phase. -->
+                                    <div class="ww-oc-manual-input-section ww-imp-manual-input-section" id="wwDistanceManualInputSection" hidden>
+                                        <div class="ww-oc-manual-input-label">Manual Input</div>
+                                        <div class="ww-imp-manual-group">
+                                            <div class="ww-imp-manual-group-title">Voltage</div>
+                                            <label class="ww-phasor-field ww-oc-field-full">
+                                                <span class="ww-phasor-field-label">Basis</span>
+                                                <select id="wwDistanceManualVoltageBasisSelect">
+                                                    <option value="primary" selected>Primary</option>
+                                                    <option value="secondary">Secondary</option>
+                                                </select>
+                                            </label>
+                                            <label class="ww-phasor-field ww-oc-ct-field" id="wwDistanceManualVtPrimaryField">
+                                                <span class="ww-phasor-field-label">VT Primary</span>
+                                                <input type="number" id="wwDistanceManualVtPrimaryInput" min="0" step="1" value="132000">
+                                            </label>
+                                            <label class="ww-phasor-field ww-oc-ct-field" id="wwDistanceManualVtSecondaryField">
+                                                <span class="ww-phasor-field-label">VT Secondary</span>
+                                                <input type="number" id="wwDistanceManualVtSecondaryInput" min="0" step="0.01" value="110">
+                                            </label>
+                                            <label class="ww-phasor-field">
+                                                <span class="ww-phasor-field-label" id="wwDistanceManualV1Label">Va magnitude</span>
+                                                <span class="ww-oc-manual-input-row">
+                                                    <input type="number" id="wwDistanceManualV1MagnitudeInput" min="0" step="0.01" value="132" aria-label="V1 magnitude">
+                                                    <select id="wwDistanceManualV1UnitSelect" aria-label="V1 unit">
+                                                        <option value="V">V</option>
+                                                        <option value="kV" selected>kV</option>
+                                                    </select>
+                                                </span>
+                                            </label>
+                                            <label class="ww-phasor-field">
+                                                <span class="ww-phasor-field-label">Angle (°)</span>
+                                                <input type="number" id="wwDistanceManualV1AngleInput" step="0.1" value="0" aria-label="V1 angle">
+                                            </label>
+                                            <label class="ww-phasor-field">
+                                                <span class="ww-phasor-field-label" id="wwDistanceManualV2Label">Vb magnitude</span>
+                                                <span class="ww-oc-manual-input-row">
+                                                    <input type="number" id="wwDistanceManualV2MagnitudeInput" min="0" step="0.01" value="132" aria-label="V2 magnitude">
+                                                    <select id="wwDistanceManualV2UnitSelect" aria-label="V2 unit">
+                                                        <option value="V">V</option>
+                                                        <option value="kV" selected>kV</option>
+                                                    </select>
+                                                </span>
+                                            </label>
+                                            <label class="ww-phasor-field">
+                                                <span class="ww-phasor-field-label">Angle (°)</span>
+                                                <input type="number" id="wwDistanceManualV2AngleInput" step="0.1" value="-120" aria-label="V2 angle">
+                                            </label>
+                                        </div>
+                                        <div class="ww-imp-manual-group">
+                                            <div class="ww-imp-manual-group-title">Current</div>
+                                            <label class="ww-phasor-field ww-oc-field-full">
+                                                <span class="ww-phasor-field-label">Basis</span>
+                                                <select id="wwDistanceManualCurrentBasisSelect">
+                                                    <option value="primary" selected>Primary</option>
+                                                    <option value="secondary">Secondary</option>
+                                                </select>
+                                            </label>
+                                            <label class="ww-phasor-field ww-oc-ct-field" id="wwDistanceManualCtPrimaryField">
+                                                <span class="ww-phasor-field-label">CT Primary</span>
+                                                <input type="number" id="wwDistanceManualCtPrimaryInput" min="0" step="1" value="1200">
+                                            </label>
+                                            <label class="ww-phasor-field ww-oc-ct-field" id="wwDistanceManualCtSecondaryField">
+                                                <span class="ww-phasor-field-label">CT Secondary</span>
+                                                <input type="number" id="wwDistanceManualCtSecondaryInput" min="0" step="0.01" value="1">
+                                            </label>
+                                            <label class="ww-phasor-field">
+                                                <span class="ww-phasor-field-label" id="wwDistanceManualI1Label">Ia magnitude</span>
+                                                <span class="ww-oc-manual-input-row">
+                                                    <input type="number" id="wwDistanceManualI1MagnitudeInput" min="0" step="0.01" value="1.2" aria-label="I1 magnitude">
+                                                    <select id="wwDistanceManualI1UnitSelect" aria-label="I1 unit">
+                                                        <option value="A">A</option>
+                                                        <option value="kA" selected>kA</option>
+                                                    </select>
+                                                </span>
+                                            </label>
+                                            <label class="ww-phasor-field">
+                                                <span class="ww-phasor-field-label">Angle (°)</span>
+                                                <input type="number" id="wwDistanceManualI1AngleInput" step="0.1" value="-30" aria-label="I1 angle">
+                                            </label>
+                                            <label class="ww-phasor-field">
+                                                <span class="ww-phasor-field-label" id="wwDistanceManualI2Label">Ib magnitude</span>
+                                                <span class="ww-oc-manual-input-row">
+                                                    <input type="number" id="wwDistanceManualI2MagnitudeInput" min="0" step="0.01" value="1.2" aria-label="I2 magnitude">
+                                                    <select id="wwDistanceManualI2UnitSelect" aria-label="I2 unit">
+                                                        <option value="A">A</option>
+                                                        <option value="kA" selected>kA</option>
+                                                    </select>
+                                                </span>
+                                            </label>
+                                            <label class="ww-phasor-field">
+                                                <span class="ww-phasor-field-label">Angle (°)</span>
+                                                <input type="number" id="wwDistanceManualI2AngleInput" step="0.1" value="-150" aria-label="I2 angle">
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="ww-oc-values-list" id="wwDistanceValuesList"></div>
+                                    <!-- Zone state -- Operated/Not-Operated
+                                         is PURE geometric element state; it
+                                         never means a relay tripped, a
+                                         breaker opened, or full relay
+                                         logic completed. `Configured
+                                         delay` is configuration
+                                         information only in v1 -- never
+                                         accumulated/declared elapsed. -->
+                                    <div class="ww-phasor-family-heading">Zone state</div>
+                                    <div id="wwDistanceZoneStateList"></div>
+                                </section>
+                                <section class="panel ww-phasor-diagram-panel">
+                                    <h3>R-X Plane <span class="ww-phasor-updating-indicator" id="wwDistanceUpdatingIndicator" hidden>Updating…</span></h3>
+                                    <div class="ww-phasor-diagram-wrap">
+                                        <svg id="wwDistanceSvg" viewBox="-130 -130 260 260" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Distance protection R-X plane"></svg>
+                                    </div>
+                                    <div class="ww-phasor-scale-note" id="wwDistanceScaleNote">Zone geometry shown is the configured element characteristic -- Operated/Not-Operated is a geometric statement only, not a relay trip output.</div>
                                 </section>
                             </div>
                         </section>
@@ -31019,6 +31455,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwImpedanceResetState();
             // Sequence Components v1: the SAME whole-workspace reset hook.
             wwSequenceResetState();
+            // Distance Protection v1: the SAME whole-workspace reset hook.
+            wwDistanceResetState();
             // Shared Analysis Engineering Context lifecycle (2026-09-12):
             // the SAME whole-workspace reset hook -- a fresh workspace
             // always gets a fresh per-source attempted slate, never
@@ -42018,6 +42456,1063 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwSequenceUpdateInputSourceAvailability();
         }
 
+        // =====================================================================
+        // Distance Protection v1 -- the FIFTH Analysis-menu analyzer (Phasor,
+        // Overcurrent, Impedance Locus, Sequence Components, then Distance
+        // Protection). A SEPARATE analyzer from Impedance Locus -- reuses
+        // the existing bay-centric compute_phasor_diagram() (via the
+        // backend's distance_protection_analysis_service) for Recording
+        // mode, the existing Manual Phasor normalization for Manual mode,
+        // and the SAME equal-scale R-X coordinate transform Impedance
+        // Locus's own plot established (`WW_IMPEDANCE_PLOT_RADIUS`/
+        // `wwImpedanceNiceLimit()` reused directly below -- never a second,
+        // independently-scaled renderer). `Operated`/`Not Operated` is PURE
+        // geometric element state -- it never means a relay tripped, a
+        // breaker opened, or full relay logic completed; `Configured delay`
+        // is configuration information only in v1, never accumulated or
+        // used to assert a trip. See docs/project-memory/
+        // DISTANCE_PROTECTION_ANALYSIS.md.
+        // =====================================================================
+
+        const WW_DISTANCE_MSG_SELECT_CONTEXT = "Select an Engineering Context to begin.";
+        const WW_DISTANCE_MSG_BACKEND_UNREACHABLE = "Could not reach the backend to load Engineering Contexts.";
+        const WW_DISTANCE_MSG_IDENTIFYING_CONTEXTS = "Identifying engineering contexts…";
+        const WW_DISTANCE_MSG_NO_SOURCES = "No recording loaded. Upload a recording to use Recording mode.";
+        const WW_DISTANCE_MSG_NO_SUGGESTIONS =
+            "No engineering contexts could be suggested automatically for the loaded source(s). Manual mode is available.";
+
+        // Loop -> (V1 role, V2 role, I1 role, I2 role) -- identical mapping
+        // to the backend's own `LOOP_ROLE_KEYS` (app.domain.
+        // distance_protection); AB never requires phase C, etc.
+        const WW_DISTANCE_LOOP_ROLES = {
+            AB: ["Va", "Vb", "Ia", "Ib"],
+            BC: ["Vb", "Vc", "Ib", "Ic"],
+            CA: ["Vc", "Va", "Ic", "Ia"],
+        };
+
+        function wwDistanceDefaultZoneSettings() {
+            return {
+                enabled: false, delaySeconds: 0, characteristicAngleDeg: 90,
+                reachOhm: null, reactiveReachOhm: null, resistiveForwardOhm: null, resistiveReverseOhm: null,
+            };
+        }
+
+        const wwDistanceState = {
+            contexts: [],
+            selectedContextId: null,
+            lastLoadedContextId: null,
+            anchorDisplaySourceId: null,
+            activeTimeGroupId: null,
+            analysisTime: null,
+            loop: "AB",
+            characteristic: "mho",
+            settings: {
+                recordingBasis: "secondary",
+                outputBasis: "secondary",
+                vtPrimary: null,
+                vtSecondary: null,
+                ctPrimary: null,
+                ctSecondary: null,
+            },
+            zones: {
+                zone1: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0 }),
+                zone2: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0.4 }),
+                zone3: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 1 }),
+            },
+            latestResult: null,
+            requestGeneration: 0,
+            // Static locus/trajectory -- fetched ONLY on a context/loop/
+            // settings/time-range change, never on every Playback tick
+            // (identical caching discipline to wwImpedanceState.locusPoints).
+            locusPoints: [],
+            locusSignature: null,
+            locusRequestGeneration: 0,
+            inputSource: WW_ANALYSIS_INPUT_SOURCE_RECORDING,
+            recordingAvailable: false,
+            inputSourceAutoSelected: true,
+            manual: {
+                voltageBasis: "primary",
+                voltageRatioPrimary: 132000,
+                voltageRatioSecondary: 110,
+                v1Magnitude: 132, v1Unit: "kV", v1AngleDeg: 0,
+                v2Magnitude: 132, v2Unit: "kV", v2AngleDeg: -120,
+                currentBasis: "primary",
+                currentRatioPrimary: 1200,
+                currentRatioSecondary: 1,
+                i1Magnitude: 1.2, i1Unit: "kA", i1AngleDeg: -30,
+                i2Magnitude: 1.2, i2Unit: "kA", i2AngleDeg: -150,
+                latestResult: null,
+            },
+            manualRequestGeneration: 0,
+        };
+
+        function wwDistanceFetchAnalysis(workspaceId, contextId, params) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                "/engineering-contexts/" + encodeURIComponent(contextId) + "/distance-protection?" + params.toString()
+            );
+        }
+        function wwDistanceFetchLocus(workspaceId, contextId, params) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                "/engineering-contexts/" + encodeURIComponent(contextId) + "/distance-protection-locus?" + params.toString()
+            );
+        }
+        function wwDistanceFetchManual(workspaceId, params) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/distance-protection-manual?" + params.toString()
+            );
+        }
+
+        function wwDistanceOnAnalysisContexts(contexts) {
+            wwDistanceState.contexts = contexts;
+            wwDistanceUpdateInputSourceAvailability();
+            wwDistanceRenderContextOptions();
+            if (wwDistanceState.selectedContextId) {
+                wwDistanceLoadForSelectedContext();
+            } else {
+                wwDistanceShowNoContextSelected();
+            }
+        }
+        function wwDistanceOnAnalysisLifecyclePhase(phase) {
+            wwDistanceUpdateInputSourceAvailability();
+            if (phase === WW_ANALYSIS_CONTEXT_PHASE_IDENTIFYING) wwDistanceShowEmptyState(WW_DISTANCE_MSG_IDENTIFYING_CONTEXTS);
+            else if (phase === WW_ANALYSIS_CONTEXT_PHASE_NO_SOURCES) wwDistanceShowEmptyState(WW_DISTANCE_MSG_NO_SOURCES);
+            else if (phase === WW_ANALYSIS_CONTEXT_PHASE_NO_SUGGESTIONS) wwDistanceShowEmptyState(WW_DISTANCE_MSG_NO_SUGGESTIONS);
+            else if (phase === WW_ANALYSIS_CONTEXT_PHASE_UNREACHABLE) wwDistanceShowEmptyState(WW_DISTANCE_MSG_BACKEND_UNREACHABLE);
+        }
+        function wwDistanceOnAnalysisDiscovering(isDiscovering) {
+            const el = document.getElementById("wwDistanceDiscoveringIndicator");
+            if (el) el.hidden = !isDiscovering;
+        }
+        function wwDistanceOnAnalysisFreshContextsDiscovered() {
+            if (wwDistanceState.selectedContextId) return;
+            if (wwDistanceState.contexts.length === 0) return;
+            const first = wwDistanceState.contexts[0];
+            wwDistanceState.selectedContextId = first.id;
+            const select = document.getElementById("wwDistanceContextSelect");
+            if (select) select.value = first.id;
+            wwDistanceRenderContextBadge();
+            wwDistanceLoadForSelectedContext();
+        }
+
+        function wwDistanceRenderContextOptions() {
+            const select = document.getElementById("wwDistanceContextSelect");
+            if (!select) return;
+            const options = ['<option value="">Select a context…</option>'];
+            for (const ctx of wwDistanceState.contexts) {
+                options.push('<option value="' + escapeHtml(ctx.id) + '">' + escapeHtml(ctx.display_name) + '</option>');
+            }
+            select.innerHTML = options.join("");
+            const stillExists = wwDistanceState.selectedContextId &&
+                wwDistanceState.contexts.some((c) => c.id === wwDistanceState.selectedContextId);
+            if (stillExists) {
+                select.value = wwDistanceState.selectedContextId;
+            } else {
+                wwDistanceState.selectedContextId = null;
+            }
+            wwDistanceRenderContextBadge();
+        }
+        function wwDistanceRenderContextBadge() {
+            const badge = document.getElementById("wwDistanceContextBadge");
+            if (!badge) return;
+            const ctx = wwDistanceState.contexts.find((c) => c.id === wwDistanceState.selectedContextId);
+            if (!ctx) { badge.innerHTML = ""; return; }
+            const labels = { suggested: "Suggested", confirmed: "Confirmed", needs_review: "Needs Review", manual: "Manual" };
+            const cls = ctx.status === "needs_review" ? "needs-review" : ctx.status;
+            badge.innerHTML = '<span class="ww-mg-badge ww-mg-badge--' + cls + '">' + (labels[ctx.status] || escapeHtml(ctx.status)) + '</span>';
+        }
+        function wwDistanceShowEmptyState(message) {
+            wwDistanceMountPlaybackControls(null);
+            const statusRow = document.getElementById("wwDistanceStatusRow");
+            if (statusRow) statusRow.hidden = true;
+            const emptyState = document.getElementById("wwDistanceEmptyState");
+            if (emptyState) { emptyState.hidden = false; emptyState.textContent = message; }
+            if (wwAnalysisActiveType === "distance") {
+                wwAnalysisSetRelatedWaveformRoles([], wwDistanceState.selectedContextId, null);
+            }
+        }
+        function wwDistanceShowNoContextSelected() {
+            wwDistanceState.activeTimeGroupId = null;
+            wwDistanceShowEmptyState(WW_DISTANCE_MSG_SELECT_CONTEXT);
+        }
+        function wwDistanceAnchorDisplaySourceIdForContext(ctx) {
+            if (!ctx || !ctx.members || ctx.members.length === 0) return null;
+            const ref = ctx.members[0].channel_ref;
+            return ref.kind === "calculated" ? ref.calculated_channel_id : ref.source_id;
+        }
+        function wwDistanceLoadForSelectedContext() {
+            const contextId = wwDistanceState.selectedContextId;
+            if (!contextId) {
+                wwDistanceShowNoContextSelected();
+                return;
+            }
+            const ctx = wwDistanceState.contexts.find((c) => c.id === contextId);
+            wwDistanceState.lastLoadedContextId = contextId;
+
+            const anchorDisplaySourceId = wwDistanceAnchorDisplaySourceIdForContext(ctx);
+            wwDistanceState.anchorDisplaySourceId = anchorDisplaySourceId;
+            const groupId = anchorDisplaySourceId !== null ? wwTimeGroupIdForDisplaySourceId(anchorDisplaySourceId) : null;
+
+            if (groupId !== wwDistanceState.activeTimeGroupId) {
+                wwDistanceState.activeTimeGroupId = groupId;
+                wwDistanceMountPlaybackControls(groupId);
+                wwDistanceInvalidateLocus();
+            }
+
+            const emptyState = document.getElementById("wwDistanceEmptyState");
+            if (emptyState) emptyState.hidden = true;
+
+            if (groupId === null) {
+                wwDistanceState.analysisTime = 0;
+                wwDistanceRequestExactPlaybackFetch();
+                return;
+            }
+
+            if (wwPlayback.activeTimeGroupId === groupId) {
+                wwDistanceState.analysisTime = wwPlayback.currentTime;
+                wwDistanceRequestExactPlaybackFetch();
+            } else {
+                wwPlaybackRestart(groupId);
+                const bounds = wwDeriveTimeGroupBounds(groupId);
+                if (bounds) {
+                    const initialTime = wwPhasorComputeInitialClaimTime(groupId, bounds);
+                    if (Math.abs(initialTime - bounds.start) > 1e-9) {
+                        wwPlaybackHandleSeekInput(groupId, initialTime);
+                        wwPlaybackHandleSeekCommit(groupId, initialTime);
+                    }
+                }
+            }
+            wwDistanceMaybeFetchLocus();
+        }
+
+        // ---- Playback control-surface mount -- identical pattern to
+        // wwImpedanceMountPlaybackControls(). ----
+        function wwDistanceMountPlaybackControls(groupId) {
+            const panelEl = document.getElementById("wwDistancePlaybackPanel");
+            const mountEl = document.getElementById("wwDistancePlaybackMount");
+            if (!panelEl || !mountEl) return;
+            if (groupId === null) {
+                panelEl.hidden = true;
+                mountEl.innerHTML = "";
+                return;
+            }
+            const playbackControlsHtml = wwCreatePlaybackControlsHtml();
+            mountEl.innerHTML =
+                '<div class="ww-phasor-playback-transport ww-analysis-playback-transport">' + playbackControlsHtml.transportHtml + '</div>' +
+                playbackControlsHtml.seekRowHtml;
+            panelEl.hidden = false;
+            wwWirePlaybackControls(mountEl, groupId);
+            wwSyncPlaybackControls(mountEl, groupId);
+
+            const playBtn = mountEl.querySelector(".ww-tg-playback-play-btn");
+            if (playBtn) playBtn.addEventListener("click", () => wwDistanceOnPlaybackTick(wwPlayback.currentTime, wwPlayback));
+            const restartBtn = mountEl.querySelector(".ww-tg-playback-restart-btn");
+            if (restartBtn) restartBtn.addEventListener("click", () => wwDistanceOnPlaybackTick(wwPlayback.currentTime, wwPlayback));
+            const speedSelect = mountEl.querySelector(".ww-tg-playback-speed-select");
+            if (speedSelect) speedSelect.addEventListener("change", () => wwDistanceOnPlaybackTick(wwPlayback.currentTime, wwPlayback));
+        }
+
+        // ---- The ONE tick subscriber -- identical shape to
+        // wwImpedanceOnPlaybackTick(). Only the CURRENT-POINT fetch (and
+        // its own zone-state evaluation, already embedded server-side in
+        // that same response) is throttled/driven per tick -- the static
+        // locus itself is never touched here. ----
+        let wwDistanceLastPlaybackSignature = null;
+        function wwDistanceOnPlaybackTick(currentTime, playback) {
+            if (wwDistanceState.activeTimeGroupId === null) return;
+            const isOurGroup = playback.activeTimeGroupId === wwDistanceState.activeTimeGroupId;
+            const signature = playback.state + "|" + playback.activeTimeGroupId;
+            const transitioned = signature !== wwDistanceLastPlaybackSignature;
+            wwDistanceLastPlaybackSignature = signature;
+
+            const mountEl = document.getElementById("wwDistancePlaybackMount");
+            if (mountEl && !mountEl.hidden && isOurGroup) {
+                if (transitioned) {
+                    wwSyncPlaybackControls(mountEl, wwDistanceState.activeTimeGroupId);
+                } else {
+                    wwUpdatePlaybackControlsTick(mountEl, wwDistanceState.activeTimeGroupId);
+                }
+            }
+
+            if (!isOurGroup) return;
+            wwDistanceState.analysisTime = currentTime;
+
+            if (wwDistanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return;
+
+            if (playback.state === WW_PLAYBACK_STATE_PLAYING) {
+                wwDistanceMaybeFetchForPlayback();
+            } else {
+                wwDistanceRequestExactPlaybackFetch();
+            }
+        }
+
+        // ---- Throttled, concurrency-safe current-point fetch -- identical
+        // shape/constants to wwImpedanceMaybeFetchForPlayback(). ----
+        const WW_DISTANCE_PLAYBACK_THROTTLE_MS = 100; // ~10 Hz
+        let wwDistancePlaybackFetchInFlight = false;
+        let wwDistancePlaybackLastFetchAtMs = 0;
+        let wwDistancePlaybackFetchedTime = null;
+        let wwDistancePlaybackForceNextFetch = false;
+
+        function wwDistancePlaybackDesiredTimeChanged() {
+            return wwDistancePlaybackFetchedTime === null ||
+                Math.abs(wwDistancePlaybackFetchedTime - wwDistanceState.analysisTime) > 1e-9;
+        }
+        function wwDistanceRequestExactPlaybackFetch() {
+            wwDistancePlaybackForceNextFetch = true;
+            wwDistanceMaybeFetchForPlayback();
+        }
+        function wwDistanceMaybeFetchForPlayback() {
+            const force = wwDistancePlaybackForceNextFetch;
+            if (!force && !wwDistancePlaybackDesiredTimeChanged()) return;
+            if (wwDistancePlaybackFetchInFlight) return;
+            if (!force) {
+                const elapsedMs = performance.now() - wwDistancePlaybackLastFetchAtMs;
+                if (elapsedMs < WW_DISTANCE_PLAYBACK_THROTTLE_MS) return;
+            }
+            wwDistancePlaybackForceNextFetch = false;
+            wwDistanceRequestAnalysis();
+        }
+
+        function wwDistanceSetUpdatingIndicator(isUpdating) {
+            const el = document.getElementById("wwDistanceUpdatingIndicator");
+            if (el) el.hidden = !isUpdating;
+        }
+
+        function wwDistanceBasisParams(s) {
+            const params = { recording_basis: s.recordingBasis, impedance_basis: s.outputBasis };
+            if (s.recordingBasis !== s.outputBasis && s.vtPrimary !== null && s.vtSecondary !== null && s.ctPrimary !== null && s.ctSecondary !== null) {
+                params.vt_primary = String(s.vtPrimary);
+                params.vt_secondary = String(s.vtSecondary);
+                params.ct_primary = String(s.ctPrimary);
+                params.ct_secondary = String(s.ctSecondary);
+            }
+            return params;
+        }
+        // Zone query params -- shared by the current-point fetch, the
+        // locus fetch, and the Manual fetch, so the three can never
+        // silently evaluate against different zone settings.
+        function wwDistanceZoneParams() {
+            const params = {};
+            for (const key of ["zone1", "zone2", "zone3"]) {
+                const z = wwDistanceState.zones[key];
+                params[key + "_enabled"] = String(z.enabled);
+                params[key + "_delay_s"] = String(Number.isFinite(z.delaySeconds) ? z.delaySeconds : 0);
+                params[key + "_characteristic_angle_deg"] = String(Number.isFinite(z.characteristicAngleDeg) ? z.characteristicAngleDeg : 90);
+                if (wwDistanceState.characteristic === "mho") {
+                    if (Number.isFinite(z.reachOhm)) params[key + "_reach_ohm"] = String(z.reachOhm);
+                } else {
+                    if (Number.isFinite(z.reactiveReachOhm)) params[key + "_reactive_reach_ohm"] = String(z.reactiveReachOhm);
+                    if (Number.isFinite(z.resistiveForwardOhm)) params[key + "_resistive_reach_forward_ohm"] = String(z.resistiveForwardOhm);
+                    if (Number.isFinite(z.resistiveReverseOhm)) params[key + "_resistive_reach_reverse_ohm"] = String(z.resistiveReverseOhm);
+                }
+            }
+            return params;
+        }
+
+        // The ONE place that dispatches a `/distance-protection` HTTP call
+        // for the CURRENT (Playback-time) point -- identical staleness-guard
+        // shape to wwImpedanceRequestAnalysis().
+        async function wwDistanceRequestAnalysis() {
+            const contextId = wwDistanceState.selectedContextId;
+            if (!contextId || wwDistanceState.analysisTime === null) return;
+            const anchorDisplaySourceId = wwDistanceState.anchorDisplaySourceId;
+            const desiredTime = wwDistanceState.analysisTime;
+            const s = wwDistanceState.settings;
+
+            const myGeneration = ++wwDistanceState.requestGeneration;
+            const epochAtStart = ww.epoch;
+            const workspaceId = currentWorkspaceId();
+            const analysisTimeForApi = anchorDisplaySourceId !== null
+                ? wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, desiredTime)
+                : desiredTime;
+
+            const params = new URLSearchParams(Object.assign(
+                { loop: wwDistanceState.loop, analysis_time: String(analysisTimeForApi), characteristic: wwDistanceState.characteristic },
+                wwDistanceBasisParams(s), wwDistanceZoneParams()
+            ));
+
+            wwDistancePlaybackFetchInFlight = true;
+            wwDistanceSetUpdatingIndicator(true);
+            let result;
+            try {
+                result = await wwDistanceFetchAnalysis(workspaceId, contextId, params);
+            } catch (error) {
+                wwDistancePlaybackFetchInFlight = false;
+                wwDistancePlaybackLastFetchAtMs = performance.now();
+                wwDistancePlaybackFetchedTime = desiredTime;
+                if (myGeneration !== wwDistanceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                wwDistanceSetUpdatingIndicator(false);
+                wwDistanceState.latestResult = null;
+                wwDistanceRenderResult(null);
+                wwDistanceMaybeFetchForPlayback();
+                return;
+            }
+            wwDistancePlaybackFetchInFlight = false;
+            wwDistancePlaybackLastFetchAtMs = performance.now();
+            wwDistancePlaybackFetchedTime = desiredTime;
+            if (myGeneration !== wwDistanceState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            wwDistanceSetUpdatingIndicator(false);
+            wwDistanceState.latestResult = result;
+            wwDistanceRenderResult(result);
+            wwDistanceMaybeFetchForPlayback();
+        }
+
+        // ---- Static locus/trajectory -- fetched ONLY when context/loop/
+        // settings/time-range change, never per Playback tick. Cached via a
+        // signature string exactly like wwImpedanceLocusSignature(). Zone
+        // settings are deliberately EXCLUDED from the signature/points
+        // themselves (locus points carry no zone state at all, matching
+        // the backend's own DistanceLocusPoint -- only the CURRENT point
+        // drives Operated/Not-Operated), but characteristic/zone changes
+        // still redraw the STATIC zone geometry immediately via
+        // wwDistanceRenderPlot() without needing a re-fetch. ----
+        function wwDistanceLocusSignature() {
+            const s = wwDistanceState.settings;
+            return [
+                wwDistanceState.selectedContextId, wwDistanceState.activeTimeGroupId, wwDistanceState.loop,
+                s.recordingBasis, s.outputBasis, s.vtPrimary, s.vtSecondary, s.ctPrimary, s.ctSecondary,
+            ].join("|");
+        }
+        function wwDistanceInvalidateLocus() {
+            wwDistanceState.locusPoints = [];
+            wwDistanceState.locusSignature = null;
+        }
+        const WW_DISTANCE_LOCUS_POINT_COUNT = 120;
+        async function wwDistanceMaybeFetchLocus() {
+            const contextId = wwDistanceState.selectedContextId;
+            const groupId = wwDistanceState.activeTimeGroupId;
+            if (!contextId || groupId === null) { wwDistanceInvalidateLocus(); wwDistanceRenderPlot(); return; }
+            const bounds = wwDeriveTimeGroupBounds(groupId);
+            if (!bounds) { wwDistanceInvalidateLocus(); wwDistanceRenderPlot(); return; }
+            const signature = wwDistanceLocusSignature();
+            if (signature === wwDistanceState.locusSignature) return;
+
+            const anchorDisplaySourceId = wwDistanceState.anchorDisplaySourceId;
+            const startForApi = anchorDisplaySourceId !== null ? wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, bounds.start) : bounds.start;
+            const endForApi = anchorDisplaySourceId !== null ? wwWorkspaceTimeToSourceTime(anchorDisplaySourceId, bounds.end) : bounds.end;
+            const s = wwDistanceState.settings;
+            const params = new URLSearchParams(Object.assign(
+                {
+                    loop: wwDistanceState.loop, start_time: String(startForApi), end_time: String(endForApi),
+                    point_count: String(WW_DISTANCE_LOCUS_POINT_COUNT), characteristic: wwDistanceState.characteristic,
+                },
+                wwDistanceBasisParams(s), wwDistanceZoneParams()
+            ));
+            const myGeneration = ++wwDistanceState.locusRequestGeneration;
+            const epochAtStart = ww.epoch;
+            const workspaceId = currentWorkspaceId();
+            let result;
+            try {
+                result = await wwDistanceFetchLocus(workspaceId, contextId, params);
+            } catch (error) {
+                return;
+            }
+            if (myGeneration !== wwDistanceState.locusRequestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            wwDistanceState.locusPoints = result.points || [];
+            wwDistanceState.locusSignature = signature;
+            wwDistanceRenderPlot();
+        }
+
+        // ---- Rendering ----
+
+        function wwDistanceFormatOhm(value) {
+            if (!Number.isFinite(value)) return "—";
+            return wwFormatEngineeringValue(value) + " Ω";
+        }
+        function wwDistanceValueRow(label, value) {
+            return '<div class="ww-oc-value-row"><span class="ww-oc-value-row-label">' + escapeHtml(label) + '</span>' +
+                '<span class="ww-oc-value-row-value">' + escapeHtml(value) + '</span></div>';
+        }
+        const WW_DISTANCE_STATUS_LABELS = {
+            missing: "Missing", needs_configuration: "Needs configuration", ambiguous: "Ambiguous", not_eligible: "Not eligible",
+        };
+        const WW_DISTANCE_ZONE_LABELS = { zone1: "Zone 1", zone2: "Zone 2", zone3: "Zone 3" };
+
+        // Zone State rows -- deliberately separate from the Loop/Basis/R/
+        // X/|Z|/Angle rows above (never mixing geometric state and a
+        // hypothetical future trip-output state in one list). `zones` may
+        // be null (e.g. no result yet) -- rendered as three Not-Operated
+        // rows so the Zone State section is never structurally empty.
+        function wwDistanceRenderZoneStateList(zones) {
+            const list = document.getElementById("wwDistanceZoneStateList");
+            if (!list) return;
+            const rows = [];
+            for (const key of ["zone1", "zone2", "zone3"]) {
+                const z = zones && zones[key];
+                const operated = !!(z && z.state === "operated");
+                const enabled = !!(z && z.enabled);
+                const delaySeconds = z ? z.delay_s : wwDistanceState.zones[key].delaySeconds;
+                rows.push(
+                    '<div class="ww-oc-value-row"><span class="ww-oc-value-row-label">' + WW_DISTANCE_ZONE_LABELS[key] +
+                    (enabled ? "" : " (disabled)") + '</span><span class="ww-oc-value-row-value">' +
+                    '<span class="ww-dist-zone-state-badge ' + (operated ? "ww-dist-zone-state-badge--operated" : "ww-dist-zone-state-badge--not-operated") +
+                    '" style="--zone-color: var(--ww-dist-' + key + ')">' + (operated ? "Operated" : "Not Operated") + '</span>' +
+                    ' <span class="ww-oc-field-unit">delay ' + (Number.isFinite(delaySeconds) ? delaySeconds.toFixed(2) : "0.00") + 's</span>' +
+                    '</span></div>'
+                );
+            }
+            list.innerHTML = rows.join("");
+        }
+
+        function wwDistanceRenderResult(result) {
+            if (wwDistanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return;
+            const statusRow = document.getElementById("wwDistanceStatusRow");
+            const valuesList = document.getElementById("wwDistanceValuesList");
+            if (!statusRow || !valuesList) return;
+
+            if (!result || result.status !== "computed") {
+                statusRow.hidden = false;
+                statusRow.textContent = (result && result.message) ||
+                    (result && WW_DISTANCE_STATUS_LABELS[result.status]) ||
+                    "Loop impedance could not be computed for this selection.";
+                statusRow.className = "ww-phasor-status-row" +
+                    (result && result.status !== "computed" ? " ww-phasor-status--needs-configuration" : "");
+                valuesList.innerHTML = "";
+                wwDistanceRenderZoneStateList(result ? { zone1: result.zone1, zone2: result.zone2, zone3: result.zone3 } : null);
+                wwDistancePushRelatedWaveformRoles();
+                wwDistanceRenderPlot();
+                return;
+            }
+            statusRow.hidden = true;
+            const rows = [];
+            rows.push(wwDistanceValueRow("Loop", "Z" + result.loop.toLowerCase()));
+            rows.push(wwDistanceValueRow("Basis", result.impedance_basis === "primary" ? "Primary" : "Secondary"));
+            rows.push(wwDistanceValueRow("R", wwDistanceFormatOhm(result.resistance_ohm)));
+            rows.push(wwDistanceValueRow("X", wwDistanceFormatOhm(result.reactance_ohm)));
+            rows.push(wwDistanceValueRow("|Z|", wwDistanceFormatOhm(result.magnitude_ohm)));
+            rows.push(wwDistanceValueRow("Angle", (result.angle_deg >= 0 ? "+" : "") + result.angle_deg.toFixed(2) + "°"));
+            valuesList.innerHTML = rows.join("");
+            wwDistanceRenderZoneStateList({ zone1: result.zone1, zone2: result.zone2, zone3: result.zone3 });
+            wwDistancePushRelatedWaveformRoles();
+            wwDistanceRenderPlot();
+        }
+
+        // Related Waveforms -- pushes the selected loop's own four source
+        // quantities (e.g. AB -> Va, Vb, Ia, Ib), gated on channel IDENTITY
+        // being known rather than on the overall `status` (mirrors
+        // wwImpedanceComputeActiveRelatedWaveformRoles()'s own rationale --
+        // an engineer diagnosing a `loop_current_too_small` result still
+        // needs to see the underlying traces).
+        function wwDistanceComputeActiveRelatedWaveformRoles() {
+            if (wwDistanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING) return [];
+            const result = wwDistanceState.latestResult;
+            if (!result) return [];
+            const [v1Key, v2Key, i1Key, i2Key] = WW_DISTANCE_LOOP_ROLES[wwDistanceState.loop];
+            const roles = [];
+            const legs = [
+                [v1Key, result.v1_channel_ref, "Voltage", result.voltage_unit],
+                [v2Key, result.v2_channel_ref, "Voltage", result.voltage_unit],
+                [i1Key, result.i1_channel_ref, "Current", result.current_unit],
+                [i2Key, result.i2_channel_ref, "Current", result.current_unit],
+            ];
+            for (const [roleKey, channelRef, engineeringType, unit] of legs) {
+                if (!channelRef) continue;
+                const phase = roleKey.slice(1).toUpperCase();
+                roles.push({ roleKey, engineeringType, phase, channelRef, unit, label: roleKey, color: wwPhasorRoleColor(roleKey) });
+            }
+            return roles;
+        }
+        function wwDistancePushRelatedWaveformRoles() {
+            if (wwAnalysisActiveType !== "distance") return;
+            wwAnalysisSetRelatedWaveformRoles(
+                wwDistanceComputeActiveRelatedWaveformRoles(), wwDistanceState.selectedContextId, wwDistanceState.activeTimeGroupId
+            );
+        }
+
+        // ---- R-X plane plot -- REUSES Impedance Locus's own equal-scale
+        // coordinate transform verbatim (`WW_IMPEDANCE_PLOT_RADIUS`,
+        // `wwImpedanceNiceLimit()`, `wwImpedanceFormatTick()`) so the
+        // impedance locus and the distance-zone geometry can never
+        // disagree about scale -- never a second, independently-scaled
+        // renderer. The viewport additionally considers the active zone
+        // geometry (owner requirement: auto viewport must contain the
+        // active zone characteristics, not just the plotted points). ----
+        function wwDistanceCollectRelevantPoints() {
+            const points = [];
+            if (wwDistanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                const r = wwDistanceState.manual.latestResult;
+                if (r && r.status === "computed") points.push({ r: r.resistance_ohm, x: r.reactance_ohm });
+                return points;
+            }
+            const current = wwDistanceState.latestResult;
+            if (current && current.status === "computed") points.push({ r: current.resistance_ohm, x: current.reactance_ohm });
+            for (const p of wwDistanceState.locusPoints) {
+                if (p.status === "computed") points.push({ r: p.resistance_ohm, x: p.reactance_ohm });
+            }
+            return points;
+        }
+        // Reach extent per zone -- the farthest R/X coordinate its own
+        // characteristic geometry can occupy, used only to size the
+        // viewport (never used for the Operated/Not-Operated decision
+        // itself, which stays entirely server-side).
+        function wwDistanceZoneReachExtent(z) {
+            if (!z.enabled) return 0;
+            if (wwDistanceState.characteristic === "mho") {
+                return Number.isFinite(z.reachOhm) ? z.reachOhm : 0;
+            }
+            const reactive = Number.isFinite(z.reactiveReachOhm) ? z.reactiveReachOhm : 0;
+            const forward = Number.isFinite(z.resistiveForwardOhm) ? z.resistiveForwardOhm : 0;
+            const reverse = Number.isFinite(z.resistiveReverseOhm) ? z.resistiveReverseOhm : 0;
+            return Math.max(reactive, forward, reverse);
+        }
+        function wwDistanceVisibleLocusCutoffTime() {
+            const result = wwDistanceState.latestResult;
+            return result ? result.analysis_time : null;
+        }
+        // Mho circle geometry -- mirrors app.domain.distance_protection.
+        // mho_zone_operated() exactly: diameter from the origin to
+        // Z_reach = reach_ohm /_ characteristic_angle_deg.
+        function wwDistanceMhoCircleSvg(zoneKey, z, toSvg, pxPerOhm) {
+            if (!z.enabled || !Number.isFinite(z.reachOhm) || z.reachOhm <= 0) return "";
+            const angleRad = (z.characteristicAngleDeg * Math.PI) / 180;
+            const halfReach = z.reachOhm / 2;
+            const centerR = halfReach * Math.cos(angleRad);
+            const centerX = halfReach * Math.sin(angleRad);
+            const [cx, cy] = toSvg(centerR, centerX);
+            const radiusPx = halfReach * pxPerOhm;
+            return '<circle class="ww-dist-zone-boundary ww-dist-zone-boundary--' + zoneKey + '" cx="' + cx.toFixed(2) + '" cy="' + cy.toFixed(2) + '" r="' + radiusPx.toFixed(2) + '"></circle>';
+        }
+        // Quadrilateral geometry -- mirrors app.domain.distance_protection.
+        // quadrilateral_zone_operated() exactly: a rectangle in the
+        // rotated (x' along the reach direction, r' perpendicular)
+        // coordinate system, mapped back to R/X for drawing.
+        function wwDistanceQuadrilateralSvg(zoneKey, z, toSvg) {
+            if (!z.enabled || !Number.isFinite(z.reactiveReachOhm) || z.reactiveReachOhm <= 0 ||
+                !Number.isFinite(z.resistiveForwardOhm) || z.resistiveForwardOhm <= 0 ||
+                !Number.isFinite(z.resistiveReverseOhm) || z.resistiveReverseOhm <= 0) return "";
+            const theta = (z.characteristicAngleDeg * Math.PI) / 180;
+            const cosT = Math.cos(theta), sinT = Math.sin(theta);
+            // Inverse of x' = R cosT + X sinT, r' = R sinT - X cosT:
+            // R = x' cosT + r' sinT, X = x' sinT - r' cosT.
+            const corners = [
+                [0, -z.resistiveReverseOhm], [0, z.resistiveForwardOhm],
+                [z.reactiveReachOhm, z.resistiveForwardOhm], [z.reactiveReachOhm, -z.resistiveReverseOhm],
+            ];
+            const pts = corners.map(([xPrime, rPrime]) => {
+                const r = xPrime * cosT + rPrime * sinT;
+                const x = xPrime * sinT - rPrime * cosT;
+                const [px, py] = toSvg(r, x);
+                return px.toFixed(2) + "," + py.toFixed(2);
+            });
+            return '<polygon class="ww-dist-zone-boundary ww-dist-zone-boundary--' + zoneKey + '" points="' + pts.join(" ") + '"></polygon>';
+        }
+        function wwDistanceRenderPlot() {
+            const svg = document.getElementById("wwDistanceSvg");
+            if (!svg) return;
+            const points = wwDistanceCollectRelevantPoints();
+            let maxAbs = points.reduce((m, p) => Math.max(m, Math.abs(p.r), Math.abs(p.x)), 0);
+            for (const key of ["zone1", "zone2", "zone3"]) {
+                maxAbs = Math.max(maxAbs, wwDistanceZoneReachExtent(wwDistanceState.zones[key]));
+            }
+            const limit = wwImpedanceNiceLimit(maxAbs);
+            const pxPerOhm = WW_IMPEDANCE_PLOT_RADIUS / limit;
+            const toSvg = (r, x) => [r * pxPerOhm, -x * pxPerOhm];
+
+            const parts = [];
+            for (const frac of [0.5, 1.0]) {
+                const d = WW_IMPEDANCE_PLOT_RADIUS * frac;
+                parts.push('<rect class="ww-imp-grid-line" x="' + (-d) + '" y="' + (-d) + '" width="' + (2 * d) + '" height="' + (2 * d) + '" fill="none"></rect>');
+            }
+            parts.push('<line class="ww-imp-axis" x1="' + (-WW_IMPEDANCE_PLOT_RADIUS - 8) + '" y1="0" x2="' + (WW_IMPEDANCE_PLOT_RADIUS + 8) + '" y2="0"></line>');
+            parts.push('<line class="ww-imp-axis" x1="0" y1="' + (-WW_IMPEDANCE_PLOT_RADIUS - 8) + '" x2="0" y2="' + (WW_IMPEDANCE_PLOT_RADIUS + 8) + '"></line>');
+            parts.push('<text class="ww-imp-tick-label" x="' + (WW_IMPEDANCE_PLOT_RADIUS - 2) + '" y="10" text-anchor="end">' + wwImpedanceFormatTick(limit) + '</text>');
+            parts.push('<text class="ww-imp-tick-label" x="' + (-WW_IMPEDANCE_PLOT_RADIUS + 2) + '" y="10" text-anchor="start">' + wwImpedanceFormatTick(-limit) + '</text>');
+            parts.push('<text class="ww-imp-tick-label" x="4" y="' + (-WW_IMPEDANCE_PLOT_RADIUS + 4) + '" text-anchor="start">' + wwImpedanceFormatTick(limit) + '</text>');
+            parts.push('<text class="ww-imp-tick-label" x="4" y="' + (WW_IMPEDANCE_PLOT_RADIUS - 1) + '" text-anchor="start">' + wwImpedanceFormatTick(-limit) + '</text>');
+
+            // Zone geometry -- static, drawn BEFORE the locus/point so the
+            // trajectory/marker always paint on top (Zone 1 last = most
+            // prominent, matching its own "strongest" visual identity).
+            for (const key of ["zone3", "zone2", "zone1"]) {
+                const z = wwDistanceState.zones[key];
+                parts.push(wwDistanceState.characteristic === "mho" ? wwDistanceMhoCircleSvg(key, z, toSvg, pxPerOhm) : wwDistanceQuadrilateralSvg(key, z, toSvg));
+            }
+
+            const WW_DISTANCE_LOCUS_CUTOFF_EPS = 1e-6;
+            if (wwDistanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_RECORDING) {
+                const cutoffTime = wwDistanceVisibleLocusCutoffTime();
+                let path = "";
+                let drawing = false;
+                if (cutoffTime !== null) {
+                    for (const p of wwDistanceState.locusPoints) {
+                        if (p.status !== "computed" || p.analysis_time > cutoffTime + WW_DISTANCE_LOCUS_CUTOFF_EPS) { drawing = false; continue; }
+                        const [x, y] = toSvg(p.resistance_ohm, p.reactance_ohm);
+                        path += (drawing ? " L " : " M ") + x.toFixed(2) + "," + y.toFixed(2);
+                        drawing = true;
+                    }
+                }
+                if (path) parts.push('<path class="ww-dist-locus-path" d="' + path.trim() + '"></path>');
+            }
+
+            if (wwDistanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                const r = wwDistanceState.manual.latestResult;
+                if (r && r.status === "computed") {
+                    const [x, y] = toSvg(r.resistance_ohm, r.reactance_ohm);
+                    parts.push(
+                        '<circle class="ww-dist-point--manual" cx="' + x.toFixed(2) + '" cy="' + y.toFixed(2) + '" r="3.2">' +
+                        '<title>Manual input point\nZ' + escapeHtml(r.loop_label.toLowerCase()) +
+                        '\nR = ' + wwDistanceFormatOhm(r.resistance_ohm) + '\nX = ' + wwDistanceFormatOhm(r.reactance_ohm) +
+                        '\n|Z| = ' + wwDistanceFormatOhm(r.magnitude_ohm) + '\n∠ = ' + r.angle_deg.toFixed(2) + '°</title></circle>'
+                    );
+                }
+            } else {
+                const current = wwDistanceState.latestResult;
+                if (current && current.status === "computed") {
+                    const anyOperated = ["zone1", "zone2", "zone3"].some((k) => current[k] && current[k].state === "operated");
+                    const [x, y] = toSvg(current.resistance_ohm, current.reactance_ohm);
+                    parts.push(
+                        '<circle class="ww-dist-point' + (anyOperated ? " ww-dist-point--operated" : "") + '" cx="' + x.toFixed(2) + '" cy="' + y.toFixed(2) + '" r="3">' +
+                        '<title>Z' + escapeHtml(current.loop.toLowerCase()) +
+                        '\nR = ' + wwDistanceFormatOhm(current.resistance_ohm) + '\nX = ' + wwDistanceFormatOhm(current.reactance_ohm) +
+                        '\n|Z| = ' + wwDistanceFormatOhm(current.magnitude_ohm) + '\n∠ = ' + current.angle_deg.toFixed(2) + '°</title></circle>'
+                    );
+                }
+            }
+
+            parts.push('<text class="ww-imp-axis-title" x="' + (WW_IMPEDANCE_PLOT_RADIUS + 10) + '" y="-6" text-anchor="end">R (Ω)</text>');
+            parts.push('<text class="ww-imp-axis-title" x="4" y="' + (-WW_IMPEDANCE_PLOT_RADIUS - 12) + '" text-anchor="start">X (Ω)</text>');
+
+            svg.innerHTML = parts.join("");
+        }
+
+        // ---- Input Source (Recording/Manual) -- identical pattern to
+        // wwImpedanceSetInputSource(). ----
+        function wwDistanceCtVtFieldsNeeded() {
+            const s = wwDistanceState.settings;
+            return s.recordingBasis !== s.outputBasis;
+        }
+        function wwDistanceUpdateCtVtFieldsVisibility() {
+            const needed = wwDistanceCtVtFieldsNeeded();
+            for (const id of ["wwDistanceVtPrimaryField", "wwDistanceVtSecondaryField", "wwDistanceCtPrimaryField", "wwDistanceCtSecondaryField"]) {
+                const el = document.getElementById(id);
+                if (el) el.hidden = !needed;
+            }
+        }
+        function wwDistanceUpdateManualRatioFieldsVisibility() {
+            const m = wwDistanceState.manual;
+            const vtPrimary = document.getElementById("wwDistanceManualVtPrimaryField");
+            const vtSecondary = document.getElementById("wwDistanceManualVtSecondaryField");
+            const ctPrimary = document.getElementById("wwDistanceManualCtPrimaryField");
+            const ctSecondary = document.getElementById("wwDistanceManualCtSecondaryField");
+            if (vtPrimary) vtPrimary.hidden = m.voltageBasis !== "primary";
+            if (vtSecondary) vtSecondary.hidden = m.voltageBasis !== "primary";
+            if (ctPrimary) ctPrimary.hidden = m.currentBasis !== "primary";
+            if (ctSecondary) ctSecondary.hidden = m.currentBasis !== "primary";
+        }
+        // Characteristic switching (Mho|Quadrilateral) -- shows/hides only
+        // the characteristic-specific zone fields; `Configured delay` and
+        // `Characteristic angle` stay visible/shared for both (owner
+        // requirement: "preserve relevant shared settings where sensible").
+        function wwDistanceUpdateCharacteristicFieldsVisibility() {
+            const isMho = wwDistanceState.characteristic === "mho";
+            for (const key of ["zone1", "zone2", "zone3"]) {
+                const reach = document.getElementById("wwDistance" + wwDistanceZoneIdPart(key) + "ReachField");
+                const reactive = document.getElementById("wwDistance" + wwDistanceZoneIdPart(key) + "ReactiveReachField");
+                const forward = document.getElementById("wwDistance" + wwDistanceZoneIdPart(key) + "ResistiveForwardField");
+                const reverse = document.getElementById("wwDistance" + wwDistanceZoneIdPart(key) + "ResistiveReverseField");
+                if (reach) reach.hidden = !isMho;
+                if (reactive) reactive.hidden = isMho;
+                if (forward) forward.hidden = isMho;
+                if (reverse) reverse.hidden = isMho;
+            }
+        }
+        function wwDistanceZoneIdPart(key) {
+            return key.charAt(0).toUpperCase() + key.slice(1); // "zone1" -> "Zone1"
+        }
+        // Manual role labels -- updated live whenever the loop changes so
+        // Manual Input never asks for the unrelated third phase (e.g. AB
+        // shows "Va"/"Vb"/"Ia"/"Ib", never "Vc"/"Ic").
+        function wwDistanceUpdateManualRoleLabels() {
+            const [v1, v2, i1, i2] = WW_DISTANCE_LOOP_ROLES[wwDistanceState.loop];
+            const setLabel = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text + " magnitude"; };
+            setLabel("wwDistanceManualV1Label", v1);
+            setLabel("wwDistanceManualV2Label", v2);
+            setLabel("wwDistanceManualI1Label", i1);
+            setLabel("wwDistanceManualI2Label", i2);
+        }
+
+        function wwDistanceHandleSettingsChanged() {
+            wwDistanceUpdateCtVtFieldsVisibility();
+            wwDistanceInvalidateLocus();
+            if (wwDistanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                wwDistanceRequestManualAnalysis();
+            } else {
+                wwDistanceRequestExactPlaybackFetch();
+                wwDistanceMaybeFetchLocus();
+            }
+        }
+        function wwDistanceHandleLoopChanged() {
+            wwDistanceUpdateManualRoleLabels();
+            wwDistanceHandleSettingsChanged();
+        }
+        function wwDistanceHandleCharacteristicChanged() {
+            wwDistanceUpdateCharacteristicFieldsVisibility();
+            // Characteristic switching never changes the measured
+            // impedance -- only re-request/re-render so Operated/Not-
+            // Operated is recomputed against the new geometry.
+            wwDistanceHandleSettingsChanged();
+        }
+        // A zone SETTING change (reach/angle/enabled/delay) never touches
+        // the locus/trajectory -- locus points carry no zone state at
+        // all (only the CURRENT point drives Operated/Not-Operated), and
+        // the static trajectory itself is geometrically independent of
+        // zone configuration. Invalidating/re-fetching the full 120-point
+        // locus here would be exactly the wasteful "re-fetch on every
+        // keystroke" behavior the task's own performance guardrails
+        // forbid -- only the current-point result (whose zone1/zone2/
+        // zone3 fields must reflect the new settings) and the plot's own
+        // static zone-geometry redraw are needed.
+        function wwDistanceHandleZoneSettingChanged() {
+            if (wwDistanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                wwDistanceRequestManualAnalysis();
+            } else {
+                wwDistanceRequestExactPlaybackFetch();
+            }
+            wwDistanceRenderPlot();
+        }
+
+        function wwDistanceSetInputSource(mode, isAutomatic) {
+            if (mode !== WW_ANALYSIS_INPUT_SOURCE_RECORDING && mode !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
+            if (mode === WW_ANALYSIS_INPUT_SOURCE_RECORDING && !wwDistanceState.recordingAvailable) return;
+            if (!isAutomatic) wwDistanceState.inputSourceAutoSelected = false;
+            if (mode === wwDistanceState.inputSource) return;
+            wwDistanceState.inputSource = mode;
+            wwDistanceSyncInputSourceButtons();
+            wwDistanceUpdateManualSectionVisibility();
+            wwDistanceUpdateRecordingSectionVisibility();
+            wwDistancePushRelatedWaveformRoles();
+            wwDistanceRenderPlot();
+            if (mode === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                wwDistanceRequestManualAnalysis();
+            } else {
+                wwDistanceRequestExactPlaybackFetch();
+                wwDistanceMaybeFetchLocus();
+            }
+        }
+        function wwDistanceSyncInputSourceButtons() {
+            const recordingBtn = document.getElementById("wwDistanceInputSourceRecordingBtn");
+            const manualBtn = document.getElementById("wwDistanceInputSourceManualBtn");
+            if (!recordingBtn || !manualBtn) return;
+            const isManual = wwDistanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+            recordingBtn.classList.toggle("ww-oc-axis-toggle-btn--active", !isManual);
+            recordingBtn.setAttribute("aria-pressed", String(!isManual));
+            manualBtn.classList.toggle("ww-oc-axis-toggle-btn--active", isManual);
+            manualBtn.setAttribute("aria-pressed", String(isManual));
+        }
+        function wwDistanceUpdateManualSectionVisibility() {
+            const section = document.getElementById("wwDistanceManualInputSection");
+            if (section) section.hidden = wwDistanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL;
+        }
+        function wwDistanceUpdateRecordingSectionVisibility() {
+            const section = document.getElementById("wwDistanceRecordingSection");
+            if (section) section.hidden = wwDistanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_RECORDING;
+        }
+        function wwDistanceUpdateInputSourceAvailability() {
+            const available = wwDistanceState.contexts.length > 0;
+            wwDistanceState.recordingAvailable = available;
+            const recordingBtn = document.getElementById("wwDistanceInputSourceRecordingBtn");
+            const hint = document.getElementById("wwDistanceInputSourceHint");
+            if (recordingBtn) recordingBtn.disabled = !available;
+            if (hint) hint.hidden = available;
+            if (wwAnalysisActiveType !== "distance") return;
+            if (!wwDistanceState.inputSourceAutoSelected) return;
+            if (!available && wwDistanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_RECORDING) {
+                wwDistanceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_MANUAL, true);
+            } else if (available && wwDistanceState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) {
+                wwDistanceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_RECORDING, true);
+            }
+        }
+
+        // ---- Manual Input / Calculator mode ----
+        function wwDistanceManualInputIsValid() {
+            const m = wwDistanceState.manual;
+            return Number.isFinite(m.v1Magnitude) && m.v1Magnitude >= 0 && Number.isFinite(m.v1AngleDeg) &&
+                Number.isFinite(m.v2Magnitude) && m.v2Magnitude >= 0 && Number.isFinite(m.v2AngleDeg) &&
+                Number.isFinite(m.i1Magnitude) && m.i1Magnitude >= 0 && Number.isFinite(m.i1AngleDeg) &&
+                Number.isFinite(m.i2Magnitude) && m.i2Magnitude >= 0 && Number.isFinite(m.i2AngleDeg);
+        }
+        function wwDistanceRequestManualAnalysis() {
+            if (wwDistanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
+            if (!wwDistanceManualInputIsValid()) {
+                wwDistanceState.manual.latestResult = null;
+                wwDistanceRenderManualResult(null);
+                return;
+            }
+            const m = wwDistanceState.manual;
+            const myGeneration = ++wwDistanceState.manualRequestGeneration;
+            const epochAtStart = ww.epoch;
+            const workspaceId = currentWorkspaceId();
+            const params = new URLSearchParams(Object.assign({
+                loop_label: wwDistanceState.loop,
+                voltage_basis: m.voltageBasis, current_basis: m.currentBasis, impedance_basis: wwDistanceState.settings.outputBasis,
+                characteristic: wwDistanceState.characteristic,
+                v1_enabled: "true", v1_magnitude: String(m.v1Magnitude), v1_unit: m.v1Unit, v1_angle_deg: String(m.v1AngleDeg),
+                v2_enabled: "true", v2_magnitude: String(m.v2Magnitude), v2_unit: m.v2Unit, v2_angle_deg: String(m.v2AngleDeg),
+                i1_enabled: "true", i1_magnitude: String(m.i1Magnitude), i1_unit: m.i1Unit, i1_angle_deg: String(m.i1AngleDeg),
+                i2_enabled: "true", i2_magnitude: String(m.i2Magnitude), i2_unit: m.i2Unit, i2_angle_deg: String(m.i2AngleDeg),
+            }, wwDistanceZoneParams()));
+            if (m.voltageBasis === "primary" && m.voltageRatioPrimary !== null && m.voltageRatioSecondary !== null) {
+                params.set("vt_primary", String(m.voltageRatioPrimary));
+                params.set("vt_secondary", String(m.voltageRatioSecondary));
+            }
+            if (m.currentBasis === "primary" && m.currentRatioPrimary !== null && m.currentRatioSecondary !== null) {
+                params.set("ct_primary", String(m.currentRatioPrimary));
+                params.set("ct_secondary", String(m.currentRatioSecondary));
+            }
+            wwDistanceFetchManual(workspaceId, params).then(
+                (result) => {
+                    if (myGeneration !== wwDistanceState.manualRequestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                    wwDistanceState.manual.latestResult = result;
+                    wwDistanceRenderManualResult(result);
+                },
+                () => {
+                    if (myGeneration !== wwDistanceState.manualRequestGeneration) return;
+                    wwDistanceState.manual.latestResult = null;
+                    wwDistanceRenderManualResult(null);
+                }
+            );
+        }
+        function wwDistanceRenderManualResult(result) {
+            if (wwDistanceState.inputSource !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
+            const statusRow = document.getElementById("wwDistanceStatusRow");
+            const valuesList = document.getElementById("wwDistanceValuesList");
+            if (!statusRow || !valuesList) return;
+            if (!result || result.status !== "computed") {
+                statusRow.hidden = false;
+                statusRow.textContent = (result && result.message) ||
+                    (result && WW_DISTANCE_STATUS_LABELS[result.status]) || "Enter valid Voltage/Current values to calculate.";
+                statusRow.className = "ww-phasor-status-row" + (result && result.status !== "computed" ? " ww-phasor-status--needs-configuration" : "");
+                valuesList.innerHTML = "";
+                wwDistanceRenderZoneStateList(result ? { zone1: result.zone1, zone2: result.zone2, zone3: result.zone3 } : null);
+                wwDistanceRenderPlot();
+                return;
+            }
+            statusRow.hidden = true;
+            const rows = [];
+            rows.push(wwDistanceValueRow("Loop", "Z" + result.loop_label.toLowerCase()));
+            rows.push(wwDistanceValueRow("Basis", result.impedance_basis === "primary" ? "Primary" : "Secondary"));
+            rows.push(wwDistanceValueRow("R", wwDistanceFormatOhm(result.resistance_ohm)));
+            rows.push(wwDistanceValueRow("X", wwDistanceFormatOhm(result.reactance_ohm)));
+            rows.push(wwDistanceValueRow("|Z|", wwDistanceFormatOhm(result.magnitude_ohm)));
+            rows.push(wwDistanceValueRow("Angle", (result.angle_deg >= 0 ? "+" : "") + result.angle_deg.toFixed(2) + "°"));
+            valuesList.innerHTML = rows.join("");
+            wwDistanceRenderZoneStateList({ zone1: result.zone1, zone2: result.zone2, zone3: result.zone3 });
+            wwDistanceRenderPlot();
+        }
+
+        function wwDistanceSyncZoneFields() {
+            const setVal = (id, value) => { const el = document.getElementById(id); if (el) el.value = String(value); };
+            const setChecked = (id, value) => { const el = document.getElementById(id); if (el) el.checked = !!value; };
+            for (const key of ["zone1", "zone2", "zone3"]) {
+                const z = wwDistanceState.zones[key];
+                const part = wwDistanceZoneIdPart(key);
+                setChecked("wwDistance" + part + "Enabled", z.enabled);
+                setVal("wwDistance" + part + "DelayInput", z.delaySeconds);
+                setVal("wwDistance" + part + "AngleInput", z.characteristicAngleDeg);
+                if (z.reachOhm !== null) setVal("wwDistance" + part + "ReachInput", z.reachOhm);
+                if (z.reactiveReachOhm !== null) setVal("wwDistance" + part + "ReactiveReachInput", z.reactiveReachOhm);
+                if (z.resistiveForwardOhm !== null) setVal("wwDistance" + part + "ResistiveForwardInput", z.resistiveForwardOhm);
+                if (z.resistiveReverseOhm !== null) setVal("wwDistance" + part + "ResistiveReverseInput", z.resistiveReverseOhm);
+            }
+        }
+        function wwDistanceSyncSettingsFields() {
+            const s = wwDistanceState.settings;
+            const m = wwDistanceState.manual;
+            const setVal = (id, value) => { const el = document.getElementById(id); if (el) el.value = String(value); };
+            setVal("wwDistanceLoopSelect", wwDistanceState.loop);
+            setVal("wwDistanceCharacteristicSelect", wwDistanceState.characteristic);
+            setVal("wwDistanceRecordingBasisSelect", s.recordingBasis);
+            setVal("wwDistanceOutputBasisSelect", s.outputBasis);
+            if (s.vtPrimary !== null) setVal("wwDistanceVtPrimaryInput", s.vtPrimary);
+            if (s.vtSecondary !== null) setVal("wwDistanceVtSecondaryInput", s.vtSecondary);
+            if (s.ctPrimary !== null) setVal("wwDistanceCtPrimaryInput", s.ctPrimary);
+            if (s.ctSecondary !== null) setVal("wwDistanceCtSecondaryInput", s.ctSecondary);
+            setVal("wwDistanceManualVoltageBasisSelect", m.voltageBasis);
+            setVal("wwDistanceManualVtPrimaryInput", m.voltageRatioPrimary);
+            setVal("wwDistanceManualVtSecondaryInput", m.voltageRatioSecondary);
+            setVal("wwDistanceManualV1MagnitudeInput", m.v1Magnitude);
+            setVal("wwDistanceManualV1UnitSelect", m.v1Unit);
+            setVal("wwDistanceManualV1AngleInput", m.v1AngleDeg);
+            setVal("wwDistanceManualV2MagnitudeInput", m.v2Magnitude);
+            setVal("wwDistanceManualV2UnitSelect", m.v2Unit);
+            setVal("wwDistanceManualV2AngleInput", m.v2AngleDeg);
+            setVal("wwDistanceManualCurrentBasisSelect", m.currentBasis);
+            setVal("wwDistanceManualCtPrimaryInput", m.currentRatioPrimary);
+            setVal("wwDistanceManualCtSecondaryInput", m.currentRatioSecondary);
+            setVal("wwDistanceManualI1MagnitudeInput", m.i1Magnitude);
+            setVal("wwDistanceManualI1UnitSelect", m.i1Unit);
+            setVal("wwDistanceManualI1AngleInput", m.i1AngleDeg);
+            setVal("wwDistanceManualI2MagnitudeInput", m.i2Magnitude);
+            setVal("wwDistanceManualI2UnitSelect", m.i2Unit);
+            setVal("wwDistanceManualI2AngleInput", m.i2AngleDeg);
+            wwDistanceSyncZoneFields();
+            wwDistanceUpdateManualRoleLabels();
+            wwDistanceUpdateCharacteristicFieldsVisibility();
+        }
+
+        function wwDistanceResetState() {
+            wwDistanceState.contexts = [];
+            wwDistanceState.selectedContextId = null;
+            wwDistanceState.lastLoadedContextId = null;
+            wwDistanceState.anchorDisplaySourceId = null;
+            wwDistanceState.activeTimeGroupId = null;
+            wwDistanceState.analysisTime = null;
+            wwDistanceState.loop = "AB";
+            wwDistanceState.characteristic = "mho";
+            wwDistanceState.settings = { recordingBasis: "secondary", outputBasis: "secondary", vtPrimary: null, vtSecondary: null, ctPrimary: null, ctSecondary: null };
+            wwDistanceState.zones = {
+                zone1: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0 }),
+                zone2: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0.4 }),
+                zone3: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 1 }),
+            };
+            wwDistanceState.latestResult = null;
+            wwDistanceState.requestGeneration += 1;
+            wwDistanceInvalidateLocus();
+            wwDistanceState.locusRequestGeneration += 1;
+            wwDistanceState.inputSource = WW_ANALYSIS_INPUT_SOURCE_RECORDING;
+            wwDistanceState.recordingAvailable = false;
+            wwDistanceState.inputSourceAutoSelected = true;
+            wwDistanceState.manual = {
+                voltageBasis: "primary", voltageRatioPrimary: 132000, voltageRatioSecondary: 110,
+                v1Magnitude: 132, v1Unit: "kV", v1AngleDeg: 0,
+                v2Magnitude: 132, v2Unit: "kV", v2AngleDeg: -120,
+                currentBasis: "primary", currentRatioPrimary: 1200, currentRatioSecondary: 1,
+                i1Magnitude: 1.2, i1Unit: "kA", i1AngleDeg: -30,
+                i2Magnitude: 1.2, i2Unit: "kA", i2AngleDeg: -150,
+                latestResult: null,
+            };
+            wwDistanceState.manualRequestGeneration += 1;
+            wwDistanceSyncSettingsFields();
+            wwDistanceSyncInputSourceButtons();
+            wwDistanceUpdateManualSectionVisibility();
+            wwDistanceUpdateRecordingSectionVisibility();
+            wwDistanceUpdateInputSourceAvailability();
+            wwDistanceUpdateCtVtFieldsVisibility();
+            wwDistanceUpdateManualRatioFieldsVisibility();
+            wwDistancePlaybackFetchInFlight = false;
+            wwDistancePlaybackFetchedTime = null;
+            wwDistancePlaybackForceNextFetch = false;
+            wwDistanceLastPlaybackSignature = null;
+            wwDistanceMountPlaybackControls(null);
+            const contextSelect = document.getElementById("wwDistanceContextSelect");
+            if (contextSelect) contextSelect.innerHTML = '<option value="">Select a context…</option>';
+            const badge = document.getElementById("wwDistanceContextBadge");
+            if (badge) badge.innerHTML = "";
+            const svg = document.getElementById("wwDistanceSvg");
+            if (svg) svg.innerHTML = "";
+            wwDistanceSetUpdatingIndicator(false);
+            const valuesList = document.getElementById("wwDistanceValuesList");
+            if (valuesList) valuesList.innerHTML = "";
+            const zoneStateList = document.getElementById("wwDistanceZoneStateList");
+            if (zoneStateList) zoneStateList.innerHTML = "";
+            const statusRow = document.getElementById("wwDistanceStatusRow");
+            if (statusRow) statusRow.hidden = true;
+            const emptyState = document.getElementById("wwDistanceEmptyState");
+            if (emptyState) { emptyState.hidden = false; emptyState.textContent = WW_DISTANCE_MSG_SELECT_CONTEXT; }
+        }
+
 
         // ------------------------------------------------------------------
         // Init
@@ -42092,6 +43587,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Overcurrent's/Impedance Locus's own registration immediately
         // above.
         wwPlaybackOnTick(wwSequenceOnPlaybackTick);
+        wwAnalysisRegisterContextConsumer({
+            onContexts: wwDistanceOnAnalysisContexts,
+            onLifecyclePhase: wwDistanceOnAnalysisLifecyclePhase,
+            onDiscovering: wwDistanceOnAnalysisDiscovering,
+            onFreshContextsDiscovered: wwDistanceOnAnalysisFreshContextsDiscovered,
+        });
+        // Distance Protection v1: the FIFTH consumer of the ONE shared
+        // wwPlayback controller (DEC-085) -- mirrors every other
+        // analyzer's own registration immediately above.
+        wwPlaybackOnTick(wwDistanceOnPlaybackTick);
 
         // Shared Related Waveforms panel: the ONE permanent tick
         // subscriber (cursor position only, never a re-fetch/re-render --
@@ -42164,6 +43669,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             overcurrent: "wwOvercurrentPanel",
             impedance: "wwImpedancePanel",
             sequence: "wwSequencePanel",
+            distance: "wwDistancePanel",
         };
         function wwSetActiveAnalysisType(type) {
             for (const btn of document.querySelectorAll(".ww-analysis-type-item")) {
@@ -42231,6 +43737,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // Mirrors every other analyzer's own re-check above -- see
                 // their identical comments for the full rationale.
                 wwSequenceUpdateInputSourceAvailability();
+            } else if (type === "distance") {
+                wwAnalysisMountRelatedWaveformsInto("wwDistanceRelatedWaveformsAnchor");
+                wwDistancePushRelatedWaveformRoles();
+                // Mirrors every other analyzer's own re-check above -- see
+                // their identical comments for the full rationale.
+                wwDistanceUpdateInputSourceAvailability();
             } else {
                 wwAnalysisSetRelatedWaveformRoles([], null, null);
             }
@@ -42239,6 +43751,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwAnalysisTypeOvercurrentBtn").addEventListener("click", () => wwSetActiveAnalysisType("overcurrent"));
         document.getElementById("wwAnalysisTypeImpedanceBtn").addEventListener("click", () => wwSetActiveAnalysisType("impedance"));
         document.getElementById("wwAnalysisTypeSequenceBtn").addEventListener("click", () => wwSetActiveAnalysisType("sequence"));
+        document.getElementById("wwAnalysisTypeDistanceBtn").addEventListener("click", () => wwSetActiveAnalysisType("distance"));
         document.getElementById("wwPhasorContextSelect").addEventListener("change", (event) => {
             wwPhasorState.selectedContextId = event.target.value || null;
             wwPhasorRenderContextBadge();
@@ -42638,6 +44151,133 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         wwSequenceUpdateRecordingSectionVisibility();
         wwSequenceUpdateRatioFieldsVisibility();
         // Deliberately NOT calling wwSequenceUpdateInputSourceAvailability()
+        // here -- same reasoning as wwPhasorUpdateInputSourceAvailability()
+        // immediately above.
+
+        // ---- Distance Protection v1 wiring -- mirrors the Impedance
+        // Locus/Sequence Components wiring blocks immediately above. ----
+        document.getElementById("wwDistanceContextSelect").addEventListener("change", (event) => {
+            wwDistanceState.selectedContextId = event.target.value || null;
+            wwDistanceRenderContextBadge();
+            wwDistanceInvalidateLocus();
+            if (wwDistanceState.selectedContextId) {
+                wwDistanceLoadForSelectedContext();
+            } else {
+                wwDistanceShowNoContextSelected();
+            }
+        });
+        document.getElementById("wwDistanceLoopSelect").addEventListener("change", (event) => {
+            wwDistanceState.loop = event.target.value;
+            wwDistanceHandleLoopChanged();
+        });
+        document.getElementById("wwDistanceCharacteristicSelect").addEventListener("change", (event) => {
+            wwDistanceState.characteristic = event.target.value;
+            wwDistanceHandleCharacteristicChanged();
+        });
+        document.getElementById("wwDistanceOutputBasisSelect").addEventListener("change", (event) => {
+            wwDistanceState.settings.outputBasis = event.target.value;
+            wwDistanceHandleSettingsChanged();
+        });
+        document.getElementById("wwDistanceRecordingBasisSelect").addEventListener("change", (event) => {
+            wwDistanceState.settings.recordingBasis = event.target.value;
+            wwDistanceHandleSettingsChanged();
+        });
+        [
+            ["wwDistanceVtPrimaryInput", "vtPrimary"], ["wwDistanceVtSecondaryInput", "vtSecondary"],
+            ["wwDistanceCtPrimaryInput", "ctPrimary"], ["wwDistanceCtSecondaryInput", "ctSecondary"],
+        ].forEach(([id, key]) => {
+            document.getElementById(id).addEventListener("change", (event) => {
+                const value = parseFloat(event.target.value);
+                wwDistanceState.settings[key] = Number.isFinite(value) ? value : null;
+                wwDistanceHandleSettingsChanged();
+            });
+        });
+        // Zone settings -- one enabled-checkbox/delay/angle/reach group
+        // per zone, looped over the same three zone keys rather than
+        // hand-writing near-identical listeners 3x.
+        for (const wwDistanceZoneKey of ["zone1", "zone2", "zone3"]) {
+            const part = wwDistanceZoneIdPart(wwDistanceZoneKey);
+            document.getElementById("wwDistance" + part + "Enabled").addEventListener("change", (event) => {
+                wwDistanceState.zones[wwDistanceZoneKey].enabled = event.target.checked;
+                wwDistanceHandleZoneSettingChanged();
+            });
+            document.getElementById("wwDistance" + part + "DelayInput").addEventListener("change", (event) => {
+                const value = parseFloat(event.target.value);
+                wwDistanceState.zones[wwDistanceZoneKey].delaySeconds = Number.isFinite(value) ? value : 0;
+                wwDistanceHandleZoneSettingChanged();
+            });
+            document.getElementById("wwDistance" + part + "AngleInput").addEventListener("change", (event) => {
+                const value = parseFloat(event.target.value);
+                wwDistanceState.zones[wwDistanceZoneKey].characteristicAngleDeg = Number.isFinite(value) ? value : 90;
+                wwDistanceHandleZoneSettingChanged();
+            });
+            document.getElementById("wwDistance" + part + "ReachInput").addEventListener("change", (event) => {
+                const value = parseFloat(event.target.value);
+                wwDistanceState.zones[wwDistanceZoneKey].reachOhm = Number.isFinite(value) ? value : null;
+                wwDistanceHandleZoneSettingChanged();
+            });
+            document.getElementById("wwDistance" + part + "ReactiveReachInput").addEventListener("change", (event) => {
+                const value = parseFloat(event.target.value);
+                wwDistanceState.zones[wwDistanceZoneKey].reactiveReachOhm = Number.isFinite(value) ? value : null;
+                wwDistanceHandleZoneSettingChanged();
+            });
+            document.getElementById("wwDistance" + part + "ResistiveForwardInput").addEventListener("change", (event) => {
+                const value = parseFloat(event.target.value);
+                wwDistanceState.zones[wwDistanceZoneKey].resistiveForwardOhm = Number.isFinite(value) ? value : null;
+                wwDistanceHandleZoneSettingChanged();
+            });
+            document.getElementById("wwDistance" + part + "ResistiveReverseInput").addEventListener("change", (event) => {
+                const value = parseFloat(event.target.value);
+                wwDistanceState.zones[wwDistanceZoneKey].resistiveReverseOhm = Number.isFinite(value) ? value : null;
+                wwDistanceHandleZoneSettingChanged();
+            });
+        }
+        // Analysis Input Source segmented control -- Recording/Manual.
+        document.getElementById("wwDistanceInputSourceRecordingBtn").addEventListener("click", () => wwDistanceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_RECORDING));
+        document.getElementById("wwDistanceInputSourceManualBtn").addEventListener("click", () => wwDistanceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_MANUAL));
+        // Manual Input's own fields -- "change" only, matching every other
+        // Analysis settings field's own established convention.
+        document.getElementById("wwDistanceManualVoltageBasisSelect").addEventListener("change", (event) => {
+            wwDistanceState.manual.voltageBasis = event.target.value;
+            wwDistanceUpdateManualRatioFieldsVisibility();
+            wwDistanceRequestManualAnalysis();
+        });
+        document.getElementById("wwDistanceManualCurrentBasisSelect").addEventListener("change", (event) => {
+            wwDistanceState.manual.currentBasis = event.target.value;
+            wwDistanceUpdateManualRatioFieldsVisibility();
+            wwDistanceRequestManualAnalysis();
+        });
+        [
+            ["wwDistanceManualVtPrimaryInput", "voltageRatioPrimary"], ["wwDistanceManualVtSecondaryInput", "voltageRatioSecondary"],
+            ["wwDistanceManualCtPrimaryInput", "currentRatioPrimary"], ["wwDistanceManualCtSecondaryInput", "currentRatioSecondary"],
+            ["wwDistanceManualV1MagnitudeInput", "v1Magnitude"], ["wwDistanceManualV1AngleInput", "v1AngleDeg"],
+            ["wwDistanceManualV2MagnitudeInput", "v2Magnitude"], ["wwDistanceManualV2AngleInput", "v2AngleDeg"],
+            ["wwDistanceManualI1MagnitudeInput", "i1Magnitude"], ["wwDistanceManualI1AngleInput", "i1AngleDeg"],
+            ["wwDistanceManualI2MagnitudeInput", "i2Magnitude"], ["wwDistanceManualI2AngleInput", "i2AngleDeg"],
+        ].forEach(([id, key]) => {
+            document.getElementById(id).addEventListener("change", (event) => {
+                const value = parseFloat(event.target.value);
+                wwDistanceState.manual[key] = value; // may be NaN -- wwDistanceManualInputIsValid() rejects it before any request
+                wwDistanceRequestManualAnalysis();
+            });
+        });
+        [
+            ["wwDistanceManualV1UnitSelect", "v1Unit"], ["wwDistanceManualV2UnitSelect", "v2Unit"],
+            ["wwDistanceManualI1UnitSelect", "i1Unit"], ["wwDistanceManualI2UnitSelect", "i2Unit"],
+        ].forEach(([id, key]) => {
+            document.getElementById(id).addEventListener("change", (event) => {
+                wwDistanceState.manual[key] = event.target.value;
+                wwDistanceRequestManualAnalysis();
+            });
+        });
+        wwDistanceSyncSettingsFields();
+        wwDistanceSyncInputSourceButtons();
+        wwDistanceUpdateManualSectionVisibility();
+        wwDistanceUpdateRecordingSectionVisibility();
+        wwDistanceUpdateCtVtFieldsVisibility();
+        wwDistanceUpdateManualRatioFieldsVisibility();
+        wwDistanceUpdateCharacteristicFieldsVisibility();
+        // Deliberately NOT calling wwDistanceUpdateInputSourceAvailability()
         // here -- same reasoning as wwPhasorUpdateInputSourceAvailability()
         // immediately above.
 

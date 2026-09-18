@@ -943,6 +943,74 @@ failures); no backend Python files touched; no calculation logic
 the Sequence Components v1 architecture this hardening pass built no
 new features on top of.
 
+**Distance Protection v1 is implemented (2026-09-18,
+[DECISIONS.md — DEC-099](DECISIONS.md#dec-099--distance-protection-v1-the-fifth-analysis-menu-analyzer-mho-and-quadrilateral-zone-characteristic-evaluation-on-phase-phase-fault-loop-impedance)),
+the FIFTH Analysis-menu analyzer** — new nav entry (order preserved:
+Phasor, Overcurrent, Impedance Locus, Sequence Components, Distance
+Protection). **A separate analyzer from Impedance Locus** (own panel/
+state/R-X plot instance) — "Impedance Locus = what impedance did the
+system present?" vs "Distance Protection = how does a configured
+distance characteristic interpret it?". Calculates phase-phase
+fault-loop impedance via full complex phasor subtraction
+(`Zab=(Va-Vb)/(Ia-Ib)`, `Zbc=(Vb-Vc)/(Ib-Ic)`, `Zca=(Vc-Va)/(Ic-Ia)`,
+`app.domain.distance_protection.compute_loop_impedance()`, reusing
+`app.domain.impedance.compute_impedance_point()` unchanged for the
+division/low-current-guardrail/basis-conversion step — its only new
+math is the phasor subtraction), then evaluates Mho (standard forward
+circle, diameter from origin to `reach_ohm ∠ characteristic_angle_deg`)
+and Quadrilateral (a self-derived, non-vendor-specific rotated-rectangle
+geometry, documented exactly how it is constructed) zone characteristics
+for Zones 1-3, evaluated fully independently (more than one may
+legitimately report Operated at once). **`Operated`/`Not Operated`**
+(explicitly never `Inside`/`Outside`) is PURE geometric element state —
+never a relay trip claim; `Configured delay` is informational only, v1
+accumulates no timer. Recording mode reuses the existing, unchanged
+`phasor_analysis_service.compute_phasor_diagram()` verbatim (zero
+duplicated estimation code) and resolves only the selected loop's own
+four roles (`LOOP_ROLE_KEYS[loop]` — AB never needs phase C, etc.).
+Manual mode is fully standalone, asking only for the selected loop's own
+relevant phase pair (never the full six-role Manual Phasor shape Phasor/
+Sequence Components use), with two independent bases (Voltage, Current)
+each shared by its own loop's two legs. R-X plot reuses Impedance
+Locus's own equal-scale coordinate transform (`WW_IMPEDANCE_PLOT_
+RADIUS`/`wwImpedanceNiceLimit()`) verbatim — Mho zones draw as a true
+SVG `<circle>`, Quadrilateral zones as a 4-point `<polygon>`; new
+restrained slate-family `--ww-dist-zone1/2/3` color tokens (strongest→
+lightest). Recording trajectory reuses the Impedance Locus locus concept
+exactly (locus points carry no zone state — only the current point
+drives Operated/Not-Operated). Two genuine implementation bugs were
+caught and fixed during this slice's own Playwright hardening (both
+scoped entirely to new Distance Protection code, zero pre-existing
+selectors/functions touched): a zone-setting change was wastefully
+invalidating/re-fetching the full 120-point locus (fixed to only
+re-request the current point); a `.ww-dist-zone-field[hidden]` CSS
+override bug (the same `[hidden]`-beaten-by-author-`display`-origin
+class already documented/fixed elsewhere in this codebase). API: `GET
+.../engineering-contexts/{id}/distance-protection`, `GET .../
+distance-protection-locus`, `GET .../distance-protection-manual` — same
+router file/nesting convention as every prior analyzer's own endpoints.
+No backend files outside the new `app/domain/distance_protection.py`/
+`app/services/distance_protection_analysis_service.py`/`app/schemas/
+distance_protection_analysis.py` modules were touched (plus additive-
+only entries in `app/domain/analysis_requirements.py` and `app/api/v1/
+engineering_contexts.py`); full backend regression (all tests),
+full frontend structural suite, and a combined multi-spec Playwright
+regression (Phasor/Overcurrent/Impedance/Sequence/Distance/Playback/
+Related-Waveforms/bare-context) all pass. **Real-browser Playwright
+coverage was added from day one**
+(`browser-tests/distance_protection_analysis.spec.js`, 19 scenarios,
+run 2x clean in isolation plus as part of the combined regression) —
+continuing the "no Playwright coverage gap" discipline Sequence
+Components' own slice established. Three pre-existing, unrelated flaky
+Playwright tests (two in `phasor_analysis.spec.js`, one in
+`playback.spec.js` — none touching any Distance Protection code path,
+all confirmed passing in isolation) were found and reported (not
+silently fixed) during this session's own regression verification — see
+[DECISIONS.md — DEC-099](DECISIONS.md#dec-099--distance-protection-v1-the-fifth-analysis-menu-analyzer-mho-and-quadrilateral-zone-characteristic-evaluation-on-phase-phase-fault-loop-impedance)'s
+own closing section for the full diagnosis; `[OPEN]` for a future,
+separate task, per the exact precedent DEC-097/DEC-098 already
+established.
+
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test
 infrastructure only, zero production code changed) establishes the

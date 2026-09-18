@@ -1,7 +1,7 @@
 # Analysis Input Source — shared architecture
 
-**Status: implemented for Overcurrent, Phasor, Impedance Locus, and
-Sequence Components.**
+**Status: implemented for Overcurrent, Phasor, Impedance Locus,
+Sequence Components, and Distance Protection.**
 Overcurrent shipped first (Manual Input / Calculator mode, 2026-09-16,
 see
 [DECISIONS.md — DEC-095](DECISIONS.md#dec-095--a-shared-analysis-input-source-concept-recordingmanual-is-introduced-overcurrent-gets-the-first-manual-input--calculator-mode-implementation),
@@ -24,9 +24,20 @@ sequence transform is only ever meaningful when derived from a genuine
 phase-domain three-phase set) rather than extending it with a new axis
 the way Impedance did — see
 [SEQUENCE_COMPONENTS_ANALYSIS.md](SEQUENCE_COMPONENTS_ANALYSIS.md)'s own
+"Manual Input / Calculator mode" section for the full detail. Distance
+Protection is the fifth
+([DECISIONS.md — DEC-099](DECISIONS.md#dec-099--distance-protection-v1-the-fifth-analysis-menu-analyzer-mho-and-quadrilateral-zone-characteristic-evaluation-on-phase-phase-fault-loop-impedance),
+2026-09-18) — a THIRD variant on the "N independent bases" principle:
+two independent bases total (Voltage, Current, same as Phasor/Sequence),
+each SHARED by its own selected loop's two legs (never four independent
+per-leg bases), plus a third independent OUTPUT impedance basis
+(Impedance Locus's own extension, reused verbatim) — and it only ever
+asks for the selected loop's own relevant phase PAIR, never the full
+six-role Manual Phasor shape Phasor/Sequence Components each use — see
+[DISTANCE_PROTECTION_ANALYSIS.md](DISTANCE_PROTECTION_ANALYSIS.md)'s own
 "Manual Input / Calculator mode" section for the full detail.
 This document records the shared concept and pattern so a future
-analyzer (Distance) can
+analyzer can
 reuse it without re-deriving the design from scratch — mirroring how
 [ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md) records the other three
 shared Analysis-workspace primitives (Engineering Context lifecycle,
@@ -448,13 +459,14 @@ labeled.
 
 ## Explicitly deferred (not this slice)
 
-- **Distance's own Manual mode** — not started; this document exists so
-  that future slice can reuse the pattern above (including, where
-  relevant, Phasor's own "N independent bases for N independent physical
-  quantities" extension, and Impedance Locus's own further extension to
-  a THIRD, independent OUTPUT basis) without re-deriving it. Sequence
-  Components' own Manual mode is now implemented — see
-  [SEQUENCE_COMPONENTS_ANALYSIS.md](SEQUENCE_COMPONENTS_ANALYSIS.md).
+- Sequence Components' and Distance Protection's own Manual modes are
+  now both implemented — see
+  [SEQUENCE_COMPONENTS_ANALYSIS.md](SEQUENCE_COMPONENTS_ANALYSIS.md) and
+  [DISTANCE_PROTECTION_ANALYSIS.md](DISTANCE_PROTECTION_ANALYSIS.md).
+  This document's own pattern (including Phasor's "N independent bases
+  for N independent physical quantities" principle and Impedance Locus's
+  further extension to a THIRD, independent OUTPUT basis) remains
+  available for any future analyzer to reuse without re-deriving it.
 - **A generic cross-analyzer "Analysis Input Source" backend
   abstraction/base class** — deliberately not built; see "Backend
   pattern" above for what IS shared today (the engineering-unit layer,
@@ -474,6 +486,7 @@ labeled.
 
 - [DECISIONS.md — DEC-095](DECISIONS.md#dec-095--a-shared-analysis-input-source-concept-recordingmanual-is-introduced-overcurrent-gets-the-first-manual-input--calculator-mode-implementation) — this slice's full approval record, including the Phasor amendment.
 - [DECISIONS.md — DEC-096](DECISIONS.md#dec-096--impedance-locus-v1-the-third-analysis-menu-analyzer-apparent-phase-impedance-measurementvisualization-explicitly-not-distance-protection) — Impedance Locus's own approval record, the third implementation.
+- [DECISIONS.md — DEC-099](DECISIONS.md#dec-099--distance-protection-v1-the-fifth-analysis-menu-analyzer-mho-and-quadrilateral-zone-characteristic-evaluation-on-phase-phase-fault-loop-impedance) — Distance Protection's own approval record, the fifth implementation.
 - [OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md) — Overcurrent's own
   engineering definition/architecture, including the Manual Input
   calculation path's own detailed record.

@@ -5,6 +5,12 @@ Slice 2): the small, closed set of typed AnalysisRequirement constants.
 from __future__ import annotations
 
 from app.domain.analysis_requirements import (
+    DISTANCE_CURRENT_PHASE_A,
+    DISTANCE_CURRENT_PHASE_B,
+    DISTANCE_CURRENT_PHASE_C,
+    DISTANCE_VOLTAGE_PHASE_A,
+    DISTANCE_VOLTAGE_PHASE_B,
+    DISTANCE_VOLTAGE_PHASE_C,
     IMPEDANCE_CURRENT_PHASE_A,
     IMPEDANCE_CURRENT_PHASE_B,
     IMPEDANCE_CURRENT_PHASE_C,
@@ -38,17 +44,19 @@ class TestKnownRequirements:
     def test_at_least_eleven_representative_requirements(self):
         """8 Phasor + 3 Overcurrent (current_phase_a/b/c) + 6 Impedance
         (voltage_phase_a/b/c + current_phase_a/b/c) + 6 Sequence
-        Components (voltage_phase_a/b/c + current_phase_a/b/c) --
-        Overcurrent, Impedance, and Sequence Components each reuse the
-        identical single-phase Voltage/Current role shape under their own
-        `analysis_kind`, see OVERCURRENT_CURRENT_PHASE_A/B/C's,
-        IMPEDANCE_VOLTAGE_PHASE_A/B/C's, and SEQUENCE_VOLTAGE_PHASE_A/B/C's
+        Components (voltage_phase_a/b/c + current_phase_a/b/c) + 6
+        Distance Protection (voltage_phase_a/b/c + current_phase_a/b/c)
+        -- Overcurrent, Impedance, Sequence Components, and Distance
+        Protection each reuse the identical single-phase Voltage/Current
+        role shape under their own `analysis_kind`, see
+        OVERCURRENT_CURRENT_PHASE_A/B/C's, IMPEDANCE_VOLTAGE_PHASE_A/B/C's,
+        SEQUENCE_VOLTAGE_PHASE_A/B/C's, and DISTANCE_VOLTAGE_PHASE_A/B/C's
         own docstrings."""
-        assert len(known_requirements()) == 23
+        assert len(known_requirements()) == 29
 
-    def test_three_distinct_analysis_kinds(self):
+    def test_five_distinct_analysis_kinds(self):
         kinds = {r.analysis_kind for r in known_requirements()}
-        assert kinds == {"phasor", "overcurrent", "impedance", "sequence_components"}
+        assert kinds == {"phasor", "overcurrent", "impedance", "sequence_components", "distance"}
 
     def test_overcurrent_requirements_are_overcurrent_kind(self):
         for req in (OVERCURRENT_CURRENT_PHASE_A, OVERCURRENT_CURRENT_PHASE_B, OVERCURRENT_CURRENT_PHASE_C):
@@ -69,6 +77,14 @@ class TestKnownRequirements:
             SEQUENCE_CURRENT_PHASE_A, SEQUENCE_CURRENT_PHASE_B, SEQUENCE_CURRENT_PHASE_C,
         ):
             assert req.analysis_kind == "sequence_components"
+            assert req in known_requirements()
+
+    def test_distance_protection_requirements_are_distance_kind(self):
+        for req in (
+            DISTANCE_VOLTAGE_PHASE_A, DISTANCE_VOLTAGE_PHASE_B, DISTANCE_VOLTAGE_PHASE_C,
+            DISTANCE_CURRENT_PHASE_A, DISTANCE_CURRENT_PHASE_B, DISTANCE_CURRENT_PHASE_C,
+        ):
+            assert req.analysis_kind == "distance"
             assert req in known_requirements()
 
 

@@ -1,17 +1,17 @@
 # Analysis Workspace — shared infrastructure
 
-**Status: three shared primitives implemented, now consumed by FOUR
+**Status: three shared primitives implemented, now consumed by FIVE
 analyzers** — Engineering Context lifecycle, shared Playback, and shared
 Related Waveforms. This document records the architecture common to
 every Analysis-menu analyzer (Phasor, Overcurrent, Impedance Locus,
-Sequence Components, and every future one — Differential, Directional)
-so a new analyzer never needs to re-derive or re-implement any of it.
-Analyzer-specific engineering behaviour (role resolution, estimator/
-characteristic math, alert semantics) stays documented in each
-analyzer's own
-[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)/[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)/[IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md)/[SEQUENCE_COMPONENTS_ANALYSIS.md](SEQUENCE_COMPONENTS_ANALYSIS.md)
+Sequence Components, Distance Protection, and every future one —
+Differential, Directional) so a new analyzer never needs to re-derive or
+re-implement any of it. Analyzer-specific engineering behaviour (role
+resolution, estimator/characteristic math, alert semantics) stays
+documented in each analyzer's own
+[PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)/[OVERCURRENT_ANALYSIS.md](OVERCURRENT_ANALYSIS.md)/[IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md)/[SEQUENCE_COMPONENTS_ANALYSIS.md](SEQUENCE_COMPONENTS_ANALYSIS.md)/[DISTANCE_PROTECTION_ANALYSIS.md](DISTANCE_PROTECTION_ANALYSIS.md)
 — this document is scoped to the shell/lifecycle infrastructure those
-four documents all consume.
+five documents all consume.
 
 ## The shape
 
@@ -25,6 +25,7 @@ Analysis
     ├── Overcurrent
     ├── Impedance Locus                    (DEC-096, 2026-09-17)
     ├── Sequence Components                 (DEC-097, 2026-09-18)
+    ├── Distance Protection                 (DEC-099, 2026-09-18)
     ├── future Differential
     └── other analyzers
 ```
@@ -241,11 +242,12 @@ operation (`Plotly.Plots.resize()`, never `Plotly.react()`).
 
 ## Future-analyzer contract
 
-Impedance Locus (2026-09-17, DEC-096) and Sequence Components
-(2026-09-18, DEC-097) are the proof that this contract generalizes
-beyond Phasor/Overcurrent — both integrated with all three shared
-primitives with zero changes to any of them. A future analyzer
-(Differential, Directional) integrating with this shell needs to:
+Impedance Locus (2026-09-17, DEC-096), Sequence Components (2026-09-18,
+DEC-097), and Distance Protection (2026-09-18, DEC-099) are the proof
+that this contract generalizes beyond Phasor/Overcurrent — all three
+integrated with all three shared primitives with zero changes to any of
+them. A future analyzer (Differential, Directional) integrating with
+this shell needs to:
 
 1. Register as an Engineering Context consumer
    (`wwAnalysisRegisterContextConsumer()`).

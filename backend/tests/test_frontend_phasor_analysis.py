@@ -94,8 +94,8 @@ class TestAnalysisTypeSubNav:
         assert 'class="ww-analysis-type-nav"' in source
         nav = _function_body(source, 'class="ww-analysis-type-nav"', '</nav>')
         assert "Analyzers" in nav
-        assert nav.count('class="ww-analysis-type-item') == 4
-        labels = ["Phasor", "Overcurrent", "Impedance Locus", "Sequence Components"]
+        assert nav.count('class="ww-analysis-type-item') == 5
+        labels = ["Phasor", "Overcurrent", "Impedance Locus", "Sequence Components", "Distance Protection"]
         positions = [nav.index(label) for label in labels]
         assert positions == sorted(positions)
         assert "Differential" not in nav
@@ -387,11 +387,12 @@ class TestSharedAnalysisContextConsumers:
     impossible to miss)."""
 
     def test_both_analyzers_register_as_consumers_of_the_shared_lifecycle(self):
-        """Now FOUR consumers -- Sequence Components v1 registers itself
-        the same way Phasor/Overcurrent/Impedance Locus already do (see
-        docs/project-memory/SEQUENCE_COMPONENTS_ANALYSIS.md)."""
+        """Now FIVE consumers -- Distance Protection v1 registers itself
+        the same way Phasor/Overcurrent/Impedance Locus/Sequence
+        Components already do (see docs/project-memory/
+        DISTANCE_PROTECTION_ANALYSIS.md)."""
         source = _source()
-        assert source.count("wwAnalysisRegisterContextConsumer({") == 4
+        assert source.count("wwAnalysisRegisterContextConsumer({") == 5
         phasor_call = source[source.index("onContexts: wwPhasorOnAnalysisContexts"):]
         phasor_call = phasor_call[: phasor_call.index("});")]
         assert "onLifecyclePhase: wwPhasorOnAnalysisLifecyclePhase" in phasor_call
@@ -412,6 +413,11 @@ class TestSharedAnalysisContextConsumers:
         assert "onLifecyclePhase: wwImpedanceOnAnalysisLifecyclePhase" in impedance_call
         assert "onDiscovering: wwImpedanceOnAnalysisDiscovering" in impedance_call
         assert "onFreshContextsDiscovered: wwImpedanceOnAnalysisFreshContextsDiscovered" in impedance_call
+        distance_call = source[source.index("onContexts: wwDistanceOnAnalysisContexts"):]
+        distance_call = distance_call[: distance_call.index("});")]
+        assert "onLifecyclePhase: wwDistanceOnAnalysisLifecyclePhase" in distance_call
+        assert "onDiscovering: wwDistanceOnAnalysisDiscovering" in distance_call
+        assert "onFreshContextsDiscovered: wwDistanceOnAnalysisFreshContextsDiscovered" in distance_call
 
     def test_neither_analyzer_defines_its_own_independent_bootstrap_entry_point(self):
         """The structural regression seam: neither analyzer may define a

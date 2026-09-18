@@ -67,8 +67,16 @@ from app.schemas.engineering_context import (
 )
 from app.domain.analysis_input_resolution import AnalysisInputResolution
 from app.domain.analysis_requirements import get_requirement
+from app.domain.distance_protection import ZoneSettings
 from app.domain.phasor import ManualPhasorRoleInput, PhasorAnalysisResult, PhasorDiagramResult
 from app.schemas.analysis_input_resolution import AnalysisInputResolutionOut, RoleSpecOut
+from app.schemas.distance_protection_analysis import (
+    DistanceAnalysisResultOut,
+    DistanceLocusOut,
+    DistanceLocusPointOut,
+    ManualDistanceResultOut,
+    ZoneResultOut,
+)
 from app.schemas.impedance_analysis import (
     ImpedanceAnalysisResultOut,
     ImpedanceLocusOut,
@@ -109,6 +117,7 @@ from app.services.engineering_context_service import (
     update_context_metadata,
     update_member_phase,
 )
+from app.services.distance_protection_analysis_service import compute_distance_analysis, compute_distance_locus, compute_distance_manual
 from app.services.errors import ImportServiceError
 from app.services.impedance_analysis_service import compute_impedance_analysis, compute_impedance_locus, compute_impedance_manual
 from app.services.overcurrent_analysis_service import (
@@ -1020,3 +1029,257 @@ def get_sequence_components_manual(
         current_sequences=_sequence_family_result_to_out(result.current_sequences),
         warnings=result.warnings, reason_code=result.reason_code, message=result.message,
     )
+
+
+# ---------------------------------------------------------------------------
+# Distance Protection v1 -- the FIFTH Analysis-menu analyzer (Phasor,
+# Overcurrent, Impedance Locus, Sequence Components, then Distance
+# Protection). See `app.services.distance_protection_analysis_service`'s
+# own docstring and docs/project-memory/DISTANCE_PROTECTION_ANALYSIS.md
+# for the full architecture; this router only exposes it, mirroring the
+# Impedance Locus endpoints above exactly (loop-impedance current point,
+# a static locus/trajectory, and a standalone Manual path), extended with
+# the three independent zone results Impedance Locus itself never has.
+#
+# `Operated`/`Not Operated` (`ZoneResultOut.state`) is PURE geometric
+# element state -- it never means a relay tripped, a breaker opened, or
+# full relay logic completed. `delay_s` is configuration information
+# only -- v1 never accumulates it, never declares it elapsed, never
+# asserts a trip from it.
+# ---------------------------------------------------------------------------
+
+
+def _zone_settings(
+    enabled: bool, reach_ohm: float | None, reactive_reach_ohm: float | None,
+    resistive_reach_forward_ohm: float | None, resistive_reach_reverse_ohm: float | None,
+    characteristic_angle_deg: float, delay_s: float,
+) -> ZoneSettings:
+    return ZoneSettings(
+        enabled=enabled, reach_ohm=reach_ohm, reactive_reach_ohm=reactive_reach_ohm,
+        resistive_reach_forward_ohm=resistive_reach_forward_ohm, resistive_reach_reverse_ohm=resistive_reach_reverse_ohm,
+        characteristic_angle_deg=characteristic_angle_deg, delay_s=delay_s,
+    )
+
+
+def _zone_result_to_out(result) -> ZoneResultOut:
+    return ZoneResultOut(zone_key=result.zone_key, enabled=result.enabled, state=result.state, delay_s=result.delay_s)
+
+
+def _distance_result_to_out(result) -> DistanceAnalysisResultOut:
+    return DistanceAnalysisResultOut(
+        status=result.status, engineering_context_id=result.engineering_context_id, loop=result.loop,
+        analysis_time=result.analysis_time, recording_basis=result.recording_basis, impedance_basis=result.impedance_basis,
+        vt_primary=result.vt_primary, vt_secondary=result.vt_secondary, ct_primary=result.ct_primary, ct_secondary=result.ct_secondary,
+        reference_frequency_hz=result.reference_frequency_hz, window_seconds=result.window_seconds,
+        algorithm_version=result.algorithm_version,
+        v1_channel_ref=ChannelRefOut.from_domain(result.v1_channel_ref) if result.v1_channel_ref is not None else None,
+        v2_channel_ref=ChannelRefOut.from_domain(result.v2_channel_ref) if result.v2_channel_ref is not None else None,
+        i1_channel_ref=ChannelRefOut.from_domain(result.i1_channel_ref) if result.i1_channel_ref is not None else None,
+        i2_channel_ref=ChannelRefOut.from_domain(result.i2_channel_ref) if result.i2_channel_ref is not None else None,
+        voltage_unit=result.voltage_unit, current_unit=result.current_unit,
+        resistance_ohm=result.resistance_ohm, reactance_ohm=result.reactance_ohm,
+        magnitude_ohm=result.magnitude_ohm, angle_deg=result.angle_deg,
+        characteristic=result.characteristic,
+        zone1=_zone_result_to_out(result.zone1) if result.zone1 is not None else None,
+        zone2=_zone_result_to_out(result.zone2) if result.zone2 is not None else None,
+        zone3=_zone_result_to_out(result.zone3) if result.zone3 is not None else None,
+        warnings=result.warnings, reason_code=result.reason_code, message=result.message,
+    )
+
+
+@router.get("/engineering-contexts/{engineering_context_id}/distance-protection", response_model=DistanceAnalysisResultOut)
+def get_distance_protection_analysis(
+    workspace_id: str,
+    engineering_context_id: str,
+    loop: str,
+    analysis_time: float,
+    recording_basis: str,
+    impedance_basis: str,
+    characteristic: str,
+    vt_primary: float | None = None,
+    vt_secondary: float | None = None,
+    ct_primary: float | None = None,
+    ct_secondary: float | None = None,
+    reference_frequency_hz: float | None = None,
+    zone1_enabled: bool = False, zone1_reach_ohm: float | None = None, zone1_reactive_reach_ohm: float | None = None,
+    zone1_resistive_reach_forward_ohm: float | None = None, zone1_resistive_reach_reverse_ohm: float | None = None,
+    zone1_characteristic_angle_deg: float = 90.0, zone1_delay_s: float = 0.0,
+    zone2_enabled: bool = False, zone2_reach_ohm: float | None = None, zone2_reactive_reach_ohm: float | None = None,
+    zone2_resistive_reach_forward_ohm: float | None = None, zone2_resistive_reach_reverse_ohm: float | None = None,
+    zone2_characteristic_angle_deg: float = 90.0, zone2_delay_s: float = 0.0,
+    zone3_enabled: bool = False, zone3_reach_ohm: float | None = None, zone3_reactive_reach_ohm: float | None = None,
+    zone3_resistive_reach_forward_ohm: float | None = None, zone3_resistive_reach_reverse_ohm: float | None = None,
+    zone3_characteristic_angle_deg: float = 90.0, zone3_delay_s: float = 0.0,
+    context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+) -> DistanceAnalysisResultOut:
+    """Read-only, selected-time-only Distance Protection (v1) for ONE
+    fault loop (`AB`/`BC`/`CA`). Reuses the existing, unchanged
+    `compute_phasor_diagram()` to resolve the loop's two Voltage and two
+    Current roles -- never a second phasor estimator. Fault-loop
+    impedance uses full complex phasor subtraction (`Zab=(Va-Vb)/(Ia-Ib)`
+    etc.), never a phase-impedance or scalar-RMS approximation. Zones 1-3
+    are evaluated fully independently -- more than one MAY legitimately
+    report `operated` simultaneously. `Operated`/`Not Operated` is PURE
+    geometric element state -- it never means a relay tripped, a breaker
+    opened, or full relay logic completed; `delay_s` is configuration
+    information only, never accumulated or used to assert a trip. This
+    is a SEPARATE analyzer from Impedance Locus -- it never mutates or
+    depends on any Impedance Locus state. Never persisted."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    zone1 = _zone_settings(zone1_enabled, zone1_reach_ohm, zone1_reactive_reach_ohm, zone1_resistive_reach_forward_ohm, zone1_resistive_reach_reverse_ohm, zone1_characteristic_angle_deg, zone1_delay_s)
+    zone2 = _zone_settings(zone2_enabled, zone2_reach_ohm, zone2_reactive_reach_ohm, zone2_resistive_reach_forward_ohm, zone2_resistive_reach_reverse_ohm, zone2_characteristic_angle_deg, zone2_delay_s)
+    zone3 = _zone_settings(zone3_enabled, zone3_reach_ohm, zone3_reactive_reach_ohm, zone3_resistive_reach_forward_ohm, zone3_resistive_reach_reverse_ohm, zone3_characteristic_angle_deg, zone3_delay_s)
+    try:
+        result = compute_distance_analysis(
+            workspace_id=workspace_id, engineering_context_id=engineering_context_id, loop=loop, analysis_time=analysis_time,
+            reference_frequency_hz_override=reference_frequency_hz,
+            recording_basis=recording_basis, impedance_basis=impedance_basis,
+            vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+            characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3,
+            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return _distance_result_to_out(result)
+
+
+@router.get("/engineering-contexts/{engineering_context_id}/distance-protection-locus", response_model=DistanceLocusOut)
+def get_distance_protection_locus(
+    workspace_id: str,
+    engineering_context_id: str,
+    loop: str,
+    start_time: float,
+    end_time: float,
+    point_count: int,
+    recording_basis: str,
+    impedance_basis: str,
+    characteristic: str,
+    vt_primary: float | None = None,
+    vt_secondary: float | None = None,
+    ct_primary: float | None = None,
+    ct_secondary: float | None = None,
+    reference_frequency_hz: float | None = None,
+    zone1_enabled: bool = False, zone1_reach_ohm: float | None = None, zone1_reactive_reach_ohm: float | None = None,
+    zone1_resistive_reach_forward_ohm: float | None = None, zone1_resistive_reach_reverse_ohm: float | None = None,
+    zone1_characteristic_angle_deg: float = 90.0, zone1_delay_s: float = 0.0,
+    zone2_enabled: bool = False, zone2_reach_ohm: float | None = None, zone2_reactive_reach_ohm: float | None = None,
+    zone2_resistive_reach_forward_ohm: float | None = None, zone2_resistive_reach_reverse_ohm: float | None = None,
+    zone2_characteristic_angle_deg: float = 90.0, zone2_delay_s: float = 0.0,
+    zone3_enabled: bool = False, zone3_reach_ohm: float | None = None, zone3_reactive_reach_ohm: float | None = None,
+    zone3_resistive_reach_forward_ohm: float | None = None, zone3_resistive_reach_reverse_ohm: float | None = None,
+    zone3_characteristic_angle_deg: float = 90.0, zone3_delay_s: float = 0.0,
+    context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+) -> DistanceLocusOut:
+    """The static loop-impedance locus/trajectory over `[start_time,
+    end_time]` -- `point_count` evenly-sampled points (clamped to
+    `distance_protection_analysis_service.MAX_LOCUS_POINTS`), each an
+    independent selected-time Distance Protection calculation.
+    Deterministic and Playback-speed-independent: the frontend fetches
+    this ONLY on a context/loop/settings/time-range change, never on
+    every Playback tick (mirrors `.../impedance-locus`'s own caching
+    precedent exactly). Locus points intentionally carry NO zone state
+    -- only the current Playback-driven point (from `.../distance-
+    protection`) drives Operated/Not-Operated. A point outside the
+    recording's own valid window is still returned, with whatever
+    `status`/`reason_code` it naturally produces -- the caller renders
+    only `computed` points as the visible trail."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    zone1 = _zone_settings(zone1_enabled, zone1_reach_ohm, zone1_reactive_reach_ohm, zone1_resistive_reach_forward_ohm, zone1_resistive_reach_reverse_ohm, zone1_characteristic_angle_deg, zone1_delay_s)
+    zone2 = _zone_settings(zone2_enabled, zone2_reach_ohm, zone2_reactive_reach_ohm, zone2_resistive_reach_forward_ohm, zone2_resistive_reach_reverse_ohm, zone2_characteristic_angle_deg, zone2_delay_s)
+    zone3 = _zone_settings(zone3_enabled, zone3_reach_ohm, zone3_reactive_reach_ohm, zone3_resistive_reach_forward_ohm, zone3_resistive_reach_reverse_ohm, zone3_characteristic_angle_deg, zone3_delay_s)
+    try:
+        points = compute_distance_locus(
+            workspace_id=workspace_id, engineering_context_id=engineering_context_id, loop=loop,
+            start_time=start_time, end_time=end_time, point_count=point_count,
+            reference_frequency_hz_override=reference_frequency_hz,
+            recording_basis=recording_basis, impedance_basis=impedance_basis,
+            vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+            characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3,
+            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return DistanceLocusOut(
+        engineering_context_id=engineering_context_id, loop=loop,
+        points=[
+            DistanceLocusPointOut(
+                analysis_time=p.analysis_time, status=p.status, resistance_ohm=p.resistance_ohm, reactance_ohm=p.reactance_ohm,
+                magnitude_ohm=p.magnitude_ohm, angle_deg=p.angle_deg, reason_code=p.reason_code,
+            )
+            for p in points
+        ],
+    )
+
+
+def _distance_manual_result_to_out(result) -> ManualDistanceResultOut:
+    return ManualDistanceResultOut(
+        status=result.status, loop_label=result.loop_label, impedance_basis=result.impedance_basis,
+        algorithm_version=result.algorithm_version,
+        v1_magnitude_secondary=result.v1_magnitude_secondary, v2_magnitude_secondary=result.v2_magnitude_secondary,
+        i1_magnitude_secondary=result.i1_magnitude_secondary, i2_magnitude_secondary=result.i2_magnitude_secondary,
+        resistance_ohm=result.resistance_ohm, reactance_ohm=result.reactance_ohm,
+        magnitude_ohm=result.magnitude_ohm, angle_deg=result.angle_deg,
+        characteristic=result.characteristic,
+        zone1=_zone_result_to_out(result.zone1) if result.zone1 is not None else None,
+        zone2=_zone_result_to_out(result.zone2) if result.zone2 is not None else None,
+        zone3=_zone_result_to_out(result.zone3) if result.zone3 is not None else None,
+        reason_code=result.reason_code, message=result.message,
+    )
+
+
+@router.get("/distance-protection-manual", response_model=ManualDistanceResultOut)
+def get_distance_protection_manual(
+    workspace_id: str,
+    loop_label: str,
+    voltage_basis: str,
+    current_basis: str,
+    impedance_basis: str,
+    characteristic: str,
+    vt_primary: float | None = None,
+    vt_secondary: float | None = None,
+    ct_primary: float | None = None,
+    ct_secondary: float | None = None,
+    v1_enabled: bool = False, v1_magnitude: float | None = None, v1_unit: str = "V", v1_angle_deg: float = 0.0,
+    v2_enabled: bool = False, v2_magnitude: float | None = None, v2_unit: str = "V", v2_angle_deg: float = 0.0,
+    i1_enabled: bool = False, i1_magnitude: float | None = None, i1_unit: str = "A", i1_angle_deg: float = 0.0,
+    i2_enabled: bool = False, i2_magnitude: float | None = None, i2_unit: str = "A", i2_angle_deg: float = 0.0,
+    zone1_enabled: bool = False, zone1_reach_ohm: float | None = None, zone1_reactive_reach_ohm: float | None = None,
+    zone1_resistive_reach_forward_ohm: float | None = None, zone1_resistive_reach_reverse_ohm: float | None = None,
+    zone1_characteristic_angle_deg: float = 90.0, zone1_delay_s: float = 0.0,
+    zone2_enabled: bool = False, zone2_reach_ohm: float | None = None, zone2_reactive_reach_ohm: float | None = None,
+    zone2_resistive_reach_forward_ohm: float | None = None, zone2_resistive_reach_reverse_ohm: float | None = None,
+    zone2_characteristic_angle_deg: float = 90.0, zone2_delay_s: float = 0.0,
+    zone3_enabled: bool = False, zone3_reach_ohm: float | None = None, zone3_reactive_reach_ohm: float | None = None,
+    zone3_resistive_reach_forward_ohm: float | None = None, zone3_resistive_reach_reverse_ohm: float | None = None,
+    zone3_characteristic_angle_deg: float = 90.0, zone3_delay_s: float = 0.0,
+) -> ManualDistanceResultOut:
+    """Manual Input / Calculator mode (Analysis Input Source = 'manual',
+    see docs/project-memory/ANALYSIS_INPUT_SOURCE.md) -- Distance
+    Protection's own standalone engineering-calculator path.
+    Workspace-scoped only -- no Engineering Context, channel, waveform,
+    or Playback state is involved at all. Reuses the identical Manual
+    Phasor normalization (`convert_manual_magnitude_to_secondary()`) for
+    each of the loop's two Voltage and two Current legs -- never a
+    duplicated conversion formula. `loop_label` (`AB`/`BC`/`CA`) is
+    carried through purely for display; only the two relevant phase
+    legs need be entered (e.g. `AB` never requires phase C). Never
+    persisted."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    v1_input = ManualPhasorRoleInput(enabled=v1_enabled, magnitude=v1_magnitude, unit=v1_unit, angle_deg=v1_angle_deg)
+    v2_input = ManualPhasorRoleInput(enabled=v2_enabled, magnitude=v2_magnitude, unit=v2_unit, angle_deg=v2_angle_deg)
+    i1_input = ManualPhasorRoleInput(enabled=i1_enabled, magnitude=i1_magnitude, unit=i1_unit, angle_deg=i1_angle_deg)
+    i2_input = ManualPhasorRoleInput(enabled=i2_enabled, magnitude=i2_magnitude, unit=i2_unit, angle_deg=i2_angle_deg)
+    zone1 = _zone_settings(zone1_enabled, zone1_reach_ohm, zone1_reactive_reach_ohm, zone1_resistive_reach_forward_ohm, zone1_resistive_reach_reverse_ohm, zone1_characteristic_angle_deg, zone1_delay_s)
+    zone2 = _zone_settings(zone2_enabled, zone2_reach_ohm, zone2_reactive_reach_ohm, zone2_resistive_reach_forward_ohm, zone2_resistive_reach_reverse_ohm, zone2_characteristic_angle_deg, zone2_delay_s)
+    zone3 = _zone_settings(zone3_enabled, zone3_reach_ohm, zone3_reactive_reach_ohm, zone3_resistive_reach_forward_ohm, zone3_resistive_reach_reverse_ohm, zone3_characteristic_angle_deg, zone3_delay_s)
+    result = compute_distance_manual(
+        loop_label=loop_label, voltage_basis=voltage_basis, vt_primary=vt_primary, vt_secondary=vt_secondary,
+        current_basis=current_basis, ct_primary=ct_primary, ct_secondary=ct_secondary, impedance_basis=impedance_basis,
+        characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3,
+        v1_input=v1_input, v2_input=v2_input, i1_input=i1_input, i2_input=i2_input,
+    )
+    return _distance_manual_result_to_out(result)

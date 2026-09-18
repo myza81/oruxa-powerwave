@@ -118,6 +118,18 @@
     --ww-seq-positive: #6d28d9;
     --ww-seq-negative: #0e7490;
     --ww-seq-zero: #a21caf;
+
+    /* Distance Protection v1: Zone 1/2/3 characteristic/trip-point
+       identity -- a restrained, single-hue (slate) family distinct from
+       --accent/--warn/--ok (phase A/B/C), --ww-seq-positive/-negative/
+       -zero (sequence identity), and --error (already "problem"
+       app-wide; Zone geometry is measurement/element-state, never an
+       alarm). Strongest-to-lightest hierarchy (owner requirement: Zone 1
+       strongest, Zone 2 medium, Zone 3 lightest visual identity) is
+       expressed as darker-to-lighter slate in Light mode. */
+    --ww-dist-zone1: #334155;
+    --ww-dist-zone2: #64748b;
+    --ww-dist-zone3: #94a3b8;
 }
 
 :root[data-theme="dark"] {
@@ -183,6 +195,15 @@
     --ww-seq-positive: #a78bfa;
     --ww-seq-negative: #22d3ee;
     --ww-seq-zero: #e879f9;
+
+    /* Distance Protection v1: same rationale as Light's own
+       --ww-dist-zone1/2/3 above -- same slate family, hierarchy inverted
+       to lighter-to-darker (strongest = brightest against the dark
+       surface) for dark-surface contrast, mirroring every other
+       Light->Dark brightening rule in this file. */
+    --ww-dist-zone1: #cbd5e1;
+    --ww-dist-zone2: #94a3b8;
+    --ww-dist-zone3: #64748b;
 }
 
 /* Phase 3B-UAT9: slim, borderless scrollbars -- one shared rule set for

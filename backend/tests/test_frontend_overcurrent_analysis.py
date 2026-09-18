@@ -39,8 +39,8 @@ class TestOvercurrentInAnalysisNav:
     def test_analysis_type_menu_contains_implemented_and_placeholder_entries(self):
         source = _source()
         nav = _function_body(source, 'class="ww-analysis-type-nav"', '</nav>')
-        assert nav.count('class="ww-analysis-type-item') == 4
-        for label in ("Phasor", "Overcurrent", "Impedance Locus", "Sequence Components"):
+        assert nav.count('class="ww-analysis-type-item') == 5
+        for label in ("Phasor", "Overcurrent", "Impedance Locus", "Sequence Components", "Distance Protection"):
             assert label in nav
         assert "Differential" not in nav
 

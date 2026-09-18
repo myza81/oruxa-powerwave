@@ -350,13 +350,16 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
       "Overcurrent",
       "Impedance Locus",
       "Sequence Components",
+      "Distance Protection",
     ]);
     await expect(menu).not.toContainText("Differential");
 
     // Every analyzer is now REAL -- Impedance Locus v1 (implemented
-    // 2026-09-17) and Sequence Components v1 (implemented 2026-09-18)
-    // activated the last two placeholders; see docs/project-memory/
-    // IMPEDANCE_LOCUS_ANALYSIS.md and SEQUENCE_COMPONENTS_ANALYSIS.md.
+    // 2026-09-17), Sequence Components v1 (implemented 2026-09-18), and
+    // Distance Protection v1 (implemented 2026-09-18) activated the last
+    // three placeholders; see docs/project-memory/
+    // IMPEDANCE_LOCUS_ANALYSIS.md, SEQUENCE_COMPONENTS_ANALYSIS.md, and
+    // DISTANCE_PROTECTION_ANALYSIS.md.
     await page.locator("#wwAnalysisTypeImpedanceBtn").click();
     await expect(page.locator("#wwAnalysisTypeImpedanceBtn")).toHaveClass(/active/);
     await expect(page.locator("#wwImpedancePanel")).toBeVisible();
@@ -368,6 +371,12 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
     await expect(page.locator("#wwSequencePanel")).toBeVisible();
     await expect(page.locator("#wwSequencePanel")).not.toContainText("not implemented yet");
     await expect(page.locator("#wwSequenceInputSourceRecordingBtn")).toBeVisible();
+
+    await page.locator("#wwAnalysisTypeDistanceBtn").click();
+    await expect(page.locator("#wwAnalysisTypeDistanceBtn")).toHaveClass(/active/);
+    await expect(page.locator("#wwDistancePanel")).toBeVisible();
+    await expect(page.locator("#wwDistancePanel")).not.toContainText("not implemented yet");
+    await expect(page.locator("#wwDistanceInputSourceRecordingBtn")).toBeVisible();
 
     await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
     await expect(page.locator("#wwAnalysisTypeOvercurrentBtn")).toHaveClass(/active/);

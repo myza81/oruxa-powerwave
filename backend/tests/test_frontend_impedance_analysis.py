@@ -39,7 +39,7 @@ class TestImpedanceNavAndPanel:
         """Sequence Components v1 activated the last remaining placeholder
         -- see docs/project-memory/SEQUENCE_COMPONENTS_ANALYSIS.md."""
         source = _source()
-        panel = _function_body(source, 'id="wwSequencePanel"', "</section>\n                    </div>\n                </div>\n            </section>")
+        panel = _function_body(source, 'id="wwSequencePanel"', 'id="wwDistancePanel"')
         assert "This analyzer is not implemented yet." not in panel
         assert 'id="wwSequenceInputSourceRecordingBtn"' in panel
         assert 'id="wwSequenceInputSourceManualBtn"' in panel
@@ -50,7 +50,10 @@ class TestImpedanceNavAndPanel:
     def test_analyzer_order_preserved(self):
         source = _source()
         nav = _function_body(source, 'class="ww-analysis-type-nav"', "</nav>")
-        assert nav.index("Phasor") < nav.index("Overcurrent") < nav.index("Impedance Locus") < nav.index("Sequence Components")
+        assert (
+            nav.index("Phasor") < nav.index("Overcurrent") < nav.index("Impedance Locus")
+            < nav.index("Sequence Components") < nav.index("Distance Protection")
+        )
 
 
 class TestImpedanceMarkupSeparation:

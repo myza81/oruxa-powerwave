@@ -15817,6 +15817,331 @@ all unchanged.
 
 ---
 
+## DEC-099 — Distance Protection v1, the FIFTH Analysis-menu analyzer: Mho and Quadrilateral zone-characteristic evaluation on phase-phase fault-loop impedance
+
+Date: 2026-09-18
+Status: Approved — implemented.
+Source: owner task ("implements Distance Protection v1 as a new
+Analysis analyzer, built on the existing Phasor foundation, Impedance
+engine, R-X plot infrastructure, Analysis Input Source architecture,
+shared Playback architecture... a SEPARATE analyzer from Impedance
+Locus... phase-PHASE loop impedance via full complex phasor
+subtraction/division... Mho and Quadrilateral characteristics...
+'Operated'/'Not Operated' — explicitly NEVER 'Inside'/'Outside'...
+configured delay is informational only in v1... never a trip claim.").
+
+**Decision.** Powerwave gains a fifth Analysis-menu analyzer, Distance
+Protection, with a new nav entry (`#wwAnalysisTypeDistanceBtn`,
+preserving analyzer order: Phasor, Overcurrent, Impedance Locus,
+Sequence Components, Distance Protection). **A conceptually and
+architecturally SEPARATE analyzer from Impedance Locus** — "Impedance
+Locus = what impedance did the system present?" vs "Distance Protection
+= how does a configured distance characteristic interpret that
+impedance?" — own panel, own state, own R-X plot `<svg>` instance,
+never merged into Impedance Locus's own panel/state/plot. Scope: Input
+Source (Recording|Manual), Fault loop (AB|BC|CA), Impedance basis
+(Primary|Secondary), Characteristic (Mho|Quadrilateral), Zones 1-3,
+Results (loop impedance R/X/|Z|/angle, zone state, configured delay).
+Explicitly **not** full relay logic: no AG/BG/CG ground loops, no
+residual-current (k0)/zero-sequence compensation, no memory/negative-
+sequence polarization, no load encroachment, no power swing blocking,
+no directional supervision beyond the characteristic itself, no relay
+trip output, no breaker operation, no timer accumulation, no vendor-
+specific relay logic, no fault classification exist anywhere in this
+slice — reserved for a future, separate enhancement built on top of
+this module's own loop-impedance/zone-state foundation.
+
+**Fault-loop impedance is full complex phasor subtraction, never phase
+impedance.** `Zab=(Va-Vb)/(Ia-Ib)`, `Zbc=(Vb-Vc)/(Ib-Ic)`,
+`Zca=(Vc-Va)/(Ic-Ia)` — `app.domain.distance_protection.
+compute_loop_impedance()` builds each phasor via `cmath.rect()`
+(Sequence Components' own established complex-number convention),
+subtracts the two Voltage legs and the two Current legs, then calls the
+EXISTING `app.domain.impedance.compute_impedance_point()` on the two
+loop phasors unchanged — this module's only new math is the phasor
+SUBTRACTION step; the division/low-current guardrail/basis-conversion
+are entirely reused, zero duplication. Proven genuinely different from
+`Za=Va/Ia` phase impedance on an asymmetric test case (loop
+|Z|=8.663∠47.8° vs. phase |Z|=10∠15°) — a naive phase-impedance
+shortcut could never pass this regression. Golden balanced-three-phase
+result (`Va=100∠0°,Vb=100∠-120°,Vc=100∠120°`,
+`Ia=10∠-20°,Ib=10∠-140°,Ic=10∠100°`) → `Zab=Zbc=Zca=10Ω∠20°`
+(`R=9.396926207859085`, `X=3.4202014332566875`), independently
+`cmath`-verified before being hardcoded as the cross-layer golden
+regression (domain, service/API, Manual, and Playwright all reuse it).
+
+**Recording mode reuses the existing Phasor estimator, never a second
+one.** `app.services.distance_protection_analysis_service.
+compute_distance_analysis()` calls the existing, unchanged
+`phasor_analysis_service.compute_phasor_diagram()` exactly once —
+extracts whichever four roles the selected loop needs
+(`LOOP_ROLE_KEYS[loop]`) and calls `compute_loop_impedance()` on them.
+`_worst_role_status()` generalizes Impedance's own two-role precedence
+helper to four roles. `app.domain.analysis_requirements` gained
+`DISTANCE_VOLTAGE_PHASE_A/B/C`/`DISTANCE_CURRENT_PHASE_A/B/C` under
+their own `analysis_kind="distance"` (per DEC-096's own pre-documented
+naming; declared for registry completeness only).
+
+**Mho characteristic** — standard forward mho circle: diameter from the
+origin to `Z_reach = reach_ohm ∠ characteristic_angle_deg`;
+`center = Z_reach/2`, `radius = reach_ohm/2`; Operated iff
+`|Z-center| <= radius + tolerance` (boundary counts as Operated,
+`ZONE_BOUNDARY_TOLERANCE_OHM = 1e-6`). Verified at both `angle=0°`
+(axis-aligned) and a rotated `angle=80°`: clearly inside, exactly on
+boundary, clearly outside, and a reverse-side point (never operates).
+
+**Quadrilateral characteristic — a self-derived, coherent, non-vendor-
+specific geometry**, documented exactly how it is constructed (never
+copied from a proprietary vendor setting model): rotate R/X into a
+coordinate system aligned with the characteristic angle
+(`x'=R*cos(theta)+X*sin(theta)`, `r'=R*sin(theta)-X*cos(theta)`), then
+apply an axis-aligned rectangle in that rotated frame (`0<=x'<=
+reactive_reach`, `-resistive_reverse<=r'<=resistive_forward`) —
+degenerates exactly to the classic axis-aligned box at `theta=90°`,
+verified directly, and proven to genuinely rotate (not merely relabel)
+the boundary at a non-90° angle by cross-checking against the rotation
+formula independently. `characteristic_angle_deg` is deliberately the
+SAME shared field both characteristics use — Mho's classic
+characteristic angle and Quadrilateral's directional angle are, by this
+module's own coherent choice, the same physical angle concept, which is
+also what lets characteristic switching preserve relevant shared
+settings with zero extra plumbing. Golden coverage for BOTH
+characteristics: clearly operated, exactly on boundary, clearly not
+operated, a negative-R case, a negative-X case.
+
+**Zone priority: none — Zone 1/2/3 evaluated completely
+independently.** More than one zone may legitimately report Operated
+simultaneously in a nested characteristic; Zone 2/3 are never suppressed
+because Zone 1 operates. No "fastest operated zone" derived summary in
+v1 (a future addition on the same foundation).
+
+**`Operated`/`Not Operated` — owner decision, explicitly never
+`Inside`/`Outside`.** Operated means the calculated loop impedance
+satisfies/breaches the configured zone operating characteristic
+GEOMETRICALLY — it does not mean relay trip output asserted, breaker
+opened, or full relay logic completed. `Configured delay` is
+configuration information only: v1 never accumulates it, never declares
+it elapsed, never asserts a trip from it. A dedicated static test suite
+(`TestDistanceOperatedTerminology`) guards both the terminology and the
+total absence of any "Relay tripped"/"Trip issued"/"Breaker opened"
+string anywhere in the Distance Protection frontend code.
+
+**Impedance basis (Primary/Secondary) reuses Impedance Locus's
+conversion verbatim** — `app.domain.impedance.convert_impedance_basis()`
+unchanged, both for Recording and Manual, no duplicated ratio math.
+**Low-current guardrail reused/adapted** — `compute_loop_impedance()`
+calls `compute_impedance_point()` unchanged, so the loop's own
+differential current is subject to the EXACT SAME `MIN_CURRENT_A`
+numerical-validity floor (`REASON_LOOP_CURRENT_TOO_SMALL`), never a
+relay pickup threshold.
+
+**Manual mode is fully standalone, asking only for the selected loop's
+own relevant phase PAIR** — never phase C for AB, etc.
+(`WW_DISTANCE_LOOP_ROLES` frontend / `LOOP_ROLE_KEYS` backend, both
+keyed on a 4-leg `(V1,V2,I1,I2)` shape, not the full six-role Manual
+Phasor form Phasor/Sequence Components each use). Two independent bases
+total (Voltage, Current), each SHARED by its own loop's two legs — never
+four independent per-leg bases — extending the "N independent bases for
+N independent physical quantities" principle with a THIRD variant (after
+Phasor's per-quantity form and Impedance's extra-OUTPUT-axis form). A
+missing/invalid leg is reported directly, never a fabricated partial
+loop impedance. `evaluate_manual_distance()` reuses
+`compute_loop_impedance()` internally — the ONE authoritative loop-
+impedance implementation for both input sources.
+
+**Layered architecture, explicit for future extensibility**: phasor
+input → loop impedance engine → distance characteristic engine → zone
+element state → visualization, each independent, so a future addition
+(AG/BG/CG, k0, polarization, timers, load encroachment, power swing,
+trip logic) can be added without rewriting the basic loop-impedance or
+geometry engines.
+
+**R-X plot reuses Impedance Locus's coordinate transform verbatim** —
+`WW_IMPEDANCE_PLOT_RADIUS`/`wwImpedanceNiceLimit()`/
+`wwImpedanceFormatTick()` called directly from the new
+`wwDistanceRenderPlot()`, the SAME equal-scale `toSvg` transform, one
+shared `pxPerOhm` for both axes, never a second inconsistent renderer.
+Mho zones draw as a true SVG `<circle>` (structurally guarantees
+circularity); Quadrilateral zones draw as a 4-point SVG `<polygon>`
+built via the inverse rotation. New restrained, single-hue-family
+(slate) `--ww-dist-zone1/2/3` color tokens (`frontend/theme.css`),
+strongest→lightest hierarchy, distinct from phase/sequence/error tokens.
+
+**Recording trajectory reuses the Impedance Locus locus concept
+exactly** — full selected-loop locus calculated/cached upfront
+(`/distance-protection-locus`), future points hidden, visible trail
+chronologically clipped to the current exact-fetch point's own
+`analysis_time`, current point highlighted; zones remain static while
+the trajectory moves; no per-frame full-locus backend fetch, no
+analyzer-specific timer. **Locus points intentionally carry no zone
+state** (`DistanceLocusPoint` has no `state` field) — only the current
+Playback-driven point drives Operated/Not-Operated, proven instantaneous
+and never latched. **A genuine implementation bug was caught and fixed
+during this slice's own Playwright hardening**: the first version of
+`wwDistanceHandleZoneSettingChanged()` unconditionally invalidated and
+re-fetched the full 120-point locus on every zone-setting change (reach/
+angle/enabled/delay) — wasteful and exactly the "re-fetch on every
+keystroke" behavior the task's own performance guardrails forbid, since
+locus points never carry zone state and the trajectory itself is
+geometrically independent of zone configuration; fixed to only
+re-request the current point and redraw the static zone geometry.
+
+**Manual/Recording state isolation, by intentional design**: measured
+V/I/R/X/|Z|/angle results are fully separate per input source
+(`wwDistanceState.latestResult` vs. `.manual.latestResult`), but
+Loop/Characteristic/Zone settings are SHARED single fields — an engineer
+configuring "AB, Mho, Zone 1 reach 10 Ω" expects that same relay
+configuration whether studying a live recording or running a quick
+manual what-if calculation.
+
+**Related Waveforms** pushes the selected loop's own four source
+quantities (`AB -> Va,Vb,Ia,Ib`, etc.), gated on channel identity being
+known independent of `status` (mirrors Impedance's own precedent).
+Engineering Context phase-role resolution uses the durable phase
+identities `compute_phasor_diagram()` itself resolves — never inferred
+from channel names.
+
+**Analysis Input Source (Recording/Manual) is the FIFTH real
+implementation** of the shared shell DEC-095 established — reuses
+`WW_ANALYSIS_INPUT_SOURCE_RECORDING`/`WW_ANALYSIS_INPUT_SOURCE_MANUAL`
+verbatim, the identical three-region markup separation, implemented
+from day one. Registers as an Engineering Context consumer and a
+Playback tick subscriber the same way every prior analyzer does.
+
+**A pre-existing CSS `[hidden]` override bug (the same class already
+documented/fixed elsewhere in this file for `.ww-annotation-guidance`
+and others) was caught and fixed during this slice's own Playwright
+run**: `.ww-dist-zone-field { display: flex; ... }`'s author-origin
+`display` beat the UA stylesheet's default `[hidden] { display: none }`
+rule, so a hidden Mho-vs-Quadrilateral reach field stayed visually
+visible despite its `hidden` attribute being correctly set. Fixed with
+the identical `.ww-dist-zone-field[hidden] { display: none; }` override
+pattern this file already established for every prior instance of this
+bug class.
+
+**API.** `GET .../engineering-contexts/{id}/distance-protection`
+(current loop impedance + zone states), `GET .../engineering-contexts/
+{id}/distance-protection-locus` (trajectory), `GET .../distance-
+protection-manual` (workspace-scoped Manual) — same nested/selected-
+time/never-persisted router convention every prior analyzer's own
+endpoints already established, in the same
+`app/api/v1/engineering_contexts.py` file. See
+[DISTANCE_PROTECTION_ANALYSIS.md](DISTANCE_PROTECTION_ANALYSIS.md) for
+the full response shape.
+
+**Tests.** `backend/tests/test_distance_protection_domain.py` (37 tests
+— loop-role mapping, golden balanced AB/BC/CA loop impedance, loop-
+impedance-is-not-phase-impedance proof, low-current guardrail, Mho
+golden geometry at two angles, Quadrilateral golden geometry including
+a rotated-angle cross-check, zone-state dispatch including multi-zone-
+independence, Manual per-leg isolation), `backend/tests/
+test_distance_protection_analysis_api.py` (19 tests — real three-phase
+ASCII-COMTRADE-upload golden AB/BC/CA scenarios via real HTTP for
+Recording including zone state/multi-zone/configured-delay/low-current,
+locus point-count/clamping/determinism, zero-prior-setup golden/per-
+loop-role/low-current/missing-leg scenarios for Manual),
+`backend/tests/test_frontend_distance_protection_analysis.py` (34
+structural tests — markup separation, separate-analyzer-from-Impedance
+proof, loop/characteristic selector shape, zone-grid CSS, zone-color-
+token distinctness, Operated/Not-Operated terminology and no-trip-claim
+guard, per-loop Manual role-label reuse, R-X-plot-scale-reuse proof,
+Related-Waveforms loop-role push, Playback registration/no-analyzer-
+timer, reset-state wiring). Five pre-existing static tests were updated
+for the FIFTH registered consumer/mounted transport/analyzer entry
+(`test_analysis_requirements.py` registry-count assertions updated from
+23 to 29 known requirements and four to five known `analysis_kind`s,
+`test_frontend_phasor_analysis.py::TestSharedAnalysisContextConsumers`/
+`::TestAnalysisTypeSubNav`, `test_frontend_overcurrent_analysis.py::
+TestOvercurrentInAnalysisNav`, `test_frontend_playback.py::
+TestSharedAnalysisPlaybackStyling`, `test_frontend_impedance_analysis.py`'s
+own analyzer-order/panel-boundary assertions), mirroring the exact
+precedent Impedance's/Sequence's own additions already set for these
+same tests. Full backend regression suite passes (all pre-existing
+tests plus the new ones). **Real-browser Playwright coverage was added
+from day one** (`browser-tests/distance_protection_analysis.spec.js`,
+19 scenarios: navigation/separate-analyzer proof, empty-workspace Manual
+golden AB/BC/CA flows, Mho and Quadrilateral zone-state geometry
+including multi-zone-simultaneous-operation and no-trip-claim assertion,
+characteristic-switching-never-changes-measured-impedance, Recording
+Related-Waveforms per-loop roles, chronological locus reveal, zone
+state remains static in geometry while the point trail moves, zone
+state updates live/never-latched on a setting change, no full-locus/
+waveform refetch during Playback ticks, R-X geometry (equal px-per-ohm
+scale + correct quadrant at 1366px/1024px, true-`<circle>`-for-Mho,
+4-point-`<polygon>`-for-Quadrilateral), Recording/Manual state
+isolation) — run 2x clean plus as part of a combined 6-spec regression
+run, deliberately closing the exact gap the task itself named ("do not
+repeat the Impedance v1 browser-coverage gap"); one pre-existing
+Playwright assertion in `phasor_analysis.spec.js` (a fixed 4-entry nav
+list) was updated to include the fifth entry, mirroring the identical
+update Sequence Components' own activation already made there.
+
+**Three pre-existing, unrelated flaky Playwright tests were observed
+during this session's own combined-suite regression run — reported here
+per Change Governance, not silently patched, and confirmed pre-existing/
+unrelated by re-running each in isolation (all passed cleanly alone):**
+1. `phasor_analysis.spec.js` — "Speed selection (4x) keeps Phasor's own
+   request rate throttled, never one request per tick." Failed once in
+   a long (161-test, 10.3m) combined run, passed in isolation. Timing-
+   sensitive under heavy combined-run load; does not touch any Distance
+   Protection code path.
+2. `phasor_analysis.spec.js` — "golden owner worked example... zero
+   recording-dependent requests." Same combined-run-only failure
+   pattern, same isolated-pass result, same "no Distance Protection code
+   involved" finding.
+3. `playback.spec.js` — "Clearing the workspace while playing stops
+   Playback with no stale errors" (a stray 404 console error). Passed
+   both in isolation and when re-running the full `playback.spec.js`
+   file alone (19/19) — consistent with a transient resource/network
+   hiccup under the same heavy combined-run load, not a Distance
+   Protection regression (Distance Protection issues zero requests for
+   a context that was never selected, which is this test's own
+   scenario).
+
+None of the three is fixed by this slice — `[OPEN]` items for a future,
+separate task, per the exact precedent DEC-097/DEC-098 already
+established for prior pre-existing flakes.
+
+**Alternatives considered.** Merging Distance Protection into Impedance
+Locus's own panel/state (e.g. an "evaluate as a zone" toggle) was
+considered and rejected — the task's own explicit "a SEPARATE analyzer"
+instruction, and the two questions ("what impedance was measured" vs.
+"how does a characteristic interpret it") are conceptually and UI-
+workflow distinct enough to warrant separate state/results/R-X-plot
+instances, matching Impedance Locus's own original DEC-096 "explicitly
+not Distance Protection" boundary. A per-vendor Quadrilateral setting
+model (e.g. a specific relay manufacturer's own named parameters) was
+considered and rejected — the task's own explicit "never copy a vendor
+relay's proprietary setting model" instruction; the rotated-coordinate
+rectangle chosen here is a generic, textbook-derivable geometry instead.
+A single combined Voltage+Current Manual basis (one basis for all four
+legs) was considered and rejected in favor of the established two-
+independent-bases-per-quantity-type principle (Voltage basis ≠ Current
+basis is a real, common field scenario — e.g. Voltage entered Primary
+from a nameplate, Current entered Secondary from a relay reading).
+
+**Impact.** New backend modules: `app/domain/distance_protection.py`,
+`app/services/distance_protection_analysis_service.py`,
+`app/schemas/distance_protection_analysis.py`; additive-only changes to
+`app/domain/analysis_requirements.py` and
+`app/api/v1/engineering_contexts.py` (new endpoints only, zero existing
+endpoint behavior touched). Frontend: `frontend/index.html` gains a new
+Distance Protection panel/module (markup + JS + CSS), a new nav entry,
+and one new `wwAnalysisPanelsByType`/`wwSetActiveAnalysisType`/Init-
+wiring branch each — zero existing analyzer's own markup/JS/behavior
+touched beyond the additive wiring lines every prior analyzer's own
+addition already required in these same shared locations;
+`frontend/theme.css` gains three new color tokens (additive only). Zero
+Phasor/Overcurrent/Impedance/Sequence Components/Playback/Engineering-
+Context production behavior changed, EXCEPT the one genuine CSS
+`[hidden]`-override bug fix, which is scoped entirely to the new
+`.ww-dist-zone-field` selector this slice itself introduced (no
+pre-existing selector touched). No backend files outside the new
+Distance Protection modules and the two additive registry entries were
+touched.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
