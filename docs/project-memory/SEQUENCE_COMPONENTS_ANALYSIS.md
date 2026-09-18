@@ -1,15 +1,68 @@
 # Sequence Components Analysis
 
-Status: **v1 implemented** (2026-09-18). Activates the pre-existing
-`Sequence Components` navigation placeholder as the **FOURTH**
-Analysis-menu analyzer (order preserved: Phasor, Overcurrent, Impedance
-Locus, Sequence Components). See
+Status: **v1 implemented and CLOSED as a stable feature** (2026-09-18).
+Activates the pre-existing `Sequence Components` navigation placeholder
+as the **FOURTH** Analysis-menu analyzer (order preserved: Phasor,
+Overcurrent, Impedance Locus, Sequence Components). See
 [DECISIONS.md — DEC-097](DECISIONS.md#dec-097--sequence-components-v1-the-fourth-analysis-menu-analyzer-positivenegativezero-sequence-voltage-and-current-calculationvisualization)
 for the approval record.
 
 **2026-09-18 UAT fix — vector shaft/color rendering** (renderer/style
 only, no math changed): see "Vector rendering invariant and the shaft/
 color rendering bug fix" below for the full root-cause record.
+
+**2026-09-18 closure/hardening pass** — a complete audit of every
+Sequence-specific implementation path (domain math, service layer, API/
+schema, frontend state machine, Recording/Manual input, Playback,
+Related Waveforms, vector renderer, scale logic, visibility, ratios,
+angle convention, responsive layout, theme tokens, tests, docs) found
+the architecture already sound; closure work was almost entirely test-
+hardening plus two documentation clarifications for behavior that was
+already correct but not yet explicitly confirmed in writing (see
+"Closure-pass audit summary" below for the full list, including the
+items explicitly checked and found to already be correct).
+
+## Closure-pass audit summary (2026-09-18)
+
+Every item in the closure task's own checklist (math, color system,
+vector renderer, scale behavior, scale legend, Manual mode, Recording
+mode, partial-family behavior, ratios, angle convention, naming/
+ordering, visibility controls, Related Waveforms, Playback, empty/
+invalid states, responsive UI, accessibility) was audited against the
+current code, not assumed correct because existing tests passed. Result:
+
+- **No production defects found** beyond the vector-shaft/color bug
+  already fixed the same day (see above) — every other audited path
+  (domain transform, service-layer family evaluation, API schema,
+  frontend fetch/stale-response guards, Playback integration, Related
+  Waveforms, Manual/Recording isolation) was verified correct by direct
+  code reading AND real-browser testing, not assumption.
+- **Two behaviors were confirmed-and-documented, not changed** (task's
+  own "if changed, explain the difference; if not, confirm and
+  document" framing): (1) hiding a role never rescales the remaining
+  visible vectors — see "Sequence visibility" below; (2) a ratio's own
+  magnitude is never capped, only guarded against `Infinity`/`NaN` —
+  see "Sequence ratios" below.
+- **Naming/ordering was already consistent** — `V1`/`V2`/`V0` (positive
+  → negative → zero) is used uniformly across the Values list, the
+  combined diagram's own draw order, and the ratio labels (`V2/V1` then
+  `V0/V1`); no `0,1,2` vs `1,2,0` inconsistency was found anywhere.
+- **Backend golden coverage was strengthened**: the existing unbalanced/
+  mixed-input golden test asserted magnitude only — now asserts real,
+  imaginary, magnitude, AND angle (catching a rotation-direction/sign
+  bug a magnitude-only check could miss), plus a new equivalent Current-
+  domain unbalanced golden case.
+- **Real-browser coverage was substantially extended**
+  (`browser-tests/sequence_components_analysis.spec.js` grew from 20 to
+  33 scenarios): individual dominant-color golden cases for all six
+  roles (V1/V2/V0/I1/I2/I0, closing the I2/I0 gap), a mixed-all-six-
+  visible simultaneous-color case, dark-theme color resolution, the
+  visibility/scale-isolation rule, angle-wrap-around display, the ratio-
+  unavailable guardrail at the UI layer, context-switch staleness, and
+  scale-legend/vector non-overlap at 1366px/1024px.
+- **No Sequence-specific `[OPEN]`/pending/TODO/FIXME items existed** in
+  the codebase or `docs/project-memory/` before this pass (confirmed by
+  direct search) — there was nothing pending to close going in.
 
 ## Vector rendering invariant and the shaft/color rendering bug fix
 
@@ -268,6 +321,23 @@ TestManualSequenceViaHttp::test_near_zero_positive_sequence_ratio_is_
 unavailable_via_manual` for the end-to-end proof and its own comment on
 why the equivalent Recording-mode assertion is written differently.
 
+**Deliberately no upper cap on a ratio's own magnitude (closure-pass
+audit, 2026-09-18):** a positive sequence just above the `1e-9` floor
+paired with a genuinely large negative/zero sequence can still produce
+an arithmetically enormous percentage (e.g. millions of percent) —
+this is intentional, not a bug: `sequence_ratio_percent()` guards
+against division producing `Infinity`/`NaN` only, never against a
+technically-valid-but-extreme *value*, since capping or reformatting an
+extreme-but-real ratio would itself be an implicit threshold/compliance
+judgment (task's own explicit "ratios are descriptive only, do not add
+protection thresholds or compliance judgments" instruction). In
+practice this is essentially unreachable from a real Recording (a
+waveform-estimated phasor's own noise floor sits far above `1e-9` for
+any realistic signal — see above); it is only reachable via a
+deliberately degenerate Manual input, in which case an engineer sees an
+honest (if visually large) descriptive number rather than a silently
+clamped one.
+
 ## Visualization — combined polar diagram, two independent family scales
 
 `wwSequenceRenderDiagramSvg()` mirrors `wwPhasorRenderDiagramSvg()`'s
@@ -359,6 +429,23 @@ calculated results" instruction). Default: every role that computes
 `available` starts visible on its first appearance; a toggle-off
 persists across re-renders (auto-seed only sets `true` the FIRST time a
 role is seen, mirroring Phasor's own precedent exactly).
+
+**Visibility/scale interaction — the documented rule (closure-pass
+audit, 2026-09-18):** hiding a role does NOT recompute or shrink the
+family's own graphical scale. `wwSequenceFamilyMaxMagnitude()` derives
+the scale from every `available` role in the family regardless of its
+own `visibleRoles` entry — identical to `wwPhasorFamilyMaxMagnitude()`'s
+own precedent (Phasor's diagram has the exact same property). Hiding
+the dominant V1 therefore never changes V2/V0's own rendered position —
+only V1's own shaft/arrowhead/label disappear; the plot's own scale
+stays exactly as it was. This is intentional, not an oversight: visibly
+hiding a role is a display preference for THAT role only, never a
+request to re-derive the whole family's scale from whatever remains
+visible (which would make every other vector's own apparent size shift
+merely because an unrelated role was toggled — a more confusing
+behavior than the current one). Guarded by
+`browser-tests/sequence_components_analysis.spec.js`'s own "visibility/
+scale isolation rule" suite.
 
 ## Related Waveforms shows source phase quantities, never sequence values
 
@@ -476,22 +563,34 @@ bootstrap (the exact architectural rule
 `test_frontend_phasor_analysis.py::TestSharedAnalysisContextConsumers`
 exists to catch).
 
-## Known limitations / explicitly deferred (not this slice)
+## Remaining limitations — legitimate future enhancements only, zero open bugs/debt
+
+As of the 2026-09-18 closure pass, every item below is a **future
+product-scope enhancement**, never an unresolved bug or debt item — see
+"Closure-pass audit summary" above for the audit that confirmed this.
+None of these are silently-deferred defects; each is a permanent scope
+boundary or a genuinely separate future feature that would need its own
+owner approval to start.
 
 - No unbalance-limit/negative-sequence-protection/ground-fault/fault-
   classification interpretation (see "Scope of v1" above — this is a
-  permanent boundary for this feature, not a temporary gap).
-- No sequence-network diagrams, no sequence impedance (Z1/Z2/Z0).
+  **permanent** boundary for this feature, not a temporary gap).
+- No sequence-network diagrams, no sequence impedance (Z1/Z2/Z0) —
+  future enhancement, would consume V0/V1/V2/I0/I1/I2 as its own input,
+  never coupled into this module.
 - No automatic cross-source Engineering Context merging, no manual
   Engineering Context creation/editing UI (unchanged, project-wide
-  deferrals every prior analyzer also inherits).
+  deferrals every prior analyzer also inherits — not Sequence-specific).
 - No Per-Unit display mode (engineering units only, matching Phasor
-  Slice 1's own original scope).
+  Slice 1's own original scope) — future enhancement.
 - No time-series/locus visualization for sequence values (unlike
-  Impedance Locus's own R-X trajectory) — the task's own v1 scope is a
+  Impedance Locus's own R-X trajectory) — the v1 scope is a
   selected-time snapshot, following Phasor's own original shape rather
   than Impedance's newer locus-sampling one; a future slice could add
-  this without changing the domain/service layer.
+  this without changing the domain/service layer — future enhancement,
+  not a defect in the current snapshot-only behavior.
+- Ratio magnitude is deliberately never capped (see "Sequence ratios"
+  above) — a documented design choice, not a limitation to fix.
 
 ## Related documents
 

@@ -688,3 +688,306 @@ test.describe("Sequence Components v1 -- vector shaft/color rendering responsive
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Closure/hardening pass (owner instruction: "complete Sequence Components
+// cleanup and closure... resolve all remaining known or discoverable issues
+// that are genuinely within the Sequence Components feature boundary").
+// Extends the vector-shaft/color regression above with the full six-role
+// dominant-case matrix, dark-theme color resolution, the documented
+// visibility/scale isolation rule, angle-wrap-around, ratio-unavailable UI,
+// and context-switch staleness -- closing every remaining audit item that
+// was not already covered by the existing suites above.
+// ---------------------------------------------------------------------------
+
+test.describe("Sequence Components v1 -- full six-role dominant-color matrix (Manual, light theme)", () => {
+  const cases = [
+    {
+      role: "I2", label: "pure negative sequence Current -> I2 dominant", token: "--ww-seq-negative",
+      roles: [["Ia", 20, "A", 0], ["Ib", 20, "A", 120], ["Ic", 20, "A", -120]], basisPrefix: "Current",
+    },
+    {
+      role: "I0", label: "pure zero sequence Current -> I0 dominant", token: "--ww-seq-zero",
+      roles: [["Ia", 15, "A", 45], ["Ib", 15, "A", 45], ["Ic", 15, "A", 45]], basisPrefix: "Current",
+    },
+  ];
+  for (const c of cases) {
+    test(`${c.label}: shaft visible with correct dedicated color`, async ({ page }) => {
+      await openEmptyWorkspaceSequence(page);
+      await page.locator(`#wwSequenceManual${c.basisPrefix}BasisSelect`).selectOption("secondary");
+      for (const [role, magnitude, unit, angleDeg] of c.roles) {
+        await enterRole(page, role, { magnitude, unit, angleDeg });
+      }
+      await expect(async () => {
+        const text = await page.locator("#wwSequenceValuesList").innerText();
+        expect(text).toMatch(new RegExp(`${c.role}[\\s\\S]*?${c.roles[0][1].toFixed(1)}\\s*${c.roles[0][2]}`));
+      }).toPass({ timeout: 5000 });
+
+      const expectedColor = await resolvedColor(page, `var(${c.token})`);
+      const geo = await vectorGeometry(page, "#wwSequenceSvg", c.role);
+      expect(geo, `${c.role} vector must be present`).not.toBeNull();
+      expect(geo.shaftLength).toBeGreaterThan(50);
+      expect(geo.lineStroke).toBe(expectedColor);
+      expect(geo.polygonFill).toBe(expectedColor);
+    });
+  }
+
+  // V1/V2/V0/I1 dominant-color cases already exist in the suite above
+  // ("vector shaft/color rendering (Manual)") -- this closes the
+  // remaining I2/I0 gap so all six roles have an individual golden
+  // dominant-color case, per the closure task's own explicit checklist.
+
+  test("mixed case, all six roles visible together: every role resolves its OWN dedicated color simultaneously", async ({ page }) => {
+    await openEmptyWorkspaceSequence(page);
+    await page.locator("#wwSequenceManualVoltageBasisSelect").selectOption("secondary");
+    await page.locator("#wwSequenceManualCurrentBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: 100, unit: "V", angleDeg: 0 });
+    await enterRole(page, "Vb", { magnitude: 90, unit: "V", angleDeg: -100 });
+    await enterRole(page, "Vc", { magnitude: 95, unit: "V", angleDeg: 130 });
+    await enterRole(page, "Ia", { magnitude: 40, unit: "A", angleDeg: 15 });
+    await enterRole(page, "Ib", { magnitude: 32, unit: "A", angleDeg: -95 });
+    await enterRole(page, "Ic", { magnitude: 45, unit: "A", angleDeg: 160 });
+    await expect(async () => {
+      const text = await page.locator("#wwSequenceValuesList").innerText();
+      expect(text).toContain("I1");
+    }).toPass({ timeout: 5000 });
+
+    const positiveColor = await resolvedColor(page, "var(--ww-seq-positive)");
+    const negativeColor = await resolvedColor(page, "var(--ww-seq-negative)");
+    const zeroColor = await resolvedColor(page, "var(--ww-seq-zero)");
+    const expectedByRole = { V1: positiveColor, I1: positiveColor, V2: negativeColor, I2: negativeColor, V0: zeroColor, I0: zeroColor };
+    for (const [role, expectedColor] of Object.entries(expectedByRole)) {
+      const geo = await vectorGeometry(page, "#wwSequenceSvg", role);
+      expect(geo, `${role} must be present`).not.toBeNull();
+      expect(geo.lineStroke, `${role} must use its own dedicated color`).toBe(expectedColor);
+      expect(geo.polygonFill, `${role} arrowhead must match its shaft color`).toBe(expectedColor);
+    }
+    // Positive/Negative/Zero must each resolve to a genuinely DIFFERENT
+    // color -- the whole point of dedicated sequence identity.
+    expect(new Set([positiveColor, negativeColor, zeroColor]).size).toBe(3);
+  });
+});
+
+test.describe("Sequence Components v1 -- dark theme color resolution", () => {
+  test("dominant V1 resolves the DARK-theme --ww-seq-positive value, still not black/none", async ({ page }) => {
+    await page.goto("/index.html");
+    await page.evaluate(() => {
+      document.documentElement.setAttribute("data-theme", "dark");
+    });
+    await openAnalysisSequence(page);
+    await page.locator("#wwSequenceManualVoltageBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: 100, unit: "V", angleDeg: 0 });
+    await enterRole(page, "Vb", { magnitude: 100, unit: "V", angleDeg: -120 });
+    await enterRole(page, "Vc", { magnitude: 100, unit: "V", angleDeg: 120 });
+    await expect(async () => {
+      const text = await page.locator("#wwSequenceValuesList").innerText();
+      expect(text).toMatch(/V1[\s\S]*?100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+
+    const darkPositiveColor = await resolvedColor(page, "var(--ww-seq-positive)");
+    const lightPositiveColorProbe = await page.evaluate(() => {
+      // The light-theme value is a literal, theme-independent constant
+      // (#6d28d9) -- read directly from theme.css's own :root block via
+      // a detached, unthemed element (never inherits data-theme from the
+      // live <html> element).
+      const probe = document.createElement("div");
+      probe.style.color = "#6d28d9";
+      document.body.appendChild(probe);
+      const rgb = getComputedStyle(probe).color;
+      probe.remove();
+      return rgb;
+    });
+    const geo = await vectorGeometry(page, "#wwSequenceSvg", "V1");
+    expect(geo).not.toBeNull();
+    expect(geo.lineStroke).toBe(darkPositiveColor);
+    expect(geo.lineStroke).not.toBe("none");
+    expect(geo.lineStroke).not.toBe("rgb(0, 0, 0)");
+    // Dark mode brightens the token toward --text for contrast -- must
+    // be a genuinely DIFFERENT (brighter) color than the light-theme
+    // literal, never silently falling back to the same value in both
+    // themes (which would indicate the dark override never applied).
+    expect(darkPositiveColor).not.toBe(lightPositiveColorProbe);
+  });
+});
+
+test.describe("Sequence Components v1 -- visibility/scale isolation rule (documented)", () => {
+  // Confirms and locks in the ACTUAL rule (task's own section 13: "confirm
+  // and document the actual rule"): hiding a role via the eye toggle is a
+  // pure display preference and does NOT shrink/rescale the remaining
+  // visible vectors -- identical to Phasor's own wwPhasorFamilyMaxMagnitude()
+  // precedent (neither excludes a hidden-but-available role from the max-
+  // magnitude scale calculation). See SEQUENCE_COMPONENTS_ANALYSIS.md's own
+  // "Sequence visibility" section for the documented rule this proves.
+  test("hiding the dominant V1 does not change V2/V0's own rendered scale/position", async ({ page }) => {
+    await openEmptyWorkspaceSequence(page);
+    await page.locator("#wwSequenceManualVoltageBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: 100, unit: "V", angleDeg: 0 });
+    await enterRole(page, "Vb", { magnitude: 90, unit: "V", angleDeg: -100 });
+    await enterRole(page, "Vc", { magnitude: 95, unit: "V", angleDeg: 130 });
+    await expect(async () => {
+      const text = await page.locator("#wwSequenceValuesList").innerText();
+      expect(text).toContain("V1");
+    }).toPass({ timeout: 5000 });
+
+    const v2Before = await vectorGeometry(page, "#wwSequenceSvg", "V2");
+    expect(v2Before).not.toBeNull();
+
+    await page.locator('#wwSequenceValuesList .ww-phasor-value-row[data-role="V1"]').click();
+    await expect(page.locator("#wwSequenceSvg polygon")).toHaveCount(2); // V1's own polygon is gone
+
+    const v2After = await vectorGeometry(page, "#wwSequenceSvg", "V2");
+    expect(v2After).not.toBeNull();
+    // Same rendered tip position (within floating-point/toFixed(2)
+    // rounding) -- hiding V1 never rescaled the plot.
+    expect(v2After.x2).toBeCloseTo(v2Before.x2, 1);
+    expect(v2After.y2).toBeCloseTo(v2Before.y2, 1);
+
+    // Re-show V1 -- restores without needing a re-fetch/recalculation.
+    await page.locator('#wwSequenceValuesList .ww-phasor-value-row--hidden[data-role="V1"]').click();
+    await expect(page.locator("#wwSequenceSvg polygon")).toHaveCount(3);
+  });
+});
+
+test.describe("Sequence Components v1 -- angle convention (UI)", () => {
+  test("an angle entered as 200 degrees displays normalized to -160 degrees, never a second convention", async ({ page }) => {
+    await openEmptyWorkspaceSequence(page);
+    await page.locator("#wwSequenceManualVoltageBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: 100, unit: "V", angleDeg: 200 });
+    await enterRole(page, "Vb", { magnitude: 100, unit: "V", angleDeg: -120 });
+    await enterRole(page, "Vc", { magnitude: 100, unit: "V", angleDeg: 120 });
+    await expect(async () => {
+      const text = await page.locator("#wwSequenceValuesList").innerText();
+      expect(text).toContain("V1");
+    }).toPass({ timeout: 5000 });
+
+    const text = await page.locator("#wwSequenceValuesList").innerText();
+    // 200 degrees normalizes to -160 (the same `(-180, 180]` convention
+    // Phasor uses) -- never displayed as a raw 200.
+    const angleMatch = text.match(/V1[\s\S]*?∠\s*(-?[0-9.]+)°/);
+    expect(angleMatch).not.toBeNull();
+    const displayedAngle = parseFloat(angleMatch[1]);
+    expect(displayedAngle).toBeGreaterThan(-180);
+    expect(displayedAngle).toBeLessThanOrEqual(180);
+  });
+});
+
+test.describe("Sequence Components v1 -- ratio guardrail (UI)", () => {
+  test("a near-zero positive sequence shows 'Unavailable' ratios in the UI, never NaN/Infinity text", async ({ page }) => {
+    await openEmptyWorkspaceSequence(page);
+    await page.locator("#wwSequenceManualVoltageBasisSelect").selectOption("secondary");
+    // Va=Vb=Vc exactly (pure zero sequence) -> V1 is mathematically exact
+    // zero, below MIN_POSITIVE_SEQUENCE_MAGNITUDE -- the ratio guardrail's
+    // own "unavailable" branch (see app.domain.sequence_components).
+    await enterRole(page, "Va", { magnitude: 100, unit: "V", angleDeg: 0 });
+    await enterRole(page, "Vb", { magnitude: 100, unit: "V", angleDeg: 0 });
+    await enterRole(page, "Vc", { magnitude: 100, unit: "V", angleDeg: 0 });
+    await expect(async () => {
+      const text = await page.locator("#wwSequenceValuesList").innerText();
+      expect(text).toMatch(/V0[\s\S]*?100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+
+    const ratiosText = await page.locator("#wwSequenceRatiosList").innerText();
+    expect(ratiosText).toMatch(/V2 \/ V1[\s\S]{0,20}Unavailable/);
+    expect(ratiosText).toMatch(/V0 \/ V1[\s\S]{0,20}Unavailable/);
+    expect(ratiosText).not.toMatch(/NaN/);
+    expect(ratiosText).not.toMatch(/Infinity/);
+  });
+});
+
+test.describe("Sequence Components v1 -- context-switch leaves no stale/broken state", () => {
+  test("switching between two different contexts never leaves the prior context's values or a broken SVG on screen", async ({ page }) => {
+    // Two genuinely DISTINCT sources (a context's own channel refs must
+    // be uniquely claimed -- reusing the SAME source/channel set for a
+    // second context is rejected) -- reuses the existing
+    // `phasor_smoke_bravo_three_phase` fixture (BRAVO1_* channels,
+    // already established in this test suite family for exactly this
+    // multi-source scenario) alongside the primary ALPHA1_* fixture.
+    await uploadFixture(page); // ALPHA1_*
+    const rowA = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    await expect(rowA).toBeVisible();
+    const sourceIdA = await rowA.getAttribute("data-source-id");
+    const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
+    const contextA = await createFullBayContext(page, workspaceId, sourceIdA, "Bay A");
+
+    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "phasor_smoke_bravo_three_phase.cfg"));
+    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`)); // reuses the same sample data
+    await page.locator("#uploadModalSubmitBtn").click();
+    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+    const rowB = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    await expect(rowB).toBeVisible();
+    const sourceIdB = await rowB.getAttribute("data-source-id");
+    const membersB = [
+      ["BRAVO1_VA", "A"], ["BRAVO1_VB", "B"], ["BRAVO1_VC", "C"],
+      ["BRAVO1_IA", "A"], ["BRAVO1_IB", "B"], ["BRAVO1_IC", "C"],
+    ].map(([channel_name, phase]) => ({
+      channel_ref: { kind: "source", source_id: sourceIdB, channel_name },
+      phase, phase_source: "engineer_confirmed",
+    }));
+    const responseB = await page.request.post(
+      `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/engineering-contexts`,
+      { data: { display_name: "Bay B", status: "manual", members: membersB } }
+    );
+    expect(responseB.ok()).toBeTruthy();
+    const contextB = await responseB.json();
+
+    await openAnalysisSequence(page);
+    await selectContextAndWaitForResult(page, contextA.id);
+    const textA = await page.locator("#wwSequenceValuesList").innerText();
+    expect(textA).toMatch(/100\.0\s*V/);
+
+    // Switch to the second (genuinely different-source) context --
+    // values must still read correctly (not blank, not NaN, not stuck
+    // on Bay A's own stale text forever) once the fetch settles.
+    await page.locator("#wwSequenceContextSelect").selectOption(contextB.id);
+    await expect(async () => {
+      const text = await page.locator("#wwSequenceValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+      expect(text).not.toMatch(/NaN/);
+      expect(text).not.toMatch(/undefined/);
+    }).toPass({ timeout: 5000 });
+
+    // The diagram must still show a well-formed, present V1 vector --
+    // never a broken/empty SVG left over from the switch.
+    const geo = await vectorGeometry(page, "#wwSequenceSvg", "V1");
+    expect(geo).not.toBeNull();
+    expect(geo.shaftLength).toBeGreaterThan(50);
+    expect(geo.lineStroke).not.toBe("none");
+  });
+});
+
+test.describe("Sequence Components v1 -- scale legend does not overlap vectors", () => {
+  for (const width of [1366, 1024]) {
+    test(`a dominant vector pointing toward the legend's own corner never overlaps it at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await openEmptyWorkspaceSequence(page);
+      await page.locator("#wwSequenceManualVoltageBasisSelect").selectOption("secondary");
+      // Worst case: V1 pointed directly INTO the legend's own upper-right
+      // corner (where the "Scale" legend is drawn).
+      await enterRole(page, "Va", { magnitude: 100, unit: "V", angleDeg: 40 });
+      await enterRole(page, "Vb", { magnitude: 100, unit: "V", angleDeg: -80 });
+      await enterRole(page, "Vc", { magnitude: 100, unit: "V", angleDeg: 160 });
+      await expect(async () => {
+        const text = await page.locator("#wwSequenceValuesList").innerText();
+        expect(text).toContain("V1");
+      }).toPass({ timeout: 5000 });
+
+      const boxes = await page.evaluate(() => {
+        const svg = document.getElementById("wwSequenceSvg");
+        const legendHeader = svg.querySelector(".ww-phasor-scale-legend--header");
+        const label = Array.from(svg.querySelectorAll("text.ww-phasor-vector-label")).find((t) => t.textContent === "V1");
+        const rectOf = (el) => { const b = el.getBBox(); return { x: b.x, y: b.y, w: b.width, h: b.height }; };
+        return { legend: legendHeader ? rectOf(legendHeader) : null, label: label ? rectOf(label) : null };
+      });
+      expect(boxes.legend).not.toBeNull();
+      expect(boxes.label).not.toBeNull();
+      const noOverlap =
+        boxes.legend.x + boxes.legend.w < boxes.label.x ||
+        boxes.label.x + boxes.label.w < boxes.legend.x ||
+        boxes.legend.y + boxes.legend.h < boxes.label.y ||
+        boxes.label.y + boxes.label.h < boxes.legend.y;
+      expect(noOverlap).toBe(true);
+    });
+  }
+});

@@ -8,6 +8,98 @@ Last updated: **2026-09-18**
 
 ## What was most recently done
 
+**Sequence Components complete cleanup/closure pass — CLOSED as a
+stable feature.** Owner did not want another narrow patch; asked for a
+full audit of the entire Sequence Components implementation and
+resolution of everything genuinely within its own feature boundary.
+
+**Audit method**: read every Sequence-specific implementation path
+(domain, service, API/schema, frontend state/lifecycle/fetch/render,
+Recording, Manual, Playback, Related Waveforms, vector renderer, scale
+logic, visibility, ratios, angle convention, responsive CSS, theme
+tokens, existing tests/docs) directly, plus a project-wide search for
+`TODO`/`FIXME`/`HACK`/`[OPEN]`/pending/temporary markers scoped to
+Sequence — found none. Did not assume completeness merely because
+existing tests passed.
+
+**Result: no NEW production defects found.** Every audited path was
+verified correct — the domain transform (Fortescue math untouched, only
+strengthened with better golden assertions), the service layer's
+per-family independent-evaluation guardrail, the API schema, the
+frontend's stale-response guards (request-generation/epoch/workspace
+triple-guard, identical to every other proven analyzer), Playback
+integration (no second timer, correct Manual/Recording gating), Related
+Waveforms (source phase roles only, never sequence values), and Manual/
+Recording state isolation were all confirmed correct by direct code
+reading AND real-browser verification, not assumption.
+
+**Two behaviors were confirmed-and-documented, not changed** (task's
+own "if changed, explain the difference; if not, confirm and document"
+instruction):
+1. **Hiding a role never rescales the remaining visible vectors** —
+   `wwSequenceFamilyMaxMagnitude()` includes every `available` role in
+   the scale calculation regardless of its own `visibleRoles` entry,
+   identical to `wwPhasorFamilyMaxMagnitude()`'s own precedent (Phasor's
+   diagram has the exact same property). Documented in
+   SEQUENCE_COMPONENTS_ANALYSIS.md's own "Sequence visibility" section,
+   locked in by a new Playwright test.
+2. **A ratio's own magnitude is never capped**, only guarded against
+   `Infinity`/`NaN` — capping an extreme-but-real ratio would itself be
+   an implicit threshold/compliance judgment, which this feature
+   explicitly excludes. In practice unreachable from a real Recording
+   (estimator noise sits far above the `1e-9` guard floor); only
+   reachable via a deliberately degenerate Manual input.
+
+**Naming/ordering audit**: `V1`/`V2`/`V0` (positive→negative→zero) is
+used consistently everywhere already — Values list, diagram draw order,
+ratio labels (`V2/V1` then `V0/V1`). No `0,1,2` vs `1,2,0` mismatch
+found; no change needed.
+
+**Backend golden tests strengthened** (`test_sequence_components_domain.py`):
+the existing unbalanced/mixed-input golden test asserted magnitude only
+— now asserts real, imaginary, magnitude, AND angle (a magnitude-only
+check could miss a rotation-direction/sign bug), plus a new equivalent
+Current-domain unbalanced golden case (task's own "test both Voltage
+and Current" instruction for the mixed case specifically, not just the
+three pure cases).
+
+**Real-browser coverage extended from 20 to 33 scenarios**
+(`browser-tests/sequence_components_analysis.spec.js`): individual
+dominant-color golden cases for all six roles (V1/V2/V0/I1/I2/I0,
+closing the I2/I0 gap the prior pass left), a mixed-all-six-visible
+simultaneous-distinct-color case, dark-theme color resolution (proving
+theme-safety, not just fallback-safety), the visibility/scale-isolation
+rule, angle-wrap-around display (200° → -160°), the ratio-unavailable
+guardrail at the UI layer (not just the API layer), context-switch
+staleness (using a genuinely different source, `phasor_smoke_bravo_
+three_phase`, since two contexts cannot share the same channel refs),
+and scale-legend/vector non-overlap at 1366px/1024px (verified visually
+via screenshot first, then locked in as a bounding-box assertion).
+
+**Validation**: full Sequence Playwright suite run 10 consecutive times
+(330/330 — zero flaky failures); full backend regression suite passes;
+full frontend structural suite passes (all pre-existing substring-based
+assertions still pass unchanged); Phasor/Playback/Related-Waveforms/
+Analysis-context regression passes; `git diff --check` clean.
+
+**Files**: `backend/tests/test_sequence_components_domain.py` (2 tests
+strengthened/added), `browser-tests/sequence_components_analysis.spec.js`
+(+13 scenarios, 20→33); docs `docs/project-memory/
+SEQUENCE_COMPONENTS_ANALYSIS.md` (new "Closure-pass audit summary"
+section, "Sequence visibility"/"Sequence ratios" sections extended with
+the confirmed-and-documented rules, "Known limitations" reframed to
+explicitly separate permanent scope boundaries/future enhancements from
+bugs — there are zero of the latter), `CURRENT_STATE.md` (this file).
+**No DECISIONS.md entry** — no architecture changed, confirmation/
+hardening only, per the task's own explicit instruction.
+
+**Stop condition honored**: closure/hardening only — no new Sequence
+feature, no other analyzer touched, no protection thresholds/trip
+logic/compliance judgments/sequence impedance/fault classification
+added anywhere.
+
+## What was done in the prior session — Sequence Components vector shaft/color rendering bug fix
+
 **Sequence Components vector shaft/color rendering bug fix (owner UAT,
 renderer/style only, no math changed).** Owner report: sequence values
 appeared to calculate correctly, but the diagram showed a dominant

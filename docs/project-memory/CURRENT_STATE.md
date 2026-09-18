@@ -1056,6 +1056,50 @@ own "Vector rendering invariant and the shaft/color rendering bug fix"
 section for the full record. No DECISIONS.md entry — a bug fix, not an
 architecture change.
 
+**Sequence Components closure/hardening pass (2026-09-18) — CLOSED as a
+stable feature, zero remaining Sequence-specific open bugs/debt.** A
+complete audit of every Sequence-specific implementation path (domain
+math, service layer, API/schema, frontend state machine, Recording/
+Manual input, Playback, Related Waveforms, vector renderer, scale
+logic, visibility, ratios, angle convention, responsive layout, theme
+tokens, tests, docs) — not assumed complete merely because existing
+tests passed. **Result: no production defects found** beyond the
+vector-shaft/color bug already fixed the same day (see above); every
+other path was verified correct by direct code reading AND real-browser
+testing. Two behaviors were **confirmed-and-documented, not changed**
+(per the task's own "if changed, explain; if not, confirm and document"
+framing): (1) hiding a role via the eye toggle never rescales the
+remaining visible vectors — `wwSequenceFamilyMaxMagnitude()` includes
+every `available` role regardless of its own visibility, identical to
+`wwPhasorFamilyMaxMagnitude()`'s own precedent; (2) a sequence ratio's
+own magnitude is never capped, only guarded against `Infinity`/`NaN` —
+capping an extreme-but-real ratio would itself be an implicit
+threshold/compliance judgment, which this feature explicitly excludes.
+Naming/ordering (`V1`/`V2`/`V0`, positive→negative→zero) was found
+already consistent everywhere — no `0,1,2` vs `1,2,0` mismatch existed.
+No Sequence-specific `[OPEN]`/pending/TODO/FIXME items existed in the
+codebase or `docs/project-memory/` before this pass (confirmed by
+direct search) — there was nothing pending to close going in.
+**Backend golden tests strengthened**: the unbalanced-input golden test
+now asserts real/imaginary/magnitude/angle (was magnitude-only), plus a
+new equivalent Current-domain unbalanced golden case. **Real-browser
+coverage extended from 20 to 33 scenarios**
+(`browser-tests/sequence_components_analysis.spec.js`): individual
+dominant-color golden cases for all six roles (closing the I2/I0 gap),
+a mixed-all-six-visible simultaneous-color case, dark-theme color
+resolution, the visibility/scale-isolation rule, angle-wrap-around
+display, the ratio-unavailable guardrail at the UI layer, context-
+switch staleness (a genuinely different source/context, not a channel-
+ref collision), and scale-legend/vector non-overlap at 1366px/1024px.
+**Validation**: full Sequence Playwright suite run 10 consecutive times
+(330/330, zero flaky failures); full backend regression; full frontend
+structural suite; Phasor/Playback/Related-Waveforms/Analysis-context
+regression; `git diff --check` clean. See
+[SEQUENCE_COMPONENTS_ANALYSIS.md](SEQUENCE_COMPONENTS_ANALYSIS.md)'s
+own "Closure-pass audit summary" section for the full record. No
+DECISIONS.md entry — no architecture changed, confirmation/hardening
+only.
+
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test
 infrastructure only, zero production code changed) establishes the

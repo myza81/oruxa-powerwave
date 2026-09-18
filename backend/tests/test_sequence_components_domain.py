@@ -117,7 +117,11 @@ class TestMixedUnbalancedInput:
     def test_hand_derived_example(self):
         """Va=100/0, Vb=90/-100, Vc=95/130 -- independently hand-summed
         via `a=exp(j120deg)` outside this module (never copy-pasted from
-        the implementation itself)."""
+        the implementation itself). Closure-pass hardening (task's own
+        section 19 "do not rely only on magnitude"): asserts real,
+        imaginary, magnitude, AND angle for all three components, not
+        magnitude alone -- a transform that got the ROTATION DIRECTION
+        or a sign wrong could still coincidentally match on magnitude."""
         a = complex(math.cos(math.radians(120.0)), math.sin(math.radians(120.0)))
         a2 = a * a
         xa = cmath.rect(100.0, math.radians(0.0))
@@ -128,9 +132,40 @@ class TestMixedUnbalancedInput:
         expected_x2 = (xa + a2 * xb + a * xc) / 3.0
 
         result = compute_symmetrical_components(100.0, 0.0, 90.0, -100.0, 95.0, 130.0)
-        assert result.zero_magnitude == pytest.approx(abs(expected_x0), abs=1e-6)
-        assert result.positive_magnitude == pytest.approx(abs(expected_x1), abs=1e-6)
-        assert result.negative_magnitude == pytest.approx(abs(expected_x2), abs=1e-6)
+        for result_mag, result_ang, expected in (
+            (result.zero_magnitude, result.zero_angle_deg, expected_x0),
+            (result.positive_magnitude, result.positive_angle_deg, expected_x1),
+            (result.negative_magnitude, result.negative_angle_deg, expected_x2),
+        ):
+            assert result_mag == pytest.approx(abs(expected), abs=1e-6)
+            actual = cmath.rect(result_mag, math.radians(result_ang))
+            assert actual.real == pytest.approx(expected.real, abs=1e-6)
+            assert actual.imag == pytest.approx(expected.imag, abs=1e-6)
+
+    def test_hand_derived_example_current(self):
+        """Task's own section 19 "test both Voltage and Current" for the
+        unbalanced/mixed case, not just the three pure golden cases --
+        Ia=40/15, Ib=32/-95, Ic=45/160, independently hand-summed
+        exactly like the Voltage case above."""
+        a = complex(math.cos(math.radians(120.0)), math.sin(math.radians(120.0)))
+        a2 = a * a
+        xa = cmath.rect(40.0, math.radians(15.0))
+        xb = cmath.rect(32.0, math.radians(-95.0))
+        xc = cmath.rect(45.0, math.radians(160.0))
+        expected_x0 = (xa + xb + xc) / 3.0
+        expected_x1 = (xa + a * xb + a2 * xc) / 3.0
+        expected_x2 = (xa + a2 * xb + a * xc) / 3.0
+
+        result = compute_symmetrical_components(40.0, 15.0, 32.0, -95.0, 45.0, 160.0)
+        for result_mag, result_ang, expected in (
+            (result.zero_magnitude, result.zero_angle_deg, expected_x0),
+            (result.positive_magnitude, result.positive_angle_deg, expected_x1),
+            (result.negative_magnitude, result.negative_angle_deg, expected_x2),
+        ):
+            assert result_mag == pytest.approx(abs(expected), abs=1e-6)
+            actual = cmath.rect(result_mag, math.radians(result_ang))
+            assert actual.real == pytest.approx(expected.real, abs=1e-6)
+            assert actual.imag == pytest.approx(expected.imag, abs=1e-6)
 
 
 class TestAngleNormalization:
