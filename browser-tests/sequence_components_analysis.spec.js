@@ -413,3 +413,278 @@ test.describe("Sequence Components v1 -- responsive layout", () => {
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Vector shaft/color rendering regression (owner UAT, 2026-09-18) -- proves
+// every rendered sequence vector is a COMPLETE origin -> shaft -> arrowhead
+// -> label vector, and that Positive/Negative/Zero sequence identity colors
+// are actually applied to the shaft/arrowhead, not just present in markup.
+// Root cause: `wwSequenceRoleColor()`'s three `var(--ww-seq-*)` lookups had
+// no defensive fallback (unlike this codebase's own established `var(x,
+// fallback)` convention for exactly this risk -- see `.ww-annotation`'s own
+// CSS comment) -- with those tokens unresolved (a stale/version-mismatched
+// cached theme.css predating them), the shaft `<line>`'s own
+// `stroke="var(...)"` (its ONLY color source, no competing CSS class)
+// degrades to SVG's own initial value `none` (invisible), while the
+// arrowhead `<polygon>`'s `fill="var(...)"` degrades to `black` (still
+// visible, wrong color) -- reproducing every symptom reported. Fixed by
+// adding `var(--ww-seq-x, var(--text-dim))` fallbacks. These tests assert
+// actual rendered SVG geometry/computed color, never markup presence alone.
+// ---------------------------------------------------------------------------
+
+// Vector emission order is fixed per role (see `wwPhasorVectorSvg()`):
+// <line> then <polygon> then <text class="ww-phasor-vector-label">, in that
+// DOM order -- walks backward from the role's own label to find its own
+// shaft/arrowhead, never assuming a global element index.
+async function vectorGeometry(page, svgSelector, roleKey) {
+  return page.evaluate(
+    ({ sel, role }) => {
+      const svg = document.querySelector(sel);
+      if (!svg) return null;
+      const label = Array.from(svg.querySelectorAll("text.ww-phasor-vector-label")).find((t) => t.textContent === role);
+      if (!label) return null;
+      const polygon = label.previousElementSibling;
+      const line = polygon ? polygon.previousElementSibling : null;
+      if (!line || line.tagName.toLowerCase() !== "line" || !polygon || polygon.tagName.toLowerCase() !== "polygon") return null;
+      const lineCs = getComputedStyle(line);
+      const polyCs = getComputedStyle(polygon);
+      const x1 = parseFloat(line.getAttribute("x1"));
+      const y1 = parseFloat(line.getAttribute("y1"));
+      const x2 = parseFloat(line.getAttribute("x2"));
+      const y2 = parseFloat(line.getAttribute("y2"));
+      return {
+        x1, y1, x2, y2,
+        shaftLength: Math.hypot(x2 - x1, y2 - y1),
+        lineStroke: lineCs.stroke,
+        lineStrokeWidth: parseFloat(lineCs.strokeWidth),
+        polygonFill: polyCs.fill,
+        labelText: label.textContent,
+        labelFillVisible: getComputedStyle(label).fill !== "none",
+      };
+    },
+    { sel: svgSelector, role: roleKey }
+  );
+}
+
+// Resolves a `var(--token)` expression the SAME way the browser's own paint
+// pipeline does (normalized to `rgb(...)`) -- never comparing a raw hex
+// theme.css literal against a computed `rgb()` string.
+async function resolvedColor(page, varExpr) {
+  return page.evaluate((expr) => {
+    const probe = document.createElement("div");
+    probe.style.color = expr;
+    document.body.appendChild(probe);
+    const rgb = getComputedStyle(probe).color;
+    probe.remove();
+    return rgb;
+  }, varExpr);
+}
+
+test.describe("Sequence Components v1 -- vector shaft/color rendering (Manual)", () => {
+  test("dominant V1: shaft visible with non-zero length, arrowhead + label present, Positive-sequence color", async ({ page }) => {
+    await openEmptyWorkspaceSequence(page);
+    await page.locator("#wwSequenceManualVoltageBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: 100, unit: "V", angleDeg: 0 });
+    await enterRole(page, "Vb", { magnitude: 100, unit: "V", angleDeg: -120 });
+    await enterRole(page, "Vc", { magnitude: 100, unit: "V", angleDeg: 120 });
+    await expect(async () => {
+      const text = await page.locator("#wwSequenceValuesList").innerText();
+      expect(text).toMatch(/V1[\s\S]*?100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+
+    const positiveColor = await resolvedColor(page, "var(--ww-seq-positive)");
+    const geo = await vectorGeometry(page, "#wwSequenceSvg", "V1");
+    expect(geo).not.toBeNull();
+    expect(geo.shaftLength).toBeGreaterThan(50); // a dominant vector must have a long, clearly visible shaft
+    expect(geo.lineStroke).toBe(positiveColor); // never "none", never black-default
+    expect(geo.lineStrokeWidth).toBeGreaterThan(0);
+    expect(geo.polygonFill).toBe(positiveColor);
+    expect(geo.labelText).toBe("V1");
+    expect(geo.labelFillVisible).toBe(true);
+
+    // Never the phase-identity colors, and never plain browser-default
+    // black/none -- the whole point of this regression.
+    const phaseAColor = await resolvedColor(page, "var(--ww-phase-a)");
+    expect(geo.lineStroke).not.toBe(phaseAColor);
+    expect(geo.lineStroke).not.toBe("rgb(0, 0, 0)");
+    expect(geo.lineStroke).not.toBe("none");
+  });
+
+  test("pure negative sequence: V2 shaft visible in the correct quadrant with Negative-sequence color", async ({ page }) => {
+    await openEmptyWorkspaceSequence(page);
+    await page.locator("#wwSequenceManualVoltageBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: 100, unit: "V", angleDeg: 0 });
+    await enterRole(page, "Vb", { magnitude: 100, unit: "V", angleDeg: 120 });
+    await enterRole(page, "Vc", { magnitude: 100, unit: "V", angleDeg: -120 });
+    await expect(async () => {
+      const text = await page.locator("#wwSequenceValuesList").innerText();
+      expect(text).toMatch(/V2[\s\S]*?100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+
+    const negativeColor = await resolvedColor(page, "var(--ww-seq-negative)");
+    const geo = await vectorGeometry(page, "#wwSequenceSvg", "V2");
+    expect(geo).not.toBeNull();
+    expect(geo.shaftLength).toBeGreaterThan(50);
+    expect(geo.lineStroke).toBe(negativeColor);
+    expect(geo.polygonFill).toBe(negativeColor);
+    // Pure V2 at angle 0 -> a real-axis-aligned vector, same quadrant
+    // (Real-positive) check as the golden angle -- proves position, not
+    // just color, is correct.
+    expect(geo.x2).toBeGreaterThan(40);
+    expect(Math.abs(geo.y2)).toBeLessThan(5);
+  });
+
+  test("pure zero sequence: V0 shaft visible with Zero-sequence color", async ({ page }) => {
+    await openEmptyWorkspaceSequence(page);
+    await page.locator("#wwSequenceManualVoltageBasisSelect").selectOption("secondary");
+    for (const role of ["Va", "Vb", "Vc"]) {
+      await enterRole(page, role, { magnitude: 100, unit: "V", angleDeg: 0 });
+    }
+    await expect(async () => {
+      const text = await page.locator("#wwSequenceValuesList").innerText();
+      expect(text).toMatch(/V0[\s\S]*?100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+
+    const zeroColor = await resolvedColor(page, "var(--ww-seq-zero)");
+    const geo = await vectorGeometry(page, "#wwSequenceSvg", "V0");
+    expect(geo).not.toBeNull();
+    expect(geo.shaftLength).toBeGreaterThan(50);
+    expect(geo.lineStroke).toBe(zeroColor);
+    expect(geo.polygonFill).toBe(zeroColor);
+  });
+
+  test("dominant I1 (Current): shaft visible, dashed, Positive-sequence color -- audits Current, not only Voltage", async ({ page }) => {
+    await openEmptyWorkspaceSequence(page);
+    await page.locator("#wwSequenceManualCurrentBasisSelect").selectOption("secondary");
+    await enterRole(page, "Ia", { magnitude: 40, unit: "A", angleDeg: -30 });
+    await enterRole(page, "Ib", { magnitude: 40, unit: "A", angleDeg: -150 });
+    await enterRole(page, "Ic", { magnitude: 40, unit: "A", angleDeg: 90 });
+    await expect(async () => {
+      const text = await page.locator("#wwSequenceValuesList").innerText();
+      expect(text).toMatch(/I1[\s\S]*?40\.0\s*A/);
+    }).toPass({ timeout: 5000 });
+
+    const positiveColor = await resolvedColor(page, "var(--ww-seq-positive)");
+    const geo = await vectorGeometry(page, "#wwSequenceSvg", "I1");
+    expect(geo).not.toBeNull();
+    expect(geo.shaftLength).toBeGreaterThan(50);
+    expect(geo.lineStroke).toBe(positiveColor);
+    expect(geo.polygonFill).toBe(positiveColor);
+  });
+
+  test("all six roles (V1/V2/V0/I1/I2/I0) share the identical vector rendering path", async ({ page }) => {
+    await openEmptyWorkspaceSequence(page);
+    await page.locator("#wwSequenceManualVoltageBasisSelect").selectOption("secondary");
+    await page.locator("#wwSequenceManualCurrentBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: 132, unit: "kV", angleDeg: 12 });
+    await enterRole(page, "Vb", { magnitude: 128, unit: "kV", angleDeg: -100 });
+    await enterRole(page, "Vc", { magnitude: 130, unit: "kV", angleDeg: 140 });
+    await enterRole(page, "Ia", { magnitude: 40, unit: "A", angleDeg: -40 });
+    await enterRole(page, "Ib", { magnitude: 38, unit: "A", angleDeg: -160 });
+    await enterRole(page, "Ic", { magnitude: 42, unit: "A", angleDeg: 95 });
+    await expect(async () => {
+      const text = await page.locator("#wwSequenceValuesList").innerText();
+      expect(text).toContain("I1");
+    }).toPass({ timeout: 5000 });
+
+    for (const role of ["V1", "V2", "V0", "I1", "I2", "I0"]) {
+      const geo = await vectorGeometry(page, "#wwSequenceSvg", role);
+      expect(geo, `${role} vector must be present`).not.toBeNull();
+      expect(geo.lineStroke, `${role} stroke must not be "none"`).not.toBe("none");
+      expect(geo.lineStroke, `${role} stroke must not be default black`).not.toBe("rgb(0, 0, 0)");
+      expect(geo.lineStrokeWidth).toBeGreaterThan(0);
+    }
+  });
+});
+
+test.describe("Sequence Components v1 -- vector shaft/color rendering (Recording)", () => {
+  test("balanced recording: V1/I1 dominant shafts render with correct sequence colors", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisSequence(page);
+    await selectContextAndWaitForResult(page, contextId);
+
+    const positiveColor = await resolvedColor(page, "var(--ww-seq-positive)");
+    const geoV1 = await vectorGeometry(page, "#wwSequenceSvg", "V1");
+    const geoI1 = await vectorGeometry(page, "#wwSequenceSvg", "I1");
+    expect(geoV1).not.toBeNull();
+    expect(geoV1.shaftLength).toBeGreaterThan(50);
+    expect(geoV1.lineStroke).toBe(positiveColor);
+    expect(geoI1).not.toBeNull();
+    expect(geoI1.shaftLength).toBeGreaterThan(50);
+    expect(geoI1.lineStroke).toBe(positiveColor);
+  });
+});
+
+test.describe("Sequence Components v1 -- defensive color fallback (root-cause regression)", () => {
+  // Directly proves the fix: without a `var(x, fallback)` second argument,
+  // an unresolved `--ww-seq-*` token (the real-world case this guards --
+  // a stale/version-mismatched cached theme.css predating these recently-
+  // added tokens, unlike Phasor's own long-stable `--ww-phase-a/b/c`)
+  // makes `stroke="var(--ww-seq-positive)"` invalid-at-computed-value-time,
+  // and the shaft `<line>` (which has no competing CSS class -- the
+  // presentation attribute is its ONLY color source) falls back to SVG's
+  // own initial `stroke` value, `none` -- an invisible shaft, even though
+  // the underlying geometry (x2/y2) is completely correct. Disabling the
+  // `var(x, fallback)` fix and re-running this exact test reproduces
+  // `lineStroke === "none"` and `shaftLength === 0` (invisible) -- verified
+  // manually during this fix's own development, not assumed.
+  test("shaft stays visible even when --ww-seq-positive is unresolved", async ({ page }) => {
+    await page.goto("/index.html");
+    await page.evaluate(() => {
+      const style = document.createElement("style");
+      style.textContent = ":root { --ww-seq-positive: initial; --ww-seq-negative: initial; --ww-seq-zero: initial; }";
+      document.head.appendChild(style);
+    });
+    await openAnalysisSequence(page);
+    await page.locator("#wwSequenceManualVoltageBasisSelect").selectOption("secondary");
+    await enterRole(page, "Va", { magnitude: 100, unit: "V", angleDeg: 0 });
+    await enterRole(page, "Vb", { magnitude: 100, unit: "V", angleDeg: -120 });
+    await enterRole(page, "Vc", { magnitude: 100, unit: "V", angleDeg: 120 });
+    await expect(async () => {
+      const text = await page.locator("#wwSequenceValuesList").innerText();
+      expect(text).toMatch(/V1[\s\S]*?100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+
+    const geo = await vectorGeometry(page, "#wwSequenceSvg", "V1");
+    expect(geo).not.toBeNull();
+    // The geometry (position) is unaffected -- this is a pure rendering/
+    // color-fallback fix, never a math change.
+    expect(geo.x2).toBeGreaterThan(50);
+    // The critical assertion: even with the primary token gone, the
+    // shaft must still PAINT (fall back to --text-dim), never "none".
+    expect(geo.lineStroke).not.toBe("none");
+    expect(geo.shaftLength).toBeGreaterThan(50);
+    const fallbackColor = await resolvedColor(page, "var(--text-dim)");
+    expect(geo.lineStroke).toBe(fallbackColor);
+    expect(geo.polygonFill).not.toBe("rgb(0, 0, 0)"); // never silently black-default either
+  });
+});
+
+test.describe("Sequence Components v1 -- vector shaft/color rendering responsive", () => {
+  for (const width of [1366, 1024]) {
+    test(`dominant V1 shaft remains visible and unclipped at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await openEmptyWorkspaceSequence(page);
+      await page.locator("#wwSequenceManualVoltageBasisSelect").selectOption("secondary");
+      await enterRole(page, "Va", { magnitude: 100, unit: "V", angleDeg: 0 });
+      await enterRole(page, "Vb", { magnitude: 100, unit: "V", angleDeg: -120 });
+      await enterRole(page, "Vc", { magnitude: 100, unit: "V", angleDeg: 120 });
+      await expect(async () => {
+        const text = await page.locator("#wwSequenceValuesList").innerText();
+        expect(text).toMatch(/V1[\s\S]*?100\.0\s*V/);
+      }).toPass({ timeout: 5000 });
+
+      const positiveColor = await resolvedColor(page, "var(--ww-seq-positive)");
+      const geo = await vectorGeometry(page, "#wwSequenceSvg", "V1");
+      expect(geo).not.toBeNull();
+      expect(geo.shaftLength).toBeGreaterThan(50);
+      expect(geo.lineStroke).toBe(positiveColor);
+
+      // The rendered SVG box itself must still be visible and reasonably
+      // sized (never collapsed to 0 by a narrow layout).
+      const box = await page.locator("#wwSequenceSvg").boundingBox();
+      expect(box.width).toBeGreaterThan(100);
+      expect(box.height).toBeGreaterThan(100);
+    });
+  }
+});

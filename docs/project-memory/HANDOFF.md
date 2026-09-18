@@ -8,6 +8,89 @@ Last updated: **2026-09-18**
 
 ## What was most recently done
 
+**Sequence Components vector shaft/color rendering bug fix (owner UAT,
+renderer/style only, no math changed).** Owner report: sequence values
+appeared to calculate correctly, but the diagram showed a dominant
+component (e.g. V1, arrowhead correctly far from the origin) with no
+visible connecting shaft line, and the intended Positive/Negative/Zero
+sequence-identity colors did not appear applied.
+
+**Investigation**: `wwSequenceRenderDiagramSvg()` is structurally
+identical to the proven `wwPhasorRenderDiagramSvg()` and calls the SAME
+`wwPhasorVectorSvg()` shaft/arrowhead/label function Phasor's own
+diagram uses. Exhaustive real-browser testing (Manual/Recording,
+Secondary/Primary basis, balanced/unbalanced, light/dark theme,
+visibility-toggle round trip) rendered CORRECTLY every time against a
+healthy `theme.css` — the defect would not reproduce that way.
+
+**Root cause, confirmed by direct reproduction**: `wwSequenceRoleColor()`
+returned a bare `var(--ww-seq-positive)` with no fallback — unlike this
+codebase's own already-established `var(x, fallback)` defensive-CSS
+convention (see `.ww-annotation`'s own comment: falls back "if this
+file is ever loaded without theme.css, e.g. a stale cached copy
+predating this token"). `--ww-seq-*` are comparatively NEW tokens
+(added the same slice as Sequence Components itself), unlike Phasor's
+own long-stable `--ww-phase-a/b/c`. With the tokens unresolved: the
+shaft `<line>`'s `stroke="var(...)"` (its ONLY color source) degrades
+to SVG's own initial `stroke` value `none` — invisible, even though its
+own x1/y1/x2/y2 geometry is completely correct; the arrowhead
+`<polygon>`'s `fill="var(...)"` degrades to `black` (stays visible,
+wrong color); the `<text>` label survives only because a separate
+stylesheet rule (`fill: var(--text)`) always outranks the inline
+attribute regardless. This precisely reproduces every reported symptom
+— confirmed by literally unsetting the three tokens in a real browser
+and observing `stroke: none` / `fill: rgb(0, 0, 0)`; a screenshot of
+that state is pixel-for-pixel the shape the owner described.
+
+**Fix**: `wwSequenceRoleColor()` (`frontend/index.html`) now returns
+`var(--ww-seq-positive, var(--text-dim))` (and the equivalent for
+`-negative`/`-zero`) — falling back to the SAME `--text-dim` token this
+function already used for an unrecognized role, so a degraded shaft
+stays visibly present (neutral gray) instead of vanishing. The healthy/
+normal rendering path is completely unchanged. `wwPhasorRoleColor()`
+(Phasor's own, separate function) was deliberately left untouched — out
+of this fix's explicit narrow scope. **No domain math, Recording
+calculation, Manual calculation, ratio, basis conversion, or Playback
+behavior was touched** — exactly one function (a pure color-string
+builder) changed.
+
+**New regression coverage**
+(`browser-tests/sequence_components_analysis.spec.js`, +9 scenarios):
+"vector shaft/color rendering" suites assert actual rendered SVG
+geometry/computed color (never markup presence alone) for a dominant
+V1, pure V2, pure V0, dominant I1, and all six roles together, in both
+Manual and Recording mode, at 1366px/1024px; plus one dedicated test
+that directly reproduces the degraded-token scenario and asserts the
+shaft still paints — verified via the disable-fix-then-verify
+discipline (fails with `lineStroke === "none"` before the fix, passes
+after it). Ran 3x clean (23/23 each run) plus alongside the Phasor/
+Analysis-shared/Playback regression.
+
+**Validation**: full backend regression suite passes (unchanged — no
+backend files touched at all this pass); `test_frontend_sequence_
+components_analysis.py`'s existing substring-based color-token
+assertions pass unchanged (they check `"--ww-seq-positive" in fn`, not
+an exact string, so the added fallback doesn't break them); Phasor
+regression, Analysis-shared regression
+(`analysis_related_waveforms.spec.js`, `phasor_bare_context.spec.js`,
+`playback.spec.js`) all pass; `git diff --check` clean.
+
+**Files**: `frontend/index.html` (one function's three `var()` calls
+gained a fallback argument, plus its own explanatory comment — no other
+line touched); `browser-tests/sequence_components_analysis.spec.js`
+(+275 lines, new tests only); docs `docs/project-memory/
+SEQUENCE_COMPONENTS_ANALYSIS.md` (new "Vector rendering invariant and
+the shaft/color rendering bug fix" section), `CURRENT_STATE.md` (this
+file). **No DECISIONS.md entry** — a bug fix, not an architecture
+change, per the task's own explicit instruction.
+
+**Stop condition honored**: renderer/style fix only — Fortescue math
+(`X0`/`X1`/`X2`), Recording calculation, Manual calculation, ratios,
+basis conversion, and Playback behavior are all byte-for-byte
+unchanged; scale behavior unchanged (not touched, not the cause).
+
+## What was done in the prior session — Distance Protection v1, the fifth Analysis-menu analyzer
+
 **Distance Protection v1 is implemented — the FIFTH Analysis-menu
 analyzer ([DECISIONS.md — DEC-099](DECISIONS.md#dec-099--distance-protection-v1-the-fifth-analysis-menu-analyzer-mho-and-quadrilateral-zone-characteristic-evaluation-on-phase-phase-fault-loop-impedance)).**
 New nav entry (order preserved: Phasor, Overcurrent, Impedance Locus,

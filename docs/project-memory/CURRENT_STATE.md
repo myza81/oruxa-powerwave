@@ -1011,6 +1011,51 @@ own closing section for the full diagnosis; `[OPEN]` for a future,
 separate task, per the exact precedent DEC-097/DEC-098 already
 established.
 
+**Bug fix (2026-09-18) — Sequence Components vector shaft/color
+rendering (owner UAT, renderer/style only, no math changed).** Owner
+report: sequence values appeared to calculate correctly, but the
+diagram showed a dominant component (e.g. V1, far from the origin) as
+an isolated arrowhead with no visible connecting shaft, and the
+intended Positive/Negative/Zero sequence-identity colors did not appear
+applied. Root cause, confirmed by direct reproduction (not assumed):
+`wwSequenceRoleColor()` returned a bare `var(--ww-seq-positive)` with
+no fallback — unlike this codebase's own established `var(x, fallback)`
+defensive-CSS convention (see `.ww-annotation`'s own comment on exactly
+this risk: a stale/version-mismatched cached `theme.css` predating a
+recently-added token). With `--ww-seq-positive/-negative/-zero`
+unresolved, the shaft `<line>`'s own `stroke="var(...)"` (its ONLY
+color source) degrades to SVG's own initial value `none` — an
+invisible shaft, even though its own geometry is completely correct —
+while the arrowhead `<polygon>`'s `fill="var(...)"` degrades to
+`black` (stays visible, wrong color); the `<text>` label survives only
+because a separate stylesheet rule (`fill: var(--text)`) always
+outranks the inline attribute. Reproduced exactly (screenshot
+pixel-for-pixel matches the owner's description) by directly unsetting
+the three tokens in a real browser. **Fix**: each of the three lookups
+in `wwSequenceRoleColor()` now carries `var(--ww-seq-x, var(--text-dim))`
+— the same defensive pattern this codebase already uses elsewhere,
+falling back to the SAME `--text-dim` token this function already used
+for an unrecognized role. The healthy/normal rendering path (a
+present, up-to-date `theme.css`) is unchanged — same colors as before.
+`wwPhasorRoleColor()` (Phasor's own function) was deliberately left
+untouched, out of this fix's explicit narrow scope. No domain math,
+Recording calculation, Manual calculation, ratio, basis-conversion, or
+Playback behavior touched — exactly one function (a pure color-string
+builder) changed. New Playwright coverage
+(`browser-tests/sequence_components_analysis.spec.js`, +9 scenarios:
+dominant V1/pure V2/pure V0/dominant I1/all-six-roles shaft-and-color
+geometry assertions in Manual, an equivalent Recording-mode check, a
+responsive check at 1366px/1024px, and one dedicated test that directly
+reproduces the degraded-token scenario) — the dedicated regression test
+was verified to genuinely fail before the fix
+(`lineStroke === "none"`) and pass after it. Full backend regression,
+full frontend structural suite, and Phasor/Analysis-shared Playwright
+regression all pass. See
+[SEQUENCE_COMPONENTS_ANALYSIS.md](SEQUENCE_COMPONENTS_ANALYSIS.md)'s
+own "Vector rendering invariant and the shaft/color rendering bug fix"
+section for the full record. No DECISIONS.md entry — a bug fix, not an
+architecture change.
+
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test
 infrastructure only, zero production code changed) establishes the

@@ -41577,11 +41577,48 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // -zero tokens (theme.css), never phase A/B/C colors (task's own
         // section 13 "do not reuse phase A/B/C colors in a way that
         // implies phase identity").
+        //
+        // Bug fix (owner UAT, 2026-09-18): each lookup now carries a
+        // `var(x, fallback)` defensive second argument -- the SAME
+        // established convention this codebase already uses for exactly
+        // this risk (see `.ww-annotation`'s own `var(--annotation-bg,
+        // var(--panel))` comment: "falls back... if this file is ever
+        // loaded without theme.css, e.g. a stale cached copy predating
+        // this token"). Root cause, reproduced and confirmed: with
+        // `--ww-seq-positive/-negative/-zero` unresolved (a stale/
+        // version-mismatched cached theme.css that predates this token --
+        // a real risk for a token this recently added, unlike the long-
+        // stable `--ww-phase-a/b/c` tokens `wwPhasorRoleColor()` uses),
+        // `stroke="var(--ww-seq-positive)"` on the shaft `<line>` (no
+        // competing CSS class -- the presentation attribute is the ONLY
+        // color source) resolves to invalid-at-computed-value-time, so
+        // the browser falls back to `stroke`'s own SVG initial value
+        // `none` -- an entirely INVISIBLE shaft, even though the line's
+        // own x2/y2 geometry is completely correct (proving the Fortescue
+        // math/positioning was never the problem). The arrowhead
+        // `<polygon>`'s own `fill="var(...)"` degrades the same way, but
+        // `fill`'s own SVG initial value is `black`, not `none` -- so the
+        // arrowhead stays VISIBLE, just rendered in the wrong (black,
+        // browser-default) color. The `<text>` label survives untouched
+        // only because it doubly carries `.ww-phasor-vector-label { fill:
+        // var(--text) }` in the stylesheet, which always outranks the
+        // inline presentation attribute regardless of whether the
+        // sequence token resolves. This exactly reproduces every symptom
+        // reported: shaft missing, arrowhead/label visible, colors wrong
+        // -- confirmed by literally unsetting these three custom
+        // properties in a real browser and observing computed
+        // `stroke: none` / `fill: rgb(0,0,0)`. Falling back to the SAME
+        // `--text-dim` this function already used for an unrecognized
+        // roleKey keeps the shaft/arrowhead visibly present (a neutral
+        // color) instead of vanishing, without inventing a new token or
+        // touching Phasor's own `wwPhasorRoleColor()` (out of this task's
+        // explicit narrow scope -- its own tokens are old/stable enough
+        // that this staleness window essentially never applies to them).
         function wwSequenceRoleColor(roleKey) {
             const suffix = (roleKey || "").slice(-1);
-            if (suffix === "1") return "var(--ww-seq-positive)";
-            if (suffix === "2") return "var(--ww-seq-negative)";
-            if (suffix === "0") return "var(--ww-seq-zero)";
+            if (suffix === "1") return "var(--ww-seq-positive, var(--text-dim))";
+            if (suffix === "2") return "var(--ww-seq-negative, var(--text-dim))";
+            if (suffix === "0") return "var(--ww-seq-zero, var(--text-dim))";
             return "var(--text-dim)";
         }
 

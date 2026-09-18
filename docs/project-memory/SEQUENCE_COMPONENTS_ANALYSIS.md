@@ -7,6 +7,109 @@ Locus, Sequence Components). See
 [DECISIONS.md — DEC-097](DECISIONS.md#dec-097--sequence-components-v1-the-fourth-analysis-menu-analyzer-positivenegativezero-sequence-voltage-and-current-calculationvisualization)
 for the approval record.
 
+**2026-09-18 UAT fix — vector shaft/color rendering** (renderer/style
+only, no math changed): see "Vector rendering invariant and the shaft/
+color rendering bug fix" below for the full root-cause record.
+
+## Vector rendering invariant and the shaft/color rendering bug fix
+
+**Invariant (owner instruction, now guarded by regression tests):**
+
+> Every available, visible sequence component is rendered as a
+> complete vector from origin to arrowhead, using its sequence-identity
+> color.
+
+That means, for every rendered role (`V1`/`V2`/`V0`/`I1`/`I2`/`I0`), all
+three of: a shaft (`<line>`) with a real, non-zero, correctly-colored
+stroke; an arrowhead (`<polygon>`) filled in the same color; and a
+label (`<text>`). A vector whose magnitude is genuinely tiny may have a
+naturally short shaft — that is correct, physical behavior, never a
+bug. A vector with a materially non-zero magnitude must never render as
+an isolated arrowhead with no visible connecting shaft.
+
+**Owner UAT report**: sequence values appeared to calculate correctly
+(arrowheads positioned far from the origin for a dominant component,
+near the origin for small ones), but the connecting shaft line was
+effectively invisible, and the intended Positive/Negative/Zero
+sequence-identity colors did not appear to be applied.
+
+**Investigation**: `wwSequenceRenderDiagramSvg()` is structurally
+identical to the proven `wwPhasorRenderDiagramSvg()` — same grid/ring/
+legend geometry, same scale-freeze policy, and it calls the exact same
+`wwPhasorVectorSvg()` shaft/arrowhead/label drawing function Phasor's
+own diagram uses (see "Visualization" below). Direct comparison and
+exhaustive real-browser testing (Manual and Recording, Secondary and
+Primary basis, balanced and unbalanced angles, light and dark theme, the
+visibility-toggle round trip) all rendered correctly against a healthy,
+up-to-date `theme.css` — the defect could not be reproduced that way.
+
+**Root cause, confirmed by direct reproduction (not assumed):**
+`wwSequenceRoleColor()` (the function that maps `V1`/`V2`/`V0`/`I1`/`I2`/
+`I0` to `--ww-seq-positive`/`-negative`/`-zero`) returned a bare
+`var(--ww-seq-positive)` with **no fallback value** — unlike this
+codebase's own already-established defensive-CSS convention for exactly
+this risk (see `.ww-annotation`'s own CSS comment: a `var(x, fallback)`
+second argument "falls back... if this file is ever loaded without
+theme.css, e.g. a stale cached copy predating this token"). The
+`--ww-seq-*` tokens are comparatively NEW (added in this same feature's
+own slice, 2026-09-18) — a genuine staleness window exists for a
+recently-added token in a way it essentially does not for Phasor's own
+long-stable `--ww-phase-a/b/c` tokens (which alias `--accent`/`--warn`/
+`--ok`, present since early in the project). With `--ww-seq-positive`
+unresolved:
+- The shaft `<line>`'s own `stroke="var(--ww-seq-positive)"` is its
+  **only** color source (no competing CSS class for the solid/Voltage
+  case) — an unresolved token is invalid at computed-value time, so the
+  browser falls back to `stroke`'s own SVG initial value, `none`: an
+  **entirely invisible shaft**, even though the line's own `x1/y1/x2/y2`
+  geometry is completely correct (proving the Fortescue math/positioning
+  was never the problem).
+- The arrowhead `<polygon>`'s own `fill="var(--ww-seq-positive)"`
+  degrades the same way, but `fill`'s own SVG initial value is `black`,
+  not `none` — so the arrowhead stays **visible**, just in the wrong,
+  browser-default color.
+- The `<text>` label survives untouched only because it also carries
+  `.ww-phasor-vector-label { fill: var(--text) }` in the stylesheet,
+  which always outranks the inline presentation attribute regardless of
+  whether the sequence token resolves — so the label stays visible too.
+
+This precisely reproduces every symptom reported. Confirmed directly by
+temporarily unsetting the three custom properties in a real browser
+(`:root { --ww-seq-positive: initial; ... }`) and observing computed
+`stroke: none` on the shaft and `fill: rgb(0, 0, 0)` on the arrowhead —
+a screenshot of that state is pixel-for-pixel the shape the owner
+described (a lone black arrowhead far from the origin, no visible
+connecting line).
+
+**Fix** (`wwSequenceRoleColor()`, `frontend/index.html`): each of the
+three lookups now carries the same `var(x, fallback)` defensive pattern
+already established elsewhere in this file —
+`var(--ww-seq-positive, var(--text-dim))`, etc. — falling back to the
+SAME `--text-dim` token this function already used for an unrecognized
+role key. Even in the degraded case, the shaft now stays visibly
+present (a neutral gray, not gone), and the arrowhead is never
+browser-default black. The primary color path (a healthy, up-to-date
+`theme.css`) is completely unchanged — `--ww-seq-positive/-negative/
+-zero` still render exactly as before. `wwPhasorRoleColor()` (Phasor's
+own, separate function) was deliberately left untouched — out of this
+fix's explicit narrow scope, and its own tokens carry negligible
+staleness risk in comparison.
+
+No math, Recording calculation, Manual calculation, ratio, basis-
+conversion, or Playback behavior was touched — confirmed by this fix
+touching exactly one function (`wwSequenceRoleColor()`), a pure color-
+string builder with no numeric/geometric logic of its own.
+
+**Regression coverage** (`browser-tests/sequence_components_analysis.spec.js`):
+a new "vector shaft/color rendering" suite asserts actual rendered SVG
+geometry and computed color (never markup presence alone) for a
+dominant V1, a pure V2, a pure V0, a dominant I1, and all six roles
+together, in both Manual and Recording mode, at 1366px/1024px; plus one
+dedicated test that reproduces the exact degraded-token scenario above
+and asserts the shaft still paints — verified to actually fail before
+the fix (`lineStroke === "none"`) and pass after it, per this project's
+own disable-fix-then-verify discipline.
+
 ## Product definition
 
 Powerwave calculates the classical Fortescue symmetrical-component
