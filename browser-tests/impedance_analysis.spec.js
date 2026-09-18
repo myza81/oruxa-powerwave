@@ -75,22 +75,52 @@ async function openAnalysisImpedance(page) {
   await expect(page.locator("#wwOvercurrentPanel")).toBeHidden();
 }
 
+// Root cause of a real intermittent failure (see docs/project-memory/
+// DECISIONS.md's own hardening-pass entry): selecting a context
+// synchronously dispatches BOTH the current-point fetch AND the locus
+// fetch (`wwImpedanceLoadForSelectedContext()` -> `wwImpedanceRequestExactPlaybackFetch()`
+// + `wwImpedanceMaybeFetchLocus()`, in that order, same call stack) --
+// the ORIGINAL helper only ever waited for the current-point result
+// text, then a SEPARATE caller-side `waitForLocusCached()` re-POLLED
+// `wwImpedanceState.locusPoints` against its own independent, tighter-
+// than-this-project's-own-configured-default `{timeout: 5000}` window
+// (this suite's own `playwright.config.js` already sets `expect.timeout:
+// 10_000`). Under real (not pathological) backend latency during a
+// long combined multi-spec run, the 120-point `/impedance-locus`
+// round trip can occasionally still be in flight when that independent
+// 5s window expires -- the test was observing state BEFORE the real
+// network response had a chance to land, never a production ordering
+// defect (the fetch's own request-generation/epoch/workspace guards
+// were independently code-reviewed and are already correct -- see
+// `wwImpedanceMaybeFetchLocus()`'s own comment). Fix: arm a REAL
+// `page.waitForResponse()` for the actual `/impedance-locus` HTTP
+// round trip BEFORE the triggering `selectOption()` action (the
+// deterministic condition the task itself asks for -- "relevant API
+// response completed" -- never a value-polling loop racing an
+// independently-chosen timeout), so `waitForLocusCached()` below is
+// left as a fast, near-instant synchronous-render-catch-up check only.
 async function selectContextAndWaitForResult(page, contextId) {
   await expect(page.locator(`#wwImpedanceContextSelect option[value="${contextId}"]`)).toHaveCount(1);
+  const locusResponse = page.waitForResponse((r) => r.url().includes("/impedance-locus"), { timeout: 15000 });
   await page.locator("#wwImpedanceContextSelect").selectOption(contextId);
   await expect(async () => {
     const text = await page.locator("#wwImpedanceValuesList").innerText();
     expect(text).toContain("Phase impedance");
-  }).toPass({ timeout: 5000 });
+  }).toPass({ timeout: 10000 });
+  await locusResponse;
 }
 
 async function waitForLocusCached(page, { minPoints = 20 } = {}) {
+  // By the time selectContextAndWaitForResult() returns, the real
+  // `/impedance-locus` HTTP response has already completed (armed and
+  // awaited there) -- this is now just the synchronous render/state-
+  // commit that follows it settling, never a real network wait.
   await expect(async () => {
     const count = await page.evaluate(() =>
       wwImpedanceState.locusPoints.filter((p) => p.status === "computed").length
     );
     expect(count).toBeGreaterThanOrEqual(minPoints);
-  }).toPass({ timeout: 5000 });
+  }).toPass({ timeout: 2000 });
 }
 
 async function locusPathSegmentCount(page) {

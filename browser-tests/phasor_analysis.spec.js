@@ -758,7 +758,7 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
     const alphaSuggestUrls = suggestUrls.filter((url) => !url.includes(encodeURIComponent(bravoSourceId)));
     expect(alphaSuggestUrls).toHaveLength(0);
 
-    // 5. Selecting BRAVO1 loads its own six roles correctly.
+    // 5b. Selecting BRAVO1 loads its own six roles correctly.
     const bravoOption = page.locator("#wwPhasorContextSelect option", { hasText: "BRAVO1" });
     await expect(bravoOption).toHaveCount(1);
     const bravoContextId = await bravoOption.getAttribute("value");
@@ -769,6 +769,138 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
       expect(text).toMatch(/100\.0\s*V/);
       expect(text).toMatch(/40\.0\s*A/);
     }).toPass({ timeout: 5000 });
+  });
+
+  // ---- Time Group relabel hardening (2026-09-19 hardening pass) ----
+  //
+  // Root cause (see docs/project-memory/DECISIONS.md DEC-097's own
+  // closing section and this pass's own DEC-098): a Time Group's own
+  // `group_id` is ALWAYS its current origin source's own `source_id`
+  // (app.domain.time_grouping: earliest `start_time`, ties broken by
+  // `source_id` string), recomputed fresh from the LIVE source set on
+  // every call, never cached/persisted (DEC-057, deliberate/approved).
+  // The original flaky test above exercises this via TWO fixtures that
+  // happen to share the exact same recorded start timestamp
+  // (`phasor_smoke_three_phase`/`phasor_smoke_bravo_three_phase`, both
+  // `06/03/2026 10:00:00.000000`), so which one becomes origin is a
+  // 50/50 `source_id`-string coin flip -- genuinely random, exactly the
+  // kind of timing-dependent reproduction task instruction explicitly
+  // forbids relying on. This test instead uploads a THIRD fixture
+  // (`phasor_smoke_charlie_earlier_overlap`) whose own recorded start
+  // time is ONE FULL SECOND EARLIER than ALPHA1's (09:59:59 vs
+  // 10:00:00) while its own absolute interval still overlaps ALPHA1's
+  // (both 2s long) -- `(start_time, source_id)` ordering GUARANTEES
+  // Charlie becomes the new origin/group_id every single run,
+  // deterministically, with zero dependency on source_id randomness.
+  test("Time Group relabel (new overlapping-but-earlier source becomes origin) never disturbs Playback continuity", async ({ page }) => {
+    // 1. Upload ALPHA1 -> fresh bootstrap claims its own Time Group
+    //    (a solo absolute group, so group_id === ALPHA1's own source_id
+    //    trivially).
+    await uploadFixture(page);
+    const alphaSourceId = await page.locator("#recordingsTableBody tr[data-source-id]").last().getAttribute("data-source-id");
+    await openAnalysisPhasor(page);
+    await expect(page.locator("#wwPhasorContextSelect option")).toHaveCount(2, { timeout: 10000 });
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+
+    await expect(async () => {
+      const activeTimeGroupId = await page.evaluate(() => wwPlaybackState().activeTimeGroupId);
+      expect(activeTimeGroupId).toBe(alphaSourceId);
+    }).toPass({ timeout: 5000 });
+
+    // 2. Advance Playback to a genuinely non-start position -- proves
+    //    continuity (not merely "still 0, which would pass even with
+    //    the old bug since Restart also lands there").
+    const seekSlider = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-seek-slider");
+    const bounds = await seekSliderBounds(seekSlider);
+    const targetTime = bounds.min + (bounds.max - bounds.min) * 0.6;
+    await seekTo(seekSlider, targetTime);
+    await expect(async () => {
+      const currentTime = await page.evaluate(() => wwPlaybackState().currentTime);
+      expect(Math.abs(currentTime - targetTime)).toBeLessThan(0.02);
+    }).toPass({ timeout: 5000 });
+    const currentTimeBeforeUpload = await page.evaluate(() => wwPlaybackState().currentTime);
+    const stateBeforeUpload = await page.evaluate(() => wwPlaybackState().state);
+
+    // 3. Upload CHARLIE1 -- an unrelated, never-Engineering-Context'd
+    //    source that overlaps ALPHA1's own absolute interval but starts
+    //    one second earlier, DETERMINISTICALLY becoming the new
+    //    Time Group origin (see comment above).
+    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "phasor_smoke_charlie_earlier_overlap.cfg"));
+    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
+    await page.locator("#uploadModalSubmitBtn").click();
+    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+    const charlieSourceId = await page.locator("#recordingsTableBody tr[data-source-id]").last().getAttribute("data-source-id");
+    expect(charlieSourceId).not.toBe(alphaSourceId);
+
+    // 4. The relabel genuinely happened (this test actually exercises
+    //    the race, never a no-op) -- `wwPlayback.activeTimeGroupId` now
+    //    follows Charlie's own id, deterministically, every run.
+    await expect(async () => {
+      const activeTimeGroupId = await page.evaluate(() => wwPlaybackState().activeTimeGroupId);
+      expect(activeTimeGroupId).toBe(charlieSourceId);
+    }).toPass({ timeout: 5000 });
+
+    // 5. Playback continuity survived the relabel -- the fix's own
+    //    entire point: a relabel updates ONLY the tracked id, never
+    //    `currentTime`/`state` (never a Restart, never a reset to
+    //    `bounds.start`).
+    const currentTimeAfterUpload = await page.evaluate(() => wwPlaybackState().currentTime);
+    const stateAfterUpload = await page.evaluate(() => wwPlaybackState().state);
+    expect(currentTimeAfterUpload).toBeCloseTo(currentTimeBeforeUpload, 6);
+    expect(stateAfterUpload).toBe(stateBeforeUpload);
+
+    // 6. Re-entering Phasor observes the FINAL authoritative Time Group
+    //    reliably -- ALPHA1 remains selected and usable, with no
+    //    intermediate "Needs configuration" flash and no Restart-driven
+    //    `analysis_time=0` request.
+    const phasorDiagramRequestTimes = [];
+    page.on("request", (request) => {
+      const url = request.url();
+      if (!url.includes("/phasor-diagram")) return;
+      const match = url.match(/analysis_time=([0-9.eE+-]+)/);
+      if (match) phasorDiagramRequestTimes.push(parseFloat(match[1]));
+    });
+    const alphaContextIdSelected = await page.locator("#wwPhasorContextSelect").inputValue();
+    await page.locator("#mainNavAnalysisBtn").click();
+    await expect(page.locator("#wwPhasorContextSelect")).toHaveValue(alphaContextIdSelected);
+    const valuesTextRightAfterReentry = await page.locator("#wwPhasorValuesList").innerText();
+    expect(valuesTextRightAfterReentry).toMatch(/100\.0\s*V/);
+
+    await expect(async () => {
+      const currentTime = await page.evaluate(() => wwPlaybackState().currentTime);
+      expect(Math.abs(currentTime - targetTime)).toBeLessThan(0.02);
+    }).toPass({ timeout: 5000 });
+    // No request ever asked for a time near ALPHA1's own bounds.start
+    // -- a Restart would have. NOT a raw `targetTime` comparison:
+    // Charlie's own start_time is genuinely, correctly one second
+    // EARLIER than ALPHA1's (that is what makes it deterministically
+    // become the new coordinate origin at all -- see this test's own
+    // header comment), so ALPHA1's own `alignment_offset_s` correctly
+    // shifts by that same one second once Charlie becomes origin
+    // (DEC-057's own documented `timestamp_placement_offset_s =
+    // source_start_time - origin_start_time` composition) -- a REAL,
+    // intentional consequence of a genuine origin change, never
+    // something this hardening pass's fix is meant to mask. The fix's
+    // own job is narrower and already proven above (workspace
+    // `currentTime`/`state` untouched, no Restart) -- this final check
+    // only confirms the resulting SOURCE-RELATIVE analysis_time is the
+    // mathematically CORRECT one for that same unchanged workspace
+    // time, derived the exact same way `wwWorkspaceTimeToSourceTime()`
+    // itself would, never independently re-derived.
+    const expectedAnalysisTime = await page.evaluate(
+      (sid) => wwWorkspaceTimeToSourceTime(sid, wwPlaybackState().currentTime),
+      alphaSourceId
+    );
+    expect(phasorDiagramRequestTimes.length).toBeGreaterThan(0);
+    for (const t of phasorDiagramRequestTimes) {
+      expect(Math.abs(t - expectedAnalysisTime)).toBeLessThan(0.05);
+    }
   });
 
   test("removing a covered source does not block discovery of a still-uncovered one", async ({ page }) => {

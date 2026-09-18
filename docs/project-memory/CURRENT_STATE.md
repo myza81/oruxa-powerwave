@@ -9,8 +9,9 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-18** (Sequence Components v1, DEC-097
-— the fourth Analysis-menu analyzer; see its own entry below in
+Last meaningful update: **2026-09-19** (Analysis browser-test/runtime
+hardening pass, DEC-098 — closes the two `[OPEN]` flaky-Playwright items
+DEC-097 left behind; see its own entry below in
 [Implemented capabilities](#implemented-capabilities)).
 **Event Playback
 ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock),
@@ -917,10 +918,30 @@ Playwright tests (one in `phasor_analysis.spec.js`, one in
 `impedance_analysis.spec.js`) were found, diagnosed, and reported
 (not silently fixed) during this session's own regression verification
 — see [DECISIONS.md — DEC-097](DECISIONS.md#dec-097--sequence-components-v1-the-fourth-analysis-menu-analyzer-positivenegativezero-sequence-voltage-and-current-calculationvisualization)'s
-own closing section for the full diagnosis; both remain `[OPEN]` for a
-future, separate task. See
+own closing section for the original diagnosis. **Both items are now
+closed** (2026-09-19,
+[DECISIONS.md — DEC-098](DECISIONS.md#dec-098--analysis-browser-testruntime-hardening-shared-playback-follows-a-time-group-relabel-transparently-the-impedance-locus-cache-race-was-test-only)):
+the Phasor Time-Group-ID reassignment was a genuine production race (a
+Time Group relabel — DEC-057's own already-approved, unchanged
+"`group_id` recomputed fresh, never cached" design — left the shared
+`wwPlayback` controller's own cached `activeTimeGroupId` stale, forcing
+an unwanted Restart-to-`bounds.start`); fixed with one new reconciliation
+function, `wwPlaybackReconcileActiveGroupIdAfterSync()`, called from the
+existing `wwFetchSynchronizationStateForWorkspace()` choke point,
+re-following a relabel without ever resetting `currentTime`/`state`. The
+Impedance locus-cache item was confirmed TEST-ONLY after a full code
+audit found the existing `requestGeneration`/`ww.epoch`/workspace
+stale-response guard already correct; the test itself now waits on the
+real `/impedance-locus` HTTP response deterministically rather than
+polling state against an independently-tightened timeout. Both fixes
+validated with 10 consecutive isolated runs of their own regression
+tests (20/20 passed) plus 3 complete runs of the full Analysis
+Playwright suite (168/168 passed every run, 504/504 total, zero flaky
+failures); no backend Python files touched; no calculation logic
+(Phasor/Impedance/Sequence Components math) touched. See
 [SEQUENCE_COMPONENTS_ANALYSIS.md](SEQUENCE_COMPONENTS_ANALYSIS.md) for
-the full architecture.
+the Sequence Components v1 architecture this hardening pass built no
+new features on top of.
 
 **Pre-advanced-features Slice
 F2 (realistic performance baseline, no DEC — measurement/test

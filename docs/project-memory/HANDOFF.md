@@ -4,9 +4,121 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-18**
+Last updated: **2026-09-19**
 
 ## What was most recently done
+
+**Analysis browser-test/runtime hardening pass — the two `[OPEN]`
+flaky-Playwright items from the Sequence Components session are closed
+([DECISIONS.md — DEC-098](DECISIONS.md#dec-098--analysis-browser-testruntime-hardening-shared-playback-follows-a-time-group-relabel-transparently-the-impedance-locus-cache-race-was-test-only)).**
+A focused, no-new-features hardening task: eliminate the two known
+races, get a clean full Analysis/browser regression, preserve
+production behavior unless an actual runtime race was proven.
+
+**1. Phasor Time-Group-ID reassignment race — genuine PRODUCTION race,
+fixed.** Traced the exact mechanism: a Time Group's own `group_id` is
+ALWAYS its current origin source's own `source_id`
+(`app.domain.time_grouping`: earliest `start_time`, ties broken by
+`source_id` string), recomputed fresh from the live source set on
+every call, never cached (DEC-057, already approved, NOT changed here).
+Uploading a second source overlapping the same absolute-time
+neighborhood as an already-Playback-active group can change which
+member is chosen as origin, silently renaming the group's own id — the
+shared `wwPlayback` controller's own cached `activeTimeGroupId` then
+went stale, so every analyzer's own `LoadForSelectedContext()` saw a
+mismatch and forced an unwanted `wwPlaybackRestart()` back to
+`bounds.start`, discarding the current playback position. Confirmed via
+the original flaky test's own two fixtures sharing the IDENTICAL
+recorded start timestamp — origin selection was a genuine 50/50
+`source_id`-string coin flip. **Fix**: one new function,
+`wwPlaybackReconcileActiveGroupIdAfterSync()`, called from the ONE
+existing choke point every upload/removal/open flow already funnels
+through (`wwFetchSynchronizationStateForWorkspace()`, right after its
+own `ww.timeGroupBySourceId` refresh) — re-resolves
+`wwPlayback.activeTimeGroupId` through that just-refreshed map (a
+group's own id is always itself a valid `source_id`, so this needs no
+new data) and follows a relabel, updating ONLY the tracked id, never
+`currentTime`/`state`/`speed`/`generation`. Verified the fix is real by
+temporarily disabling it and confirming the new test fails with the
+exact stale-id symptom, then re-enabling it and confirming green again.
+
+**2. Impedance locus-cache race — confirmed TEST-ONLY, no production
+defect.** Full code audit of `wwImpedanceMaybeFetchLocus()` (request-
+generation counter + `ww.epoch`/workspace guard + signature-based
+short-circuit) found the existing stale-response protection already
+correct — a superseded, later-completing fetch is always discarded,
+never allowed to overwrite a newer result. The actual observed failure
+was a `toPass({timeout: 5000})` **timeout**, never a wrong/corrupted
+value — consistent only with "test observed state before the real
+network response landed," and the test had, with no evident
+justification, overridden this project's own `playwright.config.js`
+`expect.timeout: 10_000` default down to a tighter 5000. **Fix (test-
+only)**: `impedance_analysis.spec.js`'s `selectContextAndWaitForResult()`
+now arms a real `page.waitForResponse()` for the actual
+`/impedance-locus` round trip BEFORE the triggering `selectOption()`,
+awaited before returning — a deterministic condition, never a value-
+polling loop racing an independently-chosen timeout.
+`waitForLocusCached()` (shared by all six locus-related tests) is now
+just a fast synchronous-render-catch-up check. Verified genuine latency
+tolerance (not luck) via a temporary ad hoc test with a `page.route()`-
+injected 6-second artificial delay on `/impedance-locus` — passed
+cleanly.
+
+**Stale-response protection audit** (task's own section 6): spot-
+checked the identical `requestGeneration`/`ww.epoch`/workspace triple-
+guard pattern in the Phasor diagram fetch, Sequence Components fetch,
+and Impedance current-point fetch — all already correct, no change
+needed anywhere.
+
+**New regression coverage**: `phasor_analysis.spec.js` gained one new
+DETERMINISTIC test ("Time Group relabel... never disturbs Playback
+continuity") using a new fixture,
+`backend/tests/fixtures/comtrade/phasor_smoke_charlie_earlier_overlap.cfg`
+(reuses the existing `phasor_smoke_three_phase.dat`) — its own recorded
+start time is deliberately one second earlier than the existing ALPHA1
+fixture's, while its own absolute interval still overlaps, so
+`(start_time, source_id)` ordering GUARANTEES it becomes the new origin
+every run, zero dependency on `source_id` randomness (never "rely on
+random timing to reproduce," per the task's own explicit instruction).
+Its own final assertion accounts for the mathematically CORRECT,
+expected `alignment_offset_s` shift a genuine origin change produces
+(derived the same way `wwWorkspaceTimeToSourceTime()` itself would) —
+this hardening pass fixes the stale-reference bug only, never masks the
+legitimate coordinate-system consequence of an origin actually changing.
+
+**Repeat-run validation** (task's own explicit "0 flaky failures across
+repeated runs, not one green run" requirement): the new deterministic
+Phasor test AND the original now-fixed flaky Phasor test were each run
+10 consecutive times in isolation — 10/10 both times (20/20 total). The
+full Analysis Playwright suite (`phasor_analysis`, `overcurrent_analysis`,
+`impedance_analysis`, `sequence_components_analysis`, `playback`,
+`analysis_related_waveforms`, `phasor_bare_context` — 168 scenarios) ran
+3 complete times: 168/168 every run (504/504 total, zero flaky
+failures). Full backend regression suite passes unchanged (no backend
+Python files touched at all this pass). `git diff --check` clean.
+
+**Files**: `frontend/index.html` (one new function + one new call
+site, no existing function signatures changed); new
+`backend/tests/fixtures/comtrade/phasor_smoke_charlie_earlier_overlap.cfg`;
+`browser-tests/phasor_analysis.spec.js` (one new test),
+`browser-tests/impedance_analysis.spec.js` (two shared helpers
+hardened, zero individual test bodies changed); docs
+`docs/project-memory/DECISIONS.md` (DEC-098, plus a `[CLOSED]` pointer
+added to DEC-097's own closing section — the original record was never
+rewritten, only pointed forward from), `docs/project-memory/
+CURRENT_STATE.md`.
+
+**Stop condition honored**: this was a hardening pass only — no
+Distance Protection, no Analysis UI redesign, no changes to sequence/
+impedance/phasor math, no Playback semantics changes beyond the one
+proven relabel-continuity fix (never touched DEC-057's own origin/
+tie-break rule, never recomputed `currentTime` to compensate for a
+genuine coordinate-origin shift, which would have been an unauthorized
+semantics change); no analyzer-specific timer, duplicate clock, or
+polling loop was introduced anywhere; shared `wwPlayback` remains the
+sole authoritative clock.
+
+## What was done in the prior session — Sequence Components v1, the fourth Analysis-menu analyzer
 
 **Sequence Components v1 — the FOURTH Analysis-menu analyzer
 ([SEQUENCE_COMPONENTS_ANALYSIS.md](SEQUENCE_COMPONENTS_ANALYSIS.md),

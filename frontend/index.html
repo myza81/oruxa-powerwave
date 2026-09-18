@@ -20565,6 +20565,55 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return null;
         }
 
+        // Playback continuity across a Time Group RELABEL (DEC-057: a
+        // Time Group's own `group_id` is always its CURRENT origin
+        // source's own `source_id`, recomputed fresh from the live
+        // source set on every call, ties broken by `source_id` string --
+        // see app.domain.time_grouping's own module docstring). A
+        // genuinely unrelated new source uploaded into the SAME
+        // absolute-time neighborhood as an already-Playback-active
+        // group can therefore change WHICH member is chosen as origin,
+        // silently renaming that group's own id -- even though the
+        // group's actual underlying membership (and therefore what an
+        // analyzer/engineer is actually tracking) has not meaningfully
+        // changed. Reproduced root cause of a real intermittent
+        // Playwright failure (`phasor_analysis.spec.js`, "a later-
+        // uploaded, uncovered source is discovered automatically
+        // without disturbing the already-usable bay"): re-entering
+        // Analysis after such a relabel made every analyzer's own
+        // `LoadForSelectedContext()` see `wwPlayback.activeTimeGroupId`
+        // (the OLD id) no longer match its own freshly-recomputed
+        // `groupId` (the NEW id), so it took the "claim this as a
+        // brand-new group" branch (`wwPlaybackRestart()` back to
+        // `bounds.start`) instead of "already active, read current
+        // time" -- discarding the current playback position for no
+        // user-visible reason.
+        //
+        // `wwPlayback.activeTimeGroupId` is always itself a valid
+        // `source_id` when set for an absolute/time-of-day group (its
+        // own origin's own id, which is trivially always a member of
+        // its own group) -- so re-resolving it through the
+        // JUST-refreshed `ww.timeGroupBySourceId` map (below) is enough
+        // to detect and FOLLOW a mere relabel. This must never be
+        // confused with "the group no longer exists": that only
+        // happens if the origin source itself was genuinely removed
+        // from the workspace (a real `wwPlaybackReset()`-worthy event,
+        // left completely untouched here -- `resolved` is simply
+        // `undefined` in that case and this function no-ops). A
+        // relabel updates ONLY the tracked id; `currentTime`/`state`/
+        // `speed` are left completely untouched -- this is never a
+        // Restart, never a new `generation`, and touches no analyzer-
+        // specific state directly (each analyzer's own `LoadForSelectedContext()`
+        // still runs its own existing "already active vs. claim fresh"
+        // check immediately afterward, using this now-corrected id).
+        function wwPlaybackReconcileActiveGroupIdAfterSync() {
+            if (wwPlayback.activeTimeGroupId === null) return;
+            const resolved = ww.timeGroupBySourceId.get(wwPlayback.activeTimeGroupId);
+            if (resolved !== undefined && resolved !== null && resolved !== wwPlayback.activeTimeGroupId) {
+                wwPlayback.activeTimeGroupId = resolved;
+            }
+        }
+
         // GET .../synchronization/sources, then GET .../synchronization/time-groups,
         // then GET .../synchronization/t0 ONCE PER KNOWN GROUP (TG-E: t0
         // is genuinely Time-Group-scoped now -- mirroring the backend's
@@ -20607,6 +20656,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     ww.timeGroupBySourceId.set(row.source_id, row.time_group_id);
                     if (row.is_reference) ww.referenceSourceIds.add(row.source_id);
                 }
+                // Follows a Time Group relabel (see this function's own
+                // "Playback continuity" comment above) the instant the
+                // fresh source->group mapping is known -- before the
+                // slower /time-groups and /t0 fetches below, and before
+                // any caller's own downstream Engineering Context/
+                // Analysis reconciliation runs.
+                wwPlaybackReconcileActiveGroupIdAfterSync();
             }
 
             let groupsBody = null;
