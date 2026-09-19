@@ -16269,6 +16269,83 @@ touched.
 
 ---
 
+## DEC-100 — Compliance & Capability is a top-level application function, independent of Analysis; Slice 1 is a workspace shell only
+
+Date: 2026-09-19
+Status: Approved — implemented (Slice 1: top-level navigation + Voltage
+workspace shell only).
+Source: owner task ("implements Compliance & Capability -- Slice 1: top-
+level navigation + Voltage workspace shell only... `Compliance` must be
+independent from `Analysis`. Do not implement it as another Analysis
+analyzer. It must have its own workspace/panel state... Do not implement
+engineering calculations, profile JSON, backend evaluation,
+normalization, LVRT/HVRT logic, or persistence yet.").
+
+**Decision.** Powerwave gains a SIXTH first-class top-level page,
+`Compliance` (`shell.currentPage === "compliance"`, `#pageCompliance`,
+`#mainNavComplianceBtn`), placed immediately after `Analysis` in the
+main sidebar:
+
+```text
+Recordings, Waveform, Table, Calculated Channels, Analysis, Compliance
+```
+
+**Deliberately NOT a sixth Analysis-menu analyzer.** Compliance does not
+register as an Engineering Context consumer, does not mount the shared
+Playback control surface, has no Analysis Input Source, and shares no
+analyzer state (Phasor/Overcurrent/Impedance/Sequence/Distance) with
+Analysis — opening it never initializes or alters any of that state.
+Reuses the Analysis page's own visual language verbatim
+(`.ww-analysis-type-nav`/`.ww-analysis-type-item` for its own function
+sub-nav, currently one entry, "Voltage") rather than inventing a second
+design system, but is architecturally its own page with its own
+lifecycle, same "hide, don't destroy" `shellSetCurrentPage()` mechanism
+every other top-level page already uses.
+
+**Reason.** Compliance/capability assessment ("does a measured quantity
+satisfy an external requirement/capability curve") is a genuinely
+different engineering question from every existing Analysis-menu
+analyzer (all of which answer "what did this event's signals actually
+do") and is not expected to share the Analysis shell's own Engineering
+Context/Playback/Related-Waveforms infrastructure — Compliance's own
+future Event Alignment step is expected to need its own, standalone
+time-reference model, not the shared workspace clock every Analysis
+analyzer already consumes. Forcing it into the Analysis shell merely to
+reuse plumbing it does not actually need would couple two conceptually
+separate product areas for no real benefit.
+
+**Slice 1 scope: workspace shell only.** One Compliance function
+(`Voltage`), a static five-section workflow shell (Measurement →
+Reference Layers → Event Alignment → Comparison Chart → Results, in
+that visual order), every section showing a neutral empty state only —
+no fabricated engineering values, no fake LVRT/HVRT curves, no
+fabricated compliance verdict. No profile JSON, no backend evaluation,
+no normalization, no alignment logic, no persistence, no new backend
+endpoint. Full detail: [COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md).
+UI/UX (workflow order, section placement, chart prominence, terminology,
+density, spacing, responsive behavior) is explicitly subject to owner
+UAT and expected to change — this decision covers only the
+top-level/independent-from-Analysis architectural placement, not the
+Slice 1 visual design itself.
+
+**Alternatives considered.** A sixth Analysis-menu analyzer tab was
+considered (maximum infrastructure reuse: Engineering Context
+resolution, shared Playback, Related Waveforms) and rejected per the
+task's own explicit instruction and the Reason above — Compliance's own
+event-alignment/reference-layer concepts do not map onto "resolve a
+Bay/Engineering Context and view its Playback-synchronized signals,"
+and prematurely wiring it into that shell risks entangling two
+independently-evolving product areas.
+
+**Impact.** `frontend/index.html` only (`#mainNavComplianceBtn`,
+`#pageCompliance`, `shellSetCurrentPage()`, `wwRenderCompliancePage()`/
+`wwComplianceSyncTypeNav()`, `.ww-compliance-*` CSS) — zero
+Phasor/Overcurrent/Impedance/Sequence/Distance/Playback/Engineering-
+Context production behavior changed. No backend files touched, no new
+endpoint, no persistence.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

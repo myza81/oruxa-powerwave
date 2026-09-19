@@ -5975,6 +5975,112 @@
             }
         }
 
+        /* Compliance & Capability -- Slice 1 workspace shell (UI/UX
+           deliberately subject to owner UAT; see
+           docs/project-memory/COMPLIANCE_CAPABILITY.md). Reuses
+           `.ww-analysis-shell`/`.ww-analysis-type-nav`/
+           `.ww-analysis-type-item` verbatim for its own function sub-nav
+           (no second visual design language) -- only the Voltage panel's
+           own workflow-section layout below is Compliance-specific.
+           Vertical rhythm mirrors `.ww-phasor-panel`'s own single
+           consistent `gap` convention. */
+        .ww-compliance-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .ww-compliance-heading {
+            margin: 0;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+        /* Steps 1-3 (Measurement / Reference Layers / Event Alignment):
+           three short, compact configuration cards side by side --
+           deliberately NOT stacked tall cards, so they read as brief
+           steps leading into the chart below rather than a settings
+           form that pushes the chart below the fold (task's own
+           explicit UX priority). A narrower breakpoint than
+           `.ww-analysis-shell`'s own 820px (760px) -- this row lives
+           INSIDE `.ww-analysis-content`, already narrower than the full
+           viewport by the function sub-nav's own width, so it needs to
+           stack sooner than the outer shell does. */
+        .ww-compliance-config-row {
+            display: flex;
+            gap: 12px;
+            align-items: stretch;
+        }
+        .ww-compliance-config-card {
+            flex: 1 1 0;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .ww-compliance-config-card .empty-state {
+            padding: 2px 0 0;
+            text-align: left;
+        }
+        /* A dedicated class, deliberately never written as a compound
+           descendant selector combining this card with the existing
+           Phasor field class -- an unrelated structural test locates
+           that OTHER rule's own opening brace by a raw text search, and
+           a compound selector (or even a comment) containing the exact
+           same characters earlier in this file would be matched first
+           and break that audit. The existing field class's own fixed
+           min-width (sized for Phasor's much wider two-column body)
+           would otherwise fight this card's compact, three-across
+           layout at narrower widths; this class overrides it back to a
+           normal shrinkable field. */
+        .ww-compliance-measurement-field {
+            min-width: 0;
+            margin: 0;
+        }
+        .ww-compliance-alignment-controls {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        @media (max-width: 760px) {
+            .ww-compliance-config-row {
+                flex-direction: column;
+            }
+        }
+        /* Step 4 (Comparison Chart): the dominant visual element -- a
+           real responsive engineering-plot aspect/layout from Slice 1
+           itself (never a tiny fixed height), sized by aspect-ratio +
+           min/max bounds rather than a hardcoded pixel height, so it
+           scales cleanly at 1366px/1024px/narrower without ever
+           collapsing to a sliver or growing unbounded on an ultrawide
+           panel. No chart library mounted yet -- this is the empty-state
+           container only (task's own explicit "do not draw fake LVRT/
+           HVRT curves" boundary). */
+        .ww-compliance-chart-panel {
+            padding: 12px 14px;
+        }
+        .ww-compliance-chart-wrap {
+            width: 100%;
+            aspect-ratio: 16 / 7;
+            min-height: 320px;
+            max-height: 520px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--surface-tint);
+            border-radius: var(--radius);
+            box-sizing: border-box;
+        }
+        .ww-compliance-chart-wrap .empty-state {
+            padding: 0;
+        }
+        /* Step 5 (Results): compact, neutral -- never fabricated
+           Compliant/Boundary Breached/Within Capability verdicts in the
+           empty state. */
+        .ww-compliance-results-panel .empty-state {
+            padding: 6px 0 0;
+            text-align: left;
+        }
+
         /* One analyzer panel (today #wwPhasorPanel) stacks its own
            context bar / Playback ribbon / body with a single consistent
            vertical rhythm, rather than each section owning its own
@@ -7527,6 +7633,17 @@
                 <button type="button" class="shell-nav-item" id="mainNavAnalysisBtn" title="Analysis">
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none"/><line x1="9" y1="9" x2="9" y2="2.5" stroke-width="1.5" stroke-linecap="round"/><line x1="9" y1="9" x2="14.5" y2="12.5" stroke-width="1.5" stroke-linecap="round"/><line x1="9" y1="9" x2="4" y2="13" stroke-width="1.5" stroke-linecap="round"/><circle cx="9" cy="9" r="7" fill="none" stroke-width="1" opacity="0.5"/></svg></span>
                     <span class="shell-nav-label">Analysis</span>
+                </button>
+                <!-- Compliance & Capability, Slice 1 (workspace shell only):
+                     a SIXTH first-class top-level page, deliberately
+                     independent of Analysis -- its own #pageCompliance,
+                     its own (currently one-entry) function sub-nav
+                     ("Voltage"), no Engineering Context/Playback/Analysis
+                     Input Source of any kind. See
+                     docs/project-memory/COMPLIANCE_CAPABILITY.md. -->
+                <button type="button" class="shell-nav-item" id="mainNavComplianceBtn" title="Compliance">
+                    <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><path d="M9 2 3 4.5v4c0 4 2.5 6.3 6 7.5 3.5-1.2 6-3.5 6-7.5v-4L9 2Z"/><path d="M6.3 9.2 8.2 11l3.5-4"/></svg></span>
+                    <span class="shell-nav-label">Compliance</span>
                 </button>
             </div>
             <div class="shell-nav-bottom">
@@ -9528,6 +9645,120 @@
                                     <div class="ww-phasor-scale-note" id="wwDistanceScaleNote">Zone geometry shown is the configured element characteristic -- Operated/Not-Operated is a geometric statement only, not a relay trip output.</div>
                                 </section>
                             </div>
+                        </section>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Compliance & Capability, Slice 1 (workspace shell only):
+                 a top-level page, deliberately INDEPENDENT of Analysis --
+                 no Engineering Context lifecycle, no shared Playback
+                 mount, no Analysis Input Source, no analyzer state of any
+                 kind. Reuses the exact `.ww-analysis-shell`/
+                 `.ww-analysis-type-nav`/`.ww-analysis-type-item` layout
+                 primitives Analysis already established (same visual
+                 language, deliberately not a second design system) for
+                 its own, separate function sub-nav -- currently one entry
+                 ("Voltage"), conceptually:
+                     Compliance
+                     └── Voltage
+                 See docs/project-memory/COMPLIANCE_CAPABILITY.md for the
+                 full record (workflow hypothesis, explicit Slice 1 scope
+                 boundary, UAT-subject-to-change wording). -->
+            <section id="pageCompliance" aria-label="Compliance" hidden>
+                <div class="recordings-header">
+                    <div>
+                        <h2>Compliance</h2>
+                        <p class="ww-cc-subtitle">Voltage compliance and equipment-capability assessment against reference requirement layers.</p>
+                    </div>
+                </div>
+                <div class="ww-analysis-shell">
+                    <nav class="ww-analysis-type-nav" aria-label="Compliance function">
+                        <div class="ww-analysis-type-title">Functions</div>
+                        <button type="button" class="ww-analysis-type-item active" id="wwComplianceTypeVoltageBtn" data-compliance-type="voltage" aria-current="true">
+                            <span class="ww-analysis-type-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M3 14.5h12"/><path d="M3 11 6 6l3 4 3-6 3 8"/></svg></span>
+                            <span class="ww-analysis-type-label">Voltage</span>
+                        </button>
+                    </nav>
+                    <div class="ww-analysis-content">
+                        <section class="ww-compliance-panel" id="wwComplianceVoltagePanel">
+                            <!-- Provisional heading (task's own explicit
+                                 wording) -- subject to change through
+                                 owner UAT, like every other piece of
+                                 terminology/density/spacing in this
+                                 slice. -->
+                            <h3 class="ww-compliance-heading">Voltage Compliance &amp; Capability</h3>
+
+                            <!-- Steps 1-3 of the intended engineering
+                                 workflow (Measurement -> Reference Layers
+                                 -> Event Alignment), deliberately compact
+                                 and side-by-side so they read as three
+                                 short configuration steps leading INTO the
+                                 chart below, never as a tall stacked form
+                                 that pushes the chart below the fold. -->
+                            <div class="ww-compliance-config-row">
+                                <section class="panel ww-compliance-config-card" id="wwComplianceMeasurementCard">
+                                    <h2>Measurement</h2>
+                                    <p class="empty-state" id="wwComplianceMeasurementEmptyState">No assessment quantity selected</p>
+                                    <!-- Disabled placeholder, layout UAT only -- no
+                                         real quantity selection in Slice 1 (task
+                                         section 5's own explicit allowance). -->
+                                    <label class="ww-phasor-field ww-compliance-measurement-field" id="wwComplianceMeasurementField">
+                                        <span class="ww-phasor-field-label">Assessment quantity</span>
+                                        <select id="wwComplianceMeasurementSelect" disabled aria-disabled="true">
+                                            <option value="">Select a quantity…</option>
+                                        </select>
+                                    </label>
+                                </section>
+                                <section class="panel ww-compliance-config-card" id="wwComplianceReferenceLayersCard">
+                                    <h2>Reference Layers</h2>
+                                    <p class="empty-state" id="wwComplianceReferenceLayersEmptyState">No reference layers added</p>
+                                    <!-- Shell anticipates multiple future layer
+                                         kinds (Grid Requirement / Equipment
+                                         Capability / Project Requirement / Custom
+                                         Reference) -- none fabricated here; the
+                                         button below is a clearly-marked, disabled
+                                         placeholder only (task section 5's own
+                                         "may be disabled" allowance), never a
+                                         working profile-management entry point. -->
+                                    <button type="button" class="secondary" id="wwComplianceAddReferenceBtn" disabled aria-disabled="true" title="Not implemented yet -- Slice 2">+ Add Reference</button>
+                                </section>
+                                <section class="panel ww-compliance-config-card" id="wwComplianceEventAlignmentCard">
+                                    <h2>Event Alignment</h2>
+                                    <p class="empty-state" id="wwComplianceEventAlignmentEmptyState">No event reference set</p>
+                                    <!-- Layout anticipates future manual
+                                         shift/t0/fine-coarse controls -- disabled
+                                         placeholders only, no automatic event
+                                         detection, no alignment logic (task
+                                         section 5's own explicit exclusion). -->
+                                    <div class="ww-compliance-alignment-controls" id="wwComplianceAlignmentControls">
+                                        <button type="button" class="secondary" disabled aria-disabled="true" title="Not implemented yet -- Slice 2">◂ Shift</button>
+                                        <button type="button" class="secondary" disabled aria-disabled="true" title="Not implemented yet -- Slice 2">t0</button>
+                                        <button type="button" class="secondary" disabled aria-disabled="true" title="Not implemented yet -- Slice 2">Shift ▸</button>
+                                    </div>
+                                </section>
+                            </div>
+
+                            <!-- Step 4: the dominant visual element, per the
+                                 task's own explicit UX priority -- deliberately
+                                 the largest single section on this page, sized
+                                 responsively (never a tiny fixed height), no
+                                 fabricated LVRT/HVRT curves. -->
+                            <section class="panel ww-compliance-chart-panel" id="wwComplianceChartPanel">
+                                <h2>Comparison Chart</h2>
+                                <div class="ww-compliance-chart-wrap" id="wwComplianceChartWrap">
+                                    <p class="empty-state" id="wwComplianceChartEmptyState">No voltage assessment configured</p>
+                                </div>
+                            </section>
+
+                            <!-- Step 5: neutral empty state only -- never a
+                                 fabricated Compliant/Boundary Breached/Within
+                                 Capability verdict (task section 5's own
+                                 explicit exclusion). -->
+                            <section class="panel ww-compliance-results-panel" id="wwComplianceResultsPanel">
+                                <h2>Results</h2>
+                                <p class="empty-state" id="wwComplianceResultsEmptyState">Results will appear after a measurement, reference layer and event alignment are configured.</p>
+                            </section>
                         </section>
                     </div>
                 </div>
@@ -11832,10 +12063,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // other page here (so switching to Recordings and back never
             // loses the selected Bay/Quantity/Mode or refetches the
             // Engineering Context list).
+            // Compliance & Capability Slice 1: a SIXTH first-class page,
+            // "compliance" -- deliberately independent of "analysis" (its
+            // own page, own sub-nav, own panel; never routed through
+            // wwRenderAnalysisPage()/wwSetActiveAnalysisType() or any
+            // analyzer state). Same "hide, don't destroy" mechanism.
             if (
                 page !== "waveform" && page !== "recordings" &&
                 page !== "calculated-channels" && page !== "data-preparation" &&
-                page !== "analysis"
+                page !== "analysis" && page !== "compliance"
             ) return;
             const wasWaveform = shell.currentPage === "waveform";
             shell.currentPage = page;
@@ -11845,6 +12081,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("pageCalculatedChannels").hidden = page !== "calculated-channels";
             document.getElementById("pageDataPreparation").hidden = page !== "data-preparation";
             document.getElementById("pageAnalysis").hidden = page !== "analysis";
+            document.getElementById("pageCompliance").hidden = page !== "compliance";
             // Phase 3B-UAT8 fix: the active-state CSS rule
             // (`.shell-nav-item[aria-current="page"]`) always expected
             // the token "page" (the ARIA APG convention for a current
@@ -11862,10 +12099,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             setShellNavCurrent("mainNavRecordingsBtn", page === "recordings");
             setShellNavCurrent("mainNavCalculatedChannelsBtn", page === "calculated-channels");
             setShellNavCurrent("mainNavAnalysisBtn", page === "analysis");
+            setShellNavCurrent("mainNavComplianceBtn", page === "compliance");
             setShellNavCurrent("mainNavTableBtn", page === "waveform" && shell.activeView === "table");
 
             if (page === "analysis") {
                 wwRenderAnalysisPage();
+            }
+            if (page === "compliance") {
+                wwRenderCompliancePage();
             }
 
             // The (responsive-only) "Sources" drawer toggle is scoped to
@@ -40444,6 +40685,43 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOvercurrentEnsureCharacteristicsLoaded();
         }
 
+        // ==================================================================
+        // Compliance & Capability -- Slice 1 (workspace shell only)
+        //
+        // Deliberately INDEPENDENT of Analysis (see
+        // docs/project-memory/COMPLIANCE_CAPABILITY.md): no Engineering
+        // Context lifecycle registration, no shared Playback mount, no
+        // Analysis Input Source, no wwXxxResetState()/wwClearWorkspace()
+        // participation of any kind, because Slice 1 has no state to
+        // reset -- the entire panel is static markup (see #pageCompliance
+        // in the HTML above). This render hook exists purely for
+        // architectural symmetry with every other page's own on-entry
+        // call (wwRenderAnalysisPage/wwRenderCalculatedChannelsPage/etc)
+        // and as the obvious, already-wired place a future slice adds
+        // real bootstrap logic -- it intentionally does nothing today.
+        // Re-asserting the Voltage sub-nav's active/aria-current state on
+        // every visit (rather than relying solely on its static markup
+        // default) costs nothing and stays correct once a second
+        // Compliance function is added in a later slice and this becomes
+        // a real, stateful switch.
+        function wwRenderCompliancePage() {
+            wwComplianceSyncTypeNav();
+        }
+
+        // The ONE Compliance function today ("voltage") -- mirrors
+        // wwAnalysisActiveType's shape for when a second function
+        // (Current?) is added, without inventing that generality before
+        // it is actually needed.
+        let wwComplianceActiveType = "voltage";
+
+        function wwComplianceSyncTypeNav() {
+            const voltageBtn = document.getElementById("wwComplianceTypeVoltageBtn");
+            if (!voltageBtn) return;
+            const isActive = wwComplianceActiveType === "voltage";
+            voltageBtn.classList.toggle("active", isActive);
+            voltageBtn.setAttribute("aria-current", isActive ? "true" : "false");
+        }
+
         // ---- Shared Analysis Engineering Context lifecycle consumer
         // (2026-09-12 owner UAT fix) -- Phasor's own reaction to the ONE
         // shared context list the Analysis workspace publishes, and to
@@ -43748,6 +44026,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("mainNavRecordingsBtn").addEventListener("click", () => shellSetCurrentPage("recordings"));
         document.getElementById("mainNavCalculatedChannelsBtn").addEventListener("click", () => shellSetCurrentPage("calculated-channels"));
         document.getElementById("mainNavAnalysisBtn").addEventListener("click", () => shellSetCurrentPage("analysis"));
+        document.getElementById("mainNavComplianceBtn").addEventListener("click", () => shellSetCurrentPage("compliance"));
 
         // Analysis-type nav wiring -- implemented analyzers and lightweight
         // placeholders plug into this ONE shared switcher. Placeholder

@@ -9,11 +9,12 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-19** (DEC-099 Playback 4x
-speed-selection closure — the last of DEC-099's three `[OPEN]`
-flaky-Playwright items is now `[CLOSED]`; DEC-099 has zero remaining
-`[OPEN]` items; see its own entry below in
-[Implemented capabilities](#implemented-capabilities)).
+Last meaningful update: **2026-09-19** (Compliance & Capability Slice 1
+— a new, SIXTH top-level page, independent of Analysis; workspace shell
+only, no engineering calculation/profile/persistence yet. See
+[DECISIONS.md — DEC-100](DECISIONS.md#dec-100--compliance--capability-is-a-top-level-application-function-independent-of-analysis-slice-1-is-a-workspace-shell-only)
+and [COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md); see its own
+entry below in [Implemented capabilities](#implemented-capabilities)).
 **Event Playback
 ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock),
 its own 2026-09-11 revision) is implemented as a shared, reusable
@@ -1026,6 +1027,45 @@ passes and a 5x full-Analysis-suite regression. The third item ("Speed
 selection 4x") remained outside this task's named scope and was still
 `[OPEN]` at that point.
 
+**Compliance & Capability Slice 1 (2026-09-19) — a new, SIXTH top-level
+page, deliberately independent of Analysis (workspace shell only, see
+[DEC-100](DECISIONS.md#dec-100--compliance--capability-is-a-top-level-application-function-independent-of-analysis-slice-1-is-a-workspace-shell-only)
+and [COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md)).** Main-menu
+order: Recordings, Waveform, Table, Calculated Channels, Analysis,
+**Compliance**. `#pageCompliance` has no Engineering Context lifecycle,
+no shared Playback mount, no Analysis Input Source, and no
+Phasor/Overcurrent/Impedance/Sequence/Distance coupling — opening it
+never initializes or alters any of that state (verified directly).
+Reuses Analysis's own `.ww-analysis-type-nav` sub-nav component for its
+own function list (currently one entry, "Voltage" — conceptually
+`Compliance └── Voltage`), same visual language, no second design
+system. Slice 1 renders a static five-section workflow shell
+(Measurement → Reference Layers → Event Alignment → Comparison Chart →
+Results, in that visual top-to-bottom order — Measurement/Reference
+Layers/Event Alignment sit compactly side by side, Comparison Chart is
+deliberately the single largest section, `aspect-ratio: 16/7` with
+`min-height: 320px`, never a tiny fixed height), every section showing
+a neutral empty state only — no fabricated values, no fake LVRT/HVRT
+curves, no fabricated compliance verdict. A few controls exist as
+visibly disabled layout-UAT placeholders only (quantity select, "+ Add
+Reference," Shift/t0 alignment buttons) — none wired to real behavior.
+No profile JSON, no backend evaluation, no normalization, no alignment
+logic, no persistence, no new backend endpoint anywhere in this slice.
+UI/UX (workflow order, section placement, chart prominence,
+terminology, density, spacing, responsive behavior) is explicitly
+subject to owner UAT and expected to change. New structural coverage
+(`backend/tests/test_frontend_compliance.py`) and real-browser coverage
+(`browser-tests/compliance.spec.js`, 10 scenarios: menu order, page
+open/close, Voltage sub-nav, all five sections in order, chart
+dominance, navigation lifecycle/isolation from Analysis and every other
+top-level page, 1366px/1024px responsive/no-overflow checks) — all
+passing, run repeatedly clean. One PRE-EXISTING, unrelated flake
+(`smoke.spec.js`'s own recording-row-click assertion) was investigated
+and confirmed NOT caused by this slice — reproduced identically (5/5
+failures) on a clean pre-Compliance baseline checkout, reported per
+Change Governance, not silently patched, left for a future separate
+task.
+
 **Flake cleanup (2026-09-19, continued) — the third and final DEC-099
 item ("Speed selection 4x") is now `[CLOSED]`; DEC-099 has zero
 remaining `[OPEN]` items.** Test-synchronization bug, no production
@@ -1471,8 +1511,12 @@ backend (`backend/app/`) + a single-page vanilla-JS frontend
 COMTRADE upload/parse/browse, the app now has a full multi-source,
 multi-panel waveform workspace with Time-Group-aware synchronization,
 cursors, t0, annotations, a group-aware Per-Unit measurement model,
-calculated channels, and digital-channel display. CSV/Excel ingestion is
-the current workstream — Slices 1-12 (raw preparation-source upload
+calculated channels, and digital-channel display, an `Analysis` page
+hosting five engineering analyzers (Phasor/Overcurrent/Impedance Locus/
+Sequence Components/Distance Protection), and — as of 2026-09-19 — a
+SEPARATE, independent `Compliance` top-level page (Slice 1: workspace
+shell only, see [DEC-100](DECISIONS.md#dec-100--compliance--capability-is-a-top-level-application-function-independent-of-analysis-slice-1-is-a-workspace-shell-only)).
+CSV/Excel ingestion is the current workstream — Slices 1-12 (raw preparation-source upload
 through canonical `DisturbanceRecord` conversion, existing-waveform-
 integration verification, and cleaned data export) are implemented;
 progressive automation (Slice 13) is not (see

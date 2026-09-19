@@ -343,7 +343,11 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
     await page.goto("/index.html");
     await openAnalysisPhasor(page);
 
-    const menu = page.locator(".ww-analysis-type-nav");
+    // Scoped by aria-label, not the bare class -- Compliance & Capability
+    // Slice 1 reuses the exact same `.ww-analysis-type-nav` class for its
+    // own (unrelated) function sub-nav, so the bare class now resolves to
+    // two elements on the page.
+    const menu = page.locator(".ww-analysis-type-nav[aria-label='Analysis type']");
     await expect(menu).toContainText("Analyzers");
     await expect(menu.locator(".ww-analysis-type-item")).toHaveText([
       "Overcurrent",

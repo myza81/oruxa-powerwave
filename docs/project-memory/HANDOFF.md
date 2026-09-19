@@ -8,6 +8,85 @@ Last updated: **2026-09-19**
 
 ## What was most recently done
 
+**Compliance & Capability — Slice 1: top-level navigation + Voltage
+workspace shell only.** A small, deliberately exploratory product/UI
+slice for owner UAT — no engineering calculation, profile JSON, backend
+evaluation, normalization, or persistence implemented (owner's own
+explicit scope boundary).
+
+**Top-level, independent of Analysis** (see
+[DECISIONS.md — DEC-100](DECISIONS.md#dec-100--compliance--capability-is-a-top-level-application-function-independent-of-analysis-slice-1-is-a-workspace-shell-only)):
+a new `Compliance` main-sidebar entry after `Analysis`
+(`#mainNavComplianceBtn`/`#pageCompliance`), final order Recordings →
+Waveform → Table → Calculated Channels → Analysis → Compliance.
+Deliberately NOT a sixth Analysis-menu analyzer — no Engineering
+Context lifecycle registration, no shared Playback mount, no Analysis
+Input Source, no coupling to any analyzer's own state. Opening
+Compliance never initializes or alters Playback/Analysis Input
+Source/Engineering Context/Sequence/Distance state — verified directly
+in `browser-tests/compliance.spec.js`.
+
+**Internal nav**: `Compliance └── Voltage` — reuses the Analysis page's
+own `.ww-analysis-type-nav`/`.ww-analysis-type-item` sub-nav component
+verbatim (same visual language, no second design system), one entry
+today. Page heading: "Voltage Compliance & Capability" (explicitly
+provisional wording).
+
+**Workspace shell** communicates the intended workflow top-to-bottom:
+Measurement → Reference Layers → Event Alignment (three compact cards
+side by side) → Comparison Chart (deliberately the single largest
+section, `aspect-ratio: 16/7`, `min-height: 320px`, never a tiny fixed
+height) → Results. Every section shows a neutral empty state only — no
+fabricated values, no fake LVRT/HVRT curves, no fabricated compliance
+verdict; a few controls exist as visibly disabled layout-UAT
+placeholders only (quantity select, "+ Add Reference," Shift/t0
+alignment buttons), none wired to real behavior.
+
+**Two issues found and fixed during implementation, both self-caused,
+neither a pre-existing defect**: (1) a new CSS compound selector (and,
+separately, its own explanatory comment) containing the literal
+substring `.ww-phasor-field {` was matched by an existing structural
+test's raw-text search before the REAL rule it meant to audit — fixed
+by using a dedicated, non-overlapping class name instead of a
+`.ww-phasor-field`-descendant selector, and rewording the comment to
+avoid the same literal substring. (2) reusing `.ww-analysis-type-nav`
+for Compliance's own sub-nav made an existing Playwright test's
+bare-class locator resolve to two elements (a strict-mode violation) —
+fixed by scoping that test's locator to Analysis's own
+`aria-label="Analysis type"`.
+
+**One PRE-EXISTING, unrelated flake investigated and ruled out**:
+`smoke.spec.js`'s own recording-row-click assertion failed
+intermittently on this branch; reproduced identically (5/5 failures
+across 5 runs) on a clean pre-Compliance baseline checkout (a separate,
+throwaway `git worktree` at commit `a84dd0a` — never touching this
+session's own uncommitted work), confirming it predates and is
+unrelated to this slice. Reported per Change Governance, not silently
+patched or investigated further (out of this task's own scope) — left
+`[OPEN]` for a future, separate task.
+
+**Validation**: new structural suite (`backend/tests/test_frontend_compliance.py`)
+and full frontend structural suite pass; new browser suite
+(`browser-tests/compliance.spec.js`, 10 scenarios) run 5x consecutively
+clean (50 executions); Phasor/bare-context regression (39 tests) clean;
+full Playback suite (24 tests) clean; `git diff --check` clean.
+
+**Files**: `frontend/index.html` (nav button, `#pageCompliance` markup,
+`shellSetCurrentPage()`, `wwRenderCompliancePage()`/
+`wwComplianceSyncTypeNav()`, `.ww-compliance-*` CSS), `backend/tests/
+test_frontend_compliance.py` (new), `backend/tests/test_frontend_playback.py`
+(one nav-order assertion updated for the new final item),
+`browser-tests/compliance.spec.js` (new), `browser-tests/phasor_analysis.spec.js`
+(one locator scoped to fix a strict-mode collision), `docs/project-memory/
+COMPLIANCE_CAPABILITY.md` (new), `DECISIONS.md` (DEC-100),
+`CURRENT_STATE.md`/`HANDOFF.md` (this file).
+
+**Stop condition honored**: Slice 1 only — no engineering calculation,
+profile management, evaluation, normalization, alignment logic, or
+persistence implemented; no Slice 2 work started.
+
+## What was done in the prior session — DEC-099 Playback 4x speed-selection closure
+
 **DEC-099 Playback 4x speed-selection item — now `[CLOSED]`. DEC-099
 has zero remaining `[OPEN]` items.** Focused diagnosis only, per the
 task's own explicit "investigate first, close only with evidence"
