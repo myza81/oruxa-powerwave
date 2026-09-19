@@ -16160,6 +16160,75 @@ scope and was not investigated further; it remained `[OPEN]` and did not
 reproduce in 10 additional isolated runs during that session either — no
 change made, status unchanged from above.
 
+**`[CLOSED]` — item 1 (Speed selection 4x), in a further dedicated
+session** — a focused diagnosis, not assumed resolved merely because it
+had stopped reproducing in isolation. Classification: **test-
+synchronization bug, no production defect**, confirmed by direct
+reproduction, not assumed.
+
+- **Audit of the authoritative Playback engine** (`wwPlaybackTick`,
+  `wwPlaybackSetSpeed`, `wwPlaybackPlay`, `wwPlaybackPause`,
+  `wwPlaybackRestart`, `wwPlaybackHandleSeekCommit`) confirmed `speed`
+  is a single controller-wide field on `wwPlayback`, deliberately
+  untouched by Play/Pause/Restart/Seek (only a whole-workspace
+  `wwPlaybackReset()` resets it to `WW_PLAYBACK_DEFAULT_SPEED`), a
+  mid-play speed change re-anchors in place with no second rAF loop,
+  and end-of-range clamps `currentTime` exactly to `bounds.end` with a
+  clean stop, no overshoot, no repeated end-state loop. All of this
+  matched the intended design already documented at each function's own
+  comment — no change needed to any of it.
+- **The actual historical failure was reproduced directly**, not
+  assumed: `phasor_analysis.spec.js`'s "Speed selection (4x)..." test
+  attaches its own request-counting listener, clicks Play, waits a
+  FIXED 600ms, then asserts `diagramFetchCount` is both `> 0` and
+  `< 15`. Phasor's own request-rate throttle
+  (`WW_PHASOR_PLAYBACK_THROTTLE_MS`, ~100ms) is wall-clock-paced, not
+  rAF-tick-count-paced — structurally independent of `speed` (a higher
+  speed moves more RECORDING time per real second, never more REQUESTS
+  per real second) — so the throttle mechanism itself is correct by
+  design. But the test's own fixed 600ms window, combined with normal
+  rAF/backend scheduling jitter, occasionally lets the FIRST throttled
+  fetch land just outside that window by unlucky timing: reproduced
+  directly as `diagramFetchCount === 0` after a flat 600ms wait, 1
+  failure in 30 CONSECUTIVE ISOLATED runs (no combined-suite load
+  needed to trigger it) — closely matching the original "failed once in
+  a long combined run" rate.
+- **Fix**: wait AUTHORITATIVELY for the first fetch to occur (removes
+  the race) before measuring the request-RATE over a further bounded
+  600ms real-time window (the legitimate "prove throttling, not
+  one-per-frame" measurement a fixed interval is meant for) — test-only
+  change in `browser-tests/phasor_analysis.spec.js`, no production code
+  touched. Verified: 30/30 consecutive passes after the fix (0/30
+  before disabling the fix was not separately re-run since the failure
+  was already captured directly against the pre-fix test; the fix's own
+  before/after contrast is the 1-in-30 failure above vs. 30/30 clean
+  after).
+- **New deterministic 4x coverage added** in
+  `browser-tests/playback.spec.js` ("Event Playback Slice 2"), closing
+  the gap the original single wall-clock-window test left: authoritative
+  state (`wwPlaybackState().speed === 4`) + UI selection + an actual
+  engine-rate measurement (`currentTime` delta vs. wall-clock delta,
+  bounded tolerance, distinguishing "UI says 4x" from "engine runs at
+  4x"); a mid-play speed switch taking effect immediately, no restart;
+  Pause freezing at 4x and Resume continuing at 4x; a Seek preserving
+  4x; and end-of-range behavior at 4x (exact clamp to `bounds.end`,
+  clean stop, no overshoot, no repeated end-state loop, no
+  `analysis_time` request beyond the valid range). All five run 30/30
+  consecutive passes.
+- **Validation**: targeted original test 30/30; new 4x tests 30/30 (5
+  tests × 30 runs); full `playback.spec.js` 10/10 complete runs; full
+  combined Analysis Playwright suite (Phasor/Overcurrent/Impedance/
+  Sequence/Distance/Related Waveforms/Playback/bare-context, ~211
+  tests) 5/5 runs, one unrelated failure in run 1 — the ALREADY-KNOWN,
+  ALREADY-DOCUMENTED (see the flake-cleanup closure note above) rare
+  Sequence Components visibility/scale test, confirmed unrelated (no
+  Playback/speed code path involved) and left untouched, per this
+  session's own scope; relevant frontend structural tests pass; no
+  production code changed, so the full backend suite was not required
+  by this task's own conditional (still confirmed clean separately).
+
+DEC-099 has no remaining `[OPEN]` items as of this closure.
+
 **Alternatives considered.** Merging Distance Protection into Impedance
 Locus's own panel/state (e.g. an "evaluate as a zone" toggle) was
 considered and rejected — the task's own explicit "a SEPARATE analyzer"

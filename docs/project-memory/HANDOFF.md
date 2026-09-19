@@ -8,6 +8,67 @@ Last updated: **2026-09-19**
 
 ## What was most recently done
 
+**DEC-099 Playback 4x speed-selection item — now `[CLOSED]`. DEC-099
+has zero remaining `[OPEN]` items.** Focused diagnosis only, per the
+task's own explicit "investigate first, close only with evidence"
+instruction — did not assume the item was already resolved merely
+because it had stopped reproducing in 10 isolated runs during the prior
+session.
+
+**Classification: test-synchronization bug, no production defect.**
+Audited the authoritative Playback engine (`wwPlaybackTick`,
+`wwPlaybackSetSpeed`, `wwPlaybackPlay`/`Pause`/`Restart`,
+`wwPlaybackHandleSeekCommit`) end to end: `speed` is one controller-wide
+field, untouched by Play/Pause/Restart/Seek (only a whole-workspace
+reset changes it), a mid-play speed change re-anchors without a second
+rAF loop, end-of-range clamps exactly to `bounds.end` with a clean stop.
+All already correct by design — no production change needed.
+
+**The historical failure was reproduced directly, not assumed away.**
+`phasor_analysis.spec.js`'s "Speed selection (4x)..." test counts
+`/phasor-diagram` requests over a FIXED 600ms real-time window and
+asserts the count is both `>0` and `<15`. Phasor's own request-rate
+throttle (~100ms) is wall-clock-paced, not rAF-tick-paced — completely
+independent of `speed` (a higher speed moves more recording time per
+real second, never more requests per real second), so the throttle
+itself is sound. But the test's own fixed window, combined with normal
+scheduling jitter, occasionally lets the FIRST throttled fetch land
+just outside 600ms: reproduced directly as `diagramFetchCount === 0`,
+1 failure in 30 consecutive ISOLATED runs — no combined-suite load
+needed, closely matching the original "failed once in a long combined
+run" rate. Fixed by waiting authoritatively for the first fetch before
+measuring the rate over a further bounded window — test-only change,
+`browser-tests/phasor_analysis.spec.js`. Verified 30/30 after.
+
+**New deterministic 4x coverage** added to `browser-tests/playback.spec.js`
+("Event Playback Slice 2"): authoritative state + UI selection + an
+actual engine-rate measurement (distinguishing "UI says 4x" from
+"engine runs at 4x"); mid-play speed switch takes effect immediately;
+Pause/Resume preserves 4x; Seek preserves 4x; end-of-range at 4x clamps
+exactly with no overshoot/no malformed `analysis_time` requests. All
+five: 30/30 consecutive passes.
+
+**Validation**: targeted original test 30/30; new tests 30/30 (150
+executions); full `playback.spec.js` 10/10 runs; full combined Analysis
+suite (~211 tests) 5/5 runs — one unrelated failure in run 1, the
+already-known, already-documented rare Sequence Components visibility/
+scale flake (see the prior session's own entry below), confirmed
+unrelated (no Playback/speed code path involved) and left untouched;
+relevant frontend structural tests pass; no production code changed, so
+the full backend suite was not required by this task's own conditional
+(confirmed clean separately anyway).
+
+**Files**: `browser-tests/phasor_analysis.spec.js` (readiness-wait fix
+on the existing test), `browser-tests/playback.spec.js` (5 new 4x
+tests), `docs/project-memory/DECISIONS.md` (DEC-099 final `[CLOSED]`
+note — no `[OPEN]` items remain), `CURRENT_STATE.md`/`HANDOFF.md` (this
+file).
+
+**Stop condition honored**: no Playback redesign; no production code
+touched; only the named 4x item investigated/closed.
+
+## What was done in the prior session — DEC-099 Analysis browser flake cleanup (Phasor timing + Playback 404)
+
 **DEC-099 Analysis browser flake cleanup — the two named remaining
 flakes are now `[CLOSED]`.** Scope was deliberately narrow: fix exactly
 "Phasor Manual Input timing flake" and "Shared Playback stray 404

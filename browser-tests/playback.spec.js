@@ -691,4 +691,202 @@ test.describe("Event Playback Slice 2", () => {
     const sliderValue = await slider.evaluate((el) => parseFloat(el.value));
     expect(Math.abs(sliderValue - startTime)).toBeLessThan(0.01);
   });
+
+  // ---- DEC-099 closure: 4x speed, deterministic ----
+  //
+  // The historical DEC-099 item ("Speed selection (4x) keeps Phasor's own
+  // request rate throttled, never one request per tick") failed once in a
+  // long (161-test, 10.3m) combined-suite run, passed cleanly in every
+  // isolated re-run since (10/10 in an earlier session, repeated again
+  // here). Code reading of the authoritative Playback engine
+  // (wwPlaybackTick/wwPlaybackSetSpeed/wwPlaybackPlay/wwPlaybackPause/
+  // wwPlaybackRestart/wwPlaybackHandleSeekCommit) shows `speed` is a
+  // single controller-wide field, deliberately untouched by Play/Pause/
+  // Restart/Seek, only reset by a whole-workspace clear -- and Phasor's
+  // own request-rate throttle (WW_PHASOR_PLAYBACK_THROTTLE_MS, ~100ms) is
+  // WALL-CLOCK-paced, not rAF-tick-count-paced, so it is structurally
+  // independent of `speed`: a higher speed moves MORE recording time per
+  // real second, never more REQUESTS per real second. No 4x-specific
+  // production defect was found. These tests close the gap the original
+  // failing test left (a single wall-clock-window assertion, prone to
+  // occasional timing pressure under heavy parallel test load) with
+  // authoritative-state checks plus a direct engine-rate measurement,
+  // rather than assuming the single historical failure was meaningless.
+  test("4x speed: authoritative state, UI selection, and actual engine rate (not just the UI label)", async ({ page }) => {
+    const { mount } = await setupPhasorPlayback(page, "synth_playback", "Alpha");
+    const playBtn = mount.locator(".ww-tg-playback-play-btn");
+    const restartBtn = mount.locator(".ww-tg-playback-restart-btn");
+    const speedSelect = mount.locator(".ww-tg-playback-speed-select");
+
+    // ---- Selection state: authoritative model + UI, not just the label ----
+    await speedSelect.selectOption("4");
+    expect(await page.evaluate(() => wwPlaybackState().speed)).toBe(4);
+    await expect(speedSelect).toHaveValue("4"); // native <select> -- one value selected is also "no other option selected"
+
+    // ---- Actual engine rate: currentTime delta vs wall-clock delta ----
+    // A native <select> reporting "4" says nothing about whether
+    // wwPlaybackTick() is actually advancing currentTime at that rate --
+    // this is the distinction section 6 of the task asks for. Bounded,
+    // generous tolerance (not an exact-ms assertion) to absorb real rAF/
+    // scheduling jitter while still clearly distinguishing "really ~4x"
+    // from "no faster than 1x" or "wildly wrong".
+    await restartBtn.click();
+    const startTime = await page.evaluate(() => wwPlaybackState().startTime);
+    await playBtn.click();
+    const wallMs = 500;
+    await page.waitForTimeout(wallMs);
+    const currentTime = await page.evaluate(() => wwPlaybackState().currentTime);
+    const recordingDelta = currentTime - startTime;
+    const wallSeconds = wallMs / 1000;
+    // Expect roughly 4x real elapsed time; generous [2x, 7x] band absorbs
+    // scheduling jitter/slow CI hosts without being able to pass at 1x or
+    // at a broken/runaway rate.
+    expect(recordingDelta).toBeGreaterThan(wallSeconds * 2);
+    expect(recordingDelta).toBeLessThan(wallSeconds * 7);
+    await playBtn.click(); // pause
+  });
+
+  test("4x speed takes effect immediately on a mid-play switch, no restart required", async ({ page }) => {
+    const { mount } = await setupPhasorPlayback(page, "synth_playback", "Alpha");
+    const playBtn = mount.locator(".ww-tg-playback-play-btn");
+    const restartBtn = mount.locator(".ww-tg-playback-restart-btn");
+    const speedSelect = mount.locator(".ww-tg-playback-speed-select");
+
+    await restartBtn.click();
+    await expect(speedSelect).toHaveValue("1"); // default
+    await playBtn.click();
+    await expect(playBtn).toHaveText("Pause");
+    await page.waitForTimeout(300);
+    const before1x = await page.evaluate(() => wwPlaybackState().currentTime);
+
+    // Switch to 4x WHILE STILL PLAYING -- no Pause/Play cycle, no Restart.
+    await speedSelect.selectOption("4");
+    await expect(speedSelect).toHaveValue("4");
+    expect(await page.evaluate(() => wwPlaybackState().speed)).toBe(4);
+    await expect(playBtn).toHaveText("Pause"); // still playing, no interruption
+    await page.waitForTimeout(300);
+    const after4x = await page.evaluate(() => wwPlaybackState().currentTime);
+    const delta4x = after4x - before1x;
+
+    // Switch back to 1x, same real interval.
+    await speedSelect.selectOption("1");
+    await expect(speedSelect).toHaveValue("1");
+    await page.waitForTimeout(300);
+    const after1xAgain = await page.evaluate(() => wwPlaybackState().currentTime);
+    const delta1xAgain = after1xAgain - after4x;
+
+    // The 4x segment must cover materially more recording time than the
+    // 1x segment over the SAME real interval -- proves the switch changed
+    // the engine's actual rate, not merely a UI label.
+    expect(delta4x).toBeGreaterThan(delta1xAgain * 2);
+    await playBtn.click(); // pause
+  });
+
+  test("4x speed: Pause freezes at 4x, Resume continues at 4x (speed itself never changes)", async ({ page }) => {
+    const { mount } = await setupPhasorPlayback(page, "synth_playback", "Alpha");
+    const playBtn = mount.locator(".ww-tg-playback-play-btn");
+    const restartBtn = mount.locator(".ww-tg-playback-restart-btn");
+    const speedSelect = mount.locator(".ww-tg-playback-speed-select");
+
+    await speedSelect.selectOption("4");
+    await restartBtn.click();
+    await expect(speedSelect).toHaveValue("4"); // Restart never resets speed
+    await playBtn.click();
+    await page.waitForTimeout(300);
+
+    await playBtn.click(); // pause
+    await expect(playBtn).toHaveText("Play");
+    await expect(speedSelect).toHaveValue("4"); // speed remains 4x while paused
+    const pausedAt = await page.evaluate(() => wwPlaybackState().currentTime);
+    await page.waitForTimeout(150);
+    expect(await page.evaluate(() => wwPlaybackState().currentTime)).toBe(pausedAt); // frozen, no drift
+
+    await playBtn.click(); // resume
+    await expect(playBtn).toHaveText("Pause");
+    await expect(speedSelect).toHaveValue("4"); // still 4x on resume
+    await page.waitForTimeout(300);
+    const afterResume = await page.evaluate(() => wwPlaybackState().currentTime);
+    // Resumed at the SAME (still-4x) rate, not silently reset to 1x.
+    expect(afterResume - pausedAt).toBeGreaterThan(0.3);
+    await playBtn.click(); // pause
+  });
+
+  test("4x speed survives a Seek (speed is never silently reset by seeking)", async ({ page }) => {
+    const { mount } = await setupPhasorPlayback(page, "synth_playback", "Alpha");
+    const playBtn = mount.locator(".ww-tg-playback-play-btn");
+    const speedSelect = mount.locator(".ww-tg-playback-speed-select");
+    const slider = mount.locator(".ww-tg-playback-seek-slider");
+
+    await speedSelect.selectOption("4");
+    await expect(speedSelect).toHaveValue("4");
+
+    const { min, max } = await seekSliderBounds(slider);
+    const target = min + (max - min) * 0.3;
+    await seekTo(slider, target);
+    await expect(speedSelect).toHaveValue("4"); // seek never resets speed
+    expect(await page.evaluate(() => wwPlaybackState().speed)).toBe(4);
+
+    // Confirm it is still genuinely driving the engine post-seek, not just
+    // a surviving-but-inert UI value.
+    await playBtn.click();
+    await page.waitForTimeout(300);
+    const afterPlay = await page.evaluate(() => wwPlaybackState().currentTime);
+    expect(afterPlay).toBeGreaterThan(target + 0.3); // materially advanced, consistent with 4x
+    await playBtn.click(); // pause
+  });
+
+  test("4x speed at end-of-range: clamps exactly to bounds.end, stops cleanly, no overshoot, no malformed analysis_time requests", async ({ page }) => {
+    const requestUrls = [];
+    page.on("request", (req) => {
+      if (req.url().includes("/phasor-diagram")) requestUrls.push(req.url());
+    });
+    const consoleErrors = [];
+    page.on("console", (msg) => { if (msg.type() === "error") consoleErrors.push(msg.text()); });
+    page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
+
+    const { mount } = await setupPhasorPlayback(page, "synth_playback", "Alpha");
+    const playBtn = mount.locator(".ww-tg-playback-play-btn");
+    const speedSelect = mount.locator(".ww-tg-playback-speed-select");
+    const slider = mount.locator(".ww-tg-playback-seek-slider");
+
+    // synth_playback is a fixed 4-second fixture -- seek to 90% through so
+    // 4x speed crosses bounds.end well within a short, deterministic wait
+    // (the remaining ~0.4s of recording time takes ~0.1s of real time at
+    // 4x), rather than needing to wait out the whole recording at 1x.
+    const { min, max } = await seekSliderBounds(slider);
+    const endTime = max;
+    await seekTo(slider, min + (max - min) * 0.9);
+    await speedSelect.selectOption("4");
+    await expect(speedSelect).toHaveValue("4");
+
+    await playBtn.click();
+    // Generous real-time margin -- at 4x this reaches endTime in well
+    // under 200ms; 1.5s leaves ample room for scheduling jitter while
+    // still being a short, deterministic wait (not an open-ended poll).
+    await page.waitForTimeout(1500);
+
+    const finalState = await page.evaluate(() => wwPlaybackState().state);
+    const finalTime = await page.evaluate(() => wwPlaybackState().currentTime);
+    expect(finalState).toBe("stopped"); // clean stop, not stuck "playing"
+    expect(finalTime).toBe(endTime); // clamped EXACTLY, no overshoot past bounds.end
+    await expect(playBtn).toHaveText("Play"); // toolbar reflects the clean stop
+
+    // No repeated end-state loop: currentTime/state stay settled after
+    // additional real time passes (a broken clamp could keep re-firing
+    // rAF/fetches at the boundary).
+    const requestCountAtStop = requestUrls.length;
+    await page.waitForTimeout(400);
+    expect(await page.evaluate(() => wwPlaybackState().state)).toBe("stopped");
+    expect(await page.evaluate(() => wwPlaybackState().currentTime)).toBe(endTime);
+    expect(requestUrls.length).toBe(requestCountAtStop); // no further analyzer requests once stopped
+
+    // No analyzer request ever asked for a time beyond the valid range --
+    // "4x operation must not create... malformed analysis times merely
+    // because playback advances faster" (task section 17).
+    for (const url of requestUrls) {
+      const analysisTime = Number(new URL(url).searchParams.get("analysis_time"));
+      expect(analysisTime).toBeLessThanOrEqual(endTime + 1e-6);
+    }
+    expect(consoleErrors, `Unexpected console/page errors:\n${consoleErrors.join("\n")}`).toEqual([]);
+  });
 });

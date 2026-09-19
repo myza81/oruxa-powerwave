@@ -9,10 +9,10 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-19** (DEC-099 Analysis browser-flake
-cleanup — closes two of the three `[OPEN]` flaky-Playwright items DEC-099
-left behind, Phasor Manual Input timing + Playback stray 404; see its
-own entry below in
+Last meaningful update: **2026-09-19** (DEC-099 Playback 4x
+speed-selection closure — the last of DEC-099's three `[OPEN]`
+flaky-Playwright items is now `[CLOSED]`; DEC-099 has zero remaining
+`[OPEN]` items; see its own entry below in
 [Implemented capabilities](#implemented-capabilities)).
 **Event Playback
 ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock),
@@ -1023,10 +1023,30 @@ the browser console, after `resetToNewWorkspace()`'s workspace DELETE)
 existing `wwPhasorFetchJson()`/`wwClearWorkspace()` choke points in
 `frontend/index.html`. Both verified with 20/20 consecutive targeted
 passes and a 5x full-Analysis-suite regression. The third item ("Speed
-selection 4x") remained outside this task's named scope and is still
-`[OPEN]`. Full diagnosis and fix details:
+selection 4x") remained outside this task's named scope and was still
+`[OPEN]` at that point.
+
+**Flake cleanup (2026-09-19, continued) — the third and final DEC-099
+item ("Speed selection 4x") is now `[CLOSED]`; DEC-099 has zero
+remaining `[OPEN]` items.** Test-synchronization bug, no production
+defect: the authoritative Playback engine (`wwPlaybackTick`/
+`wwPlaybackSetSpeed`/Play/Pause/Restart/Seek) was audited end to end
+and found already correct — `speed` is one controller-wide field,
+untouched by Play/Pause/Restart/Seek, end-of-range clamps exactly with
+a clean stop. The actual failure was reproduced directly: the original
+test's own FIXED 600ms request-counting window occasionally lets the
+first throttled `/phasor-diagram` fetch (throttle ~100ms, wall-clock-
+paced, independent of `speed`) land just outside that window by
+scheduling jitter (`diagramFetchCount === 0`, 1/30 isolated runs) — not
+a production race. Fixed by waiting authoritatively for the first fetch
+before measuring the rate over a further bounded window
+(`browser-tests/phasor_analysis.spec.js`, test-only). Five new
+deterministic 4x tests added to `browser-tests/playback.spec.js`
+(state+UI+actual engine rate, mid-play switch, Pause/Resume, Seek,
+end-of-range clamp) — all 30/30 consecutive passes. Full diagnosis and
+fix details:
 [DECISIONS.md — DEC-099](DECISIONS.md#dec-099--distance-protection-v1-the-fifth-analysis-menu-analyzer-mho-and-quadrilateral-zone-characteristic-evaluation-on-phase-phase-fault-loop-impedance)'s
-own `[CLOSED]` closure note.
+own final `[CLOSED]` closure note.
 
 **Bug fix (2026-09-18) — Sequence Components vector shaft/color
 rendering (owner UAT, renderer/style only, no math changed).** Owner

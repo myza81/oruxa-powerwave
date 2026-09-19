@@ -546,12 +546,32 @@ test.describe("Phasor Analysis -- Playback integration", () => {
     page.on("request", (request) => { if (request.url().includes("/phasor-diagram")) diagramFetchCount += 1; });
 
     await page.locator("#wwPhasorPlaybackMount .ww-tg-playback-play-btn").click();
-    await page.waitForTimeout(600);
 
-    // At 4x over ~600ms of real time (with the throttle at ~100ms), the
-    // request count must stay bounded -- nowhere near one per rAF frame
-    // (which would be dozens at 60 fps).
-    expect(diagramFetchCount).toBeGreaterThan(0);
+    // DEC-099 flake fix (test-synchronization bug, confirmed by direct
+    // reproduction -- not assumed): the throttle
+    // (WW_PHASOR_PLAYBACK_THROTTLE_MS, ~100ms) plus ordinary rAF/backend
+    // scheduling jitter means the FIRST throttled fetch can legitimately
+    // land just outside a short, FIXED real-time window under unlucky
+    // timing -- reproduced directly (1 failure in 30 isolated runs,
+    // `diagramFetchCount === 0` after a flat 600ms wait, no combined-
+    // suite load needed). Not a production defect: the throttle is
+    // wall-clock-paced and correct by design, structurally independent
+    // of `speed` (a higher speed moves more RECORDING time per real
+    // second, never more REQUESTS per real second -- see
+    // WW_PHASOR_PLAYBACK_THROTTLE_MS's own comment). Waiting
+    // AUTHORITATIVELY for the first fetch removes that race; the
+    // request-RATE claim itself (never one-per-frame) is still proven
+    // with a real, bounded time window afterward -- exactly what a
+    // fixed interval is legitimately for (a rate measurement, not a
+    // readiness signal).
+    await expect(async () => {
+      expect(diagramFetchCount).toBeGreaterThan(0);
+    }).toPass({ timeout: 5000 });
+
+    // At 4x over a further ~600ms of real time (with the throttle at
+    // ~100ms), the request count must stay bounded -- nowhere near one
+    // per rAF frame (which would be dozens at 60 fps).
+    await page.waitForTimeout(600);
     expect(diagramFetchCount).toBeLessThan(15);
   });
 
