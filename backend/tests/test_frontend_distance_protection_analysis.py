@@ -34,12 +34,12 @@ class TestDistanceNavAndPanel:
         panel = _function_body(source, 'id="wwDistancePanel"', "</section>\n                    </div>\n                </div>\n            </section>")
         assert "This analyzer is not implemented yet." not in panel
 
-    def test_analyzer_order_is_phasor_overcurrent_impedance_sequence_distance(self):
+    def test_analyzer_order_is_overcurrent_impedance_distance_phasor_sequence(self):
         source = _source()
         nav = _function_body(source, 'class="ww-analysis-type-nav"', "</nav>")
         assert (
-            nav.index("Phasor") < nav.index("Overcurrent") < nav.index("Impedance Locus")
-            < nav.index("Sequence Components") < nav.index("Distance Protection")
+            nav.index("Overcurrent") < nav.index("Impedance Locus") < nav.index("Distance Protection")
+            < nav.index("Phasor") < nav.index("Sequence Components")
         )
 
     def test_panel_routing_table_includes_distance(self):

@@ -346,11 +346,11 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
     const menu = page.locator(".ww-analysis-type-nav");
     await expect(menu).toContainText("Analyzers");
     await expect(menu.locator(".ww-analysis-type-item")).toHaveText([
-      "Phasor",
       "Overcurrent",
       "Impedance Locus",
-      "Sequence Components",
       "Distance Protection",
+      "Phasor",
+      "Sequence Components",
     ]);
     await expect(menu).not.toContainText("Differential");
 

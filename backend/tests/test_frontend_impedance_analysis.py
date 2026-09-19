@@ -51,8 +51,8 @@ class TestImpedanceNavAndPanel:
         source = _source()
         nav = _function_body(source, 'class="ww-analysis-type-nav"', "</nav>")
         assert (
-            nav.index("Phasor") < nav.index("Overcurrent") < nav.index("Impedance Locus")
-            < nav.index("Sequence Components") < nav.index("Distance Protection")
+            nav.index("Overcurrent") < nav.index("Impedance Locus") < nav.index("Distance Protection")
+            < nav.index("Phasor") < nav.index("Sequence Components")
         )
 
 

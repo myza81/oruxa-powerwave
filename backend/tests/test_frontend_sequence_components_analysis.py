@@ -41,7 +41,10 @@ class TestSequenceNavAndPanel:
     def test_analyzer_order_preserved(self):
         source = _source()
         nav = _function_body(source, 'class="ww-analysis-type-nav"', "</nav>")
-        assert nav.index("Phasor") < nav.index("Overcurrent") < nav.index("Impedance Locus") < nav.index("Sequence Components")
+        assert (
+            nav.index("Overcurrent") < nav.index("Impedance Locus") < nav.index("Distance Protection")
+            < nav.index("Phasor") < nav.index("Sequence Components")
+        )
 
     def test_panel_routing_table_includes_sequence(self):
         source = _source()
