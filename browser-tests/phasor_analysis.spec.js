@@ -1111,9 +1111,40 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
     await enterRole(page, "Ib", { magnitude: 1200, unit: "A", angleDeg: -150 });
     await enterRole(page, "Ic", { magnitude: 1200, unit: "A", angleDeg: 90 });
 
+    // DEC-099 flake fix (root cause, confirmed by direct reproduction --
+    // not assumed): each field's own "change" event independently
+    // triggers a fresh `/phasor-manual` request (`wwPhasorRequestManualDiagram()`),
+    // so entering all six roles above dispatches many overlapping
+    // requests; only the LATEST one (by generation counter) is ever
+    // rendered, exactly as designed. The role label itself (e.g. "Va")
+    // is rendered even for an UNAVAILABLE/"Missing" role -- so
+    // `text.toContain("Va")` was satisfied as early as the very FIRST
+    // request (right after Va's own magnitude was entered), long before
+    // Vb/Vc/Ia/Ib/Ic existed at all. Under normal local load this went
+    // unnoticed (all requests settle well within the time the test's own
+    // remaining interactions take), but under real backend latency
+    // (proven via a temporary `page.route()` delay injected specifically
+    // on Ic's own request) this exact condition let the test read a
+    // STALE, partially-populated render -- reproducing the real observed
+    // failure symptom byte-for-byte ("Ic: Missing", every other role
+    // correct).
+    //
+    // Waiting for Ic's own MAGNITUDE alone (the first fix attempt) is
+    // still insufficient: `enterRole()` fills magnitude and angle as two
+    // SEPARATE fields, each dispatching its own independent "change" and
+    // therefore its own independent request -- so there is a genuine
+    // intermediate, fully-valid rendered state where Ic's magnitude has
+    // already updated to "1.0 A" but its angle has not yet advanced past
+    // whatever it showed before (reproduced directly: a real run landed
+    // exactly here, magnitude correct at "1.0 A" but angle still the
+    // stale "+120.0" left over from an earlier in-progress edit). Only
+    // Ic showing BOTH its own final magnitude AND its own final angle
+    // together guarantees every other role's value in the SAME response
+    // is also fully current, since every response carries the complete
+    // state and only the latest-generation response is ever rendered.
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
-      expect(text).toContain("Va");
+      expect(text).toMatch(/Ic[\s\S]*?1\.0\s*A[\s\S]*?\+90\.0/);
     }).toPass({ timeout: 5000 });
 
     const text = await page.locator("#wwPhasorValuesList").innerText();

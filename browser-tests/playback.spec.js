@@ -403,6 +403,23 @@ test.describe("Event Playback Slice 1", () => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
     page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
+    // DEC-099 flake fix regression (Playback stray 404): a Playback-tick
+    // -driven `/phasor-diagram` GET that is still in flight at the exact
+    // moment "Start new workspace" deletes the workspace server-side can
+    // still complete afterward and surface as a genuine, browser-logged
+    // 404 -- the underlying race was real but timing-dependent (naturally
+    // flaky). Delaying every such request here (BEFORE it ever reaches
+    // the real, unmocked backend, which still deletes the workspace at
+    // its own normal fast speed) deterministically widens that same
+    // window on every run instead of relying on incidental scheduling.
+    const badResponses = [];
+    page.on("response", (res) => {
+      if (res.status() >= 400) badResponses.push(`${res.request().method()} ${res.url()} -> ${res.status()}`);
+    });
+    await page.route("**/phasor-diagram*", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await route.continue();
+    });
 
     const { mount } = await setupPhasorPlayback(page, "synth_playback", "Alpha");
     const playBtn = mount.locator(".ww-tg-playback-play-btn");
@@ -420,12 +437,14 @@ test.describe("Event Playback Slice 1", () => {
     await expect(page.locator("#newWorkspaceConfirmOverlay")).toBeHidden();
 
     // The workspace is now empty -- no Time Group canvas, so nothing left
-    // for a stale rAF loop to draw into. Give any (there should be none)
-    // still-scheduled animation frame a chance to fire and throw before
-    // asserting a clean console.
-    await page.waitForTimeout(300);
+    // for a stale rAF loop to draw into. Give the deliberately-delayed
+    // in-flight request (there should be none left uncompleted -- it was
+    // aborted, not merely outrun) a chance to settle before asserting a
+    // clean console and no unexpected HTTP failure.
+    await page.waitForTimeout(1200);
     await expect(page.locator("#wwTimeGroupCanvases .ww-time-group-canvas")).toHaveCount(0);
     expect(consoleErrors, `Unexpected console/page errors:\n${consoleErrors.join("\n")}`).toEqual([]);
+    expect(badResponses, `Unexpected failed HTTP responses:\n${badResponses.join("\n")}`).toEqual([]);
   });
 });
 

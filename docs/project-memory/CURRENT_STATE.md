@@ -9,9 +9,10 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-19** (Analysis browser-test/runtime
-hardening pass, DEC-098 — closes the two `[OPEN]` flaky-Playwright items
-DEC-097 left behind; see its own entry below in
+Last meaningful update: **2026-09-19** (DEC-099 Analysis browser-flake
+cleanup — closes two of the three `[OPEN]` flaky-Playwright items DEC-099
+left behind, Phasor Manual Input timing + Playback stray 404; see its
+own entry below in
 [Implemented capabilities](#implemented-capabilities)).
 **Event Playback
 ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock),
@@ -1010,6 +1011,22 @@ silently fixed) during this session's own regression verification — see
 own closing section for the full diagnosis; `[OPEN]` for a future,
 separate task, per the exact precedent DEC-097/DEC-098 already
 established.
+
+**Flake cleanup (2026-09-19) — two of the three DEC-099 items above are
+now `[CLOSED]`.** The Phasor Manual Input timing flake was a test-
+synchronization bug (a too-weak readiness wait in
+`phasor_analysis.spec.js`, fixed there — no production code changed).
+The Playback stray-404 flake was a genuine production race (an
+in-flight `/phasor-diagram` request could still complete, and log to
+the browser console, after `resetToNewWorkspace()`'s workspace DELETE)
+— fixed with one shared, reused `AbortController` wired into the
+existing `wwPhasorFetchJson()`/`wwClearWorkspace()` choke points in
+`frontend/index.html`. Both verified with 20/20 consecutive targeted
+passes and a 5x full-Analysis-suite regression. The third item ("Speed
+selection 4x") remained outside this task's named scope and is still
+`[OPEN]`. Full diagnosis and fix details:
+[DECISIONS.md — DEC-099](DECISIONS.md#dec-099--distance-protection-v1-the-fifth-analysis-menu-analyzer-mho-and-quadrilateral-zone-characteristic-evaluation-on-phase-phase-fault-loop-impedance)'s
+own `[CLOSED]` closure note.
 
 **Bug fix (2026-09-18) — Sequence Components vector shaft/color
 rendering (owner UAT, renderer/style only, no math changed).** Owner

@@ -4,9 +4,103 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-18**
+Last updated: **2026-09-19**
 
 ## What was most recently done
+
+**DEC-099 Analysis browser flake cleanup — the two named remaining
+flakes are now `[CLOSED]`.** Scope was deliberately narrow: fix exactly
+"Phasor Manual Input timing flake" and "Shared Playback stray 404
+flake," nothing else; Sequence Components (closed at `530048f`) was not
+reopened.
+
+**Phasor Manual Input timing flake — test-synchronization bug, no
+production defect.** `wwPhasorRequestManualDiagram()` fires an
+independent request on every field's own "change" event, so entering
+all six roles dispatches many overlapping requests; only the latest-
+generation response is ever rendered, by design. The test's own
+readiness wait (`text.toContain("Va")`) was satisfied by the FIRST such
+request (a role's own label renders even while "Missing"), so under
+real backend latency the test could read a stale, partially-populated
+render — reproduced byte-for-byte via a targeted `page.route()` delay on
+Ic's own request ("Ic: Missing", every other role correct). A first fix
+attempt (wait for Ic's magnitude alone) was itself still insufficient —
+magnitude and angle are separate fields with separate "change" events,
+so a genuine intermediate state exists with Ic's magnitude updated but
+its angle stale (reproduced directly, a real run landed exactly there).
+Fixed by waiting for Ic's own final magnitude AND angle together in
+`browser-tests/phasor_analysis.spec.js`. Verified: fails without the
+fix under the same injected delay, passes with it; 20/20 consecutive
+passes.
+
+**Shared Playback stray 404 flake — genuine production race, fixed at
+the shared fetch/teardown layer.** `resetToNewWorkspace()` issues
+`DELETE /api/v1/workspaces/{id}` before `wwClearWorkspace()` (which
+stops Playback's rAF tick loop via `wwPlaybackReset()`). A Playback-
+tick-driven `GET .../phasor-diagram` already in flight when the DELETE
+resolves server-side can still complete afterward and receive a genuine
+404 — the existing stale-response epoch guards discard its effect on
+rendering but cannot stop the browser's own DevTools console from
+logging the raw HTTP failure (unsuppressible by application code; only
+a real client-side abort prevents it). Fixed with one shared, reused
+`AbortController` (`wwAnalysisFetchAbortController`) whose signal every
+analyzer's request passes through the one shared `wwPhasorFetchJson()`
+wrapper — aborted at the top of `wwClearWorkspace()` (the same
+whole-workspace-reset choke point every analyzer's own reset already
+funnels through), and only replaced with a fresh controller at that
+function's own end, after every reset (including Playback's rAF
+cancellation) has actually run. An earlier version that recreated the
+controller immediately after aborting left a narrow window for one more
+rAF tick to fire a new, unaborted request against the deleted workspace
+— caught by a 20-run repeat check (1 failure in 20), not assumed fixed
+from a single pass. The strengthened regression in
+`browser-tests/playback.spec.js` ("Clearing the workspace while
+playing...") now deterministically forces this race via the same
+injected-delay technique and asserts both zero console errors and zero
+bad HTTP responses; confirmed to fail without the production fix, pass
+with it; 20/20 consecutive passes after the ordering correction.
+`b30c7f7`'s reconciliation fix and DEC-057's dynamic Time Group
+`group_id` recomputation were untouched.
+
+**The third, previously-`[OPEN]` DEC-099 item ("Speed selection (4x)")
+was outside this task's named scope and was not investigated** — did
+not reproduce in 10 additional isolated runs during this session either;
+status unchanged, left `[OPEN]` for a future task if it resurfaces.
+
+**New, unrelated flake observed (NOT fixed, out of scope):**
+`sequence_components_analysis.spec.js` — "hiding the dominant V1 does
+not change V2/V0's own rendered scale/position" failed once in a
+5x-full-Analysis-suite regression run (1/1030 test executions), passed
+10/10 in isolation immediately after. Read the test: it is a pure
+manual-input + client-side visibility-toggle-click + SVG-geometry-read
+scenario with no `wwClearWorkspace()`/fetch/abort involvement anywhere
+in its path, so it is confirmed unrelated to either fix above. Per this
+task's own explicit "do not reopen Sequence Components unless
+investigation proves one of these flakes originates there" instruction,
+left untouched — reported here per Change Governance, not silently
+patched, for a future separate task to pick up if it recurs.
+
+**Validation**: targeted Phasor test 20/20 consecutive passes; targeted
+Playback test 20/20 consecutive passes (after the ordering fix); full
+Analysis browser suite (Phasor/Overcurrent/Impedance/Sequence/Distance/
+Related Waveforms/Playback/bare-context, 206 tests) run 5 complete
+times — 5/5 clean except the one unrelated Sequence flake above; full
+backend suite passes; `git diff --check` clean (only a pre-existing
+CRLF/LF normalization notice, not an error).
+
+**Files**: `browser-tests/phasor_analysis.spec.js` (readiness-wait fix),
+`browser-tests/playback.spec.js` (strengthened regression with
+deterministic delay injection + bad-response assertion), `frontend/
+index.html` (production fix: `wwAnalysisFetchAbortController`),
+`docs/project-memory/DECISIONS.md` (DEC-099 `[CLOSED]` closure note,
+historical wording preserved), `CURRENT_STATE.md`/`HANDOFF.md` (this
+file).
+
+**Stop condition honored**: only the two named flakes fixed; no other
+analyzer touched; Sequence Components not reopened; no new feature
+started.
+
+## What was done in the prior session — Sequence Components complete cleanup/closure pass
 
 **Sequence Components complete cleanup/closure pass — CLOSED as a
 stable feature.** Owner did not want another narrow patch; asked for a

@@ -16102,6 +16102,64 @@ None of the three is fixed by this slice — `[OPEN]` items for a future,
 separate task, per the exact precedent DEC-097/DEC-098 already
 established for prior pre-existing flakes.
 
+**`[CLOSED]` — items 2 and 3 above, in a dedicated later session** (a
+focused DEC-099 flake-cleanup task, after Sequence Components was
+declared stable at commit `530048f`). Root causes, confirmed by direct
+`page.route()`-delay reproduction on each (not assumed), and fixes:
+
+- **Item 2 (Phasor Manual Input timing flake) — test-synchronization bug,
+  no production defect.** `wwPhasorRequestManualDiagram()` fires an
+  independent request on every field's own "change" event; only the
+  latest-generation response is ever rendered, exactly as designed. The
+  test's own readiness wait (`text.toContain("Va")`) was satisfied by
+  the FIRST request of many (a role's own label renders even while
+  "Missing"/unavailable), so under real backend latency the test could
+  read a stale, partially-populated render — reproducing the exact
+  observed symptom ("Ic: Missing", every other role correct). A first
+  fix attempt (wait for Ic's own magnitude alone, since Ic is entered
+  last and every response carries the full state) was itself still
+  insufficient: magnitude and angle are two separate fields with two
+  separate "change" events, so a genuine intermediate state exists where
+  Ic's magnitude has updated but its angle has not (reproduced directly:
+  a real run landed exactly here). Fixed in
+  `browser-tests/phasor_analysis.spec.js`'s "golden owner worked
+  example" test by waiting for Ic's own final magnitude AND angle
+  together before reading the panel. No production code changed for
+  this item.
+- **Item 3 (Shared Playback stray 404 flake) — genuine production race,
+  fixed at the shared fetch/teardown layer.** `resetToNewWorkspace()`
+  issues `DELETE /api/v1/workspaces/{id}` before calling
+  `wwClearWorkspace()`, which is what stops Playback's own rAF tick
+  loop (`wwPlaybackReset()`). A Playback-tick-driven
+  `GET .../engineering-contexts/{id}/phasor-diagram` already in flight
+  when the DELETE resolves server-side can still complete afterward and
+  receive a genuine 404 — the existing `epochAtStart !== ww.epoch`
+  stale-response guards correctly discard its effect on rendering, but
+  do nothing to stop the browser's own DevTools console from logging
+  the raw HTTP failure (that logging is independent of and
+  unsuppressible by application-level handling; only an actual client-
+  side abort of the request prevents it). Fixed by adding one shared,
+  reused `AbortController` (`wwAnalysisFetchAbortController`) whose
+  signal every Analysis analyzer's request passes through the ONE
+  shared `wwPhasorFetchJson()` wrapper, aborted at the top of
+  `wwClearWorkspace()` — the same single whole-workspace-reset choke
+  point every analyzer's own reset already funnels through — and only
+  replaced with a fresh controller at that function's own end, after
+  every reset (including `wwPlaybackReset()`'s rAF cancellation) has
+  run. An earlier version that recreated the controller immediately
+  after aborting (before `wwPlaybackReset()` ran) left a narrow window
+  in which one more rAF tick could still fire and issue a new, unaborted
+  request against the now-deleted workspace — caught by a 20-consecutive
+  -run repeat check (1 failure in 20), not assumed fixed from a single
+  pass. `docs/project-memory/HANDOFF.md`/`CURRENT_STATE.md` carry the
+  session record; no DECISIONS.md architectural entry beyond this
+  closure note was needed for either item.
+
+Item 1 (Speed selection 4x) was outside this later session's own named
+scope and was not investigated further; it remained `[OPEN]` and did not
+reproduce in 10 additional isolated runs during that session either — no
+change made, status unchanged from above.
+
 **Alternatives considered.** Merging Distance Protection into Impedance
 Locus's own panel/state (e.g. an "evaluate as a zone" toggle) was
 considered and rejected — the task's own explicit "a SEPARATE analyzer"

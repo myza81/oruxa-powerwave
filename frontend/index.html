@@ -31437,6 +31437,37 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             options = options || {};
             clearTimeout(ww.viewportDebounceTimer);
             ww.epoch += 1; // invalidate any in-flight channel-display batch
+            // DEC-099 flake fix (production race): abort every currently
+            // in-flight Analysis request (Phasor/Overcurrent/Impedance/
+            // Sequence Components/Distance Protection all funnel through
+            // the ONE shared `wwPhasorFetchJson()`, which reads this
+            // controller's own signal) BEFORE this function's own
+            // per-analyzer state reset below. Without this, a request
+            // already in flight when the workspace is deleted server-side
+            // (e.g. a Playback-tick-driven `/phasor-diagram` GET) could
+            // still complete afterward and receive a genuine 404 from the
+            // backend -- the existing `epochAtStart !== ww.epoch`
+            // stale-response guards already correctly discard its EFFECT
+            // on rendering, but do nothing to stop the browser's own
+            // devtools console from logging the raw HTTP failure, since
+            // that log is independent of any application-level handling.
+            // Aborting here means the request never completes at all, so
+            // there is nothing left for the browser to log. Deliberately
+            // NOT replaced with a fresh controller immediately -- the
+            // signal is left in its aborted state for this function's
+            // entire remaining teardown (including wwPlaybackReset()
+            // below, which stops the rAF tick loop but has not run yet
+            // at this point). Without that, a straggler rAF tick could
+            // still fire in the narrow window between this line and
+            // wwPlaybackReset() actually cancelling it, issuing ONE more
+            // request against the now-deleted workspace through a
+            // freshly-usable (non-aborted) controller -- reproduced
+            // directly (1 failure in 20 runs) before moving the
+            // replacement to the end of this function. A fresh
+            // controller is created at this function's own end instead,
+            // once every reset below (which is what actually stops any
+            // further request from being attempted) has completed.
+            wwAnalysisFetchAbortController.abort();
             // Event Playback Slice 1: stop/reset the ONE shared Playback
             // Controller before this function's own per-canvas DOM
             // teardown below -- reuses this exact same whole-workspace
@@ -31715,6 +31746,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // the sidebar's dots/remove-controls reflect the now-empty
             // displayed set.
             wwSyncChannelBrowserDisplayState();
+            // DEC-099 flake fix (production race): only now -- after
+            // every reset above, including wwPlaybackReset()'s own rAF
+            // cancellation, has actually run -- is it safe to replace
+            // the aborted controller with a fresh one. Any Analysis
+            // request attempted anywhere during this function's own
+            // teardown used the aborted signal above and was rejected
+            // immediately; the NEXT request (from whatever loads into
+            // the new workspace afterward) needs a working, non-aborted
+            // controller, which is what this line provides.
+            wwAnalysisFetchAbortController = new AbortController();
         }
 
         // ==================================================================
@@ -40177,8 +40218,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return "var(--text-dim)";
         }
 
+        // DEC-099 flake fix (production race, confirmed by direct
+        // reproduction -- see docs/project-memory/DECISIONS.md): every
+        // Analysis-menu analyzer (Phasor, Overcurrent, Impedance,
+        // Sequence Components, Distance Protection) funnels EVERY one of
+        // its own GET requests through this ONE shared function -- the
+        // authoritative choke point for aborting them all at once,
+        // rather than plumbing an AbortController through each
+        // analyzer's own dozens of individual call sites. Reused (never
+        // recreated per-request) so a single `.abort()` cancels every
+        // currently in-flight Analysis request. See wwClearWorkspace()'s
+        // own comment for exactly when this is aborted and replaced.
+        let wwAnalysisFetchAbortController = new AbortController();
         async function wwPhasorFetchJson(url, options) {
-            const response = await fetch(url, options);
+            const response = await fetch(url, Object.assign({}, options, { signal: wwAnalysisFetchAbortController.signal }));
             if (!response.ok) {
                 const body = await response.json().catch(() => null);
                 throw new Error((body && body.detail && body.detail.message) || "Request failed.");
