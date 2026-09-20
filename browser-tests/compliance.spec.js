@@ -163,4 +163,34 @@ test.describe("Compliance & Capability -- Slice 1 workspace shell", () => {
       expect(measurementBox.width).toBeGreaterThan(120);
     });
   }
+
+  // Owner UAT fix (2026-09-20): #wwComplianceMeasurementSelect used to
+  // overflow the Measurement card and encroach into Reference Layers at
+  // narrower widths, since the select itself had no width constraint of
+  // its own. 1024px is the owner's own reported breakpoint; 800px is
+  // "one narrower width" that stays just above the 760px single-column
+  // stack breakpoint, where the three cards are at their narrowest
+  // still-side-by-side share (below 760px the cards stack vertically,
+  // so "encroaching into Reference Layers" horizontally no longer
+  // applies -- that stacked case is already covered by the "no
+  // horizontal overflow" tests above).
+  for (const viewport of [{ width: 1024, height: 800 }, { width: 800, height: 800 }]) {
+    test(`Measurement select stays contained within its card at ${viewport.width}px`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await openCompliance(page);
+      const selectBox = await page.locator("#wwComplianceMeasurementSelect").boundingBox();
+      const cardBox = await page.locator("#wwComplianceMeasurementCard").boundingBox();
+      expect(selectBox.x).toBeGreaterThanOrEqual(cardBox.x - 1);
+      expect(selectBox.x + selectBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 1);
+
+      // Never overlapping the sibling Reference Layers card specifically
+      // -- the exact encroachment the owner reported.
+      const referenceLayersBox = await page.locator("#wwComplianceReferenceLayersCard").boundingBox();
+      expect(selectBox.x + selectBox.width).toBeLessThanOrEqual(referenceLayersBox.x + 1);
+
+      const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+      const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+      expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
+    });
+  }
 });

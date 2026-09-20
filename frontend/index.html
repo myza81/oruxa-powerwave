@@ -5984,6 +5984,28 @@
            own workflow-section layout below is Compliance-specific.
            Vertical rhythm mirrors `.ww-phasor-panel`'s own single
            consistent `gap` convention. */
+        /* Owner UAT (2026-09-20): #pageCompliance had no page-level
+           layout rule at all -- unlike every other flex-column top-level
+           page (#pageAnalysis, #pageCalculatedChannels), which already
+           use this exact same block. Matching that established
+           convention exactly, including the `[hidden]` override: author
+           CSS's own `display: flex` beats the UA stylesheet's default
+           `[hidden] { display: none }` rule by origin alone, regardless
+           of specificity -- #pageAnalysis/#pageCalculatedChannels/
+           #pageRecordings already needed this same paired override for
+           this same reason (see their own comments above), and
+           #pageCompliance would otherwise stay visibly rendered
+           underneath other pages after navigating away. */
+        #pageCompliance {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 20px 24px;
+            overflow-y: auto;
+            height: 100%;
+            box-sizing: border-box;
+        }
+        #pageCompliance[hidden] { display: none; }
         .ww-compliance-panel {
             display: flex;
             flex-direction: column;
@@ -6004,11 +6026,18 @@
            `.ww-analysis-shell`'s own 820px (760px) -- this row lives
            INSIDE `.ww-analysis-content`, already narrower than the full
            viewport by the function sub-nav's own width, so it needs to
-           stack sooner than the outer shell does. */
+           stack sooner than the outer shell does. Owner UAT (2026-09-20):
+           `min-width: 0` was missing here -- as a flex item of
+           `.ww-compliance-panel`, this row's own default `min-width:auto`
+           resolves to its content's min-content size, which could refuse
+           to shrink below that and force the page to overflow
+           horizontally even though the cards below (already `min-width:
+           0`) were themselves willing to shrink. */
         .ww-compliance-config-row {
             display: flex;
             gap: 12px;
             align-items: stretch;
+            min-width: 0;
         }
         .ww-compliance-config-card {
             flex: 1 1 0;
@@ -6030,11 +6059,40 @@
            and break that audit. The existing field class's own fixed
            min-width (sized for Phasor's much wider two-column body)
            would otherwise fight this card's compact, three-across
-           layout at narrower widths; this class overrides it back to a
-           normal shrinkable field. */
-        .ww-compliance-measurement-field {
+           layout at narrower widths -- this was INTENDED to override it
+           back to a normal shrinkable field, but never actually did: the
+           Phasor field class's own 220px min-width rule is declared
+           LATER in this file, and at equal (single-class) specificity,
+           CSS resolves the tie by source order, so the later rule
+           silently won every time regardless of this one. Owner UAT (2026-09-20)
+           traced the Measurement select's real overflow to exactly this
+           -- the label stayed pinned at 220px no matter how narrow the
+           card became, so the select's own `width: 100%` below just
+           faithfully filled that too-wide 220px. Fixed by targeting the
+           element's own ID instead of its class: an ID selector's higher
+           specificity wins unconditionally, independent of source order,
+           without touching the literal substring the structural test
+           above depends on. */
+        #wwComplianceMeasurementField {
             min-width: 0;
             margin: 0;
+        }
+        /* Owner UAT (2026-09-20): the label above already shrinks
+           (`min-width: 0`), but the SELECT itself is its own nested flex
+           item (`.ww-phasor-field` is `display: flex; flex-direction:
+           column`) with no width rule of its own -- its default
+           `min-width: auto` resolves to its own min-content (the longest
+           <option> text), so it kept its natural width regardless of how
+           narrow the Measurement card became, visually overflowing into
+           Reference Layers. Constraining the select directly (not a
+           broader `.ww-phasor-field select` override, which also serves
+           Overcurrent/Phasor's own two-column body) fixes the actual
+           conflicting element. */
+        #wwComplianceMeasurementSelect {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
         }
         .ww-compliance-alignment-controls {
             display: flex;
@@ -9703,7 +9761,7 @@
                                     <!-- Disabled placeholder, layout UAT only -- no
                                          real quantity selection in Slice 1 (task
                                          section 5's own explicit allowance). -->
-                                    <label class="ww-phasor-field ww-compliance-measurement-field" id="wwComplianceMeasurementField">
+                                    <label class="ww-phasor-field" id="wwComplianceMeasurementField">
                                         <span class="ww-phasor-field-label">Assessment quantity</span>
                                         <select id="wwComplianceMeasurementSelect" disabled aria-disabled="true">
                                             <option value="">Select a quantity…</option>
