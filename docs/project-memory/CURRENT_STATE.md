@@ -9,12 +9,11 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-19** (Compliance & Capability Slice 1
-— a new, SIXTH top-level page, independent of Analysis; workspace shell
-only, no engineering calculation/profile/persistence yet. See
-[DECISIONS.md — DEC-100](DECISIONS.md#dec-100--compliance--capability-is-a-top-level-application-function-independent-of-analysis-slice-1-is-a-workspace-shell-only)
-and [COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md); see its own
-entry below in [Implemented capabilities](#implemented-capabilities)).
+Last meaningful update: **2026-09-20** (fixed a genuine production race
+— toggling a channel display immediately after opening a just-uploaded
+recording could wipe the entire channel sidebar with a misleading
+"Could not reach the backend" message; see its own entry below in
+[Implemented capabilities](#implemented-capabilities)).
 **Event Playback
 ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock),
 its own 2026-09-11 revision) is implemented as a shared, reusable
@@ -1026,6 +1025,43 @@ existing `wwPhasorFetchJson()`/`wwClearWorkspace()` choke points in
 passes and a 5x full-Analysis-suite regression. The third item ("Speed
 selection 4x") remained outside this task's named scope and was still
 `[OPEN]` at that point.
+
+**Bug fix (2026-09-20) — toggling a channel display immediately after
+opening a just-uploaded recording could wipe the entire channel
+sidebar.** Discovered as an intermittent (~40-50% under natural timing)
+failure while validating Compliance Slice 1; confirmed pre-existing and
+unrelated to Compliance (reproduced identically on a clean pre-
+Compliance baseline). Root cause, confirmed by direct reproduction (a
+console-error listener caught the actual uncaught exception, not
+assumed): opening a recording (`selectSource()`) refreshes the
+workspace viewport (`wwRefreshWorkspaceBounds()` →
+`wwApplyAndFetchGroupViewport()`), which calls `Plotly.relayout()` on
+every current panel's chart element. A channel toggled ON at almost the
+same moment (`wwAddSelectedChannels()`) already has a panel in
+`ww.panels` (so the relayout loop sees it) but its own
+`Plotly.newPlot()` hasn't run yet (only after that channel's own
+waveform fetch resolves) — `Plotly.relayout()` on an uninitialized
+chart throws (`Cannot read properties of undefined (reading
+'_guiEditing')`), and that uncaught exception propagated into
+`selectSource()`'s own catch block, which misidentified it as "could
+not reach the backend" and wiped the entire sidebar, discarding the
+engineer's own just-completed toggle along with every other channel's
+row. **Real production bug** (a real user could hit this), not test-
+only. Every OTHER Plotly-touching loop over `ww.panels` in this file
+already guards on `panel.plotlyReady` first (15+ call sites) — this was
+the one missed site. **Fix**: one guard line
+(`if (!panel.plotlyReady || !panel.chartEl) continue;`) in
+`wwApplyAndFetchGroupViewport()`'s own relayout loop, matching the
+established convention exactly. Verified via disable-fix-then-verify:
+6/12 failures with the guard removed, 0/55 with it restored. New
+regression added to `browser-tests/smoke.spec.js` (the same natural-
+timing reproduction — a genuine same-tick synchronous-ordering race
+that an injected network delay could not reliably force wider, tried
+directly — with stronger assertions than a bare aria-pressed check):
+20/20 consecutive passes. Full backend suite, relevant frontend
+structural tests, and a 74-test Analysis/Compliance/Playback/smoke
+regression all pass. No DECISIONS.md entry — a scoped bug fix, not an
+architectural change.
 
 **Compliance & Capability Slice 1 (2026-09-19) — a new, SIXTH top-level
 page, deliberately independent of Analysis (workspace shell only, see

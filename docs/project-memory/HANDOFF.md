@@ -4,9 +4,71 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-19**
+Last updated: **2026-09-20**
 
 ## What was most recently done
+
+**Fixed a genuine, pre-existing production race: toggling a channel
+display immediately after opening a just-uploaded recording could wipe
+the entire channel sidebar with a misleading "Could not reach the
+backend" message.** Discovered as an intermittent (~40-50% under
+natural timing) failure of `smoke.spec.js`'s own "toggle one analog
+channel" step, first noticed during Compliance Slice 1 validation and
+confirmed (5/5) on a clean pre-Compliance baseline checkout — genuinely
+pre-existing, unrelated to Compliance.
+
+**Root cause, confirmed by direct reproduction (not assumed), via a
+console-error listener catching the actual uncaught exception**:
+opening a recording (`selectSource()`) refreshes the workspace viewport
+(`wwRefreshWorkspaceBounds()` → `wwApplyAndFetchGroupViewport()`),
+which calls `Plotly.relayout()` on every current panel's own chart
+element. If the engineer toggles a channel display ON at almost the
+same moment (`wwAddSelectedChannels()`), that channel's own panel
+already exists in `ww.panels` (so the viewport-refresh loop sees it)
+but its own `Plotly.newPlot()` call has not run yet (it only runs after
+that channel's own waveform-data fetch resolves) — calling
+`Plotly.relayout()` on a chart Plotly has never initialized throws
+(`Cannot read properties of undefined (reading '_guiEditing')`). That
+uncaught exception propagated out of `wwRefreshWorkspaceBounds()` into
+`selectSource()`'s own catch block, which misidentified it as "could
+not reach the backend" and wiped the ENTIRE channel sidebar —
+discarding the engineer's own just-completed channel toggle along with
+every other channel's row.
+
+**Classification: real production bug**, not test-only, not a stale
+expectation, not a fixture issue. A real, if unlucky, user clicking a
+channel-toggle row right after opening a just-uploaded recording could
+hit this exact same failure. Every OTHER Plotly-touching loop over
+`ww.panels` in this file already guards on `panel.plotlyReady` first
+(`wwHandleResize()`, `wwClearWorkspace()`, and 15+ other call sites) —
+this was the one missed site.
+
+**Fix (minimal, one guard line + comment)**: `wwApplyAndFetchGroupViewport()`'s
+own relayout loop now skips a panel whose `plotlyReady`/`chartEl` isn't
+set yet, exactly like every other such loop already does. Verified via
+disable-fix-then-verify: 6/12 failures with the guard removed (matching
+the original ~40-50% rate), 0/55 with it restored (25 + 30 consecutive
+runs of the full `smoke.spec.js`).
+
+**New deterministic-style regression** added to `smoke.spec.js`
+(the original test's own natural-timing reproduction, ~40-50% per run
+pre-fix — a genuinely same-tick synchronous-ordering race that a
+`page.route()` delay could not reliably force wider, confirmed by
+trying it directly) with stronger assertions than a bare aria-pressed
+check (no "Could not reach the backend" fallback text, channel row
+count never drops to zero) so a reintroduction of this exact defect
+fails clearly. 20/20 consecutive passes with the fix.
+
+**Validation**: full backend suite passes; relevant frontend structural
+tests pass; full `smoke.spec.js` and broader Analysis/Compliance/
+Playback regression (74 tests) all pass; `git diff --check` clean.
+
+**Files**: `frontend/index.html` (one guard line +
+`wwApplyAndFetchGroupViewport()`), `browser-tests/smoke.spec.js` (new
+regression test). No DECISIONS.md entry — a scoped bug fix, not an
+architectural change.
+
+## What was done in the prior session — Compliance & Capability Slice 1
 
 **Compliance & Capability — Slice 1: top-level navigation + Voltage
 workspace shell only.** A small, deliberately exploratory product/UI

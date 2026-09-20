@@ -24443,6 +24443,28 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const isPrimary = groupId === wwPrimaryTimeGroupId();
             for (const panel of ww.panels) {
                 if (wwPanelTimeGroupId(panel) !== groupId) continue;
+                // DEC-099-adjacent flake fix (production race, confirmed by
+                // direct reproduction -- not assumed): a panel just created
+                // by wwAddSelectedChannels() (e.g. a channel toggled
+                // immediately after opening a recording) has a real
+                // `chartEl` container from the moment it is pushed into
+                // ww.panels, but `Plotly.newPlot()` itself (which sets
+                // `panel.plotlyReady = true`, see wwInitPanelPlot()) only
+                // runs later, after that panel's own waveform-data fetch
+                // resolves. Calling `Plotly.relayout()` on a chartEl Plotly
+                // has never initialized throws (`Cannot read properties of
+                // undefined (reading '_guiEditing')`, reproduced directly)
+                // -- an uncaught exception here previously propagated all
+                // the way up through wwRefreshWorkspaceBounds() into
+                // selectSource()'s own catch block, which misidentified it
+                // as "could not reach the backend" and wiped the entire
+                // channel sidebar. Every OTHER Plotly-touching loop over
+                // ww.panels in this file already guards on
+                // `panel.plotlyReady` first (e.g. wwHandleResize(),
+                // wwClearWorkspace()) -- this was the one missed site; a
+                // not-yet-ready panel simply has nothing to relayout yet
+                // and is skipped, exactly like those other call sites.
+                if (!panel.plotlyReady || !panel.chartEl) continue;
                 panel.suppressNext = true;
                 Plotly.relayout(panel.chartEl, wwTimeAxisRelayout(startTime, endTime, groupId));
             }

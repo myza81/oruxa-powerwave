@@ -131,3 +131,82 @@ test("Powerwave smoke: upload, display, Time Group, cursor, rename", async ({ pa
     expect(consoleErrors, `Unexpected console/page errors:\n${consoleErrors.join("\n")}`).toEqual([]);
   });
 });
+
+// Deterministic regression for a genuine production race, discovered
+// investigating an intermittent (~40-50% under natural timing) failure of
+// the "toggle one analog channel" step above. Root cause, confirmed by
+// direct reproduction (not assumed): opening a just-uploaded recording
+// (selectSource()) refreshes the workspace viewport
+// (wwRefreshWorkspaceBounds() -> wwApplyAndFetchGroupViewport()), which
+// calls `Plotly.relayout()` on every current panel's own chart element.
+// If the engineer toggles a channel display ON at almost the same moment
+// (wwAddSelectedChannels()), that channel's own panel already exists in
+// ww.panels (so the viewport refresh's loop sees it) but its own
+// `Plotly.newPlot()` call has not run yet (it only runs after that
+// channel's own waveform-data fetch resolves) -- calling `relayout()` on
+// a chart Plotly has never initialized throws, and that uncaught
+// exception previously propagated out of wwRefreshWorkspaceBounds() into
+// selectSource()'s own catch block, which wiped the ENTIRE channel
+// sidebar and replaced it with a misleading "Could not reach the
+// backend" message -- silently discarding the engineer's own just-
+// completed channel toggle along with every other channel's row. Fixed
+// by skipping a not-yet-initialized panel in that relayout loop (the same
+// `panel.plotlyReady` guard every other Plotly-touching loop over
+// ww.panels already uses).
+//
+// The race window itself is a same-tick synchronous-ordering race (the
+// channel panel's own creation vs. selectSource()'s own relayout loop,
+// both following essentially the same upstream event with no network
+// round-trip in between) -- narrow enough that no `page.route()` delay
+// reliably widens it without also delaying the very render the click
+// depends on (tried directly: an injected delay on the workspace's own
+// synchronization-state fetch still passed even with the fix reverted,
+// confirming it does not reliably force this specific race). This test
+// therefore reproduces it via the SAME natural, fast recording-open ->
+// immediate-channel-click sequence the original smoke test already
+// uses (empirically ~40-50% per run pre-fix, exactly how this bug was
+// first found) -- validated by a repeated-run count, not by a single
+// pass -- with stronger, more specific assertions than a bare
+// aria-pressed check, so a reintroduction of this exact defect fails
+// clearly rather than as a generic timeout.
+test("Powerwave smoke: toggling a channel display immediately after opening a just-uploaded recording never wipes the sidebar", async ({ page }) => {
+  const consoleErrors = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text());
+  });
+  page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
+  const badResponses = [];
+  page.on("response", (res) => {
+    if (res.status() >= 400) badResponses.push(`${res.request().method()} ${res.url()} -> ${res.status()}`);
+  });
+
+  await page.goto("/index.html");
+  await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+  await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+  await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "synth_ascii.cfg"));
+  await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "synth_ascii.dat"));
+  await page.locator("#uploadModalSubmitBtn").click();
+  await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+
+  const row = page.locator("#recordingsTableBody tr[data-source-id]").first();
+  await expect(row).toBeVisible();
+  const sourceId = await row.getAttribute("data-source-id");
+
+  await row.click();
+  const chRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
+  await expect(chRow).toBeVisible();
+  await expect(chRow).toHaveAttribute("data-source-id", sourceId);
+  await chRow.click();
+
+  // Authoritative outcome, not a UI-survival guess: the toggled channel
+  // must actually end up displayed, and the sidebar must still contain
+  // every channel row -- neither a lingering "Could not reach the
+  // backend" fallback nor a silently-emptied channel list.
+  await expect(chRow).toHaveAttribute("aria-pressed", "true", { timeout: 5000 });
+  await expect(page.locator(".ww-chart .plotly").first()).toBeVisible();
+  await expect(page.locator("#channelGroups tr.channel-row--toggle")).not.toHaveCount(0);
+  await expect(page.locator("#channelsPanel")).not.toContainText("Could not reach the backend");
+
+  expect(badResponses, `Unexpected failed HTTP responses:\n${badResponses.join("\n")}`).toEqual([]);
+  expect(consoleErrors, `Unexpected console/page errors:\n${consoleErrors.join("\n")}`).toEqual([]);
+});
