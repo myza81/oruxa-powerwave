@@ -8,6 +8,103 @@ Last updated: **2026-09-20**
 
 ## What was most recently done
 
+**Compliance & Capability Slice 2 — Measurement Selection + Normalization
+Foundation.** Implements ONLY the Measurement section and the
+underlying normalization; Reference Layers/Event Alignment/Comparison
+Chart/Results remain exactly Slice 1's own static placeholders.
+
+The engineer chooses the assessment quantity FIRST from a fixed
+nine-entry Voltage catalogue (Phase A/B/C, Line-Line AB/BC/CA, Min/Max
+Three-Phase, Positive Sequence — `app.domain.compliance_measurement.
+VOLTAGE_QUANTITIES`, the one source of truth, never duplicated in
+frontend HTML). **Channel/phase resolution reuses the Engineering
+Context Detection ALGORITHM directly, never the Engineering Context
+FEATURE** — Compliance still does not register as an Engineering
+Context consumer (DEC-100, unchanged); no Bay selector, no shared
+Playback/Analysis Input Source, no `EngineeringContext` object ever
+created or persisted by Compliance. See
+[DECISIONS.md — DEC-101](DECISIONS.md#dec-101--compliance-slice-2-resolves-voltage-phase-roles-by-independently-re-running-the-engineering-context-detection-algorithm-never-by-becoming-an-engineering-context-consumer)
+for the full record of this distinction (this was the one genuine
+architectural fork in this task — the task's own Slice 2 spec never
+mentions a Bay concept, and DEC-100 explicitly forbids the Engineering
+Context CONSUMER pattern, so the design reuses the pure detection
+function call-by-value instead of either violating DEC-100 or
+reinventing channel-phase classification).
+
+Instantaneous vs RMS input representation is read from authoritative
+metadata (`AnalogChannelSummary.waveform_form`), falling back to the
+existing `app.domain.rms_detector.classify_waveform_form()` detector —
+never guessed from a channel name; an uncertain/disagreeing verdict is
+`STATUS_AMBIGUOUS_METADATA`. Normalization reuses, unchanged:
+`app.domain.phasor.estimate_phasor()` for an instantaneous input's own
+fundamental RMS, `app.domain.sequence_components.compute_symmetrical_
+components()` for Positive Sequence, and — the task's own explicit
+disturbance-time prohibition — a derived line-line quantity (no direct
+Vab/Vbc/Vca channel) is computed ONLY from two genuine complex phase
+phasors (`Vab = Va - Vb`), never `VLL = sqrt(3) * VLN`; this requires
+both phases to carry angle information, so an already-RMS pair is
+`STATUS_UNSUPPORTED_REPRESENTATION` rather than a guess. A direct
+Vab/Vbc/Vca channel, when present, is used verbatim, never re-derived.
+Base/Assessment Unit reuse the existing group-aware Per-Unit model
+verbatim (`measurement_group_view_service.build_group_view()`) — no
+second Compliance-specific base model; no group configured is a normal
+Engineering-Units state, never an error; roles spanning two DIFFERENT
+groups is `STATUS_INVALID_BASE`.
+
+**The live "switch assessment quantity" endpoint never actually
+computes a numeric value** — it determines status/resolved-input/
+Instantaneous-vs-RMS/"Derived As"/Base entirely from channel-level
+metadata, since Compliance has no selected-time/Playback concept yet
+and the Measurement UI shows no numeric reading this slice either. The
+actual computation (`compute_voltage_quantity_value()`/`estimate_
+phasor()`/`compute_symmetrical_components()`) is fully implemented and
+golden-tested directly against synthetic waveforms, proving it correct
+and ready for a later slice's real selected-time wiring.
+
+**Files**: new `backend/app/domain/compliance_measurement.py`,
+`backend/app/services/compliance_measurement_service.py`, `backend/app/
+schemas/compliance.py`, `backend/app/api/v1/compliance.py` (registered
+in `backend/app/main.py`); new error `UnknownComplianceQuantityError`
+in `backend/app/services/errors.py`; `frontend/index.html` (Measurement
+markup/CSS + `wwComplianceLoadQuantities()`/`wwComplianceFetchMeasurement()`/
+`wwComplianceRenderMeasurement()`/etc.); new tests `backend/tests/
+test_compliance_measurement_domain.py` (13)/`test_compliance_
+measurement_service.py` (13)/`test_compliance_measurement_api.py` (4);
+`backend/tests/test_frontend_compliance.py`'s new `TestComplianceMeasurementSlice2Structure`/
+`TestComplianceOutOfScopeSlice2` classes (9); new `browser-tests/
+compliance_measurement.spec.js` (14 scenarios) with two new committed
+ASCII COMTRADE fixtures (`compliance_smoke_three_phase`,
+`compliance_smoke_rms_phase_a`); `docs/project-memory/COMPLIANCE_CAPABILITY.md`
+(Slice 2 section), `DECISIONS.md` (DEC-101), `CURRENT_STATE.md`/
+`HANDOFF.md` (this file).
+
+**Validation**: full backend suite passes; full frontend structural
+suite passes; full Playwright suite (149 scenarios across `compliance.spec.js`/
+`compliance_measurement.spec.js`/`phasor_analysis.spec.js`/
+`overcurrent_analysis.spec.js`/`playback.spec.js`/`smoke.spec.js`) passes,
+run twice clean; `git diff --check` clean.
+
+**Stop condition honored**: Measurement + normalization foundation
+only — no Reference Layers, Event Alignment, comparison curves, or
+compliance evaluation implemented; no Slice 3 work started.
+
+## What was done in the prior session — owner UAT CSS refinement + the sidebar-wipe race fix
+
+**Owner UAT CSS refinement (commit `3447f24`)**: `#pageCompliance`
+gained the same page-level flex/scroll/spacing block every other
+top-level page already had (plus the required `[hidden]` override);
+the real root cause of `#wwComplianceMeasurementSelect` overflowing
+into Reference Layers was `.ww-phasor-field`'s own conflicting
+`min-width: 220px` winning an equal-specificity cascade tie by being
+declared LATER in the file — fixed by re-targeting the override at the
+element's own ID (which wins unconditionally) rather than adding a
+redundant class-based override. See
+[COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md) and
+[CURRENT_STATE.md](CURRENT_STATE.md) for the full record.
+
+**Also from that session** (unrelated, same day) — the sidebar-wipe
+race fix described below.
+
 **Fixed a genuine, pre-existing production race: toggling a channel
 display immediately after opening a just-uploaded recording could wipe
 the entire channel sidebar with a misleading "Could not reach the

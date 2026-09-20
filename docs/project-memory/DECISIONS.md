@@ -16346,6 +16346,85 @@ endpoint, no persistence.
 
 ---
 
+## DEC-101 — Compliance Slice 2 resolves Voltage phase roles by independently re-running the Engineering Context Detection ALGORITHM, never by becoming an Engineering Context consumer
+
+Date: 2026-09-20
+Status: Approved — implemented (Compliance & Capability Slice 2:
+Measurement Selection + Normalization Foundation).
+Source: owner task ("implements Compliance & Capability -- Slice 2 ...
+Reuse existing foundations wherever possible ... inspect the current
+Engineering Context / Measurement Group model"), read alongside
+DEC-100's own still-standing "Compliance does not register as an
+Engineering Context consumer."
+
+**Issue.** Slice 2's quantity catalogue (Phase A/B/C, Line-Line AB/BC/
+CA, Positive Sequence) fundamentally needs the same "which channel is
+phase A vs phase B" classification Analysis Guardrail Slice 1
+(`app.domain.engineering_context_detection`) already built and tested.
+Re-implementing that pattern-matching algorithm a second time would
+violate the task's own "reuse existing foundations"/"do not duplicate"
+instructions. But DEC-100 explicitly states Compliance "does not
+register as an Engineering Context consumer" — and Slice 2's own task
+text never mentions a Bay/Engineering Context selector for Compliance
+at all (the Measurement UI's only primary control is the Assessment
+Quantity dropdown). Naively wiring Compliance into the shared
+`wwAnalysisRegisterContextConsumer()`/Bay-selector/Playback-driven
+pattern every Analysis-menu analyzer uses would re-introduce exactly
+the coupling DEC-100 rejected, for a feature whose own UI never asked
+for a Bay concept.
+
+**Decision.** `app.services.compliance_measurement_service.resolve_
+voltage_role_catalogue()` calls `app.domain.engineering_context_
+detection.detect_engineering_contexts()` **directly, as a pure
+function, call-by-value** — passing it a fresh list of `ChannelForDetection`
+built from the workspace's own currently loaded Voltage channels, per
+source (that function's own single-source-only design), and flattening
+every detected member's own phase across every source into one
+workspace-wide `phase -> channel` map. **No `EngineeringContext` object
+is ever created, read, updated, or persisted by Compliance** —
+`EngineeringContextRegistry` is never imported by `app.services.
+compliance_measurement_service`/`app.api.v1.compliance`. The frontend
+never calls `wwAnalysisRegisterContextConsumer()`, never mounts a Bay
+selector, never touches `wwAnalysisState`/`wwPlaybackState`/`wwPhasorState`/
+any other analyzer's own state, and neither new endpoint
+(`GET .../compliance/voltage/quantities`, `GET .../compliance/voltage/
+measurement`) accepts or resolves an `engineering_context_id`.
+
+**Reason.** This distinguishes reusing an ALGORITHM (pure pattern-
+matching over channel names, safe and correct to call independently,
+any number of times, with zero side effects) from adopting a FEATURE's
+own object model/lifecycle/consumer-registration machinery (which is
+what DEC-100 was actually protecting Compliance's independence from —
+Playback coupling, Analysis Input Source, the shared Bay-selection UI
+and its own bootstrap/discovery lifecycle). Re-running the pure
+detection function fresh on every measurement request is also strictly
+simpler and more honest for Compliance's own workflow: there is no
+"select a Bay first" step to teach the engineer, and no staleness risk
+from a Context object that might disagree with the workspace's current
+channel set.
+
+**Alternatives considered.** (1) Register Compliance as a genuine
+Engineering Context consumer (a Bay selector, mirroring Phasor) —
+rejected: reopens exactly the coupling DEC-100 rejected, and the task's
+own UI mock never asked for a Bay concept. (2) Re-implement channel
+phase-name classification independently inside `app.domain.compliance_
+measurement` — rejected: duplicates a pure, already-tested algorithm
+for no benefit, and risks the two classifiers silently drifting apart
+over time (e.g. the ambiguous raw token `"B"` resolution logic).
+
+**Impact.** `backend/app/services/compliance_measurement_service.py`
+(new) imports `app.domain.engineering_context_detection` directly;
+zero changes to that module, to `app.domain.engineering_context`, to
+`EngineeringContextRegistry`, or to any existing Analysis-menu
+analyzer. `frontend/index.html`'s new Slice 2 functions
+(`wwComplianceLoadQuantities()`/`wwComplianceFetchMeasurement()`/etc.)
+call only the two new Compliance-specific endpoints — verified directly
+by `backend/tests/test_frontend_compliance.py::TestComplianceMeasurementSlice2Structure::
+test_endpoints_are_workspace_scoped_never_engineering_context_scoped`
+and `::test_render_compliance_page_still_never_touches_analyzer_state`.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

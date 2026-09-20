@@ -1102,6 +1102,122 @@ failures) on a clean pre-Compliance baseline checkout, reported per
 Change Governance, not silently patched, left for a future separate
 task.
 
+**Owner UAT CSS refinement (2026-09-20, frontend-only, no logic
+change).** `#pageCompliance` gained the same page-level `display: flex;
+flex-direction: column; gap: 16px; padding: 20px 24px; overflow-y:
+auto; height: 100%;` block (plus the required paired `[hidden] {
+display: none; }` override — this codebase's own recurring `[hidden]`-
+vs-author-`display`-property gotcha, already hit twice before for
+`#pageAnalysis`/`#pageCalculatedChannels`) every other flex-column
+top-level page already had; it had none before. `#wwComplianceMeasurementSelect`
+used to overflow the Measurement card and encroach into Reference
+Layers at narrower widths — real root cause: `.ww-compliance-measurement-field`'s
+own `min-width: 0` override never actually took effect, since `.ww-
+phasor-field`'s own conflicting `min-width: 220px` rule is declared
+LATER in the file and wins an equal-specificity tie by source order;
+fixed by re-targeting the override at the element's own ID
+(`#wwComplianceMeasurementField`, which wins unconditionally regardless
+of source order) and adding an explicit `width`/`min-width`/`box-sizing`
+rule on the select itself. `.ww-compliance-config-row` also gained a
+missing `min-width: 0` (a flex item of `.ww-compliance-panel` with no
+override otherwise refuses to shrink below its own content's intrinsic
+width). New Playwright regression (`browser-tests/compliance.spec.js`):
+the select's own bounding box stays contained within the Measurement
+card (and never overlaps Reference Layers) at 1024px/800px. Commit
+`3447f24`.
+
+**Compliance & Capability Slice 2 — Measurement Selection + Normalization
+Foundation (2026-09-20).** Implements ONLY the Measurement section +
+underlying normalization; Reference Layers/Event Alignment/Comparison
+Chart/Results remain exactly Slice 1's own static placeholders. The
+engineer chooses the assessment quantity FIRST from a fixed nine-entry
+Voltage catalogue (Phase A/B/C, Line-Line AB/BC/CA, Min/Max Three-Phase,
+Positive Sequence — `app.domain.compliance_measurement.VOLTAGE_
+QUANTITIES`, the one source of truth, never duplicated as static
+frontend HTML). **Channel/phase resolution reuses the Engineering
+Context Detection ALGORITHM directly
+(`app.domain.engineering_context_detection.detect_engineering_contexts()`),
+never the Engineering Context FEATURE** — Compliance still does not
+register as an Engineering Context consumer (DEC-100, unchanged); no
+Bay selector, no `wwAnalysisRegisterContextConsumer()`, no Playback, no
+Analysis Input Source, no `EngineeringContext` object ever created/
+read/persisted by Compliance. See
+[DECISIONS.md — DEC-101](DECISIONS.md#dec-101--compliance-slice-2-resolves-voltage-phase-roles-by-independently-re-running-the-engineering-context-detection-algorithm-never-by-becoming-an-engineering-context-consumer)
+for the full architectural record of this distinction.
+
+**Instantaneous vs RMS input representation is read from authoritative
+metadata, never guessed from a channel name** — reuses the EXACT
+metadata-first/detector-fallback hierarchy `check_rms_eligibility()`/
+Phasor's own `_waveform_form_eligible()` already established
+(`AnalogChannelSummary.waveform_form` wins when trusted; otherwise
+`app.domain.rms_detector.classify_waveform_form()` on the channel's own
+full sample array); an `UNCERTAIN` verdict or disagreeing resolved
+roles is `STATUS_AMBIGUOUS_METADATA`, never a guess. **Normalization
+order** (raw recording → engineering units → RMS/fundamental
+representation → phase/line-line/sequence quantity → per-unit
+conversion) reuses, unchanged: `app.domain.phasor.estimate_phasor()`
+for an instantaneous input's own fundamental RMS (never a second DFT/
+RMS engine); `app.domain.sequence_components.compute_symmetrical_
+components()` for Positive Sequence (never a second Fortescue
+transform); and — the task's own explicit disturbance-time
+prohibition — a derived line-line quantity (no direct Vab/Vbc/Vca
+channel) is computed ONLY from two genuine complex phase phasors
+(`Vab = Va - Vb`), **never the `VLL = sqrt(3) * VLN` shortcut**, which
+requires both phases to carry angle information (i.e. both
+instantaneous) — an already-RMS, angle-less pair is `STATUS_
+UNSUPPORTED_REPRESENTATION`. A direct Vab/Vbc/Vca channel, when
+present, is used verbatim, never re-derived even when the individual
+phases also resolve. Base/Assessment Unit reuse the existing
+group-aware Per-Unit model verbatim via `measurement_group_view_
+service.build_group_view()` (task section 7 — no second Compliance-
+specific base model): a shared, configured Voltage Measurement Group
+across every resolved role yields `pu` + nominal LL kV + L-G/L-L;
+no group is a normal Engineering-Units state, never an error; roles
+spanning two DIFFERENT groups is `STATUS_INVALID_BASE`.
+
+**The live "switch assessment quantity" endpoint never actually computes
+a numeric value** — `evaluate_voltage_measurement()` (backing
+`GET .../compliance/voltage/measurement`) determines status/resolved-
+input-channels/Instantaneous-vs-RMS/"Derived As"/Base entirely from
+channel-level metadata; it never calls `estimate_phasor()` or the new
+`compute_voltage_quantity_value()`, since Compliance has no selected-
+time/Playback concept yet (Event Alignment/t0 is still out of scope)
+and the Measurement UI itself shows no numeric reading this slice
+either. `compute_voltage_quantity_value()`/`estimate_phasor()`/
+`compute_symmetrical_components()` are fully implemented and golden-
+tested directly against synthetic waveforms
+(`backend/tests/test_compliance_measurement_domain.py`), proving the
+computation path correct and ready for a later slice's actual
+selected-time wiring without prematurely exposing it.
+
+Two new workspace-scoped, read-only endpoints in a dedicated router
+(`app/api/v1/compliance.py`, never Engineering-Context-scoped):
+`GET .../compliance/voltage/quantities` and `GET .../compliance/
+voltage/measurement?quantity_id=...`. New `app/domain/compliance_
+measurement.py`, `app/services/compliance_measurement_service.py`,
+`app/schemas/compliance.py` — zero changes to any existing domain/
+service/endpoint. Frontend: the Measurement select is now real and
+backend-populated (`wwComplianceLoadQuantities()`); selecting a
+quantity renders a compact Status/Input/Input Type/Derived As/Base/
+Assessment Unit summary (`.ww-compliance-measurement-summary`, reusing
+`.ww-phasor-status-row` verbatim — no new status-color system),
+re-evaluated on every Compliance page visit so a source uploaded/
+removed elsewhere never leaves a stale result. New tests: `test_
+compliance_measurement_domain.py` (13 golden vectors), `test_compliance_
+measurement_service.py` (13 eligibility/guardrail scenarios), `test_
+compliance_measurement_api.py` (4 HTTP wiring), `test_frontend_
+compliance.py`'s new Slice 2 structural classes (9 tests), and
+`browser-tests/compliance_measurement.spec.js` (14 real-browser
+scenarios: dropdown catalogue, quantity switching, single-phase/
+three-phase cases, Instantaneous/RMS summaries, Base metadata display,
+1366/1024/800px responsive, Analysis/Playback isolation) — two new
+committed ASCII COMTRADE fixtures (`compliance_smoke_three_phase`,
+`compliance_smoke_rms_phase_a`, the latter hand-verified against the
+real `classify_waveform_form()` detector before being committed, since
+COMTRADE never sets `waveform_form` metadata). Full backend regression,
+full frontend structural suite, and the full Playwright suite (149
+scenarios) all pass.
+
 **Flake cleanup (2026-09-19, continued) — the third and final DEC-099
 item ("Speed selection 4x") is now `[CLOSED]`; DEC-099 has zero
 remaining `[OPEN]` items.** Test-synchronization bug, no production
@@ -1550,8 +1666,13 @@ cursors, t0, annotations, a group-aware Per-Unit measurement model,
 calculated channels, and digital-channel display, an `Analysis` page
 hosting five engineering analyzers (Phasor/Overcurrent/Impedance Locus/
 Sequence Components/Distance Protection), and — as of 2026-09-19 — a
-SEPARATE, independent `Compliance` top-level page (Slice 1: workspace
-shell only, see [DEC-100](DECISIONS.md#dec-100--compliance--capability-is-a-top-level-application-function-independent-of-analysis-slice-1-is-a-workspace-shell-only)).
+SEPARATE, independent `Compliance` top-level page (see
+[DEC-100](DECISIONS.md#dec-100--compliance--capability-is-a-top-level-application-function-independent-of-analysis-slice-1-is-a-workspace-shell-only)),
+now with a real Voltage Measurement Selection + Normalization
+Foundation as of 2026-09-20 (Slice 2 — see
+[COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md); Reference Layers/
+Event Alignment/Comparison Chart/Results remain Slice 1's own
+placeholders).
 CSV/Excel ingestion is the current workstream — Slices 1-12 (raw preparation-source upload
 through canonical `DisturbanceRecord` conversion, existing-waveform-
 integration verification, and cleaned data export) are implemented;

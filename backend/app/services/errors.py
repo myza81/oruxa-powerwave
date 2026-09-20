@@ -1040,3 +1040,10 @@ class PhaseAssignmentLockedError(ImportServiceError):
     guardrail to raise rather than needing a destructive addition then."""
 
     code = "phase_assignment_locked"
+
+
+class UnknownComplianceQuantityError(ImportServiceError):
+    """A requested Compliance assessment `quantity_id` does not match any
+    entry in `app.domain.compliance_measurement.VOLTAGE_QUANTITIES`."""
+
+    code = "unknown_compliance_quantity"

@@ -164,3 +164,110 @@ class TestComplianceOutOfScopeSlice1:
         source = _source()
         assert "/api/v1/compliance" not in source
         assert "localStorage" not in _compliance_page(source)
+
+
+class TestComplianceMeasurementSlice2Structure:
+    """Slice 2 (Measurement Selection + Normalization Foundation) --
+    structural guards for the real Assessment Quantity workflow that
+    replaces Slice 1's disabled placeholder select."""
+
+    def test_measurement_select_is_no_longer_a_disabled_placeholder(self):
+        source = _source()
+        page = _compliance_page(source)
+        select = _function_body(page, 'id="wwComplianceMeasurementSelect"', "</select>")
+        assert "disabled" not in select
+        assert "aria-disabled" not in select
+        assert 'value="">Select a quantity' in select
+
+    def test_measurement_summary_rows_exist_and_start_hidden(self):
+        source = _source()
+        page = _compliance_page(source)
+        summary = _function_body(page, 'id="wwComplianceMeasurementSummary"', "</div>\n                                </section>")
+        assert 'id="wwComplianceMeasurementSummary" hidden' in page
+        for element_id in (
+            "wwComplianceMeasurementStatusRow", "wwComplianceMeasurementInput", "wwComplianceMeasurementInputType",
+            "wwComplianceMeasurementDerivedAs", "wwComplianceMeasurementBase", "wwComplianceMeasurementUnit",
+        ):
+            assert f'id="{element_id}"' in summary
+
+    def test_quantity_catalogue_is_never_hardcoded_in_markup(self):
+        """The dropdown starts with only the placeholder option -- every
+        real quantity option is populated from the backend catalogue at
+        runtime (wwComplianceRenderQuantityOptions()), never duplicated
+        as static HTML that could drift from app.domain.compliance_
+        measurement.VOLTAGE_QUANTITIES."""
+        source = _source()
+        page = _compliance_page(source)
+        select = _function_body(page, 'id="wwComplianceMeasurementSelect"', "</select>")
+        assert select.count("<option") == 1
+
+    def test_required_slice2_js_functions_exist(self):
+        source = _source()
+        for fn in (
+            "function wwComplianceLoadQuantities(",
+            "function wwComplianceRenderQuantityOptions(",
+            "function wwComplianceOnQuantityChange(",
+            "function wwComplianceFetchMeasurement(",
+            "function wwComplianceRenderMeasurement(",
+        ):
+            assert fn in source
+
+    def test_endpoints_are_workspace_scoped_never_engineering_context_scoped(self):
+        """Compliance still does not register as an Engineering Context
+        consumer (DEC-100/DEC-101) -- neither new endpoint call embeds an
+        engineering_context_id, unlike every Analysis-menu analyzer's own
+        `.../engineering-contexts/{id}/...` calls."""
+        source = _source()
+        assert "/compliance/voltage/quantities" in source
+        assert "/compliance/voltage/measurement" in source
+        measurement_fetch = _function_body(source, "function wwComplianceFetchMeasurement(", "\n        }")
+        assert "engineering-contexts" not in measurement_fetch
+        assert "engineering_context_id" not in measurement_fetch
+
+    def test_render_compliance_page_still_never_touches_analyzer_state(self):
+        """Extends the existing Slice 1 guard: the Slice 2 additions to
+        wwRenderCompliancePage() (loading quantities, refreshing the
+        selected measurement) must never call any shared Analysis/
+        Playback/analyzer entry point."""
+        source = _source()
+        render_fn = _function_body(source, "function wwRenderCompliancePage() {", "\n        }")
+        assert "wwAnalysisLoadContexts" not in render_fn
+        assert "wwAnalysisRegisterContextConsumer" not in render_fn
+        assert "wwPlayback" not in render_fn
+        assert "wwPhasorState" not in render_fn
+        assert "wwSequenceState" not in render_fn
+        assert "wwDistanceState" not in render_fn
+        assert "wwComplianceLoadQuantities" in render_fn
+
+
+class TestComplianceOutOfScopeSlice2:
+    """task's own explicit Slice 2 scope boundary: only Measurement is
+    implemented -- Reference Layers, Event Alignment, comparison curves,
+    and compliance evaluation remain exactly the Slice 1 placeholders."""
+
+    def test_reference_layers_and_event_alignment_still_disabled_placeholders(self):
+        source = _source()
+        page = _compliance_page(source)
+        add_ref_btn = _function_body(page, 'id="wwComplianceAddReferenceBtn"', "</button>")
+        assert "disabled" in add_ref_btn
+        alignment_controls = _function_body(page, 'id="wwComplianceAlignmentControls"', "</div>")
+        # Each of the 3 buttons (Shift-left, t0, Shift-right) carries both
+        # `disabled` and `aria-disabled="true"` -- "disabled" is also a
+        # substring of "aria-disabled", so 3 buttons -> 6 occurrences.
+        assert alignment_controls.count("disabled") == 6
+
+    def test_no_reference_profile_alignment_or_evaluation_logic_added(self):
+        source = _source()
+        page = _compliance_page(source)
+        for forbidden in (
+            "wwComplianceEvaluate", "wwComplianceBreach", "wwComplianceMargin",
+            "wwComplianceApplyShift", "wwComplianceSetT0", "wwComplianceDetectEvent", "wwComplianceAutoAlign",
+            "profile_json", "profileJson", "malaysian_grid_code", "MalaysianGridCode",
+        ):
+            assert forbidden not in page
+
+    def test_still_no_backend_endpoint_beyond_the_two_measurement_endpoints(self):
+        source = _source()
+        assert "/api/v1/compliance" not in source
+        assert "reference-layer" not in source
+        assert "event-alignment" not in source
