@@ -8,6 +8,103 @@ Last updated: **2026-09-23**
 
 ## What was most recently done
 
+**Production regression fix, part 3 (DEC-107): DEC-106 fixed role
+compatibility but not analyzer input eligibility.** Owner UAT, against a
+context DEC-106 had already auto-selected as "role-compatible":
+Overcurrent — *"The resolved current channel is not an eligible
+instantaneous waveform input for RMS evaluation."* Impedance Locus —
+*"One or both required phasors are not available for this phase."*
+
+**Root cause, confirmed by direct reproduction with a new fixture — NOT
+a data/API defect.** DEC-106's own compatibility check (`GET .../
+input-resolution`) only proves a Voltage/Current role EXISTS for the
+selected phase (**Level 1 — role identity**). It never checked whether
+the resolved channel's own waveform REPRESENTATION (instantaneous vs.
+RMS/magnitude) is eligible for the requesting analyzer's actual
+computation (**Level 2 — analyzer input eligibility**) — a separate
+check `compute_overcurrent_analysis()`/`compute_phasor_diagram()`
+themselves already perform, AFTER role resolution, BEFORE the time-
+windowed estimate. A context whose Current channel is RMS-shaped passes
+DEC-106's role check every single time yet still fails real computation
+every single time, at every playback instant.
+
+**Compatibility levels established** (now the standing vocabulary for
+this feature area, per the owner's own framing): **Level 1 — role
+compatibility** (DEC-106's own scope: required roles exist). **Level 2 —
+analyzer input eligibility** (this fix's own scope: those channels' own
+representation is one the analyzer can consume). **Level 3 — runtime
+computation availability** (calculation succeeds at a PARTICULAR
+playback instant — deliberately NEVER checked by auto-selection, at any
+level: a momentarily-quiet window or an as-yet-unelapsed first cycle are
+genuine runtime conditions that must never permanently disqualify an
+otherwise-good context).
+
+**Reproduced directly with a new fixture pair**
+(`representation_eligibility_multibay.cfg/.dat`: `RMSBAY` — proper
+instantaneous Voltage, but Current shaped as an always-positive slowly-
+varying envelope, the exact shape `backend/tests/test_rms_detector.py`'s
+own `test_slowly_varying_positive_magnitude_series_is_likely_magnitude_or_rms`
+uses; `INSTBAY` — both proper; `RMSBAY` detected/listed FIRST) — a real
+browser, real backend, zero manual seeding. Overcurrent and Impedance
+both auto-selected `RMSBAY` and rendered nothing; computing directly
+against it at a real `analysis_time` returned the exact owner-reported
+messages, verbatim (`reason_code="waveform_form_not_eligible"`).
+Distance Protection reproduced identically. Phasor and Sequence
+Components both auto-selected the SAME `RMSBAY` and rendered correctly-
+partial results (Voltage resolved, Current marked unavailable) —
+confirming, again, that neither needs this fix.
+
+**Fix.** New backend-authoritative preflight `GET .../engineering-contexts/{id}/input-readiness`
+(mirrors `/input-resolution`'s own `analysis_kind`+`mode` query shape),
+backed by two new service-layer functions, each mirroring their own
+existing computation function's FIRST phase precisely (role resolution
+-> candidate fetch -> reference-frequency agreement -> waveform-form
+eligibility) while deliberately stopping there — no `analysis_time`
+parameter at all, never performing the time-windowed estimate (Level 3):
+`app.services.overcurrent_analysis_service.check_overcurrent_readiness()`
+(reuses that module's own already-tested `_fetch_current_candidate()`/
+`_waveform_form_eligible_for_rms()` verbatim) and `app.services.phasor_analysis_service.check_phasor_diagram_readiness()`
+(reuses `_fetch_role_candidate()`/`_waveform_form_eligible()` verbatim,
+covering all six roles at once — Impedance/Distance/Sequence Components
+all ask this SAME function under their own `analysis_kind`, one shared
+phasor-eligibility rule, never a per-analyzer copy). The frontend's own
+`wwAnalysisFindFirstCompatibleContext()` needed NO logic change at all —
+only its own fetch helper (renamed `wwAnalysisFetchInputReadiness()`)
+repointed from `/input-resolution` to `/input-readiness`, a strict
+superset check. The existing `WW_XXX_MSG_NO_COMPATIBLE_CONTEXT` messages
+(DEC-106) are reused verbatim for the no-compatible-context case — no
+new message strings needed. The user-selection guardrail is preserved
+exactly as DEC-106 established it. See
+[DECISIONS.md — DEC-107](DECISIONS.md#dec-107--dec-106-follow-up-initial-context-auto-selection-must-also-check-analyzer-input-eligibility-waveform-representation-not-merely-role-identity--a-new-backend-authoritative-input-readiness-preflight-distinct-from-role-compatibility-and-from-runtime-computation-availability)
+for the full record, including why calling the full analyzer
+computation as the selector test was explicitly rejected.
+
+**Files**: `backend/app/services/overcurrent_analysis_service.py`/
+`phasor_analysis_service.py` (new readiness functions), `backend/app/schemas/analysis_input_resolution.py`
+(`AnalysisInputReadinessOut`), `backend/app/api/v1/engineering_contexts.py`
+(new endpoint). Zero changes to any existing computation/detection
+function — confirmed by the full existing backend suite passing
+unmodified. `frontend/index.html` (one fetch helper repointed). New
+fixtures `representation_eligibility_multibay.cfg/.dat` and
+`representation_eligibility_none.cfg/.dat`. New backend test file
+`test_analysis_input_readiness_api.py` (9 scenarios) plus new test
+classes in `test_overcurrent_analysis_service.py`/`test_phasor_diagram_service.py`
+(13 scenarios combined, each proving the readiness verdict stays in
+agreement with the real computation across multiple `analysis_time`
+values). `browser-tests/post_upload_readiness.spec.js` gained 6 new
+scenarios (5 verified to FAIL against the pre-fix frontend, via a
+temporary `git stash` of `frontend/index.html` alone, and PASS against
+the fix).
+
+**Validation**: focused Overcurrent/Phasor/Impedance/Distance/input-
+resolution/new-readiness backend suites pass; full backend suite passes;
+full Playwright suite passes; `git diff --check` clean.
+
+**Stop condition honored**: this Analysis regression correction only —
+no Compliance Slice 3, no other feature work started.
+
+## What was done in the prior session — Production regression fix, part 2 (DEC-106): DEC-105 only partially restored Analysis
+
 **Production regression fix, part 2 (DEC-106): DEC-105 only partially
 restored Analysis.** Owner UAT reported a follow-up regression after the
 DEC-105 fix landed: *"some analyzers now work, Overcurrent still has an

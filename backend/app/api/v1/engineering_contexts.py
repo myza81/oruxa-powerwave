@@ -69,7 +69,7 @@ from app.domain.analysis_input_resolution import AnalysisInputResolution
 from app.domain.analysis_requirements import get_requirement
 from app.domain.distance_protection import ZoneSettings
 from app.domain.phasor import ManualPhasorRoleInput, PhasorAnalysisResult, PhasorDiagramResult
-from app.schemas.analysis_input_resolution import AnalysisInputResolutionOut, RoleSpecOut
+from app.schemas.analysis_input_resolution import AnalysisInputReadinessOut, AnalysisInputResolutionOut, RoleSpecOut
 from app.schemas.distance_protection_analysis import (
     DistanceAnalysisResultOut,
     DistanceLocusOut,
@@ -122,12 +122,18 @@ from app.services.errors import ImportServiceError
 from app.services.impedance_analysis_service import compute_impedance_analysis, compute_impedance_locus, compute_impedance_manual
 from app.services.overcurrent_analysis_service import (
     CurveComputationError,
+    check_overcurrent_readiness,
     compute_idmt_curve,
     compute_overcurrent_analysis,
     compute_overcurrent_manual_analysis,
     list_known_characteristics,
 )
-from app.services.phasor_analysis_service import compute_phasor_analysis, compute_phasor_diagram, compute_phasor_manual_diagram
+from app.services.phasor_analysis_service import (
+    check_phasor_diagram_readiness,
+    compute_phasor_analysis,
+    compute_phasor_diagram,
+    compute_phasor_manual_diagram,
+)
 from app.services.sequence_components_analysis_service import compute_sequence_analysis, compute_sequence_manual
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -405,6 +411,73 @@ def get_input_resolution(
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
     return _resolution_to_out(result)
+
+
+@router.get("/engineering-contexts/{engineering_context_id}/input-readiness", response_model=AnalysisInputReadinessOut)
+def get_input_readiness(
+    workspace_id: str,
+    engineering_context_id: str,
+    analysis_kind: str,
+    mode: str,
+    context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+) -> AnalysisInputReadinessOut:
+    """DEC-107: read-only preflight, one level deeper than `GET .../
+    input-resolution` above -- also checks whether the resolved
+    channel's own REPRESENTATION (waveform form -- instantaneous vs.
+    RMS/magnitude) is eligible for the requesting analyzer, reusing
+    `app.services.overcurrent_analysis_service.check_overcurrent_
+    readiness()` (for `analysis_kind == "overcurrent"`) or `app.services.
+    phasor_analysis_service.check_phasor_diagram_readiness()` (every
+    other currently-defined `analysis_kind` -- Phasor/Impedance/Distance
+    Protection/Sequence Components all declare the same `Vx`/`Ix`
+    role-key shape against that one shared phasor-eligibility rule,
+    mirroring how they already share `compute_phasor_diagram()` itself
+    for actual computation). Deliberately takes no `analysis_time` --
+    never performs the time-windowed RMS/phasor estimate itself (Level
+    3); `status == "resolved"` here is never a promise that computation
+    will succeed at any PARTICULAR playback instant, only that nothing
+    about the resolved channel's own identity or representation
+    permanently disqualifies it. Always derived fresh; nothing here is
+    persisted or cached."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    requirement = get_requirement(analysis_kind, mode)
+    if requirement is None or len(requirement.required_roles) != 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorOut(
+                code="unknown_analysis_requirement",
+                message=f"No single-role analysis requirement is registered for analysis_kind={analysis_kind!r}, mode={mode!r}.",
+            ).model_dump(),
+        )
+    role = requirement.required_roles[0]
+
+    try:
+        if analysis_kind == "overcurrent":
+            readiness = check_overcurrent_readiness(
+                workspace_id=workspace_id, engineering_context_id=engineering_context_id, phase=role.phase,
+                reference_frequency_hz_override=None,
+                context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+            )
+            return AnalysisInputReadinessOut(
+                status=readiness.status, analysis_kind=analysis_kind, mode=mode,
+                engineering_context_id=engineering_context_id, reason_code=readiness.reason_code, message=readiness.message,
+            )
+
+        diagram_readiness = check_phasor_diagram_readiness(
+            workspace_id=workspace_id, engineering_context_id=engineering_context_id, reference_frequency_hz_override=None,
+            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+
+    role_readiness = diagram_readiness.role_readiness[role.role_key]
+    return AnalysisInputReadinessOut(
+        status=role_readiness.status, analysis_kind=analysis_kind, mode=mode,
+        engineering_context_id=engineering_context_id, reason_code=role_readiness.reason_code,
+        message=role_readiness.message or f"Role {role.role_key!r} is eligible.",
+    )
 
 
 def _phasor_result_to_out(result: PhasorAnalysisResult) -> PhasorAnalysisResultOut:

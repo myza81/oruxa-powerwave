@@ -456,3 +456,152 @@ test.describe("DEC-106: initial context auto-selection is analyzer-compatibility
     await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(kpdn1Id);
   });
 });
+
+// DEC-107 (2026-09-23 owner-UAT follow-up to DEC-106): "DEC-106 fixed
+// role compatibility but apparently not analyzer input eligibility."
+// Owner UAT: Overcurrent showed "The resolved current channel is not an
+// eligible instantaneous waveform input for RMS evaluation." and
+// Impedance showed "One or both required phasors are not available for
+// this phase." for a context DEC-106 had already auto-selected as
+// "role-compatible." Root cause: DEC-106's own compatibility check
+// (`GET .../input-resolution`) only proves a Current/Voltage role
+// EXISTS for the selected phase (Level 1 -- role identity); it says
+// nothing about whether that resolved channel's own waveform
+// REPRESENTATION (instantaneous vs. RMS/magnitude) is eligible for the
+// requesting analyzer's actual computation (Level 2). A context whose
+// Current channel is RMS-shaped passes DEC-106's own check yet still
+// fails real computation every time, at every playback instant.
+//
+// Fixture: representation_eligibility_multibay(.cfg/.dat) -- newly
+// committed, two bays: RMSBAY (proper instantaneous Voltage, but
+// Current shaped as an always-positive slowly-varying envelope -- the
+// exact shape backend/tests/test_rms_detector.py's own
+// test_slowly_varying_positive_magnitude_series_is_likely_magnitude_or_rms
+// uses) and INSTBAY (both Voltage and Current proper instantaneous
+// sinusoids). RMSBAY is detected/listed FIRST, so any lingering
+// "role-compatible is good enough" behavior is caught immediately.
+// representation_eligibility_none(.cfg/.dat) -- ONE bay only, Voltage
+// proper but Current RMS-shaped throughout, for the no-compatible-
+// context scenario (no alternative bay exists anywhere in the
+// workspace). Like every other test in this file, nothing is manually
+// seeded or selected -- upload-time DEC-104 discovery alone, then the
+// analyzer's own auto-selection, must do the right thing.
+test.describe("DEC-107: initial context auto-selection is representation-eligibility-aware (RMS/magnitude current is never treated as usable)", () => {
+  async function uploadRepresentationEligibilityFixture(page, stem) {
+    await page.goto("/index.html");
+    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${stem}.cfg`));
+    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${stem}.dat`));
+    await page.locator("#uploadModalSubmitBtn").click();
+    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+    const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    await expect(row).toBeVisible();
+  }
+
+  async function openAnalysisTab(page, tabId) {
+    await page.locator("#mainNavAnalysisBtn").click();
+    await expect(page.locator("#pageAnalysis")).toBeVisible();
+    if (tabId) {
+      await page.locator(`#${tabId}`).click();
+      await expect(page.locator(`#${tabId}`)).toHaveClass(/active/);
+    }
+  }
+
+  test("Overcurrent skips the RMS-shaped-current bay and auto-selects the instantaneous bay; real RMS computation succeeds", async ({ page }) => {
+    await uploadRepresentationEligibilityFixture(page, "representation_eligibility_multibay");
+    await openAnalysisTab(page, "wwAnalysisTypeOvercurrentBtn");
+    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(3, { timeout: 10000 }); // placeholder + 2 bays
+
+    const instbayId = await page.evaluate(() => wwOvercurrentState.contexts.find((c) => c.display_name === "INSTBAY").id);
+    await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(instbayId, { timeout: 10000 });
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toContain("Measured RMS current");
+      expect(text).toMatch(/40\.0\s*A/);
+    }).toPass({ timeout: 5000 });
+  });
+
+  test("Impedance Locus skips the RMS-shaped-current bay and auto-selects the instantaneous bay; current point, locus, and Related Waveforms all succeed", async ({ page }) => {
+    await uploadRepresentationEligibilityFixture(page, "representation_eligibility_multibay");
+    await openAnalysisTab(page, "wwAnalysisTypeImpedanceBtn");
+    await expect(page.locator("#wwImpedanceContextSelect option")).toHaveCount(3, { timeout: 10000 });
+
+    const instbayId = await page.evaluate(() => wwImpedanceState.contexts.find((c) => c.display_name === "INSTBAY").id);
+    await expect(page.locator("#wwImpedanceContextSelect")).toHaveValue(instbayId, { timeout: 10000 });
+    await expect(async () => {
+      const text = await page.locator("#wwImpedanceValuesList").innerText();
+      expect(text).toContain("Phase impedance");
+    }).toPass({ timeout: 10000 });
+    // The R-X plane SVG (static locus + current point, fetched once per
+    // context/phase/settings change -- never per Playback tick) reflects
+    // the SAME auto-selected, eligible bay.
+    await expect(page.locator("#wwImpedanceSvg")).toBeVisible({ timeout: 10000 });
+  });
+
+  test("Distance Protection skips the RMS-shaped-current bay and auto-selects the instantaneous bay; loop impedance succeeds", async ({ page }) => {
+    await uploadRepresentationEligibilityFixture(page, "representation_eligibility_multibay");
+    await openAnalysisTab(page, "wwAnalysisTypeDistanceBtn");
+    await expect(page.locator("#wwDistanceContextSelect option")).toHaveCount(3, { timeout: 10000 });
+
+    const instbayId = await page.evaluate(() => wwDistanceState.contexts.find((c) => c.display_name === "INSTBAY").id);
+    await expect(page.locator("#wwDistanceContextSelect")).toHaveValue(instbayId, { timeout: 10000 });
+    await expect(async () => {
+      const text = await page.locator("#wwDistanceValuesList").innerText();
+      expect(text).toContain("Loop");
+    }).toPass({ timeout: 10000 });
+  });
+
+  test("Phasor and Sequence Components remain unaffected -- still auto-select the first (RMS-shaped-current) bay and mark the ineligible Current roles accordingly, never a hard failure", async ({ page }) => {
+    await uploadRepresentationEligibilityFixture(page, "representation_eligibility_multibay");
+    await openAnalysisTab(page, null);
+    await expect(page.locator("#wwPhasorContextSelect option")).toHaveCount(3, { timeout: 10000 });
+
+    const rmsbayId = await page.evaluate(() => wwPhasorState.contexts.find((c) => c.display_name === "RMSBAY").id);
+    await expect(page.locator("#wwPhasorContextSelect")).toHaveValue(rmsbayId, { timeout: 10000 });
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/); // RMSBAY's own Va/Vb/Vc resolve
+    }).toPass({ timeout: 5000 });
+  });
+
+  test("no compatible context: Overcurrent/Impedance/Distance show a meaningful configuration message when every context's own Current is RMS-shaped, never a silent failure", async ({ page }) => {
+    await uploadRepresentationEligibilityFixture(page, "representation_eligibility_none");
+
+    await openAnalysisTab(page, "wwAnalysisTypeOvercurrentBtn");
+    await expect(page.locator("#wwOvercurrentEmptyState")).toHaveText(
+      "No Engineering Context contains the required Current input for Overcurrent.", { timeout: 10000 }
+    );
+    await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue("");
+
+    await page.locator("#wwAnalysisTypeImpedanceBtn").click();
+    await expect(page.locator("#wwImpedanceEmptyState")).toHaveText(
+      "No Engineering Context contains the required Voltage and Current inputs for Impedance Locus.", { timeout: 10000 }
+    );
+    await expect(page.locator("#wwImpedanceContextSelect")).toHaveValue("");
+
+    await page.locator("#wwAnalysisTypeDistanceBtn").click();
+    await expect(page.locator("#wwDistanceEmptyState")).toHaveText(
+      "No Engineering Context contains the required Voltage and Current inputs for Distance Protection.", { timeout: 10000 }
+    );
+    await expect(page.locator("#wwDistanceContextSelect")).toHaveValue("");
+  });
+
+  test("guardrail: a manually selected (even representation-ineligible) context is never auto-replaced", async ({ page }) => {
+    await uploadRepresentationEligibilityFixture(page, "representation_eligibility_multibay");
+    await openAnalysisTab(page, "wwAnalysisTypeOvercurrentBtn");
+    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(3, { timeout: 10000 });
+
+    const instbayId = await page.evaluate(() => wwOvercurrentState.contexts.find((c) => c.display_name === "INSTBAY").id);
+    await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(instbayId, { timeout: 10000 });
+
+    // Engineer deliberately picks the ineligible RMS-shaped-current bay.
+    const rmsbayId = await page.evaluate(() => wwOvercurrentState.contexts.find((c) => c.display_name === "RMSBAY").id);
+    await page.locator("#wwOvercurrentContextSelect").selectOption(rmsbayId);
+    await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(rmsbayId);
+
+    await page.locator("#mainNavRecordingsBtn").click();
+    await openAnalysisTab(page, "wwAnalysisTypeOvercurrentBtn");
+    await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(rmsbayId);
+  });
+});

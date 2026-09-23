@@ -39,3 +39,24 @@ class AnalysisInputResolutionOut(BaseModel):
     numerically_ready: bool
     reason_code: str | None
     message: str
+
+
+class AnalysisInputReadinessOut(BaseModel):
+    """DEC-107: thin exposure of `app.services.overcurrent_analysis_
+    service.check_overcurrent_readiness()`/`app.services.phasor_analysis_
+    service.check_phasor_diagram_readiness()` -- Level 1 (role identity,
+    same as `AnalysisInputResolutionOut` above) PLUS Level 2 (waveform-
+    form/representation eligibility) preflight, still never Level 3
+    (time-windowed RMS/phasor estimation availability at a PARTICULAR
+    `analysis_time` -- this endpoint takes no `analysis_time` at all).
+    `status == "resolved"` here means the resolved channel(s) are not
+    permanently disqualified by identity or representation; it is never
+    a promise that computation will succeed at any given playback
+    instant."""
+
+    status: ResolutionStatus
+    analysis_kind: str
+    mode: str
+    engineering_context_id: str
+    reason_code: str | None
+    message: str

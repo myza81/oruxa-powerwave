@@ -129,6 +129,35 @@ correct by direct reproduction). See
 [DECISIONS.md — DEC-106](DECISIONS.md#dec-106--dec-105-follow-up-initial-engineering-context-auto-selection-is-analyzer-compatibility-aware-reusing-the-existing-input-resolution-endpoint--never-merely-the-first-context)
 for the full investigation and fix record.
 
+**DEC-107 (2026-09-23, same-day follow-up): ROLE-COMPATIBLE is not the
+same as ANALYZER-READY.** DEC-106's own compatibility check only proved
+a Voltage/Current role EXISTS (role IDENTITY); it never checked whether
+the resolved channel's own waveform REPRESENTATION (instantaneous vs.
+RMS/magnitude) is eligible for the requesting analyzer's actual
+computation — a context whose Current channel is RMS-shaped passed
+DEC-106's own check every time yet still failed real computation every
+time. Three compatibility levels are now the standing vocabulary for
+this feature area: **Level 1 — role compatibility** (DEC-106), **Level 2
+— analyzer input eligibility/waveform representation** (this fix), and
+**Level 3 — runtime computation availability at a particular playback
+instant** (deliberately never checked by auto-selection, at any level —
+a momentarily-quiet window must never permanently disqualify an
+otherwise-good context). Fixed by a new backend-authoritative preflight,
+`GET .../engineering-contexts/{id}/input-readiness`, backed by
+`app.services.overcurrent_analysis_service.check_overcurrent_readiness()`/
+`app.services.phasor_analysis_service.check_phasor_diagram_readiness()`
+— each mirrors its own existing computation function's FIRST phase
+precisely (role resolution -> candidate fetch -> reference frequency ->
+waveform-form eligibility) while deliberately never performing the
+time-windowed estimate itself (no `analysis_time` parameter exists on
+either). `wwAnalysisFetchInputResolution()` above is renamed
+`wwAnalysisFetchInputReadiness()` and repointed at this new endpoint — a
+strict superset of the old Level-1-only check, so
+`wwAnalysisFindFirstCompatibleContext()`'s own logic needed no change at
+all. See
+[DECISIONS.md — DEC-107](DECISIONS.md#dec-107--dec-106-follow-up-initial-context-auto-selection-must-also-check-analyzer-input-eligibility-waveform-representation-not-merely-role-identity--a-new-backend-authoritative-input-readiness-preflight-distinct-from-role-compatibility-and-from-runtime-computation-availability)
+for the full investigation and fix record.
+
 Full detail, root cause, and migration history:
 [PHASOR_ANALYSIS.md — "Ownership moved to the shared Analysis
 workspace"](PHASOR_ANALYSIS.md#ownership-moved-to-the-shared-analysis-workspace-2026-09-12-owner-uat-fix)
@@ -364,6 +393,12 @@ add one is caught immediately.
   [DEC-106](DECISIONS.md#dec-106--dec-105-follow-up-initial-engineering-context-auto-selection-is-analyzer-compatibility-aware-reusing-the-existing-input-resolution-endpoint--never-merely-the-first-context)
   (the same-day follow-up: auto-selection must pick a context that
   actually satisfies the analyzer's own required roles, via the existing
-  input-resolution endpoint, not merely the first context in the list).
+  input-resolution endpoint, not merely the first context in the list),
+  and
+  [DEC-107](DECISIONS.md#dec-107--dec-106-follow-up-initial-context-auto-selection-must-also-check-analyzer-input-eligibility-waveform-representation-not-merely-role-identity--a-new-backend-authoritative-input-readiness-preflight-distinct-from-role-compatibility-and-from-runtime-computation-availability)
+  (the same-day follow-up: role-resolved is not analyzer-ready — a new
+  backend-authoritative `input-readiness` preflight also checks waveform
+  representation eligibility, establishing the Level 1/2/3 compatibility
+  vocabulary this feature area now uses).
 - `docs/development/PERFORMANCE_BASELINE.md` (waveform endpoint
   latency/payload precedent).

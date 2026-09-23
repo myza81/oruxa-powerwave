@@ -358,6 +358,103 @@ def compute_overcurrent_analysis(
     )
 
 
+class OvercurrentReadiness:
+    """DEC-107: Level 1 (role identity, via `resolve_analysis_inputs()`)
+    + Level 2 (waveform-form eligibility, via `_waveform_form_eligible_
+    for_rms()`) preflight for ONE phase -- deliberately performs NEITHER
+    the RMS estimate NOR any other analysis_time-dependent step
+    `compute_overcurrent_analysis()` goes on to attempt (Level 3); this
+    function has no `analysis_time` parameter at all, by design. A
+    context reported `status == STATUS_RESOLVED` here is not a promise
+    that RMS evaluation will succeed at any PARTICULAR instant (a
+    momentarily-quiet window, an as-yet-unelapsed first cycle, etc. are
+    genuine runtime conditions this function never checks) -- only that
+    nothing about the resolved channel's own IDENTITY or REPRESENTATION
+    permanently disqualifies it.
+
+    Mirrors `compute_overcurrent_analysis()`'s own first phase (role
+    resolution -> candidate fetch -> reference frequency -> waveform-form
+    eligibility) EXACTLY, reusing the same private helpers
+    (`_REQUIREMENT_BY_PHASE`/`_ROLE_KEY_BY_PHASE`/`_fetch_current_candidate()`/
+    `_waveform_form_eligible_for_rms()`) rather than re-deriving any of
+    that logic -- keep both functions' own first phase in sync if either
+    changes."""
+
+    __slots__ = ("status", "reason_code", "message")
+
+    def __init__(self, *, status: str, reason_code: str | None, message: str):
+        self.status = status
+        self.reason_code = reason_code
+        self.message = message
+
+
+def check_overcurrent_readiness(
+    *,
+    workspace_id: str,
+    engineering_context_id: str,
+    phase: str,
+    reference_frequency_hz_override: float | None,
+    context_registry: EngineeringContextRegistry,
+    source_registry: WorkspaceRegistry,
+    calculated_channel_registry: CalculatedChannelRegistry,
+) -> OvercurrentReadiness:
+    """Raises `EngineeringContextNotFoundError`/`UnknownAnalysisRequirementError`
+    exactly like `resolve_analysis_inputs()` itself does (propagated
+    unchanged) -- every other failure mode is returned as an
+    `OvercurrentReadiness` with an explicit `status`/`reason_code`, never
+    an exception, matching `compute_overcurrent_analysis()`'s own
+    convention."""
+    requirement = _REQUIREMENT_BY_PHASE.get(phase)
+    if requirement is None:
+        return OvercurrentReadiness(
+            status=STATUS_NEEDS_CONFIGURATION, reason_code="unknown_phase",
+            message=f"Unknown phase {phase!r} -- must be one of 'A'/'B'/'C'.",
+        )
+    role_key = _ROLE_KEY_BY_PHASE[phase]
+
+    resolution = resolve_analysis_inputs(
+        workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+        analysis_kind=requirement.analysis_kind, mode=requirement.mode,
+        context_registry=context_registry, source_registry=source_registry,
+        calculated_channel_registry=calculated_channel_registry,
+    )
+    if resolution.status != STATUS_RESOLVED:
+        assert resolution.status in (STATUS_NEEDS_CONFIGURATION, STATUS_AMBIGUOUS, STATUS_NOT_APPLICABLE)
+        return OvercurrentReadiness(status=resolution.status, reason_code=resolution.reason_code, message=resolution.message)
+
+    channel_ref = resolution.resolved_roles[role_key]
+    candidate = _fetch_current_candidate(
+        channel_ref, workspace_id=workspace_id, source_registry=source_registry,
+        calculated_channel_registry=calculated_channel_registry,
+    )
+    if candidate is None:
+        return OvercurrentReadiness(
+            status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_CHANNEL_UNAVAILABLE,
+            message=f"Resolved current channel for role '{role_key}' could not be read.",
+        )
+
+    if reference_frequency_hz_override is not None:
+        if not nominal_frequency_valid(reference_frequency_hz_override):
+            return OvercurrentReadiness(
+                status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_INVALID_REFERENCE_FREQUENCY,
+                message="The supplied reference_frequency_hz is outside the plausible range.",
+            )
+        reference_frequency_hz = reference_frequency_hz_override
+    else:
+        reference_frequency_hz = candidate.nominal_frequency
+
+    if not _waveform_form_eligible_for_rms(candidate, reference_frequency_hz):
+        return OvercurrentReadiness(
+            status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_WAVEFORM_FORM_NOT_ELIGIBLE,
+            message="The resolved current channel is not an eligible instantaneous waveform input for RMS evaluation.",
+        )
+
+    return OvercurrentReadiness(
+        status=STATUS_RESOLVED, reason_code=None,
+        message="The resolved current channel is eligible for RMS evaluation.",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Characteristic metadata / curve points -- both pure functions of static
 # configuration (no registry/I/O access needed), but still routed through

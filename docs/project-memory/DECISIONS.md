@@ -17155,6 +17155,189 @@ against the fix. `backend/tests/test_frontend_phasor_analysis.py` (one
 structural assertion updated for Overcurrent's handler becoming `async`).
 Full backend suite and full Playwright suite pass.
 
+## DEC-107 — DEC-106 follow-up: initial context auto-selection must also check ANALYZER INPUT ELIGIBILITY (waveform representation), not merely role identity — a new backend-authoritative `input-readiness` preflight, distinct from role compatibility and from runtime computation availability
+
+Date: 2026-09-23
+Status: Approved — implemented (owner-UAT production regression fix,
+second partial-fix follow-up to DEC-105/DEC-106).
+Source: owner UAT ("DEC-106 fixed role compatibility but apparently not
+analyzer input eligibility." — Overcurrent: "The resolved current
+channel is not an eligible instantaneous waveform input for RMS
+evaluation."; Impedance Locus: "One or both required phasors are not
+available for this phase.", both against a context DEC-106 had already
+auto-selected as "role-compatible").
+
+**Issue.** DEC-106's `wwAnalysisFindFirstCompatibleContext()` asked `GET
+.../input-resolution` whether a Current/Voltage role EXISTS for the
+requested phase (role IDENTITY — `engineering_type` + `phase` matching
+only). It never checked whether the resolved channel's own waveform
+REPRESENTATION (instantaneous vs. RMS/magnitude) is eligible for the
+requesting analyzer's actual computation — a separate, later check
+`compute_overcurrent_analysis()`/`compute_phasor_diagram()` themselves
+already perform (`_waveform_form_eligible_for_rms()`/
+`_waveform_form_eligible()`), AFTER role resolution, BEFORE the
+time-windowed estimate. A context whose Current channel is RMS/
+magnitude-shaped passes DEC-106's role check every time yet still fails
+real computation every time, at every playback instant — DEC-106 was
+therefore only a PARTIAL fix.
+
+**Reproduced directly, confirmed BEFORE any fix**, with a newly
+committed fixture pair. `representation_eligibility_multibay.cfg/.dat`:
+two bays, `RMSBAY` (proper instantaneous Voltage, but Current shaped as
+an always-positive slowly-varying envelope — the exact shape
+`backend/tests/test_rms_detector.py`'s own
+`test_slowly_varying_positive_magnitude_series_is_likely_magnitude_or_rms`
+uses, scaled to realistic secondary amperes) and `INSTBAY` (both
+Voltage and Current proper instantaneous sinusoids), `RMSBAY` detected/
+listed FIRST. Uploading it and opening Analysis directly (zero manual
+seeding) reproduced the owner's exact failures: Overcurrent and
+Impedance both auto-selected `RMSBAY` (DEC-106's own role-identity check
+passed — the Current role genuinely exists) and rendered nothing;
+computing directly against `RMSBAY` at a real `analysis_time` returned
+`status="needs_configuration"`, `reason_code="waveform_form_not_eligible"`
+— the exact owner-reported messages, verbatim. Distance Protection
+(needs the same Voltage+Current shape for its own selected loop)
+reproduced identically. Phasor and Sequence Components both
+auto-selected the SAME `RMSBAY` and rendered correctly-partial results
+(Voltage resolved, Current marked unavailable) — confirming, again, that
+neither needs this fix.
+
+**Compatibility levels established** (owner's own framing, now the
+project's standing vocabulary for this feature area): **Level 1 — role
+compatibility** (required engineering roles exist; DEC-106's own scope).
+**Level 2 — analyzer input eligibility** (those channels' own
+representation/metadata form is one the analyzer can actually consume;
+this decision's own scope). **Level 3 — runtime computation
+availability** (calculation succeeds at a PARTICULAR playback instant —
+e.g. a momentarily-quiet window, an as-yet-unelapsed first cycle;
+deliberately NEVER checked by initial auto-selection, at any level,
+since these are genuine runtime conditions that can change from one
+instant to the next and must never permanently disqualify an otherwise-
+good context).
+
+**Fix: a new backend-authoritative preflight, `GET .../engineering-contexts/{id}/input-readiness`**
+(`analysis_kind`+`mode` query params, mirroring `/input-resolution`'s
+own shape exactly), backed by two new service-layer functions that each
+mirror their own existing computation function's FIRST phase precisely
+— role resolution -> candidate fetch -> reference-frequency agreement ->
+waveform-form eligibility — while deliberately STOPPING there, with no
+`analysis_time` parameter at all, never performing the time-windowed
+RMS/phasor estimate (Level 3):
+- `app.services.overcurrent_analysis_service.check_overcurrent_readiness()`
+  — reuses that module's own already-tested private helpers
+  (`_fetch_current_candidate()`/`_waveform_form_eligible_for_rms()`)
+  verbatim; zero new detection rules.
+- `app.services.phasor_analysis_service.check_phasor_diagram_readiness()`
+  — reuses `_fetch_role_candidate()`/`_waveform_form_eligible()`
+  verbatim, covering ALL SIX `PHASOR_DIAGRAM_ROLE_ORDER` roles at once
+  (`RoleReadiness` dataclass per role, `status` faithfully reusing the
+  SAME `resolved`/`needs_configuration`/`ambiguous`/`not_applicable`
+  vocabulary `/input-resolution` already uses, never a bare boolean, so
+  a genuinely ambiguous role is never collapsed into the same status as
+  a waveform-form failure). Impedance, Distance Protection, and Sequence
+  Components all ask this SAME function under their own `analysis_kind`
+  — **one shared phasor-eligibility rule, never a per-analyzer copy**,
+  mirroring how they already share `compute_phasor_diagram()` itself for
+  actual computation.
+
+The endpoint (`app.api.v1.engineering_contexts.get_input_readiness()`)
+dispatches by `analysis_kind` (`overcurrent` -> `check_overcurrent_
+readiness()`; every other currently-defined kind -> `check_phasor_
+diagram_readiness()`, extracting the one role the given single-role
+`mode` maps to via the EXISTING `get_requirement()` registry) and 400s
+for any multi-role `mode` (e.g. `voltage_three_phase`) or unrecognized
+`(analysis_kind, mode)` pair, matching `/input-resolution`'s own
+error-handling convention exactly (`EngineeringContextNotFoundError`/
+`ImportServiceError` subclasses propagate through `_http_error()`
+unchanged).
+
+**Frontend change is minimal**: `wwAnalysisFetchInputResolution()`
+(renamed `wwAnalysisFetchInputReadiness()`) now calls `/input-readiness`
+instead of `/input-resolution` — a STRICT SUPERSET of the old check
+(Level 1 AND Level 2, in one call), so `wwAnalysisFindFirstCompatibleContext()`
+itself needed no logic change at all, only the one URL/function-name
+swap. The existing `WW_OVERCURRENT_MSG_NO_COMPATIBLE_CONTEXT`/
+`WW_IMPEDANCE_MSG_NO_COMPATIBLE_CONTEXT`/`WW_DISTANCE_MSG_NO_COMPATIBLE_CONTEXT`
+messages (DEC-106) are reused verbatim for the no-compatible-context
+case — no new message strings were needed, since "no Engineering
+Context contains the required Current input" is equally true whether
+the disqualifying reason is a missing role or an ineligible
+representation.
+
+**User-selection guardrail preserved** exactly as DEC-106 established it
+— checked both immediately before AND immediately after the (still)
+async compatibility search; verified directly that manually selecting
+the representation-ineligible `RMSBAY` for Overcurrent survives a full
+page revisit.
+
+**Why not call the full analyzer computation as the selector test**
+(explicitly considered and rejected, per the owner's own framing): a
+good context can genuinely fail Level 3 at one instant (first cycle,
+momentarily-quiet current) and succeed moments later — treating a
+transient Level 3 failure as "incompatible" would wrongly disqualify a
+perfectly usable bay and could even flip auto-selection results as
+Playback time advances. Both new readiness functions are structurally
+incapable of this by construction: neither accepts an `analysis_time`
+parameter at all.
+
+**Alternatives considered.** (1) Call `compute_overcurrent_analysis()`/
+`compute_phasor_diagram()` directly (e.g. at `analysis_time=0`) and
+treat "any status other than not-eligible" as compatible — rejected: a
+zero-argument placeholder time is not guaranteed safe (an absolute-time-
+unavailable or first-cycle-window condition could produce a FALSE
+negative unrelated to representation), and blurs exactly the Level 2/
+Level 3 distinction the owner's own task specification insisted stay
+separate. (2) Refactor `compute_phasor_diagram()` itself to extract a
+shared Level-1+2-only helper both it and the new readiness function call
+— considered, but rejected as unnecessarily invasive to a core, heavily-
+tested, already-deployed function for a purely additive feature; the
+chosen design instead duplicates only the ORCHESTRATION SHAPE (not the
+underlying rules — `_fetch_role_candidate()`/`_waveform_form_eligible()`
+themselves are still called, never re-implemented), consistent with
+this codebase's own established convention (see e.g. `_fetch_current_candidate()`'s
+own docstring: "deliberately duplicated, not imported"); a comment on
+both functions flags them to be kept in sync if either's first phase
+ever changes. (3) Introduce a second, richer readiness vocabulary
+distinguishing "role missing" from "waveform ineligible" from "estimate
+unavailable" as three different STATUS values — rejected: `reason_code`
+(already `waveform_form_not_eligible` for Level 2, already
+`role_missing`/`ambiguous_candidates`/etc. for Level 1) already carries
+this distinction precisely; a second status axis would duplicate
+information the existing vocabulary already provides. (4) Give Overcurrent/
+Impedance/Distance three independent, per-analyzer readiness rules —
+rejected: Impedance/Distance/Sequence Components already share ONE
+phasor-eligibility rule for actual computation (`compute_phasor_diagram()`);
+their own readiness check reuses that exact same sharing, never
+triplicating it.
+
+**Impact.** `backend/app/services/overcurrent_analysis_service.py`
+(`check_overcurrent_readiness()`, `OvercurrentReadiness`).
+`backend/app/services/phasor_analysis_service.py`
+(`check_phasor_diagram_readiness()`, `PhasorDiagramReadiness`,
+`RoleReadiness`). `backend/app/schemas/analysis_input_resolution.py`
+(`AnalysisInputReadinessOut`). `backend/app/api/v1/engineering_contexts.py`
+(new `GET .../input-readiness` endpoint). Zero changes to
+`compute_overcurrent_analysis()`, `compute_phasor_diagram()`,
+`resolve_analysis_inputs()`, or any detection algorithm — confirmed by
+the full existing backend suite passing unmodified. `frontend/index.html`
+(`wwAnalysisFetchInputResolution()` renamed `wwAnalysisFetchInputReadiness()`
+and repointed at the new endpoint; `wwAnalysisFindFirstCompatibleContext()`
+itself unchanged). New committed fixtures
+`representation_eligibility_multibay.cfg/.dat` (two bays, mixed
+representation) and `representation_eligibility_none.cfg/.dat` (one
+bay, no eligible alternative anywhere, for the no-compatible-context
+case). New backend test file `test_analysis_input_readiness_api.py` (9
+scenarios). New test classes in `test_overcurrent_analysis_service.py`
+(`TestCheckOvercurrentReadiness`, 7 scenarios) and
+`test_phasor_diagram_service.py` (`TestCheckPhasorDiagramReadiness`, 6
+scenarios), each proving the new readiness function's own verdict stays
+in agreement with the real, time-dependent computation across multiple
+`analysis_time` values. `browser-tests/post_upload_readiness.spec.js`
+gained a new `test.describe` block (6 scenarios) — the 5 behavior-
+changing assertions verified to FAIL against the pre-fix frontend (via a
+temporary `git stash` of `frontend/index.html` alone) and PASS against
+the fix. Full backend suite and full Playwright suite pass.
+
 ---
 
 ## How to add a decision

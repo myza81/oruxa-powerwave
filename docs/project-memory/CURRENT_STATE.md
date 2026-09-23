@@ -1534,6 +1534,70 @@ verified to FAIL against the pre-fix code and PASS against the fix).
 assertion updated for the now-async Overcurrent handler). Full backend
 suite and full Playwright suite pass.
 
+**Production regression fix, part 3 (2026-09-23, same day) — DEC-106
+fixed role compatibility but not analyzer input eligibility.** Owner
+UAT, against a context DEC-106 had already auto-selected as "role-
+compatible": Overcurrent — *"The resolved current channel is not an
+eligible instantaneous waveform input for RMS evaluation."* Impedance
+Locus — *"One or both required phasors are not available for this
+phase."* **Root cause, confirmed by direct reproduction with a new
+fixture — NOT a data/API defect**: DEC-106's own compatibility check
+(`GET .../input-resolution`) only proves a role EXISTS (Level 1 — role
+identity); it never checked whether the resolved channel's own waveform
+REPRESENTATION (instantaneous vs. RMS/magnitude) is eligible for the
+requesting analyzer's actual computation (Level 2) — a separate check
+`compute_overcurrent_analysis()`/`compute_phasor_diagram()` themselves
+already perform, just AFTER role resolution. A context whose Current
+channel is RMS-shaped passes DEC-106's role check every time yet still
+fails real computation every time. Reproduced directly: new fixture
+`representation_eligibility_multibay.cfg/.dat` (RMSBAY — proper Voltage,
+RMS-shaped Current, listed first; INSTBAY — both proper) uploaded with
+zero manual seeding — Overcurrent/Impedance/Distance all auto-selected
+RMSBAY and rendered nothing (or, computed directly, the exact owner-
+reported messages verbatim); Phasor/Sequence Components auto-selected
+the SAME RMSBAY and rendered correctly-partial results.
+
+**Compatibility levels established** (now the standing vocabulary for
+this feature area): Level 1 — role compatibility (DEC-106). Level 2 —
+analyzer input eligibility / waveform representation (this fix). Level
+3 — runtime computation availability at a PARTICULAR playback instant
+(deliberately never checked by auto-selection, at any level — a
+momentarily-quiet window must never permanently disqualify an otherwise-
+good context).
+
+**Fix**: new backend-authoritative preflight `GET .../engineering-contexts/{id}/input-readiness`
+(mirrors `/input-resolution`'s own `analysis_kind`+`mode` shape),
+backed by two new functions each mirroring their own existing
+computation function's FIRST phase precisely (role resolution ->
+candidate fetch -> reference frequency -> waveform-form eligibility)
+while never performing the time-windowed estimate itself (no
+`analysis_time` parameter at all): `app.services.overcurrent_analysis_service.check_overcurrent_readiness()`
+and `app.services.phasor_analysis_service.check_phasor_diagram_readiness()`
+(the SAME function Impedance/Distance/Sequence Components all reuse
+under their own `analysis_kind` — one shared phasor-eligibility rule,
+never a per-analyzer copy). The frontend's own `wwAnalysisFindFirstCompatibleContext()`
+needed no logic change at all -- only its own fetch helper repointed
+from `/input-resolution` to `/input-readiness`, a strict superset check.
+See
+[DECISIONS.md — DEC-107](DECISIONS.md#dec-107--dec-106-follow-up-initial-context-auto-selection-must-also-check-analyzer-input-eligibility-waveform-representation-not-merely-role-identity--a-new-backend-authoritative-input-readiness-preflight-distinct-from-role-compatibility-and-from-runtime-computation-availability)
+for the full record, including why calling the full analyzer
+computation as the selector test was explicitly rejected (a transient
+Level 3 failure must never disqualify a genuinely good context).
+
+**Files**: `backend/app/services/overcurrent_analysis_service.py`/
+`phasor_analysis_service.py` (new readiness functions), `backend/app/schemas/analysis_input_resolution.py`
+(`AnalysisInputReadinessOut`), `backend/app/api/v1/engineering_contexts.py`
+(new endpoint). Zero changes to any existing computation/detection
+function -- confirmed by the full existing backend suite passing
+unmodified. `frontend/index.html` (one fetch helper repointed). New
+fixtures `representation_eligibility_multibay.cfg/.dat` and
+`representation_eligibility_none.cfg/.dat`. New backend test file
+`test_analysis_input_readiness_api.py` plus new test classes in
+`test_overcurrent_analysis_service.py`/`test_phasor_diagram_service.py`.
+`browser-tests/post_upload_readiness.spec.js` gained 6 new scenarios (5
+verified to FAIL against the pre-fix frontend and PASS against the
+fix). Full backend suite and full Playwright suite pass.
+
 **Flake cleanup (2026-09-19, continued) — the third and final DEC-099
 item ("Speed selection 4x") is now `[CLOSED]`; DEC-099 has zero
 remaining `[OPEN]` items.** Test-synchronization bug, no production

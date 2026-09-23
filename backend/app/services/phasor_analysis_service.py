@@ -665,6 +665,144 @@ def compute_phasor_diagram(
     )
 
 
+class RoleReadiness:
+    """One role's own Level 1 (identity, `status` reuses the EXACT
+    `app.domain.analysis_input_resolution` vocabulary --
+    `resolved`/`needs_configuration`/`ambiguous`/`not_applicable` -- so a
+    caller can distinguish e.g. a genuinely ambiguous role from an
+    ineligible-waveform-form one, never collapsing both into one opaque
+    boolean) + Level 2 (waveform-form eligibility, folded into
+    `needs_configuration` with `reason_code=REASON_WAVEFORM_FORM_NOT_ELIGIBLE`
+    -- the SAME convention `check_overcurrent_readiness()` already
+    established) preflight outcome. `eligible` (`status == STATUS_RESOLVED`)
+    is NEVER a claim that a phasor estimate will succeed at any
+    PARTICULAR `analysis_time` (Level 3 -- a momentarily-quiet window, an
+    as-yet-unelapsed first cycle, etc. are genuine runtime conditions
+    this deliberately never checks) -- only that nothing about the
+    resolved channel's own identity or representation permanently
+    disqualifies it. Deliberately distinct from `PhasorDiagramRoleResult`'s
+    own `ROLE_STATUS_AVAILABLE`, which IS a claim a value was actually
+    estimated."""
+
+    __slots__ = ("status", "reason_code", "message")
+
+    def __init__(self, *, status: str, reason_code: str | None, message: str | None):
+        self.status = status
+        self.reason_code = reason_code
+        self.message = message
+
+    @property
+    def eligible(self) -> bool:
+        return self.status == STATUS_RESOLVED
+
+
+class PhasorDiagramReadiness:
+    """DEC-107: per-role Level 1+2 preflight for all six
+    `PHASOR_DIAGRAM_ROLE_ORDER` roles of one Engineering Context --
+    consumed both directly (a future Phasor-readiness caller) and by
+    Impedance/Distance Protection's own readiness checks below, which
+    each only inspect the specific `Vx`/`Ix` pair their own selected
+    phase/loop needs. See `RoleReadiness`'s own docstring for exactly
+    what `eligible=True` does and does not mean."""
+
+    __slots__ = ("role_readiness",)
+
+    def __init__(self, *, role_readiness: dict[str, RoleReadiness]):
+        self.role_readiness = role_readiness
+
+
+def check_phasor_diagram_readiness(
+    *,
+    workspace_id: str,
+    engineering_context_id: str,
+    reference_frequency_hz_override: float | None,
+    context_registry: EngineeringContextRegistry,
+    source_registry: WorkspaceRegistry,
+    calculated_channel_registry: CalculatedChannelRegistry,
+) -> PhasorDiagramReadiness:
+    """Mirrors `compute_phasor_diagram()`'s own FIRST phase (role
+    resolution -> candidate fetch -> reference-frequency agreement ->
+    waveform-form eligibility, lines before that function's own
+    `analysis_time`-dependent anchor/timebase/estimation stage) EXACTLY
+    -- reuses the same private helpers (`_DIAGRAM_REQUIREMENTS_BY_ROLE`/
+    `_fetch_role_candidate()`/`_waveform_form_eligible()`) rather than
+    re-deriving any of that logic. Deliberately has no `analysis_time`
+    parameter -- never performs the time-windowed phasor estimate
+    itself. Keep both functions' own first phase in sync if either
+    changes."""
+    role_readiness: dict[str, RoleReadiness] = {}
+    candidates: dict[str, _RoleCandidate] = {}
+
+    for role_key in PHASOR_DIAGRAM_ROLE_ORDER:
+        requirement = _DIAGRAM_REQUIREMENTS_BY_ROLE[role_key]
+        resolution = resolve_analysis_inputs(
+            workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+            analysis_kind=requirement.analysis_kind, mode=requirement.mode,
+            context_registry=context_registry, source_registry=source_registry,
+            calculated_channel_registry=calculated_channel_registry,
+        )
+        if resolution.status != STATUS_RESOLVED:
+            role_readiness[role_key] = RoleReadiness(
+                status=resolution.status, reason_code=resolution.reason_code, message=resolution.message,
+            )
+            continue
+
+        ref = resolution.resolved_roles[role_key]
+        candidate = _fetch_role_candidate(
+            role_key, ref, workspace_id=workspace_id, source_registry=source_registry,
+            calculated_channel_registry=calculated_channel_registry,
+        )
+        if candidate is None:
+            role_readiness[role_key] = RoleReadiness(
+                status=STATUS_NEEDS_CONFIGURATION, reason_code=_REASON_CHANNEL_UNAVAILABLE,
+                message=f"Resolved channel for role {role_key!r} could not be read.",
+            )
+            continue
+        candidates[role_key] = candidate
+
+    if not candidates:
+        return PhasorDiagramReadiness(role_readiness=role_readiness)
+
+    # ---- Reference frequency: identical policy to compute_phasor_
+    # diagram()'s own -- a conflict/invalid-override blocks every
+    # IDENTITY-resolved role with the SAME reason, never partially. ----
+    if reference_frequency_hz_override is not None:
+        if not nominal_frequency_valid(reference_frequency_hz_override):
+            for role_key in candidates:
+                role_readiness[role_key] = RoleReadiness(
+                    status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_INVALID_REFERENCE_FREQUENCY,
+                    message="The supplied reference_frequency_hz is outside the plausible range.",
+                )
+            return PhasorDiagramReadiness(role_readiness=role_readiness)
+        reference_frequency_hz = reference_frequency_hz_override
+    else:
+        declared = [c.nominal_frequency for c in candidates.values()]
+        first = declared[0]
+        if not all(math.isclose(f, first, rel_tol=1e-9, abs_tol=1e-9) for f in declared):
+            for role_key in candidates:
+                role_readiness[role_key] = RoleReadiness(
+                    status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_REFERENCE_FREQUENCY_CONFLICT,
+                    message=(
+                        "Resolved roles come from sources declaring different nominal frequencies; supply an "
+                        "explicit reference_frequency_hz to check readiness against a specific frequency."
+                    ),
+                )
+            return PhasorDiagramReadiness(role_readiness=role_readiness)
+        reference_frequency_hz = first
+
+    # ---- Waveform-form eligibility, per role -- never blocks others ----
+    for role_key, candidate in candidates.items():
+        if _waveform_form_eligible(candidate, reference_frequency_hz):
+            role_readiness[role_key] = RoleReadiness(status=STATUS_RESOLVED, reason_code=None, message=None)
+        else:
+            role_readiness[role_key] = RoleReadiness(
+                status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_WAVEFORM_FORM_NOT_ELIGIBLE,
+                message="Waveform representation is not eligible for phasor estimation.",
+            )
+
+    return PhasorDiagramReadiness(role_readiness=role_readiness)
+
+
 def _assemble_identity_only_roles(
     role_statuses: dict[str, str], role_reason_codes: dict[str, str | None], candidates: dict[str, _RoleCandidate],
 ) -> dict[str, PhasorDiagramRoleResult]:

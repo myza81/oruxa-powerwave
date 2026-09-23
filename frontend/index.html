@@ -37053,50 +37053,66 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // EXISTING is not the same as a context being USABLE by a given
         // analyzer's own currently-required roles (Overcurrent needs one
         // Current phase, Impedance/Distance need a matching Voltage+
-        // Current pair). This reuses the EXISTING, already-authoritative
-        // `GET .../engineering-contexts/{id}/input-resolution` endpoint
-        // (`app.services.analysis_input_resolution_service`) for the
-        // actual Voltage/Current/phase matching -- the frontend never
-        // duplicates that logic itself, only decides WHICH
-        // (analysis_kind, mode) pairs to ask about, driven entirely by
-        // each analyzer's own already-owned UI state (selected phase/
-        // loop).
-        function wwAnalysisFetchInputResolution(workspaceId, contextId, analysisKind, mode) {
+        // Current pair).
+        //
+        // DEC-107 (2026-09-23, same-day follow-up): role-resolved is
+        // ALSO not the same as ANALYZER-ready -- a resolved Current
+        // channel whose own waveform REPRESENTATION is RMS/magnitude
+        // rather than instantaneous still fails Overcurrent's/Impedance's/
+        // Distance's own real computation, even though `/input-resolution`
+        // alone reports it "resolved". This now calls the EXISTING,
+        // already-authoritative `GET .../engineering-contexts/{id}/
+        // input-readiness` endpoint (`app.services.overcurrent_analysis_
+        // service.check_overcurrent_readiness()`/`app.services.phasor_
+        // analysis_service.check_phasor_diagram_readiness()`) instead --
+        // a STRICT SUPERSET of `/input-resolution`'s own Level 1 (role
+        // identity) check that ALSO covers Level 2 (waveform-form/
+        // representation eligibility), while still deliberately never
+        // performing Level 3 (time-windowed RMS/phasor estimation at a
+        // PARTICULAR playback instant -- see that endpoint's own
+        // docstring for why: a momentarily-quiet window or an
+        // as-yet-unelapsed first cycle must never disqualify an
+        // otherwise-good context). The frontend never duplicates
+        // Voltage/Current/phase/waveform-form matching itself, only
+        // decides WHICH `(analysis_kind, mode)` pairs to ask about,
+        // driven entirely by each analyzer's own already-owned UI state
+        // (selected phase/loop).
+        function wwAnalysisFetchInputReadiness(workspaceId, contextId, analysisKind, mode) {
             return wwPhasorFetchJson(
                 apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
-                "/engineering-contexts/" + encodeURIComponent(contextId) + "/input-resolution?" +
+                "/engineering-contexts/" + encodeURIComponent(contextId) + "/input-readiness?" +
                 new URLSearchParams({ analysis_kind: analysisKind, mode: mode }).toString()
             );
         }
 
         // Returns the FIRST context (list order -- never re-sorted, same
         // "never assume one context is special" convention every other
-        // shared Analysis function already follows) whose resolution for
+        // shared Analysis function already follows) whose readiness for
         // EVERY given `(analysisKind, mode)` pair reaches
         // `STATUS_RESOLVED` -- or `null` if none qualify. A single
-        // resolution failure/exception for one candidate context is
+        // readiness-check failure/exception for one candidate context is
         // treated as "not compatible," never as a fatal error for the
         // whole search (mirrors wwAnalysisDiscoverUncoveredSources()'s
         // own per-source best-effort convention). `modes` with more than
-        // one entry means ALL must resolve (e.g. Impedance/Distance's own
+        // one entry means ALL must be ready (e.g. Impedance/Distance's own
         // Voltage+Current pair) -- this function never does OR-matching.
         async function wwAnalysisFindFirstCompatibleContext(workspaceId, contexts, analysisKind, modes) {
             for (const ctx of contexts) {
-                let allResolved = true;
+                let allReady = true;
                 for (const mode of modes) {
                     let result;
                     try {
-                        result = await wwAnalysisFetchInputResolution(workspaceId, ctx.id, analysisKind, mode);
+                        result = await wwAnalysisFetchInputReadiness(workspaceId, ctx.id, analysisKind, mode);
                     } catch (error) {
-                        allResolved = false;
+                        allReady = false;
                         break;
                     }
                     if (!result || result.status !== "resolved") {
-                        allResolved = false;
+                        allReady = false;
                         break;
                     }
                 }
-                if (allResolved) return ctx;
+                if (allReady) return ctx;
             }
             return null;
         }

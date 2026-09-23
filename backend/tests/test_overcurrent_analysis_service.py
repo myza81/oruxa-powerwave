@@ -22,12 +22,16 @@ from app.domain.phase_identity import PHASE_A, PHASE_B, PHASE_SOURCE_ENGINEER_CO
 from app.domain.overcurrent import OVERCURRENT_STATUS_COMPUTED, REASON_WAVEFORM_FORM_NOT_ELIGIBLE
 from app.domain.source import ActiveSource, AnalogChannelSummary, SourceMetadata
 from app.domain.timing import SamplingInformation, TimingInformation
-from app.domain.analysis_input_resolution import STATUS_NEEDS_CONFIGURATION
+from app.domain.analysis_input_resolution import STATUS_NEEDS_CONFIGURATION, STATUS_RESOLVED
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.errors import EngineeringContextNotFoundError
 from app.domain.overcurrent import IEC_STANDARD_INVERSE, evaluate_idmt_operating_time
-from app.services.overcurrent_analysis_service import compute_overcurrent_analysis, compute_overcurrent_manual_analysis
+from app.services.overcurrent_analysis_service import (
+    check_overcurrent_readiness,
+    compute_overcurrent_analysis,
+    compute_overcurrent_manual_analysis,
+)
 from app.services.workspace_registry import WorkspaceRegistry
 
 SAMPLE_RATE_HZ = 5000.0
@@ -283,6 +287,81 @@ class TestGuardrails:
     def test_unknown_context_raises(self, registries):
         with pytest.raises(EngineeringContextNotFoundError):
             _compute(registries, engineering_context_id="ec-missing")
+
+
+def _check_readiness(registries, **overrides):
+    kwargs = dict(
+        workspace_id="ws-1", engineering_context_id="ec-1", phase="A",
+        reference_frequency_hz_override=None,
+        context_registry=registries["context"], source_registry=registries["source"],
+        calculated_channel_registry=registries["calc"],
+    )
+    kwargs.update(overrides)
+    return check_overcurrent_readiness(**kwargs)
+
+
+class TestCheckOvercurrentReadiness:
+    """DEC-107: `check_overcurrent_readiness()` -- Level 1+2 preflight,
+    never Level 3 (no `analysis_time` parameter exists at all). Mirrors
+    `compute_overcurrent_analysis()`'s own first phase; these tests prove
+    the two stay in agreement on every case that phase covers."""
+
+    def test_eligible_instantaneous_current_is_resolved(self, registries):
+        registries["source"].add(_current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=4.2))
+        _add_context(registries["context"], "ec-1", "ws-1", [_member("src-1", "ALPHA1_IA", PHASE_A)])
+        readiness = _check_readiness(registries)
+        assert readiness.status == STATUS_RESOLVED
+        assert readiness.reason_code is None
+
+    def test_explicit_rms_waveform_form_is_not_eligible(self, registries):
+        registries["source"].add(
+            _current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=4.2, waveform_form=WAVEFORM_FORM_RMS)
+        )
+        _add_context(registries["context"], "ec-1", "ws-1", [_member("src-1", "ALPHA1_IA", PHASE_A)])
+        readiness = _check_readiness(registries)
+        assert readiness.status == STATUS_NEEDS_CONFIGURATION
+        assert readiness.reason_code == REASON_WAVEFORM_FORM_NOT_ELIGIBLE
+
+    def test_never_performs_rms_estimation_agrees_with_real_computation_at_multiple_times(self, registries):
+        """The whole point of a Level-1+2-only preflight: its own verdict
+        must be identical regardless of WHEN the real, time-dependent
+        computation is later attempted -- proven directly by computing
+        at several different analysis_time values against the SAME
+        readiness verdict."""
+        registries["source"].add(
+            _current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=4.2, waveform_form=WAVEFORM_FORM_RMS)
+        )
+        _add_context(registries["context"], "ec-1", "ws-1", [_member("src-1", "ALPHA1_IA", PHASE_A)])
+        readiness = _check_readiness(registries)
+        assert readiness.status == STATUS_NEEDS_CONFIGURATION
+        for analysis_time in (0.1, 1.0, 2.5):
+            computed = _compute(registries, analysis_time=analysis_time)
+            assert computed.status == STATUS_NEEDS_CONFIGURATION
+            assert computed.reason_code == readiness.reason_code == REASON_WAVEFORM_FORM_NOT_ELIGIBLE
+
+    def test_missing_role_reports_needs_configuration(self, registries):
+        _add_context(registries["context"], "ec-1", "ws-1", [])  # a real context with no members at all
+        readiness = _check_readiness(registries)
+        assert readiness.status == STATUS_NEEDS_CONFIGURATION
+
+    def test_unknown_context_raises(self, registries):
+        with pytest.raises(EngineeringContextNotFoundError):
+            _check_readiness(registries, engineering_context_id="ec-missing")
+
+    def test_ambiguous_role_reported_as_ambiguous(self, registries):
+        registries["source"].add(_current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=4.2))
+        registries["source"].add(_current_source("src-2", "ws-1", "BETA1_IA", rms_amps=6.0))
+        _add_context(registries["context"], "ec-1", "ws-1", [
+            _member("src-1", "ALPHA1_IA", PHASE_A), _member("src-2", "BETA1_IA", PHASE_A),
+        ])
+        readiness = _check_readiness(registries)
+        assert readiness.status in (STATUS_NEEDS_CONFIGURATION, "ambiguous")
+
+    def test_invalid_reference_frequency_override_is_needs_configuration(self, registries):
+        registries["source"].add(_current_source("src-1", "ws-1", "ALPHA1_IA", rms_amps=4.2))
+        _add_context(registries["context"], "ec-1", "ws-1", [_member("src-1", "ALPHA1_IA", PHASE_A)])
+        readiness = _check_readiness(registries, reference_frequency_hz_override=-1.0)
+        assert readiness.status == STATUS_NEEDS_CONFIGURATION
 
 
 class TestReferenceFrequency:

@@ -45,7 +45,7 @@ from app.domain.timing import SamplingInformation, TimingInformation
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.errors import EngineeringContextNotFoundError
-from app.services.phasor_analysis_service import compute_phasor_diagram, compute_phasor_manual_diagram
+from app.services.phasor_analysis_service import check_phasor_diagram_readiness, compute_phasor_diagram, compute_phasor_manual_diagram
 from app.services.workspace_registry import WorkspaceRegistry
 
 SAMPLE_RATE_HZ = 5000.0
@@ -237,6 +237,83 @@ class TestOneBadRoleDoesNotBlockOthers:
         assert result.roles["Vc"].status == ROLE_STATUS_NOT_ELIGIBLE
         assert result.roles["Va"].status == ROLE_STATUS_AVAILABLE
         assert result.roles["Vb"].status == ROLE_STATUS_AVAILABLE
+
+
+def _check_readiness(registries, *, context_id="ec-1", workspace_id="ws-1", reference_frequency_hz=None):
+    return check_phasor_diagram_readiness(
+        workspace_id=workspace_id, engineering_context_id=context_id,
+        reference_frequency_hz_override=reference_frequency_hz,
+        context_registry=registries["context"], source_registry=registries["source"], calculated_channel_registry=registries["calc"],
+    )
+
+
+class TestCheckPhasorDiagramReadiness:
+    """DEC-107: `check_phasor_diagram_readiness()` -- Level 1+2 preflight
+    for all six roles, never Level 3 (no `analysis_time` parameter exists
+    at all). Mirrors `compute_phasor_diagram()`'s own first phase; these
+    tests prove the two stay in agreement on every case that phase
+    covers, reusing the exact same fixtures `TestOneBadRoleDoesNotBlockOthers`
+    above already established."""
+
+    def test_eligible_role_is_resolved(self, registries):
+        registries["source"].add(_sine_source("src-1", "ws-1", [("ALPHA1_VA", VOLTAGE, 100.0, 0.0)]))
+        _add_context(registries["context"], "ec-1", "ws-1", [_member("src-1", "ALPHA1_VA", PHASE_A)])
+        readiness = _check_readiness(registries)
+        assert readiness.role_readiness["Va"].eligible
+        assert readiness.role_readiness["Va"].status == "resolved"
+        assert readiness.role_readiness["Va"].reason_code is None
+
+    def test_rms_waveform_form_role_is_not_eligible_others_unaffected(self, registries):
+        registries["source"].add(_sine_source("src-1", "ws-1", [
+            ("ALPHA1_VA", VOLTAGE, 100.0, 0.0), ("ALPHA1_VB", VOLTAGE, 100.0, -120.0),
+        ]))
+        registries["source"].add(_sine_source("src-2", "ws-1", [
+            ("ALPHA1_VC", VOLTAGE, 100.0, 120.0),
+        ], waveform_form=WAVEFORM_FORM_RMS, start_time=REF_START))
+        _add_context(registries["context"], "ec-1", "ws-1", [
+            _member("src-1", "ALPHA1_VA", PHASE_A), _member("src-1", "ALPHA1_VB", PHASE_B), _member("src-2", "ALPHA1_VC", PHASE_C),
+        ])
+        readiness = _check_readiness(registries)
+        assert readiness.role_readiness["Va"].eligible
+        assert readiness.role_readiness["Vb"].eligible
+        assert not readiness.role_readiness["Vc"].eligible
+        assert readiness.role_readiness["Vc"].status == STATUS_NEEDS_CONFIGURATION
+        assert readiness.role_readiness["Vc"].reason_code == "waveform_form_not_eligible"
+
+    def test_agrees_with_the_real_diagram_at_multiple_analysis_times(self, registries):
+        """The whole point of a Level-1+2-only preflight: its own verdict
+        must be identical regardless of WHEN the real, time-windowed
+        diagram is later computed."""
+        registries["source"].add(_sine_source("src-1", "ws-1", [
+            ("ALPHA1_VA", VOLTAGE, 100.0, 0.0),
+        ], waveform_form=WAVEFORM_FORM_RMS))
+        _add_context(registries["context"], "ec-1", "ws-1", [_member("src-1", "ALPHA1_VA", PHASE_A)])
+        readiness = _check_readiness(registries)
+        assert not readiness.role_readiness["Va"].eligible
+        for analysis_time in (0.1, 1.0, 2.5):
+            result = _compute(registries, analysis_time=analysis_time)
+            assert result.roles["Va"].status == ROLE_STATUS_NOT_ELIGIBLE
+
+    def test_missing_role_is_not_eligible_with_role_missing_reason(self, registries):
+        _add_context(registries["context"], "ec-1", "ws-1", [])
+        readiness = _check_readiness(registries)
+        assert not readiness.role_readiness["Va"].eligible
+        assert readiness.role_readiness["Va"].status == STATUS_NEEDS_CONFIGURATION
+
+    def test_ambiguous_role_is_reported_as_ambiguous_not_needs_configuration(self, registries):
+        registries["source"].add(_sine_source("src-1", "ws-1", [
+            ("ALPHA1_VA", VOLTAGE, 100.0, 0.0), ("ALPHA1_VA2", VOLTAGE, 100.0, 1.0),
+        ]))
+        _add_context(registries["context"], "ec-1", "ws-1", [
+            _member("src-1", "ALPHA1_VA", PHASE_A), _member("src-1", "ALPHA1_VA2", PHASE_A),
+        ])
+        readiness = _check_readiness(registries)
+        assert not readiness.role_readiness["Va"].eligible
+        assert readiness.role_readiness["Va"].status == "ambiguous"
+
+    def test_unknown_context_raises(self, registries):
+        with pytest.raises(EngineeringContextNotFoundError):
+            _check_readiness(registries, context_id="ec-missing")
 
 
 class TestWholeResultBlockingConditions:
