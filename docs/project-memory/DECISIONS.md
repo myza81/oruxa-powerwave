@@ -16425,6 +16425,124 @@ and `::test_render_compliance_page_still_never_touches_analyzer_state`.
 
 ---
 
+## DEC-102 — Compliance Measurement scopes role resolution to an explicitly selected Measurement Group (Bay), reusing the existing Measurement Group model verbatim — never a second bay concept, never Engineering Context
+
+Date: 2026-09-20
+Status: Approved — implemented (Compliance & Capability Slice 2 UAT
+correction).
+Source: owner UAT ("current flow: Assessment Quantity -> Phase A/...
+This is ambiguous when the uploaded workspace contains more than one
+bay/measurement group, because several valid Va, Vb, Vab etc. may exist
+across different bays... The natural engineering workflow should
+instead be: 1. Select Bay/Measurement Group 2. Select Assessment
+Quantity 3. Resolve only the channels within that selected bay/group 4.
+Normalize and assess.").
+
+**Issue.** DEC-101 established that Compliance resolves Voltage phase
+roles by independently re-running the Engineering Context Detection
+algorithm, workspace-wide. Owner UAT identified that "workspace-wide"
+was itself the defect: once a workspace contains more than one Voltage
+Measurement Group (bay), a channel named `Va` in Bay A and a
+differently-owned `Va` in Bay B are both real, valid, simultaneously
+existing channels — there is no naming conflict to resolve, only an
+unresolved question of WHICH bay the engineer means. The prior design
+reported this as `ambiguous_measurement_metadata`
+("Multiple channels match Va across the loaded recordings..."), which
+is a wrong diagnosis: it is not an ambiguity to fix, it is a missing
+selection step.
+
+**Decision.** Role resolution is now scoped to one explicitly selected
+Measurement Group, reusing the EXISTING `app.domain.measurement_group`
+model (`MeasurementGroup.channel_refs`) as the sole source of truth for
+"what is a bay" — no second, Compliance-specific bay/group concept was
+introduced (this task's own explicit instruction, section 1). Workflow:
+
+```text
+workspace
+  -> available Measurement Groups (GET .../compliance/voltage/measurement-groups,
+     Voltage-kind, status != needs_review)
+  -> selected group (auto-selected if exactly one candidate; explicit
+     choice required otherwise; never guessed)
+  -> role resolution / eligibility WITHIN that group's own channel_refs
+     only (app.services.compliance_measurement_service.resolve_voltage_
+     role_catalogue_for_group())
+  -> normalized result (still eligibility/metadata only, per DEC-101 --
+     no numeric value is computed by the live endpoint)
+```
+
+`GET .../compliance/voltage/measurement` now REQUIRES an explicit
+`measurement_group_id` query parameter. A duplicate `Va` across two
+DIFFERENT groups is no longer reachable as an ambiguity at all (each
+group's own resolution only ever sees its own members); a duplicate
+`Va` genuinely WITHIN one selected group's own membership (e.g. two
+differently-named member channels that both parse to phase A) remains
+`ambiguous_measurement_metadata`, now worded "...within the selected
+Measurement Group" rather than "...across the loaded recordings."
+Because every resolved role is now, by construction, a member of the
+one selected group, a resolved role can never span two different
+Measurement Groups any more — the previous cross-group `STATUS_
+INVALID_BASE` trigger is structurally unreachable through this path
+and was removed from `_base_for_group()` (the guardrail STATUS itself
+remains defined in `app.domain.compliance_measurement` for vocabulary
+stability; nothing currently triggers it).
+
+**This does not revise DEC-101.** Compliance still does not register
+as an Engineering Context consumer — the new Bay/Measurement Group
+picker is a completely different, pre-existing model
+(`app.domain.measurement_group`, already used by the group-aware
+Per-Unit feature), not Engineering Context, and the new `GET .../
+compliance/voltage/measurement-groups` endpoint is a lean, read-only,
+Voltage-only, usable-status-only VIEW built by reusing the already-
+existing `MeasurementGroupRegistry.list_for_workspace()` (previously
+present at the service layer but not exposed workspace-wide over REST
+— `app.api.v1.measurement_groups`'s own router stays source-scoped,
+unchanged, for its CRUD/configuration purpose). DEC-100's top-level/
+independent-from-Analysis placement is also unaffected — Compliance
+still never opens/depends on Advanced Analysis, the shared Playback
+controller, or Analysis Input Source.
+
+**Reason.** The corrected workflow matches the existing, owner-proven
+selection hierarchy already used by the advanced analyzer / Measurement
+Group workflow (select the physical/logical grouping first, then the
+specific quantity within it) rather than inventing a new one. Reusing
+`MeasurementGroup` directly (rather than a new Compliance-specific bay
+type) means Compliance automatically benefits from any future
+Measurement Group improvement (grouping detection, base configuration)
+with zero Compliance-side change, and keeps exactly one "what counts as
+a bay" definition in the codebase.
+
+**Alternatives considered.** (1) Keep workspace-wide resolution and
+instead try to disambiguate ties by some heuristic (e.g. "prefer the
+most recently uploaded source") — rejected outright: guessing which bay
+an engineer means is exactly the class of silent-wrong-answer this
+project's own Per-Unit/Engineering-Context precedent already forbids.
+(2) Introduce a NEW, Compliance-specific "bay" grouping concept
+independent of `MeasurementGroup` — rejected per this task's own
+explicit "do not create a second independent bay/group model"
+instruction; would also duplicate detection/lifecycle logic
+`MeasurementGroup` already solves.
+
+**Impact.** `backend/app/services/compliance_measurement_service.py`
+(`resolve_voltage_role_catalogue_for_group()` replaces the former
+workspace-wide `resolve_voltage_role_catalogue()`; `_base_for_group()`
+replaces `_base_for_resolved_roles()`; new `list_compliance_voltage_
+groups()`), `backend/app/api/v1/compliance.py` (new `GET .../compliance/
+voltage/measurement-groups`; `measurement_group_id` now a required query
+param on the measurement endpoint), `backend/app/schemas/compliance.py`
+(new `ComplianceMeasurementGroupOut`), `backend/app/services/errors.py`
+(new `ComplianceMeasurementGroupNotVoltageKindError`, reuses the
+existing `MeasurementGroupNotFoundError`). `frontend/index.html` (new
+`#wwComplianceGroupField`/`#wwComplianceGroupSelect` above Assessment
+Quantity; `wwComplianceLoadGroups()`/`wwComplianceRenderGroupOptions()`/
+`wwComplianceOnGroupChange()`/`wwComplianceRenderMeasurementCardState()`).
+Zero changes to `app.domain.compliance_measurement` (normalization math
+untouched, per this task's own explicit scope), `app.domain.measurement_
+group`, `app.services.measurement_group_service`, or `app.api.v1.
+measurement_groups`. Full backend suite (5480 tests) and full Playwright
+suite (151 scenarios) pass.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

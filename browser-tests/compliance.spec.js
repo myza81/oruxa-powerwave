@@ -61,7 +61,12 @@ test.describe("Compliance & Capability -- Slice 1 workspace shell", () => {
       "Results",
     ]);
 
-    await expect(page.locator("#wwComplianceMeasurementEmptyState")).toHaveText("No assessment quantity selected");
+    // 2026-09-20 UAT correction: on a fresh empty workspace there is no
+    // Measurement Group yet, so this is now the FIRST empty state shown
+    // -- selecting a quantity is a later step (see
+    // compliance_measurement.spec.js for the full Bay/Measurement Group
+    // -> Assessment Quantity workflow coverage).
+    await expect(page.locator("#wwComplianceMeasurementEmptyState")).toHaveText("No Measurement Group is available for this workspace.");
     await expect(page.locator("#wwComplianceReferenceLayersEmptyState")).toHaveText("No reference layers added");
     await expect(page.locator("#wwComplianceAddReferenceBtn")).toBeDisabled();
     await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("No event reference set");
@@ -164,33 +169,16 @@ test.describe("Compliance & Capability -- Slice 1 workspace shell", () => {
     });
   }
 
-  // Owner UAT fix (2026-09-20): #wwComplianceMeasurementSelect used to
-  // overflow the Measurement card and encroach into Reference Layers at
-  // narrower widths, since the select itself had no width constraint of
-  // its own. 1024px is the owner's own reported breakpoint; 800px is
-  // "one narrower width" that stays just above the 760px single-column
-  // stack breakpoint, where the three cards are at their narrowest
-  // still-side-by-side share (below 760px the cards stack vertically,
-  // so "encroaching into Reference Layers" horizontally no longer
-  // applies -- that stacked case is already covered by the "no
-  // horizontal overflow" tests above).
-  for (const viewport of [{ width: 1024, height: 800 }, { width: 800, height: 800 }]) {
-    test(`Measurement select stays contained within its card at ${viewport.width}px`, async ({ page }) => {
-      await page.setViewportSize(viewport);
-      await openCompliance(page);
-      const selectBox = await page.locator("#wwComplianceMeasurementSelect").boundingBox();
-      const cardBox = await page.locator("#wwComplianceMeasurementCard").boundingBox();
-      expect(selectBox.x).toBeGreaterThanOrEqual(cardBox.x - 1);
-      expect(selectBox.x + selectBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 1);
-
-      // Never overlapping the sibling Reference Layers card specifically
-      // -- the exact encroachment the owner reported.
-      const referenceLayersBox = await page.locator("#wwComplianceReferenceLayersCard").boundingBox();
-      expect(selectBox.x + selectBox.width).toBeLessThanOrEqual(referenceLayersBox.x + 1);
-
-      const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
-      const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
-      expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
-    });
-  }
+  // Owner UAT fix (2026-09-20, commit 3447f24): #wwComplianceMeasurementSelect
+  // used to overflow the Measurement card and encroach into Reference
+  // Layers at narrower widths. This file's own tests intentionally never
+  // upload anything (see this file's own header comment), and as of the
+  // 2026-09-20 Bay/Measurement Group UAT correction, both
+  // #wwComplianceGroupSelect and #wwComplianceMeasurementSelect start
+  // `hidden` until a real Measurement Group exists -- there is nothing
+  // to measure a bounding box of on a bare empty workspace any more.
+  // The real containment verification for BOTH selects (with a genuine
+  // group + quantity selected) now lives in
+  // browser-tests/compliance_measurement.spec.js's own
+  // "no overflow with the Measurement summary visible" scenarios.
 });

@@ -1,7 +1,7 @@
 """Pydantic response schemas for Compliance & Capability -- Voltage
-Measurement (Slice 2). Thin translation only -- see
-`app.services.compliance_measurement_service` for the actual resolution
-logic these mirror."""
+Measurement (Slice 2 + the 2026-09-20 Bay/Measurement Group UAT
+correction). Thin translation only -- see `app.services.compliance_
+measurement_service` for the actual resolution logic these mirror."""
 
 from __future__ import annotations
 
@@ -14,6 +14,16 @@ class ComplianceVoltageQuantityOut(BaseModel):
     id: str
     display_label: str
     voltage_representation: str
+
+
+class ComplianceMeasurementGroupOut(BaseModel):
+    """One candidate for the Bay/Measurement Group picker -- `id` is the
+    stable `measurement_group_id` (task section 6: durable identity, not
+    display-name matching); `display_name` is human-friendly only."""
+
+    id: str
+    display_name: str
+    status: str
 
 
 class ComplianceResolvedRoleOut(BaseModel):
@@ -31,6 +41,7 @@ class ComplianceBaseOut(BaseModel):
 
 class ComplianceVoltageMeasurementOut(BaseModel):
     status: str
+    measurement_group_id: str
     quantity_id: str
     quantity_display_label: str
     voltage_representation: str

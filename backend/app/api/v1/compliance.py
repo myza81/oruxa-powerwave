@@ -1,15 +1,24 @@
 """Compliance & Capability -- Voltage Measurement REST exposure (Slice
-2). Thin translation only -- every endpoint calls straight into
-`app.services.compliance_measurement_service`, an already-tested
-service function; no new domain semantics live here.
+2 + the 2026-09-20 Bay/Measurement Group UAT correction). Thin
+translation only -- every endpoint calls straight into `app.services.
+compliance_measurement_service`, an already-tested service function; no
+new domain semantics live here.
 
 Deliberately its OWN router/file, never added to `app.api.v1.
-engineering_contexts` -- Compliance is architecturally independent of
-Analysis/Engineering Context (DEC-100), and neither endpoint below
-accepts or resolves an `engineering_context_id`; both are purely
-workspace-scoped, mirroring `GET .../overcurrent-characteristics`'s own
-"no context needed" shape rather than the context-nested analyzer
-endpoints.
+engineering_contexts` OR to `app.api.v1.measurement_groups` -- Compliance
+is architecturally independent of Analysis/Engineering Context
+(DEC-100), and none of the endpoints below accept or resolve an
+`engineering_context_id`. The new `GET .../compliance/voltage/
+measurement-groups` endpoint reuses the EXISTING `MeasurementGroupRegistry.
+list_for_workspace()` (already present at the service layer, just not
+previously exposed workspace-wide over REST -- `app.api.v1.
+measurement_groups`'s own router is source-scoped, `.../sources/
+{source_id}/measurement-groups`, for its CRUD/configuration purpose) --
+this is a lean, read-only, Voltage-only, usable-status-only view for the
+Bay picker, not a second Measurement Group model (task section 1/6).
+`GET .../compliance/voltage/measurement` now REQUIRES an explicit
+`measurement_group_id` query param -- role resolution is scoped to that
+one group's own membership, never the whole workspace (see DEC-102).
 """
 
 from __future__ import annotations
@@ -18,6 +27,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 
 from app.schemas.compliance import (
     ComplianceBaseOut,
+    ComplianceMeasurementGroupOut,
     ComplianceResolvedRoleOut,
     ComplianceVoltageMeasurementOut,
     ComplianceVoltageQuantityOut,
@@ -28,6 +38,7 @@ from app.services.compliance_measurement_service import (
     ComplianceVoltageMeasurementResult,
     ROLE_DISPLAY_NAME,
     evaluate_voltage_measurement,
+    list_compliance_voltage_groups,
     list_voltage_quantities,
 )
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
@@ -41,6 +52,8 @@ router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["compliance
 _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "invalid_workspace": status.HTTP_400_BAD_REQUEST,
     "unknown_compliance_quantity": status.HTTP_400_BAD_REQUEST,
+    "measurement_group_not_found": status.HTTP_404_NOT_FOUND,
+    "compliance_measurement_group_not_voltage_kind": status.HTTP_400_BAD_REQUEST,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -75,7 +88,7 @@ def _http_error(exc: ImportServiceError) -> HTTPException:
     return HTTPException(status_code=status_code, detail=ErrorOut(code=exc.code, message=exc.message).model_dump())
 
 
-def _result_to_out(result: ComplianceVoltageMeasurementResult) -> ComplianceVoltageMeasurementOut:
+def _result_to_out(result: ComplianceVoltageMeasurementResult, *, measurement_group_id: str) -> ComplianceVoltageMeasurementOut:
     resolved_roles = [
         ComplianceResolvedRoleOut(
             role=role, display_name=ROLE_DISPLAY_NAME[role],
@@ -93,6 +106,7 @@ def _result_to_out(result: ComplianceVoltageMeasurementResult) -> ComplianceVolt
     )
     return ComplianceVoltageMeasurementOut(
         status=result.status,
+        measurement_group_id=measurement_group_id,
         quantity_id=result.quantity.id,
         quantity_display_label=result.quantity.display_label,
         voltage_representation=result.quantity.voltage_representation,
@@ -116,9 +130,23 @@ def list_compliance_voltage_quantities(workspace_id: str) -> list[ComplianceVolt
     ]
 
 
+@router.get("/compliance/voltage/measurement-groups", response_model=list[ComplianceMeasurementGroupOut])
+def list_compliance_voltage_measurement_groups(workspace_id: str, request: Request) -> list[ComplianceMeasurementGroupOut]:
+    """The Bay/Measurement Group picker's own candidate list (task
+    section 2/5/6) -- every Voltage-kind group in the workspace whose
+    own grouping is not itself contested (`needs_review` excluded).
+    Stable `id` is always the real `measurement_group_id`."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    groups = list_compliance_voltage_groups(
+        workspace_id=workspace_id, group_registry=get_measurement_group_registry(request)
+    )
+    return [ComplianceMeasurementGroupOut(id=g.id, display_name=g.display_name, status=g.status) for g in groups]
+
+
 @router.get("/compliance/voltage/measurement", response_model=ComplianceVoltageMeasurementOut)
 def get_compliance_voltage_measurement(
     workspace_id: str,
+    measurement_group_id: str,
     quantity_id: str,
     request: Request,
 ) -> ComplianceVoltageMeasurementOut:
@@ -126,6 +154,7 @@ def get_compliance_voltage_measurement(
     try:
         result = evaluate_voltage_measurement(
             workspace_id=workspace_id,
+            measurement_group_id=measurement_group_id,
             quantity_id=quantity_id,
             source_registry=get_workspace_registry(request),
             group_registry=get_measurement_group_registry(request),
@@ -134,4 +163,4 @@ def get_compliance_voltage_measurement(
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
-    return _result_to_out(result)
+    return _result_to_out(result, measurement_group_id=measurement_group_id)

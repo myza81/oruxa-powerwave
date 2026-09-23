@@ -1,26 +1,41 @@
 """Compliance & Capability -- Voltage Measurement service layer (Slice
-2; see docs/project-memory/COMPLIANCE_CAPABILITY.md).
+2 + the 2026-09-20 UAT correction; see docs/project-memory/
+COMPLIANCE_CAPABILITY.md).
+
+**UAT correction (2026-09-20): role resolution is now scoped to an
+explicitly SELECTED Measurement Group, never the whole workspace.**
+Owner UAT identified that a workspace-wide quantity resolution is
+ambiguous the moment more than one bay/Measurement Group exists (a
+`Va` in Bay A and a `Va` in Bay B are both real, valid channels -- there
+is no naming conflict to "resolve," just two different bays). The
+corrected workflow: select a Bay/Measurement Group FIRST, then role
+resolution/normalization happens only against that group's own
+`channel_refs`. This reuses the EXISTING `app.domain.measurement_group`
+model as the sole source of truth for "what is a bay" -- no second,
+Compliance-specific bay/group concept was introduced (task section 1's
+own explicit instruction).
 
 Orchestrates ELIGIBILITY resolution for one Voltage assessment quantity
-against the workspace's currently loaded sources -- which channels
-satisfy the quantity's required roles, whether their own recorded
-representation (instantaneous vs already-RMS) is known confidently
-enough to proceed, and whether a Per-Unit base is available for display.
-**This module deliberately never calls `app.domain.phasor.estimate_
-phasor()` or `app.domain.compliance_measurement.compute_voltage_
-quantity_value()`** -- Compliance has no selected-time/Playback concept
-yet (DEC-100; Event Alignment/t0 is explicitly out of scope for this
-slice), so there is no meaningful instant to compute an actual numeric
-value AT. Everything this module reports (status, resolved input
-channels, input representation, "derived as" label, base metadata) is
-determinable from channel-level metadata alone, without evaluating a
-single sample value -- keeping the live "switch assessment quantity"
-path cheap (task section 21) and honest about what Slice 2 actually
-provides. `compute_voltage_quantity_value()` and `estimate_phasor()` are
-exercised directly by this feature's own golden domain/service tests
-(task section 22) using synthetic waveforms, proving the computation
-path is correct and ready for a later slice's actual selected-time
-wiring, without this module pretending to expose it today.
+against ONE selected Measurement Group's own member channels -- which
+of them satisfy the quantity's required roles, whether their own
+recorded representation (instantaneous vs already-RMS) is known
+confidently enough to proceed, and whether that group's own Per-Unit
+base is available for display. **This module deliberately never calls
+`app.domain.phasor.estimate_phasor()` or `app.domain.compliance_
+measurement.compute_voltage_quantity_value()`** -- Compliance has no
+selected-time/Playback concept yet (DEC-100; Event Alignment/t0 is
+explicitly out of scope for this slice), so there is no meaningful
+instant to compute an actual numeric value AT. Everything this module
+reports (status, resolved input channels, input representation,
+"derived as" label, base metadata) is determinable from channel-level
+metadata alone, without evaluating a single sample value -- keeping the
+live "switch assessment quantity"/"switch group" path cheap (task
+section 21) and honest about what Slice 2 actually provides.
+`compute_voltage_quantity_value()` and `estimate_phasor()` are exercised
+directly by this feature's own golden domain/service tests using
+synthetic waveforms, proving the computation path correct and ready for
+a later slice's actual selected-time wiring, without this module
+pretending to expose it today.
 
 **Reuses `app.domain.engineering_context_detection.detect_engineering_
 contexts()` directly, as a pure function call, for per-channel phase
@@ -34,16 +49,27 @@ would violate the task's own "reuse existing foundations" instruction.
 created, read, or persisted, and `EngineeringContextRegistry` is never
 imported here. Compliance still does not register as an Engineering
 Context CONSUMER (DEC-100's own architectural boundary: no Bay selector
-UI, no shared Analysis workspace lifecycle hook, no Playback/Analysis
-Input Source coupling) -- it independently re-runs the same detection
-algorithm, fresh, against whatever sources are currently loaded, every
-time the workspace's channel set might have changed. See
-DECISIONS.md#dec-101 for the full record of this boundary.
+UI shared with Analysis, no shared Analysis workspace lifecycle hook,
+no Playback/Analysis Input Source coupling) -- its OWN Bay/Measurement
+Group selector (this correction) is a completely separate, pre-existing
+model (`app.domain.measurement_group`), not Engineering Context. See
+DECISIONS.md#dec-101 and #dec-102 for the full record of this boundary.
 
-Voltage measurement-group BASE display reuses `app.services.
-measurement_group_view_service.build_group_view()` verbatim (no new
-base-resolution math) -- Compliance never builds a second base model
-(task section 7).
+**A Measurement Group's own channel_refs now scope detection input
+directly (task section 11) -- a group may legitimately span more than
+one loaded source**, so this module groups a selected group's own
+`channel_refs` by `source_id` and runs `detect_engineering_contexts()`
+once per represented source (that function's own single-source-only
+design), flattening every detected member's phase across those sources
+into one group-scoped `phase -> channel` map. Because every resolved
+role is now, by construction, a member of the ONE selected group, a
+resolved role can never span two different Measurement Groups any
+more -- the previous cross-group `STATUS_INVALID_BASE` trigger is
+structurally unreachable through this path and was removed; Base is now
+simply "does the selected group have a configured Voltage base," a
+single lookup via `app.services.measurement_group_view_service.
+build_group_view()` (verbatim, no new base-resolution math -- task
+section 9).
 """
 
 from __future__ import annotations
@@ -63,7 +89,6 @@ from app.domain.compliance_measurement import (
     ROLE_C,
     STATUS_AMBIGUOUS_METADATA,
     STATUS_AVAILABLE,
-    STATUS_INVALID_BASE,
     STATUS_MISSING_INPUTS,
     STATUS_UNSUPPORTED_REPRESENTATION,
     VALUE_REPRESENTATION_DIRECT_RMS,
@@ -75,10 +100,14 @@ from app.domain.compliance_measurement import (
     get_voltage_quantity,
 )
 from app.domain.engineering_context_detection import ChannelForDetection, detect_engineering_contexts
-from app.domain.measurement_group import KIND_VOLTAGE
+from app.domain.measurement_group import KIND_VOLTAGE, STATUS_NEEDS_REVIEW, MeasurementGroup
 from app.domain.rms_detector import LIKELY_INSTANTANEOUS, LIKELY_MAGNITUDE_OR_RMS, classify_waveform_form
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
-from app.services.errors import UnknownComplianceQuantityError
+from app.services.errors import (
+    ComplianceMeasurementGroupNotVoltageKindError,
+    MeasurementGroupNotFoundError,
+    UnknownComplianceQuantityError,
+)
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.measurement_group_view_service import build_group_view
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
@@ -106,29 +135,73 @@ class ResolvedRole:
 
 @dataclass(frozen=True, slots=True)
 class RoleResolution:
-    """One canonical phase role's own resolution against the workspace's
-    currently loaded Voltage channels. `candidates` may legitimately
-    contain more than one entry (a cross-source or cross-channel name
-    collision for the same role) -- never silently picked from, always
-    surfaced as ambiguous by the caller."""
+    """One canonical phase role's own resolution WITHIN the selected
+    Measurement Group. `candidates` may legitimately contain more than
+    one entry (two differently-named member channels of the SAME group
+    both parsing to the same phase -- a real, if unusual, grouping
+    situation) -- never silently picked from, always surfaced as
+    ambiguous by the caller. This is no longer cross-bay: two channels
+    in DIFFERENT groups that both happen to be named "VA" never appear
+    together here, since this function only ever looks at one group's
+    own membership (task section 7)."""
 
     role: str
     candidates: tuple[ResolvedRole, ...]
 
 
-def resolve_voltage_role_catalogue(*, workspace_id: str, source_registry: WorkspaceRegistry) -> dict[str, RoleResolution]:
-    """Builds `canonical phase role -> RoleResolution` across every
-    currently loaded source in the workspace, by running `detect_
-    engineering_contexts()` independently PER SOURCE (that function is
-    single-source-only by design) against ONLY that source's own Voltage
-    channels, then flattening every detected member's own phase across
-    every source into one workspace-wide map. A channel whose detected
-    phase is unknown/not_applicable/neutral is simply absent from the
-    returned map under any of this catalogue's own role keys (Compliance
-    Slice 2 has no use for `N`/`unknown`/`L1`-etc. roles)."""
+def list_compliance_voltage_groups(
+    *, workspace_id: str, group_registry: MeasurementGroupRegistry
+) -> list[MeasurementGroup]:
+    """The Bay/Measurement Group picker's own candidate list -- every
+    Voltage-kind group in the workspace whose own grouping is not itself
+    contested. `STATUS_NEEDS_REVIEW` is excluded: its own MEMBERSHIP is
+    uncertain/contradictory automatic evidence (`app.domain.measurement_
+    group`'s own canonical-document section 15), so scoping role
+    resolution to a group whose membership might be wrong would silently
+    inherit that uncertainty. `suggested`/`confirmed`/`manual` are all
+    included -- a suggested group's own membership is not itself in
+    doubt, only whether an engineer has reviewed/confirmed it yet
+    (mirrors the existing Measurement Groups configuration UI, which
+    likewise never hides `suggested` groups, only flags them for
+    review)."""
+    return [
+        group for group in group_registry.list_for_workspace(workspace_id)
+        if group.kind == KIND_VOLTAGE and group.status != STATUS_NEEDS_REVIEW
+    ]
+
+
+def resolve_voltage_role_catalogue_for_group(
+    group: MeasurementGroup, *, workspace_id: str, source_registry: WorkspaceRegistry
+) -> dict[str, RoleResolution]:
+    """Builds `canonical phase role -> RoleResolution` from ONLY the
+    selected group's own `channel_refs` -- never the whole workspace
+    (task section 4/7). A group may span more than one source (task
+    section 11: "do not assume one group == one file"), so membership is
+    grouped by `source_id` first and `detect_engineering_contexts()`
+    (single-source-only by design) is run once per represented source,
+    fed ONLY that source's member channels (never that source's full
+    channel list) -- flattening every detected member's phase across
+    those source-scoped passes into one group-scoped map. A channel
+    whose detected phase is unknown/not_applicable/neutral is simply
+    absent from the returned map under any of this catalogue's own role
+    keys (Compliance Slice 2 has no use for `N`/`unknown`/`L1`-etc.
+    roles)."""
+    refs_by_source: dict[str, list[str]] = {}
+    for ref in group.channel_refs:
+        if ref.kind != "source" or ref.source_id is None or ref.channel_name is None:
+            continue
+        refs_by_source.setdefault(ref.source_id, []).append(ref.channel_name)
+
     catalogue: dict[str, list[ResolvedRole]] = {}
-    for active in source_registry.list_for_workspace(workspace_id):
-        voltage_channels = [ch for ch in active.metadata.analog_channels if ch.engineering_type == VOLTAGE]
+    for source_id, member_names in refs_by_source.items():
+        active = source_registry.get(workspace_id, source_id)
+        if active is None:
+            continue
+        member_name_set = set(member_names)
+        voltage_channels = [
+            ch for ch in active.metadata.analog_channels
+            if ch.engineering_type == VOLTAGE and ch.name in member_name_set
+        ]
         if not voltage_channels:
             continue
         detection_input = [
@@ -141,9 +214,9 @@ def resolve_voltage_role_catalogue(*, workspace_id: str, source_registry: Worksp
                 if role not in (ROLE_A, ROLE_B, ROLE_C, "AB", "BC", "CA"):
                     continue
                 resolved = ResolvedRole(
-                    channel_ref=ChannelRef(kind="source", source_id=active.metadata.source_id, channel_name=member.channel_name),
+                    channel_ref=ChannelRef(kind="source", source_id=source_id, channel_name=member.channel_name),
                     channel_name=member.channel_name,
-                    source_id=active.metadata.source_id,
+                    source_id=source_id,
                 )
                 catalogue.setdefault(role, []).append(resolved)
     return {role: RoleResolution(role=role, candidates=tuple(entries)) for role, entries in catalogue.items()}
@@ -200,51 +273,38 @@ class ComplianceVoltageMeasurementResult:
     message: str | None = None
 
 
-def _base_for_resolved_roles(
-    resolved: dict[str, ResolvedRole],
+def _base_for_group(
+    group: MeasurementGroup,
     *,
-    workspace_id: str,
     group_registry: MeasurementGroupRegistry,
     voltage_config_registry: VoltageGroupConfigRegistry,
     current_config_registry: CurrentGroupConfigRegistry,
-) -> tuple[BaseInfo | None, str | None]:
-    """`(base_info, error_message)`. `error_message` is set only for a
-    genuine STATUS_INVALID_BASE condition (resolved roles span more than
-    one measurement group, or share a group with mutually-incompatible
-    config) -- `(None, None)` is the normal, non-error "no base
-    configured yet, show engineering units" case (task section 16 is
-    explicit that this is not treated as an error)."""
-    group_ids = set()
-    for role_result in resolved.values():
-        group_id = group_registry.group_for_channel(workspace_id, role_result.channel_ref)
-        if group_id is not None:
-            group_ids.add(group_id)
-    if not group_ids:
-        return None, None
-    if len(group_ids) > 1:
-        return None, (
-            "Voltage basis is ambiguous. The resolved phases belong to different measurement groups with "
-            "potentially different bases."
-        )
-    group = group_registry.get(workspace_id, next(iter(group_ids)))
-    if group is None or group.kind != KIND_VOLTAGE:
-        return None, None
+) -> BaseInfo | None:
+    """The selected group's OWN Voltage base, if configured -- `None` is
+    the normal, non-error "no base configured yet, show engineering
+    units" case (task section 16/9). Every resolved role is, by
+    construction, a member of `group` (see `resolve_voltage_role_
+    catalogue_for_group()`), so there is no longer a "resolved roles
+    span two different groups" case to detect here at all -- that
+    cross-group conflict is now structurally unreachable, not merely
+    unlikely."""
     view = build_group_view(
         group, group_registry=group_registry, voltage_config_registry=voltage_config_registry,
         current_config_registry=current_config_registry,
     )
     voltage_config = view.voltage_config
     if voltage_config is None or voltage_config.nominal_voltage_ll_kv is None or voltage_config.effective_reference is None:
-        return None, None
+        return None
     return BaseInfo(
         nominal_voltage_ll_kv=voltage_config.nominal_voltage_ll_kv,
         effective_reference=voltage_config.effective_reference,
-    ), None
+    )
 
 
 def evaluate_voltage_measurement(
     *,
     workspace_id: str,
+    measurement_group_id: str,
     quantity_id: str,
     source_registry: WorkspaceRegistry,
     group_registry: MeasurementGroupRegistry,
@@ -255,7 +315,15 @@ def evaluate_voltage_measurement(
     if quantity is None:
         raise UnknownComplianceQuantityError(f"Unknown Compliance assessment quantity_id '{quantity_id}'.")
 
-    catalogue = resolve_voltage_role_catalogue(workspace_id=workspace_id, source_registry=source_registry)
+    group = group_registry.get(workspace_id, measurement_group_id)
+    if group is None:
+        raise MeasurementGroupNotFoundError(f"No measurement group '{measurement_group_id}' in this workspace.")
+    if group.kind != KIND_VOLTAGE:
+        raise ComplianceMeasurementGroupNotVoltageKindError(
+            f"Measurement group '{measurement_group_id}' is a Current group, not a Voltage group."
+        )
+
+    catalogue = resolve_voltage_role_catalogue_for_group(group, workspace_id=workspace_id, source_registry=source_registry)
 
     used_direct_pair = False
     roles_needed: tuple[str, ...]
@@ -267,10 +335,11 @@ def evaluate_voltage_measurement(
 
     missing = [role for role in roles_needed if role not in catalogue]
     if missing:
+        required_display = ", ".join(ROLE_DISPLAY_NAME[role] for role in roles_needed)
         missing_display = ", ".join(ROLE_DISPLAY_NAME[role] for role in missing)
         return ComplianceVoltageMeasurementResult(
             quantity=quantity, status=STATUS_MISSING_INPUTS, missing=tuple(missing),
-            message=f"Cannot calculate {quantity.display_label}. Missing: {missing_display}.",
+            message=f"{quantity.display_label} requires {required_display}. Missing: {missing_display}.",
         )
 
     ambiguous = [role for role in roles_needed if len(catalogue[role].candidates) > 1]
@@ -279,7 +348,7 @@ def evaluate_voltage_measurement(
         return ComplianceVoltageMeasurementResult(
             quantity=quantity, status=STATUS_AMBIGUOUS_METADATA,
             message=(
-                f"Multiple channels match {ambiguous_display} across the loaded recordings. "
+                f"Multiple {ambiguous_display} channels match within the selected Measurement Group. "
                 "Resolve the naming conflict before this quantity can be assessed."
             ),
         )
@@ -329,15 +398,10 @@ def evaluate_voltage_measurement(
         VALUE_REPRESENTATION_FUNDAMENTAL_RMS if input_type == INPUT_TYPE_INSTANTANEOUS else VALUE_REPRESENTATION_DIRECT_RMS
     )
 
-    base, base_error = _base_for_resolved_roles(
-        resolved, workspace_id=workspace_id, group_registry=group_registry,
-        voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+    base = _base_for_group(
+        group, group_registry=group_registry, voltage_config_registry=voltage_config_registry,
+        current_config_registry=current_config_registry,
     )
-    if base_error is not None:
-        return ComplianceVoltageMeasurementResult(
-            quantity=quantity, status=STATUS_INVALID_BASE, resolved_roles=resolved, used_direct_pair=used_direct_pair,
-            input_type=input_type, value_representation=value_representation, message=base_error,
-        )
 
     return ComplianceVoltageMeasurementResult(
         quantity=quantity, status=STATUS_AVAILABLE, resolved_roles=resolved, used_direct_pair=used_direct_pair,

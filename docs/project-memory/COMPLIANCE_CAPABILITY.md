@@ -2,11 +2,13 @@
 
 **Status: Slice 1 (workspace shell only) implemented 2026-09-19; Slice 2
 (Measurement Selection + Normalization Foundation) implemented
-2026-09-20.** Reference profiles, event alignment/t0, comparison curves,
-and compliance evaluation/breach/margin logic still do not exist — see
-"Slice 2" below for exactly what Measurement now does, and "No
-calculation/profile/persistence logic exists yet" for what still
-doesn't.
+2026-09-20; a same-day owner-UAT correction (Bay/Measurement Group
+scoping) implemented 2026-09-20.** Reference profiles, event
+alignment/t0, comparison curves, and compliance evaluation/breach/
+margin logic still do not exist — see "Slice 2" below for exactly what
+Measurement now does, "Bay/Measurement Group scoping (2026-09-20 UAT
+correction)" for the corrected workflow, and "No calculation/profile/
+persistence logic exists yet" for what still doesn't.
 
 ## Compliance is a top-level function, independent of Analysis
 
@@ -101,6 +103,21 @@ any real behavior. **The "Assessment quantity" select is no longer one
 of these placeholders as of Slice 2** — see below.
 
 ## Slice 2 — Measurement Selection + Normalization Foundation (2026-09-20)
+
+**Superseded in part, same day, by owner UAT — see "Bay/Measurement
+Group scoping (2026-09-20 UAT correction)" below.** Everything in this
+section about the NORMALIZATION MATH (Instantaneous/RMS handling,
+Phasor/Sequence Components reuse, line-line derivation, per-unit reuse)
+is still exactly accurate and unchanged. What changed is the SCOPE role
+resolution runs against: this section's own original text below still
+describes resolution as "workspace-wide" (`resolve_voltage_role_
+catalogue()`, since removed) — that is now stale; role resolution is
+scoped to one explicitly selected Measurement Group
+(`resolve_voltage_role_catalogue_for_group()`), never the whole
+workspace. Kept here verbatim (rather than silently rewritten) as the
+accurate historical record of what Slice 2 shipped before the
+correction — do not treat the "workspace-wide" framing below as current
+behavior.
 
 Implements **only** the Measurement section and the underlying
 normalization foundation. Reference Layers, Event Alignment, Comparison
@@ -214,8 +231,11 @@ service.build_group_view()` supplies the nominal LL kV + effective
 L-G/L-L reference, and Assessment Unit is `pu`. No group (or an
 unconfigured one) is a normal, non-error state — Assessment Unit falls
 back to the channel's own Engineering Units, never "Invalid Base".
-Resolved roles spanning two DIFFERENT Measurement Groups (genuinely
-incompatible bases) IS `STATUS_INVALID_BASE`.
+*(Original Slice 2 text described "resolved roles spanning two
+DIFFERENT Measurement Groups" as a `STATUS_INVALID_BASE` trigger — the
+2026-09-20 Bay/Measurement Group UAT correction below makes this
+structurally unreachable, since every resolved role is now, by
+construction, a member of the one selected group.)*
 
 **Guardrail vocabulary** (task section 16, `app.domain.compliance_
 measurement`): `available`, `missing_inputs`, `ambiguous_measurement_
@@ -249,23 +269,116 @@ convention Phasor's own context loader already established), so a
 source uploaded/removed elsewhere never leaves a stale result on
 return.
 
-New tests: `backend/tests/test_compliance_measurement_domain.py`
-(golden vectors — balanced/unbalanced three-phase, RMS direct, 275 kV
-base reuse, unsupported-representation guardrails, min/max), `backend/
-tests/test_compliance_measurement_service.py` (role resolution/
-eligibility/guardrail matrix against fake workspace fixtures), `backend/
-tests/test_compliance_measurement_api.py` (HTTP wiring), `backend/
-tests/test_frontend_compliance.py`'s new `TestComplianceMeasurementSlice2Structure`/
-`TestComplianceOutOfScopeSlice2` classes, and `browser-tests/
-compliance_measurement.spec.js` (14 real-browser scenarios: dropdown
-catalogue, quantity switching, single-phase/three-phase cases,
-Instantaneous/RMS summaries, Base metadata display, 1366/1024/800px
-responsive, Analysis/Playback isolation) — two new committed ASCII
-COMTRADE fixtures, `compliance_smoke_three_phase(.cfg/.dat)` (bare-role
-VA/VB/VC, balanced 100 V RMS/50 Hz) and `compliance_smoke_rms_phase_a(.cfg/.dat)`
-(a single VA channel with a smooth, always-positive envelope, verified
-directly to trigger the real algorithmic RMS-detector fallback before
-being committed, since COMTRADE never sets `waveform_form` metadata).
+New tests (original Slice 2 shape, since revised by the correction
+below — file names are current, contents were substantially reworked):
+`backend/tests/test_compliance_measurement_domain.py` (golden vectors —
+balanced/unbalanced three-phase, RMS direct, 275 kV base reuse,
+unsupported-representation guardrails, min/max — UNCHANGED by the
+correction), `backend/tests/test_compliance_measurement_service.py`,
+`backend/tests/test_compliance_measurement_api.py`, `backend/tests/
+test_frontend_compliance.py`, and `browser-tests/compliance_
+measurement.spec.js`.
+
+## Bay/Measurement Group scoping (2026-09-20 UAT correction)
+
+**Owner UAT identified a real workflow gap the same day Slice 2
+shipped**: a bare Assessment Quantity selector is ambiguous the moment
+a workspace contains more than one bay/Measurement Group, since several
+valid `Va`/`Vb`/`Vab` etc. may exist across different bays — this is
+not a naming conflict to resolve, it is a missing selection step. See
+[DECISIONS.md — DEC-102](DECISIONS.md#dec-102--compliance-measurement-scopes-role-resolution-to-an-explicitly-selected-measurement-group-bay-reusing-the-existing-measurement-group-model-verbatim--never-a-second-bay-concept-never-engineering-context)
+for the full architectural record.
+
+**Corrected workflow:**
+
+```text
+1. Select Bay / Measurement Group
+2. Select Assessment Quantity
+3. Resolve only the channels within that selected bay/group
+4. Normalize and assess (unchanged Slice 2 math, see above)
+```
+
+**Reuses the EXISTING `app.domain.measurement_group` model verbatim —
+never a second, Compliance-specific bay concept** (task's own explicit
+instruction). A new, lean, read-only, Compliance-only endpoint,
+`GET .../compliance/voltage/measurement-groups`, lists every Voltage-
+kind group in the workspace whose own grouping is not itself contested
+(`status != needs_review`; `suggested`/`confirmed`/`manual` are all
+included, mirroring the existing Measurement Groups configuration UI's
+own "never hide suggested, just flag it" convention) — built by reusing
+the already-existing `MeasurementGroupRegistry.list_for_workspace()`
+(previously present at the service layer, not previously exposed
+workspace-wide over REST). `GET .../compliance/voltage/measurement` now
+REQUIRES an explicit `measurement_group_id` query parameter.
+
+**Cross-bay role duplication is expected and is resolved by group
+selection, not treated as a naming conflict.** Selecting Bay A and
+resolving `Va` never looks at Bay B's own `Va` at all — `app.services.
+compliance_measurement_service.resolve_voltage_role_catalogue_for_group()`
+groups the SELECTED group's own `channel_refs` by `source_id` (a group
+may legitimately span more than one loaded source — task section 11,
+"do not assume one group == one file") and runs `app.domain.
+engineering_context_detection.detect_engineering_contexts()` only
+against those member channels, per represented source. The old
+"Multiple channels match Va across the loaded recordings" wording no
+longer exists. A duplicate `Va` genuinely WITHIN one selected group's
+own membership (e.g. two differently-named member channels that both
+parse to phase A) remains `STATUS_AMBIGUOUS_METADATA` — reworded
+"...within the selected Measurement Group" to make the scope explicit.
+
+**Auto-selection is exact, never a heuristic**: exactly one valid
+Voltage group in the workspace auto-selects it; two or more require an
+explicit choice; zero shows "No Measurement Group is available for this
+workspace." — the group picker's own `stillExists`/auto-select logic
+mirrors `wwPhasorRenderContextOptions()`'s established pattern
+(preserve a still-valid selection across a reload; never silently
+re-pick a different one).
+
+**Switching a quantity that becomes invalid in the new group never
+silently substitutes another quantity** — the select's own value is
+preserved, and the summary simply reports `missing_inputs`/whatever
+status genuinely applies in the new group (task section 8's own
+explicit "keep selection → show Missing Inputs" requirement), verified
+directly by a dedicated Playwright scenario.
+
+**Base/Assessment Unit simplification**: because every resolved role is
+now, by construction, a member of the ONE selected group,
+`_base_for_group()` is a single `build_group_view()` lookup on that
+group — the former "do resolved roles span two different groups"
+conflict check (and its own `STATUS_INVALID_BASE` trigger) is
+structurally unreachable through this path and was removed. The
+`invalid_base` status constant itself remains defined for vocabulary
+stability (task's own guardrail list); nothing currently triggers it.
+
+**UI**: a new `#wwComplianceGroupField`/`#wwComplianceGroupSelect`
+("Bay / Measurement Group" — the task's own specified wording, not yet
+simplified to "Bay" since the existing model does not guarantee every
+Measurement Group is a physical bay) sits ABOVE Assessment Quantity in
+the same compact Measurement card, sharing the identical ID-scoped
+containment fix (`#wwComplianceGroupField { min-width: 0; margin: 0 }`,
+`#wwComplianceGroupSelect { width: 100%; max-width: 100%; min-width: 0;
+box-sizing: border-box }`) the owner's own earlier CSS refinement
+(commit `3447f24`) established for the Assessment Quantity select —
+both selects stay contained at 1366/1024/800px, verified directly.
+`wwComplianceRenderMeasurementCardState()` is the one function deciding
+which of the four required empty states (no groups / select a group /
+no quantity selected / real summary) is showing at any moment.
+
+**Tests reworked**: `test_compliance_measurement_service.py` (17
+tests: group-scoped resolution, cross-bay duplication is NOT ambiguous,
+same-group duplication IS still ambiguous, group-controls-base,
+group-controls-role-resolution, a group may span multiple sources),
+`test_compliance_measurement_api.py` (11 tests: new group-list endpoint,
+`measurement_group_id` required/404/wrong-kind), `test_frontend_
+compliance.py`'s new `TestComplianceMeasurementGroupSelectorStructure`
+class (6 tests), and a substantially reworked `browser-tests/
+compliance_measurement.spec.js` (18 scenarios: one-group auto-select,
+two-groups-duplicate-Va before/after selection, group-specific missing
+phase with kept quantity selection, full group-switch summary update,
+responsive containment of BOTH selects). `test_compliance_measurement_
+domain.py`'s 13 golden tests are completely unchanged (normalization
+math was explicitly out of scope for this correction). Full backend
+suite (5480 tests) and full Playwright suite (151 scenarios) pass.
 
 ## UI/UX is intentionally subject to owner UAT and may change
 
@@ -309,42 +422,64 @@ evaluation function names) both guard this boundary directly.
 ## Files
 
 - `frontend/index.html` — `#mainNavComplianceBtn` (main sidebar),
-  `#pageCompliance` (page markup, including the Slice 2 Measurement
-  select/summary), `shellSetCurrentPage()` (page lifecycle),
-  `wwRenderCompliancePage()`/`wwComplianceSyncTypeNav()`/
-  `wwComplianceLoadQuantities()`/`wwComplianceFetchMeasurement()`/
-  `wwComplianceRenderMeasurement()` (JS), `.ww-compliance-*` CSS.
+  `#pageCompliance` (page markup, including the Bay/Measurement Group
+  select above the Assessment Quantity select and the summary),
+  `shellSetCurrentPage()` (page lifecycle), `wwRenderCompliancePage()`/
+  `wwComplianceSyncTypeNav()`/`wwComplianceLoadQuantities()`/
+  `wwComplianceLoadGroups()`/`wwComplianceRenderGroupOptions()`/
+  `wwComplianceOnGroupChange()`/`wwComplianceOnQuantityChange()`/
+  `wwComplianceRenderMeasurementCardState()`/`wwComplianceFetchMeasurement()`/
+  `wwComplianceRenderMeasurement()` (JS), `.ww-compliance-*` CSS
+  (including `#wwComplianceGroupField`/`#wwComplianceGroupSelect`'s own
+  ID-scoped containment fix).
 - `backend/app/domain/compliance_measurement.py` — quantity catalogue +
-  pure `compute_voltage_quantity_value()`.
-- `backend/app/services/compliance_measurement_service.py` — role
-  resolution (reuses `engineering_context_detection` directly, see
-  DEC-101), Instantaneous/RMS classification, Base lookup.
+  pure `compute_voltage_quantity_value()` (unchanged by the 2026-09-20
+  correction).
+- `backend/app/services/compliance_measurement_service.py` — group-
+  scoped role resolution (`resolve_voltage_role_catalogue_for_group()`,
+  reuses `engineering_context_detection` directly, see DEC-101/DEC-102),
+  the Bay/Measurement Group candidate list (`list_compliance_voltage_
+  groups()`), Instantaneous/RMS classification, group-scoped Base lookup
+  (`_base_for_group()`).
 - `backend/app/schemas/compliance.py`, `backend/app/api/v1/compliance.py`
-  — the two new workspace-scoped endpoints.
+  — the three workspace-scoped endpoints (quantities, measurement-groups,
+  measurement).
+- `backend/app/services/errors.py` — `UnknownComplianceQuantityError`,
+  `ComplianceMeasurementGroupNotVoltageKindError` (reuses the existing
+  `MeasurementGroupNotFoundError` for an unknown group id).
 - `backend/tests/test_frontend_compliance.py` — structural regression
   (nav registration/order, panel existence, Voltage sub-nav, the five
-  section identifiers in order, empty-state wording, Slice 1 + Slice 2
-  out-of-scope guards, Slice 2 Measurement markup/JS structure).
-- `backend/tests/test_compliance_measurement_domain.py`/
-  `test_compliance_measurement_service.py`/`test_compliance_measurement_api.py`
-  — golden vectors, eligibility/guardrail matrix, HTTP wiring.
+  section identifiers in order, empty-state wording, Slice 1/Slice 2/
+  correction out-of-scope guards, `TestComplianceMeasurementGroupSelectorStructure`).
+- `backend/tests/test_compliance_measurement_domain.py` (unchanged by
+  the correction) / `test_compliance_measurement_service.py` /
+  `test_compliance_measurement_api.py` (both substantially reworked for
+  group scoping) — golden vectors, eligibility/guardrail matrix, HTTP
+  wiring.
 - `browser-tests/compliance.spec.js` — Slice 1 real-browser coverage
   (menu order, page open/close, sub-nav, all five sections, chart
   dominance, navigation lifecycle/isolation from Analysis, responsive/
-  no-overflow checks).
-- `browser-tests/compliance_measurement.spec.js` — Slice 2 real-browser
-  coverage (Assessment Quantity dropdown/switching, single-phase/
-  three-phase cases, Instantaneous/RMS summaries, Base metadata,
-  responsive, Analysis/Playback isolation), using two new committed
-  ASCII COMTRADE fixtures under `backend/tests/fixtures/comtrade/`.
+  no-overflow checks; its own former "Measurement select stays
+  contained" scenario moved to `compliance_measurement.spec.js`, since
+  the select is conditionally hidden on this file's own always-empty
+  workspace).
+- `browser-tests/compliance_measurement.spec.js` — Bay/Measurement
+  Group + Assessment Quantity real-browser coverage (one-group auto-
+  select, two-groups-duplicate-Va, group-specific missing phase, group
+  switching, Instantaneous/RMS summaries, Base metadata, both selects'
+  responsive containment, Analysis/Playback isolation), using two
+  committed ASCII COMTRADE fixtures under `backend/tests/fixtures/comtrade/`.
 
 ## Related documents
 
 - [DECISIONS.md](DECISIONS.md) — DEC-100 (top-level/independent-from-
-  Analysis architectural decision) and
+  Analysis architectural decision),
   [DEC-101](DECISIONS.md#dec-101--compliance-slice-2-resolves-voltage-phase-roles-by-independently-re-running-the-engineering-context-detection-algorithm-never-by-becoming-an-engineering-context-consumer)
-  (Slice 2's own Engineering-Context-detection-algorithm-reuse-without-
-  consumer-registration boundary).
+  (Engineering-Context-detection-algorithm-reuse-without-consumer-
+  registration boundary), and
+  [DEC-102](DECISIONS.md#dec-102--compliance-measurement-scopes-role-resolution-to-an-explicitly-selected-measurement-group-bay-reusing-the-existing-measurement-group-model-verbatim--never-a-second-bay-concept-never-engineering-context)
+  (the 2026-09-20 Bay/Measurement Group scoping correction).
 - [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) — the
-  group-aware Per-Unit model Slice 2's own Base display reuses verbatim.
+  group-aware Per-Unit/Measurement Group model this feature's Bay
+  picker and Base display both reuse verbatim.
 - [CURRENT_STATE.md](CURRENT_STATE.md), [HANDOFF.md](HANDOFF.md).

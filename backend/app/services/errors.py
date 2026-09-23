@@ -1047,3 +1047,13 @@ class UnknownComplianceQuantityError(ImportServiceError):
     entry in `app.domain.compliance_measurement.VOLTAGE_QUANTITIES`."""
 
     code = "unknown_compliance_quantity"
+
+
+class ComplianceMeasurementGroupNotVoltageKindError(ImportServiceError):
+    """A `measurement_group_id` supplied to the Compliance measurement
+    endpoint resolves to a real Measurement Group, but its `kind` is
+    `current`, not `voltage` -- distinct from `InvalidMeasurementGroupKindError`
+    (an invalid kind STRING at creation time); this group is a valid
+    Current group, just not usable for Voltage assessment."""
+
+    code = "compliance_measurement_group_not_voltage_kind"

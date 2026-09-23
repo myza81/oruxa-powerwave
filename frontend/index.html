@@ -6077,6 +6077,24 @@
             min-width: 0;
             margin: 0;
         }
+        /* UAT correction (2026-09-20): the new Bay/Measurement Group
+           field is a SECOND `.ww-phasor-field` label in this same card,
+           above Assessment Quantity -- it inherits the exact same
+           cascade-order gotcha explained above (`.ww-phasor-field`'s own
+           220px min-width is declared later in this file and wins an
+           equal-specificity tie regardless of any class-based override),
+           so it needs the identical ID-scoped fix, and the same
+           dedicated select-width rule below it. */
+        #wwComplianceGroupField {
+            min-width: 0;
+            margin: 0;
+        }
+        #wwComplianceGroupSelect {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+        }
         /* Owner UAT (2026-09-20): the label above already shrinks
            (`min-width: 0`), but the SELECT itself is its own nested flex
            item (`.ww-phasor-field` is `display: flex; flex-direction:
@@ -9784,14 +9802,34 @@
                             <div class="ww-compliance-config-row">
                                 <section class="panel ww-compliance-config-card" id="wwComplianceMeasurementCard">
                                     <h2>Measurement</h2>
-                                    <p class="empty-state" id="wwComplianceMeasurementEmptyState">No assessment quantity selected</p>
-                                    <!-- Slice 2: the user chooses the assessment
-                                         quantity FIRST (task section 3) -- the
-                                         catalogue itself comes from the backend
+                                    <p class="empty-state" id="wwComplianceMeasurementEmptyState">No Measurement Group is available for this workspace.</p>
+                                    <!-- UAT correction (2026-09-20): the user selects
+                                         a Bay/Measurement Group FIRST (owner UAT --
+                                         a bare Assessment Quantity selector was
+                                         ambiguous once more than one bay exists,
+                                         since several valid Va/Vb/Vab etc. may exist
+                                         across different bays), then the Assessment
+                                         Quantity within that group. Reuses the
+                                         EXISTING Measurement Group model verbatim
+                                         (GET .../compliance/voltage/measurement-groups)
+                                         -- never a second, Compliance-specific bay
+                                         concept. Both selects start hidden; JS reveals
+                                         them once there is something meaningful to
+                                         show (task section 5/13's own explicit
+                                         "do not guess" empty states). -->
+                                    <label class="ww-phasor-field" id="wwComplianceGroupField" hidden>
+                                        <span class="ww-phasor-field-label">Bay / Measurement Group</span>
+                                        <select id="wwComplianceGroupSelect">
+                                            <option value="">Select a Bay / Measurement Group…</option>
+                                        </select>
+                                    </label>
+                                    <!-- Slice 2: the user then chooses the assessment
+                                         quantity WITHIN that group (task section 3) --
+                                         the catalogue itself comes from the backend
                                          (GET .../compliance/voltage/quantities),
                                          never hardcoded here, so it can never
                                          drift from the domain catalogue. -->
-                                    <label class="ww-phasor-field" id="wwComplianceMeasurementField">
+                                    <label class="ww-phasor-field" id="wwComplianceMeasurementField" hidden>
                                         <span class="ww-phasor-field-label">Assessment quantity</span>
                                         <select id="wwComplianceMeasurementSelect">
                                             <option value="">Select a quantity…</option>
@@ -40824,15 +40862,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwRenderCompliancePage() {
             wwComplianceSyncTypeNav();
             wwComplianceLoadQuantities();
-            // Re-evaluate the currently selected quantity on every visit
-            // (the same "re-runs on every mere page revisit" convention
-            // Phasor's own wwPhasorLoadForSelectedContext() already
-            // established) -- a source uploaded/removed elsewhere while
-            // Compliance was hidden must never leave a stale result
-            // showing when the engineer navigates back.
-            if (wwComplianceState.selectedQuantityId) {
-                wwComplianceFetchMeasurement();
-            }
+            // Groups are re-fetched on every visit, unlike the fixed
+            // quantity catalogue (the same "re-runs on every mere page
+            // revisit" convention Phasor's own wwPhasorLoadForSelectedContext()
+            // already established) -- a source/group uploaded/removed/
+            // reconfigured elsewhere while Compliance was hidden must
+            // never leave a stale group list or a stale measurement
+            // result showing when the engineer navigates back. Its own
+            // render callback (wwComplianceRenderGroupOptions()) also
+            // re-triggers the measurement fetch if a group+quantity are
+            // both still selected.
+            wwComplianceLoadGroups();
         }
 
         // The ONE Compliance function today ("voltage") -- mirrors
@@ -40849,18 +40889,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             voltageBtn.setAttribute("aria-current", isActive ? "true" : "false");
         }
 
-        // ---- Slice 2: Measurement Selection + Normalization Foundation.
-        // Two new, Compliance-only, workspace-scoped endpoints
+        // ---- Slice 2 (Measurement Selection + Normalization Foundation)
+        // + the 2026-09-20 UAT correction (Bay/Measurement Group
+        // scoping). Three Compliance-only, workspace-scoped endpoints
         // (GET .../compliance/voltage/quantities, GET .../compliance/
-        // voltage/measurement) -- no Engineering Context id anywhere in
-        // either call. `selectedQuantityId` is the only state kept
-        // (task section 3: the user chooses the assessment quantity
-        // first; a reference profile must never silently change it --
-        // no reference-profile code exists yet to do so, Slice 2 has
-        // none). ----
+        // voltage/measurement-groups, GET .../compliance/voltage/
+        // measurement) -- no Engineering Context id anywhere in any of
+        // them; the Bay/Measurement Group picker reuses the EXISTING
+        // `app.domain.measurement_group` model verbatim (its own stable
+        // `measurement_group_id`, never a display-name match, task
+        // section 6), never a second, Compliance-specific bay concept.
+        // `selectedGroupId`/`selectedQuantityId` are the only state kept
+        // (task section 3/8: the engineer chooses the group, then the
+        // quantity within it; nothing here can silently change either
+        // selection -- no reference-profile code exists yet to do so). ----
         const wwComplianceState = {
             quantities: [],
             quantitiesLoaded: false,
+            groups: [],
+            groupsLoaded: false,
+            selectedGroupId: "",
             selectedQuantityId: "",
             requestSeq: 0,
         };
@@ -40904,20 +40952,122 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             select.value = wwComplianceState.selectedQuantityId;
         }
 
-        function wwComplianceOnQuantityChange(quantityId) {
-            wwComplianceState.selectedQuantityId = quantityId || "";
-            if (!wwComplianceState.selectedQuantityId) {
-                wwComplianceShowNoQuantitySelected();
-                return;
-            }
-            wwComplianceFetchMeasurement();
+        // Bay/Measurement Group picker -- always re-fetched (groups can
+        // change between visits, unlike the fixed quantity catalogue).
+        // Filtering (Voltage-kind, usable-status-only) is server-
+        // authoritative (app.services.compliance_measurement_service.
+        // list_compliance_voltage_groups()) -- the frontend never
+        // performs its own ad-hoc group filtering (task section 14).
+        function wwComplianceLoadGroups() {
+            wwComplianceFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/compliance/voltage/measurement-groups"
+            ).then((groups) => {
+                wwComplianceState.groups = groups;
+                wwComplianceState.groupsLoaded = true;
+                wwComplianceRenderGroupOptions();
+            }, () => {
+                wwComplianceState.groupsLoaded = false;
+                wwComplianceShowGroupsFetchError();
+            });
         }
 
-        function wwComplianceShowNoQuantitySelected() {
+        function wwComplianceRenderGroupOptions() {
+            const select = document.getElementById("wwComplianceGroupSelect");
+            const options = ['<option value="">Select a Bay / Measurement Group…</option>'];
+            for (const g of wwComplianceState.groups) {
+                options.push('<option value="' + escapeHtml(g.id) + '">' + escapeHtml(g.display_name) + '</option>');
+            }
+            select.innerHTML = options.join("");
+
+            const stillExists = wwComplianceState.selectedGroupId &&
+                wwComplianceState.groups.some((g) => g.id === wwComplianceState.selectedGroupId);
+            if (stillExists) {
+                select.value = wwComplianceState.selectedGroupId;
+            } else if (wwComplianceState.groups.length === 1) {
+                // Exactly one valid group -- auto-select it (task section 5).
+                wwComplianceState.selectedGroupId = wwComplianceState.groups[0].id;
+                select.value = wwComplianceState.selectedGroupId;
+            } else {
+                // Zero, or more than one with no (or a since-vanished)
+                // selection -- never guess which bay was intended.
+                wwComplianceState.selectedGroupId = "";
+                select.value = "";
+            }
+
+            wwComplianceRenderMeasurementCardState();
+            if (wwComplianceState.selectedGroupId && wwComplianceState.selectedQuantityId) {
+                wwComplianceFetchMeasurement();
+            }
+        }
+
+        function wwComplianceOnGroupChange(groupId) {
+            wwComplianceState.selectedGroupId = groupId || "";
+            wwComplianceRenderMeasurementCardState();
+            if (wwComplianceState.selectedGroupId && wwComplianceState.selectedQuantityId) {
+                wwComplianceFetchMeasurement();
+            }
+        }
+
+        function wwComplianceOnQuantityChange(quantityId) {
+            wwComplianceState.selectedQuantityId = quantityId || "";
+            wwComplianceRenderMeasurementCardState();
+            if (wwComplianceState.selectedGroupId && wwComplianceState.selectedQuantityId) {
+                wwComplianceFetchMeasurement();
+            }
+        }
+
+        // The one function deciding which of the card's own empty
+        // states (no groups / select a group / no quantity selected) is
+        // showing, versus the real Status/Input/... summary -- task
+        // section 13's own required state list, kept in one place so
+        // group-change/quantity-change/group-list-reload all agree.
+        function wwComplianceRenderMeasurementCardState() {
+            const groupField = document.getElementById("wwComplianceGroupField");
+            const quantityField = document.getElementById("wwComplianceMeasurementField");
             const emptyState = document.getElementById("wwComplianceMeasurementEmptyState");
-            emptyState.textContent = "No assessment quantity selected";
-            emptyState.hidden = false;
+            const summary = document.getElementById("wwComplianceMeasurementSummary");
+
+            if (wwComplianceState.groupsLoaded && wwComplianceState.groups.length === 0) {
+                groupField.hidden = true;
+                quantityField.hidden = true;
+                summary.hidden = true;
+                emptyState.textContent = "No Measurement Group is available for this workspace.";
+                emptyState.hidden = false;
+                return;
+            }
+
+            groupField.hidden = false;
+
+            if (!wwComplianceState.selectedGroupId) {
+                quantityField.hidden = true;
+                summary.hidden = true;
+                emptyState.textContent = "Select a Bay / Measurement Group to continue.";
+                emptyState.hidden = false;
+                return;
+            }
+
+            quantityField.hidden = false;
+
+            if (!wwComplianceState.selectedQuantityId) {
+                summary.hidden = true;
+                emptyState.textContent = "No assessment quantity selected";
+                emptyState.hidden = false;
+                return;
+            }
+
+            // Both selected -- wwComplianceFetchMeasurement()'s own
+            // success/error handlers own emptyState/summary from here.
+        }
+
+        function wwComplianceShowGroupsFetchError() {
+            const groupField = document.getElementById("wwComplianceGroupField");
+            const quantityField = document.getElementById("wwComplianceMeasurementField");
+            groupField.hidden = true;
+            quantityField.hidden = true;
             document.getElementById("wwComplianceMeasurementSummary").hidden = true;
+            const emptyState = document.getElementById("wwComplianceMeasurementEmptyState");
+            emptyState.textContent = "Could not reach the backend to load Measurement Groups.";
+            emptyState.hidden = false;
         }
 
         const WW_COMPLIANCE_INPUT_TYPE_LABEL = {
@@ -40933,13 +41083,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // A monotonic request counter (the same "one in flight, discard
         // a stale response" convention wwPhasorRequestDiagram()/the
         // Per-Unit Details popover's own requestSeq already establish)
-        // -- switching the Assessment Quantity quickly must never let an
-        // earlier, slower response overwrite a newer selection's result.
+        // -- switching the Bay/Measurement Group or the Assessment
+        // Quantity quickly must never let an earlier, slower response
+        // overwrite a newer selection's result. Only ever called once
+        // both a group AND a quantity are selected.
         function wwComplianceFetchMeasurement() {
             const workspaceId = currentWorkspaceId();
+            const groupId = wwComplianceState.selectedGroupId;
             const quantityId = wwComplianceState.selectedQuantityId;
             const requestSeq = ++wwComplianceState.requestSeq;
-            const params = new URLSearchParams({ quantity_id: quantityId });
+            const params = new URLSearchParams({ measurement_group_id: groupId, quantity_id: quantityId });
             wwComplianceFetchJson(
                 apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
                 "/compliance/voltage/measurement?" + params.toString()
@@ -44411,7 +44564,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
         });
 
-        // ---- Compliance Slice 2 wiring ----
+        // ---- Compliance Slice 2 + UAT correction wiring ----
+        document.getElementById("wwComplianceGroupSelect").addEventListener("change", (event) => {
+            wwComplianceOnGroupChange(event.target.value);
+        });
         document.getElementById("wwComplianceMeasurementSelect").addEventListener("change", (event) => {
             wwComplianceOnQuantityChange(event.target.value);
         });

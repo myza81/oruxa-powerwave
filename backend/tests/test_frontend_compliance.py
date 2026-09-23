@@ -110,9 +110,18 @@ class TestCompliancePageStructure:
         assert positions == sorted(positions)
 
     def test_measurement_shows_neutral_empty_state(self):
+        """Static default (2026-09-20 UAT correction): the FIRST thing
+        the engineer must resolve is now a Bay/Measurement Group, not an
+        assessment quantity -- "No assessment quantity selected" is
+        still a real, reachable state, just no longer the static
+        markup's own default (see TestComplianceMeasurementGroupSelectorStructure
+        for the group-selection empty states)."""
         source = _source()
         page = _compliance_page(source)
-        assert "No assessment quantity selected" in page
+        assert "No Measurement Group is available for this workspace." in page
+        # JS-set text (wwComplianceRenderMeasurementCardState()), not in
+        # the static markup slice any more -- check the whole file.
+        assert "No assessment quantity selected" in source
 
     def test_reference_layers_shows_empty_state_and_disabled_add_button(self):
         source = _source()
@@ -214,15 +223,19 @@ class TestComplianceMeasurementSlice2Structure:
 
     def test_endpoints_are_workspace_scoped_never_engineering_context_scoped(self):
         """Compliance still does not register as an Engineering Context
-        consumer (DEC-100/DEC-101) -- neither new endpoint call embeds an
-        engineering_context_id, unlike every Analysis-menu analyzer's own
-        `.../engineering-contexts/{id}/...` calls."""
+        consumer (DEC-100/DEC-101/DEC-102) -- none of the three endpoint
+        calls embed an engineering_context_id, unlike every Analysis-menu
+        analyzer's own `.../engineering-contexts/{id}/...` calls."""
         source = _source()
         assert "/compliance/voltage/quantities" in source
+        assert "/compliance/voltage/measurement-groups" in source
         assert "/compliance/voltage/measurement" in source
         measurement_fetch = _function_body(source, "function wwComplianceFetchMeasurement(", "\n        }")
         assert "engineering-contexts" not in measurement_fetch
         assert "engineering_context_id" not in measurement_fetch
+        groups_fetch = _function_body(source, "function wwComplianceLoadGroups(", "\n        }")
+        assert "engineering-contexts" not in groups_fetch
+        assert "engineering_context_id" not in groups_fetch
 
     def test_render_compliance_page_still_never_touches_analyzer_state(self):
         """Extends the existing Slice 1 guard: the Slice 2 additions to
@@ -238,6 +251,66 @@ class TestComplianceMeasurementSlice2Structure:
         assert "wwSequenceState" not in render_fn
         assert "wwDistanceState" not in render_fn
         assert "wwComplianceLoadQuantities" in render_fn
+        assert "wwComplianceLoadGroups" in render_fn
+
+
+class TestComplianceMeasurementGroupSelectorStructure:
+    """2026-09-20 UAT correction -- Bay/Measurement Group selection
+    scopes role resolution, per owner UAT: a bare Assessment Quantity
+    selector was ambiguous once more than one bay/Measurement Group
+    exists in the workspace."""
+
+    def test_group_select_exists_above_quantity_select_and_starts_hidden(self):
+        source = _source()
+        page = _compliance_page(source)
+        card = _function_body(page, 'id="wwComplianceMeasurementCard"', "</section>")
+        group_index = card.index('id="wwComplianceGroupField"')
+        quantity_index = card.index('id="wwComplianceMeasurementField"')
+        assert group_index < quantity_index, "Bay/Measurement Group field must be ABOVE Assessment Quantity"
+        assert 'id="wwComplianceGroupField" hidden' in card
+        assert 'id="wwComplianceMeasurementField" hidden' in card
+        group_select = _function_body(card, 'id="wwComplianceGroupSelect"', "</select>")
+        assert "disabled" not in group_select
+        assert 'value="">Select a Bay / Measurement Group' in group_select
+        assert group_select.count("<option") == 1  # populated at runtime only
+
+    def test_group_field_uses_the_task_specified_label(self):
+        source = _source()
+        page = _compliance_page(source)
+        assert "Bay / Measurement Group</span>" in page
+
+    def test_required_group_selector_js_functions_exist(self):
+        source = _source()
+        for fn in (
+            "function wwComplianceLoadGroups(",
+            "function wwComplianceRenderGroupOptions(",
+            "function wwComplianceOnGroupChange(",
+            "function wwComplianceRenderMeasurementCardState(",
+            "function wwComplianceShowGroupsFetchError(",
+        ):
+            assert fn in source
+
+    def test_measurement_fetch_sends_measurement_group_id(self):
+        source = _source()
+        measurement_fetch = _function_body(source, "function wwComplianceFetchMeasurement(", "\n        }")
+        assert "measurement_group_id" in measurement_fetch
+
+    def test_auto_select_only_when_exactly_one_group(self):
+        """task section 5: auto-select only when exactly one candidate
+        exists -- never guess among multiple, never skip a genuine
+        single candidate."""
+        source = _source()
+        render_fn = _function_body(source, "function wwComplianceRenderGroupOptions() {", "\n        }")
+        assert "groups.length === 1" in render_fn
+
+    def test_required_empty_state_strings_present(self):
+        source = _source()
+        for message in (
+            "No Measurement Group is available for this workspace.",
+            "Select a Bay / Measurement Group to continue.",
+            "No assessment quantity selected",
+        ):
+            assert message in source
 
 
 class TestComplianceOutOfScopeSlice2:

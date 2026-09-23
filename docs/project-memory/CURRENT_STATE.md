@@ -1218,6 +1218,78 @@ COMTRADE never sets `waveform_form` metadata). Full backend regression,
 full frontend structural suite, and the full Playwright suite (149
 scenarios) all pass.
 
+**Compliance & Capability Slice 2 UAT correction — role resolution is
+now scoped to an explicitly SELECTED Bay/Measurement Group, same day
+(2026-09-20).** Owner UAT identified that the Slice 2 flow above was
+ambiguous the moment a workspace contains more than one Voltage
+Measurement Group (bay): a `Va` in Bay A and an independently-owned
+`Va` in Bay B are both real, valid channels — reporting this as
+`ambiguous_measurement_metadata` ("Multiple channels match Va across
+the loaded recordings...") was the wrong diagnosis, since there was no
+naming conflict, only a missing selection step. **Corrected workflow:
+select a Bay/Measurement Group FIRST (a new "Bay / Measurement Group"
+select sits above Assessment Quantity in the same Measurement card),
+then role resolution/normalization runs only against that group's own
+`channel_refs`.** Reuses the EXISTING `app.domain.measurement_group`
+model verbatim (`MeasurementGroup.channel_refs`, the same model the
+group-aware Per-Unit feature already uses) — no second, Compliance-
+specific bay concept was introduced. See
+[DECISIONS.md — DEC-102](DECISIONS.md#dec-102--compliance-measurement-scopes-role-resolution-to-an-explicitly-selected-measurement-group-bay-reusing-the-existing-measurement-group-model-verbatim--never-a-second-bay-concept-never-engineering-context)
+for the full record; DEC-100/DEC-101 are both unaffected (Compliance
+still does not open/depend on Advanced Analysis, Playback, or
+Engineering Context — the new Bay picker is a completely different,
+pre-existing model).
+
+A new, lean, read-only, Compliance-only endpoint, `GET .../compliance/
+voltage/measurement-groups`, lists every Voltage-kind group in the
+workspace whose own grouping is not itself contested (`status !=
+needs_review`), built by reusing the already-existing `MeasurementGroupRegistry.
+list_for_workspace()` (previously present at the service layer, not
+previously exposed workspace-wide over REST — the existing `app.api.v1.
+measurement_groups` router stays source-scoped and unchanged for its
+own CRUD/configuration purpose). `GET .../compliance/voltage/measurement`
+now REQUIRES an explicit `measurement_group_id` query parameter.
+Auto-selects when exactly one valid group exists; requires an explicit
+choice for two or more; never guesses. A duplicate `Va` genuinely
+WITHIN one selected group's own membership (two differently-named
+member channels that both parse to phase A) remains `ambiguous_
+measurement_metadata`, reworded "...within the selected Measurement
+Group." Because every resolved role is now, by construction, a member
+of the ONE selected group, the former cross-group `STATUS_INVALID_BASE`
+trigger is structurally unreachable through this path and was removed
+from `_base_for_group()` (a single `build_group_view()` lookup on the
+selected group). Switching a quantity that becomes invalid in the newly
+selected group never silently substitutes another quantity — the
+select's own value is preserved and the summary reports whatever status
+genuinely applies (e.g. `missing_inputs`).
+
+**Files**: `app/services/compliance_measurement_service.py`
+(`resolve_voltage_role_catalogue_for_group()` replaces the former
+workspace-wide function; `list_compliance_voltage_groups()` new),
+`app/api/v1/compliance.py` (new group-list endpoint;
+`measurement_group_id` now required), `app/schemas/compliance.py` (new
+`ComplianceMeasurementGroupOut`), `app/services/errors.py` (new
+`ComplianceMeasurementGroupNotVoltageKindError`). `frontend/index.html`
+(new `#wwComplianceGroupField`/`#wwComplianceGroupSelect` above
+Assessment Quantity, sharing the same ID-scoped containment fix
+pattern the owner's own earlier CSS refinement, commit `3447f24`,
+established; `wwComplianceLoadGroups()`/`wwComplianceRenderGroupOptions()`/
+`wwComplianceOnGroupChange()`/`wwComplianceRenderMeasurementCardState()`).
+`app.domain.compliance_measurement` (normalization math) is completely
+unchanged — this was explicitly a selection-scope correction, not a
+math correction. Tests substantially reworked: `test_compliance_
+measurement_service.py` (17 tests, including "cross-bay duplication is
+not ambiguous"/"same-group duplication is still ambiguous"/"group
+controls base"), `test_compliance_measurement_api.py` (11 tests),
+`test_frontend_compliance.py`'s new `TestComplianceMeasurementGroupSelectorStructure`
+(6 tests), and a reworked `browser-tests/compliance_measurement.spec.js`
+(18 real-browser scenarios: one-group auto-select, two-groups-
+duplicate-Va, group-specific missing phase with kept quantity
+selection, full group-switch summary update, both selects' responsive
+containment). `test_compliance_measurement_domain.py`'s 13 golden tests
+are completely unchanged. Full backend suite (5480 tests) and full
+Playwright suite (151 scenarios) pass.
+
 **Flake cleanup (2026-09-19, continued) — the third and final DEC-099
 item ("Speed selection 4x") is now `[CLOSED]`; DEC-099 has zero
 remaining `[OPEN]` items.** Test-synchronization bug, no production
@@ -1669,7 +1741,8 @@ Sequence Components/Distance Protection), and — as of 2026-09-19 — a
 SEPARATE, independent `Compliance` top-level page (see
 [DEC-100](DECISIONS.md#dec-100--compliance--capability-is-a-top-level-application-function-independent-of-analysis-slice-1-is-a-workspace-shell-only)),
 now with a real Voltage Measurement Selection + Normalization
-Foundation as of 2026-09-20 (Slice 2 — see
+Foundation as of 2026-09-20 (Slice 2, corrected the same day to scope
+role resolution to an explicitly selected Bay/Measurement Group — see
 [COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md); Reference Layers/
 Event Alignment/Comparison Chart/Results remain Slice 1's own
 placeholders).
