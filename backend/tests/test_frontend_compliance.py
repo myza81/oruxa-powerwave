@@ -110,15 +110,16 @@ class TestCompliancePageStructure:
         assert positions == sorted(positions)
 
     def test_measurement_shows_neutral_empty_state(self):
-        """Static default (2026-09-20 UAT correction): the FIRST thing
-        the engineer must resolve is now a Bay/Measurement Group, not an
-        assessment quantity -- "No assessment quantity selected" is
-        still a real, reachable state, just no longer the static
-        markup's own default (see TestComplianceMeasurementGroupSelectorStructure
-        for the group-selection empty states)."""
+        """Static default (2026-09-20 UAT correction, wording refined
+        2026-09-23): the FIRST thing the engineer must resolve is now a
+        Bay/Measurement Group, not an assessment quantity -- "No
+        assessment quantity selected" is still a real, reachable state,
+        just no longer the static markup's own default (see
+        TestComplianceMeasurementGroupSelectorStructure for the group-
+        selection empty states)."""
         source = _source()
         page = _compliance_page(source)
-        assert "No Measurement Group is available for this workspace." in page
+        assert "No Voltage Measurement Group is available for this workspace." in page
         # JS-set text (wwComplianceRenderMeasurementCardState()), not in
         # the static markup slice any more -- check the whole file.
         assert "No assessment quantity selected" in source
@@ -295,22 +296,85 @@ class TestComplianceMeasurementGroupSelectorStructure:
         measurement_fetch = _function_body(source, "function wwComplianceFetchMeasurement(", "\n        }")
         assert "measurement_group_id" in measurement_fetch
 
-    def test_auto_select_only_when_exactly_one_group(self):
-        """task section 5: auto-select only when exactly one candidate
-        exists -- never guess among multiple, never skip a genuine
-        single candidate."""
+    def test_auto_select_only_when_exactly_one_usable_group(self):
+        """task section 5: auto-select only when exactly one USABLE
+        candidate exists -- never guess among multiple, never skip a
+        genuine single candidate, and never count a review-required
+        group as a candidate (2026-09-23 correction: the dropdown is
+        built from wwComplianceUsableGroups(), not the raw list)."""
         source = _source()
         render_fn = _function_body(source, "function wwComplianceRenderGroupOptions() {", "\n        }")
-        assert "groups.length === 1" in render_fn
+        assert "usable.length === 1" in render_fn
+        assert "wwComplianceUsableGroups()" in render_fn
 
     def test_required_empty_state_strings_present(self):
         source = _source()
         for message in (
-            "No Measurement Group is available for this workspace.",
+            "No Voltage Measurement Group is available for this workspace.",
+            "Voltage Measurement Groups were found, but they require review before use.",
             "Select a Bay / Measurement Group to continue.",
             "No assessment quantity selected",
         ):
             assert message in source
+
+
+class TestComplianceMeasurementGroupBootstrapAndReviewState:
+    """2026-09-23 UAT correction -- Compliance must not dead-end merely
+    because the engineer never visited Manage Measurement Groups first;
+    review-required groups must be distinguishable from a genuinely
+    empty workspace, never silently collapsed into the same message."""
+
+    def test_bootstrap_reuses_the_existing_suggest_endpoint_never_a_second_detector(self):
+        source = _source()
+        bootstrap_fn = _function_body(source, "async function wwComplianceBootstrapGroupsIfNeeded() {", "\n        }")
+        assert "fetchSourcesList" in bootstrap_fn
+        suggest_fn = _function_body(source, "function wwComplianceSuggestGroupsForSource(", "\n        }")
+        assert "measurement-groups/suggest" in suggest_fn
+        assert 'method: "POST"' in suggest_fn
+        # No client-side name parsing/fabrication of any kind (task
+        # section 13's own explicit prohibition).
+        for forbidden in ("KPDN", "SLKS", "MCRS", "SGT1", ".split(", ".match(", "RegExp"):
+            assert forbidden not in suggest_fn
+            assert forbidden not in bootstrap_fn
+
+    def test_load_groups_bootstraps_before_listing(self):
+        source = _source()
+        load_fn = _function_body(source, "async function wwComplianceLoadGroups() {", "\n        }")
+        assert "wwComplianceBootstrapGroupsIfNeeded" in load_fn
+        assert load_fn.index("wwComplianceBootstrapGroupsIfNeeded") < load_fn.index("measurement-groups")
+
+    def test_usable_and_review_required_are_distinct_collections(self):
+        source = _source()
+        assert "function wwComplianceUsableGroups() {" in source
+        assert "function wwComplianceReviewRequiredGroups() {" in source
+        usable_fn = _function_body(source, "function wwComplianceUsableGroups() {", "\n        }")
+        assert 'g.status !== "needs_review"' in usable_fn
+        review_fn = _function_body(source, "function wwComplianceReviewRequiredGroups() {", "\n        }")
+        assert 'g.status === "needs_review"' in review_fn
+
+    def test_card_state_distinguishes_no_groups_from_review_required(self):
+        source = _source()
+        card_state_fn = _function_body(source, "function wwComplianceRenderMeasurementCardState() {", "\n        }")
+        assert "usableCount === 0 && reviewCount === 0" in card_state_fn
+        assert "usableCount === 0 && reviewCount > 0" in card_state_fn
+
+    def test_manage_groups_button_exists_reuses_existing_modal_never_a_new_editor(self):
+        source = _source()
+        page = _compliance_page(source)
+        assert 'id="wwComplianceManageGroupsBtn" hidden' in page
+        open_fn = _function_body(source, "function wwComplianceOpenManageGroups() {", "\n        }")
+        assert "wwOpenMeasurementGroupsModal()" in open_fn
+        # Never a second Measurement Group editor/drawer defined inside
+        # the Compliance page section itself.
+        compliance_page_text = page
+        assert "wwMgDrawer" not in compliance_page_text
+        assert "measurementGroupsOverlay" not in compliance_page_text
+
+    def test_closing_the_management_modal_refreshes_compliance_only_when_active(self):
+        source = _source()
+        close_fn = _function_body(source, "function wwCloseMeasurementGroupsModal() {", "\n        }")
+        assert 'shell.currentPage === "compliance"' in close_fn
+        assert "wwComplianceLoadGroups()" in close_fn
 
 
 class TestComplianceOutOfScopeSlice2:

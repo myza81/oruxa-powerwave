@@ -4,9 +4,113 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-20**
+Last updated: **2026-09-23**
 
 ## What was most recently done
+
+**Compliance & Capability Slice 2 UAT correction #2 — Bay/Measurement
+Group discovery/bootstrap.** Owner UAT found a further real workflow
+gap: a workspace containing obvious multi-bay Voltage channel sets
+(e.g. `KPDN1`/`KPDN2`/`SLKS`/`MCRS`/`SGT1`, each a full phase triplet
+visible in the recording/channel list) still showed "No Measurement
+Group is available for this workspace." on Compliance.
+
+**Exact root cause, confirmed by direct reproduction, not assumed:
+`app.services.measurement_group_service.generate_suggested_groups_
+for_source()` — the ONE function that ever creates a `MeasurementGroup`
+from automatic detection — has never had ANY automatic trigger anywhere
+in this codebase.** Its own docstring already said so explicitly: "No
+automatic trigger exists for this function... wiring it into an
+existing endpoint's behaviour is deferred to whichever later slice
+first needs the result to be observable." Before this correction, a
+`MeasurementGroup` was only ever created by (a) an engineer manually
+creating one, or (b) an engineer opening "Manage Measurement Groups"
+(Per-Unit Settings) and explicitly clicking "Suggest" for one source at
+a time. A workspace where the engineer had done neither had a
+genuinely empty registry, no matter how obviously multi-bay the
+recording's own channel list was. Compliance's own group-list endpoint
+and Voltage-kind filtering were already correct — the registry was
+simply empty. **Root cause classification: A (groups never
+materialized) + E (Compliance had no bootstrap of its own to
+compensate).**
+
+**Fix: Compliance is the "later slice" the existing function's own
+docstring anticipated.** `wwComplianceLoadGroups()` now calls the
+EXISTING, unchanged `POST .../sources/{source_id}/measurement-groups/
+suggest` endpoint for every currently loaded source not yet attempted
+this session, BEFORE listing groups — mirroring the Analysis
+workspace's own already-proven `wwAnalysisDiscoverUncoveredSources()`
+bootstrap for Engineering Context, applied to Measurement Group
+instead. Safe because that endpoint is already idempotent/additive-
+only (skips a cluster entirely if even one channel already belongs to
+any existing group). **No new detection algorithm was written** —
+`app.domain.measurement_group_detection.detect_measurement_groups()`
+is completely unchanged; this was a missing CALLER, not a missing
+engine. See
+[DECISIONS.md — DEC-103](DECISIONS.md#dec-103--compliances-baymeasurement-group-picker-automatically-bootstraps-the-existing-measurement-group-detection-for-every-loaded-source-mirroring-the-analysis-workspaces-own-proven-engineering-context-bootstrap)
+for the full record.
+
+**A second, related gap fixed the same day**: `GET .../compliance/
+voltage/measurement-groups` used to exclude `needs_review` groups
+entirely, making a workspace with genuinely discovered-but-uncertain
+groups look byte-for-byte identical to a truly empty one. The endpoint
+now returns every Voltage-kind group of any status; the frontend
+buckets the response into `wwComplianceUsableGroups()`/`wwComplianceReviewRequiredGroups()`.
+The Measurement card now distinguishes three states: no groups
+discovered at all ("No Voltage Measurement Group is available for this
+workspace." + a "Manage Measurement Groups" action), groups discovered
+but all need review ("Voltage Measurement Groups were found, but they
+require review before use." + a "Review Measurement Groups" action), or
+usable groups available (the normal Bay selector flow). A `needs_review`
+group is still never selectable in the dropdown and never silently
+trusted for role resolution — DEC-102's own guardrail is fully
+preserved. The Manage/Review action reuses the EXISTING Measurement
+Groups management modal verbatim (`wwOpenMeasurementGroupsModal()`) —
+no new editor was built inside Compliance; because it is an overlay,
+not a page navigation, Compliance's own state is never disturbed
+underneath it, and `wwCloseMeasurementGroupsModal()` gained one added
+line refreshing Compliance's own group list when Compliance happens to
+be the active page.
+
+**This was a discovery/lifecycle correction, not a normalization-math
+or role-scoping correction** — DEC-101/DEC-102 are both fully preserved
+(Compliance still does not register as an Engineering Context consumer,
+still does not open/depend on Advanced Analysis, and role resolution is
+still scoped to the explicitly selected group); `app.domain.compliance_
+measurement` and `app.domain.measurement_group_detection` are both
+completely unchanged.
+
+**Files**: `backend/app/services/compliance_measurement_service.py`
+(`list_compliance_voltage_groups()` no longer filters by status),
+`backend/app/api/v1/compliance.py` (docstrings only, response shape
+unchanged). `frontend/index.html` (new `wwComplianceBootstrapGroupsIfNeeded()`/
+`wwComplianceSuggestGroupsForSource()`/`wwComplianceUsableGroups()`/
+`wwComplianceReviewRequiredGroups()`/`wwComplianceOpenManageGroups()`,
+new `#wwComplianceManageGroupsBtn`, `wwComplianceRenderMeasurementCardState()`
+extended for the three-way empty state, one added line in
+`wwCloseMeasurementGroupsModal()`). Two new committed ASCII COMTRADE
+fixtures (`compliance_smoke_multibay`, `compliance_smoke_review_required`,
+both hand-verified directly against the real `detect_measurement_groups()`
+before being committed). New tests: `test_compliance_measurement_api.py`'s
+new `TestMeasurementGroupBootstrapDiscovery` class (4 tests) plus one
+needs_review-inclusion test, `test_frontend_compliance.py`'s new
+`TestComplianceMeasurementGroupBootstrapAndReviewState` class (6 tests),
+and 6 new `browser-tests/compliance_measurement.spec.js` scenarios.
+`docs/project-memory/COMPLIANCE_CAPABILITY.md` (new correction
+section), `DECISIONS.md` (DEC-103), `CURRENT_STATE.md`/`HANDOFF.md`
+(this file).
+
+**Validation**: full backend suite passes (5491 tests); full frontend
+structural suite passes; full Playwright suite (156 scenarios across
+`compliance.spec.js`/`compliance_measurement.spec.js`/`phasor_analysis.spec.js`/
+`overcurrent_analysis.spec.js`/`playback.spec.js`/`smoke.spec.js`)
+passes, run twice clean; `git diff --check` clean.
+
+**Stop condition honored**: group discovery/bootstrap correction only —
+no Reference Layers, Event Alignment, comparison curves, or compliance
+evaluation implemented; no Slice 3 work started.
+
+## What was done in the prior session — Compliance & Capability Slice 2 UAT correction #1 (Bay/Measurement Group selection scoping)
 
 **Compliance & Capability Slice 2 UAT correction — role resolution is
 now scoped to an explicitly SELECTED Bay/Measurement Group.** Owner UAT

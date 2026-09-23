@@ -16543,6 +16543,131 @@ suite (151 scenarios) pass.
 
 ---
 
+## DEC-103 — Compliance's Bay/Measurement Group picker automatically bootstraps the existing Measurement Group detection for every loaded source, mirroring the Analysis workspace's own proven Engineering Context bootstrap
+
+Date: 2026-09-23
+Status: Approved — implemented (Compliance & Capability Slice 2 UAT
+correction).
+Source: owner UAT ("Owner UAT found a workspace containing obvious
+multi-bay voltage channels... but the Compliance Measurement card still
+shows: No Measurement Group is available for this workspace... If
+groups only become available after visiting another page, that is a
+workflow/lifecycle problem for Compliance.").
+
+**Issue.** DEC-102 scoped Compliance's role resolution to an explicitly
+selected Measurement Group, reusing the existing `app.domain.
+measurement_group` model. Investigation (this task) confirmed a
+pre-existing, workspace-wide gap that DEC-102 inherited rather than
+introduced: `app.services.measurement_group_service.generate_
+suggested_groups_for_source()` — the ONE function that ever creates a
+`MeasurementGroup` from automatic detection — has never had ANY
+automatic trigger anywhere in this codebase. Its own docstring already
+said so explicitly: *"No automatic trigger exists for this function...
+wiring it into an existing endpoint's behaviour is deferred to
+whichever later slice first needs the result to be observable."*
+Before this correction, the ONLY way a `MeasurementGroup` was ever
+created was (a) an engineer manually creating one, or (b) an engineer
+opening "Manage Measurement Groups" (via Per-Unit Settings) and
+clicking "Suggest" explicitly for one source at a time. A workspace
+where the engineer had done neither had a genuinely EMPTY
+`MeasurementGroupRegistry`, even when the uploaded recording obviously
+contained several complete, unambiguous three-phase Voltage bays (ROOT
+CAUSE, confirmed by direct reproduction, not assumed: **A** — groups
+were never materialized — combined with **E** — Compliance had no
+bootstrap of its own to compensate). Compliance's own group-list
+endpoint and filtering were already correct; there was simply nothing
+in the registry yet to list.
+
+**Decision.** Compliance is the "later slice" `generate_suggested_
+groups_for_source()`'s own docstring anticipated. `wwComplianceLoadGroups()`
+now calls the EXISTING, unchanged `POST .../sources/{source_id}/
+measurement-groups/suggest` endpoint for every currently loaded source
+not yet attempted this session, BEFORE listing groups — mirroring the
+Analysis workspace's own already-proven `wwAnalysisDiscoverUncoveredSources()`
+bootstrap pattern for Engineering Context, applied to Measurement Group
+instead. This is safe because `generate_suggested_groups_for_source()`
+is already idempotent and additive-only (a cluster is skipped entirely
+if even one of its channels already belongs to any existing group, of
+any status) — calling it for an already-fully-grouped source is a safe,
+cheap no-op. No new detection algorithm was written; `app.domain.
+measurement_group_detection.detect_measurement_groups()` is unchanged.
+
+**A second, related gap was also fixed the same day**: `GET .../
+compliance/voltage/measurement-groups` used to exclude `STATUS_NEEDS_
+REVIEW` groups entirely, which meant a workspace with genuinely
+DISCOVERED-BUT-UNCERTAIN groups looked byte-for-byte identical to a
+truly empty one. The endpoint now returns every Voltage-kind group of
+ANY status; the frontend buckets the response into `wwComplianceUsableGroups()`
+(`status !== "needs_review"`, selectable) and `wwComplianceReviewRequiredGroups()`
+(`status === "needs_review"`, shown via a distinct "Voltage Measurement
+Groups were found, but they require review before use." message), so
+the Measurement card now distinguishes three states: no groups
+discovered at all, groups discovered but all needing review, and
+usable groups available. A `needs_review` group is still never
+selectable in the dropdown and never silently trusted for role
+resolution (DEC-102's own guardrail, unchanged).
+
+**A "Manage/Review Measurement Groups" action was added directly to
+the Measurement card's own empty states**, reusing the EXISTING
+Measurement Groups management modal (`wwOpenMeasurementGroupsModal()`)
+verbatim — no new editor was built inside Compliance. Because that
+modal is an overlay, not a page navigation, Compliance's own state is
+never disturbed underneath it; `wwCloseMeasurementGroupsModal()` gained
+one additional line refreshing Compliance's own group list when
+Compliance happens to be the current page, so a group confirmed/edited
+via the modal is immediately reflected on return without a manual
+reload.
+
+**Reason.** The owner's own UAT question was direct: *"If I upload a
+recording containing multiple bays and go directly to Compliance, can
+I naturally select the bay I want to assess?"* Before this correction
+the answer was no, for a reason that had nothing to do with Compliance
+Slice 2's own design (DEC-101/DEC-102) — the underlying Measurement
+Group feature area itself had never had an automatic discovery trigger
+for ANY consumer, Compliance included. Fixing this in Compliance's own
+bootstrap (rather than, say, adding an upload-time trigger to the
+source-creation endpoint) matches the existing precedent Engineering
+Context already established: automatic detection is triggered by the
+CONSUMING workspace that needs the result observable, never by upload
+itself (task section 13's "avoid frontend-only hacks... The backend/
+domain remains authoritative" is satisfied by reusing the existing
+backend endpoint as the sole trigger point; only the WHEN-to-call-it
+orchestration is new, and it lives in the frontend by the same
+established convention Analysis's own bootstrap already uses).
+
+**Alternatives considered.** (1) Trigger `generate_suggested_groups_
+for_source()` automatically on source upload — rejected: this would
+change behavior for EVERY existing consumer of Measurement Groups
+(Per-Unit's own configuration UI, any future analyzer), not just
+Compliance, a far larger blast radius than this task's own scope, and
+was never asked for. (2) Build a Compliance-specific detection engine
+duplicating `detect_measurement_groups()` — rejected outright per this
+task's own explicit "do not create a second Compliance-specific
+grouping engine" instruction. (3) Silently show `needs_review` groups
+in the same selectable dropdown as usable ones — rejected: would
+reintroduce exactly the "silently trusted uncertain grouping" risk
+DEC-102/the Per-Unit precedent both forbid.
+
+**Impact.** `frontend/index.html` only (`wwComplianceLoadGroups()`,
+new `wwComplianceBootstrapGroupsIfNeeded()`/`wwComplianceSuggestGroupsForSource()`/
+`wwComplianceUsableGroups()`/`wwComplianceReviewRequiredGroups()`/
+`wwComplianceOpenManageGroups()`, `wwComplianceRenderMeasurementCardState()`
+extended for the three-way empty state, one added line in
+`wwCloseMeasurementGroupsModal()`, new `#wwComplianceManageGroupsBtn`).
+`backend/app/services/compliance_measurement_service.py` (`list_
+compliance_voltage_groups()` no longer filters by status) and `backend/
+app/api/v1/compliance.py` (docstring/comment updates only, response
+shape unchanged — `status` was already a field on `ComplianceMeasurementGroupOut`).
+Zero changes to `app.domain.measurement_group_detection`, `app.services.
+measurement_group_service`, `app.services.measurement_group_registry`,
+or any existing Measurement Groups endpoint/UI. Two new committed ASCII
+COMTRADE fixtures (`compliance_smoke_multibay`, `compliance_smoke_review_required`),
+both hand-verified directly against the real `detect_measurement_groups()`
+before being committed. Full backend suite (5491 tests) and full
+Playwright suite (156 scenarios) pass.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

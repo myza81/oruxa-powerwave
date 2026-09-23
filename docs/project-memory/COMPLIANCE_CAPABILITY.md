@@ -3,12 +3,16 @@
 **Status: Slice 1 (workspace shell only) implemented 2026-09-19; Slice 2
 (Measurement Selection + Normalization Foundation) implemented
 2026-09-20; a same-day owner-UAT correction (Bay/Measurement Group
-scoping) implemented 2026-09-20.** Reference profiles, event
-alignment/t0, comparison curves, and compliance evaluation/breach/
-margin logic still do not exist — see "Slice 2" below for exactly what
-Measurement now does, "Bay/Measurement Group scoping (2026-09-20 UAT
-correction)" for the corrected workflow, and "No calculation/profile/
-persistence logic exists yet" for what still doesn't.
+scoping) implemented 2026-09-20; a further owner-UAT correction (group
+discovery/bootstrap) implemented 2026-09-23.** Reference profiles,
+event alignment/t0, comparison curves, and compliance evaluation/
+breach/margin logic still do not exist — see "Slice 2" below for
+exactly what Measurement now does, "Bay/Measurement Group scoping
+(2026-09-20 UAT correction)" for the corrected selection workflow,
+"Bay/Measurement Group discovery/bootstrap (2026-09-23 UAT correction)"
+for why groups now appear WITHOUT visiting another page first, and "No
+calculation/profile/persistence logic exists yet" for what still
+doesn't.
 
 ## Compliance is a top-level function, independent of Analysis
 
@@ -380,6 +384,120 @@ domain.py`'s 13 golden tests are completely unchanged (normalization
 math was explicitly out of scope for this correction). Full backend
 suite (5480 tests) and full Playwright suite (151 scenarios) pass.
 
+## Bay/Measurement Group discovery/bootstrap (2026-09-23 UAT correction)
+
+**Owner UAT found a further, real workflow gap the same feature area
+had inherited rather than introduced**: a workspace containing obvious
+multi-bay Voltage channel sets (e.g. `KPDN1`, `KPDN2`, `SLKS`, `MCRS`,
+`SGT1`, each with a full A/B/C or R/Y/B triplet visible in the
+recording/channel list) still showed "No Measurement Group is available
+for this workspace." on Compliance. See
+[DECISIONS.md — DEC-103](DECISIONS.md#dec-103--compliances-baymeasurement-group-picker-automatically-bootstraps-the-existing-measurement-group-detection-for-every-loaded-source-mirroring-the-analysis-workspaces-own-proven-engineering-context-bootstrap)
+for the full architectural record.
+
+**Exact root cause (confirmed by direct reproduction, not assumed):
+`app.services.measurement_group_service.generate_suggested_groups_
+for_source()` — the ONE function that ever creates a `MeasurementGroup`
+from automatic detection — has never had ANY automatic trigger anywhere
+in this codebase.** Its own docstring already said so: *"No automatic
+trigger exists for this function... wiring it into an existing
+endpoint's behaviour is deferred to whichever later slice first needs
+the result to be observable."* Before this correction, a `MeasurementGroup`
+was only ever created by (a) an engineer manually creating one, or (b)
+an engineer opening "Manage Measurement Groups" (via Per-Unit Settings)
+and explicitly clicking "Suggest" for one source at a time. A workspace
+where the engineer had done neither had a genuinely empty
+`MeasurementGroupRegistry`, no matter how obviously multi-bay the
+recording's own channel list was. Compliance's own group-list endpoint
+and Voltage-kind filtering were already correct — there was simply
+nothing in the registry yet to list. This is classified as root cause
+**A (groups were never materialized/registered)** combined with **E
+(Compliance had no bootstrap of its own to compensate)** from this
+task's own classification scheme.
+
+**Fix: Compliance is the "later slice" the existing function's own
+docstring anticipated.** `wwComplianceLoadGroups()` now calls the
+EXISTING, unchanged `POST .../sources/{source_id}/measurement-groups/
+suggest` endpoint for every currently loaded source not yet attempted
+this session, BEFORE listing groups — mirroring the Analysis
+workspace's own already-proven `wwAnalysisDiscoverUncoveredSources()`
+bootstrap for Engineering Context, applied to Measurement Group
+instead. Safe because `generate_suggested_groups_for_source()` is
+already idempotent/additive-only (skips a cluster entirely if even one
+of its channels already belongs to any existing group). **No new
+detection algorithm was written** — `app.domain.measurement_group_
+detection.detect_measurement_groups()` is completely unchanged; this
+was purely a missing CALLER, not a missing engine.
+
+**A second, related gap fixed the same day: `GET .../compliance/
+voltage/measurement-groups` used to exclude `needs_review` groups
+entirely**, which meant a workspace with genuinely discovered-but-
+uncertain groups looked byte-for-byte identical to a truly empty one.
+The endpoint now returns EVERY Voltage-kind group of any status; the
+frontend buckets the response into `wwComplianceUsableGroups()`
+(`status !== "needs_review"`, selectable) and `wwComplianceReviewRequiredGroups()`
+(`status === "needs_review"`, surfaced via a distinct message) --
+`app.domain.measurement_group`'s own canonical "a channel in a
+`needs_review` group behaves like unconfigured until reviewed"
+guardrail is preserved exactly (a `needs_review` group is STILL never
+selectable in the dropdown and never silently trusted for role
+resolution). The Measurement card now distinguishes three states:
+
+| State | Message | Action |
+|---|---|---|
+| No groups discovered at all | "No Voltage Measurement Group is available for this workspace." | "Manage Measurement Groups" |
+| Groups discovered, all need review | "Voltage Measurement Groups were found, but they require review before use." | "Review Measurement Groups" |
+| At least one usable group | (normal Bay selector flow) | — |
+
+**A "Manage/Review Measurement Groups" action was added directly to the
+Measurement card's own empty states, reusing the EXISTING Measurement
+Groups management modal verbatim (`wwOpenMeasurementGroupsModal()`) —
+no new editor was built inside Compliance** (task's own explicit "Do
+not duplicate management controls inside Compliance" instruction).
+Because that modal is an overlay, not a page navigation, Compliance's
+own state is never disturbed underneath it; `wwCloseMeasurementGroupsModal()`
+gained one additional line refreshing Compliance's own group list only
+when Compliance happens to be the current page, so a group confirmed/
+edited via the modal is immediately reflected the moment it closes,
+with no manual reload needed.
+
+**Backend changes are minimal**: `app.services.compliance_measurement_
+service.list_compliance_voltage_groups()` no longer filters by status
+(now returns every Voltage-kind group); `app.api.v1.compliance.py`
+docstrings updated to match. `ComplianceMeasurementGroupOut` already
+carried a `status` field, so the response SHAPE is unchanged — only
+which rows are included changed. Zero changes to `app.domain.
+measurement_group_detection`, `app.services.measurement_group_service`,
+`app.services.measurement_group_registry`, or any existing Measurement
+Groups endpoint/UI.
+
+**New tests**: `test_compliance_measurement_api.py` gained a
+`TestMeasurementGroupBootstrapDiscovery` class (4 tests: group list
+reflects authoritative registry state after bootstrap, review-required
+groups are distinguishable from no groups, bootstrap is idempotent,
+multi-source groups remain independently valid) plus one test proving
+`needs_review` groups are now included in the raw list response;
+`test_frontend_compliance.py` gained a `TestComplianceMeasurementGroupBootstrapAndReviewState`
+class (6 tests: bootstrap reuses the existing suggest endpoint with no
+client-side name parsing/fabrication of any kind, `wwComplianceLoadGroups()`
+bootstraps before listing, usable/review-required are distinct
+collections, the card state distinguishes the two empty states, the
+Manage button reuses the existing modal, closing the modal refreshes
+Compliance only when active). `browser-tests/compliance_measurement.spec.js`
+gained a `test.describe` block (6 real-browser scenarios: direct-to-
+Compliance multi-bay discovery with no prior visit to Manage
+Measurement Groups, re-visiting never duplicates groups, the
+review-required empty state and its action, the Manage action's
+open/return-intact behavior, and reviewing-then-confirming a group
+moving it from review-required to usable on return) using two new
+committed ASCII COMTRADE fixtures (`compliance_smoke_multibay`: four
+clean bays verified directly against `detect_measurement_groups()` to
+produce four independent `suggested` groups with zero manual
+intervention; `compliance_smoke_review_required`: one bay with
+deliberately mixed single+pair phase representation, verified directly
+to produce `needs_review`). Full backend suite (5491 tests) and full
+Playwright suite (156 scenarios) pass.
+
 ## UI/UX is intentionally subject to owner UAT and may change
 
 Workflow order, section placement, chart prominence, terminology,
@@ -423,39 +541,48 @@ evaluation function names) both guard this boundary directly.
 
 - `frontend/index.html` — `#mainNavComplianceBtn` (main sidebar),
   `#pageCompliance` (page markup, including the Bay/Measurement Group
-  select above the Assessment Quantity select and the summary),
-  `shellSetCurrentPage()` (page lifecycle), `wwRenderCompliancePage()`/
-  `wwComplianceSyncTypeNav()`/`wwComplianceLoadQuantities()`/
-  `wwComplianceLoadGroups()`/`wwComplianceRenderGroupOptions()`/
-  `wwComplianceOnGroupChange()`/`wwComplianceOnQuantityChange()`/
-  `wwComplianceRenderMeasurementCardState()`/`wwComplianceFetchMeasurement()`/
-  `wwComplianceRenderMeasurement()` (JS), `.ww-compliance-*` CSS
-  (including `#wwComplianceGroupField`/`#wwComplianceGroupSelect`'s own
-  ID-scoped containment fix).
+  select above the Assessment Quantity select, the summary, and
+  `#wwComplianceManageGroupsBtn`), `shellSetCurrentPage()` (page
+  lifecycle), `wwRenderCompliancePage()`/`wwComplianceSyncTypeNav()`/
+  `wwComplianceLoadQuantities()`/`wwComplianceLoadGroups()`/
+  `wwComplianceBootstrapGroupsIfNeeded()`/`wwComplianceSuggestGroupsForSource()`/
+  `wwComplianceUsableGroups()`/`wwComplianceReviewRequiredGroups()`/
+  `wwComplianceRenderGroupOptions()`/`wwComplianceOnGroupChange()`/
+  `wwComplianceOnQuantityChange()`/`wwComplianceRenderMeasurementCardState()`/
+  `wwComplianceOpenManageGroups()`/`wwComplianceFetchMeasurement()`/
+  `wwComplianceRenderMeasurement()` (JS, plus one added line in the
+  pre-existing `wwCloseMeasurementGroupsModal()`), `.ww-compliance-*`
+  CSS (including `#wwComplianceGroupField`/`#wwComplianceGroupSelect`'s
+  own ID-scoped containment fix).
 - `backend/app/domain/compliance_measurement.py` — quantity catalogue +
-  pure `compute_voltage_quantity_value()` (unchanged by the 2026-09-20
+  pure `compute_voltage_quantity_value()` (unchanged by either
   correction).
 - `backend/app/services/compliance_measurement_service.py` — group-
   scoped role resolution (`resolve_voltage_role_catalogue_for_group()`,
   reuses `engineering_context_detection` directly, see DEC-101/DEC-102),
   the Bay/Measurement Group candidate list (`list_compliance_voltage_
-  groups()`), Instantaneous/RMS classification, group-scoped Base lookup
-  (`_base_for_group()`).
+  groups()`, now unfiltered by status per DEC-103), Instantaneous/RMS
+  classification, group-scoped Base lookup (`_base_for_group()`).
 - `backend/app/schemas/compliance.py`, `backend/app/api/v1/compliance.py`
   — the three workspace-scoped endpoints (quantities, measurement-groups,
-  measurement).
+  measurement); response shapes unchanged by DEC-103, only which rows
+  the group-list endpoint includes.
 - `backend/app/services/errors.py` — `UnknownComplianceQuantityError`,
   `ComplianceMeasurementGroupNotVoltageKindError` (reuses the existing
   `MeasurementGroupNotFoundError` for an unknown group id).
 - `backend/tests/test_frontend_compliance.py` — structural regression
   (nav registration/order, panel existence, Voltage sub-nav, the five
   section identifiers in order, empty-state wording, Slice 1/Slice 2/
-  correction out-of-scope guards, `TestComplianceMeasurementGroupSelectorStructure`).
+  correction out-of-scope guards, `TestComplianceMeasurementGroupSelectorStructure`,
+  `TestComplianceMeasurementGroupBootstrapAndReviewState`).
 - `backend/tests/test_compliance_measurement_domain.py` (unchanged by
-  the correction) / `test_compliance_measurement_service.py` /
-  `test_compliance_measurement_api.py` (both substantially reworked for
-  group scoping) — golden vectors, eligibility/guardrail matrix, HTTP
-  wiring.
+  either correction) / `test_compliance_measurement_service.py` /
+  `test_compliance_measurement_api.py` (the latter gained a
+  `TestMeasurementGroupBootstrapDiscovery` class) — golden vectors,
+  eligibility/guardrail matrix, HTTP wiring.
+- `backend/tests/fixtures/comtrade/compliance_smoke_multibay(.cfg/.dat)`,
+  `compliance_smoke_review_required(.cfg/.dat)` — new fixtures for the
+  2026-09-23 correction (see above for what each represents).
 - `browser-tests/compliance.spec.js` — Slice 1 real-browser coverage
   (menu order, page open/close, sub-nav, all five sections, chart
   dominance, navigation lifecycle/isolation from Analysis, responsive/
@@ -467,8 +594,10 @@ evaluation function names) both guard this boundary directly.
   Group + Assessment Quantity real-browser coverage (one-group auto-
   select, two-groups-duplicate-Va, group-specific missing phase, group
   switching, Instantaneous/RMS summaries, Base metadata, both selects'
-  responsive containment, Analysis/Playback isolation), using two
-  committed ASCII COMTRADE fixtures under `backend/tests/fixtures/comtrade/`.
+  responsive containment, Analysis/Playback isolation, PLUS the
+  2026-09-23 bootstrap/discovery/review-required/Manage-action scenarios),
+  using four committed ASCII COMTRADE fixtures under `backend/tests/
+  fixtures/comtrade/`.
 
 ## Related documents
 
@@ -476,9 +605,11 @@ evaluation function names) both guard this boundary directly.
   Analysis architectural decision),
   [DEC-101](DECISIONS.md#dec-101--compliance-slice-2-resolves-voltage-phase-roles-by-independently-re-running-the-engineering-context-detection-algorithm-never-by-becoming-an-engineering-context-consumer)
   (Engineering-Context-detection-algorithm-reuse-without-consumer-
-  registration boundary), and
+  registration boundary),
   [DEC-102](DECISIONS.md#dec-102--compliance-measurement-scopes-role-resolution-to-an-explicitly-selected-measurement-group-bay-reusing-the-existing-measurement-group-model-verbatim--never-a-second-bay-concept-never-engineering-context)
-  (the 2026-09-20 Bay/Measurement Group scoping correction).
+  (the 2026-09-20 Bay/Measurement Group scoping correction), and
+  [DEC-103](DECISIONS.md#dec-103--compliances-baymeasurement-group-picker-automatically-bootstraps-the-existing-measurement-group-detection-for-every-loaded-source-mirroring-the-analysis-workspaces-own-proven-engineering-context-bootstrap)
+  (the 2026-09-23 group discovery/bootstrap correction).
 - [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) — the
   group-aware Per-Unit/Measurement Group model this feature's Bay
   picker and Base display both reuse verbatim.

@@ -112,13 +112,15 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
     await expect(options).toHaveText(["Select a quantity…", ...QUANTITY_LABELS]);
   });
 
-  test("empty workspace: no groups available, both selects stay hidden", async ({ page }) => {
+  test("empty workspace: no groups available, both selects stay hidden, Manage action offered", async ({ page }) => {
     await openCompliance(page);
     await expect(page.locator("#wwComplianceMeasurementEmptyState")).toBeVisible();
-    await expect(page.locator("#wwComplianceMeasurementEmptyState")).toHaveText("No Measurement Group is available for this workspace.");
+    await expect(page.locator("#wwComplianceMeasurementEmptyState")).toHaveText("No Voltage Measurement Group is available for this workspace.");
     await expect(page.locator("#wwComplianceGroupField")).toBeHidden();
     await expect(page.locator("#wwComplianceMeasurementField")).toBeHidden();
     await expect(page.locator("#wwComplianceMeasurementSummary")).toBeHidden();
+    await expect(page.locator("#wwComplianceManageGroupsBtn")).toBeVisible();
+    await expect(page.locator("#wwComplianceManageGroupsBtn")).toHaveText("Manage Measurement Groups");
   });
 
   test.describe("exactly one Measurement Group", () => {
@@ -393,5 +395,128 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
       playbackState: wwPlaybackState().state, inputSource: wwPhasorState.inputSource,
     }));
     expect(after).toBe(before);
+  });
+
+  // 2026-09-23 UAT correction: reproduces the exact owner-reported
+  // scenario -- a workspace containing obvious multi-bay Voltage
+  // channel sets (KPDN1/KPDN2/SLKS, each a full VR/VY/VB triplet) still
+  // showed "No Measurement Group is available for this workspace." on
+  // Compliance because Measurement Group detection has never had ANY
+  // automatic trigger anywhere in this codebase -- an engineer had to
+  // visit "Manage Measurement Groups" and click "Suggest" first.
+  // wwComplianceLoadGroups() now runs the same existing detection
+  // bootstrap automatically. Fixtures:
+  //   - compliance_smoke_multibay(.cfg/.dat): KPDN1/KPDN2/SLKS/SGT1,
+  //     each VR/VY/VB, verified directly against the real
+  //     detect_measurement_groups() to produce 4 clean STATUS_SUGGESTED
+  //     groups with zero manual intervention.
+  //   - compliance_smoke_review_required(.cfg/.dat): one bay (MCRS)
+  //     with deliberately mixed single+pair phase representation
+  //     (VR/VB alongside VRY), verified directly to produce
+  //     STATUS_NEEDS_REVIEW -- a workspace with review-required groups
+  //     ONLY (zero usable groups).
+  test.describe("Bay/Measurement Group bootstrap and discovery (2026-09-23 UAT correction)", () => {
+    test("multi-bay workspace: going directly to Compliance discovers groups without visiting Manage Measurement Groups first", async ({ page }) => {
+      await page.goto("/index.html");
+      await uploadFixture(page, "compliance_smoke_multibay");
+
+      // Straight to Compliance -- never opens "Manage Measurement
+      // Groups" first (the exact owner-reported workflow).
+      await openCompliance(page);
+
+      await expect(page.locator("#wwComplianceGroupField")).toBeVisible();
+      const options = await page.locator("#wwComplianceGroupSelect option").allTextContents();
+      expect(new Set(options.slice(1))).toEqual(new Set(["KPDN1 VOLTAGE", "KPDN2 VOLTAGE", "SLKS VOLTAGE", "SGT1 VOLTAGE"]));
+      // Four candidates -- not auto-selected, an explicit choice is required.
+      await expect(page.locator("#wwComplianceGroupSelect")).toHaveValue("");
+      await expect(page.locator("#wwComplianceManageGroupsBtn")).toBeHidden();
+
+      await selectGroup(page, "KPDN1 VOLTAGE");
+      await selectQuantity(page, "Phase A Voltage");
+      await expect(page.locator("#wwComplianceMeasurementStatusRow")).toHaveText("Compatible");
+      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("Va");
+
+      await selectGroup(page, "SLKS VOLTAGE");
+      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("Va");
+      await expect(page.locator("#wwComplianceMeasurementStatusRow")).toHaveText("Compatible");
+    });
+
+    test("re-visiting Compliance never duplicates the discovered groups", async ({ page }) => {
+      await page.goto("/index.html");
+      await uploadFixture(page, "compliance_smoke_multibay");
+      await openCompliance(page);
+      await expect(page.locator("#wwComplianceGroupSelect option")).toHaveCount(5); // placeholder + 4 bays
+
+      await page.locator("#mainNavRecordingsBtn").click();
+      await openCompliance(page);
+      await expect(page.locator("#wwComplianceGroupSelect option")).toHaveCount(5);
+    });
+
+    test("review-required case: clear message and an actionable Review action, no usable groups shown", async ({ page }) => {
+      await page.goto("/index.html");
+      await uploadFixture(page, "compliance_smoke_review_required");
+      await openCompliance(page);
+
+      await expect(page.locator("#wwComplianceMeasurementEmptyState")).toHaveText(
+        "Voltage Measurement Groups were found, but they require review before use."
+      );
+      await expect(page.locator("#wwComplianceGroupField")).toBeHidden();
+      await expect(page.locator("#wwComplianceMeasurementField")).toBeHidden();
+      await expect(page.locator("#wwComplianceManageGroupsBtn")).toBeVisible();
+      await expect(page.locator("#wwComplianceManageGroupsBtn")).toHaveText("Review Measurement Groups");
+
+      await page.locator("#wwComplianceManageGroupsBtn").click();
+      await expect(page.locator("#measurementGroupsOverlay")).toBeVisible();
+      await expect(page.locator("#measurementGroupsOverlay")).toContainText("MCRS");
+    });
+
+    test("Manage Measurement Groups action opens the existing modal and returns to Compliance intact", async ({ page }) => {
+      await page.goto("/index.html");
+      await openCompliance(page);
+      await expect(page.locator("#wwComplianceManageGroupsBtn")).toBeVisible();
+
+      await page.locator("#wwComplianceManageGroupsBtn").click();
+      await expect(page.locator("#measurementGroupsOverlay")).toBeVisible();
+      // Compliance itself is still the active page underneath -- this
+      // is an overlay, never a navigation.
+      await expect(page.locator("#pageCompliance")).toBeVisible();
+
+      await page.locator("#measurementGroupsCloseBtn").click();
+      await expect(page.locator("#measurementGroupsOverlay")).toBeHidden();
+      await expect(page.locator("#pageCompliance")).toBeVisible();
+      await expect(page.locator("#wwComplianceMeasurementEmptyState")).toHaveText("No Voltage Measurement Group is available for this workspace.");
+    });
+
+    test("reviewing and confirming a review-required group moves it from review-required to usable on return", async ({ page }) => {
+      await page.goto("/index.html");
+      const sourceId = await uploadFixture(page, "compliance_smoke_review_required");
+      const workspaceId = await currentWorkspaceIdOf(page);
+      await openCompliance(page);
+      await expect(page.locator("#wwComplianceManageGroupsBtn")).toHaveText("Review Measurement Groups");
+
+      // The engineer reviews the ambiguous MCRS cluster and confirms it
+      // via the existing Measurement Groups management endpoint (no
+      // need to drive the confirm-drawer UI pixel-by-pixel here -- that
+      // workflow is Measurement Groups' own test suite's job; this test
+      // is about Compliance's own reaction to the resulting state
+      // change, not about how the confirmation itself happens).
+      const groupsResponse = await page.request.get(
+        `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/compliance/voltage/measurement-groups`
+      );
+      const mcrs = (await groupsResponse.json()).find((g) => g.display_name === "MCRS VOLTAGE");
+      expect(mcrs.status).toBe("needs_review");
+      const patchResponse = await page.request.patch(
+        `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/sources/${encodeURIComponent(sourceId)}/measurement-groups/${encodeURIComponent(mcrs.id)}`,
+        { data: { status: "confirmed" } }
+      );
+      expect(patchResponse.ok()).toBeTruthy();
+
+      // Return to Compliance (re-fetches the group list fresh).
+      await page.locator("#mainNavRecordingsBtn").click();
+      await openCompliance(page);
+      await expect(page.locator("#wwComplianceManageGroupsBtn")).toBeHidden();
+      await expect(page.locator("#wwComplianceGroupField")).toBeVisible();
+      await expect(page.locator("#wwComplianceGroupSelect")).toHaveValue(mcrs.id); // sole usable group -- auto-selected
+    });
   });
 });

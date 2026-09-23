@@ -1,24 +1,35 @@
 """Compliance & Capability -- Voltage Measurement REST exposure (Slice
-2 + the 2026-09-20 Bay/Measurement Group UAT correction). Thin
-translation only -- every endpoint calls straight into `app.services.
-compliance_measurement_service`, an already-tested service function; no
-new domain semantics live here.
+2 + the 2026-09-20 Bay/Measurement Group UAT correction + the
+2026-09-23 group-discovery/bootstrap UAT correction). Thin translation
+only -- every endpoint calls straight into `app.services.compliance_
+measurement_service`, an already-tested service function; no new domain
+semantics live here.
 
 Deliberately its OWN router/file, never added to `app.api.v1.
 engineering_contexts` OR to `app.api.v1.measurement_groups` -- Compliance
 is architecturally independent of Analysis/Engineering Context
 (DEC-100), and none of the endpoints below accept or resolve an
-`engineering_context_id`. The new `GET .../compliance/voltage/
-measurement-groups` endpoint reuses the EXISTING `MeasurementGroupRegistry.
-list_for_workspace()` (already present at the service layer, just not
-previously exposed workspace-wide over REST -- `app.api.v1.
-measurement_groups`'s own router is source-scoped, `.../sources/
-{source_id}/measurement-groups`, for its CRUD/configuration purpose) --
-this is a lean, read-only, Voltage-only, usable-status-only view for the
-Bay picker, not a second Measurement Group model (task section 1/6).
-`GET .../compliance/voltage/measurement` now REQUIRES an explicit
-`measurement_group_id` query param -- role resolution is scoped to that
-one group's own membership, never the whole workspace (see DEC-102).
+`engineering_context_id`. `GET .../compliance/voltage/measurement-groups`
+reuses the EXISTING `MeasurementGroupRegistry.list_for_workspace()`
+(already present at the service layer, just not previously exposed
+workspace-wide over REST -- `app.api.v1.measurement_groups`'s own
+router is source-scoped, `.../sources/{source_id}/measurement-groups`,
+for its CRUD/configuration purpose) -- this is a lean, read-only,
+Voltage-only view for the Bay picker, not a second Measurement Group
+model (task section 1/6). It returns EVERY Voltage-kind group
+regardless of status (2026-09-23 correction) -- see this module's own
+`list_compliance_voltage_measurement_groups()` docstring for why.
+Materializing those groups in the first place (bootstrap/discovery) is
+NOT this router's job -- the existing, unchanged `POST .../sources/
+{source_id}/measurement-groups/suggest` endpoint remains the sole
+detection trigger; the frontend's own `wwComplianceLoadGroups()` now
+calls it for every not-yet-attempted loaded source before listing
+groups, mirroring the Analysis workspace's own proven bootstrap pattern
+(`wwAnalysisDiscoverUncoveredSources()`) rather than requiring a visit
+to another page first. `GET .../compliance/voltage/measurement` still
+REQUIRES an explicit `measurement_group_id` query param -- role
+resolution is scoped to that one group's own membership, never the
+whole workspace (see DEC-102).
 """
 
 from __future__ import annotations
@@ -132,10 +143,13 @@ def list_compliance_voltage_quantities(workspace_id: str) -> list[ComplianceVolt
 
 @router.get("/compliance/voltage/measurement-groups", response_model=list[ComplianceMeasurementGroupOut])
 def list_compliance_voltage_measurement_groups(workspace_id: str, request: Request) -> list[ComplianceMeasurementGroupOut]:
-    """The Bay/Measurement Group picker's own candidate list (task
-    section 2/5/6) -- every Voltage-kind group in the workspace whose
-    own grouping is not itself contested (`needs_review` excluded).
-    Stable `id` is always the real `measurement_group_id`."""
+    """The Bay/Measurement Group picker's own candidate list -- EVERY
+    Voltage-kind group in the workspace, of any status (2026-09-23 UAT
+    correction: `needs_review` groups are no longer excluded at this
+    layer -- each returned entry's own `status` field lets the frontend
+    distinguish usable from review-required, rather than a review-
+    required workspace silently looking identical to a genuinely empty
+    one). Stable `id` is always the real `measurement_group_id`."""
     workspace_id = _validate_workspace_id(workspace_id)
     groups = list_compliance_voltage_groups(
         workspace_id=workspace_id, group_registry=get_measurement_group_registry(request)

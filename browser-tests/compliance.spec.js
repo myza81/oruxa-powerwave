@@ -63,10 +63,12 @@ test.describe("Compliance & Capability -- Slice 1 workspace shell", () => {
 
     // 2026-09-20 UAT correction: on a fresh empty workspace there is no
     // Measurement Group yet, so this is now the FIRST empty state shown
-    // -- selecting a quantity is a later step (see
-    // compliance_measurement.spec.js for the full Bay/Measurement Group
-    // -> Assessment Quantity workflow coverage).
-    await expect(page.locator("#wwComplianceMeasurementEmptyState")).toHaveText("No Measurement Group is available for this workspace.");
+    // -- selecting a quantity is a later step. Wording refined
+    // 2026-09-23 (review-required groups get their own distinct
+    // message; see compliance_measurement.spec.js for the full
+    // Bay/Measurement Group -> Assessment Quantity workflow coverage
+    // and the bootstrap/discovery/review-required scenarios).
+    await expect(page.locator("#wwComplianceMeasurementEmptyState")).toHaveText("No Voltage Measurement Group is available for this workspace.");
     await expect(page.locator("#wwComplianceReferenceLayersEmptyState")).toHaveText("No reference layers added");
     await expect(page.locator("#wwComplianceAddReferenceBtn")).toBeDisabled();
     await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("No event reference set");

@@ -100,7 +100,7 @@ from app.domain.compliance_measurement import (
     get_voltage_quantity,
 )
 from app.domain.engineering_context_detection import ChannelForDetection, detect_engineering_contexts
-from app.domain.measurement_group import KIND_VOLTAGE, STATUS_NEEDS_REVIEW, MeasurementGroup
+from app.domain.measurement_group import KIND_VOLTAGE, MeasurementGroup
 from app.domain.rms_detector import LIKELY_INSTANTANEOUS, LIKELY_MAGNITUDE_OR_RMS, classify_waveform_form
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.errors import (
@@ -152,21 +152,26 @@ class RoleResolution:
 def list_compliance_voltage_groups(
     *, workspace_id: str, group_registry: MeasurementGroupRegistry
 ) -> list[MeasurementGroup]:
-    """The Bay/Measurement Group picker's own candidate list -- every
-    Voltage-kind group in the workspace whose own grouping is not itself
-    contested. `STATUS_NEEDS_REVIEW` is excluded: its own MEMBERSHIP is
-    uncertain/contradictory automatic evidence (`app.domain.measurement_
-    group`'s own canonical-document section 15), so scoping role
-    resolution to a group whose membership might be wrong would silently
-    inherit that uncertainty. `suggested`/`confirmed`/`manual` are all
-    included -- a suggested group's own membership is not itself in
-    doubt, only whether an engineer has reviewed/confirmed it yet
-    (mirrors the existing Measurement Groups configuration UI, which
-    likewise never hides `suggested` groups, only flags them for
-    review)."""
+    """The Bay/Measurement Group picker's own candidate list -- EVERY
+    Voltage-kind group in the workspace, of ANY status.
+
+    2026-09-23 UAT correction: this used to exclude `STATUS_NEEDS_REVIEW`
+    at this layer, which silently collapsed "groups exist but need
+    review" into "no groups is available for this workspace" -- the
+    exact owner-reported dead end this correction fixes (task section
+    10: "It may be appropriate to expose two collections: usable_groups,
+    review_required_groups... rather than pretending review-required
+    groups do not exist"). This function now returns the raw,
+    authoritative registry state; bucketing into usable vs review-
+    required is the CALLER's job (the API layer's response already
+    carries each group's own `status`, and the frontend buckets by it --
+    see `wwComplianceRenderGroupOptions()`'s own `needs_review` filter
+    for the SELECTABLE dropdown specifically, which still never lets an
+    engineer pick a contested group's own membership without reviewing
+    it first via the existing Measurement Groups management UI)."""
     return [
         group for group in group_registry.list_for_workspace(workspace_id)
-        if group.kind == KIND_VOLTAGE and group.status != STATUS_NEEDS_REVIEW
+        if group.kind == KIND_VOLTAGE
     ]
 
 

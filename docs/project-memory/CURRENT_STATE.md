@@ -1290,6 +1290,83 @@ containment). `test_compliance_measurement_domain.py`'s 13 golden tests
 are completely unchanged. Full backend suite (5480 tests) and full
 Playwright suite (151 scenarios) pass.
 
+**Compliance & Capability Slice 2 UAT correction #2 — Bay/Measurement
+Group discovery/bootstrap (2026-09-23).** Owner UAT found a further
+real workflow gap: a workspace containing obvious multi-bay Voltage
+channel sets (e.g. `KPDN1`/`KPDN2`/`SLKS`/`MCRS`/`SGT1`, each a full
+phase triplet) still showed "No Measurement Group is available for
+this workspace." on Compliance. **Exact root cause, confirmed by direct
+reproduction: `app.services.measurement_group_service.generate_
+suggested_groups_for_source()` — the ONE function that ever creates a
+`MeasurementGroup` from automatic detection — has never had ANY
+automatic trigger anywhere in this codebase** (its own docstring
+already said so: "deferred to whichever later slice first needs the
+result to be observable"). Before this correction, a group was only
+ever created manually or by explicitly opening "Manage Measurement
+Groups" and clicking "Suggest" per source. Compliance's own group-list
+endpoint/filtering were already correct — the registry was simply
+empty. Classified as root cause A (groups never materialized) + E
+(Compliance had no bootstrap of its own).
+
+**Fix: Compliance is the "later slice" the existing function's own
+docstring anticipated.** `wwComplianceLoadGroups()` now calls the
+EXISTING, unchanged `POST .../measurement-groups/suggest` endpoint for
+every loaded source not yet attempted this session, BEFORE listing
+groups — mirroring the Analysis workspace's own proven
+`wwAnalysisDiscoverUncoveredSources()` bootstrap for Engineering
+Context. Safe because that endpoint is already idempotent/additive-
+only. No new detection algorithm was written — `detect_measurement_
+groups()` is unchanged; this was a missing CALLER, not a missing
+engine. See
+[DECISIONS.md — DEC-103](DECISIONS.md#dec-103--compliances-baymeasurement-group-picker-automatically-bootstraps-the-existing-measurement-group-detection-for-every-loaded-source-mirroring-the-analysis-workspaces-own-proven-engineering-context-bootstrap)
+for the full record.
+
+**A second, related gap fixed the same day**: `GET .../compliance/
+voltage/measurement-groups` used to exclude `needs_review` groups
+entirely, making a "discovered but uncertain" workspace look identical
+to a genuinely empty one. The endpoint now returns every Voltage-kind
+group of any status; the frontend buckets into `wwComplianceUsableGroups()`/
+`wwComplianceReviewRequiredGroups()`. The Measurement card now shows
+three distinct states: no groups discovered ("No Voltage Measurement
+Group is available for this workspace." + "Manage Measurement Groups"),
+groups discovered but all need review ("Voltage Measurement Groups were
+found, but they require review before use." + "Review Measurement
+Groups"), or usable groups available (normal Bay selector flow). A
+`needs_review` group is still never selectable in the dropdown and
+never silently trusted for role resolution — DEC-102's own guardrail is
+unchanged. The "Manage/Review Measurement Groups" button reuses the
+EXISTING Measurement Groups management modal verbatim (an overlay, not
+a navigation, so Compliance's own state is never disturbed); closing
+that modal now refreshes Compliance's own group list when Compliance is
+the active page.
+
+**Files**: `app/services/compliance_measurement_service.py`
+(`list_compliance_voltage_groups()` no longer filters by status),
+`app/api/v1/compliance.py` (docstrings only, response shape unchanged).
+`frontend/index.html` (new `wwComplianceBootstrapGroupsIfNeeded()`/
+`wwComplianceSuggestGroupsForSource()`/`wwComplianceUsableGroups()`/
+`wwComplianceReviewRequiredGroups()`/`wwComplianceOpenManageGroups()`,
+new `#wwComplianceManageGroupsBtn`, `wwComplianceRenderMeasurementCardState()`
+extended for the three-way state, one added line in
+`wwCloseMeasurementGroupsModal()`). Two new committed ASCII COMTRADE
+fixtures (`compliance_smoke_multibay`: four clean bays verified
+directly against `detect_measurement_groups()` to produce four
+independent `suggested` groups; `compliance_smoke_review_required`: one
+bay with deliberately mixed representation, verified directly to
+produce `needs_review`). New tests: `test_compliance_measurement_api.py`'s
+new `TestMeasurementGroupBootstrapDiscovery` class (4 tests) plus one
+needs_review-inclusion test, `test_frontend_compliance.py`'s new
+`TestComplianceMeasurementGroupBootstrapAndReviewState` class (6 tests),
+and 6 new `browser-tests/compliance_measurement.spec.js` scenarios
+(direct-to-Compliance multi-bay discovery with no prior page visit,
+re-visiting never duplicates groups, review-required empty state +
+action, Manage action open/return-intact, review-then-confirm moves a
+group from review-required to usable). Zero changes to `app.domain.
+measurement_group_detection`, `app.services.measurement_group_service`,
+`app.services.measurement_group_registry`, or any existing Measurement
+Groups endpoint/UI. Full backend suite (5491 tests) and full Playwright
+suite (156 scenarios) pass.
+
 **Flake cleanup (2026-09-19, continued) — the third and final DEC-099
 item ("Speed selection 4x") is now `[CLOSED]`; DEC-099 has zero
 remaining `[OPEN]` items.** Test-synchronization bug, no production
@@ -1742,7 +1819,10 @@ SEPARATE, independent `Compliance` top-level page (see
 [DEC-100](DECISIONS.md#dec-100--compliance--capability-is-a-top-level-application-function-independent-of-analysis-slice-1-is-a-workspace-shell-only)),
 now with a real Voltage Measurement Selection + Normalization
 Foundation as of 2026-09-20 (Slice 2, corrected the same day to scope
-role resolution to an explicitly selected Bay/Measurement Group — see
+role resolution to an explicitly selected Bay/Measurement Group, and
+corrected again 2026-09-23 so opening Compliance directly on a
+multi-bay workspace auto-bootstraps Measurement Group discovery rather
+than dead-ending — see
 [COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md); Reference Layers/
 Event Alignment/Comparison Chart/Results remain Slice 1's own
 placeholders).

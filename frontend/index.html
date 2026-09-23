@@ -9802,7 +9802,22 @@
                             <div class="ww-compliance-config-row">
                                 <section class="panel ww-compliance-config-card" id="wwComplianceMeasurementCard">
                                     <h2>Measurement</h2>
-                                    <p class="empty-state" id="wwComplianceMeasurementEmptyState">No Measurement Group is available for this workspace.</p>
+                                    <p class="empty-state" id="wwComplianceMeasurementEmptyState">No Voltage Measurement Group is available for this workspace.</p>
+                                    <!-- UAT correction (2026-09-23): opening Compliance
+                                         must not dead-end merely because the engineer has
+                                         never visited the Measurement Groups management
+                                         workflow -- wwComplianceLoadGroups() now runs the
+                                         SAME existing detection bootstrap Analysis already
+                                         proves (POST .../measurement-groups/suggest per
+                                         loaded source) before listing groups. If usable
+                                         groups still don't exist (none discoverable, or
+                                         discovered groups all need review), this button
+                                         opens the EXISTING Measurement Groups management
+                                         modal directly -- never a second editor inside
+                                         Compliance. Its own label switches between "Manage"
+                                         (nothing to review) and "Review" (review-required
+                                         groups exist) in wwComplianceRenderMeasurementCardState(). -->
+                                    <button type="button" class="secondary" id="wwComplianceManageGroupsBtn" hidden>Manage Measurement Groups</button>
                                     <!-- UAT correction (2026-09-20): the user selects
                                          a Bay/Measurement Group FIRST (owner UAT --
                                          a bare Assessment Quantity selector was
@@ -25661,6 +25676,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwCloseMeasurementGroupsModal() {
             document.getElementById("measurementGroupsOverlay").hidden = true;
             wwCloseMgDrawer();
+            // 2026-09-23 UAT correction: this modal is now also opened
+            // directly from Compliance's own "Manage/Review Measurement
+            // Groups" action (wwComplianceOpenManageGroups()) -- it is
+            // an overlay, never a page navigation, so Compliance's own
+            // state underneath was never disturbed, but its OWN group
+            // list can be stale the instant this modal closes (the
+            // engineer may have just confirmed/edited a group). Refresh
+            // it only when Compliance is actually the current page, the
+            // same "resync only while genuinely visible" guard this
+            // codebase already uses elsewhere (e.g. the Playback Cursor
+            // overlay resync on the Waveform page).
+            if (shell.currentPage === "compliance") {
+                wwComplianceLoadGroups();
+            }
         }
 
         // Section 20: explicit, user-triggered ONLY -- never called from
@@ -40906,12 +40935,29 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const wwComplianceState = {
             quantities: [],
             quantitiesLoaded: false,
-            groups: [],
+            groups: [], // EVERY Voltage-kind group, any status -- see wwComplianceUsableGroups()/wwComplianceReviewRequiredGroups()
             groupsLoaded: false,
+            // 2026-09-23 UAT correction: which loaded source ids this
+            // session has already run the existing detection bootstrap
+            // for -- the SAME "per-source attempted set, reset only on
+            // workspace clear" idiom wwAnalysisContextState.attemptedSourceIds
+            // already established, so opening Compliance repeatedly (or
+            // switching pages and back) never re-issues a redundant
+            // POST .../measurement-groups/suggest for a source already
+            // attempted this session.
+            attemptedGroupBootstrapSourceIds: new Set(),
             selectedGroupId: "",
             selectedQuantityId: "",
             requestSeq: 0,
         };
+
+        function wwComplianceUsableGroups() {
+            return wwComplianceState.groups.filter((g) => g.status !== "needs_review");
+        }
+
+        function wwComplianceReviewRequiredGroups() {
+            return wwComplianceState.groups.filter((g) => g.status === "needs_review");
+        }
 
         function wwComplianceFetchJson(url) {
             return fetch(url).then((response) => {
@@ -40954,11 +41000,32 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // Bay/Measurement Group picker -- always re-fetched (groups can
         // change between visits, unlike the fixed quantity catalogue).
-        // Filtering (Voltage-kind, usable-status-only) is server-
-        // authoritative (app.services.compliance_measurement_service.
-        // list_compliance_voltage_groups()) -- the frontend never
-        // performs its own ad-hoc group filtering (task section 14).
-        function wwComplianceLoadGroups() {
+        // Filtering (Voltage-kind) is server-authoritative
+        // (app.services.compliance_measurement_service.list_compliance_
+        // voltage_groups()) -- the frontend never performs its own
+        // ad-hoc group DETECTION (task section 14); it only buckets the
+        // authoritative `status` field into usable vs review-required
+        // (wwComplianceUsableGroups()/wwComplianceReviewRequiredGroups()).
+        //
+        // 2026-09-23 UAT correction: opening Compliance used to just
+        // list whatever ALREADY existed in the registry -- on a
+        // workspace where the engineer had never visited "Manage
+        // Measurement Groups," that registry was genuinely empty even
+        // though the recording obviously contained multiple bays'
+        // worth of Voltage channels (root cause: Measurement Group
+        // detection has never had ANY automatic trigger anywhere in
+        // this codebase -- app.services.measurement_group_service.
+        // generate_suggested_groups_for_source()'s own docstring says
+        // so explicitly: "No automatic trigger exists for this
+        // function... wiring it into an existing endpoint's behaviour
+        // is deferred to whichever later slice first needs the result
+        // to be observable" -- Compliance is that slice). Now runs the
+        // SAME existing, unchanged detection bootstrap FIRST, mirroring
+        // the Analysis workspace's own proven
+        // wwAnalysisDiscoverUncoveredSources() pattern, before listing
+        // groups -- never a second detection engine (task section 13).
+        async function wwComplianceLoadGroups() {
+            await wwComplianceBootstrapGroupsIfNeeded();
             wwComplianceFetchJson(
                 apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/compliance/voltage/measurement-groups"
             ).then((groups) => {
@@ -40971,21 +41038,60 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             });
         }
 
+        // Calls the EXISTING, unchanged `POST .../measurement-groups/
+        // suggest` endpoint for every loaded source not yet attempted
+        // this session -- idempotent and additive-only at the backend
+        // (generate_suggested_groups_for_source()'s own contract), so
+        // this is safe to call even for an already-fully-grouped
+        // source; the `attemptedGroupBootstrapSourceIds` guard exists
+        // purely to avoid a redundant network round-trip on every mere
+        // page revisit, not for correctness. Best-effort: a source
+        // whose own suggest call fails is simply left un-attempted
+        // (retried on the next load) rather than blocking the other
+        // sources or the group list itself.
+        async function wwComplianceBootstrapGroupsIfNeeded() {
+            const sources = await fetchSourcesList();
+            if (!sources || !sources.length) return;
+            const toAttempt = sources.filter((s) => !wwComplianceState.attemptedGroupBootstrapSourceIds.has(s.source_id));
+            if (!toAttempt.length) return;
+            await Promise.all(toAttempt.map((s) => wwComplianceSuggestGroupsForSource(s.source_id)));
+        }
+
+        function wwComplianceSuggestGroupsForSource(sourceId) {
+            return fetch(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                "/sources/" + encodeURIComponent(sourceId) + "/measurement-groups/suggest",
+                { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
+            ).then(
+                () => { wwComplianceState.attemptedGroupBootstrapSourceIds.add(sourceId); },
+                () => { /* left un-attempted -- retried on the next wwComplianceLoadGroups() call */ }
+            );
+        }
+
+        // The SELECTABLE dropdown is built from usable groups only
+        // (task section 7: a `needs_review` group's own membership is
+        // uncertain automatic evidence and must never be silently
+        // trusted for role resolution) -- review-required groups are
+        // surfaced separately, via the empty-state message and the
+        // "Review Measurement Groups" action
+        // (wwComplianceRenderMeasurementCardState()), never as a
+        // disabled option mixed into this same list.
         function wwComplianceRenderGroupOptions() {
             const select = document.getElementById("wwComplianceGroupSelect");
+            const usable = wwComplianceUsableGroups();
             const options = ['<option value="">Select a Bay / Measurement Group…</option>'];
-            for (const g of wwComplianceState.groups) {
+            for (const g of usable) {
                 options.push('<option value="' + escapeHtml(g.id) + '">' + escapeHtml(g.display_name) + '</option>');
             }
             select.innerHTML = options.join("");
 
             const stillExists = wwComplianceState.selectedGroupId &&
-                wwComplianceState.groups.some((g) => g.id === wwComplianceState.selectedGroupId);
+                usable.some((g) => g.id === wwComplianceState.selectedGroupId);
             if (stillExists) {
                 select.value = wwComplianceState.selectedGroupId;
-            } else if (wwComplianceState.groups.length === 1) {
+            } else if (usable.length === 1) {
                 // Exactly one valid group -- auto-select it (task section 5).
-                wwComplianceState.selectedGroupId = wwComplianceState.groups[0].id;
+                wwComplianceState.selectedGroupId = usable[0].id;
                 select.value = wwComplianceState.selectedGroupId;
             } else {
                 // Zero, or more than one with no (or a since-vanished)
@@ -41017,25 +41123,51 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // The one function deciding which of the card's own empty
-        // states (no groups / select a group / no quantity selected) is
-        // showing, versus the real Status/Input/... summary -- task
-        // section 13's own required state list, kept in one place so
-        // group-change/quantity-change/group-list-reload all agree.
+        // states (no groups discovered / groups need review / select a
+        // group / no quantity selected) is showing, versus the real
+        // Status/Input/... summary -- task section 7/8/13's own
+        // required state list, kept in one place so group-change/
+        // quantity-change/group-list-reload all agree. Never hides the
+        // existence of a genuinely reviewable group behind a bare "No
+        // Measurement Group is available" (task section 7).
         function wwComplianceRenderMeasurementCardState() {
             const groupField = document.getElementById("wwComplianceGroupField");
             const quantityField = document.getElementById("wwComplianceMeasurementField");
             const emptyState = document.getElementById("wwComplianceMeasurementEmptyState");
             const summary = document.getElementById("wwComplianceMeasurementSummary");
+            const manageBtn = document.getElementById("wwComplianceManageGroupsBtn");
 
-            if (wwComplianceState.groupsLoaded && wwComplianceState.groups.length === 0) {
-                groupField.hidden = true;
-                quantityField.hidden = true;
-                summary.hidden = true;
-                emptyState.textContent = "No Measurement Group is available for this workspace.";
-                emptyState.hidden = false;
-                return;
+            if (wwComplianceState.groupsLoaded) {
+                const usableCount = wwComplianceUsableGroups().length;
+                const reviewCount = wwComplianceReviewRequiredGroups().length;
+
+                if (usableCount === 0 && reviewCount === 0) {
+                    groupField.hidden = true;
+                    quantityField.hidden = true;
+                    summary.hidden = true;
+                    emptyState.textContent = "No Voltage Measurement Group is available for this workspace.";
+                    emptyState.hidden = false;
+                    manageBtn.textContent = "Manage Measurement Groups";
+                    manageBtn.hidden = false;
+                    return;
+                }
+
+                if (usableCount === 0 && reviewCount > 0) {
+                    // Discovered, but automatic evidence was uncertain/
+                    // contradictory -- never silently trusted (task
+                    // section 7), but never hidden either.
+                    groupField.hidden = true;
+                    quantityField.hidden = true;
+                    summary.hidden = true;
+                    emptyState.textContent = "Voltage Measurement Groups were found, but they require review before use.";
+                    emptyState.hidden = false;
+                    manageBtn.textContent = "Review Measurement Groups";
+                    manageBtn.hidden = false;
+                    return;
+                }
             }
 
+            manageBtn.hidden = true;
             groupField.hidden = false;
 
             if (!wwComplianceState.selectedGroupId) {
@@ -41065,9 +41197,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             groupField.hidden = true;
             quantityField.hidden = true;
             document.getElementById("wwComplianceMeasurementSummary").hidden = true;
+            document.getElementById("wwComplianceManageGroupsBtn").hidden = true;
             const emptyState = document.getElementById("wwComplianceMeasurementEmptyState");
             emptyState.textContent = "Could not reach the backend to load Measurement Groups.";
             emptyState.hidden = false;
+        }
+
+        // Reuses the EXISTING Measurement Groups management modal
+        // verbatim (task section 8/9: "Reuse the existing Measurement
+        // Group management UI. Do not create a new editor inside
+        // Compliance.") -- it is an OVERLAY, not a page navigation, so
+        // Compliance's own state is never disturbed underneath it; see
+        // wwCloseMeasurementGroupsModal()'s own Compliance-refresh
+        // addition for why the group list still ends up current the
+        // moment it closes.
+        function wwComplianceOpenManageGroups() {
+            wwOpenMeasurementGroupsModal();
         }
 
         const WW_COMPLIANCE_INPUT_TYPE_LABEL = {
@@ -44570,6 +44715,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         });
         document.getElementById("wwComplianceMeasurementSelect").addEventListener("change", (event) => {
             wwComplianceOnQuantityChange(event.target.value);
+        });
+        document.getElementById("wwComplianceManageGroupsBtn").addEventListener("click", () => {
+            wwComplianceOpenManageGroups();
         });
 
         // ---- Overcurrent Analysis v1 wiring ----

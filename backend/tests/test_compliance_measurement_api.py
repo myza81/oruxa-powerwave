@@ -63,6 +63,50 @@ def _add_va_source(client: TestClient, *, source_id: str = "s1") -> None:
     client.app.state.workspace_registry.add(ActiveSource(metadata=metadata, record=record))
 
 
+def _add_multibay_source(client: TestClient, *, source_id: str, bay_channel_names: list[str]) -> None:
+    """A source carrying an arbitrary list of bare Voltage channel
+    names (e.g. `KPDN1_VR`/`KPDN1_VY`/`KPDN1_VB`/`KPDN2_VR`/...) -- used
+    to exercise the real `app.domain.measurement_group_detection`
+    algorithm through `POST .../measurement-groups/suggest`, never a
+    hand-constructed `MeasurementGroup`."""
+    sample_rate_hz = 1000.0
+    duration_s = 1.0
+    n = int(round(duration_s * sample_rate_hz))
+    t = np.arange(n) / sample_rate_hz
+    columns = {"time": t}
+    analog_channels = []
+    for index, name in enumerate(bay_channel_names):
+        columns[name] = 100.0 * np.cos(2.0 * np.pi * 50.0 * t)
+        analog_channels.append(
+            AnalogChannelSummary(name=name, index=index, unit="V", engineering_type=VOLTAGE, waveform_form=WAVEFORM_FORM_INSTANTANEOUS)
+        )
+    record = DisturbanceRecord(
+        metadata=RecordingMetadata(
+            station_name="Station", recorder_name="Recorder", source_file=f"{source_id}.cfg",
+            provider_type="COMTRADE", nominal_frequency=50.0,
+        ),
+        waveform_data=pd.DataFrame(columns),
+        analog_channels=[], digital_channels=[],
+        sampling_info=SamplingInformation(sampling_rates=[sample_rate_hz], samples_per_rate=[n]),
+        timing_info=TimingInformation(start_time=REF_START, trigger_time=REF_START),
+    )
+    metadata = SourceMetadata(
+        source_id=source_id, workspace_id=WORKSPACE_ID, provider_type="COMTRADE",
+        original_filenames=(f"{source_id}.cfg",), created_at=REF_START,
+        station_name="Station", recorder_name="Recorder", nominal_frequency=50.0,
+        timing_reference="absolute", start_time=REF_START, trigger_time=REF_START,
+        sample_count=n, duration_seconds=duration_s, elapsed_start_seconds=0.0, elapsed_end_seconds=duration_s,
+        sampling_rates=(sample_rate_hz,), samples_per_rate=(n,), analog_channels=analog_channels, digital_channels=[],
+    )
+    client.app.state.workspace_registry.add(ActiveSource(metadata=metadata, record=record))
+
+
+def _suggest_groups(client: TestClient, *, source_id: str):
+    response = client.post(f"/api/v1/workspaces/{WORKSPACE_ID}/sources/{source_id}/measurement-groups/suggest", json={})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
 def _create_voltage_group(client: TestClient, *, source_id: str = "s1", channel_names: tuple[str, ...] = ("VA",)) -> str:
     response = client.post(
         f"/api/v1/workspaces/{WORKSPACE_ID}/sources/{source_id}/measurement-groups",
@@ -116,6 +160,104 @@ class TestMeasurementGroupsEndpoint:
         response = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/compliance/voltage/measurement-groups")
         assert response.status_code == 200
         assert response.json() == []
+
+    def test_includes_needs_review_groups_2026_09_23_correction(self, client):
+        """The exact owner-reported dead end this correction fixes: a
+        review-required group must never look identical to a genuinely
+        empty workspace at this endpoint -- bucketing into usable vs
+        review-required is the CALLER's job now, not this endpoint's."""
+        _add_va_source(client)
+        group_response = client.post(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/sources/s1/measurement-groups",
+            json={
+                "kind": "voltage", "display_name": "Needs Review Bay", "status": "needs_review",
+                "channel_refs": [{"kind": "source", "source_id": "s1", "channel_name": "VA"}],
+            },
+        )
+        assert group_response.status_code == 201, group_response.text
+        response = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/compliance/voltage/measurement-groups")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["status"] == "needs_review"
+
+
+class TestMeasurementGroupBootstrapDiscovery:
+    """2026-09-23 UAT correction: reproduces the exact owner-reported
+    scenario (a workspace containing obvious multi-bay Voltage channel
+    sets, e.g. KPDN1/KPDN2/SLKS, each with a full phase triplet) and
+    proves the existing, unchanged detection pipeline
+    (`app.domain.measurement_group_detection`/`generate_suggested_
+    groups_for_source()`) is sufficient once actually triggered --
+    Compliance needed a caller for it, not a new engine."""
+
+    def test_group_list_reflects_authoritative_registry_state(self, client):
+        _add_multibay_source(client, source_id="s1", bay_channel_names=[
+            "KPDN1_VR", "KPDN1_VY", "KPDN1_VB",
+            "KPDN2_VR", "KPDN2_VY", "KPDN2_VB",
+            "SLKS_VR", "SLKS_VY", "SLKS_VB",
+        ])
+        # Before bootstrap: registry genuinely empty -- reproduces the
+        # owner-reported "No Measurement Group is available" dead end.
+        before = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/compliance/voltage/measurement-groups")
+        assert before.json() == []
+
+        suggested = _suggest_groups(client, source_id="s1")
+        assert {g["display_name"] for g in suggested} == {"KPDN1 VOLTAGE", "KPDN2 VOLTAGE", "SLKS VOLTAGE"}
+        assert all(g["status"] == "suggested" for g in suggested)
+
+        after = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/compliance/voltage/measurement-groups")
+        assert after.status_code == 200
+        names = {g["display_name"] for g in after.json()}
+        assert names == {"KPDN1 VOLTAGE", "KPDN2 VOLTAGE", "SLKS VOLTAGE"}
+
+    def test_review_required_groups_are_distinguishable_from_no_groups(self, client):
+        # Deliberately mixed single+pair phase representation within one
+        # cluster -- verified directly (this task's own investigation)
+        # to produce STATUS_NEEDS_REVIEW, never silently resolved.
+        _add_multibay_source(client, source_id="s1", bay_channel_names=["MCRS_VR", "MCRS_VB", "MCRS_VRY"])
+        suggested = _suggest_groups(client, source_id="s1")
+        assert len(suggested) == 1
+        assert suggested[0]["status"] == "needs_review"
+
+        response = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/compliance/voltage/measurement-groups")
+        body = response.json()
+        assert len(body) == 1  # NOT an empty list -- discovered, just uncertain
+        assert body[0]["status"] == "needs_review"
+
+    def test_bootstrap_is_idempotent_calling_suggest_twice_never_duplicates(self, client):
+        _add_multibay_source(client, source_id="s1", bay_channel_names=["KPDN1_VR", "KPDN1_VY", "KPDN1_VB"])
+        first = _suggest_groups(client, source_id="s1")
+        assert len(first) == 1
+        second = _suggest_groups(client, source_id="s1")
+        assert second == []  # nothing new -- already fully grouped
+
+        response = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/compliance/voltage/measurement-groups")
+        assert len(response.json()) == 1
+
+    def test_multi_source_groups_remain_valid_after_bootstrap(self, client):
+        _add_multibay_source(client, source_id="s1", bay_channel_names=["KPDN1_VR", "KPDN1_VY", "KPDN1_VB"])
+        _add_multibay_source(client, source_id="s2", bay_channel_names=["KPDN2_VR", "KPDN2_VY", "KPDN2_VB"])
+        _suggest_groups(client, source_id="s1")
+        _suggest_groups(client, source_id="s2")
+
+        response = client.get(f"/api/v1/workspaces/{WORKSPACE_ID}/compliance/voltage/measurement-groups")
+        body = response.json()
+        names = {g["display_name"] for g in body}
+        assert names == {"KPDN1 VOLTAGE", "KPDN2 VOLTAGE"}
+
+        # Each group remains independently selectable/usable for a real
+        # measurement (task section 11 -- multi-source groups, here
+        # multiple SEPARATE single-source groups within one workspace,
+        # each scoped correctly).
+        kpdn1_id = next(g["id"] for g in body if g["display_name"] == "KPDN1 VOLTAGE")
+        measurement = client.get(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/compliance/voltage/measurement",
+            params={"measurement_group_id": kpdn1_id, "quantity_id": "phase_a_lg_rms"},
+        )
+        assert measurement.status_code == 200
+        assert measurement.json()["status"] == "available"
+        assert measurement.json()["resolved_roles"][0]["channel_name"] == "KPDN1_VR"
 
 
 class TestMeasurementEndpoint:

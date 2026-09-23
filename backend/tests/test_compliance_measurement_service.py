@@ -141,7 +141,11 @@ def _evaluate(registries, *, group_id: str, quantity_id: str) -> object:
 
 
 class TestListComplianceVoltageGroups:
-    def test_excludes_needs_review_and_current_kind(self, registries):
+    def test_includes_every_status_but_excludes_current_kind(self, registries):
+        """2026-09-23 UAT correction: needs_review groups are no longer
+        excluded at this layer -- a genuinely review-required workspace
+        must never look identical to a truly empty one (task section
+        10). Current-kind groups are still never a Voltage candidate."""
         _make_group(registries, group_id="mg-confirmed", source_id="s1", channel_names=["VA"], status=STATUS_CONFIRMED)
         _make_group(registries, group_id="mg-suggested", source_id="s1", channel_names=["VB"], status=STATUS_SUGGESTED)
         _make_group(registries, group_id="mg-needs-review", source_id="s1", channel_names=["VC"], status=STATUS_NEEDS_REVIEW)
@@ -154,7 +158,7 @@ class TestListComplianceVoltageGroups:
 
         groups = list_compliance_voltage_groups(workspace_id=WORKSPACE_ID, group_registry=registries["group"])
         ids = {g.id for g in groups}
-        assert ids == {"mg-confirmed", "mg-suggested"}
+        assert ids == {"mg-confirmed", "mg-suggested", "mg-needs-review"}
 
 
 class TestGroupScopedRoleResolution:
