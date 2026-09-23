@@ -80,6 +80,31 @@ guaranteed by the backend, not by this function; verified directly via
 scenario, which seeds no context state and opens Analysis first from a
 clean Recordings page.
 
+**DEC-105 (2026-09-23, same-day production regression fix): the Bay
+selector being POPULATED is not the same as it being AUTO-SELECTED.**
+DEC-104's own move of context creation to upload time exposed a latent
+bug in a completely different, previously-untouched function: each
+analyzer's "auto-select the first bay" behavior was wired to
+`wwAnalysisPublishFreshContextsDiscovered()`, which used to fire only
+from inside `wwAnalysisDiscoverUncoveredSources()`'s own blocking branch
+— the branch that only ever ran when Analysis's first-ever fetch found
+ZERO contexts. Before DEC-104 that branch always ran on a fresh upload
+(nothing could exist yet); after DEC-104 the first fetch normally already
+returns a non-empty list, so that branch — and the fresh signal it alone
+fired — never runs, and no analyzer auto-selects anything. Selector
+POPULATION (`onContexts()`, unaffected) and AUTO-SELECTION
+(`onFreshContextsDiscovered()`, was broken) are two separate signals;
+this bug affected only the second. Fixed by moving the fresh-signal
+decision into `wwAnalysisPublishContexts()` itself (see that function's
+own docstring), gated by a new `wwAnalysisContextState.everPublishedUsableContexts`
+flag rather than by which code path produced the list — so it now fires
+identically whether the context was prepared at upload time, by the
+fallback bootstrap, or was already sitting in an existing workspace. See
+[DECISIONS.md — DEC-105](DECISIONS.md#dec-105--dec-104-follow-up-analysiss-own-auto-select-the-first-bay-signal-is-decoupled-from-whenhow-an-engineering-context-was-created)
+for the full investigation (including why `needs_review`/covered-source
+semantics and calculated-channel timing were both ruled out) and fix
+record.
+
 Full detail, root cause, and migration history:
 [PHASOR_ANALYSIS.md — "Ownership moved to the shared Analysis
 workspace"](PHASOR_ANALYSIS.md#ownership-moved-to-the-shared-analysis-workspace-2026-09-12-owner-uat-fix)
@@ -307,6 +332,10 @@ add one is caught immediately.
   [DEC-104](DECISIONS.md#dec-104--successful-source-upload-triggers-shared-workspacesource-preparation-measurement-group--engineering-context-discovery-no-top-level-function-may-depend-on-another-page-having-been-opened-first)
   (Engineering Context DISCOVERY moved to a shared backend post-upload
   choke point; `wwAnalysisDiscoverUncoveredSources()` kept as
-  fallback-only).
+  fallback-only), and
+  [DEC-105](DECISIONS.md#dec-105--dec-104-follow-up-analysiss-own-auto-select-the-first-bay-signal-is-decoupled-from-whenhow-an-engineering-context-was-created)
+  (the same-day production regression fix: auto-SELECTION of the first
+  bay, a separate signal from selector population, decoupled from which
+  code path created the context).
 - `docs/development/PERFORMANCE_BASELINE.md` (waveform endpoint
   latency/payload precedent).

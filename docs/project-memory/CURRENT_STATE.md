@@ -1428,6 +1428,58 @@ Zero changes to `app.domain.measurement_group_detection`, `app.domain.
 engineering_context_detection`, or `app.domain.time_grouping`. Full
 backend suite and full Playwright suite pass.
 
+**Production regression fix (2026-09-23, same day) — Analysis stopped
+auto-selecting a bay after DEC-104.** Owner UAT: *"Analysis/Analyzer
+worked before DEC-104, but does not work after DEC-104."* **Root cause,
+confirmed by direct reproduction (real browser, real backend, zero test
+workarounds), NOT a data/API defect**: every analyzer's own "auto-select
+the first usable bay" behavior was wired to `wwAnalysisPublishFreshContextsDiscovered()`,
+which fired ONLY from inside `wwAnalysisDiscoverUncoveredSources()`'s own
+BLOCKING branch — the branch that only runs when Analysis's very first
+fetch for a workspace returns an EMPTY context list. Before DEC-104 that
+was always true on a fresh upload (nothing could exist yet); after
+DEC-104 a freshly-uploaded source's context is normally already fully
+formed by the time Analysis opens, so that first fetch returns a
+non-empty list immediately, the blocking branch never runs, and the
+"fresh" signal never fires for any of the five analyzers — each one fell
+through to its own "Select an Engineering Context to begin." empty
+state, requiring a manual click before ANY analyzer would resolve or
+compute anything, even though the bay was already fully listed in the
+selector. The Engineering Context itself (id/status/members/phase) is
+byte-for-byte identical either way — confirmed by diffing the two
+creation paths directly.
+
+**Fix**: `wwAnalysisPublishContexts()` is now the ONE place deciding
+whether a published list is "fresh" — the first time THIS workspace
+session ever has a usable list, tracked via a new
+`wwAnalysisContextState.everPublishedUsableContexts` flag — firing the
+same `wwAnalysisPublishFreshContextsDiscovered()` regardless of whether
+the list came from the immediate fetch (DEC-104's upload-time
+preparation), the blocking bootstrap (pre-DEC-104/fallback path), or the
+background pass adding a later source. The now-redundant explicit
+fresh-fire call inside `wwAnalysisDiscoverUncoveredSources()`'s own
+blocking branch was removed. See
+[DECISIONS.md — DEC-105](DECISIONS.md#dec-105--dec-104-follow-up-analysiss-own-auto-select-the-first-bay-signal-is-decoupled-from-whenhow-an-engineering-context-was-created)
+for the full record, including why `needs_review`/"covered source"
+semantics and early-discovery/calculated-channel timing were both
+investigated and confirmed NOT contributory (both pre-existing,
+unchanged by DEC-104).
+
+**Why DEC-104's own acceptance test missed this**: its "upload -> directly
+to Analysis" scenario manually called `selectOption()` before checking
+values rendered — the SAME "clear/replace before testing" blind spot
+this fix's own task specification warned about, just with a manual
+SELECT instead of a manual CLEAR. `browser-tests/post_upload_readiness.spec.js`
+now asserts auto-selection directly (no manual `selectOption()`) and
+gained a dedicated `phasor_smoke_three_phase`-based suite (6 new tests)
+proving all five analyzers (Phasor/Overcurrent/Impedance Locus/Sequence
+Components/Distance Protection) independently auto-resolve, auto-compute,
+and auto-render immediately after upload with zero manual context
+selection — all seven new/changed assertions verified to FAIL against
+the pre-fix code and PASS against the fix. `test_frontend_phasor_analysis.py`'s
+two structural tests asserting the OLD fresh-fire location were updated
+to assert the new one. Full backend suite and full Playwright suite pass.
+
 **Flake cleanup (2026-09-19, continued) — the third and final DEC-099
 item ("Speed selection 4x") is now `[CLOSED]`; DEC-099 has zero
 remaining `[OPEN]` items.** Test-synchronization bug, no production

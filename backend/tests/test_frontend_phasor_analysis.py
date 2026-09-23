@@ -265,24 +265,47 @@ class TestSharedAnalysisContextLifecycle:
         body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const WW_OVERCURRENT_MSG_SELECT_CONTEXT")
         assert body.count("wwAnalysisFetchContexts(workspaceId)") == 1
 
-    def test_fresh_discovery_publishes_contexts_and_notifies_the_fresh_hook(self):
+    def test_fresh_discovery_publishes_contexts_which_itself_notifies_the_fresh_hook(self):
+        """DEC-105 (2026-09-23 owner-UAT regression fix): the fresh-hook
+        notification is no longer decided inside wwAnalysisDiscoverUncoveredSources()
+        itself -- it moved into wwAnalysisPublishContexts() (see that
+        function's own docstring), so it fires identically whether THIS
+        discovery pass created the context or DEC-104's own upload-time
+        preparation already had. wwAnalysisDiscoverUncoveredSources()
+        still publishes via the shared call; the fresh-decision is no
+        longer its own responsibility."""
         source = _source()
         body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const WW_OVERCURRENT_MSG_SELECT_CONTEXT")
         assert "wwAnalysisPublishContexts(contexts);" in body
-        assert "wwAnalysisPublishFreshContextsDiscovered(contexts);" in body
+        assert "wwAnalysisPublishFreshContextsDiscovered(contexts);" not in body
 
-    def test_fresh_hook_only_fires_on_the_zero_context_path_never_the_background_path(self):
-        """Owner instruction: adding an uncovered source B must not
-        unnecessarily switch the engineer away from an already-selected
-        bay A -- the fresh-discovery hook is scoped to `blocking &&
-        !hadContextsBefore`, never fired for the incremental/background
-        discovery path. Whether to actually auto-select (given the
-        consumer's OWN current selection) is each analyzer's own policy,
-        not decided here."""
+        publish_body = _function_body(source, "function wwAnalysisPublishContexts", "function wwAnalysisPublishLifecyclePhase")
+        assert "wwAnalysisPublishFreshContextsDiscovered(contexts);" in publish_body
+
+    def test_fresh_hook_only_fires_the_first_time_a_usable_list_is_ever_published_this_session(self):
+        """Owner instruction (unchanged intent, relocated mechanism):
+        adding an uncovered source B must not unnecessarily switch the
+        engineer away from an already-selected bay A -- the fresh-
+        discovery hook now fires at most once per workspace session,
+        gated by `wwAnalysisContextState.everPublishedUsableContexts`
+        (DEC-105), rather than by the discovery pass's own `blocking`
+        flag. This covers BOTH the pre-DEC-104 case (context created
+        while Analysis is open) and the post-DEC-104 case (context
+        already existed at upload time) with the SAME mechanism -- see
+        DECISIONS.md DEC-105 for the full record. Whether to actually
+        auto-select (given the consumer's OWN current selection) remains
+        each analyzer's own policy, not decided here."""
         source = _source()
-        body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const WW_OVERCURRENT_MSG_SELECT_CONTEXT")
-        assert "if (blocking && !hadContextsBefore) {" in body
-        assert "wwAnalysisPublishFreshContextsDiscovered(contexts);" in body
+        state_body = _shared_analysis_block(source)
+        assert "everPublishedUsableContexts: false," in state_body
+
+        publish_body = _function_body(source, "function wwAnalysisPublishContexts", "function wwAnalysisPublishLifecyclePhase")
+        assert "if (contexts.length > 0 && !wwAnalysisContextState.everPublishedUsableContexts) {" in publish_body
+        assert "wwAnalysisContextState.everPublishedUsableContexts = true;" in publish_body
+        assert "wwAnalysisPublishFreshContextsDiscovered(contexts);" in publish_body
+
+        reset_body = _function_body(source, "function wwAnalysisResetContextState", "// The fixed six-role order")
+        assert "wwAnalysisContextState.everPublishedUsableContexts = false;" in reset_body
 
     def test_suggested_and_needs_review_contexts_are_not_filtered_out(self):
         """Detection may suggest; engineer confirmation remains

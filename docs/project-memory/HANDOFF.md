@@ -8,6 +8,115 @@ Last updated: **2026-09-23**
 
 ## What was most recently done
 
+**Production regression fix (DEC-105): Analysis stopped auto-selecting a
+bay after DEC-104.** Owner UAT reported: *"Analysis/Analyzer worked
+before DEC-104, but does not work after DEC-104."* Investigated as a
+high-priority regression, NOT by reverting DEC-104.
+
+**Root cause, confirmed by direct reproduction (real browser, real
+backend, zero test workarounds) — NOT a data/API defect.** Every
+analyzer's own "auto-select the first usable bay" behavior was wired
+exclusively to `wwAnalysisPublishFreshContextsDiscovered()`, which used
+to fire ONLY from inside `wwAnalysisDiscoverUncoveredSources()`'s own
+BLOCKING branch — the branch that only ever ran when Analysis's very
+first fetch for a workspace found ZERO contexts. Before DEC-104 that was
+always true on a fresh upload (nothing could exist yet, so this
+coincidentally looked like "fires whenever a usable context first
+appears"). After DEC-104, a freshly-uploaded source's Engineering
+Context is normally already fully formed by the time Analysis's first
+fetch runs, so that first fetch returns a non-empty list immediately,
+the blocking branch never executes, and the fresh signal never fires for
+ANY of the five analyzers — each one fell through to its own "Select an
+Engineering Context to begin." empty state, requiring a manual click
+before any analyzer would resolve or compute anything, even though the
+bay was already fully populated in the selector. The Engineering Context
+itself (id/display_name/status/members/phase/phase_source) is
+byte-for-byte identical whether created at upload time or by the old
+bootstrap — confirmed by diffing both creation paths directly against
+the same fixture.
+
+**Every other candidate in the investigation's own checklist was ruled
+out by direct code inspection, not assumption**: `needs_review`/
+"covered source" semantics (`wwAnalysisCoveredSourceIds()` and `GET
+.../engineering-contexts` both treat every status identically, and
+always have — untouched by DEC-104, a pre-existing gap in Analysis's own
+UX unrelated to this regression); early-discovery completeness/
+calculated-channel timing (`generate_suggested_contexts_for_source()`
+builds its candidate set exclusively from the source's own raw analog
+channels — calculated channels have never been part of automatic
+detection at any point, so upload-time vs. later timing cannot produce a
+different or incomplete result for the same source); the idempotency
+skip rule (moot for the same reason — detection's own output for a given
+source never varies with time).
+
+**Fix.** `wwAnalysisPublishContexts()` (`frontend/index.html`) is now
+the ONE place deciding whether a published context list is "fresh" — the
+first time THIS workspace session ever has a usable (non-empty) list to
+show ANY consumer — tracked via a new `wwAnalysisContextState.everPublishedUsableContexts`
+flag (reset alongside `attemptedSourceIds` in the existing
+`wwAnalysisResetContextState()` "Start New Workspace" hook). It fires
+`wwAnalysisPublishFreshContextsDiscovered()` itself, exactly once per
+workspace session, regardless of whether the list came from the
+immediate fetch (DEC-104's own upload-time preparation), the blocking
+bootstrap (the pre-DEC-104/fallback path, still fully supported), or the
+background pass adding a later-uploaded source's own bay. The
+now-redundant explicit fresh-fire call inside
+`wwAnalysisDiscoverUncoveredSources()`'s own blocking branch was removed
+along with its now-unused `hadContextsBefore` local — there is exactly
+ONE trigger path now. No analyzer-specific code changed; the bug was
+entirely in WHEN the shared layer notified them, never in what they do
+once notified. See
+[DECISIONS.md — DEC-105](DECISIONS.md#dec-105--dec-104-follow-up-analysiss-own-auto-select-the-first-bay-signal-is-decoupled-from-whenhow-an-engineering-context-was-created)
+for the full record.
+
+**Why the DEC-104 invariant remains valid**: this fix does not move
+Engineering Context creation back to Analysis-page-open, and does not
+touch `prepare_workspace_source()`, `generate_suggested_contexts_for_source()`,
+or the detection algorithm at all — upload-time preparation stays exactly
+as DEC-104 established it. What changed is that Analysis's own
+CONSUMPTION of an already-prepared context now works correctly
+regardless of when or how that context came to exist.
+
+**Why DEC-104's own acceptance test missed this**: `browser-tests/post_upload_readiness.spec.js`'s
+"upload -> directly to Analysis" test manually called `selectOption()`
+before checking values rendered — the exact "clear/replace before
+testing" blind spot this investigation's own task specification warned
+about, just with a manual SELECT instead of a manual CLEAR, which masked
+whether auto-selection actually worked. Fixed by removing that manual
+selection (now asserts auto-selection + auto-render directly) and adding
+a dedicated `phasor_smoke_three_phase`-based suite (6 new tests: each of
+Phasor/Overcurrent/Impedance Locus/Sequence Components/Distance
+Protection independently proven to auto-resolve, auto-compute, and
+auto-render with zero manual context selection, plus one test proving
+all five are simultaneously auto-selected from ONE Analysis-page visit).
+All seven new/changed assertions verified to FAIL against the pre-fix
+code (via a temporary `git stash` of the frontend change alone) and PASS
+against the fix. `test_frontend_phasor_analysis.py`'s two structural
+tests asserting the OLD fresh-fire location were updated to assert the
+new one.
+
+**Files**: `frontend/index.html` only for the fix itself (`wwAnalysisContextState`
+gains `everPublishedUsableContexts`, `wwAnalysisPublishContexts()` gains
+the fresh-detection logic, `wwAnalysisResetContextState()` resets the new
+flag, `wwAnalysisDiscoverUncoveredSources()` loses its now-redundant
+explicit fresh-fire call). `browser-tests/post_upload_readiness.spec.js`
+(manual selection removed from the existing Analysis test; 6 new tests).
+`backend/tests/test_frontend_phasor_analysis.py` (2 structural tests
+updated to match the relocated logic). `docs/project-memory/DECISIONS.md`
+(DEC-105), `CURRENT_STATE.md`, `ANALYSIS_WORKSPACE.md`, `HANDOFF.md`
+(this file). Zero backend production changes — this was purely a
+frontend consumption bug.
+
+**Validation**: focused Engineering Context/input-resolution/all-five-
+analyzer backend suites pass; full backend suite passes; full Playwright
+suite passes (Analysis/Compliance/Playback/smoke regression run
+explicitly); `git diff --check` clean.
+
+**Stop condition honored**: regression fix only — no Compliance Slice 3,
+no other feature work started.
+
+## What was done in the prior session — Shared post-upload workspace preparation (DEC-104)
+
 **Shared post-upload workspace preparation (DEC-104).** Owner UAT
 generalized the previous session's Compliance-specific fix into an
 application-wide invariant: *"Once an event file is uploaded

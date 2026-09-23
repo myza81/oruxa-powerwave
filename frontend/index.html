@@ -36942,6 +36942,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // reset call alongside every other per-workspace state
             // reset there).
             attemptedSourceIds: new Set(),
+            // DEC-104 follow-up (2026-09-23 owner UAT regression fix):
+            // true once `wwAnalysisPublishContexts()` has published a
+            // non-empty list at least once THIS workspace session --
+            // drives the "fresh"/auto-select-first-bay signal below.
+            // Reset only by wwClearWorkspace(), same as attemptedSourceIds.
+            everPublishedUsableContexts: false,
         };
         const wwAnalysisContextConsumers = [];
 
@@ -36971,9 +36977,39 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_ANALYSIS_CONTEXT_PHASE_NO_SUGGESTIONS = "no_suggestions";
         const WW_ANALYSIS_CONTEXT_PHASE_UNREACHABLE = "unreachable";
 
+        // DEC-104 follow-up (2026-09-23 owner UAT regression fix): this
+        // is now the ONE place that decides whether a published list is
+        // "fresh" -- i.e. the first time THIS workspace session ever has
+        // a usable (non-empty) context list to show, regardless of
+        // WHICH path produced it: the immediate fetch finding contexts
+        // that upload-time preparation (DEC-104's own
+        // prepare_workspace_source()) already created, the blocking
+        // bootstrap creating one from nothing, or the non-blocking
+        // background discovery adding a later-uploaded source's own bay.
+        // Previously this signal was fired only from inside
+        // wwAnalysisDiscoverUncoveredSources()'s own blocking path, which
+        // silently assumed context creation ALWAYS happened while
+        // Analysis was open -- true before DEC-104, false after (upload-
+        // time preparation means the very first fetch here can already
+        // return a non-empty list). Consolidating the decision here means
+        // every analyzer's own onFreshContextsDiscovered-driven "auto-
+        // select the first bay" behavior works identically whether the
+        // context was prepared one millisecond ago, during upload, or
+        // moments ago by a fallback bootstrap -- exactly the "shared
+        // readiness means consumers must work regardless of when/how
+        // shared state was prepared" principle DEC-104 itself requires.
+        // Fires at most once per workspace session (see
+        // wwAnalysisResetContextState()) -- an already-had-contexts
+        // publish (a later-uploaded source's own bay appearing, a plain
+        // page revisit) never re-fires this, so an engineer's own
+        // existing selection is never stolen.
         function wwAnalysisPublishContexts(contexts) {
             wwAnalysisContextState.contexts = contexts;
             for (const consumer of wwAnalysisContextConsumers) consumer.onContexts(contexts);
+            if (contexts.length > 0 && !wwAnalysisContextState.everPublishedUsableContexts) {
+                wwAnalysisContextState.everPublishedUsableContexts = true;
+                wwAnalysisPublishFreshContextsDiscovered(contexts);
+            }
         }
         function wwAnalysisPublishLifecyclePhase(phase) {
             for (const consumer of wwAnalysisContextConsumers) {
@@ -37199,26 +37235,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return;
             }
 
-            const hadContextsBefore = knownContexts.length > 0;
+            // DEC-104 follow-up (2026-09-23): the "fresh"/auto-select-
+            // first-bay signal is no longer decided here -- it is now
+            // wwAnalysisPublishContexts()'s own job (see that function's
+            // docstring), since it must fire identically whether THIS
+            // discovery pass created the context or an earlier upload-
+            // time preparation pass already had. The call below still
+            // publishes to every consumer exactly as before; only the
+            // fresh-decision moved.
             wwAnalysisPublishContexts(contexts);
 
             if (contexts.length > 0) {
-                if (blocking && !hadContextsBefore) {
-                    // Owner instruction (relocated unchanged from
-                    // Phasor's own original implementation): prefer
-                    // auto-selecting the first usable context after a
-                    // successful automatic suggestion, so the engineer
-                    // never needs an extra click merely because the
-                    // context was just created. Deliberately ONLY for
-                    // the fresh, nothing-existed-before path -- an
-                    // already-had-contexts discovery pass NEVER fires
-                    // this (never jumps the engineer away from whatever
-                    // bay they already had open merely because a new one
-                    // was just discovered). Each consumer decides for
-                    // itself whether IT already has a selection before
-                    // acting on this.
-                    wwAnalysisPublishFreshContextsDiscovered(contexts);
-                }
                 return;
             }
 
@@ -40597,6 +40624,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwAnalysisResetContextState() {
             wwAnalysisContextState.contexts = [];
             wwAnalysisContextState.attemptedSourceIds = new Set();
+            wwAnalysisContextState.everPublishedUsableContexts = false;
         }
 
         // The fixed six-role order the backend's own
