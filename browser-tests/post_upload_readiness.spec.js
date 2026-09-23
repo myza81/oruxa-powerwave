@@ -605,3 +605,114 @@ test.describe("DEC-107: initial context auto-selection is representation-eligibi
     await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(rmsbayId);
   });
 });
+
+// DEC-108 (2026-09-23 owner-UAT follow-up to DEC-107): "KPDN1 Overcurrent
+// is rejected as non-instantaneous, even though the waveform display
+// clearly shows a genuine instantaneous AC current waveform." Root cause,
+// confirmed by direct investigation: the SHARED algorithmic waveform-form
+// fallback detector (`app.domain.rms_detector.classify_waveform_form()`)
+// evaluated one long (up to 1 second) aggregate slice spanning THREE
+// physical states a real disturbance record legitimately contains --
+// clean pre-fault sinusoid, fault, near-zero post-clearance collapse --
+// and the collapse tail diluted the slice-wide zero-crossing/frequency-
+// correlation indicators enough that a genuinely unambiguous instantaneous
+// current was voted UNCERTAIN, even though the pre-fault and fault
+// portions were EACH independently confident (5/5 votes in isolation).
+// Fixed with cycle-based multi-window classification (DEC-108) --
+// completely shared, so this suite proves the SAME upload fixes
+// Overcurrent, Impedance, AND Distance Protection through the ONE
+// detector, never an analyzer-specific bypass.
+//
+// Fixture: disturbance_record_multibay(.cfg/.dat) -- newly committed,
+// ONE bay (DISTBAY), Voltage a clean instantaneous sinusoid throughout
+// (never the reported problem), Current the exact KPDN1-style shape
+// investigation reproduced and confirmed end-to-end against the real
+// backend: clean pre-fault [0, 0.15s), fault [0.15s, 0.25s), near-zero
+// collapse for the rest of the 2-second record. `waveform_form` is
+// `"unknown"` for every channel (the unavoidable default for a raw
+// COMTRADE upload), so this suite genuinely exercises the algorithmic
+// fallback detector, never trusted metadata.
+//
+// Like every other test in this file, nothing is manually seeded or
+// selected -- upload-time DEC-104 discovery, DEC-105's auto-selection
+// signal, DEC-106's role compatibility, and DEC-107's/DEC-108's own
+// representation eligibility must all combine correctly with zero
+// manual intervention.
+test.describe("DEC-108: multi-window waveform-form detector correctly accepts genuine disturbance-record instantaneous current", () => {
+  async function uploadDisturbanceRecordFixture(page) {
+    await page.goto("/index.html");
+    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "disturbance_record_multibay.cfg"));
+    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "disturbance_record_multibay.dat"));
+    await page.locator("#uploadModalSubmitBtn").click();
+    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+    const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    await expect(row).toBeVisible();
+  }
+
+  async function openAnalysisTab(page, tabId) {
+    await page.locator("#mainNavAnalysisBtn").click();
+    await expect(page.locator("#pageAnalysis")).toBeVisible();
+    await page.locator(`#${tabId}`).click();
+    await expect(page.locator(`#${tabId}`)).toHaveClass(/active/);
+  }
+
+  test("Overcurrent: context auto-selected, no waveform_form_not_eligible, real RMS current renders", async ({ page }) => {
+    await uploadDisturbanceRecordFixture(page);
+    await openAnalysisTab(page, "wwAnalysisTypeOvercurrentBtn");
+
+    await expect(page.locator("#wwOvercurrentContextSelect")).not.toHaveValue("", { timeout: 10000 });
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toContain("Measured RMS current");
+      expect(text).toMatch(/40\.0\s*A/);
+    }).toPass({ timeout: 5000 });
+    // Never the rejection message this decision fixes.
+    await expect(page.locator("#wwOvercurrentEmptyState")).not.toContainText("not an eligible instantaneous waveform");
+  });
+
+  test("Impedance Locus: same context eligible, current point and locus both render", async ({ page }) => {
+    await uploadDisturbanceRecordFixture(page);
+    await openAnalysisTab(page, "wwAnalysisTypeImpedanceBtn");
+
+    await expect(page.locator("#wwImpedanceContextSelect")).not.toHaveValue("", { timeout: 10000 });
+    await expect(async () => {
+      const text = await page.locator("#wwImpedanceValuesList").innerText();
+      expect(text).toContain("Phase impedance");
+    }).toPass({ timeout: 10000 });
+    await expect(page.locator("#wwImpedanceSvg")).toBeVisible({ timeout: 10000 });
+    await expect(page.locator("#wwImpedanceEmptyState")).not.toContainText("not available for this phase");
+  });
+
+  test("Distance Protection: loop result renders", async ({ page }) => {
+    await uploadDisturbanceRecordFixture(page);
+    await openAnalysisTab(page, "wwAnalysisTypeDistanceBtn");
+
+    await expect(page.locator("#wwDistanceContextSelect")).not.toHaveValue("", { timeout: 10000 });
+    await expect(async () => {
+      const text = await page.locator("#wwDistanceValuesList").innerText();
+      expect(text).toContain("Loop");
+    }).toPass({ timeout: 10000 });
+  });
+
+  test("Phasor and Sequence Components also resolve the Current role correctly (regression, not merely unaffected)", async ({ page }) => {
+    await uploadDisturbanceRecordFixture(page);
+    await page.locator("#mainNavAnalysisBtn").click();
+    await expect(page.locator("#pageAnalysis")).toBeVisible();
+
+    await expect(page.locator("#wwPhasorContextSelect")).not.toHaveValue("", { timeout: 10000 });
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/); // Voltage
+      expect(text).toMatch(/40\.0\s*A/); // Current -- now correctly resolved too
+    }).toPass({ timeout: 5000 });
+
+    await page.locator("#wwAnalysisTypeSequenceBtn").click();
+    await expect(page.locator("#wwSequenceContextSelect")).not.toHaveValue("", { timeout: 10000 });
+    await expect(async () => {
+      const text = await page.locator("#wwSequenceValuesList").innerText();
+      expect(text).toMatch(/40\.0\s*A/); // Current sequence, previously would have shown "Missing"
+    }).toPass({ timeout: 5000 });
+  });
+});

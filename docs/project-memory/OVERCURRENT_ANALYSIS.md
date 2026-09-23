@@ -184,6 +184,29 @@ classify_waveform_form()` detector, with `UNCERTAIN` REJECTED — there is
 no override mechanism anywhere in this v1's read-only, selected-time
 analysis, the same reasoning Phasor's own docstring already establishes).
 
+**DEC-107 (2026-09-23): a preflight-only check of this exact eligibility
+rule, `check_overcurrent_readiness()`, is exposed via `GET .../input-readiness`**
+— identical logic to the eligibility check above, but with no
+`analysis_time` parameter at all, so the frontend can ask "would this
+context's own Current channel be eligible" BEFORE committing to an
+auto-selection or a computation attempt, never conflating this Level 2
+(representation) question with Level 3 (does the RMS estimate succeed
+at THIS particular instant).
+
+**DEC-108 (2026-09-23): `classify_waveform_form()` itself was corrected
+to cycle-based multi-window classification** — a genuine disturbance
+record (clean pre-fault current, then a fault, then a near-zero post-
+clearance collapse) was previously misclassified `UNCERTAIN` purely
+because one long aggregate slice spanning all three physical states
+diluted the slice-wide indicators, even though each state was
+individually unambiguous. This section's own eligibility POLICY (trusted
+metadata wins; `unknown` falls back to the detector; `UNCERTAIN` is
+still rejected, no override) is completely unchanged — only the
+detector's own internal classification method for the `unknown` case
+was corrected. See
+[DECISIONS.md — DEC-108](DECISIONS.md#dec-108--dec-107-follow-up-the-shared-waveform-form-fallback-detector-is-corrected-to-cycle-based-multi-window-classification-so-a-genuine-disturbance-record-pre-fault--fault--post-clearance-collapse-is-no-longer-misclassified-uncertain-merely-because-one-long-aggregate-slice-mixes-its-own-multiple-physical-states)
+for the full record.
+
 ## Pickup basis and CT conversion
 
 **Pickup is always specified in relay-secondary amperes** — an explicit,

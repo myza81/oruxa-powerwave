@@ -42,6 +42,7 @@ from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import (
     RMS_STATUS_LIKELY_ALREADY_RMS_OR_MAGNITUDE,
     RMS_STATUS_SUITABLE,
+    RMS_STATUS_UNCERTAIN,
     check_rms_eligibility,
     create_calculated_channel,
     delete_calculated_channel,
@@ -1365,6 +1366,92 @@ class TestRmsEligibility:
         )
         assert eligibility.status == RMS_STATUS_SUITABLE
         assert eligibility.override_required is False
+
+
+def _disturbance_source(source_registry, *, source_id="src1", channel_name="IA", fs=1000.0, f0=50.0,
+                         duration=2.0, unit="A", engineering_type="Current"):
+    """DEC-108: the SAME KPDN1-style disturbance shape
+    `test_rms_detector.py::_disturbance_current()` uses -- clean
+    pre-fault [0, 0.15s), fault [0.15s, 0.25s), near-zero post-
+    clearance collapse -- `waveform_form` left `unknown` so this
+    exercises the shared algorithmic detector, the same fallback path
+    `check_rms_eligibility()` uses for every real COMTRADE upload."""
+    n = int(round(fs * duration))
+    time = np.arange(n, dtype=np.float64) / fs
+    w = 2.0 * np.pi * f0
+    values = np.empty(n)
+    for k in range(n):
+        t = time[k]
+        if t < 0.15:
+            values[k] = 40.0 * np.sqrt(2) * np.sin(w * t)
+        elif t < 0.25:
+            values[k] = 400.0 * np.sqrt(2) * np.sin(w * t)
+        else:
+            values[k] = 0.0
+    rng = np.random.default_rng(42)
+    values = values + rng.normal(0, 0.05, n)
+    _add_source(source_registry, _active_source(
+        source_id=source_id, time=time, channels={channel_name: values},
+        units={channel_name: unit}, waveform_forms={channel_name: WAVEFORM_FORM_UNKNOWN},
+        engineering_types={channel_name: engineering_type},
+    ))
+    return time, values
+
+
+class TestRmsEligibilityDisturbanceRecord:
+    """DEC-108 (2026-09-23 owner-UAT regression fix) -- the SAME shared
+    detector `check_rms_eligibility()` calls for its own `unknown`-
+    metadata fallback (`app.domain.rms_detector.classify_waveform_form()`)
+    is corrected here, so a genuine KPDN1-style disturbance CURRENT
+    channel must now be RMS-eligible without any override -- proven
+    directly at the calculated-channel layer, not just Overcurrent/
+    Phasor's own readiness endpoints, confirming the fix is genuinely
+    shared rather than analyzer-specific. See `test_rms_detector.py`'s
+    own `TestMultiWindowDetection` for the detector-level unit proof
+    this integration test builds on."""
+
+    def test_genuine_disturbance_current_is_rms_eligible_without_override(self, registries):
+        source_registry, calc_registry = registries
+        _disturbance_source(source_registry)
+        eligibility = check_rms_eligibility(
+            workspace_id=WS, input_ref=ChannelRef(kind="source", source_id="src1", channel_name="IA"),
+            nominal_frequency_hz=50.0, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert eligibility.status == RMS_STATUS_SUITABLE
+        assert eligibility.override_required is False
+
+    def test_existing_genuine_rms_metadata_still_blocked_without_override(self, registries):
+        """Unaffected by DEC-108 -- explicit trusted metadata still wins
+        outright, no detector run at all (unchanged from Phase 5B)."""
+        source_registry, calc_registry = registries
+        _sinusoid_source(source_registry, waveform_form=WAVEFORM_FORM_RMS)
+        eligibility = check_rms_eligibility(
+            workspace_id=WS, input_ref=ChannelRef(kind="source", source_id="src1", channel_name="VA"),
+            nominal_frequency_hz=50.0, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert eligibility.status == RMS_STATUS_LIKELY_ALREADY_RMS_OR_MAGNITUDE
+        assert eligibility.override_required is True
+
+    def test_uncertain_signal_still_requires_override(self, registries):
+        """Unaffected by DEC-108 -- a genuinely ambiguous signal (random
+        noise) must still resolve UNCERTAIN and still require an
+        override, exactly like before this correction."""
+        source_registry, calc_registry = registries
+        rng = np.random.default_rng(3)
+        n = int(round(5000.0 * 1.0))
+        time = np.arange(n, dtype=np.float64) / 5000.0
+        values = rng.normal(0, 1.0, size=n)
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=time, channels={"VA": values},
+            units={"VA": "kV"}, waveform_forms={"VA": WAVEFORM_FORM_UNKNOWN},
+            engineering_types={"VA": "Voltage"},
+        ))
+        eligibility = check_rms_eligibility(
+            workspace_id=WS, input_ref=ChannelRef(kind="source", source_id="src1", channel_name="VA"),
+            nominal_frequency_hz=50.0, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert eligibility.status == RMS_STATUS_UNCERTAIN
+        assert eligibility.override_required is True
 
 
 # ---- DEC-084 Calc Slice 1: Calculated-Channel Null-Handling Policy ----

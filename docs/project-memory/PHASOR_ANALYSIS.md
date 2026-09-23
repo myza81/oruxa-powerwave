@@ -171,6 +171,18 @@ since Phasor v1 has no override mechanism:
   real precedent (rather than the audit's own earlier guess) means
   rejecting, not warning-and-allowing.
 
+**DEC-108 (2026-09-23)**: `classify_waveform_form()` itself is still
+called exactly once per candidate, as described above — but internally,
+for the `unknown` case, it now evaluates cycle-based multi-window
+evidence across the same representative sample-array region rather than
+one long aggregate slice, correcting a real misclassification a genuine
+disturbance record (pre-fault + fault + post-clearance collapse) could
+otherwise trigger. The external contract this section describes
+(`LIKELY_INSTANTANEOUS` → eligible; `LIKELY_MAGNITUDE_OR_RMS`/`UNCERTAIN`
+→ rejected, no override) is completely unchanged. See
+[DECISIONS.md — DEC-108](DECISIONS.md#dec-108--dec-107-follow-up-the-shared-waveform-form-fallback-detector-is-corrected-to-cycle-based-multi-window-classification-so-a-genuine-disturbance-record-pre-fault--fault--post-clearance-collapse-is-no-longer-misclassified-uncertain-merely-because-one-long-aggregate-slice-mixes-its-own-multiple-physical-states)
+for the full record.
+
 Calculated channels follow the identical rule, using their own
 `engineering_type`/`waveform_form` metadata — no automatic phase
 inheritance is added for a calculated channel (unchanged from Slice 1's

@@ -8,6 +8,110 @@ Last updated: **2026-09-23**
 
 ## What was most recently done
 
+**Production regression fix, part 4 (DEC-108): the shared waveform-form
+fallback detector itself was corrected to multi-window classification.**
+Owner UAT: *"KPDN1 Overcurrent is rejected as non-instantaneous, even
+though the waveform display clearly shows a genuine instantaneous AC
+current waveform... contains a bipolar sinusoidal waveform before/
+during the disturbance, becomes heavily disturbed around the fault/
+event, then collapses close to zero."*
+
+**Preceded by a dedicated investigation-only prior session** (no
+production change made that session) that established hard evidence for
+the root cause: `app.domain.rms_detector.classify_waveform_form()`
+evaluated its five indicators exactly ONCE over ONE long aggregate
+slice (the first up to 1 second of the record). A genuine disturbance
+record legitimately contains multiple physical states within that same
+slice — clean pre-fault sinusoid, fault, near-zero post-clearance
+collapse — and the collapse tail diluted the slice-WIDE zero-crossing-
+ratio and targeted-frequency-correlation indicators enough that a
+genuinely instantaneous current scored only 2 instantaneous votes / 0
+magnitude votes (short of the 4-vote confidence floor), even though a
+clean pre-fault 5-cycle window and a disturbance-centered 5-cycle window
+each INDEPENDENTLY scored 5/5 confident votes. A sensitivity sweep found
+a sharp, reproducible tipping point around 40-50% "active AC" fraction
+of the region.
+
+**Three-level model (DEC-107) fully preserved** — this fix touches
+ONLY the Level 2 representation classifier's own internal method; Level
+1 (role compatibility) and Level 3 (runtime computation availability,
+still never checked by any readiness function) are untouched, and
+trusted-metadata precedence (explicit `instantaneous`/`rms`/`magnitude`)
+is unchanged.
+
+**Fix: cycle-based multi-window classification, reusing the EXISTING
+five indicators/thresholds verbatim** — the confirmed problem was window
+AGGREGATION, never threshold tuning. The representative region (still
+capped at `MAX_SLICE_SECONDS=1.0`, unchanged) is tiled with
+deterministic, non-overlapping, `nominal_frequency_hz`-derived 5-cycle
+windows (`_WINDOW_CYCLES`); each is classified independently via the
+SAME original per-window vote logic, extracted unchanged into
+`_classify_slice()`. The channel-level result (`_classify_windows()`)
+requires at least 2 informative windows (`_MIN_WINDOWS_FOR_CONFIDENT_CATEGORY`)
+agreeing with ZERO opposing votes — the identical "more evidence, no
+contradicting evidence" shape the per-window vote count already used,
+one level up. A window whose own RMS is below 10% of the whole region's
+own RMS (`_LOW_ENERGY_WINDOW_RATIO`, scale-relative, never an absolute
+ampere/volt threshold) is skipped as uninformative — proven necessary
+directly: without it, a real collapse tail's own measurement noise could
+still accumulate spurious per-window votes. When fewer than two windows
+fit, this falls back to the ORIGINAL single-slice classification
+unchanged, so short-record behavior is completely unaffected — all 10
+pre-existing detector tests pass unmodified.
+
+**Genuine RMS/magnitude safety proven, not assumed**: four adversarial
+channel shapes (a slow positive envelope around a large DC bias, a
+stepped RMS-output shape with no 50Hz oscillation, a full-wave-rectified
+`|sin|` signal, a mostly-flat positive signal with noise) were tested
+directly against the new detector and confirmed to never become falsely
+instantaneous. The conservative single-window boundary (only ~1 window's
+worth of real evidence, e.g. 10% active fraction) is documented as the
+CORRECT, evidence-based answer, not a residual gap — 15% active fraction
+(two full windows) already classifies confidently, proven side-by-side
+in the same test.
+
+**Propagates through the ONE shared detector to every consumer, no
+analyzer-specific bypass.** `check_overcurrent_readiness()`/
+`compute_overcurrent_analysis()`, `check_phasor_diagram_readiness()`/
+`compute_phasor_diagram()` (and therefore Impedance/Distance Protection/
+Sequence Components), and `calculated_channel_service.check_rms_eligibility()`
+all call `classify_waveform_form()` unchanged — none of their own call
+sites, logic, or thresholds were touched. Proven directly end-to-end
+with a new committed fixture (`disturbance_record_multibay.cfg/.dat`,
+one bay, clean Voltage throughout, KPDN1-style disturbance Current):
+Overcurrent's real one-cycle RMS calculation, Impedance's real
+phasor+impedance-point calculation, Distance Protection's real loop
+calculation, and calculated-channel RMS creation all now succeed for a
+genuine disturbance record. See
+[DECISIONS.md — DEC-108](DECISIONS.md#dec-108--dec-107-follow-up-the-shared-waveform-form-fallback-detector-is-corrected-to-cycle-based-multi-window-classification-so-a-genuine-disturbance-record-pre-fault--fault--post-clearance-collapse-is-no-longer-misclassified-uncertain-merely-because-one-long-aggregate-slice-mixes-its-own-multiple-physical-states)
+for the full record, including the sensitivity-sweep evidence and every
+alternative considered/rejected.
+
+**Files**: `backend/app/domain/rms_detector.py` only for production
+logic. Zero changes to `evaluate_rms()`/`estimate_trailing_rms_at_time()`/
+`estimate_phasor()`/`compute_impedance_point()`/Distance Protection
+math. New test coverage: `test_rms_detector.py`
+(`TestMultiWindowDetection`, `TestMultiWindowDoesNotWeakenGenuineRmsSafety`
+-- 15 scenarios combined), `test_calculated_channel_service.py`
+(`TestRmsEligibilityDisturbanceRecord`, 3 scenarios), new
+`test_dec108_disturbance_record_integration.py` (13 scenarios), new
+fixture `disturbance_record_multibay.cfg/.dat`, and 4 new
+`browser-tests/post_upload_readiness.spec.js` scenarios — all 17
+behavior-changing assertions across every new/modified test file
+verified to FAIL against the pre-fix detector (via a temporary `git
+stash` of `rms_detector.py` alone) and PASS against the fix. DEC-107's
+own RMSBAY/INSTBAY fixture regression preserved exactly.
+
+**Validation**: `test_rms_detector.py`/calculated-channel RMS
+eligibility/Overcurrent/Phasor/Impedance/Distance readiness+service+API
+suites all pass; full backend suite passes; full Playwright suite
+passes; `git diff --check` clean.
+
+**Stop condition honored**: this shared detector correction only — no
+Compliance Slice 3, no other feature work started.
+
+## What was done in the prior session — Production regression fix, part 3 (DEC-107): DEC-106 fixed role compatibility but not analyzer input eligibility
+
 **Production regression fix, part 3 (DEC-107): DEC-106 fixed role
 compatibility but not analyzer input eligibility.** Owner UAT, against a
 context DEC-106 had already auto-selected as "role-compatible":

@@ -17338,6 +17338,214 @@ changing assertions verified to FAIL against the pre-fix frontend (via a
 temporary `git stash` of `frontend/index.html` alone) and PASS against
 the fix. Full backend suite and full Playwright suite pass.
 
+## DEC-108 — DEC-107 follow-up: the shared waveform-form fallback detector is corrected to cycle-based MULTI-WINDOW classification, so a genuine disturbance record (pre-fault + fault + post-clearance collapse) is no longer misclassified UNCERTAIN merely because ONE long aggregate slice mixes its own multiple physical states
+
+Date: 2026-09-23
+Status: Approved — implemented (owner-UAT production fix, following a
+dedicated investigation-only prior session with no production change).
+Source: owner UAT ("KPDN1 Overcurrent is rejected as non-instantaneous,
+even though the waveform display clearly shows a genuine instantaneous
+AC current waveform... contains a bipolar sinusoidal waveform before/
+during the disturbance, becomes heavily disturbed around the fault/
+event, then collapses close to zero.").
+
+**Issue, confirmed by the prior investigation-only session, not
+assumed.** `app.domain.rms_detector.classify_waveform_form()` (DEC-107's
+own shared eligibility fallback for `waveform_form == "unknown"`) ran
+its five indicators exactly ONCE, over ONE aggregate slice — the first
+up to `MAX_SLICE_SECONDS` (1.0s) of the record. A REAL disturbance
+record legitimately contains multiple physical states within that same
+slice: a clean pre-fault sinusoid, the fault itself, and a near-zero
+post-clearance collapse once the breaker opens. Investigation proved
+each of those states is, ON ITS OWN, unambiguously instantaneous (a
+clean pre-fault 5-cycle window and a disturbance-centered 5-cycle window
+BOTH independently scored 5/5 confident-instantaneous votes) — but the
+SAME channel's one long aggregate slice scored only 2 instantaneous
+votes / 0 magnitude votes (short of the 4-vote confidence floor),
+because the near-zero collapse tail diluted the slice-WIDE zero-
+crossing-ratio and targeted-frequency-correlation indicators (spurious
+noise-driven crossings; a normalized correlation diluted by a large
+near-silent sub-segment) even though neither indicator was wrong about
+either sub-segment considered alone. A sensitivity sweep found a sharp,
+reproducible tipping point: classification flips from `UNCERTAIN` to
+`LIKELY_INSTANTANEOUS` right around 40-50% "active AC" fraction of the
+representative region — below that, the single-slice design could not
+reach confidence regardless of how clean the active portion actually
+was.
+
+**The three-level compatibility model (DEC-107) is fully preserved.**
+This decision changes ONLY the Level 2 (analyzer input eligibility)
+REPRESENTATION CLASSIFIER itself — `classify_waveform_form()`'s own
+internal method, never Level 1 (role compatibility, DEC-106) or Level 3
+(runtime computation availability, deliberately still never checked by
+any readiness/eligibility function — `classify_waveform_form()` and
+`check_overcurrent_readiness()`/`check_phasor_diagram_readiness()` all
+remain entirely free of any `analysis_time` parameter). Trusted-
+metadata precedence (DEC-048, unchanged) is untouched: explicit
+`instantaneous` still accepts outright, explicit `rms`/`magnitude`
+still rejects outright, and ONLY the `"unknown"` fallback path's own
+internal classification method changed.
+
+**Fix: cycle-based, multi-window classification, reusing the EXISTING
+five indicators and their EXISTING per-window thresholds verbatim —
+the confirmed problem was window AGGREGATION, not threshold tuning, so
+no threshold was touched.** `_classify_slice()` (the original Phase 5B
+five-indicator vote logic, extracted unchanged) now runs independently
+on each of several deterministic, non-overlapping, fixed-size windows
+tiling the SAME `MAX_SLICE_SECONDS`-capped representative region
+(unchanged cap — a long recording where the signal changes character
+after 1s must still have everything past that point ignored, confirmed
+still passing by the pre-existing `test_representative_slice_is_capped_not_full_record`
+test unmodified). Window size is `_WINDOW_CYCLES = 5` cycles of
+`nominal_frequency_hz` (never a hard-coded millisecond value — a 60 Hz
+recording gets a proportionally-sized window to a 50 Hz one), tiled with
+a fixed stride equal to the window size itself (no overlap, no
+randomness, no dependency on knowing where any disturbance/trigger
+falls — the tiling is completely blind to the signal's own content).
+
+**Aggregation policy** (`_classify_windows()`): at least
+`_MIN_WINDOWS_FOR_CONFIDENT_CATEGORY = 2` INFORMATIVE windows must agree
+on the SAME category, with ZERO windows voting the opposing one — the
+identical "more evidence than the alternative, zero contradicting
+evidence" shape `_MIN_VOTES_FOR_CONFIDENT_CATEGORY`'s own per-window
+vote count already used, one level up (per-indicator vote -> per-window
+vote -> per-channel window count). The task's own initially-suggested
+"any instantaneous window -> instantaneous" rule was explicitly tested
+and rejected as too permissive; the 2-window rule was validated directly
+against every adversarial genuine-RMS/magnitude case below with zero
+false positives.
+
+**Low-energy window suppression** (`_LOW_ENERGY_WINDOW_RATIO = 0.1`,
+SCALE-RELATIVE, never an absolute ampere/volt threshold): a window whose
+own RMS is below 10% of the WHOLE representative region's own RMS
+(e.g. a post-clearance near-zero collapse) contributes no vote either
+way — it is skipped entirely, not forced into evidence for or against
+instantaneous. Proven necessary by direct experiment, not assumed:
+without it, a real disturbance record's own near-zero tail can still
+occasionally accumulate spurious per-window votes purely from
+measurement noise. If EVERY window in a region is low-energy, the
+result is `UNCERTAIN` (no evidence either way), never forced into a
+confident category merely because windowing machinery ran.
+
+**Short-record fallback preserves EVERY existing behavior exactly.**
+When fewer than two windows fit in the representative region (the
+region itself is still gated by the pre-existing, unchanged
+`MIN_CYCLES_FOR_DETECTION = 3` floor before windowing is even attempted),
+`_classify_windows()` returns `None` and `classify_waveform_form()`
+falls back to calling `_classify_slice()` on the WHOLE region directly —
+byte-for-byte the original Phase 5B single-slice behavior. All 10
+pre-existing `test_rms_detector.py` tests pass completely unmodified,
+including the too-short-slice/all-nonfinite/empty-input edge cases and
+the representative-slice-capping test.
+
+**Conservative boundary, deliberately NOT relaxed.** When the genuinely
+active portion of a record is so brief that only ONE window's worth of
+real evidence exists (investigated directly: 10% active fraction, ~100ms
+of real signal in a 1-second region), the result is `UNCERTAIN` — a
+single confident window is deliberately insufficient on its own. This
+is documented as the CORRECT, evidence-based answer (task's own "do not
+force an instantaneous classification" instruction), not a residual gap:
+15% active fraction (two full windows) already classifies confidently,
+proven directly alongside the 10% case in the same test class.
+
+**Genuine RMS/magnitude safety is proven, not assumed.** Four
+adversarial channel shapes were tested directly against the new
+multi-window detector and confirmed to NEVER become falsely
+instantaneous: a slow (1.5 Hz) positive envelope around a large DC bias
+(the textbook already-RMS'd shape); a stepped RMS-OUTPUT-shaped signal
+with no 50 Hz oscillation anywhere (deliberately distinguished from the
+genuine instantaneous CURRENT case this decision fixes); a full-wave-
+rectified `|sin|` signal (always positive, genuinely oscillates, never
+crosses zero); and a mostly-flat positive signal with noise. The
+pre-existing `test_slowly_varying_positive_magnitude_series_is_likely_magnitude_or_rms`
+golden case still reaches the exact same confident `LIKELY_MAGNITUDE_OR_RMS`
+answer under the new design, not merely "not instantaneous."
+
+**Propagates naturally to every consumer through the ONE shared
+detector — no analyzer-specific bypass anywhere.** `check_overcurrent_readiness()`/
+`compute_overcurrent_analysis()`, `check_phasor_diagram_readiness()`/
+`compute_phasor_diagram()` (and therefore Impedance/Distance Protection/
+Sequence Components, which all reuse that one function), and
+`calculated_channel_service.check_rms_eligibility()` all call
+`classify_waveform_form()` unchanged — none of their own call sites, own
+logic, or own thresholds were touched. Proven directly: the same
+committed disturbance fixture makes Overcurrent's real one-cycle-RMS
+calculation, Impedance's real phasor+impedance-point calculation,
+Distance Protection's real loop calculation, and calculated-channel RMS
+creation all succeed, end to end, through the real API.
+
+**Performance remains bounded.** The multi-window tiling stays entirely
+within the SAME `MAX_SLICE_SECONDS`-capped region as before — total work
+is independent of the record's own total duration, confirmed directly:
+a 20 kHz × 10 s record (200,000 samples) classified in ~12.6ms under the
+new design vs. ~9.5ms under the old one (a ~1.3x constant-factor
+increase from evaluating ~9 windows instead of 1, not a complexity
+change) — no scipy, no FFT, no unbounded scan.
+
+**Alternatives considered.** (1) "Any instantaneous window ->
+instantaneous" — rejected: too permissive, no experimental case
+required it, and it would weaken the RMS/magnitude safety guardrail for
+no proven benefit. (2) Shorter local windows (fewer cycles) — rejected
+as the PRIMARY fix: `_WINDOW_CYCLES` staying comfortably above
+`MIN_CYCLES_FOR_DETECTION` keeps each window's own five indicators
+individually meaningful; a much shorter window would reintroduce the
+"not enough data for a confident vote" problem one level down. (3) An
+absolute low-energy threshold (e.g. "windows below 1A are ignored") —
+rejected outright per the task's own explicit instruction: an absolute
+unit threshold cannot generalize across Voltage/Current channels of
+wildly different scale (a Voltage channel's own "near zero" and a
+Current channel's own "near zero" are not the same number), so the
+threshold is scale-relative to the region's own RMS instead. (4)
+Searching for "the cleanest window" rather than tiling deterministically
+— rejected: a steady-state-seeking heuristic was already explicitly
+rejected once before, for the ORIGINAL single-slice design (Phase 5B's
+own `_representative_slice()` docstring), as unnecessary added
+complexity for a lightweight eligibility check, not a measurement; the
+same reasoning applies here, and deterministic blind tiling was already
+proven sufficient. (5) Re-checking eligibility near the actual
+`analysis_time` at computation time (Level 3-adjacent) — rejected: would
+conflate representation eligibility with runtime availability, exactly
+the distinction DEC-107 itself established and this decision's own task
+specification explicitly forbade re-blurring.
+
+**Impact.** `backend/app/domain/rms_detector.py` only for production
+logic (`_classify_slice()` extracted from the original `classify_waveform_form()`
+body verbatim; new `_classify_windows()`; `classify_waveform_form()`
+itself now a thin orchestrator; three new module constants
+`_WINDOW_CYCLES`/`_MIN_WINDOWS_FOR_CONFIDENT_CATEGORY`/
+`_LOW_ENERGY_WINDOW_RATIO`). Zero changes to `evaluate_rms()`,
+`estimate_trailing_rms_at_time()`, `estimate_phasor()`,
+`compute_impedance_point()`, or any Distance Protection math — confirmed
+by the full existing backend suite passing unmodified, and by this
+decision's own new tests asserting the readiness verdict agrees with
+REAL computation at multiple `analysis_time` values. `backend/tests/test_rms_detector.py`
+gained `TestMultiWindowDetection` (10 scenarios: the KPDN1 regression
+itself, all three phase offsets, disturbance-first recording, the
+active-fraction confidence boundary proven both sides, ambiguous/noisy,
+short-insufficient-record, the sub-two-window fallback, and both
+existing golden cases reproduced under the new design) and
+`TestMultiWindowDoesNotWeakenGenuineRmsSafety` (5 adversarial scenarios).
+`backend/tests/test_calculated_channel_service.py` gained
+`TestRmsEligibilityDisturbanceRecord` (3 scenarios: genuine disturbance
+current now RMS-eligible without override; genuine RMS metadata still
+blocked; genuinely ambiguous signal still requires override). New
+committed fixture `backend/tests/fixtures/comtrade/disturbance_record_multibay.cfg/.dat`
+(one bay, clean Voltage throughout, KPDN1-style disturbance Current) and
+new backend test file `backend/tests/test_dec108_disturbance_record_integration.py`
+(13 scenarios proving the fix propagates to Overcurrent/Phasor/
+Impedance/Distance/Sequence Components readiness AND real computation,
+through the one shared detector, no analyzer-specific bypass).
+`browser-tests/post_upload_readiness.spec.js` gained a new
+`test.describe` block (4 scenarios: Overcurrent/Impedance/Distance all
+render real results, Phasor/Sequence Components resolve Current
+correctly too) — all 17 behavior-changing backend/browser assertions
+across every new/modified test file verified to FAIL against the
+pre-fix detector (via a temporary `git stash` of `rms_detector.py`
+alone) and PASS against the fix. DEC-107's own RMSBAY/INSTBAY fixture
+regression preserved exactly (RMSBAY still ineligible, INSTBAY still
+eligible) — confirmed by `test_analysis_input_readiness_api.py` passing
+unmodified. Full backend suite and full Playwright suite pass.
+
 ---
 
 ## How to add a decision

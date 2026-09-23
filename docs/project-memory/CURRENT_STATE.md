@@ -1598,6 +1598,72 @@ fixtures `representation_eligibility_multibay.cfg/.dat` and
 verified to FAIL against the pre-fix frontend and PASS against the
 fix). Full backend suite and full Playwright suite pass.
 
+**Production regression fix, part 4 (2026-09-23, same day) — the shared
+waveform-form fallback detector itself was corrected to multi-window
+classification.** Owner UAT: *"KPDN1 Overcurrent is rejected as non-
+instantaneous, even though the waveform display clearly shows a genuine
+instantaneous AC current waveform... becomes heavily disturbed around
+the fault/event, then collapses close to zero."* Preceded by a
+dedicated investigation-only session (no production change) that
+confirmed the root cause with hard evidence: `app.domain.rms_detector.classify_waveform_form()`
+evaluated its five indicators ONCE over ONE long aggregate slice (the
+first up to 1 second of the record); a genuine disturbance record
+legitimately mixes multiple physical states within that same slice
+(clean pre-fault, fault, near-zero post-clearance collapse), and the
+collapse tail diluted the slice-wide zero-crossing-ratio and targeted-
+frequency-correlation indicators enough to drop a genuinely
+instantaneous current below confidence (2 instantaneous votes / 0
+magnitude votes, short of the 4-vote floor) — even though a clean
+pre-fault 5-cycle window and a disturbance-centered 5-cycle window each
+independently scored 5/5 confident votes.
+
+**Fix**: cycle-based multi-window classification, reusing the EXISTING
+five indicators/thresholds verbatim (the confirmed problem was window
+AGGREGATION, never threshold tuning). The representative region (still
+capped at 1 second, unchanged) is tiled with deterministic, non-
+overlapping, `nominal_frequency_hz`-derived 5-cycle windows; each is
+classified independently via the SAME original per-window vote logic
+(extracted, unchanged, into `_classify_slice()`); the channel-level
+result requires at least 2 informative windows agreeing with zero
+opposing votes (the same "more evidence, no contradicting evidence"
+shape one level up). A window whose own RMS is below 10% of the whole
+region's RMS (scale-relative, never an absolute unit threshold) is
+skipped as uninformative -- proven necessary directly, since a real
+collapse tail's own measurement noise could otherwise accumulate
+spurious votes. When fewer than two windows fit, this falls back to the
+original single-slice classification unchanged, so short-record
+behavior is completely unaffected -- all 10 pre-existing detector tests
+pass unmodified. Four adversarial genuine-RMS/magnitude shapes (a slow
+positive envelope, a stepped RMS-output shape, a full-wave-rectified
+signal, a mostly-flat noisy signal) were proven to never become falsely
+instantaneous under the new design. See
+[DECISIONS.md — DEC-108](DECISIONS.md#dec-108--dec-107-follow-up-the-shared-waveform-form-fallback-detector-is-corrected-to-cycle-based-multi-window-classification-so-a-genuine-disturbance-record-pre-fault--fault--post-clearance-collapse-is-no-longer-misclassified-uncertain-merely-because-one-long-aggregate-slice-mixes-its-own-multiple-physical-states)
+for the full record, including the sensitivity-sweep evidence, the
+rejected "any instantaneous window" rule, and the conservative single-
+window boundary this design deliberately does NOT relax.
+
+**Propagates through the ONE shared detector to every consumer, no
+analyzer-specific bypass**: Overcurrent's real one-cycle RMS
+calculation, Impedance's real phasor+impedance-point calculation,
+Distance Protection's real loop calculation, and calculated-channel RMS
+creation all now succeed end to end for a genuine disturbance record,
+proven directly through the real API with a new committed fixture
+(`disturbance_record_multibay.cfg/.dat`).
+
+**Files**: `backend/app/domain/rms_detector.py` only for production
+logic. Zero changes to `evaluate_rms()`, `estimate_trailing_rms_at_time()`,
+`estimate_phasor()`, `compute_impedance_point()`, or Distance Protection
+math. New test coverage: `test_rms_detector.py` (`TestMultiWindowDetection`,
+`TestMultiWindowDoesNotWeakenGenuineRmsSafety`), `test_calculated_channel_service.py`
+(`TestRmsEligibilityDisturbanceRecord`), new
+`test_dec108_disturbance_record_integration.py` (13 scenarios), new
+fixture `disturbance_record_multibay.cfg/.dat`, and 4 new
+`browser-tests/post_upload_readiness.spec.js` scenarios -- all 17
+behavior-changing assertions verified to FAIL against the pre-fix
+detector (via a temporary `git stash` of `rms_detector.py` alone) and
+PASS against the fix. DEC-107's own RMSBAY/INSTBAY fixture regression
+preserved exactly. Full backend suite and full Playwright suite pass.
+
 **Flake cleanup (2026-09-19, continued) — the third and final DEC-099
 item ("Speed selection 4x") is now `[CLOSED]`; DEC-099 has zero
 remaining `[OPEN]` items.** Test-synchronization bug, no production

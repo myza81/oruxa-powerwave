@@ -158,6 +158,29 @@ all. See
 [DECISIONS.md — DEC-107](DECISIONS.md#dec-107--dec-106-follow-up-initial-context-auto-selection-must-also-check-analyzer-input-eligibility-waveform-representation-not-merely-role-identity--a-new-backend-authoritative-input-readiness-preflight-distinct-from-role-compatibility-and-from-runtime-computation-availability)
 for the full investigation and fix record.
 
+**DEC-108 (2026-09-23, same-day follow-up): the Level 2 REPRESENTATION
+CLASSIFIER itself was corrected, not any readiness/analyzer logic.**
+DEC-107 established that a resolved channel's own waveform
+REPRESENTATION must be eligible, not merely its role identity — but the
+shared classifier underneath that check (`app.domain.rms_detector.classify_waveform_form()`)
+itself had a genuine defect: it evaluated its five indicators ONCE over
+ONE long aggregate slice (up to 1 second), which a real disturbance
+record legitimately spans across multiple physical states (clean
+pre-fault, fault, near-zero post-clearance collapse) — diluting the
+slice-wide indicators enough that a genuinely instantaneous current
+could be voted `UNCERTAIN` even though each individual state was, on
+its own, unambiguous. Fixed with cycle-based MULTI-WINDOW classification
+— the SAME five indicators/thresholds, now evaluated per deterministic
+5-cycle window and aggregated conservatively (>=2 informative windows
+agreeing, zero opposing) — reusing `check_overcurrent_readiness()`/
+`check_phasor_diagram_readiness()` completely unchanged, since both
+still call the same `classify_waveform_form()` entry point. The three-
+level model itself (Level 1/2/3) is untouched by this fix; only the
+Level 2 classifier's own internal method changed. See
+[DECISIONS.md — DEC-108](DECISIONS.md#dec-108--dec-107-follow-up-the-shared-waveform-form-fallback-detector-is-corrected-to-cycle-based-multi-window-classification-so-a-genuine-disturbance-record-pre-fault--fault--post-clearance-collapse-is-no-longer-misclassified-uncertain-merely-because-one-long-aggregate-slice-mixes-its-own-multiple-physical-states)
+for the full investigation and fix record, including the sensitivity-
+sweep evidence and the adversarial genuine-RMS/magnitude safety proof.
+
 Full detail, root cause, and migration history:
 [PHASOR_ANALYSIS.md — "Ownership moved to the shared Analysis
 workspace"](PHASOR_ANALYSIS.md#ownership-moved-to-the-shared-analysis-workspace-2026-09-12-owner-uat-fix)
@@ -399,6 +422,11 @@ add one is caught immediately.
   (the same-day follow-up: role-resolved is not analyzer-ready — a new
   backend-authoritative `input-readiness` preflight also checks waveform
   representation eligibility, establishing the Level 1/2/3 compatibility
-  vocabulary this feature area now uses).
+  vocabulary this feature area now uses), and
+  [DEC-108](DECISIONS.md#dec-108--dec-107-follow-up-the-shared-waveform-form-fallback-detector-is-corrected-to-cycle-based-multi-window-classification-so-a-genuine-disturbance-record-pre-fault--fault--post-clearance-collapse-is-no-longer-misclassified-uncertain-merely-because-one-long-aggregate-slice-mixes-its-own-multiple-physical-states)
+  (the same-day follow-up: the Level 2 representation classifier itself
+  corrected to cycle-based multi-window evidence, so a genuine
+  disturbance record is no longer misclassified merely because it spans
+  multiple physical states within one long aggregate slice).
 - `docs/development/PERFORMANCE_BASELINE.md` (waveform endpoint
   latency/payload precedent).
