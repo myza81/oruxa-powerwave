@@ -22,6 +22,24 @@ def client(settings):
 
 
 def _upload(client, workspace_id, comtrade_fixtures_dir, stem="synth_measurement_groups"):
+    """DEC-104 (2026-09-23): upload now ALSO runs the same automatic
+    Engineering Context discovery `POST .../engineering-contexts/suggest`
+    always ran manually -- `synth_measurement_groups.cfg`'s own channel
+    names are deliberately clean, unambiguous phase-bay clusters, so the
+    upload itself now creates real `suggested` contexts claiming them.
+    Every test in this file EXCEPT `TestSuggestEndpoint` (which exists
+    specifically to exercise that discovery behavior) is about manual
+    CRUD against a clean slate, so this shared helper clears whatever
+    discovery already created immediately after upload -- preserving
+    every other test's own original intent/assertions unchanged.
+    `TestSuggestEndpoint` uses `_upload_without_clearing()` instead."""
+    source_id = _upload_without_clearing(client, workspace_id, comtrade_fixtures_dir, stem)
+    for context in client.get(_contexts_url(workspace_id)).json():
+        client.delete(f"{_contexts_url(workspace_id)}/{context['id']}")
+    return source_id
+
+
+def _upload_without_clearing(client, workspace_id, comtrade_fixtures_dir, stem="synth_measurement_groups"):
     cfg = (comtrade_fixtures_dir / f"{stem}.cfg").read_bytes()
     dat = (comtrade_fixtures_dir / f"{stem}.dat").read_bytes()
     files = {
@@ -182,11 +200,17 @@ class TestGetUpdateDelete:
 
 
 class TestSuggestEndpoint:
-    def test_suggest_creates_multiple_contexts(self, client, comtrade_fixtures_dir):
-        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
-        resp = client.post(f"/api/v1/workspaces/ws-1/sources/{source_id}/engineering-contexts/suggest", json={})
-        assert resp.status_code == 200, resp.text
-        created = resp.json()
+    """DEC-104 (2026-09-23): a successful upload now ALSO runs this same
+    detection automatically (`app.services.workspace_preparation_
+    service.prepare_workspace_source()`) -- the explicit `POST .../
+    engineering-contexts/suggest` endpoint itself is completely
+    unchanged (still exists, still callable, still the manual-retry/
+    fallback path Analysis's own idempotent `wwAnalysisDiscoverUncoveredSources()`
+    bootstrap still uses); only WHEN discovery first happens changed."""
+
+    def test_upload_alone_already_creates_multiple_contexts(self, client, comtrade_fixtures_dir):
+        source_id = _upload_without_clearing(client, "ws-1", comtrade_fixtures_dir)
+        created = client.get(_contexts_url("ws-1")).json()
         names = {c["display_name"] for c in created}
         # N275/S132/E275 (Voltage-only bays), IBT_HV/IBT_LV (Current-only
         # bays), LINEA/LINEB/SPARE (single-member Current bays) -- FREQ
@@ -197,15 +221,22 @@ class TestSuggestEndpoint:
         phases = {m["channel_ref"]["channel_name"]: m["phase"] for m in n275["members"]}
         # RYB convention: raw "B" normalizes to canonical C.
         assert phases == {"N275_VR": "A", "N275_VY": "B", "N275_VB": "C"}
+        assert n275["members"][0]["channel_ref"]["source_id"] == source_id
 
-    def test_suggest_creates_default_context_for_bare_phasor_roles(self, client, comtrade_fixtures_dir):
+        # The explicit endpoint remains fully idempotent/additive-only
+        # against whatever upload-time discovery already created.
+        resp = client.post(f"/api/v1/workspaces/ws-1/sources/{source_id}/engineering-contexts/suggest", json={})
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == []
+
+    def test_upload_alone_creates_default_context_for_bare_phasor_roles(self, client, comtrade_fixtures_dir):
         source_id = _upload_files(
             client, "ws-1", comtrade_fixtures_dir,
             cfg_stem="phasor_bare_three_phase", dat_stem="phasor_smoke_three_phase",
         )
-        resp = client.post(f"/api/v1/workspaces/ws-1/sources/{source_id}/engineering-contexts/suggest", json={})
-        assert resp.status_code == 200, resp.text
-        created = resp.json()
+        listed = client.get(_contexts_url("ws-1"))
+        assert listed.status_code == 200, listed.text
+        created = listed.json()
         assert len(created) == 1
         context = created[0]
         assert context["display_name"] == "Default Context"
@@ -213,13 +244,20 @@ class TestSuggestEndpoint:
         phases = {m["channel_ref"]["channel_name"]: m["phase"] for m in context["members"]}
         assert phases == {"VA": "A", "VB": "B", "VC": "C", "IA": "A", "IB": "B", "IC": "C"}
 
-        listed = client.get(_contexts_url("ws-1"))
-        assert listed.status_code == 200, listed.text
-        assert [c["id"] for c in listed.json()] == [context["id"]]
-
-    def test_suggest_is_idempotent(self, client, comtrade_fixtures_dir):
+    def test_suggest_still_works_manually_against_a_cleared_source(self, client, comtrade_fixtures_dir):
+        """The explicit endpoint is still independently correct, not
+        merely a dead code path now that upload also triggers it --
+        exercised here against a source whose auto-created contexts
+        were removed first (`_upload()`'s own clearing behavior),
+        proving the manual path still creates real `suggested` contexts
+        from scratch when asked, and remains idempotent on a second
+        call."""
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
-        client.post(f"/api/v1/workspaces/ws-1/sources/{source_id}/engineering-contexts/suggest", json={})
+        assert client.get(_contexts_url("ws-1")).json() == []
+
+        first = client.post(f"/api/v1/workspaces/ws-1/sources/{source_id}/engineering-contexts/suggest", json={})
+        assert first.status_code == 200, first.text
+        assert len(first.json()) > 0
         second = client.post(f"/api/v1/workspaces/ws-1/sources/{source_id}/engineering-contexts/suggest", json={})
         assert second.json() == []
 

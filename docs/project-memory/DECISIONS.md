@@ -16666,6 +16666,160 @@ both hand-verified directly against the real `detect_measurement_groups()`
 before being committed. Full backend suite (5491 tests) and full
 Playwright suite (156 scenarios) pass.
 
+## DEC-104 — Successful source upload triggers shared workspace/source preparation (Measurement Group + Engineering Context discovery); no top-level function may depend on another page having been opened first
+
+Date: 2026-09-23
+Status: Approved — implemented.
+Source: owner UAT, application-wide (not Compliance-specific): "Once an
+event file is uploaded successfully, every function that can operate on
+that file should be ready to use independently. No function should
+require the user to first open Waveform, Analysis, Manage Measurement
+Groups, or any other page merely to trigger hidden preparation/bootstrap
+work."
+
+**Issue.** DEC-103 (same day) fixed Compliance's own independence from
+"Manage Measurement Groups," but by adding a THIRD, Compliance-specific,
+page-owned lazy bootstrap (`wwComplianceBootstrapGroupsIfNeeded()`) —
+alongside the pre-existing Analysis-owned one
+(`wwAnalysisDiscoverUncoveredSources()`, itself only ever called when the
+Analysis page opens). Both compensate for the same underlying gap:
+`app.services.measurement_group_service.generate_suggested_groups_
+for_source()` and `app.services.engineering_context_service.generate_
+suggested_contexts_for_source()` — the only two functions that ever turn
+raw channel names into Measurement Groups / Engineering Contexts — have
+never had ANY automatic trigger anywhere in this codebase; each was only
+ever reachable through an explicit, page-owned user action. This is a
+weaker lifecycle than the owner now requires: preparation was PAGE-owned
+(observable only once that specific page happened to open), not
+WORKSPACE/SOURCE-lifecycle-owned (observable the moment the source
+exists, from any page).
+
+An audit of every other candidate shared-metadata/discovery mechanism in
+the codebase (Time Group/synchronization, per-unit metadata, source
+classification, and every frontend function matching
+`ww[A-Za-z]*(Discover|Bootstrap|Ensure|Initialize)[A-Za-z]*\(`) found
+these two to be the ONLY genuine lifecycle gaps. `app.domain.time_
+grouping.derive_time_groups()` is pure and stateless — "recomputed fresh
+on every call (never cached/persisted)" by its own docstring — so it has
+no bootstrap to move. Every other `wwXxxEnsure...`/`wwXxxDiscover...`-
+shaped function found is either page-specific UI-state caching (not
+shared metadata) or itself a callback consumer of the ALREADY-centralized
+`wwAnalysisDiscoverUncoveredSources()` (the five analyzers' own
+`wwXxxOnAnalysisDiscovering`/`wwXxxOnAnalysisFreshContextsDiscovered`
+hooks), not a second bootstrap in its own right.
+
+**Decision.** A new backend module, `app.services.workspace_preparation_
+service.prepare_workspace_source()`, is the ONE authoritative choke point
+for shared post-upload preparation, called from BOTH — and the only two —
+source-registration call sites in the backend: `app.api.v1.sources.
+upload_comtrade_source()` (COMTRADE) and `app.api.v1.preparation_sources.
+post_convert_preparation_source()` (CSV/Excel-converted), immediately
+after each one's own `WorkspaceRegistry.add()` succeeds. It calls the
+EXACT SAME two existing, already-tested functions DEC-103's frontend
+bootstrap and Analysis's own bootstrap already called — no new detection
+algorithm was written; only the WHEN moved, from "whenever a page happens
+to open" to "the moment the source exists."
+
+**Never turns discovery uncertainty, or a discovery failure, into an
+upload failure.** The two calls inside `prepare_workspace_source()` are
+wrapped independently (one failing never blocks the other), and neither
+is allowed to propagate — the upload it runs after has ALREADY succeeded
+and is never rolled back. A `needs_review` group/context remains a
+completely normal, valid outcome; only a genuine unexpected exception is
+logged and recorded in the returned (currently observability-only,
+unsurfaced) result.
+
+**Idempotent by construction, not by new bookkeeping.** Both underlying
+functions already guarantee "a detected cluster is skipped entirely if
+even one of its own channels already belongs to any existing group/
+context, of any status" — calling `prepare_workspace_source()` twice for
+the same source (a page's own fallback bootstrap re-running, a retried
+request, a test re-registering the same source) is always safe and never
+duplicates. No second, global "is preparation done yet" readiness state
+was invented — the existing per-item `status` field on each `Measurement
+Group`/`EngineeringContext` (already queried live by whichever page needs
+it) remains the sole readiness signal.
+
+**Synchronous by design.** Both underlying detection functions are pure,
+framework-free channel-NAME pattern matching over one source — no I/O, no
+network call, typically well under a millisecond for a realistic channel
+count. Running them synchronously, inside the same request that already
+parsed the uploaded file, means the upload response's own moment of
+success is also the moment shared metadata is already queryable by any
+other page — no polling, no eventual-consistency window, no separate
+readiness endpoint.
+
+**DEC-103's and Analysis's own frontend bootstraps are KEPT, reclassified
+as fallback-only, not removed.** `wwComplianceBootstrapGroupsIfNeeded()`
+and `wwAnalysisDiscoverUncoveredSources()` still exist, but by the time
+either page opens, the backend has normally already done the work — both
+now find nothing left to do (every source already covered, `/suggest`
+returning nothing new) and are pure no-ops on the common path. They stay
+as defense-in-depth for the cases the upload-time pass cannot see: a
+group/context the user (or a test) deleted after upload, or a workspace
+whose sources were registered before this invariant existed. Neither
+Compliance's nor Analysis's own readiness is allowed to DEPEND on these
+functions running any more — both were verified end-to-end with a direct
+upload straight into each page and no seeded state.
+
+**Reason.** The owner's own framing was explicitly application-wide, not
+Compliance-specific — "every function," "any other page." Centralizing at
+the two source-registration call sites (rather than duplicating a third,
+fourth, fifth page-specific bootstrap for Table, Calculated Channels,
+etc. as each is asked to prove its own independence) is the smallest
+change that satisfies "successful upload → shared preparation → every
+top-level function ready independently" exactly once, at the correct
+architectural boundary (backend-owned, not page-owned) — matching this
+project's standing "backend owns business logic, frontend calls stable
+API" principle ([docs/architecture/oruxa-architecture.md](../architecture/oruxa-architecture.md)).
+
+**Alternatives considered.** (1) Add a fourth page-owned bootstrap for
+every remaining top-level function (Table, Calculated Channels) —
+rejected: does not fix the underlying architectural problem the owner
+named, merely spreads the same workaround further; also leaves a genuine
+race where two pages opened close together could both attempt discovery
+concurrently. (2) Leave DEC-103's/Analysis's bootstraps as the ONLY
+mechanism and rely on the owner's specific "direct to Compliance / direct
+to Analysis" UAT scenarios each getting their own page-owned fix —
+rejected: this is precisely the "duplicate lifecycle owners without
+reason" pattern this task was asked to eliminate; it also does not scale
+to Table/Calculated Channels without yet more duplication. (3) Remove the
+frontend bootstraps entirely now that the backend does the work — rejected:
+they are cheap, already-idempotent, and remain the only defense against a
+group/context genuinely deleted after upload or a pre-DEC-104 workspace;
+removing them trades a real (if narrow) safety net for no benefit. (4)
+Make preparation asynchronous (background task, polled status) —
+rejected: the underlying detection is sub-millisecond pure computation,
+so synchronous execution has no measurable latency cost and avoids
+inventing a polling/readiness protocol for no reason. This directly
+supersedes DEC-103's own "Alternatives considered (1)" rejection of an
+upload-time trigger as "a far larger blast radius than this task's own
+scope, and was never asked for" — the owner has now explicitly asked for
+exactly that, application-wide.
+
+**Impact.** New file `backend/app/services/workspace_preparation_
+service.py` (`prepare_workspace_source()`, `WorkspaceSourcePreparationResult`).
+`backend/app/api/v1/sources.py` and `backend/app/api/v1/preparation_
+sources.py` (three new `Depends()` params each, one call each after their
+own existing upload/convert logic succeeds). `frontend/index.html`
+(`wwComplianceBootstrapGroupsIfNeeded()` and `wwAnalysisDiscoverUncoveredSources()`
+doc comments only, reclassifying both as fallback-only — no behavior
+change). Zero changes to `app.domain.measurement_group_detection`,
+`app.domain.engineering_context_detection`, `app.domain.time_grouping`,
+or any existing detection/suggest endpoint. New browser suite
+`browser-tests/post_upload_readiness.spec.js` (4 scenarios: direct
+upload-to-Compliance, direct upload-to-Analysis, both in the same
+session, and multi-source idempotency) — none of which seed any
+Measurement Group/Engineering Context via a direct API call, unlike every
+other Playwright suite in this repo, since the entire point is that
+upload alone is sufficient. A significant, EXPECTED ripple across ~15
+existing backend test files that manually construct Measurement Groups/
+Engineering Contexts on realistic, phase-detectable channel names: each
+was updated to clear whatever the now-automatic discovery created
+immediately after upload (an `_upload_without_clearing()` helper preserves
+the raw upload for the handful of tests that specifically exercise the
+"suggest" path itself). Full backend suite and full Playwright suite pass.
+
 ---
 
 ## How to add a decision

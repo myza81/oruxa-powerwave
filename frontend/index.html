@@ -37098,6 +37098,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwAnalysisDiscoverUncoveredSources(workspaceId, epochAtStart, contexts, true);
         }
 
+        // FALLBACK ONLY as of DEC-104 (2026-09-23): the backend now runs
+        // this same Engineering Context discovery itself, synchronously,
+        // immediately after every source upload
+        // (app.services.workspace_preparation_service.prepare_
+        // workspace_source()) -- so by the time this page opens, a
+        // freshly-uploaded source's context normally already exists and
+        // `uncoveredSources` below is normally empty. This function is
+        // kept, not removed, purely as defense-in-depth for states the
+        // backend's own upload-time pass cannot see: a context the user
+        // (or a test) deleted after upload, or a workspace whose sources
+        // were registered before this invariant existed. It is NOT the
+        // primary discovery path any more and Analysis's own readiness
+        // must never depend on this function running.
+        //
         // The automatic discovery pass -- requests a suggestion for
         // every loaded source that is BOTH uncovered (see
         // wwAnalysisCoveredSourceIds()) AND not yet attempted this
@@ -41024,6 +41038,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // the Analysis workspace's own proven
         // wwAnalysisDiscoverUncoveredSources() pattern, before listing
         // groups -- never a second detection engine (task section 13).
+        //
+        // FALLBACK ONLY as of DEC-104 (2026-09-23): the backend now runs
+        // this same Measurement Group discovery itself, synchronously,
+        // immediately after every source upload
+        // (app.services.workspace_preparation_service.prepare_
+        // workspace_source()) -- so by the time Compliance opens, a
+        // freshly-uploaded source's groups normally already exist and
+        // wwComplianceBootstrapGroupsIfNeeded() below finds nothing left
+        // to do (every source already in
+        // `attemptedGroupBootstrapSourceIds`, or `/suggest` returning
+        // `[]`). It is kept purely as defense-in-depth -- the same
+        // uncovered-state/pre-DEC-104-workspace cases documented on
+        // wwAnalysisDiscoverUncoveredSources() above -- not the primary
+        // discovery path any more; Compliance's own readiness must never
+        // depend on this function running.
         async function wwComplianceLoadGroups() {
             await wwComplianceBootstrapGroupsIfNeeded();
             wwComplianceFetchJson(

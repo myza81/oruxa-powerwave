@@ -25,6 +25,25 @@ def client(settings):
 
 
 def _upload(client, workspace_id, comtrade_fixtures_dir, stem="synth_measurement_groups"):
+    """DEC-104 (2026-09-23): upload now ALSO runs the same automatic
+    Measurement Group discovery `POST .../suggest` always ran manually
+    -- `synth_measurement_groups.cfg`'s own channel names (`N275_VR`/
+    `VY`/`VB` etc.) are deliberately clean, unambiguous phase triplets,
+    so the upload itself now creates real `suggested` groups claiming
+    them. Every test in this file EXCEPT `TestSuggestGroups` (which
+    exists specifically to exercise that discovery behavior) is about
+    manual CRUD against a clean slate, so this shared helper clears
+    whatever discovery already created immediately after upload --
+    preserving every other test's own original intent/assertions
+    unchanged. `TestSuggestGroups` uses `_upload_without_clearing()`
+    instead."""
+    source_id = _upload_without_clearing(client, workspace_id, comtrade_fixtures_dir, stem)
+    for group in client.get(_base_url(workspace_id, source_id)).json():
+        client.delete(f"{_base_url(workspace_id, source_id)}/{group['id']}")
+    return source_id
+
+
+def _upload_without_clearing(client, workspace_id, comtrade_fixtures_dir, stem="synth_measurement_groups"):
     cfg = (comtrade_fixtures_dir / f"{stem}.cfg").read_bytes()
     dat = (comtrade_fixtures_dir / f"{stem}.dat").read_bytes()
     files = {
@@ -319,32 +338,58 @@ class TestCurrentConfigEndpoint:
 
 
 class TestSuggestGroups:
-    def test_suggest_is_never_triggered_automatically(self, client, comtrade_fixtures_dir):
-        """Just uploading a source, or GETting the (empty) group list,
-        must never itself create any group -- Slice 2's own standalone-
-        only scope, unchanged."""
+    """DEC-104 (2026-09-23): a successful upload now ALSO runs this same
+    detection automatically (`app.services.workspace_preparation_
+    service.prepare_workspace_source()`) -- the explicit `POST .../
+    suggest` endpoint itself is completely unchanged (still exists,
+    still callable, still the manual-retry/fallback path a page like
+    Compliance's own idempotent bootstrap or "Manage Measurement
+    Groups > Suggest" still uses); only WHEN discovery first happens
+    changed, from "only when explicitly requested" to "the moment the
+    source exists" (see `_upload_without_clearing()`'s own docstring
+    reference above)."""
+
+    def test_upload_alone_already_creates_suggested_groups(self, client, comtrade_fixtures_dir):
+        source_id = _upload_without_clearing(client, "ws-1", comtrade_fixtures_dir)
+        listed = client.get(_base_url("ws-1", source_id)).json()
+        assert len(listed) > 0
+        assert all(g["status"] == "suggested" for g in listed)
+
+    def test_explicit_suggest_after_upload_finds_nothing_new(self, client, comtrade_fixtures_dir):
+        """The manual endpoint remains fully idempotent/additive-only
+        against whatever upload-time discovery already created -- never
+        raises, never duplicates, simply reports nothing new to find."""
+        source_id = _upload_without_clearing(client, "ws-1", comtrade_fixtures_dir)
+        already_created = client.get(_base_url("ws-1", source_id)).json()
+        assert len(already_created) > 0
+
+        resp = client.post(f"{_base_url('ws-1', source_id)}/suggest", json={})
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == []  # nothing new left to suggest
+        # List is unaffected by the redundant call.
+        assert len(client.get(_base_url("ws-1", source_id)).json()) == len(already_created)
+
+    def test_suggest_still_works_manually_against_a_cleared_source(self, client, comtrade_fixtures_dir):
+        """The explicit endpoint is still independently correct, not
+        merely a dead code path now that upload also triggers it --
+        exercised here against a source whose auto-created groups were
+        removed first (`_upload()`'s own clearing behavior), proving
+        the manual path still creates real `suggested` groups from
+        scratch when asked."""
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
-        client.get(_base_url("ws-1", source_id))
-        client.get(_base_url("ws-1", source_id))
         assert client.get(_base_url("ws-1", source_id)).json() == []
 
-    def test_suggest_creates_groups_only_when_explicitly_called(self, client, comtrade_fixtures_dir):
-        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
         resp = client.post(f"{_base_url('ws-1', source_id)}/suggest", json={})
         assert resp.status_code == 200, resp.text
         suggested = resp.json()
         assert len(suggested) > 0
         assert all(g["status"] == "suggested" for g in suggested)
-        # Now reflected in the list.
         listed = client.get(_base_url("ws-1", source_id)).json()
         assert len(listed) == len(suggested)
 
-    def test_suggest_is_idempotent_and_additive_only(self, client, comtrade_fixtures_dir):
-        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
-        first = client.post(f"{_base_url('ws-1', source_id)}/suggest", json={}).json()
+        # Idempotent: calling it again finds nothing new.
         second = client.post(f"{_base_url('ws-1', source_id)}/suggest", json={}).json()
-        assert len(first) > 0
-        assert second == []  # nothing new left to suggest
+        assert second == []
 
 
 class TestSourceIsolation:

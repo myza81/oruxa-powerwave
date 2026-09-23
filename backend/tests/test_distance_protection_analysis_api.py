@@ -57,6 +57,21 @@ def _build_ascii_comtrade(
 
 
 def _upload_sine_source(client, workspace_id, *, channels, sample_rate_hz=1000.0, duration_s=3.0, nominal_frequency_hz=50.0, stem="distance_ascii"):
+    """DEC-104 (2026-09-23): upload now also runs automatic Engineering
+    Context discovery, which would otherwise collide with this module's
+    own hand-built contexts on the same channels -- clear whatever
+    discovery created immediately after upload so every test below
+    keeps constructing its own contexts from a clean slate."""
+    source_id = _upload_sine_source_without_clearing(
+        client, workspace_id, channels=channels, sample_rate_hz=sample_rate_hz,
+        duration_s=duration_s, nominal_frequency_hz=nominal_frequency_hz, stem=stem,
+    )
+    for context in client.get(_contexts_url(workspace_id)).json():
+        client.delete(f"{_contexts_url(workspace_id)}/{context['id']}")
+    return source_id
+
+
+def _upload_sine_source_without_clearing(client, workspace_id, *, channels, sample_rate_hz=1000.0, duration_s=3.0, nominal_frequency_hz=50.0, stem="distance_ascii"):
     cfg, dat = _build_ascii_comtrade(
         station="DSTA", channels=channels, sample_rate_hz=sample_rate_hz, duration_s=duration_s,
         nominal_frequency_hz=nominal_frequency_hz,

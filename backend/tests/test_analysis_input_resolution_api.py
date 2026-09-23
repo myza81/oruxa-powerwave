@@ -24,6 +24,21 @@ def client(settings):
 
 
 def _upload(client, workspace_id, comtrade_fixtures_dir, stem="synth_measurement_groups"):
+    """DEC-104 (2026-09-23): upload now also runs automatic Engineering
+    Context discovery, which would otherwise collide with this module's
+    own hand-built manual contexts on the same channels -- clear
+    whatever discovery created immediately after upload so every test
+    below keeps constructing its own contexts from a clean slate.
+    `test_three_phase_voltage_resolves_via_suggested_context` below
+    uses `_upload_without_clearing()` instead, since it specifically
+    exercises the suggested-context path."""
+    source_id = _upload_without_clearing(client, workspace_id, comtrade_fixtures_dir, stem)
+    for context in client.get(_contexts_url(workspace_id)).json():
+        client.delete(f"{_contexts_url(workspace_id)}/{context['id']}")
+    return source_id
+
+
+def _upload_without_clearing(client, workspace_id, comtrade_fixtures_dir, stem="synth_measurement_groups"):
     cfg = (comtrade_fixtures_dir / f"{stem}.cfg").read_bytes()
     dat = (comtrade_fixtures_dir / f"{stem}.dat").read_bytes()
     files = {
@@ -71,8 +86,10 @@ class TestResolvedCases:
         assert body["required_role_specs"][0]["phase"] == "A"
 
     def test_three_phase_voltage_resolves_via_suggested_context(self, client, comtrade_fixtures_dir):
-        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
-        suggested = client.post(f"/api/v1/workspaces/ws-1/sources/{source_id}/engineering-contexts/suggest", json={}).json()
+        # DEC-104: upload alone already runs discovery -- no separate
+        # explicit "suggest" call is needed to make N275 observable.
+        source_id = _upload_without_clearing(client, "ws-1", comtrade_fixtures_dir)
+        suggested = client.get(_contexts_url("ws-1")).json()
         n275 = next(c for c in suggested if c["display_name"] == "N275")
         resp = _resolution(client, "ws-1", n275["id"], "phasor", "voltage_three_phase")
         assert resp.status_code == 200, resp.text

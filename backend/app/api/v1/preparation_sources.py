@@ -84,6 +84,9 @@ from app.schemas.time_axis import (
     TimeAxisInterpreterOut,
     TimeAxisInterpretRequest,
 )
+from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.engineering_context_registry import EngineeringContextRegistry
+from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.errors import AmbiguousPreparationUploadError, ImportServiceError
 from app.services.preparation_import_service import (
     import_csv_preparation_source,
@@ -136,6 +139,7 @@ from app.services.working_overlay_service import (
     summarize_working_overlay,
     undo_working_change,
 )
+from app.services.workspace_preparation_service import prepare_workspace_source
 from app.services.workspace_registry import WorkspaceRegistry
 
 logger = logging.getLogger(__name__)
@@ -210,6 +214,23 @@ def get_workspace_registry(request: Request) -> WorkspaceRegistry:
     directly) purely to avoid a cross-router import for a one-line
     function; the underlying registry object is identical either way."""
     return request.app.state.workspace_registry
+
+
+def get_measurement_group_registry(request: Request) -> MeasurementGroupRegistry:
+    """DEC-104: same duplicated-provider convention as `get_workspace_
+    registry()` above -- needed here so `post_convert_preparation_
+    source()` can call the shared `prepare_workspace_source()` choke
+    point, exactly like `app.api.v1.sources.upload_comtrade_source()`
+    already does for the COMTRADE path."""
+    return request.app.state.measurement_group_registry
+
+
+def get_engineering_context_registry(request: Request) -> EngineeringContextRegistry:
+    return request.app.state.engineering_context_registry
+
+
+def get_calculated_channel_registry(request: Request) -> CalculatedChannelRegistry:
+    return request.app.state.calculated_channel_registry
 
 
 def _validate_workspace_id(workspace_id: str) -> str:
@@ -1120,6 +1141,9 @@ def post_convert_preparation_source(
     source_id: str,
     preparation_registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
     workspace_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
+    engineering_context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    calculated_channel_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
 ) -> SourceSummaryOut:
     """Slice 10 (DEC-072): canonical conversion into Powerwave's own
     `DisturbanceRecord`. Readiness is re-checked live here regardless of
@@ -1141,6 +1165,13 @@ def post_convert_preparation_source(
     service module's own docstring). On ANY failure, the preparation
     session and its current working state are left completely
     untouched.
+
+    DEC-104: on success, ALSO runs the same shared post-upload
+    Measurement Group/Engineering Context discovery the COMTRADE upload
+    path runs (`app.services.workspace_preparation_service.prepare_
+    workspace_source()`) -- a CSV/Excel-converted source becomes ready
+    for every top-level function exactly like a COMTRADE-uploaded one,
+    with no second, format-specific preparation path.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     try:
@@ -1154,6 +1185,13 @@ def post_convert_preparation_source(
             exc.code, workspace_id, source_id, exc.message,
         )
         raise _http_error(exc) from exc
+
+    prepare_workspace_source(
+        workspace_id=workspace_id, source_id=source_id,
+        source_registry=workspace_registry, group_registry=measurement_group_registry,
+        context_registry=engineering_context_registry, calculated_channel_registry=calculated_channel_registry,
+    )
+
     return SourceSummaryOut.from_domain(metadata)
 
 

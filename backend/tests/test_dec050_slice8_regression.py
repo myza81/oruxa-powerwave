@@ -50,6 +50,19 @@ def client(settings):
 
 
 def _upload(client, workspace_id, comtrade_fixtures_dir, stem="synth_measurement_groups"):
+    """DEC-104 (2026-09-23): upload now also runs automatic Measurement
+    Group discovery, which would otherwise collide with this module's
+    own hand-built manual groups on the same channels -- clear whatever
+    discovery created immediately after upload so every test below
+    keeps constructing its own groups from a clean slate."""
+    source_id = _upload_without_clearing(client, workspace_id, comtrade_fixtures_dir, stem)
+    groups_url = f"/api/v1/workspaces/{workspace_id}/sources/{source_id}/measurement-groups"
+    for group in client.get(groups_url).json():
+        client.delete(f"{groups_url}/{group['id']}")
+    return source_id
+
+
+def _upload_without_clearing(client, workspace_id, comtrade_fixtures_dir, stem="synth_measurement_groups"):
     cfg = (comtrade_fixtures_dir / f"{stem}.cfg").read_bytes()
     dat = (comtrade_fixtures_dir / f"{stem}.dat").read_bytes()
     files = {

@@ -46,13 +46,39 @@ Concretely:
 
 ## Shared Engineering Context lifecycle
 
-Owned by `wwAnalysisLoadContexts()`/`wwAnalysisDiscoverUncoveredSources()`
-and friends (`frontend/index.html`, the module immediately before the
-Overcurrent section). `wwRenderAnalysisPage()` calls
-`wwAnalysisLoadContexts()` exactly once per Analysis-page visit,
-regardless of which analyzer tab is active. Analyzers register as
-consumers via `wwAnalysisRegisterContextConsumer({ onContexts,
-onLifecyclePhase, onDiscovering, onFreshContextsDiscovered })`.
+**As of DEC-104 (2026-09-23), Engineering Context DISCOVERY itself is
+backend/upload-owned, not page-owned.** `app.services.workspace_
+preparation_service.prepare_workspace_source()` runs `generate_
+suggested_contexts_for_source()` synchronously, immediately after every
+successful source upload/conversion (`app.api.v1.sources.
+upload_comtrade_source()`, `app.api.v1.preparation_sources.
+post_convert_preparation_source()`) — so by the time Analysis opens for a
+freshly-uploaded source, its Engineering Context normally already
+exists. See
+[DECISIONS.md — DEC-104](DECISIONS.md#dec-104--successful-source-upload-triggers-shared-workspacesource-preparation-measurement-group--engineering-context-discovery-no-top-level-function-may-depend-on-another-page-having-been-opened-first).
+
+The FETCHING/rendering/consumer-registration machinery below remains
+page-owned, correctly — that part is genuinely Analysis-specific display
+state, not shared metadata. `wwAnalysisLoadContexts()`/
+`wwAnalysisDiscoverUncoveredSources()` and friends (`frontend/index.html`,
+the module immediately before the Overcurrent section) still own it.
+`wwRenderAnalysisPage()` still calls `wwAnalysisLoadContexts()` exactly
+once per Analysis-page visit, regardless of which analyzer tab is
+active. Analyzers still register as consumers via
+`wwAnalysisRegisterContextConsumer({ onContexts, onLifecyclePhase,
+onDiscovering, onFreshContextsDiscovered })`.
+
+**`wwAnalysisDiscoverUncoveredSources()` itself is KEPT, not removed, but
+is now fallback-only** — normally a no-op on the common path (every
+source already covered by the backend's own upload-time discovery), kept
+as defense-in-depth for a context deleted after upload, or a workspace
+whose sources were registered before DEC-104 existed. Analysis's own
+readiness — a freshly-uploaded source's Bay selector populated the
+instant the page opens, with NO prior page visit of any kind — is now
+guaranteed by the backend, not by this function; verified directly via
+`browser-tests/post_upload_readiness.spec.js`'s direct-upload-to-Analysis
+scenario, which seeds no context state and opens Analysis first from a
+clean Recordings page.
 
 Full detail, root cause, and migration history:
 [PHASOR_ANALYSIS.md — "Ownership moved to the shared Analysis
@@ -277,6 +303,10 @@ add one is caught immediately.
 - [IMPEDANCE_LOCUS_ANALYSIS.md](IMPEDANCE_LOCUS_ANALYSIS.md)
 - [DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock)
   (Playback), [DEC-089](DECISIONS.md#dec-089--phasor-analysis-slice-2-analysis-is-a-new-permanent-top-level-menu-hosting-a-growing-family-of-engineering-analyzers-phasor-is-the-first-rendering-the-existing-slice-1-backend-as-a-static-selected-time-page-with-a-lightweight-svg-diagram-never-reimplementing-backend-engineering-rules)
-  (Context lifecycle + Related Waveforms Updates).
+  (Context lifecycle + Related Waveforms Updates),
+  [DEC-104](DECISIONS.md#dec-104--successful-source-upload-triggers-shared-workspacesource-preparation-measurement-group--engineering-context-discovery-no-top-level-function-may-depend-on-another-page-having-been-opened-first)
+  (Engineering Context DISCOVERY moved to a shared backend post-upload
+  choke point; `wwAnalysisDiscoverUncoveredSources()` kept as
+  fallback-only).
 - `docs/development/PERFORMANCE_BASELINE.md` (waveform endpoint
   latency/payload precedent).

@@ -498,6 +498,51 @@ deliberately mixed single+pair phase representation, verified directly
 to produce `needs_review`). Full backend suite (5491 tests) and full
 Playwright suite (156 scenarios) pass.
 
+## Shared post-upload workspace preparation supersedes Compliance's own bootstrap trigger point (2026-09-23, DEC-104)
+
+**The bootstrap described in the section above was, and remains, a
+correct fix for Compliance's own independence — but the owner's next
+round of UAT generalized the requirement application-wide**: *"Once an
+event file is uploaded successfully, every function that can operate on
+that file should be ready to use independently. No function should
+require the user to first open Waveform, Analysis, Manage Measurement
+Groups, or any other page merely to trigger hidden preparation/bootstrap
+work."* See
+[DECISIONS.md — DEC-104](DECISIONS.md#dec-104--successful-source-upload-triggers-shared-workspacesource-preparation-measurement-group--engineering-context-discovery-no-top-level-function-may-depend-on-another-page-having-been-opened-first)
+for the full architectural record.
+
+**Measurement Group discovery is now triggered from the backend, at
+upload time, for every source** — `app.services.workspace_preparation_
+service.prepare_workspace_source()` runs the EXACT SAME `generate_
+suggested_groups_for_source()` this page's own bootstrap calls, but
+immediately after `WorkspaceRegistry.add()` succeeds in `app.api.v1.
+sources.upload_comtrade_source()` / `app.api.v1.preparation_sources.
+post_convert_preparation_source()`, rather than waiting for Compliance
+(or any page) to open. By the time an engineer opens Compliance after a
+fresh upload, the Bay/Measurement Group selector is normally ALREADY
+populated — no page-owned discovery step runs at all on the common path.
+
+**`wwComplianceBootstrapGroupsIfNeeded()` is KEPT, not removed, but is
+now fallback-only.** It still runs on every `wwComplianceLoadGroups()`
+call, but normally finds nothing left to do (every loaded source already
+covered, or `/suggest` returning nothing new) and completes as a cheap
+no-op. It remains as defense-in-depth for a group deleted after upload,
+or a workspace whose sources were registered before DEC-104 existed.
+Compliance's own readiness — the bay selector being populated the moment
+the page opens, with zero prior page visits of any kind, not even to
+"Manage Measurement Groups" — is now guaranteed by the backend, not by
+this frontend function; the direct-upload-to-Compliance acceptance
+scenario (`browser-tests/post_upload_readiness.spec.js`) verifies this
+without seeding any group state and without relying on this bootstrap
+having anything to discover.
+
+**Nothing else in this document changes.** DEC-100/DEC-101/DEC-102's own
+guardrails (Compliance is not an Engineering Context consumer, role
+resolution is scoped to an explicitly selected Measurement Group, a
+`needs_review` group is never silently trusted) are all fully preserved
+— this is purely a change in WHEN discovery runs, not what it discovers
+or how Compliance uses the result.
+
 ## UI/UX is intentionally subject to owner UAT and may change
 
 Workflow order, section placement, chart prominence, terminology,
@@ -609,7 +654,11 @@ evaluation function names) both guard this boundary directly.
   [DEC-102](DECISIONS.md#dec-102--compliance-measurement-scopes-role-resolution-to-an-explicitly-selected-measurement-group-bay-reusing-the-existing-measurement-group-model-verbatim--never-a-second-bay-concept-never-engineering-context)
   (the 2026-09-20 Bay/Measurement Group scoping correction), and
   [DEC-103](DECISIONS.md#dec-103--compliances-baymeasurement-group-picker-automatically-bootstraps-the-existing-measurement-group-detection-for-every-loaded-source-mirroring-the-analysis-workspaces-own-proven-engineering-context-bootstrap)
-  (the 2026-09-23 group discovery/bootstrap correction).
+  (the 2026-09-23 group discovery/bootstrap correction), and
+  [DEC-104](DECISIONS.md#dec-104--successful-source-upload-triggers-shared-workspacesource-preparation-measurement-group--engineering-context-discovery-no-top-level-function-may-depend-on-another-page-having-been-opened-first)
+  (the same-day generalization moving discovery to a shared backend
+  post-upload choke point, with DEC-103's own bootstrap kept as
+  fallback-only).
 - [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) — the
   group-aware Per-Unit/Measurement Group model this feature's Bay
   picker and Base display both reuse verbatim.

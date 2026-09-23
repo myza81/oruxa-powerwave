@@ -75,6 +75,27 @@ async function currentWorkspaceIdOf(page) {
   return page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
 }
 
+// DEC-104 (2026-09-23): upload now also runs automatic Measurement Group
+// discovery, which would otherwise collide with this suite's own hand-
+// built groups on the same bare-role channel names (VA/VB/VC) -- this
+// wrapper uploads, then clears whatever discovery created, so every test
+// that goes on to build its OWN groups via createVoltageGroup() keeps
+// doing so against a clean slate. The dedicated "Bay/Measurement Group
+// bootstrap and discovery" suite further below calls uploadFixture()
+// directly instead (never this wrapper) -- it specifically exercises the
+// upload-driven auto-discovered groups themselves, so clearing them
+// would defeat the point of those tests.
+async function uploadFixtureForManualGroups(page, stem) {
+  const sourceId = await uploadFixture(page, stem);
+  const workspaceId = await currentWorkspaceIdOf(page);
+  const groupsUrl = `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/sources/${encodeURIComponent(sourceId)}/measurement-groups`;
+  const existing = await (await page.request.get(groupsUrl)).json();
+  for (const group of existing) {
+    await page.request.delete(`${groupsUrl}/${encodeURIComponent(group.id)}`);
+  }
+  return sourceId;
+}
+
 async function createVoltageGroup(page, { workspaceId, sourceId, channelNames, displayName }) {
   const response = await page.request.post(
     `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/sources/${encodeURIComponent(sourceId)}/measurement-groups`,
@@ -126,7 +147,7 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
   test.describe("exactly one Measurement Group", () => {
     test("is automatically selected; quantity resolves normally", async ({ page }) => {
       await page.goto("/index.html");
-      const sourceId = await uploadFixture(page, "compliance_smoke_three_phase");
+      const sourceId = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
       const workspaceId = await currentWorkspaceIdOf(page);
       const group = await createVoltageGroup(page, { workspaceId, sourceId, channelNames: ["VA", "VB", "VC"], displayName: "Bus A" });
 
@@ -143,7 +164,7 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
 
     test("clearing the quantity selection returns to the neutral empty state", async ({ page }) => {
       await page.goto("/index.html");
-      const sourceId = await uploadFixture(page, "compliance_smoke_three_phase");
+      const sourceId = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
       const workspaceId = await currentWorkspaceIdOf(page);
       await createVoltageGroup(page, { workspaceId, sourceId, channelNames: ["VA"], displayName: "Bus A" });
 
@@ -159,8 +180,8 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
   test.describe("two Measurement Groups sharing the same channel name (Va)", () => {
     test("before selecting a group, the engineer must choose one explicitly", async ({ page }) => {
       await page.goto("/index.html");
-      const sourceA = await uploadFixture(page, "compliance_smoke_three_phase");
-      const sourceB = await uploadFixture(page, "compliance_smoke_three_phase");
+      const sourceA = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
+      const sourceB = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
       const workspaceId = await currentWorkspaceIdOf(page);
       await createVoltageGroup(page, { workspaceId, sourceId: sourceA, channelNames: ["VA", "VB", "VC"], displayName: "Bay A" });
       await createVoltageGroup(page, { workspaceId, sourceId: sourceB, channelNames: ["VA", "VB"], displayName: "Bay B" });
@@ -173,8 +194,8 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
 
     test("selecting Bay A resolves only Bay A's own Va -- no cross-bay ambiguity", async ({ page }) => {
       await page.goto("/index.html");
-      const sourceA = await uploadFixture(page, "compliance_smoke_three_phase");
-      const sourceB = await uploadFixture(page, "compliance_smoke_three_phase");
+      const sourceA = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
+      const sourceB = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
       const workspaceId = await currentWorkspaceIdOf(page);
       await createVoltageGroup(page, { workspaceId, sourceId: sourceA, channelNames: ["VA", "VB", "VC"], displayName: "Bay A" });
       await createVoltageGroup(page, { workspaceId, sourceId: sourceB, channelNames: ["VA", "VB"], displayName: "Bay B" });
@@ -192,8 +213,8 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
 
     test("switching to Bay B resolves Bay B's own Va and updates the whole summary", async ({ page }) => {
       await page.goto("/index.html");
-      const sourceA = await uploadFixture(page, "compliance_smoke_three_phase");
-      const sourceB = await uploadFixture(page, "compliance_smoke_three_phase");
+      const sourceA = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
+      const sourceB = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
       const workspaceId = await currentWorkspaceIdOf(page);
       const groupA = await createVoltageGroup(page, { workspaceId, sourceId: sourceA, channelNames: ["VA", "VB", "VC"], displayName: "Bay A" });
       await setVoltageBase(page, { workspaceId, sourceId: sourceA, groupId: groupA.id, nominalLlKv: 275.0, reference: "line_to_ground" });
@@ -218,8 +239,8 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
 
     test("group with a missing phase reports Missing Inputs -- kept selection, no silent quantity switch", async ({ page }) => {
       await page.goto("/index.html");
-      const sourceA = await uploadFixture(page, "compliance_smoke_three_phase");
-      const sourceB = await uploadFixture(page, "compliance_smoke_three_phase");
+      const sourceA = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
+      const sourceB = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
       const workspaceId = await currentWorkspaceIdOf(page);
       await createVoltageGroup(page, { workspaceId, sourceId: sourceA, channelNames: ["VA", "VB", "VC"], displayName: "Bay A" });
       await createVoltageGroup(page, { workspaceId, sourceId: sourceB, channelNames: ["VA", "VB"], displayName: "Bay B" }); // no VC
@@ -241,7 +262,7 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
   test.describe("single-phase recording (Va only)", () => {
     test("Phase A Voltage is available; Positive Sequence Voltage names the missing phases", async ({ page }) => {
       await page.goto("/index.html");
-      const sourceId = await uploadFixture(page, "compliance_smoke_rms_phase_a");
+      const sourceId = await uploadFixtureForManualGroups(page, "compliance_smoke_rms_phase_a");
       const workspaceId = await currentWorkspaceIdOf(page);
       await createVoltageGroup(page, { workspaceId, sourceId, channelNames: ["VA"], displayName: "Bus A" });
       await openCompliance(page);
@@ -256,7 +277,7 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
 
     test("RMS input reports Input Type RMS and Derived As Direct RMS", async ({ page }) => {
       await page.goto("/index.html");
-      const sourceId = await uploadFixture(page, "compliance_smoke_rms_phase_a");
+      const sourceId = await uploadFixtureForManualGroups(page, "compliance_smoke_rms_phase_a");
       const workspaceId = await currentWorkspaceIdOf(page);
       await createVoltageGroup(page, { workspaceId, sourceId, channelNames: ["VA"], displayName: "Bus A" });
       await openCompliance(page);
@@ -275,7 +296,7 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
   test.describe("complete three-phase recording (Va/Vb/Vc), single bay", () => {
     test("Min/Max/Positive Sequence are all available with Instantaneous/Fundamental RMS", async ({ page }) => {
       await page.goto("/index.html");
-      const sourceId = await uploadFixture(page, "compliance_smoke_three_phase");
+      const sourceId = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
       const workspaceId = await currentWorkspaceIdOf(page);
       await createVoltageGroup(page, { workspaceId, sourceId, channelNames: ["VA", "VB", "VC"], displayName: "Bus A" });
       await openCompliance(page);
@@ -290,7 +311,7 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
 
     test("Positive Sequence Voltage input lists Va, Vb, Vc", async ({ page }) => {
       await page.goto("/index.html");
-      const sourceId = await uploadFixture(page, "compliance_smoke_three_phase");
+      const sourceId = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
       const workspaceId = await currentWorkspaceIdOf(page);
       await createVoltageGroup(page, { workspaceId, sourceId, channelNames: ["VA", "VB", "VC"], displayName: "Bus A" });
       await openCompliance(page);
@@ -300,7 +321,7 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
 
     test("quantity switching updates the summary each time, never showing a stale result", async ({ page }) => {
       await page.goto("/index.html");
-      const sourceId = await uploadFixture(page, "compliance_smoke_three_phase");
+      const sourceId = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
       const workspaceId = await currentWorkspaceIdOf(page);
       await createVoltageGroup(page, { workspaceId, sourceId, channelNames: ["VA", "VB", "VC"], displayName: "Bus A" });
       await openCompliance(page);
@@ -318,7 +339,7 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
 
     test("Base metadata: a confirmed Measurement Group with a nominal base shows kV/L-G and pu", async ({ page }) => {
       await page.goto("/index.html");
-      const sourceId = await uploadFixture(page, "compliance_smoke_three_phase");
+      const sourceId = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
       const workspaceId = await currentWorkspaceIdOf(page);
       const group = await createVoltageGroup(page, { workspaceId, sourceId, channelNames: ["VA", "VB", "VC"], displayName: "Bus A" });
       await setVoltageBase(page, { workspaceId, sourceId, groupId: group.id, nominalLlKv: 275.0, reference: "line_to_ground" });
@@ -335,8 +356,8 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
     test(`both selects stay contained within the Measurement card at ${viewport.width}px`, async ({ page }) => {
       await page.setViewportSize(viewport);
       await page.goto("/index.html");
-      const sourceA = await uploadFixture(page, "compliance_smoke_three_phase");
-      const sourceB = await uploadFixture(page, "compliance_smoke_three_phase");
+      const sourceA = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
+      const sourceB = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
       const workspaceId = await currentWorkspaceIdOf(page);
       // Two groups (never auto-selected) so #wwComplianceGroupSelect is
       // genuinely visible and populated at every tested width, not just
@@ -366,7 +387,7 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
 
   test("opening Compliance still does not touch Playback, Analysis Input Source, or any analyzer state", async ({ page }) => {
     await page.goto("/index.html");
-    const sourceId = await uploadFixture(page, "compliance_smoke_three_phase");
+    const sourceId = await uploadFixtureForManualGroups(page, "compliance_smoke_three_phase");
     const workspaceId = await currentWorkspaceIdOf(page);
     await createVoltageGroup(page, { workspaceId, sourceId, channelNames: ["VA", "VB", "VC"], displayName: "Bus A" });
 

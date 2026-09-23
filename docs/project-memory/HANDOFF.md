@@ -8,6 +8,81 @@ Last updated: **2026-09-23**
 
 ## What was most recently done
 
+**Shared post-upload workspace preparation (DEC-104).** Owner UAT
+generalized the previous session's Compliance-specific fix into an
+application-wide invariant: *"Once an event file is uploaded
+successfully, every function that can operate on that file should be
+ready to use independently. No function should require the user to
+first open Waveform, Analysis, Manage Measurement Groups, or any other
+page merely to trigger hidden preparation/bootstrap work."*
+
+**Audit finding.** The prior session's own Compliance bootstrap
+(`wwComplianceBootstrapGroupsIfNeeded()`, DEC-103) and Analysis's
+pre-existing `wwAnalysisDiscoverUncoveredSources()` both compensate for
+the exact same underlying gap — Measurement Group / Engineering Context
+discovery has never had ANY automatic trigger — but each does so PAGE-
+owned (observable only once that specific page opens), not workspace/
+source-lifecycle-owned. A systematic audit of every other candidate
+(Time Group/synchronization, per-unit metadata, source classification,
+every `ww[A-Za-z]*(Discover|Bootstrap|Ensure|Initialize)[A-Za-z]*\(`
+function) confirmed these two are the ONLY genuine shared-metadata
+lifecycle gaps in the codebase; Time Groups are pure/stateless
+(`derive_time_groups()` is "recomputed fresh on every call") and need no
+preparation step at all.
+
+**Fix: one authoritative backend choke point.** New `app.services.
+workspace_preparation_service.prepare_workspace_source()`, called from
+BOTH — and the only two — source-registration call sites
+(`app.api.v1.sources.upload_comtrade_source()`, `app.api.v1.preparation_
+sources.post_convert_preparation_source()`), immediately after each
+one's own `WorkspaceRegistry.add()` succeeds. Runs the EXACT SAME two
+existing functions the page-owned bootstraps already called — no new
+detection algorithm, only the WHEN moved to "the moment the source
+exists." Never turns a discovery failure/uncertainty into an upload
+failure (independently wrapped, upload already succeeded); idempotent by
+construction (both underlying functions already skip a cluster entirely
+if any channel is already claimed); synchronous (sub-millisecond pure
+pattern matching, no I/O) — no new readiness state invented, the
+existing per-item `status` field remains the sole signal. See
+[DECISIONS.md — DEC-104](DECISIONS.md#dec-104--successful-source-upload-triggers-shared-workspacesource-preparation-measurement-group--engineering-context-discovery-no-top-level-function-may-depend-on-another-page-having-been-opened-first)
+for the full record.
+
+**DEC-103's and Analysis's own frontend bootstraps are KEPT, reclassified
+as fallback-only** (doc-comment changes only) — normally pure no-ops now
+that the backend has already done the work by the time either page
+opens; kept as defense-in-depth for a group/context deleted after
+upload, or a pre-DEC-104 workspace. Neither page's readiness depends on
+these functions running any more — verified directly with a fresh
+upload straight into each page, no seeded state, no prior page visit.
+
+**Files**: new `backend/app/services/workspace_preparation_service.py`.
+`backend/app/api/v1/sources.py`, `backend/app/api/v1/preparation_sources.py`
+(three new `Depends()` params each, one call each). `frontend/index.html`
+(doc-comment reclassification of the two existing bootstraps only — no
+behavior change). New `browser-tests/post_upload_readiness.spec.js` (4
+scenarios — direct upload-to-Compliance, direct upload-to-Analysis, both
+in one session, multi-source idempotency — none seed any group/context
+via a direct API call, since the point is that upload alone suffices).
+`docs/project-memory/DECISIONS.md` (DEC-104), `CURRENT_STATE.md`,
+`COMPLIANCE_CAPABILITY.md`, `ANALYSIS_WORKSPACE.md`, `HANDOFF.md` (this
+file). A significant, EXPECTED ripple across ~15 existing backend test
+files and `browser-tests/compliance_measurement.spec.js` that manually
+construct Measurement Groups/Engineering Contexts on realistic, phase-
+detectable channel names — each updated to clear whatever the now-
+automatic discovery created immediately after upload (an `_upload_
+without_clearing()`-style helper preserves the raw upload for the
+handful of tests that specifically exercise the "suggest" path itself).
+
+**Validation**: full backend suite passes; full Playwright suite passes,
+including the pre-existing Compliance/Analysis/Playback/smoke suites and
+the 4 new acceptance scenarios; `git diff --check` clean.
+
+**Stop condition honored**: shared post-upload preparation lifecycle
+only — no Compliance Slice 3, Grid Code curves, OEM profiles, Event
+Alignment, or new Analysis features started.
+
+## What was done in the prior session — Compliance & Capability Slice 2 UAT correction #2 (Bay/Measurement Group discovery/bootstrap)
+
 **Compliance & Capability Slice 2 UAT correction #2 — Bay/Measurement
 Group discovery/bootstrap.** Owner UAT found a further real workflow
 gap: a workspace containing obvious multi-bay Voltage channel sets

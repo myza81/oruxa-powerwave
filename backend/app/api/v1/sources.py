@@ -61,6 +61,7 @@ from app.services.waveform_service import (
     resolve_annotation_anchor,
     resolve_peak_value,
 )
+from app.services.workspace_preparation_service import prepare_workspace_source
 from app.services.workspace_registry import WorkspaceRegistry
 
 logger = logging.getLogger(__name__)
@@ -152,6 +153,9 @@ async def upload_comtrade_source(
     dat_file: UploadFile = File(..., description="COMTRADE .dat data file"),
     settings: Settings = Depends(get_settings_dep),
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
+    engineering_context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    calculated_channel_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
 ) -> SourceSummaryOut:
     workspace_id = _validate_workspace_id(workspace_id)
 
@@ -176,6 +180,19 @@ async def upload_comtrade_source(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorOut(code="internal_error", message="Import failed unexpectedly.").model_dump(),
         )
+
+    # Shared post-upload preparation (DEC-104): Measurement Group and
+    # Engineering Context discovery for this source, run the moment it
+    # exists -- never gated behind a visit to Manage Measurement Groups
+    # or Analysis. Upload has ALREADY succeeded above; a discovery
+    # failure/uncertainty here is never allowed to turn into an upload
+    # failure (see app.services.workspace_preparation_service's own
+    # docstring).
+    prepare_workspace_source(
+        workspace_id=workspace_id, source_id=source.source_id,
+        source_registry=registry, group_registry=measurement_group_registry,
+        context_registry=engineering_context_registry, calculated_channel_registry=calculated_channel_registry,
+    )
 
     return SourceSummaryOut.from_domain(source)
 

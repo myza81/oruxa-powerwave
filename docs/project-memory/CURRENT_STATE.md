@@ -1367,6 +1367,67 @@ measurement_group_detection`, `app.services.measurement_group_service`,
 Groups endpoint/UI. Full backend suite (5491 tests) and full Playwright
 suite (156 scenarios) pass.
 
+**Shared post-upload workspace preparation (2026-09-23).** Owner UAT
+generalized the previous two fixes into an application-wide invariant:
+*"Once an event file is uploaded successfully, every function that can
+operate on that file should be ready to use independently. No function
+should require the user to first open Waveform, Analysis, Manage
+Measurement Groups, or any other page merely to trigger hidden
+preparation/bootstrap work."* DEC-103's own Compliance-specific frontend
+bootstrap, and Analysis's pre-existing `wwAnalysisDiscoverUncoveredSources()`,
+both fixed their OWN page's independence but were still page-owned, not
+workspace/source-lifecycle-owned — a third or fourth page (Table,
+Calculated Channels) needing the same independence would have meant a
+third or fourth duplicated bootstrap.
+
+**Fix: one authoritative backend choke point**, `app.services.workspace_
+preparation_service.prepare_workspace_source()`, called from BOTH — and
+the only two — source-registration call sites in the backend
+(`app.api.v1.sources.upload_comtrade_source()` for COMTRADE, `app.api.v1.
+preparation_sources.post_convert_preparation_source()` for CSV/Excel),
+immediately after each one's own `WorkspaceRegistry.add()` succeeds. It
+runs the EXACT SAME two existing functions the two page-owned bootstraps
+already called (`generate_suggested_groups_for_source()`, `generate_
+suggested_contexts_for_source()`) — no new detection algorithm, only the
+WHEN moved from "whenever a page happens to open" to "the moment the
+source exists." Never turns a discovery failure/uncertainty into an
+upload failure (both calls wrapped independently, upload already
+succeeded and is never rolled back); idempotent by construction (both
+underlying functions already skip a cluster entirely if any one of its
+channels is already claimed, by any status); synchronous (pure
+sub-millisecond channel-name pattern matching, no I/O). See
+[DECISIONS.md — DEC-104](DECISIONS.md#dec-104--successful-source-upload-triggers-shared-workspacesource-preparation-measurement-group--engineering-context-discovery-no-top-level-function-may-depend-on-another-page-having-been-opened-first)
+for the full record, including the audit that confirmed Measurement
+Group and Engineering Context discovery are the ONLY two genuine shared-
+metadata lifecycle gaps in the codebase (Time Groups are pure/stateless
+and need no preparation step at all).
+
+**DEC-103's and Analysis's own frontend bootstraps are KEPT, reclassified
+as fallback-only** (doc comments only, no behavior change) — by the time
+either page opens, the backend has normally already done the work, so
+both are now pure no-ops on the common path; they remain as defense-in-
+depth for a group/context deleted after upload, or a pre-DEC-104
+workspace. Neither Compliance's nor Analysis's own readiness depends on
+these functions running any more.
+
+**Files**: new `app/services/workspace_preparation_service.py`
+(`prepare_workspace_source()`, `WorkspaceSourcePreparationResult`).
+`app/api/v1/sources.py` and `app/api/v1/preparation_sources.py` (three
+new `Depends()` params each, one call each). `frontend/index.html`
+(doc-comment reclassification only). New `browser-tests/post_upload_
+readiness.spec.js` (4 scenarios: direct upload-to-Compliance, direct
+upload-to-Analysis, both in one session, multi-source idempotency) — none
+seed any Measurement Group/Engineering Context via a direct API call,
+unlike every other Playwright suite in this repo, since the point is that
+upload alone is sufficient. A significant, EXPECTED ripple across ~15
+existing backend test files (and `browser-tests/compliance_measurement.spec.js`)
+that manually construct Measurement Groups/Engineering Contexts on
+realistic, phase-detectable channel names — each updated to clear
+whatever the now-automatic discovery created immediately after upload.
+Zero changes to `app.domain.measurement_group_detection`, `app.domain.
+engineering_context_detection`, or `app.domain.time_grouping`. Full
+backend suite and full Playwright suite pass.
+
 **Flake cleanup (2026-09-19, continued) — the third and final DEC-099
 item ("Speed selection 4x") is now `[CLOSED]`; DEC-099 has zero
 remaining `[OPEN]` items.** Test-synchronization bug, no production
