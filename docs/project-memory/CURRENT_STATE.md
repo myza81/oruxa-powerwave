@@ -1480,6 +1480,60 @@ the pre-fix code and PASS against the fix. `test_frontend_phasor_analysis.py`'s
 two structural tests asserting the OLD fresh-fire location were updated
 to assert the new one. Full backend suite and full Playwright suite pass.
 
+**Production regression fix, part 2 (2026-09-23, same day) — DEC-105
+only partially restored Analysis.** Owner UAT: *"some analyzers now
+work, Overcurrent still has an issue, Impedance Locus still has an
+issue."* **Root cause, confirmed by direct reproduction with a new
+mixed-capability fixture — NOT a data/API defect**: DEC-105 restored the
+"fresh context available" SIGNAL but every analyzer still blindly picked
+`contexts[0]`, the first context in list order, regardless of whether it
+actually satisfied that analyzer's own required roles. Invisible for
+Phasor/Sequence Components (both degrade gracefully to a partial result
+-- resolved roles render, unresolved ones show "Missing", never a hard
+failure), but silently broken for Overcurrent (needs one Current role
+for its own selected phase), Impedance Locus (needs a matching Voltage+
+Current pair), and Distance Protection (needs the full four-role
+Voltage+Current set its own selected fault loop requires) whenever
+`contexts[0]` happened to lack what they needed. Reproduced directly:
+new fixture `mixed_capability_multibay.cfg/.dat` (KPDN1 Voltage-only
+listed first, KPDN2 full Voltage+Current, SLKS Current-only) uploaded
+with zero manual seeding -- Overcurrent/Impedance/Distance all
+auto-selected KPDN1 and rendered nothing, while Phasor/Sequence
+Components auto-selected the SAME KPDN1 and rendered correctly-partial
+results.
+
+**Fix**: new shared frontend helpers `wwAnalysisFetchInputResolution()`/
+`wwAnalysisFindFirstCompatibleContext()` reuse the EXISTING `GET
+.../engineering-contexts/{id}/input-resolution` endpoint (`app.services.
+analysis_input_resolution_service`, completely unchanged) to ask, for
+each candidate context in order, whether it resolves every role the
+analyzer's own currently-selected phase/loop needs -- the frontend never
+re-implements Voltage/Current/phase matching itself, only decides WHICH
+`(analysis_kind, mode)` pairs to ask about. Overcurrent's/Impedance's/
+Distance's own `onFreshContextsDiscovered()` handlers are now `async`,
+using this to skip incompatible contexts and select the first genuinely
+usable one; if none qualify, a new analyzer-specific message is shown
+("No Engineering Context contains the required Current input for
+Overcurrent." / "...required Voltage and Current inputs for Impedance
+Locus." / "...for Distance Protection.") instead of silently rendering
+nothing. Phasor and Sequence Components are unchanged -- confirmed
+already correct by direct reproduction. The existing "never steal a
+manual selection" guardrail is preserved, checked both before and after
+the now-async compatibility search. See
+[DECISIONS.md — DEC-106](DECISIONS.md#dec-106--dec-105-follow-up-initial-engineering-context-auto-selection-is-analyzer-compatibility-aware-reusing-the-existing-input-resolution-endpoint--never-merely-the-first-context)
+for the full record.
+
+**Files**: `frontend/index.html` only (new shared helpers; three
+analyzers' fresh-context handlers made async; three new
+`WW_XXX_MSG_NO_COMPATIBLE_CONTEXT` messages; one new
+`wwDistanceRoleKeyToInputResolutionMode()` helper). Zero backend
+changes. New fixture `backend/tests/fixtures/comtrade/mixed_capability_multibay.cfg/.dat`.
+`browser-tests/post_upload_readiness.spec.js` gained 7 new scenarios (5
+verified to FAIL against the pre-fix code and PASS against the fix).
+`backend/tests/test_frontend_phasor_analysis.py` (one structural
+assertion updated for the now-async Overcurrent handler). Full backend
+suite and full Playwright suite pass.
+
 **Flake cleanup (2026-09-19, continued) — the third and final DEC-099
 item ("Speed selection 4x") is now `[CLOSED]`; DEC-099 has zero
 remaining `[OPEN]` items.** Test-synchronization bug, no production

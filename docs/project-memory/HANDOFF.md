@@ -8,6 +8,103 @@ Last updated: **2026-09-23**
 
 ## What was most recently done
 
+**Production regression fix, part 2 (DEC-106): DEC-105 only partially
+restored Analysis.** Owner UAT reported a follow-up regression after the
+DEC-105 fix landed: *"some analyzers now work, Overcurrent still has an
+issue, Impedance Locus still has an issue."*
+
+**Root cause, confirmed by direct reproduction with a new fixture — NOT
+a data/API defect.** DEC-105 restored the "a usable context is now
+available" SIGNAL (`onFreshContextsDiscovered`), but never checked WHICH
+context to select -- every one of the five analyzers' own handlers
+blindly picked `wwXxxState.contexts[0]`, the first context in
+detection/list order, regardless of whether that specific context
+satisfied the analyzer's own currently-required roles. This is invisible
+for Phasor (shows a partial bay -- resolved roles render, unresolved
+ones marked "Missing", never a hard failure) and Sequence Components
+(same graceful-degradation shape, usable from a complete Voltage-only OR
+Current-only three-phase family), but silently broken for Overcurrent
+(needs exactly one Current role for its own selected phase), Impedance
+Locus (needs a matching Voltage+Current PAIR for its own selected
+phase), and Distance Protection (needs the full four-role Voltage+
+Current set its own selected fault loop requires).
+
+**Reproduced directly with a new, purpose-built fixture**
+(`mixed_capability_multibay.cfg/.dat`, three bays using the owner's own
+previously-reported naming convention: `KPDN1` Voltage-only listed
+FIRST, `KPDN2` full Voltage+Current, `SLKS` Current-only) -- a real
+browser, real backend, zero manual seeding. Overcurrent and Impedance
+both auto-selected KPDN1 and rendered nothing; Distance Protection
+likewise rendered nothing. Phasor and Sequence Components both
+auto-selected the SAME KPDN1 and rendered correctly-partial results
+(Voltage roles resolved, Current roles "Missing") -- confirming their
+own graceful degradation is real, not a coincidence, and that they do
+NOT need this fix.
+
+**Why DEC-105's own five-analyzer acceptance suite missed this**:
+`phasor_smoke_three_phase` (the fixture that suite used) has exactly ONE
+Engineering Context with every role present -- on a single perfect bay,
+"auto-select `contexts[0]`" and "auto-select the first COMPATIBLE
+context" produce the identical answer, so the suite could not
+distinguish which strategy was actually implemented.
+
+**Fix.** New shared frontend helpers `wwAnalysisFetchInputResolution()`/
+`wwAnalysisFindFirstCompatibleContext()` (`frontend/index.html`, next to
+the existing `wwAnalysisFetchContexts()`/`wwAnalysisFetchSuggest()`)
+reuse the EXISTING `GET .../engineering-contexts/{id}/input-resolution`
+endpoint (`app.services.analysis_input_resolution_service`, completely
+unchanged) to ask, per candidate context in order, whether it resolves
+EVERY role the analyzer's own currently-selected phase/loop needs -- the
+frontend never re-implements Voltage/Current/phase matching itself, only
+decides WHICH `(analysis_kind, mode)` pairs to ask about (derived from
+UI state -- selected phase/loop -- each analyzer already owned).
+Overcurrent's/Impedance's/Distance's own `onFreshContextsDiscovered()`
+handlers are now `async`, using this helper to skip incompatible
+contexts and auto-select the first genuinely usable one. If none
+qualify, the selector stays on its blank placeholder and a new,
+analyzer-specific message appears ("No Engineering Context contains the
+required Current input for Overcurrent." / "...required Voltage and
+Current inputs for Impedance Locus." / "...for Distance Protection.")
+instead of silently computing nothing. Phasor and Sequence Components
+are completely unchanged -- confirmed already correct by direct
+reproduction, so no gate was added to either (adding one would have been
+unnecessary complexity/risk for a problem that does not exist). The
+existing "never steal a manual selection" guardrail is preserved,
+checked both immediately before AND immediately after the now-async
+compatibility search (the engineer may select manually while it is in
+flight). See
+[DECISIONS.md — DEC-106](DECISIONS.md#dec-106--dec-105-follow-up-initial-engineering-context-auto-selection-is-analyzer-compatibility-aware-reusing-the-existing-input-resolution-endpoint--never-merely-the-first-context)
+for the full record.
+
+**Files**: `frontend/index.html` only (new shared helpers; three
+analyzers' own fresh-context handlers made `async`; three new
+`WW_XXX_MSG_NO_COMPATIBLE_CONTEXT` message constants; one new
+`wwDistanceRoleKeyToInputResolutionMode()` helper). Zero backend
+changes -- `app.services.analysis_input_resolution_service`,
+`app.domain.analysis_input_resolution`, and `app.domain.analysis_requirements`
+are all untouched. New committed fixture `backend/tests/fixtures/comtrade/
+mixed_capability_multibay.cfg/.dat`. `browser-tests/post_upload_readiness.spec.js`
+gained a new `test.describe` block (7 scenarios: Overcurrent/Impedance/
+Distance each independently proven to skip the incompatible bay and
+compute successfully; Phasor/Sequence Components proven unaffected; a
+no-compatible-context scenario for all three; a guardrail test) -- the 5
+behavior-changing assertions verified to FAIL against the pre-fix code
+(via a temporary `git stash` of the frontend change alone) and PASS
+against the fix. `backend/tests/test_frontend_phasor_analysis.py` (one
+structural assertion updated for Overcurrent's handler becoming
+`async`).
+
+**Validation**: focused input-resolution/Overcurrent/Impedance/Distance/
+Phasor/Sequence backend and Playwright suites pass; full backend suite
+passes; full Playwright suite passes; `post_upload_readiness.spec.js`
+run three times consecutively with zero flakes; `git diff --check`
+clean.
+
+**Stop condition honored**: this Analysis regression correction only —
+no Compliance Slice 3, no other feature work started.
+
+## What was done in the prior session — Production regression fix (DEC-105): Analysis stopped auto-selecting a bay after DEC-104
+
 **Production regression fix (DEC-105): Analysis stopped auto-selecting a
 bay after DEC-104.** Owner UAT reported: *"Analysis/Analyzer worked
 before DEC-104, but does not work after DEC-104."* Investigated as a

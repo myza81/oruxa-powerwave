@@ -105,6 +105,30 @@ for the full investigation (including why `needs_review`/covered-source
 semantics and calculated-channel timing were both ruled out) and fix
 record.
 
+**DEC-106 (2026-09-23, same-day follow-up): AUTO-SELECTED is not the
+same as AUTO-SELECTED CORRECTLY.** DEC-105 restored the fresh-selection
+signal, but every analyzer's own handler still blindly picked
+`contexts[0]` regardless of whether that specific context actually
+resolved the roles the analyzer needs. Invisible for Phasor/Sequence
+Components (both degrade gracefully to a partial result), silently
+broken for Overcurrent (needs one Current role for its own selected
+phase), Impedance Locus (needs a matching Voltage+Current pair), and
+Distance Protection (needs the full four-role set its own selected fault
+loop requires) whenever `contexts[0]` happened to lack what they needed.
+Fixed by new shared helpers `wwAnalysisFetchInputResolution()`/
+`wwAnalysisFindFirstCompatibleContext()` that reuse the EXISTING `GET
+.../engineering-contexts/{id}/input-resolution` endpoint (`app.services.
+analysis_input_resolution_service`, completely unchanged) to walk
+candidate contexts in order and select the first one that actually
+resolves every role the analyzer's own currently-selected phase/loop
+needs — the frontend never re-implements Voltage/Current/phase matching
+itself. If none qualify, a new analyzer-specific "No Engineering Context
+contains the required..." message is shown instead of silently rendering
+nothing. Phasor and Sequence Components are unchanged (confirmed already
+correct by direct reproduction). See
+[DECISIONS.md — DEC-106](DECISIONS.md#dec-106--dec-105-follow-up-initial-engineering-context-auto-selection-is-analyzer-compatibility-aware-reusing-the-existing-input-resolution-endpoint--never-merely-the-first-context)
+for the full investigation and fix record.
+
 Full detail, root cause, and migration history:
 [PHASOR_ANALYSIS.md — "Ownership moved to the shared Analysis
 workspace"](PHASOR_ANALYSIS.md#ownership-moved-to-the-shared-analysis-workspace-2026-09-12-owner-uat-fix)
@@ -336,6 +360,10 @@ add one is caught immediately.
   [DEC-105](DECISIONS.md#dec-105--dec-104-follow-up-analysiss-own-auto-select-the-first-bay-signal-is-decoupled-from-whenhow-an-engineering-context-was-created)
   (the same-day production regression fix: auto-SELECTION of the first
   bay, a separate signal from selector population, decoupled from which
-  code path created the context).
+  code path created the context), and
+  [DEC-106](DECISIONS.md#dec-106--dec-105-follow-up-initial-engineering-context-auto-selection-is-analyzer-compatibility-aware-reusing-the-existing-input-resolution-endpoint--never-merely-the-first-context)
+  (the same-day follow-up: auto-selection must pick a context that
+  actually satisfies the analyzer's own required roles, via the existing
+  input-resolution endpoint, not merely the first context in the list).
 - `docs/development/PERFORMANCE_BASELINE.md` (waveform endpoint
   latency/payload precedent).

@@ -283,3 +283,176 @@ test.describe("DEC-104 regression fix: analyzers auto-resolve and compute immedi
     }
   });
 });
+
+// DEC-106 (2026-09-23 owner-UAT follow-up to DEC-105): "some analyzers
+// now work, Overcurrent still has an issue, Impedance Locus still has an
+// issue." DEC-105 restored an auto-SELECTION signal but that signal
+// blindly picked `contexts[0]` regardless of whether that context
+// actually satisfied the analyzer's own required roles -- fine for
+// Phasor/Sequence Components (both degrade gracefully to partial
+// results), broken for Overcurrent/Impedance Locus/Distance Protection
+// (each needs a specific Current, or Voltage+Current, role for the
+// currently selected phase/loop). DEC-105's own five-analyzer suite
+// above used `phasor_smoke_three_phase` -- ONE context with every role
+// present -- which cannot distinguish "auto-selects the first context"
+// from "auto-selects an analyzer-COMPATIBLE context," since both
+// strategies happen to produce the same answer on a single perfect bay.
+//
+// Fixture: mixed_capability_multibay(.cfg/.dat) -- newly committed,
+// generated the same way phasor_smoke_three_phase's own ASCII-COMTRADE
+// builder does (backend/tests/test_phasor_analysis_api.py's own
+// `_build_ascii_comtrade()`), verified directly against the real
+// backend resolver before being committed. THREE distinct bays sharing
+// the owner's own previously-reported multi-bay naming convention
+// (KPDN1/KPDN2/SLKS):
+//   - KPDN1: Voltage-only (VR/VY/VB, 100 V RMS) -- no Current at all.
+//   - KPDN2: full Voltage+Current (VR/VY/VB/IR/IY/IB, 100 V RMS/40 A RMS).
+//   - SLKS: Current-only (IR/IY/IB, 40 A RMS) -- no Voltage at all.
+// Discovery publishes them in upload/detection order (KPDN1, KPDN2,
+// SLKS) -- KPDN1 is deliberately listed FIRST and is deliberately
+// INCOMPATIBLE with Overcurrent/Impedance/Distance, so any lingering
+// "just pick contexts[0]" behavior is caught immediately.
+//
+// Like every other test in this file, this suite seeds NOTHING manually
+// -- no direct API context creation, no manual `selectOption()` before
+// checking results -- upload-time DEC-104 discovery alone must produce
+// analyzer-ready contexts, and the analyzer's own auto-selection must be
+// role-aware.
+test.describe("DEC-106: initial context auto-selection is analyzer-compatibility-aware, not merely 'first context'", () => {
+  async function uploadMixedCapabilityFixture(page) {
+    await page.goto("/index.html");
+    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "mixed_capability_multibay.cfg"));
+    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "mixed_capability_multibay.dat"));
+    await page.locator("#uploadModalSubmitBtn").click();
+    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+    const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
+    await expect(row).toBeVisible();
+  }
+
+  async function openAnalysisTab(page, tabId) {
+    await page.locator("#mainNavAnalysisBtn").click();
+    await expect(page.locator("#pageAnalysis")).toBeVisible();
+    if (tabId) {
+      await page.locator(`#${tabId}`).click();
+      await expect(page.locator(`#${tabId}`)).toHaveClass(/active/);
+    }
+  }
+
+  test("Overcurrent skips the Voltage-only bay and auto-selects the Voltage+Current bay; real computation succeeds", async ({ page }) => {
+    await uploadMixedCapabilityFixture(page);
+    await openAnalysisTab(page, "wwAnalysisTypeOvercurrentBtn");
+    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(4, { timeout: 10000 }); // placeholder + 3 bays
+
+    const kpdn2Id = await page.evaluate(() => wwOvercurrentState.contexts.find((c) => c.display_name === "KPDN2").id);
+    await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(kpdn2Id, { timeout: 10000 });
+    await expect(async () => {
+      const text = await page.locator("#wwOvercurrentValuesList").innerText();
+      expect(text).toContain("Measured RMS current");
+      expect(text).toMatch(/40\.0\s*A/);
+    }).toPass({ timeout: 5000 });
+  });
+
+  test("Impedance Locus skips the Voltage-only bay and auto-selects the Voltage+Current bay; current point and locus both succeed", async ({ page }) => {
+    await uploadMixedCapabilityFixture(page);
+    await openAnalysisTab(page, "wwAnalysisTypeImpedanceBtn");
+    await expect(page.locator("#wwImpedanceContextSelect option")).toHaveCount(4, { timeout: 10000 }); // placeholder + 3 bays
+
+    const kpdn2Id = await page.evaluate(() => wwImpedanceState.contexts.find((c) => c.display_name === "KPDN2").id);
+    await expect(page.locator("#wwImpedanceContextSelect")).toHaveValue(kpdn2Id, { timeout: 10000 });
+    await expect(async () => {
+      const text = await page.locator("#wwImpedanceValuesList").innerText();
+      expect(text).toContain("Phase impedance");
+    }).toPass({ timeout: 10000 });
+  });
+
+  test("Distance Protection skips the Voltage-only bay and auto-selects the Voltage+Current bay; loop impedance succeeds", async ({ page }) => {
+    await uploadMixedCapabilityFixture(page);
+    await openAnalysisTab(page, "wwAnalysisTypeDistanceBtn");
+    await expect(page.locator("#wwDistanceContextSelect option")).toHaveCount(4, { timeout: 10000 }); // placeholder + 3 bays
+
+    const kpdn2Id = await page.evaluate(() => wwDistanceState.contexts.find((c) => c.display_name === "KPDN2").id);
+    await expect(page.locator("#wwDistanceContextSelect")).toHaveValue(kpdn2Id, { timeout: 10000 });
+    await expect(async () => {
+      const text = await page.locator("#wwDistanceValuesList").innerText();
+      expect(text).toContain("Loop");
+    }).toPass({ timeout: 10000 });
+  });
+
+  test("Phasor and Sequence Components remain unaffected -- still auto-select the first context and degrade gracefully to partial results", async ({ page }) => {
+    await uploadMixedCapabilityFixture(page);
+    await openAnalysisTab(page, null);
+    await expect(page.locator("#wwPhasorContextSelect option")).toHaveCount(4, { timeout: 10000 }); // placeholder + 3 bays
+
+    const kpdn1Id = await page.evaluate(() => wwPhasorState.contexts.find((c) => c.display_name === "KPDN1").id);
+    await expect(page.locator("#wwPhasorContextSelect")).toHaveValue(kpdn1Id, { timeout: 10000 });
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/); // KPDN1's own Va/Vb/Vc resolve
+      expect(text).toContain("Missing"); // Ia/Ib/Ic do not -- a normal partial result, not a failure
+    }).toPass({ timeout: 5000 });
+
+    await page.locator("#wwAnalysisTypeSequenceBtn").click();
+    await expect(page.locator("#wwSequenceContextSelect")).toHaveValue(kpdn1Id, { timeout: 10000 });
+    await expect(async () => {
+      const text = await page.locator("#wwSequenceValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/); // Voltage sequence resolves from KPDN1's complete 3-phase Voltage family
+    }).toPass({ timeout: 5000 });
+  });
+
+  test("no compatible context: Overcurrent/Impedance/Distance show a meaningful configuration message, never a silent failure", async ({ page }) => {
+    // A workspace with Voltage-only bays ONLY (compliance_smoke_multibay,
+    // already committed and reused verbatim from compliance_measurement.spec.js)
+    // -- zero Current anywhere, so every phase-specific
+    // Overcurrent/Impedance/Distance requirement is genuinely
+    // unsatisfiable by any context.
+    await page.goto("/index.html");
+    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "compliance_smoke_multibay.cfg"));
+    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "compliance_smoke_multibay.dat"));
+    await page.locator("#uploadModalSubmitBtn").click();
+    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+
+    await openAnalysisTab(page, "wwAnalysisTypeOvercurrentBtn");
+    await expect(page.locator("#wwOvercurrentEmptyState")).toHaveText(
+      "No Engineering Context contains the required Current input for Overcurrent.", { timeout: 10000 }
+    );
+    await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue("");
+
+    await page.locator("#wwAnalysisTypeImpedanceBtn").click();
+    await expect(page.locator("#wwImpedanceEmptyState")).toHaveText(
+      "No Engineering Context contains the required Voltage and Current inputs for Impedance Locus.", { timeout: 10000 }
+    );
+    await expect(page.locator("#wwImpedanceContextSelect")).toHaveValue("");
+
+    await page.locator("#wwAnalysisTypeDistanceBtn").click();
+    await expect(page.locator("#wwDistanceEmptyState")).toHaveText(
+      "No Engineering Context contains the required Voltage and Current inputs for Distance Protection.", { timeout: 10000 }
+    );
+    await expect(page.locator("#wwDistanceContextSelect")).toHaveValue("");
+  });
+
+  test("guardrail: a manually selected (even analyzer-incompatible) context is never auto-replaced", async ({ page }) => {
+    await uploadMixedCapabilityFixture(page);
+    await openAnalysisTab(page, "wwAnalysisTypeOvercurrentBtn");
+    await expect(page.locator("#wwOvercurrentContextSelect option")).toHaveCount(4, { timeout: 10000 }); // placeholder + 3 bays
+
+    const kpdn2Id = await page.evaluate(() => wwOvercurrentState.contexts.find((c) => c.display_name === "KPDN2").id);
+    await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(kpdn2Id, { timeout: 10000 });
+
+    // Engineer deliberately picks the incompatible Voltage-only bay.
+    const kpdn1Id = await page.evaluate(() => wwOvercurrentState.contexts.find((c) => c.display_name === "KPDN1").id);
+    await page.locator("#wwOvercurrentContextSelect").selectOption(kpdn1Id);
+    await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(kpdn1Id);
+
+    // Revisiting Analysis must never silently jump back to KPDN2 --
+    // the engineer's own explicit choice is preserved, even though it
+    // is analyzer-incompatible (auto-selection only applies to the
+    // initial unselected state).
+    await page.locator("#mainNavRecordingsBtn").click();
+    await openAnalysisTab(page, "wwAnalysisTypeOvercurrentBtn");
+    await expect(page.locator("#wwOvercurrentContextSelect")).toHaveValue(kpdn1Id);
+  });
+});

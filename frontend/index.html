@@ -37049,6 +37049,58 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             );
         }
 
+        // DEC-106 (2026-09-23 owner-UAT follow-up to DEC-105): a context
+        // EXISTING is not the same as a context being USABLE by a given
+        // analyzer's own currently-required roles (Overcurrent needs one
+        // Current phase, Impedance/Distance need a matching Voltage+
+        // Current pair). This reuses the EXISTING, already-authoritative
+        // `GET .../engineering-contexts/{id}/input-resolution` endpoint
+        // (`app.services.analysis_input_resolution_service`) for the
+        // actual Voltage/Current/phase matching -- the frontend never
+        // duplicates that logic itself, only decides WHICH
+        // (analysis_kind, mode) pairs to ask about, driven entirely by
+        // each analyzer's own already-owned UI state (selected phase/
+        // loop).
+        function wwAnalysisFetchInputResolution(workspaceId, contextId, analysisKind, mode) {
+            return wwPhasorFetchJson(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                "/engineering-contexts/" + encodeURIComponent(contextId) + "/input-resolution?" +
+                new URLSearchParams({ analysis_kind: analysisKind, mode: mode }).toString()
+            );
+        }
+
+        // Returns the FIRST context (list order -- never re-sorted, same
+        // "never assume one context is special" convention every other
+        // shared Analysis function already follows) whose resolution for
+        // EVERY given `(analysisKind, mode)` pair reaches
+        // `STATUS_RESOLVED` -- or `null` if none qualify. A single
+        // resolution failure/exception for one candidate context is
+        // treated as "not compatible," never as a fatal error for the
+        // whole search (mirrors wwAnalysisDiscoverUncoveredSources()'s
+        // own per-source best-effort convention). `modes` with more than
+        // one entry means ALL must resolve (e.g. Impedance/Distance's own
+        // Voltage+Current pair) -- this function never does OR-matching.
+        async function wwAnalysisFindFirstCompatibleContext(workspaceId, contexts, analysisKind, modes) {
+            for (const ctx of contexts) {
+                let allResolved = true;
+                for (const mode of modes) {
+                    let result;
+                    try {
+                        result = await wwAnalysisFetchInputResolution(workspaceId, ctx.id, analysisKind, mode);
+                    } catch (error) {
+                        allResolved = false;
+                        break;
+                    }
+                    if (!result || result.status !== "resolved") {
+                        allResolved = false;
+                        break;
+                    }
+                }
+                if (allResolved) return ctx;
+            }
+            return null;
+        }
+
         // The set of real source ids already COVERED by at least one
         // Engineering Context member -- determined ENTIRELY from actual
         // membership (channel_ref.source_id), never from a context's own
@@ -37772,6 +37824,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_OVERCURRENT_MSG_NO_SUGGESTIONS =
             "No Engineering Contexts could be automatically suggested from the loaded recording(s). " +
             "Create or correct one manually via Engineering Context configuration.";
+        // DEC-106 (2026-09-23): at least one Engineering Context exists,
+        // but NONE of them resolve the Current role for the currently
+        // selected phase -- distinct from WW_OVERCURRENT_MSG_NO_SUGGESTIONS
+        // above (zero contexts at all). The engineer must still pick a
+        // context manually via the selector (never auto-selected, since
+        // none qualify) or correct one's own Current membership.
+        const WW_OVERCURRENT_MSG_NO_COMPATIBLE_CONTEXT =
+            "No Engineering Context contains the required Current input for Overcurrent.";
 
         // Chart X-axis representation toggle (2026-XX-XX chart UX
         // enhancement): a PURE chart-display choice, never a different
@@ -37973,13 +38033,38 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // discovery pass that finds an ADDITIONAL context while one is
         // already usable/selected -- that case must never steal the
         // engineer's current selection).
-        function wwOvercurrentOnAnalysisFreshContextsDiscovered() {
+        //
+        // DEC-106 (2026-09-23 owner-UAT follow-up to DEC-105): a context
+        // EXISTING is not the same as it being USABLE for Overcurrent's
+        // own currently-selected phase -- blindly picking `contexts[0]`
+        // (DEC-105's own behavior) could select a Voltage-only bay with
+        // zero Current channels, leaving Overcurrent silently broken even
+        // though a perfectly usable bay was also available. Now asks the
+        // EXISTING backend resolver (via wwAnalysisFindFirstCompatibleContext())
+        // which context, if any, actually resolves the Current role for
+        // `wwOvercurrentState.phase` -- never re-implements that
+        // Voltage/Current/phase matching itself.
+        async function wwOvercurrentOnAnalysisFreshContextsDiscovered() {
             if (wwOvercurrentState.selectedContextId) return;
             if (wwOvercurrentState.contexts.length === 0) return;
-            const first = wwOvercurrentState.contexts[0];
-            wwOvercurrentState.selectedContextId = first.id;
+            const workspaceId = currentWorkspaceId();
+            const epochAtStart = ww.epoch;
+            const mode = "current_phase_" + wwOvercurrentState.phase.toLowerCase();
+            const compatible = await wwAnalysisFindFirstCompatibleContext(
+                workspaceId, wwOvercurrentState.contexts, "overcurrent", [mode]
+            );
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            // The engineer may have selected a context by hand WHILE the
+            // compatibility check above was in flight -- never overwrite
+            // that, same guardrail as the synchronous case above.
+            if (wwOvercurrentState.selectedContextId) return;
+            if (!compatible) {
+                wwOvercurrentShowEmptyState(WW_OVERCURRENT_MSG_NO_COMPATIBLE_CONTEXT);
+                return;
+            }
+            wwOvercurrentState.selectedContextId = compatible.id;
             const select = document.getElementById("wwOvercurrentContextSelect");
-            if (select) select.value = first.id;
+            if (select) select.value = compatible.id;
             wwOvercurrentRenderContextBadge();
             wwOvercurrentLoadForSelectedContext();
         }
@@ -39687,6 +39772,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_IMPEDANCE_MSG_NO_SOURCES = "No recording loaded. Upload a recording to use Recording mode.";
         const WW_IMPEDANCE_MSG_NO_SUGGESTIONS =
             "No engineering contexts could be suggested automatically for the loaded source(s). Manual mode is available.";
+        // DEC-106 (2026-09-23): at least one Engineering Context exists,
+        // but NONE of them resolve BOTH the Voltage and Current roles for
+        // the currently selected phase -- distinct from
+        // WW_IMPEDANCE_MSG_NO_SUGGESTIONS above (zero contexts at all).
+        const WW_IMPEDANCE_MSG_NO_COMPATIBLE_CONTEXT =
+            "No Engineering Context contains the required Voltage and Current inputs for Impedance Locus.";
 
         const wwImpedanceState = {
             contexts: [],
@@ -39774,13 +39865,36 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const el = document.getElementById("wwImpedanceDiscoveringIndicator");
             if (el) el.hidden = !isDiscovering;
         }
-        function wwImpedanceOnAnalysisFreshContextsDiscovered() {
+        // DEC-106 (2026-09-23 owner-UAT follow-up to DEC-105): Impedance
+        // needs a matching Voltage+Current PAIR for its own currently
+        // selected phase, not merely "a context exists" -- blindly
+        // picking `contexts[0]` (DEC-105's own behavior) could select a
+        // Voltage-only or Current-only bay, leaving Impedance silently
+        // broken even though a genuinely usable bay was also available.
+        // Asks the EXISTING backend resolver (via
+        // wwAnalysisFindFirstCompatibleContext(), BOTH the voltage_phase_X
+        // and current_phase_X modes -- Impedance's own `impedance`
+        // analysis_kind requirements declare these as two separate roles;
+        // see app.domain.analysis_requirements) which context, if any,
+        // resolves both -- never re-implements that matching itself.
+        async function wwImpedanceOnAnalysisFreshContextsDiscovered() {
             if (wwImpedanceState.selectedContextId) return;
             if (wwImpedanceState.contexts.length === 0) return;
-            const first = wwImpedanceState.contexts[0];
-            wwImpedanceState.selectedContextId = first.id;
+            const workspaceId = currentWorkspaceId();
+            const epochAtStart = ww.epoch;
+            const phase = wwImpedanceState.phase.toLowerCase();
+            const compatible = await wwAnalysisFindFirstCompatibleContext(
+                workspaceId, wwImpedanceState.contexts, "impedance", ["voltage_phase_" + phase, "current_phase_" + phase]
+            );
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            if (wwImpedanceState.selectedContextId) return;
+            if (!compatible) {
+                wwImpedanceShowEmptyState(WW_IMPEDANCE_MSG_NO_COMPATIBLE_CONTEXT);
+                return;
+            }
+            wwImpedanceState.selectedContextId = compatible.id;
             const select = document.getElementById("wwImpedanceContextSelect");
-            if (select) select.value = first.id;
+            if (select) select.value = compatible.id;
             wwImpedanceRenderContextBadge();
             wwImpedanceLoadForSelectedContext();
         }
@@ -43483,6 +43597,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_DISTANCE_MSG_NO_SOURCES = "No recording loaded. Upload a recording to use Recording mode.";
         const WW_DISTANCE_MSG_NO_SUGGESTIONS =
             "No engineering contexts could be suggested automatically for the loaded source(s). Manual mode is available.";
+        // DEC-106 (2026-09-23): at least one Engineering Context exists,
+        // but NONE of them resolve the full Voltage+Current role set the
+        // currently selected fault loop needs -- distinct from
+        // WW_DISTANCE_MSG_NO_SUGGESTIONS above (zero contexts at all).
+        const WW_DISTANCE_MSG_NO_COMPATIBLE_CONTEXT =
+            "No Engineering Context contains the required Voltage and Current inputs for Distance Protection.";
 
         // Loop -> (V1 role, V2 role, I1 role, I2 role) -- identical mapping
         // to the backend's own `LOOP_ROLE_KEYS` (app.domain.
@@ -43492,6 +43612,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             BC: ["Vb", "Vc", "Ib", "Ic"],
             CA: ["Vc", "Va", "Ic", "Ia"],
         };
+
+        // DEC-106 (2026-09-23): translates one WW_DISTANCE_LOOP_ROLES role
+        // key ("Va"/"Ib"/...) into the `(analysis_kind, mode)` pair
+        // `GET .../input-resolution` expects -- purely a string-shape
+        // translation of state Distance already owns (which loop is
+        // selected), never a re-implementation of the actual Voltage/
+        // Current/phase MATCHING itself (that stays exclusively in
+        // app.domain.analysis_input_resolution, reached only through the
+        // resolver endpoint).
+        function wwDistanceRoleKeyToInputResolutionMode(roleKey) {
+            const kind = roleKey[0] === "V" ? "voltage" : "current";
+            return kind + "_phase_" + roleKey[1].toLowerCase();
+        }
 
         function wwDistanceDefaultZoneSettings() {
             return {
@@ -43588,13 +43721,34 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const el = document.getElementById("wwDistanceDiscoveringIndicator");
             if (el) el.hidden = !isDiscovering;
         }
-        function wwDistanceOnAnalysisFreshContextsDiscovered() {
+        // DEC-106 (2026-09-23 owner-UAT follow-up to DEC-105): Distance
+        // Protection needs the full four-role Voltage+Current set its own
+        // currently selected fault loop requires (WW_DISTANCE_LOOP_ROLES),
+        // not merely "a context exists" -- blindly picking `contexts[0]`
+        // (DEC-105's own behavior) could select a bay missing one leg of
+        // the loop, leaving Distance silently broken even though a
+        // genuinely usable bay was also available. Asks the EXISTING
+        // backend resolver (via wwAnalysisFindFirstCompatibleContext())
+        // which context, if any, resolves every role the loop needs --
+        // never re-implements that matching itself.
+        async function wwDistanceOnAnalysisFreshContextsDiscovered() {
             if (wwDistanceState.selectedContextId) return;
             if (wwDistanceState.contexts.length === 0) return;
-            const first = wwDistanceState.contexts[0];
-            wwDistanceState.selectedContextId = first.id;
+            const workspaceId = currentWorkspaceId();
+            const epochAtStart = ww.epoch;
+            const modes = WW_DISTANCE_LOOP_ROLES[wwDistanceState.loop].map(wwDistanceRoleKeyToInputResolutionMode);
+            const compatible = await wwAnalysisFindFirstCompatibleContext(
+                workspaceId, wwDistanceState.contexts, "distance", modes
+            );
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            if (wwDistanceState.selectedContextId) return;
+            if (!compatible) {
+                wwDistanceShowEmptyState(WW_DISTANCE_MSG_NO_COMPATIBLE_CONTEXT);
+                return;
+            }
+            wwDistanceState.selectedContextId = compatible.id;
             const select = document.getElementById("wwDistanceContextSelect");
-            if (select) select.value = first.id;
+            if (select) select.value = compatible.id;
             wwDistanceRenderContextBadge();
             wwDistanceLoadForSelectedContext();
         }

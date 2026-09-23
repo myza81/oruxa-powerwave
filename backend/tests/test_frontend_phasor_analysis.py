@@ -500,7 +500,7 @@ class TestSharedAnalysisContextConsumers:
         assert "if (wwPhasorState.selectedContextId) return;" in phasor_fn
         assert "wwPhasorLoadForSelectedContext();" in phasor_fn
 
-        overcurrent_fn = _function_body(source, "function wwOvercurrentOnAnalysisFreshContextsDiscovered()", "// Registered with the shared Analysis context lifecycle")
+        overcurrent_fn = _function_body(source, "async function wwOvercurrentOnAnalysisFreshContextsDiscovered()", "// Registered with the shared Analysis context lifecycle")
         assert "if (wwOvercurrentState.selectedContextId) return;" in overcurrent_fn
         assert "wwOvercurrentLoadForSelectedContext();" in overcurrent_fn
 

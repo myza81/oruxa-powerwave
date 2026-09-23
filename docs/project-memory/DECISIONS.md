@@ -16979,6 +16979,182 @@ new/changed assertions were verified to FAIL against the pre-fix code
 against the fix, confirming they are not vacuous. Full backend suite and
 full Playwright suite pass.
 
+## DEC-106 — DEC-105 follow-up: initial Engineering Context auto-selection is analyzer-compatibility-aware, reusing the existing input-resolution endpoint — never merely "the first context"
+
+Date: 2026-09-23
+Status: Approved — implemented (owner-UAT production regression fix,
+partial-fix follow-up to DEC-105).
+Source: owner UAT ("DEC-105 only partially restored Analysis: some
+analyzers now work, Overcurrent still has an issue, Impedance Locus
+still has an issue.").
+
+**Issue.** DEC-105 restored the SIGNAL that a context had become usable
+(`onFreshContextsDiscovered`) but never checked WHICH context to select
+-- every one of the five analyzers' own handlers blindly picked
+`wwXxxState.contexts[0]`, the first context in list/detection order,
+regardless of whether that context actually satisfied the analyzer's own
+currently-required roles. This is invisible for Phasor (shows a partial
+bay -- resolved roles rendered, unresolved ones marked "Missing", never
+a hard failure) and Sequence Components (same graceful-degradation
+shape, usable from a complete Voltage-only OR Current-only three-phase
+family), but silently broken for Overcurrent (needs exactly one Current
+role for its own selected phase), Impedance Locus (needs a matching
+Voltage+Current PAIR for its own selected phase), and Distance
+Protection (needs the full four-role Voltage+Current set its own
+selected fault loop requires) -- each of these three shows an empty/
+non-computing result the moment `contexts[0]` happens to lack the role(s)
+it needs, even when a fully compatible context exists elsewhere in the
+same list.
+
+**Reproduced directly, confirmed BEFORE any fix**, with a newly committed
+ASCII COMTRADE fixture (`mixed_capability_multibay.cfg/.dat`, generated
+the same way `phasor_smoke_three_phase`'s own builder does): three bays
+using the owner's own previously-reported naming convention -- `KPDN1`
+(Voltage-only, deliberately listed/detected FIRST), `KPDN2` (full
+Voltage+Current), `SLKS` (Current-only). A real browser, real backend,
+zero manual seeding: Overcurrent and Impedance both auto-selected
+KPDN1's own context id and rendered nothing (`#wwOvercurrentValuesList`/
+`#wwImpedanceValuesList` both empty); Distance Protection likewise
+rendered nothing. Phasor auto-selected the SAME KPDN1 context and
+rendered Va/Vb/Vc resolved with Ia/Ib/Ic correctly marked "Missing" --
+confirming Phasor's own graceful degradation, not a coincidence.
+Sequence Components auto-selected KPDN1 too and rendered its Voltage
+sequences (V1/V2/V0) correctly, Current sequences "Missing" -- same
+graceful shape.
+
+**First incorrect state**: purely the CHOICE of which context to
+auto-select -- not context creation (DEC-104, unaffected), not the fresh
+signal firing (DEC-105, unaffected and confirmed firing correctly), not
+role resolution itself (the SAME `GET .../input-resolution` endpoint
+Overcurrent/Impedance/Distance now query for compatibility already
+correctly reported `needs_configuration` for KPDN1's own missing roles
+throughout -- it was never wrong, it was simply never asked BEFORE
+committing to a selection).
+
+**Why DEC-105's own five-analyzer acceptance suite missed this**:
+`phasor_smoke_three_phase` contains exactly ONE Engineering Context with
+every role present (Va/Vb/Vc/Ia/Ib/Ic) -- on a single perfect bay,
+"auto-select `contexts[0]`" and "auto-select the first COMPATIBLE
+context" are indistinguishable; both produce the identical answer. A
+single-context, single-capability fixture can prove a signal fires; it
+cannot prove the signal picks correctly, since there is nothing else to
+pick.
+
+**Fix.** A new shared helper pair in the Analysis lifecycle module
+(`frontend/index.html`, alongside `wwAnalysisFetchContexts()`/
+`wwAnalysisFetchSuggest()`): `wwAnalysisFetchInputResolution()` (a thin
+wrapper around the EXISTING `GET .../engineering-contexts/{id}/
+input-resolution` endpoint -- `app.services.analysis_input_resolution_
+service.resolve_analysis_inputs()`, completely unchanged) and
+`wwAnalysisFindFirstCompatibleContext(workspaceId, contexts, analysisKind,
+modes)`, which walks `contexts` in the SAME list order as before and
+returns the first one whose resolution reaches `STATUS_RESOLVED` for
+EVERY given `(analysisKind, mode)` pair. Overcurrent's/Impedance's/
+Distance's own `onFreshContextsDiscovered()` handlers are now `async`,
+each calling this helper with the `(analysis_kind, mode)` pairs their own
+CURRENTLY-selected phase/loop state already implies (Overcurrent: one
+`current_phase_X`; Impedance: `voltage_phase_X` AND `current_phase_X`;
+Distance: all four roles `WW_DISTANCE_LOOP_ROLES[loop]` already declares,
+translated to mode strings by a new one-line
+`wwDistanceRoleKeyToInputResolutionMode()`). **The frontend never
+re-implements Voltage/Current/phase matching** -- every compatibility
+determination is delegated entirely to the existing, already-tested
+backend resolver; the frontend only decides WHICH `(kind, mode)` pairs to
+ask about, derived from UI state (selected phase/loop) each analyzer
+already owned before this fix. Phasor and Sequence Components are
+UNCHANGED -- confirmed via direct reproduction that both already degrade
+gracefully regardless of which context is `contexts[0]`, so adding a
+compatibility gate to either would be unnecessary complexity solving a
+problem that does not exist for them.
+
+**No compatible context.** If none of the loaded contexts satisfy the
+analyzer's own current requirement, no context is auto-selected (the
+selector stays on its blank placeholder) and a new, analyzer-specific
+message is shown -- `WW_OVERCURRENT_MSG_NO_COMPATIBLE_CONTEXT` ("No
+Engineering Context contains the required Current input for
+Overcurrent."), `WW_IMPEDANCE_MSG_NO_COMPATIBLE_CONTEXT` ("...required
+Voltage and Current inputs for Impedance Locus."),
+`WW_DISTANCE_MSG_NO_COMPATIBLE_CONTEXT` ("...required Voltage and
+Current inputs for Distance Protection.") -- distinct from the existing
+"no contexts exist at all" (`WW_XXX_MSG_NO_SUGGESTIONS`) empty state.
+Reuses the existing `needs_configuration`-shaped vocabulary the resolver
+already returns; no parallel compatibility engine, no new backend
+endpoint.
+
+**User-selection guardrail preserved.** Every handler still checks its
+own `selectedContextId` BEFORE starting the (now-async) compatibility
+search, AND again immediately after it resolves -- the engineer may
+select a context manually (including a deliberately incompatible one)
+while the search is in flight, and that manual choice is never
+overwritten either way. Verified directly: manually selecting KPDN1 (the
+incompatible bay) for Overcurrent, then revisiting Analysis, leaves
+KPDN1 selected -- auto-selection applies ONLY to the initial-unselected
+state, exactly as DEC-105's own guardrail already established for the
+simpler case.
+
+**Why DEC-104/DEC-105 remain valid.** This fix touches ONLY which
+context each analyzer chooses to auto-select first; it does not move
+Engineering Context creation, does not change the "fresh"-signal timing
+DEC-105 established, and does not touch `prepare_workspace_source()` or
+any detection algorithm. The progression is: DEC-104 (shared contexts
+prepared before the page opens) -> DEC-105 (the initial auto-selection
+signal itself restored) -> DEC-106 (that initial selection is now
+analyzer-compatible, not merely "first").
+
+**Alternatives considered.** (1) Have the frontend inspect each
+candidate context's own `members` array directly (channel name/
+engineering_type/phase) to decide compatibility -- rejected outright:
+this is exactly the "frontend duplicates Voltage/Current/phase matching"
+anti-pattern the task explicitly forbade, and would silently diverge
+from the resolver's own more careful rules (ambiguous-candidate
+detection, ROLE_MISSING vs. PHASE_IDENTITY_MISSING distinctions) the
+very first time they disagreed. (2) Add a new, dedicated backend
+"compatibility" endpoint returning a single boolean per context --
+rejected: `GET .../input-resolution` already answers this exactly, and
+adding a second endpoint returning a narrower view of the same
+underlying computation would be a duplicate source of truth for no
+benefit. (3) Extend `onFreshContextsDiscovered` to also gate Phasor/
+Sequence Components on SOME minimal role presence -- rejected: direct
+reproduction confirmed neither is actually broken; gating them would add
+complexity and risk (e.g. blocking a legitimately partial-but-useful
+selection) to solve a problem that does not exist, contradicting the
+task's own "do not redesign speculatively" instruction. (4) Make the
+compatibility check synchronous by pre-fetching every candidate
+context's resolution as part of the initial `GET .../engineering-contexts`
+response -- rejected: would require a backend response-shape change
+(N resolutions bundled per context, for every possible analysis_kind/
+mode combination) merely to avoid a handful of already-fast, already-
+existing per-candidate HTTP calls made only once, at initial auto-select
+time, never repeated.
+
+**Impact.** `frontend/index.html` only: new
+`wwAnalysisFetchInputResolution()`/`wwAnalysisFindFirstCompatibleContext()`
+shared helpers; `wwOvercurrentOnAnalysisFreshContextsDiscovered()`/
+`wwImpedanceOnAnalysisFreshContextsDiscovered()`/
+`wwDistanceOnAnalysisFreshContextsDiscovered()` made `async` and
+rewritten to use them; three new `WW_XXX_MSG_NO_COMPATIBLE_CONTEXT`
+message constants; one new `wwDistanceRoleKeyToInputResolutionMode()`
+helper. Zero backend changes -- `app.services.analysis_input_resolution_
+service`, `app.domain.analysis_input_resolution`, and
+`app.domain.analysis_requirements` are all completely unchanged; this
+fix is pure frontend consumption of an already-existing, already-tested
+endpoint. New committed fixture `backend/tests/fixtures/comtrade/
+mixed_capability_multibay.cfg/.dat` (three bays, mixed Voltage/Current
+capability, generated via the same ASCII-COMTRADE builder pattern
+`phasor_smoke_three_phase` uses, verified directly against the real
+backend resolver before being committed). `browser-tests/post_upload_readiness.spec.js`
+gained a new `test.describe` block (7 scenarios: Overcurrent/Impedance/
+Distance each independently proven to skip the incompatible bay and
+auto-select the compatible one with real computation succeeding; Phasor/
+Sequence Components proven unaffected; a no-compatible-context scenario
+proving the meaningful-message behavior for all three; a guardrail test
+proving a manual incompatible selection is never auto-replaced) -- all
+five behavior-changing assertions verified to FAIL against the pre-fix
+code (via a temporary `git stash` of the frontend change alone) and PASS
+against the fix. `backend/tests/test_frontend_phasor_analysis.py` (one
+structural assertion updated for Overcurrent's handler becoming `async`).
+Full backend suite and full Playwright suite pass.
+
 ---
 
 ## How to add a decision
