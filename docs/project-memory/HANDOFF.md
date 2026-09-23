@@ -8,6 +8,157 @@ Last updated: **2026-09-23**
 
 ## What was most recently done
 
+**Compliance & Capability Slice 3: Reference Profiles, Reference
+Layers, and static Comparison Chart rendering (DEC-109).** Owner UAT for
+the DEC-104 through DEC-108 Analysis regression chain passed (closed);
+work resumed on the previously-planned Compliance implementation per:
+*"Resume the previously planned Compliance / Voltage Compliance &
+Capability implementation... Compliance Slice 3 — Reference Profiles,
+Reference Layers, and Static Curve Rendering."*
+
+**Explicitly excluded, exactly as scoped**: manual t0/event alignment,
+measured-waveform overlay, automated event detection, compliance
+evaluation, breach/margin/tolerance calculation, and every PASS/FAIL/
+Compliant/Boundary Breached/Within Capability verdict. Event Alignment
+and Results remain Slice 1's own neutral placeholders, unchanged.
+
+**A genuine, separate mid-implementation owner instruction substantially
+amended the task while work was in progress**: *"IMPORTANT — Reference
+Layers must work without an uploaded recording... this is a fundamental
+product requirement."* This was treated as a first-class architectural
+constraint from the domain-model/registry design onward, not a late
+patch — see below.
+
+**`ReferenceProfile` (`app.domain.reference_profile`) is a generic,
+portable value object — never Grid-Code-specific.** `category` is one
+of `grid_requirement | equipment_capability | project_requirement |
+custom_reference`; `evaluation_quantity` reuses the EXISTING canonical
+Voltage quantity ids Compliance Slice 2 already established
+(`app.domain.compliance_measurement.VOLTAGE_QUANTITIES`, verified
+directly against the module rather than trusted from the task's own
+example spellings, which did not exactly match); `unit` is closed to
+`pu | V | kV`. A boundary (`lower_boundary`/`upper_boundary`) may exist
+independently, but at least one must be present; segments are
+`constant`/`linear` with explicit `start_time/end_time/start_value/
+end_value`. **Right-continuity is frozen**: at a discontinuity the
+active value belongs to the NEW segment — rendered correctly with zero
+special-casing by simply emitting both segments' own endpoints in time
+order, which a line renderer naturally draws as a vertical connector. A
+genuine gap renders as an explicit line break. Display window and
+evaluation window are independent; Slice 3 uses ONLY the display window
+— the evaluation window is stored/validated but read by nothing yet.
+`validate_reference_profile()` never silently repairs bad data — every
+rejection carries a stable `reason_code` plus `boundary`/`segment_index`/
+`field_name` where it traces to one row, surfaced through the HTTP error
+body so the table-first editor can highlight the exact offending
+segment.
+
+**No production built-in profile was created — task's own explicit
+governing constraint, honored literally.** `app.domain.
+reference_profile_builtins.load_builtin_profiles()` loads version-
+controlled JSON from `backend/app/data/reference_profiles/builtin/`,
+which ships EMPTY — no Malaysia Grid Code (or any other named grid
+code/OEM capability) values exist anywhere in this repository as an
+authoritative verified source, so none were fabricated from memory/
+assumptions/generic industry curves. The loader itself is fully proven
+against a separate, clearly-labeled developer/test-only fixture
+directory (`backend/tests/fixtures/reference_profiles/`) — the engine is
+ready for a verified profile to be added later (see that built-in
+directory's own `README.md`). Built-in profiles are View/Duplicate only.
+
+**Custom profiles/active layers are in-memory, workspace-scoped only —
+no `localStorage`, no database** (`ReferenceProfileRegistry`/
+`ReferenceLayerRegistry`, mirroring `MeasurementGroupRegistry`'s exact
+CRUD shape). Profile deletion and layer removal are different actions:
+removing a layer never deletes the profile; deleting a custom profile
+cascades to remove every layer referencing it (never leaves a dangling
+reference). No maximum active-layer count is enforced. Import/export
+uses a stable versioned schema (`{"schema_version": 1, "profile":
+{...}}`) — export omits `id`, import always mints a fresh one and always
+forces `metadata.built_in = False`; an unrecognized schema version fails
+explicitly.
+
+**The mid-implementation amendment's own concrete architectural
+consequences**: none of `app.api.v1.reference_profiles`' endpoints
+accept or resolve a `source_id`/`measurement_group_id`/Engineering
+Context id; `wwRenderCompliancePage()` calls `wwRefLoadProfiles()`/
+`wwRefRefreshLayersAndChart()` UNCONDITIONALLY, never gated on a
+group/quantity/source existing; compatibility is THREE-WAY
+(`compatible`/`incompatible`/`not_yet_applicable` — "no Measurement
+selected" is its OWN state, never collapsed into "incompatible", and a
+mismatch never hides or deletes a layer); the Comparison Chart's own
+axes derive entirely from the active, VISIBLE layers' own profiles
+(x-axis: union of display windows; y-axis: the first visible layer's own
+unit establishes `axis_unit`, a genuine unit mismatch is excluded from
+plotting but stays listed with an explicit note, never silently
+converted/hidden); and uploading a source into a workspace with already-
+configured Reference Layers never resets them (the two new registries
+are wired into the "Start New Workspace" DELETE lifecycle hook only,
+never into any upload endpoint — this is the DEFAULT behavior of the
+existing in-memory-registry-keyed-by-workspace-id pattern, DEC-015/
+DEC-019, not a special case that had to be added).
+
+**Renders via the EXISTING Plotly build already used everywhere else in
+this app (`Plotly.react()`) — never a second charting library.** Every
+trace carries stable identity (`layer_id, profile_id, boundary,
+category`) as direct properties on the trace object, never parsed from
+legend text. Reference curves are styled as secondary engineering
+boundaries (thin lines, lower solid/upper dashed, category color) so a
+future measured-waveform trace can dominate visually once a later slice
+adds one.
+
+**A pre-existing test-file structural quirk was discovered and worked
+around, not silently "fixed."** `test_frontend_phasor_analysis.py`'s
+`_phasor_block()` helper sweeps everything in `frontend/index.html`
+between `const wwPhasorState = {` and the file's own shared `// Init`
+marker, checking that range never contains `type="number"`/`"Plotly"` —
+a sweep wide enough to inadvertently include sibling Compliance code
+physically positioned in between (true before this slice too, just
+never tripped by earlier Compliance work). Rather than touch that
+pre-existing test's own meaning, the new Slice 3 JS was relocated to sit
+AFTER the `// Init` marker (alongside its own wiring section) — a purely
+additive, zero-risk placement choice for brand-new code, not a
+modification to existing behavior.
+
+See [DECISIONS.md — DEC-109](DECISIONS.md#dec-109--compliance-slice-3-a-generic-reference-profilereference-layer-domain-model-static-comparison-chart-rendering-and-a-reference-subsystem-lifecycle-fully-independent-of-any-uploaded-recording)
+and [COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md) for the full
+architectural record.
+
+**Files**: `backend/app/domain/reference_profile.py`,
+`reference_profile_builtins.py`, `reference_layer.py` (new);
+`backend/app/services/reference_profile_registry.py`,
+`reference_layer_registry.py`, `reference_profile_service.py` (new);
+`backend/app/schemas/reference_profile.py` (new); `backend/app/api/v1/
+reference_profiles.py` (new router); `backend/app/services/errors.py`
+(8 new error classes); `backend/app/main.py`/`app/api/v1/workspaces.py`
+(two new registries wired into app startup + the workspace-delete
+lifecycle hook); `backend/app/data/reference_profiles/builtin/` (new,
+empty, + its own `README.md`); `frontend/index.html` (active Reference
+Layers card, three new modals, the Comparison Chart's real Plotly
+mount, all Slice 3 JS + wiring); new backend tests
+(`test_reference_profile_domain.py` 31, `test_reference_profile_builtins.py`
+8, `test_reference_profile_service.py` 35, `test_reference_profile_api.py`
+22, plus `test_frontend_compliance.py` updates); new
+`backend/tests/fixtures/reference_profiles/` (developer/test-only
+built-in fixtures); new `browser-tests/reference_profiles.spec.js` (9
+real-browser scenarios, inspecting actual Plotly trace data).
+
+**Validation**: full backend suite passes; the new/modified Compliance-
+specific Playwright suites pass (`compliance.spec.js`,
+`compliance_measurement.spec.js`, `reference_profiles.spec.js`); full
+Playwright suite confirmed green — 168 passed, 0 failed (18.8 minutes),
+including every Analysis/Phasor/Overcurrent/Impedance/Distance/Sequence
+Components/`post_upload_readiness` regression suite from the DEC-104
+through DEC-108 chain and this slice's own `reference_profiles.spec.js`.
+`git diff --check` clean (no trailing-whitespace/conflict-marker
+issues).
+
+**Stop condition honored**: static reference-layer rendering only — no
+event alignment, no measured-waveform overlay, no evaluation/breach
+logic, awaiting owner UAT before any further Compliance work.
+
+## What was done in the prior session — Production regression fix, part 4 (DEC-108): the shared waveform-form fallback detector itself was corrected to multi-window classification
+
 **Production regression fix, part 4 (DEC-108): the shared waveform-form
 fallback detector itself was corrected to multi-window classification.**
 Owner UAT: *"KPDN1 Overcurrent is rejected as non-instantaneous, even

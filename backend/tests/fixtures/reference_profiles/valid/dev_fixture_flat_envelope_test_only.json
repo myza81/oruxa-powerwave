@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "[Developer Fixture -- NOT an Official Requirement] Flat Test Envelope",
+    "category": "custom_reference",
+    "evaluation_quantity": "phase_a_lg_rms",
+    "unit": "pu",
+    "display_start_time": -0.5,
+    "display_end_time": 3.0,
+    "evaluation_start_time": 0.0,
+    "evaluation_end_time": 3.0,
+    "tolerance": 0.0,
+    "lower_boundary": {
+      "segments": [
+        {"start_time": -0.5, "end_time": 3.0, "start_value": 0.8, "end_value": 0.8, "segment_type": "constant"}
+      ]
+    },
+    "upper_boundary": {
+      "segments": [
+        {"start_time": -0.5, "end_time": 3.0, "start_value": 1.2, "end_value": 1.2, "segment_type": "constant"}
+      ]
+    },
+    "metadata": {
+      "notes": "Test/development fixture only -- exercises the built-in loader's own validation path. Not sourced from any grid code, OEM datasheet, or official requirement. Never load this file's directory into the production built-in catalogue.",
+      "built_in": true,
+      "verified": false
+    }
+  }
+}

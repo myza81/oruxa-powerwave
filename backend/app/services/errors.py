@@ -1057,3 +1057,68 @@ class ComplianceMeasurementGroupNotVoltageKindError(ImportServiceError):
     Current group, just not usable for Voltage assessment."""
 
     code = "compliance_measurement_group_not_voltage_kind"
+
+
+class ReferenceProfileNotFoundError(ImportServiceError):
+    """No Reference Profile (built-in or custom) with the requested id
+    exists for this workspace -- see
+    `app.services.reference_profile_service.get_profile_or_404()`."""
+
+    code = "reference_profile_not_found"
+
+
+class ReferenceProfileAlreadyExistsError(ImportServiceError):
+    """`ReferenceProfileRegistry.add()`'s own CREATE-ONLY guard --
+    mirrors `MeasurementGroupAlreadyExistsError`'s own rationale. Not
+    expected to be reachable through normal UUID-generated-id service
+    usage."""
+
+    code = "reference_profile_already_exists"
+
+
+class ReferenceProfileIsBuiltInError(ImportServiceError):
+    """An edit/delete was attempted against a built-in Reference Profile
+    -- built-ins are read-only (task section 8: "View, Duplicate only").
+    Duplicating a built-in into a new custom profile is the correct way
+    to get an editable copy."""
+
+    code = "reference_profile_is_built_in"
+
+
+class ReferenceProfileValidationServiceError(ImportServiceError):
+    """Wraps `app.domain.reference_profile.ReferenceProfileValidationError`
+    for the service/API boundary -- carries the same `reason_code`/
+    `boundary`/`segment_index`/`field_name` so a table-first editor UI
+    can highlight the exact offending row/field (task section 13),
+    without the pure domain layer needing to depend on this module's own
+    `ImportServiceError` base class."""
+
+    code = "reference_profile_invalid"
+
+    def __init__(self, message: str, *, reason_code: str, boundary: str | None = None, segment_index: int | None = None, field_name: str | None = None) -> None:
+        super().__init__(message)
+        self.reason_code = reason_code
+        self.boundary = boundary
+        self.segment_index = segment_index
+        self.field_name = field_name
+
+
+class UnsupportedReferenceProfileSchemaVersionServiceError(ImportServiceError):
+    """Wraps `app.domain.reference_profile.
+    UnsupportedReferenceProfileSchemaVersionError` for the service/API
+    boundary (task section 17: "unsupported versions fail explicitly")."""
+
+    code = "unsupported_reference_profile_schema_version"
+
+
+class ReferenceLayerNotFoundError(ImportServiceError):
+    """No Reference Layer with the requested id exists for this
+    workspace."""
+
+    code = "reference_layer_not_found"
+
+
+class ReferenceLayerAlreadyExistsError(ImportServiceError):
+    """`ReferenceLayerRegistry.add()`'s own CREATE-ONLY guard."""
+
+    code = "reference_layer_already_exists"

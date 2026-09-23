@@ -17,6 +17,7 @@ from app.api.v1.engineering_contexts import router as engineering_contexts_v1_ro
 from app.api.v1.measurement_groups import router as measurement_groups_v1_router
 from app.api.v1.per_unit import router as per_unit_v1_router
 from app.api.v1.preparation_sources import router as preparation_sources_v1_router
+from app.api.v1.reference_profiles import router as reference_profiles_v1_router
 from app.api.v1.sources import router as sources_v1_router
 from app.api.v1.synchronization import router as synchronization_v1_router
 from app.api.v1.workspaces import router as workspaces_v1_router
@@ -27,6 +28,8 @@ from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.preparation_session_registry import PreparationSessionRegistry
+from app.services.reference_layer_registry import ReferenceLayerRegistry
+from app.services.reference_profile_registry import ReferenceProfileRegistry
 from app.services.synchronization_registry import SynchronizationRegistry
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.workspace_registry import WorkspaceRegistry
@@ -99,6 +102,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # app.services.engineering_context_registry's own module
         # docstring.
         app.state.engineering_context_registry = EngineeringContextRegistry()
+        # Compliance Slice 3: a tenth/eleventh sibling in-memory registry
+        # pair -- custom Reference Profiles and active Reference Layers.
+        # Deliberately independent of every recording/Measurement
+        # registry above (no source_id, no MeasurementGroup, no
+        # EngineeringContext anywhere in either) -- see
+        # app.services.reference_profile_service's own module docstring
+        # for why: Reference Layers must work in a workspace that has
+        # never had a source uploaded.
+        app.state.reference_profile_registry = ReferenceProfileRegistry()
+        app.state.reference_layer_registry = ReferenceLayerRegistry()
         yield
 
     app = FastAPI(title="Powerwave API", lifespan=lifespan)
@@ -173,6 +186,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(preparation_sources_v1_router)
     app.include_router(engineering_contexts_v1_router)
     app.include_router(compliance_v1_router)
+    app.include_router(reference_profiles_v1_router)
 
     @app.get("/health")
     def health():

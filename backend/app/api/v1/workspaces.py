@@ -25,6 +25,8 @@ from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.preparation_session_registry import PreparationSessionRegistry
+from app.services.reference_layer_registry import ReferenceLayerRegistry
+from app.services.reference_profile_registry import ReferenceProfileRegistry
 from app.services.synchronization_registry import SynchronizationRegistry
 from app.services.synchronization_service import remove_workspace_synchronization_state
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
@@ -69,6 +71,14 @@ def get_engineering_context_registry(request: Request) -> EngineeringContextRegi
     return request.app.state.engineering_context_registry
 
 
+def get_reference_profile_registry(request: Request) -> ReferenceProfileRegistry:
+    return request.app.state.reference_profile_registry
+
+
+def get_reference_layer_registry(request: Request) -> ReferenceLayerRegistry:
+    return request.app.state.reference_layer_registry
+
+
 def _validate_workspace_id(workspace_id: str) -> str:
     # Same shape check as app.api.v1.sources -- never used as a filesystem
     # path, so this guards against a blank/whitespace-only id, not path
@@ -93,6 +103,8 @@ def delete_workspace(
     synchronization_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
     preparation_session_registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
     engineering_context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+    reference_profile_registry: ReferenceProfileRegistry = Depends(get_reference_profile_registry),
+    reference_layer_registry: ReferenceLayerRegistry = Depends(get_reference_layer_registry),
 ) -> None:
     """Release every source this workspace owns.
 
@@ -143,6 +155,14 @@ def delete_workspace(
     this workspace owns, the same way -- a context (and any phase
     identity it carries) must not outlive the workspace it belongs to,
     exactly like a Measurement Group.
+
+    Compliance Slice 3: also releases every custom Reference Profile and
+    every active Reference Layer this workspace owns, the same way.
+    This is the ONLY thing that clears Reference Layer/custom-profile
+    state -- a plain source upload/removal within the SAME workspace
+    must never touch either registry (mid-conversation product
+    requirement: configuring Reference Layers, then uploading a
+    recording afterward, must leave those layers intact).
     """
     workspace_id = _validate_workspace_id(workspace_id)
     registry.remove_workspace(workspace_id)
@@ -154,3 +174,5 @@ def delete_workspace(
     current_group_config_registry.remove_workspace(workspace_id)
     remove_workspace_synchronization_state(workspace_id=workspace_id, registry=synchronization_registry)
     preparation_session_registry.remove_workspace(workspace_id)
+    reference_layer_registry.remove_workspace(workspace_id)
+    reference_profile_registry.remove_workspace(workspace_id)

@@ -1664,6 +1664,58 @@ detector (via a temporary `git stash` of `rms_detector.py` alone) and
 PASS against the fix. DEC-107's own RMSBAY/INSTBAY fixture regression
 preserved exactly. Full backend suite and full Playwright suite pass.
 
+**Compliance & Capability Slice 3 — Reference Profiles, Reference
+Layers, and static Comparison Chart rendering (2026-09-23).** Owner UAT
+for the DEC-104 through DEC-108 Analysis regression chain passed
+(closed); work resumed on Compliance. A generic `ReferenceProfile`
+domain model (`app/domain/reference_profile.py` — never Grid-Code-
+specific; category/quantity/unit/display-window/evaluation-window/
+tolerance/lower-and-upper-boundary fields, `constant`/`linear` segments,
+frozen right-continuity discontinuity semantics, "never silently repair
+bad data" validation), a built-in catalogue loader that ships with ZERO
+production profiles (task's own explicit "do not fabricate Malaysia
+Grid Code values" constraint — no authoritative verified source exists
+in this repo), two new in-memory workspace-scoped registries (custom
+profiles, active layers — mirroring `MeasurementGroupRegistry`'s exact
+shape), a new dedicated router (`/reference-profiles`, `/reference-
+layers`, `/reference-layers/chart-data`), an active Reference Layers
+card, three new modals (Add Reference / Manage Profiles / a table-first
+numeric profile editor — no freehand curve dragging anywhere), and a
+real Plotly-rendered Comparison Chart (reference curves only, no
+measured waveform, no evaluation).
+
+**Mid-implementation product-requirement amendment — Reference Layers
+must work without an uploaded recording.** The owner sent this as a
+genuine correction while the slice was already in progress: Reference
+Profiles/Layers/the Comparison Chart's static rendering must never be
+gated behind a source/Bay/Measurement Group/quantity existing.
+Compliance is now architecturally two independent inputs (Measurement,
+Reference Layers) joined only at the Comparison Chart. Compatibility is
+three-way (`compatible` / `incompatible` / `not_yet_applicable`) — "no
+Measurement selected" is its OWN state, never collapsed into
+"incompatible". Uploading a source into a workspace with already-
+configured Reference Layers never resets them (the two new registries
+are wired into the "Start New Workspace" DELETE lifecycle hook only,
+never into any upload endpoint — persistence-across-upload is the
+DEFAULT behavior of the existing in-memory-registry-keyed-by-workspace-id
+pattern, DEC-015/DEC-019, not a special case). The Comparison Chart's
+own axes derive entirely from the active, visible layers' own profiles
+(x-axis: union of display windows; y-axis: the first visible layer's own
+unit, with a genuine unit mismatch handled explicitly — excluded from
+plotting but never hidden from the layer list).
+
+See [DECISIONS.md — DEC-109](DECISIONS.md#dec-109--compliance-slice-3-a-generic-reference-profilereference-layer-domain-model-static-comparison-chart-rendering-and-a-reference-subsystem-lifecycle-fully-independent-of-any-uploaded-recording)
+and [COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md) for the full
+architectural record. New tests: `test_reference_profile_domain.py`
+(31), `test_reference_profile_builtins.py` (8), `test_reference_profile_service.py`
+(35), `test_reference_profile_api.py` (22), `test_frontend_compliance.py`
+updates (`TestComplianceOutOfScopeSlice3`, `TestComplianceReferenceLayersStructure`),
+and `browser-tests/reference_profiles.spec.js` (9 real-browser
+scenarios, inspecting actual Plotly trace data). Full backend suite and
+full Playwright suite pass. Event Alignment, Results, and every
+evaluation/breach/tolerance/verdict concept remain out of scope, exactly
+as before.
+
 **Flake cleanup (2026-09-19, continued) — the third and final DEC-099
 item ("Speed selection 4x") is now `[CLOSED]`; DEC-099 has zero
 remaining `[OPEN]` items.** Test-synchronization bug, no production
@@ -2119,10 +2171,19 @@ Foundation as of 2026-09-20 (Slice 2, corrected the same day to scope
 role resolution to an explicitly selected Bay/Measurement Group, and
 corrected again 2026-09-23 so opening Compliance directly on a
 multi-bay workspace auto-bootstraps Measurement Group discovery rather
-than dead-ending — see
-[COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md); Reference Layers/
-Event Alignment/Comparison Chart/Results remain Slice 1's own
-placeholders).
+than dead-ending, and — also 2026-09-23 — a real Reference Profile/
+Reference Layer engine with static Comparison Chart rendering (Slice 3;
+generic reference-profile domain model, built-in/custom profile
+lifecycle, table-first profile editor, the Comparison Chart rendering
+active reference boundaries via Plotly). **Reference Layers/Reference
+Profiles work in a workspace that has never had a source uploaded at
+all** — a deliberate, explicit product requirement, not an oversight;
+Measurement stays a separate, optional input that becomes available
+once a source/Bay/quantity exist, and uploading a source never resets
+already-configured Reference Layers. Event Alignment/Results remain
+Slice 1's own placeholders. See
+[COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md) and
+[DEC-109](DECISIONS.md#dec-109--compliance-slice-3-a-generic-reference-profilereference-layer-domain-model-static-comparison-chart-rendering-and-a-reference-subsystem-lifecycle-fully-independent-of-any-uploaded-recording).
 CSV/Excel ingestion is the current workstream — Slices 1-12 (raw preparation-source upload
 through canonical `DisturbanceRecord` conversion, existing-waveform-
 integration verification, and cleaned data export) are implemented;

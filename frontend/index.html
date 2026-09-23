@@ -6184,6 +6184,190 @@
             text-align: left;
         }
 
+        /* Compliance Slice 3 -- Reference Layers card (task section 10):
+           each active layer is one compact row (visibility checkbox,
+           profile name, category badge, compatibility badge, remove
+           action) -- never a second, heavier profile-management UI
+           duplicated inside this card (that lives in the Manage
+           Profiles dialog). */
+        .ww-ref-layer-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin: 0 0 8px;
+        }
+        .ww-ref-layer-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 6px;
+            border-radius: var(--radius);
+            background: var(--surface-tint);
+            font-size: 0.78rem;
+        }
+        .ww-ref-layer-row[data-visible="false"] {
+            opacity: 0.55;
+        }
+        .ww-ref-layer-name {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .ww-ref-layer-remove-btn {
+            border: none;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.9rem;
+            line-height: 1;
+            padding: 2px 4px;
+        }
+        .ww-ref-layer-remove-btn:hover {
+            color: var(--text);
+        }
+        .ww-ref-badge {
+            display: inline-block;
+            flex: 0 0 auto;
+            padding: 1px 6px;
+            border-radius: 999px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+        }
+        .ww-ref-badge--category-grid_requirement { background: #2b4a8a; color: #fff; }
+        .ww-ref-badge--category-equipment_capability { background: #3d7a4a; color: #fff; }
+        .ww-ref-badge--category-project_requirement { background: #8a6a2b; color: #fff; }
+        .ww-ref-badge--category-custom_reference { background: var(--text-dim); color: var(--panel); }
+        .ww-ref-badge--compat-compatible { background: #2f7d4f; color: #fff; }
+        .ww-ref-badge--compat-incompatible { background: #a33; color: #fff; }
+        .ww-ref-badge--compat-not_yet_applicable { background: transparent; color: var(--text-dim); border: 1px solid var(--panel-border); }
+        .ww-ref-card-actions {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        /* Add Reference / Manage Profiles picker lists -- reused for
+           both dialogs (task section 12: incompatible profiles stay
+           visible with an explicit reason, never hidden). */
+        .ww-ref-picker-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 360px;
+            overflow-y: auto;
+            margin: 8px 0;
+        }
+        .ww-ref-picker-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+        }
+        .ww-ref-picker-item-main {
+            flex: 1 1 auto;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .ww-ref-picker-item-title {
+            font-size: 0.82rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .ww-ref-picker-item-reason {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+        }
+        .ww-ref-picker-item-actions {
+            display: flex;
+            gap: 4px;
+            flex: 0 0 auto;
+        }
+        .ww-ref-picker-empty {
+            padding: 10px 0;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+
+        /* Profile editor -- table-first numeric segment entry (task
+           section 13). No freehand curve dragging anywhere. */
+        .ww-ref-editor-fields {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px 12px;
+            margin-bottom: 10px;
+        }
+        .ww-ref-editor-fields .ww-cc-field { min-width: 0; }
+        .ww-ref-editor-boundary-section {
+            margin-bottom: 12px;
+        }
+        .ww-ref-editor-boundary-section h4 {
+            margin: 0 0 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-dim);
+        }
+        table.ww-ref-segment-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.75rem;
+        }
+        table.ww-ref-segment-table th,
+        table.ww-ref-segment-table td {
+            padding: 3px 4px;
+            text-align: left;
+        }
+        table.ww-ref-segment-table input,
+        table.ww-ref-segment-table select {
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 0.75rem;
+            padding: 2px 4px;
+        }
+        table.ww-ref-segment-table tr[data-row-error="true"] input,
+        table.ww-ref-segment-table tr[data-row-error="true"] select {
+            border-color: #a33;
+        }
+        .ww-ref-segment-row-remove {
+            border: none;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+        }
+        .ww-ref-editor-error {
+            color: #a33;
+            font-size: 0.75rem;
+            margin: 4px 0 0;
+        }
+
+        /* Comparison Chart legend -- a compact stable-identity list
+           below the Plotly instance itself (task section 16: legend
+           text is never the source of truth, but a readable summary
+           still helps at a glance). */
+        .ww-compliance-chart-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 14px;
+            margin-top: 8px;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+        }
+        .ww-compliance-chart-note {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            margin-top: 4px;
+        }
+
         /* One analyzer panel (today #wwPhasorPanel) stacks its own
            context bar / Playback ribbon / body with a single consistent
            vertical rhythm, rather than each section owning its own
@@ -9861,16 +10045,21 @@
                                 </section>
                                 <section class="panel ww-compliance-config-card" id="wwComplianceReferenceLayersCard">
                                     <h2>Reference Layers</h2>
+                                    <!-- Slice 3: fully independent of any
+                                         uploaded recording/Measurement --
+                                         this card is populated the moment
+                                         the Compliance page opens,
+                                         regardless of workspace source
+                                         state (mid-conversation product
+                                         requirement: "Reference Layers
+                                         must work without an uploaded
+                                         recording"). -->
                                     <p class="empty-state" id="wwComplianceReferenceLayersEmptyState">No reference layers added</p>
-                                    <!-- Shell anticipates multiple future layer
-                                         kinds (Grid Requirement / Equipment
-                                         Capability / Project Requirement / Custom
-                                         Reference) -- none fabricated here; the
-                                         button below is a clearly-marked, disabled
-                                         placeholder only (task section 5's own
-                                         "may be disabled" allowance), never a
-                                         working profile-management entry point. -->
-                                    <button type="button" class="secondary" id="wwComplianceAddReferenceBtn" disabled aria-disabled="true" title="Not implemented yet -- Slice 2">+ Add Reference</button>
+                                    <div class="ww-ref-layer-list" id="wwRefLayerList" hidden></div>
+                                    <div class="ww-ref-card-actions">
+                                        <button type="button" class="secondary" id="wwComplianceAddReferenceBtn">+ Add Reference</button>
+                                        <button type="button" class="secondary" id="wwRefManageProfilesBtn">Manage Profiles&hellip;</button>
+                                    </div>
                                 </section>
                                 <section class="panel ww-compliance-config-card" id="wwComplianceEventAlignmentCard">
                                     <h2>Event Alignment</h2>
@@ -9895,9 +10084,22 @@
                                  fabricated LVRT/HVRT curves. -->
                             <section class="panel ww-compliance-chart-panel" id="wwComplianceChartPanel">
                                 <h2>Comparison Chart</h2>
+                                <!-- Slice 3: renders active Reference
+                                     Layers ONLY -- no measured waveform
+                                     overlay, no event alignment, no
+                                     evaluation/breach rendering (task's
+                                     own explicit Slice 3 exclusions).
+                                     Works with zero uploaded recording --
+                                     axes are derived entirely from the
+                                     active, visible layers' own profiles
+                                     (mid-conversation product
+                                     requirement). -->
                                 <div class="ww-compliance-chart-wrap" id="wwComplianceChartWrap">
-                                    <p class="empty-state" id="wwComplianceChartEmptyState">No voltage assessment configured</p>
+                                    <p class="empty-state" id="wwComplianceChartEmptyState">No reference layers to display -- use "+ Add Reference" to add one.</p>
+                                    <div id="wwComplianceChartPlot" style="width:100%;height:100%;" hidden></div>
                                 </div>
+                                <div class="ww-compliance-chart-legend" id="wwComplianceChartLegend" hidden></div>
+                                <p class="ww-compliance-chart-note" id="wwComplianceChartNote" hidden></p>
                             </section>
 
                             <!-- Step 5: neutral empty state only -- never a
@@ -11461,6 +11663,155 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 <button type="button" class="secondary" id="measurementGroupsSuggestBtn">Suggest Groups&hellip;</button>
                 <span class="toolbar-spacer"></span>
                 <button type="button" class="secondary" id="measurementGroupsCloseFooterBtn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Compliance Slice 3 -- "+ Add Reference" compact selection surface
+         (task section 12). Reuses the exact .confirm-overlay/
+         .group-editor-box dialog shell every other modal in this app
+         already uses -- no new dialog pattern introduced. Lists EVERY
+         profile (built-in + custom); an incompatible-with-the-current-
+         Measurement profile stays visible with its own reason, never
+         silently hidden. Fully usable with zero uploaded recording --
+         see wwRefOpenAddDialog()'s own comment. -->
+    <div class="confirm-overlay" id="wwRefAddOverlay" hidden>
+        <div class="group-editor-box ww-pu-dialog" role="dialog" aria-modal="true" aria-labelledby="wwRefAddTitle">
+            <div class="group-editor-header">
+                <h3 id="wwRefAddTitle">Add Reference</h3>
+                <button type="button" class="group-editor-close" id="wwRefAddCloseBtn" aria-label="Close">&times;</button>
+            </div>
+            <p class="hint">Select an existing reference profile, or create a new custom one.</p>
+            <div class="ww-ref-picker-list" id="wwRefAddList"></div>
+            <p class="hint error" id="wwRefAddError" hidden role="alert"></p>
+            <div class="group-editor-footer">
+                <button type="button" class="secondary" id="wwRefAddNewProfileBtn">+ New Custom Profile</button>
+                <span class="toolbar-spacer"></span>
+                <button type="button" class="secondary" id="wwRefAddCloseFooterBtn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Compliance Slice 3 -- "Manage Profiles" (task section 8): built-in
+         profiles are View/Duplicate only; custom profiles are View/Edit/
+         Duplicate/Remove/Export. -->
+    <div class="confirm-overlay" id="wwRefManageOverlay" hidden>
+        <div class="group-editor-box ww-pu-dialog" role="dialog" aria-modal="true" aria-labelledby="wwRefManageTitle">
+            <div class="group-editor-header">
+                <h3 id="wwRefManageTitle">Manage Reference Profiles</h3>
+                <button type="button" class="group-editor-close" id="wwRefManageCloseBtn" aria-label="Close">&times;</button>
+            </div>
+            <p class="hint">Built-in profiles are read-only (View/Duplicate). Custom profiles can be edited, duplicated, exported, or removed.</p>
+            <div class="ww-ref-picker-list" id="wwRefManageList"></div>
+            <div class="group-editor-footer">
+                <button type="button" class="secondary" id="wwRefManageNewProfileBtn">+ New Custom Profile</button>
+                <label class="secondary" id="wwRefManageImportLabel" style="display:inline-flex;align-items:center;cursor:pointer;">
+                    Import JSON&hellip;
+                    <input type="file" id="wwRefManageImportInput" accept="application/json" style="display:none;">
+                </label>
+                <span class="toolbar-spacer"></span>
+                <button type="button" class="secondary" id="wwRefManageCloseFooterBtn">Close</button>
+            </div>
+            <p class="hint error" id="wwRefManageError" hidden role="alert"></p>
+        </div>
+    </div>
+
+    <!-- Compliance Slice 3 -- Reference Profile editor: TABLE-FIRST
+         numeric segment entry (task section 13). No freehand curve
+         dragging anywhere. Doubles as a read-only viewer for a built-in
+         profile (every input disabled, footer shows Duplicate instead
+         of Save). -->
+    <div class="confirm-overlay" id="wwRefEditorOverlay" hidden>
+        <div class="group-editor-box ww-pu-dialog" role="dialog" aria-modal="true" aria-labelledby="wwRefEditorTitle">
+            <div class="group-editor-header">
+                <h3 id="wwRefEditorTitle">Reference Profile</h3>
+                <button type="button" class="group-editor-close" id="wwRefEditorCloseBtn" aria-label="Close">&times;</button>
+            </div>
+            <div class="ww-ref-editor-fields">
+                <label class="ww-cc-field">
+                    <span class="ww-cc-field-label">Name</span>
+                    <input type="text" id="wwRefEditorName">
+                </label>
+                <label class="ww-cc-field">
+                    <span class="ww-cc-field-label">Category</span>
+                    <select id="wwRefEditorCategory">
+                        <option value="grid_requirement">Grid Requirement</option>
+                        <option value="equipment_capability">Equipment Capability</option>
+                        <option value="project_requirement">Project Requirement</option>
+                        <option value="custom_reference" selected>Custom Reference</option>
+                    </select>
+                </label>
+                <label class="ww-cc-field">
+                    <span class="ww-cc-field-label">Evaluation quantity</span>
+                    <select id="wwRefEditorQuantity"></select>
+                </label>
+                <label class="ww-cc-field">
+                    <span class="ww-cc-field-label">Unit</span>
+                    <select id="wwRefEditorUnit">
+                        <option value="pu" selected>pu</option>
+                        <option value="V">V</option>
+                        <option value="kV">kV</option>
+                    </select>
+                </label>
+                <label class="ww-cc-field">
+                    <span class="ww-cc-field-label">Display start (s)</span>
+                    <input type="number" step="any" id="wwRefEditorDisplayStart" value="-0.5">
+                </label>
+                <label class="ww-cc-field">
+                    <span class="ww-cc-field-label">Display end (s)</span>
+                    <input type="number" step="any" id="wwRefEditorDisplayEnd" value="3.0">
+                </label>
+                <label class="ww-cc-field">
+                    <span class="ww-cc-field-label">Evaluation start (s)</span>
+                    <input type="number" step="any" id="wwRefEditorEvalStart" value="0.0">
+                </label>
+                <label class="ww-cc-field">
+                    <span class="ww-cc-field-label">Evaluation end (s)</span>
+                    <input type="number" step="any" id="wwRefEditorEvalEnd" value="3.0">
+                </label>
+                <label class="ww-cc-field">
+                    <span class="ww-cc-field-label">Tolerance</span>
+                    <input type="number" step="any" min="0" id="wwRefEditorTolerance" value="0">
+                </label>
+            </div>
+
+            <div class="ww-ref-editor-boundary-section">
+                <h4><label><input type="checkbox" id="wwRefEditorLowerEnabled" checked> Lower boundary</label></h4>
+                <table class="ww-ref-segment-table" id="wwRefEditorLowerTable">
+                    <thead><tr><th>Start (s)</th><th>End (s)</th><th>Start value</th><th>End value</th><th>Type</th><th></th></tr></thead>
+                    <tbody id="wwRefEditorLowerBody"></tbody>
+                </table>
+                <button type="button" class="secondary" id="wwRefEditorLowerAddRowBtn">+ Add Segment</button>
+            </div>
+            <div class="ww-ref-editor-boundary-section">
+                <h4><label><input type="checkbox" id="wwRefEditorUpperEnabled"> Upper boundary</label></h4>
+                <table class="ww-ref-segment-table" id="wwRefEditorUpperTable">
+                    <thead><tr><th>Start (s)</th><th>End (s)</th><th>Start value</th><th>End value</th><th>Type</th><th></th></tr></thead>
+                    <tbody id="wwRefEditorUpperBody"></tbody>
+                </table>
+                <button type="button" class="secondary" id="wwRefEditorUpperAddRowBtn">+ Add Segment</button>
+            </div>
+
+            <details>
+                <summary class="hint" style="cursor:pointer;">Metadata (optional)</summary>
+                <div class="ww-ref-editor-fields">
+                    <label class="ww-cc-field"><span class="ww-cc-field-label">Brand</span><input type="text" id="wwRefEditorMetaBrand"></label>
+                    <label class="ww-cc-field"><span class="ww-cc-field-label">Equipment type</span><input type="text" id="wwRefEditorMetaEquipmentType"></label>
+                    <label class="ww-cc-field"><span class="ww-cc-field-label">Model</span><input type="text" id="wwRefEditorMetaModel"></label>
+                    <label class="ww-cc-field"><span class="ww-cc-field-label">Firmware/Hardware</span><input type="text" id="wwRefEditorMetaFirmwareHardware"></label>
+                    <label class="ww-cc-field"><span class="ww-cc-field-label">Source document</span><input type="text" id="wwRefEditorMetaSourceDocument"></label>
+                    <label class="ww-cc-field"><span class="ww-cc-field-label">Source revision</span><input type="text" id="wwRefEditorMetaSourceRevision"></label>
+                    <label class="ww-cc-field"><span class="ww-cc-field-label">Project</span><input type="text" id="wwRefEditorMetaProject"></label>
+                    <label class="ww-cc-field"><span class="ww-cc-field-label">Plant</span><input type="text" id="wwRefEditorMetaPlant"></label>
+                </div>
+                <label class="ww-cc-field"><span class="ww-cc-field-label">Notes</span><textarea id="wwRefEditorMetaNotes" rows="2"></textarea></label>
+            </details>
+
+            <p class="hint error" id="wwRefEditorError" hidden role="alert"></p>
+            <div class="group-editor-footer">
+                <button type="button" class="secondary" id="wwRefEditorCancelBtn">Cancel</button>
+                <span class="toolbar-spacer"></span>
+                <button type="button" id="wwRefEditorSaveBtn">Save</button>
             </div>
         </div>
     </div>
@@ -41074,6 +41425,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // re-triggers the measurement fetch if a group+quantity are
             // both still selected.
             wwComplianceLoadGroups();
+            // Slice 3: Reference Layers/Comparison Chart are INDEPENDENT
+            // of Measurement (mid-conversation product requirement) --
+            // always load regardless of source/group/quantity state.
+            wwRefLoadProfiles();
+            wwRefRefreshLayersAndChart();
         }
 
         // The ONE Compliance function today ("voltage") -- mirrors
@@ -41307,6 +41663,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (wwComplianceState.selectedGroupId && wwComplianceState.selectedQuantityId) {
                 wwComplianceFetchMeasurement();
             }
+            // Slice 3: the Measurement's own selected assessment quantity
+            // is the ONLY input Reference Layer compatibility depends on
+            // (mid-conversation product requirement -- never a group/
+            // source dependency). Re-evaluate every active layer's own
+            // compatibility badge + the Comparison Chart's compatibility
+            // annotations whenever it changes, including back to "none
+            // selected" (compatibility correctly reverts to "not yet
+            // applicable", never stays stuck on a stale verdict).
+            wwRefRefreshLayersAndChart();
         }
 
         // The one function deciding which of the card's own empty
@@ -44946,6 +45311,721 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwComplianceManageGroupsBtn").addEventListener("click", () => {
             wwComplianceOpenManageGroups();
         });
+
+        // ==================================================================
+        // Compliance Slice 3 -- Reference Profiles / Reference Layers /
+        // Comparison Chart (static rendering only -- no measured waveform,
+        // no event alignment, no evaluation/breach logic; see
+        // docs/project-memory/COMPLIANCE_CAPABILITY.md).
+        //
+        // INDEPENDENT of Measurement/any uploaded recording (mid-
+        // conversation product requirement): nothing below ever reads
+        // wwComplianceState.selectedGroupId or gates on a source/group
+        // existing. The ONLY Measurement concept touched anywhere in this
+        // section is wwComplianceState.selectedQuantityId, read purely to
+        // report each layer's own compatibility (compatible /
+        // incompatible / not_yet_applicable) -- never to decide whether
+        // Reference Layers work at all.
+        // ==================================================================
+
+        const wwRefState = {
+            profiles: [],
+            profilesLoaded: false,
+            layers: [],
+            chart: null,
+            editor: { mode: null, profileId: null, readOnly: false },
+        };
+        let wwRefChartReady = false;
+        let wwRefEditorRowSeq = 0;
+
+        const WW_REF_CATEGORY_LABEL = {
+            grid_requirement: "Grid Requirement",
+            equipment_capability: "Equipment Capability",
+            project_requirement: "Project Requirement",
+            custom_reference: "Custom Reference",
+        };
+        const WW_REF_CATEGORY_COLOR = {
+            grid_requirement: "#2b4a8a",
+            equipment_capability: "#3d7a4a",
+            project_requirement: "#8a6a2b",
+            custom_reference: "#8a8a8a",
+        };
+
+        function wwRefProfilesUrl(suffix) {
+            return apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/reference-profiles" + (suffix || "");
+        }
+        function wwRefLayersUrl(suffix) {
+            return apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/reference-layers" + (suffix || "");
+        }
+        // Deliberately the ONLY place this section reads Measurement
+        // state -- returns null (never a falsy empty string) whenever no
+        // quantity is genuinely selected, so every caller's own "is a
+        // Measurement selected" check is a single, unambiguous `!= null`.
+        function wwRefSelectedQuantityIdOrNull() {
+            return wwComplianceState.selectedQuantityId ? wwComplianceState.selectedQuantityId : null;
+        }
+        function wwRefQuantityQueryParam() {
+            const quantityId = wwRefSelectedQuantityIdOrNull();
+            return quantityId ? ("?quantity_id=" + encodeURIComponent(quantityId)) : "";
+        }
+        function wwComplianceQuantityLabel(quantityId) {
+            const found = (wwComplianceState.quantities || []).find((q) => q.id === quantityId);
+            return found ? found.display_label : quantityId;
+        }
+
+        function wwRefFetchJson(url, options) {
+            return fetch(url, options).then((response) => {
+                if (response.ok) return response.status === 204 ? null : response.json();
+                return response.json().catch(() => null).then((body) => {
+                    const detail = (body && body.detail) || {};
+                    const error = new Error(detail.message || "Request failed.");
+                    error.code = detail.code;
+                    error.detail = detail;
+                    throw error;
+                });
+            });
+        }
+
+        async function wwRefLoadProfiles() {
+            try {
+                wwRefState.profiles = await wwRefFetchJson(wwRefProfilesUrl(""));
+                wwRefState.profilesLoaded = true;
+            } catch (error) {
+                // A fetch failure leaves whatever was already loaded --
+                // never fabricates a catalogue.
+            }
+        }
+
+        async function wwRefLoadLayers() {
+            try {
+                wwRefState.layers = await wwRefFetchJson(wwRefLayersUrl("") + wwRefQuantityQueryParam());
+            } catch (error) {
+                wwRefState.layers = [];
+            }
+            wwRefRenderLayersCard();
+        }
+
+        async function wwRefLoadChart() {
+            try {
+                wwRefState.chart = await wwRefFetchJson(wwRefLayersUrl("/chart-data") + wwRefQuantityQueryParam());
+            } catch (error) {
+                wwRefState.chart = null;
+            }
+            wwRefRenderChart();
+        }
+
+        async function wwRefRefreshLayersAndChart() {
+            await wwRefLoadLayers();
+            await wwRefLoadChart();
+        }
+
+        // ---- Reference Layers card ----
+
+        function wwRefCategoryBadgeHtml(category) {
+            const label = WW_REF_CATEGORY_LABEL[category] || category;
+            return '<span class="ww-ref-badge ww-ref-badge--category-' + escapeHtml(category) + '">' + escapeHtml(label) + '</span>';
+        }
+        function wwRefCompatBadgeHtml(compatStatus, reason) {
+            const label = compatStatus === "compatible" ? "Compatible" : compatStatus === "incompatible" ? "Incompatible" : "Not yet applicable";
+            const titleAttr = reason ? ' title="' + escapeHtml(reason) + '"' : "";
+            return '<span class="ww-ref-badge ww-ref-badge--compat-' + escapeHtml(compatStatus) + '"' + titleAttr + '>' + escapeHtml(label) + '</span>';
+        }
+
+        function wwRefRenderLayersCard() {
+            const emptyState = document.getElementById("wwComplianceReferenceLayersEmptyState");
+            const list = document.getElementById("wwRefLayerList");
+            if (!list) return;
+            const layers = wwRefState.layers || [];
+            if (layers.length === 0) {
+                emptyState.hidden = false;
+                list.hidden = true;
+                list.innerHTML = "";
+                return;
+            }
+            emptyState.hidden = true;
+            list.hidden = false;
+            list.innerHTML = layers.map((layer) => {
+                const profile = layer.profile;
+                return (
+                    '<div class="ww-ref-layer-row" data-layer-id="' + escapeHtml(layer.id) + '" data-visible="' + (layer.visible ? "true" : "false") + '">' +
+                        '<input type="checkbox" id="wwRefLayerVis-' + escapeHtml(layer.id) + '"' + (layer.visible ? " checked" : "") + ' aria-label="Show ' + escapeHtml(profile.name) + ' on the Comparison Chart">' +
+                        '<span class="ww-ref-layer-name" title="' + escapeHtml(profile.name) + '">' + escapeHtml(profile.name) + '</span>' +
+                        wwRefCategoryBadgeHtml(profile.category) +
+                        wwRefCompatBadgeHtml(layer.compatibility.status, layer.compatibility.reason) +
+                        '<button type="button" class="ww-ref-layer-remove-btn" id="wwRefLayerRemove-' + escapeHtml(layer.id) + '" title="Remove from chart (does not delete the profile)" aria-label="Remove ' + escapeHtml(profile.name) + '">&times;</button>' +
+                    '</div>'
+                );
+            }).join("");
+            for (const layer of layers) {
+                const checkbox = document.getElementById("wwRefLayerVis-" + layer.id);
+                if (checkbox) checkbox.addEventListener("change", (event) => wwRefToggleLayerVisibility(layer.id, event.target.checked));
+                const removeBtn = document.getElementById("wwRefLayerRemove-" + layer.id);
+                if (removeBtn) removeBtn.addEventListener("click", () => wwRefRemoveLayer(layer.id));
+            }
+        }
+
+        async function wwRefToggleLayerVisibility(layerId, visible) {
+            try {
+                await wwRefFetchJson(wwRefLayersUrl("/" + encodeURIComponent(layerId)) + wwRefQuantityQueryParam(), {
+                    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ visible: visible }),
+                });
+            } catch (error) {
+                // Nothing to recover -- refresh reflects real server state.
+            }
+            await wwRefRefreshLayersAndChart();
+        }
+
+        async function wwRefRemoveLayer(layerId) {
+            // Never touches the underlying profile (task section 10) --
+            // a bare DELETE on the LAYER id only.
+            try {
+                await wwRefFetchJson(wwRefLayersUrl("/" + encodeURIComponent(layerId)), { method: "DELETE" });
+            } catch (error) {
+                // ignore -- refresh reflects real server state either way
+            }
+            await wwRefRefreshLayersAndChart();
+        }
+
+        // ---- "+ Add Reference" compact selection surface (task section 12) ----
+
+        function wwRefComputeCompatibilityPreview(profile) {
+            const quantityId = wwRefSelectedQuantityIdOrNull();
+            if (!quantityId) {
+                return { status: "not_yet_applicable", reason: "No Measurement is currently selected -- compatibility is not yet applicable." };
+            }
+            if (profile.evaluation_quantity === quantityId) return { status: "compatible", reason: null };
+            return {
+                status: "incompatible",
+                reason: "This profile evaluates " + wwComplianceQuantityLabel(profile.evaluation_quantity) +
+                    ", but the current Measurement is " + wwComplianceQuantityLabel(quantityId) + ".",
+            };
+        }
+
+        function wwRefRenderAddDialogList() {
+            const listEl = document.getElementById("wwRefAddList");
+            const profiles = wwRefState.profiles || [];
+            if (!profiles.length) {
+                listEl.innerHTML = '<p class="ww-ref-picker-empty">No reference profiles yet -- create one with "+ New Custom Profile" below.</p>';
+                return;
+            }
+            const activeProfileIds = new Set((wwRefState.layers || []).map((l) => l.profile_id));
+            listEl.innerHTML = profiles.map((profile) => {
+                const compat = wwRefComputeCompatibilityPreview(profile);
+                const alreadyAdded = activeProfileIds.has(profile.id);
+                const reasonHtml = compat.status !== "not_yet_applicable"
+                    ? '<div class="ww-ref-picker-item-reason">' + wwRefCompatBadgeHtml(compat.status, compat.reason) + '</div>'
+                    : "";
+                return (
+                    '<div class="ww-ref-picker-item">' +
+                        '<div class="ww-ref-picker-item-main">' +
+                            '<div class="ww-ref-picker-item-title">' + escapeHtml(profile.name) + ' ' + wwRefCategoryBadgeHtml(profile.category) +
+                                (profile.source === "built_in" ? ' <span class="ww-ref-badge">Built-in</span>' : "") + '</div>' +
+                            reasonHtml +
+                        '</div>' +
+                        '<div class="ww-ref-picker-item-actions">' +
+                            '<button type="button" class="secondary" id="wwRefAddBtn-' + escapeHtml(profile.id) + '"' + (alreadyAdded ? " disabled" : "") + '>' +
+                                (alreadyAdded ? "Added" : "Add") +
+                            '</button>' +
+                        '</div>' +
+                    '</div>'
+                );
+            }).join("");
+            for (const profile of profiles) {
+                const btn = document.getElementById("wwRefAddBtn-" + profile.id);
+                if (btn && !btn.disabled) btn.addEventListener("click", () => wwRefAddProfileAsLayer(profile.id));
+            }
+        }
+
+        async function wwRefOpenAddDialog() {
+            document.getElementById("wwRefAddError").hidden = true;
+            if (!wwRefState.profilesLoaded) await wwRefLoadProfiles();
+            wwRefRenderAddDialogList();
+            document.getElementById("wwRefAddOverlay").hidden = false;
+        }
+        function wwRefCloseAddDialog() {
+            document.getElementById("wwRefAddOverlay").hidden = true;
+        }
+
+        async function wwRefAddProfileAsLayer(profileId) {
+            const errorEl = document.getElementById("wwRefAddError");
+            errorEl.hidden = true;
+            try {
+                await wwRefFetchJson(wwRefLayersUrl("") + wwRefQuantityQueryParam(), {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ profile_id: profileId, visible: true }),
+                });
+            } catch (error) {
+                errorEl.textContent = error.message || "Could not add this reference layer.";
+                errorEl.hidden = false;
+                return;
+            }
+            await wwRefRefreshLayersAndChart();
+            wwRefRenderAddDialogList();
+        }
+
+        // ---- "Manage Profiles" (task section 8) ----
+
+        function wwRefRenderManageDialogList() {
+            const listEl = document.getElementById("wwRefManageList");
+            const profiles = wwRefState.profiles || [];
+            if (!profiles.length) {
+                listEl.innerHTML = '<p class="ww-ref-picker-empty">No reference profiles yet.</p>';
+                return;
+            }
+            listEl.innerHTML = profiles.map((profile) => {
+                const isBuiltIn = profile.source === "built_in";
+                const actions = ['<button type="button" class="secondary" id="wwRefMgViewBtn-' + escapeHtml(profile.id) + '">View</button>'];
+                if (!isBuiltIn) actions.push('<button type="button" class="secondary" id="wwRefMgEditBtn-' + escapeHtml(profile.id) + '">Edit</button>');
+                actions.push('<button type="button" class="secondary" id="wwRefMgDupBtn-' + escapeHtml(profile.id) + '">Duplicate</button>');
+                actions.push('<button type="button" class="secondary" id="wwRefMgExportBtn-' + escapeHtml(profile.id) + '">Export</button>');
+                if (!isBuiltIn) actions.push('<button type="button" class="secondary" id="wwRefMgRemoveBtn-' + escapeHtml(profile.id) + '">Remove</button>');
+                return (
+                    '<div class="ww-ref-picker-item">' +
+                        '<div class="ww-ref-picker-item-main">' +
+                            '<div class="ww-ref-picker-item-title">' + escapeHtml(profile.name) + ' ' + wwRefCategoryBadgeHtml(profile.category) +
+                                (isBuiltIn ? ' <span class="ww-ref-badge">Built-in</span>' : "") + '</div>' +
+                        '</div>' +
+                        '<div class="ww-ref-picker-item-actions">' + actions.join("") + '</div>' +
+                    '</div>'
+                );
+            }).join("");
+            for (const profile of profiles) {
+                const viewBtn = document.getElementById("wwRefMgViewBtn-" + profile.id);
+                if (viewBtn) viewBtn.addEventListener("click", () => wwRefOpenEditor(profile.id, { readOnly: true }));
+                const editBtn = document.getElementById("wwRefMgEditBtn-" + profile.id);
+                if (editBtn) editBtn.addEventListener("click", () => wwRefOpenEditor(profile.id, { readOnly: false }));
+                const dupBtn = document.getElementById("wwRefMgDupBtn-" + profile.id);
+                if (dupBtn) dupBtn.addEventListener("click", () => wwRefManageDuplicateProfile(profile.id));
+                const exportBtn = document.getElementById("wwRefMgExportBtn-" + profile.id);
+                if (exportBtn) exportBtn.addEventListener("click", () => wwRefExportProfile(profile.id));
+                const removeBtn = document.getElementById("wwRefMgRemoveBtn-" + profile.id);
+                if (removeBtn) removeBtn.addEventListener("click", () => wwRefManageRemoveProfile(profile.id));
+            }
+        }
+
+        async function wwRefOpenManageDialog() {
+            document.getElementById("wwRefManageError").hidden = true;
+            if (!wwRefState.profilesLoaded) await wwRefLoadProfiles();
+            wwRefRenderManageDialogList();
+            document.getElementById("wwRefManageOverlay").hidden = false;
+        }
+        function wwRefCloseManageDialog() {
+            document.getElementById("wwRefManageOverlay").hidden = true;
+        }
+
+        async function wwRefManageDuplicateProfile(profileId) {
+            const errorEl = document.getElementById("wwRefManageError");
+            errorEl.hidden = true;
+            try {
+                await wwRefFetchJson(wwRefProfilesUrl("/" + encodeURIComponent(profileId) + "/duplicate"), { method: "POST" });
+            } catch (error) {
+                errorEl.textContent = error.message || "Could not duplicate this profile.";
+                errorEl.hidden = false;
+                return;
+            }
+            await wwRefLoadProfiles();
+            wwRefRenderManageDialogList();
+        }
+
+        async function wwRefManageRemoveProfile(profileId) {
+            if (!window.confirm("Remove this custom reference profile? Any active Reference Layer using it will also be removed. This cannot be undone.")) return;
+            const errorEl = document.getElementById("wwRefManageError");
+            errorEl.hidden = true;
+            try {
+                await wwRefFetchJson(wwRefProfilesUrl("/" + encodeURIComponent(profileId)), { method: "DELETE" });
+            } catch (error) {
+                errorEl.textContent = error.message || "Could not remove this profile.";
+                errorEl.hidden = false;
+                return;
+            }
+            await wwRefLoadProfiles();
+            wwRefRenderManageDialogList();
+            await wwRefRefreshLayersAndChart();
+        }
+
+        function wwRefSanitizeFileName(name) {
+            return (name || "reference_profile").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "reference_profile";
+        }
+
+        async function wwRefExportProfile(profileId) {
+            const errorEl = document.getElementById("wwRefManageError");
+            let envelope;
+            try {
+                envelope = await wwRefFetchJson(wwRefProfilesUrl("/" + encodeURIComponent(profileId) + "/export"));
+            } catch (error) {
+                errorEl.textContent = error.message || "Could not export this profile.";
+                errorEl.hidden = false;
+                return;
+            }
+            const filename = wwRefSanitizeFileName(envelope.profile && envelope.profile.name) + ".json";
+            const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        }
+
+        function wwRefManageImportFile(fileInput) {
+            const file = fileInput.files && fileInput.files[0];
+            if (!file) return;
+            const errorEl = document.getElementById("wwRefManageError");
+            errorEl.hidden = true;
+            const reader = new FileReader();
+            reader.onload = async () => {
+                let envelope;
+                try {
+                    envelope = JSON.parse(reader.result);
+                } catch (error) {
+                    errorEl.textContent = "That file is not valid JSON.";
+                    errorEl.hidden = false;
+                    fileInput.value = "";
+                    return;
+                }
+                try {
+                    await wwRefFetchJson(wwRefProfilesUrl("/import"), {
+                        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(envelope),
+                    });
+                } catch (error) {
+                    errorEl.textContent = error.message || "Could not import this profile.";
+                    errorEl.hidden = false;
+                    fileInput.value = "";
+                    return;
+                }
+                fileInput.value = "";
+                await wwRefLoadProfiles();
+                wwRefRenderManageDialogList();
+            };
+            reader.readAsText(file);
+        }
+
+        // ---- Reference Profile editor -- TABLE-FIRST numeric segment
+        // entry (task section 13). No freehand curve dragging anywhere;
+        // reuses the same catalogue Measurement's own Assessment Quantity
+        // select already fetched (wwComplianceState.quantities) -- never a
+        // second, hardcoded copy of the canonical Voltage quantities. ----
+
+        function wwRefPopulateQuantitySelect() {
+            const select = document.getElementById("wwRefEditorQuantity");
+            if (!select) return;
+            const quantities = wwComplianceState.quantities || [];
+            select.innerHTML = quantities.map((q) => '<option value="' + escapeHtml(q.id) + '">' + escapeHtml(q.display_label) + '</option>').join("");
+        }
+
+        function wwRefEditorSegmentRowHtml(row) {
+            row = row || { start_time: "", end_time: "", start_value: "", end_value: "", segment_type: "constant" };
+            const st = row.start_time === "" || row.start_time == null ? "" : row.start_time;
+            const et = row.end_time === "" || row.end_time == null ? "" : row.end_time;
+            const sv = row.start_value === "" || row.start_value == null ? "" : row.start_value;
+            const ev = row.end_value === "" || row.end_value == null ? "" : row.end_value;
+            return (
+                '<tr>' +
+                    '<td><input type="number" step="any" class="ww-ref-seg-start-time" value="' + st + '"></td>' +
+                    '<td><input type="number" step="any" class="ww-ref-seg-end-time" value="' + et + '"></td>' +
+                    '<td><input type="number" step="any" class="ww-ref-seg-start-value" value="' + sv + '"></td>' +
+                    '<td><input type="number" step="any" class="ww-ref-seg-end-value" value="' + ev + '"></td>' +
+                    '<td><select class="ww-ref-seg-type">' +
+                        '<option value="constant"' + (row.segment_type === "linear" ? "" : " selected") + '>Constant</option>' +
+                        '<option value="linear"' + (row.segment_type === "linear" ? " selected" : "") + '>Linear</option>' +
+                    '</select></td>' +
+                    '<td><button type="button" class="ww-ref-segment-row-remove" aria-label="Remove segment">&times;</button></td>' +
+                '</tr>'
+            );
+        }
+
+        function wwRefEditorAddRow(boundary, row) {
+            const tbody = document.getElementById(boundary === "upper" ? "wwRefEditorUpperBody" : "wwRefEditorLowerBody");
+            const wrapper = document.createElement("tbody");
+            wrapper.innerHTML = wwRefEditorSegmentRowHtml(row);
+            const tr = wrapper.firstElementChild;
+            tr.querySelector(".ww-ref-segment-row-remove").addEventListener("click", () => tr.remove());
+            tbody.appendChild(tr);
+            return tr;
+        }
+
+        function wwRefEditorClearBoundaryTable(boundary) {
+            document.getElementById(boundary === "upper" ? "wwRefEditorUpperBody" : "wwRefEditorLowerBody").innerHTML = "";
+        }
+
+        function wwRefEditorCollectBoundarySegments(boundary) {
+            const tbody = document.getElementById(boundary === "upper" ? "wwRefEditorUpperBody" : "wwRefEditorLowerBody");
+            return Array.from(tbody.querySelectorAll("tr")).map((tr) => ({
+                start_time: parseFloat(tr.querySelector(".ww-ref-seg-start-time").value),
+                end_time: parseFloat(tr.querySelector(".ww-ref-seg-end-time").value),
+                start_value: parseFloat(tr.querySelector(".ww-ref-seg-start-value").value),
+                end_value: parseFloat(tr.querySelector(".ww-ref-seg-end-value").value),
+                segment_type: tr.querySelector(".ww-ref-seg-type").value,
+            }));
+        }
+
+        function wwRefEditorSetReadOnly(readOnly) {
+            const overlay = document.getElementById("wwRefEditorOverlay");
+            overlay.querySelectorAll("input, select, textarea, button.ww-ref-segment-row-remove, #wwRefEditorLowerAddRowBtn, #wwRefEditorUpperAddRowBtn").forEach((el) => {
+                el.disabled = readOnly;
+            });
+            document.getElementById("wwRefEditorSaveBtn").hidden = readOnly;
+        }
+
+        async function wwRefOpenEditor(profileId, options) {
+            options = options || {};
+            document.getElementById("wwRefEditorError").hidden = true;
+            wwRefPopulateQuantitySelect();
+            wwRefEditorClearBoundaryTable("lower");
+            wwRefEditorClearBoundaryTable("upper");
+
+            const existing = profileId ? (wwRefState.profiles || []).find((p) => p.id === profileId) : null;
+            const isBuiltIn = existing ? existing.source === "built_in" : false;
+            const readOnly = !!options.readOnly || isBuiltIn;
+            wwRefState.editor = { mode: profileId ? "edit" : "create", profileId: profileId || null, readOnly: readOnly };
+
+            document.getElementById("wwRefEditorTitle").textContent =
+                !profileId ? "New Reference Profile" : (readOnly ? "View Reference Profile" : "Edit Reference Profile");
+
+            if (existing) {
+                document.getElementById("wwRefEditorName").value = existing.name;
+                document.getElementById("wwRefEditorCategory").value = existing.category;
+                document.getElementById("wwRefEditorQuantity").value = existing.evaluation_quantity;
+                document.getElementById("wwRefEditorUnit").value = existing.unit;
+                document.getElementById("wwRefEditorDisplayStart").value = existing.display_start_time;
+                document.getElementById("wwRefEditorDisplayEnd").value = existing.display_end_time;
+                document.getElementById("wwRefEditorEvalStart").value = existing.evaluation_start_time;
+                document.getElementById("wwRefEditorEvalEnd").value = existing.evaluation_end_time;
+                document.getElementById("wwRefEditorTolerance").value = existing.tolerance;
+                document.getElementById("wwRefEditorLowerEnabled").checked = !!existing.lower_boundary;
+                document.getElementById("wwRefEditorUpperEnabled").checked = !!existing.upper_boundary;
+                if (existing.lower_boundary) existing.lower_boundary.segments.forEach((s) => wwRefEditorAddRow("lower", s));
+                if (existing.upper_boundary) existing.upper_boundary.segments.forEach((s) => wwRefEditorAddRow("upper", s));
+                const m = existing.metadata || {};
+                document.getElementById("wwRefEditorMetaBrand").value = m.brand || "";
+                document.getElementById("wwRefEditorMetaEquipmentType").value = m.equipment_type || "";
+                document.getElementById("wwRefEditorMetaModel").value = m.model || "";
+                document.getElementById("wwRefEditorMetaFirmwareHardware").value = m.firmware_hardware || "";
+                document.getElementById("wwRefEditorMetaSourceDocument").value = m.source_document || "";
+                document.getElementById("wwRefEditorMetaSourceRevision").value = m.source_revision || "";
+                document.getElementById("wwRefEditorMetaProject").value = m.project || "";
+                document.getElementById("wwRefEditorMetaPlant").value = m.plant || "";
+                document.getElementById("wwRefEditorMetaNotes").value = m.notes || "";
+            } else {
+                document.getElementById("wwRefEditorName").value = "";
+                document.getElementById("wwRefEditorCategory").value = "custom_reference";
+                document.getElementById("wwRefEditorQuantity").value = ((wwComplianceState.quantities || [])[0] || {}).id || "";
+                document.getElementById("wwRefEditorUnit").value = "pu";
+                document.getElementById("wwRefEditorDisplayStart").value = "-0.5";
+                document.getElementById("wwRefEditorDisplayEnd").value = "3.0";
+                document.getElementById("wwRefEditorEvalStart").value = "0.0";
+                document.getElementById("wwRefEditorEvalEnd").value = "3.0";
+                document.getElementById("wwRefEditorTolerance").value = "0";
+                document.getElementById("wwRefEditorLowerEnabled").checked = true;
+                document.getElementById("wwRefEditorUpperEnabled").checked = false;
+                wwRefEditorAddRow("lower", { start_time: -0.5, end_time: 3.0, start_value: 0.9, end_value: 0.9, segment_type: "constant" });
+                for (const field of ["Brand", "EquipmentType", "Model", "FirmwareHardware", "SourceDocument", "SourceRevision", "Project", "Plant"]) {
+                    document.getElementById("wwRefEditorMeta" + field).value = "";
+                }
+                document.getElementById("wwRefEditorMetaNotes").value = "";
+            }
+
+            wwRefEditorSetReadOnly(readOnly);
+            document.getElementById("wwRefEditorOverlay").hidden = false;
+        }
+
+        function wwRefCloseEditor() {
+            document.getElementById("wwRefEditorOverlay").hidden = true;
+        }
+
+        function wwRefEditorClearRowErrors() {
+            document.querySelectorAll("#wwRefEditorLowerBody tr, #wwRefEditorUpperBody tr").forEach((tr) => tr.removeAttribute("data-row-error"));
+        }
+        function wwRefEditorMarkRowError(boundary, segmentIndex) {
+            if (segmentIndex == null) return;
+            const tbody = document.getElementById(boundary === "upper" ? "wwRefEditorUpperBody" : "wwRefEditorLowerBody");
+            const rows = tbody.querySelectorAll("tr");
+            if (rows[segmentIndex]) rows[segmentIndex].setAttribute("data-row-error", "true");
+        }
+
+        function wwRefEditorBuildRequestBody() {
+            const lowerEnabled = document.getElementById("wwRefEditorLowerEnabled").checked;
+            const upperEnabled = document.getElementById("wwRefEditorUpperEnabled").checked;
+            const metaValue = (id) => document.getElementById(id).value.trim() || null;
+            return {
+                name: document.getElementById("wwRefEditorName").value,
+                category: document.getElementById("wwRefEditorCategory").value,
+                evaluation_quantity: document.getElementById("wwRefEditorQuantity").value,
+                unit: document.getElementById("wwRefEditorUnit").value,
+                display_start_time: parseFloat(document.getElementById("wwRefEditorDisplayStart").value),
+                display_end_time: parseFloat(document.getElementById("wwRefEditorDisplayEnd").value),
+                evaluation_start_time: parseFloat(document.getElementById("wwRefEditorEvalStart").value),
+                evaluation_end_time: parseFloat(document.getElementById("wwRefEditorEvalEnd").value),
+                tolerance: parseFloat(document.getElementById("wwRefEditorTolerance").value),
+                lower_boundary: lowerEnabled ? { segments: wwRefEditorCollectBoundarySegments("lower") } : null,
+                upper_boundary: upperEnabled ? { segments: wwRefEditorCollectBoundarySegments("upper") } : null,
+                metadata: {
+                    brand: metaValue("wwRefEditorMetaBrand"),
+                    equipment_type: metaValue("wwRefEditorMetaEquipmentType"),
+                    model: metaValue("wwRefEditorMetaModel"),
+                    firmware_hardware: metaValue("wwRefEditorMetaFirmwareHardware"),
+                    source_document: metaValue("wwRefEditorMetaSourceDocument"),
+                    source_revision: metaValue("wwRefEditorMetaSourceRevision"),
+                    project: metaValue("wwRefEditorMetaProject"),
+                    plant: metaValue("wwRefEditorMetaPlant"),
+                    notes: metaValue("wwRefEditorMetaNotes"),
+                },
+            };
+        }
+
+        async function wwRefEditorSave() {
+            const errorEl = document.getElementById("wwRefEditorError");
+            errorEl.hidden = true;
+            wwRefEditorClearRowErrors();
+            const body = wwRefEditorBuildRequestBody();
+            const editor = wwRefState.editor;
+            const isUpdate = editor.mode === "edit" && editor.profileId;
+            const url = isUpdate ? wwRefProfilesUrl("/" + encodeURIComponent(editor.profileId)) : wwRefProfilesUrl("");
+            try {
+                await wwRefFetchJson(url, {
+                    method: isUpdate ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+                });
+            } catch (error) {
+                errorEl.textContent = error.message || "Could not save this profile.";
+                errorEl.hidden = false;
+                const detail = error.detail || {};
+                if (detail.boundary) wwRefEditorMarkRowError(detail.boundary, detail.segment_index);
+                return;
+            }
+            wwRefCloseEditor();
+            await wwRefLoadProfiles();
+            // If the just-created/edited profile already has an active
+            // layer, that layer's own chart trace needs to reflect the
+            // new curve immediately.
+            await wwRefRefreshLayersAndChart();
+            if (!document.getElementById("wwRefManageOverlay").hidden) wwRefRenderManageDialogList();
+            if (!document.getElementById("wwRefAddOverlay").hidden) wwRefRenderAddDialogList();
+        }
+
+        // ---- Comparison Chart (Plotly, reused verbatim -- task section
+        // 14's own explicit "never a second plotting library"). Renders
+        // ONLY active, VISIBLE reference layers whose own unit matches the
+        // chart's current axis unit -- see build_comparison_chart()'s own
+        // docstring for the axis-derivation/unit-mismatch rules this
+        // mirrors on the frontend. ----
+
+        function wwRefRenderChartLegend(traces) {
+            const legendEl = document.getElementById("wwComplianceChartLegend");
+            if (!traces.length) { legendEl.hidden = true; legendEl.innerHTML = ""; return; }
+            legendEl.hidden = false;
+            legendEl.innerHTML = traces.map((t) =>
+                '<span>' + escapeHtml(t.profile_name) + ' (' + (t.boundary === "upper" ? "Upper" : "Lower") + ', ' +
+                    escapeHtml(WW_REF_CATEGORY_LABEL[t.category] || t.category) + ')</span>'
+            ).join("");
+        }
+
+        function wwRefRenderChartNote(chart) {
+            const noteEl = document.getElementById("wwComplianceChartNote");
+            if (!chart) { noteEl.hidden = true; noteEl.textContent = ""; return; }
+            // Mid-conversation amendment: a genuine unit mismatch among
+            // active layers is handled EXPLICITLY -- never silently
+            // converted or hidden.
+            const offAxis = chart.traces.filter((t) => t.visible && !t.on_axis);
+            if (!offAxis.length) { noteEl.hidden = true; noteEl.textContent = ""; return; }
+            const names = [...new Set(offAxis.map((t) => t.profile_name))];
+            noteEl.hidden = false;
+            noteEl.textContent = "Not plotted (different unit than the current chart axis" +
+                (chart.axis_unit ? " \"" + chart.axis_unit + "\"" : "") + "): " + names.join(", ") + ".";
+        }
+
+        function wwRefRenderChart() {
+            const emptyState = document.getElementById("wwComplianceChartEmptyState");
+            const plotEl = document.getElementById("wwComplianceChartPlot");
+            const chart = wwRefState.chart;
+            const onAxisTraces = chart ? chart.traces.filter((t) => t.on_axis) : [];
+
+            if (!chart || onAxisTraces.length === 0) {
+                emptyState.hidden = false;
+                plotEl.hidden = true;
+                if (wwRefChartReady && window.Plotly) {
+                    try { Plotly.purge(plotEl); } catch (error) { /* ignore */ }
+                    wwRefChartReady = false;
+                }
+                wwRefRenderChartLegend([]);
+                wwRefRenderChartNote(chart);
+                return;
+            }
+
+            emptyState.hidden = true;
+            plotEl.hidden = false;
+
+            const colors = wwThemeColors();
+            const traces = onAxisTraces.map((t) => ({
+                x: t.points.map((p) => p.t),
+                y: t.points.map((p) => p.v),
+                mode: "lines",
+                type: "scatter",
+                connectgaps: false,
+                name: t.profile_name + (t.boundary === "upper" ? " — Upper" : " — Lower"),
+                line: { width: 1.5, dash: t.boundary === "upper" ? "dash" : "solid", color: WW_REF_CATEGORY_COLOR[t.category] || "#888" },
+                // Stable trace identity (task section 16) -- never
+                // reconstructed later by parsing legend text.
+                layer_id: t.layer_id,
+                profile_id: t.profile_id,
+                boundary: t.boundary,
+                category: t.category,
+            }));
+
+            const layout = {
+                margin: { l: 52, r: 16, t: 10, b: 40 },
+                paper_bgcolor: "transparent",
+                plot_bgcolor: "transparent",
+                font: { color: colors.text, size: 11 },
+                xaxis: {
+                    title: "Time (s)",
+                    range: (chart.x_min != null && chart.x_max != null) ? [chart.x_min, chart.x_max] : undefined,
+                    zeroline: false, gridcolor: colors.grid,
+                },
+                yaxis: {
+                    title: chart.axis_unit ? ("Value (" + chart.axis_unit + ")") : "Value",
+                    zeroline: false, gridcolor: colors.grid,
+                },
+                showlegend: true,
+                legend: { font: { size: 9 }, orientation: "h" },
+                hovermode: "closest",
+            };
+            Plotly.react(plotEl, traces, layout, { displayModeBar: false, responsive: true });
+            wwRefChartReady = true;
+
+            wwRefRenderChartLegend(onAxisTraces);
+            wwRefRenderChartNote(chart);
+        }
+
+
+        // ---- Compliance Slice 3 -- Reference Profiles/Layers wiring ----
+        document.getElementById("wwComplianceAddReferenceBtn").addEventListener("click", () => wwRefOpenAddDialog());
+        document.getElementById("wwRefManageProfilesBtn").addEventListener("click", () => wwRefOpenManageDialog());
+
+        document.getElementById("wwRefAddCloseBtn").addEventListener("click", () => wwRefCloseAddDialog());
+        document.getElementById("wwRefAddCloseFooterBtn").addEventListener("click", () => wwRefCloseAddDialog());
+        document.getElementById("wwRefAddOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "wwRefAddOverlay") wwRefCloseAddDialog();
+        });
+        document.getElementById("wwRefAddNewProfileBtn").addEventListener("click", () => wwRefOpenEditor(null, {}));
+
+        document.getElementById("wwRefManageCloseBtn").addEventListener("click", () => wwRefCloseManageDialog());
+        document.getElementById("wwRefManageCloseFooterBtn").addEventListener("click", () => wwRefCloseManageDialog());
+        document.getElementById("wwRefManageOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "wwRefManageOverlay") wwRefCloseManageDialog();
+        });
+        document.getElementById("wwRefManageNewProfileBtn").addEventListener("click", () => wwRefOpenEditor(null, {}));
+        document.getElementById("wwRefManageImportInput").addEventListener("change", (event) => wwRefManageImportFile(event.target));
+
+        document.getElementById("wwRefEditorCloseBtn").addEventListener("click", () => wwRefCloseEditor());
+        document.getElementById("wwRefEditorCancelBtn").addEventListener("click", () => wwRefCloseEditor());
+        document.getElementById("wwRefEditorOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "wwRefEditorOverlay") wwRefCloseEditor();
+        });
+        document.getElementById("wwRefEditorSaveBtn").addEventListener("click", () => wwRefEditorSave());
+        document.getElementById("wwRefEditorLowerAddRowBtn").addEventListener("click", () => wwRefEditorAddRow("lower"));
+        document.getElementById("wwRefEditorUpperAddRowBtn").addEventListener("click", () => wwRefEditorAddRow("upper"));
 
         // ---- Overcurrent Analysis v1 wiring ----
         document.getElementById("wwOvercurrentContextSelect").addEventListener("change", (event) => {

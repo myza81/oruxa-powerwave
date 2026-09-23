@@ -124,12 +124,16 @@ class TestCompliancePageStructure:
         # the static markup slice any more -- check the whole file.
         assert "No assessment quantity selected" in source
 
-    def test_reference_layers_shows_empty_state_and_disabled_add_button(self):
+    def test_reference_layers_shows_empty_state_and_active_add_button(self):
+        """Compliance Slice 3: Reference Layers is no longer a Slice 1/2
+        disabled placeholder -- "+ Add Reference" is a real, ENABLED
+        entry point (see TestComplianceReferenceLayersStructure for the
+        full Slice 3 structural surface)."""
         source = _source()
         page = _compliance_page(source)
         assert "No reference layers added" in page
         add_btn = _function_body(page, 'id="wwComplianceAddReferenceBtn"', "</button>")
-        assert "disabled" in add_btn
+        assert "disabled" not in add_btn
         assert "+ Add Reference" in add_btn
 
     def test_event_alignment_shows_empty_state_no_automatic_detection(self):
@@ -140,10 +144,16 @@ class TestCompliancePageStructure:
         assert "wwComplianceAutoAlign" not in source
 
     def test_comparison_chart_present_and_empty(self):
+        """Compliance Slice 3: the static default empty state now reads
+        in terms of Reference Layers (the chart can render before any
+        Measurement/voltage assessment exists at all -- mid-conversation
+        product requirement), not the old Slice 1/2 "No voltage
+        assessment configured" wording."""
         source = _source()
         page = _compliance_page(source)
         assert 'id="wwComplianceChartWrap"' in page
-        assert "No voltage assessment configured" in page
+        assert 'id="wwComplianceChartPlot"' in page
+        assert "No reference layers to display" in page
 
     def test_results_shows_neutral_empty_state_no_fake_verdicts(self):
         source = _source()
@@ -380,13 +390,19 @@ class TestComplianceMeasurementGroupBootstrapAndReviewState:
 class TestComplianceOutOfScopeSlice2:
     """task's own explicit Slice 2 scope boundary: only Measurement is
     implemented -- Reference Layers, Event Alignment, comparison curves,
-    and compliance evaluation remain exactly the Slice 1 placeholders."""
+    and compliance evaluation remain exactly the Slice 1 placeholders.
 
-    def test_reference_layers_and_event_alignment_still_disabled_placeholders(self):
+    Superseded IN PART by Compliance Slice 3 (see
+    TestComplianceOutOfScopeSlice3 below): Reference Layers and the
+    Comparison Chart's own static reference-curve rendering are now
+    real, not placeholders. Event Alignment, Results, and every
+    evaluation/breach/margin concept remain exactly as described here --
+    kept verbatim as the accurate historical record of what Slice 2
+    still excluded, not retroactively rewritten."""
+
+    def test_event_alignment_still_a_disabled_placeholder(self):
         source = _source()
         page = _compliance_page(source)
-        add_ref_btn = _function_body(page, 'id="wwComplianceAddReferenceBtn"', "</button>")
-        assert "disabled" in add_ref_btn
         alignment_controls = _function_body(page, 'id="wwComplianceAlignmentControls"', "</div>")
         # Each of the 3 buttons (Shift-left, t0, Shift-right) carries both
         # `disabled` and `aria-disabled="true"` -- "disabled" is also a
@@ -399,12 +415,119 @@ class TestComplianceOutOfScopeSlice2:
         for forbidden in (
             "wwComplianceEvaluate", "wwComplianceBreach", "wwComplianceMargin",
             "wwComplianceApplyShift", "wwComplianceSetT0", "wwComplianceDetectEvent", "wwComplianceAutoAlign",
-            "profile_json", "profileJson", "malaysian_grid_code", "MalaysianGridCode",
+            "malaysian_grid_code", "MalaysianGridCode",
         ):
             assert forbidden not in page
 
-    def test_still_no_backend_endpoint_beyond_the_two_measurement_endpoints(self):
+    def test_still_no_event_alignment_backend_endpoint(self):
         source = _source()
         assert "/api/v1/compliance" not in source
-        assert "reference-layer" not in source
         assert "event-alignment" not in source
+
+
+class TestComplianceOutOfScopeSlice3:
+    """Compliance Slice 3's OWN explicit scope boundary (task section 18/
+    19): Reference Profiles/Layers and static Comparison Chart rendering
+    are real; Event Alignment, Results, and every evaluation/breach/
+    tolerance/PASS-FAIL concept remain exactly the Slice 1 placeholders.
+    No production Malaysia Grid Code (or any other named official
+    requirement) built-in exists (task section 9)."""
+
+    def test_no_evaluation_breach_tolerance_or_verdict_logic_added(self):
+        source = _source()
+        page = _compliance_page(source)
+        for forbidden in (
+            "wwComplianceEvaluate", "wwRefEvaluate", "wwRefBreach", "wwRefMargin", "wwRefTolerance",
+            "wwComplianceBreach", "wwComplianceMargin", "wwComplianceApplyShift", "wwComplianceSetT0",
+            "wwComplianceDetectEvent", "wwComplianceAutoAlign",
+        ):
+            assert forbidden not in page
+        results_panel = _function_body(page, 'id="wwComplianceResultsPanel"', "</section>")
+        assert "Compliant" not in results_panel
+        assert "Boundary Breached" not in results_panel
+        assert "Within Capability" not in results_panel
+
+    def test_no_malaysia_grid_code_or_other_named_official_requirement(self):
+        """Task section 9's own explicit constraint: no production
+        built-in profile may be fabricated from memory/assumptions. The
+        empty production built-in directory is the authoritative proof
+        (backend/tests/test_reference_profile_builtins.py); this is the
+        frontend-side companion guard that no such name ever leaked into
+        client-side code either."""
+        source = _source()
+        for forbidden in ("Malaysia Grid Code", "MalaysianGridCode", "malaysian_grid_code"):
+            assert forbidden not in source
+
+    def test_event_alignment_and_results_remain_placeholders(self):
+        source = _source()
+        page = _compliance_page(source)
+        assert "No event reference set" in page
+        results_panel = _function_body(page, 'id="wwComplianceResultsPanel"', "</section>")
+        assert "Results will appear after a measurement" in results_panel
+
+    def test_reference_layers_endpoint_exists_but_no_evaluation_endpoint(self):
+        source = _source()
+        assert "/reference-profiles" in source
+        assert "/reference-layers" in source
+        assert "/api/v1/compliance" not in source
+        assert "event-alignment" not in source
+
+
+class TestComplianceReferenceLayersStructure:
+    """Compliance Slice 3's own structural surface: the active Reference
+    Layers card, the three new modals (Add Reference / Manage Profiles /
+    profile editor), and the Comparison Chart's Plotly mount point."""
+
+    def test_reference_layers_card_has_add_and_manage_actions(self):
+        source = _source()
+        page = _compliance_page(source)
+        assert 'id="wwComplianceAddReferenceBtn"' in page
+        assert 'id="wwRefManageProfilesBtn"' in page
+        assert 'id="wwRefLayerList"' in page
+
+    def test_three_new_modals_exist(self):
+        source = _source()
+        assert 'id="wwRefAddOverlay"' in source
+        assert 'id="wwRefManageOverlay"' in source
+        assert 'id="wwRefEditorOverlay"' in source
+
+    def test_profile_editor_is_table_first_never_freehand_dragging(self):
+        """Task section 13: table-first numeric segment entry, no
+        freehand curve dragging."""
+        source = _source()
+        assert 'id="wwRefEditorLowerTable"' in source
+        assert 'id="wwRefEditorUpperTable"' in source
+        assert "ww-ref-seg-start-time" in source
+        assert "ww-ref-seg-end-time" in source
+        assert "ww-ref-seg-start-value" in source
+        assert "ww-ref-seg-end-value" in source
+        assert "ww-ref-seg-type" in source
+        # No drag-based curve editing exists anywhere for this feature.
+        for forbidden in ("wwRefDrag", "wwRefEditorDrag", "wwRefCurveDrag"):
+            assert forbidden not in source
+
+    def test_comparison_chart_has_a_plotly_mount_point_not_a_second_library(self):
+        source = _source()
+        page = _compliance_page(source)
+        assert 'id="wwComplianceChartPlot"' in page
+        chart_fn = _function_body(source, "function wwRefRenderChart() {", "// ---- Compliance Slice 3 -- Reference Profiles/Layers wiring ----")
+        assert "Plotly.react(" in chart_fn
+
+    def test_reference_layer_compatibility_is_three_way_never_two_way(self):
+        """Mid-conversation amendment: "no Measurement selected" must
+        never collapse into "incompatible"."""
+        source = _source()
+        assert "not_yet_applicable" in source
+        assert "compatible" in source
+        assert "incompatible" in source
+
+    def test_reference_layers_load_unconditionally_on_page_render(self):
+        """The mid-conversation product requirement itself: Reference
+        Layers/Comparison Chart load regardless of Measurement/group/
+        source state -- wwRenderCompliancePage() calls them
+        unconditionally, never behind an `if` gated on group/quantity
+        selection."""
+        source = _source()
+        render_fn = _function_body(source, "function wwRenderCompliancePage() {", "\n        }")
+        assert "wwRefLoadProfiles()" in render_fn
+        assert "wwRefRefreshLayersAndChart()" in render_fn

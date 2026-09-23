@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "[Developer Fixture -- NOT an Official Requirement] Invalid domain data",
+    "category": "custom_reference",
+    "evaluation_quantity": "phase_a_lg_rms",
+    "unit": "pu",
+    "display_start_time": -0.5,
+    "display_end_time": 3.0,
+    "evaluation_start_time": 0.0,
+    "evaluation_end_time": 3.0,
+    "tolerance": -5.0,
+    "lower_boundary": {
+      "segments": [
+        {"start_time": -0.5, "end_time": 3.0, "start_value": 0.8, "end_value": 0.8, "segment_type": "constant"}
+      ]
+    },
+    "upper_boundary": null,
+    "metadata": {
+      "notes": "Deliberately has a negative tolerance -- used only to prove load_builtin_profiles() propagates a domain validation failure loudly rather than skipping the file.",
+      "built_in": true
+    }
+  }
+}

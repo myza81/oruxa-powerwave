@@ -4,15 +4,19 @@
 (Measurement Selection + Normalization Foundation) implemented
 2026-09-20; a same-day owner-UAT correction (Bay/Measurement Group
 scoping) implemented 2026-09-20; a further owner-UAT correction (group
-discovery/bootstrap) implemented 2026-09-23.** Reference profiles,
-event alignment/t0, comparison curves, and compliance evaluation/
-breach/margin logic still do not exist — see "Slice 2" below for
-exactly what Measurement now does, "Bay/Measurement Group scoping
-(2026-09-20 UAT correction)" for the corrected selection workflow,
-"Bay/Measurement Group discovery/bootstrap (2026-09-23 UAT correction)"
-for why groups now appear WITHOUT visiting another page first, and "No
-calculation/profile/persistence logic exists yet" for what still
-doesn't.
+discovery/bootstrap) implemented 2026-09-23; Slice 3 (Reference
+Profiles, Reference Layers, and static Comparison Chart rendering)
+implemented 2026-09-23 — see "Slice 3" below.** Event alignment/t0,
+measured-waveform overlay, automated event detection, and compliance
+evaluation/breach/margin/tolerance logic still do not exist — see
+"Slice 2" below for exactly what Measurement does, "Bay/Measurement
+Group scoping (2026-09-20 UAT correction)" for the corrected selection
+workflow, "Bay/Measurement Group discovery/bootstrap (2026-09-23 UAT
+correction)" for why groups appear WITHOUT visiting another page first,
+"Slice 3 — Reference Profiles, Reference Layers, and Static Curve
+Rendering" for the reference-profile engine and static Comparison Chart,
+and "No calculation/evaluation/persistence logic exists yet" for what
+still doesn't.
 
 ## Compliance is a top-level function, independent of Analysis
 
@@ -543,6 +547,134 @@ resolution is scoped to an explicitly selected Measurement Group, a
 — this is purely a change in WHEN discovery runs, not what it discovers
 or how Compliance uses the result.
 
+## Slice 3 — Reference Profiles, Reference Layers, and Static Curve Rendering (2026-09-23)
+
+Implements a generic Reference Profile/Reference Layer engine and STATIC
+Comparison Chart rendering. Explicitly excludes manual t0/event
+alignment, measured-waveform overlay, automated event detection,
+compliance evaluation, breach detection, crossing interpolation, result
+cards, and any PASS/FAIL/tolerance verdict — Event Alignment and Results
+remain exactly Slice 1's own neutral placeholders. See
+[DECISIONS.md — DEC-109](DECISIONS.md#dec-109--compliance-slice-3-a-generic-reference-profilereference-layer-domain-model-static-comparison-chart-rendering-and-a-reference-subsystem-lifecycle-fully-independent-of-any-uploaded-recording)
+for the full architectural record; this section is a shorter practical
+summary.
+
+**CRITICAL, mid-implementation product requirement — Reference Layers
+work without an uploaded recording.** The Compliance page is now two
+independent inputs, joined only at the Comparison Chart: Measurement
+(optional, unlocked once a usable Bay/Measurement Group + Assessment
+Quantity exist) and Reference Layers (usable at all times, in a
+workspace that has never had a source uploaded at all). Uploading a
+source into a workspace that already has configured Reference Layers
+never resets them — Measurement becoming available is purely additive.
+
+**`ReferenceProfile` (`app.domain.reference_profile`) is a portable
+value object — generic, never Grid-Code-specific.** `category` is one
+of `grid_requirement | equipment_capability | project_requirement |
+custom_reference`; `evaluation_quantity` reuses the EXISTING canonical
+Voltage quantity ids from Slice 2
+(`app.domain.compliance_measurement.VOLTAGE_QUANTITIES`) — never a
+second, duplicated catalogue; `unit` is closed to `pu | V | kV`. A
+boundary (`lower_boundary`/`upper_boundary`) may exist independently,
+but at least one must be present; each is an ordered set of `constant`/
+`linear` segments with explicit `start_time/end_time/start_value/
+end_value`. Negative time, gaps, and value discontinuities are all
+allowed; overlapping segments within one boundary are rejected, never
+silently resolved. **Right-continuity is frozen**: at a discontinuity,
+the active value belongs to the NEW segment — the renderer produces the
+correct vertical connector with zero special-casing by simply emitting
+both segments' own endpoints in time order. A genuine gap renders as an
+explicit line break, never a straight line bridging two unrelated
+segments. Display window and evaluation window are independent fields;
+Slice 3 uses ONLY the display window for chart rendering — the
+evaluation window is stored/validated but read by nothing yet (there is
+no evaluation logic in this slice to read it).
+
+**No production built-in profile was created — task's own explicit
+governing constraint.** `app.domain.reference_profile_builtins.
+load_builtin_profiles()` loads version-controlled JSON from
+`backend/app/data/reference_profiles/builtin/`, which ships EMPTY. No
+Malaysia Grid Code (or any other named grid code/OEM capability) values
+exist anywhere in this repository as an authoritative verified source,
+so none were fabricated. The loader itself is fully proven against a
+separate, clearly-labeled developer/test-only fixture directory
+(`backend/tests/fixtures/reference_profiles/`) — the engine is ready for
+a verified profile to be added later; see that built-in directory's own
+`README.md` for exactly what a real addition requires. Built-in profiles
+are View/Duplicate only.
+
+**Custom profiles are session/workspace-scoped, in-memory only — no
+`localStorage`, no database** (`ReferenceProfileRegistry`, mirroring
+`MeasurementGroupRegistry`'s exact CRUD shape). `ReferenceLayer` is the
+separately-registered association between one profile and the
+Comparison Chart's own active configuration (`ReferenceLayerRegistry`,
+same shape). **Profile deletion and layer removal are different
+actions**: removing a layer never deletes the profile; deleting a
+custom profile cascades to remove every layer referencing it (never
+leaves a dangling reference). No maximum active-layer count is
+enforced.
+
+**Import/export uses a stable versioned schema**
+(`{"schema_version": 1, "profile": {...}}`). Export omits `id`; import
+always mints a fresh id and always forces `metadata.built_in = False`,
+regardless of what the file claims. An unrecognized schema version fails
+explicitly, never silently coerced.
+
+**Compatibility is three-way, never two-way** — the mid-implementation
+amendment's own central requirement. `compute_layer_compatibility()`
+returns `not_yet_applicable` (never `incompatible`) whenever no
+Measurement quantity is currently selected; once one IS selected, a
+genuine mismatch is `incompatible` with an actionable reason, but the
+layer/profile stays fully visible and manageable either way — never
+hidden, never silently removed.
+
+**The Comparison Chart's own axes are derived entirely from the active,
+VISIBLE layers' own profiles, never from a recording.** X-axis: the
+union of every visible layer's own display window. Y-axis/unit: the
+FIRST visible layer (insertion order) establishes the chart's
+`axis_unit`; a later visible layer with a DIFFERENT unit is excluded
+from actual plotting but stays listed with an explicit "different unit —
+not plotted" note — never silently converted or hidden. No unit
+conversion is invented anywhere in this slice. Renders via the EXISTING
+Plotly build already used everywhere else in this app (`Plotly.react()`)
+— never a second charting library. Every trace carries stable identity
+(`layer_id, profile_id, boundary, category`) as direct properties on the
+Plotly trace object, never parsed from legend text.
+
+**Backend**: `app/domain/reference_profile.py` (model, validation,
+right-continuity/gap render-point transform, versioned JSON schema),
+`app/domain/reference_profile_builtins.py`, `app/domain/reference_layer.py`,
+`app/services/reference_profile_registry.py`, `app/services/
+reference_layer_registry.py` (wired into `app.main.create_app()`'s
+lifespan and into `DELETE /api/v1/workspaces/{workspace_id}`, never into
+any upload endpoint), `app/services/reference_profile_service.py`
+(orchestration including `build_comparison_chart()`'s axis/unit-mismatch
+logic), `app/schemas/reference_profile.py`, `app/api/v1/
+reference_profiles.py` (new router: `/reference-profiles`,
+`/reference-layers`, `/reference-layers/chart-data`), eight new error
+classes in `app/services/errors.py`.
+
+**Frontend**: the Reference Layers card is now active
+(`#wwRefLayerList`), three new modals reuse the existing `.confirm-
+overlay`/`.group-editor-box` shell verbatim (`#wwRefAddOverlay` "+ Add
+Reference", `#wwRefManageOverlay` "Manage Profiles", `#wwRefEditorOverlay`
+the table-first numeric profile editor — no freehand curve dragging
+anywhere), the Comparison Chart mounts a real Plotly instance
+(`#wwComplianceChartPlot`). All Slice 3 JS lives after the file's own
+shared `// Init` marker (relocated there specifically to stay outside
+`test_frontend_phasor_analysis.py`'s `_phasor_block()` sweep range — see
+DEC-109 for why).
+
+**Tests**: `test_reference_profile_domain.py` (31), `test_
+reference_profile_builtins.py` (8), `test_reference_profile_service.py`
+(35), `test_reference_profile_api.py` (22, including "works with zero
+uploaded recording" and "upload does not disturb existing layers"
+scenarios), `test_frontend_compliance.py` updates (`TestComplianceOutOfScopeSlice3`,
+`TestComplianceReferenceLayersStructure`), and
+`browser-tests/reference_profiles.spec.js` (9 real-browser scenarios,
+inspecting actual Plotly trace data — never screenshots/text only).
+Full backend suite and full Playwright suite pass.
+
 ## UI/UX is intentionally subject to owner UAT and may change
 
 Workflow order, section placement, chart prominence, terminology,
@@ -552,35 +684,38 @@ DECISIONS.md architectural entry was needed for the layout/terminology
 choices themselves (see below for the one architectural point that WAS
 recorded).
 
-## No calculation/profile/persistence logic exists yet
+## No calculation/evaluation/persistence logic exists yet
 
 **As of Slice 2, instantaneous-to-RMS conversion, L-G/L-L normalization,
 per-unit conversion (reused, not reimplemented), and positive-sequence
-calculation ARE implemented** — see "Slice 2" above. Everything else
-below remains explicitly out of scope, not implemented anywhere in this
-codebase:
+calculation ARE implemented** — see "Slice 2" above. **As of Slice 3, a
+generic Reference Profile/Reference Layer engine and static Comparison
+Chart rendering ARE implemented** — see "Slice 3" above. Everything
+else below remains explicitly out of scope, not implemented anywhere in
+this codebase:
 
 ```text
-Malaysian Grid Code profile
-OEM profiles
-profile JSON / profile import/export
+Malaysian Grid Code profile (or any other named official requirement)
 t0 alignment logic
-reference curves
-multiple layer rendering
-compliance evaluation / breach calculation / margin calculation / tolerance
-database/storage
+measured-waveform overlay on the Comparison Chart
+automated event detection
+compliance evaluation / breach calculation / margin calculation / tolerance evaluation
+PASS/FAIL / Compliant / Boundary Breached / Within Capability verdicts
+a second database/storage layer for profiles (custom profiles are in-memory/workspace-scoped only)
 localStorage
 ```
 
-Reference Layers/Event Alignment/Comparison Chart/Results are still
-Slice 1's own static, no-op markup — `wwRenderCompliancePage()` now
-does real work for Measurement only (`wwComplianceLoadQuantities()`/
-re-evaluating the selected quantity), never for any other section.
-`backend/tests/test_frontend_compliance.py`'s `TestComplianceOutOfScopeSlice1`
-(profile/evaluation identifiers, no literal `/api/v1/compliance`
-top-level prefix, no `localStorage`) and the new `TestComplianceOutOfScopeSlice2`
-(Reference Layers/Event Alignment buttons still disabled, no alignment/
-evaluation function names) both guard this boundary directly.
+Event Alignment/Results are still Slice 1's own static, no-op markup.
+`wwRenderCompliancePage()` now does real work for Measurement,
+Reference Layers, AND the Comparison Chart's static reference rendering
+— never for Event Alignment/Results. `backend/tests/
+test_frontend_compliance.py`'s `TestComplianceOutOfScopeSlice1`
+(no literal `/api/v1/compliance` top-level prefix, no `localStorage`),
+`TestComplianceOutOfScopeSlice2` (Event Alignment still a disabled
+placeholder), and the new `TestComplianceOutOfScopeSlice3` (no
+evaluation/breach/tolerance/verdict logic, no Malaysia Grid Code or
+other named official requirement anywhere, Event Alignment/Results still
+placeholders) all guard this boundary directly.
 
 ## Files
 
@@ -643,6 +778,35 @@ evaluation function names) both guard this boundary directly.
   2026-09-23 bootstrap/discovery/review-required/Manage-action scenarios),
   using four committed ASCII COMTRADE fixtures under `backend/tests/
   fixtures/comtrade/`.
+- `backend/app/domain/reference_profile.py`, `reference_profile_builtins.py`,
+  `reference_layer.py` — Slice 3's own domain model, validation,
+  right-continuity/gap rendering, versioned JSON schema, and the
+  empty-by-design built-in catalogue loader.
+- `backend/app/data/reference_profiles/builtin/` — the production
+  built-in catalogue directory; ships with zero `*.json` files (see its
+  own `README.md`) and its own `metadata.built_in` enforcement.
+- `backend/app/services/reference_profile_registry.py`,
+  `reference_layer_registry.py`, `reference_profile_service.py` — the
+  two new in-memory workspace-scoped registries plus orchestration
+  (CRUD/duplicate/delete-cascade/import-export/compatibility/Comparison-
+  Chart-assembly).
+- `backend/app/schemas/reference_profile.py`,
+  `backend/app/api/v1/reference_profiles.py` — Slice 3's own dedicated
+  router (`/reference-profiles`, `/reference-layers`,
+  `/reference-layers/chart-data`), never merged into `app.api.v1.compliance`.
+- `backend/tests/test_reference_profile_domain.py`,
+  `test_reference_profile_builtins.py`, `test_reference_profile_service.py`,
+  `test_reference_profile_api.py` — Slice 3's own domain/service/API
+  test coverage; `backend/tests/fixtures/reference_profiles/` — the
+  developer/test-only built-in fixtures (never loaded by production).
+- `browser-tests/reference_profiles.spec.js` — Slice 3 real-browser
+  coverage (create-via-editor-and-render, multi-layer add/toggle/
+  remove-without-deleting-profile, discontinuity/gap rendering,
+  lower-only/upper-only/envelope combinations, the three-way
+  compatibility proof, configure-layers-then-upload-recording
+  persistence, Manage Profiles actions, import/export round-trip) —
+  inspects real Plotly trace data via `#wwComplianceChartPlot.data`,
+  never screenshots/text only.
 
 ## Related documents
 
@@ -652,13 +816,17 @@ evaluation function names) both guard this boundary directly.
   (Engineering-Context-detection-algorithm-reuse-without-consumer-
   registration boundary),
   [DEC-102](DECISIONS.md#dec-102--compliance-measurement-scopes-role-resolution-to-an-explicitly-selected-measurement-group-bay-reusing-the-existing-measurement-group-model-verbatim--never-a-second-bay-concept-never-engineering-context)
-  (the 2026-09-20 Bay/Measurement Group scoping correction), and
+  (the 2026-09-20 Bay/Measurement Group scoping correction),
   [DEC-103](DECISIONS.md#dec-103--compliances-baymeasurement-group-picker-automatically-bootstraps-the-existing-measurement-group-detection-for-every-loaded-source-mirroring-the-analysis-workspaces-own-proven-engineering-context-bootstrap)
-  (the 2026-09-23 group discovery/bootstrap correction), and
+  (the 2026-09-23 group discovery/bootstrap correction),
   [DEC-104](DECISIONS.md#dec-104--successful-source-upload-triggers-shared-workspacesource-preparation-measurement-group--engineering-context-discovery-no-top-level-function-may-depend-on-another-page-having-been-opened-first)
   (the same-day generalization moving discovery to a shared backend
   post-upload choke point, with DEC-103's own bootstrap kept as
-  fallback-only).
+  fallback-only), and
+  [DEC-109](DECISIONS.md#dec-109--compliance-slice-3-a-generic-reference-profilereference-layer-domain-model-static-comparison-chart-rendering-and-a-reference-subsystem-lifecycle-fully-independent-of-any-uploaded-recording)
+  (Slice 3 — the Reference Profile/Reference Layer domain model, static
+  Comparison Chart rendering, and the Reference subsystem's own
+  recording-independent lifecycle).
 - [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) — the
   group-aware Per-Unit/Measurement Group model this feature's Bay
   picker and Base display both reuse verbatim.

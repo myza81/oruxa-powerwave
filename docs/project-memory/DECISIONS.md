@@ -17548,6 +17548,282 @@ unmodified. Full backend suite and full Playwright suite pass.
 
 ---
 
+## DEC-109 — Compliance Slice 3: a generic Reference Profile/Reference Layer domain model, static Comparison Chart rendering, and a Reference subsystem lifecycle fully independent of any uploaded recording
+
+Date: 2026-09-23
+Status: Approved — implemented.
+Source: owner task ("Compliance Slice 3 — Reference Profiles, Reference
+Layers, and Static Curve Rendering"), amended mid-implementation by a
+genuine, separate owner instruction: *"IMPORTANT — Reference Layers must
+work without an uploaded recording... this is a fundamental product
+requirement."*
+
+**Scope actually implemented**: a generic `ReferenceProfile` domain
+model (never Grid-Code-specific), its custom-profile CRUD/duplicate/
+delete/import/export lifecycle, the Reference Layers card (add/toggle-
+visibility/remove), and STATIC Comparison Chart rendering of active
+reference boundaries via Plotly (the same charting library already used
+everywhere else in this app — never a second one). Explicitly NOT
+implemented, exactly as scoped: manual t0/event alignment, measured-
+waveform overlay, automated event detection, compliance evaluation,
+breach/margin/tolerance calculation, or any PASS/FAIL/Compliant/Boundary
+Breached/Within Capability verdict. Event Alignment and Results remain
+Slice 1's own neutral placeholders, unchanged.
+
+**`ReferenceProfile` (`app.domain.reference_profile`) is a portable
+value object, never workspace-owned state.** Minimum fields: `id, name,
+category, evaluation_quantity, unit, display_start_time,
+display_end_time, evaluation_start_time, evaluation_end_time, tolerance,
+lower_boundary, upper_boundary, metadata`. `category` is one of
+`grid_requirement | equipment_capability | project_requirement |
+custom_reference` — generic, never a named grid code. `evaluation_
+quantity` reuses the EXISTING canonical Voltage assessment quantity ids
+Compliance Slice 2 already established
+(`app.domain.compliance_measurement.VOLTAGE_QUANTITIES` — e.g.
+`phase_a_lg_rms`, `phase_ab_ll_rms`, `positive_sequence_rms`), verified
+directly against that module rather than trusted from the task's own
+example spellings, which did not exactly match. `unit` is closed to
+`pu | V | kV` — no arbitrary unit accepted, since nothing in this slice
+performs unit conversion. A profile carries NO `workspace_id` field of
+its own (unlike `app.domain.measurement_group.MeasurementGroup`, which
+directly claims channel ownership within one workspace) — this is what
+makes JSON export/import and a workspace-agnostic built-in catalogue
+possible without stripping/rewriting fields; workspace scoping for
+CUSTOM profiles is applied purely as a registry dict key
+(`app.services.reference_profile_registry.ReferenceProfileRegistry`,
+`(workspace_id, profile_id) -> ReferenceProfile`).
+
+**Boundary/segment semantics are FROZEN by this decision.** A boundary
+(`lower_boundary`/`upper_boundary`) may be present independently — never
+required to both exist — but at least one of the two must be present (a
+profile with neither is rejected as meaningless). Each boundary is an
+ordered set of `BoundarySegment` (`start_time, end_time, start_value,
+end_value, segment_type` — `"constant"` requires `start_value ==
+end_value`, `"linear"` may ramp). Negative time and value discontinuities
+are explicitly allowed; there is no forced overall monotonicity beyond
+what overlap-detection needs. `validate_reference_profile()` rejects
+(never silently repairs) non-finite numbers, `end_time <= start_time`,
+overlapping segments within one boundary, a malformed segment type, an
+unknown category/unit, a blank name, a negative tolerance, or an
+inverted display/evaluation window — every rejection carries a stable
+`reason_code` plus, where it traces to one segment, `boundary`/
+`segment_index`/`field_name`, so the table-first profile editor can
+highlight the exact offending row (surfaced through the HTTP error body
+by `app.api.v1.reference_profiles._http_error()`, added on top of the
+shared `code`/`message` shape every other endpoint already returns,
+without touching the shared `ErrorOut` schema itself).
+
+**Right-continuity, frozen for both this slice's rendering AND a later
+slice's evaluation to agree on**: at a discontinuity (segment[i].end_time
+== segment[i+1].start_time, differing values), the ACTIVE value at that
+instant belongs to the NEW (following) segment.
+`boundary_to_render_points()` renders this with zero special-cased
+branch — emitting both segments' own endpoints in time order naturally
+produces a vertical connector, since a line renderer draws straight
+between consecutive points regardless of a repeated x value. A genuine
+GAP (`segment[i+1].start_time > segment[i].end_time`) inserts one
+`BoundaryPoint(value=None)`, breaking the plotted line — no connector, no
+reference claim across time the profile says nothing about.
+
+**Display window and evaluation window are independent, and Slice 3
+uses ONLY the display window.** `evaluation_start_time`/
+`evaluation_end_time` are stored and validated (structural window
+sanity only) but never read by anything that computes a value this
+slice — there is no evaluation logic anywhere in this slice to read them
+for. The Comparison Chart's own x-axis range is derived from
+`display_start_time`/`display_end_time` of the active VISIBLE layers
+only (see the mid-conversation amendment below for what "active" means
+without a recording).
+
+**Built-in profiles ship as version-controlled JSON, loaded by
+`app.domain.reference_profile_builtins.load_builtin_profiles()`
+(directory scan → parse → the SAME `profile_from_json_dict()` validation
+path as import → require `metadata.built_in == true` explicitly, never
+inferred) — and the production directory
+(`backend/app/data/reference_profiles/builtin/`) ships with ZERO profile
+files.** Per the task's own explicit governing constraint (do not
+fabricate Malaysia Grid Code LVRT/HVRT values, or any other named grid
+code/OEM capability, from memory/assumptions/generic industry curves; no
+authoritative verified source exists in this repository for any such
+values), no production built-in was created. The loader itself is fully
+exercised against a separate, clearly-labeled developer/test-only
+fixture directory (`backend/tests/fixtures/reference_profiles/`, e.g.
+`dev_fixture_flat_envelope_test_only.json`, its own name and metadata
+notes stating it is not sourced from any official requirement) — proving
+the engine is ready for a verified profile to be dropped into the
+production directory later, without any placeholder content existing in
+that directory today. Built-in profiles are View/Duplicate only —
+`update_custom_profile()`/`delete_custom_profile()` both reject a
+built-in target with `ReferenceProfileIsBuiltInError`, distinctly from a
+genuinely-unknown id.
+
+**Custom profiles are session/workspace-scoped, in-memory only — no
+`localStorage`, no database** (`app.services.reference_profile_registry.
+ReferenceProfileRegistry`, mirroring `MeasurementGroupRegistry`'s exact
+shape: CREATE-ONLY `add()`, `get`/`list_for_workspace`/`update`/
+`remove`/`remove_workspace`/`count`, thread-safe). `ReferenceLayer`
+(`app.domain.reference_layer` + `app.services.reference_layer_registry.
+ReferenceLayerRegistry`) is the thin, separately-registered association
+between one profile and the Compliance page's own active Comparison
+Chart configuration (`id, workspace_id, profile_id, visible, order`) —
+its own registry mirrors the exact same shape. **Profile deletion and
+layer removal are different actions**: removing a layer never touches
+`ReferenceProfileRegistry`; deleting a custom profile CASCADES to remove
+every layer in that workspace referencing it (`delete_custom_profile()`
+— a dangling `layer.profile_id` pointing at nothing is a worse state
+than removing the layers that would otherwise dangle). No maximum active
+layer count is enforced anywhere in the engine (task's own explicit "UI
+may softly encourage ~3-5, engine must not enforce it").
+
+**Import/export uses a stable versioned schema**
+(`{"schema_version": 1, "profile": {...}}`,
+`app.domain.reference_profile.profile_to_json_dict()`/
+`profile_from_json_dict()`). Export omits `id` from the inner object
+entirely (an id is registry-assigned identity, never portable curve
+data); import always mints a fresh id and always forces
+`metadata.built_in = False`, regardless of what the imported file's own
+metadata claims (re-importing an exported built-in still produces an
+ordinary editable custom profile, never a second, unmanaged "built-in").
+An unrecognized/missing `schema_version` raises
+`UnsupportedReferenceProfileSchemaVersionError` distinctly from a
+structurally-invalid `profile` body — both fail explicitly, never
+silently coerced.
+
+**CRITICAL MID-IMPLEMENTATION AMENDMENT — Reference Layers must work
+without an uploaded recording (a fundamental product requirement,
+supersedes anything in this slice's own original task text that implied
+otherwise).** The Compliance page is now architecturally two independent
+inputs, joined only at the Comparison Chart: **A. Measurement** (optional
+until waveform comparison/evaluation is required — a later slice's
+concern) and **B. Reference Layers** (usable independently at all
+times). Concretely:
+
+- None of `app.api.v1.reference_profiles`' endpoints accept or resolve a
+  `source_id`, a `measurement_group_id`, or an Engineering Context id —
+  confirmed directly by `TestReferenceLayersWorkWithoutAnyUploadedRecording`
+  (`test_reference_profile_api.py`) and by
+  `browser-tests/reference_profiles.spec.js`'s own first test-group,
+  every one of which never calls `uploadFixture()` at all.
+- `wwRenderCompliancePage()` calls `wwRefLoadProfiles()`/
+  `wwRefRefreshLayersAndChart()` UNCONDITIONALLY — never behind an `if`
+  gated on a group/quantity/source existing (frontend structural test:
+  `TestComplianceReferenceLayersStructure.
+  test_reference_layers_load_unconditionally_on_page_render`).
+- **Compatibility is three-way, never two-way**: `compute_layer_
+  compatibility()` returns `not_yet_applicable` (never `incompatible`)
+  whenever no Measurement quantity is currently selected — collapsing
+  "no Measurement" into "incompatible" was explicitly rejected as wrong
+  by the owner's own amendment. Once a quantity IS selected, a genuine
+  mismatch is reported as `incompatible` with an actionable reason (e.g.
+  "This profile evaluates Phase A Voltage, but the current Measurement
+  is Phase B Voltage."); a mismatch never causes the layer to be hidden
+  or deleted — it stays fully visible/manageable, exactly like a matched
+  one.
+- **The Comparison Chart's own axes are derived entirely from the
+  active, VISIBLE layers' own profiles, never from a recording.**
+  X-axis: the union of `display_start_time`/`display_end_time` across
+  every visible layer. Y-axis/unit: the FIRST visible layer (insertion
+  order) establishes `axis_unit`; any other visible layer whose own
+  `unit` differs is excluded from actual plotting (`on_axis = false`)
+  but stays listed (never silently hidden) — its row/trace stays
+  present, with an explicit "different unit — not plotted" note
+  (`wwRefRenderChartNote()`), and `unit_groups` in the API response
+  names every unit currently in play. No unit conversion is invented
+  anywhere in this slice.
+- Uploading a source into a workspace that already has configured
+  Reference Layers does NOT reset them: `reference_profile_registry`/
+  `reference_layer_registry` are wired into `DELETE /api/v1/workspaces/
+  {workspace_id}` (the "Start New Workspace" lifecycle hook) exactly
+  like every sibling in-memory registry, and into NOTHING else — no
+  upload endpoint touches either registry — so the natural, already-
+  proven workspace-scoped-registry pattern (DEC-015/DEC-019: everything
+  in-memory, keyed by a `workspace_id` that only changes on an explicit
+  "Start New Workspace") makes persistence-across-upload the DEFAULT
+  behavior, not something requiring a special case. Confirmed directly:
+  `TestUploadDoesNotDisturbReferenceState` (backend) and
+  `browser-tests/reference_profiles.spec.js`'s "configure Reference
+  Layers first, upload a recording afterward" scenario, which also
+  confirms Measurement becomes available additively once a usable
+  Measurement Group exists, with the pre-existing layers unchanged.
+
+**Chart trace identity is stable, never parsed from legend text**
+(task section 16): every Plotly trace built by `wwRefRenderChart()`
+carries `layer_id, profile_id, boundary ("lower"|"upper"), category` as
+direct properties on the trace object itself, verified directly by
+`browser-tests/reference_profiles.spec.js` reading `#wwComplianceChartPlot.data`
+in the real browser (never a screenshot/text-only assertion, per the
+task's own explicit instruction).
+
+**Reference curves are styled as secondary engineering boundaries**
+(task section 15): thin (`width: 1.5`) lines, lower boundaries solid,
+upper boundaries dashed, colored by category
+(`WW_REF_CATEGORY_COLOR`) — deliberately lightweight so a future
+measured-waveform trace can dominate visually once a later slice adds
+one; distinguished by line style/width/category color/legend together,
+never color alone.
+
+**Backend**: `app/domain/reference_profile.py` (model + validation +
+render-point transform + JSON schema (de)serialization),
+`app/domain/reference_profile_builtins.py` (built-in loader),
+`app/domain/reference_layer.py` (layer model), `app/services/
+reference_profile_registry.py`, `app/services/reference_layer_registry.py`
+(the two new in-memory registries, wired into `app.main.create_app()`'s
+lifespan and into `DELETE /api/v1/workspaces/{workspace_id}` in `app.api.
+v1.workspaces`), `app/services/reference_profile_service.py`
+(orchestration: CRUD/duplicate/delete-cascade/import/export/
+compatibility/Comparison-Chart-assembly — `build_comparison_chart()` is
+the one function computing axis derivation/unit-mismatch handling),
+`app/schemas/reference_profile.py`, `app/api/v1/reference_profiles.py`
+(new dedicated router, `/api/v1/workspaces/{workspace_id}/reference-
+profiles` + `/reference-layers` + `/reference-layers/chart-data`),
+`app/services/errors.py` (eight new `ImportServiceError` subclasses).
+
+**Frontend**: `frontend/index.html` — the Reference Layers card is now
+active (`#wwRefLayerList`, per-layer visibility checkbox/category badge/
+compatibility badge/remove button), three new modals reusing the
+existing `.confirm-overlay`/`.group-editor-box` shell verbatim (`#wwRefAddOverlay`
+"+ Add Reference", `#wwRefManageOverlay` "Manage Profiles", `#wwRefEditorOverlay`
+the table-first numeric profile editor — `#wwRefEditorLowerTable`/
+`#wwRefEditorUpperTable`, no freehand curve dragging anywhere), and the
+Comparison Chart now mounts a real Plotly instance
+(`#wwComplianceChartPlot`, `wwRefRenderChart()`, `Plotly.react()` —
+the SAME vendored Plotly build every other chart in this app already
+uses, never a second library). All Slice 3 JS functions/state
+(`wwRefState` onward) are declared after the file's own shared `//
+Init` marker, alongside their own event-listener wiring — kept there
+deliberately (not physically inside the Phasor Analysis Slice 2 JS
+block above it) after discovering `test_frontend_phasor_analysis.py`'s
+`_phasor_block()` helper sweeps everything between `wwPhasorState`'s
+declaration and that same `// Init` marker; relocating brand-new,
+unrelated code out of that swept range was the correct fix (not a
+change to what that pre-existing test verifies).
+
+**Tests**: `backend/tests/test_reference_profile_domain.py` (31 —
+validation happy/reject paths, right-continuity/gap rendering, JSON
+schema round-trip), `test_reference_profile_builtins.py` (8 — production
+directory is empty, loader against test-only fixtures, missing-
+`built_in`-flag rejection, domain-invalid-file rejection), `test_
+reference_profile_service.py` (35 — CRUD/duplicate/delete-cascade/
+import-export/compatibility/Comparison-Chart-assembly, workspace
+isolation), `test_reference_profile_api.py` (22 — HTTP wiring/status
+codes, built-in read-only enforcement via an injected test-only
+catalogue, works-without-any-recording, upload-does-not-disturb-state,
+Start-New-Workspace clears custom profiles/layers), plus updates to
+`test_frontend_compliance.py` (the Slice 1/2 "Reference Layers/
+Comparison Chart still disabled placeholders" guards correctly updated
+to reflect Slice 3 reality; a new `TestComplianceOutOfScopeSlice3` and
+`TestComplianceReferenceLayersStructure`).
+`browser-tests/reference_profiles.spec.js` (9 real-browser scenarios,
+inspecting actual Plotly trace data): create-via-editor-and-render,
+multi-layer add/toggle/remove-without-deleting-profile/re-add,
+discontinuity-connector-and-gap rendering, lower-only/upper-only/
+envelope boundary combinations, the three-way compatibility proof,
+configure-layers-then-upload-recording persistence, and Manage Profiles
+duplicate/export/edit/remove plus import/export round-trip. Full backend
+suite and full Playwright suite pass.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
