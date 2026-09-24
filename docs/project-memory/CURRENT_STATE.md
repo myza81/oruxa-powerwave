@@ -1802,6 +1802,24 @@ reference_profiles.spec.js` (new `test.describe("Compliance Slice 4
 suite passes with the one pre-existing, unrelated Analysis-area
 exception noted above.
 
+**Update (2026-09-24) — the pre-existing Analysis-area regression above is
+now CLOSED, in a dedicated session (DEC-112).** Root cause confirmed
+exactly as suspected here: a stale test-harness assumption in six
+Analysis Playwright spec files, predating DEC-104, never a production
+defect. Fixed test-only via a new shared helper
+(`browser-tests/support/engineering_context_helpers.js`) that discovers
+and reuses the context DEC-104's own upload-time preparation already
+created, rather than duplicating it. Two separate, genuine, pre-existing
+issues were found and reported (not fixed, out of scope) during the same
+investigation: a narrow Phasor Playback claim/refine timing race, and an
+O(point_count) performance characteristic in the Impedance Locus/Distance
+Protection locus endpoints (~13s per 120-point request, measured directly
+against a freshly-started backend). Full Playwright: ~125 pre-existing
+failures reduced to 7, all traced to those two separate findings, zero
+remaining DEC-104 conflicts. See
+[DECISIONS.md — DEC-112](DECISIONS.md#dec-112--pre-existing-analysis-playwright-regression-dec-104-onward-browser-suites-that-manually-post-an-engineering-context-now-discoverreuse-the-one-upload-time-preparation-already-created-instead-of-duplicating-it)
+for the full record.
+
 **Compliance & Capability jurisdiction-neutrality architecture invariant
 + portable-persistence lifecycle + provenance metadata expansion
 (DEC-111, same day, 2026-09-24).** Owner UAT and follow-up product/

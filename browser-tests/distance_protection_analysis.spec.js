@@ -25,10 +25,11 @@
 
 const { test, expect } = require("@playwright/test");
 const path = require("path");
+const { reuseOrCreateFullBayContext } = require("./support/engineering_context_helpers");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
-const BACKEND_URL = `http://127.0.0.1:${process.env.PW_BACKEND_PORT || "8000"}`;
 const STEM = "phasor_smoke_three_phase";
+const ALPHA_ROLES = [["VA", "A"], ["VB", "B"], ["VC", "C"], ["IA", "A"], ["IB", "B"], ["IC", "C"]];
 
 async function uploadFixture(page) {
   await page.goto("/index.html");
@@ -40,20 +41,12 @@ async function uploadFixture(page) {
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
 }
 
+// DEC-104 (2026-09-23) upload-time preparation normally already
+// auto-created this full six-role context before this ever runs -- see
+// support/engineering_context_helpers.js's own header comment. Discovers
+// and reuses it instead of POSTing a duplicate (which now 409s).
 async function createFullBayContext(page, workspaceId, sourceId, displayName) {
-  const members = [
-    ["ALPHA1_VA", "A"], ["ALPHA1_VB", "B"], ["ALPHA1_VC", "C"],
-    ["ALPHA1_IA", "A"], ["ALPHA1_IB", "B"], ["ALPHA1_IC", "C"],
-  ].map(([channel_name, phase]) => ({
-    channel_ref: { kind: "source", source_id: sourceId, channel_name },
-    phase, phase_source: "engineer_confirmed",
-  }));
-  const response = await page.request.post(
-    `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/engineering-contexts`,
-    { data: { display_name: displayName, status: "manual", members } }
-  );
-  expect(response.ok()).toBeTruthy();
-  return response.json();
+  return reuseOrCreateFullBayContext(page, workspaceId, sourceId, "ALPHA1", ALPHA_ROLES, displayName);
 }
 
 async function uploadAndCreateContext(page) {
@@ -84,16 +77,41 @@ async function openEmptyWorkspaceDistance(page) {
 // Mirrors impedance_analysis.spec.js's own documented root-cause fix:
 // arms a REAL `page.waitForResponse()` for `/distance-protection-locus`
 // BEFORE the triggering `selectOption()`, so the wait is deterministic
-// rather than racing an independently-chosen timeout.
+// rather than racing an independently-chosen timeout. DEC-105 (2026-09-23)
+// already auto-selects the first/only context the instant Analysis opens
+// -- every registered analyzer, including Distance Protection regardless
+// of which tab is visible (see support/engineering_context_helpers.js's
+// own header comment) -- normally true here since uploadAndCreateContext()
+// reuses what DEC-104 already created, so `#wwDistanceContextSelect` may
+// already show `contextId`; only arms/awaits the response wait when a
+// selection actually happens, so it never hangs on a request a no-op
+// re-selection would never issue.
 async function selectContextAndWaitForResult(page, contextId) {
   await expect(page.locator(`#wwDistanceContextSelect option[value="${contextId}"]`)).toHaveCount(1);
-  const locusResponse = page.waitForResponse((r) => r.url().includes("/distance-protection-locus"), { timeout: 15000 });
-  await page.locator("#wwDistanceContextSelect").selectOption(contextId);
+  const select = page.locator("#wwDistanceContextSelect");
+  if ((await select.inputValue()) !== contextId) {
+    // The real `/distance-protection-locus` wait below can alone take
+    // ~13-20s on this environment (see the finding below) -- give the
+    // WHOLE test a correspondingly generous budget rather than racing the
+    // playwright.config.js default 30s test timeout.
+    test.setTimeout(60000);
+    // 2026-09-24 finding (unrelated to DEC-104/DEC-111): the real
+    // `/distance-protection-locus` (120-point) computation itself measured
+    // ~13s end to end on this environment (confirmed via direct curl
+    // against a freshly-started backend with zero prior state -- not
+    // contention, not something these context-lifecycle fixes caused).
+    // 15000ms left too little margin; widened purely to absorb genuinely
+    // slow, already-slow-before-this-session backend computation -- see
+    // this session's own final report for the separate performance
+    // finding this surfaces.
+    const locusResponse = page.waitForResponse((r) => r.url().includes("/distance-protection-locus"), { timeout: 20000 });
+    await select.selectOption(contextId);
+    await locusResponse;
+  }
   await expect(async () => {
     const text = await page.locator("#wwDistanceValuesList").innerText();
     expect(text).toContain("Loop");
   }).toPass({ timeout: 10000 });
-  await locusResponse;
 }
 
 async function waitForLocusCached(page, { minPoints = 20 } = {}) {

@@ -17,9 +17,9 @@
 
 const { test, expect } = require("@playwright/test");
 const path = require("path");
+const { clearContexts, postContext, reuseOrCreateFullBayContext, ensureContextSelected } = require("./support/engineering_context_helpers");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
-const BACKEND_URL = `http://127.0.0.1:${process.env.PW_BACKEND_PORT || "8000"}`;
 const STEM = "phasor_smoke_three_phase";
 
 async function uploadFixture(page) {
@@ -32,21 +32,14 @@ async function uploadFixture(page) {
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
 }
 
+// DEC-104 (2026-09-23) upload-time preparation normally already
+// auto-created this full six-role context before this ever runs -- see
+// support/engineering_context_helpers.js's own header comment. Discovers
+// and reuses it instead of POSTing a duplicate (which now 409s).
 async function createFullBayContext(page, workspaceId, sourceId, displayName, channelPrefix) {
   const prefix = channelPrefix || "ALPHA1";
-  const members = [
-    [`${prefix}_VA`, "A"], [`${prefix}_VB`, "B"], [`${prefix}_VC`, "C"],
-    [`${prefix}_IA`, "A"], [`${prefix}_IB`, "B"], [`${prefix}_IC`, "C"],
-  ].map(([channel_name, phase]) => ({
-    channel_ref: { kind: "source", source_id: sourceId, channel_name },
-    phase, phase_source: "engineer_confirmed",
-  }));
-  const response = await page.request.post(
-    `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/engineering-contexts`,
-    { data: { display_name: displayName, status: "manual", members } }
-  );
-  expect(response.ok()).toBeTruthy();
-  return response.json();
+  const roles = [["VA", "A"], ["VB", "B"], ["VC", "C"], ["IA", "A"], ["IB", "B"], ["IC", "C"]];
+  return reuseOrCreateFullBayContext(page, workspaceId, sourceId, prefix, roles, displayName);
 }
 
 async function uploadAndCreateContext(page) {
@@ -59,11 +52,18 @@ async function uploadAndCreateContext(page) {
   return { workspaceId, sourceId, contextId: context.id };
 }
 
+// DEC-105 already auto-selects the first/only context the instant
+// Analysis opens whenever the very first fetch is non-empty -- normally
+// true here since uploadAndCreateContext() reuses what DEC-104 already
+// created. A redundant re-selection of that SAME value can race the
+// auto-select's own in-flight claim sequence (see support/
+// engineering_context_helpers.js's own header comment on
+// ensureContextSelected()) -- this only selects for real when needed.
 async function openAnalysisPhasor(page, contextId) {
   await page.locator("#mainNavAnalysisBtn").click();
   await expect(page.locator("#wwPhasorPanel")).toBeVisible();
   if (contextId) {
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await ensureContextSelected(page, page.locator("#wwPhasorContextSelect"), contextId);
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
       expect(text).toMatch(/100\.0\s*V/);
@@ -76,7 +76,7 @@ async function openAnalysisOvercurrent(page, contextId) {
   await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
   await expect(page.locator("#wwOvercurrentPanel")).toBeVisible();
   if (contextId) {
-    await page.locator("#wwOvercurrentContextSelect").selectOption(contextId);
+    await ensureContextSelected(page, page.locator("#wwOvercurrentContextSelect"), contextId);
     await expect(async () => {
       const text = await page.locator("#wwOvercurrentValuesList").innerText();
       expect(text).toContain("Measured RMS current");
@@ -262,23 +262,25 @@ test.describe("Related Waveforms -- Phasor integration", () => {
   });
 
   test("partial context (Va + Ia only) shows only those two traces", async ({ page }) => {
+    // DEC-104 upload-time preparation auto-creates a FULL six-role context
+    // for this source first (see support/engineering_context_helpers.js) --
+    // this test genuinely needs a context shape DEC-104's own discovery
+    // never produces (a partial bay), so it clears that auto-created
+    // context before manually constructing its own -- exactly the "a test
+    // deleted it after upload" fallback scenario DEC-104's own design
+    // already anticipates.
     await uploadFixture(page);
     const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
     const sourceId = await row.getAttribute("data-source-id");
     const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
-    const response = await page.request.post(
-      `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/engineering-contexts`,
-      {
-        data: {
-          display_name: "Partial", status: "manual",
-          members: [
-            { channel_ref: { kind: "source", source_id: sourceId, channel_name: "ALPHA1_VA" }, phase: "A", phase_source: "engineer_confirmed" },
-            { channel_ref: { kind: "source", source_id: sourceId, channel_name: "ALPHA1_IA" }, phase: "A", phase_source: "engineer_confirmed" },
-          ],
-        },
-      }
-    );
-    const context = await response.json();
+    await clearContexts(page, workspaceId, sourceId);
+    const context = await postContext(page, workspaceId, {
+      display_name: "Partial", status: "manual",
+      members: [
+        { channel_ref: { kind: "source", source_id: sourceId, channel_name: "ALPHA1_VA" }, phase: "A", phase_source: "engineer_confirmed" },
+        { channel_ref: { kind: "source", source_id: sourceId, channel_name: "ALPHA1_IA" }, phase: "A", phase_source: "engineer_confirmed" },
+      ],
+    });
     await openAnalysisPhasor(page, context.id);
     await waitForWaveformsRendered(page);
 
@@ -457,7 +459,7 @@ test.describe("Related Waveforms -- analyzer switch", () => {
 
     // Switch to Overcurrent -- waveform becomes Ia only, Playback time unchanged.
     await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
-    await page.locator("#wwOvercurrentContextSelect").selectOption(contextId);
+    await ensureContextSelected(page, page.locator("#wwOvercurrentContextSelect"), contextId);
     await expect(async () => {
       const text = await page.locator("#wwOvercurrentValuesList").innerText();
       expect(text).toContain("Measured RMS current");
@@ -626,7 +628,7 @@ test.describe("Related Waveforms -- resizable height (owner UAT addendum)", () =
     const heightAfterResize = await page.evaluate(() => wwAnalysisRelatedWaveformsState.height);
 
     await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
-    await page.locator("#wwOvercurrentContextSelect").selectOption(contextId);
+    await ensureContextSelected(page, page.locator("#wwOvercurrentContextSelect"), contextId);
     await expect(async () => {
       const text = await page.locator("#wwOvercurrentValuesList").innerText();
       expect(text).toContain("Measured RMS current");

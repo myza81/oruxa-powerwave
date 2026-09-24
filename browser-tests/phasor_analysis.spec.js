@@ -45,10 +45,17 @@
 
 const { test, expect } = require("@playwright/test");
 const path = require("path");
+const {
+  BACKEND_URL,
+  reuseOrCreateFullBayContext,
+  clearContexts,
+  postContext,
+  ensureContextSelected,
+} = require("./support/engineering_context_helpers");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
-const BACKEND_URL = `http://127.0.0.1:${process.env.PW_BACKEND_PORT || "8000"}`;
 const STEM = "phasor_smoke_three_phase";
+const ALPHA_ROLES = [["VA", "A"], ["VB", "B"], ["VC", "C"], ["IA", "A"], ["IB", "B"], ["IC", "C"]];
 
 async function uploadFixture(page) {
   await page.goto("/index.html");
@@ -60,24 +67,18 @@ async function uploadFixture(page) {
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
 }
 
-// Uploads the fixture, then creates a manual, fully-confirmed Engineering
-// Context spanning all six channels directly via the backend API (no
-// context-creation UI exists in this slice) -- returns { workspaceId,
-// sourceId, contextId }.
+// Returns the full six-role Engineering Context for `sourceId` -- DEC-104
+// (2026-09-23) upload-time preparation normally already auto-created it
+// (a `suggested` context, display name "ALPHA1") before this ever runs, so
+// this discovers and reuses that one rather than POSTing a duplicate
+// (which now 409s -- see DECISIONS.md DEC-111 and
+// support/engineering_context_helpers.js's own header comment). Falls
+// back to a manual POST only if discovery genuinely finds nothing.
+// Returns { workspaceId, sourceId, contextId } is NOT this function's own
+// shape -- see uploadAndCreateContext() below for that; this returns the
+// raw context object.
 async function createFullBayContext(page, workspaceId, sourceId, displayName) {
-  const members = [
-    ["ALPHA1_VA", "A"], ["ALPHA1_VB", "B"], ["ALPHA1_VC", "C"],
-    ["ALPHA1_IA", "A"], ["ALPHA1_IB", "B"], ["ALPHA1_IC", "C"],
-  ].map(([channel_name, phase]) => ({
-    channel_ref: { kind: "source", source_id: sourceId, channel_name },
-    phase, phase_source: "engineer_confirmed",
-  }));
-  const response = await page.request.post(
-    `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/engineering-contexts`,
-    { data: { display_name: displayName, status: "manual", members } }
-  );
-  expect(response.ok()).toBeTruthy();
-  return response.json();
+  return reuseOrCreateFullBayContext(page, workspaceId, sourceId, "ALPHA1", ALPHA_ROLES, displayName);
 }
 
 // Uploads a SECOND source into the SAME (already open, same-session)
@@ -112,6 +113,35 @@ async function uploadAndCreateContext(page) {
   const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
   const context = await createFullBayContext(page, workspaceId, sourceId, "Alpha 1");
   return { workspaceId, sourceId, contextId: context.id };
+}
+
+// DEC-105 already auto-selects the first (or only) context the instant
+// Analysis opens whenever this workspace's very first context fetch is
+// non-empty -- normally true here, since uploadAndCreateContext() reuses
+// what DEC-104's own upload-time preparation already created. A test's
+// OWN redundant `.selectOption(contextId)` on that SAME, already-selected
+// value can race the auto-select's own in-flight claim/refine sequence
+// (see support/engineering_context_helpers.js's own header comment on
+// ensureContextSelected()) -- this only selects for real when needed.
+async function selectPhasorContext(page, contextId) {
+  await ensureContextSelected(page, page.locator("#wwPhasorContextSelect"), contextId);
+  // The initial claim of a Time Group genuinely issues two real fetches
+  // in sequence (t=0, honestly "insufficient window history", then the
+  // refined safe start time -- see wwPhasorComputeInitialClaimTime()).
+  // Callers that immediately act on the panel afterward (switch Input
+  // Source, seek, read values) must never race that still-in-flight
+  // Recording fetch -- `wwPhasorSetInputSource()`'s own Manual switch, in
+  // particular, does not invalidate/abort an in-flight Recording fetch,
+  // so a late response can overwrite a just-entered Manual result. Every
+  // caller here always uses a fully-resolvable full/near-full bay, so
+  // waiting for a REAL resolved value (never merely the absence of
+  // "Needs configuration" -- that text may simply not have painted yet
+  // on an earlier, equally transient empty/loading state, which would
+  // let this settle-check pass too early) is the correct settled state.
+  await expect(async () => {
+    const text = await page.locator("#wwPhasorValuesList").innerText();
+    expect(text).toMatch(/\d+\.\d\s*(V|A)\b/);
+  }).toPass({ timeout: 10000 });
 }
 
 async function openAnalysisPhasor(page) {
@@ -153,7 +183,7 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
 
     // 2. Choose context.
     await expect(page.locator(`#wwPhasorContextSelect option[value="${contextId}"]`)).toHaveCount(1);
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await selectPhasorContext(page, contextId);
 
     // 3. All six roles resolved and shown together -- never a manual
     //    channel picker, never a Quantity/Mode-scoped subset.
@@ -240,7 +270,7 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
   test("scale legend replaces the old Imaginary-axis-adjacent numbers (owner UAT clarification, 2026-09-16)", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await selectPhasorContext(page, contextId);
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
       expect(text).toMatch(/100\.0\s*V/);
@@ -293,7 +323,7 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
   test("chart UX refinement: grid lines and Real/Imaginary axis labels render alongside the existing rings/vectors", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await selectPhasorContext(page, contextId);
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
       expect(text).toMatch(/100\.0\s*V/);
@@ -317,15 +347,21 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
   });
 
   test("no context selected shows an explanatory empty state, not a broken diagram", async ({ page }) => {
-    // Uses uploadAndCreateContext() (a MANUAL context, created directly
-    // via the backend API) rather than a bare uploadFixture() -- a
-    // workspace with an EXISTING context never runs the automatic
-    // suggestion bootstrap (see the "existing context -> ... no
-    // suggestion request made" scenario below), so "no context selected"
-    // is a genuinely stable state here, never a transient one a
-    // fast-enough auto-bootstrap could race past.
+    // DEC-105 (2026-09-23): the first time this workspace session ever
+    // has a usable (non-empty) context list -- true here the instant
+    // Analysis opens, since uploadAndCreateContext() reuses the context
+    // DEC-104's own upload-time preparation already created -- Phasor now
+    // auto-selects it immediately (see support/engineering_context_
+    // helpers.js's own header comment). "No context selected" is
+    // therefore no longer reachable merely by opening Phasor with an
+    // existing context; this explicitly deselects (the blank option) to
+    // reach the state this test actually wants to verify -- the SAME
+    // empty-state rendering an engineer would see after clearing their
+    // own selection.
     await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);
+    await expect(page.locator("#wwPhasorContextSelect")).not.toHaveValue("");
+    await page.locator("#wwPhasorContextSelect").selectOption("");
     await expect(page.locator("#wwPhasorEmptyState")).toBeVisible();
     await expect(page.locator("#wwPhasorEmptyState")).toHaveText("Select an Engineering Context to begin.");
     // `#wwPhasorBody` (Inputs/Values, Diagram) is no longer hidden here --
@@ -391,24 +427,25 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
     // A deliberately incomplete context (Phase A Voltage only, the other
     // five channels left unclaimed) -- the bay-centric redesign treats
     // this as a NORMAL partial result, never a whole-result failure.
+    // DEC-104 upload-time preparation auto-creates a FULL six-role
+    // context for this source first (see support/engineering_context_
+    // helpers.js) -- this test genuinely needs a context shape DEC-104's
+    // own discovery never produces (a partial bay), so it clears that
+    // auto-created context before manually constructing its own, exactly
+    // the "a test deleted it after upload" fallback scenario DEC-104's
+    // own design already anticipates.
     await uploadFixture(page);
     const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
     await expect(row).toBeVisible();
     const sourceId = await row.getAttribute("data-source-id");
     const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
-    const response = await page.request.post(
-      `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/engineering-contexts`,
-      {
-        data: {
-          display_name: "Bravo 1 (partial)", status: "manual",
-          members: [
-            { channel_ref: { kind: "source", source_id: sourceId, channel_name: "ALPHA1_VA" }, phase: "A", phase_source: "engineer_confirmed" },
-          ],
-        },
-      }
-    );
-    expect(response.ok()).toBeTruthy();
-    const context = await response.json();
+    await clearContexts(page, workspaceId, sourceId);
+    const context = await postContext(page, workspaceId, {
+      display_name: "Bravo 1 (partial)", status: "manual",
+      members: [
+        { channel_ref: { kind: "source", source_id: sourceId, channel_name: "ALPHA1_VA" }, phase: "A", phase_source: "engineer_confirmed" },
+      ],
+    });
 
     await openAnalysisPhasor(page);
     await page.locator("#wwPhasorContextSelect").selectOption(context.id);
@@ -435,7 +472,7 @@ test.describe("Phasor Analysis -- Playback integration", () => {
   test("Play advances shared time, produces repeated aggregated results, and never mutates the Engineering Context", async ({ page }) => {
     const { workspaceId, contextId } = await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await selectPhasorContext(page, contextId);
     await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
 
     // Hide Ib/Ic before playing -- visibility must survive playback.
@@ -449,11 +486,21 @@ test.describe("Phasor Analysis -- Playback integration", () => {
     const playBtn = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-play-btn");
     await playBtn.click();
     await expect(playBtn).toHaveText("Pause");
-    await page.waitForTimeout(600);
 
+    // DEC-099 (2026-09-19) already diagnosed and fixed this EXACT flake
+    // shape elsewhere in this repo (playback.spec.js's own 4x-speed
+    // suite): a tight fixed-duration request-counting window occasionally
+    // lets the first throttled fetch land just outside it under real
+    // backend contention -- not a production race (the throttle is a
+    // steady ~100ms/~10Hz, see WW_PHASOR_PLAYBACK_THROTTLE_MS). Retries
+    // instead of a single fixed wait, so a slow-starting first response
+    // under load gets more than one throttle interval to accumulate a
+    // second request.
     // Repeated aggregated results -- more than the one static fetch this
     // page already made before Play.
-    expect(diagramFetchCount).toBeGreaterThan(1);
+    await expect(async () => {
+      expect(diagramFetchCount).toBeGreaterThan(1);
+    }).toPass({ timeout: 5000 });
     // Hidden roles remain hidden throughout playback; the other four
     // (Va/Vb/Vc/Ia) keep updating.
     await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(4);
@@ -474,7 +521,7 @@ test.describe("Phasor Analysis -- Playback integration", () => {
   test("Pause converges to the exact settled time and stops issuing requests", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await selectPhasorContext(page, contextId);
     await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
 
     const requestedTimes = [];
@@ -504,16 +551,26 @@ test.describe("Phasor Analysis -- Playback integration", () => {
     // Displayed playback time equals the LAST accepted Phasor request's
     // own analysis_time (single-source workspace -- zero alignment
     // offset, so workspace time and the API's own source-relative
-    // analysis_time are numerically identical here).
-    expect(requestedTimes.length).toBeGreaterThan(0);
-    const lastRequestedTime = requestedTimes[requestedTimes.length - 1];
-    expect(Math.abs(lastRequestedTime - pausedTime)).toBeLessThan(0.01);
+    // analysis_time are numerically identical here). Retries the whole
+    // convergence read, not just a single snapshot: under real backend
+    // contention (this describe block's own full-suite run puts real
+    // load on the one shared backend process) the exact convergence
+    // fetch `wwPhasorMaybeFetchForPlayback()`'s own trailing re-check
+    // schedules after Pause can itself still be in flight when the
+    // 250ms-quiet window above happened to sample, in which case a
+    // further convergence request arrives shortly after and must still
+    // be picked up here rather than judged against the stale one before it.
+    await expect(async () => {
+      expect(requestedTimes.length).toBeGreaterThan(0);
+      const lastRequestedTime = requestedTimes[requestedTimes.length - 1];
+      expect(Math.abs(lastRequestedTime - pausedTime)).toBeLessThan(0.01);
+    }).toPass({ timeout: 5000 });
   });
 
   test("Seek while paused converges exactly to the released position", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await selectPhasorContext(page, contextId);
     await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
 
     const seekSlider = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-seek-slider");
@@ -541,7 +598,7 @@ test.describe("Phasor Analysis -- Playback integration", () => {
   test("Speed selection (4x) keeps Phasor's own request rate throttled, never one request per tick", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await selectPhasorContext(page, contextId);
     await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
 
     await page.locator("#wwPhasorPlaybackMount .ww-tg-playback-speed-select").selectOption("4");
@@ -582,7 +639,7 @@ test.describe("Phasor Analysis -- Playback integration", () => {
   test("Restart lands at the Time Group's own start; insufficient history is reported honestly, never dodged", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await selectPhasorContext(page, contextId);
     await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
 
     const seekSlider = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-seek-slider");
@@ -613,7 +670,7 @@ test.describe("Phasor Analysis -- Playback integration", () => {
   test("Switching Engineering Context while playing stops the old group and resolves the new one statically", async ({ page }) => {
     const { workspaceId, contextId } = await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await selectPhasorContext(page, contextId);
     await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
 
     await page.locator("#wwPhasorPlaybackMount .ww-tg-playback-play-btn").click();
@@ -664,7 +721,7 @@ test.describe("Phasor Analysis -- Playback integration", () => {
     await expect(channelRow).toHaveAttribute("aria-pressed", "true");
 
     await openAnalysisPhasor(page);
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await selectPhasorContext(page, contextId);
     const phasorSlider = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-seek-slider");
     await expect(phasorSlider).toBeVisible();
     await seekTo(phasorSlider, 1.25);
@@ -719,6 +776,17 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
     });
 
     await uploadFixture(page); // no manual context creation this time
+    // DEC-104 (2026-09-23) upload-time preparation already auto-created
+    // ALPHA1's own context synchronously during the upload above -- this
+    // test's own purpose is exercising the FALLBACK bootstrap path for
+    // "no contexts yet" (still a real, defended scenario -- see DEC-104's
+    // own "a group/context the user, or a test, deleted after upload"
+    // case), so it clears that auto-created context first to genuinely
+    // reach that state, rather than the no-longer-reachable "upload alone
+    // never creates a context" precondition this test originally relied on.
+    const sourceIdForClear = await page.locator("#recordingsTableBody tr[data-source-id]").last().getAttribute("data-source-id");
+    const workspaceIdForClear = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
+    await clearContexts(page, workspaceIdForClear, sourceIdForClear);
     await openAnalysisPhasor(page);
 
     // 4. Verify the temporary context-identification state appears.
@@ -748,10 +816,16 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
     await expect(page.locator("#wwPhasorContextSelect option")).toHaveCount(2, { timeout: 10000 }); // blank + ALPHA1
     await expect(page.locator("#wwPhasorContextSelect")).not.toHaveValue("");
     const alphaContextId = await page.locator("#wwPhasorContextSelect").inputValue();
+    // A generous timeout, not 5000ms: the very first auto-claim of a Time
+    // Group genuinely issues two real fetches in sequence (t=0, honestly
+    // "insufficient window history", then the refined safe start time --
+    // see wwPhasorComputeInitialClaimTime()) and this describe block's
+    // own full-suite run puts real load on the one shared backend
+    // process, occasionally slowing the second fetch past a tight window.
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
       expect(text).toMatch(/100\.0\s*V/);
-    }).toPass({ timeout: 5000 });
+    }).toPass({ timeout: 10000 });
 
     // 2. Upload event B (a second, ROOTED source, BRAVO1_*) WITHOUT
     //    clearing the workspace -- via the SPA nav, never page.goto(),
@@ -768,6 +842,13 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
     await page.locator("#uploadModalSubmitBtn").click();
     await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
     const bravoSourceId = await page.locator("#recordingsTableBody tr[data-source-id]").last().getAttribute("data-source-id");
+    // DEC-104 upload-time preparation already auto-covered BRAVO1 too, so
+    // it is no longer genuinely "uncovered" at this point -- clear it to
+    // reach the state this test's own name describes and exercise the
+    // fallback discovery bootstrap it targets (same rationale as the
+    // "no contexts + loaded source" scenario above).
+    const workspaceIdForClear = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
+    await clearContexts(page, workspaceIdForClear, bravoSourceId);
 
     // 3. Re-enter Phasor -- ALPHA1 remains selected and usable
     //    IMMEDIATELY (never blanked/reset), while BRAVO1 (uncovered) is
@@ -833,10 +914,15 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
     const alphaSourceId = await page.locator("#recordingsTableBody tr[data-source-id]").last().getAttribute("data-source-id");
     await openAnalysisPhasor(page);
     await expect(page.locator("#wwPhasorContextSelect option")).toHaveCount(2, { timeout: 10000 });
+    // A generous timeout, not 5000ms -- see the identical comment in "a
+    // later-uploaded, uncovered source is discovered automatically..."
+    // above: the very first auto-claim of a Time Group genuinely issues
+    // two real fetches in sequence, and a full-suite run's own backend
+    // contention can occasionally slow the second one past a tight window.
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
       expect(text).toMatch(/100\.0\s*V/);
-    }).toPass({ timeout: 5000 });
+    }).toPass({ timeout: 10000 });
 
     await expect(async () => {
       const activeTimeGroupId = await page.evaluate(() => wwPlaybackState().activeTimeGroupId);
@@ -1004,7 +1090,7 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
 
     // Both are independently usable.
     for (const contextId of optionValues) {
-      await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+      await selectPhasorContext(page, contextId);
       await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(6);
     }
   });
@@ -1016,17 +1102,25 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
       if (request.url().includes("/engineering-contexts/suggest")) suggestRequested = true;
     });
 
-    await uploadAndCreateContext(page);
+    const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);
 
     // Selector populated immediately from the existing context -- no
-    // bootstrap ran, so (matching this fix's own explicit "preserve
-    // already-working behavior" requirement) nothing is auto-selected;
-    // the ordinary "pick a context" empty state is shown, exactly as it
-    // already was before this fix.
+    // bootstrap ran (no `/suggest` request), so this genuinely proves
+    // "existing context" never depends on the fallback discovery path.
+    // DEC-105 (2026-09-23): unlike this test's own original assumption,
+    // the FIRST time this workspace session ever has a usable context
+    // list now auto-selects it immediately, regardless of whether that
+    // list came from a manual POST (here) or DEC-104's own upload-time
+    // preparation -- see support/engineering_context_helpers.js's own
+    // header comment. Values render with zero manual selection.
     await expect(page.locator("#wwPhasorContextSelect option")).toHaveCount(2); // blank + Alpha 1
-    await expect(page.locator("#wwPhasorEmptyState")).toBeVisible();
-    await expect(page.locator("#wwPhasorEmptyState")).toHaveText("Select an Engineering Context to begin.");
+    await expect(page.locator("#wwPhasorContextSelect")).toHaveValue(contextId);
+    await expect(page.locator("#wwPhasorEmptyState")).toBeHidden();
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
     expect(suggestRequested).toBe(false);
   });
 
@@ -1371,7 +1465,7 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
   test("Related Waveforms panel is hidden/collapsed entirely in Manual mode, never a fabricated waveform", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await selectPhasorContext(page, contextId);
     await expect(page.locator("#wwAnalysisRelatedWaveformsPanel")).toBeVisible();
 
     await page.locator("#wwPhasorInputSourceManualBtn").click();
@@ -1389,7 +1483,7 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
   test("Playback movement does not move the Manual result or vectors", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await selectPhasorContext(page, contextId);
     await expect(page.locator("#wwPhasorInputSourceRecordingBtn")).toHaveAttribute("aria-pressed", "true");
 
     await page.locator("#wwPhasorInputSourceManualBtn").click();
@@ -1431,7 +1525,7 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
   test("switching back to Recording restores the recording-driven diagram exactly; Manual/Recording state never cross-contaminates", async ({ page }) => {
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await selectPhasorContext(page, contextId);
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
       expect(text).toMatch(/100\.0\s*V/);
@@ -1470,7 +1564,7 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
     // from the NOW-active mode's own values only, in both directions.
     const { contextId } = await uploadAndCreateContext(page);
     await openAnalysisPhasor(page);
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await selectPhasorContext(page, contextId);
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
       expect(text).toMatch(/100\.0\s*V/);

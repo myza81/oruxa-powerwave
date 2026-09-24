@@ -16,10 +16,11 @@
 
 const { test, expect } = require("@playwright/test");
 const path = require("path");
+const { reuseOrCreateFullBayContext, ensureContextSelected } = require("./support/engineering_context_helpers");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
-const BACKEND_URL = `http://127.0.0.1:${process.env.PW_BACKEND_PORT || "8000"}`;
 const STEM = "phasor_smoke_three_phase";
+const ALPHA_ROLES = [["VA", "A"], ["VB", "B"], ["VC", "C"], ["IA", "A"], ["IB", "B"], ["IC", "C"]];
 
 async function uploadFixture(page) {
   await page.goto("/index.html");
@@ -31,20 +32,12 @@ async function uploadFixture(page) {
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
 }
 
+// DEC-104 (2026-09-23) upload-time preparation normally already
+// auto-created this full six-role context before this ever runs -- see
+// support/engineering_context_helpers.js's own header comment. Discovers
+// and reuses it instead of POSTing a duplicate (which now 409s).
 async function createFullBayContext(page, workspaceId, sourceId, displayName) {
-  const members = [
-    ["ALPHA1_VA", "A"], ["ALPHA1_VB", "B"], ["ALPHA1_VC", "C"],
-    ["ALPHA1_IA", "A"], ["ALPHA1_IB", "B"], ["ALPHA1_IC", "C"],
-  ].map(([channel_name, phase]) => ({
-    channel_ref: { kind: "source", source_id: sourceId, channel_name },
-    phase, phase_source: "engineer_confirmed",
-  }));
-  const response = await page.request.post(
-    `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/engineering-contexts`,
-    { data: { display_name: displayName, status: "manual", members } }
-  );
-  expect(response.ok()).toBeTruthy();
-  return response.json();
+  return reuseOrCreateFullBayContext(page, workspaceId, sourceId, "ALPHA1", ALPHA_ROLES, displayName);
 }
 
 async function uploadAndCreateContext(page) {
@@ -66,9 +59,16 @@ async function openAnalysisSequence(page) {
   await expect(page.locator("#wwPhasorPanel")).toBeHidden();
 }
 
+// DEC-105 already auto-selects the first/only context the instant
+// Analysis opens whenever the very first fetch is non-empty -- normally
+// true here since uploadAndCreateContext() reuses what DEC-104 already
+// created. A redundant re-selection of that SAME value can race the
+// auto-select's own in-flight claim sequence (see support/
+// engineering_context_helpers.js's own header comment on
+// ensureContextSelected()) -- this only selects for real when needed.
 async function selectContextAndWaitForResult(page, contextId) {
   await expect(page.locator(`#wwSequenceContextSelect option[value="${contextId}"]`)).toHaveCount(1);
-  await page.locator("#wwSequenceContextSelect").selectOption(contextId);
+  await ensureContextSelected(page, page.locator("#wwSequenceContextSelect"), contextId);
   await expect(async () => {
     const text = await page.locator("#wwSequenceValuesList").innerText();
     expect(text).toMatch(/100\.0\s*V/);
@@ -918,19 +918,15 @@ test.describe("Sequence Components v1 -- context-switch leaves no stale/broken s
     const rowB = page.locator("#recordingsTableBody tr[data-source-id]").last();
     await expect(rowB).toBeVisible();
     const sourceIdB = await rowB.getAttribute("data-source-id");
-    const membersB = [
-      ["BRAVO1_VA", "A"], ["BRAVO1_VB", "B"], ["BRAVO1_VC", "C"],
-      ["BRAVO1_IA", "A"], ["BRAVO1_IB", "B"], ["BRAVO1_IC", "C"],
-    ].map(([channel_name, phase]) => ({
-      channel_ref: { kind: "source", source_id: sourceIdB, channel_name },
-      phase, phase_source: "engineer_confirmed",
-    }));
-    const responseB = await page.request.post(
-      `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/engineering-contexts`,
-      { data: { display_name: "Bay B", status: "manual", members: membersB } }
+    // DEC-104 upload-time preparation already auto-created BRAVO1's own
+    // full six-role context immediately above -- discover and reuse it
+    // rather than POSTing a duplicate (see
+    // support/engineering_context_helpers.js's own header comment).
+    const contextB = await reuseOrCreateFullBayContext(
+      page, workspaceId, sourceIdB, "BRAVO1",
+      [["VA", "A"], ["VB", "B"], ["VC", "C"], ["IA", "A"], ["IB", "B"], ["IC", "C"]],
+      "Bay B"
     );
-    expect(responseB.ok()).toBeTruthy();
-    const contextB = await responseB.json();
 
     await openAnalysisSequence(page);
     await selectContextAndWaitForResult(page, contextA.id);

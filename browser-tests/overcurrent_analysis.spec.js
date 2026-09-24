@@ -19,10 +19,11 @@
 
 const { test, expect } = require("@playwright/test");
 const path = require("path");
+const { reuseOrCreateFullBayContext, ensureContextSelected } = require("./support/engineering_context_helpers");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
-const BACKEND_URL = `http://127.0.0.1:${process.env.PW_BACKEND_PORT || "8000"}`;
 const STEM = "phasor_smoke_three_phase";
+const ALPHA_ROLES = [["VA", "A"], ["VB", "B"], ["VC", "C"], ["IA", "A"], ["IB", "B"], ["IC", "C"]];
 
 async function uploadFixture(page) {
   await page.goto("/index.html");
@@ -34,22 +35,13 @@ async function uploadFixture(page) {
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
 }
 
+// DEC-104 (2026-09-23) upload-time preparation normally already
+// auto-created this full six-role context before this ever runs -- see
+// support/engineering_context_helpers.js's own header comment. Discovers
+// and reuses it instead of POSTing a duplicate (which now 409s).
 async function createFullBayContext(page, workspaceId, sourceId, displayName) {
-  const members = [
-    ["ALPHA1_VA", "A"], ["ALPHA1_VB", "B"], ["ALPHA1_VC", "C"],
-    ["ALPHA1_IA", "A"], ["ALPHA1_IB", "B"], ["ALPHA1_IC", "C"],
-  ].map(([channel_name, phase]) => ({
-    channel_ref: { kind: "source", source_id: sourceId, channel_name },
-    phase, phase_source: "engineer_confirmed",
-  }));
-  const response = await page.request.post(
-    `${BACKEND_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/engineering-contexts`,
-    { data: { display_name: displayName, status: "manual", members } }
-  );
-  expect(response.ok()).toBeTruthy();
-  return response.json();
+  return reuseOrCreateFullBayContext(page, workspaceId, sourceId, "ALPHA1", ALPHA_ROLES, displayName);
 }
-
 async function uploadAndCreateContext(page) {
   await uploadFixture(page);
   const row = page.locator("#recordingsTableBody tr[data-source-id]").last();
@@ -84,9 +76,16 @@ async function seekSliderBounds(slider) {
   return slider.evaluate((el) => ({ min: parseFloat(el.min), max: parseFloat(el.max) }));
 }
 
+// DEC-105 already auto-selects the first/only context the instant
+// Analysis opens whenever the very first fetch is non-empty -- normally
+// true here since uploadAndCreateContext() reuses what DEC-104 already
+// created. A redundant re-selection of that SAME value can race the
+// auto-select's own in-flight claim sequence (see support/
+// engineering_context_helpers.js's own header comment on
+// ensureContextSelected()) -- this only selects for real when needed.
 async function selectContextAndWaitForValues(page, contextId) {
   await expect(page.locator(`#wwOvercurrentContextSelect option[value="${contextId}"]`)).toHaveCount(1);
-  await page.locator("#wwOvercurrentContextSelect").selectOption(contextId);
+  await ensureContextSelected(page, page.locator("#wwOvercurrentContextSelect"), contextId);
   await expect(async () => {
     const text = await page.locator("#wwOvercurrentValuesList").innerText();
     expect(text).toContain("Measured RMS current");
@@ -549,7 +548,7 @@ test.describe("Overcurrent Analysis v1 -- analyzer switch", () => {
     await page.locator("#mainNavAnalysisBtn").click();
     await expect(page.locator("#pageAnalysis")).toBeVisible();
     await expect(page.locator("#wwPhasorPanel")).toBeVisible();
-    await page.locator("#wwPhasorContextSelect").selectOption(contextId);
+    await ensureContextSelected(page, page.locator("#wwPhasorContextSelect"), contextId);
     const phasorSlider = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-seek-slider");
     await expect(phasorSlider).toBeVisible();
     const { min, max } = await seekSliderBounds(phasorSlider);

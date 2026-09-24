@@ -18272,6 +18272,147 @@ scope, still awaiting a dedicated session).
 
 ---
 
+## DEC-112 — Pre-existing Analysis Playwright regression (DEC-104 onward): browser suites that manually POST an Engineering Context now discover/reuse the one upload-time preparation already created, instead of duplicating it
+
+Date: 2026-09-24
+Status: Approved — implemented (test-only; zero production code changed).
+Source: dedicated investigation/fix session, explicitly requested by the
+owner following DEC-110's and DEC-111's own repeated notes that the full
+combined Playwright run shows a pre-existing, unrelated Analysis-area
+engineering-context regression, confirmed reproducible on a disposable
+`git worktree` checkout of `667159d` (before DEC-110/DEC-111 existed) and
+therefore out of scope for both of those decisions.
+
+**Issue.** `analysis_related_waveforms.spec.js` and every Analysis
+analyzer's own Playwright suite (`phasor_analysis.spec.js`,
+`overcurrent_analysis.spec.js`, `impedance_analysis.spec.js`,
+`distance_protection_analysis.spec.js`, `sequence_components_analysis.spec.js`)
+upload a fixture then manually `POST .../engineering-contexts` to seed a
+full-bay context for testing — a pattern that predates DEC-104. DEC-104
+(2026-09-23) made a successful source upload ALSO run the same Engineering
+Context discovery synchronously, server-side, so by the time any of these
+tests' own manual POST runs, a `suggested` context claiming the exact same
+channels already exists; the manual POST now 409s
+(`channel_already_in_context`). Confirmed directly (raw HTTP request, no
+browser) against both current `main` and a disposable worktree of
+`667159d` — byte-for-byte identical failure, proving this is a stale
+test-harness assumption that has existed, latent, since DEC-104 itself,
+not something DEC-110/DEC-111 introduced.
+
+**Decision.** New shared helper module `browser-tests/support/
+engineering_context_helpers.js`:
+- `reuseOrCreateFullBayContext()` — the primary fix. Discovers the context
+  DEC-104's own upload-time preparation already created for a given
+  channel-name prefix and reuses it; only falls back to a manual POST if
+  discovery genuinely finds nothing (a prefix DEC-104's own detector
+  cannot cluster, e.g. a bare-role fixture). Mirrors the equivalent,
+  already-established backend pattern
+  (`backend/tests/test_engineering_context_api.py`'s own `_upload()` vs.
+  `_upload_without_clearing()`), adapted for the browser: prefer
+  discovery/reuse over a blind duplicate POST.
+- `clearContexts()` — for the rarer case where a test genuinely needs a
+  context shape DEC-104's own discovery cannot produce (a deliberately
+  partial bay, or a test whose own explicit purpose is exercising the
+  fallback discovery bootstrap itself), this removes whatever auto-
+  discovery already created so the test's own manual POST has a clean
+  slate — exactly the "a group/context the user, or a test, deleted after
+  upload" fallback scenario DEC-104's own design already named.
+- `ensureContextSelected()` — a second, independent bug this investigation
+  found and fixed: DEC-105 made the FIRST time a workspace session ever
+  has a usable context list auto-select it immediately, regardless of
+  path. Several pre-DEC-105-era tests still unconditionally called
+  `.selectOption(contextId)` on that SAME, already-auto-selected value
+  immediately afterward — now a redundant re-selection that races the
+  auto-select's own in-flight "claim the Time Group, then refine to a
+  safe start time" sequence closely enough that the follow-up refined-time
+  fetch is sometimes never issued, leaving the panel stuck on the first,
+  transient `analysis_time=0` response (`needs_configuration`). Reproduced
+  directly and deterministically via a disposable debug script. This
+  helper only selects when the control isn't already showing the target
+  value.
+
+All six affected spec files updated to use these helpers; two
+`phasor_analysis.spec.js` tests whose own assertions asserted the
+NOW-SUPERSEDED pre-DEC-105 behavior ("existing context never auto-selects
+without a bootstrap") were corrected to assert the current, already-
+approved DEC-105 behavior instead (values render immediately, no manual
+selection).
+
+**Two separate, genuine, PRE-EXISTING issues were discovered during this
+investigation and are explicitly NOT fixed here (out of this task's own
+scope: test-only, zero production changes) — reported for owner
+decision:**
+
+1. A narrow, timing-dependent race in Phasor's own initial Time-Group
+   claim/refine sequence (`wwPhasorLoadForSelectedContext()`/
+   `wwPhasorMaybeFetchForPlayback()` in `frontend/index.html`): the
+   follow-up "refine to a safe start time" fetch that normally follows
+   the honest `analysis_time=0` response can, under real timing variance,
+   never be issued, leaving the panel stuck on the transient response.
+   Reproduced directly and deterministically (identical before/after
+   engine state logged, only the outcome differs run to run) completely
+   independent of any test-side context-creation choice — confirmed to
+   also occur in `post_upload_readiness.spec.js` (untouched by this
+   session) and via a minimal debug script with zero redundant
+   selections. Affects a small, consistent set of tests
+   (`phasor_analysis.spec.js`'s own "Time Group relabel..." scenario,
+   occasional others) at a low, non-zero rate under full-suite load.
+2. **`compute_impedance_locus()`/the equivalent Distance Protection
+   locus computation (`backend/app/services/impedance_analysis_service.py`
+   and its Distance Protection counterpart) independently re-runs a full
+   `compute_impedance_analysis()` call per locus point** (up to 120,
+   `MAX_LOCUS_POINTS`) rather than sharing any per-request work across
+   points. Measured directly via `curl` against a freshly-started backend
+   with zero prior workspaces (no contention, no accumulated state):
+   ~13 seconds for one 120-point `/impedance-locus` request, and
+   equivalently for `/distance-protection-locus`. This is almost
+   certainly why `impedance_analysis.spec.js`'s/
+   `distance_protection_analysis.spec.js`'s own pre-existing
+   `page.waitForResponse(..., { timeout: 15000 })` pattern (itself a
+   deliberate prior fix for a different, now-superseded race — see that
+   file's own header comment) intermittently times out; the test-side
+   timeout was widened to 20000ms/`test.setTimeout(60000)` as a stopgap,
+   but the ROOT latency is a backend performance characteristic, not a
+   test problem, and deserves its own profiling/optimization decision
+   (e.g. computing all points from one shared windowed read instead of
+   `point_count` independent full analyses).
+
+**Reason.** Matches this project's own established "reproduce live →
+root-cause → smallest fix → verify fail-then-pass → full regression"
+methodology (the same one the DEC-105 through DEC-108 chain used). The
+fix is deliberately test-only and minimal: DEC-104's own automatic
+discovery is never weakened, no production workaround was added merely to
+satisfy a stale test, and the two newly-discovered, genuinely separate
+issues are reported rather than silently patched, per this project's own
+change-governance rule.
+
+**Alternatives considered.** (1) Delete the manual POST helpers entirely
+and rely solely on DEC-104's own auto-discovery — rejected: a few tests
+(a deliberately partial bay, the bootstrap-fallback scenarios) genuinely
+need a context shape auto-discovery cannot produce, and DEC-104's own
+design doc already names "a test deleted it after upload" as the intended
+way to reach that state, which `clearContexts()` implements directly. (2)
+Weaken/guard the backend's `channel_already_in_context` conflict check to
+silently no-op on a duplicate claim — rejected outright per this task's
+own explicit instruction never to weaken DEC-104's automatic post-upload
+preparation for the sake of a stale test.
+
+**Impact.** New file `browser-tests/support/engineering_context_helpers.js`.
+Six spec files updated: `analysis_related_waveforms.spec.js`,
+`phasor_analysis.spec.js`, `overcurrent_analysis.spec.js`,
+`impedance_analysis.spec.js`, `distance_protection_analysis.spec.js`,
+`sequence_components_analysis.spec.js`. `playback.spec.js` was audited
+and found unaffected (its own fixture's channel names are not
+phase-detectable, so DEC-104 never auto-claims them). Zero production
+code changed. Full Playwright suite: ~125 pre-existing failures reduced
+to 7, all traced to the two separate, already-reported findings above
+(confirmed via repeated isolated reruns showing each passes individually)
+— none are the DEC-104 conflict this session targeted, and none are new
+regressions. Full backend suite passes unchanged (zero production files
+touched). `git diff --check` clean.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

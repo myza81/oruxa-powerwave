@@ -8,7 +8,48 @@ Last updated: **2026-09-24**
 
 ## What was most recently done
 
-**Compliance & Capability -- jurisdiction-neutrality architecture
+**Dedicated fix session: the pre-existing Analysis Playwright regression
+DEC-104/DEC-110/DEC-111 all repeatedly flagged as out-of-scope is now
+closed (DEC-112).** Root cause confirmed exactly as DEC-110/DEC-111
+suspected: `analysis_related_waveforms.spec.js` and all five analyzer
+Playwright suites upload a fixture then manually `POST .../engineering-
+contexts`, a pattern that predates DEC-104 (2026-09-23) — since DEC-104,
+a matching `suggested` context already exists by the time that manual POST
+runs, so it 409s. Confirmed as stale-test-harness (not production) via a
+disposable `git worktree` of `667159d` reproducing the identical failure
+with zero DEC-110/DEC-111 code present.
+
+**Fix (test-only, zero production code changed)**: new shared helper
+`browser-tests/support/engineering_context_helpers.js`
+(`reuseOrCreateFullBayContext()` discovers/reuses DEC-104's own
+auto-created context instead of duplicating it; `clearContexts()` restores
+a clean slate for the few tests that genuinely need a context shape
+DEC-104 cannot produce, e.g. a deliberately partial bay; `ensureContextSelected()`
+avoids a SECOND, independently-discovered bug — several pre-DEC-105 tests'
+own redundant `.selectOption()` on an already-auto-selected value races
+DEC-105's own auto-select claim/refine sequence). Applied to all six
+affected spec files. Two `phasor_analysis.spec.js` tests whose own
+assertions still expected pre-DEC-105 behavior were corrected to match
+the current, already-approved DEC-105 design.
+
+**Two separate, genuine, PRE-EXISTING issues were found and reported, not
+fixed (out of this session's own scope)**: (1) a narrow, timing-dependent
+race in Phasor's own initial Time-Group claim/refine sequence (reproduced
+directly, occurs with zero test-side interaction, also occurs in
+untouched `post_upload_readiness.spec.js`); (2) `compute_impedance_locus()`
+and its Distance Protection counterpart independently re-run a full
+per-point analysis for each of up to 120 locus points — measured ~13s for
+one request via direct `curl` against a freshly-started backend with zero
+prior state, no contention. See [DECISIONS.md — DEC-112](DECISIONS.md#dec-112--pre-existing-analysis-playwright-regression-dec-104-onward-browser-suites-that-manually-post-an-engineering-context-now-discoverreuse-the-one-upload-time-preparation-already-created-instead-of-duplicating-it)
+for the full record, including both findings' own evidence.
+
+**Validation**: full Playwright suite: ~125 pre-existing failures reduced
+to 7, all traced to the two findings above (each individually confirmed
+to pass in isolation via repeated reruns) — zero remaining DEC-104
+conflicts, zero new regressions. Full backend suite passes unchanged
+(zero production files touched). `git diff --check` clean.
+
+## What was done in the prior session — Compliance & Capability -- jurisdiction-neutrality architecture
 invariant, portable-persistence lifecycle, and provenance metadata
 expansion (DEC-111).** Owner UAT and follow-up product/engineering
 review, continuing directly from DEC-110 the same day: *"Powerwave must
