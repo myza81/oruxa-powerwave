@@ -22,6 +22,8 @@
 
 const { test, expect } = require("@playwright/test");
 const path = require("path");
+const fs = require("fs");
+const os = require("os");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
 const BACKEND_URL = `http://127.0.0.1:${process.env.PW_BACKEND_PORT || "8000"}`;
@@ -501,5 +503,105 @@ test.describe("Compliance Slice 4 (DEC-110) -- Assessment Definition", () => {
     await expect(page.locator("#wwRefEditorRepresentation")).toHaveValue("positive_sequence_rms");
     await expect(page.locator("#wwRefEditorLegacyHintNote")).toBeVisible();
     await expect(page.locator("#wwRefEditorLegacyHintNote")).toContainText("positive_sequence_rms");
+  });
+});
+
+test.describe("Compliance Slice 4/5 (DEC-111) -- portable JSON lifecycle, jurisdiction-neutral local-file workflow", () => {
+  test("real download then real upload round trip: Export Reference downloads a file, Import Reference re-uploads that exact file from disk", async ({ page }) => {
+    await openCompliance(page);
+    const workspaceId = await currentWorkspaceIdOf(page);
+    await createProfile(page, workspaceId, {
+      name: "Local File Round Trip Profile",
+      metadata: { jurisdiction: "Malaysia", document_revision: "2025" },
+    });
+    await page.reload();
+    await page.locator("#mainNavComplianceBtn").click();
+    await page.locator("#wwRefManageProfilesBtn").click();
+    await expect(page.locator("#wwRefManageOverlay")).toBeVisible();
+
+    // Real download -- the browser actually writes a file to disk.
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#wwRefManageList .ww-ref-picker-item", { hasText: "Local File Round Trip Profile" }).locator("button:has-text('Export')").click(),
+    ]);
+    const downloadedPath = path.join(os.tmpdir(), `ww-ref-download-${Date.now()}.json`);
+    await download.saveAs(downloadedPath);
+    const downloadedJson = JSON.parse(fs.readFileSync(downloadedPath, "utf8"));
+    expect(downloadedJson.schema_version).toBe(2);
+    expect(downloadedJson.profile.metadata.jurisdiction).toBe("Malaysia");
+    expect(downloadedJson.profile).not.toHaveProperty("id");
+
+    // Real upload -- the browser's own <input type="file"> receives the
+    // exact file just downloaded, exercising app.services.reference_
+    // profile_service.import_profile() through the real UI file picker,
+    // never page.request.post() directly.
+    await page.locator("#wwRefManageImportInput").setInputFiles(downloadedPath);
+    await expect(page.locator("#wwRefManageList")).toContainText("Local File Round Trip Profile");
+    // The original custom profile + the freshly re-imported copy --
+    // FileReader.onload/the import request/the re-render are all async,
+    // so poll rather than reading .count() exactly once.
+    await expect(page.locator("#wwRefManageList .ww-ref-picker-item", { hasText: "Local File Round Trip Profile" })).toHaveCount(2);
+
+    fs.unlinkSync(downloadedPath);
+  });
+
+  test("importing a malformed local JSON file is rejected inline, never silently coerced", async ({ page }) => {
+    await openCompliance(page);
+    await page.locator("#wwRefManageProfilesBtn").click();
+    const malformedPath = path.join(os.tmpdir(), `ww-ref-malformed-${Date.now()}.json`);
+    fs.writeFileSync(malformedPath, "{ not valid json ");
+    await page.locator("#wwRefManageImportInput").setInputFiles(malformedPath);
+    await expect(page.locator("#wwRefManageError")).toBeVisible();
+    await expect(page.locator("#wwRefManageError")).toContainText("not valid JSON");
+    fs.unlinkSync(malformedPath);
+  });
+
+  test("importing a real local v1-schema JSON file (as if kept from before DEC-110) still migrates correctly through the real file picker", async ({ page }) => {
+    await openCompliance(page);
+    const v1Envelope = {
+      schema_version: 1,
+      profile: {
+        name: "Locally Kept Legacy Profile", category: "custom_reference", evaluation_quantity: "phase_ab_ll_rms",
+        unit: "pu", display_start_time: -0.5, display_end_time: 3.0, evaluation_start_time: 0.0, evaluation_end_time: 3.0,
+        tolerance: 0.0,
+        lower_boundary: { segments: [{ start_time: -0.5, end_time: 3.0, start_value: 0.8, end_value: 0.8, segment_type: "constant" }] },
+        upper_boundary: null, metadata: {},
+      },
+    };
+    const v1Path = path.join(os.tmpdir(), `ww-ref-v1-${Date.now()}.json`);
+    fs.writeFileSync(v1Path, JSON.stringify(v1Envelope));
+    await page.locator("#wwRefManageProfilesBtn").click();
+    await page.locator("#wwRefManageImportInput").setInputFiles(v1Path);
+    await expect(page.locator("#wwRefManageList")).toContainText("Locally Kept Legacy Profile");
+    await page.locator("#wwRefManageList .ww-ref-picker-item", { hasText: "Locally Kept Legacy Profile" }).locator("button:has-text('Edit')").click();
+    await expect(page.locator("#wwRefEditorRepresentation")).toHaveValue("line_line_rms");
+    await expect(page.locator("#wwRefEditorMember")).toHaveValue("AB");
+    fs.unlinkSync(v1Path);
+  });
+
+  test("two document revisions of the same jurisdiction coexist as independent Reference Layers", async ({ page }) => {
+    await openCompliance(page);
+    const workspaceId = await currentWorkspaceIdOf(page);
+    const revision2025 = await createProfile(page, workspaceId, {
+      name: "Coexisting Grid Code", metadata: { jurisdiction: "Malaysia", document_revision: "2025" },
+    });
+    const revision2027 = await createProfile(page, workspaceId, {
+      name: "Coexisting Grid Code", metadata: { jurisdiction: "Malaysia", document_revision: "2027" },
+    });
+    await addLayer(page, workspaceId, revision2025.id);
+    await addLayer(page, workspaceId, revision2027.id);
+    await page.reload();
+    await page.locator("#mainNavComplianceBtn").click();
+    await expect(page.locator("#wwComplianceChartPlot")).toBeVisible();
+    const traces = await chartPlotData(page);
+    const profileIds = new Set(traces.map((t) => t.profile_id));
+    expect(profileIds.has(revision2025.id)).toBe(true);
+    expect(profileIds.has(revision2027.id)).toBe(true);
+  });
+
+  test("empty Reference Library state reads as an intentional product state, never a loading failure", async ({ page }) => {
+    await openCompliance(page);
+    await page.locator("#wwRefManageProfilesBtn").click();
+    await expect(page.locator("#wwRefManageList")).toContainText("No reference profiles loaded");
   });
 });

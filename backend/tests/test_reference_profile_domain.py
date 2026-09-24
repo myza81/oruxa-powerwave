@@ -352,3 +352,49 @@ class TestV1LegacySchemaMigration:
         assert envelope["schema_version"] == 2
         assert envelope["profile"]["assessment_definition"]["representation"] == "positive_sequence_rms"
         assert envelope["profile"]["assessment_definition"]["legacy_quantity_hint"] == "positive_sequence_rms"
+
+
+class TestProvenanceMetadataDEC111:
+    """DEC-111: a reference requirement may live for years and later be
+    revised -- provenance/version metadata lets a profile stay fully
+    self-describing about WHICH requirement/revision it represents,
+    without Powerwave ever assuming a newer revision replaces an older
+    one."""
+
+    def _metadata(self, **overrides) -> ReferenceProfileMetadata:
+        defaults = dict(
+            jurisdiction="Malaysia", authority="Example Utility", document_title="Example Grid Code",
+            document_revision="2025", effective_date="2025-01-01", source_section="Clause 4.2",
+            source_page="17", manufacturer="Example OEM",
+        )
+        defaults.update(overrides)
+        return ReferenceProfileMetadata(**defaults)
+
+    def test_provenance_metadata_round_trips_through_export_import(self):
+        profile = _profile(metadata=self._metadata())
+        envelope = profile_to_json_dict(profile)
+        imported = profile_from_json_dict(envelope, profile_id="new-id")
+        assert imported.metadata == profile.metadata
+
+    def test_every_provenance_field_is_optional(self):
+        # A fully bare metadata object (task's own "do not make all
+        # fields mandatory" instruction) is valid on its own.
+        validate_reference_profile(_profile(metadata=ReferenceProfileMetadata()))
+
+    def test_two_revisions_of_the_same_jurisdiction_coexist_as_independent_profiles(self):
+        """Never assume a new revision replaces an old one -- both are
+        simply independent ReferenceProfile objects with their own id
+        and their own document_revision metadata."""
+        revision_2025 = _profile(id="p-2025", name="Example Grid Code", metadata=self._metadata(document_revision="2025"))
+        revision_2027 = _profile(id="p-2027", name="Example Grid Code", metadata=self._metadata(document_revision="2027"))
+        validate_reference_profile(revision_2025)
+        validate_reference_profile(revision_2027)
+        assert revision_2025.id != revision_2027.id
+        assert revision_2025.metadata.document_revision != revision_2027.metadata.document_revision
+        # Nothing about validating/exporting one profile ever reads or
+        # is influenced by the other -- no "latest version" concept
+        # exists anywhere in this module.
+        envelope_2025 = profile_to_json_dict(revision_2025)
+        envelope_2027 = profile_to_json_dict(revision_2027)
+        assert envelope_2025["profile"]["metadata"]["document_revision"] == "2025"
+        assert envelope_2027["profile"]["metadata"]["document_revision"] == "2027"

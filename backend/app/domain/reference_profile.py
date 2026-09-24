@@ -178,17 +178,37 @@ class ReferenceBoundary:
 
 @dataclass(frozen=True, slots=True)
 class ReferenceProfileMetadata:
-    """Optional descriptive metadata (task section 3 -- SUPPORT, not
-    require, every field). A closed set of named fields rather than an
-    open dict: every field this task names is first-class, typed, and
-    documented, instead of an unvalidated free-form bag."""
+    """Optional descriptive/provenance metadata -- SUPPORT, never
+    require, every field (task's own "do not make all fields mandatory"
+    instruction). A closed set of named fields rather than an open dict:
+    every field is first-class, typed, and documented, instead of an
+    unvalidated free-form bag.
 
-    brand: str | None = None
+    **DEC-111 expansion**: reference requirements may live for many
+    years and later be revised -- `jurisdiction`/`authority`/
+    `document_title`/`document_revision`/`effective_date`/
+    `source_section`/`source_page` let a profile stay fully self-
+    describing about WHICH requirement/revision it represents, without
+    Powerwave ever assuming a newer revision replaces an older one
+    (`Malaysia Grid Code 2025` and `Malaysia Grid Code 2027`, or
+    `OEM Capability Rev A`/`Rev B`, may legitimately coexist as
+    independent profiles -- see DEC-111). Renamed from the original
+    Slice 3 field set for clarity: `brand` -> `manufacturer`,
+    `source_document` -> `document_title`, `source_revision` ->
+    `document_revision` (safe rename -- custom profiles are session-
+    scoped only, never durably stored under the old names)."""
+
+    jurisdiction: str | None = None
+    authority: str | None = None
+    document_title: str | None = None
+    document_revision: str | None = None
+    effective_date: str | None = None
+    source_section: str | None = None
+    source_page: str | None = None
+    manufacturer: str | None = None
     equipment_type: str | None = None
     model: str | None = None
     firmware_hardware: str | None = None
-    source_document: str | None = None
-    source_revision: str | None = None
     project: str | None = None
     plant: str | None = None
     notes: str | None = None
@@ -419,12 +439,17 @@ def _boundary_from_dict(data: object, *, boundary: str) -> ReferenceBoundary | N
 def _metadata_from_dict(data: object) -> ReferenceProfileMetadata:
     data = data if isinstance(data, dict) else {}
     return ReferenceProfileMetadata(
-        brand=data.get("brand"),
+        jurisdiction=data.get("jurisdiction"),
+        authority=data.get("authority"),
+        document_title=data.get("document_title"),
+        document_revision=data.get("document_revision"),
+        effective_date=data.get("effective_date"),
+        source_section=data.get("source_section"),
+        source_page=data.get("source_page"),
+        manufacturer=data.get("manufacturer"),
         equipment_type=data.get("equipment_type"),
         model=data.get("model"),
         firmware_hardware=data.get("firmware_hardware"),
-        source_document=data.get("source_document"),
-        source_revision=data.get("source_revision"),
         project=data.get("project"),
         plant=data.get("plant"),
         notes=data.get("notes"),
@@ -519,12 +544,17 @@ def _boundary_to_dict(boundary: ReferenceBoundary | None) -> dict | None:
 
 def _metadata_to_dict(metadata: ReferenceProfileMetadata) -> dict:
     return {
-        "brand": metadata.brand,
+        "jurisdiction": metadata.jurisdiction,
+        "authority": metadata.authority,
+        "document_title": metadata.document_title,
+        "document_revision": metadata.document_revision,
+        "effective_date": metadata.effective_date,
+        "source_section": metadata.source_section,
+        "source_page": metadata.source_page,
+        "manufacturer": metadata.manufacturer,
         "equipment_type": metadata.equipment_type,
         "model": metadata.model,
         "firmware_hardware": metadata.firmware_hardware,
-        "source_document": metadata.source_document,
-        "source_revision": metadata.source_revision,
         "project": metadata.project,
         "plant": metadata.plant,
         "notes": metadata.notes,

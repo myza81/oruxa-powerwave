@@ -1802,6 +1802,99 @@ reference_profiles.spec.js` (new `test.describe("Compliance Slice 4
 suite passes with the one pre-existing, unrelated Analysis-area
 exception noted above.
 
+**Compliance & Capability jurisdiction-neutrality architecture invariant
++ portable-persistence lifecycle + provenance metadata expansion
+(DEC-111, same day, 2026-09-24).** Owner UAT and follow-up product/
+engineering review, continuing directly from DEC-110: *"Powerwave must
+remain country-neutral, utility-neutral, OEM-neutral. Do not hardcode
+Malaysian Grid Code, GB Grid Code, ENTSO-E, AEMO, Huawei, etc. into
+production calculation code... For this application there is currently
+no user account, no per-user profile storage. Therefore do NOT introduce
+a 'User Library' database or localStorage."*
+
+**Jurisdiction-neutrality was already true in substance (the built-in
+catalogue has always shipped empty, DEC-109; nothing in production code
+has ever branched on a jurisdiction name) — DEC-111 makes it an
+explicit, enforced, regression-proof invariant.** New `backend/tests/
+test_reference_profile_jurisdiction_neutrality.py` tokenizes every
+production Reference Profile source file (`app.domain.reference_profile`/
+`reference_profile_builtins`/`assessment_definition`/`reference_layer`,
+`app.services.reference_profile_registry`/`reference_layer_registry`/
+`reference_profile_service`, `app.schemas.reference_profile`, `app.api.
+v1.reference_profiles`) and strips every COMMENT and STRING token
+(docstrings included) before checking the remainder for named
+jurisdictions/OEMs (Malaysia, GB Grid Code, ENTSO-E, AEMO, Huawei) --
+deliberately NOT a brittle whole-repo string ban (which would
+immediately false-positive on this project's own extensive DEC-109/110/
+111 documentation that names these same terms as examples of what must
+never be hardcoded). A profile's own DATA may legitimately say "Malaysia
+Grid Code 2025" (task's own "bundled profile != hardcoded requirement"
+distinction); a CODE BRANCH keyed on that name may not, ever.
+
+**Bundled profiles remain architecturally possible and are explicitly
+distinct from a hardcoded requirement**: a future deployment could ship
+`reference_profiles/malaysia_grid_code_2025.json` while another ships
+`gb_grid_code_xxx.json`, both validated through the identical, unchanged
+parser — production ships zero by default today, both because no
+authoritative verified source exists in this repo (DEC-109, unchanged)
+and because defaulting to any ONE jurisdiction would itself violate
+neutrality.
+
+**Provenance/version metadata expanded** (`ReferenceProfileMetadata`):
+`jurisdiction`, `authority`, `document_title`, `document_revision`,
+`effective_date`, `source_section`, `source_page`, `manufacturer`
+(renamed from Slice 3's `brand`/`source_document`/`source_revision` --
+a safe rename, custom profiles are session-scoped only). Every field
+stays optional. **Never assume a newer revision replaces an older one**
+-- two profiles representing different revisions of the same
+jurisdiction/document (e.g. "2025" and "2027") coexist as entirely
+independent `ReferenceProfile` objects, each addable as its own
+Reference Layer simultaneously; no "latest version" concept exists
+anywhere in this codebase, proven by dedicated coexistence tests at the
+domain/service/API/browser layers. Schema stays at `schema_version = 2`
+(DEC-110's own bump) -- the metadata expansion is purely additive.
+
+**Portable JSON is the persistence mechanism, named as an explicit
+product lifecycle** (the mechanics were already exactly DEC-109's own
+architecture): Portable Reference Profile JSON -> user keeps it locally
+-> Import into Powerwave -> validate -> temporary session/workspace
+profile -> add as Reference Layer. An imported/custom profile exists
+only for the current app/workspace lifecycle; Export is the durable save
+mechanism the engineer actually controls -- no server-side persistence
+was added, none should be until a genuine account/database requirement
+exists.
+
+**UI terminology aligned to generic, jurisdiction-neutral wording**:
+"Manage Profiles" -> "Reference Library", "+ New Custom Profile" -> "+
+Create Custom Reference", "Import JSON…" -> "Import Reference…" --
+never "My Profiles"/"User Library"/a jurisdiction-specific label, since
+there are no user identities in this application. Empty-state wording
+revised to read as an intentional product state ("No reference profiles
+loaded. Create a custom reference or import one below.") rather than a
+loading failure.
+
+**Real local-file download/upload flow directly browser-tested**:
+`reference_profiles.spec.js` gained scenarios using `download.saveAs()`
++ `setInputFiles()` against the real `<input type="file">` element
+(never bypassing the UI via a direct API call) -- a full local round
+trip, a malformed local file rejected inline, and a v1-schema local file
+still migrating correctly.
+
+See [DECISIONS.md — DEC-111](DECISIONS.md#dec-111--compliance-is-architecturally-jurisdiction-neutral-reference-requirements-are-portable-json-data-never-engine-code-provenanceversion-metadata-lets-independent-revisions-coexist-importedcustom-profiles-are-session-scoped-only-json-is-the-durable-persistence-mechanism)
+and [COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md) for the full
+architectural record. New tests: `test_reference_profile_jurisdiction_
+neutrality.py` (9), plus `TestProvenanceMetadataDEC111`/
+`TestRevisionCoexistenceDEC111` in the domain/service test files,
+`TestProvenanceMetadataAndRevisionCoexistenceHttp` in the API tests,
+`TestReferenceLibraryTerminologyDEC111`/`TestJurisdictionNeutralUiDEC111`
+in the frontend structural tests, and a new
+`test.describe("Compliance Slice 4/5 (DEC-111)")` block in
+`reference_profiles.spec.js` (5 real-browser scenarios). Full backend
+suite passes; every Compliance-specific Playwright suite passes; the
+pre-existing, unrelated Analysis engineering-context regression DEC-110
+already reported remains unaddressed here too (still out of scope,
+still awaiting a dedicated session).
+
 **Flake cleanup (2026-09-19, continued) — the third and final DEC-099
 item ("Speed selection 4x") is now `[CLOSED]`; DEC-099 has zero
 remaining `[OPEN]` items.** Test-synchronization bug, no production
@@ -2276,11 +2369,31 @@ RMS values" that Slice 2's own nine canonical quantities alone could
 never represent, and can legitimately stay fully `unspecified` when a
 requirement genuinely does not state one. No measurement resolver
 exists yet to actually derive/compare a trace — compatibility is
-therefore always `not_yet_applicable` today. See
+therefore always `not_yet_applicable` today. As of 2026-09-24 (same
+day), Compliance's own jurisdiction-neutrality became an explicit,
+tested architectural invariant rather than an incidental fact (DEC-111):
+production Reference Profile domain/service code is proven, by a
+tokenizer-based structural test, to contain no named grid code/utility/
+OEM as part of actual code (as opposed to documentation/comments
+explaining the constraint itself); bundled profiles remain
+architecturally possible but production still ships zero by default;
+provenance/version metadata (`jurisdiction`, `authority`,
+`document_title`, `document_revision`, `effective_date`,
+`source_section`, `source_page`, `manufacturer`) lets independent
+revisions of the same requirement coexist without Powerwave ever
+assuming a newer one replaces an older one; and the portable-JSON-
+import/export lifecycle (session-scoped only, no database, no
+localStorage, no account system) was named as an explicit product model
+with a real local-file download/upload flow browser-tested end-to-end.
+UI terminology was aligned to generic wording ("Reference Library",
+"Create Custom Reference", "Import Reference…") — never "My Profiles"/
+"User Library"/a jurisdiction-specific label, since there are no user
+identities in this application. See
 [COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md),
 [DEC-109](DECISIONS.md#dec-109--compliance-slice-3-a-generic-reference-profilereference-layer-domain-model-static-comparison-chart-rendering-and-a-reference-subsystem-lifecycle-fully-independent-of-any-uploaded-recording),
+[DEC-110](DECISIONS.md#dec-110--compliance-slice-3-refinement-referenceprofile-is-separated-from-how-a-measured-quantity-is-derived--a-new-assessmentdefinition-model-bridges-the-reference-boundarycurve-to-compliance-slice-2s-canonical-measurement-quantities-with-unspecified-as-a-first-class-state-and-no-measurement-resolver-implemented-yet),
 and
-[DEC-110](DECISIONS.md#dec-110--compliance-slice-3-refinement-referenceprofile-is-separated-from-how-a-measured-quantity-is-derived--a-new-assessmentdefinition-model-bridges-the-reference-boundarycurve-to-compliance-slice-2s-canonical-measurement-quantities-with-unspecified-as-a-first-class-state-and-no-measurement-resolver-implemented-yet).
+[DEC-111](DECISIONS.md#dec-111--compliance-is-architecturally-jurisdiction-neutral-reference-requirements-are-portable-json-data-never-engine-code-provenanceversion-metadata-lets-independent-revisions-coexist-importedcustom-profiles-are-session-scoped-only-json-is-the-durable-persistence-mechanism).
 CSV/Excel ingestion is the current workstream — Slices 1-12 (raw preparation-source upload
 through canonical `DisturbanceRecord` conversion, existing-waveform-
 integration verification, and cleaned data export) are implemented;

@@ -314,3 +314,45 @@ class TestStartNewWorkspaceClearsReferenceState:
 
         assert client.get(f"/api/v1/workspaces/{workspace}/reference-profiles").json() == []
         assert client.get(f"/api/v1/workspaces/{workspace}/reference-layers").json() == []
+
+
+class TestProvenanceMetadataAndRevisionCoexistenceHttp:
+    """DEC-111: provenance/version metadata round-trips through the real
+    HTTP API, and two revisions of the same jurisdiction/document
+    coexist as independent profiles -- never an automatic "latest
+    version" replacement."""
+
+    def test_provenance_metadata_round_trips_through_create_and_export(self, client: TestClient):
+        metadata = {
+            "jurisdiction": "Malaysia", "authority": "Example Utility", "document_title": "Example Grid Code",
+            "document_revision": "2025", "effective_date": "2025-01-01", "source_section": "Clause 4.2",
+            "source_page": "17", "manufacturer": "Example OEM",
+        }
+        response = client.post(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles", json=_profile_body(metadata=metadata))
+        assert response.status_code == 201
+        body = response.json()
+        for key, value in metadata.items():
+            assert body["metadata"][key] == value
+
+        export = client.get(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles/{body['id']}/export").json()
+        for key, value in metadata.items():
+            assert export["profile"]["metadata"][key] == value
+
+    def test_two_document_revisions_coexist_as_separate_profiles(self, client: TestClient):
+        revision_2025 = client.post(
+            f"/api/v1/workspaces/{WORKSPACE}/reference-profiles",
+            json=_profile_body(name="Example Grid Code", metadata={"jurisdiction": "Malaysia", "document_revision": "2025"}),
+        ).json()
+        revision_2027 = client.post(
+            f"/api/v1/workspaces/{WORKSPACE}/reference-profiles",
+            json=_profile_body(name="Example Grid Code", metadata={"jurisdiction": "Malaysia", "document_revision": "2027"}),
+        ).json()
+        assert revision_2025["id"] != revision_2027["id"]
+
+        all_profiles = client.get(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles").json()
+        ids = {p["id"] for p in all_profiles}
+        assert revision_2025["id"] in ids
+        assert revision_2027["id"] in ids
+        # Deleting one revision never affects the other.
+        assert client.delete(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles/{revision_2025['id']}").status_code == 204
+        assert client.get(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles/{revision_2027['id']}").status_code == 200

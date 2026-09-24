@@ -74,12 +74,24 @@ class ReferenceBoundaryOut(BaseModel):
 
 
 class ReferenceProfileMetadataIn(BaseModel):
-    brand: str | None = None
+    """DEC-111: provenance/version metadata -- optional, so a profile can
+    stay fully self-describing about WHICH requirement/revision it
+    represents (e.g. "Malaysia Grid Code" jurisdiction + "2025"
+    revision, vs a later, independently-coexisting "2027" revision of
+    the same jurisdiction) without Powerwave ever assuming a newer
+    revision replaces an older one."""
+
+    jurisdiction: str | None = None
+    authority: str | None = None
+    document_title: str | None = None
+    document_revision: str | None = None
+    effective_date: str | None = None
+    source_section: str | None = None
+    source_page: str | None = None
+    manufacturer: str | None = None
     equipment_type: str | None = None
     model: str | None = None
     firmware_hardware: str | None = None
-    source_document: str | None = None
-    source_revision: str | None = None
     project: str | None = None
     plant: str | None = None
     notes: str | None = None
@@ -91,19 +103,26 @@ class ReferenceProfileMetadataIn(BaseModel):
         # `verified` is reserved for a future authoritative-source
         # workflow and stays False unless a later slice adds one.
         return ReferenceProfileMetadata(
-            brand=self.brand, equipment_type=self.equipment_type, model=self.model,
-            firmware_hardware=self.firmware_hardware, source_document=self.source_document,
-            source_revision=self.source_revision, project=self.project, plant=self.plant, notes=self.notes,
+            jurisdiction=self.jurisdiction, authority=self.authority, document_title=self.document_title,
+            document_revision=self.document_revision, effective_date=self.effective_date,
+            source_section=self.source_section, source_page=self.source_page, manufacturer=self.manufacturer,
+            equipment_type=self.equipment_type, model=self.model, firmware_hardware=self.firmware_hardware,
+            project=self.project, plant=self.plant, notes=self.notes,
         )
 
 
 class ReferenceProfileMetadataOut(BaseModel):
-    brand: str | None = None
+    jurisdiction: str | None = None
+    authority: str | None = None
+    document_title: str | None = None
+    document_revision: str | None = None
+    effective_date: str | None = None
+    source_section: str | None = None
+    source_page: str | None = None
+    manufacturer: str | None = None
     equipment_type: str | None = None
     model: str | None = None
     firmware_hardware: str | None = None
-    source_document: str | None = None
-    source_revision: str | None = None
     project: str | None = None
     plant: str | None = None
     notes: str | None = None
@@ -113,10 +132,12 @@ class ReferenceProfileMetadataOut(BaseModel):
     @classmethod
     def from_domain(cls, metadata: ReferenceProfileMetadata) -> "ReferenceProfileMetadataOut":
         return cls(
-            brand=metadata.brand, equipment_type=metadata.equipment_type, model=metadata.model,
-            firmware_hardware=metadata.firmware_hardware, source_document=metadata.source_document,
-            source_revision=metadata.source_revision, project=metadata.project, plant=metadata.plant,
-            notes=metadata.notes, built_in=metadata.built_in, verified=metadata.verified,
+            jurisdiction=metadata.jurisdiction, authority=metadata.authority, document_title=metadata.document_title,
+            document_revision=metadata.document_revision, effective_date=metadata.effective_date,
+            source_section=metadata.source_section, source_page=metadata.source_page, manufacturer=metadata.manufacturer,
+            equipment_type=metadata.equipment_type, model=metadata.model, firmware_hardware=metadata.firmware_hardware,
+            project=metadata.project, plant=metadata.plant, notes=metadata.notes,
+            built_in=metadata.built_in, verified=metadata.verified,
         )
 
 

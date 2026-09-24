@@ -363,3 +363,44 @@ class TestWorkspaceIsolation:
         profile = create_custom_profile("ws-a", _write_request().to_domain(profile_id=""), custom_registry=profile_registry)
         assert profile_registry.get("ws-b", profile.id) is None
         assert list_profiles_for_workspace("ws-b", custom_registry=profile_registry) == []
+
+
+class TestRevisionCoexistenceDEC111:
+    """Never assume a new revision replaces an old one -- two profiles
+    representing different revisions of the same jurisdiction/document
+    are simply two independent, simultaneously-active custom profiles."""
+
+    def test_two_document_revisions_coexist_in_the_same_workspace(self, profile_registry, layer_registry):
+        revision_2025 = create_custom_profile(
+            WORKSPACE,
+            _write_request(name="Example Grid Code", metadata={"jurisdiction": "Malaysia", "document_revision": "2025"}).to_domain(profile_id=""),
+            custom_registry=profile_registry,
+        )
+        revision_2027 = create_custom_profile(
+            WORKSPACE,
+            _write_request(name="Example Grid Code", metadata={"jurisdiction": "Malaysia", "document_revision": "2027"}).to_domain(profile_id=""),
+            custom_registry=profile_registry,
+        )
+        assert revision_2025.id != revision_2027.id
+        listed_ids = {entry.profile.id for entry in list_profiles_for_workspace(WORKSPACE, custom_registry=profile_registry)}
+        assert {revision_2025.id, revision_2027.id} <= listed_ids
+
+        # Both may be active Reference Layers simultaneously.
+        layer_2025 = add_layer(WORKSPACE, revision_2025.id, custom_registry=profile_registry, layer_registry=layer_registry)
+        layer_2027 = add_layer(WORKSPACE, revision_2027.id, custom_registry=profile_registry, layer_registry=layer_registry)
+        active_ids = {layer.id for layer in list_layers_for_workspace(WORKSPACE, layer_registry=layer_registry)}
+        assert {layer_2025.id, layer_2027.id} <= active_ids
+
+    def test_removing_one_revisions_layer_never_affects_the_other_revision(self, profile_registry, layer_registry):
+        revision_a = create_custom_profile(
+            WORKSPACE, _write_request(metadata={"document_revision": "A"}).to_domain(profile_id=""), custom_registry=profile_registry,
+        )
+        revision_b = create_custom_profile(
+            WORKSPACE, _write_request(metadata={"document_revision": "B"}).to_domain(profile_id=""), custom_registry=profile_registry,
+        )
+        layer_a = add_layer(WORKSPACE, revision_a.id, custom_registry=profile_registry, layer_registry=layer_registry)
+        layer_b = add_layer(WORKSPACE, revision_b.id, custom_registry=profile_registry, layer_registry=layer_registry)
+        remove_layer(WORKSPACE, layer_a.id, layer_registry=layer_registry)
+        assert layer_registry.get(WORKSPACE, layer_b.id) is not None
+        assert profile_registry.get(WORKSPACE, revision_a.id) is not None
+        assert profile_registry.get(WORKSPACE, revision_b.id) is not None

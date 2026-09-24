@@ -8,6 +8,160 @@ Last updated: **2026-09-24**
 
 ## What was most recently done
 
+**Compliance & Capability -- jurisdiction-neutrality architecture
+invariant, portable-persistence lifecycle, and provenance metadata
+expansion (DEC-111).** Owner UAT and follow-up product/engineering
+review, continuing directly from DEC-110 the same day: *"Powerwave must
+remain country-neutral, utility-neutral, OEM-neutral. Do not hardcode
+Malaysian Grid Code, GB Grid Code, ENTSO-E, AEMO, Huawei, etc. into
+production calculation code... An engineer in England, Australia,
+Europe, Middle East, etc. should see the same generic Compliance
+product... For this application there is currently no user account, no
+per-user profile storage. Therefore do NOT introduce a 'User Library'
+database or localStorage."* This does NOT re-litigate DEC-110 (the
+`AssessmentDefinition` model itself is unchanged) -- it builds directly
+on top of it.
+
+**Jurisdiction-neutrality was already true in substance (built-in
+catalogue always shipped empty since DEC-109; nothing in production code
+has ever branched on a jurisdiction name) -- DEC-111 makes it an
+explicit, enforced, regression-proof invariant rather than an incidental
+fact.** New `backend/tests/test_reference_profile_jurisdiction_
+neutrality.py` tokenizes every production Reference Profile source file
+(`app.domain.reference_profile`/`reference_profile_builtins`/
+`assessment_definition`/`reference_layer`, `app.services.reference_
+profile_registry`/`reference_layer_registry`/`reference_profile_service`,
+`app.schemas.reference_profile`, `app.api.v1.reference_profiles`) using
+Python's own `tokenize` module and strips every COMMENT and STRING token
+(docstrings included -- Python's tokenizer does not distinguish the two)
+before checking the remainder for a fixed list of named jurisdictions/
+OEMs (Malaysia, GB Grid Code, ENTSO-E, AEMO, Huawei). **Deliberately NOT
+a brittle whole-repo string ban** (task's own explicit instruction) --
+that would immediately false-positive on this project's own extensive
+DEC-109/110/111 documentation and comments that name these same terms as
+EXAMPLES of what must never be hardcoded (including this file's own
+DEC-109/110 sections above, and the new test file's own module
+docstring, which the test suite itself proves against by checking its
+OWN docstring is correctly ignored). A profile's own DATA may
+legitimately say "Malaysia Grid Code 2025" (task's own "bundled profile
+!= hardcoded requirement" distinction, section 5); a CODE IDENTIFIER or
+BRANCH keyed on that name may never exist in production domain/service
+code.
+
+**Bundled profiles remain architecturally possible, explicitly distinct
+from a hardcoded requirement.** A future deployment could ship
+`reference_profiles/malaysia_grid_code_2025.json` while another ships
+`gb_grid_code_xxx.json` in the identical built-in directory slot, both
+validated through the SAME unchanged parser (`profile_from_json_dict()`/
+`load_builtin_profiles()`, DEC-109) -- zero new code required. Production
+ships zero bundled profiles today, not because the mechanism can't
+support one, but because (a) no authoritative verified source exists in
+this repo for any real jurisdiction (DEC-109's own governing constraint,
+unchanged) and (b) defaulting to ANY one jurisdiction would itself
+violate neutrality -- confirmed directly, again, by the new test file's
+own `TestProductionBuiltInCatalogueShipsEmpty` class.
+
+**Provenance/version metadata expanded** (`ReferenceProfileMetadata`,
+`app.domain.reference_profile`): `jurisdiction`, `authority`,
+`document_title`, `document_revision`, `effective_date`,
+`source_section`, `source_page`, `manufacturer` (renamed from Slice 3's
+`brand`/`source_document`/`source_revision` -- a safe rename, since
+custom profiles are session-scoped only, never durably stored under the
+old names), plus the unchanged `equipment_type`/`model`/
+`firmware_hardware`/`project`/`plant`/`notes`. Every field stays
+optional (task's own "do not make all fields mandatory" instruction).
+
+**Never assume a newer revision replaces an older one -- no automatic
+"latest version" selection exists anywhere in this codebase.**
+`Malaysia Grid Code 2025` and `2027` (or `OEM Capability Rev A`/`Rev B`)
+may legitimately coexist as two entirely independent `ReferenceProfile`
+objects, each with its own id, each addable as its own Reference Layer
+simultaneously -- proven directly by dedicated coexistence tests at the
+domain (`TestRevisionCoexistenceDEC111` in `test_reference_profile_
+domain.py`), service/registry, API, and browser layers (create both,
+list both, add both as layers, remove one without disturbing the
+other). Schema stays at `schema_version = 2` (DEC-110's own bump) -- the
+metadata expansion is purely additive (new optional fields), not a
+structural shape change.
+
+**Portable JSON is the persistence mechanism -- there is no database, no
+localStorage, no account system, and none should be added until a
+genuine requirement exists.** Named as an explicit product lifecycle
+(the mechanics were already exactly DEC-109's own architecture):
+Portable Reference Profile JSON -> user keeps it locally -> Import into
+Powerwave -> validate -> temporary session/workspace profile -> add as
+Reference Layer. An imported/custom profile exists only for the current
+app/workspace lifecycle (cleared on "Start New Workspace" or a backend
+restart, unchanged DEC-109 behavior); Export is the durable save
+mechanism the engineer actually controls.
+
+**UI terminology aligned to generic, jurisdiction-neutral wording**
+(task section 21): "Manage Profiles" -> "Reference Library" (dialog
+title + card button), "+ New Custom Profile" -> "+ Create Custom
+Reference", "Import JSON…" -> "Import Reference…" -- never "My
+Profiles"/"User Library"/a jurisdiction-specific label, since there are
+no user identities in this application. Empty-state wording revised in
+both the Add Reference and Reference Library pickers to read as an
+intentional product state ("No reference profiles loaded. Create a
+custom reference or import one below.") rather than a loading failure --
+zero bundled profiles by default is correct, expected behavior.
+
+**Real local-file download/upload flow directly browser-tested** (task's
+own "browser test the real download/upload flow where feasible"
+instruction) -- `browser-tests/reference_profiles.spec.js` gained
+scenarios that actually call `download.saveAs()` to write a real file to
+disk and then `setInputFiles()` to feed that EXACT file back through the
+real `<input type="file">` element (never `page.request.post()`
+bypassing the UI): a full local round trip (export a profile, re-import
+the exact downloaded file, confirm both copies now coexist -- caught and
+fixed one genuine `expect.poll()`-needing async-timing flake in this new
+test during development, same class of fix as DEC-110's own
+`reference_profiles.spec.js` timing fix), a malformed local JSON file
+rejected inline, and a v1-schema local file (as if kept from before
+DEC-110) still migrating correctly through the real file picker.
+
+**Explicitly NOT implemented (owner's own exclusion list, unchanged from
+DEC-110)**: Measurement Resolver, Va/Vb/Vc -> VAB/VBC/VCA calculation,
+sequence calculation, minimum/maximum aggregation, measured-waveform
+overlay, t0 alignment, automatic event detection, per-unit comparison,
+compliance evaluation, breach detection, margins, verdicts.
+
+**Files**: `backend/app/domain/reference_profile.py`
+(`ReferenceProfileMetadata` expanded/renamed fields; `_metadata_to_dict()`/
+`_metadata_from_dict()` updated); `backend/app/schemas/reference_profile.py`
+(`ReferenceProfileMetadataIn`/`Out` mirrored); `backend/app/data/
+reference_profiles/builtin/README.md` (rewritten to state the
+jurisdiction-neutrality architecture explicitly, schema example updated
+to v2); new `backend/tests/test_reference_profile_jurisdiction_
+neutrality.py` (9 tests); `frontend/index.html` (expanded provenance
+metadata fields, "Reference Library"/"Create Custom Reference"/"Import
+Reference…" relabeling, revised empty-state wording); updates to
+`test_reference_profile_domain.py` (`TestProvenanceMetadataDEC111`),
+`test_reference_profile_service.py` (`TestRevisionCoexistenceDEC111`),
+`test_reference_profile_api.py` (`TestProvenanceMetadataAndRevisionCoexistenceHttp`),
+`test_frontend_compliance.py` (`TestReferenceLibraryTerminologyDEC111`,
+`TestJurisdictionNeutralUiDEC111`), and `browser-tests/reference_
+profiles.spec.js` (new `test.describe("Compliance Slice 4/5 (DEC-111)")`,
+5 scenarios).
+
+**Validation**: full backend suite passes (zero failures, confirmed
+twice). Every Compliance-specific Playwright suite passes 100% standalone
+(`compliance.spec.js` 10/10, `compliance_measurement.spec.js` 23/23,
+`reference_profiles.spec.js` 20/20 including the 5 new DEC-111
+scenarios). The full combined Playwright run continues to show the SAME
+pre-existing, unrelated Analysis-area engineering-context regression
+DEC-110's own record already reported (confirmed again: none of the
+failures are new, none touch Compliance) -- still out of scope for this
+refinement, still awaiting a dedicated session. `git diff --check`
+clean.
+
+**Stop condition honored**: this architecture/lifecycle refinement only
+-- no measurement resolver, no measured overlay, no event alignment, no
+compliance evaluation, no breach detection, no PASS/FAIL. Awaiting owner
+UAT before any further Compliance work.
+
+## What was done in the prior session — Compliance & Capability architecture refinement — Assessment Definition separates ReferenceProfile from HOW a measured quantity is derived (DEC-110)
+
 **Compliance & Capability architecture refinement — Assessment
 Definition separates ReferenceProfile from HOW a measured quantity is
 derived (DEC-110).** Owner product review, immediately after Slice 3

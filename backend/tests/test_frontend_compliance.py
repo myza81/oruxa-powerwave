@@ -590,3 +590,45 @@ class TestAssessmentDefinitionEditorStructure:
             "wwRefMinAggregate", "wwRefMaxAggregate", "wwRefEachPhaseEvaluate",
         ):
             assert forbidden not in source
+
+
+class TestReferenceLibraryTerminologyDEC111:
+    """DEC-111 section 21: generic, jurisdiction-neutral wording only --
+    "Reference Profiles"/"Reference Library"/"Import Reference"/"Export
+    Reference"/"Reference Layers", never "My Profiles"/"Malaysian
+    Requirements"/"User Library" (there are no user identities and
+    Powerwave is jurisdiction-neutral)."""
+
+    def test_preferred_terminology_is_present(self):
+        source = _source()
+        assert "Reference Library" in source
+        assert "Create Custom Reference" in source
+        assert "Import Reference" in source
+
+    def test_rejected_terminology_is_absent(self):
+        source = _source()
+        for forbidden in ("My Profiles", "User Library", "Malaysian Requirements"):
+            assert forbidden not in source
+
+    def test_empty_states_read_as_an_intentional_product_state_not_a_failure(self):
+        """Task section 22: zero profiles by default is a valid product
+        state -- the empty-state wording must say so plainly, never look
+        like a loading failure."""
+        source = _source()
+        assert "No reference profiles loaded" in source
+
+
+class TestJurisdictionNeutralUiDEC111:
+    """Frontend-side companion to `test_reference_profile_jurisdiction_
+    neutrality.py`'s backend production-code check: no named grid code/
+    utility/OEM ever appears in the Compliance page's own static markup
+    or its Reference Profile/Layer JS (comments in OTHER, unrelated
+    parts of this same file are out of scope for this specific guard --
+    see that backend test's own module docstring for the full
+    "documentation is fine, code is not" reasoning this mirrors)."""
+
+    def test_no_named_jurisdiction_or_oem_in_the_compliance_page_markup(self):
+        source = _source()
+        page = _compliance_page(source)
+        for forbidden in ("Malaysia", "Huawei", "ENTSO-E", "AEMO"):
+            assert forbidden not in page

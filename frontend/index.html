@@ -10084,7 +10084,7 @@
                                     <div class="ww-ref-layer-list" id="wwRefLayerList" hidden></div>
                                     <div class="ww-ref-card-actions">
                                         <button type="button" class="secondary" id="wwComplianceAddReferenceBtn">+ Add Reference</button>
-                                        <button type="button" class="secondary" id="wwRefManageProfilesBtn">Manage Profiles&hellip;</button>
+                                        <button type="button" class="secondary" id="wwRefManageProfilesBtn">Reference Library&hellip;</button>
                                     </div>
                                 </section>
                                 <section class="panel ww-compliance-config-card" id="wwComplianceEventAlignmentCard">
@@ -11711,7 +11711,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             <div class="ww-ref-picker-list" id="wwRefAddList"></div>
             <p class="hint error" id="wwRefAddError" hidden role="alert"></p>
             <div class="group-editor-footer">
-                <button type="button" class="secondary" id="wwRefAddNewProfileBtn">+ New Custom Profile</button>
+                <button type="button" class="secondary" id="wwRefAddNewProfileBtn">+ Create Custom Reference</button>
                 <span class="toolbar-spacer"></span>
                 <button type="button" class="secondary" id="wwRefAddCloseFooterBtn">Close</button>
             </div>
@@ -11724,15 +11724,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
     <div class="confirm-overlay" id="wwRefManageOverlay" hidden>
         <div class="group-editor-box ww-pu-dialog" role="dialog" aria-modal="true" aria-labelledby="wwRefManageTitle">
             <div class="group-editor-header">
-                <h3 id="wwRefManageTitle">Manage Reference Profiles</h3>
+                <h3 id="wwRefManageTitle">Reference Library</h3>
                 <button type="button" class="group-editor-close" id="wwRefManageCloseBtn" aria-label="Close">&times;</button>
             </div>
             <p class="hint">Built-in profiles are read-only (View/Duplicate). Custom profiles can be edited, duplicated, exported, or removed.</p>
             <div class="ww-ref-picker-list" id="wwRefManageList"></div>
             <div class="group-editor-footer">
-                <button type="button" class="secondary" id="wwRefManageNewProfileBtn">+ New Custom Profile</button>
+                <button type="button" class="secondary" id="wwRefManageNewProfileBtn">+ Create Custom Reference</button>
                 <label class="secondary" id="wwRefManageImportLabel" style="display:inline-flex;align-items:center;cursor:pointer;">
-                    Import JSON&hellip;
+                    Import Reference&hellip;
                     <input type="file" id="wwRefManageImportInput" accept="application/json" style="display:none;">
                 </label>
                 <span class="toolbar-spacer"></span>
@@ -11873,15 +11873,27 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 <button type="button" class="secondary" id="wwRefEditorUpperAddRowBtn">+ Add Segment</button>
             </div>
 
+            <!-- DEC-111: provenance/version metadata -- a reference
+                 requirement may live for years and later be revised
+                 (e.g. two independently-coexisting profiles, "2025" and
+                 "2027" revisions of the same jurisdiction); these fields
+                 let a profile stay fully self-describing about WHICH
+                 requirement/revision it represents. Every field is
+                 optional -- never required, never guessed. -->
             <details>
-                <summary class="hint" style="cursor:pointer;">Metadata (optional)</summary>
+                <summary class="hint" style="cursor:pointer;">Provenance / metadata (optional)</summary>
                 <div class="ww-ref-editor-fields">
-                    <label class="ww-cc-field"><span class="ww-cc-field-label">Brand</span><input type="text" id="wwRefEditorMetaBrand"></label>
+                    <label class="ww-cc-field"><span class="ww-cc-field-label">Jurisdiction</span><input type="text" id="wwRefEditorMetaJurisdiction" placeholder="e.g. Malaysia, GB, EU"></label>
+                    <label class="ww-cc-field"><span class="ww-cc-field-label">Authority / utility</span><input type="text" id="wwRefEditorMetaAuthority"></label>
+                    <label class="ww-cc-field"><span class="ww-cc-field-label">Document title</span><input type="text" id="wwRefEditorMetaDocumentTitle"></label>
+                    <label class="ww-cc-field"><span class="ww-cc-field-label">Document revision</span><input type="text" id="wwRefEditorMetaDocumentRevision"></label>
+                    <label class="ww-cc-field"><span class="ww-cc-field-label">Effective date</span><input type="text" id="wwRefEditorMetaEffectiveDate" placeholder="e.g. 2025-01-01"></label>
+                    <label class="ww-cc-field"><span class="ww-cc-field-label">Source section</span><input type="text" id="wwRefEditorMetaSourceSection"></label>
+                    <label class="ww-cc-field"><span class="ww-cc-field-label">Source page</span><input type="text" id="wwRefEditorMetaSourcePage"></label>
+                    <label class="ww-cc-field"><span class="ww-cc-field-label">Manufacturer</span><input type="text" id="wwRefEditorMetaManufacturer"></label>
                     <label class="ww-cc-field"><span class="ww-cc-field-label">Equipment type</span><input type="text" id="wwRefEditorMetaEquipmentType"></label>
                     <label class="ww-cc-field"><span class="ww-cc-field-label">Model</span><input type="text" id="wwRefEditorMetaModel"></label>
                     <label class="ww-cc-field"><span class="ww-cc-field-label">Firmware/Hardware</span><input type="text" id="wwRefEditorMetaFirmwareHardware"></label>
-                    <label class="ww-cc-field"><span class="ww-cc-field-label">Source document</span><input type="text" id="wwRefEditorMetaSourceDocument"></label>
-                    <label class="ww-cc-field"><span class="ww-cc-field-label">Source revision</span><input type="text" id="wwRefEditorMetaSourceRevision"></label>
                     <label class="ww-cc-field"><span class="ww-cc-field-label">Project</span><input type="text" id="wwRefEditorMetaProject"></label>
                     <label class="ww-cc-field"><span class="ww-cc-field-label">Plant</span><input type="text" id="wwRefEditorMetaPlant"></label>
                 </div>
@@ -45653,7 +45665,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const listEl = document.getElementById("wwRefAddList");
             const profiles = wwRefState.profiles || [];
             if (!profiles.length) {
-                listEl.innerHTML = '<p class="ww-ref-picker-empty">No reference profiles yet -- create one with "+ New Custom Profile" below.</p>';
+                listEl.innerHTML = '<p class="ww-ref-picker-empty">No reference profiles loaded. Create a custom reference or import one below.</p>';
                 return;
             }
             const activeProfileIds = new Set((wwRefState.layers || []).map((l) => l.profile_id));
@@ -45719,7 +45731,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const listEl = document.getElementById("wwRefManageList");
             const profiles = wwRefState.profiles || [];
             if (!profiles.length) {
-                listEl.innerHTML = '<p class="ww-ref-picker-empty">No reference profiles yet.</p>';
+                listEl.innerHTML = '<p class="ww-ref-picker-empty">No reference profiles loaded. Create a custom reference or import one below.</p>';
                 return;
             }
             listEl.innerHTML = profiles.map((profile) => {
@@ -45986,12 +45998,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (existing.lower_boundary) existing.lower_boundary.segments.forEach((s) => wwRefEditorAddRow("lower", s));
                 if (existing.upper_boundary) existing.upper_boundary.segments.forEach((s) => wwRefEditorAddRow("upper", s));
                 const m = existing.metadata || {};
-                document.getElementById("wwRefEditorMetaBrand").value = m.brand || "";
+                document.getElementById("wwRefEditorMetaJurisdiction").value = m.jurisdiction || "";
+                document.getElementById("wwRefEditorMetaAuthority").value = m.authority || "";
+                document.getElementById("wwRefEditorMetaDocumentTitle").value = m.document_title || "";
+                document.getElementById("wwRefEditorMetaDocumentRevision").value = m.document_revision || "";
+                document.getElementById("wwRefEditorMetaEffectiveDate").value = m.effective_date || "";
+                document.getElementById("wwRefEditorMetaSourceSection").value = m.source_section || "";
+                document.getElementById("wwRefEditorMetaSourcePage").value = m.source_page || "";
+                document.getElementById("wwRefEditorMetaManufacturer").value = m.manufacturer || "";
                 document.getElementById("wwRefEditorMetaEquipmentType").value = m.equipment_type || "";
                 document.getElementById("wwRefEditorMetaModel").value = m.model || "";
                 document.getElementById("wwRefEditorMetaFirmwareHardware").value = m.firmware_hardware || "";
-                document.getElementById("wwRefEditorMetaSourceDocument").value = m.source_document || "";
-                document.getElementById("wwRefEditorMetaSourceRevision").value = m.source_revision || "";
                 document.getElementById("wwRefEditorMetaProject").value = m.project || "";
                 document.getElementById("wwRefEditorMetaPlant").value = m.plant || "";
                 document.getElementById("wwRefEditorMetaNotes").value = m.notes || "";
@@ -46014,7 +46031,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 document.getElementById("wwRefEditorLowerEnabled").checked = true;
                 document.getElementById("wwRefEditorUpperEnabled").checked = false;
                 wwRefEditorAddRow("lower", { start_time: -0.5, end_time: 3.0, start_value: 0.9, end_value: 0.9, segment_type: "constant" });
-                for (const field of ["Brand", "EquipmentType", "Model", "FirmwareHardware", "SourceDocument", "SourceRevision", "Project", "Plant"]) {
+                for (const field of [
+                    "Jurisdiction", "Authority", "DocumentTitle", "DocumentRevision", "EffectiveDate",
+                    "SourceSection", "SourcePage", "Manufacturer", "EquipmentType", "Model",
+                    "FirmwareHardware", "Project", "Plant",
+                ]) {
                     document.getElementById("wwRefEditorMeta" + field).value = "";
                 }
                 document.getElementById("wwRefEditorMetaNotes").value = "";
@@ -46063,12 +46084,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 lower_boundary: lowerEnabled ? { segments: wwRefEditorCollectBoundarySegments("lower") } : null,
                 upper_boundary: upperEnabled ? { segments: wwRefEditorCollectBoundarySegments("upper") } : null,
                 metadata: {
-                    brand: metaValue("wwRefEditorMetaBrand"),
+                    jurisdiction: metaValue("wwRefEditorMetaJurisdiction"),
+                    authority: metaValue("wwRefEditorMetaAuthority"),
+                    document_title: metaValue("wwRefEditorMetaDocumentTitle"),
+                    document_revision: metaValue("wwRefEditorMetaDocumentRevision"),
+                    effective_date: metaValue("wwRefEditorMetaEffectiveDate"),
+                    source_section: metaValue("wwRefEditorMetaSourceSection"),
+                    source_page: metaValue("wwRefEditorMetaSourcePage"),
+                    manufacturer: metaValue("wwRefEditorMetaManufacturer"),
                     equipment_type: metaValue("wwRefEditorMetaEquipmentType"),
                     model: metaValue("wwRefEditorMetaModel"),
                     firmware_hardware: metaValue("wwRefEditorMetaFirmwareHardware"),
-                    source_document: metaValue("wwRefEditorMetaSourceDocument"),
-                    source_revision: metaValue("wwRefEditorMetaSourceRevision"),
                     project: metaValue("wwRefEditorMetaProject"),
                     plant: metaValue("wwRefEditorMetaPlant"),
                     notes: metaValue("wwRefEditorMetaNotes"),
