@@ -70,9 +70,13 @@ test.describe("Compliance & Capability -- Slice 1 workspace shell", () => {
     // and the bootstrap/discovery/review-required scenarios).
     await expect(page.locator("#wwComplianceMeasurementEmptyState")).toHaveText("No Voltage Measurement Group is available for this workspace.");
     await expect(page.locator("#wwComplianceReferenceLayersEmptyState")).toHaveText("No reference layers added");
-    await expect(page.locator("#wwComplianceAddReferenceBtn")).toBeDisabled();
+    // Compliance Slice 3 (DEC-109): Reference Layers is no longer a
+    // Slice 1 disabled placeholder -- "+ Add Reference" is a real,
+    // enabled entry point (see reference_profiles.spec.js for the full
+    // Slice 3/4 workflow coverage).
+    await expect(page.locator("#wwComplianceAddReferenceBtn")).toBeEnabled();
     await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("No event reference set");
-    await expect(page.locator("#wwComplianceChartEmptyState")).toHaveText("No voltage assessment configured");
+    await expect(page.locator("#wwComplianceChartEmptyState")).toContainText("No reference layers to display");
     await expect(page.locator("#wwComplianceResultsEmptyState")).toContainText("Results will appear after a measurement");
     // Never a fabricated compliance verdict in the empty state.
     await expect(page.locator("#wwComplianceResultsPanel")).not.toContainText("Compliant");

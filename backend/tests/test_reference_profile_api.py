@@ -35,7 +35,8 @@ def client(settings):
 
 def _profile_body(**overrides) -> dict:
     body = {
-        "name": "API Test Profile", "category": "custom_reference", "evaluation_quantity": "phase_a_lg_rms",
+        "name": "API Test Profile", "category": "custom_reference",
+        "assessment_definition": {"representation": "phase_ground_rms", "phase_treatment": "single", "member": "A"},
         "unit": "pu", "display_start_time": -0.5, "display_end_time": 3.0, "evaluation_start_time": 0.0,
         "evaluation_end_time": 3.0, "tolerance": 0.0,
         "lower_boundary": {"segments": [
@@ -108,7 +109,9 @@ class TestReferenceProfileCrudHttp:
     def test_export_then_import_round_trips_as_a_new_profile(self, client: TestClient):
         profile_id = client.post(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles", json=_profile_body(name="Exportable")).json()["id"]
         envelope = client.get(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles/{profile_id}/export").json()
-        assert envelope["schema_version"] == 1
+        assert envelope["schema_version"] == 2
+        assert "assessment_definition" in envelope["profile"]
+        assert "evaluation_quantity" not in envelope["profile"]
         imported = client.post(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles/import", json=envelope)
         assert imported.status_code == 201
         assert imported.json()["id"] != profile_id
@@ -120,6 +123,34 @@ class TestReferenceProfileCrudHttp:
         )
         assert response.status_code == 400
         assert response.json()["detail"]["code"] == "unsupported_reference_profile_schema_version"
+
+    def test_import_legacy_v1_schema_migrates_evaluation_quantity(self, client: TestClient):
+        """DEC-110 task section 6/13: a v1 envelope (the ONLY schema
+        Compliance Slice 3 ever exported) is still importable -- its own
+        `evaluation_quantity` is migrated into an equivalent
+        `assessment_definition`, never lost."""
+        v1_envelope = {
+            "schema_version": 1,
+            "profile": {
+                "name": "Legacy Import", "category": "custom_reference", "evaluation_quantity": "positive_sequence_rms",
+                "unit": "pu", "display_start_time": -0.5, "display_end_time": 3.0, "evaluation_start_time": 0.0,
+                "evaluation_end_time": 3.0, "tolerance": 0.0,
+                "lower_boundary": {"segments": [
+                    {"start_time": -0.5, "end_time": 3.0, "start_value": 0.8, "end_value": 0.8, "segment_type": "constant"}
+                ]},
+                "upper_boundary": None, "metadata": {},
+            },
+        }
+        response = client.post(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles/import", json=v1_envelope)
+        assert response.status_code == 201
+        body = response.json()
+        assert body["assessment_definition"]["representation"] == "positive_sequence_rms"
+        assert body["assessment_definition"]["phase_treatment"] == "single"
+        assert body["assessment_definition"]["legacy_quantity_hint"] == "positive_sequence_rms"
+
+        # Re-exporting the migrated profile always writes v2.
+        export = client.get(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles/{body['id']}/export").json()
+        assert export["schema_version"] == 2
 
 
 class TestBuiltInProfilesViaHttp:
@@ -184,20 +215,19 @@ class TestReferenceLayerHttp:
         response = client.post(f"/api/v1/workspaces/{WORKSPACE}/reference-layers", json={"profile_id": "does-not-exist"})
         assert response.status_code == 404
 
-    def test_layer_compatibility_reflects_quantity_id_query_param(self, client: TestClient):
-        profile_id = client.post(
-            f"/api/v1/workspaces/{WORKSPACE}/reference-profiles", json=_profile_body(evaluation_quantity="phase_a_lg_rms"),
-        ).json()["id"]
+    def test_layer_compatibility_is_always_not_yet_applicable_dec_110(self, client: TestClient):
+        """DEC-110: there is no measurement resolver yet, so compatibility
+        is ALWAYS `not_yet_applicable` -- both with and without a
+        `quantity_id` query param -- never a false `compatible`/
+        `incompatible`."""
+        profile_id = client.post(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles", json=_profile_body()).json()["id"]
         client.post(f"/api/v1/workspaces/{WORKSPACE}/reference-layers", json={"profile_id": profile_id})
 
-        compatible = client.get(f"/api/v1/workspaces/{WORKSPACE}/reference-layers", params={"quantity_id": "phase_a_lg_rms"})
-        assert compatible.json()[0]["compatibility"]["status"] == "compatible"
+        with_quantity = client.get(f"/api/v1/workspaces/{WORKSPACE}/reference-layers", params={"quantity_id": "phase_a_lg_rms"})
+        assert with_quantity.json()[0]["compatibility"]["status"] == "not_yet_applicable"
 
-        incompatible = client.get(f"/api/v1/workspaces/{WORKSPACE}/reference-layers", params={"quantity_id": "phase_b_lg_rms"})
-        assert incompatible.json()[0]["compatibility"]["status"] == "incompatible"
-
-        not_yet_applicable = client.get(f"/api/v1/workspaces/{WORKSPACE}/reference-layers")
-        assert not_yet_applicable.json()[0]["compatibility"]["status"] == "not_yet_applicable"
+        without_quantity = client.get(f"/api/v1/workspaces/{WORKSPACE}/reference-layers")
+        assert without_quantity.json()[0]["compatibility"]["status"] == "not_yet_applicable"
 
 
 class TestComparisonChartHttp:

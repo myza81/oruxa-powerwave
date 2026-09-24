@@ -25,7 +25,6 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, replace
 
-from app.domain.compliance_measurement import get_voltage_quantity
 from app.domain.reference_layer import ReferenceLayer
 from app.domain.reference_profile import (
     BoundaryPoint,
@@ -214,22 +213,39 @@ def import_profile(workspace_id: str, envelope: dict, *, custom_registry: Refere
 
 
 def compute_layer_compatibility(profile: ReferenceProfile, *, selected_quantity_id: str | None) -> tuple[str, str | None]:
-    """Mid-conversation amendment: "no Measurement selected" is its own
-    distinct `COMPATIBILITY_NOT_YET_APPLICABLE` state, never
-    `COMPATIBILITY_INCOMPATIBLE` -- a Reference Layer must never be
-    treated as broken/rejected merely because no recording has been
-    uploaded or no assessment quantity chosen yet."""
+    """DEC-110 architecture refinement: a profile's own `evaluation_
+    quantity` string (which this comparison used to check for equality
+    against `selected_quantity_id`) no longer exists -- `assessment_
+    definition` states a general representation/phase-treatment/member
+    convention that does not, in general, correspond to exactly one
+    canonical Compliance Slice 2 quantity id (e.g. `representation=
+    line_line_rms, phase_treatment=minimum` -- "minimum of VAB/VBC/VCA"
+    -- has no equivalent single canonical quantity at all). Determining
+    whether a SELECTED Measurement's quantity can actually satisfy a
+    profile's own required assessment trace requires a measurement
+    RESOLVER (Va/Vb/Vc -> VAB/VBC/VCA derivation, min/max aggregation,
+    positive-sequence calculation, each-phase evaluation) that does not
+    exist yet -- explicit future-slice work (task section 15).
+
+    Task section 12's own explicit instruction: "Do not introduce false
+    incompatibility merely because assessment_definition != canonical
+    measurement selector." Until the resolver exists, this function
+    ALWAYS returns `COMPATIBILITY_NOT_YET_APPLICABLE` -- never a false
+    `COMPATIBILITY_COMPATIBLE` (which would claim a trace can be derived
+    when nothing has actually checked that) and never a false
+    `COMPATIBILITY_INCOMPATIBLE` (which would reject a profile that a
+    future resolver might satisfy perfectly well). The three-way
+    vocabulary itself (`COMPATIBILITY_COMPATIBLE`/`COMPATIBILITY_
+    INCOMPATIBLE` module constants) is kept defined for API/UI stability
+    and for the resolver slice to start from -- mirroring `app.domain.
+    compliance_measurement.STATUS_INVALID_BASE`'s own "remains defined
+    for vocabulary stability; nothing currently triggers it" precedent."""
     if not selected_quantity_id:
         return COMPATIBILITY_NOT_YET_APPLICABLE, "No Measurement is currently selected -- compatibility is not yet applicable."
-    if profile.evaluation_quantity == selected_quantity_id:
-        return COMPATIBILITY_COMPATIBLE, None
-    selected = get_voltage_quantity(selected_quantity_id)
-    profile_quantity = get_voltage_quantity(profile.evaluation_quantity)
-    selected_label = selected.display_label if selected is not None else selected_quantity_id
-    profile_label = profile_quantity.display_label if profile_quantity is not None else profile.evaluation_quantity
     return (
-        COMPATIBILITY_INCOMPATIBLE,
-        f"This profile evaluates {profile_label}, but the current Measurement is {selected_label}.",
+        COMPATIBILITY_NOT_YET_APPLICABLE,
+        "Measurement comparison is not implemented yet -- compatibility cannot be determined until a "
+        "future slice can derive this profile's own required assessment trace from a real recording.",
     )
 
 

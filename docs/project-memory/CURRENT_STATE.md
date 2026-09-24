@@ -1716,6 +1716,92 @@ full Playwright suite pass. Event Alignment, Results, and every
 evaluation/breach/tolerance/verdict concept remain out of scope, exactly
 as before.
 
+**Compliance & Capability architecture refinement — Assessment
+Definition separates ReferenceProfile from HOW a measured quantity is
+derived (DEC-110, 2026-09-24).** Owner product review, after Slice 3
+UAT passed conceptually: `ReferenceProfile.evaluation_quantity` (one of
+Slice 2's own nine canonical quantity ids) was too tightly coupled to
+one measured convention — a real grid-code/utility/OEM requirement
+often specifies only the boundary curve, leaving HOW to reduce a
+three-phase recording to one comparable value (minimum of VAB/VBC/VCA,
+minimum of VA/VB/VC, positive-sequence voltage, each phase
+independently, or genuinely unstated) to a separate, sometimes entirely
+unstated, convention.
+
+**New, standalone `AssessmentDefinition` domain model**
+(`app/domain/assessment_definition.py`, zero dependency on `app.domain.
+reference_profile` to avoid a circular import): `quantity_family`
+(`voltage`), `representation` (`line_line_rms`/`phase_ground_rms`/
+`positive_sequence_rms`/`unspecified`), `phase_treatment`
+(`minimum`/`maximum`/`each_phase`/`single`/`unspecified`), an optional
+`member` (`A`/`B`/`C`/`AB`/`BC`/`CA`, only meaningful for a `single`
+line-line/phase-ground pick), `measurement_location`, and `provenance` —
+every field defaults to `unspecified`, a fully valid "not yet confirmed"
+state, never an error, never silently guessed. `ReferenceProfile.
+evaluation_quantity` is retired, replaced by `assessment_definition:
+AssessmentDefinition`. Validated combinations carry real engineering
+meaning (an aggregate treatment never takes a member; positive-sequence
+has no member concept; `single` with line-line/phase-ground REQUIRES a
+member; `each_phase` is not yet supported for `line_line_rms`).
+
+**Canonical Slice 2 measurement quantities are completely unchanged**
+(`app.domain.compliance_measurement.VOLTAGE_QUANTITIES`, zero lines
+touched) — the frozen distinction, in the owner's own words: "canonical
+measurement quantities = what Powerwave CAN CALCULATE; assessment
+definition = what a REQUIREMENT tells Powerwave to use." All nine
+legacy `evaluation_quantity` ids migrate unambiguously to an
+`AssessmentDefinition`; an unrecognized one becomes fully `unspecified`
+with the original string preserved as `legacy_quantity_hint`. JSON
+schema bumped to v2 (`assessment_definition` object) — v1
+(`evaluation_quantity` string) remains a read-only, import-only
+migration path; every new export always writes v2.
+
+**Compatibility is now ALWAYS `not_yet_applicable`** — there is no
+measurement resolver yet to determine whether a profile's own required
+assessment trace can actually be derived from a selected Measurement, so
+`compute_layer_compatibility()` never returns `compatible`/`incompatible`
+in this codebase today; this is the direct, necessary consequence of the
+model split, not a regression. The profile editor's old "Evaluation
+quantity" select is retired, replaced by a compact "Assessment
+Definition" section (Voltage representation / Phase treatment / Specific
+member (shown only when applicable) / Measurement location /
+Interpretation source, human labels only, never raw enum names); the
+Reference Layers card and Add Reference picker both gained a one-line
+assessment summary (e.g. "Assessment: Minimum Line-Line RMS at
+Connection Point" / "Assessment convention not specified").
+
+**A genuine, pre-existing regression was discovered (not caused) during
+full-Playwright validation for this refinement**:
+`analysis_related_waveforms.spec.js` and every Analysis analyzer's own
+Playwright suite (Phasor/Overcurrent/Impedance/Distance/Sequence
+Components) upload a fixture then manually `POST .../engineering-
+contexts` to seed a bay — this now 409s (`channel_already_in_context`)
+because DEC-104's own shared post-upload preparation already
+auto-creates an Engineering Context for the same channels before the
+test's own manual POST runs. Confirmed reproducible on a byte-identical,
+disposable `git worktree` checkout of the prior commit (`667159d`, zero
+DEC-110 changes present) via a raw HTTP request, no browser involved —
+this is an Analysis-area regression, unrelated to Compliance, and
+explicitly out of this refinement's own task scope ("implement a
+targeted architecture refinement only"); reported to the owner rather
+than fixed here. See [COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md)'s
+own "Assessment Definition (DEC-110)" section for the full account,
+including the one directly-Compliance-related casualty of the same
+investigation that WAS fixed (`browser-tests/compliance.spec.js` still
+asserted Slice 1's own retired disabled "+ Add Reference" state, missed
+when DEC-109 activated it).
+
+See [DECISIONS.md — DEC-110](DECISIONS.md#dec-110--compliance-slice-3-refinement-referenceprofile-is-separated-from-how-a-measured-quantity-is-derived--a-new-assessmentdefinition-model-bridges-the-reference-boundarycurve-to-compliance-slice-2s-canonical-measurement-quantities-with-unspecified-as-a-first-class-state-and-no-measurement-resolver-implemented-yet)
+for the full architectural record. New tests: `test_assessment_
+definition.py` (32), plus updates across `test_reference_profile_
+domain.py`, `test_reference_profile_service.py`, `test_reference_
+profile_api.py`, `test_frontend_compliance.py`
+(`TestAssessmentDefinitionEditorStructure`), and `browser-tests/
+reference_profiles.spec.js` (new `test.describe("Compliance Slice 4
+(DEC-110)")`, 5 scenarios). Full backend suite passes; full Playwright
+suite passes with the one pre-existing, unrelated Analysis-area
+exception noted above.
+
 **Flake cleanup (2026-09-19, continued) — the third and final DEC-099
 item ("Speed selection 4x") is now `[CLOSED]`; DEC-099 has zero
 remaining `[OPEN]` items.** Test-synchronization bug, no production
@@ -2181,9 +2267,20 @@ all** — a deliberate, explicit product requirement, not an oversight;
 Measurement stays a separate, optional input that becomes available
 once a source/Bay/quantity exist, and uploading a source never resets
 already-configured Reference Layers. Event Alignment/Results remain
-Slice 1's own placeholders. See
-[COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md) and
-[DEC-109](DECISIONS.md#dec-109--compliance-slice-3-a-generic-reference-profilereference-layer-domain-model-static-comparison-chart-rendering-and-a-reference-subsystem-lifecycle-fully-independent-of-any-uploaded-recording).
+Slice 1's own placeholders. As of 2026-09-24, a `ReferenceProfile` no
+longer bakes in WHICH canonical measurement quantity it evaluates —
+that is now a separate `AssessmentDefinition` (representation/phase
+treatment/member/measurement location/provenance, DEC-110), so a
+profile can express conventions like "minimum of the three line-line
+RMS values" that Slice 2's own nine canonical quantities alone could
+never represent, and can legitimately stay fully `unspecified` when a
+requirement genuinely does not state one. No measurement resolver
+exists yet to actually derive/compare a trace — compatibility is
+therefore always `not_yet_applicable` today. See
+[COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md),
+[DEC-109](DECISIONS.md#dec-109--compliance-slice-3-a-generic-reference-profilereference-layer-domain-model-static-comparison-chart-rendering-and-a-reference-subsystem-lifecycle-fully-independent-of-any-uploaded-recording),
+and
+[DEC-110](DECISIONS.md#dec-110--compliance-slice-3-refinement-referenceprofile-is-separated-from-how-a-measured-quantity-is-derived--a-new-assessmentdefinition-model-bridges-the-reference-boundarycurve-to-compliance-slice-2s-canonical-measurement-quantities-with-unspecified-as-a-first-class-state-and-no-measurement-resolver-implemented-yet).
 CSV/Excel ingestion is the current workstream — Slices 1-12 (raw preparation-source upload
 through canonical `DisturbanceRecord` conversion, existing-waveform-
 integration verification, and cleaned data export) are implemented;

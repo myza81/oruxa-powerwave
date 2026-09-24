@@ -6,17 +6,21 @@
 scoping) implemented 2026-09-20; a further owner-UAT correction (group
 discovery/bootstrap) implemented 2026-09-23; Slice 3 (Reference
 Profiles, Reference Layers, and static Comparison Chart rendering)
-implemented 2026-09-23 — see "Slice 3" below.** Event alignment/t0,
-measured-waveform overlay, automated event detection, and compliance
-evaluation/breach/margin/tolerance logic still do not exist — see
-"Slice 2" below for exactly what Measurement does, "Bay/Measurement
+implemented 2026-09-23; a same-week architecture refinement (Assessment
+Definition, DEC-110) implemented 2026-09-24 — see "Slice 3" and
+"Assessment Definition (DEC-110)" below.** Event alignment/t0, measured-
+waveform overlay, automated event detection, a measurement resolver, and
+compliance evaluation/breach/margin/tolerance logic still do not exist —
+see "Slice 2" below for exactly what Measurement does, "Bay/Measurement
 Group scoping (2026-09-20 UAT correction)" for the corrected selection
 workflow, "Bay/Measurement Group discovery/bootstrap (2026-09-23 UAT
 correction)" for why groups appear WITHOUT visiting another page first,
 "Slice 3 — Reference Profiles, Reference Layers, and Static Curve
 Rendering" for the reference-profile engine and static Comparison Chart,
-and "No calculation/evaluation/persistence logic exists yet" for what
-still doesn't.
+"Assessment Definition (DEC-110)" for HOW a measured voltage is meant to
+be derived (a separate concept from WHAT curve is required, still not
+actually computed by anything), and "No calculation/evaluation/
+persistence logic exists yet" for what still doesn't.
 
 ## Compliance is a top-level function, independent of Analysis
 
@@ -549,6 +553,18 @@ or how Compliance uses the result.
 
 ## Slice 3 — Reference Profiles, Reference Layers, and Static Curve Rendering (2026-09-23)
 
+**Superseded IN PART the next day by the Assessment Definition
+refinement (DEC-110, see its own section below).** Everything in this
+section about the boundary/segment model, right-continuity, built-in/
+custom lifecycle, import/export mechanics, Reference Layers UI, and
+Comparison Chart rendering is still exactly accurate and unchanged. What
+changed is the `evaluation_quantity` field this section describes below
+— it no longer exists on `ReferenceProfile`, replaced by
+`assessment_definition: AssessmentDefinition`. Kept here verbatim
+(rather than silently rewritten) as the accurate historical record of
+what Slice 3 shipped before the refinement — do not treat the
+`evaluation_quantity` framing below as current.
+
 Implements a generic Reference Profile/Reference Layer engine and STATIC
 Comparison Chart rendering. Explicitly excludes manual t0/event
 alignment, measured-waveform overlay, automated event detection,
@@ -623,10 +639,14 @@ explicitly, never silently coerced.
 **Compatibility is three-way, never two-way** — the mid-implementation
 amendment's own central requirement. `compute_layer_compatibility()`
 returns `not_yet_applicable` (never `incompatible`) whenever no
-Measurement quantity is currently selected; once one IS selected, a
-genuine mismatch is `incompatible` with an actionable reason, but the
-layer/profile stays fully visible and manageable either way — never
-hidden, never silently removed.
+Measurement quantity is currently selected. *(Superseded by DEC-110,
+see below: as of the Assessment Definition refinement, this function now
+returns `not_yet_applicable` UNCONDITIONALLY, even once a Measurement IS
+selected — there is no measurement resolver yet to determine a genuine
+mismatch, so nothing is ever classified `compatible`/`incompatible` in
+this codebase today. The three-way vocabulary itself is unchanged and
+still exactly this section's own point: never hidden, never silently
+removed, either way.)*
 
 **The Comparison Chart's own axes are derived entirely from the active,
 VISIBLE layers' own profiles, never from a recording.** X-axis: the
@@ -675,6 +695,124 @@ scenarios), `test_frontend_compliance.py` updates (`TestComplianceOutOfScopeSlic
 inspecting actual Plotly trace data — never screenshots/text only).
 Full backend suite and full Playwright suite pass.
 
+## Assessment Definition (DEC-110, 2026-09-24)
+
+Separates `ReferenceProfile` (WHAT boundary/curve is required) from a
+new, independent `AssessmentDefinition` model (HOW a measured voltage
+should be derived for a future comparison). See
+[DECISIONS.md — DEC-110](DECISIONS.md#dec-110--compliance-slice-3-refinement-referenceprofile-is-separated-from-how-a-measured-quantity-is-derived--a-new-assessmentdefinition-model-bridges-the-reference-boundarycurve-to-compliance-slice-2s-canonical-measurement-quantities-with-unspecified-as-a-first-class-state-and-no-measurement-resolver-implemented-yet)
+for the full architectural record; this section is a shorter practical
+summary.
+
+**Why**: owner product review after Slice 3 UAT — a real grid-code/
+utility/OEM requirement usually specifies one boundary curve, but the
+aggregation convention for reducing a three-phase recording to one
+comparable value (minimum of VAB/VBC/VCA, minimum of VA/VB/VC, positive-
+sequence voltage, each phase independently, or genuinely unstated) is a
+SEPARATE fact, and Slice 3's own `evaluation_quantity` (one of Slice 2's
+nine canonical quantity ids) could not represent most of these
+conventions at all, let alone an unstated one.
+
+**`ReferenceProfile.assessment_definition: AssessmentDefinition`**
+replaces `evaluation_quantity` entirely. Five closed axes, deliberately
+narrow (never an open enum universe):
+
+```text
+quantity_family:       voltage
+representation:        line_line_rms | phase_ground_rms | positive_sequence_rms | unspecified
+phase_treatment:       minimum | maximum | each_phase | single | unspecified
+member (optional):     A | B | C | AB | BC | CA
+measurement_location:  connection_point | equipment_terminal | project_defined | unspecified
+provenance:            explicit_standard | utility_clarification | project_agreement | user_defined | unspecified
+```
+
+Every field defaults to `unspecified`/`None` — a fully-unspecified
+definition is always valid, representing "not yet confirmed", never an
+error and never silently resolved to a guess.
+
+**Validated combinations carry real engineering meaning**
+(`app.domain.assessment_definition.validate_assessment_definition()`):
+an aggregate treatment (`minimum`/`maximum`/`each_phase`) never takes a
+specific `member`; `positive_sequence_rms` has no per-member concept;
+`phase_treatment=single` with a line-line/phase-ground representation
+REQUIRES an explicit member; `phase_treatment=each_phase` is not (yet)
+supported for `representation=line_line_rms`; a `member` must belong to
+its own representation's member set. Kept as a fully independent domain
+module from `app.domain.reference_profile` (its own
+`AssessmentDefinitionValidationError`, translated at the `ReferenceProfile`
+boundary) specifically to avoid a circular import.
+
+**Canonical Compliance Slice 2 measurement quantities are unchanged and
+remain exactly what they always were**: normalized measurement PRODUCTS
+Powerwave can compute (`app.domain.compliance_measurement.
+VOLTAGE_QUANTITIES`, zero lines touched), never a regulatory definition.
+A future measurement-resolver slice maps an `AssessmentDefinition` to
+one of these (or to a newly-derived trace this catalogue does not yet
+cover).
+
+**Legacy `evaluation_quantity` values are migrated, never lost.** All
+nine Slice 2 canonical ids map unambiguously
+(`assessment_definition_from_legacy_quantity()`); an unrecognized value
+becomes fully `unspecified` with the original string preserved as
+`legacy_quantity_hint` (shown as a read-only note in the profile
+editor).
+
+**JSON schema is now v2** (`assessment_definition` object, not
+`evaluation_quantity` string) — `v1` remains a read-only, import-only
+migration path; every new export always writes `v2`.
+
+**Compatibility is now ALWAYS `not_yet_applicable`** — there is no
+measurement resolver yet to determine a genuine mismatch (or a genuine
+match), so `compute_layer_compatibility()` never returns `compatible`/
+`incompatible` in this codebase today. This is the direct, necessary
+consequence of the model split, not a regression — see DEC-110's own
+"never introduce false incompatibility" rationale.
+
+**Frontend**: the profile editor's old "Evaluation quantity" select is
+retired; a new "Assessment Definition" section exposes Voltage
+representation / Phase treatment / Specific member (shown only when
+applicable) / Measurement location / Interpretation source, always
+human labels, never raw enum names. The Reference Layers card and Add
+Reference picker both gained a one-line assessment summary (e.g.
+"Assessment: Minimum Line-Line RMS at Connection Point" / "Assessment
+convention not specified").
+
+**Explicitly NOT implemented**: Va/Vb/Vc → VAB/VBC/VCA derivation,
+min/max aggregation, positive-sequence calculation, each-phase
+evaluation, measured-trace overlay, per-unit conversion, t0 alignment,
+compliance comparison — a future measurement-resolver slice.
+
+**Tests**: `test_assessment_definition.py` (32), plus updates across
+`test_reference_profile_domain.py`, `test_reference_profile_service.py`,
+`test_reference_profile_api.py`, `test_frontend_compliance.py`
+(`TestAssessmentDefinitionEditorStructure`), and
+`browser-tests/reference_profiles.spec.js` (a new
+`test.describe("Compliance Slice 4 (DEC-110)")` block, 5 scenarios).
+Full backend suite and full Playwright suite pass.
+
+**A genuine, pre-existing regression was discovered (not caused) during
+full-suite validation for this refinement**: `analysis_related_
+waveforms.spec.js`/`phasor_analysis.spec.js`/`overcurrent_analysis.spec.js`/
+`impedance_analysis.spec.js`/`distance_protection_analysis.spec.js`/
+`sequence_components_analysis.spec.js` all upload a fixture then
+manually `POST .../engineering-contexts` to seed a bay — this now 409s
+("channel_already_in_context") on a byte-identical, freshly-checked-out
+DEC-109 commit (`667159d`) with zero DEC-110 changes present, because
+DEC-104's own shared post-upload preparation already auto-creates an
+Engineering Context for the same channels before the test's own manual
+POST runs. Confirmed via a disposable `git worktree` at `667159d` (never
+touching the working tree) reproducing the identical 409 with a raw
+HTTP request, no browser involved. This is an Analysis-area regression,
+unrelated to Compliance/Reference Profiles, and out of scope for this
+refinement's own task boundary ("implement a targeted architecture
+refinement only") — reported to the owner rather than fixed here. One
+directly-Compliance-related casualty of the SAME investigation WAS fixed
+in this slice: `browser-tests/compliance.spec.js` still asserted Slice
+1's own retired `#wwComplianceAddReferenceBtn` disabled state and the
+old "No voltage assessment configured" chart empty-state text, both
+superseded by DEC-109 the day before but never updated in this
+particular file (only in `test_frontend_compliance.py`) — corrected now.
+
 ## UI/UX is intentionally subject to owner UAT and may change
 
 Workflow order, section placement, chart prominence, terminology,
@@ -690,15 +828,19 @@ recorded).
 per-unit conversion (reused, not reimplemented), and positive-sequence
 calculation ARE implemented** — see "Slice 2" above. **As of Slice 3, a
 generic Reference Profile/Reference Layer engine and static Comparison
-Chart rendering ARE implemented** — see "Slice 3" above. Everything
-else below remains explicitly out of scope, not implemented anywhere in
-this codebase:
+Chart rendering ARE implemented** — see "Slice 3" above. **As of the
+DEC-110 refinement, an AssessmentDefinition model and its own validation
+ARE implemented** — see "Assessment Definition (DEC-110)" above; this
+defines semantics only, it does not compute anything. Everything else
+below remains explicitly out of scope, not implemented anywhere in this
+codebase:
 
 ```text
 Malaysian Grid Code profile (or any other named official requirement)
 t0 alignment logic
 measured-waveform overlay on the Comparison Chart
 automated event detection
+a measurement resolver (Va/Vb/Vc -> VAB/VBC/VCA derivation, min/max aggregation, positive-sequence calculation, each-phase evaluation for Compliance)
 compliance evaluation / breach calculation / margin calculation / tolerance evaluation
 PASS/FAIL / Compliant / Boundary Breached / Within Capability verdicts
 a second database/storage layer for profiles (custom profiles are in-memory/workspace-scoped only)
@@ -799,14 +941,19 @@ placeholders) all guard this boundary directly.
   `test_reference_profile_api.py` — Slice 3's own domain/service/API
   test coverage; `backend/tests/fixtures/reference_profiles/` — the
   developer/test-only built-in fixtures (never loaded by production).
-- `browser-tests/reference_profiles.spec.js` — Slice 3 real-browser
+- `browser-tests/reference_profiles.spec.js` — Slice 3/4 real-browser
   coverage (create-via-editor-and-render, multi-layer add/toggle/
   remove-without-deleting-profile, discontinuity/gap rendering,
   lower-only/upper-only/envelope combinations, the three-way
   compatibility proof, configure-layers-then-upload-recording
-  persistence, Manage Profiles actions, import/export round-trip) —
-  inspects real Plotly trace data via `#wwComplianceChartPlot.data`,
-  never screenshots/text only.
+  persistence, Manage Profiles actions, import/export round-trip, PLUS
+  the DEC-110 Assessment Definition scenarios) — inspects real Plotly
+  trace data via `#wwComplianceChartPlot.data`, never screenshots/text
+  only.
+- `backend/app/domain/assessment_definition.py` — DEC-110's own
+  standalone AssessmentDefinition model, validation, legacy-quantity
+  migration; `backend/tests/test_assessment_definition.py` — its
+  dedicated test coverage.
 
 ## Related documents
 
@@ -822,11 +969,14 @@ placeholders) all guard this boundary directly.
   [DEC-104](DECISIONS.md#dec-104--successful-source-upload-triggers-shared-workspacesource-preparation-measurement-group--engineering-context-discovery-no-top-level-function-may-depend-on-another-page-having-been-opened-first)
   (the same-day generalization moving discovery to a shared backend
   post-upload choke point, with DEC-103's own bootstrap kept as
-  fallback-only), and
+  fallback-only),
   [DEC-109](DECISIONS.md#dec-109--compliance-slice-3-a-generic-reference-profilereference-layer-domain-model-static-comparison-chart-rendering-and-a-reference-subsystem-lifecycle-fully-independent-of-any-uploaded-recording)
   (Slice 3 — the Reference Profile/Reference Layer domain model, static
   Comparison Chart rendering, and the Reference subsystem's own
-  recording-independent lifecycle).
+  recording-independent lifecycle), and
+  [DEC-110](DECISIONS.md#dec-110--compliance-slice-3-refinement-referenceprofile-is-separated-from-how-a-measured-quantity-is-derived--a-new-assessmentdefinition-model-bridges-the-reference-boundarycurve-to-compliance-slice-2s-canonical-measurement-quantities-with-unspecified-as-a-first-class-state-and-no-measurement-resolver-implemented-yet)
+  (the Assessment Definition refinement — ReferenceProfile separated
+  from HOW a measured quantity is derived).
 - [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) — the
   group-aware Per-Unit/Measurement Group model this feature's Bay
   picker and Base display both reuse verbatim.

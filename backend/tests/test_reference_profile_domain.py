@@ -1,8 +1,12 @@
-"""Domain-level tests for Compliance Slice 3's Reference Profile model
+"""Domain-level tests for Compliance Slice 3/4's Reference Profile model
 (`app.domain.reference_profile`) -- validation, right-continuity/gap
-rendering, and the versioned JSON export/import schema. Pure, no
-registry/HTTP involved (see `test_reference_profile_service.py`/
-`test_reference_profile_api.py` for those layers)."""
+rendering, and the versioned JSON export/import schema (including the
+DEC-110 v1 -> v2 `evaluation_quantity` -> `assessment_definition`
+migration). Pure, no registry/HTTP involved (see
+`test_reference_profile_service.py`/`test_reference_profile_api.py` for
+those layers, and `test_assessment_definition.py` for the
+AssessmentDefinition model's own dedicated validation/migration
+coverage)."""
 
 from __future__ import annotations
 
@@ -10,6 +14,7 @@ import math
 
 import pytest
 
+from app.domain.assessment_definition import AssessmentDefinition
 from app.domain.reference_profile import (
     BoundarySegment,
     ReferenceBoundary,
@@ -34,7 +39,7 @@ def _profile(**overrides) -> ReferenceProfile:
         id="p1",
         name="Test Profile",
         category="custom_reference",
-        evaluation_quantity="phase_a_lg_rms",
+        assessment_definition=AssessmentDefinition(),
         unit="pu",
         display_start_time=-0.5,
         display_end_time=3.0,
@@ -161,6 +166,25 @@ class TestValidationRejections:
         assert exc.value.reason_code == "empty_boundary"
 
 
+class TestAssessmentDefinitionValidationPropagatesToProfileLevel:
+    """DEC-110: `AssessmentDefinition`'s own validation errors surface
+    through `validate_reference_profile()` as an ordinary
+    `ReferenceProfileValidationError`, with `field_name` prefixed
+    `"assessment_definition."` -- one unified error surface at the
+    `ReferenceProfile` boundary, even though the two models live in
+    separate, mutually-independent domain modules."""
+
+    def test_invalid_assessment_definition_is_rejected_at_profile_level(self):
+        definition = AssessmentDefinition(representation="line_line_rms", phase_treatment="each_phase")
+        with pytest.raises(ReferenceProfileValidationError) as exc:
+            validate_reference_profile(_profile(assessment_definition=definition))
+        assert exc.value.reason_code == "each_phase_not_supported_for_line_line"
+        assert exc.value.field_name == "assessment_definition.phase_treatment"
+
+    def test_fully_unspecified_assessment_definition_is_valid(self):
+        validate_reference_profile(_profile(assessment_definition=AssessmentDefinition()))
+
+
 class TestRightContinuityAndGapRendering:
     def test_discontinuity_produces_a_vertical_connector(self):
         # Segment 1: 0.9 constant until t=0.15; segment 2: linear 0.2 -> 0.9
@@ -211,14 +235,24 @@ class TestJsonSchemaRoundTrip:
     def _envelope(self, profile: ReferenceProfile) -> dict:
         return profile_to_json_dict(profile)
 
-    def test_export_then_import_round_trips_structurally(self):
-        profile = _profile(id="ignored-on-export")
+    def test_schema_version_is_2_by_default(self):
+        assert SCHEMA_VERSION == 2
+
+    def test_export_always_writes_v2_with_assessment_definition_object(self):
+        profile = _profile(assessment_definition=AssessmentDefinition(representation="positive_sequence_rms", phase_treatment="single"))
         envelope = self._envelope(profile)
-        assert envelope["schema_version"] == SCHEMA_VERSION
+        assert envelope["schema_version"] == 2
+        assert "evaluation_quantity" not in envelope["profile"]
+        assert envelope["profile"]["assessment_definition"]["representation"] == "positive_sequence_rms"
+
+    def test_export_then_import_round_trips_structurally(self):
+        profile = _profile(id="ignored-on-export", assessment_definition=AssessmentDefinition(representation="line_line_rms", phase_treatment="minimum"))
+        envelope = self._envelope(profile)
         assert "id" not in envelope["profile"]
         imported = profile_from_json_dict(envelope, profile_id="new-id")
         assert imported.id == "new-id"
         assert imported.name == profile.name
+        assert imported.assessment_definition == profile.assessment_definition
         assert imported.lower_boundary == profile.lower_boundary
         assert imported.upper_boundary == profile.upper_boundary
 
@@ -251,3 +285,70 @@ class TestJsonSchemaRoundTrip:
         with pytest.raises(ReferenceProfileValidationError) as exc:
             profile_from_json_dict(envelope, profile_id="new-id")
         assert exc.value.reason_code == "negative_tolerance"
+
+
+class TestV1LegacySchemaMigration:
+    """DEC-110 task section 6/13: a v1 body's own `evaluation_quantity`
+    is migrated into an equivalent `AssessmentDefinition`, never lost,
+    never silently reinterpreted. v1 remains READABLE (import-only) --
+    `profile_to_json_dict()` never writes it (see
+    `TestJsonSchemaRoundTrip.test_export_always_writes_v2_with_
+    assessment_definition_object`)."""
+
+    def _v1_envelope(self, *, evaluation_quantity: str, **profile_overrides) -> dict:
+        profile = {
+            "name": "Legacy Profile", "category": "custom_reference", "evaluation_quantity": evaluation_quantity,
+            "unit": "pu", "display_start_time": -0.5, "display_end_time": 3.0, "evaluation_start_time": 0.0,
+            "evaluation_end_time": 3.0, "tolerance": 0.0,
+            "lower_boundary": {"segments": [{"start_time": -0.5, "end_time": 3.0, "start_value": 0.8, "end_value": 0.8, "segment_type": "constant"}]},
+            "upper_boundary": None, "metadata": {},
+        }
+        profile.update(profile_overrides)
+        return {"schema_version": 1, "profile": profile}
+
+    @pytest.mark.parametrize("quantity_id,representation,phase_treatment,member", [
+        ("phase_a_lg_rms", "phase_ground_rms", "single", "A"),
+        ("phase_b_lg_rms", "phase_ground_rms", "single", "B"),
+        ("phase_c_lg_rms", "phase_ground_rms", "single", "C"),
+        ("phase_ab_ll_rms", "line_line_rms", "single", "AB"),
+        ("phase_bc_ll_rms", "line_line_rms", "single", "BC"),
+        ("phase_ca_ll_rms", "line_line_rms", "single", "CA"),
+        ("min_phase_lg_rms", "phase_ground_rms", "minimum", None),
+        ("max_phase_lg_rms", "phase_ground_rms", "maximum", None),
+        ("positive_sequence_rms", "positive_sequence_rms", "single", None),
+    ])
+    def test_every_canonical_v1_quantity_maps_unambiguously(self, quantity_id, representation, phase_treatment, member):
+        imported = profile_from_json_dict(self._v1_envelope(evaluation_quantity=quantity_id), profile_id="new-id")
+        definition = imported.assessment_definition
+        assert definition.representation == representation
+        assert definition.phase_treatment == phase_treatment
+        assert definition.member == member
+        assert definition.legacy_quantity_hint == quantity_id
+
+    def test_unrecognized_legacy_quantity_becomes_unspecified_with_hint_preserved(self):
+        imported = profile_from_json_dict(self._v1_envelope(evaluation_quantity="totally_unknown_quantity"), profile_id="new-id")
+        definition = imported.assessment_definition
+        assert definition.representation == "unspecified"
+        assert definition.phase_treatment == "unspecified"
+        assert definition.member is None
+        assert definition.legacy_quantity_hint == "totally_unknown_quantity"
+
+    def test_v1_body_missing_evaluation_quantity_is_rejected_explicitly(self):
+        envelope = self._v1_envelope(evaluation_quantity="phase_a_lg_rms")
+        del envelope["profile"]["evaluation_quantity"]
+        with pytest.raises(ReferenceProfileValidationError) as exc:
+            profile_from_json_dict(envelope, profile_id="new-id")
+        assert exc.value.reason_code == "malformed_profile"
+
+    def test_migrated_v1_profile_still_passes_full_domain_validation(self):
+        envelope = self._v1_envelope(evaluation_quantity="phase_a_lg_rms", tolerance=-1.0)
+        with pytest.raises(ReferenceProfileValidationError) as exc:
+            profile_from_json_dict(envelope, profile_id="new-id")
+        assert exc.value.reason_code == "negative_tolerance"
+
+    def test_v1_import_then_v2_export_upgrades_the_schema(self):
+        imported = profile_from_json_dict(self._v1_envelope(evaluation_quantity="positive_sequence_rms"), profile_id="new-id")
+        envelope = profile_to_json_dict(imported)
+        assert envelope["schema_version"] == 2
+        assert envelope["profile"]["assessment_definition"]["representation"] == "positive_sequence_rms"
+        assert envelope["profile"]["assessment_definition"]["legacy_quantity_hint"] == "positive_sequence_rms"

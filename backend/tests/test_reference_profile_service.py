@@ -29,8 +29,6 @@ from app.services.errors import (
 from app.services.reference_layer_registry import ReferenceLayerRegistry
 from app.services.reference_profile_registry import ReferenceProfileRegistry
 from app.services.reference_profile_service import (
-    COMPATIBILITY_COMPATIBLE,
-    COMPATIBILITY_INCOMPATIBLE,
     COMPATIBILITY_NOT_YET_APPLICABLE,
     SOURCE_CUSTOM,
     add_layer,
@@ -54,7 +52,9 @@ WORKSPACE = "ws-ref-svc-1"
 
 def _write_request(**overrides) -> ReferenceProfileWriteRequest:
     defaults = dict(
-        name="Test Profile", category="custom_reference", evaluation_quantity="phase_a_lg_rms", unit="pu",
+        name="Test Profile", category="custom_reference",
+        assessment_definition={"representation": "phase_ground_rms", "phase_treatment": "single", "member": "A"},
+        unit="pu",
         display_start_time=-0.5, display_end_time=3.0, evaluation_start_time=0.0, evaluation_end_time=3.0,
         tolerance=0.0,
         lower_boundary={"segments": [
@@ -226,33 +226,42 @@ class TestReferenceLayerCrud:
 
 
 class TestCompatibility:
-    def test_no_measurement_selected_is_not_yet_applicable_never_incompatible(self):
+    """DEC-110: since there is no measurement resolver yet, compatibility
+    is ALWAYS `not_yet_applicable` -- never a false `compatible` (nothing
+    has actually checked a trace can be derived) and never a false
+    `incompatible` (a mismatch between `assessment_definition` and a
+    canonical quantity id no longer means anything, since a profile's
+    own required trace may not correspond to any single canonical
+    quantity at all -- e.g. "minimum of VAB/VBC/VCA" has none)."""
+
+    def test_no_measurement_selected_is_not_yet_applicable(self):
         profile = create_custom_profile(
-            WORKSPACE, _write_request(evaluation_quantity="phase_a_lg_rms").to_domain(profile_id=""),
-            custom_registry=ReferenceProfileRegistry(),
+            WORKSPACE, _write_request().to_domain(profile_id=""), custom_registry=ReferenceProfileRegistry(),
         )
         status, reason = compute_layer_compatibility(profile, selected_quantity_id=None)
         assert status == COMPATIBILITY_NOT_YET_APPLICABLE
         assert reason is not None
 
-    def test_matching_quantity_is_compatible(self):
+    def test_measurement_selected_is_still_not_yet_applicable_never_compatible_or_incompatible(self):
         profile = create_custom_profile(
-            WORKSPACE, _write_request(evaluation_quantity="phase_a_lg_rms").to_domain(profile_id=""),
-            custom_registry=ReferenceProfileRegistry(),
+            WORKSPACE, _write_request().to_domain(profile_id=""), custom_registry=ReferenceProfileRegistry(),
         )
         status, reason = compute_layer_compatibility(profile, selected_quantity_id="phase_a_lg_rms")
-        assert status == COMPATIBILITY_COMPATIBLE
-        assert reason is None
+        assert status == COMPATIBILITY_NOT_YET_APPLICABLE
+        assert reason is not None
 
-    def test_mismatched_quantity_is_incompatible_with_an_actionable_reason(self):
+    def test_a_profile_with_an_assessment_definition_matching_no_canonical_quantity_is_still_not_yet_applicable(self):
+        """The concrete case this whole refinement exists for: "minimum
+        of VAB/VBC/VCA" has no equivalent single canonical Slice 2
+        quantity id at all -- this must never be treated as
+        `incompatible` merely because no id matches."""
         profile = create_custom_profile(
-            WORKSPACE, _write_request(evaluation_quantity="phase_a_lg_rms").to_domain(profile_id=""),
+            WORKSPACE,
+            _write_request(assessment_definition={"representation": "line_line_rms", "phase_treatment": "minimum"}).to_domain(profile_id=""),
             custom_registry=ReferenceProfileRegistry(),
         )
-        status, reason = compute_layer_compatibility(profile, selected_quantity_id="phase_b_lg_rms")
-        assert status == COMPATIBILITY_INCOMPATIBLE
-        assert "Phase A Voltage" in reason
-        assert "Phase B Voltage" in reason
+        status, _ = compute_layer_compatibility(profile, selected_quantity_id="phase_a_lg_rms")
+        assert status == COMPATIBILITY_NOT_YET_APPLICABLE
 
 
 class TestComparisonChartAssembly:
@@ -338,17 +347,15 @@ class TestComparisonChartAssembly:
             assert trace.profile_id == profile.id
             assert trace.category == profile.category
 
-    def test_chart_reflects_compatibility_against_a_selected_quantity(self, profile_registry, layer_registry):
+    def test_chart_compatibility_is_always_not_yet_applicable_regardless_of_selected_quantity(self, profile_registry, layer_registry):
         profile = create_custom_profile(
-            WORKSPACE, _write_request(evaluation_quantity="phase_a_lg_rms").to_domain(profile_id=""), custom_registry=profile_registry,
+            WORKSPACE, _write_request().to_domain(profile_id=""), custom_registry=profile_registry,
         )
         add_layer(WORKSPACE, profile.id, custom_registry=profile_registry, layer_registry=layer_registry)
         chart_no_measurement = build_comparison_chart(WORKSPACE, custom_registry=profile_registry, layer_registry=layer_registry, selected_quantity_id=None)
         assert chart_no_measurement.traces[0].compatibility_status == COMPATIBILITY_NOT_YET_APPLICABLE
-        chart_compatible = build_comparison_chart(WORKSPACE, custom_registry=profile_registry, layer_registry=layer_registry, selected_quantity_id="phase_a_lg_rms")
-        assert chart_compatible.traces[0].compatibility_status == COMPATIBILITY_COMPATIBLE
-        chart_incompatible = build_comparison_chart(WORKSPACE, custom_registry=profile_registry, layer_registry=layer_registry, selected_quantity_id="phase_b_lg_rms")
-        assert chart_incompatible.traces[0].compatibility_status == COMPATIBILITY_INCOMPATIBLE
+        chart_with_measurement = build_comparison_chart(WORKSPACE, custom_registry=profile_registry, layer_registry=layer_registry, selected_quantity_id="phase_a_lg_rms")
+        assert chart_with_measurement.traces[0].compatibility_status == COMPATIBILITY_NOT_YET_APPLICABLE
 
 
 class TestWorkspaceIsolation:

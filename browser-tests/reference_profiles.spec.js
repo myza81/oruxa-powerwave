@@ -66,7 +66,7 @@ async function createProfile(page, workspaceId, overrides = {}) {
   const body = {
     name: "Seeded Lower Envelope",
     category: "custom_reference",
-    evaluation_quantity: "phase_a_lg_rms",
+    assessment_definition: { representation: "phase_ground_rms", phase_treatment: "single", member: "A" },
     unit: "pu",
     display_start_time: -0.5,
     display_end_time: 3.0,
@@ -176,30 +176,33 @@ test.describe("Compliance Slice 3 -- multiple layers, toggling, and removal with
 
     await expect(page.locator("#wwRefLayerList")).toContainText("Profile A");
     await expect(page.locator("#wwRefLayerList")).toContainText("Profile B");
+    await expect(page.locator("#wwComplianceChartPlot")).toBeVisible();
     let traces = await chartPlotData(page);
     expect(traces.length).toBe(2);
     expect(new Set(traces.map((t) => t.boundary))).toEqual(new Set(["lower", "upper"]));
 
     // Toggle Profile B off -- its trace disappears from the chart, but
-    // the layer row itself remains (dimmed), never deleted.
+    // the layer row itself remains (dimmed), never deleted. The chart
+    // refetch is a separate async request from the layer-list DOM
+    // update, so poll rather than reading it exactly once immediately
+    // after the DOM attribute settles (this raced under full-suite load
+    // -- a real flake in this test, not in the product).
     const layerBCheckbox = page.locator(`#wwRefLayerVis-${layerB.id}`);
     await layerBCheckbox.uncheck();
     await expect(page.locator(`.ww-ref-layer-row[data-layer-id="${layerB.id}"]`)).toHaveAttribute("data-visible", "false");
+    await expect.poll(async () => (await chartPlotData(page)).length).toBe(1);
     traces = await chartPlotData(page);
-    expect(traces.length).toBe(1);
     expect(traces[0].profile_id).toBe(profileA.id);
 
     // Toggle it back on.
     await layerBCheckbox.check();
     await expect(page.locator(`.ww-ref-layer-row[data-layer-id="${layerB.id}"]`)).toHaveAttribute("data-visible", "true");
-    traces = await chartPlotData(page);
-    expect(traces.length).toBe(2);
+    await expect.poll(async () => (await chartPlotData(page)).length).toBe(2);
 
     // Remove the layer entirely -- the underlying profile must survive.
     await page.locator(`#wwRefLayerRemove-${layerB.id}`).click();
     await expect(page.locator("#wwRefLayerList")).not.toContainText("Profile B");
-    traces = await chartPlotData(page);
-    expect(traces.length).toBe(1);
+    await expect.poll(async () => (await chartPlotData(page)).length).toBe(1);
 
     const profileStillExists = await page.request.get(`${referenceProfilesUrl(workspaceId)}/${encodeURIComponent(profileB.id)}`);
     expect(profileStillExists.ok()).toBeTruthy();
@@ -209,8 +212,7 @@ test.describe("Compliance Slice 3 -- multiple layers, toggling, and removal with
     await page.locator("#wwRefAddList .ww-ref-picker-item", { hasText: "Profile B" }).locator("button:has-text('Add')").click();
     await page.locator("#wwRefAddCloseFooterBtn").click();
     await expect(page.locator("#wwRefLayerList")).toContainText("Profile B");
-    traces = await chartPlotData(page);
-    expect(traces.length).toBe(2);
+    await expect.poll(async () => (await chartPlotData(page)).length).toBe(2);
   });
 });
 
@@ -281,7 +283,7 @@ test.describe("Compliance Slice 3 -- no Measurement selected is NEVER incompatib
   test("a reference layer's compatibility badge reads 'Not yet applicable' with no Measurement selected, never 'Incompatible'", async ({ page }) => {
     await openCompliance(page);
     const workspaceId = await currentWorkspaceIdOf(page);
-    const profile = await createProfile(page, workspaceId, { name: "Compatibility Probe Profile", evaluation_quantity: "phase_a_lg_rms" });
+    const profile = await createProfile(page, workspaceId, { name: "Compatibility Probe Profile" });
     await addLayer(page, workspaceId, profile.id);
     await page.reload();
     await page.locator("#mainNavComplianceBtn").click();
@@ -289,6 +291,20 @@ test.describe("Compliance Slice 3 -- no Measurement selected is NEVER incompatib
     const row = page.locator(".ww-ref-layer-row", { hasText: "Compatibility Probe Profile" });
     await expect(row.locator(".ww-ref-badge--compat-not_yet_applicable")).toHaveText("Not yet applicable");
     await expect(row.locator(".ww-ref-badge--compat-incompatible")).toHaveCount(0);
+    await expect(row.locator(".ww-ref-badge--compat-compatible")).toHaveCount(0);
+  });
+
+  test("DEC-110: compatibility stays 'Not yet applicable' even via the API's own quantity_id query param (no measurement resolver exists yet)", async ({ page, request }) => {
+    await openCompliance(page);
+    const workspaceId = await currentWorkspaceIdOf(page);
+    const profile = await createProfile(page, workspaceId, {
+      name: "Resolver Probe Profile",
+      assessment_definition: { representation: "phase_ground_rms", phase_treatment: "single", member: "A" },
+    });
+    await addLayer(page, workspaceId, profile.id);
+    const response = await request.get(`${referenceLayersUrl(workspaceId)}?quantity_id=phase_a_lg_rms`);
+    const layers = await response.json();
+    expect(layers[0].compatibility.status).toBe("not_yet_applicable");
   });
 });
 
@@ -364,12 +380,126 @@ test.describe("Compliance Slice 3 -- profile management (custom profiles)", () =
     const original = await createProfile(page, workspaceId, { name: "Round Trip Profile" });
     const exportResponse = await page.request.get(`${referenceProfilesUrl(workspaceId)}/${encodeURIComponent(original.id)}/export`);
     const envelope = await exportResponse.json();
-    expect(envelope.schema_version).toBe(1);
+    expect(envelope.schema_version).toBe(2);
 
     const importResponse = await page.request.post(`${referenceProfilesUrl(workspaceId)}/import`, { data: envelope });
     expect(importResponse.ok()).toBeTruthy();
     const imported = await importResponse.json();
     expect(imported.id).not.toBe(original.id);
     expect(imported.name).toBe("Round Trip Profile");
+  });
+});
+
+test.describe("Compliance Slice 4 (DEC-110) -- Assessment Definition", () => {
+  test("create a profile via the editor with an explicit Voltage representation/phase treatment, verify it round-trips through the API", async ({ page }) => {
+    await openCompliance(page);
+
+    await page.locator("#wwComplianceAddReferenceBtn").click();
+    await page.locator("#wwRefAddNewProfileBtn").click();
+    await expect(page.locator("#wwRefEditorOverlay")).toBeVisible();
+
+    await page.locator("#wwRefEditorName").fill("Minimum Line-Line Requirement");
+    await page.locator("#wwRefEditorRepresentation").selectOption("line_line_rms");
+    await page.locator("#wwRefEditorPhaseTreatment").selectOption("minimum");
+    // Member field must be hidden for an aggregate treatment (minimum).
+    await expect(page.locator("#wwRefEditorMemberField")).toBeHidden();
+    await page.locator("#wwRefEditorMeasurementLocation").selectOption("connection_point");
+
+    const lowerRow = page.locator("#wwRefEditorLowerBody tr").first();
+    await lowerRow.locator(".ww-ref-seg-start-time").fill("-0.5");
+    await lowerRow.locator(".ww-ref-seg-end-time").fill("3.0");
+    await lowerRow.locator(".ww-ref-seg-start-value").fill("0.85");
+    await lowerRow.locator(".ww-ref-seg-end-value").fill("0.85");
+
+    await page.locator("#wwRefEditorSaveBtn").click();
+    await expect(page.locator("#wwRefEditorOverlay")).toBeHidden();
+
+    await expect(page.locator("#wwRefAddList")).toContainText("Assessment: Minimum Line-Line RMS at Connection Point");
+    await page.locator("#wwRefAddList .ww-ref-picker-item", { hasText: "Minimum Line-Line Requirement" }).locator("button:has-text('Add')").click();
+    await page.locator("#wwRefAddCloseFooterBtn").click();
+
+    await expect(page.locator(".ww-ref-layer-summary")).toContainText("Assessment: Minimum Line-Line RMS at Connection Point");
+  });
+
+  test("create a profile with an explicit single line-line member (VAB), member field shows and is required", async ({ page }) => {
+    await openCompliance(page);
+    await page.locator("#wwComplianceAddReferenceBtn").click();
+    await page.locator("#wwRefAddNewProfileBtn").click();
+
+    await page.locator("#wwRefEditorName").fill("VAB Single Member Requirement");
+    await page.locator("#wwRefEditorRepresentation").selectOption("line_line_rms");
+    await page.locator("#wwRefEditorPhaseTreatment").selectOption("single");
+    await expect(page.locator("#wwRefEditorMemberField")).toBeVisible();
+    await page.locator("#wwRefEditorMember").selectOption("AB");
+
+    const lowerRow = page.locator("#wwRefEditorLowerBody tr").first();
+    await lowerRow.locator(".ww-ref-seg-start-value").fill("0.85");
+    await lowerRow.locator(".ww-ref-seg-end-value").fill("0.85");
+    await page.locator("#wwRefEditorSaveBtn").click();
+    await expect(page.locator("#wwRefEditorOverlay")).toBeHidden();
+
+    await expect(page.locator("#wwRefAddList")).toContainText("Line-Line RMS (AB)");
+  });
+
+  test("an invalid combination (line-line + each-phase) is rejected inline with an actionable error, never saved", async ({ page }) => {
+    await openCompliance(page);
+    await page.locator("#wwComplianceAddReferenceBtn").click();
+    await page.locator("#wwRefAddNewProfileBtn").click();
+
+    await page.locator("#wwRefEditorName").fill("Invalid Combination Profile");
+    await page.locator("#wwRefEditorRepresentation").selectOption("line_line_rms");
+    await page.locator("#wwRefEditorPhaseTreatment").selectOption("each_phase");
+    const lowerRow = page.locator("#wwRefEditorLowerBody tr").first();
+    await lowerRow.locator(".ww-ref-seg-start-value").fill("0.85");
+    await lowerRow.locator(".ww-ref-seg-end-value").fill("0.85");
+    await page.locator("#wwRefEditorSaveBtn").click();
+
+    await expect(page.locator("#wwRefEditorOverlay")).toBeVisible();
+    await expect(page.locator("#wwRefEditorError")).toBeVisible();
+    await expect(page.locator("#wwRefEditorError")).toContainText("each_phase");
+  });
+
+  test("a profile with a fully unspecified assessment definition still renders in the reference-only Comparison Chart", async ({ page }) => {
+    await openCompliance(page);
+    const workspaceId = await currentWorkspaceIdOf(page);
+    const profile = await createProfile(page, workspaceId, {
+      name: "Unspecified Convention Profile",
+      assessment_definition: {},
+    });
+    await addLayer(page, workspaceId, profile.id);
+    await page.reload();
+    await page.locator("#mainNavComplianceBtn").click();
+    await expect(page.locator("#wwComplianceChartPlot")).toBeVisible();
+    const traces = await chartPlotData(page);
+    expect(traces.length).toBe(1);
+    await expect(page.locator(".ww-ref-layer-summary")).toContainText("Assessment convention not specified");
+  });
+
+  test("importing a legacy (pre-DEC-110) v1 profile migrates evaluation_quantity into an Assessment Definition, editable afterward", async ({ page }) => {
+    await openCompliance(page);
+    const workspaceId = await currentWorkspaceIdOf(page);
+    const v1Envelope = {
+      schema_version: 1,
+      profile: {
+        name: "Legacy Positive Sequence Profile", category: "custom_reference", evaluation_quantity: "positive_sequence_rms",
+        unit: "pu", display_start_time: -0.5, display_end_time: 3.0, evaluation_start_time: 0.0, evaluation_end_time: 3.0,
+        tolerance: 0.0,
+        lower_boundary: { segments: [{ start_time: -0.5, end_time: 3.0, start_value: 0.8, end_value: 0.8, segment_type: "constant" }] },
+        upper_boundary: null, metadata: {},
+      },
+    };
+    const importResponse = await page.request.post(`${referenceProfilesUrl(workspaceId)}/import`, { data: v1Envelope });
+    expect(importResponse.ok()).toBeTruthy();
+    const imported = await importResponse.json();
+    expect(imported.assessment_definition.representation).toBe("positive_sequence_rms");
+    expect(imported.assessment_definition.legacy_quantity_hint).toBe("positive_sequence_rms");
+
+    await page.reload();
+    await page.locator("#mainNavComplianceBtn").click();
+    await page.locator("#wwRefManageProfilesBtn").click();
+    await page.locator("#wwRefManageList .ww-ref-picker-item", { hasText: "Legacy Positive Sequence Profile" }).locator("button:has-text('Edit')").click();
+    await expect(page.locator("#wwRefEditorRepresentation")).toHaveValue("positive_sequence_rms");
+    await expect(page.locator("#wwRefEditorLegacyHintNote")).toBeVisible();
+    await expect(page.locator("#wwRefEditorLegacyHintNote")).toContainText("positive_sequence_rms");
   });
 });

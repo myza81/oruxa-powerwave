@@ -4,9 +4,210 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-23**
+Last updated: **2026-09-24**
 
 ## What was most recently done
+
+**Compliance & Capability architecture refinement — Assessment
+Definition separates ReferenceProfile from HOW a measured quantity is
+derived (DEC-110).** Owner product review, immediately after Slice 3
+(DEC-109) UAT passed conceptually: *"Current `ReferenceProfile.
+evaluation_quantity` is too tightly coupled to one canonical measured
+quantity... For real grid-code/utility/OEM requirements, the reference
+is often a single voltage-time requirement curve, while the actual
+measured assessment quantity may be defined separately... Different
+jurisdictions may use different conventions, and some requirements may
+not explicitly specify the convention at all. Powerwave must be able to
+support all of these without redesigning the reference-profile engine."*
+Explicitly scoped as a TARGETED refinement, not a rewrite: "Preserve all
+Slice 3 work" (categories, boundary model, segments, negative
+time/gaps/discontinuities, built-in/custom lifecycle, import/export,
+Reference Layers UI, reference-only Comparison Chart, no-upload
+behavior, layer visibility/removal) — all confirmed unchanged and still
+passing.
+
+**New, standalone `AssessmentDefinition` domain model**
+(`app/domain/assessment_definition.py`) separates WHAT boundary/curve is
+required (`ReferenceProfile`, unchanged) from HOW a measured voltage
+should be derived for a future comparison. Five closed axes,
+deliberately narrow (owner's own "do not overbuild an enum universe"
+instruction): `quantity_family` (`voltage`), `representation`
+(`line_line_rms`/`phase_ground_rms`/`positive_sequence_rms`/
+`unspecified`), `phase_treatment` (`minimum`/`maximum`/`each_phase`/
+`single`/`unspecified`), an optional `member` (`A`/`B`/`C`/`AB`/`BC`/
+`CA`), `measurement_location`, `provenance`. Every field defaults to
+`unspecified`/`None` — a fully-unspecified definition is always valid,
+representing "not yet confirmed" (owner's own explicit "this is
+important... Powerwave must not guess" instruction), never an error.
+`ReferenceProfile.evaluation_quantity` is retired entirely, replaced by
+`assessment_definition: AssessmentDefinition`.
+
+**Combination validation carries real engineering meaning, not mere
+field presence** (`validate_assessment_definition()`, matching every one
+of the owner's own worked examples exactly): `line_line_rms` +
+`minimum` valid (`min(VAB, VBC, VCA)`); `positive_sequence_rms` +
+`single` valid (`V1`, no member); `phase_ground_rms` + `each_phase`
+valid ("compare VA, VB, VC independently against the same curve");
+`line_line_rms` + `each_phase` INVALID (owner's own "likely invalid
+wording/combination unless explicitly modeled as each line-pair — not
+modeled in v1"); `single` with no member for line-line/phase-ground
+INVALID (ambiguous which one); an aggregate treatment
+(`minimum`/`maximum`/`each_phase`) with a specific member INVALID
+(contradicts the very idea of an aggregate). Kept as a FULLY INDEPENDENT
+domain module from `app.domain.reference_profile` specifically to avoid
+a circular import — its own `AssessmentDefinitionValidationError` is
+caught and re-raised as `ReferenceProfileValidationError` (field_name
+prefixed `"assessment_definition."`) at the `ReferenceProfile` boundary,
+giving callers one unified error surface while keeping the two modules
+mutually decoupled.
+
+**Canonical Compliance Slice 2 measurement quantities are explicitly
+preserved, unchanged, and reframed** (owner's own words, frozen as the
+governing distinction going forward): *"canonical measurement
+quantities = what Powerwave CAN CALCULATE; assessment definition = what
+a REQUIREMENT tells Powerwave to use."* `app.domain.compliance_
+measurement.VOLTAGE_QUANTITIES` — zero lines touched. All nine legacy
+`evaluation_quantity` ids migrate unambiguously to an equivalent
+`AssessmentDefinition` (`assessment_definition_from_legacy_quantity()`,
+e.g. `phase_ab_ll_rms` → `line_line_rms`/`single`/`AB`); an id outside
+this table becomes fully `unspecified` with the original string
+preserved as `legacy_quantity_hint` for traceability, never
+re-interpreted, never guessed.
+
+**JSON schema bumped to v2** (a materially different shape,
+`assessment_definition` object replaces `evaluation_quantity` string);
+`v1` remains an explicit, read-only, IMPORT-ONLY migration path — every
+new export always writes `v2`, never `v1`. An unrecognized/missing
+version still fails explicitly, unchanged from DEC-109. The existing
+Slice-3-era test-only built-in fixtures (still `v1` on disk) continue to
+load correctly purely through this migration path — no fixture file
+needed to change, itself a live proof the migration works.
+
+**Compatibility is now ALWAYS `not_yet_applicable`** — the direct,
+necessary consequence of the model split, not a regression.
+`compute_layer_compatibility()` used to compare `profile.evaluation_
+quantity == selected_quantity_id` directly; that field no longer exists,
+and in general an `AssessmentDefinition` does not correspond to exactly
+one canonical quantity id at all (the "minimum of VAB/VBC/VCA" case has
+none). Per the owner's own explicit instruction ("Do not introduce false
+incompatibility merely because assessment_definition != canonical
+measurement selector"), this now always returns `not_yet_applicable` —
+never a false `compatible` (nothing has actually checked a trace can be
+derived) and never a false `incompatible` (a future resolver might
+satisfy the profile perfectly well). The `COMPATIBILITY_COMPATIBLE`/
+`COMPATIBILITY_INCOMPATIBLE` constants remain defined for vocabulary
+stability and for the future resolver slice to start from.
+
+**Frontend**: the profile editor's old "Evaluation quantity" select
+(reusing Compliance Measurement's own catalogue endpoint) is retired; a
+new "Assessment Definition" section exposes Voltage representation /
+Phase treatment / Specific member (shown only when a combination could
+actually use one, `wwRefEditorUpdateMemberFieldVisibility()`) /
+Measurement location / Interpretation source — every option a human
+label, never a raw internal enum name. The Reference Layers card and Add
+Reference picker both gained a compact one-line assessment summary
+(`wwRefDescribeAssessmentDefinition()`, e.g. "Assessment: Minimum
+Line-Line RMS at Connection Point" / "Assessment: Positive-Sequence RMS"
+/ "Assessment convention not specified"). **A genuine, pre-existing
+CSS-cascade bug was found and fixed while wiring the member field's
+visibility toggle**: this codebase's own global `label { display:
+block; }` rule beats the UA stylesheet's `[hidden] { display: none }`
+rule by CSS origin — the exact same class of bug already fixed multiple
+times elsewhere in this file (e.g. `.ww-annotation-guidance[hidden]`) —
+fixed with an explicit `#wwRefEditorMemberField[hidden] { display: none;
+}` override, discovered directly via a failing Playwright assertion
+(`toBeHidden()` on an element whose `hidden` ATTRIBUTE was correctly set
+but had zero visible effect), not assumed.
+
+**Explicitly NOT implemented in this refinement (owner's own exclusion
+list)**: Va/Vb/Vc → VAB/VBC/VCA derivation, min/max aggregation,
+positive-sequence calculation, each-phase evaluation, measured-trace
+overlay, per-unit conversion, t0 alignment, compliance comparison — a
+future measurement-resolver slice.
+
+**A genuine, PRE-EXISTING regression was discovered during full-suite
+validation for this refinement — NOT caused by this refinement, and
+explicitly NOT fixed here (out of this task's own scope boundary:
+"implement a targeted architecture refinement only").**
+`analysis_related_waveforms.spec.js` and every Analysis analyzer's own
+Playwright suite (`phasor_analysis.spec.js`, `overcurrent_analysis.
+spec.js`, `impedance_analysis.spec.js`, `distance_protection_analysis.
+spec.js`, `sequence_components_analysis.spec.js`) upload a fixture then
+manually `POST .../engineering-contexts` to seed a bay for testing —
+this now fails with a 409 (`channel_already_in_context`), because
+DEC-104's own shared post-upload preparation already auto-creates an
+Engineering Context for the same channels BEFORE the test's own manual
+POST runs. **Confirmed reproducible on a byte-identical, disposable
+`git worktree` checkout of the prior commit (`667159d`, zero DEC-110
+changes present)** via a raw HTTP request (upload then POST
+`/engineering-contexts` with the exact same payload the failing test
+uses) — no browser, no DEC-110 code, involved at all. This is squarely
+an Analysis-area regression (most likely dating to DEC-104's own
+introduction of upload-time auto-discovery, never updated in these
+specific test files' own "upload then manually seed a context" helper
+pattern) — **this needs its own dedicated investigation/fix session,
+following the same "reproduce live -> root-cause -> smallest fix ->
+verify fail-then-pass -> full regression" methodology the DEC-105
+through DEC-108 chain already established.** One directly-Compliance-
+related casualty of the SAME investigation WAS fixed in this session:
+`browser-tests/compliance.spec.js` still asserted Slice 1's own retired
+`#wwComplianceAddReferenceBtn` disabled state and the old "No voltage
+assessment configured" chart empty-state text, both superseded by
+DEC-109 the day before but never updated in this particular file (only
+in `test_frontend_compliance.py`) — corrected now.
+
+See [DECISIONS.md — DEC-110](DECISIONS.md#dec-110--compliance-slice-3-refinement-referenceprofile-is-separated-from-how-a-measured-quantity-is-derived--a-new-assessmentdefinition-model-bridges-the-reference-boundarycurve-to-compliance-slice-2s-canonical-measurement-quantities-with-unspecified-as-a-first-class-state-and-no-measurement-resolver-implemented-yet)
+and [COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md) for the full
+architectural record.
+
+**Files**: `backend/app/domain/assessment_definition.py` (new, ~330
+lines, zero dependency on `app.domain.reference_profile`);
+`backend/app/domain/reference_profile.py` (`evaluation_quantity` field
+removed, `assessment_definition` field added, `SCHEMA_VERSION` bumped to
+2 with v1 read compatibility); `backend/app/schemas/reference_profile.py`
+(new `AssessmentDefinitionIn`/`AssessmentDefinitionOut`);
+`backend/app/services/reference_profile_service.py`
+(`compute_layer_compatibility()` rewritten, unused `get_voltage_quantity`
+import removed); `frontend/index.html` (old quantity select retired, new
+Assessment Definition editor section + member-visibility logic + layer/
+picker summary lines + one CSS-cascade bug fix); new
+`backend/tests/test_assessment_definition.py` (32 tests); updates to
+`test_reference_profile_domain.py`, `test_reference_profile_service.py`,
+`test_reference_profile_api.py`, `test_frontend_compliance.py`
+(`TestAssessmentDefinitionEditorStructure`),
+`browser-tests/reference_profiles.spec.js` (new `test.describe
+("Compliance Slice 4 (DEC-110)")`, 5 scenarios, plus an `expect.poll()`
+fix for a genuine flake this session's own full-suite run exposed in an
+existing Slice 3 test -- the chart's own async refetch after a
+visibility toggle/remove is a separate request from the layer-list DOM
+update it was reading immediately after; harmless under light load,
+racy under the full suite's heavy backend contention), and
+`browser-tests/compliance.spec.js` (2 stale Slice-1 assertions
+corrected: `#wwComplianceAddReferenceBtn` and the chart empty-state text,
+both superseded by DEC-109 the day before but missed in this file).
+
+**Validation**: full backend suite passes (zero failures). Full
+Playwright suite: every Compliance-specific spec passes 100% in
+isolation (`compliance.spec.js` 10/10, `compliance_measurement.spec.js`
+23/23, `reference_profiles.spec.js` 15/15, re-confirmed after the
+`expect.poll()` fix). The FULL combined run reports ~125 failures (down
+from ~128 before this session's two spec-file fixes), every one of them
+traced to the SAME pre-existing Analysis-area regression described above
+(or a downstream timeout/resource-contention symptom of it degrading the
+one long-lived shared backend process across a ~300-test run) — NONE are
+new DEC-110 regressions, confirmed directly by reproducing the identical
+failure pattern (same 409, same error code) on a disposable `git
+worktree` checkout of the untouched prior commit (`667159d`) via a raw
+HTTP request, no DEC-110 code present at all. `git diff --check` clean.
+
+**Stop condition honored**: this architecture refinement only — no
+measurement resolver, no measured overlay, no event alignment, no
+compliance evaluation, no breach detection, no PASS/FAIL. Awaiting owner
+UAT before any further Compliance work, and awaiting owner direction on
+whether/when to open a dedicated session for the pre-existing Analysis
+engineering-context regression this session surfaced.
+
+## What was done in the prior session — Compliance & Capability Slice 3: Reference Profiles, Reference Layers, and static Comparison Chart rendering (DEC-109)
 
 **Compliance & Capability Slice 3: Reference Profiles, Reference
 Layers, and static Comparison Chart rendering (DEC-109).** Owner UAT for

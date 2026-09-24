@@ -1,8 +1,10 @@
 """Pydantic request/response schemas for Compliance & Capability --
-Reference Profiles / Reference Layers / Comparison Chart (Slice 3). Thin
-translation only -- see `app.services.reference_profile_service` for the
-actual orchestration these mirror, and `app.domain.reference_profile` for
-the domain objects `to_domain()`/`from_domain()` convert to and from.
+Reference Profiles / Reference Layers / Comparison Chart (Slice 3;
+Assessment Definition, Slice 4/DEC-110). Thin translation only -- see
+`app.services.reference_profile_service` for the actual orchestration
+these mirror, and `app.domain.reference_profile`/`app.domain.
+assessment_definition` for the domain objects `to_domain()`/
+`from_domain()` convert to and from.
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.domain.assessment_definition import AssessmentDefinition
 from app.domain.reference_layer import ReferenceLayer
 from app.domain.reference_profile import (
     BoundaryPoint,
@@ -117,6 +120,53 @@ class ReferenceProfileMetadataOut(BaseModel):
         )
 
 
+class AssessmentDefinitionIn(BaseModel):
+    """DEC-110: HOW a measured voltage should be derived for a future
+    comparison -- separate from the reference boundary/curve itself
+    (`ReferenceProfileWriteRequest`'s own fields). Every field defaults
+    to its own `unspecified`/`None` state -- `AssessmentDefinitionIn()`
+    (all defaults) is the fully-unspecified state, always valid on its
+    own (task section 8: never guess)."""
+
+    quantity_family: str = "voltage"
+    representation: str = "unspecified"
+    phase_treatment: str = "unspecified"
+    member: str | None = None
+    measurement_location: str = "unspecified"
+    provenance: str = "unspecified"
+
+    def to_domain(self) -> AssessmentDefinition:
+        # `legacy_quantity_hint` is never accepted from a create/update
+        # request body -- it is an audit trail the MIGRATION path alone
+        # populates (v1 import, or the legacy-mapping helper); a
+        # from-scratch write through this API has no legacy value to
+        # preserve.
+        return AssessmentDefinition(
+            quantity_family=self.quantity_family, representation=self.representation,
+            phase_treatment=self.phase_treatment, member=self.member,
+            measurement_location=self.measurement_location, provenance=self.provenance,
+        )
+
+
+class AssessmentDefinitionOut(BaseModel):
+    quantity_family: str
+    representation: str
+    phase_treatment: str
+    member: str | None = None
+    measurement_location: str
+    provenance: str
+    legacy_quantity_hint: str | None = None
+
+    @classmethod
+    def from_domain(cls, definition: AssessmentDefinition) -> "AssessmentDefinitionOut":
+        return cls(
+            quantity_family=definition.quantity_family, representation=definition.representation,
+            phase_treatment=definition.phase_treatment, member=definition.member,
+            measurement_location=definition.measurement_location, provenance=definition.provenance,
+            legacy_quantity_hint=definition.legacy_quantity_hint,
+        )
+
+
 class ReferenceProfileWriteRequest(BaseModel):
     """Shared shape for both create and update (full replace, mirrors
     `MeasurementGroupRegistry.update()`'s own convention -- there is no
@@ -124,7 +174,7 @@ class ReferenceProfileWriteRequest(BaseModel):
 
     name: str
     category: str
-    evaluation_quantity: str
+    assessment_definition: AssessmentDefinitionIn = AssessmentDefinitionIn()
     unit: str
     display_start_time: float
     display_end_time: float
@@ -140,7 +190,7 @@ class ReferenceProfileWriteRequest(BaseModel):
             id=profile_id,
             name=self.name,
             category=self.category,
-            evaluation_quantity=self.evaluation_quantity,
+            assessment_definition=self.assessment_definition.to_domain(),
             unit=self.unit,
             display_start_time=self.display_start_time,
             display_end_time=self.display_end_time,
@@ -158,7 +208,7 @@ class ReferenceProfileOut(BaseModel):
     source: str  # "built_in" | "custom"
     name: str
     category: str
-    evaluation_quantity: str
+    assessment_definition: AssessmentDefinitionOut
     unit: str
     display_start_time: float
     display_end_time: float
@@ -177,7 +227,7 @@ class ReferenceProfileOut(BaseModel):
             source=entry.source,
             name=profile.name,
             category=profile.category,
-            evaluation_quantity=profile.evaluation_quantity,
+            assessment_definition=AssessmentDefinitionOut.from_domain(profile.assessment_definition),
             unit=profile.unit,
             display_start_time=profile.display_start_time,
             display_end_time=profile.display_end_time,
@@ -191,12 +241,13 @@ class ReferenceProfileOut(BaseModel):
 
 
 class ReferenceProfileImportRequest(BaseModel):
-    """Accepts the raw versioned export envelope verbatim (task section
-    17: `{"schema_version": 1, "profile": {...}}`) -- deliberately loose
-    (`profile` stays an untyped dict) so the ONE structural/domain
-    validation path lives in `app.domain.reference_profile.
-    profile_from_json_dict()`, never duplicated as a second, parallel
-    Pydantic shape that could silently drift from it."""
+    """Accepts the raw versioned export envelope verbatim (`{"schema_
+    version": 1 | 2, "profile": {...}}` -- `1` is a read-only migration
+    path, DEC-110) -- deliberately loose (`profile` stays an untyped
+    dict) so the ONE structural/domain validation path lives in
+    `app.domain.reference_profile.profile_from_json_dict()`, never
+    duplicated as a second, parallel Pydantic shape that could silently
+    drift from it."""
 
     schema_version: int | None = None
     profile: dict[str, Any] | None = None

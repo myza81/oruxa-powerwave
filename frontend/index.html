@@ -6198,8 +6198,8 @@
         }
         .ww-ref-layer-row {
             display: flex;
-            align-items: center;
-            gap: 6px;
+            flex-direction: column;
+            gap: 2px;
             padding: 4px 6px;
             border-radius: var(--radius);
             background: var(--surface-tint);
@@ -6208,9 +6208,26 @@
         .ww-ref-layer-row[data-visible="false"] {
             opacity: 0.55;
         }
+        .ww-ref-layer-row-main {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
         .ww-ref-layer-name {
             flex: 1 1 auto;
             min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        /* DEC-110 task section 11: one compact, secondary summary line
+           -- "Assessment: Minimum L-L RMS at Connection Point" /
+           "Assessment convention not specified" -- never a second,
+           verbose block. */
+        .ww-ref-layer-summary {
+            padding-left: 22px;
+            font-size: 0.68rem;
+            color: var(--text-dim);
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -6307,6 +6324,15 @@
             margin-bottom: 10px;
         }
         .ww-ref-editor-fields .ww-cc-field { min-width: 0; }
+        /* DEC-110: the global `label { display: block; }` rule beats the
+           UA stylesheet's default `[hidden] { display: none }` rule by
+           ORIGIN alone (author always wins over UA, regardless of
+           specificity/source order) -- the SAME class of bug already
+           fixed elsewhere in this file (see .ww-annotation-guidance[hidden]'s
+           own comment) -- without this, wwRefEditorUpdateMemberFieldVisibility()'s
+           `fieldEl.hidden = true` correctly sets the attribute but has
+           ZERO visible effect on this <label>. */
+        #wwRefEditorMemberField[hidden] { display: none; }
         .ww-ref-editor-boundary-section {
             margin-bottom: 12px;
         }
@@ -11742,10 +11768,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     </select>
                 </label>
                 <label class="ww-cc-field">
-                    <span class="ww-cc-field-label">Evaluation quantity</span>
-                    <select id="wwRefEditorQuantity"></select>
-                </label>
-                <label class="ww-cc-field">
                     <span class="ww-cc-field-label">Unit</span>
                     <select id="wwRefEditorUnit">
                         <option value="pu" selected>pu</option>
@@ -11773,6 +11795,65 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     <span class="ww-cc-field-label">Tolerance</span>
                     <input type="number" step="any" min="0" id="wwRefEditorTolerance" value="0">
                 </label>
+            </div>
+
+            <!-- DEC-110: Assessment Definition -- HOW a measured voltage
+                 is derived for a future comparison, separate from the
+                 boundary/curve requirement above. Every field defaults to
+                 "Unspecified"; "Specific member" only appears when the
+                 combination could actually use one (task section 10/7) --
+                 see wwRefEditorUpdateMemberFieldVisibility(). No raw
+                 internal enum name (e.g. "line_line_rms") is ever shown
+                 to the engineer -- only the human labels below. -->
+            <div class="ww-ref-editor-boundary-section" id="wwRefEditorAssessmentSection">
+                <h4>Assessment Definition</h4>
+                <div class="ww-ref-editor-fields">
+                    <label class="ww-cc-field">
+                        <span class="ww-cc-field-label">Voltage representation</span>
+                        <select id="wwRefEditorRepresentation">
+                            <option value="unspecified" selected>Unspecified</option>
+                            <option value="line_line_rms">Line-Line RMS</option>
+                            <option value="phase_ground_rms">Phase-Ground RMS</option>
+                            <option value="positive_sequence_rms">Positive Sequence RMS</option>
+                        </select>
+                    </label>
+                    <label class="ww-cc-field">
+                        <span class="ww-cc-field-label">Phase treatment</span>
+                        <select id="wwRefEditorPhaseTreatment">
+                            <option value="unspecified" selected>Unspecified</option>
+                            <option value="minimum">Minimum</option>
+                            <option value="maximum">Maximum</option>
+                            <option value="each_phase">Each Phase</option>
+                            <option value="single">Single</option>
+                        </select>
+                    </label>
+                    <label class="ww-cc-field" id="wwRefEditorMemberField">
+                        <span class="ww-cc-field-label">Specific member</span>
+                        <select id="wwRefEditorMember">
+                            <option value="">(none)</option>
+                        </select>
+                    </label>
+                    <label class="ww-cc-field">
+                        <span class="ww-cc-field-label">Measurement location</span>
+                        <select id="wwRefEditorMeasurementLocation">
+                            <option value="unspecified" selected>Unspecified</option>
+                            <option value="connection_point">Connection Point</option>
+                            <option value="equipment_terminal">Equipment Terminal</option>
+                            <option value="project_defined">Project Defined</option>
+                        </select>
+                    </label>
+                    <label class="ww-cc-field">
+                        <span class="ww-cc-field-label">Interpretation source</span>
+                        <select id="wwRefEditorProvenance">
+                            <option value="unspecified" selected>Unspecified</option>
+                            <option value="explicit_standard">Explicit Standard</option>
+                            <option value="utility_clarification">Utility Clarification</option>
+                            <option value="project_agreement">Project Agreement</option>
+                            <option value="user_defined">User Defined</option>
+                        </select>
+                    </label>
+                </div>
+                <p class="hint" id="wwRefEditorLegacyHintNote" hidden></p>
             </div>
 
             <div class="ww-ref-editor-boundary-section">
@@ -45351,6 +45432,71 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             custom_reference: "#8a8a8a",
         };
 
+        // DEC-110 -- Assessment Definition human-readable labels. Raw
+        // internal enum names (e.g. "line_line_rms") are never shown to
+        // the engineer anywhere in this UI (task section 10's own
+        // explicit instruction) -- every select option and every summary
+        // string below goes through one of these maps.
+        const WW_REF_REPRESENTATION_LABEL = {
+            line_line_rms: "Line-Line RMS",
+            phase_ground_rms: "Phase-Ground RMS",
+            positive_sequence_rms: "Positive-Sequence RMS",
+            unspecified: "Unspecified",
+        };
+        const WW_REF_PHASE_TREATMENT_LABEL = {
+            minimum: "Minimum",
+            maximum: "Maximum",
+            each_phase: "Each Phase",
+            single: "Single",
+            unspecified: "Unspecified",
+        };
+        const WW_REF_LOCATION_LABEL = {
+            connection_point: "Connection Point",
+            equipment_terminal: "Equipment Terminal",
+            project_defined: "Project Defined",
+            unspecified: "Unspecified",
+        };
+        const WW_REF_PROVENANCE_LABEL = {
+            explicit_standard: "Explicit Standard",
+            utility_clarification: "Utility Clarification",
+            project_agreement: "Project Agreement",
+            user_defined: "User Defined",
+            unspecified: "Unspecified",
+        };
+        // representation -> the set of members meaningful for it (task
+        // section 7) -- positive_sequence_rms/unspecified have none.
+        const WW_REF_MEMBERS_BY_REPRESENTATION = {
+            phase_ground_rms: ["A", "B", "C"],
+            line_line_rms: ["AB", "BC", "CA"],
+        };
+
+        // Task section 11's own three worked examples: "Assessment:
+        // Minimum L-L RMS at Connection Point" / "Assessment: Positive-
+        // Sequence RMS" / "Assessment convention not specified". Never
+        // verbose -- one compact line, omitting a field the moment it is
+        // "unspecified" rather than spelling out "Unspecified" for every
+        // axis every time.
+        function wwRefDescribeAssessmentDefinition(definition) {
+            if (!definition) return "Assessment convention not specified";
+            const rep = definition.representation;
+            const treatment = definition.phase_treatment;
+            const member = definition.member;
+            if (rep === "unspecified" && treatment === "unspecified" && !member) {
+                return "Assessment convention not specified";
+            }
+            let repText = rep !== "unspecified" ? (WW_REF_REPRESENTATION_LABEL[rep] || rep) : "representation unspecified";
+            if (member) repText += " (" + member + ")";
+            let core = repText;
+            if (treatment !== "unspecified" && treatment !== "single") {
+                core = (WW_REF_PHASE_TREATMENT_LABEL[treatment] || treatment) + " " + repText;
+            }
+            let summary = "Assessment: " + core;
+            if (definition.measurement_location && definition.measurement_location !== "unspecified") {
+                summary += " at " + (WW_REF_LOCATION_LABEL[definition.measurement_location] || definition.measurement_location);
+            }
+            return summary;
+        }
+
         function wwRefProfilesUrl(suffix) {
             return apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/reference-profiles" + (suffix || "");
         }
@@ -45368,11 +45514,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const quantityId = wwRefSelectedQuantityIdOrNull();
             return quantityId ? ("?quantity_id=" + encodeURIComponent(quantityId)) : "";
         }
-        function wwComplianceQuantityLabel(quantityId) {
-            const found = (wwComplianceState.quantities || []).find((q) => q.id === quantityId);
-            return found ? found.display_label : quantityId;
-        }
-
         function wwRefFetchJson(url, options) {
             return fetch(url, options).then((response) => {
                 if (response.ok) return response.status === 204 ? null : response.json();
@@ -45446,13 +45587,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             list.hidden = false;
             list.innerHTML = layers.map((layer) => {
                 const profile = layer.profile;
+                const summary = wwRefDescribeAssessmentDefinition(profile.assessment_definition);
                 return (
                     '<div class="ww-ref-layer-row" data-layer-id="' + escapeHtml(layer.id) + '" data-visible="' + (layer.visible ? "true" : "false") + '">' +
-                        '<input type="checkbox" id="wwRefLayerVis-' + escapeHtml(layer.id) + '"' + (layer.visible ? " checked" : "") + ' aria-label="Show ' + escapeHtml(profile.name) + ' on the Comparison Chart">' +
-                        '<span class="ww-ref-layer-name" title="' + escapeHtml(profile.name) + '">' + escapeHtml(profile.name) + '</span>' +
-                        wwRefCategoryBadgeHtml(profile.category) +
-                        wwRefCompatBadgeHtml(layer.compatibility.status, layer.compatibility.reason) +
-                        '<button type="button" class="ww-ref-layer-remove-btn" id="wwRefLayerRemove-' + escapeHtml(layer.id) + '" title="Remove from chart (does not delete the profile)" aria-label="Remove ' + escapeHtml(profile.name) + '">&times;</button>' +
+                        '<div class="ww-ref-layer-row-main">' +
+                            '<input type="checkbox" id="wwRefLayerVis-' + escapeHtml(layer.id) + '"' + (layer.visible ? " checked" : "") + ' aria-label="Show ' + escapeHtml(profile.name) + ' on the Comparison Chart">' +
+                            '<span class="ww-ref-layer-name" title="' + escapeHtml(profile.name) + '">' + escapeHtml(profile.name) + '</span>' +
+                            wwRefCategoryBadgeHtml(profile.category) +
+                            wwRefCompatBadgeHtml(layer.compatibility.status, layer.compatibility.reason) +
+                            '<button type="button" class="ww-ref-layer-remove-btn" id="wwRefLayerRemove-' + escapeHtml(layer.id) + '" title="Remove from chart (does not delete the profile)" aria-label="Remove ' + escapeHtml(profile.name) + '">&times;</button>' +
+                        '</div>' +
+                        '<div class="ww-ref-layer-summary" title="' + escapeHtml(summary) + '">' + escapeHtml(summary) + '</div>' +
                     '</div>'
                 );
             }).join("");
@@ -45488,16 +45633,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // ---- "+ Add Reference" compact selection surface (task section 12) ----
 
+        // DEC-110: mirrors the backend's own compute_layer_compatibility()
+        // -- there is no measurement resolver yet, so this is ALWAYS
+        // not_yet_applicable (never a false compatible/incompatible
+        // client-side preview that the server-authoritative refresh
+        // would then have to silently contradict).
         function wwRefComputeCompatibilityPreview(profile) {
             const quantityId = wwRefSelectedQuantityIdOrNull();
             if (!quantityId) {
                 return { status: "not_yet_applicable", reason: "No Measurement is currently selected -- compatibility is not yet applicable." };
             }
-            if (profile.evaluation_quantity === quantityId) return { status: "compatible", reason: null };
             return {
-                status: "incompatible",
-                reason: "This profile evaluates " + wwComplianceQuantityLabel(profile.evaluation_quantity) +
-                    ", but the current Measurement is " + wwComplianceQuantityLabel(quantityId) + ".",
+                status: "not_yet_applicable",
+                reason: "Measurement comparison is not implemented yet -- compatibility cannot be determined until a future slice can derive this profile's own required assessment trace.",
             };
         }
 
@@ -45515,11 +45663,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const reasonHtml = compat.status !== "not_yet_applicable"
                     ? '<div class="ww-ref-picker-item-reason">' + wwRefCompatBadgeHtml(compat.status, compat.reason) + '</div>'
                     : "";
+                const summaryHtml = '<div class="ww-ref-picker-item-reason">' + escapeHtml(wwRefDescribeAssessmentDefinition(profile.assessment_definition)) + '</div>';
                 return (
                     '<div class="ww-ref-picker-item">' +
                         '<div class="ww-ref-picker-item-main">' +
                             '<div class="ww-ref-picker-item-title">' + escapeHtml(profile.name) + ' ' + wwRefCategoryBadgeHtml(profile.category) +
                                 (profile.source === "built_in" ? ' <span class="ww-ref-badge">Built-in</span>' : "") + '</div>' +
+                            summaryHtml +
                             reasonHtml +
                         '</div>' +
                         '<div class="ww-ref-picker-item-actions">' +
@@ -45703,16 +45853,39 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // ---- Reference Profile editor -- TABLE-FIRST numeric segment
-        // entry (task section 13). No freehand curve dragging anywhere;
-        // reuses the same catalogue Measurement's own Assessment Quantity
-        // select already fetched (wwComplianceState.quantities) -- never a
-        // second, hardcoded copy of the canonical Voltage quantities. ----
+        // entry (task section 13). No freehand curve dragging anywhere.
+        // DEC-110: the editor also exposes the Assessment Definition
+        // (representation/phase treatment/member/measurement location/
+        // interpretation source) -- see wwRefEditorUpdateMemberFieldVisibility()
+        // for the "Specific member only appears when applicable" rule
+        // (task section 7/10). Raw internal enum names are never shown --
+        // every select option is a human label from the WW_REF_*_LABEL
+        // maps above. ----
 
-        function wwRefPopulateQuantitySelect() {
-            const select = document.getElementById("wwRefEditorQuantity");
-            if (!select) return;
-            const quantities = wwComplianceState.quantities || [];
-            select.innerHTML = quantities.map((q) => '<option value="' + escapeHtml(q.id) + '">' + escapeHtml(q.display_label) + '</option>').join("");
+        // Only representation values with a real member set (task
+        // section 7) get the field enabled at all; within those, a
+        // specific member only makes engineering sense for phase_
+        // treatment "single" or "unspecified" (an aggregate treatment --
+        // minimum/maximum/each_phase -- forbids one outright, mirroring
+        // app.domain.assessment_definition.validate_assessment_definition()'s
+        // own "member_not_applicable_for_aggregate_treatment" rule).
+        function wwRefEditorUpdateMemberFieldVisibility() {
+            const representation = document.getElementById("wwRefEditorRepresentation").value;
+            const treatment = document.getElementById("wwRefEditorPhaseTreatment").value;
+            const fieldEl = document.getElementById("wwRefEditorMemberField");
+            const selectEl = document.getElementById("wwRefEditorMember");
+            const members = WW_REF_MEMBERS_BY_REPRESENTATION[representation];
+            const applicable = !!members && (treatment === "single" || treatment === "unspecified");
+            if (!applicable) {
+                selectEl.value = "";
+                fieldEl.hidden = true;
+                return;
+            }
+            const currentValue = selectEl.value;
+            selectEl.innerHTML = '<option value="">(none)</option>' +
+                members.map((m) => '<option value="' + m + '">' + m + '</option>').join("");
+            selectEl.value = members.includes(currentValue) ? currentValue : "";
+            fieldEl.hidden = false;
         }
 
         function wwRefEditorSegmentRowHtml(row) {
@@ -45772,7 +45945,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         async function wwRefOpenEditor(profileId, options) {
             options = options || {};
             document.getElementById("wwRefEditorError").hidden = true;
-            wwRefPopulateQuantitySelect();
             wwRefEditorClearBoundaryTable("lower");
             wwRefEditorClearBoundaryTable("upper");
 
@@ -45784,10 +45956,25 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("wwRefEditorTitle").textContent =
                 !profileId ? "New Reference Profile" : (readOnly ? "View Reference Profile" : "Edit Reference Profile");
 
+            const legacyHintEl = document.getElementById("wwRefEditorLegacyHintNote");
+
             if (existing) {
                 document.getElementById("wwRefEditorName").value = existing.name;
                 document.getElementById("wwRefEditorCategory").value = existing.category;
-                document.getElementById("wwRefEditorQuantity").value = existing.evaluation_quantity;
+                const definition = existing.assessment_definition || {};
+                document.getElementById("wwRefEditorRepresentation").value = definition.representation || "unspecified";
+                document.getElementById("wwRefEditorPhaseTreatment").value = definition.phase_treatment || "unspecified";
+                wwRefEditorUpdateMemberFieldVisibility();
+                document.getElementById("wwRefEditorMember").value = definition.member || "";
+                document.getElementById("wwRefEditorMeasurementLocation").value = definition.measurement_location || "unspecified";
+                document.getElementById("wwRefEditorProvenance").value = definition.provenance || "unspecified";
+                if (definition.legacy_quantity_hint) {
+                    legacyHintEl.hidden = false;
+                    legacyHintEl.textContent = "Migrated from a prior profile version's own quantity selection (\"" + definition.legacy_quantity_hint + "\") -- preserved for traceability only.";
+                } else {
+                    legacyHintEl.hidden = true;
+                    legacyHintEl.textContent = "";
+                }
                 document.getElementById("wwRefEditorUnit").value = existing.unit;
                 document.getElementById("wwRefEditorDisplayStart").value = existing.display_start_time;
                 document.getElementById("wwRefEditorDisplayEnd").value = existing.display_end_time;
@@ -45811,7 +45998,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             } else {
                 document.getElementById("wwRefEditorName").value = "";
                 document.getElementById("wwRefEditorCategory").value = "custom_reference";
-                document.getElementById("wwRefEditorQuantity").value = ((wwComplianceState.quantities || [])[0] || {}).id || "";
+                document.getElementById("wwRefEditorRepresentation").value = "unspecified";
+                document.getElementById("wwRefEditorPhaseTreatment").value = "unspecified";
+                wwRefEditorUpdateMemberFieldVisibility();
+                document.getElementById("wwRefEditorMeasurementLocation").value = "unspecified";
+                document.getElementById("wwRefEditorProvenance").value = "unspecified";
+                legacyHintEl.hidden = true;
+                legacyHintEl.textContent = "";
                 document.getElementById("wwRefEditorUnit").value = "pu";
                 document.getElementById("wwRefEditorDisplayStart").value = "-0.5";
                 document.getElementById("wwRefEditorDisplayEnd").value = "3.0";
@@ -45849,10 +46042,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const lowerEnabled = document.getElementById("wwRefEditorLowerEnabled").checked;
             const upperEnabled = document.getElementById("wwRefEditorUpperEnabled").checked;
             const metaValue = (id) => document.getElementById(id).value.trim() || null;
+            const memberValue = document.getElementById("wwRefEditorMember").value;
             return {
                 name: document.getElementById("wwRefEditorName").value,
                 category: document.getElementById("wwRefEditorCategory").value,
-                evaluation_quantity: document.getElementById("wwRefEditorQuantity").value,
+                assessment_definition: {
+                    quantity_family: "voltage",
+                    representation: document.getElementById("wwRefEditorRepresentation").value,
+                    phase_treatment: document.getElementById("wwRefEditorPhaseTreatment").value,
+                    member: memberValue || null,
+                    measurement_location: document.getElementById("wwRefEditorMeasurementLocation").value,
+                    provenance: document.getElementById("wwRefEditorProvenance").value,
+                },
                 unit: document.getElementById("wwRefEditorUnit").value,
                 display_start_time: parseFloat(document.getElementById("wwRefEditorDisplayStart").value),
                 display_end_time: parseFloat(document.getElementById("wwRefEditorDisplayEnd").value),
@@ -46026,6 +46227,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwRefEditorSaveBtn").addEventListener("click", () => wwRefEditorSave());
         document.getElementById("wwRefEditorLowerAddRowBtn").addEventListener("click", () => wwRefEditorAddRow("lower"));
         document.getElementById("wwRefEditorUpperAddRowBtn").addEventListener("click", () => wwRefEditorAddRow("upper"));
+        document.getElementById("wwRefEditorRepresentation").addEventListener("change", () => wwRefEditorUpdateMemberFieldVisibility());
+        document.getElementById("wwRefEditorPhaseTreatment").addEventListener("change", () => wwRefEditorUpdateMemberFieldVisibility());
 
         // ---- Overcurrent Analysis v1 wiring ----
         document.getElementById("wwOvercurrentContextSelect").addEventListener("change", (event) => {

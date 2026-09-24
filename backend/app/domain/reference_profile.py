@@ -61,12 +61,35 @@ structural violation -- non-finite numbers, `end_time <= start_time`,
 overlapping segments, a malformed segment type, an unknown category/unit,
 or a missing boundary. It never coerces, clamps, or reorders a value to
 make it "work".
+
+**Compliance Slice 4 architecture refinement (DEC-110): `evaluation_
+quantity` is RETIRED as a field on this dataclass, replaced by
+`assessment_definition: AssessmentDefinition`** (see
+`app.domain.assessment_definition`'s own module docstring for the full
+rationale). A `ReferenceProfile` states WHAT boundary/curve is required;
+its `assessment_definition` states HOW a measured voltage should be
+derived for a future comparison -- these are no longer conflated into
+one canonical-quantity-id string. A v1-schema profile's own legacy
+`evaluation_quantity` is migrated via `app.domain.assessment_definition.
+assessment_definition_from_legacy_quantity()` on import/built-in-load,
+never lost, never silently reinterpreted (an unmapped value becomes
+`assessment_definition = AssessmentDefinition()` with the original value
+preserved as `legacy_quantity_hint`, task section 6).
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+
+from app.domain.assessment_definition import (
+    AssessmentDefinition,
+    AssessmentDefinitionValidationError,
+    assessment_definition_from_dict,
+    assessment_definition_from_legacy_quantity,
+    assessment_definition_to_dict,
+    validate_assessment_definition,
+)
 
 #: Profile categories (task section 3) -- deliberately generic, never a
 #: named grid code or OEM baked in as a "kind".
@@ -175,20 +198,20 @@ class ReferenceProfileMetadata:
 
 @dataclass(frozen=True, slots=True)
 class ReferenceProfile:
-    """The generic reference-profile domain model (task section 3).
-    `evaluation_quantity` is expected to be one of the existing canonical
-    Voltage assessment quantity ids from
-    `app.domain.compliance_measurement.VOLTAGE_QUANTITIES` (e.g.
-    `"phase_a_lg_rms"`) -- this module does not import or enforce that
-    catalogue directly (it has zero dependency on the Compliance
-    Measurement feature area), the SERVICE layer is responsible for that
-    cross-check, mirroring how `app.domain.compliance_measurement` itself
-    has zero dependency on Engineering Context (DEC-101)."""
+    """The generic reference-profile domain model (task section 3;
+    `assessment_definition` per DEC-110 -- see this module's own updated
+    docstring above). This module does not import or enforce
+    `app.domain.compliance_measurement.VOLTAGE_QUANTITIES` directly (it
+    has zero dependency on the Compliance Measurement feature area) --
+    any future cross-check between an `AssessmentDefinition` and that
+    catalogue is the SERVICE layer's job, mirroring how `app.domain.
+    compliance_measurement` itself has zero dependency on Engineering
+    Context (DEC-101)."""
 
     id: str
     name: str
     category: str
-    evaluation_quantity: str
+    assessment_definition: AssessmentDefinition
     unit: str
     display_start_time: float
     display_end_time: float
@@ -268,10 +291,13 @@ def validate_reference_profile(profile: ReferenceProfile) -> None:
             f"Unknown category {profile.category!r} (must be one of {KNOWN_CATEGORIES}).",
             reason_code="unknown_category", field_name="category",
         )
-    if not profile.evaluation_quantity or not profile.evaluation_quantity.strip():
+    try:
+        validate_assessment_definition(profile.assessment_definition)
+    except AssessmentDefinitionValidationError as exc:
         raise ReferenceProfileValidationError(
-            "evaluation_quantity must not be blank.", reason_code="blank_evaluation_quantity", field_name="evaluation_quantity",
-        )
+            exc.message, reason_code=exc.reason_code,
+            field_name=f"assessment_definition.{exc.field_name}" if exc.field_name else "assessment_definition",
+        ) from exc
     if profile.unit not in KNOWN_UNITS:
         raise ReferenceProfileValidationError(
             f"Unsupported unit {profile.unit!r} (must be one of {KNOWN_UNITS}).",
@@ -326,15 +352,19 @@ class BoundaryPoint:
     value: float | None
 
 
-#: Task section 17: "JSON export uses a stable versioned schema (example:
-#: {"schema_version": 1, "profile": {...}})". `SCHEMA_VERSION` is the ONE
-#: version this module currently writes/accepts; a future incompatible
-#: shape change bumps this and adds the old value to
-#: `SUPPORTED_SCHEMA_VERSIONS` only if a compatible reader is written --
-#: an unrecognized version is always rejected explicitly, never silently
-#: coerced (task section 17's own explicit instruction).
-SCHEMA_VERSION = 1
-SUPPORTED_SCHEMA_VERSIONS = (SCHEMA_VERSION,)
+#: Task section 17 (Slice 3) / section 13 (Slice 4, DEC-110): "JSON
+#: export uses a stable versioned schema". `SCHEMA_VERSION` is the ONE
+#: version this module currently WRITES; `SUPPORTED_SCHEMA_VERSIONS` is
+#: every version it can still READ. Bumped to 2 for DEC-110's
+#: `evaluation_quantity` -> `assessment_definition` change (a materially
+#: different shape) -- version 1 remains READABLE via an explicit
+#: migration path (`profile_from_json_dict()` branches on
+#: `schema_version` and calls `assessment_definition_from_legacy_
+#: quantity()` for a v1 body), but every NEW export always writes v2
+#: (`profile_to_json_dict()` never emits v1). An unrecognized version is
+#: always rejected explicitly, never silently coerced.
+SCHEMA_VERSION = 2
+SUPPORTED_SCHEMA_VERSIONS = (1, SCHEMA_VERSION)
 
 
 class UnsupportedReferenceProfileSchemaVersionError(ValueError):
@@ -414,6 +444,15 @@ def profile_from_json_dict(envelope: object, *, profile_id: str) -> ReferencePro
     way; an id is registry/workspace identity, never portable curve
     data.
 
+    **DEC-110 (schema v1 -> v2 migration, task section 6/13)**: a `v1`
+    body's own `evaluation_quantity` string is migrated into an
+    equivalent `AssessmentDefinition` via `assessment_definition_from_
+    legacy_quantity()` -- an unmapped value becomes `unspecified` with
+    the original string preserved as `legacy_quantity_hint`, never
+    guessed. A `v2` body's own `assessment_definition` object is parsed
+    directly. Every NEW export (`profile_to_json_dict()`) always writes
+    `v2` -- `v1` is a read-only, import-only compatibility path.
+
     Raises `UnsupportedReferenceProfileSchemaVersionError` for a missing/
     unrecognized `schema_version`, or `ReferenceProfileValidationError`
     for any other malformed/invalid content -- never silently coerces a
@@ -431,11 +470,20 @@ def profile_from_json_dict(envelope: object, *, profile_id: str) -> ReferencePro
     if not isinstance(data, dict):
         raise ReferenceProfileValidationError("Missing or malformed 'profile' object.", reason_code="malformed_envelope")
     try:
+        if schema_version == 1:
+            if "evaluation_quantity" not in data:
+                raise ReferenceProfileValidationError(
+                    "A schema_version=1 profile must carry 'evaluation_quantity'.",
+                    reason_code="malformed_profile", field_name="evaluation_quantity",
+                )
+            assessment_definition = assessment_definition_from_legacy_quantity(str(data["evaluation_quantity"]))
+        else:
+            assessment_definition = assessment_definition_from_dict(data.get("assessment_definition"))
         profile = ReferenceProfile(
             id=profile_id,
             name=str(data["name"]),
             category=str(data["category"]),
-            evaluation_quantity=str(data["evaluation_quantity"]),
+            assessment_definition=assessment_definition,
             unit=str(data["unit"]),
             display_start_time=float(data["display_start_time"]),
             display_end_time=float(data["display_end_time"]),
@@ -487,16 +535,17 @@ def _metadata_to_dict(metadata: ReferenceProfileMetadata) -> dict:
 
 def profile_to_json_dict(profile: ReferenceProfile) -> dict:
     """The inverse of `profile_from_json_dict()` -- task section 17's
-    stable versioned export schema. Deliberately omits `id` from the
-    inner `"profile"` object -- an id is workspace/registry-assigned
-    identity, not portable curve data; re-import always mints a fresh
-    one (see `profile_from_json_dict()`'s own docstring)."""
+    stable versioned export schema, always written as `v2` (DEC-110;
+    `v1` is import-only). Deliberately omits `id` from the inner
+    `"profile"` object -- an id is workspace/registry-assigned identity,
+    not portable curve data; re-import always mints a fresh one (see
+    `profile_from_json_dict()`'s own docstring)."""
     return {
         "schema_version": SCHEMA_VERSION,
         "profile": {
             "name": profile.name,
             "category": profile.category,
-            "evaluation_quantity": profile.evaluation_quantity,
+            "assessment_definition": assessment_definition_to_dict(profile.assessment_definition),
             "unit": profile.unit,
             "display_start_time": profile.display_start_time,
             "display_end_time": profile.display_end_time,

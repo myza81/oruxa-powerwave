@@ -531,3 +531,62 @@ class TestComplianceReferenceLayersStructure:
         render_fn = _function_body(source, "function wwRenderCompliancePage() {", "\n        }")
         assert "wwRefLoadProfiles()" in render_fn
         assert "wwRefRefreshLayersAndChart()" in render_fn
+
+
+class TestAssessmentDefinitionEditorStructure:
+    """DEC-110 -- the profile editor's own Assessment Definition surface
+    (task section 10): representation/phase treatment/specific member/
+    measurement location/interpretation source, member shown only when
+    applicable, no raw internal enum names exposed to the engineer."""
+
+    def test_evaluation_quantity_select_no_longer_exists(self):
+        """Retired in favor of the Assessment Definition fields below --
+        never both at once."""
+        source = _source()
+        assert 'id="wwRefEditorQuantity"' not in source
+        assert "wwRefPopulateQuantitySelect" not in source
+
+    def test_assessment_definition_fields_exist(self):
+        source = _source()
+        for field_id in (
+            "wwRefEditorRepresentation", "wwRefEditorPhaseTreatment", "wwRefEditorMember",
+            "wwRefEditorMeasurementLocation", "wwRefEditorProvenance",
+        ):
+            assert f'id="{field_id}"' in source
+
+    def test_member_field_visibility_is_computed_never_always_visible(self):
+        source = _source()
+        fn = _function_body(source, "function wwRefEditorUpdateMemberFieldVisibility() {", "\n        }")
+        assert "fieldEl.hidden = true" in fn
+        assert "fieldEl.hidden = false" in fn
+
+    def test_select_options_use_human_labels_not_raw_enum_names(self):
+        """Task section 10: 'Do not expose raw internal enum names.'"""
+        source = _source()
+        representation_field = _function_body(source, 'id="wwRefEditorRepresentation"', "</select>")
+        assert "Line-Line RMS" in representation_field
+        assert "Phase-Ground RMS" in representation_field
+        assert "Positive Sequence RMS" in representation_field
+        phase_treatment_field = _function_body(source, 'id="wwRefEditorPhaseTreatment"', "</select>")
+        assert "Each Phase" in phase_treatment_field
+
+    def test_layer_summary_helper_exists_and_handles_unspecified(self):
+        source = _source()
+        fn = _function_body(source, "function wwRefDescribeAssessmentDefinition(definition) {", "\n        }")
+        assert "Assessment convention not specified" in fn
+        assert "Assessment: " in fn
+
+    def test_reference_layer_row_renders_the_assessment_summary(self):
+        source = _source()
+        fn = _function_body(source, "function wwRefRenderLayersCard() {", "\n        async function wwRefToggleLayerVisibility")
+        assert "wwRefDescribeAssessmentDefinition(" in fn
+        assert "ww-ref-layer-summary" in fn
+
+    def test_no_evaluation_or_measurement_resolver_logic_was_added(self):
+        """Task section 15's own explicit exclusion list."""
+        source = _source()
+        for forbidden in (
+            "wwRefResolveTrace", "wwRefDeriveMeasured", "wwRefEvaluateAssessment",
+            "wwRefMinAggregate", "wwRefMaxAggregate", "wwRefEachPhaseEvaluate",
+        ):
+            assert forbidden not in source

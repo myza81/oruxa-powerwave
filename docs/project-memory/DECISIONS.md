@@ -17824,6 +17824,252 @@ suite and full Playwright suite pass.
 
 ---
 
+## DEC-110 — Compliance Slice 3 refinement: ReferenceProfile is separated from HOW a measured quantity is derived — a new AssessmentDefinition model bridges the reference boundary/curve to Compliance Slice 2's canonical measurement quantities, with `unspecified` as a first-class state and no measurement resolver implemented yet
+
+Date: 2026-09-24
+Status: Approved — implemented.
+Source: owner product review, after Compliance Slice 3 (DEC-109) UAT
+passed conceptually: *"Current `ReferenceProfile.evaluation_quantity` is
+too tightly coupled to one canonical measured quantity... For real
+grid-code/utility/OEM requirements, the reference is often a single
+voltage-time requirement curve, while the actual measured assessment
+quantity may be defined separately... Different jurisdictions may use
+different conventions, and some requirements may not explicitly specify
+the convention at all. Powerwave must be able to support all of these
+without redesigning the reference-profile engine."*
+
+**Issue, precisely as the owner described it.** DEC-109's own
+`ReferenceProfile.evaluation_quantity` field conflated two genuinely
+different engineering concepts into one string: WHAT boundary/curve a
+requirement specifies, and HOW a measured three-phase recording should
+be reduced to one comparable value. A real requirement often specifies
+only the curve, leaving the aggregation convention ("minimum of
+VAB/VBC/VCA", "minimum of VA/VB/VC", "positive-sequence voltage", "each
+phase independently against the same curve", or an unstated convention
+entirely) to a separate document, an unwritten utility norm, or genuine
+ambiguity the engineer must flag rather than guess. Compliance Slice 2's
+own nine canonical quantities (`phase_a_lg_rms`, `phase_ab_ll_rms`,
+`positive_sequence_rms`, etc.) each represent exactly ONE such
+convention baked in — there was no way to express "minimum of the three
+line-line RMS values" at all, since no canonical quantity for that
+exists, and no way to say "this requirement's own convention is not
+stated" other than picking one of the nine anyway.
+
+**Decision: separate `ReferenceProfile` (what boundary/curve is
+required) from a new, independent `AssessmentDefinition` model (how a
+measured voltage should be derived for comparison), and freeze this
+distinction going forward.**
+
+```text
+ReferenceProfile
+├── boundary geometry (lower_boundary / upper_boundary, unchanged from DEC-109)
+├── unit/basis (unchanged from DEC-109)
+├── metadata/category (unchanged from DEC-109)
+└── assessment_definition  <- NEW, replaces evaluation_quantity
+```
+
+**`AssessmentDefinition` (`app.domain.assessment_definition`, a brand-new,
+standalone pure domain module with ZERO dependency on `app.domain.
+reference_profile` — see below for why) has five closed axes plus one
+optional member, deliberately narrow rather than an open enum universe
+(owner's own "do not overbuild an enum universe" instruction)**:
+
+```text
+quantity_family:        voltage
+representation:         line_line_rms | phase_ground_rms | positive_sequence_rms | unspecified
+phase_treatment:        minimum | maximum | each_phase | single | unspecified
+member (optional):      A | B | C | AB | BC | CA
+measurement_location:   connection_point | equipment_terminal | project_defined | unspecified
+provenance:              explicit_standard | utility_clarification | project_agreement | user_defined | unspecified
+```
+
+Every field defaults to its own `unspecified`/`None` state —
+`AssessmentDefinition()` (every default) is a fully valid, meaningful
+"not yet confirmed" state, never an error (owner's own explicit "this is
+important... Powerwave must not guess" instruction, section 8). A
+future UI can and should surface this as "Assessment convention requires
+confirmation" — this slice implements the model/validation/display
+only, never a guess in either direction.
+
+**Combination semantics are validated with real engineering meaning, not
+mere field presence** (`validate_assessment_definition()`):
+`representation=line_line_rms` + `phase_treatment=minimum` means
+`min(VAB, VBC, VCA)`; `representation=positive_sequence_rms` +
+`phase_treatment=single` means `V1`; `representation=phase_ground_rms` +
+`phase_treatment=each_phase` means "compare VA, VB, VC independently
+against the same curve" — **none of these calculations are implemented
+yet** (explicit future-slice work, see below). Validated rules: an
+aggregate treatment (`minimum`/`maximum`/`each_phase`) must never carry
+a specific `member`; `positive_sequence_rms` has no per-member concept
+at all; `phase_treatment=single` with a line-line/phase-ground
+representation REQUIRES an explicit member (ambiguous otherwise);
+`phase_treatment=each_phase` is not (yet) supported for
+`representation=line_line_rms` (owner's own explicit "likely invalid
+wording/combination unless explicitly modeled as each line-pair" — not
+modeled in v1); a `member`, if present, must belong to its
+representation's own member set and requires a non-`unspecified`
+representation to be meaningful at all. When genuinely uncertain,
+validation prefers rejecting an over-specific/contradictory combination
+over inventing meaning — `unspecified` is always the safe alternative.
+
+**Kept as a fully independent domain module from `app.domain.
+reference_profile` on purpose, to avoid a circular import**:
+`AssessmentDefinition`'s own validation error
+(`AssessmentDefinitionValidationError`) is a distinct exception type;
+`app.domain.reference_profile.validate_reference_profile()` catches it
+and re-raises its own `ReferenceProfileValidationError` with `field_name`
+prefixed `"assessment_definition."`, giving callers ONE unified error
+surface at the `ReferenceProfile` boundary while keeping the two models
+mutually decoupled (mirrors how `app.domain.compliance_measurement` has
+zero dependency on Engineering Context, DEC-101).
+
+**Canonical Compliance Slice 2 measurement quantities are explicitly
+NOT deleted and remain exactly what they always were: normalized
+measurement PRODUCTS Powerwave can compute, never a regulatory
+definition.** `app.domain.compliance_measurement.VOLTAGE_QUANTITIES` is
+completely unchanged (zero lines touched). The frozen distinction, in
+the owner's own words:
+
+```text
+canonical measurement quantities  = what Powerwave CAN CALCULATE
+assessment definition             = what a REQUIREMENT tells Powerwave to use
+```
+
+A future measurement resolver slice maps the latter to the former (or
+to a newly-derived trace the canonical catalogue does not yet cover,
+e.g. "minimum of the three line-line RMS values", which today has no
+equivalent canonical quantity at all — exactly the gap this whole
+refinement exists to make representable).
+
+**Legacy `evaluation_quantity` values are migrated, never lost, never
+guessed (owner's own explicit instruction).** Every one of DEC-109's
+nine canonical quantity ids maps unambiguously to an `AssessmentDefinition`
+(`assessment_definition_from_legacy_quantity()`, e.g. `phase_ab_ll_rms`
+→ `representation=line_line_rms, phase_treatment=single, member=AB`;
+`positive_sequence_rms` → `representation=positive_sequence_rms,
+phase_treatment=single`) — there is no "cannot map without guessing"
+case for a value that is genuinely one of these nine, since each already
+implies exactly one representation/treatment/member combination. An id
+OUTSIDE this table becomes fully `unspecified`, with the original string
+preserved verbatim as `legacy_quantity_hint` for traceability — displayed
+in the profile editor as a read-only note, never re-interpreted as an
+active field.
+
+**JSON schema bumped to v2 (a materially different shape); v1 remains an
+explicit, read-only, import-only migration path — new exports always
+write v2, never v1.** `SCHEMA_VERSION = 2`, `SUPPORTED_SCHEMA_VERSIONS =
+(1, 2)`. `profile_from_json_dict()` branches on `schema_version`: `1`
+reads the body's own `evaluation_quantity` and migrates it via the
+function above; `2` reads a native `assessment_definition` object
+directly. `profile_to_json_dict()` unconditionally emits `v2` with an
+`assessment_definition` object — it never writes `evaluation_quantity`
+again. An unrecognized/missing version still fails explicitly via
+`UnsupportedReferenceProfileSchemaVersionError`, unchanged from DEC-109.
+The empty production built-in directory (DEC-109, still empty here) and
+this codebase's own test-only built-in fixtures (still `v1` on disk)
+continue to load correctly purely through this migration path — no
+fixture file needed to change for this decision, itself a live proof the
+migration works.
+
+**Compatibility is now ALWAYS `COMPATIBILITY_NOT_YET_APPLICABLE` — this
+is the direct, necessary consequence of the model split, not a
+regression.** DEC-109's `compute_layer_compatibility()` used to compare
+`profile.evaluation_quantity == selected_quantity_id` directly; that
+field no longer exists, and in general an `AssessmentDefinition` does
+not correspond to exactly one canonical quantity id at all (the
+"minimum of VAB/VBC/VCA" case has none). Determining whether a selected
+Measurement's quantity can actually satisfy a profile's own required
+assessment trace needs a measurement RESOLVER that does not exist yet
+(explicit future-slice work — see below). Per the owner's own explicit
+instruction ("Do not introduce false incompatibility merely because
+assessment_definition != canonical measurement selector"), this function
+now always returns `not_yet_applicable`, with a reason distinguishing
+"no Measurement selected" from "measurement comparison is not
+implemented yet" — never a false `compatible` (nothing has actually
+checked a trace can be derived) and never a false `incompatible` (a
+future resolver might satisfy the profile perfectly well). The
+`COMPATIBILITY_COMPATIBLE`/`COMPATIBILITY_INCOMPATIBLE` module constants
+remain defined for API/UI vocabulary stability and for the resolver
+slice to start from, mirroring `app.domain.compliance_measurement.
+STATUS_INVALID_BASE`'s own "remains defined for vocabulary stability;
+nothing currently triggers it" precedent (DEC-102).
+
+**Explicitly NOT implemented in this refinement (owner's own exclusion
+list, unchanged)**: Va/Vb/Vc → VAB/VBC/VCA derivation, min/max
+aggregation, positive-sequence calculation, each-phase evaluation,
+measured-trace overlay, per-unit conversion, t0 alignment, compliance
+comparison. This slice defines the semantics and validation only — a
+future measurement-resolver slice implements the actual derivation.
+
+**Frontend**: the profile editor's old "Evaluation quantity" select
+(which reused Compliance Measurement's own catalogue endpoint) is
+retired; a new "Assessment Definition" section exposes Voltage
+representation / Phase treatment / Specific member (shown only when a
+combination could actually use one, `wwRefEditorUpdateMemberFieldVisibility()`)
+/ Measurement location / Interpretation source, every option a human
+label from a `WW_REF_*_LABEL` map — no raw internal enum name (e.g.
+`"line_line_rms"`) is ever shown to the engineer. The Reference Layers
+card and the Add Reference picker both gained a compact, one-line
+assessment summary (`wwRefDescribeAssessmentDefinition()`, e.g.
+"Assessment: Minimum Line-Line RMS at Connection Point" / "Assessment:
+Positive-Sequence RMS" / "Assessment convention not specified") — never
+a verbose second block. A genuine, pre-existing CSS-cascade bug was
+found and fixed while wiring the member field's visibility toggle: the
+codebase's own global `label { display: block; }` rule beats the UA
+stylesheet's `[hidden] { display: none }` rule by CSS origin (the exact
+same class of bug already fixed multiple times elsewhere in this file,
+e.g. `.ww-annotation-guidance[hidden]`) — fixed with an explicit
+`#wwRefEditorMemberField[hidden] { display: none; }` override, discovered
+directly via a failing Playwright assertion, not assumed.
+
+**Backend**: new `app/domain/assessment_definition.py` (model,
+validation, legacy-quantity migration, dict (de)serialization — zero
+dependency on `app.domain.reference_profile`).
+`app/domain/reference_profile.py` (`evaluation_quantity` field removed,
+`assessment_definition: AssessmentDefinition` field added;
+`SCHEMA_VERSION` bumped to 2 with v1 read compatibility; `validate_
+reference_profile()` delegates to and translates `AssessmentDefinition`'s
+own validation). `app/schemas/reference_profile.py` (new
+`AssessmentDefinitionIn`/`AssessmentDefinitionOut`, wired into
+`ReferenceProfileWriteRequest`/`ReferenceProfileOut`). `app/services/
+reference_profile_service.py` (`compute_layer_compatibility()` rewritten
+per above; the now-unused `app.domain.compliance_measurement.
+get_voltage_quantity` import removed). Zero changes to `app/api/v1/
+reference_profiles.py`'s own routes/wiring, `app/services/errors.py`
+(no new error classes needed — assessment-definition errors reuse the
+existing `ReferenceProfileValidationServiceError`), or any Reference
+Layer/registry/Comparison-Chart-assembly code not directly touching
+`evaluation_quantity`.
+
+**Tests**: new `backend/tests/test_assessment_definition.py` (32 —
+every valid/invalid combination from the owner's own worked examples,
+legacy-quantity migration, dict round-trip). `test_reference_profile_domain.py`
+gained `TestAssessmentDefinitionValidationPropagatesToProfileLevel` and
+`TestV1LegacySchemaMigration` (all nine canonical quantities parametrized,
+unrecognized-quantity-preserves-hint, missing-evaluation_quantity-in-v1-
+body, v1-import-then-v2-export). `test_reference_profile_service.py`'s
+`TestCompatibility` rewritten for "always not_yet_applicable".
+`test_reference_profile_api.py` gained a v1-import-via-HTTP test and an
+export-always-v2 assertion. `test_frontend_compliance.py` gained
+`TestAssessmentDefinitionEditorStructure` (6 tests: old select genuinely
+retired, new fields exist, member visibility is computed not static,
+human labels not raw enums, layer summary helper exists and handles
+unspecified, no resolver/evaluation logic was added).
+`browser-tests/reference_profiles.spec.js` gained a
+`test.describe("Compliance Slice 4 (DEC-110)")` block (5 real-browser
+scenarios: create-via-editor with an explicit representation/treatment
+round-tripping through the API, an explicit single line-line member
+(VAB) with the member field genuinely required, an invalid combination
+rejected inline with an actionable error, a fully-`unspecified` profile
+still rendering in the reference-only Comparison Chart, and importing a
+legacy v1 profile through the UI with the migrated representation and
+legacy hint visible in the editor afterward) plus one new compatibility-
+stays-not-yet-applicable-via-the-API test and one existing-test timing
+fix (a pre-existing, newly-exposed flake, not a DEC-110 regression).
+Full backend suite and full Playwright suite pass.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
