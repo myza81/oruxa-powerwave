@@ -312,6 +312,17 @@ work, run fresh on every request when a channel's `waveform_form` is
 inherits from `check_rms_eligibility()`'s own identical behavior, not a
 new one it introduces.
 
+**DEC-114 update**: this ~19 ms/request cost is fine for a single
+selected-time request (this section's own original point), but was being
+paid up to 120x per Impedance Locus/Distance Protection locus request
+before DEC-114 — a caller needing MANY `analysis_time`s against the same
+context now uses `prepare_phasor_diagram()` once (paying this cost
+exactly once) and `evaluate_prepared_phasor_diagram()` per time (cheap —
+just the estimator itself) instead of calling `compute_phasor_diagram()`
+per time. See "DEC-114 — `prepare_phasor_diagram()`/`evaluate_prepared_
+phasor_diagram()`" below for the shared primitive, and DECISIONS.md
+DEC-114 for measured before/after locus timings.
+
 ## Frontend: the Analysis page
 
 **`Analysis` is a new, permanent top-level main-menu destination** —
@@ -712,6 +723,70 @@ requested together. `analysis_time` semantics match the original
 endpoint's own convention (elapsed seconds since the anchor role's own
 source start), with the anchor determined dynamically as described
 above.
+
+### DEC-114 — `prepare_phasor_diagram()`/`evaluate_prepared_phasor_diagram()`: the same "phase 1" split, made shared and reusable
+
+Steps 1-6 above (role resolution -> candidate fetch -> reference-
+frequency agreement -> waveform-form eligibility -> shared absolute-time
+coordinate -> cross-role timebase check) are all `analysis_time`-
+INDEPENDENT — they only depend on the Engineering Context/reference-
+frequency-override, never on which instant is being estimated. Step 7
+(estimation itself) is the only genuinely `analysis_time`-dependent part.
+This was already true (and already documented, above, as "steps 1-6" vs.
+"step 7"), and `check_phasor_diagram_readiness()` already mirrored steps
+1-4 as its own separate copy — its own docstring warned "Keep both
+functions' own first phase in sync if either changes," i.e. the codebase
+already had two independent implementations of the same static phase
+that had to be manually kept consistent.
+
+Impedance Locus's and Distance Protection's own locus endpoints
+(`compute_impedance_locus()`/`compute_distance_locus()`) each called
+`compute_phasor_diagram()` — therefore this entire static phase — once
+per sample point, for up to `MAX_LOCUS_POINTS` points. The waveform-form
+eligibility step's algorithmic fallback (`classify_waveform_form()`, for
+the common `unknown`-metadata case) is genuinely expensive; repeating it
+120x instead of once per role was the dominant cost behind a measured
+~13s single 120-point locus request (see DECISIONS.md DEC-114 for exact
+before/after numbers).
+
+`app/services/phasor_analysis_service.py` now factors the static phase
+into its own reusable primitive:
+
+```
+prepare_phasor_diagram(workspace_id, engineering_context_id, reference_frequency_hz_override, ...) -> PreparedPhasorDiagram
+evaluate_prepared_phasor_diagram(prepared, analysis_time) -> PhasorDiagramResult
+evaluate_prepared_phasor_diagram_many(prepared, analysis_times) -> list[PhasorDiagramResult]
+```
+
+`PreparedPhasorDiagram` also precomputes each eligible role's own
+`(start_epoch - reference_epoch) + candidate.time` shared-time array
+ONCE (`eligible_t_shared`) — this does not depend on `analysis_time`
+either, so a multi-time caller avoids re-deriving it per sample too.
+`compute_phasor_diagram()` itself is now just `evaluate_prepared_
+phasor_diagram(prepare_phasor_diagram(...), analysis_time)` — its own
+external behavior (including every failure mode/status/reason_code) is
+byte-for-byte unchanged; a single-selected-time caller pays the exact
+same cost as before. `check_phasor_diagram_readiness()` is deliberately
+left as its own separate implementation (different status vocabulary —
+`analysis_input_resolution`'s `STATUS_*` values, not `PhasorDiagramResult`'s
+own `ROLE_STATUS_*` values — and not on the locus hot path), so its own
+"keep in sync" docstring warning still applies; only the LOCUS callers,
+which genuinely needed to avoid the N-times repetition, were changed to
+use the new shared primitives.
+
+Impedance Locus and Distance Protection now call `prepare_phasor_diagram()`
+ONCE for the whole locus request, then `evaluate_prepared_phasor_diagram()`
+once per sample time — see IMPEDANCE_LOCUS_ANALYSIS.md's own DEC-114
+section and DISTANCE_PROTECTION_ANALYSIS.md's own equivalent for the
+locus-side detail. A genuine static/whole-request failure (unresolvable
+role, reference-frequency conflict, timebase incompatibility) is still
+reported identically for every sample point — it is detected once during
+preparation rather than rediscovered per point, so observable per-point
+behavior is unchanged. Never a vectorized/batched DFT: `estimate_phasor()`
+itself is still called once per role per sample time (`evaluate_prepared_
+phasor_diagram_many()` is a thin loop, not a batch estimator) — only the
+STATIC preparation work was deduplicated, per this task's own "avoid
+premature vectorization" guidance.
 
 ### Frontend: single aggregated fetch, no per-role resolution call
 

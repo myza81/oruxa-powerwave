@@ -432,6 +432,328 @@ def _diagram_role_status_for_resolution(role_key: str, resolution) -> tuple[str,
     return ROLE_STATUS_MISSING, reason or "role_missing"
 
 
+class PreparedPhasorDiagram:
+    """DEC-114: the `analysis_time`-INDEPENDENT portion of
+    `compute_phasor_diagram()`'s own work -- role resolution, candidate
+    fetch, reference-frequency agreement, waveform-form eligibility,
+    the shared absolute-time coordinate, and the cross-role timebase
+    check -- captured ONCE via `prepare_phasor_diagram()` and reused for
+    every `analysis_time` a caller subsequently needs
+    (`evaluate_prepared_phasor_diagram()`). Exists because Impedance
+    Locus's and Distance Protection's own locus endpoints each called
+    `compute_phasor_diagram()` (and therefore this entire "phase 1")
+    independently for every one of up to `MAX_LOCUS_POINTS` sample
+    times -- see docs/project-memory/DECISIONS.md DEC-114.
+
+    `outcome` is one of:
+    - `"no_candidates"` -- no role's identity resolved at all.
+    - `"blocked"` -- a whole-result blocking condition (`block_reason_code`/
+      `block_message` populated): invalid override, reference-frequency
+      conflict, no known absolute start time, or timebase incompatibility.
+    - `"no_eligible"` -- every identity-resolved role failed waveform-form
+      eligibility.
+    - `"ready"` -- `eligible_candidates`/`eligible_t_shared`/
+      `reference_frequency_hz`/`window_seconds`/`anchor_offset` are
+      populated and `evaluate_prepared_phasor_diagram()` can estimate.
+
+    `eligible_t_shared` precomputes each eligible candidate's own
+    `(start_epoch - reference_epoch) + candidate.time` array ONCE (this
+    does not depend on `analysis_time` either) -- avoiding a repeated
+    full-length array addition per role per evaluated time on top of the
+    avoided re-resolution/re-fetch/re-classification."""
+
+    __slots__ = (
+        "engineering_context_id", "outcome",
+        "role_statuses", "role_reason_codes", "candidates",
+        "reference_frequency_hz", "window_seconds",
+        "eligible_candidates", "eligible_t_shared",
+        "anchor_role_key", "anchor_offset",
+        "block_reason_code", "block_message",
+    )
+
+    def __init__(
+        self, *, engineering_context_id: str, outcome: str,
+        role_statuses: dict[str, str], role_reason_codes: dict[str, str | None], candidates: dict[str, _RoleCandidate],
+        reference_frequency_hz: float | None = None, window_seconds: float | None = None,
+        eligible_candidates: dict[str, _RoleCandidate] | None = None, eligible_t_shared: dict[str, object] | None = None,
+        anchor_role_key: str | None = None, anchor_offset: float | None = None,
+        block_reason_code: str | None = None, block_message: str | None = None,
+    ):
+        self.engineering_context_id = engineering_context_id
+        self.outcome = outcome
+        self.role_statuses = role_statuses
+        self.role_reason_codes = role_reason_codes
+        self.candidates = candidates
+        self.reference_frequency_hz = reference_frequency_hz
+        self.window_seconds = window_seconds
+        self.eligible_candidates = eligible_candidates or {}
+        self.eligible_t_shared = eligible_t_shared or {}
+        self.anchor_role_key = anchor_role_key
+        self.anchor_offset = anchor_offset
+        self.block_reason_code = block_reason_code
+        self.block_message = block_message
+
+
+def prepare_phasor_diagram(
+    *,
+    workspace_id: str,
+    engineering_context_id: str,
+    reference_frequency_hz_override: float | None,
+    context_registry: EngineeringContextRegistry,
+    source_registry: WorkspaceRegistry,
+    calculated_channel_registry: CalculatedChannelRegistry,
+) -> PreparedPhasorDiagram:
+    """DEC-114: role resolution -> candidate fetch -> reference-frequency
+    agreement -> waveform-form eligibility -> shared absolute-time
+    coordinate -> cross-role timebase check, EXACTLY matching
+    `compute_phasor_diagram()`'s own first phase (formerly duplicated in
+    spirit by `check_phasor_diagram_readiness()`, per that function's own
+    "Keep both functions' own first phase in sync" docstring warning) --
+    captured once into a `PreparedPhasorDiagram` a caller can evaluate at
+    many `analysis_time` values via `evaluate_prepared_phasor_diagram()`
+    without repeating any of this. `compute_phasor_diagram()` itself is
+    just `evaluate_prepared_phasor_diagram(prepare_phasor_diagram(...),
+    analysis_time)` -- see that function for the single-call case.
+
+    Raises `EngineeringContextNotFoundError` exactly like
+    `resolve_analysis_inputs()` itself does (propagated unchanged)."""
+    role_statuses: dict[str, str] = {}
+    role_reason_codes: dict[str, str | None] = {}
+    candidates: dict[str, _RoleCandidate] = {}
+
+    for role_key in PHASOR_DIAGRAM_ROLE_ORDER:
+        requirement = _DIAGRAM_REQUIREMENTS_BY_ROLE[role_key]
+        resolution = resolve_analysis_inputs(
+            workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+            analysis_kind=requirement.analysis_kind, mode=requirement.mode,
+            context_registry=context_registry, source_registry=source_registry,
+            calculated_channel_registry=calculated_channel_registry,
+        )
+        if resolution.status != STATUS_RESOLVED:
+            status, reason_code = _diagram_role_status_for_resolution(role_key, resolution)
+            role_statuses[role_key] = status
+            role_reason_codes[role_key] = reason_code
+            continue
+
+        ref = resolution.resolved_roles[role_key]
+        candidate = _fetch_role_candidate(
+            role_key, ref, workspace_id=workspace_id, source_registry=source_registry,
+            calculated_channel_registry=calculated_channel_registry,
+        )
+        if candidate is None:
+            role_statuses[role_key] = ROLE_STATUS_NEEDS_CONFIGURATION
+            role_reason_codes[role_key] = _REASON_CHANNEL_UNAVAILABLE
+            continue
+        candidates[role_key] = candidate
+
+    if not candidates:
+        return PreparedPhasorDiagram(
+            engineering_context_id=engineering_context_id, outcome="no_candidates",
+            role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
+        )
+
+    # ---- Reference frequency: explicit override, else unanimous agreement ----
+    # Computed across every IDENTITY-resolved candidate (not just the
+    # eventually-eligible ones) -- identical ordering/policy to
+    # `compute_phasor_analysis()`'s own single-requirement version, see
+    # that function's own comment for why (waveform-form eligibility
+    # itself needs a reference frequency as an input, so it cannot be
+    # computed only from the post-eligibility subset).
+    if reference_frequency_hz_override is not None:
+        if not nominal_frequency_valid(reference_frequency_hz_override):
+            return PreparedPhasorDiagram(
+                engineering_context_id=engineering_context_id, outcome="blocked",
+                role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
+                block_reason_code=REASON_INVALID_REFERENCE_FREQUENCY,
+                block_message="The supplied reference_frequency_hz is outside the plausible range.",
+            )
+        reference_frequency_hz = reference_frequency_hz_override
+    else:
+        declared = [c.nominal_frequency for c in candidates.values()]
+        first = declared[0]
+        if not all(math.isclose(f, first, rel_tol=1e-9, abs_tol=1e-9) for f in declared):
+            return PreparedPhasorDiagram(
+                engineering_context_id=engineering_context_id, outcome="blocked",
+                role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
+                block_reason_code=REASON_REFERENCE_FREQUENCY_CONFLICT,
+                block_message=(
+                    "Resolved roles come from sources declaring different nominal frequencies; supply an explicit "
+                    "reference_frequency_hz to compute a combined diagram."
+                ),
+            )
+        reference_frequency_hz = first
+
+    # ---- Waveform-form eligibility, per role -- never blocks others ----
+    # The single most expensive step for a role with `unknown` metadata
+    # (`classify_waveform_form()`'s multi-window detector) -- this is now
+    # evaluated exactly once per role for the whole prepared diagram,
+    # never once per role per `analysis_time`.
+    eligible_candidates: dict[str, _RoleCandidate] = {}
+    for role_key, candidate in candidates.items():
+        if _waveform_form_eligible(candidate, reference_frequency_hz):
+            eligible_candidates[role_key] = candidate
+        else:
+            role_statuses[role_key] = ROLE_STATUS_NOT_ELIGIBLE
+            role_reason_codes[role_key] = REASON_WAVEFORM_FORM_NOT_ELIGIBLE
+
+    if not eligible_candidates:
+        return PreparedPhasorDiagram(
+            engineering_context_id=engineering_context_id, outcome="no_eligible",
+            role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
+            reference_frequency_hz=reference_frequency_hz,
+        )
+
+    # ---- Shared, source-independent absolute-time coordinate ----
+    start_epochs = [c.start_epoch for c in eligible_candidates.values()]
+    if any(epoch is None for epoch in start_epochs):
+        return PreparedPhasorDiagram(
+            engineering_context_id=engineering_context_id, outcome="blocked",
+            role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
+            reference_frequency_hz=reference_frequency_hz,
+            block_reason_code="absolute_time_unavailable",
+            block_message="One or more resolved sources have no known absolute start time.",
+        )
+    reference_epoch = min(start_epochs)
+
+    # ---- Cross-role timebase compatibility (this module's own check --
+    # six INDEPENDENT single-role resolutions never trigger the
+    # resolver's own internal check, unlike a real multi-role
+    # requirement) ----
+    eligible_items = list(eligible_candidates.items())
+    if len(eligible_items) > 1:
+        first_key, first_candidate = eligible_items[0]
+        for role_key, candidate in eligible_items[1:]:
+            if not timebases_aligned(
+                first_candidate.reference_source_id, first_candidate.time, first_candidate.start_epoch,
+                candidate.reference_source_id, candidate.time, candidate.start_epoch,
+            ):
+                return PreparedPhasorDiagram(
+                    engineering_context_id=engineering_context_id, outcome="blocked",
+                    role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
+                    reference_frequency_hz=reference_frequency_hz,
+                    block_reason_code="timebase_incompatible",
+                    block_message="Resolved roles are not proven to share a common sample time; a combined diagram is unavailable.",
+                )
+
+    anchor_role_key = next(role_key for role_key in PHASOR_DIAGRAM_ROLE_ORDER if role_key in eligible_candidates)
+    anchor_candidate = eligible_candidates[anchor_role_key]
+    anchor_offset = anchor_candidate.start_epoch - reference_epoch
+
+    window_seconds = 1.0 / reference_frequency_hz
+    eligible_t_shared = {
+        role_key: (candidate.start_epoch - reference_epoch) + candidate.time
+        for role_key, candidate in eligible_candidates.items()
+    }
+
+    return PreparedPhasorDiagram(
+        engineering_context_id=engineering_context_id, outcome="ready",
+        role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
+        reference_frequency_hz=reference_frequency_hz, window_seconds=window_seconds,
+        eligible_candidates=eligible_candidates, eligible_t_shared=eligible_t_shared,
+        anchor_role_key=anchor_role_key, anchor_offset=anchor_offset,
+    )
+
+
+def evaluate_prepared_phasor_diagram(prepared: PreparedPhasorDiagram, analysis_time: float) -> PhasorDiagramResult:
+    """DEC-114: the `analysis_time`-DEPENDENT remainder of
+    `compute_phasor_diagram()`'s own work, evaluated against an
+    ALREADY-PREPARED `PreparedPhasorDiagram` (see
+    `prepare_phasor_diagram()`) -- never re-resolves roles, never
+    re-fetches candidates, never re-checks reference frequency or
+    waveform-form eligibility. A `"no_candidates"`/`"blocked"`/
+    `"no_eligible"` prepared diagram reproduces the exact same static
+    result for every `analysis_time` (these outcomes do not depend on
+    `analysis_time` at all -- only the `analysis_time` field on the
+    returned result itself changes); a `"ready"` prepared diagram runs
+    only the per-role `estimate_phasor()` call and the resulting
+    angle/status assembly, exactly as `compute_phasor_diagram()`'s own
+    tail already did."""
+    if prepared.outcome == "no_candidates":
+        return PhasorDiagramResult(
+            status=PHASOR_STATUS_COMPUTED, engineering_context_id=prepared.engineering_context_id, analysis_time=analysis_time,
+            roles=_assemble_identity_only_roles(prepared.role_statuses, prepared.role_reason_codes, prepared.candidates),
+            message="No supported Phasor roles are currently resolvable for this Engineering Context.",
+        )
+    if prepared.outcome == "blocked":
+        return _blocked_diagram_result(
+            engineering_context_id=prepared.engineering_context_id, analysis_time=analysis_time,
+            reason_code=prepared.block_reason_code, message=prepared.block_message,
+            role_statuses=prepared.role_statuses, role_reason_codes=prepared.role_reason_codes, candidates=prepared.candidates,
+        )
+    if prepared.outcome == "no_eligible":
+        return PhasorDiagramResult(
+            status=PHASOR_STATUS_COMPUTED, engineering_context_id=prepared.engineering_context_id, analysis_time=analysis_time,
+            reference_frequency_hz=prepared.reference_frequency_hz,
+            roles=_assemble_identity_only_roles(prepared.role_statuses, prepared.role_reason_codes, prepared.candidates),
+            message="No eligible Phasor roles could be estimated for this Engineering Context.",
+        )
+
+    # "ready" -- role_statuses/role_reason_codes are copied so a per-time
+    # estimation failure (e.g. insufficient_window_history near the start
+    # of a recording) never leaks into a DIFFERENT analysis_time's own
+    # evaluation against the same prepared diagram.
+    role_statuses = dict(prepared.role_statuses)
+    role_reason_codes = dict(prepared.role_reason_codes)
+
+    analysis_time_shared = prepared.anchor_offset + analysis_time
+    estimates: dict[str, PhasorEstimate] = {
+        role_key: estimate_phasor(t_shared, prepared.eligible_candidates[role_key].values, analysis_time_shared, prepared.reference_frequency_hz)
+        for role_key, t_shared in prepared.eligible_t_shared.items()
+    }
+
+    for role_key, est in estimates.items():
+        if not est.available:
+            role_statuses[role_key] = ROLE_STATUS_NEEDS_CONFIGURATION
+            role_reason_codes[role_key] = est.reason_code
+
+    # ---- Per-family relative-angle reference (secondary/table info only) ----
+    voltage_reference_angle = (
+        estimates[PHASOR_DIAGRAM_VOLTAGE_REFERENCE_ROLE].angle_deg
+        if PHASOR_DIAGRAM_VOLTAGE_REFERENCE_ROLE in estimates and estimates[PHASOR_DIAGRAM_VOLTAGE_REFERENCE_ROLE].available
+        else None
+    )
+    current_reference_angle = (
+        estimates[PHASOR_DIAGRAM_CURRENT_REFERENCE_ROLE].angle_deg
+        if PHASOR_DIAGRAM_CURRENT_REFERENCE_ROLE in estimates and estimates[PHASOR_DIAGRAM_CURRENT_REFERENCE_ROLE].available
+        else None
+    )
+
+    roles_out: dict[str, PhasorDiagramRoleResult] = {}
+    for role_key in PHASOR_DIAGRAM_ROLE_ORDER:
+        if role_key in estimates and estimates[role_key].available:
+            est = estimates[role_key]
+            candidate = prepared.eligible_candidates[role_key]
+            family_reference_angle = voltage_reference_angle if role_key.startswith("V") else current_reference_angle
+            roles_out[role_key] = PhasorDiagramRoleResult(
+                status=ROLE_STATUS_AVAILABLE, channel_ref=candidate.channel_ref,
+                magnitude_rms=est.magnitude_rms, unit=candidate.unit, angle_deg_absolute=est.angle_deg,
+                angle_deg_relative=(
+                    relative_angle_deg(est.angle_deg, family_reference_angle) if family_reference_angle is not None else None
+                ),
+            )
+        else:
+            roles_out[role_key] = PhasorDiagramRoleResult(
+                status=role_statuses.get(role_key, ROLE_STATUS_MISSING),
+                channel_ref=prepared.candidates[role_key].channel_ref if role_key in prepared.candidates else None,
+                reason_code=role_reason_codes.get(role_key),
+            )
+
+    return PhasorDiagramResult(
+        status=PHASOR_STATUS_COMPUTED, engineering_context_id=prepared.engineering_context_id, analysis_time=analysis_time,
+        reference_frequency_hz=prepared.reference_frequency_hz, window_seconds=prepared.window_seconds,
+        roles=roles_out, message="Available Phasor roles resolved and estimated.",
+    )
+
+
+def evaluate_prepared_phasor_diagram_many(prepared: PreparedPhasorDiagram, analysis_times) -> list[PhasorDiagramResult]:
+    """Convenience wrapper -- `evaluate_prepared_phasor_diagram()` once
+    per `analysis_time` in `analysis_times`, in order. A thin loop, not a
+    vectorized batch estimator (see `prepare_phasor_diagram()`'s own
+    module-level guidance: a fully vectorized DFT was never required --
+    only avoiding the repeated STATIC preparation was)."""
+    return [evaluate_prepared_phasor_diagram(prepared, t) for t in analysis_times]
+
+
 def compute_phasor_diagram(
     *,
     workspace_id: str,
@@ -497,172 +819,23 @@ def compute_phasor_diagram(
     `resolve_analysis_inputs()` itself does (propagated unchanged); every
     OTHER failure mode is returned as a `PhasorDiagramResult`, never an
     exception. Never persisted -- always derived fresh.
+
+    DEC-114: internally just `prepare_phasor_diagram()` followed by one
+    `evaluate_prepared_phasor_diagram()` call -- a caller needing MANY
+    `analysis_time`s against the same Engineering Context/reference-
+    frequency-override (e.g. Impedance Locus's or Distance Protection's
+    own locus endpoints) should call `prepare_phasor_diagram()` once and
+    `evaluate_prepared_phasor_diagram()` per time instead of calling this
+    function repeatedly, which would re-run the entire static
+    preparation phase every time exactly as it always has.
     """
-    role_statuses: dict[str, str] = {}
-    role_reason_codes: dict[str, str | None] = {}
-    candidates: dict[str, _RoleCandidate] = {}
-
-    for role_key in PHASOR_DIAGRAM_ROLE_ORDER:
-        requirement = _DIAGRAM_REQUIREMENTS_BY_ROLE[role_key]
-        resolution = resolve_analysis_inputs(
-            workspace_id=workspace_id, engineering_context_id=engineering_context_id,
-            analysis_kind=requirement.analysis_kind, mode=requirement.mode,
-            context_registry=context_registry, source_registry=source_registry,
-            calculated_channel_registry=calculated_channel_registry,
-        )
-        if resolution.status != STATUS_RESOLVED:
-            status, reason_code = _diagram_role_status_for_resolution(role_key, resolution)
-            role_statuses[role_key] = status
-            role_reason_codes[role_key] = reason_code
-            continue
-
-        ref = resolution.resolved_roles[role_key]
-        candidate = _fetch_role_candidate(
-            role_key, ref, workspace_id=workspace_id, source_registry=source_registry,
-            calculated_channel_registry=calculated_channel_registry,
-        )
-        if candidate is None:
-            role_statuses[role_key] = ROLE_STATUS_NEEDS_CONFIGURATION
-            role_reason_codes[role_key] = _REASON_CHANNEL_UNAVAILABLE
-            continue
-        candidates[role_key] = candidate
-
-    if not candidates:
-        return PhasorDiagramResult(
-            status=PHASOR_STATUS_COMPUTED, engineering_context_id=engineering_context_id, analysis_time=analysis_time,
-            roles=_assemble_identity_only_roles(role_statuses, role_reason_codes, {}),
-            message="No supported Phasor roles are currently resolvable for this Engineering Context.",
-        )
-
-    # ---- Reference frequency: explicit override, else unanimous agreement ----
-    # Computed across every IDENTITY-resolved candidate (not just the
-    # eventually-eligible ones) -- identical ordering/policy to
-    # `compute_phasor_analysis()`'s own single-requirement version, see
-    # that function's own comment for why (waveform-form eligibility
-    # itself needs a reference frequency as an input, so it cannot be
-    # computed only from the post-eligibility subset).
-    if reference_frequency_hz_override is not None:
-        if not nominal_frequency_valid(reference_frequency_hz_override):
-            return _blocked_diagram_result(
-                engineering_context_id=engineering_context_id, analysis_time=analysis_time,
-                reason_code=REASON_INVALID_REFERENCE_FREQUENCY,
-                message="The supplied reference_frequency_hz is outside the plausible range.",
-                role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
-            )
-        reference_frequency_hz = reference_frequency_hz_override
-    else:
-        declared = [c.nominal_frequency for c in candidates.values()]
-        first = declared[0]
-        if not all(math.isclose(f, first, rel_tol=1e-9, abs_tol=1e-9) for f in declared):
-            return _blocked_diagram_result(
-                engineering_context_id=engineering_context_id, analysis_time=analysis_time,
-                reason_code=REASON_REFERENCE_FREQUENCY_CONFLICT,
-                message=(
-                    "Resolved roles come from sources declaring different nominal frequencies; supply an explicit "
-                    "reference_frequency_hz to compute a combined diagram."
-                ),
-                role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
-            )
-        reference_frequency_hz = first
-
-    # ---- Waveform-form eligibility, per role -- never blocks others ----
-    eligible_candidates: dict[str, _RoleCandidate] = {}
-    for role_key, candidate in candidates.items():
-        if _waveform_form_eligible(candidate, reference_frequency_hz):
-            eligible_candidates[role_key] = candidate
-        else:
-            role_statuses[role_key] = ROLE_STATUS_NOT_ELIGIBLE
-            role_reason_codes[role_key] = REASON_WAVEFORM_FORM_NOT_ELIGIBLE
-
-    if not eligible_candidates:
-        return PhasorDiagramResult(
-            status=PHASOR_STATUS_COMPUTED, engineering_context_id=engineering_context_id, analysis_time=analysis_time,
-            reference_frequency_hz=reference_frequency_hz,
-            roles=_assemble_identity_only_roles(role_statuses, role_reason_codes, candidates),
-            message="No eligible Phasor roles could be estimated for this Engineering Context.",
-        )
-
-    # ---- Shared, source-independent absolute-time coordinate ----
-    start_epochs = [c.start_epoch for c in eligible_candidates.values()]
-    if any(epoch is None for epoch in start_epochs):
-        return _blocked_diagram_result(
-            engineering_context_id=engineering_context_id, analysis_time=analysis_time,
-            reason_code="absolute_time_unavailable", message="One or more resolved sources have no known absolute start time.",
-            role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
-        )
-    reference_epoch = min(start_epochs)
-
-    # ---- Cross-role timebase compatibility (this module's own check --
-    # six INDEPENDENT single-role resolutions never trigger the
-    # resolver's own internal check, unlike a real multi-role
-    # requirement) ----
-    eligible_items = list(eligible_candidates.items())
-    if len(eligible_items) > 1:
-        first_key, first_candidate = eligible_items[0]
-        for role_key, candidate in eligible_items[1:]:
-            if not timebases_aligned(
-                first_candidate.reference_source_id, first_candidate.time, first_candidate.start_epoch,
-                candidate.reference_source_id, candidate.time, candidate.start_epoch,
-            ):
-                return _blocked_diagram_result(
-                    engineering_context_id=engineering_context_id, analysis_time=analysis_time,
-                    reason_code="timebase_incompatible",
-                    message="Resolved roles are not proven to share a common sample time; a combined diagram is unavailable.",
-                    role_statuses=role_statuses, role_reason_codes=role_reason_codes, candidates=candidates,
-                )
-
-    anchor_role_key = next(role_key for role_key in PHASOR_DIAGRAM_ROLE_ORDER if role_key in eligible_candidates)
-    anchor_candidate = eligible_candidates[anchor_role_key]
-    analysis_time_shared = (anchor_candidate.start_epoch - reference_epoch) + analysis_time
-
-    window_seconds = 1.0 / reference_frequency_hz
-    estimates: dict[str, PhasorEstimate] = {}
-    for role_key, candidate in eligible_candidates.items():
-        t_shared = (candidate.start_epoch - reference_epoch) + candidate.time
-        estimates[role_key] = estimate_phasor(t_shared, candidate.values, analysis_time_shared, reference_frequency_hz)
-
-    for role_key, est in estimates.items():
-        if not est.available:
-            role_statuses[role_key] = ROLE_STATUS_NEEDS_CONFIGURATION
-            role_reason_codes[role_key] = est.reason_code
-
-    # ---- Per-family relative-angle reference (secondary/table info only) ----
-    voltage_reference_angle = (
-        estimates[PHASOR_DIAGRAM_VOLTAGE_REFERENCE_ROLE].angle_deg
-        if PHASOR_DIAGRAM_VOLTAGE_REFERENCE_ROLE in estimates and estimates[PHASOR_DIAGRAM_VOLTAGE_REFERENCE_ROLE].available
-        else None
+    prepared = prepare_phasor_diagram(
+        workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+        reference_frequency_hz_override=reference_frequency_hz_override,
+        context_registry=context_registry, source_registry=source_registry,
+        calculated_channel_registry=calculated_channel_registry,
     )
-    current_reference_angle = (
-        estimates[PHASOR_DIAGRAM_CURRENT_REFERENCE_ROLE].angle_deg
-        if PHASOR_DIAGRAM_CURRENT_REFERENCE_ROLE in estimates and estimates[PHASOR_DIAGRAM_CURRENT_REFERENCE_ROLE].available
-        else None
-    )
-
-    roles_out: dict[str, PhasorDiagramRoleResult] = {}
-    for role_key in PHASOR_DIAGRAM_ROLE_ORDER:
-        if role_key in estimates and estimates[role_key].available:
-            est = estimates[role_key]
-            candidate = eligible_candidates[role_key]
-            family_reference_angle = voltage_reference_angle if role_key.startswith("V") else current_reference_angle
-            roles_out[role_key] = PhasorDiagramRoleResult(
-                status=ROLE_STATUS_AVAILABLE, channel_ref=candidate.channel_ref,
-                magnitude_rms=est.magnitude_rms, unit=candidate.unit, angle_deg_absolute=est.angle_deg,
-                angle_deg_relative=(
-                    relative_angle_deg(est.angle_deg, family_reference_angle) if family_reference_angle is not None else None
-                ),
-            )
-        else:
-            roles_out[role_key] = PhasorDiagramRoleResult(
-                status=role_statuses.get(role_key, ROLE_STATUS_MISSING),
-                channel_ref=candidates[role_key].channel_ref if role_key in candidates else None,
-                reason_code=role_reason_codes.get(role_key),
-            )
-
-    return PhasorDiagramResult(
-        status=PHASOR_STATUS_COMPUTED, engineering_context_id=engineering_context_id, analysis_time=analysis_time,
-        reference_frequency_hz=reference_frequency_hz, window_seconds=window_seconds,
-        roles=roles_out, message="Available Phasor roles resolved and estimated.",
-    )
+    return evaluate_prepared_phasor_diagram(prepared, analysis_time)
 
 
 class RoleReadiness:

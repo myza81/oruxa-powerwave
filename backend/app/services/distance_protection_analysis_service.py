@@ -42,10 +42,10 @@ from app.domain.distance_protection import (
     evaluate_zone_state,
 )
 from app.domain.impedance import convert_impedance_basis, impedance_ratio_valid
-from app.domain.phasor import ROLE_STATUS_AVAILABLE, ManualPhasorRoleInput
+from app.domain.phasor import PhasorDiagramResult, ROLE_STATUS_AVAILABLE, ManualPhasorRoleInput
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
-from app.services.phasor_analysis_service import compute_phasor_diagram
+from app.services.phasor_analysis_service import compute_phasor_diagram, evaluate_prepared_phasor_diagram, prepare_phasor_diagram
 from app.services.workspace_registry import WorkspaceRegistry
 
 #: Worst-role-status precedence -- identical shape to `app.services.
@@ -111,6 +111,44 @@ def compute_distance_analysis(
         reference_frequency_hz_override=reference_frequency_hz_override,
         context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
     )
+    return _distance_analysis_from_diagram(
+        diagram, engineering_context_id=engineering_context_id, loop=loop, analysis_time=analysis_time,
+        recording_basis=recording_basis, impedance_basis=impedance_basis,
+        vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+        characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3,
+    )
+
+
+def _distance_analysis_from_diagram(
+    diagram: PhasorDiagramResult,
+    *,
+    engineering_context_id: str,
+    loop: str,
+    analysis_time: float,
+    recording_basis: str,
+    impedance_basis: str,
+    vt_primary: float | None,
+    vt_secondary: float | None,
+    ct_primary: float | None,
+    ct_secondary: float | None,
+    characteristic: str,
+    zone1: ZoneSettings,
+    zone2: ZoneSettings,
+    zone3: ZoneSettings,
+) -> DistanceAnalysisResult:
+    """DEC-114: the `diagram`-consuming remainder of
+    `compute_distance_analysis()`'s own work, factored out so a locus
+    caller (`compute_distance_locus()`) can supply an already-EVALUATED
+    diagram (from a `PreparedPhasorDiagram` prepared once for the whole
+    locus, via `app.services.phasor_analysis_service.
+    evaluate_prepared_phasor_diagram()`) instead of re-running
+    `compute_phasor_diagram()`'s entire role-resolution/candidate-fetch/
+    reference-frequency/waveform-form-eligibility pipeline for every
+    sample time. `compute_distance_analysis()` itself still calls
+    `compute_phasor_diagram()` directly -- its own external behavior for
+    a single selected time is unchanged. Mirrors `app.services.
+    impedance_analysis_service._impedance_analysis_from_diagram()`'s own
+    placement."""
 
     def _short_circuit(status: str, *, reason_code: str | None, message: str, point=None) -> DistanceAnalysisResult:
         z1, z2, z3 = _zone_results(characteristic, zone1, zone2, zone3, point)
@@ -228,10 +266,20 @@ def compute_distance_locus(
     sampling algorithm exactly. `point_count` evenly samples
     `[start_time, end_time]` inclusive; a single-point range degenerates
     to one point, never a division by zero. Each sample independently
-    calls `compute_distance_analysis()` -- never a second estimator --
+    evaluates the SAME phasor preparation -- never a second estimator --
     so a point outside the recording's own valid window is reported
-    with whatever `status`/`reason_code` that call naturally produces,
-    never silently dropped."""
+    with whatever `status`/`reason_code` that evaluation naturally
+    produces, never silently dropped.
+
+    DEC-114: identical rationale to `app.services.
+    impedance_analysis_service.compute_impedance_locus()`'s own
+    docstring -- role resolution/candidate fetch/reference-frequency
+    agreement/waveform-form eligibility/shared-time-coordinate/timebase
+    checks are STATIC for the whole locus, so `prepare_phasor_diagram()`
+    runs once and each sample time only runs the per-time `evaluate_
+    prepared_phasor_diagram()` plus the Distance-specific loop-impedance/
+    zone evaluation. Any static/whole-request failure is reported
+    identically for every sample point, exactly as before."""
     count = max(1, min(int(point_count), MAX_LOCUS_POINTS))
     if count == 1 or end_time <= start_time:
         sample_times = [start_time]
@@ -239,15 +287,20 @@ def compute_distance_locus(
         step = (end_time - start_time) / (count - 1)
         sample_times = [start_time + i * step for i in range(count)]
 
+    prepared = prepare_phasor_diagram(
+        workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+        reference_frequency_hz_override=reference_frequency_hz_override,
+        context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
+    )
+
     points: list[DistanceLocusPoint] = []
     for t in sample_times:
-        result = compute_distance_analysis(
-            workspace_id=workspace_id, engineering_context_id=engineering_context_id, loop=loop, analysis_time=t,
-            reference_frequency_hz_override=reference_frequency_hz_override,
+        diagram = evaluate_prepared_phasor_diagram(prepared, t)
+        result = _distance_analysis_from_diagram(
+            diagram, engineering_context_id=engineering_context_id, loop=loop, analysis_time=t,
             recording_basis=recording_basis, impedance_basis=impedance_basis,
             vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
             characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3,
-            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
         )
         points.append(DistanceLocusPoint(
             analysis_time=t, status=result.status,

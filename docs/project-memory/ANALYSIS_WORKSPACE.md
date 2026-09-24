@@ -129,6 +129,19 @@ correct by direct reproduction). See
 [DECISIONS.md — DEC-106](DECISIONS.md#dec-106--dec-105-follow-up-initial-engineering-context-auto-selection-is-analyzer-compatibility-aware-reusing-the-existing-input-resolution-endpoint--never-merely-the-first-context)
 for the full investigation and fix record.
 
+**DEC-114 (2026-09-24) follow-up note**: this "mirrors its own existing
+computation function's FIRST phase precisely" pattern -- correct for
+`check_phasor_diagram_readiness()`'s own one-off preflight use, but a
+liability when the SAME first phase needs to run for many `analysis_time`
+values in one request (Impedance Locus's/Distance Protection's own locus
+endpoints, up to 120 per request) -- is exactly what DEC-114 addressed
+for the LOCUS case specifically, by factoring `compute_phasor_diagram()`'s
+own first phase into a real, reusable `prepare_phasor_diagram()`
+primitive rather than leaving it duplicated in spirit. `check_phasor_diagram_readiness()`
+itself was deliberately left as its own separate implementation (a
+different status vocabulary, and not on the locus hot path -- see
+DECISIONS.md DEC-114 for why sharing it too was not required).
+
 **DEC-107 (2026-09-23, same-day follow-up): ROLE-COMPATIBLE is not the
 same as ANALYZER-READY.** DEC-106's own compatibility check only proved
 a Voltage/Current role EXISTS (role IDENTITY); it never checked whether

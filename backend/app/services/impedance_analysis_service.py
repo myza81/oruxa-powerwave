@@ -39,10 +39,10 @@ from app.domain.impedance import (
     evaluate_manual_impedance,
     impedance_ratio_valid,
 )
-from app.domain.phasor import ROLE_STATUS_AVAILABLE, ManualPhasorRoleInput
+from app.domain.phasor import PhasorDiagramResult, ROLE_STATUS_AVAILABLE, ManualPhasorRoleInput
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
-from app.services.phasor_analysis_service import compute_phasor_diagram
+from app.services.phasor_analysis_service import compute_phasor_diagram, evaluate_prepared_phasor_diagram, prepare_phasor_diagram
 from app.services.workspace_registry import WorkspaceRegistry
 
 #: Role-status -> Impedance-status mapping for whichever of the two roles
@@ -106,6 +106,37 @@ def compute_impedance_analysis(
         reference_frequency_hz_override=reference_frequency_hz_override,
         context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
     )
+    return _impedance_analysis_from_diagram(
+        diagram, engineering_context_id=engineering_context_id, phase=phase, analysis_time=analysis_time,
+        recording_basis=recording_basis, impedance_basis=impedance_basis,
+        vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
+    )
+
+
+def _impedance_analysis_from_diagram(
+    diagram: PhasorDiagramResult,
+    *,
+    engineering_context_id: str,
+    phase: str,
+    analysis_time: float,
+    recording_basis: str,
+    impedance_basis: str,
+    vt_primary: float | None,
+    vt_secondary: float | None,
+    ct_primary: float | None,
+    ct_secondary: float | None,
+) -> ImpedanceAnalysisResult:
+    """DEC-114: the `diagram`-consuming remainder of
+    `compute_impedance_analysis()`'s own work, factored out so a locus
+    caller (`compute_impedance_locus()`) can supply an already-EVALUATED
+    diagram (from a `PreparedPhasorDiagram` prepared once for the whole
+    locus, via `app.services.phasor_analysis_service.
+    evaluate_prepared_phasor_diagram()`) instead of re-running
+    `compute_phasor_diagram()`'s entire role-resolution/candidate-fetch/
+    reference-frequency/waveform-form-eligibility pipeline for every
+    sample time. `compute_impedance_analysis()` itself still calls
+    `compute_phasor_diagram()` directly -- its own external behavior for
+    a single selected time is unchanged."""
 
     def _short_circuit(status: str, *, reason_code: str | None, message: str) -> ImpedanceAnalysisResult:
         return ImpedanceAnalysisResult(
@@ -204,12 +235,27 @@ def compute_impedance_locus(
     characteristic geometry). `point_count` evenly samples
     `[start_time, end_time]` inclusive (a single-point range -- `start_time
     == end_time` -- degenerates to one point, never a division by zero).
-    Each sample independently calls `compute_impedance_analysis()` --
+    Each sample independently evaluates the SAME phasor preparation --
     never a second estimator -- so a point outside the recording's own
     valid window is reported with whatever `status`/`reason_code` that
-    call naturally produces, never silently dropped (a caller/frontend
-    renders only the `computed` points as the path, per task's own
-    "no invalid point should reach the plot" requirement)."""
+    evaluation naturally produces, never silently dropped (a caller/
+    frontend renders only the `computed` points as the path, per task's
+    own "no invalid point should reach the plot" requirement).
+
+    DEC-114: role resolution/candidate fetch/reference-frequency
+    agreement/waveform-form eligibility/shared-time-coordinate/timebase
+    checks are STATIC for the whole locus (they do not depend on
+    `analysis_time`) -- `prepare_phasor_diagram()` runs this ONCE for the
+    whole request, then each sample time only runs the per-time
+    `evaluate_prepared_phasor_diagram()` (role estimation) and the
+    Impedance-specific `Z = V/I`/basis-conversion/current-too-small
+    evaluation, never repeating the static phase. Any static/whole-
+    request failure (an unresolvable role, a reference-frequency
+    conflict, a timebase incompatibility, ...) is therefore reported
+    identically for EVERY sample point, exactly as it always was when
+    each point independently reached the same static failure via its own
+    `compute_phasor_diagram()` call -- observable per-point behavior is
+    unchanged, only the redundant work is eliminated."""
     count = max(1, min(int(point_count), MAX_LOCUS_POINTS))
     if count == 1 or end_time <= start_time:
         sample_times = [start_time]
@@ -217,14 +263,19 @@ def compute_impedance_locus(
         step = (end_time - start_time) / (count - 1)
         sample_times = [start_time + i * step for i in range(count)]
 
+    prepared = prepare_phasor_diagram(
+        workspace_id=workspace_id, engineering_context_id=engineering_context_id,
+        reference_frequency_hz_override=reference_frequency_hz_override,
+        context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
+    )
+
     points: list[ImpedanceLocusPoint] = []
     for t in sample_times:
-        result = compute_impedance_analysis(
-            workspace_id=workspace_id, engineering_context_id=engineering_context_id, phase=phase, analysis_time=t,
-            reference_frequency_hz_override=reference_frequency_hz_override,
+        diagram = evaluate_prepared_phasor_diagram(prepared, t)
+        result = _impedance_analysis_from_diagram(
+            diagram, engineering_context_id=engineering_context_id, phase=phase, analysis_time=t,
             recording_basis=recording_basis, impedance_basis=impedance_basis,
             vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
-            context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calculated_channel_registry,
         )
         points.append(ImpedanceLocusPoint(
             analysis_time=t, status=result.status,

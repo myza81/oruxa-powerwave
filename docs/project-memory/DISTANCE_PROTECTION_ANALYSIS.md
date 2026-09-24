@@ -139,6 +139,27 @@ Engineering Context phase-role resolution uses the durable phase
 identities `compute_phasor_diagram()` itself resolves — never inferred
 from channel names.
 
+### DEC-114 — `compute_distance_locus()` prepares Phasor inputs once, evaluates many
+
+Identical rationale/fix to Impedance Locus's own DEC-114 section (see
+IMPEDANCE_LOCUS_ANALYSIS.md) — before DEC-114, `compute_distance_locus()`
+sampled up to `MAX_LOCUS_POINTS` independent selected-time
+`compute_distance_analysis()` calls, each of which independently called
+`compute_phasor_diagram()`, repeating role resolution/candidate fetch/
+reference-frequency agreement/waveform-form eligibility (including the
+expensive algorithmic classifier fallback for `unknown`-metadata roles)
+once per sample point instead of once for the whole locus. `compute_
+distance_locus()` now calls `app.services.phasor_analysis_service.
+prepare_phasor_diagram()` once, then `evaluate_prepared_phasor_diagram()`
+once per sample time, and hands each resulting diagram to a factored-out
+`_distance_analysis_from_diagram()` (the same loop-role-extraction/
+`compute_loop_impedance()`/basis-conversion tail `compute_distance_
+analysis()` itself uses). `compute_distance_analysis()` (the single-
+selected-time endpoint) is unchanged externally. Zone geometry/
+operated-not-operated evaluation is completely untouched — this is a
+Phasor-input-preparation optimization only, never a protection-logic
+change.
+
 ## Mho characteristic
 
 Standard forward mho circle: diameter from the origin (0,0) to

@@ -18595,6 +18595,281 @@ failures. Full backend suite passes unchanged. `git diff --check` clean.
 
 ---
 
+## DEC-114 — DEC-112's second follow-up: Impedance Locus/Distance Protection locus performance is closed — a shared `prepare_phasor_diagram()`/`evaluate_prepared_phasor_diagram()` primitive replaces N repeated full-diagram computations with one preparation and N cheap evaluations
+
+Date: 2026-09-24
+Status: Approved — implemented (production fix, scoped to Impedance Locus's
+and Distance Protection's own locus endpoints only).
+Source: dedicated fix session, explicitly requested by the owner to close
+DEC-112's OTHER reported-but-unfixed finding (DEC-113 closed the first:
+Phasor's own claim/refine timing race). Explicitly scoped to locus
+computation performance/architecture only — Compliance untouched, DEC-112/
+DEC-113 preserved exactly, mathematical results unchanged, no other
+analyzer's own independent fetch-lifecycle queue touched.
+
+**Issue.** `compute_impedance_locus()`/`compute_distance_locus()` sample up
+to `MAX_LOCUS_POINTS` (default 120) independent selected-time
+calculations across `[start_time, end_time]`. Each sample independently
+called `compute_impedance_analysis()`/`compute_distance_analysis()` ->
+`compute_phasor_diagram()`, which repeats its ENTIRE static preparation
+phase (role resolution via `resolve_analysis_inputs()`, candidate fetch,
+reference-frequency agreement, waveform-form eligibility, shared
+absolute-time coordinate, cross-role timebase check) even though none of
+that work depends on `analysis_time` — only the final per-role
+`estimate_phasor()` call does. DEC-112 measured ~13s for one 120-point
+`/impedance-locus` request via direct `curl` against a freshly-started
+backend.
+
+**Evidence.** Baseline call-count instrumentation (backend service-layer,
+120-point locus, synthetic six-role bay fixture) before any change:
+
+| Call | Before (per 120-point locus) | After |
+|---|---|---|
+| `resolve_analysis_inputs()` | 720 (120 x 6 roles) | 6 |
+| `_fetch_role_candidate()` | 720 | 6 |
+| `_waveform_form_eligible()` | 720 | 6 |
+| `classify_waveform_form()` (algorithmic fallback, `unknown` metadata) | 720 | 6 |
+| `estimate_phasor()` | 720 | 720 (unchanged — genuinely `analysis_time`-dependent) |
+
+With trusted `instantaneous` metadata (classifier never runs), the static
+work was still repeated 720x instead of 6x, but each unit was cheap
+enough that total Impedance Locus time only dropped ~0.39s -> ~0.22s and
+Distance Locus ~0.47s -> ~0.20s. With `unknown` metadata (the common
+case for real uploaded recordings — no current provider sets this field
+explicitly), `classify_waveform_form()`'s multi-window detector is
+genuinely expensive: total Impedance Locus time dropped **10.647s ->
+0.350s (~30.4x)**, closely matching DEC-112's own directly-measured
+~13s figure once real HTTP/FastAPI overhead is added. A direct end-to-
+end reproduction (real ASCII-COMTRADE upload -> real DEC-104 auto-created
+context -> real HTTP GET against a freshly-started backend, using the
+SAME `phasor_smoke_three_phase` fixture the Playwright suites use) measured
+the real `/distance-protection-locus` (120-point) request completing in
+**~80-114ms**, including a concurrent `/distance-protection` current-point
+request fired in the same call stack (matching the frontend's own
+"selecting a context synchronously dispatches BOTH the current-point
+fetch AND the locus fetch" behavior).
+
+**Decision.** `app/services/phasor_analysis_service.py` factors
+`compute_phasor_diagram()`'s existing (already implicit, and already
+duplicated once in spirit by `check_phasor_diagram_readiness()`'s own
+"mirrors compute_phasor_diagram()'s first phase" docstring) static/dynamic
+split into two new public primitives:
+
+```python
+prepare_phasor_diagram(workspace_id, engineering_context_id, reference_frequency_hz_override, ...) -> PreparedPhasorDiagram
+evaluate_prepared_phasor_diagram(prepared, analysis_time) -> PhasorDiagramResult
+evaluate_prepared_phasor_diagram_many(prepared, analysis_times) -> list[PhasorDiagramResult]
+```
+
+`PreparedPhasorDiagram` captures every `analysis_time`-independent
+outcome (static blocking condition, empty/no-eligible-role result, OR
+the eligible-candidates/reference-frequency/reference-epoch/anchor-offset
+state needed to evaluate) plus a NEW optimization: each eligible role's
+own `(start_epoch - reference_epoch) + candidate.time` shared-time array
+is precomputed ONCE (`eligible_t_shared`) rather than re-derived per
+evaluated time (this array addition does not depend on `analysis_time`
+either). `compute_phasor_diagram()` itself is now literally
+`evaluate_prepared_phasor_diagram(prepare_phasor_diagram(...),
+analysis_time)` — a single-selected-time caller's own behavior,
+including every status/reason_code/failure mode, is byte-for-byte
+unchanged (proven by the full existing Phasor/Impedance/Distance test
+suites passing unmodified, plus new golden-output equivalence tests).
+
+`compute_impedance_locus()`/`compute_distance_locus()` now call
+`prepare_phasor_diagram()` ONCE for the whole locus request, then
+`evaluate_prepared_phasor_diagram()` once per sample time, handing each
+resulting diagram to a newly-factored-out `_impedance_analysis_from_diagram()`/
+`_distance_analysis_from_diagram()` (the exact same `Z=V/I`/loop-
+impedance/basis-conversion/current-too-small-guardrail tail
+`compute_impedance_analysis()`/`compute_distance_analysis()` themselves
+still use for their own single-selected-time behavior, which is
+unchanged). `check_phasor_diagram_readiness()` is deliberately left
+untouched — it uses a DIFFERENT status vocabulary
+(`analysis_input_resolution`'s `STATUS_*`, not `PhasorDiagramResult`'s
+own `ROLE_STATUS_*`) and is not on the locus hot path, so sharing it with
+the new primitives was not required by this task's own scope.
+
+**Per-point failure semantics preserved.** A dynamic (per-`analysis_time`)
+failure — e.g. `insufficient_window_history` near a recording's own
+start, `current_too_small`/`loop_current_too_small` — is still reported
+per point, never dropped, never affecting any OTHER point in the same
+locus (verified: an early-window point at `t=0` reports
+`needs_configuration`/`insufficient_window_history` while every later
+point in the SAME locus still computes normally). A genuine static/
+whole-request failure (unresolvable role, reference-frequency conflict,
+timebase incompatibility) is now detected ONCE during preparation instead
+of being independently rediscovered by every point — but is still
+reported identically for EVERY point in the locus, exactly matching prior
+observable behavior (verified via a two-source, conflicting-nominal-
+frequency fixture: every one of 8 sampled points reports
+`needs_configuration`/`reference_frequency_conflict`, matching what 8
+independent `compute_impedance_analysis()`/`compute_distance_analysis()`
+calls against the same fixture would each report on their own).
+
+**Never a vectorized/batched DFT.** `estimate_phasor()` is still called
+once per role per sample time (720 calls for a 120-point six-role locus,
+unchanged) — `evaluate_prepared_phasor_diagram_many()` is a thin Python
+loop, not a batch estimator. Per this task's own explicit "avoid
+premature vectorization" guidance: eliminating the repeated STATIC
+preparation already brought the realistic worst case (unknown-metadata,
+classifier-fallback) from ~13s to ~0.35s in-process and ~80-114ms
+end-to-end over real HTTP against a freshly-started backend — comfortably
+past "no longer the dominant cost," so no further vectorization was
+pursued.
+
+**New backend regression coverage**
+(`backend/tests/test_locus_shared_phasor_preparation.py`, 10 tests,
+service-layer, both analyzers): golden-output equivalence between a
+locus's own per-point result and independent single-point
+`compute_impedance_analysis()`/`compute_distance_analysis()` calls at the
+same sample times; structural proof that `resolve_analysis_inputs()`/
+`_fetch_role_candidate()`/`_waveform_form_eligible()` are each called
+exactly 6 times (once per role) for a 50-point locus via monkeypatched
+counters, never once per role per point; early-window-point-not-dropped;
+current-too-small/loop-current-too-small preserved across every point;
+static whole-request failure (reference-frequency conflict) applying
+identically to every point. All ten pass. Full existing
+`test_phasor_diagram_service.py`/`test_phasor_diagram_api.py`/
+`test_phasor_analysis_service.py`/`test_phasor_analysis_api.py`/
+`test_phasor_domain.py`/`test_impedance_analysis_api.py`/
+`test_impedance_domain.py`/`test_distance_protection_analysis_api.py`/
+`test_distance_protection_domain.py` pass unmodified (proving
+`compute_phasor_diagram()`'s own external behavior is unchanged). Full
+backend suite passes, zero failures.
+
+**Browser-test timeout adjustment, and an unrelated stale-dev-server
+artifact this investigation surfaced and ruled out.** The two `~13-20s`-
+budgeted `page.waitForResponse()` waits in `impedance_analysis.spec.js`/
+`distance_protection_analysis.spec.js` (`selectContextAndWaitForResult()`)
+were first tightened to 8000ms on the assumption that the backend fix
+alone made the old 20000ms budget unnecessary; this FAILED 16-19 tests
+in a full combined 4-spec run. Investigation (a direct httpx reproduction
+against a freshly-started backend, and Playwright network-event
+instrumentation) found two SEPARATE, genuine causes, neither of which is
+a defect in the locus fix itself: (1) the locus fix is now fast enough
+that DEC-105's own automatic initial-context-selection fetch routinely
+completes — and caches its own matching `locusSignature` — before a
+test's OWN explicit reselect runs, so `wwImpedanceMaybeFetchLocus()`/
+`wwDistanceMaybeFetchLocus()`'s own signature short-circuit correctly
+skips a redundant SECOND `/impedance-locus`/`/distance-protection-locus`
+request (the exact caching discipline this suite already verifies
+elsewhere) — a strict `waitForResponse` then waits forever for a request
+correct behavior legitimately never sends; fixed by racing the response
+wait against the locus state itself having changed since a pre-selection
+snapshot (covers both a genuinely new fetch and an already-cached hit,
+and the "changed since snapshot" comparison avoids a false positive from
+a PRIOR, different context's own already-non-empty `locusPoints`).
+(2) Multiple Playwright invocations across this same multi-hour session
+had left a STALE backend process bound to port 8000
+(`playwright.config.js`'s own `reuseExistingServer: !process.env.CI`
+reuses whatever is already listening outside CI) — after HOURS of
+accumulated state across dozens of prior test runs, this one stale
+process (confirmed via direct network-event instrumentation: the exact
+same request that completes in ~100ms against a freshly-started backend
+never fired a `requestfinished` OR `requestfailed` event within a 6s
+window against the stale one) caused specific requests to hang. Killing
+the stale process and letting Playwright start a genuinely fresh one
+(the same thing a real CI run always does) immediately resolved every
+remaining failure. This is a session-methodology artifact of running
+`npx playwright test` dozens of times in one long agent session, not a
+codebase defect, an environment characteristic, or something the fix
+introduced — flagged here because it directly explains why isolated
+reproduction (fresh backend: 0 failures, 2.8 minutes for the SAME 95
+tests) and a stale-process run (up to 19 failures, ~14-15 minutes)
+produced such different results for byte-identical code, and to warn a
+future session against the same false lead.
+
+**H/I. Timing (in-process service-layer, synthetic six-role bay,
+120-point locus, `unknown` waveform_form metadata — the realistic worst
+case).**
+
+| | Before | After | Speedup |
+|---|---|---|---|
+| Impedance Locus | 10.647s | 0.350s | ~30.4x |
+| Distance Locus | (not separately isolated at classifier-heavy worst case; static-work call counts identical to Impedance, confirmed 720->6) | 0.199-0.261s (trusted-metadata case) | matches Impedance's own call-count reduction |
+
+Real end-to-end (real upload, real DEC-104 context, real HTTP, fresh
+backend): `/distance-protection-locus` (120 points) + a concurrent
+`/distance-protection` current-point request in the same call stack:
+**~80-114ms combined**, vs. DEC-112's own directly-measured ~13s for the
+equivalent pre-fix request.
+
+**J/K/L. Validation, clean environment (stale-process artifact ruled
+out).** Focused new suite (`test_locus_shared_phasor_preparation.py`):
+10/10 passing. Full backend suite: passing, zero failures (all existing
+Phasor/Impedance/Distance/Analysis-input-resolution suites unmodified and
+green). Focused browser (`impedance_analysis.spec.js`,
+`distance_protection_analysis.spec.js`, `post_upload_readiness.spec.js`,
+`phasor_analysis.spec.js` together): **95 passed, 0 failed, 2.8 minutes**
+(a prior stale-backend run of the SAME 95 tests took ~14-15 minutes with
+up to 19 failures — see the artifact note above). **Full Playwright
+(clean environment, freshly-started backend): 309 passed, 0 failed, 8.2
+minutes** — vs. DEC-113's own baseline of 283 passed/26 failed in
+~32 minutes (the 26 were DEC-112's own already-reported locus-performance
+finding plus one resource-exhaustion `ECONNRESET`). Zero `ECONNRESET`/
+resource-exhaustion mentions anywhere in this run's own output — total
+runtime dropped ~3.9x and every previously-failing test now passes,
+consistent with (not proof of standalone causation for) the locus fix
+removing ~13-20s of hidden per-test waiting from every locus-involving
+Impedance/Distance test across the suite.
+
+**Reason.** Matches this project's own established "reproduce ->
+root-cause via hard evidence -> smallest targeted fix -> prove numerical
+equivalence -> full regression" methodology (DEC-105 through DEC-108,
+DEC-112, DEC-113). The static/dynamic split was already implicit in
+`compute_phasor_diagram()`'s own structure and already had a "keep in
+sync" precedent (`check_phasor_diagram_readiness()`'s own docstring) --
+this decision makes that split a real, reusable, single source of truth
+rather than leaving it duplicated in spirit across two functions and
+re-paid N times per locus request.
+
+**Alternatives considered.** (1) Vectorize `estimate_phasor()` across all
+120 sample times per role in one batched numpy call — rejected as
+premature per the task's own explicit guidance: eliminating the repeated
+STATIC preparation alone brought realistic worst-case locus time from
+~13s to sub-second; the remaining 720 `estimate_phasor()` calls (a
+simple, already-numpy-vectorized-per-call windowed DFT) are not the
+dominant cost. (2) Give `compute_impedance_locus()`/`compute_distance_locus()`
+their own independent, locus-specific copy of role-resolution/candidate-
+fetch/eligibility logic, bypassing `compute_phasor_diagram()`/
+`prepare_phasor_diagram()` entirely — rejected: would duplicate, rather
+than share, the exact guardrails (reference-frequency conflict, timebase
+incompatibility, waveform-form eligibility) `compute_impedance_analysis()`/
+`compute_distance_analysis()` already inherit for free from Phasor, the
+opposite of this task's own "prefer shared Phasor preparation authority"
+direction. (3) Reduce the browser suites' `waitForResponse` timeouts to
+prove the speedup (8000ms) — rejected after a full combined run showed
+16-19 failures: tightening a test timeout is not the same as fixing the
+race the timeout was defending against, and the task's own instruction
+explicitly forbids tightening timeouts "just to prove speed."
+
+**Impact.** `backend/app/services/phasor_analysis_service.py`: new
+`PreparedPhasorDiagram`/`prepare_phasor_diagram()`/
+`evaluate_prepared_phasor_diagram()`/`evaluate_prepared_phasor_diagram_many()`;
+`compute_phasor_diagram()` refactored to delegate to them (docstring/
+external behavior unchanged). `backend/app/services/
+impedance_analysis_service.py`: `compute_impedance_analysis()` factored
+into a new `_impedance_analysis_from_diagram()` helper reused by
+`compute_impedance_locus()`, which now prepares once and evaluates per
+sample time. `backend/app/services/distance_protection_analysis_service.py`:
+identical treatment (`_distance_analysis_from_diagram()`,
+`compute_distance_locus()`). New
+`backend/tests/test_locus_shared_phasor_preparation.py` (10 tests).
+`browser-tests/impedance_analysis.spec.js`/
+`browser-tests/distance_protection_analysis.spec.js`:
+`selectContextAndWaitForResult()` races a real network response against
+the locus state itself changing, rather than strictly requiring a new
+HTTP response the frontend's own (unchanged) caching discipline may
+legitimately skip; overall test budget/response-wait timeout left at
+their original generous values (60000ms/20000ms) rather than tightened,
+per this decision's own "never tighten timeouts to prove speed"
+reasoning. Zero changes to Compliance, to DEC-112's own fix, to DEC-113's
+own Phasor fetch-cancellation mechanism, to any other analyzer's own
+independent fetch-lifecycle queue, or to any mathematical result.
+`git diff --check` clean.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

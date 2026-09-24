@@ -80,6 +80,43 @@ Recording-mode service itself resolves roles via `compute_phasor_
 diagram()`, never by calling `resolve_analysis_inputs()` a second time
 for `Va`/`Ia` independently.
 
+### DEC-114 — `compute_impedance_locus()` prepares Phasor inputs once, evaluates many
+
+`compute_impedance_locus()` samples up to `MAX_LOCUS_POINTS` independent
+selected-time Impedance calculations (see "Static locus/trajectory"
+below) — each one still, unchanged, needs `compute_phasor_diagram()`'s
+own resolved/estimated Va/Ia (or Vb/Ib, Vc/Ic) pair. Before DEC-114, each
+sample called `compute_impedance_analysis()` -> `compute_phasor_diagram()`
+independently, which repeated role resolution/candidate fetch/reference-
+frequency agreement/waveform-form eligibility/shared-time-coordinate
+setup — work that does not depend on `analysis_time` at all — once per
+sample point (up to 120x for a default-sized locus). For a role with
+`unknown` waveform-form metadata (the common case — no current provider
+sets this field explicitly), the ALGORITHMIC waveform-form classifier
+this repeated is measurably expensive; this was the dominant cost behind
+a ~13s single 120-point request (see DEC-112/DEC-113's own record).
+
+`compute_impedance_locus()` now calls `app.services.
+phasor_analysis_service.prepare_phasor_diagram()` ONCE for the whole
+locus request, then `evaluate_prepared_phasor_diagram()` once per sample
+time — the SAME static/dynamic split `compute_phasor_diagram()` itself
+now uses internally (see `PHASOR_ANALYSIS.md`'s own DEC-114 section for
+the shared primitive). `compute_impedance_analysis()` (the single-
+selected-time endpoint) is UNCHANGED externally — it still calls
+`compute_phasor_diagram()` directly, and internally that function is
+just `prepare_phasor_diagram()` followed by one `evaluate_prepared_
+phasor_diagram()` call, so its own behavior is byte-for-byte identical to
+before. A genuine static/whole-request failure (unresolvable role,
+reference-frequency conflict, timebase incompatibility) is still reported
+for every sample point in the locus, exactly as before — it is now
+detected once instead of independently rediscovered per point, but the
+observable per-point result is unchanged. Measured effect: the same
+120-point locus that took ~13s with `unknown`-metadata roles now
+completes in well under a second (in-process service-level measurement;
+see DECISIONS.md DEC-114 for exact before/after numbers). Never a second
+estimator, never a vectorized/batched DFT — only the repeated STATIC
+preparation was eliminated.
+
 ## Low-current guardrail — numerical validity, not a relay pickup threshold
 
 `app.domain.impedance.MIN_CURRENT_A = 1e-3` (1 mA). `Z = V/I` is

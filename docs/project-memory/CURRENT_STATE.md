@@ -1836,6 +1836,40 @@ consecutive full runs. See
 [DECISIONS.md — DEC-113](DECISIONS.md#dec-113--dec-112-follow-up-phasors-initial-claimrefine-timing-race-is-closed--a-superseding-this-exact-instant-matters-now-request-now-cancels-a-still-in-flight-now-stale-one-instead-of-merely-queuing-behind-however-long-its-own-real-network-round-trip-takes)
 for the full record.
 
+**Update (2026-09-24, same day) — the second and last of DEC-112's own
+two reported-but-unfixed findings, Impedance Locus/Distance Protection
+locus-computation performance, is now CLOSED (DEC-114).**
+`compute_impedance_locus()`/`compute_distance_locus()` no longer repeat
+`compute_phasor_diagram()`'s entire `analysis_time`-independent static
+preparation (role resolution, candidate fetch, reference-frequency
+agreement, waveform-form eligibility) once per one of up to 120 locus
+sample points — a new shared `prepare_phasor_diagram()`/
+`evaluate_prepared_phasor_diagram()` primitive in
+`phasor_analysis_service.py` runs that preparation ONCE per locus
+request and evaluates each sample time cheaply against it.
+`compute_phasor_diagram()` itself is now built from these same two
+primitives, so its own external behavior (and every existing Phasor/
+Impedance/Distance test) is unchanged. Measured: the realistic
+worst-case 120-point Impedance Locus (unknown-metadata roles, triggering
+the algorithmic waveform-form classifier) dropped from 10.647s to
+0.350s (~30.4x) in-process; a real end-to-end HTTP request against a
+freshly-started backend completed in ~80-114ms, vs. DEC-112's own
+directly-measured ~13s. Per-point failure semantics (early-window,
+current-too-small) and static whole-request failure semantics
+(reference-frequency conflict applying identically to every point) are
+both fully preserved, proven by a new 10-test backend suite. Full
+Playwright (clean environment, freshly-started backend): 309 passed, 0
+failed, 8.2 minutes — vs. DEC-113's own 283 passed/26 failed in ~32
+minutes; zero `ECONNRESET`/resource-exhaustion artifacts. Investigation
+also surfaced and ruled out an unrelated stale-dev-server artifact (a
+multi-hour-old backend process left bound to port 8000 across many
+prior `npx playwright test` invocations in the same session) that had
+nothing to do with the fix itself — see DEC-114's own record for the
+full account. **DEC-112 is now fully closed: both of its own reported
+findings (DEC-113, DEC-114) are resolved.** See
+[DECISIONS.md — DEC-114](DECISIONS.md#dec-114--dec-112s-second-follow-up-impedance-locusdistance-protection-locus-performance-is-closed--a-shared-prepare_phasor_diagramevaluate_prepared_phasor_diagram-primitive-replaces-n-repeated-full-diagram-computations-with-one-preparation-and-n-cheap-evaluations)
+for the full record.
+
 **Compliance & Capability jurisdiction-neutrality architecture invariant
 + portable-persistence lifecycle + provenance metadata expansion
 (DEC-111, same day, 2026-09-24).** Owner UAT and follow-up product/

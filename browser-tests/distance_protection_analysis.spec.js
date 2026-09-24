@@ -90,23 +90,39 @@ async function selectContextAndWaitForResult(page, contextId) {
   await expect(page.locator(`#wwDistanceContextSelect option[value="${contextId}"]`)).toHaveCount(1);
   const select = page.locator("#wwDistanceContextSelect");
   if ((await select.inputValue()) !== contextId) {
-    // The real `/distance-protection-locus` wait below can alone take
-    // ~13-20s on this environment (see the finding below) -- give the
-    // WHOLE test a correspondingly generous budget rather than racing the
-    // playwright.config.js default 30s test timeout.
     test.setTimeout(60000);
-    // 2026-09-24 finding (unrelated to DEC-104/DEC-111): the real
-    // `/distance-protection-locus` (120-point) computation itself measured
-    // ~13s end to end on this environment (confirmed via direct curl
-    // against a freshly-started backend with zero prior state -- not
-    // contention, not something these context-lifecycle fixes caused).
-    // 15000ms left too little margin; widened purely to absorb genuinely
-    // slow, already-slow-before-this-session backend computation -- see
-    // this session's own final report for the separate performance
-    // finding this surfaces.
-    const locusResponse = page.waitForResponse((r) => r.url().includes("/distance-protection-locus"), { timeout: 20000 });
+    // DEC-114 (2026-09-24): backend `compute_distance_locus()` no longer
+    // repeats the ENTIRE static Phasor preparation once per one of the 120
+    // sample points -- confirmed via a direct end-to-end reproduction
+    // (real upload -> real auto-created context -> real HTTP GET against a
+    // freshly started backend) that the SAME 120-point request that used
+    // to take ~13-20s now completes in ~80-100ms. That speed-up REMOVES a
+    // race this test used to rely on: DEC-105's own automatic initial-
+    // context-selection fetch now routinely COMPLETES (and caches its own
+    // matching `wwDistanceState.locusSignature`) before this explicit
+    // reselect even runs, so `wwDistanceMaybeFetchLocus()`'s own signature
+    // short-circuit correctly skips issuing a SECOND, redundant
+    // `/distance-protection-locus` request -- the exact caching discipline
+    // this suite already verifies elsewhere (e.g. "no full-locus or
+    // waveform refetch occurs during Playback ticks"). A strict
+    // `waitForResponse` here would wait forever for a request that
+    // correct behavior legitimately never sends. Race a real response
+    // against the locus state itself having been (re)populated since this
+    // function started -- covers a genuinely new fetch AND an already-
+    // cached hit, and the "changed since snapshot" comparison (not just
+    // "non-empty") avoids a false-positive if a PRIOR, different context
+    // already left a non-empty `locusPoints` array in place.
+    const beforeSnapshot = await page.evaluate(() => JSON.stringify(wwDistanceState.locusPoints));
+    const locusResponse = page.waitForResponse((r) => r.url().includes("/distance-protection-locus"), { timeout: 20000 }).catch(() => null);
     await select.selectOption(contextId);
-    await locusResponse;
+    await Promise.race([
+      locusResponse,
+      expect(async () => {
+        const current = await page.evaluate(() => JSON.stringify(wwDistanceState.locusPoints));
+        expect(current).not.toBe(beforeSnapshot);
+        expect(JSON.parse(current).length).toBeGreaterThan(0);
+      }).toPass({ timeout: 20000 }),
+    ]);
   }
   await expect(async () => {
     const text = await page.locator("#wwDistanceValuesList").innerText();
