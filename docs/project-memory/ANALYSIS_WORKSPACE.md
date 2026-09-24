@@ -202,6 +202,23 @@ Playback has ever been started on it. Phasor, Overcurrent, and Related
 Waveforms are three independent consumers of this ONE controller — no
 analyzer or shared primitive may build a second clock/timer/RAF loop.
 
+**DEC-113 (2026-09-24): Phasor's own "this exact instant matters now"
+diagram fetch (`wwPhasorRequestExactPlaybackFetch()`, used for Pause/
+Restart/seek-commit/a context's own initial claim/a Time Group relabel)
+now CANCELS a still-in-flight, now-superseded fetch instead of merely
+queuing behind however long its own real network round trip takes** — a
+dedicated `wwPhasorDiagramFetchAbortController`, combined with the shared
+`wwAnalysisFetchAbortController` so workspace-teardown abort behavior is
+unchanged. The continuous-Playback path (`wwPhasorMaybeFetchForPlayback()`
+itself, throttled at ~10 Hz) is completely unaffected — this only changes
+the "exact convergence" callers' own supersede behavior. Confirmed
+Phasor-only: Overcurrent/Impedance/Distance Protection/Sequence
+Components each maintain their own independent, parallel copy of the
+identical single-flight design and were NOT touched by this fix — see
+[DECISIONS.md — DEC-113](DECISIONS.md#dec-113--dec-112-follow-up-phasors-initial-claimrefine-timing-race-is-closed--a-superseding-this-exact-instant-matters-now-request-now-cancels-a-still-in-flight-now-stale-one-instead-of-merely-queuing-behind-however-long-its-own-real-network-round-trip-takes)
+for the full investigation and fix record, including why the other four
+analyzers' own equivalent copies are reported, not fixed, here.
+
 ## Shared Related Waveforms
 
 A compact, context-aware, analyzer-aware waveform preview living

@@ -18413,6 +18413,188 @@ touched). `git diff --check` clean.
 
 ---
 
+## DEC-113 — DEC-112 follow-up: Phasor's initial claim/refine timing race is closed — a superseding "this exact instant matters now" request now cancels a still-in-flight, now-stale one instead of merely queuing behind however long its own real network round trip takes
+
+Date: 2026-09-24
+Status: Approved — implemented (production fix, scoped to Phasor only).
+Source: dedicated fix session, explicitly requested by the owner to close
+ONE of the two genuine, pre-existing issues DEC-112 discovered and
+reported rather than fixed: "a narrow, timing-dependent race in Phasor's
+own initial Time-Group claim/refine sequence." Explicitly scoped to this
+ONE issue — DEC-112's other finding (Impedance Locus/Distance Protection
+locus-computation performance) is out of scope here.
+
+**Issue.** Phasor's own Playback-driven diagram fetch
+(`wwPhasorMaybeFetchForPlayback()`/`wwPhasorRequestDiagram()`) follows a
+deliberate "one request in flight, plus the latest desired time; a
+completed fetch's own trailing re-check picks up whatever moved on while
+it was in flight" design (`frontend/index.html`) — correct and sufficient
+for continuous Playback ticks, where only "eventually catch up to now"
+matters. But every "this exact instant matters now" caller
+(`wwPhasorRequestExactPlaybackFetch()`, used for Pause/Restart/seek-
+commit/a context's own initial claim/a Time Group relabel) shared the
+SAME queue-and-wait behavior: if an earlier, now-superseded fetch was
+still in flight, the newer, more relevant request could only WAIT for
+that earlier one's own real network round trip to finish before its own
+trailing re-check finally fired the corrective fetch — never dropped,
+but delayed by an unbounded, real-backend-latency-dependent amount.
+
+**Reproduced directly**, via full function-level instrumentation
+(`page.evaluate()`-injected wrappers logging every claim/refine/fetch
+call with a live `wwPlaybackState()` snapshot, correlated against real
+network request/response timestamps) of a real full-suite run: a Time
+Group relabel's own corrective fetch was observed queued behind an
+earlier, already-irrelevant seek's own in-flight fetch for **1.6+
+seconds** under genuine backend load — occasionally exceeding the
+"Time Group relabel...never disturbs Playback continuity" test's own
+patience window. Confirmed this was never reproducible with a fast/idle
+backend (12+ isolated attempts, including a manually-forced 2-second
+artificial delay, all self-healed within the request's own real latency)
+— the race requires genuine backend latency at the moment of supersession
+to manifest, which is why it surfaced only under real full-suite load,
+never in isolation.
+
+**Decision.** A new, dedicated `wwPhasorDiagramFetchAbortController`
+(module-level, `frontend/index.html`) lets
+`wwPhasorRequestExactPlaybackFetch()` CANCEL (never merely wait out) a
+still-in-flight diagram fetch the instant a newer "this instant matters
+now" request supersedes it:
+
+```js
+function wwPhasorRequestExactPlaybackFetch() {
+    wwPhasorPlaybackForceNextFetch = true;
+    if (wwPhasorPlaybackFetchInFlight) {
+        wwPhasorDiagramFetchAbortController.abort();
+        wwPhasorDiagramFetchAbortController = new AbortController();
+    }
+    wwPhasorMaybeFetchForPlayback();
+}
+```
+
+The aborted fetch's own `catch` block (inside `wwPhasorRequestDiagram()`)
+distinguishes this intentional local cancellation from a genuine
+backend-unreachable failure (never paints "Could not reach the backend."
+for it) and, critically, still runs its own trailing
+`wwPhasorMaybeFetchForPlayback()` re-check — which now finds "not in
+flight" essentially immediately (an aborted `fetch()` rejects on the next
+microtask, not after a real round trip) and starts the superseding fetch
+right away, instead of waiting for a response nobody will use.
+
+**Deliberately its own controller, never the shared
+`wwAnalysisFetchAbortController`** (which `wwClearWorkspace()` aborts on
+workspace teardown, and every Analysis-menu analyzer's own GET request
+shares via `wwPhasorFetchJson()`) — aborting the shared one to cancel one
+stale Phasor request would also cancel every OTHER analyzer's own
+simultaneous, unrelated, still-relevant in-flight request, which Section
+9's own "never globally serialize unrelated Analysis requests" guardrail
+explicitly forbids. A small manual `wwPhasorDiagramAbortSignal()` combines
+both the shared and the dedicated signal (no `AbortSignal.any()`
+dependency — not otherwise used in this codebase) so a superseded diagram
+fetch still ALSO honors workspace teardown exactly as before; the
+existing `epochAtStart !== ww.epoch` check (already the authoritative
+"was this a workspace teardown" signal every other Analysis fetch in this
+codebase already uses) distinguishes a teardown-abort from a
+supersede-abort, since only the former ever changes `ww.epoch`/the
+workspace id.
+
+**Mirrors an already-established pattern in this exact codebase** — the
+per-channel waveform fetch (`wwFetchChannelRange()`) already does "abort
+whatever's in flight for THIS specific lifecycle, then replace the
+controller," just for a different fetch. This is the SAME pattern,
+applied to Phasor's own "exact convergence" fetch lifecycle specifically
+— never a new, competing mechanism.
+
+**Scope: Phasor only, confirmed NOT shared.** Overcurrent maintains its
+own, fully independent, parallel copy of this exact single-flight design
+(`wwOvercurrentPlaybackFetchInFlight`/`wwOvercurrentRequestExactPlaybackFetch()`/
+`wwOvercurrentMaybeFetchForPlayback()`) — confirmed by direct code
+inspection, never a shared function Phasor's own fix could
+automatically cover. Impedance/Distance Protection/Sequence Components
+almost certainly carry the identical latent gap in their own equivalent
+copies, by construction (all five analyzers were built from the same
+Phasor-established pattern) — but per this task's own explicit scope
+("This slice should address only the Phasor initial claim/refine race...
+Do not broaden unnecessarily"), those four are deliberately NOT touched
+here. **Reported, not fixed**: an identical, equally-scoped follow-up for
+each of the other four analyzers' own copies is a natural next slice, but
+requires its own explicit authorization before implementation, per this
+project's own change-governance rule.
+
+**The existing "never steal a manual selection" guardrail is untouched
+and confirmed still correct** — `wwPhasorOnAnalysisFreshContextsDiscovered()`'s
+own `if (wwPhasorState.selectedContextId) return;` check (selection
+logic) is completely orthogonal to this fix (network-fetch-lifecycle
+logic); a superseded fetch's own late-arriving response can never
+override a manual context switch made in the meantime, proven by a
+dedicated regression test forcing that exact adverse ordering.
+
+**Reason.** Matches this project's own established "reproduce live →
+root-cause → smallest fix → verify fail-then-pass → full regression"
+methodology (the same one the DEC-105 through DEC-108 chain, and DEC-112
+itself, already used). The fix is deliberately minimal and reuses an
+already-approved architectural pattern rather than inventing a new one;
+it changes WHEN a stale request's own network connection is torn down,
+never the throttling/coalescing semantics of the continuous-Playback path
+(`wwPhasorMaybeFetchForPlayback()` itself, and every caller other than
+the "exact" one, are byte-for-byte unchanged), so normal Play/Pause
+behavior and request-rate throttling during smooth playback are
+completely unaffected.
+
+**Alternatives considered.** (1) Bump `wwPhasorState.requestGeneration`
+on every "exact" call, relying purely on the EXISTING stale-response
+guard to discard a late response, without any real network cancellation
+— rejected: proven to NOT reduce the actual latency (the corrective fetch
+would still have to wait for the stale one's own real round trip to
+complete before the in-flight flag clears, since nothing physically tears
+down the earlier connection), only improving correctness (never
+rendering stale data) without solving the TIMING problem this fix
+targets; the task's own reproduction showed genuine, multi-second delays,
+not merely incorrect data. (2) Reuse the shared
+`wwAnalysisFetchAbortController` for the "exact" supersede case —
+rejected: would also cancel every OTHER analyzer's own simultaneous,
+unrelated in-flight request, explicitly forbidden by this task's own
+"never globally serialize unrelated Analysis requests" instruction. (3)
+Extend the fix to all five analyzers in this same session — rejected:
+explicitly out of this task's own stated scope; each of the other four
+maintains its own independent copy of the same pattern and deserves its
+own, equally-careful, separately-authorized reproduction and fix, not a
+blind copy-paste under this task's own narrower authorization.
+
+**Impact.** `frontend/index.html`: `wwPhasorFetchJson()` accepts an
+optional `options.signal` override (every existing caller omits it,
+completely unaffected); `wwPhasorFetchDiagram()` accepts an optional
+`signal` parameter; new `wwPhasorDiagramFetchAbortController`/
+`wwPhasorDiagramAbortSignal()`; `wwPhasorRequestExactPlaybackFetch()`
+aborts-and-replaces the dedicated controller when superseding an
+in-flight fetch; `wwPhasorRequestDiagram()`'s own catch block
+distinguishes a supersede-abort from a genuine failure; `wwPhasorResetState()`
+also resets the dedicated controller on workspace clear, for lifecycle
+symmetry with the shared one. Zero changes to any other analyzer's own
+fetch/claim logic, to the backend, or to Compliance. New
+`browser-tests/phasor_analysis.spec.js` regression coverage (2 tests):
+one forcing the exact adverse ordering this decision fixes (verified to
+FAIL against the pre-fix code — via a temporary `git stash` of
+`frontend/index.html` alone — and PASS against the fix, run 10
+consecutive times with zero failures), one proving the manual-selection
+guardrail still holds under the same forced ordering. One separate,
+already-flaky, non-DEC-113 assertion in the "Time Group relabel" test
+(checking for network evidence of the corrective fetch via a single
+synchronous read, racing the ORDINARY, unrelated `wwAnalysisLoadContexts()`
+context-list-refetch latency on page revisit) was also strengthened to
+retry, since it was directly observed flaking on this same investigation's
+own instrumented reproduction — test-only, no production behavior
+implied or changed by that specific edit. Full `phasor_analysis.spec.js`:
+40/40 passing (was 0-4 failing per run, now 0 across two full consecutive
+runs). Full Playwright: 283 passed, 26 failed — every one of the 26
+confirmed via isolated reruns to be either DEC-112's own already-reported,
+out-of-scope Impedance/Distance locus-performance finding, or a
+resource-exhaustion artifact of an ~32-minute full run (one `ECONNRESET`
+on an unrelated Compliance request, confirmed passing in isolation, zero
+Compliance code touched) — zero new regressions, zero remaining DEC-113
+failures. Full backend suite passes unchanged. `git diff --check` clean.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

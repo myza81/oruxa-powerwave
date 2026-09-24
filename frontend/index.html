@@ -41272,8 +41272,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // currently in-flight Analysis request. See wwClearWorkspace()'s
         // own comment for exactly when this is aborted and replaced.
         let wwAnalysisFetchAbortController = new AbortController();
+        // `options.signal`, when given, is used INSTEAD OF the shared
+        // controller's own signal (DEC-113) -- every existing caller omits
+        // it and is completely unaffected; only wwPhasorFetchDiagram()'s
+        // own Playback-driven fetch opts in, so it can be cancelled
+        // independently of every other Analysis request without widening
+        // the shared controller's own blast radius.
         async function wwPhasorFetchJson(url, options) {
-            const response = await fetch(url, Object.assign({}, options, { signal: wwAnalysisFetchAbortController.signal }));
+            const signal = (options && options.signal) || wwAnalysisFetchAbortController.signal;
+            const response = await fetch(url, Object.assign({}, options, { signal }));
             if (!response.ok) {
                 const body = await response.json().catch(() => null);
                 throw new Error((body && body.detail && body.detail.message) || "Request failed.");
@@ -41285,12 +41292,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // old two-call (input-resolution, then phasor) flow -- every
         // supported role's own status/value is already carried in this
         // single response, so no separate resolution request is needed
-        // any more.
-        function wwPhasorFetchDiagram(workspaceId, contextId, analysisTimeSeconds) {
+        // any more. `signal` (DEC-113) lets the caller supersede/cancel
+        // this specific request independently -- see wwPhasorRequestDiagram().
+        function wwPhasorFetchDiagram(workspaceId, contextId, analysisTimeSeconds, signal) {
             const params = new URLSearchParams({ analysis_time: String(analysisTimeSeconds) });
             return wwPhasorFetchJson(
                 apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
-                "/engineering-contexts/" + encodeURIComponent(contextId) + "/phasor-diagram?" + params.toString()
+                "/engineering-contexts/" + encodeURIComponent(contextId) + "/phasor-diagram?" + params.toString(),
+                signal ? { signal } : undefined
             );
         }
 
@@ -42364,18 +42373,69 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         let wwPhasorPlaybackFetchedTime = null; // the analysis time the LAST completed fetch actually used
         let wwPhasorPlaybackForceNextFetch = false;
 
+        // DEC-113 (2026-09-24): dedicated to SUPERSEDING (never merely
+        // waiting out) a still-in-flight `/phasor-diagram` fetch the
+        // instant a NEWER "this exact instant matters now" request
+        // arrives (Pause/Restart/seek-commit/initial claim/context
+        // switch/a Time Group relabel) -- see
+        // wwPhasorRequestExactPlaybackFetch() below. Deliberately its OWN
+        // controller, never the shared wwAnalysisFetchAbortController
+        // (aborting THAT would also cancel every OTHER analyzer's own
+        // simultaneous, unrelated, still-relevant in-flight request).
+        // Mirrors the existing "one independent AbortController + sequence
+        // number per fetch lifecycle" pattern this codebase already uses
+        // for per-channel waveform fetches (wwFetchChannelRange()).
+        let wwPhasorDiagramFetchAbortController = new AbortController();
+
+        // Aborts as soon as EITHER the shared controller (workspace
+        // teardown, see wwClearWorkspace()'s own comment) OR the
+        // dedicated one above fires -- a manual combine (no
+        // AbortSignal.any() dependency; not otherwise used in this
+        // codebase yet) so a superseded diagram fetch still also honors
+        // workspace-teardown exactly as every other Analysis fetch does.
+        function wwPhasorDiagramAbortSignal() {
+            const dedicated = wwPhasorDiagramFetchAbortController;
+            const combined = new AbortController();
+            if (wwAnalysisFetchAbortController.signal.aborted || dedicated.signal.aborted) {
+                combined.abort();
+            } else {
+                const onAbort = () => combined.abort();
+                wwAnalysisFetchAbortController.signal.addEventListener("abort", onAbort, { once: true });
+                dedicated.signal.addEventListener("abort", onAbort, { once: true });
+            }
+            return combined.signal;
+        }
+
         function wwPhasorPlaybackDesiredTimeChanged() {
             return wwPhasorPlaybackFetchedTime === null ||
                 Math.abs(wwPhasorPlaybackFetchedTime - wwPhasorState.analysisTime) > 1e-9;
         }
 
-        // Bypasses the throttle window entirely for the NEXT fetch (still
-        // respects "one request in flight" -- see wwPhasorMaybeFetchForPlayback()) --
+        // Bypasses the throttle window entirely for the NEXT fetch --
         // used exclusively for the "exact convergence when interaction
         // stops" requirement (Pause/Restart/seek-commit/Playback
-        // completion/a context's own initial claim).
+        // completion/a context's own initial claim/a Time Group relabel).
+        // DEC-113: if a fetch is ALREADY in flight, this now SUPERSEDES
+        // it (aborts, so its own network round trip is torn down
+        // immediately) rather than merely queuing behind however long
+        // that in-flight fetch's own real backend latency happens to be
+        // -- reproduced directly: under real backend load, an earlier
+        // fetch (e.g. from a prior seek) could still be resolving when a
+        // NEWER exact-fetch intent arrived (a Time Group relabel), and
+        // the old "wait for it, then trailing-recheck" design left the
+        // corrective fetch queued for as long as that unrelated, already-
+        // superseded request took -- observed for over a second under
+        // real full-suite backend load. The abort's own completion
+        // (wwPhasorRequestDiagram()'s own catch block) immediately
+        // triggers the trailing re-check once in-flight clears, so the
+        // superseding fetch starts as soon as physically possible instead
+        // of waiting out a response nobody will use.
         function wwPhasorRequestExactPlaybackFetch() {
             wwPhasorPlaybackForceNextFetch = true;
+            if (wwPhasorPlaybackFetchInFlight) {
+                wwPhasorDiagramFetchAbortController.abort();
+                wwPhasorDiagramFetchAbortController = new AbortController();
+            }
             wwPhasorMaybeFetchForPlayback();
         }
 
@@ -42455,13 +42515,27 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             wwPhasorPlaybackFetchInFlight = true;
             wwPhasorSetUpdatingIndicator(true);
+            const mySignal = wwPhasorDiagramAbortSignal();
             let diagram;
             try {
-                diagram = await wwPhasorFetchDiagram(workspaceId, contextId, analysisTimeForApi);
+                diagram = await wwPhasorFetchDiagram(workspaceId, contextId, analysisTimeForApi, mySignal);
             } catch (error) {
                 wwPhasorPlaybackFetchInFlight = false;
                 wwPhasorPlaybackLastFetchAtMs = performance.now();
                 wwPhasorPlaybackFetchedTime = desiredTime;
+                // DEC-113: a superseded fetch (wwPhasorRequestExactPlaybackFetch()
+                // aborted it in favor of a newer desired time) is never a
+                // genuine backend-unreachable failure -- distinguished from
+                // workspace teardown (which also aborts, but always changes
+                // ww.epoch/the workspace id too, unlike a mere supersede).
+                // Never paints "Could not reach the backend." for this;
+                // the trailing re-check immediately starts the superseding
+                // fetch the instant in-flight clears, rather than waiting
+                // out a response nobody will use.
+                if (mySignal.aborted && epochAtStart === ww.epoch && currentWorkspaceId() === workspaceId) {
+                    wwPhasorMaybeFetchForPlayback();
+                    return;
+                }
                 if (myGeneration !== wwPhasorState.requestGeneration || epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
                 wwPhasorSetUpdatingIndicator(false);
                 wwPhasorState.latestDiagram = null;
@@ -43016,6 +43090,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPhasorPlaybackFetchedTime = null;
             wwPhasorPlaybackForceNextFetch = false;
             wwPhasorLastPlaybackSignature = null;
+            // DEC-113: fresh dedicated abort controller for the new
+            // workspace -- wwAnalysisFetchAbortController (already aborted
+            // and replaced by wwClearWorkspace() itself, just above this
+            // call) already tore down any in-flight diagram fetch; this
+            // just keeps the two controllers' own lifecycles symmetric
+            // rather than carrying a spent one into the next workspace.
+            wwPhasorDiagramFetchAbortController = new AbortController();
             wwPhasorMountPlaybackControls(null);
             const contextSelect = document.getElementById("wwPhasorContextSelect");
             if (contextSelect) contextSelect.innerHTML = '<option value="">Select a context…</option>';

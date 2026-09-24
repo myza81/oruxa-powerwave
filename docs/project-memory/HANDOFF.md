@@ -8,6 +8,68 @@ Last updated: **2026-09-24**
 
 ## What was most recently done
 
+**Dedicated fix session: Phasor's initial claim/refine timing race is
+closed (DEC-113), the first of DEC-112's own two reported-but-unfixed
+findings.** Scope: explicitly ONLY this one issue — Impedance/Distance
+locus-computation performance (DEC-112's other finding) is untouched, and
+Compliance was not touched at all.
+
+Reproduced directly via full function-level instrumentation of a real
+full-suite run: Phasor's own "one request in flight, queue the latest
+desired time" fetch design (correct for continuous Playback ticks) made
+every "this exact instant matters now" caller (Pause/Restart/seek-commit/
+initial claim/a Time Group relabel) WAIT for an earlier, already-
+superseded in-flight fetch's own real network round trip — observed
+delaying a corrective fetch by 1.6+ seconds under genuine backend load,
+never reproducible with a fast/idle backend (12+ isolated attempts,
+including a forced artificial delay, all self-healed).
+
+**Fix**: a new, dedicated `wwPhasorDiagramFetchAbortController`
+(`frontend/index.html`) lets `wwPhasorRequestExactPlaybackFetch()` CANCEL
+a still-in-flight fetch the instant a newer one supersedes it, rather
+than merely waiting it out — mirrors the ALREADY-established "abort
+whatever's in flight for this lifecycle, then replace" pattern
+`wwFetchChannelRange()` uses for per-channel waveform fetches, never a
+new mechanism. Deliberately its OWN controller, never the shared
+`wwAnalysisFetchAbortController` (which would also cancel every OTHER
+analyzer's own unrelated in-flight request) — a small manual signal-
+combine (no `AbortSignal.any()` dependency) means a superseded fetch
+still also honors workspace teardown exactly as before.
+
+**Confirmed Phasor-only, not shared**: Overcurrent maintains its own,
+fully independent, parallel copy of the identical single-flight design —
+Impedance/Distance/Sequence almost certainly carry the same latent gap in
+their own equivalent copies (by construction, all five were built from
+the same pattern), but per this task's own explicit scope, those four are
+reported, not fixed, here — a natural, equally-scoped follow-up slice,
+pending its own authorization.
+
+New regression coverage in `browser-tests/phasor_analysis.spec.js` (2
+tests): one forcing the exact adverse ordering this fix closes (verified
+FAIL-before/PASS-after via a temporary `git stash` of `frontend/index.html`
+alone, run 10 consecutive times with zero failures), one proving the
+existing "never steal a manual selection" guardrail still holds under the
+same forced ordering (untouched by this fix — selection logic is
+orthogonal to fetch-lifecycle logic). One separate, already-flaky
+assertion in the pre-existing "Time Group relabel" test (racing ordinary,
+unrelated context-list-refetch latency via a non-retried read) was also
+strengthened to retry — test-only, directly observed flaking on this same
+investigation's own instrumented reproduction, no production implication.
+
+**Validation**: full `phasor_analysis.spec.js` 40/40 passing across two
+consecutive full runs (was 0-4 failing per run before this fix). Full
+Playwright: 283 passed, 26 failed — every one of the 26 confirmed via
+isolated reruns to be DEC-112's own already-reported, out-of-scope
+Impedance/Distance locus-performance finding, or a resource-exhaustion
+artifact of the ~32-minute full run (one `ECONNRESET` on an unrelated
+Compliance request, confirmed passing in isolation, zero Compliance code
+touched) — zero new regressions, zero remaining DEC-113 failures. Full
+backend suite passes unchanged. `git diff --check` clean. See
+[DECISIONS.md — DEC-113](DECISIONS.md#dec-113--dec-112-follow-up-phasors-initial-claimrefine-timing-race-is-closed--a-superseding-this-exact-instant-matters-now-request-now-cancels-a-still-in-flight-now-stale-one-instead-of-merely-queuing-behind-however-long-its-own-real-network-round-trip-takes)
+for the full record.
+
+## What was done in the prior session — dedicated fix session: the pre-existing Analysis Playwright regression DEC-104/DEC-110/DEC-111 all repeatedly flagged as out-of-scope is now closed (DEC-112)
+
 **Dedicated fix session: the pre-existing Analysis Playwright regression
 DEC-104/DEC-110/DEC-111 all repeatedly flagged as out-of-scope is now
 closed (DEC-112).** Root cause confirmed exactly as DEC-110/DEC-111

@@ -1016,10 +1016,178 @@ test.describe("Phasor Analysis -- Engineering Context bootstrap (UAT fix)", () =
       (sid) => wwWorkspaceTimeToSourceTime(sid, wwPlaybackState().currentTime),
       alphaSourceId
     );
-    expect(phasorDiagramRequestTimes.length).toBeGreaterThan(0);
+    // Retries, rather than a single synchronous snapshot: re-entering
+    // Analysis re-fetches the context list itself (ordinary
+    // wwAnalysisLoadContexts() backend round trip, nothing to do with
+    // DEC-113's own claim/refine fix below it), and the two toPass()
+    // checks just above can both resolve on their very first poll (the
+    // rendered VALUE is unchanged across the relabel -- a steady-state
+    // balanced sinusoid reads 100.0V at any offset -- and `currentTime`
+    // is local, network-independent state) well before that round trip
+    // completes. A single immediate read of phasorDiagramRequestTimes
+    // here raced that ordinary latency and could observe "no request
+    // yet" even on a fully correct run; this waits for the SAME request
+    // DEC-113's own fetch-cancellation fix guarantees is never delayed
+    // by an unrelated stale fetch (see that decision's own record) to
+    // actually arrive.
+    await expect(async () => {
+      expect(phasorDiagramRequestTimes.length).toBeGreaterThan(0);
+    }).toPass({ timeout: 5000 });
     for (const t of phasorDiagramRequestTimes) {
       expect(Math.abs(t - expectedAnalysisTime)).toBeLessThan(0.05);
     }
+  });
+
+  // DEC-113 (2026-09-24): regression coverage for the Phasor initial
+  // claim/refine timing race DEC-112 reported but explicitly left
+  // unfixed. Root cause, confirmed by direct instrumentation of a REAL
+  // full-suite run (never reproducible in isolation with a fast backend,
+  // only under genuine backend latency): Phasor's own "one fetch in
+  // flight, queue the latest desired time" design (`wwPhasorMaybeFetchForPlayback()`)
+  // made every "this exact instant matters now" request (Pause/Restart/
+  // seek-commit/initial claim/a Time Group relabel) WAIT for however long
+  // an earlier, already-superseded in-flight fetch's own real network
+  // round trip took, rather than cancelling it -- observed directly
+  // delaying a corrective fetch by 1.6+ seconds under real full-suite
+  // backend load, occasionally past a caller's own patience window. Fixed
+  // by a dedicated `wwPhasorDiagramFetchAbortController` that
+  // `wwPhasorRequestExactPlaybackFetch()` now uses to abort (never merely
+  // wait out) a stale in-flight fetch the instant a newer one supersedes
+  // it. This test forces the exact adverse ordering directly (task's own
+  // "force adverse ordering" requirement) rather than relying on
+  // incidental backend latency -- verified to FAIL against the pre-fix
+  // code (the corrective request only appeared once the artificially
+  // delayed one finally resolved) and PASS against the fix.
+  test("a superseded in-flight fetch is cancelled, never delays or corrupts the newer one (DEC-113)", async ({ page }) => {
+    const { contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page);
+    // No manual selectOption() before asserting initial behavior --
+    // auto-selection + claim/refine alone must already be correct.
+    await expect(page.locator("#wwPhasorContextSelect")).toHaveValue(contextId);
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+    }).toPass({ timeout: 10000 });
+
+    const seekSlider = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-seek-slider");
+    const bounds = await seekSliderBounds(seekSlider);
+    const staleTime = bounds.min + (bounds.max - bounds.min) * 0.3;
+    const freshTime = bounds.min + (bounds.max - bounds.min) * 0.7;
+
+    // Force adverse ordering: request A (staleTime) is deliberately
+    // delayed well past when request B (freshTime) both starts AND
+    // completes, so a self-healing-via-queueing design would show B's
+    // own corrective value only once A's late response finally arrives
+    // and its own trailing re-check runs -- exactly what this proves
+    // never happens any more.
+    let staleRequestSeen = false;
+    let staleResponseSeenAtMs = null;
+    const t0 = Date.now();
+    await page.route("**/phasor-diagram*", async (route) => {
+      const url = route.request().url();
+      const t = parseFloat(new URL(url).searchParams.get("analysis_time"));
+      if (Math.abs(t - staleTime) < 0.01 && !staleRequestSeen) {
+        staleRequestSeen = true;
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+      await route.continue();
+    });
+    let staleRequestFailed = false;
+    page.on("response", (r) => {
+      if (!r.url().includes("/phasor-diagram")) return;
+      const t = parseFloat(new URL(r.url()).searchParams.get("analysis_time"));
+      if (Math.abs(t - staleTime) < 0.01) staleResponseSeenAtMs = Date.now() - t0;
+    });
+    page.on("requestfailed", (r) => {
+      if (!r.url().includes("/phasor-diagram")) return;
+      const t = parseFloat(new URL(r.url()).searchParams.get("analysis_time"));
+      if (Math.abs(t - staleTime) < 0.01) staleRequestFailed = true;
+    });
+
+    // A: seek to staleTime (starts the now-delayed request).
+    await seekTo(seekSlider, staleTime);
+    // B: seek to freshTime BEFORE A has any chance to resolve -- the
+    // genuinely superseding "this instant matters now" request.
+    await seekTo(seekSlider, freshTime);
+
+    // B's own corrective value renders promptly -- never waiting out A's
+    // own artificial 3s delay.
+    const bStart = Date.now();
+    await expect(async () => {
+      const currentTime = await page.evaluate(() => wwPlaybackState().currentTime);
+      expect(Math.abs(currentTime - freshTime)).toBeLessThan(0.02);
+    }).toPass({ timeout: 5000 });
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+    const bElapsedMs = Date.now() - bStart;
+    expect(bElapsedMs).toBeLessThan(2500); // well under A's own 3000ms artificial delay
+
+    // A is genuinely cancelled at the network layer (never merely
+    // out-raced) -- it never completes as a real HTTP response at all,
+    // so Playwright observes it as a failed/aborted request, never a
+    // "response" event; confirms the fix does true cancellation, a
+    // stronger guarantee than "B merely rendered first."
+    await expect(async () => {
+      expect(staleRequestFailed).toBe(true);
+    }).toPass({ timeout: 5000 });
+    expect(staleResponseSeenAtMs).toBeNull();
+
+    // Waiting past A's own would-have-been 3000ms delay window, the
+    // final state is still B's -- correct, stable, never later
+    // overwritten by anything.
+    await page.waitForTimeout(3200);
+    const textAfterWaiting = await page.locator("#wwPhasorValuesList").innerText();
+    expect(textAfterWaiting).toMatch(/100\.0\s*V/);
+    const currentTimeAfterWaiting = await page.evaluate(() => wwPlaybackState().currentTime);
+    expect(Math.abs(currentTimeAfterWaiting - freshTime)).toBeLessThan(0.02);
+  });
+
+  // DEC-113: the existing "never steal a manual selection" guardrail
+  // (wwPhasorOnAnalysisFreshContextsDiscovered()'s own `if
+  // (wwPhasorState.selectedContextId) return;` check) is untouched by
+  // the fetch-cancellation fix above -- this proves a late, now-
+  // superseded response for the auto-selected bay can never override an
+  // engineer's own subsequent manual selection of a different one.
+  test("a superseded fetch's late response never overrides a manual context switch made in the meantime (DEC-113)", async ({ page }) => {
+    const { workspaceId, contextId } = await uploadAndCreateContext(page);
+    await openAnalysisPhasor(page);
+    await expect(page.locator("#wwPhasorContextSelect")).toHaveValue(contextId);
+
+    const secondSourceId = await uploadSecondSource(page);
+    const secondContext = await createFullBayContext(page, workspaceId, secondSourceId, "Bravo 1");
+    await page.locator("#mainNavAnalysisBtn").click();
+
+    let staleRequestSeen = false;
+    await page.route("**/phasor-diagram*", async (route) => {
+      const url = route.request().url();
+      if (url.includes(encodeURIComponent(contextId)) && !staleRequestSeen) {
+        staleRequestSeen = true;
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+      await route.continue();
+    });
+
+    // Nudge the still-selected first bay (starts the now-delayed request)
+    // then immediately switch to the second, genuinely different bay --
+    // a real manual selection, which must win regardless of what the
+    // first bay's own in-flight request eventually returns.
+    const seekSlider = page.locator("#wwPhasorPlaybackMount .ww-tg-playback-seek-slider");
+    const bounds = await seekSliderBounds(seekSlider);
+    await seekTo(seekSlider, bounds.min + (bounds.max - bounds.min) * 0.3);
+    await page.locator("#wwPhasorContextSelect").selectOption(secondContext.id);
+
+    await expect(page.locator("#wwPhasorContextSelect")).toHaveValue(secondContext.id);
+    await expect(async () => {
+      const text = await page.locator("#wwPhasorValuesList").innerText();
+      expect(text).toMatch(/100\.0\s*V/);
+    }).toPass({ timeout: 5000 });
+
+    // Give the first bay's own delayed response time to arrive and prove
+    // it never silently switched the selector back.
+    await page.waitForTimeout(3500);
+    await expect(page.locator("#wwPhasorContextSelect")).toHaveValue(secondContext.id);
   });
 
   test("removing a covered source does not block discovery of a still-uncovered one", async ({ page }) => {

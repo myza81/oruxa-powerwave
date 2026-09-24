@@ -1820,6 +1820,22 @@ remaining DEC-104 conflicts. See
 [DECISIONS.md — DEC-112](DECISIONS.md#dec-112--pre-existing-analysis-playwright-regression-dec-104-onward-browser-suites-that-manually-post-an-engineering-context-now-discoverreuse-the-one-upload-time-preparation-already-created-instead-of-duplicating-it)
 for the full record.
 
+**Update (2026-09-24, same day) — the first of DEC-112's own two
+reported-but-unfixed findings, Phasor's initial claim/refine timing race,
+is now CLOSED (DEC-113).** A dedicated fetch-cancellation controller lets
+Phasor's own "this exact instant matters now" requests (Pause/Restart/
+seek-commit/initial claim/a Time Group relabel) cancel a still-in-flight,
+now-superseded fetch instead of queuing behind its own real network
+latency — mirrors an already-established per-fetch abort/replace pattern
+elsewhere in this codebase, confirmed Phasor-only (Overcurrent/Impedance/
+Distance/Sequence each carry their own independent, unfixed copy of the
+same latent gap, deliberately out of this session's own scope). DEC-112's
+OTHER finding (Impedance/Distance locus-computation performance) remains
+open and untouched. `phasor_analysis.spec.js`: 40/40 passing across two
+consecutive full runs. See
+[DECISIONS.md — DEC-113](DECISIONS.md#dec-113--dec-112-follow-up-phasors-initial-claimrefine-timing-race-is-closed--a-superseding-this-exact-instant-matters-now-request-now-cancels-a-still-in-flight-now-stale-one-instead-of-merely-queuing-behind-however-long-its-own-real-network-round-trip-takes)
+for the full record.
+
 **Compliance & Capability jurisdiction-neutrality architecture invariant
 + portable-persistence lifecycle + provenance metadata expansion
 (DEC-111, same day, 2026-09-24).** Owner UAT and follow-up product/
