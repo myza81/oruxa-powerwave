@@ -9,11 +9,15 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-20** (fixed a genuine production race
-— toggling a channel display immediately after opening a just-uploaded
-recording could wipe the entire channel sidebar with a misleading
-"Could not reach the backend" message; see its own entry below in
-[Implemented capabilities](#implemented-capabilities)).
+Last meaningful update: **2026-09-25** — the **Line-to-Line Voltage**
+Calculated Channel operation (DEC-115) is implemented and **awaiting
+owner UAT**. See its entry under
+[Implemented capabilities](#implemented-capabilities) and
+[LINE_TO_LINE_VOLTAGE.md](LINE_TO_LINE_VOLTAGE.md). The previous update
+(2026-09-20) fixed a production race: toggling a channel display
+immediately after opening a just-uploaded recording could wipe the whole
+channel sidebar and show a misleading "Could not reach the backend"
+message.
 **Event Playback
 ([DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock),
 its own 2026-09-11 revision) is implemented as a shared, reusable
@@ -2883,6 +2887,32 @@ re-confirmed by the TG-FINAL audit):
   above (which governs whether operand SAMPLE TIMES may be combined at
   all, not how a null VALUE within an already-aligned series is
   filled).
+- **Line-to-Line Voltage calculated channels (DEC-115, 2026-09-25,
+  awaiting owner UAT)**: a dedicated operation, "Line-to-Line Voltage
+  (L-L)". Its input is one **Bay / Engineering Context**, never
+  hand-picked phases. Va/Vb/Vc are resolved by the existing Engineering
+  Context resolver and the Phasor waveform-eligibility preflight. It
+  creates `VAB = VA − VB`, `VBC = VB − VC`, `VCA = VC − VA` (an exact
+  instantaneous difference, never √3 scaling) as a single pair or as an
+  **atomic** All Three set: three ordinary channels, or none if any pair
+  is unavailable. Every bay is listed with per-output readiness
+  (`ready` / `incomplete` / `unsupported_representation` / `ambiguous`).
+  RMS-magnitude-only phase voltages are rejected with an actionable
+  reason. Outputs carry additive metadata:
+  `voltage_representation = line_to_line`, `phase_member = AB/BC/CA`,
+  `waveform_form = instantaneous`, and an optional UI-only
+  `creation_batch_id`. Per-Unit divides these outputs by the **L-L** base
+  on both the Measurement Group and Source Default paths (275 kV →
+  VAB base 275 kV while Va stays 275/√3). Unary descendants such as
+  RMS(VAB) keep the declaration. Generic Subtraction is unchanged
+  (DEC-052). The UI shows the created set with **Plot All**, and
+  VAB/VBC/VCA use fixed, distinct slots 0/1/2 of the central trace
+  palette that stay the same across redraw, zoom, hide/show, revisit and
+  reload. The complex-phasor source path is **deferred** (no reachable
+  phasor source without instantaneous samples, and no magnitude/angle
+  role pairing). A pre-existing Source Default PU gap for *generic*
+  Voltage Subtraction was found and reported, not changed. See
+  [LINE_TO_LINE_VOLTAGE.md](LINE_TO_LINE_VOLTAGE.md) §8/§10.
 - **Annotations**: `text_note` (floating, content-anchored), `callout`
   (waveform-anchored with a movable label box), and `peak_max`/`peak_min`
   (dynamically viewport-recalculated) — all resolve their own owning Time

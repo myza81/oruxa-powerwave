@@ -18870,6 +18870,130 @@ independent fetch-lifecycle queue, or to any mathematical result.
 
 ---
 
+## DEC-115 — Line-to-Line Voltage is a dedicated Calculated Channel engineering operation: Bay / Engineering Context input, instantaneous VAB/VBC/VCA with declared line-to-line metadata, atomic All Three, and stable pair colors
+
+Date: 2026-09-25
+Status: Approved (owner-specified feature) — implemented, **awaiting
+owner UAT**. The complex-phasor source path is **deferred**, with the
+architectural gap recorded below.
+Source: owner task "Calculated Channels engineering operation: Line-to-Line
+Voltage". Compliance is explicitly out of scope; this slice only produces
+correctly-semantic L-L channels that Compliance can consume later.
+
+Decision:
+
+- **Operation.** "Line-to-Line Voltage (L-L)" is a dedicated operation
+  (`operation = "line_to_line_voltage"`), deliberately **not** a member of
+  `ALL_OPERATIONS`. The generic create endpoint rejects it (422). It is not
+  a Subtraction preset: it has its own input model, validation,
+  readiness, metadata and UI. The pointwise arithmetic reuses
+  `evaluate_subtraction()`.
+- **Frozen convention.** `VAB = VA − VB`, `VBC = VB − VC`,
+  `VCA = VC − VA` (cyclic; VAC is never canonical). It is always an exact
+  difference, never `√3 × VLN`.
+- **Input = one Bay / Engineering Context.** Va/Vb/Vc are resolved by the
+  existing authorities: `resolve_analysis_inputs()` for role identity and
+  ambiguity, and the Phasor waveform-form eligibility and
+  reference-frequency preflight
+  (`check_phasor_diagram_readiness(role_keys=("Va","Vb","Vc"))`, an
+  additive parameter). There is no second phase detector. Added
+  guardrails: the resolved channel must be a Voltage magnitude (not a
+  DEC-078 angle channel) and not already line-to-line; per-pair units must
+  be identical (DEC-047); per-pair timebases must be proven aligned
+  (DEC-047).
+- **Readiness depends on the selected output** (VAB needs Va+Vb, VBC needs
+  Vb+Vc, VCA needs Vc+Va, All Three needs all three). Every bay is listed,
+  with a context status of `ready` / `incomplete` /
+  `unsupported_representation` / `ambiguous` and actionable reasons.
+  RMS-magnitude-only data is rejected: "Line-to-line voltage requires
+  either instantaneous phase voltages or full complex phase phasors. RMS
+  magnitudes alone are insufficient."
+- **Source path.** v1 implements the instantaneous path only
+  (`waveform_form = instantaneous`, the source's own aligned timebase).
+  The complex-phasor path is deferred because no reachable phasor source
+  exists when instantaneous samples are absent: the only phasor engine
+  estimates *from* instantaneous samples, and DEC-078 magnitude/angle
+  channels have no role pairing (they share `engineering_type = Voltage`
+  and the phase, so they resolve as ambiguous). Recommended future
+  design: a magnitude/angle `RoleSpec` representation, then per-sample
+  complex subtraction on the shared timebase. Nothing is faked.
+- **One channel = one scalar output.** All Three creates three ordinary
+  `CalculatedChannel`s, **atomically**. Every pair's readiness, every name
+  and every evaluation is validated before anything is written; any
+  failure creates none. A shared, optional `creation_batch_id` is used for
+  UI grouping only. Deleting one member leaves the others.
+- **Metadata (additive, `None` for every generic operation):**
+  `voltage_representation` (`line_to_line`, reusing
+  `voltage_reference.KNOWN_VOLTAGE_REFERENCES`) and `phase_member`
+  (`AB`/`BC`/`CA`, reusing `phase_identity`), plus `creation_batch_id`.
+  Unary operations propagate `voltage_representation`. RMS and Absolute
+  Value also propagate `phase_member`. Multi-input operations propagate
+  neither.
+- **Per-Unit.** A declared representation overrides detection for the
+  channel's own Voltage denominator on both the Measurement Group
+  (DEC-050) and the Source Default (DEC-049) paths. With 275 kV nominal,
+  Va's base is 275/√3 kV and VAB's base is 275 kV. This supplies, for this
+  operation only, the "operation-level metadata" DEC-052 found missing.
+  **DEC-052 is unchanged for generic Addition/Subtraction.**
+- **Colors.** The one color authority (`wwDefaultChannelColor()`) assigns
+  VAB/VBC/VCA fixed slots 0/1/2 of the central `CHANNEL_TRACE_COLORS`
+  palette, keyed on `operation` + `phase_member`, not on the name or on
+  plot order. The colors are distinct, and stable across redraw, zoom,
+  hide/show, page revisit and reload. A user color override still wins.
+- **Plot All.** After creation, the page shows the created set as one
+  result with Plot All. Set members also have a row action, "Plot All
+  (VAB, VBC, VCA)". Both use the ordinary `wwAddSelectedChannels()` path.
+
+Reason:
+
+The owner asked for a line-to-line quantity with real engineering
+semantics that Per-Unit, Measurement Groups, Analysis and Compliance can
+rely on without parsing names. It must be correct under unbalance and
+must not repeat the 275 kV vs 158.77 kV base ambiguity. Reusing the
+Engineering Context and Phasor-eligibility authorities keeps a single
+definition of "this bay's phase-A voltage" across the application.
+
+Alternatives considered:
+
+- **A Subtraction preset or naming convention.** Rejected by the owner.
+  It would also leave Per-Unit unable to tell L-L from L-G (DEC-052).
+- **Manual Va/Vb/Vc pickers.** Rejected by the owner, and inconsistent
+  with Analysis.
+- **Sequential consumption of the first-come color cycle.** Rejected: two
+  pairs could share a slot once six other channels had been colored in
+  between.
+- **Implementing the phasor path by estimating phasors from instantaneous
+  samples.** Pointless, because the instantaneous path is preferred
+  whenever those samples exist. Magnitude-only arithmetic
+  (`VA_RMS − VB_RMS`) is invalid and explicitly rejected.
+
+Impact:
+
+New: `app/domain/line_to_line_voltage.py`,
+`app/services/line_to_line_voltage_service.py`, and two endpoints
+(`GET .../calculated-channels/line-to-line-voltage/readiness`,
+`POST .../calculated-channels/line-to-line-voltage`). Additive changes:
+three `CalculatedChannel`/`CalculatedChannelOut` fields;
+`resolve_per_unit(explicit_voltage_reference=)`;
+`resolve_voltage_base_for_group(explicit_reference=)`;
+`resolve_per_unit_for_group(explicit_voltage_reference=)`; provenance
+reporting of the declared reference; `check_phasor_diagram_readiness(role_keys=)`
+and exposed candidates. `create_calculated_channel()`'s null-policy
+validation and effective-value steps were factored into shared helpers
+without behaviour change. Frontend: the L-L card, builder, result set,
+Plot All and semantic pair colors. New fixture
+`line_to_line_multibay`. See [LINE_TO_LINE_VOLTAGE.md](LINE_TO_LINE_VOLTAGE.md)
+for the full reference.
+
+**Pre-existing issue found and reported, not fixed (needs an owner
+decision):** on the Source Default (DEC-049) path, a *generic*
+Subtraction of phase-to-ground Voltage channels still divides by the
+line-to-ground base (verified: `VR − VY` → 158.77 kV under a 275 kV Source
+Default, with or without upload-time groups), bypassing DEC-052's
+intent. Details: LINE_TO_LINE_VOLTAGE.md §10.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

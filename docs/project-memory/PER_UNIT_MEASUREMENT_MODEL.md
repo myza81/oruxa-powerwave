@@ -88,6 +88,19 @@ arithmetic is unaffected (Ibase has no phase-reference concept) and
 DEC-050 Slice 7 (calculated-channel inheritance) is now implemented in
 full — see [MIGRATION_PLAN.md](MIGRATION_PLAN.md) Phase 13.
 
+**Revision note (2026-09-25, DEC-115)**: the dedicated **Line-to-Line
+Voltage** calculated-channel operation supplies the operation-level
+metadata DEC-052 found missing, **for that operation only**. Its outputs
+declare `voltage_representation = line_to_line`, and that declaration
+decides the channel's own Voltage denominator on both paths: the
+confirmed group's or Source Default's nominal L-L base is used directly,
+e.g. 275 kV for VAB while Va stays 275/√3. It is never read from names.
+Unary operations carry the declaration through (RMS(VAB) stays L-L).
+Generic Addition/Subtraction and DEC-052 are **unchanged**. There is a
+known, reported, unfixed gap on the Source Default path: a *generic*
+`VR − VY` still resolves with the source's line-to-ground reference. See
+[LINE_TO_LINE_VOLTAGE.md](LINE_TO_LINE_VOLTAGE.md) §6/§10.
+
 ---
 
 ## 1. Fundamental purpose

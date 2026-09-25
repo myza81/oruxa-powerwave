@@ -199,7 +199,10 @@ class VoltageBaseResolution:
 
 
 def resolve_voltage_base_for_group(
-    group: MeasurementGroup, config: VoltageBaseConfiguration | None
+    group: MeasurementGroup,
+    config: VoltageBaseConfiguration | None,
+    *,
+    explicit_reference: str | None = None,
 ) -> VoltageBaseResolution:
     """The one group-level resolution authority (canonical document
     section 10). Resolves, in order:
@@ -225,6 +228,15 @@ def resolve_voltage_base_for_group(
     Only when all four resolve does this return `STATUS_CONFIGURED` with
     the correct denominator: `nominal_voltage_ll_kv` directly for
     Line-to-Line, `nominal_voltage_ll_kv / sqrt(3)` for Line-to-Ground.
+
+    `explicit_reference` (DEC-115): a calculated channel that DECLARES its
+    own electrical representation (Line-to-Line Voltage outputs,
+    `line_to_line`) derived from this group's own members uses it in
+    place of step 4's group-level reference -- the group's own reference
+    describes its recorded (phase-to-ground) members, not the derived
+    phase-to-phase quantity. Steps 1-3 (kind, confirmed status, configured
+    nominal) still apply unchanged. `None` (every existing caller) is the
+    previous behaviour exactly.
     """
     if group.kind != KIND_VOLTAGE:
         return VoltageBaseResolution(status=STATUS_NOT_APPLICABLE, denominator_kv=None, effective_reference=None, reason=None)
@@ -239,19 +251,22 @@ def resolve_voltage_base_for_group(
             status=STATUS_BASE_REQUIRED, denominator_kv=None, effective_reference=None, reason="voltage_base_not_configured"
         )
 
-    effective = resolve_effective_voltage_reference_for_group(group, config)
-    if effective.reference not in KNOWN_VOLTAGE_REFERENCES:
+    if explicit_reference in KNOWN_VOLTAGE_REFERENCES:
+        reference = explicit_reference
+    else:
+        reference = resolve_effective_voltage_reference_for_group(group, config).reference
+    if reference not in KNOWN_VOLTAGE_REFERENCES:
         return VoltageBaseResolution(
             status=STATUS_BASE_REQUIRED, denominator_kv=None, effective_reference=None, reason="voltage_reference_undetermined"
         )
 
-    if effective.reference == LINE_TO_LINE:
+    if reference == LINE_TO_LINE:
         denominator_kv = voltage_base_ll_kv(config.nominal_voltage_ll_kv)
     else:  # LINE_TO_GROUND
         denominator_kv = voltage_base_phase_kv(config.nominal_voltage_ll_kv)
 
     return VoltageBaseResolution(
-        status=STATUS_CONFIGURED, denominator_kv=denominator_kv, effective_reference=effective.reference, reason=None
+        status=STATUS_CONFIGURED, denominator_kv=denominator_kv, effective_reference=reference, reason=None
     )
 
 

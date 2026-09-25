@@ -211,6 +211,11 @@ class _ResolvedInput:
     # below -- this is the metadata-first tier of the owner's eligibility
     # hierarchy, checked BEFORE the algorithmic detector ever runs.
     waveform_form: str
+    # DEC-115: a calculated input's own DECLARED representation/pair
+    # (Line-to-Line Voltage outputs and their unary descendants); always
+    # `None` for a real source channel.
+    voltage_representation: str | None = None
+    phase_member: str | None = None
 
 
 def _source_start_epoch(active: ActiveSource) -> float | None:
@@ -300,6 +305,8 @@ def _resolve_input(
         # WAVEFORM_FORM_RMS, so check_rms_eligibility() blocks it from
         # trusted metadata alone, with no detector re-run needed.
         waveform_form=calc.waveform_form,
+        voltage_representation=calc.voltage_representation,
+        phase_member=calc.phase_member,
     )
 
 
@@ -381,6 +388,98 @@ def check_rms_eligibility(
     )
 
 
+def _validate_null_policy_configuration(
+    *,
+    null_policy: str,
+    estimation_method: str | None,
+    max_gap_value: int | None,
+    max_gap_unit: str | None,
+    local_mean_radius: int | None,
+) -> tuple[str | None, int | None, str | None, int | None]:
+    """DEC-084 null-policy/estimation configuration validation, factored
+    out of create_calculated_channel() unchanged (DEC-115) so every
+    calculated-channel creation path -- including Line-to-Line Voltage --
+    applies the one identical rule. Pure config shape, no registry access.
+    Returns the CLEAN stored `(estimation_method, max_gap_value,
+    max_gap_unit, local_mean_radius)` -- all `None` unless
+    `null_policy == NULL_POLICY_ESTIMATE`."""
+    if null_policy not in ALL_NULL_POLICIES:
+        raise InvalidNullPolicyError(f"Unsupported null-handling policy: {null_policy!r}.")
+    if null_policy in UNIMPLEMENTED_NULL_POLICIES:
+        raise NullPolicyNotImplementedError(
+            "Estimate Missing Data is not implemented yet. Choose Propagate Null, "
+            "Treat Null as Zero, or Require Manual Value."
+        )
+
+    # DEC-084 Calc Slice 2 (this task's section 2/20): estimation
+    # configuration is validated here -- pure config shape, no registry
+    # access needed yet, so this fails fast exactly like the null_policy
+    # checks just above. `local_mean_radius_out` stays `None` for every
+    # OTHER estimation method even when a value was supplied (section 18:
+    # "clean representation... preferably null/None for irrelevant
+    # estimation fields").
+    estimation_method_out: str | None = None
+    max_gap_value_out: int | None = None
+    max_gap_unit_out: str | None = None
+    local_mean_radius_out: int | None = None
+    if null_policy == NULL_POLICY_ESTIMATE:
+        if not estimation_method_valid(estimation_method):
+            raise InvalidEstimationMethodError(
+                f"estimation_method must be one of the recognized estimation methods, got {estimation_method!r}."
+            )
+        if estimation_method in UNIMPLEMENTED_ESTIMATION_METHODS:
+            raise EstimationMethodNotImplementedError(
+                f"Estimation method {estimation_method!r} is not implemented yet. Choose hold_last, "
+                "nearest, linear, or local_mean."
+            )
+        if not max_gap_value_valid(max_gap_value):
+            raise InvalidMaxGapValueError("max_gap_value must be a positive whole number of samples.")
+        if not max_gap_unit_valid(max_gap_unit):
+            raise InvalidMaxGapUnitError('max_gap_unit must be "samples" (the only unit supported in this slice).')
+        if estimation_method == ESTIMATION_METHOD_LOCAL_MEAN and not local_mean_radius_valid(local_mean_radius):
+            raise InvalidLocalMeanRadiusError(
+                "local_mean_radius must be a positive whole number of samples when estimation_method is local_mean."
+            )
+        estimation_method_out = estimation_method
+        max_gap_value_out = max_gap_value
+        max_gap_unit_out = max_gap_unit
+        local_mean_radius_out = local_mean_radius if estimation_method == ESTIMATION_METHOD_LOCAL_MEAN else None
+    elif (
+        estimation_method is not None
+        or max_gap_value is not None
+        or max_gap_unit is not None
+        or local_mean_radius is not None
+    ):
+        raise EstimationFieldsNotApplicableError(
+            "estimation_method/max_gap_value/max_gap_unit/local_mean_radius only apply when "
+            "null_policy is estimate_missing_data."
+        )
+    return estimation_method_out, max_gap_value_out, max_gap_unit_out, local_mean_radius_out
+
+
+def _effective_input_values(
+    resolved: list[_ResolvedInput],
+    *,
+    null_policy: str,
+    estimation_method: str | None,
+    max_gap_value: int | None,
+    local_mean_radius: int | None,
+) -> list[np.ndarray]:
+    """DEC-084 point 12, factored out of create_calculated_channel()
+    unchanged (DEC-115): the CALCULATION-LOCAL effective array per
+    already-aligned input -- never mutates `resolved[*].values`. See the
+    call site's own comment for the full rationale."""
+    if null_policy == NULL_POLICY_ESTIMATE:
+        return [
+            apply_estimation(
+                time=r.time, values=r.values, estimation_method=estimation_method,
+                max_gap_value=max_gap_value, local_mean_radius=local_mean_radius,
+            )
+            for r in resolved
+        ]
+    return [apply_null_policy_to_values(r.values, null_policy) for r in resolved]
+
+
 def create_calculated_channel(
     *,
     workspace_id: str,
@@ -449,57 +548,12 @@ def create_calculated_channel(
         if len(inputs) < 2:
             raise InvalidOperationArityError(f"{operation} requires at least 2 input channels.")
 
-    if null_policy not in ALL_NULL_POLICIES:
-        raise InvalidNullPolicyError(f"Unsupported null-handling policy: {null_policy!r}.")
-    if null_policy in UNIMPLEMENTED_NULL_POLICIES:
-        raise NullPolicyNotImplementedError(
-            "Estimate Missing Data is not implemented yet. Choose Propagate Null, "
-            "Treat Null as Zero, or Require Manual Value."
+    estimation_method_out, max_gap_value_out, max_gap_unit_out, local_mean_radius_out = (
+        _validate_null_policy_configuration(
+            null_policy=null_policy, estimation_method=estimation_method, max_gap_value=max_gap_value,
+            max_gap_unit=max_gap_unit, local_mean_radius=local_mean_radius,
         )
-
-    # DEC-084 Calc Slice 2 (this task's section 2/20): estimation
-    # configuration is validated here -- pure config shape, no registry
-    # access needed yet, so this fails fast exactly like the null_policy
-    # checks just above. `local_mean_radius_out` stays `None` for every
-    # OTHER estimation method even when a value was supplied (section 18:
-    # "clean representation... preferably null/None for irrelevant
-    # estimation fields").
-    estimation_method_out: str | None = None
-    max_gap_value_out: int | None = None
-    max_gap_unit_out: str | None = None
-    local_mean_radius_out: int | None = None
-    if null_policy == NULL_POLICY_ESTIMATE:
-        if not estimation_method_valid(estimation_method):
-            raise InvalidEstimationMethodError(
-                f"estimation_method must be one of the recognized estimation methods, got {estimation_method!r}."
-            )
-        if estimation_method in UNIMPLEMENTED_ESTIMATION_METHODS:
-            raise EstimationMethodNotImplementedError(
-                f"Estimation method {estimation_method!r} is not implemented yet. Choose hold_last, "
-                "nearest, linear, or local_mean."
-            )
-        if not max_gap_value_valid(max_gap_value):
-            raise InvalidMaxGapValueError("max_gap_value must be a positive whole number of samples.")
-        if not max_gap_unit_valid(max_gap_unit):
-            raise InvalidMaxGapUnitError('max_gap_unit must be "samples" (the only unit supported in this slice).')
-        if estimation_method == ESTIMATION_METHOD_LOCAL_MEAN and not local_mean_radius_valid(local_mean_radius):
-            raise InvalidLocalMeanRadiusError(
-                "local_mean_radius must be a positive whole number of samples when estimation_method is local_mean."
-            )
-        estimation_method_out = estimation_method
-        max_gap_value_out = max_gap_value
-        max_gap_unit_out = max_gap_unit
-        local_mean_radius_out = local_mean_radius if estimation_method == ESTIMATION_METHOD_LOCAL_MEAN else None
-    elif (
-        estimation_method is not None
-        or max_gap_value is not None
-        or max_gap_unit is not None
-        or local_mean_radius is not None
-    ):
-        raise EstimationFieldsNotApplicableError(
-            "estimation_method/max_gap_value/max_gap_unit/local_mean_radius only apply when "
-            "null_policy is estimate_missing_data."
-        )
+    )
 
     clean_name = (name or "").strip()
     if not clean_name:
@@ -558,6 +612,19 @@ def create_calculated_channel(
     # alters a calculation itself; the RMS-specific eligibility/override
     # enforcement below is a SEPARATE, deliberate gate, not this one.
     output_waveform_form = derive_waveform_form(operation, [r.waveform_form for r in resolved])
+    # DEC-115: a unary operation cannot change which electrical reference
+    # its input represents (DEC-052's own unary/multi-input distinction),
+    # so a DECLARED representation carries through -- RMS(VAB) stays
+    # line-to-line for Per-Unit. The pair identity additionally carries
+    # through the polarity-insensitive RMS/Absolute Value only (-VAB is
+    # VBA). Multi-input operations never propagate (DEC-052 unchanged).
+    # Always `None` for inputs without a declaration -- unchanged behaviour.
+    output_voltage_representation: str | None = None
+    output_phase_member: str | None = None
+    if operation in UNARY_OPERATIONS:
+        output_voltage_representation = resolved[0].voltage_representation
+        if operation in (OP_RMS, OP_ABSOLUTE_VALUE):
+            output_phase_member = resolved[0].phase_member
 
     constant: float | None = None
     nominal_frequency_hz: float | None = None
@@ -634,16 +701,10 @@ def create_calculated_channel(
     # docstring). RMS reads `effective_values[0]` too (below), so an
     # estimated sample can make a downstream RMS window finite for free --
     # no RMS-specific estimation code exists anywhere (section 15).
-    if null_policy == NULL_POLICY_ESTIMATE:
-        effective_values = [
-            apply_estimation(
-                time=r.time, values=r.values, estimation_method=estimation_method_out,
-                max_gap_value=max_gap_value_out, local_mean_radius=local_mean_radius_out,
-            )
-            for r in resolved
-        ]
-    else:
-        effective_values = [apply_null_policy_to_values(r.values, null_policy) for r in resolved]
+    effective_values = _effective_input_values(
+        resolved, null_policy=null_policy, estimation_method=estimation_method_out,
+        max_gap_value=max_gap_value_out, local_mean_radius=local_mean_radius_out,
+    )
 
     if operation == OP_REVERSE_POLARITY:
         values = evaluate_reverse_polarity(effective_values[0])
@@ -693,6 +754,8 @@ def create_calculated_channel(
         max_gap_value=max_gap_value_out,
         max_gap_unit=max_gap_unit_out,
         local_mean_radius=local_mean_radius_out,
+        voltage_representation=output_voltage_representation,
+        phase_member=output_phase_member,
     )
     calc_registry.add(channel)
 
@@ -822,7 +885,13 @@ def _resolve_effective_per_unit_for_calculated_channel(
             current_config_registry=current_config_registry,
         )
     if resolution is None:
-        resolution = resolve_per_unit(channel.engineering_type, per_unit_profile, voltage_channel_names)
+        # DEC-115: a declared representation (Line-to-Line Voltage
+        # outputs) overrides the inherited source's own name-based
+        # detection; `None` for every generic operation (unchanged).
+        resolution = resolve_per_unit(
+            channel.engineering_type, per_unit_profile, voltage_channel_names,
+            explicit_voltage_reference=channel.voltage_representation,
+        )
     return resolution
 
 

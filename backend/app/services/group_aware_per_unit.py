@@ -76,6 +76,7 @@ def resolve_per_unit_for_group(
     group_registry: MeasurementGroupRegistry,
     voltage_config_registry: VoltageGroupConfigRegistry,
     current_config_registry: CurrentGroupConfigRegistry,
+    explicit_voltage_reference: str | None = None,
 ) -> PerUnitResolution:
     """Resolves an already-identified `MeasurementGroup` to a
     `PerUnitResolution` -- the kind-dispatch core shared by
@@ -87,7 +88,10 @@ def resolve_per_unit_for_group(
     of its own."""
     if group.kind == KIND_VOLTAGE:
         config = voltage_config_registry.get(group.workspace_id, measurement_group_id)
-        resolution = resolve_voltage_base_for_group(group, config)
+        # DEC-115: `explicit_voltage_reference` is only ever supplied for
+        # a calculated channel declaring its own representation (see
+        # resolve_voltage_base_for_group()'s own docstring).
+        resolution = resolve_voltage_base_for_group(group, config, explicit_reference=explicit_voltage_reference)
         if resolution.status == _VOLTAGE_STATUS_CONFIGURED:
             return PerUnitResolution(
                 status=STATUS_CONFIGURED,

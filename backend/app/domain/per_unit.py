@@ -47,6 +47,7 @@ from app.domain.calculated_channel import (
 )
 from app.domain.channel_classification import CURRENT, VOLTAGE
 from app.domain.engineering_units import parse_engineering_unit
+from app.domain.line_to_line_voltage import OP_LINE_TO_LINE_VOLTAGE
 from app.domain.voltage_reference import (
     KNOWN_VOLTAGE_REFERENCES,
     LINE_TO_GROUND,
@@ -256,6 +257,8 @@ def resolve_per_unit(
     engineering_type: str,
     profile: PerUnitBaseProfile | None,
     voltage_channel_names: list[str] | None = None,
+    *,
+    explicit_voltage_reference: str | None = None,
 ) -> PerUnitResolution:
     """Voltage/Current channels only in this phase -- every other
     engineering_type is `not_applicable`, unaffected by per-unit mode
@@ -288,6 +291,15 @@ def resolve_per_unit(
     ground channel reading ~158.8 kV produced ~0.577 pu instead of the
     correct ~1.0 pu). See docs/project-memory/DECISIONS.md's DEC-049
     Slice 4 addendum for the full record of this correction.
+
+    `explicit_voltage_reference` (DEC-115): a channel that DECLARES its own
+    electrical representation (a Line-to-Line Voltage calculated channel,
+    `line_to_line`) uses it for its own VOLTAGE denominator instead of the
+    source-wide auto-detection/override -- detection describes the
+    source's own recorded channels (typically phase-to-ground), never a
+    derived phase-to-phase quantity. `None` (the default, every existing
+    caller) is exactly the previous behaviour. Current-base derivation is
+    unaffected (it concerns the source's own LL/LG base, not this channel).
     """
     if engineering_type not in (VOLTAGE, CURRENT):
         return PerUnitResolution(status=STATUS_NOT_APPLICABLE, profile_id=None, base_amount=None, base_unit=None, reason=None)
@@ -302,13 +314,16 @@ def resolve_per_unit(
                 status=STATUS_BASE_REQUIRED, profile_id=profile.source_id, base_amount=None, base_unit=None,
                 reason="voltage_base_not_configured",
             )
-        detection = resolve_effective_voltage_reference(profile, voltage_channel_names or [])
-        if detection.reference not in KNOWN_VOLTAGE_REFERENCES:
+        if explicit_voltage_reference in KNOWN_VOLTAGE_REFERENCES:
+            reference = explicit_voltage_reference
+        else:
+            reference = resolve_effective_voltage_reference(profile, voltage_channel_names or []).reference
+        if reference not in KNOWN_VOLTAGE_REFERENCES:
             return PerUnitResolution(
                 status=STATUS_BASE_REQUIRED, profile_id=profile.source_id, base_amount=None, base_unit=None,
                 reason="voltage_reference_undetermined",
             )
-        amount = nominal_volts / SQRT_3 if detection.reference == LINE_TO_GROUND else nominal_volts
+        amount = nominal_volts / SQRT_3 if reference == LINE_TO_GROUND else nominal_volts
         return PerUnitResolution(status=STATUS_CONFIGURED, profile_id=profile.source_id, base_amount=amount, base_unit="V", reason=None)
     # CURRENT
     detection = resolve_effective_voltage_reference(profile, voltage_channel_names or [])
@@ -430,8 +445,12 @@ _INHERIT_VERBATIM_OPERATIONS = frozenset(
     {OP_REVERSE_POLARITY, OP_ABSOLUTE_VALUE, OP_MULTIPLY_CONSTANT, OP_RMS}
 )
 #: Multi-input operations that inherit only when every input resolves to
-#: the exact same known profile/source id.
-_INHERIT_IF_UNANIMOUS_OPERATIONS = frozenset({OP_ADDITION, OP_SUBTRACTION})
+#: the exact same known profile/source id. DEC-115: Line-to-Line Voltage
+#: follows the same "both phases agree" rule -- its output additionally
+#: DECLARES `voltage_representation="line_to_line"`, which is what makes
+#: the inherited base's denominator correct (see resolve_per_unit()'s own
+#: `explicit_voltage_reference`), unlike generic Subtraction (DEC-052).
+_INHERIT_IF_UNANIMOUS_OPERATIONS = frozenset({OP_ADDITION, OP_SUBTRACTION, OP_LINE_TO_LINE_VOLTAGE})
 
 
 def derive_per_unit_profile_id(operation: str, input_profile_ids: list[str | None]) -> str | None:

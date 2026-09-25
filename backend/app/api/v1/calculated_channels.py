@@ -31,6 +31,9 @@ from app.schemas.calculated_channel import (
     CalculatedPeakBatchRequest,
     CalculatedPeakResultOut,
     CalculatedWaveformRangeOut,
+    LineToLineContextReadinessOut,
+    LineToLineCreateRequest,
+    LineToLineCreateResponse,
     RmsEligibilityRequest,
     RmsEligibilityResponse,
 )
@@ -47,7 +50,12 @@ from app.services.calculated_channel_service import (
     resolve_calculated_peak_value,
 )
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
+from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.errors import ImportServiceError
+from app.services.line_to_line_voltage_service import (
+    create_line_to_line_voltage_channels,
+    list_line_to_line_readiness,
+)
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_provenance_service import build_calculated_channel_provenance
 from app.services.per_unit_registry import PerUnitRegistry
@@ -89,6 +97,9 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "invalid_max_gap_unit": status.HTTP_400_BAD_REQUEST,
     "invalid_local_mean_radius": status.HTTP_400_BAD_REQUEST,
     "estimation_fields_not_applicable": status.HTTP_400_BAD_REQUEST,
+    "engineering_context_not_found": status.HTTP_404_NOT_FOUND,
+    "invalid_line_to_line_output": status.HTTP_400_BAD_REQUEST,
+    "line_to_line_inputs_unavailable": status.HTTP_400_BAD_REQUEST,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -115,6 +126,10 @@ def get_voltage_group_config_registry(request: Request) -> VoltageGroupConfigReg
 
 def get_current_group_config_registry(request: Request) -> CurrentGroupConfigRegistry:
     return request.app.state.current_group_config_registry
+
+
+def get_engineering_context_registry(request: Request) -> EngineeringContextRegistry:
+    return request.app.state.engineering_context_registry
 
 
 def _resolve_profile_for_calculated_channel(
@@ -203,6 +218,64 @@ def create_channel(
         logger.info("Calculated channel creation rejected (%s) for workspace %s: %s", exc.code, workspace_id, exc.message)
         raise _http_error(exc) from exc
     return CalculatedChannelOut.from_domain(channel)
+
+
+@router.get("/line-to-line-voltage/readiness", response_model=list[LineToLineContextReadinessOut])
+def get_line_to_line_readiness(
+    workspace_id: str,
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+) -> list[LineToLineContextReadinessOut]:
+    """DEC-115: Line-to-Line Voltage readiness for EVERY Engineering
+    Context in the workspace (incomplete/unsupported bays included, never
+    hidden), per role and per output (AB/BC/CA/all_three). Read-only."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        results = list_line_to_line_readiness(
+            workspace_id=workspace_id, context_registry=context_registry,
+            source_registry=source_registry, calc_registry=calc_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return [LineToLineContextReadinessOut.from_domain(r) for r in results]
+
+
+@router.post("/line-to-line-voltage", status_code=status.HTTP_201_CREATED, response_model=LineToLineCreateResponse)
+def create_line_to_line_channels(
+    workspace_id: str,
+    body: LineToLineCreateRequest,
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
+) -> LineToLineCreateResponse:
+    """DEC-115: create VAB/VBC/VCA (one) or all three from one Engineering
+    Context -- atomic: an unavailable pair creates nothing."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        channels = create_line_to_line_voltage_channels(
+            workspace_id=workspace_id,
+            engineering_context_id=body.engineering_context_id,
+            output=body.output,
+            names=body.names,
+            context_registry=context_registry,
+            source_registry=source_registry,
+            calc_registry=calc_registry,
+            per_unit_registry=per_unit_registry,
+            null_policy=body.null_policy,
+            estimation_method=body.estimation_method,
+            max_gap_value=body.max_gap_value,
+            max_gap_unit=body.max_gap_unit,
+            local_mean_radius=body.local_mean_radius,
+        )
+    except ImportServiceError as exc:
+        logger.info("Line-to-line creation rejected (%s) for workspace %s: %s", exc.code, workspace_id, exc.message)
+        raise _http_error(exc) from exc
+    return LineToLineCreateResponse(
+        creation_batch_id=channels[0].creation_batch_id if channels else None,
+        channels=[CalculatedChannelOut.from_domain(c) for c in channels],
+    )
 
 
 @router.get("", response_model=list[CalculatedChannelOut])

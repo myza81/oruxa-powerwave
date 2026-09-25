@@ -878,10 +878,16 @@ class PhasorDiagramReadiness:
     phase/loop needs. See `RoleReadiness`'s own docstring for exactly
     what `eligible=True` does and does not mean."""
 
-    __slots__ = ("role_readiness",)
+    __slots__ = ("role_readiness", "candidates")
 
-    def __init__(self, *, role_readiness: dict[str, RoleReadiness]):
+    def __init__(self, *, role_readiness: dict[str, RoleReadiness], candidates: dict | None = None):
         self.role_readiness = role_readiness
+        #: DEC-115: the already-fetched `_RoleCandidate` per identity-
+        #: resolved role (channel ref, full-resolution arrays, unit,
+        #: timebase identity) -- exposed so a consumer needing those same
+        #: facts (Line-to-Line Voltage's own unit/timebase guardrails)
+        #: never re-resolves or re-fetches them.
+        self.candidates = candidates or {}
 
 
 def check_phasor_diagram_readiness(
@@ -892,6 +898,7 @@ def check_phasor_diagram_readiness(
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
+    role_keys: tuple[str, ...] = PHASOR_DIAGRAM_ROLE_ORDER,
 ) -> PhasorDiagramReadiness:
     """Mirrors `compute_phasor_diagram()`'s own FIRST phase (role
     resolution -> candidate fetch -> reference-frequency agreement ->
@@ -902,11 +909,17 @@ def check_phasor_diagram_readiness(
     re-deriving any of that logic. Deliberately has no `analysis_time`
     parameter -- never performs the time-windowed phasor estimate
     itself. Keep both functions' own first phase in sync if either
-    changes."""
+    changes.
+
+    `role_keys` (DEC-115, default = all six, i.e. unchanged for every
+    existing caller) restricts the check to a subset -- Line-to-Line
+    Voltage checks only Va/Vb/Vc, so a Current channel from a different
+    source can never contribute a reference-frequency conflict to a
+    voltage-only operation."""
     role_readiness: dict[str, RoleReadiness] = {}
     candidates: dict[str, _RoleCandidate] = {}
 
-    for role_key in PHASOR_DIAGRAM_ROLE_ORDER:
+    for role_key in role_keys:
         requirement = _DIAGRAM_REQUIREMENTS_BY_ROLE[role_key]
         resolution = resolve_analysis_inputs(
             workspace_id=workspace_id, engineering_context_id=engineering_context_id,
@@ -934,7 +947,7 @@ def check_phasor_diagram_readiness(
         candidates[role_key] = candidate
 
     if not candidates:
-        return PhasorDiagramReadiness(role_readiness=role_readiness)
+        return PhasorDiagramReadiness(role_readiness=role_readiness, candidates=candidates)
 
     # ---- Reference frequency: identical policy to compute_phasor_
     # diagram()'s own -- a conflict/invalid-override blocks every
@@ -946,7 +959,7 @@ def check_phasor_diagram_readiness(
                     status=STATUS_NEEDS_CONFIGURATION, reason_code=REASON_INVALID_REFERENCE_FREQUENCY,
                     message="The supplied reference_frequency_hz is outside the plausible range.",
                 )
-            return PhasorDiagramReadiness(role_readiness=role_readiness)
+            return PhasorDiagramReadiness(role_readiness=role_readiness, candidates=candidates)
         reference_frequency_hz = reference_frequency_hz_override
     else:
         declared = [c.nominal_frequency for c in candidates.values()]
@@ -960,7 +973,7 @@ def check_phasor_diagram_readiness(
                         "explicit reference_frequency_hz to check readiness against a specific frequency."
                     ),
                 )
-            return PhasorDiagramReadiness(role_readiness=role_readiness)
+            return PhasorDiagramReadiness(role_readiness=role_readiness, candidates=candidates)
         reference_frequency_hz = first
 
     # ---- Waveform-form eligibility, per role -- never blocks others ----
@@ -973,7 +986,7 @@ def check_phasor_diagram_readiness(
                 message="Waveform representation is not eligible for phasor estimation.",
             )
 
-    return PhasorDiagramReadiness(role_readiness=role_readiness)
+    return PhasorDiagramReadiness(role_readiness=role_readiness, candidates=candidates)
 
 
 def _assemble_identity_only_roles(

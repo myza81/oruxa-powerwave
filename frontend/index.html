@@ -2910,6 +2910,42 @@
 
         .ww-cc-field { margin-top: 12px; }
         .ww-cc-field span { display: flex; margin-bottom: 4px; }
+        /* DEC-115: Line-to-Line Voltage builder + created-set banner.
+           Theme tokens only, so Light/Dark both follow DEC-023. The
+           .ww-cc-field-scoped selectors below deliberately out-rank the
+           generic `.ww-cc-field input`/`span` rules above for radios. */
+        .ww-cc-ll-status {
+            margin-top: 8px; padding: 8px 10px; border: 1px solid var(--panel-border);
+            border-radius: var(--radius); background: var(--surface-tint); font-size: 0.7rem;
+        }
+        .ww-cc-ll-status-badge { font-weight: 600; }
+        .ww-cc-ll-status[data-ll-status="ready"] .ww-cc-ll-status-badge { color: var(--ok); }
+        .ww-cc-ll-status[data-ll-status="incomplete"] .ww-cc-ll-status-badge { color: var(--warn); }
+        .ww-cc-ll-status[data-ll-status="ambiguous"] .ww-cc-ll-status-badge,
+        .ww-cc-ll-status[data-ll-status="unsupported_representation"] .ww-cc-ll-status-badge { color: var(--error); }
+        .ww-cc-ll-roles { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; }
+        .ww-cc-ll-role-mark { display: inline-block; width: 1.1em; }
+        .ww-cc-ll-roles li[data-ll-role-status="ready"] .ww-cc-ll-role-mark { color: var(--ok); }
+        .ww-cc-ll-roles li:not([data-ll-role-status="ready"]) .ww-cc-ll-role-mark { color: var(--error); }
+        .ww-cc-ll-outputs { border: 0; padding: 0; margin-inline: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+        /* Matches the sibling `.ww-cc-field > span` labels (12px, --text-dim). */
+        .ww-cc-ll-outputs legend { padding: 0; margin-bottom: 4px; width: 100%; font-size: 12px; color: var(--text-dim); }
+        .ww-cc-field .ww-cc-ll-output { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.72rem; }
+        .ww-cc-field .ww-cc-ll-output input { width: auto; margin: 0; }
+        .ww-cc-field .ww-cc-ll-output span { display: inline; margin: 0; }
+        .ww-cc-field .ww-cc-ll-output--unavailable { opacity: 0.55; cursor: not-allowed; }
+        .ww-cc-field .ww-cc-ll-output-reason { color: var(--text-dim); font-size: 0.65rem; }
+        .ww-cc-ll-result {
+            display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+            gap: 8px 16px; padding: 10px 14px; margin-bottom: 12px;
+            border-left: 3px solid var(--ok); background: var(--ok-wash);
+        }
+        .ww-cc-ll-result[hidden] { display: none; }
+        .ww-cc-ll-result-main { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+        .ww-cc-ll-result-title { font-weight: 600; }
+        .ww-cc-ll-result-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+        .ww-cc-ll-result-list li { display: inline-flex; align-items: center; gap: 6px; }
+        .ww-cc-ll-result-actions { display: flex; gap: 8px; }
         .ww-cc-rms-label { font-size: 0.75rem; }
         .ww-cc-field input {
             width: 100%;
@@ -8601,6 +8637,11 @@
                     </div>
                     <button type="button" id="wwCcNewChannelBtn" aria-haspopup="true" aria-expanded="false">+ New Channel</button>
                 </div>
+
+                <!-- DEC-115: the most recent Line-to-Line creation, shown as
+                     ONE logical result set (owner section 17/18) with a Plot
+                     All action; rendered by wwCcRenderLineToLineResult(). -->
+                <div class="panel ww-cc-ll-result" id="wwCcLlResult" role="status" aria-live="polite" hidden></div>
 
                 <section class="panel ww-cc-panel">
                     <div class="ww-cc-list-header">
@@ -23976,6 +24017,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // override; ww.channelColors stays the one auto-cycle cache it
         // always was.
         function wwDefaultChannelColor(sourceId, channelName) {
+            const semantic = wwLineToLinePairColor(sourceId);
+            if (semantic) return semantic;
             const key = wwChannelKey(sourceId, channelName);
             let color = ww.channelColors.get(key);
             if (!color) {
@@ -23983,6 +24026,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 ww.channelColors.set(key, color);
             }
             return color;
+        }
+
+        // DEC-115: VAB/VBC/VCA get FIXED, distinct slots of the same
+        // central CHANNEL_TRACE_COLORS palette, keyed on the channel's own
+        // declared metadata (operation + phase_member), never its name or
+        // creation/plot order -- so the three are always distinguishable
+        // from each other and never swap on redraw, zoom, playback, hide/
+        // show, page revisit, or a different plotting order. The first-
+        // come ww.colorIndex cycle is deliberately not consumed (and not
+        // relied on: it could hand two pairs the same slot once 6 other
+        // channels had been colored in between).
+        const WW_LINE_TO_LINE_PAIR_COLOR_SLOT = { AB: 0, BC: 1, CA: 2 };
+        function wwLineToLinePairColor(sourceId) {
+            if (!wwIsCalculatedSourceId(sourceId) || !ww.calculatedChannels) return null;
+            const calc = ww.calculatedChannels.get(sourceId);
+            if (!calc || calc.operation !== "line_to_line_voltage") return null;
+            const slot = WW_LINE_TO_LINE_PAIR_COLOR_SLOT[calc.phase_member];
+            return slot === undefined ? null : CHANNEL_TRACE_COLORS[slot];
         }
 
         // Channel presentation override: still "the ONE color authority"
@@ -30264,8 +30325,35 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             rms: { label: "RMS", description: "1-cycle true RMS", arity: "unary", arityLabel: "1 input + nominal frequency", glyph: "RMS(x)" },
             addition: { label: "Addition", arity: "multi", arityLabel: "2+ inputs", glyph: "x₁+x₂" },
             subtraction: { label: "Subtraction", arity: "multi", arityLabel: "2+ ordered inputs", glyph: "x₁−x₂" },
+            // DEC-115: a dedicated ENGINEERING operation, not a
+            // Subtraction preset -- its input is one Bay / Engineering
+            // Context (never hand-picked Va/Vb/Vc channels), resolved and
+            // validated entirely by the backend
+            // (GET/POST .../calculated-channels/line-to-line-voltage).
+            line_to_line_voltage: {
+                label: "Line-to-Line Voltage (L-L)", description: "VAB / VBC / VCA from a bay",
+                arity: "context", arityLabel: "Bay / Engineering Context", glyph: "VA−VB",
+            },
         };
-        const WW_CC_OPERATION_ORDER = ["reverse_polarity", "absolute_value", "multiply_constant", "rms", "addition", "subtraction"];
+        const WW_CC_OPERATION_ORDER = ["reverse_polarity", "absolute_value", "multiply_constant", "rms", "addition", "subtraction", "line_to_line_voltage"];
+
+        // DEC-115: Line-to-Line output options -- wire values match
+        // app.domain.line_to_line_voltage.KNOWN_OUTPUTS exactly.
+        const WW_CC_LL_OUTPUTS = [
+            { value: "AB", label: "VAB", formula: "VAB = VA − VB" },
+            { value: "BC", label: "VBC", formula: "VBC = VB − VC" },
+            { value: "CA", label: "VCA", formula: "VCA = VC − VA" },
+            { value: "all_three", label: "All Three", formula: null },
+        ];
+        // Server-derived readiness for every Engineering Context (never
+        // computed client-side), refetched each time the operation is
+        // chosen. `generation` discards a superseded in-flight response.
+        const wwCcLineToLine = { loading: false, error: "", contexts: [], generation: 0 };
+        // DEC-115 (owner section 17): the most recent Line-to-Line
+        // creation, shown as ONE logical result set on the page with a
+        // Plot All action -- the channels themselves stay ordinary,
+        // individually usable calculated channels.
+        let wwCcLastLineToLineResult = null;
 
         // DEC-084 Calc Slice 3: null-handling policy labels/hints -- wire
         // values (object keys) match app.domain.calculated_channel.
@@ -30338,6 +30426,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // or an active selectable control -- the two must never look
             // the same (owner's own explicit UAT requirement).
             nominalFrequencySource: "user",
+            // DEC-115: Line-to-Line Voltage only -- the chosen Engineering
+            // Context id and output ("AB"/"BC"/"CA"/"all_three").
+            llContextId: "", llOutput: "all_three",
             // DEC-084 Calc Slice 3: null-handling configuration -- see
             // WW_CC_NULL_POLICIES/WW_CC_ESTIMATION_METHODS above.
             // `nullPolicy` defaults to Propagate Null (backward-
@@ -30376,6 +30467,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwCcBuilder.nominalFrequency = "50";
             wwCcBuilder.nominalFrequencySource = "user";
             wwCcBuilder.override = false;
+            wwCcBuilder.llContextId = "";
+            wwCcBuilder.llOutput = "all_three";
             // DEC-084 Calc Slice 3: back to the backward-compatible
             // default (section 4) on every full reset (drawer open /
             // after a successful create), same lifecycle as every other
@@ -30583,11 +30676,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             if (calc.operation === "addition") return label + " (" + names.join(" + ") + ")";
             if (calc.operation === "subtraction") return label + " (" + names.join(" − ") + ")";
+            if (calc.operation === "line_to_line_voltage") {
+                const bay = calc.parameters && calc.parameters.engineering_context_name;
+                return label + " (V" + (calc.phase_member || "?") + (bay ? ", " + bay : "") + ")";
+            }
             return label + " (" + names[0] + ")";
         }
 
         function wwCcComputeSuggestedName() {
             const b = wwCcBuilder;
+            if (b.operation === "line_to_line_voltage") {
+                // DEC-115: bay-aware default for a single pair; All Three
+                // names are fixed defaults shown in the form instead.
+                return b.llOutput === "all_three" ? "" : wwCcLlDefaultName(wwCcLlSelectedContext(), b.llOutput);
+            }
             if (!b.operation || b.inputs.length === 0) return "";
             const labels = b.inputs.map((i) => i.shortLabel);
             let joined;
@@ -30608,6 +30710,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         function wwCcComputeExpressionPreview() {
             const b = wwCcBuilder;
+            if (b.operation === "line_to_line_voltage") return wwCcLlExpressionPreview();
             if (!b.operation || b.inputs.length === 0) return "";
             const labels = b.inputs.map((i) => i.shortLabel);
             if (b.operation === "reverse_polarity") return "Result = −" + labels[0];
@@ -30620,6 +30723,278 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (b.operation === "addition") return "Result = " + labels.join(" + ");
             if (b.operation === "subtraction") return "Result = " + labels.join(" − ");
             return "";
+        }
+
+        // ------------------------------------------------------------------
+        // DEC-115: Line-to-Line Voltage builder. Every readiness verdict
+        // comes from the backend (GET .../line-to-line-voltage/readiness,
+        // one entry per Engineering Context -- incomplete/unsupported bays
+        // included, never hidden); this code only presents it and sends
+        // the chosen context + output. The backend re-derives readiness at
+        // creation time and remains the sole authority.
+        // ------------------------------------------------------------------
+
+        const WW_CC_LL_PAIR_ORDER = ["AB", "BC", "CA"];
+        const WW_CC_LL_PAIR_ROLES = { AB: ["Va", "Vb"], BC: ["Vb", "Vc"], CA: ["Vc", "Va"] };
+
+        function wwCcLlSelectedContext() {
+            return wwCcLineToLine.contexts.find((c) => c.engineering_context_id === wwCcBuilder.llContextId) || null;
+        }
+
+        function wwCcLlPairsForOutput(output) {
+            return output === "all_three" ? WW_CC_LL_PAIR_ORDER.slice() : [output];
+        }
+
+        function wwCcLlDefaultName(ctx, pair) {
+            return (ctx ? ctx.display_name + " " : "") + "V" + pair;
+        }
+
+        // Picks a sensible initial context/output without ever hiding
+        // anything: keeps a still-valid selection, else the first bay ready
+        // for All Three, else the first bay at all; then keeps the output
+        // if still available, else All Three if available, else the first
+        // available single pair.
+        function wwCcLlApplyDefaultSelection() {
+            const contexts = wwCcLineToLine.contexts;
+            if (!wwCcLlSelectedContext()) {
+                const ready = contexts.find((c) => c.status === "ready");
+                wwCcBuilder.llContextId = ready ? ready.engineering_context_id : (contexts[0] ? contexts[0].engineering_context_id : "");
+            }
+            const ctx = wwCcLlSelectedContext();
+            if (!ctx) return;
+            const available = (o) => !!(ctx.outputs[o] && ctx.outputs[o].available);
+            if (!available(wwCcBuilder.llOutput)) {
+                const pick = ["all_three"].concat(WW_CC_LL_PAIR_ORDER).find(available);
+                if (pick) wwCcBuilder.llOutput = pick;
+            }
+        }
+
+        async function wwCcFetchLineToLineReadiness() {
+            const generation = ++wwCcLineToLine.generation;
+            wwCcLineToLine.loading = true;
+            wwCcLineToLine.error = "";
+            wwCcRenderBuilderFields();
+            wwCcSyncCreateButtonState();
+            let contexts = null;
+            let error = "";
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                    "/calculated-channels/line-to-line-voltage/readiness"
+                );
+                if (response.ok) contexts = await response.json();
+                else error = "Could not load Bay / Engineering Context readiness.";
+            } catch (e) {
+                error = "Could not reach the backend.";
+            }
+            if (generation !== wwCcLineToLine.generation) return; // superseded
+            wwCcLineToLine.loading = false;
+            wwCcLineToLine.error = error;
+            wwCcLineToLine.contexts = contexts || [];
+            wwCcLlApplyDefaultSelection();
+            if (wwCcBuilder.operation !== "line_to_line_voltage") return;
+            wwCcRenderBuilderFields();
+            wwCcRenderExpressionPreview();
+            wwCcSyncNameAndUnitFields();
+            wwCcSyncCreateButtonState();
+        }
+
+        function wwCcLlStatusText(status) {
+            if (status === "ready") return "Ready";
+            if (status === "ambiguous") return "Ambiguous";
+            if (status === "unsupported_representation") return "Unsupported representation";
+            return "Incomplete";
+        }
+
+        function wwCcRenderLineToLineFields() {
+            if (wwCcLineToLine.loading && wwCcLineToLine.contexts.length === 0) {
+                return '<p class="hint" id="wwCcLlLoading">Checking Bay / Engineering Context readiness…</p>';
+            }
+            if (wwCcLineToLine.error) {
+                return '<p class="hint error" id="wwCcLlLoadError" role="alert">' + escapeHtml(wwCcLineToLine.error) + '</p>';
+            }
+            if (wwCcLineToLine.contexts.length === 0) {
+                return '<p class="hint" id="wwCcLlNoContexts">No Bay / Engineering Context exists in this workspace yet. Upload a recording with phase voltages.</p>';
+            }
+            let html = '<label class="ww-cc-field"><span>Bay / Engineering Context</span><select id="wwCcLlContextSelect">';
+            for (const ctx of wwCcLineToLine.contexts) {
+                html += '<option value="' + escapeHtml(ctx.engineering_context_id) + '" data-ll-status="' + escapeHtml(ctx.status) + '"' +
+                    (ctx.engineering_context_id === wwCcBuilder.llContextId ? " selected" : "") + '>' +
+                    escapeHtml(ctx.display_name + " — " + ctx.summary) + '</option>';
+            }
+            html += '</select></label>';
+
+            const ctx = wwCcLlSelectedContext();
+            if (!ctx) return html;
+            html += '<div class="ww-cc-ll-status" id="wwCcLlStatus" data-ll-status="' + escapeHtml(ctx.status) + '">' +
+                '<span class="ww-cc-ll-status-badge">' + escapeHtml(wwCcLlStatusText(ctx.status)) + '</span>' +
+                '<ul class="ww-cc-ll-roles">';
+            for (const roleKey of ["Va", "Vb", "Vc"]) {
+                const role = ctx.roles[roleKey];
+                if (!role) continue;
+                const ok = role.status === "ready";
+                html += '<li data-ll-role="' + roleKey + '" data-ll-role-status="' + escapeHtml(role.status) + '">' +
+                    '<span class="ww-cc-ll-role-mark" aria-hidden="true">' + (ok ? "✓" : "✕") + '</span>' +
+                    '<strong>' + roleKey + '</strong> ' +
+                    escapeHtml(ok ? (role.channel_label + (role.unit ? " (" + role.unit + ")" : ""))
+                        // The backend message leads with the role key already shown in bold.
+                        : (role.message || role.status).replace(new RegExp("^" + roleKey + "\\b[ :]*"), "")) +
+                    '</li>';
+            }
+            html += '</ul></div>';
+
+            html += '<fieldset class="ww-cc-field ww-cc-ll-outputs"><legend>Output</legend>';
+            for (const option of WW_CC_LL_OUTPUTS) {
+                const readiness = ctx.outputs[option.value] || { available: false, reason: null };
+                html += '<label class="ww-cc-ll-output' + (readiness.available ? "" : " ww-cc-ll-output--unavailable") + '"' +
+                    (readiness.reason ? ' title="' + escapeHtml(readiness.reason) + '"' : "") + '>' +
+                    '<input type="radio" name="wwCcLlOutput" id="wwCcLlOutput_' + option.value + '" value="' + option.value + '"' +
+                    (wwCcBuilder.llOutput === option.value ? " checked" : "") + (readiness.available ? "" : " disabled") + '>' +
+                    '<span>' + escapeHtml(option.label) + '</span>' +
+                    (readiness.available ? "" : '<span class="ww-cc-ll-output-reason">unavailable</span>') +
+                    '</label>';
+            }
+            html += '</fieldset>';
+            const selected = ctx.outputs[wwCcBuilder.llOutput];
+            if (selected && !selected.available && selected.reason) {
+                html += '<p class="hint error" id="wwCcLlOutputReason">' + escapeHtml(selected.reason) + '</p>';
+            }
+            if (wwCcBuilder.llOutput === "all_three") {
+                html += '<p class="hint" id="wwCcLlPlannedNames">Creates ' +
+                    escapeHtml(WW_CC_LL_PAIR_ORDER.map((p) => wwCcLlDefaultName(ctx, p)).join(", ")) +
+                    ' as one set — all three or none.</p>';
+            }
+            return html;
+        }
+
+        function wwCcLlExpressionPreview() {
+            const ctx = wwCcLlSelectedContext();
+            if (!ctx) return "";
+            const label = (roleKey) => {
+                const role = ctx.roles[roleKey];
+                return role && role.status === "ready" ? role.channel_label : roleKey;
+            };
+            return wwCcLlPairsForOutput(wwCcBuilder.llOutput).map((pair) => {
+                const [from, to] = WW_CC_LL_PAIR_ROLES[pair];
+                return "V" + pair + " = " + label(from) + " − " + label(to);
+            }).join("   ·   ");
+        }
+
+        function wwCcLlValidate(errors) {
+            if (wwCcLineToLine.loading) { errors.push("Checking Bay / Engineering Context readiness…"); return; }
+            const ctx = wwCcLlSelectedContext();
+            if (!ctx) { errors.push("Choose a Bay / Engineering Context."); return; }
+            const output = ctx.outputs[wwCcBuilder.llOutput];
+            if (!output || !output.available) {
+                errors.push((output && output.reason) || "This output is not available for the selected bay.");
+                return;
+            }
+            const existing = new Set(Array.from(ww.calculatedChannels.values()).map((c) => c.name));
+            const names = wwCcBuilder.llOutput === "all_three"
+                ? WW_CC_LL_PAIR_ORDER.map((p) => wwCcLlDefaultName(ctx, p))
+                : [wwCcBuilder.name.trim()];
+            if (names.some((n) => !n)) errors.push("Enter a signal name.");
+            const clash = names.find((n) => existing.has(n));
+            if (clash) errors.push("A calculated channel named \"" + clash + "\" already exists.");
+        }
+
+        async function wwCcCreateLineToLine() {
+            const errorEl = document.getElementById("wwCcError");
+            const createBtn = document.getElementById("wwCcCreateBtn");
+            if (createBtn) createBtn.disabled = true;
+            const requestBody = {
+                engineering_context_id: wwCcBuilder.llContextId,
+                output: wwCcBuilder.llOutput,
+                null_policy: wwCcBuilder.nullPolicy,
+            };
+            if (wwCcBuilder.llOutput !== "all_three") {
+                requestBody.names = { [wwCcBuilder.llOutput]: wwCcBuilder.name.trim() };
+            }
+            if (wwCcBuilder.nullPolicy === "estimate_missing_data") {
+                requestBody.estimation_method = wwCcBuilder.estimationMethod;
+                requestBody.max_gap_value = Number(wwCcBuilder.maxGapValue);
+                requestBody.max_gap_unit = wwCcBuilder.maxGapUnit;
+                if (wwCcBuilder.estimationMethod === "local_mean") {
+                    requestBody.local_mean_radius = Number(wwCcBuilder.localMeanRadius);
+                }
+            }
+            let response = null;
+            let body = null;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                    "/calculated-channels/line-to-line-voltage",
+                    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) }
+                );
+                try { body = await response.json(); } catch (e) { /* handled below */ }
+            } catch (e) {
+                response = null;
+            }
+            if (!response || !response.ok || !body) {
+                const message = !response ? "Could not reach the backend."
+                    : ((body && body.detail && body.detail.message) || "Could not create line-to-line channels.");
+                if (errorEl) { errorEl.textContent = message; errorEl.hidden = false; }
+                // Same "never re-hide a backend-only rejection" rule as
+                // wwCcCreateChannel() (DEC-084 Calc Slice 4 UAT fix).
+                if (createBtn) createBtn.disabled = !wwCcValidateBuilder().valid;
+                return;
+            }
+            for (const channel of body.channels) ww.calculatedChannels.set(channel.id, channel);
+            wwCcLastLineToLineResult = { channelIds: body.channels.map((c) => c.id) };
+            wwCcSelectedCalculatedChannelId = body.channels[0].id;
+            wwCcResetBuilder();
+            wwSetCcDrawerOpen(false);
+            wwRenderCalculatedChannelsPage();
+            wwRenderCalculatedChannelsSidebarSection();
+        }
+
+        // Plot All: adds every given calculated channel to the Waveform in
+        // ONE wwAddSelectedChannels() call -- the same path an eye-icon
+        // toggle uses, never a second renderer. Already-visible members
+        // are skipped by wwAddSelectedChannels() itself.
+        async function wwCcPlotCalculatedChannels(channels) {
+            const metas = channels.filter(Boolean).map(wwCalculatedChannelMeta);
+            if (metas.length === 0) return;
+            await wwAddSelectedChannels(metas);
+            wwRenderCalculatedChannelsSidebarSection();
+            wwRenderCalculatedChannelManagerList();
+            wwCcRenderLineToLineResult();
+            wwCcRenderWaveformPreview();
+        }
+
+        // Members of one Line-to-Line creation set, in VAB/VBC/VCA order.
+        // Grouping only: each member stays independently deletable.
+        function wwCcBatchMembers(batchId) {
+            if (!batchId) return [];
+            return Array.from(ww.calculatedChannels.values())
+                .filter((c) => c.creation_batch_id === batchId)
+                .sort((a, b) => WW_CC_LL_PAIR_ORDER.indexOf(a.phase_member) - WW_CC_LL_PAIR_ORDER.indexOf(b.phase_member));
+        }
+
+        function wwCcRenderLineToLineResult() {
+            const el = document.getElementById("wwCcLlResult");
+            if (!el) return;
+            const result = wwCcLastLineToLineResult;
+            const channels = result ? result.channelIds.map((id) => ww.calculatedChannels.get(id)).filter(Boolean) : [];
+            if (channels.length === 0) {
+                wwCcLastLineToLineResult = null;
+                el.hidden = true;
+                el.innerHTML = "";
+                return;
+            }
+            const allVisible = channels.every((c) => wwIsAnalogChannelVisible(c.id, c.name));
+            let html = '<div class="ww-cc-ll-result-main"><span class="ww-cc-ll-result-title">Created:</span><ul class="ww-cc-ll-result-list">';
+            for (const c of channels) {
+                html += '<li data-ll-result-channel="' + escapeHtml(c.phase_member || "") + '">' +
+                    '<span class="channel-color-dot" style="background:' + escapeHtml(wwColorForChannel(c.id, c.name)) + '" aria-hidden="true"></span>' +
+                    escapeHtml(c.name) + '</li>';
+            }
+            html += '</ul></div><div class="ww-cc-ll-result-actions">' +
+                '<button type="button" id="wwCcLlPlotAllBtn" data-action="ll-plot-all"' + (allVisible ? " disabled" : "") + '>' +
+                (channels.length > 1 ? "Plot All" : "Plot") + (allVisible ? " (shown)" : "") + '</button>' +
+                '<button type="button" class="secondary" id="wwCcLlDismissBtn" data-action="ll-dismiss">Dismiss</button></div>';
+            el.innerHTML = html;
+            el.hidden = false;
         }
 
         // Client-side pre-check ONLY (section 44): mirrors the backend's
@@ -30638,7 +31013,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return { valid: false, errors };
             }
             const meta = WW_CC_OPERATIONS[b.operation];
-            if (meta.arity === "unary") {
+            if (meta.arity === "context") {
+                wwCcLlValidate(errors);
+            } else if (meta.arity === "unary") {
                 if (b.inputs.length !== 1) errors.push("Select exactly 1 input channel.");
             } else if (b.inputs.length < 2) {
                 errors.push("Select at least 2 input channels.");
@@ -30685,6 +31062,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     }
                 }
             }
+            if (meta.arity === "context") return { valid: errors.length === 0, errors }; // names checked in wwCcLlValidate()
             const trimmedName = b.name.trim();
             if (!trimmedName) errors.push("Enter a signal name.");
             else if (Array.from(ww.calculatedChannels.values()).some((c) => c.name === trimmedName)) {
@@ -31031,6 +31409,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!fieldsEl || !wwCcBuilder.operation) return;
             const meta = WW_CC_OPERATIONS[wwCcBuilder.operation];
             titleEl.textContent = meta.label;
+            if (meta.arity === "context") {
+                fieldsEl.innerHTML = wwCcRenderLineToLineFields();
+                return;
+            }
             const firstRef = wwCcBuilder.inputs.length > 0 ? wwCcBuilder.inputs[0].referenceSourceId : null;
 
             if (meta.arity === "unary") {
@@ -31086,9 +31468,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const nameInput = document.getElementById("wwCcNameInput");
             const unitInput = document.getElementById("wwCcUnitDisplay");
             if (!nameInput || !unitInput) return;
+            const isLineToLine = wwCcBuilder.operation === "line_to_line_voltage";
+            const nameField = nameInput.closest("label");
+            if (nameField) nameField.hidden = isLineToLine && wwCcBuilder.llOutput === "all_three";
             if (!wwCcBuilder.nameEditedByUser) {
                 wwCcBuilder.name = wwCcComputeSuggestedName();
                 nameInput.value = wwCcBuilder.name;
+            }
+            if (isLineToLine) {
+                const ctx = wwCcLlSelectedContext();
+                const role = ctx ? ["Va", "Vb", "Vc"].map((k) => ctx.roles[k]).find((r) => r && r.status === "ready") : null;
+                unitInput.value = role ? (role.unit || "(none)") : "";
+                return;
             }
             const units = wwCcBuilder.inputs.map((i) => i.unit || "");
             const known = units.filter((u) => u);
@@ -31118,7 +31509,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwCcBuilder.nameEditedByUser = false;
             wwCcBuilder.name = "";
             wwCcResetRmsEligibility();
+            wwCcBuilder.llContextId = "";
+            wwCcBuilder.llOutput = "all_three";
             document.getElementById("wwCcBuilderPanel").hidden = false;
+            if (operation === "line_to_line_voltage") wwCcFetchLineToLineReadiness();
             wwCcRenderOperationCards();
             wwCcRenderBuilderFields();
             wwCcRenderNullPolicyField();
@@ -31218,6 +31612,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             if (calc.operation === "addition") return names.join(" + ");
             if (calc.operation === "subtraction") return names.join(" − ");
+            if (calc.operation === "line_to_line_voltage") return "V" + (calc.phase_member || "?") + " = " + names.join(" − ");
             const meta = WW_CC_OPERATIONS[calc.operation];
             return meta ? meta.label : calc.operation;
         }
@@ -31307,6 +31702,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         '<details class="ww-cc-menu">' +
                             '<summary class="ww-icon-btn" aria-label="More actions for ' + escapeHtml(calc.name) + '" title="More actions">&#8942;</summary>' +
                             '<div class="ww-cc-menu-list">' +
+                                (calc.creation_batch_id ? '<button type="button" class="ww-cc-menu-item" data-action="plot-batch">Plot All (VAB, VBC, VCA)</button>' : '') +
                                 '<button type="button" class="ww-cc-menu-item" data-action="delete">Delete</button>' +
                             '</div>' +
                         '</details>' +
@@ -31332,6 +31728,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             wwCcEnsureSelection();
             wwRenderCalculatedChannelManagerList();
+            wwCcRenderLineToLineResult();
             // Phase 5A-UAT: covers page-open, post-creation, and Start New
             // Workspace (the three call sites of this function) -- see
             // wwCcRenderWaveformPreview()'s own comment for the other two
@@ -31373,6 +31770,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             else wwAddSelectedChannels([wwCalculatedChannelMeta(calc)]);
             wwRenderCalculatedChannelsSidebarSection();
             wwRenderCalculatedChannelManagerList();
+            wwCcRenderLineToLineResult();
             wwCcRenderWaveformPreview();
         }
 
@@ -31932,6 +32330,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // no workspace reload.
         async function wwCcCreateChannel() {
             const { valid, errors } = wwCcValidateBuilder();
+            if (valid && wwCcBuilder.operation === "line_to_line_voltage") return wwCcCreateLineToLine();
             const errorEl = document.getElementById("wwCcError");
             if (!valid || wwCcRmsBlocksCreate()) {
                 if (errorEl) { errorEl.textContent = errors[0] || "Resolve the RMS eligibility warning above, or check \"Calculate anyway.\""; errorEl.hidden = false; }
@@ -32048,6 +32447,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwCcEnsureSelection();
                 wwRenderCalculatedChannelsSidebarSection();
                 wwRenderCalculatedChannelManagerList();
+                wwCcRenderLineToLineResult();
                 wwCcRenderWaveformPreview();
                 return;
             }
@@ -32147,6 +32547,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             } else if (event.target.id === "wwCcRmsOverrideCheckbox") {
                 wwCcBuilder.override = event.target.checked;
                 wwCcSyncCreateButtonState();
+            } else if (event.target.id === "wwCcLlContextSelect" || event.target.name === "wwCcLlOutput") {
+                // DEC-115: switching bay or output re-derives the default
+                // name, planned-names hint, unit, and availability text.
+                if (event.target.id === "wwCcLlContextSelect") {
+                    wwCcBuilder.llContextId = event.target.value;
+                    wwCcLlApplyDefaultSelection();
+                } else {
+                    wwCcBuilder.llOutput = event.target.value;
+                }
+                wwCcBuilder.nameEditedByUser = false;
+                wwCcRenderBuilderFields();
+                wwCcRenderExpressionPreview();
+                wwCcSyncNameAndUnitFields();
+                wwCcSyncCreateButtonState();
             }
         });
         document.getElementById("wwCcBuilderFields").addEventListener("input", (event) => {
@@ -32232,6 +32646,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         document.getElementById("wwCcCreateBtn").addEventListener("click", wwCcCreateChannel);
 
+        document.getElementById("wwCcLlResult").addEventListener("click", (event) => {
+            const btn = event.target.closest("button[data-action]");
+            if (!btn || !wwCcLastLineToLineResult) return;
+            if (btn.dataset.action === "ll-plot-all") {
+                wwCcPlotCalculatedChannels(wwCcLastLineToLineResult.channelIds.map((id) => ww.calculatedChannels.get(id)));
+            } else if (btn.dataset.action === "ll-dismiss") {
+                wwCcLastLineToLineResult = null;
+                wwCcRenderLineToLineResult();
+            }
+        });
+
         document.getElementById("wwCcListBody").addEventListener("click", (event) => {
             const row = event.target.closest("[data-calculated-channel-id]");
             if (!row) return;
@@ -32240,6 +32665,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const actionBtn = event.target.closest("button[data-action]");
             if (actionBtn && calc) {
                 if (actionBtn.dataset.action === "toggle-visibility") { wwToggleCalculatedChannelDisplay(calc); return; }
+                if (actionBtn.dataset.action === "plot-batch") {
+                    const menu = row.querySelector(".ww-cc-menu[open]");
+                    if (menu) menu.removeAttribute("open");
+                    wwCcPlotCalculatedChannels(wwCcBatchMembers(calc.creation_batch_id));
+                    return;
+                }
                 if (actionBtn.dataset.action === "delete") {
                     const menu = row.querySelector(".ww-cc-menu[open]");
                     if (menu) menu.removeAttribute("open");

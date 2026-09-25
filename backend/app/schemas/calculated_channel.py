@@ -185,6 +185,12 @@ class CalculatedChannelOut(BaseModel):
     max_gap_value: int | None = None
     max_gap_unit: str | None = None
     local_mean_radius: int | None = None
+    # DEC-115: additive fields -- explicit engineering semantics declared
+    # by the operation itself (null for every generic operation). See
+    # CalculatedChannel's own docstring.
+    voltage_representation: str | None = None
+    phase_member: str | None = None
+    creation_batch_id: str | None = None
 
     @classmethod
     def from_domain(cls, channel: CalculatedChannel) -> "CalculatedChannelOut":
@@ -207,6 +213,9 @@ class CalculatedChannelOut(BaseModel):
             max_gap_value=channel.max_gap_value,
             max_gap_unit=channel.max_gap_unit,
             local_mean_radius=channel.local_mean_radius,
+            voltage_representation=channel.voltage_representation,
+            phase_member=channel.phase_member,
+            creation_batch_id=channel.creation_batch_id,
         )
 
 
@@ -338,4 +347,76 @@ class CalculatedAnnotationAnchorOut(BaseModel):
             calculated_channel_id=result.calculated_channel_id, unit=result.unit,
             sample_index=result.sample_index, elapsed_seconds=result.elapsed_seconds, value=result.value,
             per_unit_status=result.per_unit_status,
+        )
+
+
+# ---- DEC-115: Line-to-Line Voltage ----
+
+
+class LineToLineCreateRequest(BaseModel):
+    """`POST .../calculated-channels/line-to-line-voltage`. Input is ONE
+    Engineering Context -- never individual phase channels. `names` is
+    optional per pair (`{"AB": "..."}`); omitted pairs get the bay-aware
+    default (e.g. "KPDN1 VAB"). Null-handling fields mean exactly what they
+    mean on the generic create request."""
+
+    engineering_context_id: str
+    output: Literal["AB", "BC", "CA", "all_three"]
+    names: dict[str, str] | None = None
+    null_policy: Literal[
+        "propagate_null", "treat_null_as_zero", "estimate_missing_data", "require_manual_value"
+    ] = "propagate_null"
+    estimation_method: Literal["hold_last", "nearest", "linear", "local_mean", "pchip"] | None = None
+    max_gap_value: int | None = None
+    max_gap_unit: Literal["samples"] | None = None
+    local_mean_radius: int | None = None
+
+
+class LineToLineCreateResponse(BaseModel):
+    creation_batch_id: str | None
+    channels: list[CalculatedChannelOut]
+
+
+class LineToLineRoleReadinessOut(BaseModel):
+    role_key: str
+    status: str
+    message: str | None
+    channel_label: str | None
+    unit: str | None
+
+
+class LineToLineOutputReadinessOut(BaseModel):
+    output: str
+    available: bool
+    reason: str | None
+
+
+class LineToLineContextReadinessOut(BaseModel):
+    engineering_context_id: str
+    display_name: str
+    status: Literal["ready", "incomplete", "unsupported_representation", "ambiguous"]
+    summary: str
+    source_path: str | None
+    roles: dict[str, LineToLineRoleReadinessOut]
+    outputs: dict[str, LineToLineOutputReadinessOut]
+
+    @classmethod
+    def from_domain(cls, readiness) -> "LineToLineContextReadinessOut":
+        return cls(
+            engineering_context_id=readiness.engineering_context_id,
+            display_name=readiness.display_name,
+            status=readiness.status,
+            summary=readiness.summary,
+            source_path=readiness.source_path,
+            roles={
+                key: LineToLineRoleReadinessOut(
+                    role_key=role.role_key, status=role.status, message=role.message,
+                    channel_label=role.channel_label, unit=role.unit,
+                )
+                for key, role in readiness.roles.items()
+            },
+            outputs={
+                key: LineToLineOutputReadinessOut(output=o.output, available=o.available, reason=o.reason)
+                for key, o in readiness.outputs.items()
+            },
         )

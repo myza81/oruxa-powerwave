@@ -174,7 +174,15 @@ def resolve_calculated_group_aware_per_unit(
     if channel.operation in MULTI_OPERATIONS and group.kind == KIND_VOLTAGE:
         return None
 
+    # DEC-115: a channel that DECLARES its own voltage representation
+    # (Line-to-Line Voltage outputs) is exactly the operation-level
+    # metadata DEC-052 found missing for generic Addition/Subtraction --
+    # it inherits the group's configured nominal base, divided according
+    # to the DECLARED representation (never the group's own phase-to-
+    # ground reference). Generic multi-input Voltage arithmetic is
+    # unaffected (still refused just above).
     return resolve_per_unit_for_group(
         group, measurement_group_id, group_registry=group_registry,
         voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+        explicit_voltage_reference=channel.voltage_representation if group.kind == KIND_VOLTAGE else None,
     )

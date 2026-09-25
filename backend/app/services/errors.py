@@ -1122,3 +1122,20 @@ class ReferenceLayerAlreadyExistsError(ImportServiceError):
     """`ReferenceLayerRegistry.add()`'s own CREATE-ONLY guard."""
 
     code = "reference_layer_already_exists"
+
+
+class InvalidLineToLineOutputError(ImportServiceError):
+    """DEC-115: Line-to-Line Voltage `output` is not one of AB/BC/CA/all_three."""
+
+    code = "invalid_line_to_line_output"
+
+
+class LineToLineInputsUnavailableError(ImportServiceError):
+    """DEC-115: the selected Engineering Context cannot supply the phase
+    voltages the requested Line-to-Line output needs (missing/ambiguous
+    phase, unsupported representation such as RMS magnitude only,
+    incompatible units, or unaligned timebases). Raised BEFORE anything is
+    written -- an All Three request with one unavailable pair creates
+    nothing."""
+
+    code = "line_to_line_inputs_unavailable"

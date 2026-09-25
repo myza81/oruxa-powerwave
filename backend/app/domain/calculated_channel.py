@@ -252,6 +252,21 @@ class CalculatedChannel:
     max_gap_value: int | None = None
     max_gap_unit: str | None = None
     local_mean_radius: int | None = None
+    # DEC-115 (Line-to-Line Voltage): explicit engineering semantics an
+    # operation may DECLARE about its own output, so Per-Unit/Analysis/
+    # Compliance never infer them from the channel's (editable) name.
+    # `None` for every generic operation -- unchanged behaviour there.
+    # `voltage_representation` is one of app.domain.voltage_reference.
+    # KNOWN_VOLTAGE_REFERENCES (`line_to_line`/`line_to_ground`);
+    # `phase_member` is an app.domain.phase_identity canonical value
+    # (`AB`/`BC`/`CA` for a line-to-line output).
+    voltage_representation: str | None = None
+    phase_member: str | None = None
+    # DEC-115: optional id shared by channels created together by one
+    # logical operation (e.g. "All Three" VAB/VBC/VCA) -- UI grouping
+    # only. Never a dependency: each member stays an ordinary, individually
+    # deletable calculated channel.
+    creation_batch_id: str | None = None
 
 
 def evaluate_reverse_polarity(values: np.ndarray) -> np.ndarray:

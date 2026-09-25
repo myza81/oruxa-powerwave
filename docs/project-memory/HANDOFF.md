@@ -4,9 +4,65 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-24**
+Last updated: **2026-09-25**
 
 ## What was most recently done
+
+**Calculated Channels: the Line-to-Line Voltage engineering operation
+(DEC-115) is implemented and is awaiting owner UAT. Stop here.**
+Compliance was not touched, and DEC-113/DEC-114 are preserved.
+
+- **Operation**: "Line-to-Line Voltage (L-L)" card on the Calculated
+  Channels page. The input is one **Bay / Engineering Context**. Va/Vb/Vc
+  are resolved by the existing resolver and the Phasor waveform-
+  eligibility preflight (no second phase detector). The output is VAB,
+  VBC, VCA, or All Three. The convention is frozen as `VAB = VA − VB`,
+  `VBC = VB − VC`, `VCA = VC − VA`, using exact instantaneous
+  subtraction (reusing `evaluate_subtraction()`).
+- **All Three is atomic**: three ordinary `CalculatedChannel`s, or none.
+  They share an optional, UI-only `creation_batch_id`.
+- **Metadata**: `voltage_representation = line_to_line`,
+  `phase_member = AB/BC/CA`, `waveform_form = instantaneous`.
+- **Per-Unit**: the L-L base is used on both the group and Source Default
+  paths (275 kV nominal → VAB base 275 kV while Va stays 158.77 kV).
+- **Plot All** is shown as one result set and as a row action for set
+  members. VAB/VBC/VCA get fixed palette slots 0/1/2, so their colors are
+  distinct and stable.
+- **Deferred**: the complex-phasor source path. There is no reachable
+  phasor source without instantaneous samples, and no magnitude/angle
+  role pairing exists.
+- Full reference: [LINE_TO_LINE_VOLTAGE.md](LINE_TO_LINE_VOLTAGE.md) and
+  [DECISIONS.md — DEC-115](DECISIONS.md#dec-115--line-to-line-voltage-is-a-dedicated-calculated-channel-engineering-operation-bay--engineering-context-input-instantaneous-vabvbcvca-with-declared-line-to-line-metadata-atomic-all-three-and-stable-pair-colors).
+
+**Open items for the owner:**
+
+1. **UAT** of the L-L workflow: bay selector readiness text, output
+   radios, the result set, Plot All, and colors.
+2. **Pre-existing, reported, not fixed**: on the Source Default (DEC-049)
+   path, a *generic* Subtraction `VR − VY` of phase-to-ground channels is
+   divided by the **L-G** base (verified: 158.77 kV under a 275 kV Source
+   Default, with or without upload-time groups). This bypasses DEC-052's
+   intent. A proposed fix (mirror DEC-052's Voltage-multi-input
+   `base_required` rule on the Source Default path) needs owner approval
+   because it changes existing observable PU behaviour. See
+   LINE_TO_LINE_VOLTAGE.md §10.
+3. Should the deferred phasor path be designed? That needs a
+   magnitude/angle `RoleSpec` representation first (§8).
+4. **Pre-existing Playwright flake, reported, not fixed**:
+   `overcurrent_analysis.spec.js:1345` ("Minor X and Minor Y are OFF by
+   default and major gridlines still render") reads
+   `line.ww-oc-gridline` with a non-retrying `.count()` immediately after
+   context selection. It failed 1 time in the full run and 2 of 10
+   repeats, both on this slice **and on pristine `origin/main` b6fe5f2**
+   (verified in a separate worktree). The suggested test-only fix is a
+   retrying `expect.poll`/`toHaveCount` assertion.
+
+**Validation (clean, freshly started servers)**: full backend
+**5806 passed**; full Playwright **313 passed, 1 failed** (the flake
+above; the full overcurrent spec passes 59/59 in isolation). New:
+52 backend tests plus 5 browser tests. `git diff --check` clean.
+
+## What was done in the prior session — dedicated fix session: Impedance Locus/Distance Protection locus computation performance is closed (DEC-114)
 
 **Dedicated fix session: Impedance Locus/Distance Protection locus
 computation performance is closed (DEC-114), the second and last of

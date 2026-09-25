@@ -182,6 +182,7 @@ def _provenance_from_group(
     group_registry: MeasurementGroupRegistry,
     voltage_config_registry: VoltageGroupConfigRegistry,
     current_config_registry: CurrentGroupConfigRegistry,
+    explicit_voltage_reference: str | None = None,
 ) -> PerUnitChannelProvenance:
     group = group_registry.get(workspace_id, measurement_group_id)
     view = (
@@ -198,7 +199,10 @@ def _provenance_from_group(
     applicable_voltage_ll_kv = None
     if view is not None and view.voltage_config is not None:
         nominal_base_kv = view.voltage_config.nominal_voltage_ll_kv
-        nominal_reference = view.voltage_config.effective_reference
+        # DEC-115: a channel declaring its own representation reports THAT
+        # reference (the one its denominator was actually derived from),
+        # never the group's own member reference.
+        nominal_reference = explicit_voltage_reference or view.voltage_config.effective_reference
     elif view is not None and view.current_config is not None:
         equipment_rating_mva = view.current_config.equipment_rating_mva
         applicable_voltage_ll_kv = view.current_config.applicable_voltage_ll_kv
@@ -227,6 +231,7 @@ def _provenance_from_legacy(
     engineering_type: str,
     per_unit_profile: PerUnitBaseProfile | None = None,
     voltage_channel_names: list[str] | None = None,
+    explicit_voltage_reference: str | None = None,
 ) -> PerUnitChannelProvenance:
     if resolution.status == STATUS_NOT_APPLICABLE:
         return _not_applicable_provenance(engineering_type)
@@ -248,8 +253,12 @@ def _provenance_from_legacy(
         # to the "one source of truth" resolution without requiring
         # resolve_per_unit() to expose its own internal detection.
         nominal_base_kv = per_unit_profile.voltage_base_value
-        detection = resolve_effective_voltage_reference(per_unit_profile, voltage_channel_names or [])
-        nominal_reference = detection.reference
+        if explicit_voltage_reference is not None:
+            # DEC-115: mirrors resolve_per_unit()'s own explicit override.
+            nominal_reference = explicit_voltage_reference
+        else:
+            detection = resolve_effective_voltage_reference(per_unit_profile, voltage_channel_names or [])
+            nominal_reference = detection.reference
 
     return PerUnitChannelProvenance(
         status=resolution.status,
@@ -334,10 +343,15 @@ def build_calculated_channel_provenance(
             group_resolution.profile_id, group_resolution, workspace_id=workspace_id,
             engineering_type=channel.engineering_type, group_registry=group_registry,
             voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+            explicit_voltage_reference=channel.voltage_representation,
         )
 
-    legacy_resolution = resolve_per_unit(channel.engineering_type, per_unit_profile, voltage_channel_names)
+    legacy_resolution = resolve_per_unit(
+        channel.engineering_type, per_unit_profile, voltage_channel_names,
+        explicit_voltage_reference=channel.voltage_representation,
+    )
     return _provenance_from_legacy(
         legacy_resolution, engineering_type=channel.engineering_type,
         per_unit_profile=per_unit_profile, voltage_channel_names=voltage_channel_names,
+        explicit_voltage_reference=channel.voltage_representation,
     )
