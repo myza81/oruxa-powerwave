@@ -8,6 +8,38 @@ Last updated: **2026-09-25**
 
 ## What was most recently done
 
+**Calculated Channels Preview correction (owner UAT). This is
+frontend-only and is awaiting owner UAT. Stop here.** DEC-116 (the
+Source Default per-unit consistency fix) is still the separate next
+task and has not been started.
+
+- **Root cause**: `wwCcPreviewVisibleChannels()` returned only the
+  *selected* channel. This came from an earlier undocumented table-list
+  redesign, so a visible VAB vanished from the Preview while RMS(VAB)
+  was selected.
+- **Fix**: the Preview now plots every channel whose eye state is ON
+  (the `ww.displayed` authority). Selection only drives the highlight,
+  the "Selected: <name> · N visible" status and the info strip, and a
+  selection change no longer redraws the chart.
+- **Panels**: grouped per engineering type (as in Grouped mode) plus the
+  served unit.
+- **Traces**: keyed by `uid` = channel id; a constant `uirevision` keeps
+  zoom; an explicit empty state is shown when nothing is visible.
+- **Colors**: RMS of an L-L pair uses companion slots 3/4/5, so
+  RMS(VAB) is never the same blue as VAB.
+- **Record**: [DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations),
+  2026-09-25 update. A dated update was used rather than DEC-116, which
+  is reserved for the per-unit fix.
+- **Tests**: new `browser-tests/calculated-channel-preview.spec.js`
+  (5 tests). The owner-UAT test fails on `aa23e38` (1 trace instead of 2)
+  and passes with the fix.
+
+The open items from the DEC-115 session below still stand: the DEC-116
+Source Default per-unit gap, the deferred phasor path, and the
+pre-existing overcurrent grid-count flake.
+
+## What was done in the prior session — Line-to-Line Voltage (DEC-115)
+
 **Calculated Channels: the Line-to-Line Voltage engineering operation
 (DEC-115) is implemented and is awaiting owner UAT. Stop here.**
 Compliance was not touched, and DEC-113/DEC-114 are preserved.

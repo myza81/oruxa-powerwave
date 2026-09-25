@@ -9,8 +9,11 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-25** — the **Line-to-Line Voltage**
-Calculated Channel operation (DEC-115) is implemented and **awaiting
+Last meaningful update: **2026-09-25**. The Calculated Channels
+**Preview** now plots every *visible* calculated channel, with selection
+driving only details (owner UAT correction, DEC-047 update; awaiting
+UAT). Earlier the same day, the **Line-to-Line Voltage**
+Calculated Channel operation (DEC-115) was implemented and is **awaiting
 owner UAT**. See its entry under
 [Implemented capabilities](#implemented-capabilities) and
 [LINE_TO_LINE_VOLTAGE.md](LINE_TO_LINE_VOLTAGE.md). The previous update
@@ -2913,6 +2916,16 @@ re-confirmed by the TG-FINAL audit):
   role pairing). A pre-existing Source Default PU gap for *generic*
   Voltage Subtraction was found and reported, not changed. See
   [LINE_TO_LINE_VOLTAGE.md](LINE_TO_LINE_VOLTAGE.md) §8/§10.
+- **Calculated Channels Preview: Visible drives traces, Selected drives
+  details (owner UAT correction, 2026-09-25, awaiting owner UAT)**. The
+  Preview plots every calculated channel whose eye state is ON. Panels
+  are grouped per engineering type and served unit. Traces are keyed by
+  channel id, and zoom is kept across visibility changes. Row selection
+  only drives the highlight, the "Selected: <name> · N visible" status
+  and the info strip. An explicit empty state is shown when nothing is
+  visible. RMS(VAB) uses the pair's companion color. See
+  [DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)'s
+  2026-09-25 update.
 - **Annotations**: `text_note` (floating, content-anchored), `callout`
   (waveform-anchored with a movable label box), and `peak_max`/`peak_min`
   (dynamically viewport-recalculated) — all resolve their own owning Time

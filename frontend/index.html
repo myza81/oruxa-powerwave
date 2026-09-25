@@ -24037,12 +24037,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // come ww.colorIndex cycle is deliberately not consumed (and not
         // relied on: it could hand two pairs the same slot once 6 other
         // channels had been colored in between).
+        //
+        // Owner UAT (2026-09-25): RMS of an L-L pair (RMS(VAB), which keeps
+        // the declared line_to_line/phase_member metadata) gets the pair's
+        // COMPANION slot 3/4/5 of the same palette, so it never renders in
+        // its parent's color when both are visible -- deterministic from
+        // metadata, like the pair colors themselves.
         const WW_LINE_TO_LINE_PAIR_COLOR_SLOT = { AB: 0, BC: 1, CA: 2 };
+        const WW_LINE_TO_LINE_RMS_COLOR_SLOT = { AB: 3, BC: 4, CA: 5 };
         function wwLineToLinePairColor(sourceId) {
             if (!wwIsCalculatedSourceId(sourceId) || !ww.calculatedChannels) return null;
             const calc = ww.calculatedChannels.get(sourceId);
-            if (!calc || calc.operation !== "line_to_line_voltage") return null;
-            const slot = WW_LINE_TO_LINE_PAIR_COLOR_SLOT[calc.phase_member];
+            if (!calc) return null;
+            let slot;
+            if (calc.operation === "line_to_line_voltage") {
+                slot = WW_LINE_TO_LINE_PAIR_COLOR_SLOT[calc.phase_member];
+            } else if (calc.operation === "rms" && calc.voltage_representation === "line_to_line") {
+                slot = WW_LINE_TO_LINE_RMS_COLOR_SLOT[calc.phase_member];
+            }
             return slot === undefined ? null : CHANNEL_TRACE_COLORS[slot];
         }
 
@@ -31655,7 +31667,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (wwCcSelectedCalculatedChannelId === calculatedChannelId) return;
             wwCcSelectedCalculatedChannelId = calculatedChannelId;
             wwRenderCalculatedChannelManagerList();
-            wwCcRenderWaveformPreview();
+            // Selection never changes WHAT the Preview plots (visibility
+            // does), so only the status line/info strip update -- no
+            // refetch, no chart redraw, zoom untouched.
+            wwCcRenderPreviewStatusAndInfo(ww.calculatedChannels.get(calculatedChannelId) || null);
         }
 
         function wwRenderCalculatedChannelManagerList() {
@@ -31992,22 +32007,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // just to update trace data (section 15/16).
         const wwCcPreview = { panelsByType: new Map(), generation: 0 };
 
-        // Redesign: the preview now reflects the manager list's own row
-        // SELECTION (wwCcSelectChannel()), never the general "every
-        // currently visible channel" set -- selection and visibility are
-        // now separate concepts (section 6 of the task): a channel can be
-        // selected for preview whether or not it is currently shown on
-        // the main Waveform page, and the eye icon's own visibility
-        // toggle no longer gates what this preview shows (only
-        // wwCcRenderPreviewStatusAndInfo()'s status line reports it).
-        // Still returns a 0/1-length array (not a bare value) so every
-        // per-type-panel grouping/reuse/Plotly.react() line below needs
-        // no further changes -- it simply always sees at most one type
-        // now.
+        // Owner UAT correction (2026-09-25, recorded on DEC-047): the
+        // Preview renders EVERY calculated channel whose eye/visibility
+        // state is ON -- never only the selected row. Selected != Visible:
+        // selection (wwCcSelectedCalculatedChannelId) drives row focus,
+        // the status line and the info strip only; visibility is the ONE
+        // ww.displayed authority (wwIsAnalogChannelVisible()) the eye
+        // icon, the Waveform sidebar and the main Waveform page share.
+        // This reverses the earlier table-list redesign's selection-only
+        // preview, which silently dropped visible channels (e.g. VAB
+        // disappearing while RMS(VAB) was selected). Oldest-first, the
+        // same stable order as the manager list.
         function wwCcPreviewVisibleChannels() {
-            if (!wwCcSelectedCalculatedChannelId) return [];
-            const calc = ww.calculatedChannels.get(wwCcSelectedCalculatedChannelId);
-            return calc ? [calc] : [];
+            return Array.from(ww.calculatedChannels.values())
+                .filter((calc) => wwIsAnalogChannelVisible(calc.id, calc.name))
+                .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
         }
 
         // DEC-084 Calc Slice 4 (section 6/26): the durable, complete
@@ -32067,24 +32081,28 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return html;
         }
 
-        // Preview header ("Selected: <name> • Visible/Hidden") + the
-        // compact info strip under the chart (Expression/Classification/
-        // Unit/Source/Missing Data Handling...) -- all built purely from
-        // the selected channel's own already-known static fields, never
-        // from the fetched waveform body, so they render correctly even
-        // before/without a successful fetch.
+        // Preview header ("Selected: <name> · N visible") + the compact
+        // info strip under the chart (Expression/Classification/Unit/
+        // Source/Missing Data Handling...). The strip describes the
+        // SELECTED channel; the header names the selection AND states how
+        // many channels the Preview is plotting, so it never implies the
+        // chart holds only the selected one. Built purely from already-
+        // known static fields, never the fetched waveform body.
         function wwCcRenderPreviewStatusAndInfo(calc) {
             const statusEl = document.getElementById("wwCcPreviewStatus");
             const stripEl = document.getElementById("wwCcPreviewInfoStrip");
             if (statusEl) {
+                const visibleCount = wwCcPreviewVisibleChannels().length;
+                const countText = visibleCount + " visible";
                 if (!calc) {
-                    statusEl.textContent = "";
+                    statusEl.textContent = ww.calculatedChannels.size > 0 ? countText : "";
                 } else {
                     const isVisible = wwIsAnalogChannelVisible(calc.id, calc.name);
-                    statusEl.innerHTML = "Selected: " + escapeHtml(calc.name) +
-                        '<span class="ww-cc-preview-status-dot' + (isVisible ? " ww-cc-preview-status-dot--visible" : "") + '"></span>' +
-                        (isVisible ? "Visible" : "Hidden");
+                    statusEl.innerHTML = "Selected: " + escapeHtml(calc.name) + (isVisible ? "" : " (hidden)") +
+                        '<span class="ww-cc-preview-status-dot' + (visibleCount > 0 ? " ww-cc-preview-status-dot--visible" : "") + '"></span>' +
+                        escapeHtml(countText);
                 }
+                statusEl.dataset.visibleCount = String(visibleCount);
             }
             if (stripEl) {
                 if (!calc) {
@@ -32157,12 +32175,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!panelsEl) return; // not on this page's DOM yet -- safe no-op, mirrors wwRenderCalculatedChannelsPage()'s own guard
 
             const visible = wwCcPreviewVisibleChannels();
-            const selectedCalc = visible[0] || null;
+            const selectedCalc = wwCcSelectedCalculatedChannelId
+                ? (ww.calculatedChannels.get(wwCcSelectedCalculatedChannelId) || null) : null;
             wwCcRenderPreviewStatusAndInfo(selectedCalc);
             if (emptyEl) {
-                emptyEl.textContent = selectedCalc
-                    ? "Could not load a preview for this channel."
-                    : "Select a calculated channel to preview its waveform.";
+                emptyEl.textContent = visible.length > 0
+                    ? "Could not load a preview for the visible channels."
+                    : (ww.calculatedChannels.size > 0
+                        ? "No calculated channels are visible. Use the eye icon to show channels in the Preview."
+                        : "Create a calculated channel, then use the eye icon to show it in the Preview.");
             }
             if (visible.length === 0) {
                 wwCcPreviewPurgeAllPanels();
@@ -32183,17 +32204,37 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const bodies = await Promise.all(visible.map(wwCcFetchPreviewWaveform));
             if (generation !== wwCcPreview.generation) return;
 
-            const byType = new Map();
+            // Panels follow Grouped mode's own convention -- one panel per
+            // engineering type ("Calculated - Voltage") -- refined by the
+            // SERVED unit so one Y axis never mixes scales (kV with V, or
+            // pu with an engineering unit when some channels still need a
+            // base). Differing waveform forms (instantaneous VAB with
+            // RMS(VAB), both kV) share a panel. The unit only appears in a
+            // title when one type actually spans several units. Keys are
+            // "<type>|<unit>".
+            const byType = new Map(); // panel key -> entries
+            const panelTypeOf = new Map(); // panel key -> engineering type
+            const panelUnitOf = new Map(); // panel key -> served unit
             for (let i = 0; i < visible.length; i++) {
                 const body = bodies[i];
                 if (!body) continue;
                 const calc = visible[i];
                 const type = calc.engineering_type || "Undefined";
-                if (!byType.has(type)) byType.set(type, []);
-                byType.get(type).push({ calc, body });
+                const unit = body.unit || "";
+                const key = type + "|" + unit;
+                if (!byType.has(key)) byType.set(key, []);
+                byType.get(key).push({ calc, body });
+                panelTypeOf.set(key, type);
+                panelUnitOf.set(key, unit);
             }
-            const orderedTypes = ANALOG_GROUP_ORDER.filter((t) => byType.has(t))
-                .concat([...byType.keys()].filter((t) => !ANALOG_GROUP_ORDER.includes(t)));
+            const typeRank = (t) => (ANALOG_GROUP_ORDER.includes(t) ? ANALOG_GROUP_ORDER.indexOf(t) : ANALOG_GROUP_ORDER.length);
+            const orderedTypes = [...byType.keys()].sort((a, b) =>
+                typeRank(panelTypeOf.get(a)) - typeRank(panelTypeOf.get(b)) || (a < b ? -1 : a > b ? 1 : 0));
+            const panelsPerType = new Map();
+            for (const key of orderedTypes) {
+                const type = panelTypeOf.get(key);
+                panelsPerType.set(type, (panelsPerType.get(type) || 0) + 1);
+            }
 
             if (orderedTypes.length === 0) {
                 // Every visible channel's own fetch failed -- same
@@ -32224,8 +32265,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             for (const type of orderedTypes) {
                 let panel = wwCcPreview.panelsByType.get(type);
                 if (!panel) {
-                    panel = wwCcCreatePreviewPanelDom(type);
+                    panel = wwCcCreatePreviewPanelDom(panelTypeOf.get(type));
                     wwCcPreview.panelsByType.set(type, panel);
+                }
+                const panelUnit = panelUnitOf.get(type);
+                const titleEl = panel.containerEl.querySelector(".ww-cc-preview-panel-title");
+                if (titleEl) {
+                    titleEl.textContent = "Calculated - " + panelTypeOf.get(type) +
+                        (panelsPerType.get(panelTypeOf.get(type)) > 1 && panelUnit ? " (" + panelUnit + ")" : "");
                 }
                 // appendChild on an already-attached node MOVES it into
                 // the correct position (a cheap DOM re-parent, not a
@@ -32235,7 +32282,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 panelsEl.appendChild(panel.containerEl);
 
                 const entries = byType.get(type);
+                // `uid` = the calculated channel's stable id, so Plotly.react()
+                // matches traces by identity (never by array position) as
+                // channels are shown/hidden -- no stale or duplicated trace.
                 const traces = entries.map(({ calc, body }) => ({
+                    uid: calc.id,
                     x: body.time,
                     y: body.values,
                     mode: "lines",
@@ -32262,6 +32313,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // rendered using Plotly's own light-mode default (~black)
                 // even against a dark paper.
                 const layout = {
+                    // A constant uirevision per panel keeps the engineer's own
+                    // zoom/pan across visibility toggles and redraws.
+                    uirevision: "ww-cc-preview:" + type,
                     margin: { t: 10, r: 10, b: 36, l: 50 },
                     xaxis: { title: "Time (s)", gridcolor: colors.grid, zerolinecolor: colors.grid },
                     yaxis: { title: "", gridcolor: colors.grid, zerolinecolor: colors.grid },

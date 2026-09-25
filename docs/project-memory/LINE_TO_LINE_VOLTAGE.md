@@ -175,6 +175,13 @@ Provenance reports `nominal_reference = line_to_line` for these channels.
   page revisit and full reload. A user's explicit color override still
   wins, as for every channel. The palette is the same fixed palette every
   channel uses in both themes.
+- **RMS of a pair** (RMS(VAB), which keeps `line_to_line`/`phase_member`)
+  gets the pair's companion slot: **AB → 3, BC → 4, CA → 5**. It never
+  shares its parent's color when both are plotted (owner UAT,
+  2026-09-25, recorded on DEC-047).
+- **Preview.** The Calculated Channels Preview plots every *visible*
+  calculated channel, including a Plot All set together with RMS(VAB).
+  Row selection only drives details (DEC-047 update, 2026-09-25).
 
 ## 8. Deferred: the complex-phasor source path
 

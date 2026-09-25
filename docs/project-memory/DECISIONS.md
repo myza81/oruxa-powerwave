@@ -5746,6 +5746,47 @@ true 33-failure baseline (zero net new regressions). Backend untouched
 fix). See
 [MIGRATION_PLAN.md — Phase 5A-UAT7](MIGRATION_PLAN.md#phase-5a-uat7--calculated-preview-dark-mode-fix-2026-08-21).
 
+**Update (2026-09-25, owner UAT correction — Preview: Visible drives
+traces, Selected drives details)**: the Calculated Channels Preview
+renders **every calculated channel whose eye/visibility state is ON**,
+never only the selected row. The model is **Selected ≠ Visible**:
+
+- **Visible** means the single `ww.displayed` authority, shared by the
+  eye icon, the Waveform sidebar and the main Waveform page. It decides
+  which traces the Preview plots.
+- **Selected** means row focus. It drives the row highlight, the
+  row actions, the Preview status line and the info strip.
+
+A later table-list/drawer redesign (shipped undocumented inside the
+DEC-049 commit) had silently switched `wwCcPreviewVisibleChannels()` to
+return only the selected channel. In owner UAT, a visible KPDN1 VAB then
+vanished from the Preview while RMS(KPDN1 VAB) was selected. This update
+restores the 2026-08-21 visibility-driven behaviour recorded above and
+keeps the redesign's selection-driven details.
+
+- **Status line.** It reads "Selected: <name> · N visible", with
+  "(hidden)" appended when the selected row itself is not visible.
+- **Empty state.** When nothing is visible, the Preview shows an explicit
+  empty state; no stale trace is left behind.
+- **Panels.** There is still one panel per engineering type, as in
+  Grouped mode, now refined by the *served* unit. A panel title shows the
+  unit only when one type spans several units. This means kV and V, or
+  pu and base-required engineering values, never share a Y axis.
+  Differing waveform forms (instantaneous VAB with RMS(VAB)) do share a
+  panel.
+- **Traces.** Each trace is keyed by `uid` = the channel id. A constant
+  per-panel `uirevision` keeps the user's zoom across visibility changes.
+- **Selection changes** no longer refetch or redraw the chart.
+- **Colors.** RMS of a declared line-to-line pair (RMS(VAB), which keeps
+  `line_to_line`/`phase_member` per DEC-115) gets the pair's companion
+  palette slot 3/4/5. It is therefore distinct from VAB/VBC/VCA (slots
+  0/1/2) and deterministic across reloads.
+
+Frontend only; no backend, arithmetic, RMS, per-unit or Compliance
+change. Coverage: `browser-tests/calculated-channel-preview.spec.js`
+(5 tests; the owner-UAT case was verified to fail on `aa23e38` and pass
+with this fix).
+
 ## DEC-048 — RMS calculated channels use a trailing one-cycle true-RMS calculation on authoritative full-resolution samples, with metadata-first eligibility and backend-enforced override
 
 Date: 2026-08-22
