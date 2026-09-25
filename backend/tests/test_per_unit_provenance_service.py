@@ -44,6 +44,7 @@ from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.current_group_config_service import set_current_base_equipment_rating
 from app.services.measurement_group_registry import MeasurementGroupRegistry
+from app.services.calculated_group_aware_per_unit import VOLTAGE_REPRESENTATION_UNDETERMINED_MESSAGE
 from app.services.per_unit_provenance_service import (
     SOURCE_KIND_MEASUREMENT_GROUP,
     SOURCE_KIND_SOURCE_DEFAULT,
@@ -419,7 +420,11 @@ class TestCalculatedChannelProvenance:
             voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
         )
         assert prov.status == STATUS_BASE_REQUIRED
-        assert prov.source_kind == SOURCE_KIND_SOURCE_DEFAULT
+        # DEC-116: generic multi-input Voltage never auto-resolves a base on
+        # ANY path, so no base scope applies (previously this fell through
+        # to Source Default, the path that could silently pick L-G).
+        assert prov.source_kind is None
+        assert prov.reason == VOLTAGE_REPRESENTATION_UNDETERMINED_MESSAGE
         assert prov.measurement_group_id is None
 
     def test_multi_input_current_addition_does_inherit_group(
@@ -482,7 +487,11 @@ class TestCalculatedChannelProvenance:
             voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
         )
         assert prov.status == STATUS_BASE_REQUIRED
-        assert prov.source_kind == SOURCE_KIND_SOURCE_DEFAULT
+        # DEC-116: generic multi-input Voltage never auto-resolves a base on
+        # ANY path, so no base scope applies (previously this fell through
+        # to Source Default, the path that could silently pick L-G).
+        assert prov.source_kind is None
+        assert prov.reason == VOLTAGE_REPRESENTATION_UNDETERMINED_MESSAGE
         assert prov.measurement_group_id is None
 
     def test_calculated_channel_not_applicable_type(

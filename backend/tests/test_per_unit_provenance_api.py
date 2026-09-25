@@ -306,5 +306,7 @@ class TestCalculatedChannelResolutionEndpoint:
         )
         body = _calc_resolution(client, "ws-1", calc_id)
         assert body["status"] == "base_required"
-        assert body["source_kind"] == "source_default"
+        # DEC-116: no base scope applies to generic multi-input Voltage.
+        assert body["source_kind"] is None
+        assert body["reason"] == "Automatic per-unit base cannot be inferred for a generic multi-input voltage calculation."
         assert body["measurement_group_id"] is None

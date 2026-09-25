@@ -54,6 +54,7 @@ from app.domain.channel_classification import (
     VOLTAGE,
 )
 from app.domain.per_unit import (
+    STATUS_BASE_REQUIRED,
     STATUS_CONFIGURED,
     STATUS_NOT_APPLICABLE,
     PerUnitBaseProfile,
@@ -62,7 +63,11 @@ from app.domain.per_unit import (
     resolve_per_unit,
 )
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
-from app.services.calculated_group_aware_per_unit import resolve_calculated_group_aware_per_unit
+from app.services.calculated_group_aware_per_unit import (
+    VOLTAGE_REPRESENTATION_UNDETERMINED_MESSAGE,
+    resolve_calculated_group_aware_per_unit,
+    voltage_representation_undetermined,
+)
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.group_aware_per_unit import resolve_group_aware_per_unit
 from app.services.measurement_group_registry import MeasurementGroupRegistry
@@ -333,7 +338,20 @@ def build_calculated_channel_provenance(
     `resolve_calculated_group_aware_per_unit()` (never re-implemented
     here). A calculated channel never carries `engineering_quantity`
     (always "Undefined"), so no separate Angle guardrail applies --
-    unaffected, per DEC-078's own documented scope."""
+    unaffected, per DEC-078's own documented scope.
+
+    DEC-116: the undetermined-representation rule is checked first,
+    exactly like the display dispatcher, so provenance never explains a
+    base the display path would refuse."""
+    if voltage_representation_undetermined(workspace_id, channel, calc_registry=calc_registry):
+        return PerUnitChannelProvenance(
+            status=STATUS_BASE_REQUIRED, engineering_type=channel.engineering_type, source_kind=None,
+            reason=VOLTAGE_REPRESENTATION_UNDETERMINED_MESSAGE,
+            measurement_group_id=None, measurement_group_name=None,
+            nominal_base_kv=None, nominal_reference=None,
+            effective_base_amount=None, effective_base_unit=None,
+            equipment_rating_mva=None, applicable_voltage_ll_kv=None,
+        )
     group_resolution = resolve_calculated_group_aware_per_unit(
         workspace_id=workspace_id, channel=channel, calc_registry=calc_registry, group_registry=group_registry,
         voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,

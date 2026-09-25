@@ -87,7 +87,11 @@ from app.domain.rms_detector import (
 from app.domain.source import ActiveSource
 from app.domain.time_grouping import normalize_absolute_datetime
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
-from app.services.calculated_group_aware_per_unit import resolve_calculated_group_aware_per_unit
+from app.services.calculated_group_aware_per_unit import (
+    resolve_calculated_group_aware_per_unit,
+    undetermined_representation_resolution,
+    voltage_representation_undetermined,
+)
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.errors import (
     CalculatedChannelHasDependentsError,
@@ -868,6 +872,13 @@ def _resolve_effective_per_unit_for_calculated_channel(
     resolution exactly as before. See
     `app.services.calculated_group_aware_per_unit`'s own module
     docstring for the full rule."""
+    # DEC-116: checked BEFORE either resolver, so the Measurement Group
+    # and Source Default paths apply the identical rule -- a generic
+    # multi-input Voltage result (or a unary descendant of one) has no
+    # authoritative L-G/L-L representation, so no base is ever selected
+    # automatically. Engineering-unit values are untouched.
+    if voltage_representation_undetermined(workspace_id or "", channel, calc_registry=calc_registry):
+        return undetermined_representation_resolution()
     resolution = None
     if (
         workspace_id is not None

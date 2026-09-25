@@ -101,6 +101,18 @@ known, reported, unfixed gap on the Source Default path: a *generic*
 `VR − VY` still resolves with the source's line-to-ground reference. See
 [LINE_TO_LINE_VOLTAGE.md](LINE_TO_LINE_VOLTAGE.md) §6/§10.
 
+**Revision note (2026-09-25, DEC-116)**: that gap is **closed**. One
+rule now applies identically on the Measurement Group **and** Source
+Default paths, checked before either resolver. A Voltage calculated
+channel without a declared representation that is generic
+Addition/Subtraction, **or a unary descendant of one** (e.g.
+RMS(VR − VY)), resolves `base_required` (reason
+`voltage_representation_undetermined`). It never gets 158.77 kV. Declared
+line-to-line outputs and their unary descendants keep the L-L base.
+Unary operations on source channels, source channels themselves and
+Current arithmetic are unchanged. See
+[DECISIONS.md — DEC-116](DECISIONS.md#dec-116--per-unit-base-selection-follows-one-representation-rule-on-both-the-measurement-group-and-source-default-paths-generic-multi-input-voltage-arithmetic-and-its-unary-descendants-never-auto-resolves-a-base).
+
 ---
 
 ## 1. Fundamental purpose

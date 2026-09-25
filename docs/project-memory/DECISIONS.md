@@ -19031,7 +19031,104 @@ decision):** on the Source Default (DEC-049) path, a *generic*
 Subtraction of phase-to-ground Voltage channels still divides by the
 line-to-ground base (verified: `VR − VY` → 158.77 kV under a 275 kV Source
 Default, with or without upload-time groups), bypassing DEC-052's
-intent. Details: LINE_TO_LINE_VOLTAGE.md §10.
+intent. Details: LINE_TO_LINE_VOLTAGE.md §10. **Closed by DEC-116.**
+
+---
+
+## DEC-116 — Per-unit base selection follows one representation rule on both the Measurement Group and Source Default paths: generic multi-input Voltage arithmetic (and its unary descendants) never auto-resolves a base
+
+Date: 2026-09-25
+Status: Approved (owner-specified fix). Implemented and **awaiting owner
+UAT**.
+Source: owner task "DEC-116 — per-unit Source Default consistency for
+generic voltage Addition/Subtraction", closing the gap DEC-115 reported.
+The scope is per-unit base resolution only: no arithmetic, RMS, L-L,
+Preview/CSS or Compliance change.
+
+**Issue.** DEC-052 made generic Voltage Addition/Subtraction
+`base_required` on the Measurement Group path. However, the calculated-
+channel dispatcher (`_resolve_effective_per_unit_for_calculated_channel()`,
+mirrored by `build_calculated_channel_provenance()`) then fell through to
+the DEC-049 Source Default resolver:
+
+1. `derive_per_unit_profile_id()` inherited the unanimous source profile;
+2. `resolve_per_unit()` applied the **source's** name-detected
+   line-to-ground reference;
+3. so `VR − VY` was divided by 275/√3 = 158.77 kV.
+
+Audit found the same hole for **unary descendants** of a generic result
+(RMS/−x/|x|/k·x of `VR − VY`), on **both** paths, including the group
+path DEC-052 was meant to guard. A unary operation inherits its input's
+group or profile verbatim, so it picked up the L-G denominator.
+
+Decision:
+
+- **One rule, checked before either resolver.** A Voltage calculated
+  channel whose output representation is not authoritative resolves
+  `base_required` with reason `voltage_representation_undetermined`
+  ("Automatic per-unit base cannot be inferred for a generic multi-input
+  voltage calculation."). The Measurement Group path and the Source
+  Default path apply it identically.
+- **Not authoritative** means: no declared `voltage_representation`
+  **and** either generic multi-input Voltage arithmetic
+  (Addition/Subtraction), or a unary descendant of such a channel
+  (walked through calculated inputs). Nothing is inferred from names,
+  phases, VR/VY or A/B/C suffixes, or operation shape.
+- **Semantic operations may auto-resolve a base only when their output
+  representation is explicit.** DEC-115 Line-to-Line outputs (`line_to_line`)
+  and their unary descendants (RMS(VAB), −VAB, |VAB|, k·VAB) keep the L-L
+  base (275 kV) on both paths, by metadata, so this survives renaming.
+- **Unchanged:**
+  - unary operations on a real source channel (e.g. RMS(VR) → 158.77 kV);
+  - phase-to-ground source channels themselves;
+  - Current multi-input arithmetic (Ibase has no L-G/L-L concept);
+  - every engineering-unit value.
+- **Existing vocabulary is reused** (`base_required`). Provenance reports
+  no base scope (`source_kind = null`) plus the reason text, which the
+  existing UI already renders as "Needs configuration" with that reason.
+  No UI change.
+
+Reason:
+
+The same channel must never get a different, and silently wrong, PU
+value depending on which base source happens to be configured. DEC-052's
+principle ("never divide a possibly-L-L quantity by an L-G denominator")
+has to hold on every path and through every unary wrapper.
+
+Alternatives considered:
+
+- **Infer L-L from `VR − VY` input phases.** Rejected by the owner:
+  generic arithmetic stays generic. The dedicated DEC-115 operation is
+  how an engineer declares L-L.
+- **Guard only the direct Addition/Subtraction on the Source Default
+  path.** Rejected: RMS(VR − VY) would still silently resolve L-G on both
+  paths.
+- **Persist an "undetermined" flag at creation.** Rejected in favour of a
+  read-time walk over the stored `inputs`, mirroring how
+  `resolve_inherited_measurement_group_id()` already derives group
+  inheritance, so it can never go stale.
+
+Impact:
+
+- `app/services/calculated_group_aware_per_unit.py` gained
+  `voltage_representation_undetermined()` and
+  `undetermined_representation_resolution()`.
+- Both dispatchers call it first:
+  `calculated_channel_service._resolve_effective_per_unit_for_calculated_channel()`
+  (waveform/cursor/peak/annotation endpoints) and
+  `per_unit_provenance_service.build_calculated_channel_provenance()`.
+- DEC-052 and DEC-115 are unchanged in intent. DEC-052's rule now holds
+  on every path.
+- Three existing provenance tests asserted
+  `source_kind == "source_default"` for DEC-052's `base_required` (the
+  fall-through mechanism this fixes). They now assert `source_kind is
+  None` plus the new reason; their `base_required` status assertions are
+  unchanged.
+- New `backend/tests/test_dec116_per_unit_representation.py` (52 tests)
+  covers the owner matrix on both paths, unary propagation, rename,
+  unchanged arithmetic, and the owner UAT flow. On `174b8ab` its 39
+  end-to-end tests give 14 failures and 25 passes (only the expected
+  cases fail); with this fix all pass.
 
 ---
 

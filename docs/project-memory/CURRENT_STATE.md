@@ -9,7 +9,12 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-25**. The Calculated Channels
+Last meaningful update: **2026-09-25**. **DEC-116**: per-unit base
+selection now follows one representation rule on both the Measurement
+Group and Source Default paths. Generic multi-input Voltage arithmetic,
+and its unary descendants, are always `base_required`. Semantic L-L
+outputs keep the L-L base (awaiting UAT). Earlier the same day, the
+Calculated Channels
 **Preview** now plots every *visible* calculated channel, with selection
 driving only details (owner UAT correction, DEC-047 update; awaiting
 UAT). Earlier the same day, the **Line-to-Line Voltage**
@@ -2914,7 +2919,9 @@ re-confirmed by the TG-FINAL audit):
   reload. The complex-phasor source path is **deferred** (no reachable
   phasor source without instantaneous samples, and no magnitude/angle
   role pairing). A pre-existing Source Default PU gap for *generic*
-  Voltage Subtraction was found and reported, not changed. See
+  Voltage Subtraction was found and reported, then **closed by
+  DEC-116** (generic multi-input Voltage arithmetic and its unary
+  descendants are `base_required` on both paths). See
   [LINE_TO_LINE_VOLTAGE.md](LINE_TO_LINE_VOLTAGE.md) §8/§10.
 - **Calculated Channels Preview: Visible drives traces, Selected drives
   details (owner UAT correction, 2026-09-25, awaiting owner UAT)**. The

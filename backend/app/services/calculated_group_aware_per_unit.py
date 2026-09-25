@@ -85,10 +85,10 @@ additionally consulted for it, and never silently overrides it.
 
 from __future__ import annotations
 
-from app.domain.calculated_channel import MULTI_OPERATIONS, CalculatedChannel
+from app.domain.calculated_channel import MULTI_OPERATIONS, UNARY_OPERATIONS, CalculatedChannel
 from app.domain.channel_classification import CURRENT, VOLTAGE
 from app.domain.measurement_group import KIND_CURRENT, KIND_VOLTAGE
-from app.domain.per_unit import PerUnitResolution, derive_per_unit_profile_id
+from app.domain.per_unit import STATUS_BASE_REQUIRED, PerUnitResolution, derive_per_unit_profile_id
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.group_aware_per_unit import resolve_per_unit_for_group
@@ -96,6 +96,58 @@ from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 
 _ENGINEERING_TYPE_TO_GROUP_KIND = {VOLTAGE: KIND_VOLTAGE, CURRENT: KIND_CURRENT}
+
+#: DEC-116: `base_required` reason for a Voltage channel whose output
+#: electrical representation (L-G vs L-L) is not authoritative.
+REASON_VOLTAGE_REPRESENTATION_UNDETERMINED = "voltage_representation_undetermined"
+VOLTAGE_REPRESENTATION_UNDETERMINED_MESSAGE = (
+    "Automatic per-unit base cannot be inferred for a generic multi-input voltage calculation."
+)
+
+
+def voltage_representation_undetermined(
+    workspace_id: str,
+    channel: CalculatedChannel,
+    *,
+    calc_registry: CalculatedChannelRegistry | None = None,
+) -> bool:
+    """DEC-116: True when `channel` is a Voltage calculated channel whose
+    output representation (L-G vs L-L) is NOT authoritative, so no
+    per-unit base may be selected automatically on ANY path:
+
+    - generic multi-input Voltage arithmetic (Addition/Subtraction) that
+      declares no `voltage_representation` (DEC-052's case), or
+    - a unary descendant of such a channel (RMS/-x/|x|/k*x of `VR - VY`):
+      unary operations propagate a DECLARED representation (DEC-115),
+      so an undeclared parent's uncertainty carries through too.
+
+    A declared representation (DEC-115 Line-to-Line outputs and their
+    unary descendants) is always authoritative. A unary operation on a
+    real source channel is unaffected (that source's own reference
+    applies, as before). Never inferred from names, phases or operation
+    shape. `calc_registry` is only needed to walk unary chains; without
+    it only the channel itself is checked."""
+    if channel.engineering_type != VOLTAGE or channel.voltage_representation is not None:
+        return False
+    if channel.operation in MULTI_OPERATIONS:
+        return True
+    if channel.operation in UNARY_OPERATIONS and calc_registry is not None and channel.inputs:
+        ref = channel.inputs[0]
+        if ref.kind == "calculated":
+            parent = calc_registry.get(workspace_id, ref.calculated_channel_id)
+            return parent is not None and voltage_representation_undetermined(
+                workspace_id, parent, calc_registry=calc_registry
+            )
+    return False
+
+
+def undetermined_representation_resolution() -> PerUnitResolution:
+    """The one `base_required` result DEC-116 returns, identically for the
+    Measurement Group and Source Default paths."""
+    return PerUnitResolution(
+        status=STATUS_BASE_REQUIRED, profile_id=None, base_amount=None, base_unit=None,
+        reason=REASON_VOLTAGE_REPRESENTATION_UNDETERMINED,
+    )
 
 
 def resolve_inherited_measurement_group_id(

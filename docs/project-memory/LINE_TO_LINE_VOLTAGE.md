@@ -155,6 +155,9 @@ VAB (declared line_to_line)    base = 275 kV
 ```
 
 Provenance reports `nominal_reference = line_to_line` for these channels.
+The same holds for their unary descendants (RMS(VAB) → 275 kV). By
+contrast, generic `VR − VY`/`VR + VY`, and unary descendants of them,
+are `base_required` on both paths (DEC-116).
 **Generic Subtraction is unchanged:** `VR − VY` still resolves
 `base_required` on the group path (DEC-052).
 
@@ -238,7 +241,14 @@ unsupported representation), and RMS-only data is never combined as
   unbalanced disturbance from 0.5 s (R sags to 30 %, Y shifts +15°), plus
   currents. KPDN2 has VR/VY only. MCRS has RMS-magnitude envelopes.
 
-## 10. Known pre-existing issue (reported, not changed here)
+## 10. Pre-existing issue — closed by DEC-116 (2026-09-25)
+
+The gap below is fixed. Generic multi-input Voltage arithmetic, and any
+unary descendant of it, now resolves `base_required` on **both** paths.
+L-L outputs keep 275 kV. See
+[DECISIONS.md — DEC-116](DECISIONS.md#dec-116--per-unit-base-selection-follows-one-representation-rule-on-both-the-measurement-group-and-source-default-paths-generic-multi-input-voltage-arithmetic-and-its-unary-descendants-never-auto-resolves-a-base).
+The original finding is kept for the record:
+
 
 `[FACT]` On the **Source Default (DEC-049)** path, a *generic*
 Subtraction of two phase-to-ground Voltage channels (for example

@@ -8,6 +8,39 @@ Last updated: **2026-09-25**
 
 ## What was most recently done
 
+**DEC-116: per-unit Source Default consistency. Backend-only; awaiting
+owner UAT/UI feedback. Stop here.** The owner's CSS/UI/UX polish comments
+are the next task.
+
+- **Bug**: generic `VR − VY` under a 275 kV Source Default was divided by
+  158.77 kV. The dispatcher fell through DEC-052's group refusal to
+  `resolve_per_unit()`, which used the source's L-G detection.
+- **Sibling hole found by audit**: RMS/−x/|x|/k·x of `VR − VY` inherited
+  158.77 kV on **both** paths.
+- **Fix**: `voltage_representation_undetermined()` (in
+  `calculated_group_aware_per_unit.py`) is checked first by both
+  calculated-channel dispatchers (display endpoints and provenance). It
+  returns `base_required` / `voltage_representation_undetermined` with
+  the reason "Automatic per-unit base cannot be inferred for a generic
+  multi-input voltage calculation."
+- **Preserved**:
+  - semantic VAB/VBC/VCA and RMS(VAB) → 275 kV (by metadata, so renaming
+    doesn't matter);
+  - Va and unary-on-source → 158.77 kV;
+  - Current arithmetic unchanged;
+  - all engineering values unchanged.
+- **Tests**:
+  - new `test_dec116_per_unit_representation.py` (52 tests);
+  - 3 provenance tests updated from `source_kind == "source_default"` to
+    `None` + reason, since they encoded the defective fall-through;
+  - no browser case added, because no browser suite exercises per-unit.
+- **Record**: [DECISIONS.md — DEC-116](DECISIONS.md#dec-116--per-unit-base-selection-follows-one-representation-rule-on-both-the-measurement-group-and-source-default-paths-generic-multi-input-voltage-arithmetic-and-its-unary-descendants-never-auto-resolves-a-base).
+
+**Remaining open items**: the deferred L-L phasor path (DEC-115 §8) and
+the pre-existing overcurrent grid-count flake.
+
+## What was done in the prior session — Calculated Channels Preview correction
+
 **Calculated Channels Preview correction (owner UAT). This is
 frontend-only and is awaiting owner UAT. Stop here.** DEC-116 (the
 Source Default per-unit consistency fix) is still the separate next
