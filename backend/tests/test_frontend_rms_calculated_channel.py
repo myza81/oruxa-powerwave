@@ -26,8 +26,11 @@ def test_rms_operation_is_registered():
     source = _source()
     assert '"reverse_polarity", "absolute_value", "multiply_constant", "rms", "addition", "subtraction"' in source
     ops_body = _function_body(source, "const WW_CC_OPERATIONS = {", "const WW_CC_OPERATION_ORDER")
-    assert 'rms: {' in ops_body
-    assert '"1-cycle true RMS"' in ops_body or "1-cycle true RMS" in ops_body
+    assert 'rms: { label: "RMS"' in ops_body
+    # Owner UAT: operation cards show the name only -- no secondary
+    # description/arity lines.
+    assert "description" not in ops_body
+    assert "arityLabel" not in ops_body
 
 
 def test_builder_state_has_rms_fields():

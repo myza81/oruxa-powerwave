@@ -2885,28 +2885,43 @@
         .ww-cc-panel { padding: 16px; }
         .ww-cc-panel h3 { margin: 0 0 12px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
 
-        .ww-cc-operation-cards { display: flex; flex-wrap: wrap; gap: 10px; }
+        /* Operation picker (owner UAT): name-only selectable controls in a
+           two-column grid; Line-to-Line spans both columns at the same
+           compact height. Selected = accent border (inset ring, so no
+           layout shift) + soft accent wash + accent/600 title -- never
+           hover alone. */
+        .ww-cc-operation-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
         .ww-cc-operation-card {
-            flex: 1 1 160px;
-            min-width: 150px;
             display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 4px;
-            padding: 12px 14px;
-            background: var(--bg);
+            align-items: center;
+            min-height: 54px;
+            padding: 8px 14px;
+            background: var(--panel);
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
             color: var(--text);
             cursor: pointer;
             text-align: left;
             font: inherit;
+            font-size: 0.85rem;
+            font-weight: 500;
+            line-height: 1.3;
+            overflow-wrap: anywhere;
+            transition: border-color 0.12s ease, background-color 0.12s ease;
         }
-        .ww-cc-operation-card:hover { border-color: var(--accent-dim); }
-        .ww-cc-operation-card[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-wash-soft); }
-        .ww-cc-operation-card-name { font-size: 0.7rem; font-weight: 600; }
-        .ww-cc-operation-card-description { font-size: 0.72rem; color: var(--text-dim); }
-        .ww-cc-operation-card-arity { font-size: 0.72rem; color: var(--text-dim); }
+        .ww-cc-operation-card[data-operation="line_to_line_voltage"] { grid-column: 1 / -1; }
+        .ww-cc-operation-card:hover { border-color: var(--accent-dim); background: var(--surface-tint); }
+        .ww-cc-operation-card[aria-pressed="true"] {
+            border-color: var(--accent);
+            box-shadow: inset 0 0 0 1px var(--accent);
+            background: var(--accent-wash-soft);
+            color: var(--accent);
+            font-weight: 600;
+        }
+        .ww-cc-operation-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        @media (max-width: 360px) {
+            .ww-cc-operation-cards { grid-template-columns: minmax(0, 1fr); }
+        }
 
         .ww-cc-field { margin-top: 12px; }
         /* The global `label { display: block }` otherwise overrides the UA
@@ -11423,7 +11438,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     <button type="button" class="ww-annotation-drawer-close" id="wwCcDrawerCloseBtn" aria-label="Close">&times;</button>
                 </div>
                 <div class="ww-cc-drawer-body">
-                    <p class="ww-cc-subtitle">Define the operation and inputs to create a new calculated signal.</p>
                     <section class="ww-cc-drawer-section">
                         <h4 class="ww-cc-drawer-section-title">Operation</h4>
                         <!-- Section 6/36/37: ONLY the five Phase 5A-supported
@@ -30445,25 +30459,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // ------------------------------------------------------------------
 
         const WW_CC_OPERATIONS = {
-            reverse_polarity: { label: "Reverse Polarity", arity: "unary", arityLabel: "1 input", glyph: "−x" },
-            absolute_value: { label: "Absolute Value", arity: "unary", arityLabel: "1 input", glyph: "|x|" },
-            multiply_constant: { label: "Multiply by Constant", arity: "unary", arityLabel: "1 input + constant", glyph: "k·x" },
+            reverse_polarity: { label: "Reverse Polarity", arity: "unary", glyph: "−x" },
+            absolute_value: { label: "Absolute Value", arity: "unary", glyph: "|x|" },
+            multiply_constant: { label: "Multiply by Constant", arity: "unary", glyph: "k·x" },
             // Phase 5B (DEC-048): 1 input + a scalar nominal_frequency
             // parameter -- the same "1 input + 1 scalar" shape as
             // multiply_constant, plus an async eligibility check (see
             // wwCcCheckRmsEligibility()) no other operation needs.
-            rms: { label: "RMS", description: "1-cycle true RMS", arity: "unary", arityLabel: "1 input + nominal frequency", glyph: "RMS(x)" },
-            addition: { label: "Addition", arity: "multi", arityLabel: "2+ inputs", glyph: "x₁+x₂" },
-            subtraction: { label: "Subtraction", arity: "multi", arityLabel: "2+ ordered inputs", glyph: "x₁−x₂" },
+            rms: { label: "RMS", arity: "unary", glyph: "RMS(x)" },
+            addition: { label: "Addition", arity: "multi", glyph: "x₁+x₂" },
+            subtraction: { label: "Subtraction", arity: "multi", glyph: "x₁−x₂" },
             // DEC-115: a dedicated ENGINEERING operation, not a
             // Subtraction preset -- its input is one Bay / Engineering
             // Context (never hand-picked Va/Vb/Vc channels), resolved and
             // validated entirely by the backend
             // (GET/POST .../calculated-channels/line-to-line-voltage).
             line_to_line_voltage: {
-                label: "Line-to-Line Voltage (L-L)", description: "VAB / VBC / VCA from a bay",
-                descriptionHtml: wwLineToLinePairHtml("AB") + " / " + wwLineToLinePairHtml("BC") + " / " + wwLineToLinePairHtml("CA") + " from a bay",
-                arity: "context", arityLabel: "Bay / Engineering Context", glyph: "VA−VB",
+                label: "Line-to-Line Voltage (L-L)",
+                arity: "context", glyph: "VA−VB",
             },
         };
         const WW_CC_OPERATION_ORDER = ["reverse_polarity", "absolute_value", "multiply_constant", "rms", "addition", "subtraction", "line_to_line_voltage"];
@@ -31581,10 +31594,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const meta = WW_CC_OPERATIONS[operation];
                 const pressed = wwCcBuilder.operation === operation;
                 html += '<button type="button" class="ww-cc-operation-card" data-operation="' + operation + '" aria-pressed="' + pressed + '">' +
-                    '<span class="ww-cc-operation-card-name">' + escapeHtml(meta.label) + '</span>' +
-                    (meta.description ? '<span class="ww-cc-operation-card-description">' + (meta.descriptionHtml || escapeHtml(meta.description)) + '</span>' : "") +
-                    '<span class="ww-cc-operation-card-arity">' + escapeHtml(meta.arityLabel) + '</span>' +
-                    '</button>';
+                    escapeHtml(meta.label) + '</button>';
             }
             container.innerHTML = html;
         }

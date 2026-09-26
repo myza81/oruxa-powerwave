@@ -4,9 +4,24 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-25**
+Last updated: **2026-09-26**
 
 ## What was most recently done
+
+**Calculated Channel operation-picker cleanup (owner UAT, cosmetic,
+frontend-only). Awaiting owner UAT. Stop here.**
+
+- Cards show the operation name only. The secondary description/arity
+  lines and the drawer's intro sentence are removed, and the unused
+  `description`/`descriptionHtml`/`arityLabel` metadata is gone.
+- Layout is a compact two-column grid (~54px cards); Line-to-Line spans
+  full width and stacks to one column below 360px.
+- States: hover = surface tint; selected = accent border ring + accent
+  wash + accent/600 title; `:focus-visible` outline.
+- No change to selection logic, fields, payloads or the default (no
+  operation selected).
+
+## What was done in the prior session — DEC-117 notation
 
 **DEC-117: app-wide Line-to-Line electrical notation, now a standing
 frontend convention. Frontend/docs only; awaiting owner UAT. Stop
