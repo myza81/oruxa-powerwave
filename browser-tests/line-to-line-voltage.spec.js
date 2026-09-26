@@ -231,3 +231,137 @@ test.describe("Line-to-Line Voltage", () => {
     await expect(page.locator("#wwCcLlResult .ww-cc-ll-result-list li")).toHaveText(["KPDN1 VBC", "KPDN1 VCA"]);
   });
 });
+
+// All Three output names: one editable, pre-filled name per output.
+test.describe("Line-to-Line Voltage -- All Three output names", () => {
+  const nameInputs = (page) => ["AB", "BC", "CA"].map((p) => page.locator(`#wwCcLlName_${p}`));
+
+  async function apiChannelNames(page) {
+    return page.evaluate(async () => {
+      const r = await fetch(apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/calculated-channels");
+      return (await r.json()).map((c) => c.name).sort();
+    });
+  }
+
+  test("single pair shows one name; All Three shows three pre-filled names", async ({ page }) => {
+    await uploadFixture(page);
+    await openLineToLineBuilder(page);
+    await selectBay(page, "KPDN1");
+
+    await page.locator("#wwCcLlOutput_AB").check();
+    await expect(page.locator("#wwCcNameInput")).toBeVisible();
+    await expect(page.locator("#wwCcNameInput")).toHaveValue("KPDN1 VAB");
+    await expect(page.locator("#wwCcLlNamesFields")).toBeHidden();
+
+    await page.locator("#wwCcLlOutput_all_three").check();
+    await expect(page.locator("#wwCcNameInput")).toBeHidden();
+    await expect(page.locator("#wwCcLlNamesFields")).toBeVisible();
+    const [ab, bc, ca] = nameInputs(page);
+    await expect(ab).toHaveValue("KPDN1 VAB");
+    await expect(bc).toHaveValue("KPDN1 VBC");
+    await expect(ca).toHaveValue("KPDN1 VCA");
+    await expect(page.locator("#wwCcLlNamesFields .ww-cc-ll-name-pair sub")).toHaveText(["AB", "BC", "CA"]);
+    await expect(page.locator("#wwCcUnitDisplay")).toHaveValue("kV"); // one shared unit field
+
+    // Back to a single pair shows that pair's own default.
+    await page.locator("#wwCcLlOutput_BC").check();
+    await expect(page.locator("#wwCcNameInput")).toHaveValue("KPDN1 VBC");
+    await expect(page.locator("#wwCcLlNamesFields")).toBeHidden();
+  });
+
+  test("edited names are exactly the names created", async ({ page }) => {
+    await uploadFixture(page);
+    await openLineToLineBuilder(page);
+    await selectBay(page, "KPDN1");
+    await page.locator("#wwCcLlOutput_all_three").check();
+    const [ab, bc, ca] = nameInputs(page);
+    await ab.fill("KPDN1 BUS VAB");
+    await bc.fill("KPDN1 BUS VBC");
+    await ca.fill("KPDN1 BUS VCA");
+    await expect(page.locator("#wwCcLlPlannedNames")).toHaveText(
+      "Creates KPDN1 BUS VAB, KPDN1 BUS VBC, KPDN1 BUS VCA as one set — all three or none."
+    );
+    await expect(page.locator("#wwCcExpressionPreview")).toContainText("VAB = KPDN1_VR − KPDN1_VY");
+    await createAndWait(page);
+
+    expect(await apiChannelNames(page)).toEqual(["KPDN1 BUS VAB", "KPDN1 BUS VBC", "KPDN1 BUS VCA"]);
+    await expect(page.locator("#wwCcLlResult .ww-cc-ll-result-list li")).toHaveText(["KPDN1 BUS VAB", "KPDN1 BUS VBC", "KPDN1 BUS VCA"]);
+    // Pair metadata is unaffected by the names (VAB/VBC/VCA identity kept).
+    const members = await page.evaluate(() => Array.from(ww.calculatedChannels.values()).map((c) => c.phase_member).sort());
+    expect(members).toEqual(["AB", "BC", "CA"]);
+  });
+
+  test("an empty, duplicate or existing name blocks creation; nothing is created", async ({ page }) => {
+    await uploadFixture(page);
+    await openLineToLineBuilder(page);
+    await selectBay(page, "KPDN1");
+    await page.locator("#wwCcLlOutput_all_three").check();
+    const [ab, bc, ca] = nameInputs(page);
+
+    await bc.fill("");
+    await expect(page.locator("#wwCcLlNameError_BC")).toHaveText("Enter a name.");
+    await expect(page.locator("#wwCcCreateBtn")).toBeDisabled();
+
+    await bc.fill("KPDN1 VAB"); // same as VAB's name
+    await expect(page.locator("#wwCcLlNameError_BC")).toHaveText("Each output needs a different name.");
+    await expect(page.locator("#wwCcLlNameError_AB")).toHaveText("Each output needs a different name.");
+    await expect(page.locator("#wwCcCreateBtn")).toBeDisabled();
+
+    await bc.fill("KPDN1 VBC");
+    await expect(page.locator("#wwCcLlNameError_BC")).toBeHidden();
+    await expect(page.locator("#wwCcCreateBtn")).toBeEnabled();
+    expect(await apiChannelNames(page)).toEqual([]); // zero partial channels
+
+    // A name that already exists in the workspace is flagged on its own field.
+    await page.locator("#wwCcDrawerCloseBtn").click();
+    await openLineToLineBuilder(page);
+    await selectBay(page, "KPDN1");
+    await page.locator("#wwCcLlOutput_CA").check();
+    await createAndWait(page); // creates "KPDN1 VCA"
+    await openLineToLineBuilder(page);
+    await selectBay(page, "KPDN1");
+    await page.locator("#wwCcLlOutput_all_three").check();
+    await expect(page.locator("#wwCcLlNameError_CA")).toHaveText("A calculated channel with this name already exists.");
+    await expect(page.locator("#wwCcCreateBtn")).toBeDisabled();
+    expect(await apiChannelNames(page)).toEqual(["KPDN1 VCA"]);
+    await nameInputs(page)[2].fill("KPDN1 VCA 2");
+    await createAndWait(page);
+    expect(await apiChannelNames(page)).toEqual(["KPDN1 VAB", "KPDN1 VBC", "KPDN1 VCA", "KPDN1 VCA 2"]);
+  });
+
+  test("changing Bay / Engineering Context regenerates the defaults", async ({ page }) => {
+    await uploadFixture(page);
+    // A second ready bay with a distinct name: upload the fixture again
+    // and rename that upload's own KPDN1 context.
+    await page.locator("#mainNavRecordingsBtn").click();
+    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${STEM}.cfg`));
+    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${STEM}.dat`));
+    await page.locator("#uploadModalSubmitBtn").click();
+    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+    await expect(page.locator("#recordingsTableBody tr[data-source-id]")).toHaveCount(2);
+    const renamed = await page.evaluate(async () => {
+      const base = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/engineering-contexts";
+      const kpdn1 = (await (await fetch(base)).json()).filter((c) => c.display_name === "KPDN1");
+      const second = kpdn1[kpdn1.length - 1];
+      const r = await fetch(base + "/" + second.id, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ display_name: "KPDN9" }),
+      });
+      return kpdn1.length === 2 && r.ok;
+    });
+    expect(renamed).toBe(true);
+
+    await openLineToLineBuilder(page);
+    await selectBay(page, "KPDN1");
+    await page.locator("#wwCcLlOutput_all_three").check();
+    const [ab, bc, ca] = nameInputs(page);
+    await ab.fill("edited name");
+    await selectBay(page, "KPDN9");
+    await expect(nameInputs(page)[0]).toHaveValue("KPDN9 VAB");
+    await expect(nameInputs(page)[1]).toHaveValue("KPDN9 VBC");
+    await expect(nameInputs(page)[2]).toHaveValue("KPDN9 VCA");
+    await expect(page.locator("#wwCcLlPlannedNames")).toHaveText("Creates KPDN9 VAB, KPDN9 VBC, KPDN9 VCA as one set — all three or none.");
+    await createAndWait(page);
+    expect(await apiChannelNames(page)).toEqual(["KPDN9 VAB", "KPDN9 VBC", "KPDN9 VCA"]);
+  });
+});

@@ -2909,6 +2909,10 @@
         .ww-cc-operation-card-arity { font-size: 0.72rem; color: var(--text-dim); }
 
         .ww-cc-field { margin-top: 12px; }
+        /* The global `label { display: block }` otherwise overrides the UA
+           [hidden] rule, leaving e.g. the single Output Name field visible
+           (and blank) for Line-to-Line "All Three". */
+        .ww-cc-field[hidden] { display: none; }
         .ww-cc-field span { display: flex; margin-bottom: 4px; }
         /* DEC-115: Line-to-Line Voltage builder + created-set banner.
            Theme tokens only, so Light/Dark both follow DEC-023. The
@@ -2951,7 +2955,14 @@
         .ww-cc-ll-result-list li { display: inline-flex; align-items: center; font-size: 0.70rem; font-weight: 500; line-height: 1.3; }
         .ww-cc-ll-result-list li .channel-color-dot { margin-right: 6px; }
         /* Pair subscript (V<sub>AB</sub>) that never enlarges the line box. */
-        .ww-cc-ll-result-list li sub { font-size: 0.65em; line-height: 0; vertical-align: baseline; position: relative; top: 0.25em; }
+        .ww-cc-ll-result-list li sub,
+        .ww-cc-ll-name-pair sub { font-size: 0.65em; line-height: 0; vertical-align: baseline; position: relative; top: 0.25em; }
+        /* All Three output names: "V<sub>AB</sub> [input]" rows. */
+        .ww-cc-ll-name-row { display: grid; grid-template-columns: 2.4em minmax(0, 1fr); align-items: center; gap: 2px 8px; margin-top: 6px; }
+        /* Heading matches the sibling field labels (global `label` look). */
+        .ww-cc-ll-names > span { font-size: 0.75rem; color: var(--text-dim); }
+        .ww-cc-ll-name-pair { font-size: 0.72rem; font-weight: 500; margin: 0; }
+        .ww-cc-ll-name-error { grid-column: 2; margin: 0; }
         .ww-cc-ll-result-actions { display: flex; gap: 8px; }
         .ww-cc-rms-label { font-size: 0.75rem; }
         .ww-cc-field input {
@@ -11454,6 +11465,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                             <span>Output Name</span>
                             <input type="text" id="wwCcNameInput" maxlength="120" placeholder="Signal name" autocomplete="off">
                         </label>
+                        <!-- Line-to-Line "All Three": one editable name per
+                             output, in place of the single Output Name field
+                             above (rendered by wwCcLlSyncNameFields()). Static
+                             container, so typing never re-renders it. -->
+                        <div class="ww-cc-field ww-cc-ll-names" id="wwCcLlNamesFields" role="group" aria-label="Output Names" hidden></div>
                         <label class="ww-cc-field">
                             <span>Unit</span>
                             <input type="text" id="wwCcUnitDisplay" readonly tabindex="-1" placeholder="—">
@@ -30448,6 +30464,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // DEC-115: Line-to-Line Voltage only -- the chosen Engineering
             // Context id and output ("AB"/"BC"/"CA"/"all_three").
             llContextId: "", llOutput: "all_three",
+            // All Three: one name per output. Same convention as `name`/
+            // `nameEditedByUser`: defaults regenerate until the user edits,
+            // and any bay/output change resets the flag.
+            llNames: { AB: "", BC: "", CA: "" }, llNamesEditedByUser: false,
             // DEC-084 Calc Slice 3: null-handling configuration -- see
             // WW_CC_NULL_POLICIES/WW_CC_ESTIMATION_METHODS above.
             // `nullPolicy` defaults to Propagate Null (backward-
@@ -30488,6 +30508,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwCcBuilder.override = false;
             wwCcBuilder.llContextId = "";
             wwCcBuilder.llOutput = "all_three";
+            wwCcBuilder.llNames = { AB: "", BC: "", CA: "" };
+            wwCcBuilder.llNamesEditedByUser = false;
             // DEC-084 Calc Slice 3: back to the backward-compatible
             // default (section 4) on every full reset (drawer open /
             // after a successful create), same lifecycle as every other
@@ -30879,11 +30901,73 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 html += '<p class="hint error" id="wwCcLlOutputReason">' + escapeHtml(selected.reason) + '</p>';
             }
             if (wwCcBuilder.llOutput === "all_three") {
-                html += '<p class="hint" id="wwCcLlPlannedNames">Creates ' +
-                    escapeHtml(WW_CC_LL_PAIR_ORDER.map((p) => wwCcLlDefaultName(ctx, p)).join(", ")) +
-                    ' as one set — all three or none.</p>';
+                wwCcLlEnsureDefaultNames(ctx);
+                html += '<p class="hint" id="wwCcLlPlannedNames">' + escapeHtml(wwCcLlPlannedNamesText()) + '</p>';
             }
             return html;
+        }
+
+        // All Three names: bay-aware defaults (the SAME wwCcLlDefaultName()
+        // the single-output modes use) until the user edits one.
+        function wwCcLlEnsureDefaultNames(ctx) {
+            if (wwCcBuilder.llNamesEditedByUser || !ctx) return;
+            for (const pair of WW_CC_LL_PAIR_ORDER) wwCcBuilder.llNames[pair] = wwCcLlDefaultName(ctx, pair);
+        }
+
+        function wwCcLlPlannedNamesText() {
+            const names = WW_CC_LL_PAIR_ORDER.map((p) => wwCcBuilder.llNames[p].trim() || "V" + p);
+            return "Creates " + names.join(", ") + " as one set — all three or none.";
+        }
+
+        // Per-output name errors, using the existing calculated-channel
+        // naming rules (non-empty, unique in the workspace) plus
+        // uniqueness within the set. The backend re-validates atomically.
+        function wwCcLlNameErrors() {
+            const existing = new Set(Array.from(ww.calculatedChannels.values()).map((c) => c.name));
+            const errors = {};
+            for (const pair of WW_CC_LL_PAIR_ORDER) {
+                const name = wwCcBuilder.llNames[pair].trim();
+                if (!name) errors[pair] = "Enter a name.";
+                else if (existing.has(name)) errors[pair] = "A calculated channel with this name already exists.";
+                else if (WW_CC_LL_PAIR_ORDER.some((o) => o !== pair && wwCcBuilder.llNames[o].trim() === name)) {
+                    errors[pair] = "Each output needs a different name.";
+                }
+            }
+            return errors;
+        }
+
+        function wwCcLlRenderNameErrors() {
+            const errors = wwCcLlNameErrors();
+            for (const pair of WW_CC_LL_PAIR_ORDER) {
+                const input = document.getElementById("wwCcLlName_" + pair);
+                const errorEl = document.getElementById("wwCcLlNameError_" + pair);
+                if (input) input.setAttribute("aria-invalid", String(!!errors[pair]));
+                if (errorEl) { errorEl.textContent = errors[pair] || ""; errorEl.hidden = !errors[pair]; }
+            }
+            const planned = document.getElementById("wwCcLlPlannedNames");
+            if (planned) planned.textContent = wwCcLlPlannedNamesText();
+        }
+
+        // Shows the three name fields only for Line-to-Line "All Three"
+        // (the single Output Name field is hidden then). Rebuilt only on
+        // bay/output/operation changes, never while typing.
+        function wwCcLlSyncNameFields(show) {
+            const container = document.getElementById("wwCcLlNamesFields");
+            if (!container) return;
+            container.hidden = !show;
+            if (!show) { container.innerHTML = ""; return; }
+            wwCcLlEnsureDefaultNames(wwCcLlSelectedContext());
+            let html = '<span>Output Names</span>';
+            for (const pair of WW_CC_LL_PAIR_ORDER) {
+                html += '<div class="ww-cc-ll-name-row">' +
+                    '<label class="ww-cc-ll-name-pair" for="wwCcLlName_' + pair + '">V<sub>' + pair + '</sub></label>' +
+                    '<input type="text" id="wwCcLlName_' + pair + '" data-ll-pair="' + pair + '" maxlength="120" autocomplete="off"' +
+                    ' aria-describedby="wwCcLlNameError_' + pair + '" value="' + escapeHtml(wwCcBuilder.llNames[pair]) + '">' +
+                    '<p class="hint error ww-cc-ll-name-error" id="wwCcLlNameError_' + pair + '" hidden></p>' +
+                    '</div>';
+            }
+            container.innerHTML = html;
+            wwCcLlRenderNameErrors();
         }
 
         function wwCcLlExpressionPreview() {
@@ -30908,13 +30992,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 errors.push((output && output.reason) || "This output is not available for the selected bay.");
                 return;
             }
-            const existing = new Set(Array.from(ww.calculatedChannels.values()).map((c) => c.name));
-            const names = wwCcBuilder.llOutput === "all_three"
-                ? WW_CC_LL_PAIR_ORDER.map((p) => wwCcLlDefaultName(ctx, p))
-                : [wwCcBuilder.name.trim()];
-            if (names.some((n) => !n)) errors.push("Enter a signal name.");
-            const clash = names.find((n) => existing.has(n));
-            if (clash) errors.push("A calculated channel named \"" + clash + "\" already exists.");
+            if (wwCcBuilder.llOutput === "all_three") {
+                wwCcLlEnsureDefaultNames(ctx);
+                const nameErrors = wwCcLlNameErrors();
+                const first = WW_CC_LL_PAIR_ORDER.find((pair) => nameErrors[pair]);
+                if (first) errors.push("V" + first + ": " + nameErrors[first]);
+                return;
+            }
+            const name = wwCcBuilder.name.trim();
+            if (!name) errors.push("Enter a signal name.");
+            else if (Array.from(ww.calculatedChannels.values()).some((c) => c.name === name)) {
+                errors.push("A calculated channel named \"" + name + "\" already exists.");
+            }
         }
 
         async function wwCcCreateLineToLine() {
@@ -30926,7 +31015,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 output: wwCcBuilder.llOutput,
                 null_policy: wwCcBuilder.nullPolicy,
             };
-            if (wwCcBuilder.llOutput !== "all_three") {
+            if (wwCcBuilder.llOutput === "all_three") {
+                requestBody.names = Object.fromEntries(WW_CC_LL_PAIR_ORDER.map((p) => [p, wwCcBuilder.llNames[p].trim()]));
+            } else {
                 requestBody.names = { [wwCcBuilder.llOutput]: wwCcBuilder.name.trim() };
             }
             if (wwCcBuilder.nullPolicy === "estimate_missing_data") {
@@ -31499,7 +31590,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!nameInput || !unitInput) return;
             const isLineToLine = wwCcBuilder.operation === "line_to_line_voltage";
             const nameField = nameInput.closest("label");
-            if (nameField) nameField.hidden = isLineToLine && wwCcBuilder.llOutput === "all_three";
+            const isAllThree = isLineToLine && wwCcBuilder.llOutput === "all_three";
+            if (nameField) nameField.hidden = isAllThree;
+            wwCcLlSyncNameFields(isAllThree);
             if (!wwCcBuilder.nameEditedByUser) {
                 wwCcBuilder.name = wwCcComputeSuggestedName();
                 nameInput.value = wwCcBuilder.name;
@@ -31540,6 +31633,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwCcResetRmsEligibility();
             wwCcBuilder.llContextId = "";
             wwCcBuilder.llOutput = "all_three";
+            wwCcBuilder.llNames = { AB: "", BC: "", CA: "" };
+            wwCcBuilder.llNamesEditedByUser = false;
             document.getElementById("wwCcBuilderPanel").hidden = false;
             if (operation === "line_to_line_voltage") wwCcFetchLineToLineReadiness();
             wwCcRenderOperationCards();
@@ -32628,6 +32723,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     wwCcBuilder.llOutput = event.target.value;
                 }
                 wwCcBuilder.nameEditedByUser = false;
+                wwCcBuilder.llNamesEditedByUser = false;
                 wwCcRenderBuilderFields();
                 wwCcRenderExpressionPreview();
                 wwCcSyncNameAndUnitFields();
@@ -32662,6 +32758,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwCcNameInput").addEventListener("input", (event) => {
             wwCcBuilder.nameEditedByUser = true;
             wwCcBuilder.name = event.target.value;
+            wwCcSyncCreateButtonState();
+        });
+
+        document.getElementById("wwCcLlNamesFields").addEventListener("input", (event) => {
+            const pair = event.target.dataset.llPair;
+            if (!pair) return;
+            wwCcBuilder.llNames[pair] = event.target.value;
+            wwCcBuilder.llNamesEditedByUser = true;
+            wwCcLlRenderNameErrors();
             wwCcSyncCreateButtonState();
         });
 
