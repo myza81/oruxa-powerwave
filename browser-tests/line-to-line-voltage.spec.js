@@ -115,6 +115,8 @@ test.describe("Line-to-Line Voltage", () => {
     const result = page.locator("#wwCcLlResult");
     await expect(result).toBeVisible();
     await expect(result.locator(".ww-cc-ll-result-list li")).toHaveText(["KPDN1 VAB", "KPDN1 VBC", "KPDN1 VCA"]);
+    // Display-only electrical notation: V<sub>AB</sub> etc. (names unchanged).
+    await expect(result.locator(".ww-cc-ll-result-list li sub")).toHaveText(["AB", "BC", "CA"]);
     // ...yet three ordinary, individually listed calculated channels.
     await expect(page.locator(".ww-cc-list-row")).toHaveCount(3);
     await expect(page.locator(".ww-cc-list-row-name")).toHaveText(["KPDN1 VAB", "KPDN1 VBC", "KPDN1 VCA"]);

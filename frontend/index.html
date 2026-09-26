@@ -2942,9 +2942,16 @@
         }
         .ww-cc-ll-result[hidden] { display: none; }
         .ww-cc-ll-result-main { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
-        .ww-cc-ll-result-title { font-weight: 600; }
+        /* Compact confirmation typography (owner UAT, 2026-09-26). */
+        .ww-cc-ll-result-title { font-size: 0.75rem; font-weight: 600; line-height: 1.3; }
         .ww-cc-ll-result-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
-        .ww-cc-ll-result-list li { display: inline-flex; align-items: center; gap: 6px; }
+        /* No flex `gap` on the item: it would also separate "V" from its
+           <sub> (text and sub are sibling flex items). The dot carries the
+           6px spacing instead. */
+        .ww-cc-ll-result-list li { display: inline-flex; align-items: center; font-size: 0.70rem; font-weight: 500; line-height: 1.3; }
+        .ww-cc-ll-result-list li .channel-color-dot { margin-right: 6px; }
+        /* Pair subscript (V<sub>AB</sub>) that never enlarges the line box. */
+        .ww-cc-ll-result-list li sub { font-size: 0.65em; line-height: 0; vertical-align: baseline; position: relative; top: 0.25em; }
         .ww-cc-ll-result-actions { display: flex; gap: 8px; }
         .ww-cc-rms-label { font-size: 0.75rem; }
         .ww-cc-field input {
@@ -30983,6 +30990,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 .sort((a, b) => WW_CC_LL_PAIR_ORDER.indexOf(a.phase_member) - WW_CC_LL_PAIR_ORDER.indexOf(b.phase_member));
         }
 
+        // Display-only electrical notation: a name ending in its own pair
+        // token ("KPDN2 VAB") renders as "KPDN2 V<sub>AB</sub>". The
+        // channel's name, id and phase_member are never changed, and a
+        // custom name without that token renders verbatim.
+        function wwCcLlNameHtml(calc) {
+            const token = calc.phase_member ? "V" + calc.phase_member : null;
+            if (!token || !calc.name.endsWith(token)) return escapeHtml(calc.name);
+            return escapeHtml(calc.name.slice(0, -token.length)) + "V<sub>" + escapeHtml(calc.phase_member) + "</sub>";
+        }
+
         function wwCcRenderLineToLineResult() {
             const el = document.getElementById("wwCcLlResult");
             if (!el) return;
@@ -30999,7 +31016,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             for (const c of channels) {
                 html += '<li data-ll-result-channel="' + escapeHtml(c.phase_member || "") + '">' +
                     '<span class="channel-color-dot" style="background:' + escapeHtml(wwColorForChannel(c.id, c.name)) + '" aria-hidden="true"></span>' +
-                    escapeHtml(c.name) + '</li>';
+                    wwCcLlNameHtml(c) + '</li>';
             }
             html += '</ul></div><div class="ww-cc-ll-result-actions">' +
                 '<button type="button" id="wwCcLlPlotAllBtn" data-action="ll-plot-all"' + (allVisible ? " disabled" : "") + '>' +
