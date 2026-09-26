@@ -39,7 +39,7 @@ async function createAndWait(page) {
   await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
 }
 
-// KPDN1 line-to-line: "AB" (single VAB) or "all_three".
+// KPDN1 line-to-line: "AB" (single VRY -- canonical AB in this R/Y/B bay, DEC-118) or "all_three".
 async function createKpdn1LineToLine(page, output) {
   await openBuilder(page);
   await page.locator('.ww-cc-operation-card[data-operation="line_to_line_voltage"]').click();
@@ -96,14 +96,14 @@ test.describe("Calculated Channels Preview -- Visible drives traces, Selected dr
   test("owner UAT: VAB + RMS(VAB) both visible, RMS selected -> both plotted, distinct colors", async ({ page }) => {
     await uploadFixture(page);
     await createKpdn1LineToLine(page, "AB");
-    await createUnary(page, "rms", "KPDN1 VAB");
-    await expect(page.locator(".ww-cc-list-row-name")).toHaveText(["KPDN1 VAB", "RMS(KPDN1 VAB)"]);
+    await createUnary(page, "rms", "KPDN1 VRY");
+    await expect(page.locator(".ww-cc-list-row-name")).toHaveText(["KPDN1 VRY", "RMS(KPDN1 VRY)"]);
 
-    await setVisible(page, "KPDN1 VAB", true);
-    await setVisible(page, "RMS(KPDN1 VAB)", true);
-    await selectRow(page, "RMS(KPDN1 VAB)");
+    await setVisible(page, "KPDN1 VRY", true);
+    await setVisible(page, "RMS(KPDN1 VRY)", true);
+    await selectRow(page, "RMS(KPDN1 VRY)");
 
-    await expectPreviewNames(page, ["KPDN1 VAB (kV)", "RMS(KPDN1 VAB) (kV)"]);
+    await expectPreviewNames(page, ["KPDN1 VRY (kV)", "RMS(KPDN1 VRY) (kV)"]);
     const traces = await previewTraces(page);
     // Instantaneous and RMS of the same kV quantity share ONE Voltage panel.
     expect(new Set(traces.map((t) => t.panel))).toEqual(new Set(["Calculated - Voltage"]));
@@ -113,14 +113,14 @@ test.describe("Calculated Channels Preview -- Visible drives traces, Selected dr
 
     // Status names the selection without implying it is the only trace;
     // the info strip describes the selected channel.
-    await expect(page.locator("#wwCcPreviewStatus")).toHaveText("Selected: RMS(KPDN1 VAB)2 visible");
-    await expect(page.locator("#wwCcPreviewInfoStrip")).toContainText("RMS(KPDN1 VAB, 50 Hz, 1 cycle)");
+    await expect(page.locator("#wwCcPreviewStatus")).toHaveText("Selected: RMS(KPDN1 VRY)2 visible");
+    await expect(page.locator("#wwCcPreviewInfoStrip")).toContainText("RMS(KPDN1 VRY, 50 Hz, 1 cycle)");
   });
 
   test("0 / 1 / 2 visible, selection changes never change the trace set, hide all -> empty state", async ({ page }) => {
     await uploadFixture(page);
     await createKpdn1LineToLine(page, "AB");
-    await createUnary(page, "rms", "KPDN1 VAB");
+    await createUnary(page, "rms", "KPDN1 VRY");
 
     // New channels are hidden by default (DEC-038): nothing plotted.
     await expectPreviewNames(page, []);
@@ -128,45 +128,45 @@ test.describe("Calculated Channels Preview -- Visible drives traces, Selected dr
     await expect(page.locator("#wwCcPreviewEmpty")).toHaveText(/No calculated channels are visible/);
     await expect(page.locator("#wwCcPreviewPanels")).toBeHidden();
 
-    await setVisible(page, "KPDN1 VAB", true);
-    await expectPreviewNames(page, ["KPDN1 VAB (kV)"]);
-    await setVisible(page, "RMS(KPDN1 VAB)", true);
-    await expectPreviewNames(page, ["KPDN1 VAB (kV)", "RMS(KPDN1 VAB) (kV)"]);
+    await setVisible(page, "KPDN1 VRY", true);
+    await expectPreviewNames(page, ["KPDN1 VRY (kV)"]);
+    await setVisible(page, "RMS(KPDN1 VRY)", true);
+    await expectPreviewNames(page, ["KPDN1 VRY (kV)", "RMS(KPDN1 VRY) (kV)"]);
 
-    await selectRow(page, "KPDN1 VAB");
-    await expectPreviewNames(page, ["KPDN1 VAB (kV)", "RMS(KPDN1 VAB) (kV)"]);
-    await expect(page.locator("#wwCcPreviewStatus")).toHaveText("Selected: KPDN1 VAB2 visible");
-    await selectRow(page, "RMS(KPDN1 VAB)");
-    await expectPreviewNames(page, ["KPDN1 VAB (kV)", "RMS(KPDN1 VAB) (kV)"]);
+    await selectRow(page, "KPDN1 VRY");
+    await expectPreviewNames(page, ["KPDN1 VRY (kV)", "RMS(KPDN1 VRY) (kV)"]);
+    await expect(page.locator("#wwCcPreviewStatus")).toHaveText("Selected: KPDN1 VRY2 visible");
+    await selectRow(page, "RMS(KPDN1 VRY)");
+    await expectPreviewNames(page, ["KPDN1 VRY (kV)", "RMS(KPDN1 VRY) (kV)"]);
 
-    await setVisible(page, "KPDN1 VAB", false);
-    await expectPreviewNames(page, ["RMS(KPDN1 VAB) (kV)"]);
-    await setVisible(page, "KPDN1 VAB", true);
-    await expectPreviewNames(page, ["KPDN1 VAB (kV)", "RMS(KPDN1 VAB) (kV)"]);
+    await setVisible(page, "KPDN1 VRY", false);
+    await expectPreviewNames(page, ["RMS(KPDN1 VRY) (kV)"]);
+    await setVisible(page, "KPDN1 VRY", true);
+    await expectPreviewNames(page, ["KPDN1 VRY (kV)", "RMS(KPDN1 VRY) (kV)"]);
 
     // A hidden SELECTED row stays selected and described, but is not plotted.
-    await setVisible(page, "RMS(KPDN1 VAB)", false);
-    await expectPreviewNames(page, ["KPDN1 VAB (kV)"]);
-    await expect(page.locator("#wwCcPreviewStatus")).toHaveText("Selected: RMS(KPDN1 VAB) (hidden)1 visible");
+    await setVisible(page, "RMS(KPDN1 VRY)", false);
+    await expectPreviewNames(page, ["KPDN1 VRY (kV)"]);
+    await expect(page.locator("#wwCcPreviewStatus")).toHaveText("Selected: RMS(KPDN1 VRY) (hidden)1 visible");
 
-    await setVisible(page, "KPDN1 VAB", false);
+    await setVisible(page, "KPDN1 VRY", false);
     await expectPreviewNames(page, []);
     await expect(page.locator("#wwCcPreviewPanels")).toBeHidden();
     await expect(page.locator("#wwCcPreviewEmpty")).toBeVisible();
-    await expect(page.locator("#wwCcPreviewStatus")).toHaveText("Selected: RMS(KPDN1 VAB) (hidden)0 visible");
+    await expect(page.locator("#wwCcPreviewStatus")).toHaveText("Selected: RMS(KPDN1 VRY) (hidden)0 visible");
   });
 
   test("Plot All -> exactly VAB/VBC/VCA in Preview; + RMS(VAB) -> four distinct colors", async ({ page }) => {
     await uploadFixture(page);
     await createKpdn1LineToLine(page, "all_three");
     await page.locator("#wwCcLlPlotAllBtn").click();
-    await expectPreviewNames(page, ["KPDN1 VAB (kV)", "KPDN1 VBC (kV)", "KPDN1 VCA (kV)"]);
+    await expectPreviewNames(page, ["KPDN1 VRY (kV)", "KPDN1 VYB (kV)", "KPDN1 VBR (kV)"]);
     const three = await previewTraces(page);
     expect(new Set(three.map((t) => t.color)).size).toBe(3);
 
-    await createUnary(page, "rms", "KPDN1 VAB");
-    await setVisible(page, "RMS(KPDN1 VAB)", true);
-    await expectPreviewNames(page, ["KPDN1 VAB (kV)", "KPDN1 VBC (kV)", "KPDN1 VCA (kV)", "RMS(KPDN1 VAB) (kV)"]);
+    await createUnary(page, "rms", "KPDN1 VRY");
+    await setVisible(page, "RMS(KPDN1 VRY)", true);
+    await expectPreviewNames(page, ["KPDN1 VRY (kV)", "KPDN1 VYB (kV)", "KPDN1 VBR (kV)", "RMS(KPDN1 VRY) (kV)"]);
     const four = await previewTraces(page);
     expect(new Set(four.map((t) => t.color)).size).toBe(4);
     // DEC-115 pair colors unchanged by adding the RMS trace.
@@ -175,28 +175,28 @@ test.describe("Calculated Channels Preview -- Visible drives traces, Selected dr
     await page.locator("#mainNavWaveformBtn").click();
     const waveformColors = await page.evaluate(() => Object.fromEntries(ww.panels.flatMap((p) =>
       ((p.chartEl && p.chartEl.data) || []).map((t) => [(t.name || "").replace(/<[^>]+>/g, ""), t.line && t.line.color]))));
-    expect(waveformColors["KPDN1 VAB"]).toBe(four.find((t) => t.name === "KPDN1 VAB (kV)").color);
-    expect(waveformColors["RMS(KPDN1 VAB)"]).toBe(four.find((t) => t.name === "RMS(KPDN1 VAB) (kV)").color);
+    expect(waveformColors["KPDN1 VRY"]).toBe(four.find((t) => t.name === "KPDN1 VRY (kV)").color);
+    expect(waveformColors["RMS(KPDN1 VRY)"]).toBe(four.find((t) => t.name === "RMS(KPDN1 VRY) (kV)").color);
   });
 
   test("different engineering types render in separate panels", async ({ page }) => {
     await uploadFixture(page);
     await createKpdn1LineToLine(page, "AB");
     await createUnary(page, "reverse_polarity", "LLMULTIBAY — KPDN1_IR");
-    await setVisible(page, "KPDN1 VAB", true);
+    await setVisible(page, "KPDN1 VRY", true);
     await setVisible(page, "-KPDN1_IR", true);
-    await expectPreviewNames(page, ["KPDN1 VAB (kV)", "-KPDN1_IR (kA)"]);
+    await expectPreviewNames(page, ["KPDN1 VRY (kV)", "-KPDN1_IR (kA)"]);
     const panels = (await previewTraces(page)).reduce((m, t) => ({ ...m, [t.name]: t.panel }), {});
-    expect(panels).toEqual({ "KPDN1 VAB (kV)": "Calculated - Voltage", "-KPDN1_IR (kA)": "Calculated - Current" });
+    expect(panels).toEqual({ "KPDN1 VRY (kV)": "Calculated - Voltage", "-KPDN1_IR (kA)": "Calculated - Current" });
   });
 
   test("colors and zoom stay stable through selection, hide/show, revisit and reload", async ({ page }) => {
     await uploadFixture(page);
     await createKpdn1LineToLine(page, "AB");
-    await createUnary(page, "rms", "KPDN1 VAB");
-    await setVisible(page, "KPDN1 VAB", true);
-    await setVisible(page, "RMS(KPDN1 VAB)", true);
-    await expectPreviewNames(page, ["KPDN1 VAB (kV)", "RMS(KPDN1 VAB) (kV)"]);
+    await createUnary(page, "rms", "KPDN1 VRY");
+    await setVisible(page, "KPDN1 VRY", true);
+    await setVisible(page, "RMS(KPDN1 VRY)", true);
+    await expectPreviewNames(page, ["KPDN1 VRY (kV)", "RMS(KPDN1 VRY) (kV)"]);
     const colorsOf = async () => Object.fromEntries((await previewTraces(page)).map((t) => [t.name, t.color]));
     const colors = await colorsOf();
 
@@ -204,11 +204,11 @@ test.describe("Calculated Channels Preview -- Visible drives traces, Selected dr
     // survives (constant uirevision) and colors never move.
     await page.evaluate(() => Plotly.relayout(document.querySelector("#wwCcPreviewPanels .ww-cc-preview-chart"), { "xaxis.range": [0.4, 0.6] }));
     const xRange = () => page.evaluate(() => document.querySelector("#wwCcPreviewPanels .ww-cc-preview-chart").layout.xaxis.range.map((v) => Math.round(v * 1000) / 1000));
-    await selectRow(page, "KPDN1 VAB");
-    await setVisible(page, "RMS(KPDN1 VAB)", false);
-    await expectPreviewNames(page, ["KPDN1 VAB (kV)"]);
-    await setVisible(page, "RMS(KPDN1 VAB)", true);
-    await expectPreviewNames(page, ["KPDN1 VAB (kV)", "RMS(KPDN1 VAB) (kV)"]);
+    await selectRow(page, "KPDN1 VRY");
+    await setVisible(page, "RMS(KPDN1 VRY)", false);
+    await expectPreviewNames(page, ["KPDN1 VRY (kV)"]);
+    await setVisible(page, "RMS(KPDN1 VRY)", true);
+    await expectPreviewNames(page, ["KPDN1 VRY (kV)", "RMS(KPDN1 VRY) (kV)"]);
     expect(await xRange()).toEqual([0.4, 0.6]);
     expect(await colorsOf()).toEqual(colors);
 
@@ -216,7 +216,7 @@ test.describe("Calculated Channels Preview -- Visible drives traces, Selected dr
     await page.evaluate(() => Plotly.relayout(document.querySelector("#wwCcPreviewPanels .ww-cc-preview-chart"), { "xaxis.autorange": true, "yaxis.autorange": true }));
     await page.locator("#mainNavWaveformBtn").click();
     await page.locator("#mainNavCalculatedChannelsBtn").click();
-    await expectPreviewNames(page, ["KPDN1 VAB (kV)", "RMS(KPDN1 VAB) (kV)"]);
+    await expectPreviewNames(page, ["KPDN1 VRY (kV)", "RMS(KPDN1 VRY) (kV)"]);
     expect(await colorsOf()).toEqual(colors);
 
     // Full reload: same workspace, channels re-fetched; visibility is
@@ -224,9 +224,9 @@ test.describe("Calculated Channels Preview -- Visible drives traces, Selected dr
     await page.reload();
     await page.locator("#mainNavCalculatedChannelsBtn").click();
     await expect(page.locator(".ww-cc-list-row")).toHaveCount(2);
-    await setVisible(page, "RMS(KPDN1 VAB)", true);
-    await setVisible(page, "KPDN1 VAB", true);
-    await expectPreviewNames(page, ["KPDN1 VAB (kV)", "RMS(KPDN1 VAB) (kV)"]);
+    await setVisible(page, "RMS(KPDN1 VRY)", true);
+    await setVisible(page, "KPDN1 VRY", true);
+    await expectPreviewNames(page, ["KPDN1 VRY (kV)", "RMS(KPDN1 VRY) (kV)"]);
     expect(await colorsOf()).toEqual(colors);
   });
 });

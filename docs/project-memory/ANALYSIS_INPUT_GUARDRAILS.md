@@ -117,6 +117,96 @@ anything automatic — the sole write path that IS allowed to set that
 tier is the explicit per-member phase-correction service function
 (`update_member_phase()`), never automatic re-detection.
 
+### Phase display convention (DEC-118)
+
+> **Standing rule.** Context-specific engineering notation inherits the
+> phase display convention of its authoritative Measurement Group /
+> Engineering Context. Canonical A/B/C identities remain internal.
+> Generic UI wording remains fixed.
+
+Canonical `A/B/C` (`AB/BC/CA`, role keys `Va/Vb/Vc`, `phase_member`,
+AssessmentDefinition `member`) stay the only identities used for
+calculation, resolution and API values. A context additionally reports
+how **its own measurement** spells them:
+
+| Convention | A | B | C | AB | BC | CA |
+|---|---|---|---|---|---|---|
+| `ABC` | A | B | C | AB | BC | CA |
+| `RYB` | R | Y | B | RY | YB | BR |
+
+So an R/Y/B bay shows V<sub>R</sub>, V<sub>RY</sub> = V<sub>R</sub> −
+V<sub>Y</sub>, and default L-L names `KPDN1 VRY/VYB/VBR`; an A/B/C bay in
+the same workspace keeps V<sub>A</sub>, V<sub>AB</sub>, `MCRS VAB`. There
+is no workspace-global convention.
+
+**One authority, derived — never stored, never re-detected per page.**
+`phase_identity.resolve_phase_display_convention()` takes a grouped
+measurement's resolved members as `(canonical phase, original_phase_label)`
+pairs, which detection or an engineer already produced. It returns a
+`PhaseDisplayConvention` (`convention`, `status`, a complete `symbols`
+map, `reason`). It is exposed as:
+
+- `EngineeringContextOut.phase_display`, via
+  `engineering_context.context_phase_display()`. It is computed on every
+  read, so an engineer's phase correction applies at once and can never
+  go stale;
+- `LineToLineContextReadinessOut.phase_display` (Calculated Channels);
+- `ComplianceVoltageMeasurementOut.phase_display`. This comes from the
+  selected Measurement Group's own detected members, in the same pass
+  that resolves its roles (`compliance_measurement_service`).
+
+The frontend asks only these objects, through the shared formatter:
+`wwNormalizePhaseDisplay()`, `wwEngineeringContextPhaseDisplay(contextId)`
+(the one shared Analysis context list) and an optional trailing
+`phaseDisplay` argument on every context-specific helper
+(`wwRoleLabel*`, `wwPhaseVoltage*`, `wwLineToLinePair*`,
+`wwLineToLineFormula*`, `wwLineToLineDefaultName`). No page has its own
+detector.
+
+**Established only when all of these hold (otherwise: no guess):**
+
+1. at least one member resolved to A/B/C/AB/BC/CA (N/unknown carry no
+   evidence);
+2. every such member still has the source label it was resolved from;
+3. the labels contain convention-exclusive evidence, judged by
+   `infer_phase_convention()`. "R"/"Y" is R/Y/B-only and "A"/"C" is
+   A/B/C-only. **A lone "B" is never evidence**: it is A/B/C phase B or
+   R/Y/B phase C;
+4. that convention explains **every** member's `(phase, label)` pair.
+
+A convention is a closed naming system. Once it is proven, the whole map
+follows from it, so a bay recording only VR and VY still spells phase C
+"B". `L1/L2/L3` is recognized for normalization, but its display
+notation (especially line-to-line) is `[OPEN]` for the owner, so an L123
+context falls back.
+
+**Safe fallback — `status = canonical_fallback`.** `convention = null`,
+`symbols` = canonical A/B/C, and `reason` explains why. This is exactly
+the pre-DEC-118 display. It applies to: a lone `VB` bay; conflicting
+evidence (an engineer-built context spanning an R/Y/B and an A/B/C
+file); a manually assigned phase without a source label; and L123.
+Mixed-convention semantic operations therefore never silently pick one
+convention. Generic Addition/Subtraction have no phase semantics at all
+and are unchanged.
+
+**What follows the convention, and what does not:**
+
+| Text | Treatment |
+|---|---|
+| Context-specific semantic symbol (resolved role, L-L pair, formula, generated default L-L name, Related Waveforms trace name, Compliance resolved measurement, backend readiness/measurement prose) | Context convention |
+| Generic UI wording ("Phase A Voltage", "Line-to-Line Voltage", Impedance "Phase A" / Distance "Fault loop AB" selectors, Reference Profile members, Manual Input rows) | Fixed canonical |
+| Sequence symbols (V<sub>1</sub>/V<sub>2</sub>/V<sub>0</sub>, I<sub>1</sub>/I<sub>2</sub>/I<sub>0</sub>) | Convention-independent |
+| Source/channel names (`KPDN1_VR`, `MCRS VB`), custom/editable names | Verbatim |
+| Canonical values (`Va`, `phase_member`, `member`, output ids, `data-*`, trace `meta`) and the per-channel Phase classification column | Unchanged |
+| Phase currents `Ia/Ib/Ic` | Unchanged; they stay out of DEC-117 scope |
+
+**Calculated L-L channels** snapshot the convention they were named with
+in `parameters.phase_display`. That keeps their system-default name and
+formula recognizable, and keeps channel identity independent of later
+phase corrections. A channel created before DEC-118 has no snapshot, so
+its canonical `KPDN1 VAB` name is still recognized. Existing channels
+and custom names are never renamed.
+
 ### Automatic detection (`app.domain.engineering_context_detection`)
 
 Deterministic, name-suffix-based clustering — the same deliberate

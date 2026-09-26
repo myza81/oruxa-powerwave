@@ -236,9 +236,11 @@ class TestSinglePhaseLimitationWithinGroup:
 
         positive_sequence = _evaluate(registries, group_id=group.id, quantity_id=QUANTITY_POSITIVE_SEQUENCE_RMS)
         assert positive_sequence.status == STATUS_MISSING_INPUTS
-        assert positive_sequence.missing == ("B", "C")
-        assert "requires Va, Vb, Vc" in positive_sequence.message
-        assert "Missing: Vb, Vc" in positive_sequence.message
+        assert positive_sequence.missing == ("B", "C")  # canonical, unchanged
+        # DEC-118: prose spells roles in the group's own convention, using the
+        # DEC-117 plain fallback (VA, never Va or an underscore form).
+        assert "requires VA, VB, VC" in positive_sequence.message
+        assert "Missing: VB, VC" in positive_sequence.message
 
 
 class TestCompleteThreePhaseWithinGroup:

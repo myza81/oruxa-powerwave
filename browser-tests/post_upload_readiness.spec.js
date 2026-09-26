@@ -63,7 +63,7 @@ test.describe("DEC-104: shared post-upload workspace preparation", () => {
     await page.locator("#wwComplianceGroupSelect").selectOption({ label: "KPDN1 VOLTAGE" });
     await page.locator("#wwComplianceMeasurementSelect").selectOption({ label: "Phase A Voltage" });
     await expect(page.locator("#wwComplianceMeasurementStatusRow")).toHaveText("Compatible");
-    await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("Va");
+    await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("VR — KPDN1_VR"); // DEC-118: R/Y/B group
   });
 
   test("upload -> directly to Analysis: Engineering Context is ready with no prior bootstrap dependency", async ({ page }) => {
@@ -97,7 +97,7 @@ test.describe("DEC-104: shared post-upload workspace preparation", () => {
     await expect(page.locator("#wwPhasorEmptyState")).toBeHidden();
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
-      expect(text).toMatch(/VA/); // DEC-117: V<sub>A</sub>
+      expect(text).toMatch(/VR/); // DEC-117/118: V<sub>R</sub> -- every bay in this fixture is R/Y/B
     }).toPass({ timeout: 5000 });
   });
 

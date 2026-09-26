@@ -8,6 +8,7 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from app.schemas.calculated_channel import ChannelRefOut
+from app.schemas.phase_display import PhaseDisplayOut
 
 
 class ComplianceVoltageQuantityOut(BaseModel):
@@ -27,6 +28,10 @@ class ComplianceMeasurementGroupOut(BaseModel):
 
 
 class ComplianceResolvedRoleOut(BaseModel):
+    """`role` is canonical (A/B/C/AB/BC/CA) and `display_name` its stable
+    canonical API label ("Va"). DEC-118: the UI spells the role through the
+    response's `phase_display`, never from `display_name`."""
+
     role: str
     display_name: str
     channel_ref: ChannelRefOut
@@ -53,3 +58,4 @@ class ComplianceVoltageMeasurementOut(BaseModel):
     assessment_unit: str = "engineering_unit"
     missing: list[str] = []
     message: str | None = None
+    phase_display: PhaseDisplayOut

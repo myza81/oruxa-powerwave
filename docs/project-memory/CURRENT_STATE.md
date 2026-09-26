@@ -9,7 +9,27 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-26**. **Playback Cursor visual
+Last meaningful update: **2026-09-26**. **DEC-118: context-specific
+phase display convention.** Context-specific engineering notation
+follows the phase convention of its own Measurement Group / Engineering
+Context. An R/Y/B bay shows V<sub>R</sub>, V<sub>RY</sub> =
+V<sub>R</sub> − V<sub>Y</sub> and new default names `KPDN1 VRY`. An
+A/B/C bay in the same workspace keeps V<sub>A</sub>/`MCRS VAB`.
+
+- **One authority.** `phase_identity.resolve_phase_display_convention()`
+  derives the convention on read from resolved phases plus source labels.
+  It is exposed as `phase_display` on Engineering Contexts, L-L readiness
+  and Compliance measurement.
+- **No guessing.** A lone `VB`, mixed/unlabelled phases, and L1/L2/L3
+  (display `[OPEN]`) use the canonical A/B/C fallback.
+- **Unchanged:** canonical values (`Va`, `phase_member`, `member`), the
+  arithmetic, generic wording, sequence symbols, source/custom names and
+  existing channels.
+- **Applied to:** Calculated Channels L-L, Phasor, Related Waveforms and
+  the Compliance resolved measurement.
+
+Standing rule: AGENTS.md rule 9. Awaiting owner UAT.
+Earlier the same day, **Playback Cursor visual
 ownership (DEC-085 update)**: Waveform no longer renders the green
 Playback Cursor. It had appeared after visiting an Analysis page first,
 because an analyzer's claim of the shared clock re-armed the Waveform

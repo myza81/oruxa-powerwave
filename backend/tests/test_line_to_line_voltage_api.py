@@ -6,8 +6,14 @@ Fixture: line_to_line_multibay(.cfg/.dat) -- 50 Hz, 1 kHz, 2 s, kV/kA:
 - KPDN1_VR/VY/VB (+ IR/IY/IB): instantaneous phase-to-ground voltages
   with an unbalanced disturbance from 0.5 s (R sags to 30 %, Y shifts
   +15 deg) -> ready for All Three.
-- KPDN2_VR/VY only -> VAB available, VBC/VCA/All Three unavailable.
+- KPDN2_VR/VY only -> VRY (canonical AB) available, VYB/VBR/All Three
+  unavailable.
 - MCRS_VR/VY/VB: RMS-magnitude envelopes -> unsupported representation.
+
+Every bay here uses R/Y/B names, so DEC-118 makes every user-facing symbol
+(default names, messages) follow R/Y/B while `phase_member`, role keys and
+output keys stay canonical A/B/C. The mixed R/Y/B + A/B/C workspace is
+covered by test_phase_display_convention.py.
 
 Uploaded via the real endpoint so DEC-104's own upload-time preparation
 creates the KPDN1/KPDN2/MCRS Engineering Contexts -- nothing seeded by
@@ -98,9 +104,10 @@ class TestReadiness:
         assert outputs["BC"]["available"] is False
         assert outputs["CA"]["available"] is False
         assert outputs["all_three"]["available"] is False
-        assert "Vc missing" in outputs["BC"]["reason"]
+        # DEC-118: canonical C of an R/Y/B bay is spelled "B".
+        assert "VB missing" in outputs["BC"]["reason"]
         summary = _readiness(client, ws["id"])["KPDN2"]["summary"]
-        assert "VAB" in summary and "Vc missing" in summary
+        assert "VRY" in summary and "VB missing" in summary
 
     def test_rms_magnitude_only_is_rejected_with_actionable_reason(self, client, ws):
         mcrs = _readiness(client, ws["id"])["MCRS"]
@@ -127,15 +134,17 @@ class TestAllThreeCreation:
         assert resp.status_code == 201, resp.text
         body = resp.json()
         channels = body["channels"]
-        assert [c["name"] for c in channels] == ["KPDN1 VAB", "KPDN1 VBC", "KPDN1 VCA"]
+        # DEC-118: R/Y/B bay -> R/Y/B default names; phase_member stays canonical.
+        assert [c["name"] for c in channels] == ["KPDN1 VRY", "KPDN1 VYB", "KPDN1 VBR"]
+        assert [c["phase_member"] for c in channels] == ["AB", "BC", "CA"]
         assert len(_list(client, ws["id"])) == 3
         assert body["creation_batch_id"] and all(c["creation_batch_id"] == body["creation_batch_id"] for c in channels)
 
         va, vb, vc = (_source_values(client, ws["id"], ws["source_id"], n) for n in ("KPDN1_VR", "KPDN1_VY", "KPDN1_VB"))
         by_name = {c["name"]: c["id"] for c in channels}
-        np.testing.assert_array_equal(_calc_values(client, ws["id"], by_name["KPDN1 VAB"]), va - vb)
-        np.testing.assert_array_equal(_calc_values(client, ws["id"], by_name["KPDN1 VBC"]), vb - vc)
-        np.testing.assert_array_equal(_calc_values(client, ws["id"], by_name["KPDN1 VCA"]), vc - va)
+        np.testing.assert_array_equal(_calc_values(client, ws["id"], by_name["KPDN1 VRY"]), va - vb)
+        np.testing.assert_array_equal(_calc_values(client, ws["id"], by_name["KPDN1 VYB"]), vb - vc)
+        np.testing.assert_array_equal(_calc_values(client, ws["id"], by_name["KPDN1 VBR"]), vc - va)
 
     def test_output_engineering_metadata(self, client, ws):
         channels = _create(client, ws["id"], ws["contexts"]["KPDN1"]["id"], "all_three").json()["channels"]
@@ -149,6 +158,7 @@ class TestAllThreeCreation:
             assert channel["parameters"]["pair"] == pair
             assert channel["parameters"]["source_path"] == "instantaneous"
             assert channel["parameters"]["engineering_context_id"] == ws["contexts"]["KPDN1"]["id"]
+            assert channel["parameters"]["phase_display"]["convention"] == "RYB"
             assert channel["reference_source_id"] == ws["source_id"]
             assert len(channel["inputs"]) == 2
 
@@ -174,12 +184,12 @@ class TestAtomicity:
         assert _list(client, ws["id"]) == []
 
     def test_all_three_with_one_name_collision_creates_nothing(self, client, ws):
-        ok = _create(client, ws["id"], ws["contexts"]["KPDN2"]["id"], "AB", names={"AB": "KPDN1 VCA"})
+        ok = _create(client, ws["id"], ws["contexts"]["KPDN2"]["id"], "AB", names={"AB": "KPDN1 VBR"})
         assert ok.status_code == 201
         resp = _create(client, ws["id"], ws["contexts"]["KPDN1"]["id"], "all_three")
         assert resp.status_code == 400
         assert resp.json()["detail"]["code"] == "duplicate_calculated_channel_name"
-        assert [c["name"] for c in _list(client, ws["id"])] == ["KPDN1 VCA"]
+        assert [c["name"] for c in _list(client, ws["id"])] == ["KPDN1 VBR"]
 
     def test_duplicate_names_within_one_request_create_nothing(self, client, ws):
         resp = _create(
@@ -202,7 +212,8 @@ class TestSinglePair:
         body = resp.json()
         assert body["creation_batch_id"] is None
         (channel,) = body["channels"]
-        assert channel["name"] == "KPDN2 VAB"
+        assert channel["name"] == "KPDN2 VRY"
+        assert channel["phase_member"] == "AB"
         va, vb = (_source_values(client, ws["id"], ws["source_id"], n) for n in ("KPDN2_VR", "KPDN2_VY"))
         np.testing.assert_array_equal(_calc_values(client, ws["id"], channel["id"]), va - vb)
 
@@ -210,7 +221,7 @@ class TestSinglePair:
     def test_unavailable_pair_is_rejected(self, client, ws, output):
         resp = _create(client, ws["id"], ws["contexts"]["KPDN2"]["id"], output)
         assert resp.status_code == 400
-        assert "Vc missing" in resp.json()["detail"]["message"]
+        assert "VB missing" in resp.json()["detail"]["message"]
         assert _list(client, ws["id"]) == []
 
     def test_each_pair_individually(self, client, ws):
@@ -351,7 +362,7 @@ class TestDependencyBehaviour:
         channels = _create(client, ws["id"], ws["contexts"]["KPDN1"]["id"], "all_three").json()["channels"]
         resp = client.delete(f"/api/v1/workspaces/{ws['id']}/calculated-channels/{channels[0]['id']}")
         assert resp.status_code == 204
-        assert sorted(c["name"] for c in _list(client, ws["id"])) == ["KPDN1 VBC", "KPDN1 VCA"]
+        assert sorted(c["name"] for c in _list(client, ws["id"])) == ["KPDN1 VBR", "KPDN1 VYB"]
 
     def test_calculated_from_line_to_line_and_dependency_block(self, client, ws):
         vab = _create(client, ws["id"], ws["contexts"]["KPDN1"]["id"], "AB").json()["channels"][0]

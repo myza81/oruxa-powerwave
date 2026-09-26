@@ -18,6 +18,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.schemas.calculated_channel import ChannelRefIn, ChannelRefOut
+from app.schemas.phase_display import PhaseDisplayOut
 
 ContextStatus = Literal["suggested", "confirmed", "needs_review", "manual"]
 Phase = Literal["A", "B", "C", "N", "AB", "BC", "CA", "unknown", "not_applicable"]
@@ -45,6 +46,7 @@ class EngineeringContextOut(BaseModel):
     members: list[EngineeringContextMemberOut]
     status: ContextStatus
     created_at: datetime | None
+    phase_display: PhaseDisplayOut
 
 
 class EngineeringContextCreateRequest(BaseModel):

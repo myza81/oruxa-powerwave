@@ -24132,14 +24132,66 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // names ("Backup VAB Check"), editable fields and phase
         // classification (a "Phase" column showing A/B/C) stay verbatim.
         // ------------------------------------------------------------------
+        //
+        // DEC-118: context PHASE DISPLAY convention. Canonical A/B/C (and
+        // AB/BC/CA) stay the only identities; a Measurement Group /
+        // Engineering Context reports (backend `phase_display`) how ITS
+        // measurement spells them, e.g. an R/Y/B bay: A->R, B->Y, C->B,
+        // AB->RY, BC->YB, CA->BR. Every context-specific symbol takes that
+        // object as an optional last argument (`phaseDisplay`):
+        //   wwRoleLabelHtml("Va", pd)       V<sub>R</sub>
+        //   wwLineToLinePairHtml("AB", pd)  V<sub>RY</sub>
+        //   wwLineToLineFormulaText("AB", pd)  "VRY = VR − VY"
+        // Omitted/unknown -> canonical spelling (the pre-DEC-118 output).
+        // Generic UI wording ("Phase A Voltage", manual inputs, reference
+        // profile members) and sequence symbols (V1, I2) never take one.
+        // Never detect a convention here from channel names -- the backend
+        // derives it once from resolved phases (no guessing on a lone "B").
+        // ------------------------------------------------------------------
         const WW_VOLTAGE_PHASES = ["A", "B", "C"];
         const WW_LL_NOTATION_PAIRS = ["AB", "BC", "CA"];
         const WW_SEQUENCE_SUBSCRIPTS = ["1", "2", "0"];
         const WW_LL_NOTATION_OPERANDS = { AB: ["A", "B"], BC: ["B", "C"], CA: ["C", "A"] };
+        // Display spellings per convention with owner-approved notation --
+        // mirrors app.domain.phase_identity.PHASE_DISPLAY_SYMBOLS_BY_CONVENTION
+        // (parity-tested). A backend map is rendered only when every token
+        // is listed here, so the formatter never subscripts arbitrary text.
+        const WW_PHASE_DISPLAY_SYMBOLS_BY_CONVENTION = {
+            ABC: { A: "A", B: "B", C: "C", AB: "AB", BC: "BC", CA: "CA" },
+            RYB: { A: "R", B: "Y", C: "B", AB: "RY", BC: "YB", CA: "BR" },
+        };
+        const WW_PHASE_DISPLAY_SUBSCRIPTS = Array.from(new Set(
+            Object.values(WW_PHASE_DISPLAY_SYMBOLS_BY_CONVENTION).flatMap((symbols) => Object.values(symbols))
+        ));
+        const WW_CANONICAL_PHASE_DISPLAY = Object.freeze({
+            convention: null, status: "canonical_fallback",
+            symbols: Object.freeze({ ...WW_PHASE_DISPLAY_SYMBOLS_BY_CONVENTION.ABC }),
+        });
         const WW_ELECTRICAL_SUBSCRIPTS = {
-            V: [...WW_VOLTAGE_PHASES, ...WW_LL_NOTATION_PAIRS, ...WW_SEQUENCE_SUBSCRIPTS],
+            V: [...WW_VOLTAGE_PHASES, ...WW_LL_NOTATION_PAIRS, ...WW_SEQUENCE_SUBSCRIPTS, ...WW_PHASE_DISPLAY_SUBSCRIPTS],
             I: [...WW_SEQUENCE_SUBSCRIPTS],
         };
+
+        // Backend `phase_display` (or an object carrying one) -> a safe
+        // display object; anything missing/unrecognised -> canonical.
+        function wwNormalizePhaseDisplay(value) {
+            const pd = value && value.phase_display ? value.phase_display : value;
+            if (!pd || !pd.symbols) return WW_CANONICAL_PHASE_DISPLAY;
+            const members = [...WW_VOLTAGE_PHASES, ...WW_LL_NOTATION_PAIRS];
+            if (!members.every((m) => WW_PHASE_DISPLAY_SUBSCRIPTS.includes(pd.symbols[m]))) return WW_CANONICAL_PHASE_DISPLAY;
+            return pd;
+        }
+        // Canonical member ("A", "AB") -> its display token in this context.
+        function wwPhaseDisplaySymbol(member, phaseDisplay) {
+            if (!WW_VOLTAGE_PHASES.includes(member) && !WW_LL_NOTATION_PAIRS.includes(member)) return member;
+            return wwNormalizePhaseDisplay(phaseDisplay).symbols[member];
+        }
+        // The Analysis workspace's ONE shared Engineering Context list is the
+        // authority -- every analyzer asks here, never re-derives it.
+        function wwEngineeringContextPhaseDisplay(contextId) {
+            const context = (wwAnalysisContextState.contexts || []).find((c) => c.id === contextId);
+            return wwNormalizePhaseDisplay(context || null);
+        }
         // Analysis role keys -> [quantity, subscript]. Phase currents
         // (Ia/Ib/Ic) and impedance keys (Za, Zab) are deliberately absent
         // and pass through unchanged.
@@ -24192,77 +24244,113 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwVoltageSymbolPlotly(subscript) { return wwElectricalSymbolPlotly("V", subscript); }
         function wwVoltageSymbolSvg(subscript) { return wwElectricalSymbolSvg("V", subscript); }
 
-        // Analysis role key -> notation (Va, V1, I2 ...); any other role
-        // (Ia, Za ...) is returned unchanged/escaped.
-        function wwElectricalRoleSymbol(roleKey) {
-            return WW_ELECTRICAL_ROLE_SYMBOLS[roleKey] || null;
+        // Analysis role key -> [quantity, display subscript] (Va, V1, I2 ...);
+        // a phase role follows `phaseDisplay` (Va -> V R in an R/Y/B bay),
+        // a sequence role never does. Any other role (Ia, Za ...) -> null,
+        // and is returned unchanged/escaped by the wrappers below.
+        function wwElectricalRoleSymbol(roleKey, phaseDisplay) {
+            const s = WW_ELECTRICAL_ROLE_SYMBOLS[roleKey];
+            if (!s) return null;
+            return WW_VOLTAGE_PHASES.includes(s[1]) ? [s[0], wwPhaseDisplaySymbol(s[1], phaseDisplay)] : s;
         }
-        function wwRoleLabelText(roleKey) {
-            const s = wwElectricalRoleSymbol(roleKey);
+        function wwRoleLabelText(roleKey, phaseDisplay) {
+            const s = wwElectricalRoleSymbol(roleKey, phaseDisplay);
             return s ? wwElectricalSymbolText(s[0], s[1]) : String(roleKey);
         }
-        function wwRoleLabelHtml(roleKey) {
-            const s = wwElectricalRoleSymbol(roleKey);
+        function wwRoleLabelHtml(roleKey, phaseDisplay) {
+            const s = wwElectricalRoleSymbol(roleKey, phaseDisplay);
             return s ? wwElectricalSymbolHtml(s[0], s[1]) : escapeHtml(roleKey);
         }
-        function wwRoleLabelPlotly(roleKey) {
-            const s = wwElectricalRoleSymbol(roleKey);
+        function wwRoleLabelPlotly(roleKey, phaseDisplay) {
+            const s = wwElectricalRoleSymbol(roleKey, phaseDisplay);
             return s ? wwElectricalSymbolPlotly(s[0], s[1]) : roleKey;
         }
-        function wwRoleLabelSvg(roleKey) {
-            const s = wwElectricalRoleSymbol(roleKey);
+        function wwRoleLabelSvg(roleKey, phaseDisplay) {
+            const s = wwElectricalRoleSymbol(roleKey, phaseDisplay);
             return s ? wwElectricalSymbolSvg(s[0], s[1]) : escapeHtml(roleKey);
         }
 
-        // "A" -> V<sub>A</sub>; anything else falls back to plain escaped text.
-        function wwPhaseVoltageHtml(phase) {
-            return WW_VOLTAGE_PHASES.includes(phase) ? wwVoltageSymbolHtml(phase) : escapeHtml(wwVoltageSymbolText(phase));
+        // "A" -> V<sub>A</sub> (V<sub>R</sub> in an R/Y/B context); anything
+        // else falls back to plain escaped text.
+        function wwPhaseVoltageHtml(phase, phaseDisplay) {
+            return WW_VOLTAGE_PHASES.includes(phase)
+                ? wwVoltageSymbolHtml(wwPhaseDisplaySymbol(phase, phaseDisplay))
+                : escapeHtml(wwVoltageSymbolText(phase));
+        }
+        function wwPhaseVoltageText(phase, phaseDisplay) {
+            return wwVoltageSymbolText(wwPhaseDisplaySymbol(phase, phaseDisplay));
         }
 
-        // "AB" -> V<sub>AB</sub>; anything else falls back to plain escaped text.
-        function wwLineToLinePairHtml(pair) {
-            return WW_LL_NOTATION_PAIRS.includes(pair) ? wwVoltageSymbolHtml(pair) : escapeHtml(wwVoltageSymbolText(pair));
+        // "AB" -> V<sub>AB</sub> (V<sub>RY</sub> in an R/Y/B context);
+        // anything else falls back to plain escaped text.
+        function wwLineToLinePairHtml(pair, phaseDisplay) {
+            return WW_LL_NOTATION_PAIRS.includes(pair)
+                ? wwVoltageSymbolHtml(wwPhaseDisplaySymbol(pair, phaseDisplay))
+                : escapeHtml(wwVoltageSymbolText(pair));
+        }
+        function wwLineToLinePairText(pair, phaseDisplay) {
+            return wwVoltageSymbolText(wwPhaseDisplaySymbol(pair, phaseDisplay));
+        }
+        function wwLineToLinePairPlotly(pair, phaseDisplay) {
+            return wwVoltageSymbolPlotly(wwPhaseDisplaySymbol(pair, phaseDisplay));
         }
 
-        // "AB" -> V<sub>AB</sub> = V<sub>A</sub> − V<sub>B</sub>. Both sides
-        // always come from the same formatter -- never a mix of rich and
-        // plain symbols.
-        function wwLineToLineFormulaHtml(pair) {
+        // "AB" -> V<sub>AB</sub> = V<sub>A</sub> − V<sub>B</sub> (R/Y/B:
+        // V<sub>RY</sub> = V<sub>R</sub> − V<sub>Y</sub>). Both sides
+        // always come from the same formatter and the same context --
+        // never a mix of rich and plain, or of two conventions. The
+        // canonical arithmetic (AB = A − B) is what the operands encode.
+        function wwLineToLineFormulaHtml(pair, phaseDisplay) {
             const operands = WW_LL_NOTATION_OPERANDS[pair];
-            if (!operands) return wwLineToLinePairHtml(pair);
-            return wwVoltageSymbolHtml(pair) + " = " + wwVoltageSymbolHtml(operands[0]) + " − " + wwVoltageSymbolHtml(operands[1]);
+            if (!operands) return wwLineToLinePairHtml(pair, phaseDisplay);
+            return wwLineToLinePairHtml(pair, phaseDisplay) + " = " + wwPhaseVoltageHtml(operands[0], phaseDisplay) +
+                " − " + wwPhaseVoltageHtml(operands[1], phaseDisplay);
         }
-        // Plain counterpart: "VAB = VA − VB".
-        function wwLineToLineFormulaText(pair) {
+        // Plain counterpart: "VAB = VA − VB" / "VRY = VR − VY".
+        function wwLineToLineFormulaText(pair, phaseDisplay) {
             const operands = WW_LL_NOTATION_OPERANDS[pair];
             if (!operands) return wwVoltageSymbolText(pair);
-            return wwVoltageSymbolText(pair) + " = " + wwVoltageSymbolText(operands[0]) + " − " + wwVoltageSymbolText(operands[1]);
+            return wwLineToLinePairText(pair, phaseDisplay) + " = " + wwPhaseVoltageText(operands[0], phaseDisplay) +
+                " − " + wwPhaseVoltageText(operands[1], phaseDisplay);
         }
 
-        // Mirrors the backend's app.domain.line_to_line_voltage.default_output_name().
-        function wwLineToLineDefaultName(bayName, pair) {
-            return ((bayName || "").trim() + " V" + pair).trim();
+        // Mirrors the backend's app.domain.line_to_line_voltage.default_output_name():
+        // "MCRS VAB", or "KPDN1 VRY" for an R/Y/B bay.
+        function wwLineToLineDefaultName(bayName, pair, phaseDisplay) {
+            return ((bayName || "").trim() + " " + wwLineToLinePairText(pair, phaseDisplay)).trim();
         }
 
         // A name (e.g. a builder field value) -> HTML: notation only when it
-        // is exactly the system default for this bay/pair, else verbatim.
-        function wwLineToLineNameHtml(name, bayName, pair) {
-            if (!WW_LL_NOTATION_PAIRS.includes(pair) || name !== wwLineToLineDefaultName(bayName, pair)) return escapeHtml(name);
-            return escapeHtml(name.slice(0, name.length - (1 + pair.length))) + wwLineToLinePairHtml(pair);
+        // is exactly the system default for this bay/pair/convention, else
+        // verbatim.
+        function wwLineToLineNameHtml(name, bayName, pair, phaseDisplay) {
+            if (!WW_LL_NOTATION_PAIRS.includes(pair) || name !== wwLineToLineDefaultName(bayName, pair, phaseDisplay)) return escapeHtml(name);
+            return escapeHtml(name.slice(0, name.length - wwLineToLinePairText(pair, phaseDisplay).length)) +
+                wwLineToLinePairHtml(pair, phaseDisplay);
         }
 
-        // Metadata-proven system-generated L-L channel name -> {prefix, pair}, else null.
+        // The display convention a calculated L-L channel was created with
+        // (snapshotted in parameters.phase_display). A channel created before
+        // DEC-118 has none and keeps its canonical "KPDN1 VAB" recognition.
+        function wwCalculatedChannelPhaseDisplay(calc) {
+            return wwNormalizePhaseDisplay(calc && calc.parameters ? calc.parameters.phase_display : null);
+        }
+
+        // Metadata-proven system-generated L-L channel name ->
+        // {prefix, pair, phaseDisplay}, else null.
         function wwLineToLineSystemName(calc) {
             if (!calc || calc.operation !== "line_to_line_voltage" || !WW_LL_NOTATION_PAIRS.includes(calc.phase_member)) return null;
             const bay = calc.parameters ? calc.parameters.engineering_context_name : null;
-            if (calc.name !== wwLineToLineDefaultName(bay, calc.phase_member)) return null;
-            return { prefix: calc.name.slice(0, calc.name.length - (1 + calc.phase_member.length)), pair: calc.phase_member };
+            const phaseDisplay = wwCalculatedChannelPhaseDisplay(calc);
+            if (calc.name !== wwLineToLineDefaultName(bay, calc.phase_member, phaseDisplay)) return null;
+            const suffix = wwLineToLinePairText(calc.phase_member, phaseDisplay);
+            return { prefix: calc.name.slice(0, calc.name.length - suffix.length), pair: calc.phase_member, phaseDisplay };
         }
 
         // Calculated-channel name for HTML surfaces.
         function wwCalculatedChannelNameHtml(calc) {
             const parts = wwLineToLineSystemName(calc);
-            return parts ? escapeHtml(parts.prefix) + wwLineToLinePairHtml(parts.pair) : escapeHtml(calc ? calc.name : "");
+            return parts ? escapeHtml(parts.prefix) + wwLineToLinePairHtml(parts.pair, parts.phaseDisplay) : escapeHtml(calc ? calc.name : "");
         }
 
         // Plotly trace-name variant: Plotly renders its own <sub> pseudo-HTML
@@ -24271,7 +24359,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // uid/meta, never the display name.
         function wwCalculatedChannelNamePlotly(calc) {
             const parts = wwLineToLineSystemName(calc);
-            return parts ? parts.prefix + wwVoltageSymbolPlotly(parts.pair) : (calc ? calc.name : "");
+            return parts ? parts.prefix + wwLineToLinePairPlotly(parts.pair, parts.phaseDisplay) : (calc ? calc.name : "");
         }
 
         // Any analog channel's display name for HTML surfaces: a user display
@@ -30941,7 +31029,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (calc.operation === "subtraction") return label + " (" + names.join(" − ") + ")";
             if (calc.operation === "line_to_line_voltage") {
                 const bay = calc.parameters && calc.parameters.engineering_context_name;
-                return label + " (" + wwVoltageSymbolText(calc.phase_member) + (bay ? ", " + bay : "") + ")";
+                return label + " (" + wwLineToLinePairText(calc.phase_member, wwCalculatedChannelPhaseDisplay(calc)) + (bay ? ", " + bay : "") + ")";
             }
             return label + " (" + names[0] + ")";
         }
@@ -31011,8 +31099,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return output === "all_three" ? WW_CC_LL_PAIR_ORDER.slice() : [output];
         }
 
+        // DEC-118: the selected bay's own phase display convention (backend
+        // readiness `phase_display`) -- every context-specific symbol in
+        // this builder is spelled with it (R/Y/B bay: VR, VRY).
+        function wwCcLlPhaseDisplay(ctx) {
+            return wwNormalizePhaseDisplay(ctx || null);
+        }
+
         function wwCcLlDefaultName(ctx, pair) {
-            return wwLineToLineDefaultName(ctx ? ctx.display_name : "", pair);
+            return wwLineToLineDefaultName(ctx ? ctx.display_name : "", pair, wwCcLlPhaseDisplay(ctx));
         }
 
         // Picks a sensible initial context/output without ever hiding
@@ -31092,7 +31187,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             const ctx = wwCcLlSelectedContext();
             if (!ctx) return html;
-            html += '<div class="ww-cc-ll-status" id="wwCcLlStatus" data-ll-status="' + escapeHtml(ctx.status) + '">' +
+            const pd = wwCcLlPhaseDisplay(ctx);
+            html += '<div class="ww-cc-ll-status" id="wwCcLlStatus" data-ll-status="' + escapeHtml(ctx.status) + '"' +
+                ' data-phase-convention="' + escapeHtml(pd.convention || "") + '">' +
                 '<span class="ww-cc-ll-status-badge">' + escapeHtml(wwCcLlStatusText(ctx.status)) + '</span>' +
                 '<ul class="ww-cc-ll-roles">';
             for (const roleKey of ["Va", "Vb", "Vc"]) {
@@ -31101,10 +31198,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const ok = role.status === "ready";
                 html += '<li data-ll-role="' + roleKey + '" data-ll-role-status="' + escapeHtml(role.status) + '">' +
                     '<span class="ww-cc-ll-role-mark" aria-hidden="true">' + (ok ? "✓" : "✕") + '</span>' +
-                    '<strong>' + wwRoleLabelHtml(roleKey) + '</strong> ' +
+                    '<strong>' + wwRoleLabelHtml(roleKey, pd) + '</strong> ' +
                     escapeHtml(ok ? (role.channel_label + (role.unit ? " (" + role.unit + ")" : ""))
-                        // The backend message leads with the role key already shown in bold.
-                        : (role.message || role.status).replace(new RegExp("^" + roleKey + "\\b[ :]*"), "")) +
+                        // The backend message leads with the same symbol (in the
+                        // bay's convention, e.g. "VR missing.") already shown in bold.
+                        : wwCcLlStripLeadingSymbol(role.message || role.status, wwRoleLabelText(roleKey, pd))) +
                     '</li>';
             }
             html += '</ul></div>';
@@ -31116,7 +31214,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     (readiness.reason ? ' title="' + escapeHtml(readiness.reason) + '"' : "") + '>' +
                     '<input type="radio" name="wwCcLlOutput" id="wwCcLlOutput_' + option.value + '" value="' + option.value + '"' +
                     (wwCcBuilder.llOutput === option.value ? " checked" : "") + (readiness.available ? "" : " disabled") + '>' +
-                    '<span>' + (option.value === "all_three" ? escapeHtml(option.label) : wwLineToLinePairHtml(option.value)) + '</span>' +
+                    '<span>' + (option.value === "all_three" ? escapeHtml(option.label) : wwLineToLinePairHtml(option.value, pd)) + '</span>' +
                     (readiness.available ? "" : '<span class="ww-cc-ll-output-reason">unavailable</span>') +
                     '</label>';
             }
@@ -31141,9 +31239,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         function wwCcLlPlannedNamesHtml() {
             const ctx = wwCcLlSelectedContext();
+            const pd = wwCcLlPhaseDisplay(ctx);
             const names = WW_CC_LL_PAIR_ORDER.map((p) => {
                 const name = wwCcBuilder.llNames[p].trim();
-                return name ? wwLineToLineNameHtml(name, ctx ? ctx.display_name : "", p) : wwLineToLinePairHtml(p);
+                return name ? wwLineToLineNameHtml(name, ctx ? ctx.display_name : "", p, pd) : wwLineToLinePairHtml(p, pd);
             });
             return "Creates " + names.join(", ") + " as one set — all three or none.";
         }
@@ -31185,11 +31284,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!container) return;
             container.hidden = !show;
             if (!show) { container.innerHTML = ""; return; }
-            wwCcLlEnsureDefaultNames(wwCcLlSelectedContext());
+            const ctx = wwCcLlSelectedContext();
+            wwCcLlEnsureDefaultNames(ctx);
+            const pd = wwCcLlPhaseDisplay(ctx);
             let html = '<span>Output Names</span>';
             for (const pair of WW_CC_LL_PAIR_ORDER) {
                 html += '<div class="ww-cc-ll-name-row">' +
-                    '<label class="ww-cc-ll-name-pair" for="wwCcLlName_' + pair + '">' + wwLineToLinePairHtml(pair) + '</label>' +
+                    '<label class="ww-cc-ll-name-pair" for="wwCcLlName_' + pair + '">' + wwLineToLinePairHtml(pair, pd) + '</label>' +
                     '<input type="text" id="wwCcLlName_' + pair + '" data-ll-pair="' + pair + '" maxlength="120" autocomplete="off"' +
                     ' aria-describedby="wwCcLlNameError_' + pair + '" value="' + escapeHtml(wwCcBuilder.llNames[pair]) + '">' +
                     '<p class="hint error ww-cc-ll-name-error" id="wwCcLlNameError_' + pair + '" hidden></p>' +
@@ -31203,26 +31304,41 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwCcLlExpressionPreview() {
             const ctx = wwCcLlSelectedContext();
             if (!ctx) return "";
+            const pd = wwCcLlPhaseDisplay(ctx);
             return wwCcLlPairsForOutput(wwCcBuilder.llOutput).map((pair) => {
                 const [from, to] = WW_CC_LL_PAIR_ROLES[pair];
-                return wwLineToLineFormulaText(pair) +
-                    " (" + wwCcLlRoleLabel(ctx, from) + " − " + wwCcLlRoleLabel(ctx, to) + ")";
+                return wwLineToLineFormulaText(pair, pd) +
+                    " (" + wwCcLlRoleLabel(ctx, from, false) + " − " + wwCcLlRoleLabel(ctx, to, false) + ")";
             }).join("   ·   ");
         }
 
         function wwCcLlExpressionPreviewHtml() {
             const ctx = wwCcLlSelectedContext();
             if (!ctx) return "";
+            const pd = wwCcLlPhaseDisplay(ctx);
             return wwCcLlPairsForOutput(wwCcBuilder.llOutput).map((pair) => {
                 const [from, to] = WW_CC_LL_PAIR_ROLES[pair];
-                return '<span class="ww-cc-ll-formula">' + wwLineToLineFormulaHtml(pair) + " (" +
-                    escapeHtml(wwCcLlRoleLabel(ctx, from)) + " − " + escapeHtml(wwCcLlRoleLabel(ctx, to)) + ")</span>";
+                return '<span class="ww-cc-ll-formula">' + wwLineToLineFormulaHtml(pair, pd) + " (" +
+                    wwCcLlRoleLabel(ctx, from, true) + " − " + wwCcLlRoleLabel(ctx, to, true) + ")</span>";
             }).join("   ·   ");
         }
 
-        function wwCcLlRoleLabel(ctx, roleKey) {
+        // A resolved role shows its source channel name verbatim (e.g.
+        // KPDN1_VR); an unresolved one shows the role symbol in the bay's
+        // convention (V<sub>R</sub>), never the internal key "Va".
+        function wwCcLlRoleLabel(ctx, roleKey, html) {
             const role = ctx.roles[roleKey];
-            return role && role.status === "ready" ? role.channel_label : roleKey;
+            if (role && role.status === "ready") return html ? escapeHtml(role.channel_label) : role.channel_label;
+            const pd = wwCcLlPhaseDisplay(ctx);
+            return html ? wwRoleLabelHtml(roleKey, pd) : wwRoleLabelText(roleKey, pd);
+        }
+
+        // "VR missing." -> "missing." when "VR" is already shown beside it.
+        function wwCcLlStripLeadingSymbol(message, symbolText) {
+            const text = String(message || "");
+            if (!text.startsWith(symbolText)) return text;
+            const rest = text.slice(symbolText.length);
+            return /^[A-Za-z0-9]/.test(rest) ? text : rest.replace(/^[ :]+/, "");
         }
 
         function wwCcLlValidate(errors) {
@@ -31238,7 +31354,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwCcLlEnsureDefaultNames(ctx);
                 const nameErrors = wwCcLlNameErrors();
                 const first = WW_CC_LL_PAIR_ORDER.find((pair) => nameErrors[pair]);
-                if (first) errors.push(wwVoltageSymbolText(first) + ": " + nameErrors[first]);
+                if (first) errors.push(wwLineToLinePairText(first, wwCcLlPhaseDisplay(ctx)) + ": " + nameErrors[first]);
                 return;
             }
             const name = wwCcBuilder.name.trim();
@@ -31972,7 +32088,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (calc.operation === "addition") return names.join(" + ");
             if (calc.operation === "subtraction") return names.join(" − ");
             if (calc.operation === "line_to_line_voltage") {
-                const formula = html ? wwLineToLineFormulaHtml(calc.phase_member) : wwLineToLineFormulaText(calc.phase_member);
+                const pd = wwCalculatedChannelPhaseDisplay(calc);
+                const formula = html ? wwLineToLineFormulaHtml(calc.phase_member, pd) : wwLineToLineFormulaText(calc.phase_member, pd);
                 return formula + " (" + names.join(" − ") + ")";
             }
             const meta = WW_CC_OPERATIONS[calc.operation];
@@ -32069,8 +32186,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         '<details class="ww-cc-menu">' +
                             '<summary class="ww-icon-btn" aria-label="More actions for ' + escapeHtml(calc.name) + '" title="More actions">&#8942;</summary>' +
                             '<div class="ww-cc-menu-list">' +
-                                (calc.creation_batch_id ? '<button type="button" class="ww-cc-menu-item" data-action="plot-batch" aria-label="Plot All (VAB, VBC, VCA)">Plot All (' +
-                                    WW_LL_NOTATION_PAIRS.map(wwLineToLinePairHtml).join(", ") + ')</button>' : '') +
+                                (calc.creation_batch_id ? '<button type="button" class="ww-cc-menu-item" data-action="plot-batch" aria-label="' +
+                                    escapeHtml("Plot All (" + WW_LL_NOTATION_PAIRS.map((p) => wwLineToLinePairText(p, wwCalculatedChannelPhaseDisplay(calc))).join(", ") + ")") +
+                                    '">Plot All (' +
+                                    WW_LL_NOTATION_PAIRS.map((p) => wwLineToLinePairHtml(p, wwCalculatedChannelPhaseDisplay(calc))).join(", ") + ')</button>' : '') +
                                 '<button type="button" class="ww-cc-menu-item" data-action="delete">Delete</button>' +
                             '</div>' +
                         '</details>' +
@@ -38876,6 +38995,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // the other traces.
         function wwAnalysisBuildRelatedWaveformTraces(groupRoles) {
             const s = wwAnalysisRelatedWaveformsState;
+            // DEC-118: the roles all belong to ONE bay (s.contextId), so its
+            // phase convention spells every voltage trace (V<sub>R</sub>).
+            const pd = wwEngineeringContextPhaseDisplay(s.contextId);
             const traces = [];
             for (const role of groupRoles) {
                 const data = s.channelCache.get(wwAnalysisChannelRefKey(role.channelRef));
@@ -38884,7 +39006,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     x: data.time, y: data.values, type: "scatter", mode: "lines",
                     line: { width: 1.25, color: wwAnalysisResolveCssColor(role.color || wwPhasorRoleColor(role.roleKey)) },
                     // Display name only; identity is `meta` (the role key).
-                    name: wwElectricalRoleSymbol(role.roleKey) ? wwRoleLabelPlotly(role.roleKey) : (role.label || role.roleKey),
+                    name: wwElectricalRoleSymbol(role.roleKey) ? wwRoleLabelPlotly(role.roleKey, pd) : (role.label || role.roleKey),
                     meta: role.roleKey, hoverinfo: "x+y+name",
                 });
             }
@@ -42756,10 +42878,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 statusRow.classList.add("ww-phasor-status--needs-configuration");
             }
 
-            const inputText = (result.resolved_roles && result.resolved_roles.length)
-                ? result.resolved_roles.map((r) => r.display_name).join(", ")
+            // DEC-118: the Assessment Quantity stays generic ("Phase A
+            // Voltage"); the RESOLVED measurement is spelled in the selected
+            // group's own convention, then its exact source channel name:
+            // "V<sub>R</sub> — KPDN1_VR". `r.role` is canonical (A/AB).
+            const pd = wwNormalizePhaseDisplay(result);
+            const inputHtml = (result.resolved_roles && result.resolved_roles.length)
+                ? result.resolved_roles.map((r) =>
+                    '<span class="ww-compliance-resolved-role" data-role="' + escapeHtml(r.role) + '">' +
+                    (WW_LL_NOTATION_PAIRS.includes(r.role) ? wwLineToLinePairHtml(r.role, pd) : wwPhaseVoltageHtml(r.role, pd)) +
+                    " — " + escapeHtml(r.channel_name) + '</span>').join(", ")
                 : "—";
-            document.getElementById("wwComplianceMeasurementInput").textContent = inputText;
+            const inputEl = document.getElementById("wwComplianceMeasurementInput");
+            inputEl.innerHTML = inputHtml;
+            inputEl.dataset.phaseConvention = pd.convention || "";
 
             document.getElementById("wwComplianceMeasurementInputType").textContent =
                 WW_COMPLIANCE_INPUT_TYPE_LABEL[result.input_type] || "—";
@@ -43548,15 +43680,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwPhasorRenderFromState();
         }
 
+        // DEC-118: Recording mode shows the selected bay's own phase
+        // convention (R/Y/B bay: V<sub>R</sub>); Manual input has no bay and
+        // stays canonical.
+        function wwPhasorPhaseDisplay() {
+            if (wwPhasorState.inputSource === WW_ANALYSIS_INPUT_SOURCE_MANUAL) return WW_CANONICAL_PHASE_DISPLAY;
+            return wwEngineeringContextPhaseDisplay(wwPhasorState.selectedContextId);
+        }
+
         function wwPhasorValueRowHtml(diagram, roleKey) {
             const role = (diagram.roles && diagram.roles[roleKey]) || null;
+            const pd = wwPhasorPhaseDisplay();
             const swatch = '<span class="ww-phasor-role-swatch" style="background:' + wwPhasorRoleColor(roleKey) + '"></span>';
             if (!role || role.status !== "available") {
                 const statusText = role ? wwPhasorRoleStatusLabel(role.status) : "Missing";
                 const reasonText = role && role.reason_code ? wwPhasorReasonText(role.reason_code) : "";
                 return (
                     '<div class="ww-phasor-value-row ww-phasor-value-row--unavailable">' +
-                        '<span class="ww-phasor-role-label">' + swatch + wwRoleLabelHtml(roleKey) + '</span>' +
+                        '<span class="ww-phasor-role-label">' + swatch + wwRoleLabelHtml(roleKey, pd) + '</span>' +
                         '<span class="ww-phasor-value-numbers"><span class="ww-phasor-role-status-text ww-phasor-role-warn" title="' + escapeHtml(reasonText) + '">' + escapeHtml(statusText) + '</span></span>' +
                         '<span class="ww-phasor-eye-icon" aria-hidden="true"></span>' +
                     '</div>'
@@ -43568,12 +43709,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // whole row, a dimmed `--hidden` state, no separate tiny
             // icon-only hit target.
             const visible = wwPhasorState.visibleRoles[roleKey] !== false;
-            const actionLabel = (visible ? "Hide " : "Show ") + roleKey + " vector";
+            // Attribute: DEC-117 plain fallback in the bay's convention ("VR").
+            const actionLabel = (visible ? "Hide " : "Show ") + wwRoleLabelText(roleKey, pd) + " vector";
             return (
                 '<div class="ww-phasor-value-row ww-phasor-value-row--toggle' + (visible ? "" : " ww-phasor-value-row--hidden") + '"' +
                     ' role="button" tabindex="0" aria-pressed="' + visible + '" data-role="' + escapeHtml(roleKey) + '"' +
                     ' aria-label="' + escapeHtml(actionLabel) + '" title="' + escapeHtml(actionLabel) + '">' +
-                    '<span class="ww-phasor-role-label">' + swatch + wwRoleLabelHtml(roleKey) + '</span>' +
+                    '<span class="ww-phasor-role-label">' + swatch + wwRoleLabelHtml(roleKey, pd) + '</span>' +
                     '<span class="ww-phasor-value-numbers">' +
                         '<span class="ww-phasor-value-magnitude">' + wwFormatEngineeringValue(role.magnitude_rms) + ' ' + escapeHtml(role.unit || "") + '</span>' +
                         '<span class="ww-phasor-value-angle">∠ ' + wwPhasorFormatAngle(role.angle_deg_absolute) + '</span></span>' +
@@ -43796,7 +43938,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const r = role.magnitude_rms * scale;
                 const x = r * Math.cos(angleRad);
                 const y = -r * Math.sin(angleRad);
-                parts.push(wwPhasorVectorSvg(x, y, wwPhasorRoleColor(roleKey), roleKey, isCurrent));
+                parts.push(wwPhasorVectorSvg(x, y, wwPhasorRoleColor(roleKey), roleKey, isCurrent, wwPhasorPhaseDisplay()));
             }
             // "Real"/"Imaginary" axis-direction labels -- painted LAST
             // (owner UAT: previously painted before the vectors, a
@@ -43838,7 +43980,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // WITHOUT destroying phase identity -- solid vector for Voltage,
         // dashed for Current (`.ww-phasor-vector--current`), both still
         // colored by their own A/B/C phase swatch.
-        function wwPhasorVectorSvg(x, y, color, label, dashed) {
+        function wwPhasorVectorSvg(x, y, color, label, dashed, phaseDisplay) {
             const angle = Math.atan2(y, x);
             const arrowLength = 7;
             const arrowWidth = 3.5;
@@ -43854,7 +43996,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return (
                 '<line' + lineClass + ' x1="0" y1="0" x2="' + x.toFixed(2) + '" y2="' + y.toFixed(2) + '" stroke="' + color + '" stroke-width="2.5" stroke-linecap="round"></line>' +
                 '<polygon points="' + x.toFixed(2) + ',' + y.toFixed(2) + ' ' + leftX.toFixed(2) + ',' + leftY.toFixed(2) + ' ' + rightX.toFixed(2) + ',' + rightY.toFixed(2) + '" fill="' + color + '"></polygon>' +
-                '<text class="ww-phasor-vector-label" x="' + labelX.toFixed(2) + '" y="' + labelY.toFixed(2) + '" fill="' + color + '" text-anchor="middle">' + wwRoleLabelSvg(label) + '</text>'
+                '<text class="ww-phasor-vector-label" x="' + labelX.toFixed(2) + '" y="' + labelY.toFixed(2) + '" fill="' + color + '" text-anchor="middle">' + wwRoleLabelSvg(label, phaseDisplay) + '</text>'
             );
         }
 

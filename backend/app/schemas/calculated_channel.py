@@ -19,6 +19,7 @@ from app.services.calculated_channel_service import (
     RmsEligibility,
 )
 from app.domain.calculated_channel import CalculatedChannel, ChannelRef
+from app.schemas.phase_display import PhaseDisplayOut
 
 
 def _sanitize_float_list(values) -> list[float | None]:
@@ -357,7 +358,8 @@ class LineToLineCreateRequest(BaseModel):
     """`POST .../calculated-channels/line-to-line-voltage`. Input is ONE
     Engineering Context -- never individual phase channels. `names` is
     optional per pair (`{"AB": "..."}`); omitted pairs get the bay-aware
-    default (e.g. "KPDN1 VAB"). Null-handling fields mean exactly what they
+    default in the bay's phase display convention (e.g. "MCRS VAB", or
+    "KPDN1 VRY" for an R/Y/B bay -- DEC-118). Null-handling fields mean exactly what they
     mean on the generic create request."""
 
     engineering_context_id: str
@@ -399,6 +401,7 @@ class LineToLineContextReadinessOut(BaseModel):
     source_path: str | None
     roles: dict[str, LineToLineRoleReadinessOut]
     outputs: dict[str, LineToLineOutputReadinessOut]
+    phase_display: PhaseDisplayOut
 
     @classmethod
     def from_domain(cls, readiness) -> "LineToLineContextReadinessOut":
@@ -419,4 +422,5 @@ class LineToLineContextReadinessOut(BaseModel):
                 key: LineToLineOutputReadinessOut(output=o.output, available=o.available, reason=o.reason)
                 for key, o in readiness.outputs.items()
             },
+            phase_display=PhaseDisplayOut.from_domain(readiness.phase_display),
         )

@@ -22,8 +22,9 @@ FRONTEND = REPO / "frontend" / "index.html"
 BROWSER_TESTS = REPO / "browser-tests"
 
 # Built from parts so this file never contains the forbidden literal itself.
+# DEC-118 adds the R/Y/B display spellings (VR, VRY ...) to the ban.
 _UNDERSCORE_SYMBOL = re.compile(
-    r"(?<![A-Za-z0-9_])[VI]" + "_" + r"\{?(?:AB|BC|CA|A|B|C|0|1|2)\}?(?![A-Za-z0-9])"
+    r"(?<![A-Za-z0-9_])[VI]" + "_" + r"\{?(?:AB|BC|CA|RY|YB|BR|A|B|C|R|Y|0|1|2)\}?(?![A-Za-z0-9])"
 )
 
 
@@ -113,16 +114,24 @@ def test_generalized_symbol_contract_and_role_map():
         "function wwElectricalSymbolText(quantity, subscript)",
         "function wwVoltageSymbolHtml(subscript)",
         "function wwVoltageSymbolText(subscript)",
-        "function wwLineToLinePairHtml(pair)",
-        "function wwLineToLineFormulaHtml(pair)",
-        "function wwLineToLineFormulaText(pair)",
-        "function wwRoleLabelHtml(roleKey)",
-        "function wwRoleLabelPlotly(roleKey)",
-        "function wwRoleLabelSvg(roleKey)",
-        "function wwRoleLabelText(roleKey)",
+        # DEC-118: context-specific helpers take an optional phase display.
+        "function wwLineToLinePairHtml(pair, phaseDisplay)",
+        "function wwLineToLinePairText(pair, phaseDisplay)",
+        "function wwLineToLineFormulaHtml(pair, phaseDisplay)",
+        "function wwLineToLineFormulaText(pair, phaseDisplay)",
+        "function wwPhaseVoltageHtml(phase, phaseDisplay)",
+        "function wwRoleLabelHtml(roleKey, phaseDisplay)",
+        "function wwRoleLabelPlotly(roleKey, phaseDisplay)",
+        "function wwRoleLabelSvg(roleKey, phaseDisplay)",
+        "function wwRoleLabelText(roleKey, phaseDisplay)",
+        "function wwNormalizePhaseDisplay(value)",
+        "function wwEngineeringContextPhaseDisplay(contextId)",
     ):
         assert helper in source, helper
-    assert 'V: [...WW_VOLTAGE_PHASES, ...WW_LL_NOTATION_PAIRS, ...WW_SEQUENCE_SUBSCRIPTS],' in source
+    assert (
+        'V: [...WW_VOLTAGE_PHASES, ...WW_LL_NOTATION_PAIRS, ...WW_SEQUENCE_SUBSCRIPTS, ...WW_PHASE_DISPLAY_SUBSCRIPTS],'
+        in source
+    )
     assert 'I: [...WW_SEQUENCE_SUBSCRIPTS],' in source
     roles = re.search(r"const WW_ELECTRICAL_ROLE_SYMBOLS = \{(.*?)\};", source, flags=re.DOTALL).group(1)
     for key in ("Va", "Vb", "Vc", "V1", "V2", "V0", "I1", "I2", "I0"):
@@ -130,6 +139,32 @@ def test_generalized_symbol_contract_and_role_map():
     # Phase currents and impedance keys are deliberately NOT formatted.
     for key in ("Ia", "Ib", "Ic", "Za"):
         assert key + ":" not in roles, key
+
+
+def test_phase_display_table_mirrors_the_backend():
+    """DEC-118: the frontend renders a backend phase-display map only when
+    every token is in its own table, so the two tables must agree."""
+    from app.domain.phase_identity import PHASE_DISPLAY_SYMBOLS_BY_CONVENTION
+
+    block = re.search(
+        r"const WW_PHASE_DISPLAY_SYMBOLS_BY_CONVENTION = \{(.*?)\n        \};", _source(), flags=re.DOTALL
+    ).group(1)
+    frontend = {
+        convention: dict(re.findall(r'(\w+): "(\w+)"', body))
+        for convention, body in re.findall(r"(\w+): \{([^}]*)\}", block)
+    }
+    assert frontend == PHASE_DISPLAY_SYMBOLS_BY_CONVENTION
+
+
+def test_phase_convention_is_never_detected_from_names_in_the_frontend():
+    """DEC-118: the convention comes only from the backend's resolved-phase
+    derivation. No frontend regex may look for R/Y/B letters in names."""
+    offenders = [
+        (number, line.strip()[:120])
+        for number, line in _code_lines(_source())
+        if re.search(r"/[^/\n]*\[?RYB\]?[^/\n]*/[gimsuy]*\.test\(|includes\(\s*\"[RY]\"\s*\)", line)
+    ]
+    assert offenders == [], offenders
 
 
 def test_plain_fallback_is_concatenated():
@@ -151,7 +186,7 @@ def test_no_underscore_symbol_in_frontend_or_browser_tests():
 def test_underscore_guard_does_not_flag_channel_names_or_identifiers():
     for harmless in ("KPDN1_VR", "SLKS_VB", "phase_a_channel_ref", "WW_V_A_TOTAL", "line_to_line_multibay", "V1_label"):
         assert not _UNDERSCORE_SYMBOL.search(harmless), harmless
-    for forbidden in ("V" + "_A", "V" + "_AB", "V" + "_1", "I" + "_2", "V" + "_{A}"):
+    for forbidden in ("V" + "_A", "V" + "_AB", "V" + "_1", "I" + "_2", "V" + "_{A}", "V" + "_R", "V" + "_RY", "V" + "_BR"):
         assert _UNDERSCORE_SYMBOL.search(forbidden), forbidden
 
 

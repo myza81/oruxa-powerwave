@@ -5,8 +5,13 @@
 // Fixture: backend/tests/fixtures/comtrade/line_to_line_multibay -- DEC-104
 // upload-time preparation creates three Engineering Contexts:
 //   KPDN1 -- instantaneous VR/VY/VB (unbalanced disturbance) -> All Three
-//   KPDN2 -- VR/VY only                                       -> VAB only
+//   KPDN2 -- VR/VY only                                       -> VRY only
 //   MCRS  -- RMS-magnitude VR/VY/VB                           -> unsupported
+//
+// Every bay here is R/Y/B, so DEC-118 spells every system symbol R/Y/B
+// (VR, VRY = VR − VY, "KPDN1 VRY"); canonical keys stay A/B/C
+// (phase_member AB, output ids AB/BC/CA, data-ll-role="Va"). The mixed
+// R/Y/B + A/B/C workspace lives in phase-display-convention.spec.js.
 //
 // Each test gets a fresh browser context, so a fresh random workspace id.
 
@@ -61,11 +66,13 @@ async function waveformTraces(page) {
   ));
 }
 
+// Keyed by canonical pair (identity); looked up by the R/Y/B display name.
+const KPDN1_LL_NAMES = { VAB: "KPDN1 VRY", VBC: "KPDN1 VYB", VCA: "KPDN1 VBR" };
 async function lineToLineTraceColors(page) {
   const traces = await waveformTraces(page);
   const byPair = {};
-  for (const pair of ["VAB", "VBC", "VCA"]) {
-    const trace = traces.find((t) => t.name === `KPDN1 ${pair}`);
+  for (const [pair, name] of Object.entries(KPDN1_LL_NAMES)) {
+    const trace = traces.find((t) => t.name === name);
     byPair[pair] = trace ? trace.color : null;
   }
   return byPair;
@@ -84,15 +91,15 @@ test.describe("Line-to-Line Voltage", () => {
     const optionTexts = await page.locator("#wwCcLlContextSelect option").allTextContents();
     expect(optionTexts).toHaveLength(3); // no bay hidden
     expect(optionTexts.find((t) => t.startsWith("KPDN1 — "))).toBe("KPDN1 — Ready for All Three");
-    expect(optionTexts.find((t) => t.startsWith("KPDN2 — "))).toContain("Vc missing");
+    expect(optionTexts.find((t) => t.startsWith("KPDN2 — "))).toContain("VB missing");
     expect(optionTexts.find((t) => t.startsWith("MCRS — "))).toContain("RMS magnitudes alone are insufficient");
 
     // Default selection is the bay ready for All Three.
     await expect(page.locator("#wwCcLlStatus")).toHaveAttribute("data-ll-status", "ready");
     await expect(page.locator("#wwCcLlOutput_all_three")).toBeChecked();
-    await expect(page.locator("#wwCcLlPlannedNames")).toContainText("KPDN1 VAB, KPDN1 VBC, KPDN1 VCA");
-    await expect(page.locator("#wwCcExpressionPreview")).toContainText("VAB = VA − VB (KPDN1_VR − KPDN1_VY)");
-    await expect(page.locator("#wwCcExpressionPreview")).toContainText("VCA = VC − VA (KPDN1_VB − KPDN1_VR)");
+    await expect(page.locator("#wwCcLlPlannedNames")).toContainText("KPDN1 VRY, KPDN1 VYB, KPDN1 VBR");
+    await expect(page.locator("#wwCcExpressionPreview")).toContainText("VRY = VR − VY (KPDN1_VR − KPDN1_VY)");
+    await expect(page.locator("#wwCcExpressionPreview")).toContainText("VBR = VB − VR (KPDN1_VB − KPDN1_VR)");
     await expect(page.locator("#wwCcUnitDisplay")).toHaveValue("kV");
 
     // Unsupported representation: nothing can be chosen or created.
@@ -115,19 +122,19 @@ test.describe("Line-to-Line Voltage", () => {
     // One logical result set in the immediate workflow.
     const result = page.locator("#wwCcLlResult");
     await expect(result).toBeVisible();
-    await expect(result.locator(".ww-cc-ll-result-list li")).toHaveText(["KPDN1 VAB", "KPDN1 VBC", "KPDN1 VCA"]);
+    await expect(result.locator(".ww-cc-ll-result-list li")).toHaveText(["KPDN1 VRY", "KPDN1 VYB", "KPDN1 VBR"]);
     // Display-only electrical notation: V<sub>AB</sub> etc. (names unchanged).
-    await expect(result.locator(".ww-cc-ll-result-list li sub")).toHaveText(["AB", "BC", "CA"]);
+    await expect(result.locator(".ww-cc-ll-result-list li sub")).toHaveText(["RY", "YB", "BR"]);
     // ...yet three ordinary, individually listed calculated channels.
     await expect(page.locator(".ww-cc-list-row")).toHaveCount(3);
-    await expect(page.locator(".ww-cc-list-row-name")).toHaveText(["KPDN1 VAB", "KPDN1 VBC", "KPDN1 VCA"]);
-    await expect(page.locator(".ww-cc-list-row-expr").first()).toHaveText("VAB = VA − VB (KPDN1_VR − KPDN1_VY)");
+    await expect(page.locator(".ww-cc-list-row-name")).toHaveText(["KPDN1 VRY", "KPDN1 VYB", "KPDN1 VBR"]);
+    await expect(page.locator(".ww-cc-list-row-expr").first()).toHaveText("VRY = VR − VY (KPDN1_VR − KPDN1_VY)");
 
     await page.locator("#wwCcLlPlotAllBtn").click();
     await expect(page.locator("#wwCcLlPlotAllBtn")).toBeDisabled(); // all shown
 
     await goToWaveform(page);
-    await expect.poll(async () => (await waveformTraces(page)).filter((t) => /KPDN1 V(AB|BC|CA)$/.test(t.name)).length).toBe(3);
+    await expect.poll(async () => (await waveformTraces(page)).filter((t) => /KPDN1 V(RY|YB|BR)$/.test(t.name)).length).toBe(3);
     const colors = await lineToLineTraceColors(page);
     expect(Object.values(colors).every(Boolean)).toBe(true);
     expect(new Set(Object.values(colors)).size).toBe(3); // distinct
@@ -142,11 +149,11 @@ test.describe("Line-to-Line Voltage", () => {
       });
       return out;
     });
-    expect(Object.keys(sidebarDots).sort()).toEqual(["KPDN1 VAB", "KPDN1 VBC", "KPDN1 VCA"]);
+    expect(Object.keys(sidebarDots).sort()).toEqual(["KPDN1 VBR", "KPDN1 VRY", "KPDN1 VYB"]);
     expect(new Set(Object.values(sidebarDots)).size).toBe(3);
 
     // Hide/show VBC: identity preserved.
-    const vbcRow = page.locator('#calculatedChannelsSidebarBody tr[data-channel-name="KPDN1 VBC"]');
+    const vbcRow = page.locator('#calculatedChannelsSidebarBody tr[data-channel-name="KPDN1 VYB"]');
     await vbcRow.click();
     await expect.poll(async () => (await lineToLineTraceColors(page)).VBC).toBeNull();
     await vbcRow.click();
@@ -162,7 +169,7 @@ test.describe("Line-to-Line Voltage", () => {
     await expect.poll(async () => lineToLineTraceColors(page)).toEqual(colors);
     const legendColors = await page.evaluate(() => ww.panels.flatMap((p) => p.channels.map((c) => [c.channelName, c.color])));
     expect(Object.fromEntries(legendColors.filter(([n]) => /^KPDN1 V/.test(n)))).toEqual({
-      "KPDN1 VAB": colors.VAB, "KPDN1 VBC": colors.VBC, "KPDN1 VCA": colors.VCA,
+      "KPDN1 VRY": colors.VAB, "KPDN1 VYB": colors.VBC, "KPDN1 VBR": colors.VCA,
     });
     await page.locator("#layoutModeGroupedBtn").click();
     await expect.poll(async () => lineToLineTraceColors(page)).toEqual(colors);
@@ -184,7 +191,7 @@ test.describe("Line-to-Line Voltage", () => {
     await expect.poll(async () => lineToLineTraceColors(page)).toEqual(colors);
   });
 
-  test("single pair on an incomplete bay: VAB available, others unavailable with reason", async ({ page }) => {
+  test("single pair on an incomplete bay: VRY (canonical AB) available, others unavailable with reason", async ({ page }) => {
     await uploadFixture(page);
     await openLineToLineBuilder(page);
     await selectBay(page, "KPDN2");
@@ -196,12 +203,12 @@ test.describe("Line-to-Line Voltage", () => {
     for (const output of ["BC", "CA", "all_three"]) {
       await expect(page.locator(`#wwCcLlOutput_${output}`)).toBeDisabled();
     }
-    await expect(page.locator("#wwCcNameInput")).toHaveValue("KPDN2 VAB");
+    await expect(page.locator("#wwCcNameInput")).toHaveValue("KPDN2 VRY");
     await createAndWait(page);
 
     await expect(page.locator(".ww-cc-list-row")).toHaveCount(1);
-    await expect(page.locator(".ww-cc-list-row-name")).toHaveText("KPDN2 VAB");
-    await expect(page.locator("#wwCcLlResult .ww-cc-ll-result-list li")).toHaveText(["KPDN2 VAB"]);
+    await expect(page.locator(".ww-cc-list-row-name")).toHaveText("KPDN2 VRY");
+    await expect(page.locator("#wwCcLlResult .ww-cc-ll-result-list li")).toHaveText(["KPDN2 VRY"]);
     await expect(page.locator("#wwCcLlPlotAllBtn")).toHaveText("Plot");
     // A lone pair has no set, so no "Plot All" row action.
     await page.locator(".ww-cc-list-row .ww-cc-menu summary").click();
@@ -213,11 +220,11 @@ test.describe("Line-to-Line Voltage", () => {
     await openLineToLineBuilder(page);
     await selectBay(page, "KPDN1");
     await page.locator("#wwCcLlOutput_CA").check();
-    await expect(page.locator("#wwCcExpressionPreview")).toHaveText("VCA = VC − VA (KPDN1_VB − KPDN1_VR)");
+    await expect(page.locator("#wwCcExpressionPreview")).toHaveText("VBR = VB − VR (KPDN1_VB − KPDN1_VR)");
     await page.locator("#wwCcNameInput").fill("Feeder VCA");
     await createAndWait(page);
     await expect(page.locator(".ww-cc-list-row-name")).toHaveText("Feeder VCA");
-    await expect(page.locator(".ww-cc-list-row-expr")).toHaveText("VCA = VC − VA (KPDN1_VB − KPDN1_VR)");
+    await expect(page.locator(".ww-cc-list-row-expr")).toHaveText("VBR = VB − VR (KPDN1_VB − KPDN1_VR)");
   });
 
   test("deleting one member keeps the rest of the set", async ({ page }) => {
@@ -228,8 +235,8 @@ test.describe("Line-to-Line Voltage", () => {
     const vab = page.locator(".ww-cc-list-row").first();
     await vab.locator(".ww-cc-menu summary").click();
     await vab.locator('button[data-action="delete"]').click();
-    await expect(page.locator(".ww-cc-list-row-name")).toHaveText(["KPDN1 VBC", "KPDN1 VCA"]);
-    await expect(page.locator("#wwCcLlResult .ww-cc-ll-result-list li")).toHaveText(["KPDN1 VBC", "KPDN1 VCA"]);
+    await expect(page.locator(".ww-cc-list-row-name")).toHaveText(["KPDN1 VYB", "KPDN1 VBR"]);
+    await expect(page.locator("#wwCcLlResult .ww-cc-ll-result-list li")).toHaveText(["KPDN1 VYB", "KPDN1 VBR"]);
   });
 });
 
@@ -251,22 +258,22 @@ test.describe("Line-to-Line Voltage -- All Three output names", () => {
 
     await page.locator("#wwCcLlOutput_AB").check();
     await expect(page.locator("#wwCcNameInput")).toBeVisible();
-    await expect(page.locator("#wwCcNameInput")).toHaveValue("KPDN1 VAB");
+    await expect(page.locator("#wwCcNameInput")).toHaveValue("KPDN1 VRY");
     await expect(page.locator("#wwCcLlNamesFields")).toBeHidden();
 
     await page.locator("#wwCcLlOutput_all_three").check();
     await expect(page.locator("#wwCcNameInput")).toBeHidden();
     await expect(page.locator("#wwCcLlNamesFields")).toBeVisible();
     const [ab, bc, ca] = nameInputs(page);
-    await expect(ab).toHaveValue("KPDN1 VAB");
-    await expect(bc).toHaveValue("KPDN1 VBC");
-    await expect(ca).toHaveValue("KPDN1 VCA");
-    await expect(page.locator("#wwCcLlNamesFields .ww-cc-ll-name-pair sub")).toHaveText(["AB", "BC", "CA"]);
+    await expect(ab).toHaveValue("KPDN1 VRY");
+    await expect(bc).toHaveValue("KPDN1 VYB");
+    await expect(ca).toHaveValue("KPDN1 VBR");
+    await expect(page.locator("#wwCcLlNamesFields .ww-cc-ll-name-pair sub")).toHaveText(["RY", "YB", "BR"]);
     await expect(page.locator("#wwCcUnitDisplay")).toHaveValue("kV"); // one shared unit field
 
     // Back to a single pair shows that pair's own default.
     await page.locator("#wwCcLlOutput_BC").check();
-    await expect(page.locator("#wwCcNameInput")).toHaveValue("KPDN1 VBC");
+    await expect(page.locator("#wwCcNameInput")).toHaveValue("KPDN1 VYB");
     await expect(page.locator("#wwCcLlNamesFields")).toBeHidden();
   });
 
@@ -282,7 +289,7 @@ test.describe("Line-to-Line Voltage -- All Three output names", () => {
     await expect(page.locator("#wwCcLlPlannedNames")).toHaveText(
       "Creates KPDN1 BUS VAB, KPDN1 BUS VBC, KPDN1 BUS VCA as one set — all three or none."
     );
-    await expect(page.locator("#wwCcExpressionPreview")).toContainText("VAB = VA − VB (KPDN1_VR − KPDN1_VY)");
+    await expect(page.locator("#wwCcExpressionPreview")).toContainText("VRY = VR − VY (KPDN1_VR − KPDN1_VY)");
     await createAndWait(page);
 
     expect(await apiChannelNames(page)).toEqual(["KPDN1 BUS VAB", "KPDN1 BUS VBC", "KPDN1 BUS VCA"]);
@@ -303,12 +310,12 @@ test.describe("Line-to-Line Voltage -- All Three output names", () => {
     await expect(page.locator("#wwCcLlNameError_BC")).toHaveText("Enter a name.");
     await expect(page.locator("#wwCcCreateBtn")).toBeDisabled();
 
-    await bc.fill("KPDN1 VAB"); // same as VAB's name
+    await bc.fill("KPDN1 VRY"); // same as the AB output's default name
     await expect(page.locator("#wwCcLlNameError_BC")).toHaveText("Each output needs a different name.");
     await expect(page.locator("#wwCcLlNameError_AB")).toHaveText("Each output needs a different name.");
     await expect(page.locator("#wwCcCreateBtn")).toBeDisabled();
 
-    await bc.fill("KPDN1 VBC");
+    await bc.fill("KPDN1 VYB");
     await expect(page.locator("#wwCcLlNameError_BC")).toBeHidden();
     await expect(page.locator("#wwCcCreateBtn")).toBeEnabled();
     expect(await apiChannelNames(page)).toEqual([]); // zero partial channels
@@ -318,16 +325,16 @@ test.describe("Line-to-Line Voltage -- All Three output names", () => {
     await openLineToLineBuilder(page);
     await selectBay(page, "KPDN1");
     await page.locator("#wwCcLlOutput_CA").check();
-    await createAndWait(page); // creates "KPDN1 VCA"
+    await createAndWait(page); // creates "KPDN1 VBR"
     await openLineToLineBuilder(page);
     await selectBay(page, "KPDN1");
     await page.locator("#wwCcLlOutput_all_three").check();
     await expect(page.locator("#wwCcLlNameError_CA")).toHaveText("A calculated channel with this name already exists.");
     await expect(page.locator("#wwCcCreateBtn")).toBeDisabled();
-    expect(await apiChannelNames(page)).toEqual(["KPDN1 VCA"]);
-    await nameInputs(page)[2].fill("KPDN1 VCA 2");
+    expect(await apiChannelNames(page)).toEqual(["KPDN1 VBR"]);
+    await nameInputs(page)[2].fill("KPDN1 VBR 2");
     await createAndWait(page);
-    expect(await apiChannelNames(page)).toEqual(["KPDN1 VAB", "KPDN1 VBC", "KPDN1 VCA", "KPDN1 VCA 2"]);
+    expect(await apiChannelNames(page)).toEqual(["KPDN1 VBR", "KPDN1 VBR 2", "KPDN1 VRY", "KPDN1 VYB"]);
   });
 
   test("changing Bay / Engineering Context regenerates the defaults", async ({ page }) => {
@@ -358,12 +365,12 @@ test.describe("Line-to-Line Voltage -- All Three output names", () => {
     const [ab, bc, ca] = nameInputs(page);
     await ab.fill("edited name");
     await selectBay(page, "KPDN9");
-    await expect(nameInputs(page)[0]).toHaveValue("KPDN9 VAB");
-    await expect(nameInputs(page)[1]).toHaveValue("KPDN9 VBC");
-    await expect(nameInputs(page)[2]).toHaveValue("KPDN9 VCA");
-    await expect(page.locator("#wwCcLlPlannedNames")).toHaveText("Creates KPDN9 VAB, KPDN9 VBC, KPDN9 VCA as one set — all three or none.");
+    await expect(nameInputs(page)[0]).toHaveValue("KPDN9 VRY");
+    await expect(nameInputs(page)[1]).toHaveValue("KPDN9 VYB");
+    await expect(nameInputs(page)[2]).toHaveValue("KPDN9 VBR");
+    await expect(page.locator("#wwCcLlPlannedNames")).toHaveText("Creates KPDN9 VRY, KPDN9 VYB, KPDN9 VBR as one set — all three or none.");
     await createAndWait(page);
-    expect(await apiChannelNames(page)).toEqual(["KPDN9 VAB", "KPDN9 VBC", "KPDN9 VCA"]);
+    expect(await apiChannelNames(page)).toEqual(["KPDN9 VBR", "KPDN9 VRY", "KPDN9 VYB"]);
   });
 });
 
@@ -447,21 +454,23 @@ test.describe("Line-to-Line Voltage -- electrical notation (DEC-117)", () => {
     // Output selectors, All Three labels, formula preview. (The operation
     // card itself is name-only since the operation-picker cleanup.)
     await expect(page.locator('.ww-cc-operation-card[data-operation="line_to_line_voltage"]')).toHaveText("Line-to-Line Voltage (L-L)");
-    for (const pair of ["AB", "BC", "CA"]) {
-      await expect(subs(page.locator(`label:has(#wwCcLlOutput_${pair})`))).toHaveText([pair]);
+    // DEC-118: the label is the bay's R/Y/B spelling; the value stays canonical.
+    for (const [pair, display] of [["AB", "RY"], ["BC", "YB"], ["CA", "BR"]]) {
+      await expect(subs(page.locator(`label:has(#wwCcLlOutput_${pair})`))).toHaveText([display]);
       await expect(page.locator(`#wwCcLlOutput_${pair}`)).toHaveValue(pair); // internal value plain
     }
-    await expect(subs(page.locator("#wwCcLlNamesFields .ww-cc-ll-name-pair"))).toHaveText(["AB", "BC", "CA"]);
-    await expect(subs(page.locator("#wwCcLlPlannedNames"))).toHaveText(["AB", "BC", "CA"]);
-    await expect(subs(page.locator("#wwCcExpressionPreview"))).toHaveText(["AB", "A", "B", "BC", "B", "C", "CA", "C", "A"]);
-    await expect(page.locator("#wwCcLlName_AB")).toHaveValue("KPDN1 VAB"); // editable value plain
+    await expect(subs(page.locator("#wwCcLlNamesFields .ww-cc-ll-name-pair"))).toHaveText(["RY", "YB", "BR"]);
+    await expect(subs(page.locator("#wwCcLlPlannedNames"))).toHaveText(["RY", "YB", "BR"]);
+    await expect(subs(page.locator("#wwCcExpressionPreview"))).toHaveText(["RY", "R", "Y", "YB", "Y", "B", "BR", "B", "R"]);
+    await expect(page.locator("#wwCcLlName_AB")).toHaveValue("KPDN1 VRY"); // editable value plain
 
-    // Readiness block: the semantic role is V<sub>A</sub>/V<sub>B</sub>/V<sub>C</sub>;
-    // the source channel names next to it stay exactly as supplied.
+    // Readiness block: the semantic role is V<sub>R</sub>/V<sub>Y</sub>/V<sub>B</sub>
+    // in this R/Y/B bay (DEC-118); the source channel names next to it stay
+    // exactly as supplied.
     const readiness = page.locator("#wwCcLlStatus li");
-    await expect(subs(page.locator("#wwCcLlStatus"))).toHaveText(["A", "B", "C"]);
-    await expect(readiness.locator("strong")).toHaveText(["VA", "VB", "VC"]);
-    await expect(readiness).toHaveText([/VA KPDN1_VR \(kV\)$/, /VB KPDN1_VY \(kV\)$/, /VC KPDN1_VB \(kV\)$/]);
+    await expect(subs(page.locator("#wwCcLlStatus"))).toHaveText(["R", "Y", "B"]);
+    await expect(readiness.locator("strong")).toHaveText(["VR", "VY", "VB"]);
+    await expect(readiness).toHaveText([/VR KPDN1_VR \(kV\)$/, /VY KPDN1_VY \(kV\)$/, /VB KPDN1_VB \(kV\)$/]);
     await expect(page.locator('#wwCcLlStatus li[data-ll-role="Va"]')).toHaveCount(1); // internal role key plain
 
     // Owner UAT: the Output Names labels rendered as SUPERSCRIPTS while the
@@ -472,34 +481,34 @@ test.describe("Line-to-Line Voltage -- electrical notation (DEC-117)", () => {
     await expectTrueSubscripts(page.locator(".ww-cc-ll-outputs .ww-electrical-symbol"), 3);
     await expectTrueSubscripts(page.locator("#wwCcLlPlannedNames .ww-electrical-symbol"), 3);
     // Formula: every symbol on both sides formatted; source names plain.
-    await expect(page.locator("#wwCcExpressionPreview .ww-cc-ll-formula").first()).toHaveText("VAB = VA − VB (KPDN1_VR − KPDN1_VY)");
+    await expect(page.locator("#wwCcExpressionPreview .ww-cc-ll-formula").first()).toHaveText("VRY = VR − VY (KPDN1_VR − KPDN1_VY)");
     await createAndWait(page);
 
     // Created banner, manager list name + formula, preview status.
-    await expect(subs(page.locator("#wwCcLlResult"))).toHaveText(["AB", "BC", "CA"]);
+    await expect(subs(page.locator("#wwCcLlResult"))).toHaveText(["RY", "YB", "BR"]);
     const firstRow = page.locator(".ww-cc-list-row").first();
-    await expect(subs(firstRow.locator(".ww-cc-list-row-name"))).toHaveText(["AB"]);
-    await expect(subs(firstRow.locator(".ww-cc-list-row-expr"))).toHaveText(["AB", "A", "B"]);
-    await expect(firstRow.locator(".ww-cc-list-row-name")).toHaveText("KPDN1 VAB"); // plain text meaning
-    await expect(subs(page.locator("#wwCcPreviewStatus"))).toHaveText(["AB"]);
+    await expect(subs(firstRow.locator(".ww-cc-list-row-name"))).toHaveText(["RY"]);
+    await expect(subs(firstRow.locator(".ww-cc-list-row-expr"))).toHaveText(["RY", "R", "Y"]);
+    await expect(firstRow.locator(".ww-cc-list-row-name")).toHaveText("KPDN1 VRY"); // plain text meaning
+    await expect(subs(page.locator("#wwCcPreviewStatus"))).toHaveText(["RY"]);
     await firstRow.locator(".ww-cc-menu summary").click();
     const plotAll = firstRow.locator('button[data-action="plot-batch"]');
-    await expect(subs(plotAll)).toHaveText(["AB", "BC", "CA"]);
-    await expect(plotAll).toHaveAttribute("aria-label", "Plot All (VAB, VBC, VCA)");
+    await expect(subs(plotAll)).toHaveText(["RY", "YB", "BR"]);
+    await expect(plotAll).toHaveAttribute("aria-label", "Plot All (VRY, VYB, VBR)");
     await plotAll.click();
 
     // Waveform: sidebar names and Plotly trace names (identity in meta).
     await page.locator("#mainNavWaveformBtn").click();
-    await expect(subs(page.locator('#calculatedChannelsSidebarBody tr[data-channel-name="KPDN1 VBC"] .channel-name-text'))).toHaveText(["BC"]);
+    await expect(subs(page.locator('#calculatedChannelsSidebarBody tr[data-channel-name="KPDN1 VYB"] .channel-name-text'))).toHaveText(["YB"]);
     await expect.poll(async () => (await waveformTraces(page)).map((t) => t.rawName).sort()).toEqual(
-      ["KPDN1 V<sub>AB</sub>", "KPDN1 V<sub>BC</sub>", "KPDN1 V<sub>CA</sub>"]
+      ["KPDN1 V<sub>BR</sub>", "KPDN1 V<sub>RY</sub>", "KPDN1 V<sub>YB</sub>"]
     );
     const metas = await page.evaluate(() => ww.panels.flatMap((p) => ((p.chartEl && p.chartEl.data) || []).map((t) => t.meta)));
-    expect(metas.every((m) => /^calc-[0-9a-f]+::KPDN1 V(AB|BC|CA)$/.test(m))).toBe(true);
+    expect(metas.every((m) => /^calc-[0-9a-f]+::KPDN1 V(RY|YB|BR)$/.test(m))).toBe(true);
 
     // Internal/API values are unchanged.
     expect(await apiChannels(page)).toEqual([
-      { name: "KPDN1 VAB", phase_member: "AB" }, { name: "KPDN1 VBC", phase_member: "BC" }, { name: "KPDN1 VCA", phase_member: "CA" },
+      { name: "KPDN1 VBR", phase_member: "CA" }, { name: "KPDN1 VRY", phase_member: "AB" }, { name: "KPDN1 VYB", phase_member: "BC" },
     ]);
   });
 
@@ -513,21 +522,21 @@ test.describe("Line-to-Line Voltage -- electrical notation (DEC-117)", () => {
     await page.locator("#wwCcNewChannelBtn").click();
     await page.locator('#wwCcOperationCards .ww-cc-operation-card[data-operation="rms"]').click();
     const input = page.locator("#wwCcUnaryInputSelect");
-    const value = await input.locator("option").evaluateAll((opts) => (opts.find((o) => o.textContent.startsWith("KPDN1 VAB")) || {}).value);
+    const value = await input.locator("option").evaluateAll((opts) => (opts.find((o) => o.textContent.startsWith("KPDN1 VRY")) || {}).value);
     expect(value).toBeTruthy();
-    await expect(input.locator(`option[value="${value}"]`)).toHaveText(/^KPDN1 VAB/); // native <option>: plain fallback
+    await expect(input.locator(`option[value="${value}"]`)).toHaveText(/^KPDN1 VRY/); // native <option>: plain fallback
     await input.selectOption(value);
     // Builder preview: no mix of rich and plain symbols.
-    await expect(page.locator("#wwCcExpressionPreview")).toHaveText("Result = RMS(KPDN1 VAB, 50 Hz, 1 cycle)");
-    await expect(subs(page.locator("#wwCcExpressionPreview"))).toHaveText(["AB"]);
-    await expect(page.locator("#wwCcNameInput")).toHaveValue("RMS(KPDN1 VAB)"); // editable: plain
+    await expect(page.locator("#wwCcExpressionPreview")).toHaveText("Result = RMS(KPDN1 VRY, 50 Hz, 1 cycle)");
+    await expect(subs(page.locator("#wwCcExpressionPreview"))).toHaveText(["RY"]);
+    await expect(page.locator("#wwCcNameInput")).toHaveValue("RMS(KPDN1 VRY)"); // editable: plain
     await createAndWait(page);
 
-    const rmsRow = page.locator(".ww-cc-list-row").filter({ hasText: "RMS(KPDN1 VAB" });
-    await expect(rmsRow.locator(".ww-cc-list-row-expr")).toHaveText("RMS(KPDN1 VAB, 50 Hz, 1 cycle)");
-    await expect(subs(rmsRow.locator(".ww-cc-list-row-expr"))).toHaveText(["AB"]);
-    await expect(subs(rmsRow.locator(".ww-cc-list-row-summary"))).toHaveText(["AB"]);
-    await expect(subs(rmsRow.locator(".ww-cc-list-row-name"))).toHaveCount(0); // "RMS(KPDN1 VAB)" is a stored name
+    const rmsRow = page.locator(".ww-cc-list-row").filter({ hasText: "RMS(KPDN1 VRY" });
+    await expect(rmsRow.locator(".ww-cc-list-row-expr")).toHaveText("RMS(KPDN1 VRY, 50 Hz, 1 cycle)");
+    await expect(subs(rmsRow.locator(".ww-cc-list-row-expr"))).toHaveText(["RY"]);
+    await expect(subs(rmsRow.locator(".ww-cc-list-row-summary"))).toHaveText(["RY"]);
+    await expect(subs(rmsRow.locator(".ww-cc-list-row-name"))).toHaveCount(0); // "RMS(KPDN1 VRY)" is a stored name
     await expectTrueSubscripts(rmsRow.locator(".ww-electrical-symbol"));
   });
 

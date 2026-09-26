@@ -191,6 +191,41 @@ internal/API value (Va, VAB, phase_member = AB) -> untouched
    `expectTrueSubscripts()` (`browser-tests/support/electrical_notation_helpers.js`),
    which measures rendered glyphs. `backend/tests/test_frontend_electrical_notation.py`
    guards the formatter shape, bypasses and underscore forms.
+9. **Phase display convention** ([DEC-118](docs/project-memory/DECISIONS.md#dec-118--context-specific-engineering-notation-inherits-the-phase-display-convention-of-its-measurement-group--engineering-context-canonical-abc-stays-internal)).
+   This rule is mandatory.
+
+   > Context-specific engineering notation inherits the phase display
+   > convention of its authoritative Measurement Group / Engineering
+   > Context. Canonical A/B/C identities remain internal. Generic UI
+   > wording remains fixed.
+
+   - An R/Y/B bay shows V<sub>R</sub>, V<sub>RY</sub> =
+     V<sub>R</sub> − V<sub>Y</sub>, and `KPDN1 VRY`. An A/B/C bay in the
+     same workspace keeps V<sub>A</sub>, V<sub>AB</sub>, `MCRS VAB`.
+   - Never hard-code A/B/C into a context-specific result label (resolved
+     role, pair, formula, generated name, trace name, resolved
+     measurement, readiness/measurement prose). Pass the context's
+     `phase_display` as the formatter's trailing `phaseDisplay`
+     argument. Get it from `EngineeringContextOut`, L-L readiness or the
+     Compliance measurement response (the frontend uses
+     `wwNormalizePhaseDisplay()` / `wwEngineeringContextPhaseDisplay()`).
+     The backend uses `phase_identity.phase_symbol_text()` for prose.
+   - Never detect a convention from channel names in a page or analyzer.
+     The single authority is
+     `phase_identity.resolve_phase_display_convention()`. It never
+     guesses: a lone `VB`, conflicting or unlabelled phases give
+     `canonical_fallback`.
+   - The convention does not apply to:
+     - generic wording ("Phase A Voltage", manual inputs, Reference
+       Profile members);
+     - sequence symbols (V<sub>1</sub>, I<sub>2</sub>);
+     - source/custom names;
+     - canonical values (`Va`, `phase_member`, `member`, output ids,
+       trace `meta`).
+   - A new display convention is one entry in
+     `PHASE_DISPLAY_SYMBOLS_BY_CONVENTION` plus the frontend mirror
+     `WW_PHASE_DISPLAY_SYMBOLS_BY_CONVENTION`. A parity test guards the
+     two.
 
 ## Ground rules
 

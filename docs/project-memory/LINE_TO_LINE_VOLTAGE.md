@@ -72,8 +72,11 @@ incomplete or unsupported ones (no bay is hidden). Each entry contains:
   needs Vc+Va, and All Three needs all of them;
 - the context `status` (`ready` / `incomplete` /
   `unsupported_representation` / `ambiguous`) and a one-line `summary`,
-  e.g. `KPDN1 — Ready for All Three`, `KPDN2 — Ready for VAB only — Vc
-  missing.`
+  e.g. `KPDN1 — Ready for All Three`, `KPDN2 — Ready for VRY only — VB
+  missing.` (KPDN2 is an R/Y/B bay, so its symbols are R/Y/B — DEC-118);
+- `phase_display`: the bay's phase display convention (DEC-118, see
+  below). Role keys (`Va`) and output keys (`AB`) stay canonical; only
+  user-facing text follows the convention.
 
 RMS-magnitude-only phase voltages are rejected with:
 
@@ -113,8 +116,26 @@ channels are unchanged):
 The output also has `engineering_type = Voltage`,
 `waveform_form = instantaneous`, `inputs = [minuend, subtrahend]` (the
 order encodes polarity), and `parameters = {pair, source_path:
-"instantaneous", engineering_context_id, engineering_context_name}`.
-None of these semantics are ever parsed from the channel name.
+"instantaneous", engineering_context_id, engineering_context_name,
+phase_display}`. None of these semantics are ever parsed from the
+channel name.
+
+**Phase display convention (DEC-118).** The arithmetic and `phase_member`
+are always canonical (`AB = A − B`). Only notation follows the bay's own
+convention, which comes from
+[ANALYSIS_INPUT_GUARDRAILS.md — Phase display convention](ANALYSIS_INPUT_GUARDRAILS.md#phase-display-convention-dec-118):
+
+| Bay | Readiness | Outputs | Formula | Default names |
+|---|---|---|---|---|
+| R/Y/B (`KPDN1_VR/VY/VB`) | V<sub>R</sub> V<sub>Y</sub> V<sub>B</sub> | V<sub>RY</sub> V<sub>YB</sub> V<sub>BR</sub> | V<sub>RY</sub> = V<sub>R</sub> − V<sub>Y</sub> | `KPDN1 VRY/VYB/VBR` |
+| A/B/C (`MCRS_VA/VB/VC`) | V<sub>A</sub> V<sub>B</sub> V<sub>C</sub> | V<sub>AB</sub> V<sub>BC</sub> V<sub>CA</sub> | V<sub>AB</sub> = V<sub>A</sub> − V<sub>B</sub> | `MCRS VAB/VBC/VCA` |
+| Undecidable (lone `VB`, mixed, unlabelled) | canonical fallback | canonical | canonical | canonical |
+
+`parameters.phase_display` snapshots the convention a channel was named
+with, so its system-default name (`KPDN1 VRY`) and formula stay
+recognizable. A channel created before DEC-118 has no snapshot and keeps
+its canonical `KPDN1 VAB` recognition. Existing channels are never
+renamed, and custom names stay verbatim.
 
 **Unary propagation.** Reverse Polarity, Absolute Value, Multiply by
 Constant and RMS carry the input's `voltage_representation` through, so
@@ -163,10 +184,11 @@ are `base_required` on both paths (DEC-116).
 
 ## 7. Plot All and colors
 
-- After creation, the page shows **one result set** ("Created: KPDN1 VAB ·
-  KPDN1 VBC · KPDN1 VCA") with **Plot All** (or **Plot** for one pair).
-  Each channel in an All Three set also has a **Plot All (VAB, VBC, VCA)**
-  row action, which remains available after a reload.
+- After creation, the page shows **one result set** ("Created: KPDN1 VRY ·
+  KPDN1 VYB · KPDN1 VBR" for an R/Y/B bay) with **Plot All** (or
+  **Plot** for one pair). Each channel in an All Three set also has a
+  **Plot All** row action, spelled in the set's own convention (e.g.
+  **Plot All (VRY, VYB, VBR)**), which remains available after a reload.
 - Plotting uses the ordinary `wwAddSelectedChannels()` path. There is no
   second renderer.
 - **Colors:** `wwDefaultChannelColor()` (the single color authority for

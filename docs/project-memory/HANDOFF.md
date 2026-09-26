@@ -8,6 +8,49 @@ Last updated: **2026-09-26**
 
 ## What was most recently done
 
+**DEC-118: context-specific phase display convention (2026-09-26).
+Backend display metadata + frontend + tests + docs; awaiting owner UAT.
+Stop here.**
+
+- **Rule** (AGENTS.md rule 9, CLAUDE.md pointer): context-specific
+  engineering notation inherits the phase display convention of its
+  Measurement Group / Engineering Context. Canonical A/B/C stays
+  internal. Generic UI wording stays fixed.
+- **Model**: `phase_identity.PhaseDisplayConvention` plus
+  `resolve_phase_display_convention()`, derived on read from each
+  member's `(phase, original_phase_label)`. It never guesses: a lone
+  "B", conflicting or unlabelled phases, or L1/L2/L3 give
+  `canonical_fallback`, which is the old A/B/C display.
+- **API**: additive `phase_display` on `EngineeringContextOut`, L-L
+  readiness and the Compliance measurement. `display_name`/`missing`
+  (`Va`) are unchanged.
+- **Behaviour**:
+  - R/Y/B bays show V<sub>R</sub>/V<sub>RY</sub>, `KPDN1 VRY`,
+    `VB missing.`
+  - A/B/C prose now uses the DEC-117 plain form (`VA`, not `Va`).
+  - L-L channels snapshot `parameters.phase_display`. Pre-DEC-118
+    channels are still recognized, and nothing is renamed.
+- **Frontend**: the shared formatter takes an optional trailing
+  `phaseDisplay` argument; see `wwNormalizePhaseDisplay()` and
+  `wwEngineeringContextPhaseDisplay()`. It is applied to the CC L-L
+  builder/list/menu, Phasor values/diagram/aria, Related Waveforms and
+  the Compliance Input row (`V<sub>R</sub> — KPDN1_VR`).
+- **Tests**:
+  - fixture `phase_convention_mixed` (KPDN1 R/Y/B, MCRS A/B/C and a
+    lone AMBG_VB in one file);
+  - `backend/tests/test_phase_display_convention.py`;
+  - `browser-tests/phase-display-convention.spec.js`;
+  - updated L-L, CC preview, Compliance, Phasor and notation guards
+    (parity + R/Y/B underscore ban).
+- **Open for the owner**:
+  - L1/L2/L3 display notation;
+  - whether phase currents (`Ia/Ib/Ic`, out of DEC-117 scope) should
+    reuse the same map (I<sub>R</sub>);
+  - whether the per-channel sidebar Phase column (canonical A/B/C
+    classification) should ever follow a context.
+
+## Prior session — Playback Cursor visual ownership
+
 **Playback Cursor visual ownership: owner UAT bug fix (DEC-085 update,
 2026-09-26). Frontend/tests/docs only; awaiting owner UAT. Stop here.**
 

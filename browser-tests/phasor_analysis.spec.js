@@ -1486,7 +1486,7 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
 
     const vaRow = page.locator('#wwPhasorValuesList .ww-phasor-value-row[data-role="Va"]');
     await expect(vaRow.locator(".ww-phasor-role-label .ww-electrical-sub")).toHaveText("A");
-    await expect(vaRow).toHaveAttribute("aria-label", "Hide Va vector"); // attribute: plain fallback
+    await expect(vaRow).toHaveAttribute("aria-label", "Hide VA vector"); // attribute: DEC-117 plain fallback (VA, not the internal key Va)
     await expect(page.locator('#wwPhasorValuesList .ww-phasor-value-row[data-role="Ia"] .ww-phasor-role-label')).toHaveText("Ia");
     // SVG vector labels: a lowered <tspan> subscript for voltage only.
     const labels = page.locator("#wwPhasorSvg text.ww-phasor-vector-label");

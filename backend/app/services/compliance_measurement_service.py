@@ -99,8 +99,18 @@ from app.domain.compliance_measurement import (
     ComplianceVoltageQuantity,
     get_voltage_quantity,
 )
-from app.domain.engineering_context_detection import ChannelForDetection, detect_engineering_contexts
+from app.domain.engineering_context_detection import (
+    ChannelForDetection,
+    DetectedContextMember,
+    detect_engineering_contexts,
+)
 from app.domain.measurement_group import KIND_VOLTAGE, MeasurementGroup
+from app.domain.phase_identity import (
+    CANONICAL_PHASE_DISPLAY,
+    PhaseDisplayConvention,
+    phase_symbol_text,
+    resolve_phase_display_convention,
+)
 from app.domain.rms_detector import LIKELY_INSTANTANEOUS, LIKELY_MAGNITUDE_OR_RMS, classify_waveform_form
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.errors import (
@@ -113,10 +123,12 @@ from app.services.measurement_group_view_service import build_group_view
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 
-#: Display convention matching the task's own literal example wording
-#: ("Input: Va, Vb, Vc", "Missing: Vb, Vc"). Public (no leading
-#: underscore) -- the API layer reuses this exact mapping for its own
-#: `ComplianceResolvedRoleOut.display_name`, never a second copy.
+#: Canonical role display names ("Va", "Vab") -- the stable API values of
+#: `ComplianceResolvedRoleOut.display_name` and the response's `missing`
+#: list. Public (no leading underscore) -- the API layer reuses this exact
+#: mapping, never a second copy. DEC-118: these stay canonical API values;
+#: user-facing prose (`message`) and the UI spell a role in the selected
+#: group's own phase display convention instead (see `_role_text()`).
 ROLE_DISPLAY_NAME = {
     ROLE_A: "Va", ROLE_B: "Vb", ROLE_C: "Vc",
     "AB": "Vab", "BC": "Vbc", "CA": "Vca",
@@ -175,29 +187,22 @@ def list_compliance_voltage_groups(
     ]
 
 
-def resolve_voltage_role_catalogue_for_group(
+def _detect_group_members(
     group: MeasurementGroup, *, workspace_id: str, source_registry: WorkspaceRegistry
-) -> dict[str, RoleResolution]:
-    """Builds `canonical phase role -> RoleResolution` from ONLY the
-    selected group's own `channel_refs` -- never the whole workspace
-    (task section 4/7). A group may span more than one source (task
-    section 11: "do not assume one group == one file"), so membership is
-    grouped by `source_id` first and `detect_engineering_contexts()`
-    (single-source-only by design) is run once per represented source,
-    fed ONLY that source's member channels (never that source's full
-    channel list) -- flattening every detected member's phase across
-    those source-scoped passes into one group-scoped map. A channel
-    whose detected phase is unknown/not_applicable/neutral is simply
-    absent from the returned map under any of this catalogue's own role
-    keys (Compliance Slice 2 has no use for `N`/`unknown`/`L1`-etc.
-    roles)."""
+) -> list[tuple[str, DetectedContextMember]]:
+    """`(source_id, detected member)` for every Voltage member of the
+    selected group, from ONE `detect_engineering_contexts()` pass per
+    represented source (see `resolve_voltage_role_catalogue_for_group()`
+    for why detection is scoped this way). Both the role catalogue and the
+    group's phase display convention are built from this same result, so
+    the two can never disagree."""
     refs_by_source: dict[str, list[str]] = {}
     for ref in group.channel_refs:
         if ref.kind != "source" or ref.source_id is None or ref.channel_name is None:
             continue
         refs_by_source.setdefault(ref.source_id, []).append(ref.channel_name)
 
-    catalogue: dict[str, list[ResolvedRole]] = {}
+    detected: list[tuple[str, DetectedContextMember]] = []
     for source_id, member_names in refs_by_source.items():
         active = source_registry.get(workspace_id, source_id)
         if active is None:
@@ -214,17 +219,59 @@ def resolve_voltage_role_catalogue_for_group(
             for ch in voltage_channels
         ]
         for detected_context in detect_engineering_contexts(detection_input):
-            for member in detected_context.members:
-                role = member.phase
-                if role not in (ROLE_A, ROLE_B, ROLE_C, "AB", "BC", "CA"):
-                    continue
-                resolved = ResolvedRole(
-                    channel_ref=ChannelRef(kind="source", source_id=source_id, channel_name=member.channel_name),
-                    channel_name=member.channel_name,
-                    source_id=source_id,
-                )
-                catalogue.setdefault(role, []).append(resolved)
+            detected.extend((source_id, member) for member in detected_context.members)
+    return detected
+
+
+def _catalogue_from_detected(detected: list[tuple[str, DetectedContextMember]]) -> dict[str, RoleResolution]:
+    catalogue: dict[str, list[ResolvedRole]] = {}
+    for source_id, member in detected:
+        role = member.phase
+        if role not in (ROLE_A, ROLE_B, ROLE_C, "AB", "BC", "CA"):
+            continue
+        resolved = ResolvedRole(
+            channel_ref=ChannelRef(kind="source", source_id=source_id, channel_name=member.channel_name),
+            channel_name=member.channel_name,
+            source_id=source_id,
+        )
+        catalogue.setdefault(role, []).append(resolved)
     return {role: RoleResolution(role=role, candidates=tuple(entries)) for role, entries in catalogue.items()}
+
+
+def _phase_display_from_detected(detected: list[tuple[str, DetectedContextMember]]) -> PhaseDisplayConvention:
+    """DEC-118: the selected Measurement Group's own phase display
+    convention, from the same detected members the roles came from -- the
+    shared `resolve_phase_display_convention()`, never a Compliance-specific
+    detector. A group whose members span two conventions falls back to
+    canonical A/B/C."""
+    return resolve_phase_display_convention((member.phase, member.original_phase_label) for _, member in detected)
+
+
+def _role_text(role: str, display: PhaseDisplayConvention) -> str:
+    """User-facing plain symbol for a canonical role in the group's own
+    convention: "A" -> "VA", or "VR" for an R/Y/B group; "AB" -> "VRY"."""
+    return phase_symbol_text("V", role, display)
+
+
+def resolve_voltage_role_catalogue_for_group(
+    group: MeasurementGroup, *, workspace_id: str, source_registry: WorkspaceRegistry
+) -> dict[str, RoleResolution]:
+    """Builds `canonical phase role -> RoleResolution` from ONLY the
+    selected group's own `channel_refs` -- never the whole workspace
+    (task section 4/7). A group may span more than one source (task
+    section 11: "do not assume one group == one file"), so membership is
+    grouped by `source_id` first and `detect_engineering_contexts()`
+    (single-source-only by design) is run once per represented source,
+    fed ONLY that source's member channels (never that source's full
+    channel list) -- flattening every detected member's phase across
+    those source-scoped passes into one group-scoped map. A channel
+    whose detected phase is unknown/not_applicable/neutral is simply
+    absent from the returned map under any of this catalogue's own role
+    keys (Compliance Slice 2 has no use for `N`/`unknown`/`L1`-etc.
+    roles)."""
+    return _catalogue_from_detected(
+        _detect_group_members(group, workspace_id=workspace_id, source_registry=source_registry)
+    )
 
 
 def _classify_input_type(channel_ref: ChannelRef, *, workspace_id: str, source_registry: WorkspaceRegistry) -> str | None:
@@ -276,6 +323,9 @@ class ComplianceVoltageMeasurementResult:
     missing: tuple[str, ...] = ()
     reason_code: str | None = None
     message: str | None = None
+    #: DEC-118: the selected group's phase display convention -- how the UI
+    #: spells `resolved_roles` (canonical A -> "R" for an R/Y/B group).
+    phase_display: PhaseDisplayConvention = CANONICAL_PHASE_DISPLAY
 
 
 def _base_for_group(
@@ -328,7 +378,9 @@ def evaluate_voltage_measurement(
             f"Measurement group '{measurement_group_id}' is a Current group, not a Voltage group."
         )
 
-    catalogue = resolve_voltage_role_catalogue_for_group(group, workspace_id=workspace_id, source_registry=source_registry)
+    detected = _detect_group_members(group, workspace_id=workspace_id, source_registry=source_registry)
+    catalogue = _catalogue_from_detected(detected)
+    display = _phase_display_from_detected(detected)
 
     used_direct_pair = False
     roles_needed: tuple[str, ...]
@@ -340,18 +392,18 @@ def evaluate_voltage_measurement(
 
     missing = [role for role in roles_needed if role not in catalogue]
     if missing:
-        required_display = ", ".join(ROLE_DISPLAY_NAME[role] for role in roles_needed)
-        missing_display = ", ".join(ROLE_DISPLAY_NAME[role] for role in missing)
+        required_display = ", ".join(_role_text(role, display) for role in roles_needed)
+        missing_display = ", ".join(_role_text(role, display) for role in missing)
         return ComplianceVoltageMeasurementResult(
-            quantity=quantity, status=STATUS_MISSING_INPUTS, missing=tuple(missing),
+            quantity=quantity, status=STATUS_MISSING_INPUTS, missing=tuple(missing), phase_display=display,
             message=f"{quantity.display_label} requires {required_display}. Missing: {missing_display}.",
         )
 
     ambiguous = [role for role in roles_needed if len(catalogue[role].candidates) > 1]
     if ambiguous:
-        ambiguous_display = ", ".join(ROLE_DISPLAY_NAME[role] for role in ambiguous)
+        ambiguous_display = ", ".join(_role_text(role, display) for role in ambiguous)
         return ComplianceVoltageMeasurementResult(
-            quantity=quantity, status=STATUS_AMBIGUOUS_METADATA,
+            quantity=quantity, status=STATUS_AMBIGUOUS_METADATA, phase_display=display,
             message=(
                 f"Multiple {ambiguous_display} channels match within the selected Measurement Group. "
                 "Resolve the naming conflict before this quantity can be assessed."
@@ -365,9 +417,10 @@ def evaluate_voltage_measurement(
         for role, entry in resolved.items()
     }
     if any(value is None for value in input_types.values()):
-        unresolved_display = ", ".join(ROLE_DISPLAY_NAME[role] for role, value in input_types.items() if value is None)
+        unresolved_display = ", ".join(_role_text(role, display) for role, value in input_types.items() if value is None)
         return ComplianceVoltageMeasurementResult(
             quantity=quantity, status=STATUS_AMBIGUOUS_METADATA, resolved_roles=resolved, used_direct_pair=used_direct_pair,
+            phase_display=display,
             message=(
                 f"Could not confidently determine whether {unresolved_display} is Instantaneous or RMS. "
                 "Powerwave does not guess this from the channel name."
@@ -377,6 +430,7 @@ def evaluate_voltage_measurement(
     if len(distinct_input_types) > 1:
         return ComplianceVoltageMeasurementResult(
             quantity=quantity, status=STATUS_AMBIGUOUS_METADATA, resolved_roles=resolved, used_direct_pair=used_direct_pair,
+            phase_display=display,
             message=(
                 "The resolved phase channels do not agree on Instantaneous vs RMS representation -- "
                 "they cannot be combined into one assessment quantity."
@@ -390,7 +444,7 @@ def evaluate_voltage_measurement(
     if needs_angle and input_type == INPUT_TYPE_RMS:
         return ComplianceVoltageMeasurementResult(
             quantity=quantity, status=STATUS_UNSUPPORTED_REPRESENTATION, resolved_roles=resolved,
-            used_direct_pair=used_direct_pair, input_type=input_type,
+            used_direct_pair=used_direct_pair, input_type=input_type, phase_display=display,
             message=(
                 f"{quantity.display_label} requires simultaneous complex phase phasors, which requires "
                 "Instantaneous input. The resolved phase channels are already-RMS magnitude-only, with no "
@@ -412,6 +466,7 @@ def evaluate_voltage_measurement(
         quantity=quantity, status=STATUS_AVAILABLE, resolved_roles=resolved, used_direct_pair=used_direct_pair,
         input_type=input_type, value_representation=value_representation, base=base,
         assessment_unit=("pu" if base is not None else "engineering_unit"),
+        phase_display=display,
     )
 
 

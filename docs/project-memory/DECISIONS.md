@@ -19468,6 +19468,155 @@ is a pre-existing label-placement matter.
 
 ---
 
+## DEC-118 — Context-specific engineering notation inherits the phase display convention of its Measurement Group / Engineering Context; canonical A/B/C stays internal
+
+Date: 2026-09-26
+Status: Approved (owner-finalized behaviour). Implemented and **awaiting
+owner UAT**. In force as a standing design rule for all future work
+(AGENTS.md "Frontend convention — electrical notation", rule 9).
+Source: owner task "context-specific phase display convention across
+Powerwave". It builds on DEC-086 (canonical phase identity), DEC-115
+(Line-to-Line), DEC-102 (Compliance Measurement Group scope) and DEC-117
+(notation).
+
+**Standing rule (owner wording):**
+
+> Context-specific engineering notation inherits the phase display
+> convention of its authoritative Measurement Group / Engineering
+> Context. Canonical A/B/C identities remain internal. Generic UI wording
+> remains fixed.
+
+Decision:
+
+- **Data model.** Canonical A/B/C, AB/BC/CA, role keys Va/Vb/Vc,
+  `phase_member` and AssessmentDefinition `member` stay unchanged.
+  `app.domain.phase_identity` adds a display layer:
+  - `PhaseDisplayConvention(convention, status, symbols, reason)`.
+    `symbols` is a complete map. For `RYB` it is A→R, B→Y, C→B, AB→RY,
+    BC→YB, CA→BR; for `ABC` it is the identity.
+  - `status` is `established` or `canonical_fallback`.
+- **One authority, derived on read.**
+  `resolve_phase_display_convention((phase, original_phase_label), …)`
+  is the only resolver. It is exposed on:
+  - `EngineeringContextOut.phase_display`
+    (`engineering_context.context_phase_display()`);
+  - the L-L readiness response;
+  - the Compliance measurement response, built from the selected
+    Measurement Group's own detection pass.
+
+  It is never stored on a context, so it cannot go stale after an
+  engineer's phase correction. No page runs its own detector.
+- **No guessing.** A convention is established only if:
+  1. a member resolved to A/B/C/AB/BC/CA;
+  2. every such member has its source label;
+  3. the labels contain convention-exclusive evidence
+     (`infer_phase_convention()`; **a lone "B" is never evidence**);
+  4. the convention explains every member.
+
+  Otherwise the result is `canonical_fallback`: the pre-DEC-118 A/B/C
+  display plus a `reason`. That covers a lone VB, a mixed R/Y/B + A/B/C
+  context, a phase without a label, and L1/L2/L3.
+- **L1/L2/L3.** Recognized for normalization; its display notation is
+  `[OPEN]` (owner to define, especially the line-to-line form). Adding it
+  is one table entry on each side.
+- **Per context, not per workspace.** An R/Y/B bay and an A/B/C bay in
+  one workspace each keep their own spelling.
+- **Calculated Channels (L-L).** These follow the bay's convention:
+  - readiness, output choices and formulas;
+  - backend readiness prose (`VB missing.`);
+  - new default names (`KPDN1 VRY/VYB/VBR`).
+
+  `phase_member` and the arithmetic stay canonical (AB = A − B).
+  `parameters.phase_display` snapshots the convention used, so the
+  system-default name and formula stay recognizable. Channels created
+  before DEC-118 (no snapshot) keep their canonical recognition.
+  Existing channels are never renamed and custom names stay verbatim.
+  Generic Addition/Subtraction are unchanged and gain no phase
+  semantics.
+- **Analysis.** These use the selected Engineering Context's convention:
+  - Phasor values list, row aria-labels and diagram labels;
+  - Related Waveforms trace names (Phasor, Sequence phase-domain inputs,
+    Impedance, Distance).
+
+  These stay canonical:
+  - sequence symbols V1/V2/V0, I1/I2/I0;
+  - Manual Input rows, which have no bay;
+  - Impedance "Phase A" and Distance "Fault loop AB" selectors, which
+    are generic options.
+- **Compliance.**
+  - Unchanged generic wording: Assessment Quantity labels and Reference
+    Profile members.
+  - New: the resolved measurement shows the group's convention, then the
+    source channel (`V<sub>R</sub> — KPDN1_VR`); prose uses the same
+    spelling (`Missing: VB`).
+  - Unchanged API values: `resolved_roles[].role`, `display_name`
+    (`Va`) and `missing`.
+- **Notation (DEC-117 unchanged).**
+  - Rich surfaces get true subscripts; the plain fallback is
+    concatenated (`VRY`).
+  - The underscore guard now also bans the R/Y/B forms.
+  - Formatter tokens are rendered only if they appear in
+    `WW_PHASE_DISPLAY_SYMBOLS_BY_CONVENTION`, which is parity-tested
+    against the backend table.
+
+Reason:
+
+Engineers read a recording in the convention it was recorded in. Showing
+V<sub>AB</sub> for a KPDN measurement recorded as VR/VY forces a mental
+translation and invites errors. The canonical layer (DEC-086) already
+resolved phases convention-aware, so the display can be derived from that
+authority rather than re-detected, which keeps "VB" safe.
+
+Alternatives considered:
+
+- **Store a convention on the context at detection time.** Rejected
+  because it goes stale after an engineer's phase correction. A read-time
+  derivation from `(phase, original_phase_label)` cannot.
+- **Require all three phases present.** Rejected. A bay with only VR/VY
+  would then show VA/VB, the silent switch the owner ruled out. R/Y
+  evidence already proves the convention, and the convention fixes the
+  whole map.
+- **Detect per page from channel names.** Rejected by the owner, and
+  unsafe for "VB".
+- **Rename existing channels, or change API role values.** Rejected by
+  the owner. Only display and new defaults change.
+
+Impact:
+
+- Backend:
+  - `phase_identity.py` (resolver, table, `phase_symbol_text()`);
+  - `engineering_context.py`;
+  - the new `schemas/phase_display.py`;
+  - the EC, L-L and Compliance schemas and APIs;
+  - `line_to_line_voltage.py` (`default_output_name(…, phase_display)`);
+  - `line_to_line_voltage_service.py` and
+    `compliance_measurement_service.py`.
+- Frontend (`index.html`): the shared formatter gained an optional
+  `phaseDisplay` argument and `wwNormalizePhaseDisplay()` /
+  `wwEngineeringContextPhaseDisplay()`. It is applied in the CC L-L
+  builder/list/menu, Phasor, Related Waveforms and the Compliance Input
+  row.
+- Behaviour visible on existing R/Y/B fixtures: default names and prose
+  changed from `KPDN1 VAB` / `Vc missing` to `KPDN1 VRY` / `VB missing`.
+  A/B/C prose changed from `Va`/`Vc` to the DEC-117 plain `VA`/`VC`.
+  The Phasor row aria-label changed from the internal key `Hide Va
+  vector` to `Hide VA vector`.
+- Tests and fixture:
+  - new fixture `phase_convention_mixed` (R/Y/B + A/B/C + lone VB in one
+    file);
+  - new `test_phase_display_convention.py` and
+    `browser-tests/phase-display-convention.spec.js`;
+  - updated L-L, Compliance, Phasor and notation tests.
+- Docs: [ANALYSIS_INPUT_GUARDRAILS.md — Phase display convention](ANALYSIS_INPUT_GUARDRAILS.md#phase-display-convention-dec-118)
+  (the design reference) and [LINE_TO_LINE_VOLTAGE.md](LINE_TO_LINE_VOLTAGE.md) §5.
+
+Opportunity reported, not implemented (owner decision): phase currents
+`Ia/Ib/Ic` are unformatted by DEC-117. They belong to the same
+Engineering Context, so they could reuse this map (I<sub>R</sub>) without
+new detection.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

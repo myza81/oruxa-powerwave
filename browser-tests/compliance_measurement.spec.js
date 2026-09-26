@@ -159,7 +159,7 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
 
       await selectQuantity(page, "Phase A Voltage");
       await expect(page.locator("#wwComplianceMeasurementStatusRow")).toHaveText("Compatible");
-      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("Va");
+      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("VA — VA");
     });
 
     test("clearing the quantity selection returns to the neutral empty state", async ({ page }) => {
@@ -204,7 +204,7 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
       await selectGroup(page, "Bay A");
       await selectQuantity(page, "Phase A Voltage");
       await expect(page.locator("#wwComplianceMeasurementStatusRow")).toHaveText("Compatible");
-      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("Va");
+      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("VA — VA");
       // The old "Multiple channels match... across the loaded recordings"
       // wording must never appear -- a duplicate Va in a DIFFERENT bay is
       // not a naming conflict once a group is selected.
@@ -232,7 +232,7 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
       // switch" scenario).
       await expect(page.locator("#wwComplianceMeasurementBase")).toHaveText("132 kV L-G");
       await expect(page.locator("#wwComplianceMeasurementStatusRow")).toHaveText("Compatible");
-      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("Va");
+      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("VA — VA");
       await expect(page.locator("#wwComplianceMeasurementInputType")).toHaveText("Instantaneous");
       await expect(page.locator("#wwComplianceMeasurementDerivedAs")).toHaveText("Fundamental RMS");
     });
@@ -254,7 +254,7 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
       // The quantity selection itself must be preserved -- the select's
       // own value never silently changes to something else.
       await expect(page.locator("#wwComplianceMeasurementSelect")).toHaveValue("positive_sequence_rms");
-      await expect(page.locator("#wwComplianceMeasurementStatusRow")).toContainText("Missing: Vc");
+      await expect(page.locator("#wwComplianceMeasurementStatusRow")).toContainText("Missing: VC");
       await expect(page.locator("#wwComplianceMeasurementStatusRow")).toHaveClass(/ww-phasor-status--needs-configuration/);
     });
   });
@@ -269,10 +269,10 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
 
       await selectQuantity(page, "Phase A Voltage");
       await expect(page.locator("#wwComplianceMeasurementStatusRow")).toHaveText("Compatible");
-      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("Va");
+      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("VA — VA");
 
       await selectQuantity(page, "Positive Sequence Voltage");
-      await expect(page.locator("#wwComplianceMeasurementStatusRow")).toContainText("Missing: Vb, Vc");
+      await expect(page.locator("#wwComplianceMeasurementStatusRow")).toContainText("Missing: VB, VC");
     });
 
     test("RMS input reports Input Type RMS and Derived As Direct RMS", async ({ page }) => {
@@ -316,7 +316,7 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
       await createVoltageGroup(page, { workspaceId, sourceId, channelNames: ["VA", "VB", "VC"], displayName: "Bus A" });
       await openCompliance(page);
       await selectQuantity(page, "Positive Sequence Voltage");
-      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("Va, Vb, Vc");
+      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("VA — VA, VB — VB, VC — VC");
     });
 
     test("quantity switching updates the summary each time, never showing a stale result", async ({ page }) => {
@@ -327,14 +327,14 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
       await openCompliance(page);
 
       await selectQuantity(page, "Phase A Voltage");
-      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("Va");
+      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("VA — VA");
 
       await selectQuantity(page, "Line-Line AB Voltage");
-      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("Va, Vb");
+      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("VA — VA, VB — VB");
       await expect(page.locator("#wwComplianceMeasurementStatusRow")).toHaveText("Compatible");
 
       await selectQuantity(page, "Phase C Voltage");
-      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("Vc");
+      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("VC — VC");
     });
 
     test("Base metadata: a confirmed Measurement Group with a nominal base shows kV/L-G and pu", async ({ page }) => {
@@ -455,10 +455,10 @@ test.describe("Compliance & Capability -- Slice 2 Measurement", () => {
       await selectGroup(page, "KPDN1 VOLTAGE");
       await selectQuantity(page, "Phase A Voltage");
       await expect(page.locator("#wwComplianceMeasurementStatusRow")).toHaveText("Compatible");
-      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("Va");
+      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("VR — KPDN1_VR"); // DEC-118: R/Y/B group -> V<sub>R</sub>
 
       await selectGroup(page, "SLKS VOLTAGE");
-      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("Va");
+      await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("VR — SLKS_VR");
       await expect(page.locator("#wwComplianceMeasurementStatusRow")).toHaveText("Compatible");
     });
 

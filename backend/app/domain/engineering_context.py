@@ -55,8 +55,10 @@ from app.domain.measurement_group import (
 from app.domain.phase_identity import (
     PHASE_SOURCE_UNKNOWN,
     PHASE_UNKNOWN,
+    PhaseDisplayConvention,
     phase_source_valid,
     phase_valid,
+    resolve_phase_display_convention,
 )
 
 #: Deliberately the SAME status vocabulary `app.domain.measurement_group`
@@ -137,6 +139,14 @@ class EngineeringContext:
 
 def context_channel_refs(context: EngineeringContext) -> list[ChannelRef]:
     return [member.channel_ref for member in context.members]
+
+
+def context_phase_display(context: EngineeringContext) -> PhaseDisplayConvention:
+    """The context's phase display convention (DEC-118), derived on every
+    read from its members' own resolved phases and source labels. Never
+    stored, so an engineer's phase correction is reflected immediately and
+    the value can never go stale."""
+    return resolve_phase_display_convention((m.phase, m.original_phase_label) for m in context.members)
 
 
 def member_for_channel_ref(context: EngineeringContext, channel_ref: ChannelRef) -> EngineeringContextMember | None:

@@ -30,7 +30,16 @@ from __future__ import annotations
 import numpy as np
 
 from app.domain.calculated_channel import evaluate_subtraction
-from app.domain.phase_identity import PHASE_A, PHASE_AB, PHASE_B, PHASE_BC, PHASE_C, PHASE_CA
+from app.domain.phase_identity import (
+    PHASE_A,
+    PHASE_AB,
+    PHASE_B,
+    PHASE_BC,
+    PHASE_C,
+    PHASE_CA,
+    PhaseDisplayConvention,
+    phase_symbol_text,
+)
 
 #: The `CalculatedChannel.operation` value for every output of this
 #: operation. Deliberately NOT a member of
@@ -49,6 +58,7 @@ ROLE_VB = "Vb"
 ROLE_VC = "Vc"
 PHASE_ROLE_KEYS = (ROLE_VA, ROLE_VB, ROLE_VC)
 ROLE_KEY_BY_PHASE = {PHASE_A: ROLE_VA, PHASE_B: ROLE_VB, PHASE_C: ROLE_VC}
+PHASE_BY_ROLE_KEY = {role_key: phase for phase, role_key in ROLE_KEY_BY_PHASE.items()}
 
 #: pair -> (minuend phase, subtrahend phase). The one place the frozen
 #: convention is expressed; everything else reads it from here.
@@ -92,9 +102,15 @@ def required_phases(output: str) -> tuple[str, ...]:
     return tuple(phase for phase in (PHASE_A, PHASE_B, PHASE_C) if phase in needed)
 
 
-def default_output_name(context_display_name: str, pair: str) -> str:
-    """Bay-aware default name, e.g. `"KPDN1 VAB"`."""
-    return f"{context_display_name.strip()} V{pair}".strip()
+def default_output_name(
+    context_display_name: str, pair: str, phase_display: PhaseDisplayConvention | None = None
+) -> str:
+    """Bay-aware default name in the bay's own phase display convention
+    (DEC-118): `"MCRS VAB"` for an A/B/C bay, `"KPDN1 VRY"` for an R/Y/B
+    bay. Only the NAME follows the convention; `phase_member` stays the
+    canonical pair. Without a display convention the canonical spelling is
+    used, exactly as before DEC-118."""
+    return f"{context_display_name.strip()} {phase_symbol_text('V', pair, phase_display)}".strip()
 
 
 def evaluate_line_to_line_instantaneous(minuend: np.ndarray, subtrahend: np.ndarray) -> np.ndarray:

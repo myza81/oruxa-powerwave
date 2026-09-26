@@ -883,7 +883,8 @@ class TestScaleLegendReplacesImaginaryAxisNumbers:
         body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
         assert "const angleRad = role.angle_deg_absolute * Math.PI / 180;" in body
         assert "const r = role.magnitude_rms * scale;" in body
-        assert "wwPhasorVectorSvg(x, y, wwPhasorRoleColor(roleKey), roleKey, isCurrent)" in body
+        # DEC-118 appends only a trailing phase-display argument (label spelling).
+        assert "wwPhasorVectorSvg(x, y, wwPhasorRoleColor(roleKey), roleKey, isCurrent, " in body
 
     def test_bottom_note_still_conveys_current_vectors_are_scaled_and_engineering_values_unaffected(self):
         """Simplified (the legend now covers "separate graphical
@@ -984,7 +985,8 @@ class TestChartGridAndAxisLabels:
         source = _source()
         body = _function_body(source, "function wwPhasorRenderDiagramSvg", "function wwPhasorVectorSvg")
         assert "ww-phasor-ring" in body
-        assert "wwPhasorVectorSvg(x, y, wwPhasorRoleColor(roleKey), roleKey, isCurrent)" in body
+        # DEC-118 appends only a trailing phase-display argument (label spelling).
+        assert "wwPhasorVectorSvg(x, y, wwPhasorRoleColor(roleKey), roleKey, isCurrent, " in body
 
 
 class TestStaleRequestProtection:

@@ -54,8 +54,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.domain.calculated_channel import ChannelRef
-from app.domain.engineering_context import EngineeringContext, EngineeringContextMember
+from app.domain.engineering_context import EngineeringContext, EngineeringContextMember, context_phase_display
 from app.schemas.calculated_channel import ChannelRefOut
+from app.schemas.phase_display import PhaseDisplayOut
 from app.schemas.engineering_context import (
     EngineeringContextCreateRequest,
     EngineeringContextMemberIn,
@@ -210,6 +211,7 @@ def _context_to_out(context: EngineeringContext) -> EngineeringContextOut:
         ],
         status=context.status,
         created_at=context.created_at,
+        phase_display=PhaseDisplayOut.from_domain(context_phase_display(context)),
     )
 
 

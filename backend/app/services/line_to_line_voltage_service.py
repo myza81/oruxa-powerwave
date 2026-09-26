@@ -62,6 +62,7 @@ from app.domain.line_to_line_voltage import (
     OUTPUT_ALL_THREE,
     PAIR_OPERANDS,
     PAIR_ORDER,
+    PHASE_BY_ROLE_KEY,
     PHASE_ROLE_KEYS,
     ROLE_KEY_BY_PHASE,
     SOURCE_PATH_INSTANTANEOUS,
@@ -70,7 +71,9 @@ from app.domain.line_to_line_voltage import (
     output_valid,
     pairs_for_output,
 )
+from app.domain.engineering_context import context_phase_display
 from app.domain.per_unit import derive_per_unit_profile_id
+from app.domain.phase_identity import CANONICAL_PHASE_DISPLAY, PhaseDisplayConvention, phase_symbol_text
 from app.domain.phasor import REASON_WAVEFORM_FORM_NOT_ELIGIBLE
 from app.domain.voltage_reference import LINE_TO_LINE
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
@@ -141,6 +144,10 @@ class LineToLineContextReadiness:
     source_path: str | None
     roles: dict[str, PhaseRoleReadiness] = field(default_factory=dict)
     outputs: dict[str, OutputReadiness] = field(default_factory=dict)
+    #: DEC-118: how this bay spells its phases (A->R for an R/Y/B bay).
+    #: Every user-facing symbol in `summary`/messages already uses it;
+    #: role keys, output keys and `phase_member` stay canonical.
+    phase_display: PhaseDisplayConvention = CANONICAL_PHASE_DISPLAY
 
 
 def _channel_label(ref: ChannelRef, calc_registry: CalculatedChannelRegistry, workspace_id: str) -> str:
@@ -181,37 +188,47 @@ def _representation_violation(
     return None
 
 
-def _role_from_phasor_readiness(role_key: str, readiness, candidate) -> PhaseRoleReadiness:
-    phase_letter = role_key[-1].upper()
+def _role_label(role_key: str, display: PhaseDisplayConvention) -> str:
+    """User-facing plain symbol for a phase role key in this bay's own
+    convention (DEC-118): "Va" -> "VA" (A/B/C) or "VR" (R/Y/B). Messages
+    carry this; `role_key` itself stays the canonical internal key."""
+    return phase_symbol_text("V", PHASE_BY_ROLE_KEY[role_key], display)
+
+
+def _role_from_phasor_readiness(
+    role_key: str, readiness, candidate, display: PhaseDisplayConvention
+) -> PhaseRoleReadiness:
+    label = _role_label(role_key, display)
+    phase_letter = display.symbol(PHASE_BY_ROLE_KEY[role_key])
     if readiness.status == STATUS_RESOLVED:
         return PhaseRoleReadiness(role_key=role_key, status=ROLE_READY, message=None)
     if readiness.status == STATUS_AMBIGUOUS:
         return PhaseRoleReadiness(
             role_key=role_key, status=ROLE_AMBIGUOUS,
-            message=f"{role_key} is ambiguous: more than one phase-{phase_letter} voltage in this bay. "
+            message=f"{label} is ambiguous: more than one phase-{phase_letter} voltage in this bay. "
             "Resolve it in the Engineering Context.",
         )
     if readiness.reason_code == REASON_ROLE_MISSING:
-        return PhaseRoleReadiness(role_key=role_key, status=ROLE_MISSING, message=f"{role_key} missing.")
+        return PhaseRoleReadiness(role_key=role_key, status=ROLE_MISSING, message=f"{label} missing.")
     if readiness.reason_code == REASON_PHASE_IDENTITY_MISSING:
         return PhaseRoleReadiness(
             role_key=role_key, status=ROLE_PHASE_IDENTITY_MISSING,
-            message=f"{role_key}: phase identity not confirmed. Assign phases in the Engineering Context.",
+            message=f"{label}: phase identity not confirmed. Assign phases in the Engineering Context.",
         )
     if readiness.reason_code == REASON_WAVEFORM_FORM_NOT_ELIGIBLE:
         return PhaseRoleReadiness(
             role_key=role_key, status=ROLE_UNSUPPORTED_REPRESENTATION,
-            message=f"{role_key} is not a confirmed instantaneous waveform. {UNSUPPORTED_REPRESENTATION_MESSAGE}",
+            message=f"{label} is not a confirmed instantaneous waveform. {UNSUPPORTED_REPRESENTATION_MESSAGE}",
         )
     if candidate is None and readiness.reason_code == "channel_unavailable":
-        return PhaseRoleReadiness(role_key=role_key, status=ROLE_MISSING, message=f"{role_key} could not be read.")
+        return PhaseRoleReadiness(role_key=role_key, status=ROLE_MISSING, message=f"{label} could not be read.")
     return PhaseRoleReadiness(
-        role_key=role_key, status=ROLE_NEEDS_CONFIGURATION, message=readiness.message or f"{role_key} is not usable.",
+        role_key=role_key, status=ROLE_NEEDS_CONFIGURATION, message=readiness.message or f"{label} is not usable.",
     )
 
 
-def _pair_label(pair: str) -> str:
-    return "V" + pair
+def _pair_label(pair: str, display: PhaseDisplayConvention) -> str:
+    return phase_symbol_text("V", pair, display)
 
 
 def check_line_to_line_readiness(
@@ -228,6 +245,7 @@ def check_line_to_line_readiness(
     context = context_registry.get(workspace_id, engineering_context_id)
     if context is None:
         raise EngineeringContextNotFoundError(f"No Engineering Context '{engineering_context_id}' in this workspace.")
+    display = context_phase_display(context)
 
     phasor_readiness = check_phasor_diagram_readiness(
         workspace_id=workspace_id, engineering_context_id=engineering_context_id,
@@ -239,7 +257,7 @@ def check_line_to_line_readiness(
     roles: dict[str, PhaseRoleReadiness] = {}
     for role_key in PHASE_ROLE_KEYS:
         candidate = phasor_readiness.candidates.get(role_key)
-        role = _role_from_phasor_readiness(role_key, phasor_readiness.role_readiness[role_key], candidate)
+        role = _role_from_phasor_readiness(role_key, phasor_readiness.role_readiness[role_key], candidate, display)
         if candidate is not None:
             role.channel_ref = candidate.channel_ref
             role.channel_label = _channel_label(candidate.channel_ref, calc_registry, workspace_id)
@@ -250,10 +268,10 @@ def check_line_to_line_readiness(
             )
             if violation is not None:
                 role.status = ROLE_UNSUPPORTED_REPRESENTATION
-                role.message = f"{role_key} ({role.channel_label}) {violation}."
+                role.message = f"{_role_label(role_key, display)} ({role.channel_label}) {violation}."
             elif role.status == ROLE_UNSUPPORTED_REPRESENTATION:
                 role.message = (
-                    f"{role_key} ({role.channel_label}) is not a confirmed instantaneous waveform. "
+                    f"{_role_label(role_key, display)} ({role.channel_label}) is not a confirmed instantaneous waveform. "
                     f"{UNSUPPORTED_REPRESENTATION_MESSAGE}"
                 )
         roles[role_key] = role
@@ -269,7 +287,8 @@ def check_line_to_line_readiness(
         if not units_compatible([a.unit, b.unit], [VOLTAGE, VOLTAGE]):
             outputs[pair] = OutputReadiness(
                 output=pair, available=False,
-                reason=f"{from_key} ({a.unit or 'no unit'}) and {to_key} ({b.unit or 'no unit'}) use different "
+                reason=f"{_role_label(from_key, display)} ({a.unit or 'no unit'}) and "
+                f"{_role_label(to_key, display)} ({b.unit or 'no unit'}) use different "
                 "units and cannot be subtracted.",
             )
             continue
@@ -278,7 +297,8 @@ def check_line_to_line_readiness(
         ):
             outputs[pair] = OutputReadiness(
                 output=pair, available=False,
-                reason=f"{from_key} and {to_key} sample times are not aligned; resampling is never performed.",
+                reason=f"{_role_label(from_key, display)} and {_role_label(to_key, display)} sample times are not "
+                "aligned; resampling is never performed.",
             )
             continue
         outputs[pair] = OutputReadiness(output=pair, available=True, reason=None)
@@ -304,7 +324,7 @@ def check_line_to_line_readiness(
         else:
             status = CONTEXT_INCOMPLETE
         if available_pairs:
-            summary = "Ready for " + ", ".join(_pair_label(p) for p in available_pairs) + " only — " + detail
+            summary = "Ready for " + ", ".join(_pair_label(p, display) for p in available_pairs) + " only — " + detail
         else:
             summary = detail or "Not available"
 
@@ -316,6 +336,7 @@ def check_line_to_line_readiness(
         source_path=SOURCE_PATH_INSTANTANEOUS if available_pairs else None,
         roles=roles,
         outputs=outputs,
+        phase_display=display,
     )
 
 
@@ -379,9 +400,10 @@ def create_line_to_line_voltage_channels(
     requested_pairs = pairs_for_output(output)
     unavailable = [readiness.outputs[p] for p in requested_pairs if not readiness.outputs[p].available]
     if unavailable:
-        details = "; ".join(f"{_pair_label(o.output)}: {o.reason}" for o in unavailable)
+        display = readiness.phase_display
+        details = "; ".join(f"{_pair_label(o.output, display)}: {o.reason}" for o in unavailable)
         raise LineToLineInputsUnavailableError(
-            f"Cannot create {'All Three' if output == OUTPUT_ALL_THREE else _pair_label(output)} for "
+            f"Cannot create {'All Three' if output == OUTPUT_ALL_THREE else _pair_label(output, display)} for "
             f"{readiness.display_name} — nothing was created. {details}"
         )
 
@@ -389,9 +411,13 @@ def create_line_to_line_voltage_channels(
     planned_names: dict[str, str] = {}
     for pair in requested_pairs:
         raw = (names or {}).get(pair)
-        clean = (raw if raw is not None else default_output_name(readiness.display_name, pair)).strip()
+        clean = (
+            raw if raw is not None else default_output_name(readiness.display_name, pair, readiness.phase_display)
+        ).strip()
         if not clean:
-            raise InvalidCalculatedChannelNameError(f"Name for {_pair_label(pair)} must not be empty.")
+            raise InvalidCalculatedChannelNameError(
+                f"Name for {_pair_label(pair, readiness.phase_display)} must not be empty."
+            )
         if len(clean) > MAX_NAME_LENGTH:
             raise InvalidCalculatedChannelNameError(f"Name must be {MAX_NAME_LENGTH} characters or fewer.")
         if clean in existing_names or clean in planned_names.values():
@@ -412,7 +438,7 @@ def create_line_to_line_voltage_channels(
         for role_key, r in resolved_by_role.items():
             if not values_all_finite(r.values):
                 raise RequireManualValueNullError(
-                    f"Cannot create with Require Manual Value: {role_key} "
+                    f"Cannot create with Require Manual Value: {_role_label(role_key, readiness.phase_display)} "
                     f"({readiness.roles[role_key].channel_label}) contains missing/invalid (null) values."
                 )
 
@@ -448,6 +474,11 @@ def create_line_to_line_voltage_channels(
                 "source_path": SOURCE_PATH_INSTANTANEOUS,
                 "engineering_context_id": readiness.engineering_context_id,
                 "engineering_context_name": readiness.display_name,
+                # DEC-118: the display convention this channel was named
+                # and labelled with, snapshotted so its system-default name
+                # and formula stay recognisable even if the bay's phases are
+                # later corrected. `phase_member` stays canonical.
+                "phase_display": readiness.phase_display.to_dict(),
             },
             dependency_ids=dependency_ids,
             reference_source_id=first.reference_source_id,

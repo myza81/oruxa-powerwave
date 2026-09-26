@@ -44,6 +44,7 @@ from app.schemas.compliance import (
     ComplianceVoltageQuantityOut,
 )
 from app.schemas.calculated_channel import ChannelRefOut
+from app.schemas.phase_display import PhaseDisplayOut
 from app.schemas.source import ErrorOut
 from app.services.compliance_measurement_service import (
     ComplianceVoltageMeasurementResult,
@@ -129,6 +130,7 @@ def _result_to_out(result: ComplianceVoltageMeasurementResult, *, measurement_gr
         assessment_unit=result.assessment_unit,
         missing=[ROLE_DISPLAY_NAME[role] for role in result.missing],
         message=result.message,
+        phase_display=PhaseDisplayOut.from_domain(result.phase_display),
     )
 
 

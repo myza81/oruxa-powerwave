@@ -126,6 +126,16 @@ Amendment 2).
   - internal/API values.
 - **New UI** must use the formatter from the start and be verified
   visually with `expectTrueSubscripts()`.
+- **Phase display convention**
+  ([DEC-118](docs/project-memory/DECISIONS.md#dec-118--context-specific-engineering-notation-inherits-the-phase-display-convention-of-its-measurement-group--engineering-context-canonical-abc-stays-internal)):
+  context-specific engineering notation inherits the phase display
+  convention of its authoritative Measurement Group / Engineering Context.
+  Canonical A/B/C identities remain internal. Generic UI wording remains
+  fixed.
+  - An R/Y/B bay shows V<sub>R</sub> and V<sub>RY</sub>.
+  - Never hard-code A/B/C into a context-specific result label.
+  - Never detect a convention from names in a page.
+  - Read AGENTS.md rule 9 before touching such labels.
 
 ## Change governance
 
