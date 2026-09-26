@@ -8,6 +8,27 @@ Last updated: **2026-09-25**
 
 ## What was most recently done
 
+**DEC-117: app-wide Line-to-Line electrical notation, now a standing
+frontend convention. Frontend/docs only; awaiting owner UAT. Stop
+here.**
+
+- **Formatter**: a shared helper set in `frontend/index.html`
+  (`wwLineToLinePairHtml()`, `wwLineToLineFormulaHtml()`,
+  `wwCalculatedChannelNameHtml()`, `wwChannelDisplayNameHtml()` + Plotly
+  variants) and one `.ww-ll-sub` CSS rule.
+- **Applied to**: Calculated Channels, Waveform sidebar/legend/Plotly,
+  and the Compliance line-line member summary.
+- **Names**: formatted only when they are the metadata-proven system
+  default; custom names are verbatim. Internal/API values unchanged.
+- **Forward rule**: recorded in AGENTS.md ("Frontend convention —
+  electrical notation") with a CLAUDE.md pointer and
+  [DECISIONS.md — DEC-117](DECISIONS.md#dec-117--line-to-line-voltage-electrical-notation-is-a-standing-frontend-convention-subscript-notation-in-the-ui-via-one-shared-formatter-plain-vab-internally). Any new UI with L-L
+  labels must use the shared formatter from the start.
+- **Also done before this**: the success-banner typography (`4e340b3`)
+  and All Three editable names (`eac5586`).
+
+## What was done in the prior session — DEC-116 per-unit Source Default consistency
+
 **DEC-116: per-unit Source Default consistency. Backend-only; awaiting
 owner UAT/UI feedback. Stop here.** The owner's CSS/UI/UX polish comments
 are the next task.

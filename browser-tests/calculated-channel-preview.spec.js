@@ -82,7 +82,7 @@ async function selectRow(page, name) {
 async function previewTraces(page) {
   return page.evaluate(() => Array.from(document.querySelectorAll("#wwCcPreviewPanels .ww-cc-preview-chart")).flatMap((chart) =>
     (chart.data || []).map((t) => ({
-      uid: t.uid, name: t.name, color: t.line && t.line.color,
+      uid: t.uid, name: (t.name || "").replace(/<[^>]+>/g, ""), rawName: t.name, color: t.line && t.line.color,
       panel: chart.closest(".ww-cc-preview-panel").querySelector(".ww-cc-preview-panel-title").textContent,
     }))
   ));
@@ -174,7 +174,7 @@ test.describe("Calculated Channels Preview -- Visible drives traces, Selected dr
     // Same colors as the main Waveform page uses (one color authority).
     await page.locator("#mainNavWaveformBtn").click();
     const waveformColors = await page.evaluate(() => Object.fromEntries(ww.panels.flatMap((p) =>
-      ((p.chartEl && p.chartEl.data) || []).map((t) => [t.name, t.line && t.line.color]))));
+      ((p.chartEl && p.chartEl.data) || []).map((t) => [(t.name || "").replace(/<[^>]+>/g, ""), t.line && t.line.color]))));
     expect(waveformColors["KPDN1 VAB"]).toBe(four.find((t) => t.name === "KPDN1 VAB (kV)").color);
     expect(waveformColors["RMS(KPDN1 VAB)"]).toBe(four.find((t) => t.name === "RMS(KPDN1 VAB) (kV)").color);
   });

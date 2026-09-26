@@ -121,6 +121,44 @@ data-integrity issue found outside the agreed scope — **stop and report**:
 Then obtain approval before implementing. Do not perform unrelated cleanup or
 refactoring along the way.
 
+## Frontend convention — electrical notation (Line-to-Line voltage)
+
+A standing UI rule for **all** frontend work, existing and new
+([DECISIONS.md — DEC-117](docs/project-memory/DECISIONS.md#dec-117--line-to-line-voltage-electrical-notation-is-a-standing-frontend-convention-subscript-notation-in-the-ui-via-one-shared-formatter-plain-vab-internally)):
+
+```text
+Internal/domain/API values:
+VAB, VBC, VCA
+phase_member = AB | BC | CA
+
+User-facing system-owned notation:
+V<sub>AB</sub>, V<sub>BC</sub>, V<sub>CA</sub>
+```
+
+1. Use the shared electrical-notation formatter in `frontend/index.html`:
+   `wwLineToLinePairHtml()`, `wwLineToLineFormulaHtml()`,
+   `wwCalculatedChannelNameHtml()`, `wwChannelDisplayNameHtml()`, and the
+   Plotly variants `wwCalculatedChannelNamePlotly()` /
+   `wwChannelDisplayNamePlotly()`. Style subscripts only with the shared
+   `.ww-ll-sub` rule.
+2. Do not implement local one-off formatting where the shared helper
+   applies.
+3. Never change internal identifiers, API values or domain values for
+   presentation purposes.
+4. Prefer semantic metadata (`voltage_representation=line_to_line`,
+   `phase_member=AB|BC|CA`) over parsing names.
+5. Preserve arbitrary user-entered/custom names exactly as typed. A
+   channel name gets the notation only when metadata proves it is the
+   system-generated default.
+6. New UI features that introduce L-L voltage labels must use the same
+   notation from the start.
+7. Formula displays follow the same engineering notation
+   (V<sub>AB</sub> = V<sub>A</sub> − V<sub>B</sub>).
+
+Where rich text cannot render (native `<select>` options, `title`
+attributes, plain-text messages), use the plain `VAB` form. Visible
+`<sub>` markup keeps its text content plain (`VAB`) for accessibility.
+
 ## Ground rules
 
 - **GitHub is the single source of truth.** Never fix an environment by editing

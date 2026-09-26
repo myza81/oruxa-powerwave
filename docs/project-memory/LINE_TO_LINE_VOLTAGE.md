@@ -182,6 +182,20 @@ are `base_required` on both paths (DEC-116).
   gets the pair's companion slot: **AB → 3, BC → 4, CA → 5**. It never
   shares its parent's color when both are plotted (owner UAT,
   2026-09-25, recorded on DEC-047).
+- **Electrical notation (DEC-117, standing convention).**
+  - Rendering: system-owned L-L labels and formulas render as
+    V<sub>AB</sub>/V<sub>BC</sub>/V<sub>CA</sub>
+    (V<sub>AB</sub> = V<sub>A</sub> − V<sub>B</sub>).
+  - Where: operation card, output selectors, All Three name labels,
+    planned-names hint, formula preview, created banner, manager list,
+    preview status, Plot All menu, Waveform sidebar/legend/Plotly, and
+    the Compliance line-line member.
+  - Formatter: all of these use the shared formatter in
+    `frontend/index.html`, with values plain internally.
+  - Names: a channel name is formatted only when it is the
+    metadata-proven system default. Custom names are verbatim.
+  - Future UI must use the same helper; rules in
+    [AGENTS.md](../../AGENTS.md).
 - **Preview.** The Calculated Channels Preview plots every *visible*
   calculated channel, including a Plot All set together with RMS(VAB).
   Row selection only drives details (DEC-047 update, 2026-09-25).

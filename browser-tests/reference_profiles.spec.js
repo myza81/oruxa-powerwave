@@ -440,7 +440,9 @@ test.describe("Compliance Slice 4 (DEC-110) -- Assessment Definition", () => {
     await page.locator("#wwRefEditorSaveBtn").click();
     await expect(page.locator("#wwRefEditorOverlay")).toBeHidden();
 
-    await expect(page.locator("#wwRefAddList")).toContainText("Line-Line RMS (AB)");
+    await expect(page.locator("#wwRefAddList")).toContainText("Line-Line RMS (VAB)");
+    // DEC-117: the line-line member renders as V<sub>AB</sub> (text content stays "VAB").
+    await expect(page.locator("#wwRefAddList .ww-ll-sub").first()).toHaveText("AB");
   });
 
   test("an invalid combination (line-line + each-phase) is rejected inline with an actionable error, never saved", async ({ page }) => {

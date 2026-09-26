@@ -105,6 +105,16 @@ approval before implementation. Existing behaviour is not automatically
 correct merely because it is already implemented or already covered by
 passing tests.
 
+## Frontend convention — electrical notation (Line-to-Line voltage)
+
+Read the section of the same name in [AGENTS.md](AGENTS.md) before adding or
+changing any UI that shows Line-to-Line voltage labels or formulas
+([DECISIONS.md — DEC-117](docs/project-memory/DECISIONS.md#dec-117--line-to-line-voltage-electrical-notation-is-a-standing-frontend-convention-subscript-notation-in-the-ui-via-one-shared-formatter-plain-vab-internally)).
+Internal/API values stay `VAB/VBC/VCA`; user-facing system notation is
+V<sub>AB</sub>/V<sub>BC</sub>/V<sub>CA</sub> via the shared formatter;
+custom user names are never reformatted. Future UI must comply from the
+start.
+
 ## Change governance
 
 Before modifying an existing function, workflow, architecture or behaviour that

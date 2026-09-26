@@ -2954,9 +2954,10 @@
            6px spacing instead. */
         .ww-cc-ll-result-list li { display: inline-flex; align-items: center; font-size: 0.70rem; font-weight: 500; line-height: 1.3; }
         .ww-cc-ll-result-list li .channel-color-dot { margin-right: 6px; }
-        /* Pair subscript (V<sub>AB</sub>) that never enlarges the line box. */
-        .ww-cc-ll-result-list li sub,
-        .ww-cc-ll-name-pair sub { font-size: 0.65em; line-height: 0; vertical-align: baseline; position: relative; top: 0.25em; }
+        /* DEC-117 electrical-notation subscript -- the ONE shared rule for
+           every <sub> emitted by wwVoltageSymbolHtml(); sized/offset so it
+           never enlarges the line box. Do not add per-component variants. */
+        .ww-ll-sub { font-size: 0.65em; line-height: 0; vertical-align: baseline; position: relative; top: 0.25em; }
         /* All Three output names: "V<sub>AB</sub> [input]" rows. */
         .ww-cc-ll-name-row { display: grid; grid-template-columns: 2.4em minmax(0, 1fr); align-items: center; gap: 2px 8px; margin-top: 6px; }
         /* Heading matches the sibling field labels (global `label` look). */
@@ -20439,7 +20440,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const label = parenParts.length ? displayName + " (" + parenParts.join(", ") + ")" : displayName;
             return '<span class="channel-name-cell">' +
                 '<span class="channel-color-dot" style="background:' + escapeHtml(color) + '" aria-hidden="true"></span>' +
-                '<span class="channel-name-text">' + escapeHtml(label) + '</span>' +
+                '<span class="channel-name-text">' + wwChannelDisplayNameHtml(source.source_id, channel.name) +
+                    escapeHtml(label.slice(displayName.length)) + '</span>' +
                 '</span>';
         }
 
@@ -24081,6 +24083,99 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return slot === undefined ? null : CHANNEL_TRACE_COLORS[slot];
         }
 
+        // ------------------------------------------------------------------
+        // DEC-117: shared electrical-notation display formatter (Line-to-Line
+        // voltage). The ONE place user-facing L-L notation is produced --
+        // every surface (Calculated Channels, Waveform sidebar/legend/Plotly,
+        // Compliance) calls these; never a local one-off.
+        //
+        //   internal/domain/API values: VAB, VBC, VCA; phase_member AB|BC|CA
+        //   user-facing system notation: V<sub>AB</sub>, V<sub>BC</sub>, V<sub>CA</sub>
+        //
+        // Display only: identifiers, names, API values and metadata are never
+        // changed. Channel names are formatted ONLY when metadata proves the
+        // name is system-generated (operation line_to_line_voltage AND the
+        // name exactly equals the backend default "<bay> V<pair>"); every
+        // other name -- including custom names containing "VAB" -- renders
+        // exactly as typed. Never regex-transform free text.
+        // ------------------------------------------------------------------
+        const WW_LL_NOTATION_PAIRS = ["AB", "BC", "CA"];
+        const WW_LL_NOTATION_OPERANDS = { AB: ["A", "B"], BC: ["B", "C"], CA: ["C", "A"] };
+
+        // V<sub>x</sub> for an electrical subscript ("AB", or "A" inside a
+        // formula). textContent stays plain ("VAB") for accessibility.
+        function wwVoltageSymbolHtml(subscript) {
+            return 'V<sub class="ww-ll-sub">' + escapeHtml(subscript) + '</sub>';
+        }
+
+        // "AB" -> V<sub>AB</sub>; anything else falls back to plain escaped text.
+        function wwLineToLinePairHtml(pair) {
+            return WW_LL_NOTATION_PAIRS.includes(pair) ? wwVoltageSymbolHtml(pair) : escapeHtml("V" + (pair || "?"));
+        }
+
+        // "AB" -> V<sub>AB</sub> = V<sub>A</sub> − V<sub>B</sub> (display only).
+        function wwLineToLineFormulaHtml(pair) {
+            const operands = WW_LL_NOTATION_OPERANDS[pair];
+            if (!operands) return wwLineToLinePairHtml(pair);
+            return wwVoltageSymbolHtml(pair) + " = " + wwVoltageSymbolHtml(operands[0]) + " − " + wwVoltageSymbolHtml(operands[1]);
+        }
+
+        // Mirrors the backend's app.domain.line_to_line_voltage.default_output_name().
+        function wwLineToLineDefaultName(bayName, pair) {
+            return ((bayName || "").trim() + " V" + pair).trim();
+        }
+
+        // A name (e.g. a builder field value) -> HTML: notation only when it
+        // is exactly the system default for this bay/pair, else verbatim.
+        function wwLineToLineNameHtml(name, bayName, pair) {
+            if (!WW_LL_NOTATION_PAIRS.includes(pair) || name !== wwLineToLineDefaultName(bayName, pair)) return escapeHtml(name);
+            return escapeHtml(name.slice(0, name.length - (1 + pair.length))) + wwLineToLinePairHtml(pair);
+        }
+
+        // Metadata-proven system-generated L-L channel name -> {prefix, pair}, else null.
+        function wwLineToLineSystemName(calc) {
+            if (!calc || calc.operation !== "line_to_line_voltage" || !WW_LL_NOTATION_PAIRS.includes(calc.phase_member)) return null;
+            const bay = calc.parameters ? calc.parameters.engineering_context_name : null;
+            if (calc.name !== wwLineToLineDefaultName(bay, calc.phase_member)) return null;
+            return { prefix: calc.name.slice(0, calc.name.length - (1 + calc.phase_member.length)), pair: calc.phase_member };
+        }
+
+        // Calculated-channel name for HTML surfaces.
+        function wwCalculatedChannelNameHtml(calc) {
+            const parts = wwLineToLineSystemName(calc);
+            return parts ? escapeHtml(parts.prefix) + wwLineToLinePairHtml(parts.pair) : escapeHtml(calc ? calc.name : "");
+        }
+
+        // Plotly trace-name variant: Plotly renders its own <sub> pseudo-HTML
+        // (legend/hover) but not class attributes; non-L-L names are passed
+        // through unchanged, exactly as before. Trace identity stays in
+        // uid/meta, never the display name.
+        function wwCalculatedChannelNamePlotly(calc) {
+            const parts = wwLineToLineSystemName(calc);
+            return parts ? parts.prefix + "V<sub>" + parts.pair + "</sub>" : (calc ? calc.name : "");
+        }
+
+        // Any analog channel's display name for HTML surfaces: a user display
+        // alias always wins verbatim; system L-L names get the notation.
+        function wwChannelDisplayNameHtml(sourceId, channelName) {
+            const displayName = wwChannelDisplayName(sourceId, channelName);
+            if (displayName === channelName && wwIsCalculatedSourceId(sourceId)) {
+                const calc = ww.calculatedChannels.get(sourceId);
+                if (calc && calc.name === channelName) return wwCalculatedChannelNameHtml(calc);
+            }
+            return escapeHtml(displayName);
+        }
+
+        // Plotly counterpart of wwChannelDisplayNameHtml().
+        function wwChannelDisplayNamePlotly(sourceId, channelName) {
+            const displayName = wwChannelDisplayName(sourceId, channelName);
+            if (displayName === channelName && wwIsCalculatedSourceId(sourceId)) {
+                const calc = ww.calculatedChannels.get(sourceId);
+                if (calc && calc.name === channelName) return wwCalculatedChannelNamePlotly(calc);
+            }
+            return displayName;
+        }
+
         // Channel presentation override: still "the ONE color authority"
         // every consumer (Plotly trace, sidebar dot, legend) calls --
         // unchanged call sites/signature. A user color override, if one
@@ -24540,7 +24635,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const displayName = wwChannelDisplayName(channel.sourceId, channel.channelName);
                 html += '<span class="ww-legend-item">' +
                     '<span class="ww-legend-dot" style="background:' + channel.color + '"></span>' +
-                    '<span class="ww-legend-label">' + escapeHtml(displayName) +
+                    '<span class="ww-legend-label">' + wwChannelDisplayNameHtml(channel.sourceId, channel.channelName) +
                     (channel.unit ? " (" + escapeHtml(channel.unit) + ")" : "") + '</span>' +
                     '<button type="button" class="ww-legend-remove" data-source-id="' + escapeHtml(channel.sourceId) +
                     '" data-channel-name="' + escapeHtml(channel.channelName) + '" title="Remove from display" ' +
@@ -24697,7 +24792,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // "spline" -- no curve smoothing between real samples,
                 // unchanged from Phase 2B.
                 line: { shape: "linear", width: 1.5, color: channel.color },
-                name: wwChannelDisplayName(channel.sourceId, channel.channelName),
+                name: wwChannelDisplayNamePlotly(channel.sourceId, channel.channelName),
                 hovertemplate: wwTraceHoverTemplate(channel),
                 // Phase 4A-UAT7: a stable "sourceId::channelName" identity
                 // (the same wwChannelKey() convention used everywhere
@@ -30367,6 +30462,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // (GET/POST .../calculated-channels/line-to-line-voltage).
             line_to_line_voltage: {
                 label: "Line-to-Line Voltage (L-L)", description: "VAB / VBC / VCA from a bay",
+                descriptionHtml: wwLineToLinePairHtml("AB") + " / " + wwLineToLinePairHtml("BC") + " / " + wwLineToLinePairHtml("CA") + " from a bay",
                 arity: "context", arityLabel: "Bay / Engineering Context", glyph: "VA−VB",
             },
         };
@@ -30375,10 +30471,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // DEC-115: Line-to-Line output options -- wire values match
         // app.domain.line_to_line_voltage.KNOWN_OUTPUTS exactly.
         const WW_CC_LL_OUTPUTS = [
-            { value: "AB", label: "VAB", formula: "VAB = VA − VB" },
-            { value: "BC", label: "VBC", formula: "VBC = VB − VC" },
-            { value: "CA", label: "VCA", formula: "VCA = VC − VA" },
-            { value: "all_three", label: "All Three", formula: null },
+            { value: "AB", label: "VAB" },
+            { value: "BC", label: "VBC" },
+            { value: "CA", label: "VCA" },
+            { value: "all_three", label: "All Three" },
         ];
         // Server-derived readiness for every Engineering Context (never
         // computed client-side), refetched each time the operation is
@@ -30787,7 +30883,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwCcLlDefaultName(ctx, pair) {
-            return (ctx ? ctx.display_name + " " : "") + "V" + pair;
+            return wwLineToLineDefaultName(ctx ? ctx.display_name : "", pair);
         }
 
         // Picks a sensible initial context/output without ever hiding
@@ -30891,7 +30987,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     (readiness.reason ? ' title="' + escapeHtml(readiness.reason) + '"' : "") + '>' +
                     '<input type="radio" name="wwCcLlOutput" id="wwCcLlOutput_' + option.value + '" value="' + option.value + '"' +
                     (wwCcBuilder.llOutput === option.value ? " checked" : "") + (readiness.available ? "" : " disabled") + '>' +
-                    '<span>' + escapeHtml(option.label) + '</span>' +
+                    '<span>' + (option.value === "all_three" ? escapeHtml(option.label) : wwLineToLinePairHtml(option.value)) + '</span>' +
                     (readiness.available ? "" : '<span class="ww-cc-ll-output-reason">unavailable</span>') +
                     '</label>';
             }
@@ -30902,7 +30998,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             if (wwCcBuilder.llOutput === "all_three") {
                 wwCcLlEnsureDefaultNames(ctx);
-                html += '<p class="hint" id="wwCcLlPlannedNames">' + escapeHtml(wwCcLlPlannedNamesText()) + '</p>';
+                html += '<p class="hint" id="wwCcLlPlannedNames">' + wwCcLlPlannedNamesHtml() + '</p>';
             }
             return html;
         }
@@ -30914,8 +31010,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             for (const pair of WW_CC_LL_PAIR_ORDER) wwCcBuilder.llNames[pair] = wwCcLlDefaultName(ctx, pair);
         }
 
-        function wwCcLlPlannedNamesText() {
-            const names = WW_CC_LL_PAIR_ORDER.map((p) => wwCcBuilder.llNames[p].trim() || "V" + p);
+        function wwCcLlPlannedNamesHtml() {
+            const ctx = wwCcLlSelectedContext();
+            const names = WW_CC_LL_PAIR_ORDER.map((p) => {
+                const name = wwCcBuilder.llNames[p].trim();
+                return name ? wwLineToLineNameHtml(name, ctx ? ctx.display_name : "", p) : wwLineToLinePairHtml(p);
+            });
             return "Creates " + names.join(", ") + " as one set — all three or none.";
         }
 
@@ -30945,7 +31045,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (errorEl) { errorEl.textContent = errors[pair] || ""; errorEl.hidden = !errors[pair]; }
             }
             const planned = document.getElementById("wwCcLlPlannedNames");
-            if (planned) planned.textContent = wwCcLlPlannedNamesText();
+            if (planned) planned.innerHTML = wwCcLlPlannedNamesHtml();
         }
 
         // Shows the three name fields only for Line-to-Line "All Three"
@@ -30960,7 +31060,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             let html = '<span>Output Names</span>';
             for (const pair of WW_CC_LL_PAIR_ORDER) {
                 html += '<div class="ww-cc-ll-name-row">' +
-                    '<label class="ww-cc-ll-name-pair" for="wwCcLlName_' + pair + '">V<sub>' + pair + '</sub></label>' +
+                    '<label class="ww-cc-ll-name-pair" for="wwCcLlName_' + pair + '">' + wwLineToLinePairHtml(pair) + '</label>' +
                     '<input type="text" id="wwCcLlName_' + pair + '" data-ll-pair="' + pair + '" maxlength="120" autocomplete="off"' +
                     ' aria-describedby="wwCcLlNameError_' + pair + '" value="' + escapeHtml(wwCcBuilder.llNames[pair]) + '">' +
                     '<p class="hint error ww-cc-ll-name-error" id="wwCcLlNameError_' + pair + '" hidden></p>' +
@@ -30970,17 +31070,30 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwCcLlRenderNameErrors();
         }
 
+        // Plain text (for the shared text pipeline) and HTML (rendered).
         function wwCcLlExpressionPreview() {
             const ctx = wwCcLlSelectedContext();
             if (!ctx) return "";
-            const label = (roleKey) => {
-                const role = ctx.roles[roleKey];
-                return role && role.status === "ready" ? role.channel_label : roleKey;
-            };
             return wwCcLlPairsForOutput(wwCcBuilder.llOutput).map((pair) => {
                 const [from, to] = WW_CC_LL_PAIR_ROLES[pair];
-                return "V" + pair + " = " + label(from) + " − " + label(to);
+                return "V" + pair + " = " + from.toUpperCase() + " − " + to.toUpperCase() +
+                    " (" + wwCcLlRoleLabel(ctx, from) + " − " + wwCcLlRoleLabel(ctx, to) + ")";
             }).join("   ·   ");
+        }
+
+        function wwCcLlExpressionPreviewHtml() {
+            const ctx = wwCcLlSelectedContext();
+            if (!ctx) return "";
+            return wwCcLlPairsForOutput(wwCcBuilder.llOutput).map((pair) => {
+                const [from, to] = WW_CC_LL_PAIR_ROLES[pair];
+                return '<span class="ww-cc-ll-formula">' + wwLineToLineFormulaHtml(pair) + " (" +
+                    escapeHtml(wwCcLlRoleLabel(ctx, from)) + " − " + escapeHtml(wwCcLlRoleLabel(ctx, to)) + ")</span>";
+            }).join("   ·   ");
+        }
+
+        function wwCcLlRoleLabel(ctx, roleKey) {
+            const role = ctx.roles[roleKey];
+            return role && role.status === "ready" ? role.channel_label : roleKey;
         }
 
         function wwCcLlValidate(errors) {
@@ -31081,15 +31194,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 .sort((a, b) => WW_CC_LL_PAIR_ORDER.indexOf(a.phase_member) - WW_CC_LL_PAIR_ORDER.indexOf(b.phase_member));
         }
 
-        // Display-only electrical notation: a name ending in its own pair
-        // token ("KPDN2 VAB") renders as "KPDN2 V<sub>AB</sub>". The
-        // channel's name, id and phase_member are never changed, and a
-        // custom name without that token renders verbatim.
-        function wwCcLlNameHtml(calc) {
-            const token = calc.phase_member ? "V" + calc.phase_member : null;
-            if (!token || !calc.name.endsWith(token)) return escapeHtml(calc.name);
-            return escapeHtml(calc.name.slice(0, -token.length)) + "V<sub>" + escapeHtml(calc.phase_member) + "</sub>";
-        }
 
         function wwCcRenderLineToLineResult() {
             const el = document.getElementById("wwCcLlResult");
@@ -31107,7 +31211,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             for (const c of channels) {
                 html += '<li data-ll-result-channel="' + escapeHtml(c.phase_member || "") + '">' +
                     '<span class="channel-color-dot" style="background:' + escapeHtml(wwColorForChannel(c.id, c.name)) + '" aria-hidden="true"></span>' +
-                    wwCcLlNameHtml(c) + '</li>';
+                    wwCalculatedChannelNameHtml(c) + '</li>';
             }
             html += '</ul></div><div class="ww-cc-ll-result-actions">' +
                 '<button type="button" id="wwCcLlPlotAllBtn" data-action="ll-plot-all"' + (allVisible ? " disabled" : "") + '>' +
@@ -31478,7 +31582,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const pressed = wwCcBuilder.operation === operation;
                 html += '<button type="button" class="ww-cc-operation-card" data-operation="' + operation + '" aria-pressed="' + pressed + '">' +
                     '<span class="ww-cc-operation-card-name">' + escapeHtml(meta.label) + '</span>' +
-                    (meta.description ? '<span class="ww-cc-operation-card-description">' + escapeHtml(meta.description) + '</span>' : "") +
+                    (meta.description ? '<span class="ww-cc-operation-card-description">' + (meta.descriptionHtml || escapeHtml(meta.description)) + '</span>' : "") +
                     '<span class="ww-cc-operation-card-arity">' + escapeHtml(meta.arityLabel) + '</span>' +
                     '</button>';
             }
@@ -31580,7 +31684,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const el = document.getElementById("wwCcExpressionPreview");
             if (!el) return;
             const text = wwCcComputeExpressionPreview();
-            el.textContent = text;
+            if (wwCcBuilder.operation === "line_to_line_voltage") el.innerHTML = wwCcLlExpressionPreviewHtml(); // DEC-117 notation
+            else el.textContent = text;
             el.hidden = !text;
         }
 
@@ -31736,9 +31841,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             if (calc.operation === "addition") return names.join(" + ");
             if (calc.operation === "subtraction") return names.join(" − ");
-            if (calc.operation === "line_to_line_voltage") return "V" + (calc.phase_member || "?") + " = " + names.join(" − ");
+            if (calc.operation === "line_to_line_voltage") {
+                const operands = WW_LL_NOTATION_OPERANDS[calc.phase_member];
+                return "V" + (calc.phase_member || "?") + (operands ? " = V" + operands[0] + " − V" + operands[1] : "") +
+                    " (" + names.join(" − ") + ")";
+            }
             const meta = WW_CC_OPERATIONS[calc.operation];
             return meta ? meta.label : calc.operation;
+        }
+
+        // HTML counterpart of wwCcExpressionTextFor(): DEC-117 notation for
+        // Line-to-Line formulas; every other operation is escaped text.
+        function wwCcExpressionHtmlFor(calc) {
+            if (calc.operation === "line_to_line_voltage" && WW_LL_NOTATION_OPERANDS[calc.phase_member]) {
+                return wwLineToLineFormulaHtml(calc.phase_member) + " (" + escapeHtml(calc.inputs.map(wwCcInputDisplayName).join(" − ")) + ")";
+            }
+            return escapeHtml(wwCcExpressionTextFor(calc));
         }
 
         // DEC-084 Calc Slice 3 (section 18): a compact, one-line
@@ -31815,8 +31933,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 html += '<div class="ww-cc-list-row' + (selected ? " ww-cc-list-row--selected" : "") + '" data-calculated-channel-id="' + escapeHtml(calc.id) + '">' +
                     '<span class="channel-color-dot" style="background:' + escapeHtml(color) + '" aria-hidden="true"></span>' +
                     '<div class="ww-cc-list-row-main">' +
-                        '<div class="ww-cc-list-row-name">' + escapeHtml(calc.name) + '</div>' +
-                        '<div class="ww-cc-list-row-expr">' + escapeHtml(wwCcExpressionTextFor(calc)) + '</div>' +
+                        '<div class="ww-cc-list-row-name"><span>' + wwCalculatedChannelNameHtml(calc) + '</span></div>' +
+                        '<div class="ww-cc-list-row-expr">' + wwCcExpressionHtmlFor(calc) + '</div>' +
                         '<div class="ww-cc-list-row-summary">' + escapeHtml((meta ? meta.label : calc.operation) + " · " + inputNames + " · " + wwCcNullPolicySummaryText(calc)) + '</div>' +
                         (error ? '<div class="ww-cc-list-row-error">' + escapeHtml(error) + '</div>' : '') +
                     '</div>' +
@@ -31829,7 +31947,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         '<details class="ww-cc-menu">' +
                             '<summary class="ww-icon-btn" aria-label="More actions for ' + escapeHtml(calc.name) + '" title="More actions">&#8942;</summary>' +
                             '<div class="ww-cc-menu-list">' +
-                                (calc.creation_batch_id ? '<button type="button" class="ww-cc-menu-item" data-action="plot-batch">Plot All (VAB, VBC, VCA)</button>' : '') +
+                                (calc.creation_batch_id ? '<button type="button" class="ww-cc-menu-item" data-action="plot-batch" aria-label="Plot All (VAB, VBC, VCA)">Plot All (' +
+                                    WW_LL_NOTATION_PAIRS.map(wwLineToLinePairHtml).join(", ") + ')</button>' : '') +
                                 '<button type="button" class="ww-cc-menu-item" data-action="delete">Delete</button>' +
                             '</div>' +
                         '</details>' +
@@ -32210,7 +32329,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     statusEl.textContent = ww.calculatedChannels.size > 0 ? countText : "";
                 } else {
                     const isVisible = wwIsAnalogChannelVisible(calc.id, calc.name);
-                    statusEl.innerHTML = "Selected: " + escapeHtml(calc.name) + (isVisible ? "" : " (hidden)") +
+                    statusEl.innerHTML = "Selected: " + wwCalculatedChannelNameHtml(calc) + (isVisible ? "" : " (hidden)") +
                         '<span class="ww-cc-preview-status-dot' + (visibleCount > 0 ? " ww-cc-preview-status-dot--visible" : "") + '"></span>' +
                         escapeHtml(countText);
                 }
@@ -32224,7 +32343,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     const meta = WW_CC_OPERATIONS[calc.operation];
                     const inputNames = calc.inputs.map(wwCcInputDisplayName).join(", ");
                     stripEl.innerHTML =
-                        '<div><span class="ww-cc-preview-info-label">Expression</span><span class="ww-cc-preview-info-value">' + escapeHtml(wwCcExpressionTextFor(calc)) + '</span></div>' +
+                        '<div><span class="ww-cc-preview-info-label">Expression</span><span class="ww-cc-preview-info-value">' + wwCcExpressionHtmlFor(calc) + '</span></div>' +
                         '<div><span class="ww-cc-preview-info-label">Classification</span><span class="ww-cc-preview-info-value">' + escapeHtml(calc.engineering_type || "Undefined") + '</span></div>' +
                         '<div><span class="ww-cc-preview-info-label">Unit</span><span class="ww-cc-preview-info-value">' + escapeHtml(calc.unit || "—") + '</span></div>' +
                         '<div><span class="ww-cc-preview-info-label">Source</span><span class="ww-cc-preview-info-value">' + escapeHtml((meta ? meta.label : calc.operation) + " · " + inputNames) + '</span></div>' +
@@ -32403,7 +32522,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     y: body.values,
                     mode: "lines",
                     type: "scatter",
-                    name: body.name + (body.unit ? " (" + body.unit + ")" : ""),
+                    name: wwCalculatedChannelNamePlotly(calc) + (body.unit ? " (" + body.unit + ")" : ""),
                     line: { color: wwColorForChannel(calc.id, calc.name), width: 1.5 },
                 }));
                 // Phase 5A-UAT7: theme-aware axis/grid/zeroline colors,
@@ -46176,7 +46295,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // verbose -- one compact line, omitting a field the moment it is
         // "unspecified" rather than spelling out "Unspecified" for every
         // axis every time.
-        function wwRefDescribeAssessmentDefinition(definition) {
+        // `options.html` -> HTML with DEC-117 notation for a line-line member
+        // (V<sub>AB</sub>); default -> plain text ("VAB"), used for titles.
+        function wwRefDescribeAssessmentDefinition(definition, options) {
+            const html = !!(options && options.html);
+            const esc = (text) => (html ? escapeHtml(text) : text);
             if (!definition) return "Assessment convention not specified";
             const rep = definition.representation;
             const treatment = definition.phase_treatment;
@@ -46184,15 +46307,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (rep === "unspecified" && treatment === "unspecified" && !member) {
                 return "Assessment convention not specified";
             }
-            let repText = rep !== "unspecified" ? (WW_REF_REPRESENTATION_LABEL[rep] || rep) : "representation unspecified";
-            if (member) repText += " (" + member + ")";
+            let repText = esc(rep !== "unspecified" ? (WW_REF_REPRESENTATION_LABEL[rep] || rep) : "representation unspecified");
+            if (member) {
+                // A line-line member is a L-L voltage: DEC-117 notation.
+                const memberText = rep === "line_line_rms" && WW_LL_NOTATION_PAIRS.includes(member)
+                    ? (html ? wwLineToLinePairHtml(member) : "V" + member)
+                    : esc(member);
+                repText += " (" + memberText + ")";
+            }
             let core = repText;
             if (treatment !== "unspecified" && treatment !== "single") {
-                core = (WW_REF_PHASE_TREATMENT_LABEL[treatment] || treatment) + " " + repText;
+                core = esc(WW_REF_PHASE_TREATMENT_LABEL[treatment] || treatment) + " " + repText;
             }
             let summary = "Assessment: " + core;
             if (definition.measurement_location && definition.measurement_location !== "unspecified") {
-                summary += " at " + (WW_REF_LOCATION_LABEL[definition.measurement_location] || definition.measurement_location);
+                summary += " at " + esc(WW_REF_LOCATION_LABEL[definition.measurement_location] || definition.measurement_location);
             }
             return summary;
         }
@@ -46297,7 +46426,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                             wwRefCompatBadgeHtml(layer.compatibility.status, layer.compatibility.reason) +
                             '<button type="button" class="ww-ref-layer-remove-btn" id="wwRefLayerRemove-' + escapeHtml(layer.id) + '" title="Remove from chart (does not delete the profile)" aria-label="Remove ' + escapeHtml(profile.name) + '">&times;</button>' +
                         '</div>' +
-                        '<div class="ww-ref-layer-summary" title="' + escapeHtml(summary) + '">' + escapeHtml(summary) + '</div>' +
+                        '<div class="ww-ref-layer-summary" title="' + escapeHtml(summary) + '">' +
+                            wwRefDescribeAssessmentDefinition(profile.assessment_definition, { html: true }) + '</div>' +
                     '</div>'
                 );
             }).join("");
@@ -46363,7 +46493,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const reasonHtml = compat.status !== "not_yet_applicable"
                     ? '<div class="ww-ref-picker-item-reason">' + wwRefCompatBadgeHtml(compat.status, compat.reason) + '</div>'
                     : "";
-                const summaryHtml = '<div class="ww-ref-picker-item-reason">' + escapeHtml(wwRefDescribeAssessmentDefinition(profile.assessment_definition)) + '</div>';
+                const summaryHtml = '<div class="ww-ref-picker-item-reason">' + wwRefDescribeAssessmentDefinition(profile.assessment_definition, { html: true }) + '</div>';
                 return (
                     '<div class="ww-ref-picker-item">' +
                         '<div class="ww-ref-picker-item-main">' +

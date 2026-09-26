@@ -19132,6 +19132,70 @@ Impact:
 
 ---
 
+## DEC-117 — Line-to-Line voltage electrical notation is a standing frontend convention: subscript notation in the UI via one shared formatter, plain VAB internally
+
+Date: 2026-09-26
+Status: Approved (owner instruction). Implemented for the existing UI and
+**in force as a forward design rule for all future frontend work**.
+Source: owner task "app-wide Line-to-Line electrical-notation
+standardization", with the explicit additional requirement that it
+become a documented convention for future Claude/Codex work.
+
+Decision:
+
+```text
+Internal/domain/API values:  VAB, VBC, VCA;  phase_member = AB | BC | CA
+User-facing system notation: V<sub>AB</sub>, V<sub>BC</sub>, V<sub>CA</sub>
+```
+
+1. Use the shared electrical-notation display formatter/helper.
+2. Do not implement local one-off formatting where the shared helper
+   applies.
+3. Never change internal identifiers/API/domain values for presentation
+   purposes.
+4. Prefer semantic metadata (`voltage_representation=line_to_line`,
+   `phase_member=AB|BC|CA`) over parsing names.
+5. Preserve arbitrary user-entered/custom names exactly as typed.
+6. New UI features that introduce L-L voltage labels must use the same
+   notation from the start.
+7. Formula displays follow the same engineering notation
+   (V<sub>AB</sub> = V<sub>A</sub> − V<sub>B</sub>).
+
+Existing UI was normalized in this change; future UI must comply by
+default. The standing rule text lives in [AGENTS.md](../../AGENTS.md)
+("Frontend convention — electrical notation"), with a pointer in
+[CLAUDE.md](../../CLAUDE.md), so no agent has to rediscover it from code.
+
+Implementation (`frontend/index.html`, display only):
+
+- **Shared formatter:** `wwVoltageSymbolHtml()`, `wwLineToLinePairHtml()`,
+  `wwLineToLineFormulaHtml()`, `wwLineToLineDefaultName()` (mirrors the
+  backend `default_output_name()`), `wwLineToLineNameHtml()`,
+  `wwLineToLineSystemName()`, `wwCalculatedChannelNameHtml()`,
+  `wwChannelDisplayNameHtml()`, and Plotly variants
+  `wwCalculatedChannelNamePlotly()`/`wwChannelDisplayNamePlotly()`.
+  One CSS rule, `.ww-ll-sub` (0.65em, zero line-height, offset), replaces
+  the earlier per-component `<sub>` rules. The banner-only
+  `wwCcLlNameHtml()` and the unused plain `formula` strings were removed.
+- **System-generated vs custom:** a channel name is formatted only when
+  `operation == line_to_line_voltage` and the name exactly equals
+  `"<engineering_context_name> V<phase_member>"`. All other names
+  (e.g. "Backup VAB Check", "Feeder VBC", a user display alias) render
+  verbatim. No regex runs over free text.
+- **Surfaces:** everywhere in the Calculated Channels UI and on the
+  Waveform (sidebar, legend, Plotly names), plus one Compliance summary.
+  Full list: [LINE_TO_LINE_VOLTAGE.md](LINE_TO_LINE_VOLTAGE.md) §7.
+- **Deliberately plain:** anything that cannot render rich text keeps
+  `VAB` (native `<option>` text, `title` attributes, backend messages).
+  Distance Protection's "Fault loop AB/BC/CA" is an impedance loop, not
+  V-notation, and is out of scope.
+
+Impact: frontend only; no API, name, ID, metadata, arithmetic, per-unit,
+Engineering Context or Compliance-logic change. Plotly trace identity
+stays in `uid`/`meta`.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

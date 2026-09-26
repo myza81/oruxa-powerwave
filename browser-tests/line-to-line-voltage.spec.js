@@ -56,7 +56,7 @@ async function createAndWait(page) {
 // line color -- read from the rendered chart, never from app state alone.
 async function waveformTraces(page) {
   return page.evaluate(() => ww.panels.flatMap((panel) =>
-    ((panel.chartEl && panel.chartEl.data) || []).map((t) => ({ name: t.name, color: t.line && t.line.color }))
+    ((panel.chartEl && panel.chartEl.data) || []).map((t) => ({ name: (t.name || "").replace(/<[^>]+>/g, ""), rawName: t.name, color: t.line && t.line.color }))
   ));
 }
 
@@ -90,8 +90,8 @@ test.describe("Line-to-Line Voltage", () => {
     await expect(page.locator("#wwCcLlStatus")).toHaveAttribute("data-ll-status", "ready");
     await expect(page.locator("#wwCcLlOutput_all_three")).toBeChecked();
     await expect(page.locator("#wwCcLlPlannedNames")).toContainText("KPDN1 VAB, KPDN1 VBC, KPDN1 VCA");
-    await expect(page.locator("#wwCcExpressionPreview")).toContainText("VAB = KPDN1_VR − KPDN1_VY");
-    await expect(page.locator("#wwCcExpressionPreview")).toContainText("VCA = KPDN1_VB − KPDN1_VR");
+    await expect(page.locator("#wwCcExpressionPreview")).toContainText("VAB = VA − VB (KPDN1_VR − KPDN1_VY)");
+    await expect(page.locator("#wwCcExpressionPreview")).toContainText("VCA = VC − VA (KPDN1_VB − KPDN1_VR)");
     await expect(page.locator("#wwCcUnitDisplay")).toHaveValue("kV");
 
     // Unsupported representation: nothing can be chosen or created.
@@ -120,7 +120,7 @@ test.describe("Line-to-Line Voltage", () => {
     // ...yet three ordinary, individually listed calculated channels.
     await expect(page.locator(".ww-cc-list-row")).toHaveCount(3);
     await expect(page.locator(".ww-cc-list-row-name")).toHaveText(["KPDN1 VAB", "KPDN1 VBC", "KPDN1 VCA"]);
-    await expect(page.locator(".ww-cc-list-row-expr").first()).toHaveText("VAB = KPDN1_VR − KPDN1_VY");
+    await expect(page.locator(".ww-cc-list-row-expr").first()).toHaveText("VAB = VA − VB (KPDN1_VR − KPDN1_VY)");
 
     await page.locator("#wwCcLlPlotAllBtn").click();
     await expect(page.locator("#wwCcLlPlotAllBtn")).toBeDisabled(); // all shown
@@ -212,11 +212,11 @@ test.describe("Line-to-Line Voltage", () => {
     await openLineToLineBuilder(page);
     await selectBay(page, "KPDN1");
     await page.locator("#wwCcLlOutput_CA").check();
-    await expect(page.locator("#wwCcExpressionPreview")).toHaveText("VCA = KPDN1_VB − KPDN1_VR");
+    await expect(page.locator("#wwCcExpressionPreview")).toHaveText("VCA = VC − VA (KPDN1_VB − KPDN1_VR)");
     await page.locator("#wwCcNameInput").fill("Feeder VCA");
     await createAndWait(page);
     await expect(page.locator(".ww-cc-list-row-name")).toHaveText("Feeder VCA");
-    await expect(page.locator(".ww-cc-list-row-expr")).toHaveText("VCA = KPDN1_VB − KPDN1_VR");
+    await expect(page.locator(".ww-cc-list-row-expr")).toHaveText("VCA = VC − VA (KPDN1_VB − KPDN1_VR)");
   });
 
   test("deleting one member keeps the rest of the set", async ({ page }) => {
@@ -281,7 +281,7 @@ test.describe("Line-to-Line Voltage -- All Three output names", () => {
     await expect(page.locator("#wwCcLlPlannedNames")).toHaveText(
       "Creates KPDN1 BUS VAB, KPDN1 BUS VBC, KPDN1 BUS VCA as one set — all three or none."
     );
-    await expect(page.locator("#wwCcExpressionPreview")).toContainText("VAB = KPDN1_VR − KPDN1_VY");
+    await expect(page.locator("#wwCcExpressionPreview")).toContainText("VAB = VA − VB (KPDN1_VR − KPDN1_VY)");
     await createAndWait(page);
 
     expect(await apiChannelNames(page)).toEqual(["KPDN1 BUS VAB", "KPDN1 BUS VBC", "KPDN1 BUS VCA"]);
@@ -363,5 +363,90 @@ test.describe("Line-to-Line Voltage -- All Three output names", () => {
     await expect(page.locator("#wwCcLlPlannedNames")).toHaveText("Creates KPDN9 VAB, KPDN9 VBC, KPDN9 VCA as one set — all three or none.");
     await createAndWait(page);
     expect(await apiChannelNames(page)).toEqual(["KPDN9 VAB", "KPDN9 VBC", "KPDN9 VCA"]);
+  });
+});
+
+// DEC-117: app-wide Line-to-Line electrical notation (display only).
+test.describe("Line-to-Line Voltage -- electrical notation (DEC-117)", () => {
+  const subs = (locator) => locator.locator(".ww-ll-sub");
+
+  async function apiChannels(page) {
+    return page.evaluate(async () => {
+      const r = await fetch(apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/calculated-channels");
+      return (await r.json()).map((c) => ({ name: c.name, phase_member: c.phase_member })).sort((a, b) => (a.name < b.name ? -1 : 1));
+    });
+  }
+
+  test("system-generated notation on every surface; internal/API values stay plain", async ({ page }) => {
+    await uploadFixture(page);
+    await openLineToLineBuilder(page);
+    // Operation card, output selectors, All Three labels, formula preview.
+    await expect(subs(page.locator('.ww-cc-operation-card[data-operation="line_to_line_voltage"]'))).toHaveText(["AB", "BC", "CA"]);
+    for (const pair of ["AB", "BC", "CA"]) {
+      await expect(subs(page.locator(`label:has(#wwCcLlOutput_${pair})`))).toHaveText([pair]);
+      await expect(page.locator(`#wwCcLlOutput_${pair}`)).toHaveValue(pair); // internal value plain
+    }
+    await expect(subs(page.locator("#wwCcLlNamesFields .ww-cc-ll-name-pair"))).toHaveText(["AB", "BC", "CA"]);
+    await expect(subs(page.locator("#wwCcLlPlannedNames"))).toHaveText(["AB", "BC", "CA"]);
+    await expect(subs(page.locator("#wwCcExpressionPreview"))).toHaveText(["AB", "A", "B", "BC", "B", "C", "CA", "C", "A"]);
+    await expect(page.locator("#wwCcLlName_AB")).toHaveValue("KPDN1 VAB"); // editable value plain
+    await createAndWait(page);
+
+    // Created banner, manager list name + formula, preview status.
+    await expect(subs(page.locator("#wwCcLlResult"))).toHaveText(["AB", "BC", "CA"]);
+    const firstRow = page.locator(".ww-cc-list-row").first();
+    await expect(subs(firstRow.locator(".ww-cc-list-row-name"))).toHaveText(["AB"]);
+    await expect(subs(firstRow.locator(".ww-cc-list-row-expr"))).toHaveText(["AB", "A", "B"]);
+    await expect(firstRow.locator(".ww-cc-list-row-name")).toHaveText("KPDN1 VAB"); // plain text meaning
+    await expect(subs(page.locator("#wwCcPreviewStatus"))).toHaveText(["AB"]);
+    await firstRow.locator(".ww-cc-menu summary").click();
+    const plotAll = firstRow.locator('button[data-action="plot-batch"]');
+    await expect(subs(plotAll)).toHaveText(["AB", "BC", "CA"]);
+    await expect(plotAll).toHaveAttribute("aria-label", "Plot All (VAB, VBC, VCA)");
+    await plotAll.click();
+
+    // Waveform: sidebar names and Plotly trace names (identity in meta).
+    await page.locator("#mainNavWaveformBtn").click();
+    await expect(subs(page.locator('#calculatedChannelsSidebarBody tr[data-channel-name="KPDN1 VBC"] .channel-name-text'))).toHaveText(["BC"]);
+    await expect.poll(async () => (await waveformTraces(page)).map((t) => t.rawName).sort()).toEqual(
+      ["KPDN1 V<sub>AB</sub>", "KPDN1 V<sub>BC</sub>", "KPDN1 V<sub>CA</sub>"]
+    );
+    const metas = await page.evaluate(() => ww.panels.flatMap((p) => ((p.chartEl && p.chartEl.data) || []).map((t) => t.meta)));
+    expect(metas.every((m) => /^calc-[0-9a-f]+::KPDN1 V(AB|BC|CA)$/.test(m))).toBe(true);
+
+    // Internal/API values are unchanged.
+    expect(await apiChannels(page)).toEqual([
+      { name: "KPDN1 VAB", phase_member: "AB" }, { name: "KPDN1 VBC", phase_member: "BC" }, { name: "KPDN1 VCA", phase_member: "CA" },
+    ]);
+  });
+
+  test("custom names containing VAB are shown exactly as typed", async ({ page }) => {
+    await uploadFixture(page);
+    await openLineToLineBuilder(page);
+    await selectBay(page, "KPDN1");
+    await page.locator("#wwCcLlOutput_AB").check();
+    await page.locator("#wwCcNameInput").fill("Backup VAB Check");
+    await createAndWait(page);
+    await openLineToLineBuilder(page);
+    await selectBay(page, "KPDN1");
+    await page.locator("#wwCcLlOutput_BC").check();
+    await page.locator("#wwCcNameInput").fill("Feeder VBC"); // ends in the pair token, but is not the system default
+    await createAndWait(page);
+
+    for (const name of ["Backup VAB Check", "Feeder VBC"]) {
+      const row = page.locator(".ww-cc-list-row").filter({ hasText: name });
+      await expect(row.locator(".ww-cc-list-row-name")).toHaveText(name);
+      await expect(subs(row.locator(".ww-cc-list-row-name"))).toHaveCount(0);
+      // The formula is system notation regardless of the channel's name.
+      await expect(subs(row.locator(".ww-cc-list-row-expr")).first()).toBeVisible();
+    }
+    await expect(subs(page.locator("#wwCcLlResult .ww-cc-ll-result-list li"))).toHaveCount(0);
+
+    await page.locator(".ww-cc-list-row").filter({ hasText: "Backup VAB Check" }).locator('button[data-action="toggle-visibility"]').click();
+    await page.locator("#mainNavWaveformBtn").click();
+    await expect.poll(async () => (await waveformTraces(page)).map((t) => t.rawName)).toEqual(["Backup VAB Check"]);
+    expect(await apiChannels(page)).toEqual([
+      { name: "Backup VAB Check", phase_member: "AB" }, { name: "Feeder VBC", phase_member: "BC" },
+    ]);
   });
 });

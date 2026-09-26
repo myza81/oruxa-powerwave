@@ -9,7 +9,11 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-25**. **DEC-116**: per-unit base
+Last meaningful update: **2026-09-26**. **DEC-117**: Line-to-Line voltage
+electrical notation (V<sub>AB</sub> in the UI, `VAB` internally) is
+applied app-wide through one shared frontend formatter. It is now a
+standing convention for all future UI (rules in AGENTS.md). Previously,
+on **2026-09-25**: **DEC-116**: per-unit base
 selection now follows one representation rule on both the Measurement
 Group and Source Default paths. Generic multi-input Voltage arithmetic,
 and its unary descendants, are always `base_required`. Semantic L-L

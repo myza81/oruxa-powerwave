@@ -572,7 +572,7 @@ class TestAssessmentDefinitionEditorStructure:
 
     def test_layer_summary_helper_exists_and_handles_unspecified(self):
         source = _source()
-        fn = _function_body(source, "function wwRefDescribeAssessmentDefinition(definition) {", "\n        }")
+        fn = _function_body(source, "function wwRefDescribeAssessmentDefinition(definition, options) {", "\n        }")
         assert "Assessment convention not specified" in fn
         assert "Assessment: " in fn
 
