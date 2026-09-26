@@ -9,7 +9,13 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-26**. **DEC-117 (Amendment 2)**: all
+Last meaningful update: **2026-09-26**. **Playback Cursor visual
+ownership (DEC-085 update)**: Waveform no longer renders the green
+Playback Cursor. It had appeared after visiting an Analysis page first,
+because an analyzer's claim of the shared clock re-armed the Waveform
+overlay. The shared `wwPlayback` time/state is unchanged; the
+visualization is Analysis-owned. Awaiting owner UAT.
+Earlier the same day, **DEC-117 (Amendment 2)**: all
 system-owned electrical symbols share one formatter,
 `wwElectricalSymbol*()`, and two CSS rules (`.ww-electrical-symbol`,
 `.ww-electrical-sub`). Covered: phase, line-to-line and sequence voltage
@@ -93,11 +99,12 @@ mounts the exact same markup/wiring/sync into its own container and
 subscribes via the existing `wwPlaybackOnTick()` seam for its own moving
 operating point, without needing to know
 `requestAnimationFrame`/`performance.now()`/how the shared cursor works.
-The Waveform Time Group canvas still shows the **passive** Playback
-Cursor overlay (a readout of the shared clock, not a control) —
-`shellSetCurrentPage()` resyncs it for the active group whenever the
-Waveform page newly becomes visible, so it never shows a stale position
-after Playback was driven from elsewhere while Waveform was hidden.
+**The Playback Cursor visualization is Analysis-owned (owner UAT,
+2026-09-26):** Waveform renders **no** Playback Cursor, only Cursor
+A/B and the Suggested Event marker. The Time Group canvas keeps a
+dormant, always-hidden `.ww-tg-playback-cursor-overlay`, and
+`shellSetCurrentPage()` hides every such overlay on each page change.
+Shared playback time/state still carries across pages unchanged.
 **Frontend/session state only — no backend Playback
 endpoint exists or was added**; state resets on `wwClearWorkspace()`
 (both "Clear workspace" and "Start New Workspace", including speed
@@ -2989,9 +2996,9 @@ re-confirmed by the TG-FINAL audit):
   surface, mounted on Analysis pages only (Phasor today, via
   `wwPhasorMountPlaybackControls()`) since the 2026-09-12 owner product
   decision that reversed the original "waveform toolbar is Playback's
-  built-in mount point" shape — the Waveform Time Group toolbar itself
-  now shows only the passive Playback Cursor overlay, never the
-  controls. ONE authoritative,
+  built-in mount point" shape — the Waveform Time Group toolbar shows
+  no controls and (since 2026-09-26) no Playback Cursor either; the
+  cursor visualization is Analysis-owned. ONE authoritative,
   frontend-only `wwPlayback` Playback Controller drives at most one
   active Time Group at a time (switching groups cleanly stops the
   previous one — never two simultaneous `requestAnimationFrame` loops);

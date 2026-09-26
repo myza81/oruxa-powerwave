@@ -8,6 +8,43 @@ Last updated: **2026-09-26**
 
 ## What was most recently done
 
+**Playback Cursor visual ownership: owner UAT bug fix (DEC-085 update,
+2026-09-26). Frontend/tests/docs only; awaiting owner UAT. Stop here.**
+
+- **Bug**: an unexplained green vertical line appeared on Waveform after
+  opening an Analysis page first. It was the Playback Cursor
+  (`.ww-tg-playback-cursor-line`, `--ok`).
+- **Root cause**: an analyzer's claim, seek or play of the shared clock
+  drew the Waveform overlay through `wwPlaybackRenderTick()`. The
+  drawer's visibility gate never checked the active page. Waveform
+  entry then drew it again twice: through the 2026-09-12
+  `shellSetCurrentPage()` resync, and through the resize →
+  `wwUpdateCursorOverlayForGroup()` piggyback.
+- **Fix**:
+  - removed `wwUpdatePlaybackCursorOverlay()` and all three call sites;
+  - `shellSetCurrentPage()` now calls `wwHideAllPlaybackCursorOverlays()`
+    on every page change;
+  - the overlay DOM stays dormant and hidden.
+- **Unchanged**: `wwPlayback` time/state/speed, play/pause/restart/seek,
+  analyzer ribbons, Phasor exact-time fetches, and Cursor A/B, the
+  A-B range, the Suggested Event marker and t0.
+- **Tests**:
+  - new `browser-tests/playback_waveform_ownership.spec.js`, covering
+    Phasor, Impedance, Distance and Sequence → Waveform, the navigation
+    lifecycle and Cursor A/B, with a DOM check plus a pixel scan and a
+    positive control;
+  - `playback.spec.js` and `phasor_analysis.spec.js` flipped from
+    "visible" to "hidden";
+  - `test_frontend_playback.py` has the new
+    `TestPlaybackCursorIsAnalysisOwned` class.
+- **Observation, not acted on**: `wwPlaybackRenderTick()` and
+  `wwPlaybackSyncToolbarForGroup()` still sync controls on the Waveform
+  canvas. Since 2026-09-12 that canvas mounts no controls, so both are
+  harmless no-ops. Left as they were because cleaning them up is outside
+  this fix.
+
+## Prior session — DEC-117 Amendment 2
+
 **DEC-117 Amendment 2: semantic app-wide audit and correction of
 electrical notation. Frontend/tests/docs only; awaiting owner UAT. Stop
 here.**

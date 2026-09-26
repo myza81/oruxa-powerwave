@@ -1116,6 +1116,14 @@ before) — `shellSetCurrentPage()` now resyncs the active group's own
 overlay whenever Waveform newly becomes the visible page, mirroring the
 pre-existing `wwScheduleResizeAllVisiblePlots()` call in the same spot.
 
+> **Superseded (2026-09-26, owner UAT):** the paragraph above is no
+> longer true. The Playback Cursor visualization is Analysis-owned, so
+> Waveform renders no Playback Cursor. The page-entry resync and the
+> drawer itself were removed because they produced an unexplained green
+> line on Waveform after visiting Analysis. See
+> [DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock),
+> "Update (2026-09-26)".
+
 Future analyzers (Impedance Locus/Overcurrent/Differential/Sequence
 Components) mount Playback controls exactly the way Phasor does today —
 this decision does not change that reusable pattern, only that Waveform

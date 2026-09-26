@@ -13081,6 +13081,89 @@ Differential/Sequence Components) mounts Playback controls exactly the
 way Phasor already does — this decision does not change that pattern,
 only where on Waveform's own page it is (no longer) also mounted.
 
+### Update (2026-09-26) — the Playback Cursor visualization is Analysis-owned; Waveform no longer renders it
+
+**Status:** `[DECISION]` — owner UAT instruction in-session. Reverses the
+2026-09-12 update's deliberate choice (directly above) to keep the green
+Playback Cursor overlay on the Waveform Time Group canvas as a "passive
+readout" of the shared clock.
+
+**Owner UAT bug**: after opening an Analysis page first, then navigating
+to Waveform, an unexplained green vertical line sometimes appeared on
+the Waveform chart. It was the Playback Cursor
+(`.ww-tg-playback-cursor-line`, `background: var(--ok)`).
+
+**Root cause** (`[FACT]`, reproduced in a real browser before the fix
+for Phasor, Impedance Locus, Distance Protection and Sequence
+Components):
+
+1. When an analyzer opens, it claims the shared clock
+   (`wwPlaybackRestart()` plus a refine seek). Its later
+   seeks and plays go through `wwPlaybackRenderTick()`, which called
+   `wwUpdatePlaybackCursorOverlay()` on the Waveform canvas.
+2. That function's visibility gate only checked that `#viewWaveform`
+   existed and the ruler's own `hidden` attribute. It never checked that
+   Waveform was the active page.
+3. On Waveform entry, the overlay was drawn again twice: explicitly by the
+   2026-09-12 resync in `shellSetCurrentPage()`, and by the
+   `wwUpdateCursorOverlayForGroup()` piggyback. The page-entry
+   `wwScheduleResizeAllVisiblePlots()` triggers that piggyback.
+
+The overlay was hidden only when the time was outside the visible range.
+That is why it seemed "occasional."
+
+**Rule**:
+
+```text
+shared playback controller (wwPlayback) = cross-Analysis timing infrastructure
+Playback Cursor visualization          = Analysis-owned
+Waveform                               = renders NO Playback Cursor;
+                                         only Cursor A / Cursor B / Suggested
+                                         Event markers
+```
+
+**What changed** (`frontend/index.html`, a visual-ownership fix only):
+
+- The drawer `wwUpdatePlaybackCursorOverlay()` is removed, together with
+  all three call sites: the per-tick call in `wwPlaybackRenderTick()`,
+  the Cursor A/B resync-hub piggyback in `wwUpdateCursorOverlayForGroup()`,
+  and the 2026-09-12 Waveform page-entry resync in `shellSetCurrentPage()`.
+- `shellSetCurrentPage()` now calls the new
+  `wwHideAllPlaybackCursorOverlays()` on every page change.
+- The overlay DOM/CSS stays mounted, dormant and always hidden, as the
+  slot for any future Waveform-owned playback feature that is
+  intentionally added. `wwHidePlaybackCursorOverlay()` on group switch is
+  unchanged.
+
+**Explicitly unchanged**:
+
+- `wwPlayback` time/state, `activeTimeGroupId`, speed, and
+  play/pause/restart/seek;
+- the one-active-group rule;
+- every analyzer's own ribbon and `wwPlaybackOnTick()` subscription,
+  including Phasor exact-time fetches and the Related Waveforms marker;
+- Cursor A/B, the A-B range, the Suggested Event marker, ruler badges,
+  readouts and t0.
+
+**Tests**:
+
+- **New** `browser-tests/playback_waveform_ownership.spec.js`: the owner's
+  path for Phasor, Impedance Locus, Distance Protection and Sequence
+  Components. It asserts the DOM `hidden` state, and a pixel scan of the
+  panels screenshot finds no `--ok` vertical line. A positive control
+  proves the scan does detect a painted line. It also covers
+  playing→Waveform with the clock still advancing, the navigation
+  lifecycle (Waveform/Analysis/analyzer switch/Recordings/Compliance),
+  and Cursor A/B after an Analysis claim.
+- **Updated** in `playback.spec.js` and `phasor_analysis.spec.js`: the
+  assertions that expected the overlay to be *visible* on Waveform now
+  expect it hidden.
+- **Updated** `backend/tests/test_frontend_playback.py`: a new
+  `TestPlaybackCursorIsAnalysisOwned` class replaces the two assertions
+  that inspected the removed drawer.
+- **Overcurrent** mounts the same ribbon and is covered by the same
+  controller-level fix. It has no dedicated case in the new spec.
+
 ---
 
 ## DEC-086 — Analysis Guardrail Slice 1: Engineering Context (physical/logical bay) identity and durable canonical phase are established as a new, additive metadata layer, kept fully independent of Measurement Groups/Per-Unit and of no fixed value until a later slice's automatic analysis-input resolver reads it

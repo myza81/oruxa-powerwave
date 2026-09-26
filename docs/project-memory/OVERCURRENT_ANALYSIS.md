@@ -419,7 +419,8 @@ Overcurrent mounts the SAME reusable Playback control surface
 unchanged) via `wwOvercurrentMountPlaybackControls(groupId)` — the THIRD
 consumer of the ONE shared `wwPlayback` controller (Waveform's own
 passive cursor overlay and Phasor's own mount are the other two
-established consumers; see [DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock)).
+established consumers — the Waveform overlay was retired on 2026-09-26,
+when the Playback Cursor visualization became Analysis-owned; see [DECISIONS.md — DEC-085](DECISIONS.md#dec-085--event-playback-is-a-top-level-capability-with-one-authoritative-frontend-only-playback-controller-owning-workspace-time-for-at-most-one-active-time-group-at-a-time-future-analysis-overlays-must-consume-it-never-build-an-independent-playback-clock)).
 No second Playback controller, timer, or `requestAnimationFrame` loop
 was built. `wwOvercurrentOnPlaybackTick()` is the ONE tick subscriber,
 registered once at Init via the existing `wwPlaybackOnTick()` seam — an

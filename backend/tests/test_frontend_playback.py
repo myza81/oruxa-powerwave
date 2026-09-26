@@ -185,9 +185,9 @@ class TestWaveformNoLongerMountsPlaybackControls:
         assert "ww-tg-playback-speed-select" not in toolbar_fn
         assert "ww-tg-playback-seek-slider" not in toolbar_fn
         assert "ww-tg-playback-time-readout" not in toolbar_fn
-        # The dedicated Playback Cursor overlay is a passive readout of
-        # the shared clock, not a control -- explicitly preserved (see
-        # TestPlaybackCursorIsSeparateFromCursorAB below).
+        # The dedicated Playback Cursor overlay DOM stays mounted, but
+        # dormant/always hidden -- the Playback Cursor visualization is
+        # Analysis-owned (see TestPlaybackCursorIsAnalysisOwned below).
         assert "ww-tg-playback-cursor-overlay" in toolbar_fn
 
     def test_toolbar_wiring_does_not_call_the_shared_wiring_function(self):
@@ -415,13 +415,14 @@ class TestPlaybackCursorIsSeparateFromCursorAB:
         assert '<div class="ww-tg-cursor-overlay" hidden></div>' in toolbar_fn
         assert 'class="ww-tg-playback-cursor-overlay"' in toolbar_fn
 
-    def test_playback_cursor_update_never_touches_cursor_ab_state(self):
+    def test_playback_cursor_hide_helpers_never_touch_cursor_ab_state(self):
         source = _source()
         fn = _function_body(
-            source, "function wwUpdatePlaybackCursorOverlay(groupId, time)", "function wwHidePlaybackCursorOverlay"
+            source, "function wwHidePlaybackCursorOverlay(groupId)", "function wwPlaybackDigitalStateAtTime"
         )
         assert "wwTimeGroupCursorState" not in fn
         assert "ww.timeGroupCursorState" not in fn
+        assert "ww-tg-cursor-overlay" not in fn
 
     def test_playback_engine_never_writes_cursor_ab_state(self):
         source = _source()
@@ -435,16 +436,55 @@ class TestPlaybackCursorIsSeparateFromCursorAB:
         assert "cursors.a.time =" not in engine
         assert "cursors.b.time =" not in engine
 
-    def test_playback_cursor_reuses_cursor_ab_pixel_conversion_primitives(self):
-        """Reuse the MATH (wwCursorPlotMetrics/wwCursorTimeToPixelX), not
-        the STATE -- confirms the audit's own "share the primitives,
-        never the DOM/state" recommendation was actually followed."""
+
+class TestPlaybackCursorIsAnalysisOwned:
+    """Owner UAT (2026-09-26, DEC-085 update): shared playback time/state
+    is cross-Analysis infrastructure, but the Playback Cursor
+    VISUALIZATION is Analysis-owned -- Waveform never renders the green
+    `.ww-tg-playback-cursor-overlay`. Guards against re-introducing any
+    Waveform draw path (per tick, on Cursor A/B geometry resync, or on
+    Waveform page entry). Real rendered behavior is covered by
+    browser-tests/playback_waveform_ownership.spec.js."""
+
+    def test_no_waveform_playback_cursor_drawer_exists(self):
+        source = _source()
+        assert "function wwUpdatePlaybackCursorOverlay" not in source
+        code_lines = [line for line in source.splitlines() if not line.lstrip().startswith("//")]
+        assert not any("wwUpdatePlaybackCursorOverlay(" in line for line in code_lines)
+
+    def test_only_the_hide_helpers_ever_query_the_overlay(self):
+        source = _source()
+        assert source.count('querySelector(".ww-tg-playback-cursor-overlay")') == 1
+        assert source.count('querySelectorAll(".ww-tg-playback-cursor-overlay")') == 1
+        assert 'querySelector(".ww-tg-playback-cursor-line")' not in source
+        hide_fns = _function_body(
+            source, "function wwHidePlaybackCursorOverlay(groupId)", "function wwPlaybackDigitalStateAtTime"
+        )
+        assert "hidden = false" not in hide_fns
+        assert "overlayEl.hidden = true" in hide_fns
+
+    def test_render_tick_paints_nothing_on_the_waveform_canvas(self):
+        source = _source()
+        tick_fn = _function_body(source, "function wwPlaybackRenderTick()", "function wwPlaybackPlay")
+        assert "PlaybackCursorOverlay" not in tick_fn
+        assert "ww-tg-playback-cursor" not in tick_fn
+
+    def test_cursor_ab_resync_hub_never_repaints_the_playback_cursor(self):
         source = _source()
         fn = _function_body(
-            source, "function wwUpdatePlaybackCursorOverlay(groupId, time)", "function wwHidePlaybackCursorOverlay"
+            source, "function wwUpdateCursorOverlayForGroup(groupId)", "function wwUpdateAllCursorOverlays"
         )
-        assert "wwCursorPlotMetrics(groupId)" in fn
-        assert "wwCursorTimeToPixelX(groupId, time)" in fn
+        assert "wwPlayback." not in fn
+        assert "PlaybackCursorOverlay" not in fn
+
+    def test_every_page_change_hides_every_playback_overlay(self):
+        source = _source()
+        fn = _function_body(source, "function shellSetCurrentPage(page)", 'if (page === "recordings")')
+        assert "wwHideAllPlaybackCursorOverlays();" in fn
+        # Unconditional -- not inside the Waveform-entry-only block.
+        waveform_entry = _function_body(fn, 'if (page === "waveform" && !wasWaveform)', "}")
+        assert "wwHideAllPlaybackCursorOverlays" not in waveform_entry
+        assert "wwPlayback.activeTimeGroupId" not in fn
 
 
 class TestWorkspaceClearResetsPlayback:
@@ -774,7 +814,7 @@ class TestSeekBehavior:
     def test_seek_slider_value_never_fights_an_active_user_drag(self):
         source = _source()
         fn = _function_body(
-            source, "function wwPlaybackUpdateSeekSlider(containerEl, groupId)", "function wwUpdatePlaybackCursorOverlay"
+            source, "function wwPlaybackUpdateSeekSlider(containerEl, groupId)", "function wwHidePlaybackCursorOverlay"
         )
         assert "document.activeElement !== sliderEl" in fn
 

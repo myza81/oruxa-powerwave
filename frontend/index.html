@@ -5828,7 +5828,12 @@
            (no `.ww-cursor-hit`-equivalent) -- Slice 2 adds seeking via a
            dedicated scrubber (`.ww-tg-playback-seek-slider` below), never
            a direct drag on this cursor line itself (owner's explicit
-           instruction). */
+           instruction).
+           Owner UAT (2026-09-26, DEC-085 update): the Playback Cursor
+           visualization is Analysis-owned -- Waveform never renders this
+           overlay any more. The element stays mounted (always hidden) as
+           the reserved slot for any future, intentionally Waveform-owned
+           playback feature; nothing currently un-hides it. */
         .ww-tg-playback-cursor-overlay {
             position: absolute;
             top: 0; left: 0; right: 0;
@@ -6649,9 +6654,10 @@
         }
         /* Thin neutral rail, teal/green (`--ok`) played-progress fill --
            reuses the SAME `--ok` token the Playback Cursor line already
-           established (see `.ww-tg-playback-cursor-line` above) so the
-           scrubber's own progress color matches the on-chart cursor
-           color, never a second/competing "playback color" convention.
+           established (see `.ww-tg-playback-cursor-line` above, now
+           dormant -- Waveform renders no Playback Cursor, DEC-085
+           update 2026-09-26) -- one playback color token, never a
+           second/competing "playback color" convention.
            `accent-color` alone (no track/thumb pseudo-element overrides)
            already renders a slim, two-tone native track in every
            evergreen browser -- kept as a plain <input type="range">,
@@ -12811,24 +12817,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // Sidebar Menu toggle, browser resize) could not actually
                 // resize Plotly's charts.
                 wwScheduleResizeAllVisiblePlots();
-                // Owner product decision (2026-09-12): Playback controls
-                // are Analysis-only now, so an engineer commonly starts/
-                // seeks Playback from Phasor while Waveform is hidden --
-                // wwUpdatePlaybackCursorOverlay()'s own `canDraw` check
-                // requires the Waveform page to actually BE the visible
-                // one, and nothing else re-runs it merely because this
-                // page just became visible again (a Playback tick only
-                // fires while actively playing; a paused seek from
-                // Analysis has no further tick to redraw with once you
-                // navigate here). Without this, the passive Playback
-                // Cursor overlay could stay stale/hidden on arrival even
-                // though wwPlaybackState().currentTime is already correct
-                // -- resync it explicitly, exactly like the resize call
-                // immediately above.
-                if (wwPlayback.activeTimeGroupId !== null) {
-                    wwUpdatePlaybackCursorOverlay(wwPlayback.activeTimeGroupId, wwPlayback.currentTime);
-                }
             }
+            // Owner UAT (2026-09-26, DEC-085 update): the Playback Cursor
+            // visualization is Analysis-owned. Shared playback time/state
+            // (wwPlayback) carries across every page change untouched, but
+            // no page change -- in particular Analysis -> Waveform -- may
+            // leave a Waveform Playback Cursor overlay showing. Replaces
+            // the earlier (2026-09-12) Waveform page-entry resync, which
+            // deliberately REDREW the green line here.
+            wwHideAllPlaybackCursorOverlays();
             if (page === "recordings") {
                 // Cheap metadata refresh (same GET .../sources call
                 // refreshSourceList() already makes) -- never waveform
@@ -22489,11 +22486,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // the full record. The shared wwPlayback controller, its
             // reusable control-surface factory/wiring/sync functions
             // (wwCreatePlaybackControlsHtml()/wwWirePlaybackControls()/
-            // wwSyncPlaybackControls(), all near wwClearWorkspace()), and
-            // the dedicated Playback Cursor overlay directly below (a
-            // passive readout of the shared clock, not a control) are all
+            // wwSyncPlaybackControls(), all near wwClearWorkspace()) are
             // unchanged and still fully shared infrastructure -- this
             // canvas simply no longer MOUNTS the control surface itself.
+            // The dedicated Playback Cursor overlay directly below is
+            // dormant (always hidden): the Playback Cursor visualization
+            // is Analysis-owned (DEC-085 update, 2026-09-26).
             section.innerHTML =
                 // Sticky-toolbar UX task: header + toolbar-row share ONE
                 // sticky wrapper (never independently sticky) so they can
@@ -22579,12 +22577,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // from Cursor A/B's own `.ww-tg-cursor-overlay` above --
                 // never shares its DOM or its `ww.timeGroupCursorState`
                 // (owner's explicit "must NOT reuse Cursor A/B" boundary).
-                // Reuses the SAME pixel-conversion primitives
-                // (wwCursorPlotMetrics/wwCursorTimeToPixelX) and the SAME
-                // panels-top-to-ruler-top height convention Cursor A/B's
-                // own overlay already established, via its own dedicated
-                // wwUpdatePlaybackCursorOverlay() -- see that function's
-                // own comment, near wwClearWorkspace().
+                // Owner UAT (2026-09-26, DEC-085 update): dormant -- always
+                // hidden. The Playback Cursor visualization is Analysis-
+                // owned; Waveform never renders it (see
+                // wwHideAllPlaybackCursorOverlays(), near
+                // wwClearWorkspace()).
                 '<div class="ww-tg-playback-cursor-overlay" hidden><div class="ww-tg-playback-cursor-line"></div></div>' +
                 // Bugfix (owner UAT on eb55528): `.ww-tg-slider-slot`
                 // shares this sticky wrapper alone now -- the numerical
@@ -33519,15 +33516,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // function Reset Time View already uses. Never the current visible
         // range, never an explicit sub-range.
         //
-        // Playback Cursor is a DEDICATED overlay, structurally and in state
-        // entirely separate from Cursor A/B (wwTimeGroupCursorState is
-        // never read or written by anything below) -- see
-        // wwUpdatePlaybackCursorOverlay()/the `.ww-tg-playback-cursor-*` CSS
-        // (near `.ww-tg-cursor-overlay`) for the rendering side. It is only
-        // ONE visual consumer of the shared clock -- the waveform's own
-        // way of showing "when" -- never Playback's main purpose; a future
-        // analysis page's moving operating point is just as valid a
-        // consumer, reading the SAME wwPlayback.currentTime.
+        // Visual ownership (owner UAT, 2026-09-26 -- DEC-085 update): this
+        // controller is cross-Analysis timing infrastructure only. The
+        // Playback Cursor visualization is Analysis-owned -- each
+        // analyzer's own moving point/ribbon/Related Waveforms marker,
+        // reading the SAME wwPlayback.currentTime via wwPlaybackOnTick().
+        // Waveform does NOT render a Playback Cursor: its Time Group
+        // canvas keeps only a dormant, always-hidden
+        // `.ww-tg-playback-cursor-overlay` (see wwHidePlaybackCursorOverlay()/
+        // wwHideAllPlaybackCursorOverlays()), structurally separate from
+        // Cursor A/B (wwTimeGroupCursorState is never read or written by
+        // anything below).
         //
         // Timing: requestAnimationFrame + a performance.now() wall-clock
         // anchor (wwPlaybackTick() below) -- current time is RECOMPUTED
@@ -33543,8 +33542,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // internally. Analysis pages mount the exact same markup/wiring/
         // sync into their own containers and subscribe via
         // wwPlaybackOnTick() for their own moving points,
-        // without needing to know requestAnimationFrame/performance.now()/
-        // how the waveform's own cursor works. Analysis input eligibility
+        // without needing to know requestAnimationFrame/performance.now().
+        // Analysis input eligibility
         // and engineering-quantity computation (Va/Vb/Vc, impedance,
         // phasors, overcurrent pickup, differential logic) belong entirely
         // to the Analysis layer -- Playback tells consumers WHEN
@@ -33768,19 +33767,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // The per-tick rendering work -- deliberately tiny (task's own
-        // "extremely small" requirement): one DOM-overlay reposition, two
-        // property/textContent writes. No Plotly call, no waveform
-        // refetch, no calculated-channel recompute anywhere in this path.
-        // The waveform Time Group canvas is the only currently-wired
-        // control-surface mount point, so it is the only one ticked here
-        // -- a future SECOND mount point (a future analysis page) would
-        // drive its own wwUpdatePlaybackControlsTick() call from its own
+        // "extremely small" requirement): at most two property/
+        // textContent writes. No Plotly call, no waveform refetch, no
+        // calculated-channel recompute anywhere in this path. Every
+        // Analysis mount (Phasor/Impedance/Distance/Sequence/Overcurrent)
+        // drives its own wwUpdatePlaybackControlsTick() from its own
         // wwPlaybackOnTick() subscription (see that seam's own comment),
-        // never from this function, which stays scoped to the waveform's
-        // own built-in consumers (cursor overlay + this one toolbar).
+        // never from this function. Owner UAT (2026-09-26, DEC-085
+        // update): this deliberately paints NOTHING on the Waveform Time
+        // Group canvas -- the Playback Cursor visualization is Analysis-
+        // owned, so the former per-tick Waveform overlay reposition was
+        // removed (it re-armed a green line on Waveform whenever Analysis
+        // claimed/sought/played the shared clock).
         function wwPlaybackRenderTick() {
             if (wwPlayback.activeTimeGroupId === null) return;
-            wwUpdatePlaybackCursorOverlay(wwPlayback.activeTimeGroupId, wwPlayback.currentTime);
             const canvasEl = wwTimeGroupCanvasEl(wwPlayback.activeTimeGroupId);
             if (canvasEl) wwUpdatePlaybackControlsTick(canvasEl, wwPlayback.activeTimeGroupId);
         }
@@ -33991,9 +33991,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // The cheap PER-TICK subset of the above (readout text + seek-
         // slider position only -- never the Play/Pause label, which only
         // ever changes on a real state transition, already handled by
-        // wwSyncPlaybackControls()). Called from wwPlaybackRenderTick()
-        // for the waveform's own mount; a future second mount point would
-        // call this from its OWN wwPlaybackOnTick() subscription.
+        // wwSyncPlaybackControls()). Each Analysis mount calls this from
+        // its OWN wwPlaybackOnTick() subscription.
         function wwUpdatePlaybackControlsTick(containerEl, groupId) {
             wwPlaybackUpdateTimeReadout(containerEl, groupId);
             wwPlaybackUpdateSeekSlider(containerEl, groupId);
@@ -34113,7 +34112,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // the rAF loop, remembering whether it was running) so the tick
         // loop never fights the user's own drag position -- every
         // subsequent input event only updates the VISUAL position
-        // (currentTime + cursor overlay + readout), never re-anchors,
+        // (currentTime + readout + Analysis consumers), never re-anchors,
         // matching "Playback cursor interpolation is visual only" and
         // never fabricating/analyzing engineering samples. Seeking a
         // DIFFERENT (non-active) group's own scrubber activates that
@@ -34233,54 +34232,34 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
         }
 
-        // Positions/shows the Playback Cursor line for `groupId` at
-        // `time`. Mirrors the geometry wwUpdateCursorOverlayForGroup()
-        // already establishes for Cursor A/B's own overlay (panels-top-to-
-        // ruler-top height, page-X-to-local-left conversion via
-        // wwCursorTimeToPixelX()) -- but writes to its OWN dedicated
-        // `.ww-tg-playback-cursor-overlay`/`.ww-tg-playback-cursor-line`
-        // elements, never `.ww-tg-cursor-overlay`. Cheap: a handful of
-        // property reads and, at most, three style writes -- no Plotly
-        // call, ever.
-        function wwUpdatePlaybackCursorOverlay(groupId, time) {
-            const canvasEl = wwTimeGroupCanvasEl(groupId);
-            if (!canvasEl) return;
-            const overlayEl = canvasEl.querySelector(".ww-tg-playback-cursor-overlay");
-            const lineEl = canvasEl.querySelector(".ww-tg-playback-cursor-line");
-            if (!overlayEl || !lineEl) return;
-
-            const range = wwTimeGroupVisibleRange(groupId);
-            const workspaceSectionEl = document.getElementById("viewWaveform");
-            const rulerWrapEl = canvasEl.querySelector(".ww-tg-ruler");
-            const panelsEl = canvasEl.querySelector(".ww-tg-panels");
-            const inRange = !!range && Number.isFinite(time) && time >= range.start && time <= range.end;
-            const canDraw = inRange && workspaceSectionEl && rulerWrapEl && !rulerWrapEl.hidden;
-
-            if (!canDraw) {
-                overlayEl.hidden = true;
-                return;
-            }
-
-            const metrics = wwCursorPlotMetrics(groupId);
-            const pageX = metrics ? wwCursorTimeToPixelX(groupId, time) : null;
-            if (pageX === null) {
-                overlayEl.hidden = true;
-                return;
-            }
-
-            const overlayTop = panelsEl ? panelsEl.offsetTop : 0;
-            overlayEl.style.top = overlayTop + "px";
-            overlayEl.style.height = Math.max(0, rulerWrapEl.offsetTop - overlayTop) + "px";
-            overlayEl.hidden = false;
-            const sectionRect = workspaceSectionEl.getBoundingClientRect();
-            lineEl.style.left = (pageX - sectionRect.left) + "px";
-        }
-
+        // Playback Cursor visual ownership (owner UAT, 2026-09-26 --
+        // DEC-085 update). The shared controller above is cross-Analysis
+        // timing infrastructure; the Playback Cursor VISUALIZATION is
+        // Analysis-owned (each analyzer's own ribbon/Related Waveforms
+        // marker, driven from its own wwPlaybackOnTick() subscription).
+        // Waveform does not render a Playback Cursor: the former
+        // wwUpdatePlaybackCursorOverlay() drawer -- called per tick, on
+        // every Cursor A/B geometry resync and on Waveform page entry --
+        // was removed, because an Analysis claim/seek/play kept re-arming
+        // the green `.ww-tg-playback-cursor-line` on the Waveform canvas
+        // (its visibility gate only proved `#viewWaveform` existed, never
+        // that Waveform was the active page). Only the hide side remains,
+        // so the dormant overlay can never survive a group switch or a
+        // page change. Cursor A/B / Suggested Event overlays are separate
+        // DOM/state and are not touched here.
         function wwHidePlaybackCursorOverlay(groupId) {
             const canvasEl = wwTimeGroupCanvasEl(groupId);
             if (!canvasEl) return;
             const overlayEl = canvasEl.querySelector(".ww-tg-playback-cursor-overlay");
             if (overlayEl) overlayEl.hidden = true;
+        }
+
+        // Every Time Group canvas's Playback Cursor overlay -- called on
+        // every page change (shellSetCurrentPage()).
+        function wwHideAllPlaybackCursorOverlays() {
+            document.querySelectorAll(".ww-tg-playback-cursor-overlay").forEach((overlayEl) => {
+                overlayEl.hidden = true;
+            });
         }
 
         // Digital-state-at-time -- "last transition at or before t," a
@@ -35746,17 +35725,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // trigger -- see wwSyncTimeGroupCanvasStickyOffset()'s own
             // comment.
             wwSyncTimeGroupCanvasStickyOffset(groupId);
-
-            // Event Playback Slice 1: piggyback on this exact same "safe/
-            // cheap to call from anywhere" per-group resync hub (resize,
-            // scroll, viewport change, layout/theme change) to keep the
-            // Playback Cursor correctly positioned through any of those,
-            // rather than giving it a second set of geometry-invalidation
-            // hooks of its own. A no-op for every group except whichever
-            // one Playback is currently driving.
-            if (wwPlayback.activeTimeGroupId === groupId) {
-                wwUpdatePlaybackCursorOverlay(groupId, wwPlayback.currentTime);
-            }
+            // (No Playback Cursor resync here: the Playback Cursor
+            // visualization is Analysis-owned -- DEC-085 update,
+            // 2026-09-26 -- so this Cursor A/B resync hub must never
+            // repaint it on resize/scroll/viewport change.)
         }
 
         // TG-D2: the "resync every active group's own cursor overlay"
