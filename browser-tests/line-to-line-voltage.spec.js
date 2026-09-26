@@ -11,6 +11,7 @@
 // Each test gets a fresh browser context, so a fresh random workspace id.
 
 const { test, expect } = require("@playwright/test");
+const { expectTrueSubscripts } = require("./support/electrical_notation_helpers");
 const path = require("path");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
@@ -431,7 +432,7 @@ test.describe("Calculated Channel operation picker", () => {
 
 // DEC-117: app-wide Line-to-Line electrical notation (display only).
 test.describe("Line-to-Line Voltage -- electrical notation (DEC-117)", () => {
-  const subs = (locator) => locator.locator(".ww-voltage-sub");
+  const subs = (locator) => locator.locator(".ww-electrical-sub");
 
   async function apiChannels(page) {
     return page.evaluate(async () => {
@@ -462,6 +463,16 @@ test.describe("Line-to-Line Voltage -- electrical notation (DEC-117)", () => {
     await expect(readiness.locator("strong")).toHaveText(["VA", "VB", "VC"]);
     await expect(readiness).toHaveText([/VA KPDN1_VR \(kV\)$/, /VB KPDN1_VY \(kV\)$/, /VC KPDN1_VB \(kV\)$/]);
     await expect(page.locator('#wwCcLlStatus li[data-ll-role="Va"]')).toHaveCount(1); // internal role key plain
+
+    // Owner UAT: the Output Names labels rendered as SUPERSCRIPTS while the
+    // DOM held a real <sub>. Measure the rendered glyphs on every surface.
+    await expectTrueSubscripts(page.locator("#wwCcLlNamesFields .ww-electrical-symbol"), 3);
+    await expectTrueSubscripts(page.locator("#wwCcExpressionPreview .ww-electrical-symbol"), 9);
+    await expectTrueSubscripts(page.locator("#wwCcLlStatus .ww-electrical-symbol"), 3);
+    await expectTrueSubscripts(page.locator(".ww-cc-ll-outputs .ww-electrical-symbol"), 3);
+    await expectTrueSubscripts(page.locator("#wwCcLlPlannedNames .ww-electrical-symbol"), 3);
+    // Formula: every symbol on both sides formatted; source names plain.
+    await expect(page.locator("#wwCcExpressionPreview .ww-cc-ll-formula").first()).toHaveText("VAB = VA − VB (KPDN1_VR − KPDN1_VY)");
     await createAndWait(page);
 
     // Created banner, manager list name + formula, preview status.
@@ -490,6 +501,34 @@ test.describe("Line-to-Line Voltage -- electrical notation (DEC-117)", () => {
     expect(await apiChannels(page)).toEqual([
       { name: "KPDN1 VAB", phase_member: "AB" }, { name: "KPDN1 VBC", phase_member: "BC" }, { name: "KPDN1 VCA", phase_member: "CA" },
     ]);
+  });
+
+  test("a formula over a system L-L channel formats that input too; editable name stays plain", async ({ page }) => {
+    await uploadFixture(page);
+    await openLineToLineBuilder(page);
+    await selectBay(page, "KPDN1");
+    await page.locator("#wwCcLlOutput_AB").check();
+    await createAndWait(page);
+
+    await page.locator("#wwCcNewChannelBtn").click();
+    await page.locator('#wwCcOperationCards .ww-cc-operation-card[data-operation="rms"]').click();
+    const input = page.locator("#wwCcUnaryInputSelect");
+    const value = await input.locator("option").evaluateAll((opts) => (opts.find((o) => o.textContent.startsWith("KPDN1 VAB")) || {}).value);
+    expect(value).toBeTruthy();
+    await expect(input.locator(`option[value="${value}"]`)).toHaveText(/^KPDN1 VAB/); // native <option>: plain fallback
+    await input.selectOption(value);
+    // Builder preview: no mix of rich and plain symbols.
+    await expect(page.locator("#wwCcExpressionPreview")).toHaveText("Result = RMS(KPDN1 VAB, 50 Hz, 1 cycle)");
+    await expect(subs(page.locator("#wwCcExpressionPreview"))).toHaveText(["AB"]);
+    await expect(page.locator("#wwCcNameInput")).toHaveValue("RMS(KPDN1 VAB)"); // editable: plain
+    await createAndWait(page);
+
+    const rmsRow = page.locator(".ww-cc-list-row").filter({ hasText: "RMS(KPDN1 VAB" });
+    await expect(rmsRow.locator(".ww-cc-list-row-expr")).toHaveText("RMS(KPDN1 VAB, 50 Hz, 1 cycle)");
+    await expect(subs(rmsRow.locator(".ww-cc-list-row-expr"))).toHaveText(["AB"]);
+    await expect(subs(rmsRow.locator(".ww-cc-list-row-summary"))).toHaveText(["AB"]);
+    await expect(subs(rmsRow.locator(".ww-cc-list-row-name"))).toHaveCount(0); // "RMS(KPDN1 VAB)" is a stored name
+    await expectTrueSubscripts(rmsRow.locator(".ww-electrical-symbol"));
   });
 
   test("custom names containing VAB are shown exactly as typed", async ({ page }) => {

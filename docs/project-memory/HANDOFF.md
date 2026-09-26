@@ -8,9 +8,39 @@ Last updated: **2026-09-26**
 
 ## What was most recently done
 
+**DEC-117 Amendment 2: semantic app-wide audit and correction of
+electrical notation. Frontend/tests/docs only; awaiting owner UAT. Stop
+here.**
+
+- **Fixed**:
+  - Output Names rendered as superscripts: a generic
+    `.ww-cc-field span { display: flex }` rule blockified the `<sub>`;
+  - mixed formulas: `RMS(KPDN1 VAB, …)` showed its input plain;
+  - Sequence V1/V2/V0/I1/I2/I0 were plain in the values list, ratios and
+    diagram.
+- **Layer**: `wwElectricalSymbolHtml/Plotly/Svg/Text(quantity, sub)` with
+  V: `A B C AB BC CA 1 2 0` and I: `1 2 0`, plus the role and L-L
+  wrappers. CSS is `.ww-electrical-symbol` (atomic wrapper) and
+  `.ww-electrical-sub`.
+- **Fallback**: plain is `VA/VAB/V1/I2`; underscore forms are banned
+  (structural guard).
+- **Audit method**: a runtime DOM crawl across 22 page/analyzer/drawer
+  states, classifying every symbol occurrence and measuring glyph
+  positions in both themes. Details are in DEC-117 Amendment 2.
+- **Tests**:
+  - `test_frontend_electrical_notation.py`;
+  - `browser-tests/electrical-notation.spec.js`;
+  - the helper `support/electrical_notation_helpers.js`
+    (`expectTrueSubscripts`);
+  - per-area assertions.
+- **Open observation**: in the Sequence diagram, near-zero vector labels
+  overlap at the origin. This is pre-existing and not notation.
+
+## Prior session — DEC-117 Amendment 1
+
 **DEC-117 amendment: app-wide single-phase + Line-to-Line voltage
-notation, now a mandatory UI convention. Frontend/tests/docs only;
-awaiting owner UAT. Stop here.**
+notation, now a mandatory UI convention. Superseded in part by
+Amendment 2.**
 
 - **Shared layer**: one general voltage-notation formatter in
   `frontend/index.html`:
@@ -26,8 +56,8 @@ awaiting owner UAT. Stop here.**
 - **Plain by design**: editable fields, custom names, source names
   (`KPDN1_VR`), internal/API values, `<option>`/`title`/`aria-label`,
   backend messages, currents, `V1/V2/V0`, `Za/Zab`.
-- **Rules**: AGENTS.md "Frontend convention — electrical voltage
-  notation" (mandatory), CLAUDE.md pointer, and the DEC-117 amendment.
+- **Rules**: AGENTS.md "Frontend convention — electrical notation"
+  (mandatory), CLAUDE.md pointer, and the DEC-117 amendments.
 
 ## Prior session — Calculated Channel operation-picker cleanup
 

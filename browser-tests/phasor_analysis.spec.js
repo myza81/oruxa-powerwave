@@ -1477,15 +1477,15 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
   test("DEC-117 voltage notation: V<sub>A</sub> on manual rows, values list and diagram; currents unchanged", async ({ page }) => {
     await openEmptyWorkspacePhasor(page);
     // Manual input rows (static labels).
-    await expect(page.locator('.ww-phasor-manual-role-row:has(#wwPhasorManualVaEnabled) .ww-voltage-sub')).toHaveText("A");
-    await expect(page.locator('.ww-phasor-manual-role-row:has(#wwPhasorManualIaEnabled) .ww-voltage-sub')).toHaveCount(0);
+    await expect(page.locator('.ww-phasor-manual-role-row:has(#wwPhasorManualVaEnabled) .ww-electrical-sub')).toHaveText("A");
+    await expect(page.locator('.ww-phasor-manual-role-row:has(#wwPhasorManualIaEnabled) .ww-electrical-sub')).toHaveCount(0);
     await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("secondary");
     await page.locator("#wwPhasorManualCurrentBasisSelect").selectOption("secondary");
     await enterRole(page, "Va", { magnitude: 110, unit: "V", angleDeg: 0 });
     await enterRole(page, "Ia", { magnitude: 1, unit: "A", angleDeg: -30 });
 
     const vaRow = page.locator('#wwPhasorValuesList .ww-phasor-value-row[data-role="Va"]');
-    await expect(vaRow.locator(".ww-phasor-role-label .ww-voltage-sub")).toHaveText("A");
+    await expect(vaRow.locator(".ww-phasor-role-label .ww-electrical-sub")).toHaveText("A");
     await expect(vaRow).toHaveAttribute("aria-label", "Hide Va vector"); // attribute: plain fallback
     await expect(page.locator('#wwPhasorValuesList .ww-phasor-value-row[data-role="Ia"] .ww-phasor-role-label')).toHaveText("Ia");
     // SVG vector labels: a lowered <tspan> subscript for voltage only.

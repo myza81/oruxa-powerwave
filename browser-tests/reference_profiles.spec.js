@@ -442,7 +442,7 @@ test.describe("Compliance Slice 4 (DEC-110) -- Assessment Definition", () => {
 
     await expect(page.locator("#wwRefAddList")).toContainText("Line-Line RMS (VAB)");
     // DEC-117: the line-line member renders as V<sub>AB</sub> (text content stays "VAB").
-    await expect(page.locator("#wwRefAddList .ww-voltage-sub").first()).toHaveText("AB");
+    await expect(page.locator("#wwRefAddList .ww-electrical-sub").first()).toHaveText("AB");
   });
 
   test("DEC-117: a single phase-ground member (A) renders as V<sub>A</sub>; the stored member stays plain", async ({ page }) => {
@@ -462,7 +462,7 @@ test.describe("Compliance Slice 4 (DEC-110) -- Assessment Definition", () => {
 
     const item = page.locator("#wwRefAddList .ww-ref-picker-item", { hasText: "VA Single Member Requirement" });
     await expect(item).toContainText("Phase-Ground RMS (VA)");
-    await expect(item.locator(".ww-voltage-sub")).toHaveText(["A"]);
+    await expect(item.locator(".ww-electrical-sub")).toHaveText(["A"]);
     await expect(item).toContainText("VA Single Member Requirement"); // user-typed name verbatim
   });
 

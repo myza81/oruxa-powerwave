@@ -105,27 +105,27 @@ approval before implementation. Existing behaviour is not automatically
 correct merely because it is already implemented or already covered by
 passing tests.
 
-## Frontend convention — electrical voltage notation
+## Frontend convention — electrical notation
 
 **Mandatory.** Read the section of the same name in [AGENTS.md](AGENTS.md)
-before adding or changing any UI that shows phase or Line-to-Line voltage
-labels or formulas
-([DECISIONS.md — DEC-117](docs/project-memory/DECISIONS.md#dec-117--line-to-line-voltage-electrical-notation-is-a-standing-frontend-convention-subscript-notation-in-the-ui-via-one-shared-formatter-plain-vab-internally)
-and its single-phase amendment).
-System-owned notation renders as V<sub>A</sub>/V<sub>B</sub>/V<sub>C</sub>
-and V<sub>AB</sub>/V<sub>BC</sub>/V<sub>CA</sub> through the shared
-voltage-notation formatter and the one `.ww-voltage-sub` CSS rule.
+before adding or changing any UI that shows electrical symbols (phase,
+line-to-line or sequence voltage/current) or formulas
+([DECISIONS.md — DEC-117](docs/project-memory/DECISIONS.md#dec-117--line-to-line-voltage-electrical-notation-is-a-standing-frontend-convention-subscript-notation-in-the-ui-via-one-shared-formatter-plain-vab-internally),
+Amendment 2).
 
-The following stay plain:
-
-- editable fields;
-- custom names;
-- source/channel names;
-- internal/API values.
-
-New UI must use the formatter from the start. It must not introduce plain
-`VA`/`VAB` semantic labels unless the surface cannot render rich text;
-in that case, document the fallback.
+- **Supported surfaces:** use true visual subscripts —
+  V<sub>A</sub>, V<sub>AB</sub>, V<sub>1</sub>, I<sub>2</sub> — via the
+  shared `wwElectricalSymbol*()` formatter and its two CSS rules.
+- **Otherwise:** use plain concatenated notation (`VA`, `VAB`, `V1`,
+  `I2`).
+- **Never** use literal underscore notation.
+- **These stay untouched:**
+  - source/channel names;
+  - editable and custom names;
+  - phase classification;
+  - internal/API values.
+- **New UI** must use the formatter from the start and be verified
+  visually with `expectTrueSubscripts()`.
 
 ## Change governance
 

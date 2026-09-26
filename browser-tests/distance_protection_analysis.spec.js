@@ -242,9 +242,9 @@ test.describe("Distance Protection v1 -- empty workspace Manual mode (golden flo
     await page.locator("#wwDistanceLoopSelect").selectOption("BC");
     // DEC-117: V<sub>B</sub>/V<sub>C</sub> (textContent stays plain "VB").
     await expect(page.locator("#wwDistanceManualV1Label")).toHaveText("VB magnitude");
-    await expect(page.locator("#wwDistanceManualV1Label .ww-voltage-sub")).toHaveText("B");
+    await expect(page.locator("#wwDistanceManualV1Label .ww-electrical-sub")).toHaveText("B");
     await expect(page.locator("#wwDistanceManualV2Label")).toHaveText("VC magnitude");
-    await expect(page.locator("#wwDistanceManualV2Label .ww-voltage-sub")).toHaveText("C");
+    await expect(page.locator("#wwDistanceManualV2Label .ww-electrical-sub")).toHaveText("C");
     await page.locator("#wwDistanceManualVoltageBasisSelect").selectOption("secondary");
     await page.locator("#wwDistanceManualCurrentBasisSelect").selectOption("secondary");
     await enterManualLeg(page, "V1", { magnitude: 100, unit: "V", angleDeg: -120 });
@@ -260,7 +260,7 @@ test.describe("Distance Protection v1 -- empty workspace Manual mode (golden flo
     await page.locator("#wwDistanceLoopSelect").selectOption("CA");
     await expect(page.locator("#wwDistanceManualV1Label")).toHaveText("VC magnitude");
     await expect(page.locator("#wwDistanceManualV2Label")).toHaveText("VA magnitude");
-    await expect(page.locator("#wwDistanceManualV2Label .ww-voltage-sub")).toHaveText("A");
+    await expect(page.locator("#wwDistanceManualV2Label .ww-electrical-sub")).toHaveText("A");
     await enterManualLeg(page, "V1", { magnitude: 100, unit: "V", angleDeg: 120 });
     await enterManualLeg(page, "V2", { magnitude: 100, unit: "V", angleDeg: 0 });
     await enterManualLeg(page, "I1", { magnitude: 10, unit: "A", angleDeg: 100 });

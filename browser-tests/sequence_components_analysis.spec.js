@@ -15,6 +15,7 @@
 // Manual Phasor architecture, never a separate sequence-entry model.
 
 const { test, expect } = require("@playwright/test");
+const { expectTrueSubscripts } = require("./support/electrical_notation_helpers");
 const path = require("path");
 const { reuseOrCreateFullBayContext, ensureContextSelected } = require("./support/engineering_context_helpers");
 
@@ -308,13 +309,23 @@ test.describe("Sequence Components v1 -- Recording mode", () => {
       expect(info.vNames).toEqual(["Va", "Vb", "Vc"]);
       expect(info.cNames).toEqual(["Ia", "Ib", "Ic"]);
     }).toPass({ timeout: 5000 });
-    // DEC-117: phase-voltage display names get the notation; sequence
-    // names (V1/V2/V0) and the manual rows' currents stay unchanged.
-    expect(await page.evaluate(() =>
-      document.getElementById("wwAnalysisRelatedWaveformsVoltageChart").data.map((t) => t.name)
-    )).toEqual(["V<sub>A</sub>", "V<sub>B</sub>", "V<sub>C</sub>"]);
-    await expect(page.locator("#wwSequenceValuesList .ww-voltage-sub")).toHaveCount(0);
-    await expect(page.locator(".ww-phasor-manual-role-row:has(#wwSequenceManualVbEnabled) .ww-voltage-sub")).toHaveText("B");
+    // DEC-117: phase-domain inputs are V<sub>A</sub>..; sequence results
+    // are V<sub>1</sub>/V<sub>2</sub>/V<sub>0</sub> and I<sub>1</sub>/I<sub>2</sub>/I<sub>0</sub>
+    // (values, ratios, diagram); phase currents Ia/Ib/Ic stay plain.
+    expect(await page.evaluate(() => [
+      document.getElementById("wwAnalysisRelatedWaveformsVoltageChart").data.map((t) => t.name),
+      document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.name),
+    ])).toEqual([["V<sub>A</sub>", "V<sub>B</sub>", "V<sub>C</sub>"], ["Ia", "Ib", "Ic"]]);
+    const labels = page.locator("#wwSequenceValuesList .ww-phasor-role-label");
+    await expect(labels).toHaveText(["V1", "V2", "V0", "I1", "I2", "I0"]); // plain textContent
+    await expect(labels.locator(".ww-electrical-symbol")).toHaveText(["V1", "V2", "V0", "I1", "I2", "I0"]);
+    await expect(page.locator("#wwSequenceRatiosList .ww-phasor-role-label")).toHaveText(["V2 / V1", "V0 / V1", "I2 / I1", "I0 / I1"]);
+    await expect(page.locator("#wwSequenceRatiosList .ww-electrical-sub")).toHaveText(["2", "1", "0", "1", "2", "1", "0", "1"]);
+    await expectTrueSubscripts(page.locator("#wwSequenceValuesList .ww-electrical-symbol, #wwSequenceRatiosList .ww-electrical-symbol"), 14);
+    const vectorLabels = page.locator("#wwSequenceSvg text.ww-phasor-vector-label");
+    await expect(vectorLabels.locator("tspan")).toHaveText(["1", "2", "0", "1", "2", "0"]);
+    await expect(page.locator(".ww-phasor-manual-role-row:has(#wwSequenceManualVbEnabled) .ww-electrical-sub")).toHaveText("B");
+    await expect(page.locator(".ww-phasor-manual-role-row:has(#wwSequenceManualIbEnabled) .ww-electrical-sub")).toHaveCount(0);
     await expect(page.locator("#wwAnalysisRelatedWaveformsVoltageGroup")).toBeVisible();
     await expect(page.locator("#wwAnalysisRelatedWaveformsCurrentGroup")).toBeVisible();
     await expect(page.locator("#wwAnalysisRelatedWaveformsEmptyState")).toBeHidden();

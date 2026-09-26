@@ -218,7 +218,9 @@ def test_expression_text_for_is_not_altered_by_null_policy():
     # comment block -- which legitimately explains why it is separate
     # from this one -- is never accidentally included in the check.
     source = _source()
-    start = source.index("function wwCcExpressionTextFor(calc)")
+    # DEC-117 Amendment 2: the formula renderer (text and HTML) is
+    # wwCcExpressionFor(); wwCcExpressionTextFor() is a one-line wrapper.
+    start = source.index("function wwCcExpressionFor(calc, html)")
     end = source.index("\n        }", start) + len("\n        }")
     body = source[start:end]
     assert "null_policy" not in body

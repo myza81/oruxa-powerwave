@@ -50,13 +50,13 @@ def test_reset_builder_resets_rms_fields():
 
 def test_suggested_name_has_rms_branch():
     source = _source()
-    body = _function_body(source, "function wwCcComputeSuggestedName()", "function wwCcComputeExpressionPreview()")
+    body = _function_body(source, "function wwCcComputeSuggestedName()", "function wwCcComputeExpressionPreview(html)")
     assert '"RMS(" + labels[0] + ")"' in body
 
 
 def test_expression_preview_has_rms_branch():
     source = _source()
-    body = _function_body(source, "function wwCcComputeExpressionPreview()", "function wwCcValidateBuilder()")
+    body = _function_body(source, "function wwCcComputeExpressionPreview(html)", "function wwCcValidateBuilder()")
     assert 'b.operation === "rms"' in body
     assert "Hz, 1 cycle" in body
 

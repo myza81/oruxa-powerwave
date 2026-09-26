@@ -2964,16 +2964,23 @@
         /* Compact confirmation typography (owner UAT, 2026-09-26). */
         .ww-cc-ll-result-title { font-size: 0.75rem; font-weight: 600; line-height: 1.3; }
         .ww-cc-ll-result-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
-        /* No flex `gap` on the item: it would also separate "V" from its
-           <sub> (text and sub are sibling flex items). The dot carries the
-           6px spacing instead. */
+        /* No flex `gap` on the item: the dot carries the 6px spacing. (The
+           symbol itself is one atomic .ww-electrical-symbol box, so no
+           container can split "V" from its subscript.) */
         .ww-cc-ll-result-list li { display: inline-flex; align-items: center; font-size: 0.70rem; font-weight: 500; line-height: 1.3; }
         .ww-cc-ll-result-list li .channel-color-dot { margin-right: 6px; }
-        /* DEC-117 electrical-notation subscript -- the ONE shared rule for
-           every <sub> emitted by wwVoltageSymbolHtml(); sized/offset so it
-           never enlarges the line box. Do not add per-component variants. */
-        /* DEC-117: the ONE subscript rule for voltage notation (V<sub>A</sub>, V<sub>AB</sub>) -- emitted only by wwVoltageSymbolHtml(). */
-        .ww-voltage-sub { font-size: 0.65em; line-height: 0; vertical-align: baseline; position: relative; top: 0.25em; }
+        /* DEC-117: the ONLY electrical-symbol rules -- do not add
+           per-component variants. The subscript is sized/offset so it
+           never enlarges the line box. Shared electrical-symbol rules (V<sub>A</sub>, V<sub>AB</sub>,
+           V<sub>1</sub>, I<sub>2</sub>) -- emitted only by wwElectricalSymbolHtml().
+           The wrapper is ONE atomic inline box in any container. The
+           !important on display/margin is deliberate and scoped to this
+           class: generic descendant rules such as `.ww-cc-field span
+           { display: flex }` otherwise turned the wrapper into a flex
+           container, blockified the <sub>, and its zero line-height box
+           painted the subscript ABOVE the baseline (owner UAT). */
+        .ww-electrical-symbol { display: inline-block !important; margin: 0 !important; padding: 0 !important; white-space: nowrap; vertical-align: baseline; }
+        .ww-electrical-sub { display: inline !important; margin: 0 !important; font-size: 0.65em; line-height: 0; vertical-align: baseline; position: relative; top: 0.25em; }
         /* All Three output names: "V<sub>AB</sub> [input]" rows. */
         .ww-cc-ll-name-row { display: grid; grid-template-columns: 2.4em minmax(0, 1fr); align-items: center; gap: 2px 8px; margin-top: 6px; }
         /* Heading matches the sibling field labels (global `label` look). */
@@ -8957,7 +8964,7 @@
                                         <div class="ww-phasor-manual-role-row" data-role="Va">
                                             <label class="ww-phasor-manual-role-enable">
                                                 <input type="checkbox" id="wwPhasorManualVaEnabled" aria-label="Enable Va">
-                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-a)"></span><span>V<sub class="ww-voltage-sub">A</sub></span>
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-a)"></span><span class="ww-electrical-symbol">V<sub class="ww-electrical-sub">A</sub></span>
                                             </label>
                                             <input type="number" id="wwPhasorManualVaMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Va magnitude">
                                             <select id="wwPhasorManualVaUnit" aria-label="Va unit">
@@ -8971,7 +8978,7 @@
                                         <div class="ww-phasor-manual-role-row" data-role="Vb">
                                             <label class="ww-phasor-manual-role-enable">
                                                 <input type="checkbox" id="wwPhasorManualVbEnabled" aria-label="Enable Vb">
-                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-b)"></span><span>V<sub class="ww-voltage-sub">B</sub></span>
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-b)"></span><span class="ww-electrical-symbol">V<sub class="ww-electrical-sub">B</sub></span>
                                             </label>
                                             <input type="number" id="wwPhasorManualVbMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Vb magnitude">
                                             <select id="wwPhasorManualVbUnit" aria-label="Vb unit">
@@ -8985,7 +8992,7 @@
                                         <div class="ww-phasor-manual-role-row" data-role="Vc">
                                             <label class="ww-phasor-manual-role-enable">
                                                 <input type="checkbox" id="wwPhasorManualVcEnabled" aria-label="Enable Vc">
-                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-c)"></span><span>V<sub class="ww-voltage-sub">C</sub></span>
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-c)"></span><span class="ww-electrical-symbol">V<sub class="ww-electrical-sub">C</sub></span>
                                             </label>
                                             <input type="number" id="wwPhasorManualVcMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Vc magnitude">
                                             <select id="wwPhasorManualVcUnit" aria-label="Vc unit">
@@ -9599,7 +9606,7 @@
                                         <div class="ww-phasor-manual-role-row" data-role="Va">
                                             <label class="ww-phasor-manual-role-enable">
                                                 <input type="checkbox" id="wwSequenceManualVaEnabled" aria-label="Enable Va">
-                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-a)"></span><span>V<sub class="ww-voltage-sub">A</sub></span>
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-a)"></span><span class="ww-electrical-symbol">V<sub class="ww-electrical-sub">A</sub></span>
                                             </label>
                                             <input type="number" id="wwSequenceManualVaMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Va magnitude">
                                             <select id="wwSequenceManualVaUnit" aria-label="Va unit">
@@ -9613,7 +9620,7 @@
                                         <div class="ww-phasor-manual-role-row" data-role="Vb">
                                             <label class="ww-phasor-manual-role-enable">
                                                 <input type="checkbox" id="wwSequenceManualVbEnabled" aria-label="Enable Vb">
-                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-b)"></span><span>V<sub class="ww-voltage-sub">B</sub></span>
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-b)"></span><span class="ww-electrical-symbol">V<sub class="ww-electrical-sub">B</sub></span>
                                             </label>
                                             <input type="number" id="wwSequenceManualVbMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Vb magnitude">
                                             <select id="wwSequenceManualVbUnit" aria-label="Vb unit">
@@ -9627,7 +9634,7 @@
                                         <div class="ww-phasor-manual-role-row" data-role="Vc">
                                             <label class="ww-phasor-manual-role-enable">
                                                 <input type="checkbox" id="wwSequenceManualVcEnabled" aria-label="Enable Vc">
-                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-c)"></span><span>V<sub class="ww-voltage-sub">C</sub></span>
+                                                <span class="ww-phasor-role-swatch" style="background:var(--ww-phase-c)"></span><span class="ww-electrical-symbol">V<sub class="ww-electrical-sub">C</sub></span>
                                             </label>
                                             <input type="number" id="wwSequenceManualVcMagnitude" min="0" step="0.01" placeholder="magnitude" aria-label="Vc magnitude">
                                             <select id="wwSequenceManualVcUnit" aria-label="Vc unit">
@@ -9938,7 +9945,7 @@
                                                 <input type="number" id="wwDistanceManualVtSecondaryInput" min="0" step="0.01" value="110">
                                             </label>
                                             <label class="ww-phasor-field">
-                                                <span class="ww-phasor-field-label" id="wwDistanceManualV1Label"><span>V<sub class="ww-voltage-sub">A</sub></span> magnitude</span>
+                                                <span class="ww-phasor-field-label" id="wwDistanceManualV1Label"><span class="ww-electrical-symbol">V<sub class="ww-electrical-sub">A</sub></span> magnitude</span>
                                                 <span class="ww-oc-manual-input-row">
                                                     <input type="number" id="wwDistanceManualV1MagnitudeInput" min="0" step="0.01" value="132" aria-label="V1 magnitude">
                                                     <select id="wwDistanceManualV1UnitSelect" aria-label="V1 unit">
@@ -9952,7 +9959,7 @@
                                                 <input type="number" id="wwDistanceManualV1AngleInput" step="0.1" value="0" aria-label="V1 angle">
                                             </label>
                                             <label class="ww-phasor-field">
-                                                <span class="ww-phasor-field-label" id="wwDistanceManualV2Label"><span>V<sub class="ww-voltage-sub">B</sub></span> magnitude</span>
+                                                <span class="ww-phasor-field-label" id="wwDistanceManualV2Label"><span class="ww-electrical-symbol">V<sub class="ww-electrical-sub">B</sub></span> magnitude</span>
                                                 <span class="ww-oc-manual-input-row">
                                                     <input type="number" id="wwDistanceManualV2MagnitudeInput" min="0" step="0.01" value="132" aria-label="V2 magnitude">
                                                     <select id="wwDistanceManualV2UnitSelect" aria-label="V2 unit">
@@ -24099,92 +24106,115 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // ------------------------------------------------------------------
-        // DEC-117: shared VOLTAGE electrical-notation display layer. The ONE
-        // place user-facing system voltage notation is produced -- every
+        // DEC-117: shared ELECTRICAL-SYMBOL notation layer. The ONE place
+        // user-facing system electrical symbols are produced -- every
         // surface (Calculated Channels, Waveform, Analysis analyzers,
         // Related Waveforms, Compliance) calls these; never a local one-off.
         //
-        //   internal/domain/API values: VA VB VC, VAB VBC VCA; role keys
-        //     Va/Vb/Vc; phase_member / member A|B|C|AB|BC|CA
-        //   user-facing system notation: V<sub>A</sub> V<sub>B</sub>
-        //     V<sub>C</sub>, V<sub>AB</sub> V<sub>BC</sub> V<sub>CA</sub>
+        //   symbol = quantity + subscript
+        //     quantity  V | I
+        //     subscript V: A B C (phase), AB BC CA (line-to-line),
+        //                  1 2 0 (positive/negative/zero sequence)
+        //               I: 1 2 0 (sequence). Phase currents (Ia..) are
+        //                  deliberately NOT formatted (owner decision).
         //
-        // Inputs are SEMANTIC only: a subscript ("A".."C", "AB"/"BC"/"CA"),
-        // an analysis role key ("Va"), or phase_member metadata -- never a
-        // parsed name. Output variants:
-        //   wwVoltageSymbolHtml()   -- DOM HTML, styled by .ww-voltage-sub
-        //   wwVoltageSymbolPlotly() -- Plotly's own <sub> pseudo-HTML
-        //   wwVoltageSymbolSvg()    -- raw <svg> text (<tspan>)
-        //   wwVoltageSymbolText()   -- plain fallback where rich text cannot
-        //                              render (<option>, title/aria-label,
-        //                              textContent pipelines)
-        // Display only: identifiers, names, API values and metadata are
-        // never changed. Channel names are formatted ONLY when metadata
-        // proves the name is system-generated (operation
-        // line_to_line_voltage AND the name exactly equals the backend
-        // default "<bay> V<pair>"); every other name -- custom names
-        // containing "VAB", source names such as "KPDN1 VR", user display
-        // aliases -- renders exactly as typed. Never regex-transform free
-        // text; editable inputs always hold plain text.
+        //   target   function                    (V, A) example
+        //   DOM      wwElectricalSymbolHtml()    <span class="ww-electrical-symbol">V<sub class="ww-electrical-sub">A</sub></span>
+        //   Plotly   wwElectricalSymbolPlotly()  V<sub>A</sub>  (Plotly's own markup)
+        //   SVG      wwElectricalSymbolSvg()     V<tspan ...>A</tspan>  (lowered tspan)
+        //   plain    wwElectricalSymbolText()    VA  -- the ONLY fallback for
+        //            <option>, title/aria-label, textContent and logs.
+        //            Plain notation is concatenated (VA, VAB, V1, I2);
+        //            NEVER an underscore form.
+        //
+        // Inputs are SEMANTIC only (quantity + subscript, an analysis role
+        // key, phase_member/member metadata) -- never a parsed name. Display
+        // only: identifiers, names, API values and metadata never change.
+        // Channel names are formatted ONLY when metadata proves the name is
+        // system-generated; source names ("KPDN1 VR", "SLKS VB"), custom
+        // names ("Backup VAB Check"), editable fields and phase
+        // classification (a "Phase" column showing A/B/C) stay verbatim.
         // ------------------------------------------------------------------
         const WW_VOLTAGE_PHASES = ["A", "B", "C"];
         const WW_LL_NOTATION_PAIRS = ["AB", "BC", "CA"];
+        const WW_SEQUENCE_SUBSCRIPTS = ["1", "2", "0"];
         const WW_LL_NOTATION_OPERANDS = { AB: ["A", "B"], BC: ["B", "C"], CA: ["C", "A"] };
-        // Analysis role keys (Phasor/Sequence/Impedance/Distance) -> subscript.
-        // Current (Ia..), sequence (V1/V2/V0) and impedance (Za..) keys are
-        // deliberately absent: not phase-voltage notation.
-        const WW_VOLTAGE_ROLE_SUBSCRIPTS = { Va: "A", Vb: "B", Vc: "C" };
+        const WW_ELECTRICAL_SUBSCRIPTS = {
+            V: [...WW_VOLTAGE_PHASES, ...WW_LL_NOTATION_PAIRS, ...WW_SEQUENCE_SUBSCRIPTS],
+            I: [...WW_SEQUENCE_SUBSCRIPTS],
+        };
+        // Analysis role keys -> [quantity, subscript]. Phase currents
+        // (Ia/Ib/Ic) and impedance keys (Za, Zab) are deliberately absent
+        // and pass through unchanged.
+        const WW_ELECTRICAL_ROLE_SYMBOLS = {
+            Va: ["V", "A"], Vb: ["V", "B"], Vc: ["V", "C"],
+            V1: ["V", "1"], V2: ["V", "2"], V0: ["V", "0"],
+            I1: ["I", "1"], I2: ["I", "2"], I0: ["I", "0"],
+        };
 
-        function wwIsVoltageSubscript(subscript) {
-            return WW_VOLTAGE_PHASES.includes(subscript) || WW_LL_NOTATION_PAIRS.includes(subscript);
+        function wwIsElectricalSymbol(quantity, subscript) {
+            const allowed = WW_ELECTRICAL_SUBSCRIPTS[quantity];
+            return !!allowed && allowed.includes(String(subscript));
         }
 
-        // Plain fallback: "A" -> "VA", "AB" -> "VAB".
-        function wwVoltageSymbolText(subscript) {
-            return "V" + (subscript || "?");
+        // Plain fallback: (V, A) -> "VA", (V, AB) -> "VAB", (I, 2) -> "I2".
+        function wwElectricalSymbolText(quantity, subscript) {
+            const sub = subscript === undefined || subscript === null || subscript === "" ? "?" : String(subscript);
+            return String(quantity || "") + sub;
         }
 
-        // "A" -> V<sub>A</sub>, "AB" -> V<sub>AB</sub>; anything else is
-        // escaped plain text. textContent stays plain ("VA") for
-        // accessibility and copy/paste. The wrapping <span> keeps the
-        // symbol ONE inline unit even inside a flex container (otherwise
-        // "V" and the <sub> become separate flex items and split apart).
+        // DOM HTML. textContent stays the plain fallback ("VA"). The wrapper
+        // class makes the symbol ONE atomic inline unit whatever the
+        // container: in a flex/grid parent it is a single item, and generic
+        // descendant rules (e.g. `.ww-cc-field span { display: flex }`)
+        // cannot restyle it -- see the .ww-electrical-symbol CSS rule.
         // Static markup that cannot call this must emit the same shape.
-        function wwVoltageSymbolHtml(subscript) {
-            if (!wwIsVoltageSubscript(subscript)) return escapeHtml(wwVoltageSymbolText(subscript));
-            return '<span>V<sub class="ww-voltage-sub">' + subscript + '</sub></span>';
+        function wwElectricalSymbolHtml(quantity, subscript) {
+            if (!wwIsElectricalSymbol(quantity, subscript)) return escapeHtml(wwElectricalSymbolText(quantity, subscript));
+            return '<span class="ww-electrical-symbol">' + quantity + '<sub class="ww-electrical-sub">' + subscript + '</sub></span>';
         }
 
         // Plotly trace names/hover: Plotly renders its own <sub> but not
-        // class attributes.
-        function wwVoltageSymbolPlotly(subscript) {
-            return wwIsVoltageSubscript(subscript) ? "V<sub>" + subscript + "</sub>" : wwVoltageSymbolText(subscript);
+        // class attributes. Trace identity must live in meta/uid.
+        function wwElectricalSymbolPlotly(quantity, subscript) {
+            if (!wwIsElectricalSymbol(quantity, subscript)) return wwElectricalSymbolText(quantity, subscript);
+            return quantity + "<sub>" + subscript + "</sub>";
         }
 
         // Inside an <svg> <text>: HTML <sub> does not render there, so the
         // subscript is a smaller, lowered <tspan>. Only valid as the LAST
         // run of its <text> (dy shifts any text after it).
-        function wwVoltageSymbolSvg(subscript) {
-            if (!wwIsVoltageSubscript(subscript)) return escapeHtml(wwVoltageSymbolText(subscript));
-            return 'V<tspan font-size="0.72em" dy="0.3em">' + subscript + '</tspan>';
+        function wwElectricalSymbolSvg(quantity, subscript) {
+            if (!wwIsElectricalSymbol(quantity, subscript)) return escapeHtml(wwElectricalSymbolText(quantity, subscript));
+            return quantity + '<tspan font-size="0.72em" dy="0.3em">' + subscript + '</tspan>';
         }
 
-        // Analysis role key -> notation; non-voltage roles (Ia, V1, Za...)
-        // are returned unchanged/escaped.
-        function wwVoltageRoleSubscript(roleKey) {
-            return WW_VOLTAGE_ROLE_SUBSCRIPTS[roleKey] || null;
+        // Voltage shorthands: (V, subscript).
+        function wwVoltageSymbolText(subscript) { return wwElectricalSymbolText("V", subscript); }
+        function wwVoltageSymbolHtml(subscript) { return wwElectricalSymbolHtml("V", subscript); }
+        function wwVoltageSymbolPlotly(subscript) { return wwElectricalSymbolPlotly("V", subscript); }
+        function wwVoltageSymbolSvg(subscript) { return wwElectricalSymbolSvg("V", subscript); }
+
+        // Analysis role key -> notation (Va, V1, I2 ...); any other role
+        // (Ia, Za ...) is returned unchanged/escaped.
+        function wwElectricalRoleSymbol(roleKey) {
+            return WW_ELECTRICAL_ROLE_SYMBOLS[roleKey] || null;
+        }
+        function wwRoleLabelText(roleKey) {
+            const s = wwElectricalRoleSymbol(roleKey);
+            return s ? wwElectricalSymbolText(s[0], s[1]) : String(roleKey);
         }
         function wwRoleLabelHtml(roleKey) {
-            const subscript = wwVoltageRoleSubscript(roleKey);
-            return subscript ? wwVoltageSymbolHtml(subscript) : escapeHtml(roleKey);
+            const s = wwElectricalRoleSymbol(roleKey);
+            return s ? wwElectricalSymbolHtml(s[0], s[1]) : escapeHtml(roleKey);
         }
         function wwRoleLabelPlotly(roleKey) {
-            const subscript = wwVoltageRoleSubscript(roleKey);
-            return subscript ? wwVoltageSymbolPlotly(subscript) : roleKey;
+            const s = wwElectricalRoleSymbol(roleKey);
+            return s ? wwElectricalSymbolPlotly(s[0], s[1]) : roleKey;
         }
         function wwRoleLabelSvg(roleKey) {
-            const subscript = wwVoltageRoleSubscript(roleKey);
-            return subscript ? wwVoltageSymbolSvg(subscript) : escapeHtml(roleKey);
+            const s = wwElectricalRoleSymbol(roleKey);
+            return s ? wwElectricalSymbolSvg(s[0], s[1]) : escapeHtml(roleKey);
         }
 
         // "A" -> V<sub>A</sub>; anything else falls back to plain escaped text.
@@ -24197,11 +24227,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return WW_LL_NOTATION_PAIRS.includes(pair) ? wwVoltageSymbolHtml(pair) : escapeHtml(wwVoltageSymbolText(pair));
         }
 
-        // "AB" -> V<sub>AB</sub> = V<sub>A</sub> − V<sub>B</sub> (display only).
+        // "AB" -> V<sub>AB</sub> = V<sub>A</sub> − V<sub>B</sub>. Both sides
+        // always come from the same formatter -- never a mix of rich and
+        // plain symbols.
         function wwLineToLineFormulaHtml(pair) {
             const operands = WW_LL_NOTATION_OPERANDS[pair];
             if (!operands) return wwLineToLinePairHtml(pair);
             return wwVoltageSymbolHtml(pair) + " = " + wwVoltageSymbolHtml(operands[0]) + " − " + wwVoltageSymbolHtml(operands[1]);
+        }
+        // Plain counterpart: "VAB = VA − VB".
+        function wwLineToLineFormulaText(pair) {
+            const operands = WW_LL_NOTATION_OPERANDS[pair];
+            if (!operands) return wwVoltageSymbolText(pair);
+            return wwVoltageSymbolText(pair) + " = " + wwVoltageSymbolText(operands[0]) + " − " + wwVoltageSymbolText(operands[1]);
         }
 
         // Mirrors the backend's app.domain.line_to_line_voltage.default_output_name().
@@ -30554,9 +30592,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // DEC-115: Line-to-Line output options -- wire values match
         // app.domain.line_to_line_voltage.KNOWN_OUTPUTS exactly.
         const WW_CC_LL_OUTPUTS = [
-            { value: "AB", label: "VAB" },
-            { value: "BC", label: "VBC" },
-            { value: "CA", label: "VCA" },
+            { value: "AB", label: wwVoltageSymbolText("AB") },
+            { value: "BC", label: wwVoltageSymbolText("BC") },
+            { value: "CA", label: wwVoltageSymbolText("CA") },
             { value: "all_three", label: "All Three" },
         ];
         // Server-derived readiness for every Engineering Context (never
@@ -30857,7 +30895,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     candidates.push({
                         kind: "source", sourceId: inventory.sourceId, channelName: ch.name,
                         calculatedChannelId: null, referenceSourceId: inventory.sourceId,
-                        shortLabel: displayName,
+                        shortLabel: displayName, shortLabelHtml: wwChannelDisplayNameHtml(inventory.sourceId, ch.name),
                         pickerLabel: (inventory.sourceName ? inventory.sourceName + " — " : "") + displayName,
                         unit: ch.unit || "", group: inventory.sourceName || inventory.sourceId,
                     });
@@ -30867,7 +30905,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 candidates.push({
                     kind: "calculated", sourceId: null, channelName: null,
                     calculatedChannelId: calc.id, referenceSourceId: calc.reference_source_id,
-                    shortLabel: calc.name, pickerLabel: calc.name,
+                    shortLabel: calc.name, shortLabelHtml: wwCalculatedChannelNameHtml(calc), pickerLabel: calc.name,
                     unit: calc.unit || "", group: "Calculated Channels",
                 });
             }
@@ -30878,6 +30916,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (inputRef.kind === "source") return wwChannelDisplayName(inputRef.source_id, inputRef.channel_name);
             const dep = ww.calculatedChannels.get(inputRef.calculated_channel_id);
             return dep ? dep.name : "(deleted)";
+        }
+
+        // HTML counterpart (DEC-117): a metadata-proven system L-L input
+        // name gets the notation; source/custom names stay verbatim.
+        function wwCcInputDisplayNameHtml(inputRef) {
+            if (inputRef.kind === "source") return wwChannelDisplayNameHtml(inputRef.source_id, inputRef.channel_name);
+            const dep = ww.calculatedChannels.get(inputRef.calculated_channel_id);
+            return dep ? wwCalculatedChannelNameHtml(dep) : escapeHtml("(deleted)");
         }
 
         // Section 61: a readable definition, never internal ids.
@@ -30898,7 +30944,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (calc.operation === "subtraction") return label + " (" + names.join(" − ") + ")";
             if (calc.operation === "line_to_line_voltage") {
                 const bay = calc.parameters && calc.parameters.engineering_context_name;
-                return label + " (V" + (calc.phase_member || "?") + (bay ? ", " + bay : "") + ")";
+                return label + " (" + wwVoltageSymbolText(calc.phase_member) + (bay ? ", " + bay : "") + ")";
             }
             return label + " (" + names[0] + ")";
         }
@@ -30928,17 +30974,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return joined;
         }
 
-        function wwCcComputeExpressionPreview() {
+        // `html` -> DEC-117 rich markup (input names via the shared
+        // channel-name helpers); default -> plain text.
+        function wwCcComputeExpressionPreview(html) {
             const b = wwCcBuilder;
-            if (b.operation === "line_to_line_voltage") return wwCcLlExpressionPreview();
+            if (b.operation === "line_to_line_voltage") return html ? wwCcLlExpressionPreviewHtml() : wwCcLlExpressionPreview();
             if (!b.operation || b.inputs.length === 0) return "";
-            const labels = b.inputs.map((i) => i.shortLabel);
+            const esc = (text) => (html ? escapeHtml(text) : text);
+            const labels = b.inputs.map((i) => (html ? (i.shortLabelHtml || escapeHtml(i.shortLabel)) : i.shortLabel));
             if (b.operation === "reverse_polarity") return "Result = −" + labels[0];
             if (b.operation === "absolute_value") return "Result = |" + labels[0] + "|";
-            if (b.operation === "multiply_constant") return "Result = " + (b.constant === "" ? "k" : b.constant) + " × " + labels[0];
+            if (b.operation === "multiply_constant") return "Result = " + esc(b.constant === "" ? "k" : b.constant) + " × " + labels[0];
             if (b.operation === "rms") {
                 const f = b.nominalFrequency === "" ? "50" : b.nominalFrequency;
-                return "Result = RMS(" + labels[0] + ", " + f + " Hz, 1 cycle)";
+                return "Result = RMS(" + labels[0] + ", " + esc(f) + " Hz, 1 cycle)";
             }
             if (b.operation === "addition") return "Result = " + labels.join(" + ");
             if (b.operation === "subtraction") return "Result = " + labels.join(" − ");
@@ -31159,7 +31208,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!ctx) return "";
             return wwCcLlPairsForOutput(wwCcBuilder.llOutput).map((pair) => {
                 const [from, to] = WW_CC_LL_PAIR_ROLES[pair];
-                return "V" + pair + " = " + from.toUpperCase() + " − " + to.toUpperCase() +
+                return wwLineToLineFormulaText(pair) +
                     " (" + wwCcLlRoleLabel(ctx, from) + " − " + wwCcLlRoleLabel(ctx, to) + ")";
             }).join("   ·   ");
         }
@@ -31192,7 +31241,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwCcLlEnsureDefaultNames(ctx);
                 const nameErrors = wwCcLlNameErrors();
                 const first = WW_CC_LL_PAIR_ORDER.find((pair) => nameErrors[pair]);
-                if (first) errors.push("V" + first + ": " + nameErrors[first]);
+                if (first) errors.push(wwVoltageSymbolText(first) + ": " + nameErrors[first]);
                 return;
             }
             const name = wwCcBuilder.name.trim();
@@ -31764,8 +31813,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const el = document.getElementById("wwCcExpressionPreview");
             if (!el) return;
             const text = wwCcComputeExpressionPreview();
-            if (wwCcBuilder.operation === "line_to_line_voltage") el.innerHTML = wwCcLlExpressionPreviewHtml(); // DEC-117 notation
-            else el.textContent = text;
+            el.innerHTML = wwCcComputeExpressionPreview(true); // DEC-117 notation
             el.hidden = !text;
         }
 
@@ -31907,37 +31955,34 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // (backend response shape) instead of the in-progress
         // `wwCcBuilder` state, since a created channel has no "builder"
         // any more (immutable after creation, section 47).
-        function wwCcExpressionTextFor(calc) {
-            const names = calc.inputs.map(wwCcInputDisplayName);
+        // One renderer for both targets so the plain and rich formulas can
+        // never drift apart: `html` -> DEC-117 markup (symbols via the
+        // shared formatter, input names via the shared channel-name
+        // helpers); default -> plain text (VAB = VA − VB).
+        function wwCcExpressionFor(calc, html) {
+            const esc = (text) => (html ? escapeHtml(String(text)) : String(text));
+            const names = calc.inputs.map(html ? wwCcInputDisplayNameHtml : wwCcInputDisplayName);
             if (calc.operation === "reverse_polarity") return "-1 × " + names[0];
             if (calc.operation === "absolute_value") return "|" + names[0] + "|";
             if (calc.operation === "multiply_constant") {
                 const k = calc.parameters && Number.isFinite(calc.parameters.constant) ? calc.parameters.constant : "?";
-                return k + " × " + names[0];
+                return esc(k) + " × " + names[0];
             }
             if (calc.operation === "rms") {
                 const f = calc.parameters && Number.isFinite(calc.parameters.nominal_frequency_hz) ? calc.parameters.nominal_frequency_hz : "?";
-                return "RMS(" + names[0] + ", " + f + " Hz, 1 cycle)";
+                return "RMS(" + names[0] + ", " + esc(f) + " Hz, 1 cycle)";
             }
             if (calc.operation === "addition") return names.join(" + ");
             if (calc.operation === "subtraction") return names.join(" − ");
             if (calc.operation === "line_to_line_voltage") {
-                const operands = WW_LL_NOTATION_OPERANDS[calc.phase_member];
-                return "V" + (calc.phase_member || "?") + (operands ? " = V" + operands[0] + " − V" + operands[1] : "") +
-                    " (" + names.join(" − ") + ")";
+                const formula = html ? wwLineToLineFormulaHtml(calc.phase_member) : wwLineToLineFormulaText(calc.phase_member);
+                return formula + " (" + names.join(" − ") + ")";
             }
             const meta = WW_CC_OPERATIONS[calc.operation];
-            return meta ? meta.label : calc.operation;
+            return esc(meta ? meta.label : calc.operation);
         }
-
-        // HTML counterpart of wwCcExpressionTextFor(): DEC-117 notation for
-        // Line-to-Line formulas; every other operation is escaped text.
-        function wwCcExpressionHtmlFor(calc) {
-            if (calc.operation === "line_to_line_voltage" && WW_LL_NOTATION_OPERANDS[calc.phase_member]) {
-                return wwLineToLineFormulaHtml(calc.phase_member) + " (" + escapeHtml(calc.inputs.map(wwCcInputDisplayName).join(" − ")) + ")";
-            }
-            return escapeHtml(wwCcExpressionTextFor(calc));
-        }
+        function wwCcExpressionTextFor(calc) { return wwCcExpressionFor(calc, false); }
+        function wwCcExpressionHtmlFor(calc) { return wwCcExpressionFor(calc, true); }
 
         // DEC-084 Calc Slice 3 (section 18): a compact, one-line
         // null-handling summary for the manager list -- deliberately
@@ -32008,14 +32053,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const color = wwColorForChannel(calc.id, calc.name);
                 const error = wwCcListErrors.get(calc.id);
                 const meta = WW_CC_OPERATIONS[calc.operation];
-                const inputNames = calc.inputs.map(wwCcInputDisplayName).join(", ");
+                const inputNamesHtml = calc.inputs.map(wwCcInputDisplayNameHtml).join(", ");
                 const selected = calc.id === wwCcSelectedCalculatedChannelId;
                 html += '<div class="ww-cc-list-row' + (selected ? " ww-cc-list-row--selected" : "") + '" data-calculated-channel-id="' + escapeHtml(calc.id) + '">' +
                     '<span class="channel-color-dot" style="background:' + escapeHtml(color) + '" aria-hidden="true"></span>' +
                     '<div class="ww-cc-list-row-main">' +
                         '<div class="ww-cc-list-row-name"><span>' + wwCalculatedChannelNameHtml(calc) + '</span></div>' +
                         '<div class="ww-cc-list-row-expr">' + wwCcExpressionHtmlFor(calc) + '</div>' +
-                        '<div class="ww-cc-list-row-summary">' + escapeHtml((meta ? meta.label : calc.operation) + " · " + inputNames + " · " + wwCcNullPolicySummaryText(calc)) + '</div>' +
+                        '<div class="ww-cc-list-row-summary">' + escapeHtml((meta ? meta.label : calc.operation) + " · ") + inputNamesHtml + escapeHtml(" · " + wwCcNullPolicySummaryText(calc)) + '</div>' +
                         (error ? '<div class="ww-cc-list-row-error">' + escapeHtml(error) + '</div>' : '') +
                     '</div>' +
                     '<div class="ww-cc-list-row-class"><span class="ww-cc-type-badge">' + escapeHtml(calc.engineering_type || "Undefined") + '</span></div>' +
@@ -32421,12 +32466,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     stripEl.innerHTML = "";
                 } else {
                     const meta = WW_CC_OPERATIONS[calc.operation];
-                    const inputNames = calc.inputs.map(wwCcInputDisplayName).join(", ");
+                    const inputNamesHtml = calc.inputs.map(wwCcInputDisplayNameHtml).join(", ");
                     stripEl.innerHTML =
                         '<div><span class="ww-cc-preview-info-label">Expression</span><span class="ww-cc-preview-info-value">' + wwCcExpressionHtmlFor(calc) + '</span></div>' +
                         '<div><span class="ww-cc-preview-info-label">Classification</span><span class="ww-cc-preview-info-value">' + escapeHtml(calc.engineering_type || "Undefined") + '</span></div>' +
                         '<div><span class="ww-cc-preview-info-label">Unit</span><span class="ww-cc-preview-info-value">' + escapeHtml(calc.unit || "—") + '</span></div>' +
-                        '<div><span class="ww-cc-preview-info-label">Source</span><span class="ww-cc-preview-info-value">' + escapeHtml((meta ? meta.label : calc.operation) + " · " + inputNames) + '</span></div>' +
+                        '<div><span class="ww-cc-preview-info-label">Source</span><span class="ww-cc-preview-info-value">' + escapeHtml((meta ? meta.label : calc.operation) + " · ") + inputNamesHtml + '</span></div>' +
                         wwCcMissingDataInfoRowsHtml(calc);
                     stripEl.hidden = false;
                 }
@@ -38867,7 +38912,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     x: data.time, y: data.values, type: "scatter", mode: "lines",
                     line: { width: 1.25, color: wwAnalysisResolveCssColor(role.color || wwPhasorRoleColor(role.roleKey)) },
                     // Display name only; identity is `meta` (the role key).
-                    name: wwVoltageRoleSubscript(role.roleKey) ? wwRoleLabelPlotly(role.roleKey) : (role.label || role.roleKey),
+                    name: wwElectricalRoleSymbol(role.roleKey) ? wwRoleLabelPlotly(role.roleKey) : (role.label || role.roleKey),
                     meta: role.roleKey, hoverinfo: "x+y+name",
                 });
             }
@@ -44670,10 +44715,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (percent === null || percent === undefined || !Number.isFinite(percent)) return "Unavailable";
             return (Math.round(percent * 100) / 100) + "%";
         }
-        function wwSequenceRatioRowHtml(label, percent) {
+        // numeratorKey/denominatorKey are role keys ("V2", "V1") rendered
+        // through the shared electrical-symbol formatter (V<sub>2</sub> / V<sub>1</sub>).
+        function wwSequenceRatioRowHtml(numeratorKey, denominatorKey, percent) {
             return (
                 '<div class="ww-phasor-value-row">' +
-                    '<span class="ww-phasor-role-label">' + escapeHtml(label) + '</span>' +
+                    // One inner span: .ww-phasor-role-label is a flex row, and bare
+                    // " / " text would otherwise become its own (whitespace-trimmed)
+                    // flex item between the two symbols.
+                    '<span class="ww-phasor-role-label"><span>' + wwRoleLabelHtml(numeratorKey) + " / " + wwRoleLabelHtml(denominatorKey) + '</span></span>' +
                     '<span class="ww-phasor-value-numbers"><span class="ww-phasor-value-magnitude">' + wwSequenceFormatRatio(percent) + '</span></span>' +
                 '</div>'
             );
@@ -44684,10 +44734,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const v = (result && result.voltage_sequences) || {};
             const i = (result && result.current_sequences) || {};
             container.innerHTML = [
-                wwSequenceRatioRowHtml("V2 / V1", v.negative_sequence_ratio_percent),
-                wwSequenceRatioRowHtml("V0 / V1", v.zero_sequence_ratio_percent),
-                wwSequenceRatioRowHtml("I2 / I1", i.negative_sequence_ratio_percent),
-                wwSequenceRatioRowHtml("I0 / I1", i.zero_sequence_ratio_percent),
+                wwSequenceRatioRowHtml("V2", "V1", v.negative_sequence_ratio_percent),
+                wwSequenceRatioRowHtml("V0", "V1", v.zero_sequence_ratio_percent),
+                wwSequenceRatioRowHtml("I2", "I1", i.negative_sequence_ratio_percent),
+                wwSequenceRatioRowHtml("I0", "I1", i.zero_sequence_ratio_percent),
             ].join("");
         }
 

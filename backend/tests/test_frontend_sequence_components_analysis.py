@@ -160,10 +160,12 @@ class TestSequenceRatiosAreDescriptiveOnly:
     def test_ratio_rows_cover_all_four_ratios(self):
         source = _source()
         fn = _function_body(source, "function wwSequenceRenderRatiosList", "// The one render path")
-        assert '"V2 / V1"' in fn
-        assert '"V0 / V1"' in fn
-        assert '"I2 / I1"' in fn
-        assert '"I0 / I1"' in fn
+        # DEC-117 Amendment 2: numerator/denominator role keys, rendered
+        # V<sub>2</sub> / V<sub>1</sub> by the shared formatter.
+        assert 'wwSequenceRatioRowHtml("V2", "V1",' in fn
+        assert 'wwSequenceRatioRowHtml("V0", "V1",' in fn
+        assert 'wwSequenceRatioRowHtml("I2", "I1",' in fn
+        assert 'wwSequenceRatioRowHtml("I0", "I1",' in fn
 
     def test_unavailable_ratio_never_renders_infinity_or_nan(self):
         source = _source()

@@ -9,14 +9,17 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-26**. **DEC-117 (amended)**: all
-system-owned voltage notation, single-phase and Line-to-Line
-(V<sub>A</sub>, V<sub>AB</sub> in the UI; `VA`/`VAB`/`Va` internally), is
-applied app-wide through one shared voltage-notation formatter and one
-`.ww-voltage-sub` CSS rule. Surfaces: Calculated Channels, Waveform,
-Phasor, Sequence, Distance, Related Waveforms and Compliance. Editable,
-custom, source and internal values stay plain. It is a mandatory
-convention for all future UI (rules in AGENTS.md); awaiting owner UAT.
+Last meaningful update: **2026-09-26**. **DEC-117 (Amendment 2)**: all
+system-owned electrical symbols share one formatter,
+`wwElectricalSymbol*()`, and two CSS rules (`.ww-electrical-symbol`,
+`.ww-electrical-sub`). Covered: phase, line-to-line and sequence voltage
+(V<sub>A</sub>, V<sub>AB</sub>, V<sub>1</sub>) and sequence current
+(I<sub>2</sub>). Rich surfaces use true subscripts, verified by glyph
+measurement; the plain fallback is `VA/VAB/V1/I2`; underscore forms are
+banned by a structural guard. Source, editable, custom, phase-metadata
+and internal values stay plain. Phase currents `Ia/Ib/Ic` are
+unformatted by owner decision. It is a mandatory convention (AGENTS.md);
+awaiting owner UAT.
 Previously,
 on **2026-09-25**: **DEC-116**: per-unit base
 selection now follows one representation rule on both the Measurement

@@ -19137,8 +19137,10 @@ Impact:
 Date: 2026-09-26
 Status: Approved (owner instruction). Implemented for the existing UI and
 **in force as a forward design rule for all future frontend work**.
-**Amended 2026-09-26** to cover single-phase voltage (VA/VB/VC) too —
-see the amendment at the end of this entry.
+**Amended twice on 2026-09-26**: single-phase voltage (Amendment 1), then
+generalized electrical symbols V/I (phase, line-to-line, sequence), the
+plain-fallback rule and the true-subscript guarantee (Amendment 2). See the
+end of this entry.
 Source: owner task "app-wide Line-to-Line electrical-notation
 standardization", with the explicit additional requirement that it
 become a documented convention for future Claude/Codex work.
@@ -19197,6 +19199,9 @@ Engineering Context or Compliance-logic change. Plotly trace identity
 stays in `uid`/`meta`.
 
 ### Amendment (2026-09-26) — extended to single-phase voltage; one general voltage-notation layer
+
+> Superseded in part by **Amendment 2** below: class names
+> (`.ww-voltage-sub`), the bare `<span>` wrapper shape and the helper list.
 
 Status: Approved (owner instruction, "application-wide electrical voltage
 notation standardization … must also become a standing design rule for
@@ -19269,6 +19274,114 @@ Intentionally plain (fallback or out of scope):
 - The plain-text L-L expression pipeline `wwCcLlExpressionPreview()`.
 - Compliance measurement "Input", which lists resolved source channel
   names.
+
+### Amendment 2 (2026-09-26) — generalized electrical symbols (V/I, phase, line-to-line, sequence); fallback rule; true-subscript guarantee
+
+Status: Approved (owner UAT follow-up and owner-finalized fallback rule).
+**Supersedes the class names, wrapper shape and helper list of
+Amendment 1**, which are kept above for the record.
+
+Final convention:
+
+| Surface | Output |
+|---|---|
+| Rich surface (DOM HTML, Plotly, SVG) | real visual subscript: V<sub>A</sub>, V<sub>AB</sub>, V<sub>1</sub>, I<sub>2</sub> |
+| Plain-text fallback (native `<option>`, `title`/`aria-label`, `textContent`, logs, backend messages) | concatenated: `VA`, `VAB`, `V1`, `I2` |
+| Never | an underscore-joined form (`V_A`, `V_AB`, `V_1`, `I_2`), including in fallbacks, accessibility text, Plotly/SVG fallbacks and tests |
+
+Symbol contract:
+
+- `quantity` is `V` or `I`.
+- Voltage subscripts: phase `A|B|C`, line-to-line `AB|BC|CA`, and
+  sequence `1|2|0`.
+- Current subscripts: sequence `1|2|0` only. Phase currents (`Ia/Ib/Ic`)
+  are deliberately not formatted (owner decision), and neither are
+  impedance/fault-loop labels (`Za`, `Zab`).
+
+What gets formatted:
+
+| Text | Treatment |
+|---|---|
+| Electrical quantity symbol (semantic role, phase, pair, sequence, formula) | Formatted |
+| Source/channel name (`KPDN1 VR`, `SLKS VB (kV)`, `KPDN1_VR`) | Untouched |
+| Editable or custom name (`KPDN1 VAB` in an input, `Backup VAB Check`) | Untouched |
+| Phase classification (a Phase column showing `A/B/C`) | Untouched |
+| Internal/API/domain value (`Va`, `VAB`, `phase_member`, JSON, IDs, `data-*`) | Untouched |
+| Descriptive words ("Positive Sequence", "Line-to-Line") | Stay words; only symbols are formatted |
+
+Shared layer (`frontend/index.html`) — one layer, no per-page formatters:
+
+- Core: `wwElectricalSymbolHtml/Plotly/Svg/Text(quantity, subscript)`.
+- Voltage shorthands: `wwVoltageSymbol*(subscript)`.
+- Semantic wrappers:
+  - `wwRoleLabelHtml/Plotly/Svg/Text(roleKey)` for `Va..Vc`,
+    `V1/V2/V0` and `I1/I2/I0`;
+  - `wwPhaseVoltageHtml()`, `wwLineToLinePairHtml()`,
+    `wwLineToLineFormulaHtml()` and `wwLineToLineFormulaText()`;
+  - the channel-name helpers `wwCalculatedChannelName*()` and
+    `wwChannelDisplayName*()`.
+- HTML shape (static markup must match exactly):
+  `<span class="ww-electrical-symbol">V<sub class="ww-electrical-sub">A</sub></span>`.
+- CSS: exactly two rules, `.ww-electrical-symbol` and
+  `.ww-electrical-sub`. They replace `.ww-voltage-sub` and `.ww-ll-sub`.
+
+Root causes of the gaps found in owner UAT:
+
+1. **Superscript Output Names.** Amendment 1's bare `<span>` wrapper was
+   hit by the generic rule `.ww-cc-field span { display: flex }`. The
+   wrapper became a flex container, the `<sub>` was blockified, and its
+   zero line-height box painted the ink *above* the baseline. The DOM
+   still held a real `<sub>`, so DOM-only assertions passed. The fix is
+   a classed wrapper with a scoped
+   `display: inline-block !important; margin: 0 !important`, plus an
+   inline-forced `<sub>`: one atomic box in any container.
+2. **Mixed formulas.** Non-L-L formulas escaped input names as plain
+   text, so `RMS(KPDN1 VAB, …)` showed a system L-L channel plain while
+   the same name was formatted elsewhere. The list-row summary and the
+   Preview "Source" row had the same gap. Formula text and HTML are now
+   one renderer (`wwCcExpressionFor(calc, html)`, and the builder's
+   `wwCcComputeExpressionPreview(html)`), with input names drawn from
+   the shared channel-name helpers.
+3. **Sequence Components not covered.** The formatter only accepted
+   voltage phase/pair subscripts, so V1/V2/V0 and I1/I2/I0 stayed plain
+   in the values list, ratios and diagram.
+4. **String-search audit.** Runtime-built and backend-supplied labels
+   were missed. The audit is now a runtime DOM crawl across every page,
+   analyzer and drawer, with semantic classification.
+
+Rules for composite labels: a symbol sits inside a flex container as
+one atomic item. Text mixed with symbols (e.g. V<sub>2</sub> / V<sub>1</sub>)
+must be wrapped in one inline span, or the text becomes its own
+whitespace-trimmed flex item.
+
+Enforcement:
+
+- `backend/tests/test_frontend_electrical_notation.py`:
+  - one rule per class, and no legacy classes;
+  - every `<sub>` comes from the formatter or the exact static shape;
+  - no `"V" + x` concatenations bypass the formatter;
+  - the role map contents;
+  - the plain fallback is concatenated;
+  - no underscore symbol in `frontend/index.html` or any
+    `browser-tests/*.spec.js`, scoped so channel names and identifiers
+    such as `KPDN1_VR` never false-fail.
+- `browser-tests/support/electrical_notation_helpers.js`,
+  `expectTrueSubscripts()`, measures rendered **glyphs**. It requires the
+  subscript's ink centre ≥ 15% of the glyph height below the V's. The
+  shared rule measures +0.25; the pre-fix defect measured −0.38.
+- `browser-tests/electrical-notation.spec.js`:
+  - the formatter contract;
+  - true subscripts in normal, flex, grid, `.ww-cc-field` and SVG
+    contexts, in both themes;
+  - `SLKS VB` names and the Phase column stay verbatim.
+- Per-area assertions: Calculated Channels (Output Names, formula,
+  readiness, RMS over V<sub>AB</sub>), Phasor, Sequence, Impedance,
+  Distance, Related Waveforms and Compliance.
+
+Known non-notation observation (not changed): in the Sequence diagram,
+near-zero vectors (e.g. V<sub>2</sub>/V<sub>0</sub> in a balanced
+recording) draw their labels on top of each other at the origin. This
+is a pre-existing label-placement matter.
 
 ---
 
