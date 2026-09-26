@@ -105,15 +105,27 @@ approval before implementation. Existing behaviour is not automatically
 correct merely because it is already implemented or already covered by
 passing tests.
 
-## Frontend convention — electrical notation (Line-to-Line voltage)
+## Frontend convention — electrical voltage notation
 
-Read the section of the same name in [AGENTS.md](AGENTS.md) before adding or
-changing any UI that shows Line-to-Line voltage labels or formulas
-([DECISIONS.md — DEC-117](docs/project-memory/DECISIONS.md#dec-117--line-to-line-voltage-electrical-notation-is-a-standing-frontend-convention-subscript-notation-in-the-ui-via-one-shared-formatter-plain-vab-internally)).
-Internal/API values stay `VAB/VBC/VCA`; user-facing system notation is
-V<sub>AB</sub>/V<sub>BC</sub>/V<sub>CA</sub> via the shared formatter;
-custom user names are never reformatted. Future UI must comply from the
-start.
+**Mandatory.** Read the section of the same name in [AGENTS.md](AGENTS.md)
+before adding or changing any UI that shows phase or Line-to-Line voltage
+labels or formulas
+([DECISIONS.md — DEC-117](docs/project-memory/DECISIONS.md#dec-117--line-to-line-voltage-electrical-notation-is-a-standing-frontend-convention-subscript-notation-in-the-ui-via-one-shared-formatter-plain-vab-internally)
+and its single-phase amendment).
+System-owned notation renders as V<sub>A</sub>/V<sub>B</sub>/V<sub>C</sub>
+and V<sub>AB</sub>/V<sub>BC</sub>/V<sub>CA</sub> through the shared
+voltage-notation formatter and the one `.ww-voltage-sub` CSS rule.
+
+The following stay plain:
+
+- editable fields;
+- custom names;
+- source/channel names;
+- internal/API values.
+
+New UI must use the formatter from the start. It must not introduce plain
+`VA`/`VAB` semantic labels unless the surface cannot render rich text;
+in that case, document the fallback.
 
 ## Change governance
 

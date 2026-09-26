@@ -442,7 +442,28 @@ test.describe("Compliance Slice 4 (DEC-110) -- Assessment Definition", () => {
 
     await expect(page.locator("#wwRefAddList")).toContainText("Line-Line RMS (VAB)");
     // DEC-117: the line-line member renders as V<sub>AB</sub> (text content stays "VAB").
-    await expect(page.locator("#wwRefAddList .ww-ll-sub").first()).toHaveText("AB");
+    await expect(page.locator("#wwRefAddList .ww-voltage-sub").first()).toHaveText("AB");
+  });
+
+  test("DEC-117: a single phase-ground member (A) renders as V<sub>A</sub>; the stored member stays plain", async ({ page }) => {
+    await openCompliance(page);
+    await page.locator("#wwComplianceAddReferenceBtn").click();
+    await page.locator("#wwRefAddNewProfileBtn").click();
+
+    await page.locator("#wwRefEditorName").fill("VA Single Member Requirement");
+    await page.locator("#wwRefEditorRepresentation").selectOption("phase_ground_rms");
+    await page.locator("#wwRefEditorPhaseTreatment").selectOption("single");
+    await page.locator("#wwRefEditorMember").selectOption("A"); // native <option>: plain
+    const lowerRow = page.locator("#wwRefEditorLowerBody tr").first();
+    await lowerRow.locator(".ww-ref-seg-start-value").fill("0.85");
+    await lowerRow.locator(".ww-ref-seg-end-value").fill("0.85");
+    await page.locator("#wwRefEditorSaveBtn").click();
+    await expect(page.locator("#wwRefEditorOverlay")).toBeHidden();
+
+    const item = page.locator("#wwRefAddList .ww-ref-picker-item", { hasText: "VA Single Member Requirement" });
+    await expect(item).toContainText("Phase-Ground RMS (VA)");
+    await expect(item.locator(".ww-voltage-sub")).toHaveText(["A"]);
+    await expect(item).toContainText("VA Single Member Requirement"); // user-typed name verbatim
   });
 
   test("an invalid combination (line-line + each-phase) is rejected inline with an actionable error, never saved", async ({ page }) => {

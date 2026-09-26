@@ -97,7 +97,7 @@ test.describe("DEC-104: shared post-upload workspace preparation", () => {
     await expect(page.locator("#wwPhasorEmptyState")).toBeHidden();
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
-      expect(text).toMatch(/Va/);
+      expect(text).toMatch(/VA/); // DEC-117: V<sub>A</sub>
     }).toPass({ timeout: 5000 });
   });
 

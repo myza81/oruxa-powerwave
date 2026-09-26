@@ -301,13 +301,20 @@ test.describe("Sequence Components v1 -- Recording mode", () => {
         const v = document.getElementById("wwAnalysisRelatedWaveformsVoltageChart");
         const c = document.getElementById("wwAnalysisRelatedWaveformsCurrentChart");
         return {
-          vNames: v && v.data ? v.data.map((t) => t.name) : [],
-          cNames: c && c.data ? c.data.map((t) => t.name) : [],
+          vNames: v && v.data ? v.data.map((t) => t.meta) : [],
+          cNames: c && c.data ? c.data.map((t) => t.meta) : [],
         };
       });
       expect(info.vNames).toEqual(["Va", "Vb", "Vc"]);
       expect(info.cNames).toEqual(["Ia", "Ib", "Ic"]);
     }).toPass({ timeout: 5000 });
+    // DEC-117: phase-voltage display names get the notation; sequence
+    // names (V1/V2/V0) and the manual rows' currents stay unchanged.
+    expect(await page.evaluate(() =>
+      document.getElementById("wwAnalysisRelatedWaveformsVoltageChart").data.map((t) => t.name)
+    )).toEqual(["V<sub>A</sub>", "V<sub>B</sub>", "V<sub>C</sub>"]);
+    await expect(page.locator("#wwSequenceValuesList .ww-voltage-sub")).toHaveCount(0);
+    await expect(page.locator(".ww-phasor-manual-role-row:has(#wwSequenceManualVbEnabled) .ww-voltage-sub")).toHaveText("B");
     await expect(page.locator("#wwAnalysisRelatedWaveformsVoltageGroup")).toBeVisible();
     await expect(page.locator("#wwAnalysisRelatedWaveformsCurrentGroup")).toBeVisible();
     await expect(page.locator("#wwAnalysisRelatedWaveformsEmptyState")).toBeHidden();

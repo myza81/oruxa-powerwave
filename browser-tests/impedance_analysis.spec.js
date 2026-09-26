@@ -201,9 +201,9 @@ test.describe("Impedance Locus v1 -- Related Waveforms", () => {
         const v = document.getElementById("wwAnalysisRelatedWaveformsVoltageChart");
         const c = document.getElementById("wwAnalysisRelatedWaveformsCurrentChart");
         return {
-          vNames: v && v.data ? v.data.map((t) => t.name) : [],
+          vNames: v && v.data ? v.data.map((t) => t.meta) : [],
           vLen: v && v.data && v.data[0] ? v.data[0].x.length : 0,
-          cNames: c && c.data ? c.data.map((t) => t.name) : [],
+          cNames: c && c.data ? c.data.map((t) => t.meta) : [],
           cLen: c && c.data && c.data[0] ? c.data[0].x.length : 0,
         };
       });
@@ -212,6 +212,11 @@ test.describe("Impedance Locus v1 -- Related Waveforms", () => {
       expect(info.cNames).toEqual(["Ia"]);
       expect(info.cLen).toBeGreaterThan(1);
     }).toPass({ timeout: 5000 });
+    // DEC-117: display name V<sub>A</sub>; current and impedance (Za) unchanged.
+    expect(await page.evaluate(() => [
+      document.getElementById("wwAnalysisRelatedWaveformsVoltageChart").data[0].name,
+      document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data[0].name,
+    ])).toEqual(["V<sub>A</sub>", "Ia"]);
 
     // Groups must actually be visible (non-empty data alone is not
     // sufficient proof of a rendered trace -- the group container
@@ -226,7 +231,7 @@ test.describe("Impedance Locus v1 -- Related Waveforms", () => {
     await openAnalysisImpedance(page);
     await selectContextAndWaitForResult(page, contextId);
     await expect(async () => {
-      const names = await page.evaluate(() => document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.name));
+      const names = await page.evaluate(() => document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.meta));
       expect(names).toEqual(["Ia"]);
     }).toPass({ timeout: 5000 });
 
@@ -234,8 +239,8 @@ test.describe("Impedance Locus v1 -- Related Waveforms", () => {
 
     await expect(async () => {
       const names = await page.evaluate(() => ({
-        v: document.getElementById("wwAnalysisRelatedWaveformsVoltageChart").data.map((t) => t.name),
-        c: document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.name),
+        v: document.getElementById("wwAnalysisRelatedWaveformsVoltageChart").data.map((t) => t.meta),
+        c: document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.meta),
       }));
       expect(names.v).toEqual(["Vb"]);
       expect(names.c).toEqual(["Ib"]);

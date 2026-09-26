@@ -431,7 +431,7 @@ test.describe("Calculated Channel operation picker", () => {
 
 // DEC-117: app-wide Line-to-Line electrical notation (display only).
 test.describe("Line-to-Line Voltage -- electrical notation (DEC-117)", () => {
-  const subs = (locator) => locator.locator(".ww-ll-sub");
+  const subs = (locator) => locator.locator(".ww-voltage-sub");
 
   async function apiChannels(page) {
     return page.evaluate(async () => {
@@ -454,6 +454,14 @@ test.describe("Line-to-Line Voltage -- electrical notation (DEC-117)", () => {
     await expect(subs(page.locator("#wwCcLlPlannedNames"))).toHaveText(["AB", "BC", "CA"]);
     await expect(subs(page.locator("#wwCcExpressionPreview"))).toHaveText(["AB", "A", "B", "BC", "B", "C", "CA", "C", "A"]);
     await expect(page.locator("#wwCcLlName_AB")).toHaveValue("KPDN1 VAB"); // editable value plain
+
+    // Readiness block: the semantic role is V<sub>A</sub>/V<sub>B</sub>/V<sub>C</sub>;
+    // the source channel names next to it stay exactly as supplied.
+    const readiness = page.locator("#wwCcLlStatus li");
+    await expect(subs(page.locator("#wwCcLlStatus"))).toHaveText(["A", "B", "C"]);
+    await expect(readiness.locator("strong")).toHaveText(["VA", "VB", "VC"]);
+    await expect(readiness).toHaveText([/VA KPDN1_VR \(kV\)$/, /VB KPDN1_VY \(kV\)$/, /VC KPDN1_VB \(kV\)$/]);
+    await expect(page.locator('#wwCcLlStatus li[data-ll-role="Va"]')).toHaveCount(1); // internal role key plain
     await createAndWait(page);
 
     // Created banner, manager list name + formula, preview status.

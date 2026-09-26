@@ -238,11 +238,19 @@ test.describe("Related Waveforms -- Phasor integration", () => {
 
     await expect(async () => {
       const names = await page.evaluate(() =>
-        document.getElementById("wwAnalysisRelatedWaveformsVoltageChart").data.map((t) => t.name)
+        document.getElementById("wwAnalysisRelatedWaveformsVoltageChart").data.map((t) => t.meta)
       );
       expect(names).not.toContain("Vb");
       expect(names.sort()).toEqual(["Va", "Vc"]);
     }).toPass({ timeout: 5000 });
+    // DEC-117: identity stays the plain role key (meta); the legend/hover
+    // display name is V<sub>A</sub>; currents are unchanged.
+    const display = await page.evaluate(() => ({
+      v: document.getElementById("wwAnalysisRelatedWaveformsVoltageChart").data.map((t) => t.name).sort(),
+      c: document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.name).sort(),
+    }));
+    expect(display.v).toEqual(["V<sub>A</sub>", "V<sub>C</sub>"]);
+    expect(display.c).toEqual(["Ia", "Ib", "Ic"]);
   });
 
   test("hiding Ib and Ic leaves only Ia in the Current waveform group", async ({ page }) => {
@@ -255,7 +263,7 @@ test.describe("Related Waveforms -- Phasor integration", () => {
 
     await expect(async () => {
       const names = await page.evaluate(() =>
-        document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.name)
+        document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.meta)
       );
       expect(names).toEqual(["Ia"]);
     }).toPass({ timeout: 5000 });
@@ -302,7 +310,7 @@ test.describe("Related Waveforms -- Overcurrent integration", () => {
     await expect(page.locator("#wwAnalysisRelatedWaveformsVoltageGroup")).toBeHidden();
     await expect(page.locator("#wwAnalysisRelatedWaveformsCurrentGroup")).toBeVisible();
     const names = await page.evaluate(() =>
-      document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.name)
+      document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.meta)
     );
     expect(names).toEqual(["Ia"]);
   });
@@ -320,7 +328,7 @@ test.describe("Related Waveforms -- Overcurrent integration", () => {
 
     await expect(async () => {
       const names = await page.evaluate(() =>
-        document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.name)
+        document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.meta)
       );
       expect(names).toEqual(["Ib"]);
     }).toPass({ timeout: 5000 });
@@ -438,8 +446,8 @@ test.describe("Related Waveforms -- analyzer switch", () => {
     }
     await expect(async () => {
       const names = (await page.evaluate(() => [
-        ...document.getElementById("wwAnalysisRelatedWaveformsVoltageChart").data.map((t) => t.name),
-        ...document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.name),
+        ...document.getElementById("wwAnalysisRelatedWaveformsVoltageChart").data.map((t) => t.meta),
+        ...document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.meta),
       ])).sort();
       expect(names).toEqual(["Ia", "Va"]);
     }).toPass({ timeout: 5000 });
@@ -466,7 +474,7 @@ test.describe("Related Waveforms -- analyzer switch", () => {
     }).toPass({ timeout: 5000 });
     await expect(async () => {
       const names = await page.evaluate(() =>
-        document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.name)
+        document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.meta)
       );
       expect(names).toEqual(["Ia"]);
     }).toPass({ timeout: 5000 });
@@ -478,8 +486,8 @@ test.describe("Related Waveforms -- analyzer switch", () => {
     await page.locator("#wwAnalysisTypePhasorBtn").click();
     await expect(async () => {
       const names = (await page.evaluate(() => [
-        ...document.getElementById("wwAnalysisRelatedWaveformsVoltageChart").data.map((tr) => tr.name),
-        ...document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((tr) => tr.name),
+        ...document.getElementById("wwAnalysisRelatedWaveformsVoltageChart").data.map((tr) => tr.meta),
+        ...document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((tr) => tr.meta),
       ])).sort();
       expect(names).toEqual(["Ia", "Va"]);
     }).toPass({ timeout: 5000 });

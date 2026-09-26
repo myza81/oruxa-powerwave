@@ -186,6 +186,9 @@ are `base_required` on both paths (DEC-116).
   - Rendering: system-owned L-L labels and formulas render as
     V<sub>AB</sub>/V<sub>BC</sub>/V<sub>CA</sub>
     (V<sub>AB</sub> = V<sub>A</sub> − V<sub>B</sub>).
+  - Since the 2026-09-26 DEC-117 amendment the readiness block's
+    semantic roles are V<sub>A</sub>/V<sub>B</sub>/V<sub>C</sub> too. The
+    operation card has been name-only since the operation-picker cleanup.
   - Where: operation card, output selectors, All Three name labels,
     planned-names hint, formula preview, created banner, manager list,
     preview status, Plot All menu, Waveform sidebar/legend/Plotly, and

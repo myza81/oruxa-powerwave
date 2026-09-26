@@ -8,8 +8,31 @@ Last updated: **2026-09-26**
 
 ## What was most recently done
 
+**DEC-117 amendment: app-wide single-phase + Line-to-Line voltage
+notation, now a mandatory UI convention. Frontend/tests/docs only;
+awaiting owner UAT. Stop here.**
+
+- **Shared layer**: one general voltage-notation formatter in
+  `frontend/index.html`:
+  - `wwVoltageSymbolHtml/Plotly/Svg/Text(sub)` for `A|B|C|AB|BC|CA`;
+  - the `wwRoleLabelHtml/Plotly/Svg(roleKey)` wrappers for `Va/Vb/Vc`;
+  - the existing L-L/channel-name helpers, now built on it.
+- **CSS**: one rule, `.ww-voltage-sub` (was `.ww-ll-sub`). The HTML
+  symbol is wrapped in one `<span>` so flex containers can't split it.
+- **Converted**: CC L-L readiness block, Phasor (manual rows, values,
+  diagram), Sequence manual rows, Distance manual labels, Related
+  Waveforms names (identity now in trace `meta`), and the Compliance
+  phase-ground member.
+- **Plain by design**: editable fields, custom names, source names
+  (`KPDN1_VR`), internal/API values, `<option>`/`title`/`aria-label`,
+  backend messages, currents, `V1/V2/V0`, `Za/Zab`.
+- **Rules**: AGENTS.md "Frontend convention — electrical voltage
+  notation" (mandatory), CLAUDE.md pointer, and the DEC-117 amendment.
+
+## Prior session — Calculated Channel operation-picker cleanup
+
 **Calculated Channel operation-picker cleanup (owner UAT, cosmetic,
-frontend-only). Awaiting owner UAT. Stop here.**
+frontend-only). Awaiting owner UAT.**
 
 - Cards show the operation name only. The secondary description/arity
   lines and the drawer's intro sentence are removed, and the unused

@@ -19137,6 +19137,8 @@ Impact:
 Date: 2026-09-26
 Status: Approved (owner instruction). Implemented for the existing UI and
 **in force as a forward design rule for all future frontend work**.
+**Amended 2026-09-26** to cover single-phase voltage (VA/VB/VC) too —
+see the amendment at the end of this entry.
 Source: owner task "app-wide Line-to-Line electrical-notation
 standardization", with the explicit additional requirement that it
 become a documented convention for future Claude/Codex work.
@@ -19193,6 +19195,80 @@ Implementation (`frontend/index.html`, display only):
 Impact: frontend only; no API, name, ID, metadata, arithmetic, per-unit,
 Engineering Context or Compliance-logic change. Plotly trace identity
 stays in `uid`/`meta`.
+
+### Amendment (2026-09-26) — extended to single-phase voltage; one general voltage-notation layer
+
+Status: Approved (owner instruction, "application-wide electrical voltage
+notation standardization … must also become a standing design rule for
+all future UI implementation"). DEC-117 now covers **all** system-owned
+voltage notation, not only Line-to-Line. The heading above is kept
+unchanged so existing links still resolve.
+
+```text
+Single-phase:  VA  -> V<sub>A</sub>   VB  -> V<sub>B</sub>   VC  -> V<sub>C</sub>
+Line-to-Line:  VAB -> V<sub>AB</sub>  VBC -> V<sub>BC</sub>  VCA -> V<sub>CA</sub>
+```
+
+Standing display rule:
+
+| Text | Display |
+|---|---|
+| System-owned electrical notation (semantic role, phase, pair, formula) | Subscript, via the shared formatter |
+| Editable text fields (`<input>`, `<textarea>`, output-name fields) | Plain text; no `contenteditable`/rich inputs |
+| User-defined/custom names (e.g. "Backup VAB Check") | Exactly as typed |
+| Source/channel names (e.g. "KPDN1 VR", "KPDN1_VR") | Exactly as supplied; `VR/VY/VB` are never converted |
+| Internal/API/domain values (`VA`, `VAB`, role keys `Va`, `phase_member`, JSON, selectors, IDs) | Plain identifiers |
+
+Forward rule: any new UI that displays system-generated phase or
+line-to-line voltage notation must use the shared voltage-notation
+formatter from the start. New features must not introduce plain
+`VA/VB/VC` or `VAB/VBC/VCA` as user-facing semantic voltage labels
+unless the rendering surface cannot support rich notation. In that case
+use the plain fallback and document why, rather than a custom
+workaround.
+
+Shared layer (`frontend/index.html`; replaces the L-L-only core):
+
+- Core: `wwVoltageSymbolHtml(sub)` (DOM, one `<span>` unit),
+  `wwVoltageSymbolPlotly(sub)`, `wwVoltageSymbolSvg(sub)` (`<tspan>`),
+  and `wwVoltageSymbolText(sub)` (plain fallback). `sub` is `A|B|C|AB|BC|CA`;
+  anything else falls back to plain escaped text.
+- Semantic wrappers: `wwPhaseVoltageHtml(phase)`,
+  `wwLineToLinePairHtml(pair)`, `wwLineToLineFormulaHtml(pair)`, and for
+  analysis role keys `wwRoleLabelHtml/Plotly/Svg(roleKey)`. `Va/Vb/Vc`
+  are formatted; `Ia..`, `V1/V2/V0`, `Za..` pass through unchanged. The
+  channel-name helpers (`wwCalculatedChannelName*`,
+  `wwChannelDisplayName*`) are unchanged in behaviour.
+- CSS: one rule, `.ww-voltage-sub` (renamed from the L-L-only
+  `.ww-ll-sub`). SVG subscripts use inline `<tspan>` attributes because
+  CSS positioning does not apply there.
+- The wrapping `<span>` is required: inside a flex container a bare
+  `V` + `<sub>` split into two flex items and render apart. Static
+  markup must emit the same `<span>V<sub class="ww-voltage-sub">A</sub></span>` shape.
+
+Surfaces converted in this amendment:
+
+- Calculated Channels L-L readiness block (V<sub>A</sub> KPDN1_VR (kV)).
+- Phasor manual rows, values list and diagram vector labels.
+- Sequence Components manual rows.
+- Distance Protection manual V1/V2 labels.
+- Related Waveforms legend/hover names for Phasor, Sequence, Impedance
+  and Distance. Trace identity moves to `meta` (the role key).
+- Compliance phase-ground member (`Phase-Ground RMS (V<sub>A</sub>)`).
+- L-L formulas were already V<sub>AB</sub> = V<sub>A</sub> − V<sub>B</sub>
+  and are unchanged.
+
+Intentionally plain (fallback or out of scope):
+
+- Native `<option>` text, `title`/`aria-label` attributes, and
+  backend-supplied messages (e.g. Compliance "Missing: Vc", L-L bay
+  option "Vc missing").
+- Current labels `Ia/Ib/Ic` and sequence names `V1/V2/V0`.
+- Impedance/fault-loop labels `Za`/`Zab` and `Phase A` current
+  selectors.
+- The plain-text L-L expression pipeline `wwCcLlExpressionPreview()`.
+- Compliance measurement "Input", which lists resolved source channel
+  names.
 
 ---
 

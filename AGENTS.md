@@ -121,43 +121,62 @@ data-integrity issue found outside the agreed scope — **stop and report**:
 Then obtain approval before implementing. Do not perform unrelated cleanup or
 refactoring along the way.
 
-## Frontend convention — electrical notation (Line-to-Line voltage)
+## Frontend convention — electrical voltage notation
 
-A standing UI rule for **all** frontend work, existing and new
-([DECISIONS.md — DEC-117](docs/project-memory/DECISIONS.md#dec-117--line-to-line-voltage-electrical-notation-is-a-standing-frontend-convention-subscript-notation-in-the-ui-via-one-shared-formatter-plain-vab-internally)):
+A **mandatory** UI rule for all frontend work, existing and new
+([DECISIONS.md — DEC-117](docs/project-memory/DECISIONS.md#dec-117--line-to-line-voltage-electrical-notation-is-a-standing-frontend-convention-subscript-notation-in-the-ui-via-one-shared-formatter-plain-vab-internally),
+including its 2026-09-26 single-phase amendment):
 
 ```text
-Internal/domain/API values:
-VAB, VBC, VCA
-phase_member = AB | BC | CA
+Single-phase:  VA  -> V<sub>A</sub>   VB  -> V<sub>B</sub>   VC  -> V<sub>C</sub>
+Line-to-Line:  VAB -> V<sub>AB</sub>  VBC -> V<sub>BC</sub>  VCA -> V<sub>CA</sub>
 
-User-facing system-owned notation:
-V<sub>AB</sub>, V<sub>BC</sub>, V<sub>CA</sub>
+system-owned electrical notation      -> subscript, via the shared formatter
+editable text fields                  -> plain text
+user-defined/custom names             -> exactly as typed
+source/channel names (KPDN1 VR)       -> exactly as supplied
+internal/API/domain values            -> plain identifiers (VA, VAB, Va,
+                                         phase_member = AB, JSON, IDs)
 ```
 
-1. Use the shared electrical-notation formatter in `frontend/index.html`:
-   `wwLineToLinePairHtml()`, `wwLineToLineFormulaHtml()`,
-   `wwCalculatedChannelNameHtml()`, `wwChannelDisplayNameHtml()`, and the
-   Plotly variants `wwCalculatedChannelNamePlotly()` /
-   `wwChannelDisplayNamePlotly()`. Style subscripts only with the shared
-   `.ww-ll-sub` rule.
-2. Do not implement local one-off formatting where the shared helper
-   applies.
-3. Never change internal identifiers, API values or domain values for
-   presentation purposes.
-4. Prefer semantic metadata (`voltage_representation=line_to_line`,
-   `phase_member=AB|BC|CA`) over parsing names.
-5. Preserve arbitrary user-entered/custom names exactly as typed. A
-   channel name gets the notation only when metadata proves it is the
-   system-generated default.
-6. New UI features that introduce L-L voltage labels must use the same
-   notation from the start.
-7. Formula displays follow the same engineering notation
+1. Any new UI that displays system-generated phase or line-to-line voltage
+   notation must use the shared voltage-notation formatter in
+   `frontend/index.html` from the start:
+   - core: `wwVoltageSymbolHtml(sub)` (DOM), `wwVoltageSymbolPlotly(sub)`,
+     `wwVoltageSymbolSvg(sub)` and `wwVoltageSymbolText(sub)` (plain
+     fallback), with `sub` one of `A|B|C|AB|BC|CA`;
+   - semantic wrappers: `wwPhaseVoltageHtml(phase)`,
+     `wwLineToLinePairHtml(pair)`, `wwLineToLineFormulaHtml(pair)`,
+     `wwRoleLabelHtml/Plotly/Svg(roleKey)` for analysis role keys
+     (`Va/Vb/Vc`), `wwCalculatedChannelNameHtml/Plotly()` and
+     `wwChannelDisplayNameHtml/Plotly()` for channel names.
+2. Style subscripts only with the one shared CSS rule, `.ww-voltage-sub`.
+   No component-specific `<sub>` rules. Static markup that cannot call
+   the helper must emit the helper's exact shape,
+   `<span>V<sub class="ww-voltage-sub">A</sub></span>`. The wrapping span
+   keeps the symbol one unit inside flex containers.
+3. New features must not introduce plain `VA/VB/VC` or `VAB/VBC/VCA` as
+   user-facing semantic voltage labels. The exception is a surface that
+   cannot render rich notation (native `<option>` text, `title` and
+   `aria-label` attributes, `textContent` pipelines, backend-supplied
+   messages): use `wwVoltageSymbolText()` or plain text there, and note
+   why in a code comment. Do not build a custom workaround.
+4. Never change internal identifiers, API values, domain values, stored
+   names or selectors for presentation purposes. Plotly trace identity
+   lives in `meta`/`uid`, never in the display name.
+5. Drive formatting from semantic metadata (`phase_member`,
+   `voltage_representation`, role keys, representation/member), never
+   by parsing names or regex over free text. A channel name gets the
+   notation only when metadata proves it is the system-generated
+   default.
+6. Never put rich notation inside editable fields. Do not introduce
+   `contenteditable` or rich-text inputs for this.
+7. Formula displays follow the same notation
    (V<sub>AB</sub> = V<sub>A</sub> − V<sub>B</sub>).
-
-Where rich text cannot render (native `<select>` options, `title`
-attributes, plain-text messages), use the plain `VAB` form. Visible
-`<sub>` markup keeps its text content plain (`VAB`) for accessibility.
+8. Out of scope, so do not convert: current labels (`Ia/Ib/Ic`),
+   sequence names (`V1/V2/V0`), impedance/fault-loop labels (`Za`,
+   `Zab`, "Fault loop AB"), protection-role names, and source/channel
+   identifiers.
 
 ## Ground rules
 

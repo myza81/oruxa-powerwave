@@ -9,10 +9,15 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-26**. **DEC-117**: Line-to-Line voltage
-electrical notation (V<sub>AB</sub> in the UI, `VAB` internally) is
-applied app-wide through one shared frontend formatter. It is now a
-standing convention for all future UI (rules in AGENTS.md). Previously,
+Last meaningful update: **2026-09-26**. **DEC-117 (amended)**: all
+system-owned voltage notation, single-phase and Line-to-Line
+(V<sub>A</sub>, V<sub>AB</sub> in the UI; `VA`/`VAB`/`Va` internally), is
+applied app-wide through one shared voltage-notation formatter and one
+`.ww-voltage-sub` CSS rule. Surfaces: Calculated Channels, Waveform,
+Phasor, Sequence, Distance, Related Waveforms and Compliance. Editable,
+custom, source and internal values stay plain. It is a mandatory
+convention for all future UI (rules in AGENTS.md); awaiting owner UAT.
+Previously,
 on **2026-09-25**: **DEC-116**: per-unit base
 selection now follows one representation rule on both the Measurement
 Group and Source Default paths. Generic multi-input Voltage arithmetic,
