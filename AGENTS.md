@@ -164,8 +164,23 @@ internal/API value (Va, VAB, phase_member = AB) -> untouched
    `.ww-electrical-sub`. No component-specific `<sub>` rules.
    - Static markup that cannot call the helper must emit the exact shape
      `<span class="ww-electrical-symbol">V<sub class="ww-electrical-sub">A</sub></span>`.
-   - Inside a flex container, wrap any text mixed with symbols
-     (V<sub>2</sub> / V<sub>1</sub>) in one inline span.
+   - **Composed rich labels.** Rich electrical/system symbols embedded
+     in names or sentences must be composed through the shared
+     rich-label helper `wwRichLabelHtml()` (one plain-inline
+     `.ww-rich-label` unit), so ordinary word spacing survives
+     inline/flex/grid rendering. Built as bare siblings, a flex/grid
+     parent trims each text run's edge spaces ("Default
+     ContextV<sub>AB</sub>"). Never patch this with `&nbsp;`, margins
+     or per-page spaces. The name/formula/expression helpers already
+     return one unit; a new composition (`"Selected: " + name`,
+     `symbol + " magnitude"`) wraps its whole result.
+   - **Operation text.** Readable operation descriptions use a space
+     before `(`, e.g. `RMS (channel, ...)`, `Abs (channel)`. Symbolic
+     forms stay symbolic (`−x`, `|x|`, `k × x`, `A + B`). Existing
+     stored names are never rewritten.
+   - Guards: `backend/tests/test_frontend_rich_label_composition.py`
+     (static) and `browser-tests/text-spacing.spec.js`, which measures
+     rendered glyph gaps (`support/text_spacing_helpers.js`).
 3. Where rich text cannot render (native `<option>` text, `title` and
    `aria-label` attributes, `textContent` pipelines, backend-supplied
    messages), use `wwElectricalSymbolText()` or plain concatenated text,

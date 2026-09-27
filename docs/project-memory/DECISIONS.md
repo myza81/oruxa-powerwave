@@ -19437,6 +19437,25 @@ one atomic item. Text mixed with symbols (e.g. V<sub>2</sub> / V<sub>1</sub>)
 must be wrapped in one inline span, or the text becomes its own
 whitespace-trimmed flex item.
 
+> **Update (2026-09-27, owner UAT — joined words; convention, not a new
+> decision).** The rule above was applied per call site and missed the
+> Calculated Channels success banner (`<li>` is `inline-flex`), which
+> rendered "Default ContextV<sub>AB</sub>": the name was
+> `escapeHtml("Default Context ") + symbol`, so the trailing space
+> became the edge of an anonymous flex item and was trimmed, while the
+> DOM text still read "Default Context VAB". The wrapper is now one
+> shared helper, `wwRichLabelHtml()` (CSS `.ww-rich-label`, plain
+> inline), used by every composer: channel names, L-L formulas and
+> names, CC expressions/previews/summaries, Preview status/Source, the
+> Plot All menu, readiness rows, sidebar/legend labels, the Compliance
+> resolved measurement, Sequence ratios, Distance manual labels and the
+> Reference Profile summary. Readable operation text now uses a space
+> before `(` (`RMS (KPDN1 VRY, 50 Hz, 1 cycle)`; new default names
+> `RMS (…)`/`Abs (…)`). Existing stored names are unchanged. Standing
+> text: AGENTS.md rule 2. Guards:
+> `test_frontend_rich_label_composition.py` and
+> `browser-tests/text-spacing.spec.js` (rendered glyph gaps).
+
 Enforcement:
 
 - `backend/tests/test_frontend_electrical_notation.py`:

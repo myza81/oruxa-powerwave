@@ -527,16 +527,16 @@ test.describe("Line-to-Line Voltage -- electrical notation (DEC-117)", () => {
     await expect(input.locator(`option[value="${value}"]`)).toHaveText(/^KPDN1 VRY/); // native <option>: plain fallback
     await input.selectOption(value);
     // Builder preview: no mix of rich and plain symbols.
-    await expect(page.locator("#wwCcExpressionPreview")).toHaveText("Result = RMS(KPDN1 VRY, 50 Hz, 1 cycle)");
+    await expect(page.locator("#wwCcExpressionPreview")).toHaveText("Result = RMS (KPDN1 VRY, 50 Hz, 1 cycle)");
     await expect(subs(page.locator("#wwCcExpressionPreview"))).toHaveText(["RY"]);
-    await expect(page.locator("#wwCcNameInput")).toHaveValue("RMS(KPDN1 VRY)"); // editable: plain
+    await expect(page.locator("#wwCcNameInput")).toHaveValue("RMS (KPDN1 VRY)"); // editable: plain
     await createAndWait(page);
 
-    const rmsRow = page.locator(".ww-cc-list-row").filter({ hasText: "RMS(KPDN1 VRY" });
-    await expect(rmsRow.locator(".ww-cc-list-row-expr")).toHaveText("RMS(KPDN1 VRY, 50 Hz, 1 cycle)");
+    const rmsRow = page.locator(".ww-cc-list-row").filter({ hasText: "RMS (KPDN1 VRY" });
+    await expect(rmsRow.locator(".ww-cc-list-row-expr")).toHaveText("RMS (KPDN1 VRY, 50 Hz, 1 cycle)");
     await expect(subs(rmsRow.locator(".ww-cc-list-row-expr"))).toHaveText(["RY"]);
     await expect(subs(rmsRow.locator(".ww-cc-list-row-summary"))).toHaveText(["RY"]);
-    await expect(subs(rmsRow.locator(".ww-cc-list-row-name"))).toHaveCount(0); // "RMS(KPDN1 VRY)" is a stored name
+    await expect(subs(rmsRow.locator(".ww-cc-list-row-name"))).toHaveCount(0); // "RMS (KPDN1 VRY)" is a stored name
     await expectTrueSubscripts(rmsRow.locator(".ww-electrical-symbol"));
   });
 

@@ -9,7 +9,14 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-26**. **DEC-118: context-specific
+Last meaningful update: **2026-09-27**. **Composed-label word spacing
+(owner UAT, DEC-117 update).** Names and sentences that mix words with
+rich symbols are one inline unit, `wwRichLabelHtml()`, so spacing
+survives flex/grid layouts. This fixes "Default ContextV<sub>AB</sub>"
+in the Calculated Channels success banner. Readable operation text uses
+`RMS (…)`/`Abs (…)`, including new default names; stored names are
+unchanged. Frontend/tests/docs only; awaiting owner UAT.
+Earlier, on **2026-09-26**, **DEC-118: context-specific
 phase display convention.** Context-specific engineering notation
 follows the phase convention of its own Measurement Group / Engineering
 Context. An R/Y/B bay shows V<sub>R</sub>, V<sub>RY</sub> =

@@ -51,7 +51,7 @@ def test_reset_builder_resets_rms_fields():
 def test_suggested_name_has_rms_branch():
     source = _source()
     body = _function_body(source, "function wwCcComputeSuggestedName()", "function wwCcComputeExpressionPreview(html)")
-    assert '"RMS(" + labels[0] + ")"' in body
+    assert '"RMS (" + labels[0] + ")"' in body
 
 
 def test_expression_preview_has_rms_branch():

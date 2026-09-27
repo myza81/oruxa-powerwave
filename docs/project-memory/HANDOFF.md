@@ -4,9 +4,47 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-26**
+Last updated: **2026-09-27**
 
 ## What was most recently done
+
+**Composed-label word spacing: owner UAT fix (2026-09-27, DEC-117
+update). Frontend/tests/docs only; awaiting owner UAT. Stop here.**
+
+- **Bug**: the Calculated Channels success banner showed
+  "Default ContextV<sub>AB</sub>"; the owner also asked for
+  `RMS (…)` instead of `RMS(…)`.
+- **Root cause** (measured in the browser): names were built as
+  `escapeHtml("Default Context ") + <symbol span>`. The banner `<li>` is
+  `inline-flex`, so the text became an anonymous flex item and its
+  trailing space was trimmed (measured gap 0). The DOM text still read
+  "Default Context VAB", so textContent tests passed.
+- **Fix**: one helper, `wwRichLabelHtml()` (plain-inline
+  `.ww-rich-label`), used by every text + rich composer (see the DEC-117
+  update note for the list). The ad hoc Sequence-ratio inner span is
+  replaced by it. Readable operation text is now `RMS (…)`, and new
+  default names are `RMS (X)` / `Abs (X)`. Symbolic forms and stored
+  names are unchanged.
+- **Audit**: a runtime crawl of every page, analyzer (recording and
+  manual), CC builder/list/Preview/menu, Waveform and Table, on A/B/C
+  (Default Context) and R/Y/B (KPDN1) fixtures, in both themes and at
+  narrow widths. Only the banner lost a space. Sidebar group summaries
+  and the Annotations heading drop their DOM space too, but are
+  separated by a real flex `gap`, so they are not defects.
+- **Tests**: `browser-tests/text-spacing.spec.js` plus
+  `support/text_spacing_helpers.js` (glyph-gap measurement and a
+  flex/grid whitespace-loss crawler), and
+  `backend/tests/test_frontend_rich_label_composition.py`. The
+  RMS-name expectations were updated in `calculated-channel-preview`,
+  `line-to-line-voltage` and `test_frontend_rms_calculated_channel.py`.
+- **Observed, not changed**:
+  - The Multiply by Constant builder preview keeps `k × …` after the
+    constant is typed, because its input handler does not re-render the
+    preview. The name does update.
+  - The Preview status line's textContent reads
+    `…(hidden)0 visible`. Visually a status dot separates the two parts.
+
+## Prior session — DEC-118
 
 **DEC-118: context-specific phase display convention (2026-09-26).
 Backend display metadata + frontend + tests + docs; awaiting owner UAT.

@@ -126,6 +126,10 @@ Amendment 2).
   - internal/API values.
 - **New UI** must use the formatter from the start and be verified
   visually with `expectTrueSubscripts()`.
+- **Composed labels:** text mixed with symbols or formatted names goes
+  through `wwRichLabelHtml()` so word spacing survives flex/grid
+  layouts. Readable operation text uses a space before `(`
+  (`RMS (channel, ...)`). See AGENTS.md rule 2.
 - **Phase display convention**
   ([DEC-118](docs/project-memory/DECISIONS.md#dec-118--context-specific-engineering-notation-inherits-the-phase-display-convention-of-its-measurement-group--engineering-context-canonical-abc-stays-internal)):
   context-specific engineering notation inherits the phase display
