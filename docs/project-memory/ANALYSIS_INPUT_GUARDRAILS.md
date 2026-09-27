@@ -176,7 +176,31 @@ detector.
 
 A convention is a closed naming system. Once it is proven, the whole map
 follows from it, so a bay recording only VR and VY still spells phase C
-"B". `L1/L2/L3` is recognized for normalization, but its display
+"B".
+
+**Where `original_phase_label` comes from (owner UAT fix, 2026-09-27).**
+It is the engineer-facing label. Detection
+(`engineering_context_detection.detect_engineering_contexts()`) sets it
+as follows:
+
+- **Name only:** the name's own suffix (`R` in `KPDN1_VR`).
+- **Structured metadata (COMTRADE `ph`) supplies the phase:** the phase
+  and `phase_source = structured_metadata` still come from `ph`. The
+  *label* comes from the channel names only when both hold:
+  - the names, read under their own inferred convention, resolve to the
+    same canonical phase as `ph`;
+  - this holds for every structured member of the bay.
+
+  Example: `KPDN2 VR/VY/VB` with `ph` `A/B/C` → phases A/B/C, labels
+  R/Y/B, so the bay displays R/Y/B. On any disagreement, or when the
+  names prove no convention on their own (a lone "B"), the `ph` labels
+  are kept.
+
+Before this fix the `ph` value always replaced the name's label. A real
+recording named VR/VY/VB with `ph` A/B/C then displayed VA/VB/VC and
+defaulted to `KPDN2 VAB`. Every consumer (Engineering Contexts, L-L
+readiness, Compliance) reads this one detection pass, so no consumer
+changed. `L1/L2/L3` is recognized for normalization, but its display
 notation (especially line-to-line) is `[OPEN]` for the owner, so an L123
 context falls back.
 

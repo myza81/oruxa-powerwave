@@ -19629,6 +19629,43 @@ Impact:
 - Docs: [ANALYSIS_INPUT_GUARDRAILS.md — Phase display convention](ANALYSIS_INPUT_GUARDRAILS.md#phase-display-convention-dec-118)
   (the design reference) and [LINE_TO_LINE_VOLTAGE.md](LINE_TO_LINE_VOLTAGE.md) §5.
 
+### Amendment (2026-09-27): the source of `original_phase_label` (owner UAT regression)
+
+Status: Approved (owner UAT task). It corrects an incomplete
+implementation assumption. It is not a new concept.
+
+- **Symptom:** a KPDN2 bay whose channels are named `VR/VY/VB`
+  displayed V<sub>A</sub>/V<sub>AB</sub>, its formula read
+  V<sub>AB</sub> = V<sub>A</sub> − V<sub>B</sub>, and its defaults were
+  `KPDN2 VAB/VBC/VCA`.
+- **Cause (verified from payloads):** the recording's COMTRADE `ph`
+  field said `A/B/C`. Detection correctly took the **phase** from `ph`
+  (`phase_source = structured_metadata`). It also stored `ph` as
+  `original_phase_label`, although that field is defined as the
+  engineer-facing label. The resolver therefore saw A/B/C labels and
+  established ABC.
+- **Why it was missed:** none of the project fixtures fill `ph`,
+  including `phase_convention_mixed` and every KPDN fixture. They all go
+  through the name path, which was already correct.
+- **Rule:** when `ph` supplies the phases, the names become the display
+  labels only if, read under their own inferred convention, they agree
+  with the `ph` phase for every structured member of the bay. Otherwise
+  the `ph` labels stay. A lone "B" still proves nothing. Canonical
+  phases, provenance, the resolver and every consumer are unchanged. The
+  fix is one detection function.
+- **Existing data:** contexts are derived from each upload, so a
+  re-upload or new upload gets the corrected labels. Stored calculated
+  channels keep their names.
+- **Tests:**
+  - fixture `phase_convention_structured_ph`;
+  - `TestDetectionKeepsTheEngineerFacingLabel` and
+    `TestStructuredPhaseMetadataOwnerRegression` in
+    `test_phase_display_convention.py`;
+  - the KPDN2 block in `phase-display-convention.spec.js`.
+
+  The owner-case tests fail on the previous detector. The
+  disagreement, lone-"B" and A/B/C guard tests pass on both.
+
 Opportunity reported, not implemented (owner decision): phase currents
 `Ia/Ib/Ic` are unformatted by DEC-117. They belong to the same
 Engineering Context, so they could reuse this map (I<sub>R</sub>) without

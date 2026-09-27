@@ -9,7 +9,14 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-27**. **Composed-label word spacing
+Last meaningful update: **2026-09-27**. **DEC-118 regression fix
+(owner UAT, KPDN2).** R/Y/B-named channels whose COMTRADE `ph` field
+says A/B/C now display R/Y/B (V<sub>RY</sub>, `KPDN2 VRY`). Before, detection
+stored `ph` as the engineer-facing `original_phase_label`. Phases stay
+canonical from `ph`. The name labels are used only when they agree for
+the whole bay, and a lone "B" is still never evidence. Backend detection,
+tests and docs; awaiting owner UAT.
+Earlier the same day, **Composed-label word spacing
 (owner UAT, DEC-117 update).** Names and sentences that mix words with
 rich symbols are one inline unit, `wwRichLabelHtml()`, so spacing
 survives flex/grid layouts. This fixes "Default ContextV<sub>AB</sub>"

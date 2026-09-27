@@ -8,6 +8,33 @@ Last updated: **2026-09-27**
 
 ## What was most recently done
 
+**DEC-118 regression: KPDN2 showed A/B/C (owner UAT, 2026-09-27).
+Backend detection, tests and docs; awaiting owner UAT. Stop here.**
+
+- **Reproduction:** every project fixture with KPDN2
+  (`compliance_smoke_multibay`, `mixed_capability_multibay`,
+  `line_to_line_multibay`) already resolved to RYB. They name-detect
+  phases because their COMTRADE `ph` is empty. The owner's A/B/C symptom
+  reproduces exactly only when `ph` = `A/B/C` on VR/VY/VB channels
+  (payloads: `phase_source = structured_metadata`,
+  `original_phase_label = A/B/C`, `phase_display = ABC/established`).
+  The owner's real file was not available locally. Checking its `ph`
+  column would confirm this.
+- **Root cause and fix:** see the DEC-118 amendment (2026-09-27) and
+  ANALYSIS_INPUT_GUARDRAILS "Where `original_phase_label` comes from".
+  The fix is one function,
+  `engineering_context_detection._names_agree_with_structured_phases()`.
+  No frontend change.
+- **Tests:**
+  - fixture `phase_convention_structured_ph` (MCRS A/B/C, KPDN2 R/Y/B
+    V+I with `ph` A/B/C, SGT1 with `ph` R/Y/B);
+  - backend `test_phase_display_convention.py` (2 new classes);
+  - browser `phase-display-convention.spec.js` (new KPDN2 block: L-L
+    builder, created set, Preview/Waveform, Phasor, Sequence,
+    Impedance/Distance, Compliance).
+
+## Prior session — composed-label word spacing
+
 **Composed-label word spacing: owner UAT fix (2026-09-27, DEC-117
 update). Frontend/tests/docs only; awaiting owner UAT. Stop here.**
 

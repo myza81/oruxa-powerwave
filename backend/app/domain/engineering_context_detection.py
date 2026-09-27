@@ -114,6 +114,11 @@ class _Matched:
     token_kind: str  # "single" | "neutral" | "pair" | "l123"
     phase_source: str
     original_label: str
+    # The token parsed from the channel NAME, kept even when structured
+    # metadata supplied the phase (see _names_agree_with_structured_phases()).
+    name_raw_token: str
+    name_token_kind: str
+    name_original_label: str
 
 
 def _strip_phase_suffix(channel_name: str, kind: str) -> tuple[str, str, str, str] | None:
@@ -210,6 +215,21 @@ def _display_name(root: str) -> str:
     return trimmed if trimmed else "Engineering Context"
 
 
+def _names_agree_with_structured_phases(matched: list[_Matched], phases: list[str], name_convention: str | None) -> bool:
+    """`original_phase_label` is the ENGINEER-FACING label (DEC-118 derives
+    the display convention from it). Structured metadata may supply the
+    PHASE -- e.g. a COMTRADE `ph` of "A" on a channel named "KPDN2 VR" --
+    but the engineer reads the name's own "R". The names become the
+    display labels only when, read under their own inferred convention,
+    they resolve to the SAME canonical phase as the metadata for EVERY
+    structured member of the cluster. Any disagreement, or names that
+    establish no convention on their own (a lone "B"), keeps the metadata
+    labels exactly as before. Never changes `phase`."""
+    structured = [(m, phase) for m, phase in zip(matched, phases)
+                  if m.phase_source == PHASE_SOURCE_STRUCTURED_METADATA and phase != PHASE_UNKNOWN]
+    return bool(structured) and all(normalize_phase_token(m.name_raw_token, name_convention) == phase for m, phase in structured)
+
+
 def detect_engineering_contexts(channels: list[ChannelForDetection]) -> list[DetectedContext]:
     """The one deterministic detection entry point. `channels` is one
     source's own channel list, in source order. Non-Voltage/Current
@@ -267,6 +287,9 @@ def detect_engineering_contexts(channels: list[ChannelForDetection]) -> list[Det
                 token_kind=token_kind,
                 phase_source=phase_source,
                 original_label=original_label,
+                name_raw_token=name_raw_token,
+                name_token_kind=name_token_kind,
+                name_original_label=name_original_label,
             )
         )
 
@@ -276,17 +299,25 @@ def detect_engineering_contexts(channels: list[ChannelForDetection]) -> list[Det
             letter for m in matched for letter in _evidence_letters(m.raw_token, m.token_kind)
         ]
         convention = infer_phase_convention(evidence_letters)
+        # The names' own convention, inferred from the names alone (the
+        # same no-guessing rule: a lone "B" establishes nothing).
+        name_convention = infer_phase_convention(
+            [letter for m in matched for letter in _evidence_letters(m.name_raw_token, m.name_token_kind)]
+        )
+
+        phases = [normalize_phase_token(m.raw_token, convention) for m in matched]
+        names_agree = _names_agree_with_structured_phases(matched, phases, name_convention)
 
         members: list[DetectedContextMember] = []
-        for m in matched:
-            canonical_phase = normalize_phase_token(m.raw_token, convention)
+        for m, canonical_phase in zip(matched, phases):
+            label = m.name_original_label if names_agree and m.phase_source == PHASE_SOURCE_STRUCTURED_METADATA else m.original_label
             members.append(
                 DetectedContextMember(
                     channel_name=m.name,
                     engineering_type=m.engineering_type,
                     phase=canonical_phase,
                     phase_source=m.phase_source,
-                    original_phase_label=m.original_label,
+                    original_phase_label=label,
                 )
             )
 

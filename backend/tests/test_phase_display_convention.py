@@ -290,3 +290,115 @@ class TestComplianceFollowsTheGroupConvention:
         assert ambg["status"] == "missing_inputs"
         assert ambg["missing"] == ["Vb"]  # canonical API value
         assert "Missing: VB." in ambg["message"]
+
+
+# ---------------------------------------------------------------------------
+# Owner UAT regression (2026-09-27): R/Y/B channel names whose COMTRADE `ph`
+# field says A/B/C. Detection took the PHASE from `ph` (correct) but also
+# stored `ph` as the engineer-facing `original_phase_label`, so a KPDN2 bay
+# named VR/VY/VB displayed VA/VB/VC and defaulted to "KPDN2 VAB".
+#
+# Fixture `phase_convention_structured_ph` (the mixed_capability_multibay
+# samples, re-described; one file, one workspace):
+#   MCRS VA/VB/VC               ph A/B/C -> A/B/C names             -> A/B/C
+#   KPDN2 VR/VY/VB + IR/IY/IB   ph A/B/C -> owner case, full bay    -> R/Y/B
+#   SGT1 IR/IY/IB               ph R/Y/B -> R/Y/B names and ph      -> R/Y/B
+# ---------------------------------------------------------------------------
+
+from app.domain.engineering_context_detection import ChannelForDetection, detect_engineering_contexts  # noqa: E402
+
+STRUCTURED_PH_FIXTURE = "phase_convention_structured_ph"
+
+
+def _detect(*channels):
+    detected = detect_engineering_contexts([ChannelForDetection(name=n, engineering_type="Voltage", phase_label=ph) for n, ph in channels])
+    assert len(detected) == 1
+    return [(m.channel_name, m.phase, m.phase_source, m.original_phase_label) for m in detected[0].members]
+
+
+class TestDetectionKeepsTheEngineerFacingLabel:
+    def test_ryb_names_with_abc_ph_keep_phase_from_ph_and_label_from_name(self):
+        assert _detect(("KPDN2 VR", "A"), ("KPDN2 VY", "B"), ("KPDN2 VB", "C")) == [
+            ("KPDN2 VR", "A", "structured_metadata", "R"),
+            ("KPDN2 VY", "B", "structured_metadata", "Y"),
+            ("KPDN2 VB", "C", "structured_metadata", "B"),
+        ]
+
+    def test_two_exclusive_name_letters_are_enough(self):
+        assert [m[3] for m in _detect(("KPDN2 VR", "A"), ("KPDN2 VY", "B"))] == ["R", "Y"]
+
+    def test_name_disagreeing_with_ph_keeps_the_structured_labels(self):
+        # Names say R/Y/B (A/B/C) but ph says C/B/A: the phases come from ph
+        # and, since the names do not explain them, every label stays the
+        # metadata's own -- never a misleading "R" on phase C.
+        members = _detect(("BAY VR", "C"), ("BAY VY", "B"), ("BAY VB", "A"))
+        assert [(m[1], m[3]) for m in members] == [("C", "C"), ("B", "B"), ("A", "A")]
+
+    def test_lone_b_name_is_never_evidence(self):
+        # "B" alone is A/B/C phase B or R/Y/B phase C: the names establish
+        # nothing, so the metadata label is kept exactly as before.
+        assert _detect(("AMBG VB", "C")) == [("AMBG VB", "C", "structured_metadata", "C")]
+
+    def test_abc_names_are_unchanged(self):
+        assert [m[3] for m in _detect(("MCRS VA", "A"), ("MCRS VB", "B"), ("MCRS VC", "C"))] == ["A", "B", "C"]
+
+
+@pytest.fixture
+def ws_ph(client, comtrade_fixtures_dir):
+    source_id = _upload(client, "ws-ph", comtrade_fixtures_dir, STRUCTURED_PH_FIXTURE)
+    contexts = {c["display_name"]: c for c in client.get("/api/v1/workspaces/ws-ph/engineering-contexts").json()}
+    return {"id": "ws-ph", "source_id": source_id, "contexts": contexts}
+
+
+class TestStructuredPhaseMetadataOwnerRegression:
+    def test_kpdn2_members_are_canonical_with_source_native_labels(self, ws_ph):
+        members = {m["channel_ref"]["channel_name"]: (m["phase"], m["phase_source"], m["original_phase_label"])
+                   for m in ws_ph["contexts"]["KPDN2"]["members"]}
+        assert members == {
+            "KPDN2 VR": ("A", "structured_metadata", "R"),
+            "KPDN2 VY": ("B", "structured_metadata", "Y"),
+            "KPDN2 VB": ("C", "structured_metadata", "B"),
+            "KPDN2 IR": ("A", "structured_metadata", "R"),
+            "KPDN2 IY": ("B", "structured_metadata", "Y"),
+            "KPDN2 IB": ("C", "structured_metadata", "B"),
+        }
+
+    def test_every_bay_reports_its_own_convention(self, ws_ph):
+        conventions = {name: (c["phase_display"]["convention"], c["phase_display"]["status"]) for name, c in ws_ph["contexts"].items()}
+        assert conventions == {
+            "MCRS": ("ABC", "established"),
+            "KPDN2": ("RYB", "established"),
+            "SGT1": ("RYB", "established"),
+        }
+        assert ws_ph["contexts"]["KPDN2"]["phase_display"]["symbols"] == RYB_SYMBOLS
+        assert ws_ph["contexts"]["MCRS"]["phase_display"]["symbols"] == ABC_SYMBOLS
+
+    def test_line_to_line_readiness_carries_the_ryb_map(self, client, ws_ph):
+        kpdn2 = _readiness(client, ws_ph["id"])["KPDN2"]
+        assert kpdn2["status"] == "ready"
+        assert kpdn2["phase_display"]["convention"] == "RYB"
+        assert kpdn2["phase_display"]["symbols"] == RYB_SYMBOLS
+        assert _readiness(client, ws_ph["id"])["MCRS"]["phase_display"]["symbols"] == ABC_SYMBOLS
+
+    def test_created_channels_use_the_ryb_names_with_canonical_members(self, client, ws_ph):
+        kpdn2 = _create_ll(client, ws_ph["id"], ws_ph["contexts"]["KPDN2"]["id"], "all_three")
+        mcrs = _create_ll(client, ws_ph["id"], ws_ph["contexts"]["MCRS"]["id"], "all_three")
+        assert kpdn2.status_code == 201, kpdn2.text
+        assert mcrs.status_code == 201, mcrs.text
+        channels = kpdn2.json()["channels"]
+        assert [c["name"] for c in channels] == ["KPDN2 VRY", "KPDN2 VYB", "KPDN2 VBR"]
+        assert [c["phase_member"] for c in channels] == ["AB", "BC", "CA"]
+        assert [c["parameters"]["pair"] for c in channels] == ["AB", "BC", "CA"]
+        assert [c["name"] for c in mcrs.json()["channels"]] == ["MCRS VAB", "MCRS VBC", "MCRS VCA"]
+
+    def test_compliance_resolved_measurement_follows_the_group(self, client, ws_ph):
+        groups = {g["display_name"]: g for g in client.get(f"/api/v1/workspaces/{ws_ph['id']}/compliance/voltage/measurement-groups").json()}
+        group = next(g for name, g in groups.items() if name.startswith("KPDN2"))
+        resp = client.get(
+            f"/api/v1/workspaces/{ws_ph['id']}/compliance/voltage/measurement",
+            params={"measurement_group_id": group["id"], "quantity_id": "phase_a_lg_rms"},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["phase_display"]["symbols"] == RYB_SYMBOLS
+        assert [(r["role"], r["display_name"], r["channel_name"]) for r in body["resolved_roles"]] == [("A", "Va", "KPDN2 VR")]

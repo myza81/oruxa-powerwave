@@ -299,3 +299,149 @@ test.describe("Phase display convention (DEC-118)", () => {
     await expect(page.locator("#wwComplianceMeasurementSelect option:checked")).toHaveText("Phase C Voltage");
   });
 });
+
+// Owner UAT regression (2026-09-27): a KPDN2 bay whose channels are NAMED
+// VR/VY/VB but whose COMTRADE `ph` field says A/B/C showed VA/VB/VC,
+// VAB/VBC/VCA and "KPDN2 VAB": detection stored the `ph` value as the
+// engineer-facing original_phase_label. The phase still comes from `ph`
+// (canonical A/B/C); the display label now comes from the names when they
+// agree with it. Fixture phase_convention_structured_ph, one workspace:
+//   MCRS VA/VB/VC               ph A/B/C -> A/B/C
+//   KPDN2 VR/VY/VB + IR/IY/IB   ph A/B/C -> R/Y/B (owner case)
+//   SGT1 IR/IY/IB               ph R/Y/B -> R/Y/B
+test.describe("Phase display convention -- R/Y/B names with COMTRADE ph A/B/C (owner UAT, KPDN2)", () => {
+  const PH_STEM = "phase_convention_structured_ph";
+
+  async function uploadStructuredPh(page) {
+    await page.goto("/index.html");
+    await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
+    await expect(page.locator("#uploadModalOverlay")).toBeVisible();
+    await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, `${PH_STEM}.cfg`));
+    await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, `${PH_STEM}.dat`));
+    await page.locator("#uploadModalSubmitBtn").click();
+    await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
+    await expect(page.locator("#recordingsTableBody tr[data-source-id]").first()).toBeVisible();
+  }
+
+  const relatedVoltageNames = (page) => page.evaluate(() => {
+    const v = document.getElementById("wwAnalysisRelatedWaveformsVoltageChart");
+    return v && v.data ? v.data.map((t) => [t.meta, t.name]) : [];
+  });
+
+  test("backend: KPDN2 members stay canonical with R/Y/B source-native labels; RYB established", async ({ page }) => {
+    await uploadStructuredPh(page);
+    const contexts = await contextsByName(page);
+    const kpdn2 = contexts.KPDN2;
+    const byName = Object.fromEntries(kpdn2.members.map((m) => [m.channel_ref.channel_name, [m.phase, m.original_phase_label, m.phase_source]]));
+    expect(byName["KPDN2 VR"]).toEqual(["A", "R", "structured_metadata"]);
+    expect(byName["KPDN2 VY"]).toEqual(["B", "Y", "structured_metadata"]);
+    expect(byName["KPDN2 VB"]).toEqual(["C", "B", "structured_metadata"]);
+    expect(kpdn2.phase_display).toMatchObject({ convention: "RYB", status: "established" });
+    expect(kpdn2.phase_display.symbols).toEqual({ A: "R", B: "Y", C: "B", AB: "RY", BC: "YB", CA: "BR" });
+    expect(contexts.MCRS.phase_display).toMatchObject({ convention: "ABC", status: "established" });
+    const readiness = await page.evaluate(async () => {
+      const url = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/calculated-channels/line-to-line-voltage/readiness";
+      return Object.fromEntries((await (await fetch(url)).json()).map((r) => [r.display_name, r.phase_display.convention]));
+    });
+    expect(readiness).toMatchObject({ KPDN2: "RYB", MCRS: "ABC" });
+  });
+
+  test("Calculated Channels: KPDN2 builder, created set and Waveform are R/Y/B; MCRS stays A/B/C", async ({ page }) => {
+    await uploadStructuredPh(page);
+    await openLineToLineBuilder(page);
+    for (const [bay, conv, sourceNames] of [["KPDN2", RYB, ["KPDN2 VR", "KPDN2 VY"]], ["MCRS", ABC, ["MCRS VA", "MCRS VB"]]]) {
+      await selectBay(page, bay);
+      await page.locator("#wwCcLlOutput_all_three").check();
+      const status = page.locator("#wwCcLlStatus");
+      await expect(status).toHaveAttribute("data-phase-convention", conv === RYB ? "RYB" : "ABC");
+      await expect(subs(status)).toHaveText(conv.phases); // readiness: VR / VY / VB
+      await expect(status.locator("li strong")).toHaveText(conv.names);
+      await expectTrueSubscripts(status.locator(".ww-electrical-symbol"), 3);
+      for (const [i, pair] of ["AB", "BC", "CA"].entries()) {
+        await expect(subs(page.locator(`label:has(#wwCcLlOutput_${pair})`))).toHaveText([conv.pairs[i]]); // VRY / VYB / VBR
+        await expect(page.locator(`#wwCcLlOutput_${pair}`)).toHaveValue(pair); // canonical value
+        await expect(page.locator(`#wwCcLlName_${pair}`)).toHaveValue(`${bay} V${conv.pairs[i]}`); // KPDN2 VRY
+      }
+      await expect(page.locator("#wwCcLlPlannedNames")).toHaveText(`Creates ${conv.pairs.map((p) => `${bay} V${p}`).join(", ")} as one set — all three or none.`);
+      const [a, b, c] = conv.phases;
+      const [ab, bc, ca] = conv.pairs;
+      await expect(subs(page.locator("#wwCcExpressionPreview"))).toHaveText([ab, a, b, bc, b, c, ca, c, a]);
+      await expect(page.locator("#wwCcExpressionPreview .ww-cc-ll-formula").first())
+        .toHaveText(`V${ab} = V${a} − V${b} (${sourceNames[0]} − ${sourceNames[1]})`);
+      await expectTrueSubscripts(page.locator("#wwCcExpressionPreview .ww-electrical-symbol"), 9);
+    }
+    // Create KPDN2's set: names follow R/Y/B, identity stays canonical.
+    await selectBay(page, "KPDN2");
+    await page.locator("#wwCcLlOutput_all_three").check();
+    await page.locator("#wwCcCreateBtn").click();
+    await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
+    await expect(page.locator(".ww-cc-list-row-name")).toHaveText(["KPDN2 VRY", "KPDN2 VYB", "KPDN2 VBR"]);
+    await expect(subs(page.locator(".ww-cc-list-row-name"))).toHaveText(["RY", "YB", "BR"]);
+    await expect(page.locator(".ww-cc-list-row-expr").first()).toHaveText("VRY = VR − VY (KPDN2 VR − KPDN2 VY)");
+    const members = await page.evaluate(() => Array.from(ww.calculatedChannels.values()).map((c) => [c.name, c.phase_member, c.parameters.pair]));
+    expect(members).toEqual([["KPDN2 VRY", "AB", "AB"], ["KPDN2 VYB", "BC", "BC"], ["KPDN2 VBR", "CA", "CA"]]);
+    // Preview + Waveform names.
+    await page.locator('#wwCcLlResult [data-action="ll-plot-all"]').click();
+    await expect.poll(async () => (await page.locator("#wwCcPreviewPanels .legendtext").allTextContents()).map((t) => t.replace(/\u200b/g, "")).sort())
+      .toEqual(["KPDN2 VBR (V)", "KPDN2 VRY (V)", "KPDN2 VYB (V)"]);
+    await page.locator("#mainNavWaveformBtn").click();
+    await expect(page.locator("#workspaceRow")).toBeVisible();
+    await expect.poll(async () => page.evaluate(() => ww.panels.flatMap((panel) =>
+      ((panel.chartEl && panel.chartEl.data) || []).map((t) => t.name)).filter((n) => /^KPDN2 /.test(n || "")).sort()))
+      .toEqual(["KPDN2 V<sub>BR</sub>", "KPDN2 V<sub>RY</sub>", "KPDN2 V<sub>YB</sub>"]);
+  });
+
+  test("Analysis: Phasor, Sequence, Impedance and Distance voltage labels follow KPDN2's R/Y/B; MCRS stays A/B/C", async ({ page }) => {
+    await uploadStructuredPh(page);
+    const contexts = await contextsByName(page);
+    await page.locator("#mainNavAnalysisBtn").click();
+    await expect(page.locator("#wwPhasorPanel")).toBeVisible();
+
+    // Phasor: values list and Related Waveforms.
+    for (const [bay, conv] of [["KPDN2", RYB], ["MCRS", ABC]]) {
+      await ensureContextSelected(page, page.locator("#wwPhasorContextSelect"), contexts[bay].id);
+      const rows = ["Va", "Vb", "Vc"].map((k) => page.locator(`#wwPhasorValuesList .ww-phasor-value-row[data-role="${k}"]`));
+      for (const [i, row] of rows.entries()) {
+        await expect(row.locator(".ww-phasor-role-label .ww-electrical-sub")).toHaveText(conv.phases[i]);
+      }
+      await expectTrueSubscripts(page.locator("#wwPhasorValuesList .ww-electrical-symbol"), 3);
+      await expect.poll(() => relatedVoltageNames(page)).toEqual(["Va", "Vb", "Vc"].map((k, i) => [k, `V<sub>${conv.phases[i]}</sub>`]));
+    }
+
+    // Sequence: phase-domain inputs follow the bay; sequence symbols never do.
+    await page.locator("#wwAnalysisTypeSequenceBtn").click();
+    await ensureContextSelected(page, page.locator("#wwSequenceContextSelect"), contexts.KPDN2.id);
+    await expect.poll(() => relatedVoltageNames(page)).toEqual([["Va", "V<sub>R</sub>"], ["Vb", "V<sub>Y</sub>"], ["Vc", "V<sub>B</sub>"]]);
+    await expect(page.locator("#wwSequenceValuesList .ww-phasor-role-label")).toHaveText(["V1", "V2", "V0", "I1", "I2", "I0"]);
+
+    // Impedance / Distance: related voltage traces use R/Y/B; the generic
+    // selectors ("Phase A", "Fault loop AB") stay generic.
+    for (const [btn, select] of [["#wwAnalysisTypeImpedanceBtn", "#wwImpedanceContextSelect"], ["#wwAnalysisTypeDistanceBtn", "#wwDistanceContextSelect"]]) {
+      await page.locator(btn).click();
+      await ensureContextSelected(page, page.locator(select), contexts.KPDN2.id);
+      await expect.poll(async () => (await relatedVoltageNames(page)).length).toBeGreaterThan(0);
+      const names = (await relatedVoltageNames(page)).map(([, name]) => name);
+      expect(names.every((n) => /^V<sub>[RYB]<\/sub>$/.test(n)), `${btn}: ${names}`).toBe(true);
+    }
+    await expect(page.locator("#wwImpedancePhaseSelect option").first()).toContainText("Phase A");
+  });
+
+  test("Compliance: KPDN2 resolved measurement is spelled R/Y/B; generic quantity wording unchanged", async ({ page }) => {
+    await uploadStructuredPh(page);
+    await page.locator("#mainNavComplianceBtn").click();
+    await expect(page.locator("#wwComplianceGroupField")).toBeVisible();
+    const groupLabel = async (prefix) => (await page.locator("#wwComplianceGroupSelect option").allTextContents()).find((t) => t.startsWith(prefix));
+    const input = page.locator("#wwComplianceMeasurementInput");
+    await page.locator("#wwComplianceGroupSelect").selectOption({ label: await groupLabel("KPDN2") });
+    await page.locator("#wwComplianceMeasurementSelect").selectOption({ label: "Phase A Voltage" });
+    await expect(input).toHaveText("VR — KPDN2 VR");
+    await expect(input).toHaveAttribute("data-phase-convention", "RYB");
+    await expectTrueSubscripts(input.locator(".ww-electrical-symbol"), 1);
+    await page.locator("#wwComplianceMeasurementSelect").selectOption({ label: "Line-Line AB Voltage" });
+    await expect(input).toHaveText("VR — KPDN2 VR, VY — KPDN2 VY");
+    await page.locator("#wwComplianceGroupSelect").selectOption({ label: await groupLabel("MCRS") });
+    await page.locator("#wwComplianceMeasurementSelect").selectOption({ label: "Phase A Voltage" });
+    await expect(input).toHaveText("VA — MCRS VA");
+    await expect(input).toHaveAttribute("data-phase-convention", "ABC");
+  });
+});

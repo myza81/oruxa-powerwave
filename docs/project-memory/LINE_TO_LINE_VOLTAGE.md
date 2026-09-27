@@ -131,6 +131,12 @@ convention, which comes from
 | A/B/C (`MCRS_VA/VB/VC`) | V<sub>A</sub> V<sub>B</sub> V<sub>C</sub> | V<sub>AB</sub> V<sub>BC</sub> V<sub>CA</sub> | V<sub>AB</sub> = V<sub>A</sub> − V<sub>B</sub> | `MCRS VAB/VBC/VCA` |
 | Undecidable (lone `VB`, mixed, unlabelled) | canonical fallback | canonical | canonical | canonical |
 
+The bay's convention follows its channel **names** even when COMTRADE
+`ph` metadata supplied the phases. For example, `KPDN2 VR/VY/VB` with
+`ph` `A/B/C` is R/Y/B and defaults to `KPDN2 VRY/VYB/VBR` (owner UAT fix,
+2026-09-27; rule in
+[ANALYSIS_INPUT_GUARDRAILS.md](ANALYSIS_INPUT_GUARDRAILS.md#phase-display-convention-dec-118)).
+
 `parameters.phase_display` snapshots the convention a channel was named
 with, so its system-default name (`KPDN1 VRY`) and formula stay
 recognizable. A channel created before DEC-118 has no snapshot and keeps
@@ -279,6 +285,11 @@ unsupported representation), and RMS-only data is never combined as
   (50 Hz, 1 kHz, 2 s, kV/kA): KPDN1 has instantaneous VR/VY/VB with an
   unbalanced disturbance from 0.5 s (R sags to 30 %, Y shifts +15°), plus
   currents. KPDN2 has VR/VY only. MCRS has RMS-magnitude envelopes.
+- Fixture `phase_convention_structured_ph`: `KPDN2 VR/VY/VB` and
+  `IR/IY/IB` with COMTRADE `ph` `A/B/C` (the owner-UAT case), next to
+  `MCRS VA/VB/VC` (A/B/C). It is covered by
+  `test_phase_display_convention.py` and
+  `phase-display-convention.spec.js`.
 
 ## 10. Pre-existing issue — closed by DEC-116 (2026-09-25)
 
