@@ -215,7 +215,7 @@ def _detect_group_members(
         if not voltage_channels:
             continue
         detection_input = [
-            ChannelForDetection(name=ch.name, engineering_type=ch.engineering_type, phase_label=ch.phase)
+            ChannelForDetection(name=ch.name, engineering_type=ch.engineering_type, phase_label=ch.phase, unit=ch.unit)
             for ch in voltage_channels
         ]
         for detected_context in detect_engineering_contexts(detection_input):

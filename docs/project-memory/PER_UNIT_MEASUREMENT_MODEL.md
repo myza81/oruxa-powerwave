@@ -885,6 +885,19 @@ automatically using:
 - source metadata
 - bay/equipment naming patterns
 
+Implementation note (2026-09-28): Measurement Group detection now consumes
+the shared deterministic channel-identity resolver
+(`app.domain.channel_engineering_identity`) also used by Engineering
+Context detection. The resolver keeps engineering type, phase role,
+measurement representation, bay/context hint, evidence, and conflicts
+separate. Measurement Groups still answer their own kind-scoped question:
+Voltage and Current banks are grouped separately by `(context_hint, kind)`.
+Engineering Contexts may share the same semantic interpretation while
+retaining their separate cross-kind bay grouping semantics. Structured
+metadata/unit evidence remains the preferred source for engineering type;
+name grammar is deterministic fallback/supporting evidence only, never a
+fuzzy bay matcher.
+
 Examples:
 
 ```text

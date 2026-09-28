@@ -233,16 +233,34 @@ and custom names are never renamed.
 
 ### Automatic detection (`app.domain.engineering_context_detection`)
 
-Deterministic, name-suffix-based clustering — the same deliberate
+Deterministic clustering over the shared channel-identity interpretation
+layer (`app.domain.channel_engineering_identity`) - the same deliberate
 restraint `app.domain.measurement_group_detection` already established
-(never probabilistic, never waveform analysis). The one structural
-difference from Measurement Group detection: this module strips ONE
-further trailing kind-marker letter (`V`/`I`) off the phase-stripped
-base name to get a **cross-kind** clustering root, so `ALPHA1_VA`/
-`ALPHA1_VB`/`ALPHA1_VC`/`ALPHA1_IA`/`ALPHA1_IB`/`ALPHA1_IC` cluster into
-ONE candidate context (unlike Measurement Group detection's own
-kind-scoped `(base_name, kind)` clustering, which keeps Voltage and
-Current separate).
+(never probabilistic, never waveform analysis). The identity resolver
+keeps these concepts separate: already-classified engineering type,
+phase role, optional measurement representation, bay/context hint,
+unit/name evidence, and conflict flags. It uses structured metadata and
+unit semantics first where those are already available, then only
+well-defined name grammars as supporting/fallback evidence.
+
+The one structural difference from Measurement Group detection remains:
+Engineering Context detection clusters by the shared **context/bay hint**
+alone, so Voltage and Current channels can form ONE candidate context.
+Supported deterministic forms include the existing suffix conventions
+(`ALPHA1_VA`/`ALPHA1_IA`), separated suffix forms (`JMHE NO1 VR`,
+`JMHE NO1_VR`), and prefix role forms with optional recognized unit
+decoration (`UR JMHE NO1 (kV)`, `IR JMHE NO1 (kA)`). `U` is accepted as
+a Voltage role marker only in this deterministic role-token grammar; the
+canonical engineering type remains `Voltage`, never a separate `U`
+quantity. Measurement Group detection consumes the same identity but
+keeps its own kind-scoped grouping semantics (`context_hint + kind`), so
+Voltage and Current banks stay separate for Per-Unit/base configuration.
+
+Conflicting evidence is never silently resolved. For example, a name role
+like `UR` on a channel whose reliable unit/type evidence is Current/kA is
+kept in the detected evidence but marked `needs_review`; the detector
+does not reinterpret the channel as Voltage merely because the name
+looked Voltage-like.
 
 The same detector also has one deliberately narrow rootless fallback for
 COMTRADE files whose own channel names are only engineering roles, with
@@ -263,10 +281,11 @@ A genuinely multi-source bay is fully representable by the domain model
 and constructible through `update_context_membership()` — just never
 produced automatically.
 
-Status: `suggested` when every member's phase resolves confidently and
-no two members resolve to the same `(engineering_type, phase)` pair;
-`needs_review` otherwise (unresolved convention, or a suspicious
-duplicate role) — mirrors Measurement Group detection's own
+Status: `suggested` when every member's phase resolves confidently, no
+two members resolve to the same `(engineering_type, phase)` pair, and no
+identity evidence conflicts; `needs_review` otherwise (unresolved
+convention, a suspicious duplicate role, or a name/type/unit conflict)
+- mirrors Measurement Group detection's own
 `STATUS_NEEDS_REVIEW` guard. Never `confirmed`/`manual` — reserved for
 an engineer's own review action.
 

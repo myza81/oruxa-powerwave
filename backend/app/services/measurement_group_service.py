@@ -295,7 +295,7 @@ def generate_suggested_groups_for_source(
     if active is None:
         raise SourceNotFoundError(f"No source '{source_id}' in this workspace.")
 
-    channels = [(ch.name, ch.engineering_type) for ch in active.metadata.analog_channels]
+    channels = [(ch.name, ch.engineering_type, ch.unit) for ch in active.metadata.analog_channels]
     detected_groups = detect_measurement_groups(channels)
 
     # Slice 3 robustness fix: every candidate is fully validated BEFORE

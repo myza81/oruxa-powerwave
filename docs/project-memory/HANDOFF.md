@@ -4,9 +4,35 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-27**
+Last updated: **2026-09-28**
 
 ## What was most recently done
+
+**Channel engineering identity resolver for deterministic bay/group
+detection (2026-09-28). Backend domain/tests/docs; ready for owner
+review.**
+
+- New shared domain layer:
+  `app.domain.channel_engineering_identity`. It interprets deterministic
+  engineering role tokens separately from already-classified engineering
+  type, phase, optional representation, bay/context hint, unit/name
+  evidence and conflicts.
+- Engineering Context detection and Measurement Group detection now
+  consume that shared interpretation while keeping separate grouping
+  semantics: Engineering Contexts cluster cross-kind by bay hint;
+  Measurement Groups remain kind-scoped.
+- Newly supported deterministic forms include prefix roles with optional
+  unit decoration (`UR JMHE NO1 (kV)`, `IR JMHE NO1 (kA)`), prefix roles
+  without display units when channel metadata supplies type/unit, and
+  separated suffix forms (`JMHE NO1 VR`, `JMHE NO1_VR`). `U` is a Voltage
+  role marker only; canonical type remains `Voltage`.
+- Conflicts such as `UR JMHE NO1 (kA)` are `needs_review`, never silently
+  treated as valid Voltage. No fuzzy bay matching was added.
+- Tests added in `test_engineering_context_detection.py` and
+  `test_measurement_group_detection.py`; service/phase-display/Compliance
+  regressions pass with `--basetemp .\.pytest-tmp`.
+
+## Prior session
 
 **DEC-118 regression: KPDN2 showed A/B/C (owner UAT, 2026-09-27).
 Backend detection, tests and docs; awaiting owner UAT. Stop here.**
