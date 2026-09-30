@@ -221,8 +221,9 @@ and are unchanged.
 | Generic UI wording ("Phase A Voltage", "Line-to-Line Voltage", Impedance "Phase A" / Distance "Fault loop AB" selectors, Reference Profile members, Manual Input rows) | Fixed canonical |
 | Sequence symbols (V<sub>1</sub>/V<sub>2</sub>/V<sub>0</sub>, I<sub>1</sub>/I<sub>2</sub>/I<sub>0</sub>) | Convention-independent |
 | Source/channel names (`KPDN1_VR`, `MCRS VB`), custom/editable names | Verbatim |
-| Canonical values (`Va`, `phase_member`, `member`, output ids, `data-*`, trace `meta`) and the per-channel Phase classification column | Unchanged |
-| Phase currents `Ia/Ib/Ic` | Unchanged; they stay out of DEC-117 scope |
+| Canonical values (`Va`, `Ia`, `phase_member`, `member`, output ids, `data-*`, trace `meta`) | Unchanged |
+| Context-specific phase currents (Phasor values/diagram, Related Waveforms current traces for Phasor, Sequence, Overcurrent, Impedance, Distance) | Context convention, same map as voltage (I<sub>R</sub> in an R/Y/B bay), since 2026-09-30 |
+| Waveform sidebar "Phase" column | Verbatim: it is the source channel's own COMTRADE `ph` field, not a Powerwave classification |
 
 **Calculated L-L channels** snapshot the convention they were named with
 in `parameters.phase_display`. That keeps their system-default name and

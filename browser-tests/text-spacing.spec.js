@@ -329,9 +329,13 @@ test.describe("Composed labels keep their word spacing", () => {
     await openOperation(page, "line_to_line_voltage");
     await selectOptionStartingWith(page, "#wwCcLlContextSelect", "Default Context — ");
     await page.locator("#wwCcLlOutput_all_three").check();
-    for (const selector of ["#wwCcLlPlannedNames", "#wwCcExpressionPreview"]) {
+    for (const [selector, content] of [["#wwCcLlPlannedNames", "Creates"], ["#wwCcExpressionPreview", " = "]]) {
       const el = page.locator(selector);
-      const box = await el.evaluate((node) => {
+      // Readiness re-renders the builder asynchronously: measure only once
+      // the label is visible, populated and has painted glyphs.
+      await expect(el).toBeVisible();
+      await expect(el).toContainText(content);
+      const measure = () => el.evaluate((node) => {
         // First and last painted glyph: a wrapped label ends on a lower line.
         const rects = [];
         const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
@@ -346,10 +350,13 @@ test.describe("Composed labels keep their word spacing", () => {
             if (rect && rect.width > 0) rects.push(rect);
           }
         }
+        if (rects.length === 0) return { painted: 0 };
         const first = rects[0];
         const last = rects[rects.length - 1];
-        return { wrapped: last.top >= first.bottom, overflow: node.scrollWidth - node.clientWidth };
+        return { painted: rects.length, wrapped: last.top >= first.bottom, overflow: node.scrollWidth - node.clientWidth };
       });
+      await expect.poll(async () => (await measure()).painted, `${selector} has painted glyphs`).toBeGreaterThan(0);
+      const box = await measure();
       expect(box.wrapped, `${selector} wraps`).toBe(true);
       expect(box.overflow, `${selector} does not overflow`).toBeLessThanOrEqual(1);
       await expectWordSpacingPreserved(el, { count: 1 });
@@ -378,7 +385,7 @@ test.describe("Composed labels keep their word spacing", () => {
     // Phasor values (V<sub>R</sub>) in both bays.
     for (const bay of ["KPDN1", "MCRS"]) {
       await ensureContextSelected(page, page.locator("#wwPhasorContextSelect"), contexts[bay]);
-      await expect(page.locator("#wwPhasorValuesList .ww-electrical-symbol")).toHaveCount(3);
+      await expect(page.locator("#wwPhasorValuesList .ww-electrical-symbol")).toHaveCount(6); // 3 V + 3 I
       await expectNoFlexWhitespaceLoss(page, "#pageAnalysis");
     }
 

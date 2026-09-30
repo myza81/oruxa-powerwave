@@ -9,7 +9,15 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-27**. **DEC-118 regression fix
+Last meaningful update: **2026-09-30**. **Phase currents follow the
+context phase display convention (DEC-118 amendment).** An R/Y/B bay's
+currents show I<sub>R</sub>/I<sub>Y</sub>/I<sub>B</sub> (plain `IR`) in
+Phasor and in every Related Waveforms current trace; an A/B/C bay or a
+fallback context shows I<sub>A</sub>. It uses the same map, with no second
+detector. Canonical `Ia/Ib/Ic`, sequence I<sub>1</sub>/I<sub>2</sub>/
+I<sub>0</sub>, source names and generic selectors are unchanged. It is
+frontend-only; awaiting owner UAT.
+Earlier, on **2026-09-27**, the **DEC-118 regression fix
 (owner UAT, KPDN2).** R/Y/B-named channels whose COMTRADE `ph` field
 says A/B/C now display R/Y/B (V<sub>RY</sub>, `KPDN2 VRY`). Before, detection
 stored `ph` as the engineer-facing `original_phase_label`. Phases stay

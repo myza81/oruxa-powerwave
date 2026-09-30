@@ -21,7 +21,7 @@ test.describe("Electrical notation (DEC-117) -- shared formatter", () => {
   test("contract: rich -> real subscript, plain -> VA/VAB/V1/I2, never an underscore", async ({ page }) => {
     await page.goto("/index.html");
     const out = await page.evaluate(() => {
-      const cases = [["V", "A"], ["V", "AB"], ["V", "1"], ["I", "2"], ["V", "0"], ["I", "0"]];
+      const cases = [["V", "A"], ["V", "AB"], ["V", "1"], ["I", "2"], ["V", "0"], ["I", "0"], ["I", "A"], ["I", "C"]];
       return {
         rows: cases.map(([q, s]) => ({
           key: q + s,
@@ -30,12 +30,12 @@ test.describe("Electrical notation (DEC-117) -- shared formatter", () => {
           plotly: wwElectricalSymbolPlotly(q, s),
           svg: wwElectricalSymbolSvg(q, s),
         })),
-        roles: ["Va", "Vb", "Vc", "V1", "V2", "V0", "I1", "I2", "I0", "Ia", "Za"].map((k) => ({
+        roles: ["Va", "Vb", "Vc", "V1", "V2", "V0", "I1", "I2", "I0", "Ia", "Ib", "Ic", "Za"].map((k) => ({
           key: k, text: wwRoleLabelText(k), html: wwRoleLabelHtml(k), plotly: wwRoleLabelPlotly(k), svg: wwRoleLabelSvg(k),
         })),
         formula: { html: wwLineToLineFormulaHtml("BC"), text: wwLineToLineFormulaText("BC") },
-        // Not a supported symbol (phase currents are deliberately plain):
-        unsupported: { html: wwElectricalSymbolHtml("I", "A"), text: wwElectricalSymbolText("I", "A") },
+        // Not a supported symbol: a current has no line-to-line form.
+        unsupported: { html: wwElectricalSymbolHtml("I", "AB"), text: wwElectricalSymbolText("I", "AB") },
         voltageShorthand: [wwVoltageSymbolText("CA"), wwVoltageSymbolHtml("CA")],
       };
     });
@@ -50,11 +50,17 @@ test.describe("Electrical notation (DEC-117) -- shared formatter", () => {
     expect(role.Va.text).toBe("VA");
     expect(role.V1.plotly).toBe("V<sub>1</sub>");
     expect(role.I2.html).toContain('<sub class="ww-electrical-sub">2</sub>');
-    expect(role.Ia).toEqual({ key: "Ia", text: "Ia", html: "Ia", plotly: "Ia", svg: "Ia" }); // phase current: plain
+    // Phase current (owner decision 2026-09-30): same formatter as voltage;
+    // without a context it is canonical I<sub>A</sub>, plain "IA".
+    expect(role.Ia.text).toBe("IA");
+    expect(role.Ia.html).toBe('<span class="ww-electrical-symbol">I<sub class="ww-electrical-sub">A</sub></span>');
+    expect(role.Ia.plotly).toBe("I<sub>A</sub>");
+    expect([role.Ib.text, role.Ic.text]).toEqual(["IB", "IC"]);
+    expect(role.I1.text).toBe("I1"); // sequence current: numeric subscript
     expect(role.Za.html).toBe("Za"); // impedance: out of scope
     expect(out.formula.text).toBe("VBC = VB − VC");
     expect((out.formula.html.match(/<sub class="ww-electrical-sub">/g) || []).length).toBe(3);
-    expect(out.unsupported).toEqual({ html: "IA", text: "IA" });
+    expect(out.unsupported).toEqual({ html: "IAB", text: "IAB" });
     expect(out.voltageShorthand[0]).toBe("VCA");
     // Never an underscore-joined symbol in ANY output.
     const all = JSON.stringify(out);

@@ -132,10 +132,11 @@ Use true visual subscripts where supported:
   V<sub>A</sub> V<sub>B</sub> V<sub>C</sub>      phase voltage
   V<sub>AB</sub> V<sub>BC</sub> V<sub>CA</sub>   line-to-line voltage
   V<sub>1</sub> V<sub>2</sub> V<sub>0</sub>      sequence voltage
+  I<sub>A</sub> I<sub>B</sub> I<sub>C</sub>      phase current
   I<sub>1</sub> I<sub>2</sub> I<sub>0</sub>      sequence current
 If rich subscript is not supported, use plain concatenated notation:
-  VA, VAB, V1, I2
-Never use literal underscore notation (V_A, V_AB, V_1, I_2) anywhere
+  VA, VAB, V1, IA, I2
+Never use literal underscore notation (V_A, V_AB, V_1, I_A, I_2) anywhere
 user-facing, including fallbacks, accessibility text, logs and tests.
 
 electrical quantity symbol           -> formatted
@@ -152,10 +153,11 @@ internal/API value (Va, VAB, phase_member = AB) -> untouched
      `wwElectricalSymbolPlotly()`, `wwElectricalSymbolSvg()` (lowered
      `<tspan>`) and `wwElectricalSymbolText()` (the only plain fallback).
      `quantity` is `V|I`; `subscript` is `A|B|C|AB|BC|CA|1|2|0` for `V`
-     and `1|2|0` for `I`.
+     and `A|B|C|1|2|0` for `I` (a current has no line-to-line form).
    - Semantic wrappers: `wwVoltageSymbol*(subscript)`,
      `wwRoleLabelHtml/Plotly/Svg/Text(roleKey)` (for `Va..Vc`,
-     `V1/V2/V0`, `I1/I2/I0`), `wwLineToLinePairHtml()`,
+     `Ia..Ic`, `V1/V2/V0`, `I1/I2/I0`), `wwPhaseVoltage*()`,
+     `wwPhaseCurrent*()`, `wwLineToLinePairHtml()`,
      `wwLineToLineFormulaHtml/Text()`, `wwCalculatedChannelName*()` and
      `wwChannelDisplayName*()`.
    - If a new kind of symbol is needed, extend this layer. Do not create
@@ -197,7 +199,6 @@ internal/API value (Va, VAB, phase_member = AB) -> untouched
 6. Never put rich notation inside editable fields. Do not introduce
    `contenteditable` or rich-text inputs for this.
 7. Out of scope, so do not convert:
-   - phase currents (`Ia/Ib/Ic`), an owner decision;
    - impedance/fault-loop labels (`Za`, `Zab`, "Fault loop AB");
    - protection-role names;
    - descriptive words such as "Positive Sequence".
@@ -217,6 +218,14 @@ internal/API value (Va, VAB, phase_member = AB) -> untouched
    - An R/Y/B bay shows V<sub>R</sub>, V<sub>RY</sub> =
      V<sub>R</sub> − V<sub>Y</sub>, and `KPDN1 VRY`. An A/B/C bay in the
      same workspace keeps V<sub>A</sub>, V<sub>AB</sub>, `MCRS VAB`.
+   - **Phase currents** use the same map (no second detector).
+     Context-specific phase-current notation inherits the same phase
+     display convention as voltage. Canonical `Ia/Ib/Ic` identities remain
+     internal; display labels follow the context, e.g. I<sub>R</sub>/
+     I<sub>Y</sub>/I<sub>B</sub> (`IR/IY/IB`) for R/Y/B and
+     I<sub>A</sub>/I<sub>B</sub>/I<sub>C</sub> (`IA/IB/IC`) for A/B/C.
+     Sequence currents I<sub>1</sub>/I<sub>2</sub>/I<sub>0</sub> never
+     follow a phase convention.
    - Never hard-code A/B/C into a context-specific result label (resolved
      role, pair, formula, generated name, trace name, resolved
      measurement, readiness/measurement prose). Pass the context's

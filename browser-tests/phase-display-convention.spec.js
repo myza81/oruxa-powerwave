@@ -84,7 +84,9 @@ test.describe("Phase display convention (DEC-118)", () => {
       const bogus = { convention: "XYZ", status: "established", symbols: { A: "<b>", B: "Y", C: "B", AB: "RY", BC: "YB", CA: "BR" } };
       return {
         role: [wwRoleLabelText("Va", ryb), wwRoleLabelHtml("Vc", ryb), wwRoleLabelPlotly("Vb", ryb), wwRoleLabelSvg("Va", ryb)],
-        sequence: [wwRoleLabelText("V1", ryb), wwRoleLabelText("I2", ryb), wwRoleLabelText("Ia", ryb)],
+        sequence: [wwRoleLabelText("V1", ryb), wwRoleLabelText("I2", ryb), wwRoleLabelText("Za", ryb)],
+        current: [wwRoleLabelText("Ia", ryb), wwRoleLabelText("Ib", ryb), wwRoleLabelText("Ic", ryb), wwRoleLabelHtml("Ia", ryb),
+          wwRoleLabelPlotly("Ib", ryb), wwRoleLabelSvg("Ic", ryb), wwRoleLabelText("Ia"), wwRoleLabelText("Ic", null)],
         pair: [wwLineToLinePairText("AB", ryb), wwLineToLinePairText("BC", ryb), wwLineToLinePairText("CA", ryb), wwLineToLinePairHtml("AB", ryb)],
         formula: [wwLineToLineFormulaText("AB", ryb), wwLineToLineFormulaText("BC", ryb), wwLineToLineFormulaText("CA", ryb)],
         defaultName: [wwLineToLineDefaultName("KPDN1", "AB", ryb), wwLineToLineDefaultName("MCRS", "AB")],
@@ -98,7 +100,15 @@ test.describe("Phase display convention (DEC-118)", () => {
       "V<sub>Y</sub>",
       'V<tspan font-size="0.72em" dy="0.3em">R</tspan>',
     ]);
-    expect(out.sequence).toEqual(["V1", "I2", "Ia"]); // sequence + phase current: convention-independent
+    expect(out.sequence).toEqual(["V1", "I2", "Za"]); // sequence symbols and impedance keys: convention-independent
+    // Phase currents share the voltage map: Ia/Ib/Ic -> IR/IY/IB in an R/Y/B bay.
+    expect(out.current).toEqual([
+      "IR", "IY", "IB",
+      '<span class="ww-electrical-symbol">I<sub class="ww-electrical-sub">R</sub></span>',
+      "I<sub>Y</sub>",
+      'I<tspan font-size="0.72em" dy="0.3em">B</tspan>',
+      "IA", "IC", // no context: canonical
+    ]);
     expect(out.pair.slice(0, 3)).toEqual(["VRY", "VYB", "VBR"]);
     expect(out.pair[3]).toBe('<span class="ww-electrical-symbol">V<sub class="ww-electrical-sub">RY</sub></span>');
     // Canonical arithmetic AB = A − B, BC = B − C, CA = C − A, spelled R/Y/B.
@@ -242,10 +252,10 @@ test.describe("Phase display convention (DEC-118)", () => {
         await expect(row.locator(".ww-phasor-role-label .ww-electrical-sub")).toHaveText(conv.phases[i]);
         await expect(row).toHaveAttribute("aria-label", `Hide ${conv.names[i]} vector`); // plain fallback
       }
-      await expectTrueSubscripts(page.locator("#wwPhasorValuesList .ww-electrical-symbol"), 3);
-      // Diagram vector labels: lowered tspan, same spelling; currents plain.
-      await expect(page.locator("#wwPhasorSvg text.ww-phasor-vector-label tspan")).toHaveText(conv.phases);
-      await expect(page.locator("#wwPhasorSvg text.ww-phasor-vector-label")).toHaveText([...conv.names, "Ia", "Ib", "Ic"]);
+      await expectTrueSubscripts(page.locator("#wwPhasorValuesList .ww-electrical-symbol"), 6); // 3 V + 3 I
+      // Diagram vector labels: lowered tspan, same spelling for V and I.
+      await expect(page.locator("#wwPhasorSvg text.ww-phasor-vector-label tspan")).toHaveText([...conv.phases, ...conv.phases]);
+      await expect(page.locator("#wwPhasorSvg text.ww-phasor-vector-label")).toHaveText([...conv.names, ...conv.phases.map((p) => `I${p}`)]);
       // Related Waveforms: display names follow the bay; identity is meta.
       await expect.poll(async () => page.evaluate(() => {
         const v = document.getElementById("wwAnalysisRelatedWaveformsVoltageChart");
@@ -404,7 +414,7 @@ test.describe("Phase display convention -- R/Y/B names with COMTRADE ph A/B/C (o
       for (const [i, row] of rows.entries()) {
         await expect(row.locator(".ww-phasor-role-label .ww-electrical-sub")).toHaveText(conv.phases[i]);
       }
-      await expectTrueSubscripts(page.locator("#wwPhasorValuesList .ww-electrical-symbol"), 3);
+      await expectTrueSubscripts(page.locator("#wwPhasorValuesList .ww-electrical-symbol"), 6); // 3 V + 3 I
       await expect.poll(() => relatedVoltageNames(page)).toEqual(["Va", "Vb", "Vc"].map((k, i) => [k, `V<sub>${conv.phases[i]}</sub>`]));
     }
 
@@ -443,5 +453,93 @@ test.describe("Phase display convention -- R/Y/B names with COMTRADE ph A/B/C (o
     await page.locator("#wwComplianceMeasurementSelect").selectOption({ label: "Phase A Voltage" });
     await expect(input).toHaveText("VA — MCRS VA");
     await expect(input).toHaveAttribute("data-phase-convention", "ABC");
+  });
+});
+
+// Phase currents (owner decision, 2026-09-30): context-specific phase-current
+// notation inherits the SAME phase display convention as voltage -- no second
+// detector. Canonical Ia/Ib/Ic stay internal (role keys, data-role, trace
+// meta); sequence currents I1/I2/I0 never follow a phase convention.
+// Fixture phase_convention_mixed: KPDN1 IR/IY/IB (R/Y/B), MCRS IA/IB/IC (A/B/C).
+test.describe("Phase display convention -- phase currents follow the bay", () => {
+  const CURRENT = { KPDN1: ["R", "Y", "B"], MCRS: ["A", "B", "C"] };
+  const traces = (page, chartId) => page.evaluate((id) => {
+    const el = document.getElementById(id);
+    return el && el.data ? el.data.map((t) => [t.meta, t.name]) : [];
+  }, chartId);
+
+  test("Phasor: current values, aria, SVG labels and related traces per bay; identity canonical", async ({ page }) => {
+    await uploadFixture(page);
+    const contexts = await contextsByName(page);
+    await page.locator("#mainNavAnalysisBtn").click();
+    await expect(page.locator("#wwPhasorPanel")).toBeVisible();
+    for (const bay of ["KPDN1", "MCRS"]) {
+      const letters = CURRENT[bay];
+      await ensureContextSelected(page, page.locator("#wwPhasorContextSelect"), contexts[bay].id);
+      const rows = ["Ia", "Ib", "Ic"].map((k) => page.locator(`#wwPhasorValuesList .ww-phasor-value-row[data-role="${k}"]`));
+      for (const [i, row] of rows.entries()) {
+        await expect(row.locator(".ww-phasor-role-label .ww-electrical-sub")).toHaveText(letters[i]); // I<sub>R</sub>
+        await expect(row).toHaveAttribute("aria-label", `Hide I${letters[i]} vector`); // plain fallback
+      }
+      await expectTrueSubscripts(page.locator('#wwPhasorValuesList .ww-phasor-value-row[data-role^="I"] .ww-electrical-symbol'), 3);
+      const svgLabels = page.locator("#wwPhasorSvg text.ww-phasor-vector-label");
+      await expect(svgLabels).toHaveText([...(bay === "KPDN1" ? RYB : ABC).names, ...letters.map((l) => `I${l}`)]);
+      await expect(svgLabels.nth(3).locator("tspan")).toHaveText(letters[0]);
+      await expect.poll(() => traces(page, "wwAnalysisRelatedWaveformsCurrentChart"))
+        .toEqual(["Ia", "Ib", "Ic"].map((k, i) => [k, `I<sub>${letters[i]}</sub>`])); // meta stays Ia
+    }
+  });
+
+  test("Sequence: phase-domain currents follow the bay; I1/I2/I0 never do", async ({ page }) => {
+    await uploadFixture(page);
+    const contexts = await contextsByName(page);
+    await page.locator("#mainNavAnalysisBtn").click();
+    await page.locator("#wwAnalysisTypeSequenceBtn").click();
+    await ensureContextSelected(page, page.locator("#wwSequenceContextSelect"), contexts.KPDN1.id);
+    await expect.poll(() => traces(page, "wwAnalysisRelatedWaveformsCurrentChart"))
+      .toEqual([["Ia", "I<sub>R</sub>"], ["Ib", "I<sub>Y</sub>"], ["Ic", "I<sub>B</sub>"]]);
+    await expect(page.locator("#wwSequenceValuesList .ww-phasor-role-label")).toHaveText(["V1", "V2", "V0", "I1", "I2", "I0"]);
+    await expect(page.locator("#wwSequenceRatiosList .ww-phasor-role-label")).toHaveText(["V2 / V1", "V0 / V1", "I2 / I1", "I0 / I1"]);
+    await expect(page.locator("#wwSequenceSvg text.ww-phasor-vector-label tspan")).toHaveText(["1", "2", "0", "1", "2", "0"]);
+    // Manual Input has no bay: canonical I<sub>A</sub>.
+    await expect(page.locator(".ww-phasor-manual-role-row:has(#wwSequenceManualIaEnabled) .ww-electrical-sub")).toHaveText("A");
+    await expect(page.locator("#wwSequenceManualIaEnabled")).toHaveAttribute("aria-label", "Enable IA");
+  });
+
+  test("Overcurrent, Impedance and Distance: resolved current traces follow the bay; selectors stay generic", async ({ page }) => {
+    await uploadFixture(page);
+    const contexts = await contextsByName(page);
+    await page.locator("#mainNavAnalysisBtn").click();
+    for (const bay of ["KPDN1", "MCRS"]) {
+      const letters = CURRENT[bay];
+      await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
+      await ensureContextSelected(page, page.locator("#wwOvercurrentContextSelect"), contexts[bay].id);
+      await expect.poll(() => traces(page, "wwAnalysisRelatedWaveformsCurrentChart")).toEqual([["Ia", `I<sub>${letters[0]}</sub>`]]);
+      await expect(page.locator("#wwOvercurrentPhaseSelect option").first()).toHaveText("Phase A"); // generic selector
+
+      await page.locator("#wwAnalysisTypeImpedanceBtn").click();
+      await ensureContextSelected(page, page.locator("#wwImpedanceContextSelect"), contexts[bay].id);
+      await expect.poll(() => traces(page, "wwAnalysisRelatedWaveformsCurrentChart")).toEqual([["Ia", `I<sub>${letters[0]}</sub>`]]);
+      await expect(page.locator("#wwImpedancePhaseSelect option").first()).toHaveText("Phase A");
+
+      await page.locator("#wwAnalysisTypeDistanceBtn").click();
+      await ensureContextSelected(page, page.locator("#wwDistanceContextSelect"), contexts[bay].id);
+      await expect.poll(async () => (await traces(page, "wwAnalysisRelatedWaveformsCurrentChart")).sort())
+        .toEqual([["Ia", `I<sub>${letters[0]}</sub>`], ["Ib", `I<sub>${letters[1]}</sub>`]]); // loop AB
+    }
+  });
+
+  test("source channel names and the source Phase column are never rewritten", async ({ page }) => {
+    await uploadFixture(page);
+    await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
+    const rows = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]');
+    await expect(rows.first()).toBeVisible();
+    for (const name of ["KPDN1_IR", "KPDN1_IY", "KPDN1_IB", "MCRS_IA", "MCRS_IB", "MCRS_IC"]) {
+      const row = rows.filter({ hasText: name });
+      await expect(row.locator("td").first()).toContainText(name);
+      // The Phase column is the source's own COMTRADE `ph` field (empty here).
+      await expect(row.locator("td").nth(1)).toHaveText("—");
+    }
+    await expect(page.locator("#channelGroups .ww-electrical-symbol")).toHaveCount(0);
   });
 });

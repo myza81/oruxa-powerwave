@@ -245,6 +245,14 @@ test.describe("Distance Protection v1 -- empty workspace Manual mode (golden flo
     await expect(page.locator("#wwDistanceManualV1Label .ww-electrical-sub")).toHaveText("B");
     await expect(page.locator("#wwDistanceManualV2Label")).toHaveText("VC magnitude");
     await expect(page.locator("#wwDistanceManualV2Label .ww-electrical-sub")).toHaveText("C");
+    // Phase currents too: I<sub>B</sub>/I<sub>C</sub>. The input slots (I1/I2)
+    // are positions, never sequence currents -- accessible names follow the role.
+    await expect(page.locator("#wwDistanceManualI1Label")).toHaveText("IB magnitude");
+    await expect(page.locator("#wwDistanceManualI1Label .ww-electrical-sub")).toHaveText("B");
+    await expect(page.locator("#wwDistanceManualI2Label .ww-electrical-sub")).toHaveText("C");
+    await expect(page.locator("#wwDistanceManualI1MagnitudeInput")).toHaveAttribute("aria-label", "IB magnitude");
+    await expect(page.locator("#wwDistanceManualI2AngleInput")).toHaveAttribute("aria-label", "IC angle");
+    await expect(page.locator("#wwDistanceManualV1UnitSelect")).toHaveAttribute("aria-label", "VB unit");
     await page.locator("#wwDistanceManualVoltageBasisSelect").selectOption("secondary");
     await page.locator("#wwDistanceManualCurrentBasisSelect").selectOption("secondary");
     await enterManualLeg(page, "V1", { magnitude: 100, unit: "V", angleDeg: -120 });

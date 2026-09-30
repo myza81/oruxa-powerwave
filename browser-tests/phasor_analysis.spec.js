@@ -192,7 +192,7 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
       expect(text.toLowerCase()).toContain("voltage");
       expect(text.toLowerCase()).toContain("current");
-      for (const role of ["VA", "VB", "VC", "Ia", "Ib", "Ic"]) expect(text).toContain(role); // DEC-117: V<sub>A</sub>..
+      for (const role of ["VA", "VB", "VC", "IA", "IB", "IC"]) expect(text).toContain(role); // DEC-117: V<sub>A</sub>, I<sub>A</sub>..
     }).toPass({ timeout: 5000 });
     const valuesText = await page.locator("#wwPhasorValuesList").innerText();
     expect(valuesText).toMatch(/100\.0\s*V/); // known balanced 100 V RMS
@@ -1430,14 +1430,14 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
     // state and only the latest-generation response is ever rendered.
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
-      expect(text).toMatch(/Ic[\s\S]*?1\.0\s*A[\s\S]*?\+90\.0/);
+      expect(text).toMatch(/IC[\s\S]*?1\.0\s*A[\s\S]*?\+90\.0/);
     }).toPass({ timeout: 5000 });
 
     const text = await page.locator("#wwPhasorValuesList").innerText();
     for (const [role, angle] of [["VA", "0.0"], ["VB", "-120.0"], ["VC", "+120.0"]]) { // DEC-117: V<sub>A</sub>..
       expect(text).toMatch(new RegExp(`${role}[\\s\\S]*?110\\.0\\s*V[\\s\\S]*?${angle.replace("+", "\\+")}`));
     }
-    for (const [role, angle] of [["Ia", "-30.0"], ["Ib", "-150.0"], ["Ic", "\\+90.0"]]) {
+    for (const [role, angle] of [["IA", "-30.0"], ["IB", "-150.0"], ["IC", "\\+90.0"]]) { // I<sub>A</sub>..
       expect(text).toMatch(new RegExp(`${role}[\\s\\S]*?1\\.0\\s*A[\\s\\S]*?${angle}`));
     }
 
@@ -1470,15 +1470,16 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
       expect(text).toMatch(/VA[\s\S]*?110\.0\s*V/); // DEC-117: V<sub>A</sub>
-      expect(text).toMatch(/Ia[\s\S]*?1\.0\s*A/);
+      expect(text).toMatch(/IA[\s\S]*?1\.0\s*A/);
     }).toPass({ timeout: 5000 });
   });
 
-  test("DEC-117 voltage notation: V<sub>A</sub> on manual rows, values list and diagram; currents unchanged", async ({ page }) => {
+  test("DEC-117 notation: V<sub>A</sub> and I<sub>A</sub> on manual rows, values list and diagram", async ({ page }) => {
     await openEmptyWorkspacePhasor(page);
-    // Manual input rows (static labels).
+    // Manual input rows (static labels; no bay, so canonical A).
     await expect(page.locator('.ww-phasor-manual-role-row:has(#wwPhasorManualVaEnabled) .ww-electrical-sub')).toHaveText("A");
-    await expect(page.locator('.ww-phasor-manual-role-row:has(#wwPhasorManualIaEnabled) .ww-electrical-sub')).toHaveCount(0);
+    await expect(page.locator('.ww-phasor-manual-role-row:has(#wwPhasorManualIaEnabled) .ww-electrical-sub')).toHaveText("A");
+    await expect(page.locator("#wwPhasorManualIaEnabled")).toHaveAttribute("aria-label", "Enable IA");
     await page.locator("#wwPhasorManualVoltageBasisSelect").selectOption("secondary");
     await page.locator("#wwPhasorManualCurrentBasisSelect").selectOption("secondary");
     await enterRole(page, "Va", { magnitude: 110, unit: "V", angleDeg: 0 });
@@ -1487,12 +1488,14 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
     const vaRow = page.locator('#wwPhasorValuesList .ww-phasor-value-row[data-role="Va"]');
     await expect(vaRow.locator(".ww-phasor-role-label .ww-electrical-sub")).toHaveText("A");
     await expect(vaRow).toHaveAttribute("aria-label", "Hide VA vector"); // attribute: DEC-117 plain fallback (VA, not the internal key Va)
-    await expect(page.locator('#wwPhasorValuesList .ww-phasor-value-row[data-role="Ia"] .ww-phasor-role-label')).toHaveText("Ia");
-    // SVG vector labels: a lowered <tspan> subscript for voltage only.
+    await expect(page.locator('#wwPhasorValuesList .ww-phasor-value-row[data-role="Ia"] .ww-phasor-role-label')).toHaveText("IA");
+    await expect(page.locator('#wwPhasorValuesList .ww-phasor-value-row[data-role="Ia"] .ww-electrical-sub')).toHaveText("A");
+    // SVG vector labels: a lowered <tspan> subscript for voltage and phase
+    // current alike (Manual Input has no bay: canonical A).
     const labels = page.locator("#wwPhasorSvg text.ww-phasor-vector-label");
-    await expect(labels).toHaveText(["VA", "Ia"]);
+    await expect(labels).toHaveText(["VA", "IA"]);
     await expect(labels.first().locator("tspan")).toHaveText("A");
-    await expect(labels.nth(1).locator("tspan")).toHaveCount(0);
+    await expect(labels.nth(1).locator("tspan")).toHaveText("A");
   });
 
   test("VT/PT and CT ratio fields only appear when their own family's basis is Primary", async ({ page }) => {
@@ -1522,7 +1525,7 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
       expect(text).toMatch(/VA[\s\S]*?132000\.0\s*V/);
-      expect(text).toMatch(/Ia[\s\S]*?1200\.0\s*A/);
+      expect(text).toMatch(/IA[\s\S]*?1200\.0\s*A/);
     }).toPass({ timeout: 5000 });
     const textV = await page.locator("#wwPhasorValuesList").innerText();
 
@@ -1531,7 +1534,7 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
       expect(text).toMatch(/VA[\s\S]*?132000\.0\s*V/);
-      expect(text).toMatch(/Ia[\s\S]*?1200\.0\s*A/);
+      expect(text).toMatch(/IA[\s\S]*?1200\.0\s*A/);
     }).toPass({ timeout: 5000 });
     const textKv = await page.locator("#wwPhasorValuesList").innerText();
     expect(textKv).toBe(textV);
@@ -1559,7 +1562,7 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
       expect(text).toMatch(/VA[\s\S]*?110\.0\s*V/);
     }).toPass({ timeout: 5000 });
     const text = await page.locator("#wwPhasorValuesList").innerText();
-    for (const role of ["VB", "VC", "Ib", "Ic"]) { // DEC-117: V<sub>B</sub>..
+    for (const role of ["VB", "VC", "IB", "IC"]) { // DEC-117: V<sub>B</sub>, I<sub>B</sub>..
       expect(text).toMatch(new RegExp(`${role}[\\s\\S]{0,20}Missing`));
     }
     await expect(page.locator("#wwPhasorSvg polygon")).toHaveCount(2);
@@ -1576,7 +1579,7 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
 
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
-      expect(text).toMatch(/Ia[\s\S]*?1\.0\s*A/);
+      expect(text).toMatch(/IA[\s\S]*?1\.0\s*A/);
     }).toPass({ timeout: 5000 });
     const text = await page.locator("#wwPhasorValuesList").innerText();
     expect(text).toMatch(/VA[\s\S]{0,30}Needs configuration/);
@@ -1609,10 +1612,10 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
 
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
-      expect(text).toMatch(/Ia[\s\S]*?10\.0\s*A/);
+      expect(text).toMatch(/IA[\s\S]*?10\.0\s*A/);
     }).toPass({ timeout: 5000 });
     const text = await page.locator("#wwPhasorValuesList").innerText();
-    expect(text).toMatch(/Ib[\s\S]{0,20}Missing/);
+    expect(text).toMatch(/IB[\s\S]{0,20}Missing/);
 
     const legendTexts = await page.locator("#wwPhasorSvg text.ww-phasor-scale-legend").allTextContents();
     const currentLine = legendTexts.find((t) => t.startsWith("I:"));
@@ -1630,7 +1633,7 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
 
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
-      expect(text).toMatch(/Ia[\s\S]*?10\.0\s*A/);
+      expect(text).toMatch(/IA[\s\S]*?10\.0\s*A/);
     }).toPass({ timeout: 5000 });
     const text = await page.locator("#wwPhasorValuesList").innerText();
     // A genuine zero magnitude is a VALID Manual Phasor input (e.g. a
@@ -1776,7 +1779,7 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
       expect(text).toMatch(/VA[\s\S]*?110\.0\s*V/);
-      expect(text).toMatch(/Ia[\s\S]*?10\.0\s*A/);
+      expect(text).toMatch(/IA[\s\S]*?10\.0\s*A/);
     }).toPass({ timeout: 5000 });
 
     // The scale must now derive ONLY from Manual's own 110V/10A --

@@ -212,11 +212,12 @@ test.describe("Impedance Locus v1 -- Related Waveforms", () => {
       expect(info.cNames).toEqual(["Ia"]);
       expect(info.cLen).toBeGreaterThan(1);
     }).toPass({ timeout: 5000 });
-    // DEC-117: display name V<sub>A</sub>; current and impedance (Za) unchanged.
+    // DEC-117: display names V<sub>A</sub> and I<sub>A</sub> (phase currents
+    // follow the context convention too); identity stays meta; Za unchanged.
     expect(await page.evaluate(() => [
       document.getElementById("wwAnalysisRelatedWaveformsVoltageChart").data[0].name,
       document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data[0].name,
-    ])).toEqual(["V<sub>A</sub>", "Ia"]);
+    ])).toEqual(["V<sub>A</sub>", "I<sub>A</sub>"]);
 
     // Groups must actually be visible (non-empty data alone is not
     // sufficient proof of a rendered trace -- the group container

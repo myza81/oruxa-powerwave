@@ -8,6 +8,33 @@ Last updated: **2026-09-27**
 
 ## What was most recently done
 
+**Phase currents follow the context convention (DEC-118 amendment,
+2026-09-30). Frontend, tests and docs; awaiting owner UAT. Stop here.**
+
+- Branch `feat/phase-current-display` (from `ec8b92a`), not merged. It
+  was developed in a separate worktree because the main checkout held
+  another agent's uncommitted work on `fix/channel-engineering-identity`.
+- **Implementation:** `Ia/Ib/Ic` were added to
+  `WW_ELECTRICAL_ROLE_SYMBOLS`. The `I` quantity accepts `A|B|C`, the
+  R/Y/B singles and `1|2|0`. New `wwPhaseCurrentHtml/Text()`. Static
+  Manual rows use the exact symbol shape. Distance Manual input
+  accessible names follow the role (`IA magnitude`).
+- **Runtime crawl** (both conventions, the lone-VB bay, all analyzers in
+  Recording and Manual mode, Waveform, Table, Calculated Channels,
+  Compliance): every phase-current occurrence is I<sub>R</sub>.. or
+  I<sub>A</sub>..; sequence currents stay numeric; source names are
+  verbatim.
+- **Open for the owner:**
+  - The Waveform "Phase" column is the source's COMTRADE `ph` field,
+    verbatim. A context-aware display would need an explicit product
+    decision, for example a separate column or a tooltip.
+  - The resolver prose "Required role(s) not resolved: Ia." uses
+    internal keys, for voltage too.
+  - Phasor Manual mode keeps showing the last Recording result until
+    manual values compute (pre-existing).
+
+## Prior session — DEC-118 regression
+
 **DEC-118 regression: KPDN2 showed A/B/C (owner UAT, 2026-09-27).
 Backend detection, tests and docs; awaiting owner UAT. Stop here.**
 

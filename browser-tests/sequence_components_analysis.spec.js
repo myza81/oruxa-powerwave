@@ -311,11 +311,12 @@ test.describe("Sequence Components v1 -- Recording mode", () => {
     }).toPass({ timeout: 5000 });
     // DEC-117: phase-domain inputs are V<sub>A</sub>..; sequence results
     // are V<sub>1</sub>/V<sub>2</sub>/V<sub>0</sub> and I<sub>1</sub>/I<sub>2</sub>/I<sub>0</sub>
-    // (values, ratios, diagram); phase currents Ia/Ib/Ic stay plain.
+    // (values, ratios, diagram); phase-domain currents are I<sub>A</sub>..
+    // (they follow the context like voltage), sequence currents never do.
     expect(await page.evaluate(() => [
       document.getElementById("wwAnalysisRelatedWaveformsVoltageChart").data.map((t) => t.name),
       document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.name),
-    ])).toEqual([["V<sub>A</sub>", "V<sub>B</sub>", "V<sub>C</sub>"], ["Ia", "Ib", "Ic"]]);
+    ])).toEqual([["V<sub>A</sub>", "V<sub>B</sub>", "V<sub>C</sub>"], ["I<sub>A</sub>", "I<sub>B</sub>", "I<sub>C</sub>"]]);
     const labels = page.locator("#wwSequenceValuesList .ww-phasor-role-label");
     await expect(labels).toHaveText(["V1", "V2", "V0", "I1", "I2", "I0"]); // plain textContent
     await expect(labels.locator(".ww-electrical-symbol")).toHaveText(["V1", "V2", "V0", "I1", "I2", "I0"]);
@@ -325,7 +326,7 @@ test.describe("Sequence Components v1 -- Recording mode", () => {
     const vectorLabels = page.locator("#wwSequenceSvg text.ww-phasor-vector-label");
     await expect(vectorLabels.locator("tspan")).toHaveText(["1", "2", "0", "1", "2", "0"]);
     await expect(page.locator(".ww-phasor-manual-role-row:has(#wwSequenceManualVbEnabled) .ww-electrical-sub")).toHaveText("B");
-    await expect(page.locator(".ww-phasor-manual-role-row:has(#wwSequenceManualIbEnabled) .ww-electrical-sub")).toHaveCount(0);
+    await expect(page.locator(".ww-phasor-manual-role-row:has(#wwSequenceManualIbEnabled) .ww-electrical-sub")).toHaveText("B");
     await expect(page.locator("#wwAnalysisRelatedWaveformsVoltageGroup")).toBeVisible();
     await expect(page.locator("#wwAnalysisRelatedWaveformsCurrentGroup")).toBeVisible();
     await expect(page.locator("#wwAnalysisRelatedWaveformsEmptyState")).toBeHidden();
