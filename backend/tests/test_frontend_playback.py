@@ -84,24 +84,25 @@ class TestPlaybackIsNotATopLevelPage:
         """Confirms the nav list's current real shape: Calculated
         Channels, then the Analysis destination (Phasor Analysis Slice 2)
         -- nothing Playback-specific spliced in anywhere. Compliance &
-        Capability Slice 1 (see test_frontend_compliance.py) added ONE
-        further item after Analysis, so "Analysis is immediately followed
-        by nothing" is no longer true -- updated to "Analysis is
-        immediately followed by Compliance, and nothing else" instead of
-        weakening this into a no-op assertion."""
+        Capability Slice 1 (see test_frontend_compliance.py) added one
+        further item after Analysis, and the Calculator shell added one
+        further item after Compliance. The guard now verifies that this
+        intended tail contains Analysis -> Compliance -> Calculator, with
+        no Playback-specific destination inserted."""
         source = _source()
         nav_list = _function_body(source, 'class="shell-nav-list"', 'class="shell-nav-bottom"')
         cc_index = nav_list.index('id="mainNavCalculatedChannelsBtn"')
         analysis_index = nav_list.index('id="mainNavAnalysisBtn"')
         compliance_index = nav_list.index('id="mainNavComplianceBtn"')
+        calculator_index = nav_list.index('id="mainNavCalculatorBtn"')
         tail = nav_list[cc_index:]
-        # Analysis immediately follows Calculated Channels, then exactly
-        # ONE further item (Compliance), with nothing Playback-specific
-        # spliced in and no premature placeholders after that.
-        assert cc_index < analysis_index < compliance_index
+        # Analysis immediately follows Calculated Channels, then
+        # Compliance and Calculator, with nothing Playback-specific
+        # spliced in.
+        assert cc_index < analysis_index < compliance_index < calculator_index
         after_analysis = nav_list[analysis_index + len('id="mainNavAnalysisBtn"'):]
-        assert after_analysis.count('class="shell-nav-item"') == 1
-        assert 'class="shell-nav-item"' not in nav_list[compliance_index + len('id="mainNavComplianceBtn"'):]
+        assert after_analysis.count('class="shell-nav-item"') == 2
+        assert 'class="shell-nav-item"' not in nav_list[calculator_index + len('id="mainNavCalculatorBtn"'):]
         assert 'id="mainNavAnalysisBtn"' in tail
         assert '<span class="shell-nav-label">Tools</span>' not in nav_list
         assert '<span class="shell-nav-label">Reports</span>' not in nav_list

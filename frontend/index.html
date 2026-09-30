@@ -6089,7 +6089,8 @@
            this same reason (see their own comments above), and
            #pageCompliance would otherwise stay visibly rendered
            underneath other pages after navigating away. */
-        #pageCompliance {
+        #pageCompliance,
+        #pageCalculator {
             display: flex;
             flex-direction: column;
             gap: 16px;
@@ -6099,10 +6100,279 @@
             box-sizing: border-box;
         }
         #pageCompliance[hidden] { display: none; }
+        #pageCalculator[hidden] { display: none; }
         .ww-compliance-panel {
             display: flex;
             flex-direction: column;
             gap: 12px;
+        }
+        .ww-calculator-tool {
+            min-width: 0;
+        }
+        .ww-calculator-tool-header {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .ww-calculator-intro {
+            margin: 0;
+            color: var(--text-dim);
+            font-size: 0.72rem;
+        }
+        .ww-calculator-mode-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        .ww-calculator-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 10px;
+            align-items: start;
+            min-width: 0;
+        }
+        .ww-calculator-layout[hidden] {
+            display: none;
+        }
+        .ww-calculator-balanced-top,
+        .ww-calculator-individual-top,
+        .ww-calculator-support-grid {
+            display: grid;
+            gap: 10px;
+            min-width: 0;
+        }
+        .ww-calculator-balanced-top {
+            grid-template-columns: minmax(390px, 1.35fr) minmax(210px, 0.65fr);
+        }
+        .ww-calculator-individual-top {
+            grid-template-columns: minmax(440px, 1.2fr) minmax(260px, 0.8fr);
+        }
+        .ww-calculator-support-grid {
+            grid-template-columns: minmax(300px, 1fr) minmax(260px, 0.78fr);
+            align-items: stretch;
+        }
+        .ww-calculator-block {
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            background: var(--surface-tint);
+            padding: 10px;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .ww-calculator-block--flush {
+            padding: 0;
+            border: 0;
+            background: transparent;
+        }
+        .ww-calculator-block-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 10px;
+            min-width: 0;
+        }
+        .ww-calculator-section-title {
+            margin: 0;
+            font-size: 0.72rem;
+            letter-spacing: 0;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            font-weight: 600;
+        }
+        .ww-calculator-balanced-inputs {
+            display: grid;
+            grid-template-columns: minmax(150px, 1fr) minmax(130px, 0.9fr) minmax(72px, 0.45fr);
+            gap: 8px;
+            align-items: end;
+            min-width: 0;
+        }
+        .ww-calculator-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            min-width: 0;
+        }
+        .ww-calculator-grid :where(.ww-phasor-field),
+        .ww-calculator-phase-row :where(.ww-phasor-field) {
+            min-width: 0;
+        }
+        .ww-calculator-grid input[type="number"],
+        .ww-calculator-grid select,
+        .ww-calculator-balanced-inputs input[type="number"],
+        .ww-calculator-balanced-inputs select,
+        .ww-calculator-phase-row input[type="number"],
+        .ww-calculator-phase-row select {
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+        }
+        .ww-calculator-result {
+            justify-content: center;
+        }
+        .ww-calculator-result-label {
+            margin: 0 0 4px;
+            color: var(--text-dim);
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .ww-calculator-result-value {
+            font-size: 1.42rem;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1.2;
+        }
+        .ww-calculator-result-note {
+            margin: 6px 0 0;
+            color: var(--text-dim);
+            font-size: 0.75rem;
+        }
+        .ww-calculator-assumption {
+            margin: 0;
+            color: var(--text-dim);
+            font-size: 0.75rem;
+            line-height: 1.45;
+        }
+        .ww-calculator-formula {
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+            font-size: 0.82rem;
+            color: var(--text);
+        }
+        .ww-calculator-formula-line {
+            min-height: 1.25em;
+        }
+        .ww-calculator-phase-grid {
+            display: grid;
+            grid-template-columns: minmax(58px, 0.48fr) minmax(110px, 1fr) minmax(110px, 1fr);
+            gap: 8px;
+            align-items: end;
+        }
+        .ww-calculator-unit-field {
+            max-width: 140px;
+        }
+        .ww-calculator-phase-head {
+            color: var(--text-dim);
+            font-size: 0.72rem;
+            font-weight: 700;
+        }
+        .ww-calculator-phase-row {
+            display: contents;
+        }
+        .ww-calculator-phase-label {
+            align-self: center;
+            color: var(--text);
+            font-weight: 700;
+            font-size: 0.82rem;
+        }
+        .ww-calculator-results-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.78rem;
+        }
+        .ww-calculator-results-table th,
+        .ww-calculator-results-table td {
+            text-align: left;
+            border-bottom: 1px solid var(--panel-border);
+            padding: 6px 3px;
+        }
+        .ww-calculator-results-table th {
+            color: var(--text-dim);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+        }
+        .ww-calculator-diagram-wrap {
+            min-height: 150px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .ww-calculator-diagram-wrap svg {
+            display: block;
+            width: 100%;
+            max-width: 330px;
+            min-height: 145px;
+            height: 160px;
+        }
+        .ww-calc-axis {
+            stroke: var(--panel-border);
+            stroke-width: 0.7;
+        }
+        .ww-calc-neutral {
+            fill: var(--panel);
+            stroke: var(--text-dim);
+            stroke-width: 1.2;
+        }
+        .ww-calc-phase-vector {
+            stroke: var(--accent);
+            stroke-width: 1.6;
+            fill: none;
+        }
+        .ww-calc-phase-vector-y {
+            stroke: var(--warn);
+        }
+        .ww-calc-phase-vector-b {
+            stroke: var(--ok);
+        }
+        .ww-calc-line-vector {
+            stroke: var(--text);
+            stroke-width: 1.15;
+            stroke-dasharray: 4 3;
+            fill: none;
+            opacity: 0.82;
+        }
+        .ww-calc-diagram-label {
+            fill: var(--text);
+            font-size: 5px;
+            font-weight: 700;
+        }
+        .ww-calc-diagram-muted {
+            fill: var(--text-dim);
+            font-size: 4.2px;
+        }
+        @media (max-width: 980px) {
+            .ww-calculator-balanced-top,
+            .ww-calculator-individual-top,
+            .ww-calculator-support-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        @media (max-width: 720px) {
+            .ww-calculator-balanced-inputs {
+                grid-template-columns: minmax(0, 1fr) minmax(96px, 0.55fr);
+            }
+            .ww-calculator-balanced-inputs .ww-calculator-voltage-field {
+                grid-column: 1 / -1;
+            }
+        }
+        @media (max-width: 560px) {
+            #pageCalculator {
+                padding: 16px;
+            }
+            .ww-calculator-workspace {
+                gap: 10px;
+            }
+            .ww-calculator-balanced-inputs,
+            .ww-calculator-grid,
+            .ww-calculator-phase-grid {
+                grid-template-columns: 1fr;
+            }
+            .ww-calculator-phase-row {
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 6px;
+                border-top: 1px solid var(--panel-border);
+                padding-top: 8px;
+            }
+            .ww-calculator-phase-head {
+                display: none;
+            }
         }
         .ww-compliance-heading {
             margin: 0;
@@ -8051,6 +8321,15 @@
                 <button type="button" class="shell-nav-item" id="mainNavComplianceBtn" title="Compliance">
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><path d="M9 2 3 4.5v4c0 4 2.5 6.3 6 7.5 3.5-1.2 6-3.5 6-7.5v-4L9 2Z"/><path d="M6.3 9.2 8.2 11l3.5-4"/></svg></span>
                     <span class="shell-nav-label">Compliance</span>
+                </button>
+                <!-- Calculator: quick, standalone electrical-engineering
+                     calculations. First-class top-level page immediately
+                     after Compliance, deliberately separate from
+                     Calculated Channels and Analysis. Its tools are
+                     frontend-local and never move Analysis Manual modes. -->
+                <button type="button" class="shell-nav-item" id="mainNavCalculatorBtn" title="Calculator">
+                    <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><rect x="4" y="2.5" width="10" height="13" rx="1.5"/><rect x="6" y="4.5" width="6" height="2" rx="0.4"/><circle cx="6.7" cy="9.2" r="0.6" fill="currentColor" stroke="none"/><circle cx="9" cy="9.2" r="0.6" fill="currentColor" stroke="none"/><circle cx="11.3" cy="9.2" r="0.6" fill="currentColor" stroke="none"/><circle cx="6.7" cy="11.6" r="0.6" fill="currentColor" stroke="none"/><circle cx="9" cy="11.6" r="0.6" fill="currentColor" stroke="none"/><circle cx="11.3" cy="11.6" r="0.6" fill="currentColor" stroke="none"/></svg></span>
+                    <span class="shell-nav-label">Calculator</span>
                 </button>
             </div>
             <div class="shell-nav-bottom">
@@ -10237,6 +10516,159 @@
                             </section>
                         </section>
                     </div>
+                </div>
+            </section>
+
+            <section id="pageCalculator" aria-label="Calculator" hidden>
+                <div class="recordings-header">
+                    <div>
+                        <h2>Calculator</h2>
+                        <p class="ww-cc-subtitle">Quick electrical engineering calculations without requiring an event recording.</p>
+                    </div>
+                </div>
+                <div class="ww-analysis-shell ww-calculator-workspace" aria-label="Calculator workspace">
+                    <nav class="ww-analysis-type-nav ww-calculator-tool-nav" aria-label="Calculators">
+                        <p class="ww-analysis-type-title">Calculators</p>
+                        <button type="button" class="ww-analysis-type-item active" id="wwCalcToolLinePhaseBtn" aria-current="true" aria-controls="wwCalcToolLinePhase">
+                            <span class="ww-analysis-type-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M2.5 9h3l1.6-4.5 3.2 9 1.6-4.5h3.6"/><path d="M4.5 14.5h9"/></svg></span>
+                            <span class="ww-analysis-type-label">Line / Phase Voltage</span>
+                        </button>
+                    </nav>
+
+                    <section class="ww-analysis-content panel ww-phasor-panel ww-calculator-tool" id="wwCalcToolLinePhase" aria-label="Line / Phase Voltage calculator">
+                        <div class="ww-calculator-tool-header">
+                            <h3>Line / Phase Voltage</h3>
+                            <p class="ww-calculator-intro">L-N to L-L conversion and individual phase calculations.</p>
+                        </div>
+                        <div class="ww-calculator-mode-row">
+                            <span class="ww-oc-axis-toggle-group" role="tablist" aria-label="Line / Phase Voltage calculator mode">
+                                <button type="button" class="ww-oc-axis-toggle-btn ww-oc-axis-toggle-btn--active" id="wwCalcModeBalancedBtn" data-calculator-mode="balanced" role="tab" aria-selected="true" aria-controls="wwCalcBalancedPanel">Balanced</button>
+                                <button type="button" class="ww-oc-axis-toggle-btn" id="wwCalcModeIndividualBtn" data-calculator-mode="individual" role="tab" aria-selected="false" aria-controls="wwCalcIndividualPanel">Individual Phases</button>
+                            </span>
+                        </div>
+
+                        <div class="ww-calculator-layout" id="wwCalcBalancedPanel" role="tabpanel" aria-labelledby="wwCalcModeBalancedBtn">
+                            <div class="ww-calculator-balanced-top">
+                                <section class="ww-calculator-block" aria-label="Balanced voltage input">
+                            <p class="ww-calculator-section-title">Input</p>
+                            <div class="ww-calculator-balanced-inputs">
+                                <label class="ww-phasor-field">
+                                    <span class="ww-phasor-field-label">Conversion</span>
+                                    <select id="wwCalcBalancedDirection">
+                                        <option value="ln_to_ll">L-N to L-L</option>
+                                        <option value="ll_to_ln">L-L to L-N</option>
+                                    </select>
+                                </label>
+                                <label class="ww-phasor-field ww-calculator-voltage-field">
+                                    <span class="ww-phasor-field-label" id="wwCalcBalancedInputLabel">L-N magnitude</span>
+                                    <input type="number" id="wwCalcBalancedMagnitude" min="0" step="any" value="158.77" inputmode="decimal">
+                                </label>
+                                <label class="ww-phasor-field">
+                                    <span class="ww-phasor-field-label">Unit</span>
+                                    <select id="wwCalcBalancedUnit">
+                                        <option value="V">V</option>
+                                        <option value="kV" selected>kV</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <p class="ww-calculator-assumption">Balanced mode assumes balanced three-phase quantities with 120° phase displacement.</p>
+                            </section>
+                            <section class="ww-calculator-block ww-calculator-result" aria-live="polite" aria-label="Balanced voltage result">
+                                <p class="ww-calculator-result-label" id="wwCalcBalancedResultLabel">L-L voltage</p>
+                                <div class="ww-calculator-result-value" id="wwCalcBalancedResultValue">--</div>
+                                <p class="ww-calculator-result-note" id="wwCalcBalancedResultNote"></p>
+                            </section>
+                        </div>
+                        <div class="ww-calculator-support-grid">
+                            <section class="ww-calculator-block" aria-label="Balanced voltage formula">
+                            <p class="ww-calculator-section-title">Formula</p>
+                            <div class="ww-calculator-formula" id="wwCalcBalancedFormula"></div>
+                            </section>
+                            <section class="ww-calculator-block" aria-label="Balanced voltage visual">
+                            <p class="ww-calculator-section-title">Visual</p>
+                            <div class="ww-calculator-diagram-wrap" id="wwCalcBalancedDiagram" aria-label="Balanced voltage phasor diagram"></div>
+                            </section>
+                        </div>
+                        </div>
+
+                        <div class="ww-calculator-layout" id="wwCalcIndividualPanel" role="tabpanel" aria-labelledby="wwCalcModeIndividualBtn" hidden>
+                            <div class="ww-calculator-individual-top">
+                                <section class="ww-calculator-block" aria-label="Individual phase voltage inputs">
+                            <div class="ww-calculator-block-header">
+                            <p class="ww-calculator-section-title">Input Phasors</p>
+                            <label class="ww-phasor-field ww-calculator-unit-field">
+                                <span class="ww-phasor-field-label">Unit</span>
+                                <select id="wwCalcIndividualUnit">
+                                    <option value="V">V</option>
+                                    <option value="kV" selected>kV</option>
+                                </select>
+                            </label>
+                            </div>
+                            <div class="ww-calculator-phase-grid" aria-label="Individual phase voltage inputs">
+                                <span class="ww-calculator-phase-head">Phase</span>
+                                <span class="ww-calculator-phase-head">Magnitude</span>
+                                <span class="ww-calculator-phase-head">Angle</span>
+                                <div class="ww-calculator-phase-row">
+                                    <span class="ww-calculator-phase-label" id="wwCalcPhaseRLabel">R-N</span>
+                                    <label class="ww-phasor-field">
+                                        <span class="ww-phasor-field-label">R-N magnitude</span>
+                                        <input type="number" id="wwCalcMagR" min="0" step="any" value="158.77" inputmode="decimal">
+                                    </label>
+                                    <label class="ww-phasor-field">
+                                        <span class="ww-phasor-field-label">R angle (degrees)</span>
+                                        <input type="number" id="wwCalcAngleR" step="any" value="0" inputmode="decimal">
+                                    </label>
+                                </div>
+                                <div class="ww-calculator-phase-row">
+                                    <span class="ww-calculator-phase-label" id="wwCalcPhaseYLabel">Y-N</span>
+                                    <label class="ww-phasor-field">
+                                        <span class="ww-phasor-field-label">Y-N magnitude</span>
+                                        <input type="number" id="wwCalcMagY" min="0" step="any" value="158.77" inputmode="decimal">
+                                    </label>
+                                    <label class="ww-phasor-field">
+                                        <span class="ww-phasor-field-label">Y angle (degrees)</span>
+                                        <input type="number" id="wwCalcAngleY" step="any" value="-120" inputmode="decimal">
+                                    </label>
+                                </div>
+                                <div class="ww-calculator-phase-row">
+                                    <span class="ww-calculator-phase-label" id="wwCalcPhaseBLabel">B-N</span>
+                                    <label class="ww-phasor-field">
+                                        <span class="ww-phasor-field-label">B-N magnitude</span>
+                                        <input type="number" id="wwCalcMagB" min="0" step="any" value="158.77" inputmode="decimal">
+                                    </label>
+                                    <label class="ww-phasor-field">
+                                        <span class="ww-phasor-field-label">B angle (degrees)</span>
+                                        <input type="number" id="wwCalcAngleB" step="any" value="120" inputmode="decimal">
+                                    </label>
+                                </div>
+                            </div>
+                            </section>
+                            <section class="ww-calculator-block ww-calculator-result" aria-live="polite" aria-label="Line voltage results">
+                                <p class="ww-calculator-result-label">Line Voltages</p>
+                                <table class="ww-calculator-results-table">
+                                    <thead><tr><th>Pair</th><th>Magnitude</th><th>Angle</th></tr></thead>
+                                    <tbody>
+                                        <tr><td id="wwCalcPairRYLabel">R-Y</td><td id="wwCalcResultRYMag">--</td><td id="wwCalcResultRYAngle">--</td></tr>
+                                        <tr><td id="wwCalcPairYBLabel">Y-B</td><td id="wwCalcResultYBMag">--</td><td id="wwCalcResultYBAngle">--</td></tr>
+                                        <tr><td id="wwCalcPairBRLabel">B-R</td><td id="wwCalcResultBRMag">--</td><td id="wwCalcResultBRAngle">--</td></tr>
+                                    </tbody>
+                                </table>
+                                <p class="ww-calculator-result-note" id="wwCalcIndividualResultNote"></p>
+                            </section>
+                            </div>
+                            <div class="ww-calculator-support-grid">
+                                <section class="ww-calculator-block" aria-label="Individual phase formula">
+                            <p class="ww-calculator-section-title">Formula</p>
+                            <div class="ww-calculator-formula" id="wwCalcIndividualFormula"></div>
+                            <p class="ww-calculator-assumption">Individual mode uses complex phasor subtraction. It does not use √3 × phase magnitude for unbalanced entries.</p>
+                                </section>
+                                <section class="ww-calculator-block" aria-label="Individual phase dynamic diagram">
+                            <p class="ww-calculator-section-title">Phasor Diagram</p>
+                            <div class="ww-calculator-diagram-wrap" id="wwCalcIndividualDiagram" aria-label="Individual phase and line voltage phasor diagram"></div>
+                                </section>
+                            </div>
+                        </div>
+                    </section>
                 </div>
             </section>
 
@@ -12764,10 +13196,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // own page, own sub-nav, own panel; never routed through
             // wwRenderAnalysisPage()/wwSetActiveAnalysisType() or any
             // analyzer state). Same "hide, don't destroy" mechanism.
+            // Calculator: a SEVENTH first-class page, immediately after
+            // Compliance in the main navigation. It hosts frontend-local
+            // tools and does not require a loaded event.
             if (
                 page !== "waveform" && page !== "recordings" &&
                 page !== "calculated-channels" && page !== "data-preparation" &&
-                page !== "analysis" && page !== "compliance"
+                page !== "analysis" && page !== "compliance" &&
+                page !== "calculator"
             ) return;
             const wasWaveform = shell.currentPage === "waveform";
             shell.currentPage = page;
@@ -12778,6 +13214,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("pageDataPreparation").hidden = page !== "data-preparation";
             document.getElementById("pageAnalysis").hidden = page !== "analysis";
             document.getElementById("pageCompliance").hidden = page !== "compliance";
+            document.getElementById("pageCalculator").hidden = page !== "calculator";
             // Phase 3B-UAT8 fix: the active-state CSS rule
             // (`.shell-nav-item[aria-current="page"]`) always expected
             // the token "page" (the ARIA APG convention for a current
@@ -12796,6 +13233,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             setShellNavCurrent("mainNavCalculatedChannelsBtn", page === "calculated-channels");
             setShellNavCurrent("mainNavAnalysisBtn", page === "analysis");
             setShellNavCurrent("mainNavComplianceBtn", page === "compliance");
+            setShellNavCurrent("mainNavCalculatorBtn", page === "calculator");
             setShellNavCurrent("mainNavTableBtn", page === "waveform" && shell.activeView === "table");
 
             if (page === "analysis") {
@@ -12803,6 +13241,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             if (page === "compliance") {
                 wwRenderCompliancePage();
+            }
+            if (page === "calculator") {
+                wwCalcRender();
             }
 
             // The (responsive-only) "Sources" drawer toggle is scoped to
@@ -42495,6 +42936,258 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // ==================================================================
+        // Calculator -- Line / Phase Voltage
+        // Frontend-local quick engineering calculator. It uses no event
+        // recording, channel selector, backend API or persistence.
+        // ==================================================================
+        const WW_CALCULATOR_RYB_PHASE_DISPLAY = Object.freeze({
+            convention: "RYB",
+            status: "manual_calculator",
+            symbols: Object.freeze({ ...WW_PHASE_DISPLAY_SYMBOLS_BY_CONVENTION.RYB }),
+        });
+        const WW_CALC_PHASES = [
+            { key: "R", role: "Va", magId: "wwCalcMagR", angleId: "wwCalcAngleR" },
+            { key: "Y", role: "Vb", magId: "wwCalcMagY", angleId: "wwCalcAngleY" },
+            { key: "B", role: "Vc", magId: "wwCalcMagB", angleId: "wwCalcAngleB" },
+        ];
+        const WW_CALC_LINE_PAIRS = [
+            { key: "RY", canonical: "AB", from: "R", to: "Y", magId: "wwCalcResultRYMag", angleId: "wwCalcResultRYAngle" },
+            { key: "YB", canonical: "BC", from: "Y", to: "B", magId: "wwCalcResultYBMag", angleId: "wwCalcResultYBAngle" },
+            { key: "BR", canonical: "CA", from: "B", to: "R", magId: "wwCalcResultBRMag", angleId: "wwCalcResultBRAngle" },
+        ];
+
+        function wwCalcReadNumber(id, options) {
+            const el = document.getElementById(id);
+            if (!el) return null;
+            const raw = String(el.value || "").trim();
+            if (!raw) return null;
+            const value = Number(raw);
+            if (!Number.isFinite(value)) return null;
+            if (options && options.min !== undefined && value < options.min) return null;
+            return value;
+        }
+
+        function wwCalcFormatNumber(value, decimals) {
+            if (!Number.isFinite(value)) return "--";
+            const places = decimals === undefined ? 2 : decimals;
+            if (Math.abs(value) > 0 && Math.abs(value) < 0.001) return value.toExponential(3);
+            return value.toFixed(places);
+        }
+
+        function wwCalcFormatVoltage(value, unit) {
+            return wwCalcFormatNumber(value, 2) + " " + escapeHtml(unit || "");
+        }
+
+        function wwCalcFormatAngle(value) {
+            return wwCalcFormatNumber(value, 2) + "°";
+        }
+
+        function wwCalcNormalizeAngleDeg(angle) {
+            if (!Number.isFinite(angle)) return 0;
+            let normalized = ((angle + 180) % 360 + 360) % 360 - 180;
+            if (normalized <= -180) normalized += 360;
+            return normalized;
+        }
+
+        function wwCalcPolarToComplex(magnitude, angleDeg) {
+            const radians = angleDeg * Math.PI / 180;
+            return { re: magnitude * Math.cos(radians), im: magnitude * Math.sin(radians) };
+        }
+
+        function wwCalcSubtractComplex(a, b) {
+            return { re: a.re - b.re, im: a.im - b.im };
+        }
+
+        function wwCalcComplexToPolar(value) {
+            const magnitude = Math.hypot(value.re, value.im);
+            const angle = magnitude < 1e-12 ? 0 : wwCalcNormalizeAngleDeg(Math.atan2(value.im, value.re) * 180 / Math.PI);
+            return { magnitude, angle };
+        }
+
+        function wwCalcSetMode(mode) {
+            const nextMode = mode === "individual" ? "individual" : "balanced";
+            const balanced = nextMode === "balanced";
+            document.getElementById("wwCalcModeBalancedBtn").classList.toggle("ww-oc-axis-toggle-btn--active", balanced);
+            document.getElementById("wwCalcModeIndividualBtn").classList.toggle("ww-oc-axis-toggle-btn--active", !balanced);
+            document.getElementById("wwCalcModeBalancedBtn").setAttribute("aria-selected", balanced ? "true" : "false");
+            document.getElementById("wwCalcModeIndividualBtn").setAttribute("aria-selected", balanced ? "false" : "true");
+            document.getElementById("wwCalcBalancedPanel").hidden = !balanced;
+            document.getElementById("wwCalcIndividualPanel").hidden = balanced;
+            wwCalcRender();
+        }
+
+        function wwCalcRender() {
+            if (!document.getElementById("pageCalculator")) return;
+            wwCalcRenderLabels();
+            wwCalcRenderBalanced();
+            wwCalcRenderIndividual();
+        }
+
+        function wwCalcRenderLabels() {
+            const pd = WW_CALCULATOR_RYB_PHASE_DISPLAY;
+            const labelMap = [
+                ["wwCalcPhaseRLabel", wwRichLabelHtml(wwRoleLabelHtml("Va", pd) + "-N")],
+                ["wwCalcPhaseYLabel", wwRichLabelHtml(wwRoleLabelHtml("Vb", pd) + "-N")],
+                ["wwCalcPhaseBLabel", wwRichLabelHtml(wwRoleLabelHtml("Vc", pd) + "-N")],
+                ["wwCalcPairRYLabel", wwLineToLinePairHtml("AB", pd)],
+                ["wwCalcPairYBLabel", wwLineToLinePairHtml("BC", pd)],
+                ["wwCalcPairBRLabel", wwLineToLinePairHtml("CA", pd)],
+            ];
+            for (const [id, html] of labelMap) {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = html;
+            }
+        }
+
+        function wwCalcRenderBalanced() {
+            const direction = document.getElementById("wwCalcBalancedDirection").value;
+            const unit = document.getElementById("wwCalcBalancedUnit").value;
+            const magnitude = wwCalcReadNumber("wwCalcBalancedMagnitude", { min: 0 });
+            const inputLabel = document.getElementById("wwCalcBalancedInputLabel");
+            const resultLabel = document.getElementById("wwCalcBalancedResultLabel");
+            const resultValue = document.getElementById("wwCalcBalancedResultValue");
+            const resultNote = document.getElementById("wwCalcBalancedResultNote");
+            const formulaEl = document.getElementById("wwCalcBalancedFormula");
+            const pd = WW_CALCULATOR_RYB_PHASE_DISPLAY;
+            const lnSymbol = wwRoleLabelHtml("Va", pd);
+            const llSymbol = wwLineToLinePairHtml("AB", pd);
+            const valid = magnitude !== null;
+            const result = valid ? (direction === "ln_to_ll" ? magnitude * Math.sqrt(3) : magnitude / Math.sqrt(3)) : null;
+            inputLabel.innerHTML = wwRichLabelHtml((direction === "ln_to_ll" ? lnSymbol : llSymbol) + " magnitude");
+            resultLabel.innerHTML = wwRichLabelHtml((direction === "ln_to_ll" ? llSymbol : lnSymbol) + " voltage");
+            resultValue.innerHTML = valid ? wwCalcFormatVoltage(result, unit) : "--";
+            resultNote.textContent = valid ? "Live balanced conversion" : "Enter a non-negative voltage magnitude.";
+            const inputText = valid ? wwCalcFormatVoltage(magnitude, unit) : "--";
+            const outputText = valid ? wwCalcFormatVoltage(result, unit) : "--";
+            if (direction === "ln_to_ll") {
+                formulaEl.innerHTML =
+                    '<div class="ww-calculator-formula-line">' + wwRichLabelHtml(llSymbol + " = √3 × " + lnSymbol) + '</div>' +
+                    '<div class="ww-calculator-formula-line">= √3 × ' + inputText + '</div>' +
+                    '<div class="ww-calculator-formula-line">= ' + outputText + '</div>';
+            } else {
+                formulaEl.innerHTML =
+                    '<div class="ww-calculator-formula-line">' + wwRichLabelHtml(lnSymbol + " = " + llSymbol + " / √3") + '</div>' +
+                    '<div class="ww-calculator-formula-line">= ' + inputText + ' / √3</div>' +
+                    '<div class="ww-calculator-formula-line">= ' + outputText + '</div>';
+            }
+            wwCalcRenderDiagram("wwCalcBalancedDiagram", wwCalcBalancedDiagramData(), { showLineVectors: true, balanced: true });
+        }
+
+        function wwCalcPhaseInputs() {
+            const values = {};
+            for (const phase of WW_CALC_PHASES) {
+                const magnitude = wwCalcReadNumber(phase.magId, { min: 0 });
+                const angle = wwCalcReadNumber(phase.angleId);
+                if (magnitude === null || angle === null) return null;
+                values[phase.key] = {
+                    magnitude,
+                    angle,
+                    complex: wwCalcPolarToComplex(magnitude, angle),
+                };
+            }
+            return values;
+        }
+
+        function wwCalcIndividualResults(values) {
+            const results = {};
+            for (const pair of WW_CALC_LINE_PAIRS) {
+                const diff = wwCalcSubtractComplex(values[pair.from].complex, values[pair.to].complex);
+                results[pair.key] = { ...wwCalcComplexToPolar(diff), complex: diff };
+            }
+            return results;
+        }
+
+        function wwCalcRenderIndividual() {
+            const unit = document.getElementById("wwCalcIndividualUnit").value;
+            const values = wwCalcPhaseInputs();
+            const note = document.getElementById("wwCalcIndividualResultNote");
+            const formulaEl = document.getElementById("wwCalcIndividualFormula");
+            const pd = WW_CALCULATOR_RYB_PHASE_DISPLAY;
+            const lineFormulaHtml = ["AB", "BC", "CA"].map((pair) => wwLineToLineFormulaHtml(pair, pd));
+            formulaEl.innerHTML =
+                lineFormulaHtml.map((formula) => '<div class="ww-calculator-formula-line">' + formula + '</div>').join("") +
+                '<div class="ww-calculator-formula-line">V = |V|(cos θ + j sin θ)</div>';
+            if (!values) {
+                for (const pair of WW_CALC_LINE_PAIRS) {
+                    document.getElementById(pair.magId).textContent = "--";
+                    document.getElementById(pair.angleId).textContent = "--";
+                }
+                note.textContent = "Enter all magnitudes and angles to calculate line voltages.";
+                wwCalcRenderDiagram("wwCalcIndividualDiagram", wwCalcBalancedDiagramData(), { showLineVectors: false, balanced: false });
+                return;
+            }
+            const results = wwCalcIndividualResults(values);
+            for (const pair of WW_CALC_LINE_PAIRS) {
+                document.getElementById(pair.magId).textContent = wwCalcFormatNumber(results[pair.key].magnitude, 2) + " " + unit;
+                document.getElementById(pair.angleId).textContent = wwCalcFormatAngle(results[pair.key].angle);
+            }
+            note.textContent = "Angles are normalized to (-180°, 180°].";
+            wwCalcRenderDiagram("wwCalcIndividualDiagram", { phases: values, lines: results }, { showLineVectors: true, balanced: false });
+        }
+
+        function wwCalcBalancedDiagramData() {
+            const phases = {
+                R: { magnitude: 1, angle: 0, complex: wwCalcPolarToComplex(1, 0) },
+                Y: { magnitude: 1, angle: -120, complex: wwCalcPolarToComplex(1, -120) },
+                B: { magnitude: 1, angle: 120, complex: wwCalcPolarToComplex(1, 120) },
+            };
+            return { phases, lines: wwCalcIndividualResults(phases) };
+        }
+
+        function wwCalcSvgPoint(value, scale) {
+            return { x: value.re * scale, y: -value.im * scale };
+        }
+
+        function wwLineToLinePairSvg(pair, phaseDisplay) {
+            return wwVoltageSymbolSvg(wwPhaseDisplaySymbol(pair, phaseDisplay));
+        }
+
+        function wwCalcRenderDiagram(containerId, data, options) {
+            const el = document.getElementById(containerId);
+            if (!el || !data || !data.phases) return;
+            const phaseValues = Object.values(data.phases);
+            const lineValues = data.lines ? Object.values(data.lines) : [];
+            const maxMagnitude = Math.max(1e-9, ...phaseValues.map((p) => p.magnitude || 0), ...lineValues.map((p) => p.magnitude || 0));
+            const plotRadius = 56;
+            const scale = plotRadius / maxMagnitude;
+            const phasePoints = {};
+            for (const phase of WW_CALC_PHASES) {
+                phasePoints[phase.key] = wwCalcSvgPoint(data.phases[phase.key].complex, scale);
+            }
+            const phaseLines = WW_CALC_PHASES.map((phase) => {
+                const p = phasePoints[phase.key];
+                const cls = phase.key === "Y" ? " ww-calc-phase-vector-y" : phase.key === "B" ? " ww-calc-phase-vector-b" : "";
+                return '<line class="ww-calc-phase-vector' + cls + '" x1="0" y1="0" x2="' + p.x.toFixed(2) + '" y2="' + p.y.toFixed(2) + '" marker-end="url(#wwCalcArrow)"/>' +
+                    '<text class="ww-calc-diagram-label" x="' + (p.x * 1.08).toFixed(2) + '" y="' + (p.y * 1.08).toFixed(2) + '">' + wwRoleLabelSvg(phase.role, WW_CALCULATOR_RYB_PHASE_DISPLAY) + '</text>';
+            }).join("");
+            const lineVectors = options && options.showLineVectors ? WW_CALC_LINE_PAIRS.map((pair) => {
+                const start = phasePoints[pair.to];
+                const end = phasePoints[pair.from];
+                const midX = (start.x + end.x) / 2;
+                const midY = (start.y + end.y) / 2;
+                return '<line class="ww-calc-line-vector" x1="' + start.x.toFixed(2) + '" y1="' + start.y.toFixed(2) + '" x2="' + end.x.toFixed(2) + '" y2="' + end.y.toFixed(2) + '" marker-end="url(#wwCalcLineArrow)"/>' +
+                    '<text class="ww-calc-diagram-muted" x="' + (midX + 4).toFixed(2) + '" y="' + (midY - 4).toFixed(2) + '">' + wwLineToLinePairSvg(pair.canonical, WW_CALCULATOR_RYB_PHASE_DISPLAY) + '</text>';
+            }).join("") : "";
+            el.innerHTML = '<svg viewBox="-76 -66 152 132" role="img" aria-label="' + (options && options.balanced ? "Balanced voltage phasor diagram" : "Dynamic voltage phasor diagram") + '">' +
+                '<defs><marker id="wwCalcArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="3.2" markerHeight="3.2" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/></marker>' +
+                '<marker id="wwCalcLineArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="3" markerHeight="3" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/></marker></defs>' +
+                '<g><line class="ww-calc-axis" x1="-66" y1="0" x2="66" y2="0"/><line class="ww-calc-axis" x1="0" y1="-56" x2="0" y2="56"/>' +
+                '<circle class="ww-calc-neutral" cx="0" cy="0" r="2.2"/>' + phaseLines + lineVectors + '</g></svg>';
+        }
+
+        function wwCalculatorInit() {
+            const page = document.getElementById("pageCalculator");
+            if (!page) return;
+            document.getElementById("wwCalcModeBalancedBtn").addEventListener("click", () => wwCalcSetMode("balanced"));
+            document.getElementById("wwCalcModeIndividualBtn").addEventListener("click", () => wwCalcSetMode("individual"));
+            for (const el of page.querySelectorAll("input, select")) {
+                el.addEventListener("input", wwCalcRender);
+                el.addEventListener("change", wwCalcRender);
+            }
+            wwCalcRender();
+        }
+
+        // ==================================================================
         // Compliance & Capability -- Slice 1 (workspace shell) + Slice 2
         // (Measurement Selection + Normalization Foundation)
         //
@@ -46405,6 +47098,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("mainNavCalculatedChannelsBtn").addEventListener("click", () => shellSetCurrentPage("calculated-channels"));
         document.getElementById("mainNavAnalysisBtn").addEventListener("click", () => shellSetCurrentPage("analysis"));
         document.getElementById("mainNavComplianceBtn").addEventListener("click", () => shellSetCurrentPage("compliance"));
+        document.getElementById("mainNavCalculatorBtn").addEventListener("click", () => shellSetCurrentPage("calculator"));
+        wwCalculatorInit();
 
         // Analysis-type nav wiring -- implemented analyzers and lightweight
         // placeholders plug into this ONE shared switcher. Placeholder
