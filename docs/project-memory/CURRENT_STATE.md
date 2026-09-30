@@ -9,7 +9,16 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-30** — **Calculator phase-to-neutral
+Last meaningful update: **2026-10-01** — **Native BEN record parser
+(DEC-119), standalone backend only.** `app.providers.ben` parses
+BEN32 Fast/Slow SubBen records natively (no COMTRADE intermediate) and
+can normalize them into `DisturbanceRecord`. It is proven
+sample-for-sample against four BEN32 COMTRADE exports. It is **not**
+integrated into upload/UI; that is a separate task awaiting owner
+go-ahead, with timezone and nominal-frequency policy `[OPEN]`. See
+[BEN_FORMAT.md](BEN_FORMAT.md).
+
+Earlier, on **2026-09-30** — **Calculator phase-to-neutral
 notation (DEC-117 Amendment 3).** Line / Phase Voltage shows
 V<sub>RN</sub> (plain `VRN`), never V<sub>R</sub>-N. That covers the
 inputs, formula, diagram and Balanced L-N label; angles stay
@@ -2576,8 +2585,10 @@ modules beyond the original COMTRADE port (`domain/source.py`,
 `measurement_group.py` / `measurement_group_detection.py` /
 `voltage_group_config.py` / `current_group_config.py` / `voltage_reference.py`
 / `per_unit.py` (the Per-Unit measurement model), `event_detection.py` /
-`rms_detector.py`. `providers/` still holds only `base.py` and
-`comtrade.py` — no CSV/Excel provider exists yet. No persistent storage of
+`rms_detector.py`. `providers/` holds `base.py`, `comtrade.py` and (since
+2026-10-01, DEC-119) the native `ben/` package — no CSV/Excel provider
+exists (CSV/Excel converts through the Preparation services), and
+`ben/`'s `BenProvider` is not wired into any upload path yet. No persistent storage of
 uploaded event files (DEC-015, unchanged); the active workspace retains
 each source's full-resolution parsed record in memory only (DEC-019).
 
@@ -2658,6 +2669,24 @@ re-confirmed by the TG-FINAL audit):
 - **COMTRADE ingestion**: two-slot `.cfg`/`.dat` upload, parse, engineering-
   type channel classification (backend-computed), ephemeral per-request
   parsing (no event files ever persisted to disk/storage).
+- **Native BEN parsing (DEC-119, 2026-10-01) — backend only, NOT
+  integrated.** `app.providers.ben` decodes BEN32 3.8.9.6 "Fast SubBen"
+  and "Slow SubBen" records natively into a lossless `BenRecord`.
+  - Everything is derived from the file itself: sample rate, counts,
+    stride, data offset and every channel's word/bit.
+  - `to_disturbance_record()` normalizes it into the unchanged
+    `DisturbanceRecord`:
+    - Hz/MW calculated channels map to `parameter_type`;
+    - an unavailable sample is `NaN`;
+    - binaries are active-high;
+    - times are UTC.
+  - An older BEN layout and any unvalidated variant are rejected
+    explicitly.
+  - Validated sample-for-sample against BEN32 COMTRADE exports (2 Fast +
+    2 Slow pairs).
+  - Upload, UI and workspace are untouched. The format, evidence and the
+    `[OPEN]` items that must be decided before integration (timezone,
+    nominal frequency) are in [BEN_FORMAT.md](BEN_FORMAT.md).
 - **Application shell**: full-viewport Global Header, collapsible Main
   Sidebar Menu, drag-resizable Workspace Sidebar (source-first hierarchy:
   Recording → Analog/Digital → Category → Channel), a dominant Main

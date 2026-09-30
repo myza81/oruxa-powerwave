@@ -4,9 +4,45 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-30**
+Last updated: **2026-10-01**
 
 ## What was most recently done
+
+**Native BEN record parser (DEC-119, 2026-10-01). Backend, tests and docs
+only. STOP: not integrated; the owner reviews before any upload/UI
+work.**
+
+- New package `backend/app/providers/ben/`:
+  - `layout`: every structural constant, named;
+  - `reader`: bounds-checked primitives;
+  - `parser`: `parse_ben()` / `parse_ben_file()` → `BenRecord`;
+  - `model`;
+  - `normalize`: `to_disturbance_record()`;
+  - `provider`: `BenProvider`, not registered;
+  - `errors`.
+- The format, evidence (proven / inferred / unknown) and open items are
+  in [BEN_FORMAT.md](BEN_FORMAT.md).
+- Tests:
+  - `test_ben_parser.py` (synthetic, always runs);
+  - `test_ben_reference_files.py` (marker `ben_reference`, needs
+    `--ben-reference-dir` pointing at the owner's "Tripping Event"
+    folder; files are matched by SHA-256 against
+    `tests/fixtures/ben/reference_manifest.json`; the files are not
+    committed).
+- Validated: LGNG and BAHS (Fast), and PMJY and BTGH (Slow), match their
+  BEN32 COMTRADE on every sample. AGJH and PMJY #2 pass structural
+  checks. BPHE and GPTH (older layout) are rejected explicitly.
+- **Next (needs owner go-ahead):** integrate `.ben` into
+  upload/normalization. First decide:
+  - `[OPEN]` the timezone policy: BEN is UTC, BEN32 COMTRADE is local
+    +08:00;
+  - `[OPEN]` where the nominal frequency comes from.
+- Note: there is no local `powerwave` clone on this Windows laptop, and
+  the GitHub repo is private to anonymous API. Per POWERWAVE_DISCOVERY
+  (`3156392`) powerwave ingests only COMTRADE/CSV/Excel, so it has no BEN
+  logic to reuse. This was not re-verified live.
+
+## Earlier — Calculator notation
 
 **Calculator phase-to-neutral notation (DEC-117 Amendment 3,
 2026-09-30).** Frontend, tests and docs; awaiting owner UAT.

@@ -19791,6 +19791,90 @@ architecture.
 
 ---
 
+## DEC-119 — Native BEN record parsing: BEN → native parser → normalized model; COMTRADE is a validation oracle only
+
+Date: 2026-10-01
+Status: Approved direction (owner task). The standalone parser and
+validation suite are implemented. **Not integrated**; integration into
+upload/normalization needs a separate owner go-ahead.
+Source: owner task "native BEN disturbance-record parsing", which
+followed the owner's BEN32 reverse-engineering investigation.
+
+Decision (owner-directed):
+
+- BEN is parsed natively:
+  `BEN → native BEN parser → Powerwave normalized model`. It never goes
+  through a temporary COMTRADE and the COMTRADE parser. BEN32-generated
+  COMTRADE is used only as a **test oracle**.
+- The layout is derived from each file's own configuration. Sample rate,
+  counts, stride, data offset and channel positions are never constants
+  taken from one reference file.
+- Unvalidated BEN variants and layouts fail explicitly. They are never
+  interpreted by assumption.
+- Invalid/missing values are represented explicitly where the evidence
+  supports it. Otherwise raw values are kept and flagged, not
+  reinterpreted.
+- Binary mapping comes from BEN's descriptor/mapping tables. It is never
+  a table inferred from one event.
+- Owner event files are immutable source data and are not committed.
+  Tests find them locally by SHA-256; CI runs synthetic tests.
+- Scope: backend parser, model and validation only. No upload, UI or
+  BEN→COMTRADE export.
+
+Implementation (`[FACT]`, see [BEN_FORMAT.md](BEN_FORMAT.md)):
+
+- `backend/app/providers/ben/` holds `layout`, `reader`, `parser`,
+  `model`, `normalize`, `provider` and `errors`.
+- `parse_ben()` → `BenRecord`. It is lossless: raw codes, ids, bay
+  names and diagnostics are kept, and sample data is a zero-copy
+  read-only big-endian view.
+- `to_disturbance_record()` → the existing `DisturbanceRecord`, with no
+  change to the normalized model:
+  - calculated channels use the existing `parameter_type` values
+    `frequency` and `active power`;
+  - an unavailable sample becomes `NaN`, the DEC-084 missing-sample form;
+  - binaries are active-high states;
+  - times are UTC with `timezone="UTC"`.
+- `BenProvider` exists, but `import_service` still instantiates only
+  `ComtradeProvider`.
+- Validation:
+  - Fast LGNG and BAHS, and Slow PMJY and BTGH: every sample of every
+    channel matches BEN32's COMTRADE export.
+  - AGJH and a second PMJY record: structural checks.
+  - Two older-layout files are rejected.
+
+Choices the agent made, awaiting owner decision (`[OPEN]`, needed before
+integration):
+
+- **Timezone.** BEN times stay UTC, while BEN32 COMTRADE carries local
+  time (+08:00 in all evidence). A BEN source and a COMTRADE source of
+  the same event would therefore sit 8 h apart in Time Groups. A display
+  and alignment policy is required.
+- **Nominal frequency.** No decoded BEN field declares it, so the caller
+  must pass `nominal_frequency_hz`. No 50 Hz is assumed.
+- **Names.** `BenRecord` keeps names byte-exact. Normalization trims
+  surrounding whitespace, matching the COMTRADE provider, and suffixes
+  repeats `_1`, `_2`.
+- **Older BEN layout.** Header byte 0x04 = 0x28, local-time files such
+  as BPHE and GPTH. Rejected; not reverse-engineered.
+
+Reason:
+BEN is the recorder's native, lossless form. An intermediate COMTRADE
+would lose information and couple BEN support to a converter. Deriving
+the layout per file and failing closed prevents silent misreads of
+engineering data.
+
+Alternatives considered: converting BEN to COMTRADE and reusing the
+COMTRADE provider (rejected by the owner); hard-coding the layout of the
+validated files (rejected — the files disprove a universal layout).
+
+Impact: backend-only additions, with no change to existing behaviour.
+The existing suite is unaffected. New tests are
+`test_ben_parser.py` (always run) and `test_ben_reference_files.py`
+(`ben_reference` marker, local only).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
