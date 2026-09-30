@@ -23,6 +23,7 @@ test.describe("Compliance & Capability -- Slice 1 workspace shell", () => {
       "Calculated Channels",
       "Analysis",
       "Compliance",
+      "Calculator",
     ]);
   });
 

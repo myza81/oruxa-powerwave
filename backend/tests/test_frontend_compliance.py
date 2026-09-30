@@ -52,7 +52,7 @@ class TestComplianceTopLevelNav:
     def test_full_main_nav_order_matches_requested_sequence(self):
         source = _source()
         nav_list = _function_body(source, 'class="shell-nav-list"', 'class="shell-nav-bottom"')
-        labels = ["Recordings", "Waveform", "Table", "Calculated Channels", "Analysis", "Compliance"]
+        labels = ["Recordings", "Waveform", "Table", "Calculated Channels", "Analysis", "Compliance", "Calculator"]
         positions = [nav_list.index(f'<span class="shell-nav-label">{label}</span>') for label in labels]
         assert positions == sorted(positions)
 
