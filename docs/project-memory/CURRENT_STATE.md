@@ -9,8 +9,19 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-28**. **Channel engineering identity
-resolver for deterministic bay/group detection.** Engineering Context
+Last meaningful update: **2026-09-30** — two completed work streams
+integrated into `main` together (both awaiting owner UAT):
+
+**Phase currents follow the context phase display convention (DEC-118
+amendment, 2026-09-30).** An R/Y/B bay's currents show
+I<sub>R</sub>/I<sub>Y</sub>/I<sub>B</sub> (plain `IR`) in Phasor and in
+every Related Waveforms current trace; an A/B/C bay or a fallback context
+shows I<sub>A</sub>. It uses the same map, with no second detector.
+Canonical `Ia/Ib/Ic`, sequence I<sub>1</sub>/I<sub>2</sub>/I<sub>0</sub>,
+source names and generic selectors are unchanged. Frontend-only.
+
+**Channel engineering identity resolver for deterministic bay/group
+detection (2026-09-28).** Engineering Context
 detection and Measurement Group detection now share
 `app.domain.channel_engineering_identity` for deterministic role-token
 interpretation while retaining separate grouping semantics. The resolver
@@ -19,8 +30,11 @@ evidence and conflict flags; uses structured metadata/unit semantics
 before name grammar; supports prefix-role channels such as `UR JMHE NO1
 (kV)` and `IR JMHE NO1 (kA)`; and marks conflicts such as Voltage-like
 `UR` on a Current/kA channel `needs_review`, never silently choosing one.
-Backend/tests/docs only; ready for owner review.
-Previously, on **2026-09-27**, **DEC-118 regression fix
+It keeps the 2026-09-27 KPDN2 rule below (name labels are the display
+labels when they agree with structured `ph` phases). Backend/tests/docs
+only.
+
+Earlier, on **2026-09-27**, the **DEC-118 regression fix
 (owner UAT, KPDN2).** R/Y/B-named channels whose COMTRADE `ph` field
 says A/B/C now display R/Y/B (V<sub>RY</sub>, `KPDN2 VRY`). Before, detection
 stored `ph` as the engineer-facing `original_phase_label`. Phases stay

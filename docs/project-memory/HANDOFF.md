@@ -4,9 +4,59 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-28**
+Last updated: **2026-09-30**
 
 ## What was most recently done
+
+**Integration of two completed work streams into `main` (2026-09-30).
+Awaiting owner UAT of the integrated `main`. Stop here.**
+
+- Branch `integrate/completed-work` from `origin/main` (`ec8b92a`), then
+  two `--no-ff` merges, fast-forwarded onto `main`:
+  1. Codex `64e102c` (`fix/channel-engineering-identity`): channel
+     engineering identity resolver. It merged cleanly.
+  2. Claude `7adf91b` (`feat/phase-current-display`): phase currents
+     follow the context convention. The only conflicts were the top
+     entries of this file and CURRENT_STATE.md, and both entries are
+     kept.
+- The combined tree was re-validated: full backend pytest, full
+  Playwright, and a browser smoke with R/Y/B and A/B/C recordings.
+- **Not integrated (left untouched):** uncommitted work in the main
+  checkout (`D:/Programming/oruxa-powerwave`, branch
+  `fix/channel-engineering-identity`) for a separate top-level
+  **Calculator** page: `frontend/index.html`, `test_frontend_calculator.py`,
+  `calculator.spec.js` and nav-order test updates. It is not part of
+  `64e102c` and was never reported complete.
+- Feature branches `fix/channel-engineering-identity` (local only) and
+  `feat/phase-current-display` are kept until owner UAT.
+
+### Phase currents (Claude, 2026-09-30)
+
+**Phase currents follow the context convention (DEC-118 amendment,
+2026-09-30). Frontend, tests and docs; awaiting owner UAT.**
+
+- Branch `feat/phase-current-display` (`7adf91b`, from `ec8b92a`), now
+  merged into `main` (see the integration note above).
+- **Implementation:** `Ia/Ib/Ic` were added to
+  `WW_ELECTRICAL_ROLE_SYMBOLS`. The `I` quantity accepts `A|B|C`, the
+  R/Y/B singles and `1|2|0`. New `wwPhaseCurrentHtml/Text()`. Static
+  Manual rows use the exact symbol shape. Distance Manual input
+  accessible names follow the role (`IA magnitude`).
+- **Runtime crawl** (both conventions, the lone-VB bay, all analyzers in
+  Recording and Manual mode, Waveform, Table, Calculated Channels,
+  Compliance): every phase-current occurrence is I<sub>R</sub>.. or
+  I<sub>A</sub>..; sequence currents stay numeric; source names are
+  verbatim.
+- **Open for the owner:**
+  - The Waveform "Phase" column is the source's COMTRADE `ph` field,
+    verbatim. A context-aware display would need an explicit product
+    decision, for example a separate column or a tooltip.
+  - The resolver prose "Required role(s) not resolved: Ia." uses
+    internal keys, for voltage too.
+  - Phasor Manual mode keeps showing the last Recording result until
+    manual values compute (pre-existing).
+
+### Channel engineering identity (Codex, 2026-09-28)
 
 **Channel engineering identity resolver for deterministic bay/group
 detection (2026-09-28). Backend domain/tests/docs; ready for owner
@@ -32,7 +82,7 @@ review.**
   `test_measurement_group_detection.py`; service/phase-display/Compliance
   regressions pass with `--basetemp .\.pytest-tmp`.
 
-## Prior session
+## Prior session — DEC-118 regression
 
 **DEC-118 regression: KPDN2 showed A/B/C (owner UAT, 2026-09-27).
 Backend detection, tests and docs; awaiting owner UAT. Stop here.**

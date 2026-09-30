@@ -120,6 +120,9 @@ def test_generalized_symbol_contract_and_role_map():
         "function wwLineToLineFormulaHtml(pair, phaseDisplay)",
         "function wwLineToLineFormulaText(pair, phaseDisplay)",
         "function wwPhaseVoltageHtml(phase, phaseDisplay)",
+        # Phase currents share the same context map (2026-09-30).
+        "function wwPhaseCurrentHtml(phase, phaseDisplay)",
+        "function wwPhaseCurrentText(phase, phaseDisplay)",
         "function wwRoleLabelHtml(roleKey, phaseDisplay)",
         "function wwRoleLabelPlotly(roleKey, phaseDisplay)",
         "function wwRoleLabelSvg(roleKey, phaseDisplay)",
@@ -132,13 +135,17 @@ def test_generalized_symbol_contract_and_role_map():
         'V: [...WW_VOLTAGE_PHASES, ...WW_LL_NOTATION_PAIRS, ...WW_SEQUENCE_SUBSCRIPTS, ...WW_PHASE_DISPLAY_SUBSCRIPTS],'
         in source
     )
-    assert 'I: [...WW_SEQUENCE_SUBSCRIPTS],' in source
+    # Currents: phase (canonical + single-phase display tokens) and sequence;
+    # never a line-to-line pair (no I<sub>AB</sub> / I<sub>RY</sub>).
+    assert 'I: [...WW_VOLTAGE_PHASES, ...WW_SEQUENCE_SUBSCRIPTS, ...WW_PHASE_DISPLAY_SINGLE_SUBSCRIPTS],' in source
+    assert "flatMap((symbols) => WW_VOLTAGE_PHASES.map((p) => symbols[p]))" in source
     roles = re.search(r"const WW_ELECTRICAL_ROLE_SYMBOLS = \{(.*?)\};", source, flags=re.DOTALL).group(1)
-    for key in ("Va", "Vb", "Vc", "V1", "V2", "V0", "I1", "I2", "I0"):
-        assert key + ":" in roles, key
-    # Phase currents and impedance keys are deliberately NOT formatted.
-    for key in ("Ia", "Ib", "Ic", "Za"):
-        assert key + ":" not in roles, key
+    for key, pair in (("Va", '["V", "A"]'), ("Vb", '["V", "B"]'), ("Vc", '["V", "C"]'),
+                      ("Ia", '["I", "A"]'), ("Ib", '["I", "B"]'), ("Ic", '["I", "C"]'),
+                      ("V1", '["V", "1"]'), ("I1", '["I", "1"]'), ("I2", '["I", "2"]'), ("I0", '["I", "0"]')):
+        assert f"{key}: {pair}" in roles, key
+    # Impedance keys are deliberately NOT formatted.
+    assert "Za:" not in roles
 
 
 def test_phase_display_table_mirrors_the_backend():
@@ -186,7 +193,8 @@ def test_no_underscore_symbol_in_frontend_or_browser_tests():
 def test_underscore_guard_does_not_flag_channel_names_or_identifiers():
     for harmless in ("KPDN1_VR", "SLKS_VB", "phase_a_channel_ref", "WW_V_A_TOTAL", "line_to_line_multibay", "V1_label"):
         assert not _UNDERSCORE_SYMBOL.search(harmless), harmless
-    for forbidden in ("V" + "_A", "V" + "_AB", "V" + "_1", "I" + "_2", "V" + "_{A}", "V" + "_R", "V" + "_RY", "V" + "_BR"):
+    for forbidden in ("V" + "_A", "V" + "_AB", "V" + "_1", "I" + "_2", "V" + "_{A}", "V" + "_R", "V" + "_RY", "V" + "_BR",
+                      "I" + "_A", "I" + "_R", "I" + "_Y", "I" + "_B", "I" + "_1"):
         assert _UNDERSCORE_SYMBOL.search(forbidden), forbidden
 
 

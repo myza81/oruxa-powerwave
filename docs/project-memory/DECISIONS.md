@@ -19380,6 +19380,10 @@ Symbol contract:
 - Current subscripts: sequence `1|2|0` only. Phase currents (`Ia/Ib/Ic`)
   are deliberately not formatted (owner decision), and neither are
   impedance/fault-loop labels (`Za`, `Zab`).
+  > **Superseded for phase currents on 2026-09-30** (owner decision): see
+  > DEC-118 "Amendment (2026-09-30): phase currents". Current subscripts
+  > are now `A|B|C` (following the context convention) and `1|2|0`;
+  > impedance labels are still not formatted.
 
 What gets formatted:
 
@@ -19666,10 +19670,73 @@ implementation assumption. It is not a new concept.
   The owner-case tests fail on the previous detector. The
   disagreement, lone-"B" and A/B/C guard tests pass on both.
 
-Opportunity reported, not implemented (owner decision): phase currents
-`Ia/Ib/Ic` are unformatted by DEC-117. They belong to the same
-Engineering Context, so they could reuse this map (I<sub>R</sub>) without
-new detection.
+~~Opportunity reported, not implemented (owner decision): phase currents
+`Ia/Ib/Ic` are unformatted by DEC-117.~~ Implemented by the amendment
+below.
+
+### Amendment (2026-09-30): phase currents follow the same convention
+
+Status: Approved (owner task "extend the context-specific phase display
+convention from voltage to phase current"). It extends DEC-118 and
+supersedes DEC-117's "phase currents are not formatted". No new
+architecture.
+
+> **Standing rule (owner wording).** Context-specific phase-current
+> notation inherits the same phase display convention as voltage.
+> Canonical Ia/Ib/Ic identities remain internal; display labels follow
+> the context, e.g. IR/IY/IB for R/Y/B and IA/IB/IC for A/B/C.
+
+- **One map, no second detector.** The context's existing
+  `phase_display` spells currents too: canonical A/B/C →
+  I<sub>R</sub>/I<sub>Y</sub>/I<sub>B</sub> in an R/Y/B bay, and
+  I<sub>A</sub>/I<sub>B</sub>/I<sub>C</sub> in an A/B/C bay or on
+  `canonical_fallback`. A lone `IB` decides nothing, which is the same
+  resolver rule as a lone `VB`.
+- **Formatter.**
+  - `WW_ELECTRICAL_ROLE_SYMBOLS` gains `Ia/Ib/Ic`, so every
+    `wwRoleLabel*()` call formats them and follows its `phaseDisplay`.
+  - The `I` quantity accepts `A|B|C`, the single-phase display tokens
+    (`R|Y|B`) and `1|2|0`. It never accepts a pair: a current has no
+    line-to-line form.
+  - New `wwPhaseCurrentHtml/Text()` mirror the voltage helpers.
+  - Plain fallback: `IA`/`IR`. It is never underscore-joined, and the
+    guard now also bans the `I`-plus-underscore forms.
+- **Surfaces changed:**
+  - Phasor values list, row aria/title and diagram labels;
+  - Related Waveforms current traces for Phasor, Sequence (phase-domain
+    inputs), Overcurrent, Impedance and Distance;
+  - Phasor and Sequence Manual rows (canonical, since there is no bay);
+  - Distance Manual current labels.
+
+  The Distance Manual input accessible names now follow the role they
+  hold (`IA magnitude`, `VB unit`) instead of the positional `I1`/`V1`
+  slot, which read as a sequence quantity.
+- **Unchanged:**
+  - sequence currents I<sub>1</sub>/I<sub>2</sub>/I<sub>0</sub>;
+  - generic selectors ("Phase A", "Fault loop AB");
+  - source names (`KPDN1 IR`);
+  - role keys, `data-role` and trace `meta` (`Ia`);
+  - requirement keys and API values;
+  - all calculation, resolution and backend code.
+- **Findings, not changed:**
+  - The Waveform sidebar "Phase" column shows the source channel's own
+    COMTRADE `ph` field verbatim. It is not a Powerwave classification:
+    `—` when empty, and `A/B/C` for a recorder that writes `ph = A/B/C`
+    on VR/VY/VB channels. Rewriting it would misreport source metadata.
+    The earlier DEC-118 text called it "canonical A/B/C classification";
+    that was inaccurate.
+  - Compliance has no phase-current quantity, so it has nothing to
+    convert.
+  - The backend resolver message "Required role(s) not resolved: Ia."
+    (`analysis_input_resolution._summarize`) still prints internal keys,
+    for voltage and current alike.
+- **Tests:**
+  - `phase-display-convention.spec.js` (new block "phase currents follow
+    the bay"; 3 of its 4 tests fail on the previous frontend);
+  - updated notation, Phasor, Sequence, Impedance, Related Waveforms,
+    Distance and text-spacing assertions;
+  - `test_frontend_electrical_notation.py` (role map, `I` subscripts,
+    `I`-underscore ban).
 
 ---
 

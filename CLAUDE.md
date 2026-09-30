@@ -136,7 +136,10 @@ Amendment 2).
   convention of its authoritative Measurement Group / Engineering Context.
   Canonical A/B/C identities remain internal. Generic UI wording remains
   fixed.
-  - An R/Y/B bay shows V<sub>R</sub> and V<sub>RY</sub>.
+  - An R/Y/B bay shows V<sub>R</sub> and V<sub>RY</sub>, and its phase
+    currents I<sub>R</sub>/I<sub>Y</sub>/I<sub>B</sub> (same map;
+    canonical `Ia/Ib/Ic` stay internal; I<sub>1</sub>/I<sub>2</sub>/
+    I<sub>0</sub> never follow a convention).
   - Never hard-code A/B/C into a context-specific result label.
   - Never detect a convention from names in a page.
   - Read AGENTS.md rule 9 before touching such labels.

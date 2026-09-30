@@ -250,7 +250,7 @@ test.describe("Related Waveforms -- Phasor integration", () => {
       c: document.getElementById("wwAnalysisRelatedWaveformsCurrentChart").data.map((t) => t.name).sort(),
     }));
     expect(display.v).toEqual(["V<sub>A</sub>", "V<sub>C</sub>"]);
-    expect(display.c).toEqual(["Ia", "Ib", "Ic"]);
+    expect(display.c).toEqual(["I<sub>A</sub>", "I<sub>B</sub>", "I<sub>C</sub>"]);
   });
 
   test("hiding Ib and Ic leaves only Ia in the Current waveform group", async ({ page }) => {

@@ -34,7 +34,7 @@ test.describe("Phasor bare Engineering Context bootstrap", () => {
 
     await expect(async () => {
       const text = await page.locator("#wwPhasorValuesList").innerText();
-      for (const role of ["VA", "VB", "VC", "Ia", "Ib", "Ic"]) expect(text).toContain(role); // DEC-117: V<sub>A</sub>..
+      for (const role of ["VA", "VB", "VC", "IA", "IB", "IC"]) expect(text).toContain(role); // DEC-117: V<sub>A</sub>, I<sub>A</sub>..
     }).toPass({ timeout: 5000 });
   });
 });
