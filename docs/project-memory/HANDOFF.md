@@ -8,6 +8,24 @@ Last updated: **2026-09-30**
 
 ## What was most recently done
 
+**Calculator phase-to-neutral notation (DEC-117 Amendment 3,
+2026-09-30).** Frontend, tests and docs; awaiting owner UAT.
+
+- Line / Phase Voltage now shows V<sub>RN</sub>/V<sub>YN</sub>/V<sub>BN</sub>
+  (plain `VRN`) instead of V<sub>R</sub>-N, in:
+  - the Individual phase column and magnitude captions;
+  - the formula (V<sub>RY</sub> = V<sub>RN</sub> − V<sub>YN</sub>);
+  - the diagram vectors;
+  - the Balanced L-N label and formula.
+- Angle captions are V<sub>R</sub> angle (degrees). L-L results are
+  unchanged.
+- The shared formatter gained `AN|BN|CN|RN|YN` (voltage only), derived
+  from the phase display map, and `wwPhaseToNeutralVoltage*()`.
+- The Calculator page itself (`68dda20`, `554f693`) is now on `main`.
+  The "not integrated" note below predates it.
+
+## Earlier — integration
+
 **Integration of two completed work streams into `main` (2026-09-30).
 Awaiting owner UAT of the integrated `main`. Stop here.**
 

@@ -22,9 +22,10 @@ FRONTEND = REPO / "frontend" / "index.html"
 BROWSER_TESTS = REPO / "browser-tests"
 
 # Built from parts so this file never contains the forbidden literal itself.
-# DEC-118 adds the R/Y/B display spellings (VR, VRY ...) to the ban.
+# DEC-118 adds the R/Y/B display spellings (VR, VRY ...) to the ban, and
+# phase-to-neutral adds AN..CN / RN, YN (and so the hyphenated "R-N" form).
 _UNDERSCORE_SYMBOL = re.compile(
-    r"(?<![A-Za-z0-9_])[VI]" + "_" + r"\{?(?:AB|BC|CA|RY|YB|BR|A|B|C|R|Y|0|1|2)\}?(?![A-Za-z0-9])"
+    r"(?<![A-Za-z0-9_])[VI]" + "_" + r"\{?(?:AB|BC|CA|RY|YB|BR|AN|BN|CN|RN|YN|A|B|C|R|Y|0|1|2)\}?(?![A-Za-z0-9])"
 )
 
 
@@ -120,6 +121,12 @@ def test_generalized_symbol_contract_and_role_map():
         "function wwLineToLineFormulaHtml(pair, phaseDisplay)",
         "function wwLineToLineFormulaText(pair, phaseDisplay)",
         "function wwPhaseVoltageHtml(phase, phaseDisplay)",
+        # Explicit phase-to-neutral voltage: V<sub>AN</sub> / V<sub>RN</sub>.
+        "function wwPhaseToNeutralVoltageHtml(phase, phaseDisplay)",
+        "function wwPhaseToNeutralVoltageText(phase, phaseDisplay)",
+        "function wwPhaseToNeutralVoltageSvg(phase, phaseDisplay)",
+        "function wwLineToLinePhaseToNeutralFormulaHtml(pair, phaseDisplay)",
+        "function wwLineToLinePhaseToNeutralFormulaText(pair, phaseDisplay)",
         # Phase currents share the same context map (2026-09-30).
         "function wwPhaseCurrentHtml(phase, phaseDisplay)",
         "function wwPhaseCurrentText(phase, phaseDisplay)",
@@ -132,7 +139,15 @@ def test_generalized_symbol_contract_and_role_map():
     ):
         assert helper in source, helper
     assert (
-        'V: [...WW_VOLTAGE_PHASES, ...WW_LL_NOTATION_PAIRS, ...WW_SEQUENCE_SUBSCRIPTS, ...WW_PHASE_DISPLAY_SUBSCRIPTS],'
+        'V: [...WW_VOLTAGE_PHASES, ...WW_LL_NOTATION_PAIRS, ...WW_SEQUENCE_SUBSCRIPTS, ...WW_PHASE_DISPLAY_SUBSCRIPTS, '
+        '...WW_PHASE_TO_NEUTRAL_SUBSCRIPTS],'
+        in source
+    )
+    # Phase-to-neutral tokens come from the SAME phase display map (no second
+    # convention table), and are voltage-only.
+    assert 'const WW_NEUTRAL_SUBSCRIPT = "N";' in source
+    assert (
+        "const WW_PHASE_TO_NEUTRAL_SUBSCRIPTS = WW_PHASE_DISPLAY_SINGLE_SUBSCRIPTS.map((p) => p + WW_NEUTRAL_SUBSCRIPT);"
         in source
     )
     # Currents: phase (canonical + single-phase display tokens) and sequence;
@@ -194,7 +209,8 @@ def test_underscore_guard_does_not_flag_channel_names_or_identifiers():
     for harmless in ("KPDN1_VR", "SLKS_VB", "phase_a_channel_ref", "WW_V_A_TOTAL", "line_to_line_multibay", "V1_label"):
         assert not _UNDERSCORE_SYMBOL.search(harmless), harmless
     for forbidden in ("V" + "_A", "V" + "_AB", "V" + "_1", "I" + "_2", "V" + "_{A}", "V" + "_R", "V" + "_RY", "V" + "_BR",
-                      "I" + "_A", "I" + "_R", "I" + "_Y", "I" + "_B", "I" + "_1"):
+                      "I" + "_A", "I" + "_R", "I" + "_Y", "I" + "_B", "I" + "_1",
+                      "V" + "_RN", "V" + "_YN", "V" + "_BN", "V" + "_AN", "V" + "_CN", "V" + "_{RN}", "V" + "_R-N"):
         assert _UNDERSCORE_SYMBOL.search(forbidden), forbidden
 
 

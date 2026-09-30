@@ -131,13 +131,16 @@ including Amendment 2):
 Use true visual subscripts where supported:
   V<sub>A</sub> V<sub>B</sub> V<sub>C</sub>      phase voltage
   V<sub>AB</sub> V<sub>BC</sub> V<sub>CA</sub>   line-to-line voltage
+  V<sub>AN</sub> V<sub>BN</sub> V<sub>CN</sub>   explicit phase-to-neutral voltage
   V<sub>1</sub> V<sub>2</sub> V<sub>0</sub>      sequence voltage
   I<sub>A</sub> I<sub>B</sub> I<sub>C</sub>      phase current
   I<sub>1</sub> I<sub>2</sub> I<sub>0</sub>      sequence current
 If rich subscript is not supported, use plain concatenated notation:
-  VA, VAB, V1, IA, I2
-Never use literal underscore notation (V_A, V_AB, V_1, I_A, I_2) anywhere
+  VA, VAB, VAN, V1, IA, I2
+Never use literal underscore notation (V_A, V_AB, V_AN, V_1, I_A, I_2) anywhere
 user-facing, including fallbacks, accessibility text, logs and tests.
+A phase-to-neutral voltage takes the whole phase-neutral pair as ONE
+subscript (V<sub>RN</sub>, plain VRN) -- never a hyphen (V<sub>R</sub>-N, R-N).
 
 electrical quantity symbol           -> formatted
 source/channel name (SLKS VB, KPDN1_VR) -> untouched
@@ -152,8 +155,16 @@ internal/API value (Va, VAB, phase_member = AB) -> untouched
    - Core: `wwElectricalSymbolHtml(quantity, subscript)`,
      `wwElectricalSymbolPlotly()`, `wwElectricalSymbolSvg()` (lowered
      `<tspan>`) and `wwElectricalSymbolText()` (the only plain fallback).
-     `quantity` is `V|I`; `subscript` is `A|B|C|AB|BC|CA|1|2|0` for `V`
-     and `A|B|C|1|2|0` for `I` (a current has no line-to-line form).
+     `quantity` is `V|I`; `subscript` is `A|B|C|AB|BC|CA|AN|BN|CN|1|2|0`
+     for `V` and `A|B|C|1|2|0` for `I` (a current has no line-to-line or
+     phase-to-neutral form).
+   - Phase-to-neutral voltage: `wwPhaseToNeutralVoltageHtml/Text/Svg()`
+     and `wwLineToLinePhaseToNeutralFormulaHtml/Text()`
+     (V<sub>RY</sub> = V<sub>RN</sub> − V<sub>YN</sub>). Use them where
+     the quantity *is* the phase-neutral phasor (e.g. the Calculator);
+     the established V<sub>A</sub>/V<sub>AB</sub> = V<sub>A</sub> −
+     V<sub>B</sub> forms elsewhere are unchanged. A phase angle stays
+     V<sub>R</sub> ("V<sub>R</sub> angle").
    - Semantic wrappers: `wwVoltageSymbol*(subscript)`,
      `wwRoleLabelHtml/Plotly/Svg/Text(roleKey)` (for `Va..Vc`,
      `Ia..Ic`, `V1/V2/V0`, `I1/I2/I0`), `wwPhaseVoltage*()`,

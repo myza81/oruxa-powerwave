@@ -19489,6 +19489,57 @@ near-zero vectors (e.g. V<sub>2</sub>/V<sub>0</sub> in a balanced
 recording) draw their labels on top of each other at the origin. This
 is a pre-existing label-placement matter.
 
+### Amendment 3 (2026-09-30) — explicit phase-to-neutral voltage
+
+Status: Approved (owner task "standardize phase-to-neutral notation in
+Calculator → Line / Phase Voltage"). It extends the DEC-117 vocabulary.
+It is not a new architecture decision.
+
+> **Rule.** A phase-to-neutral voltage quantity uses the complete
+> phase-neutral pair as ONE subscript: V<sub>RN</sub> / V<sub>AN</sub>
+> in rich notation, plain `VRN` / `VAN`. Never a hyphenated form
+> (V<sub>R</sub>-N, `R-N`), and never an underscore form.
+
+- **Symptom:** the Calculator's Individual Phases rows showed
+  V<sub>R</sub>-N. The code built `wwRoleLabelHtml("Va", pd) + "-N"`, so
+  only the phase letter was subscripted. The static markup and the input
+  captions read `R-N`, `R-N magnitude` and `R angle (degrees)`.
+- **Vocabulary.** `V` accepts `AN|BN|CN` and the display spellings
+  `RN|YN` (`BN` is shared). It derives them from the existing phase
+  display map as single-phase token + `N` (`WW_PHASE_TO_NEUTRAL_SUBSCRIPTS`).
+  It has no second convention table and no detector: canonical A + N →
+  `AN` in ABC and `RN` in RYB. `I` gains nothing, because a current has
+  no phase-to-neutral form.
+- **Helpers:** `wwPhaseToNeutralVoltageHtml/Text/Svg(phase, phaseDisplay)`
+  and `wwLineToLinePhaseToNeutralFormulaHtml/Text(pair, phaseDisplay)`
+  (V<sub>RY</sub> = V<sub>RN</sub> − V<sub>YN</sub>, the same operands
+  and arithmetic as `wwLineToLineFormulaHtml`).
+- **Where it applies:** surfaces whose quantity *is* the phase-neutral
+  phasor. In the Calculator, the whole Line / Phase Voltage tool
+  follows it:
+  - Individual Phases: the phase column, the magnitude captions, the
+    formula operands and the diagram phase vectors;
+  - Balanced: the L-N input or result label, the formula and the
+    diagram vectors.
+
+  A phase angle stays phase-based: V<sub>R</sub> angle (degrees). L-L
+  results stay V<sub>RY</sub>/V<sub>YB</sub>/V<sub>BR</sub>.
+- **Unchanged:** the established phase-voltage shorthand
+  V<sub>A</sub>/V<sub>R</sub> and `wwLineToLineFormulaHtml`'s
+  V<sub>AB</sub> = V<sub>A</sub> − V<sub>B</sub> everywhere else
+  (Calculated Channels, Phasor, Compliance …). Generic wording
+  ("L-N to L-L") is also unchanged. Display only: no arithmetic, value,
+  role key or API change.
+- **Guards:**
+  - `test_frontend_electrical_notation.py`: the underscore ban also
+    covers the `…N` forms and `V`+underscore+`R-N`;
+  - `test_frontend_calculator.py`: no `"-N"` composition, plain static
+    fallbacks;
+  - `electrical-notation.spec.js`: the ABC/RYB contract, including that
+    `I` is rejected;
+  - `calculator.spec.js`: `expectTrueSubscripts()` on both tabs, with
+    no `R-N` or underscore text.
+
 ---
 
 ## DEC-118 — Context-specific engineering notation inherits the phase display convention of its Measurement Group / Engineering Context; canonical A/B/C stays internal

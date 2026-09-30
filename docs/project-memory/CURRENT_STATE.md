@@ -9,7 +9,15 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-30** — two completed work streams
+Last meaningful update: **2026-09-30** — **Calculator phase-to-neutral
+notation (DEC-117 Amendment 3).** Line / Phase Voltage shows
+V<sub>RN</sub> (plain `VRN`), never V<sub>R</sub>-N. That covers the
+inputs, formula, diagram and Balanced L-N label; angles stay
+V<sub>R</sub>. The shared formatter gained voltage-only
+`AN|BN|CN|RN|YN`, derived from the phase display map. Display only;
+awaiting owner UAT.
+
+Earlier the same day, two completed work streams were
 integrated into `main` together (both awaiting owner UAT):
 
 **Phase currents follow the context phase display convention (DEC-118

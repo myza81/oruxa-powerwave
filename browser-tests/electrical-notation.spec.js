@@ -21,7 +21,9 @@ test.describe("Electrical notation (DEC-117) -- shared formatter", () => {
   test("contract: rich -> real subscript, plain -> VA/VAB/V1/I2, never an underscore", async ({ page }) => {
     await page.goto("/index.html");
     const out = await page.evaluate(() => {
-      const cases = [["V", "A"], ["V", "AB"], ["V", "1"], ["I", "2"], ["V", "0"], ["I", "0"], ["I", "A"], ["I", "C"]];
+      const cases = [["V", "A"], ["V", "AB"], ["V", "1"], ["I", "2"], ["V", "0"], ["I", "0"], ["I", "A"], ["I", "C"],
+        ["V", "AN"], ["V", "CN"], ["V", "RN"], ["V", "YN"], ["V", "BN"]];
+      const ryb = { convention: "RYB", status: "established", symbols: { A: "R", B: "Y", C: "B", AB: "RY", BC: "YB", CA: "BR" } };
       return {
         rows: cases.map(([q, s]) => ({
           key: q + s,
@@ -37,8 +39,29 @@ test.describe("Electrical notation (DEC-117) -- shared formatter", () => {
         // Not a supported symbol: a current has no line-to-line form.
         unsupported: { html: wwElectricalSymbolHtml("I", "AB"), text: wwElectricalSymbolText("I", "AB") },
         voltageShorthand: [wwVoltageSymbolText("CA"), wwVoltageSymbolHtml("CA")],
+        // Explicit phase-to-neutral: the same phase display map + "N".
+        phaseToNeutral: {
+          abcText: ["A", "B", "C"].map((p) => wwPhaseToNeutralVoltageText(p)),
+          abcHtml: ["A", "B", "C"].map((p) => wwPhaseToNeutralVoltageHtml(p)),
+          rybText: ["A", "B", "C"].map((p) => wwPhaseToNeutralVoltageText(p, ryb)),
+          rybHtml: ["A", "B", "C"].map((p) => wwPhaseToNeutralVoltageHtml(p, ryb)),
+          rybSvg: wwPhaseToNeutralVoltageSvg("B", ryb),
+          formulaText: [wwLineToLinePhaseToNeutralFormulaText("AB"), wwLineToLinePhaseToNeutralFormulaText("CA", ryb)],
+          formulaSubs: (wwLineToLinePhaseToNeutralFormulaHtml("BC", ryb).match(/<sub class="ww-electrical-sub">\w+<\/sub>/g) || []),
+          // Voltage-only: a current has no phase-to-neutral form.
+          current: [wwElectricalSymbolHtml("I", "RN"), wwElectricalSymbolHtml("I", "AN")],
+        },
       };
     });
+    const sub = (s) => `<span class="ww-electrical-symbol">V<sub class="ww-electrical-sub">${s}</sub></span>`;
+    expect(out.phaseToNeutral.abcText).toEqual(["VAN", "VBN", "VCN"]);
+    expect(out.phaseToNeutral.abcHtml).toEqual(["AN", "BN", "CN"].map(sub));
+    expect(out.phaseToNeutral.rybText).toEqual(["VRN", "VYN", "VBN"]);
+    expect(out.phaseToNeutral.rybHtml).toEqual(["RN", "YN", "BN"].map(sub));
+    expect(out.phaseToNeutral.rybSvg).toMatch(/^V<tspan [^>]*>YN<\/tspan>$/);
+    expect(out.phaseToNeutral.formulaText).toEqual(["VAB = VAN − VBN", "VBR = VBN − VRN"]);
+    expect(out.phaseToNeutral.formulaSubs).toEqual(["YB", "YN", "BN"].map((s) => `<sub class="ww-electrical-sub">${s}</sub>`));
+    expect(out.phaseToNeutral.current).toEqual(["IRN", "IAN"]);
     for (const r of out.rows) {
       const [q, s] = [r.key[0], r.key.slice(1)];
       expect(r.text).toBe(q + s);
@@ -64,7 +87,9 @@ test.describe("Electrical notation (DEC-117) -- shared formatter", () => {
     expect(out.voltageShorthand[0]).toBe("VCA");
     // Never an underscore-joined symbol in ANY output.
     const all = JSON.stringify(out);
-    expect(all).not.toMatch(new RegExp("[VI]" + "_" + "\\{?(AB|BC|CA|A|B|C|0|1|2)"));
+    expect(all).not.toMatch(new RegExp("[VI]" + "_" + "\\{?(AB|BC|CA|AN|BN|CN|RN|YN|A|B|C|R|Y|0|1|2)"));
+    // ... nor a hyphenated phase-to-neutral symbol (VR-N).
+    expect(all).not.toMatch(/V[ABCRY]?-N/);
   });
 
   test("true visual subscript in normal, flex, grid, .ww-cc-field and SVG contexts (light + dark)", async ({ page }) => {

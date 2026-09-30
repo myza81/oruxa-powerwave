@@ -132,13 +132,27 @@ class TestCalculatorPageShell:
     def test_calculator_uses_shared_electrical_formatters_for_symbols(self):
         source = _source()
         calc_block = _function_body(source, "const WW_CALCULATOR_RYB_PHASE_DISPLAY", "// ==================================================================\n        // Compliance")
-        assert "wwRoleLabelHtml(" in calc_block
         assert "wwLineToLinePairHtml(" in calc_block
-        assert "wwLineToLineFormulaHtml(" in calc_block
-        assert "wwRoleLabelSvg(" in calc_block
         assert "wwLineToLinePairSvg(" in calc_block
-        assert "V_R" not in calc_block
-        assert "V_RY" not in calc_block
+        # Phase-to-neutral quantities (inputs, Balanced L-N, formula operands,
+        # diagram vectors) go through the shared phase-to-neutral helpers.
+        assert "wwPhaseToNeutralVoltageHtml(" in calc_block
+        assert "wwPhaseToNeutralVoltageSvg(" in calc_block
+        assert "wwLineToLinePhaseToNeutralFormulaHtml(" in calc_block
+        # The angle label is the phase angle: V<sub>R</sub>, not V<sub>RN</sub>.
+        assert 'wwPhaseVoltageHtml(phase.canonical, pd) + " angle (degrees)"' in calc_block
+        for forbidden in ('"-N"', "'-N'", "V" + "_R", "V" + "_RY", "V" + "_RN"):
+            assert forbidden not in calc_block, forbidden
+
+    def test_calculator_static_phase_labels_use_plain_phase_to_neutral_fallback(self):
+        page = _calculator_page(_source())
+        for key in "RYB":
+            assert f'id="wwCalcPhase{key}Label">V{key}N</span>' in page
+            assert f'id="wwCalcMag{key}Label">V{key}N magnitude</span>' in page
+            assert f'id="wwCalcAngle{key}Label">V{key} angle (degrees)</span>' in page
+            # Never the hyphenated or underscore forms.
+            assert f">{key}-N" not in page
+            assert "V" + "_" + key not in page
 
     def test_calculator_scope_excludes_unrequested_functions(self):
         source = _source()

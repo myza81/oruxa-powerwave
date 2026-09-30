@@ -1,5 +1,7 @@
 const { test, expect } = require("@playwright/test");
 
+const { expectTrueSubscripts } = require("./support/electrical_notation_helpers");
+
 function polarToComplex(magnitude, angleDeg) {
   const rad = (angleDeg * Math.PI) / 180;
   return { re: magnitude * Math.cos(rad), im: magnitude * Math.sin(rad) };
@@ -134,6 +136,11 @@ test("Calculator is a first-class page accessible without an event recording", a
   await expect(page.locator("#wwCalcBalancedResultValue")).toHaveText("275.00 kV");
   await expect(page.locator("#wwCalcBalancedFormula")).toContainText("√3 × 158.77 kV");
   await expect(page.locator("#wwCalcBalancedFormula")).toContainText("275.00 kV");
+  // Balanced L-N quantity is the phase-to-neutral voltage V<sub>RN</sub>.
+  await expect(page.locator("#wwCalcBalancedInputLabel")).toHaveText("VRN magnitude");
+  await expect(page.locator("#wwCalcBalancedFormula")).toContainText("VRY = √3 × VRN");
+  await expectTrueSubscripts(page.locator("#wwCalcBalancedPanel .ww-electrical-symbol"), 4);
+  await expect(page.locator("#wwCalcBalancedDiagram svg text")).toHaveText(["VRN", "VYN", "VBN", "VRY", "VYB", "VBR"]);
 
   await page.locator("#wwCalcBalancedDirection").selectOption("ll_to_ln");
   await page.locator("#wwCalcBalancedMagnitude").fill("275");
@@ -157,7 +164,24 @@ test("Calculator is a first-class page accessible without an event recording", a
   await expect(page.locator("#wwCalcModeIndividualBtn")).toHaveAttribute("aria-selected", "true");
   await expect(page.locator("#wwCalcIndividualPanel .ww-calculator-individual-top")).toBeVisible();
   await expect(page.locator("#wwCalcIndividualPanel .ww-calculator-support-grid")).toBeVisible();
-  await expect(page.locator("#wwCalcIndividualFormula")).toContainText("VRY = VR − VY");
+  // Phase-to-neutral notation (DEC-117): V<sub>RN</sub> as one subscript,
+  // never V<sub>R</sub>-N; the angle stays the phase angle V<sub>R</sub>.
+  await expect(page.locator("#wwCalcIndividualPanel .ww-calculator-phase-label")).toHaveText(["VRN", "VYN", "VBN"]);
+  await expect(page.locator("#wwCalcPhaseRLabel .ww-electrical-sub")).toHaveText("RN");
+  await expect(page.locator("#wwCalcPhaseBLabel .ww-electrical-sub")).toHaveText("BN");
+  await expect(page.locator("#wwCalcMagRLabel")).toHaveText("VRN magnitude");
+  await expect(page.locator("#wwCalcMagYLabel")).toHaveText("VYN magnitude");
+  await expect(page.locator("#wwCalcAngleRLabel")).toHaveText("VR angle (degrees)");
+  await expect(page.locator("#wwCalcAngleBLabel")).toHaveText("VB angle (degrees)");
+  await expect(page.locator("#wwCalcIndividualPanel").getByLabel("VRN magnitude")).toHaveValue("158.77");
+  await expectTrueSubscripts(page.locator("#wwCalcIndividualPanel .ww-calculator-phase-grid .ww-electrical-symbol"), 9);
+  await expect(page.locator("#wwCalcIndividualFormula")).toContainText("VRY = VRN − VYN");
+  await expect(page.locator("#wwCalcIndividualFormula")).toContainText("VBR = VBN − VRN");
+  await expect(page.locator("#wwCalcIndividualDiagram svg text")).toHaveText(["VRN", "VYN", "VBN", "VRY", "VYB", "VBR"]);
+  await expect(page.locator("#wwCalcPairRYLabel")).toHaveText("VRY");
+  const individualText = await page.locator("#pageCalculator").innerText();
+  expect(individualText).not.toMatch(/[RYB]-N/);
+  expect(individualText).not.toMatch(new RegExp("V" + "_"));
   await expect(page.locator("#wwCalcIndividualFormula")).toContainText("V = |V|(cos θ + j sin θ)");
 
   const expectedBalanced = Math.sqrt(3) * 158.77;

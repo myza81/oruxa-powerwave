@@ -10648,35 +10648,35 @@
                                 <span class="ww-calculator-phase-head">Magnitude</span>
                                 <span class="ww-calculator-phase-head">Angle</span>
                                 <div class="ww-calculator-phase-row">
-                                    <span class="ww-calculator-phase-label" id="wwCalcPhaseRLabel">R-N</span>
+                                    <span class="ww-calculator-phase-label" id="wwCalcPhaseRLabel">VRN</span>
                                     <label class="ww-phasor-field">
-                                        <span class="ww-phasor-field-label">R-N magnitude</span>
+                                        <span class="ww-phasor-field-label" id="wwCalcMagRLabel">VRN magnitude</span>
                                         <input type="number" id="wwCalcMagR" min="0" step="any" value="158.77" inputmode="decimal">
                                     </label>
                                     <label class="ww-phasor-field">
-                                        <span class="ww-phasor-field-label">R angle (degrees)</span>
+                                        <span class="ww-phasor-field-label" id="wwCalcAngleRLabel">VR angle (degrees)</span>
                                         <input type="number" id="wwCalcAngleR" step="any" value="0" inputmode="decimal">
                                     </label>
                                 </div>
                                 <div class="ww-calculator-phase-row">
-                                    <span class="ww-calculator-phase-label" id="wwCalcPhaseYLabel">Y-N</span>
+                                    <span class="ww-calculator-phase-label" id="wwCalcPhaseYLabel">VYN</span>
                                     <label class="ww-phasor-field">
-                                        <span class="ww-phasor-field-label">Y-N magnitude</span>
+                                        <span class="ww-phasor-field-label" id="wwCalcMagYLabel">VYN magnitude</span>
                                         <input type="number" id="wwCalcMagY" min="0" step="any" value="158.77" inputmode="decimal">
                                     </label>
                                     <label class="ww-phasor-field">
-                                        <span class="ww-phasor-field-label">Y angle (degrees)</span>
+                                        <span class="ww-phasor-field-label" id="wwCalcAngleYLabel">VY angle (degrees)</span>
                                         <input type="number" id="wwCalcAngleY" step="any" value="-120" inputmode="decimal">
                                     </label>
                                 </div>
                                 <div class="ww-calculator-phase-row">
-                                    <span class="ww-calculator-phase-label" id="wwCalcPhaseBLabel">B-N</span>
+                                    <span class="ww-calculator-phase-label" id="wwCalcPhaseBLabel">VBN</span>
                                     <label class="ww-phasor-field">
-                                        <span class="ww-phasor-field-label">B-N magnitude</span>
+                                        <span class="ww-phasor-field-label" id="wwCalcMagBLabel">VBN magnitude</span>
                                         <input type="number" id="wwCalcMagB" min="0" step="any" value="158.77" inputmode="decimal">
                                     </label>
                                     <label class="ww-phasor-field">
-                                        <span class="ww-phasor-field-label">B angle (degrees)</span>
+                                        <span class="ww-phasor-field-label" id="wwCalcAngleBLabel">VB angle (degrees)</span>
                                         <input type="number" id="wwCalcAngleB" step="any" value="120" inputmode="decimal">
                                     </label>
                                 </div>
@@ -24601,6 +24601,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         //   symbol = quantity + subscript
         //     quantity  V | I
         //     subscript V: A B C (phase), AB BC CA (line-to-line),
+        //                  AN BN CN (explicit phase-to-neutral),
         //                  1 2 0 (positive/negative/zero sequence)
         //               I: A B C (phase), 1 2 0 (sequence). Phase currents
         //                  follow the context convention like phase
@@ -24664,8 +24665,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_PHASE_DISPLAY_SINGLE_SUBSCRIPTS = Array.from(new Set(
             Object.values(WW_PHASE_DISPLAY_SYMBOLS_BY_CONVENTION).flatMap((symbols) => WW_VOLTAGE_PHASES.map((p) => symbols[p]))
         ));
+        // Phase-to-neutral voltage: a single-phase display token + "N"
+        // (V<sub>AN</sub>, V<sub>RN</sub>). Voltage only -- never a current.
+        const WW_NEUTRAL_SUBSCRIPT = "N";
+        const WW_PHASE_TO_NEUTRAL_SUBSCRIPTS = WW_PHASE_DISPLAY_SINGLE_SUBSCRIPTS.map((p) => p + WW_NEUTRAL_SUBSCRIPT);
         const WW_ELECTRICAL_SUBSCRIPTS = {
-            V: [...WW_VOLTAGE_PHASES, ...WW_LL_NOTATION_PAIRS, ...WW_SEQUENCE_SUBSCRIPTS, ...WW_PHASE_DISPLAY_SUBSCRIPTS],
+            V: [...WW_VOLTAGE_PHASES, ...WW_LL_NOTATION_PAIRS, ...WW_SEQUENCE_SUBSCRIPTS, ...WW_PHASE_DISPLAY_SUBSCRIPTS, ...WW_PHASE_TO_NEUTRAL_SUBSCRIPTS],
             I: [...WW_VOLTAGE_PHASES, ...WW_SEQUENCE_SUBSCRIPTS, ...WW_PHASE_DISPLAY_SINGLE_SUBSCRIPTS],
         };
 
@@ -24792,6 +24797,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwPhaseVoltageText(phase, phaseDisplay) {
             return wwVoltageSymbolText(wwPhaseDisplaySymbol(phase, phaseDisplay));
         }
+        // Explicit phase-to-neutral voltage: "A" -> V<sub>AN</sub>
+        // (V<sub>RN</sub> in an R/Y/B context); plain "VAN"/"VRN". The N
+        // sits inside the subscript -- never a "-N" suffix after it.
+        function wwPhaseToNeutralVoltageHtml(phase, phaseDisplay) {
+            return WW_VOLTAGE_PHASES.includes(phase)
+                ? wwVoltageSymbolHtml(wwPhaseDisplaySymbol(phase, phaseDisplay) + WW_NEUTRAL_SUBSCRIPT)
+                : escapeHtml(wwVoltageSymbolText(phase));
+        }
+        function wwPhaseToNeutralVoltageText(phase, phaseDisplay) {
+            return WW_VOLTAGE_PHASES.includes(phase)
+                ? wwVoltageSymbolText(wwPhaseDisplaySymbol(phase, phaseDisplay) + WW_NEUTRAL_SUBSCRIPT)
+                : wwVoltageSymbolText(phase);
+        }
+        function wwPhaseToNeutralVoltageSvg(phase, phaseDisplay) {
+            return WW_VOLTAGE_PHASES.includes(phase)
+                ? wwVoltageSymbolSvg(wwPhaseDisplaySymbol(phase, phaseDisplay) + WW_NEUTRAL_SUBSCRIPT)
+                : escapeHtml(wwVoltageSymbolText(phase));
+        }
         // Phase current: "A" -> I<sub>A</sub> (I<sub>R</sub> in an R/Y/B
         // context); anything else falls back to plain escaped text.
         function wwPhaseCurrentHtml(phase, phaseDisplay) {
@@ -24834,6 +24857,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!operands) return wwVoltageSymbolText(pair);
             return wwLineToLinePairText(pair, phaseDisplay) + " = " + wwPhaseVoltageText(operands[0], phaseDisplay) +
                 " − " + wwPhaseVoltageText(operands[1], phaseDisplay);
+        }
+        // The same identity written with explicit phase-to-neutral operands,
+        // for surfaces whose inputs ARE the phase-neutral phasors:
+        // V<sub>AB</sub> = V<sub>AN</sub> − V<sub>BN</sub> (R/Y/B:
+        // V<sub>RY</sub> = V<sub>RN</sub> − V<sub>YN</sub>). Same operands,
+        // same context, same arithmetic as wwLineToLineFormulaHtml().
+        function wwLineToLinePhaseToNeutralFormulaHtml(pair, phaseDisplay) {
+            const operands = WW_LL_NOTATION_OPERANDS[pair];
+            if (!operands) return wwLineToLinePairHtml(pair, phaseDisplay);
+            return wwRichLabelHtml(wwLineToLinePairHtml(pair, phaseDisplay) + " = " + wwPhaseToNeutralVoltageHtml(operands[0], phaseDisplay) +
+                " − " + wwPhaseToNeutralVoltageHtml(operands[1], phaseDisplay));
+        }
+        // Plain counterpart: "VAB = VAN − VBN" / "VRY = VRN − VYN".
+        function wwLineToLinePhaseToNeutralFormulaText(pair, phaseDisplay) {
+            const operands = WW_LL_NOTATION_OPERANDS[pair];
+            if (!operands) return wwVoltageSymbolText(pair);
+            return wwLineToLinePairText(pair, phaseDisplay) + " = " + wwPhaseToNeutralVoltageText(operands[0], phaseDisplay) +
+                " − " + wwPhaseToNeutralVoltageText(operands[1], phaseDisplay);
         }
 
         // Mirrors the backend's app.domain.line_to_line_voltage.default_output_name():
@@ -42985,9 +43026,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             symbols: Object.freeze({ ...WW_PHASE_DISPLAY_SYMBOLS_BY_CONVENTION.RYB }),
         });
         const WW_CALC_PHASES = [
-            { key: "R", role: "Va", magId: "wwCalcMagR", angleId: "wwCalcAngleR" },
-            { key: "Y", role: "Vb", magId: "wwCalcMagY", angleId: "wwCalcAngleY" },
-            { key: "B", role: "Vc", magId: "wwCalcMagB", angleId: "wwCalcAngleB" },
+            { key: "R", canonical: "A", magId: "wwCalcMagR", angleId: "wwCalcAngleR" },
+            { key: "Y", canonical: "B", magId: "wwCalcMagY", angleId: "wwCalcAngleY" },
+            { key: "B", canonical: "C", magId: "wwCalcMagB", angleId: "wwCalcAngleB" },
         ];
         const WW_CALC_LINE_PAIRS = [
             { key: "RY", canonical: "AB", from: "R", to: "Y", magId: "wwCalcResultRYMag", angleId: "wwCalcResultRYAngle" },
@@ -43064,14 +43105,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         function wwCalcRenderLabels() {
             const pd = WW_CALCULATOR_RYB_PHASE_DISPLAY;
-            const labelMap = [
-                ["wwCalcPhaseRLabel", wwRichLabelHtml(wwRoleLabelHtml("Va", pd) + "-N")],
-                ["wwCalcPhaseYLabel", wwRichLabelHtml(wwRoleLabelHtml("Vb", pd) + "-N")],
-                ["wwCalcPhaseBLabel", wwRichLabelHtml(wwRoleLabelHtml("Vc", pd) + "-N")],
+            // Phase column and magnitude name the phase-to-neutral quantity
+            // (V<sub>RN</sub>); the angle is that phasor's phase angle
+            // (V<sub>R</sub>). Static markup carries the plain fallback.
+            const labelMap = WW_CALC_PHASES.flatMap((phase) => {
+                const symbol = wwPhaseToNeutralVoltageHtml(phase.canonical, pd);
+                return [
+                    ["wwCalcPhase" + phase.key + "Label", symbol],
+                    [phase.magId + "Label", wwRichLabelHtml(symbol + " magnitude")],
+                    [phase.angleId + "Label", wwRichLabelHtml(wwPhaseVoltageHtml(phase.canonical, pd) + " angle (degrees)")],
+                ];
+            }).concat([
                 ["wwCalcPairRYLabel", wwLineToLinePairHtml("AB", pd)],
                 ["wwCalcPairYBLabel", wwLineToLinePairHtml("BC", pd)],
                 ["wwCalcPairBRLabel", wwLineToLinePairHtml("CA", pd)],
-            ];
+            ]);
             for (const [id, html] of labelMap) {
                 const el = document.getElementById(id);
                 if (el) el.innerHTML = html;
@@ -43088,7 +43136,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const resultNote = document.getElementById("wwCalcBalancedResultNote");
             const formulaEl = document.getElementById("wwCalcBalancedFormula");
             const pd = WW_CALCULATOR_RYB_PHASE_DISPLAY;
-            const lnSymbol = wwRoleLabelHtml("Va", pd);
+            const lnSymbol = wwPhaseToNeutralVoltageHtml("A", pd);
             const llSymbol = wwLineToLinePairHtml("AB", pd);
             const valid = magnitude !== null;
             const result = valid ? (direction === "ln_to_ll" ? magnitude * Math.sqrt(3) : magnitude / Math.sqrt(3)) : null;
@@ -43142,7 +43190,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const note = document.getElementById("wwCalcIndividualResultNote");
             const formulaEl = document.getElementById("wwCalcIndividualFormula");
             const pd = WW_CALCULATOR_RYB_PHASE_DISPLAY;
-            const lineFormulaHtml = ["AB", "BC", "CA"].map((pair) => wwLineToLineFormulaHtml(pair, pd));
+            const lineFormulaHtml = ["AB", "BC", "CA"].map((pair) => wwLineToLinePhaseToNeutralFormulaHtml(pair, pd));
             formulaEl.innerHTML =
                 lineFormulaHtml.map((formula) => '<div class="ww-calculator-formula-line">' + formula + '</div>').join("") +
                 '<div class="ww-calculator-formula-line">V = |V|(cos θ + j sin θ)</div>';
@@ -43197,7 +43245,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const p = phasePoints[phase.key];
                 const cls = phase.key === "Y" ? " ww-calc-phase-vector-y" : phase.key === "B" ? " ww-calc-phase-vector-b" : "";
                 return '<line class="ww-calc-phase-vector' + cls + '" x1="0" y1="0" x2="' + p.x.toFixed(2) + '" y2="' + p.y.toFixed(2) + '" marker-end="url(#wwCalcArrow)"/>' +
-                    '<text class="ww-calc-diagram-label" x="' + (p.x * 1.08).toFixed(2) + '" y="' + (p.y * 1.08).toFixed(2) + '">' + wwRoleLabelSvg(phase.role, WW_CALCULATOR_RYB_PHASE_DISPLAY) + '</text>';
+                    '<text class="ww-calc-diagram-label" x="' + (p.x * 1.08).toFixed(2) + '" y="' + (p.y * 1.08).toFixed(2) + '">' + wwPhaseToNeutralVoltageSvg(phase.canonical, WW_CALCULATOR_RYB_PHASE_DISPLAY) + '</text>';
             }).join("");
             const lineVectors = options && options.showLineVectors ? WW_CALC_LINE_PAIRS.map((pair) => {
                 const start = phasePoints[pair.to];
