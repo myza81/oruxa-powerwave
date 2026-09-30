@@ -327,7 +327,7 @@ def generate_suggested_contexts_for_source(
         raise SourceNotFoundError(f"No source '{source_id}' in this workspace.")
 
     channels = [
-        ChannelForDetection(name=ch.name, engineering_type=ch.engineering_type, phase_label=ch.phase)
+        ChannelForDetection(name=ch.name, engineering_type=ch.engineering_type, phase_label=ch.phase, unit=ch.unit)
         for ch in active.metadata.analog_channels
     ]
     detected_contexts = detect_engineering_contexts(channels)

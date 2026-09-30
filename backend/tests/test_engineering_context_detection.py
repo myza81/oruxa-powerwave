@@ -57,6 +57,84 @@ class TestCompleteBay:
             assert m.phase_source == PHASE_SOURCE_DETECTED_FROM_NAME
 
 
+class TestPrefixRoleConventions:
+    def test_prefix_roles_with_unit_decoration_create_one_bay_context(self):
+        channels = [
+            ChannelForDetection("UR JMHE NO1 (kV)", VOLTAGE, unit="kV"),
+            ChannelForDetection("UY JMHE NO1 (kV)", VOLTAGE, unit="kV"),
+            ChannelForDetection("UB JMHE NO1 (kV)", VOLTAGE, unit="kV"),
+            ChannelForDetection("IR JMHE NO1 (kA)", CURRENT, unit="kA"),
+            ChannelForDetection("IY JMHE NO1 (kA)", CURRENT, unit="kA"),
+            ChannelForDetection("IB JMHE NO1 (kA)", CURRENT, unit="kA"),
+        ]
+        detected = detect_engineering_contexts(channels)
+        assert len(detected) == 1
+        context = detected[0]
+        assert context.display_name == "JMHE NO1"
+        assert context.status == STATUS_SUGGESTED
+        assert _phase_by_channel(context, "UR JMHE NO1 (kV)") == PHASE_A
+        assert _phase_by_channel(context, "UY JMHE NO1 (kV)") == PHASE_B
+        assert _phase_by_channel(context, "UB JMHE NO1 (kV)") == PHASE_C
+        assert _phase_by_channel(context, "IR JMHE NO1 (kA)") == PHASE_A
+        assert _phase_by_channel(context, "IY JMHE NO1 (kA)") == PHASE_B
+        assert _phase_by_channel(context, "IB JMHE NO1 (kA)") == PHASE_C
+        assert {m.engineering_type for m in context.members} == {VOLTAGE, CURRENT}
+
+    def test_prefix_roles_without_display_unit_use_supplied_channel_metadata(self):
+        channels = [
+            ChannelForDetection("UR JMHE NO1", VOLTAGE, unit="kV"),
+            ChannelForDetection("IR JMHE NO1", CURRENT, unit="kA"),
+        ]
+        detected = detect_engineering_contexts(channels)
+        assert len(detected) == 1
+        context = detected[0]
+        assert context.display_name == "JMHE NO1"
+        assert context.status == STATUS_SUGGESTED
+        assert _phase_by_channel(context, "UR JMHE NO1") == PHASE_A
+        assert _phase_by_channel(context, "IR JMHE NO1") == PHASE_A
+
+    def test_v_prefix_and_suffix_variants_are_supported_when_deterministic(self):
+        channels = [
+            ChannelForDetection("VR JMHE NO1", VOLTAGE, unit="kV"),
+            ChannelForDetection("JMHE NO1 VY", VOLTAGE, unit="kV"),
+            ChannelForDetection("JMHE NO1_VB", VOLTAGE, unit="kV"),
+            ChannelForDetection("IR JMHE NO1", CURRENT, unit="kA"),
+            ChannelForDetection("JMHE NO1 IY", CURRENT, unit="kA"),
+            ChannelForDetection("JMHE NO1_IB", CURRENT, unit="kA"),
+        ]
+        detected = detect_engineering_contexts(channels)
+        assert len(detected) == 1
+        context = detected[0]
+        assert context.display_name == "JMHE NO1"
+        assert context.status == STATUS_SUGGESTED
+        assert _phase_by_channel(context, "VR JMHE NO1") == PHASE_A
+        assert _phase_by_channel(context, "JMHE NO1 VY") == PHASE_B
+        assert _phase_by_channel(context, "JMHE NO1_VB") == PHASE_C
+
+    def test_role_type_conflict_is_needs_review_not_silent_voltage(self):
+        channels = [ChannelForDetection("UR JMHE NO1 (kA)", CURRENT, unit="kA")]
+        detected = detect_engineering_contexts(channels)
+        assert len(detected) == 1
+        context = detected[0]
+        assert context.display_name == "JMHE NO1"
+        assert context.status == STATUS_NEEDS_REVIEW
+        assert context.members[0].engineering_type == CURRENT
+
+    def test_prefix_roles_keep_multiple_bays_separate(self):
+        channels = [
+            ChannelForDetection("UR JMHE NO1 (kV)", VOLTAGE, unit="kV"),
+            ChannelForDetection("IR JMHE NO1 (kA)", CURRENT, unit="kA"),
+            ChannelForDetection("UR JMHE NO2 (kV)", VOLTAGE, unit="kV"),
+            ChannelForDetection("IR JMHE NO2 (kA)", CURRENT, unit="kA"),
+        ]
+        detected = detect_engineering_contexts(channels)
+        assert {d.display_name for d in detected} == {"JMHE NO1", "JMHE NO2"}
+        no1 = _by_display_name(detected, "JMHE NO1")
+        no2 = _by_display_name(detected, "JMHE NO2")
+        assert {m.channel_name for m in no1.members} == {"UR JMHE NO1 (kV)", "IR JMHE NO1 (kA)"}
+        assert {m.channel_name for m in no2.members} == {"UR JMHE NO2 (kV)", "IR JMHE NO2 (kA)"}
+
+
 class TestMultipleBaysInOneSource:
     def test_three_separate_bays_not_merged(self):
         channels = [

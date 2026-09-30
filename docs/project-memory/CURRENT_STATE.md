@@ -9,7 +9,18 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-27**. **DEC-118 regression fix
+Last meaningful update: **2026-09-28**. **Channel engineering identity
+resolver for deterministic bay/group detection.** Engineering Context
+detection and Measurement Group detection now share
+`app.domain.channel_engineering_identity` for deterministic role-token
+interpretation while retaining separate grouping semantics. The resolver
+separates engineering type, phase, representation, context/bay hint,
+evidence and conflict flags; uses structured metadata/unit semantics
+before name grammar; supports prefix-role channels such as `UR JMHE NO1
+(kV)` and `IR JMHE NO1 (kA)`; and marks conflicts such as Voltage-like
+`UR` on a Current/kA channel `needs_review`, never silently choosing one.
+Backend/tests/docs only; ready for owner review.
+Previously, on **2026-09-27**, **DEC-118 regression fix
 (owner UAT, KPDN2).** R/Y/B-named channels whose COMTRADE `ph` field
 says A/B/C now display R/Y/B (V<sub>RY</sub>, `KPDN2 VRY`). Before, detection
 stored `ph` as the engineer-facing `original_phase_label`. Phases stay

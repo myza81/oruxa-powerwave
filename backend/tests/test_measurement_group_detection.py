@@ -54,6 +54,62 @@ class TestCanonicalWorkedExamples:
         assert group.status == STATUS_SUGGESTED
 
 
+class TestPrefixRoleConventions:
+    def test_jmhe_prefix_roles_form_kind_scoped_measurement_groups(self):
+        channels = [
+            ("UR JMHE NO1 (kV)", VOLTAGE, "kV"),
+            ("UY JMHE NO1 (kV)", VOLTAGE, "kV"),
+            ("UB JMHE NO1 (kV)", VOLTAGE, "kV"),
+            ("IR JMHE NO1 (kA)", CURRENT, "kA"),
+            ("IY JMHE NO1 (kA)", CURRENT, "kA"),
+            ("IB JMHE NO1 (kA)", CURRENT, "kA"),
+        ]
+        detected = detect_measurement_groups(channels)
+        assert len(detected) == 2
+        voltage = _by_display_name(detected, "JMHE NO1 VOLTAGE")
+        current = _by_display_name(detected, "JMHE NO1 CURRENT")
+        assert voltage.kind == KIND_VOLTAGE
+        assert current.kind == KIND_CURRENT
+        assert set(voltage.channel_names) == {
+            "UR JMHE NO1 (kV)", "UY JMHE NO1 (kV)", "UB JMHE NO1 (kV)",
+        }
+        assert set(current.channel_names) == {
+            "IR JMHE NO1 (kA)", "IY JMHE NO1 (kA)", "IB JMHE NO1 (kA)",
+        }
+        assert voltage.status == STATUS_SUGGESTED
+        assert current.status == STATUS_SUGGESTED
+
+    def test_prefix_roles_without_display_unit_group_when_type_is_known(self):
+        channels = [("UR JMHE NO1", VOLTAGE, "kV"), ("IR JMHE NO1", CURRENT, "kA")]
+        detected = detect_measurement_groups(channels)
+        assert {g.display_name for g in detected} == {"JMHE NO1 VOLTAGE", "JMHE NO1 CURRENT"}
+
+    def test_prefix_roles_keep_multiple_bays_separate(self):
+        channels = [
+            ("UR JMHE NO1 (kV)", VOLTAGE, "kV"),
+            ("IR JMHE NO1 (kA)", CURRENT, "kA"),
+            ("UR JMHE NO2 (kV)", VOLTAGE, "kV"),
+            ("IR JMHE NO2 (kA)", CURRENT, "kA"),
+        ]
+        detected = detect_measurement_groups(channels)
+        assert {g.display_name for g in detected} == {
+            "JMHE NO1 VOLTAGE", "JMHE NO1 CURRENT",
+            "JMHE NO2 VOLTAGE", "JMHE NO2 CURRENT",
+        }
+
+    def test_role_type_conflict_is_needs_review_in_declared_kind(self):
+        detected = detect_measurement_groups([("UR JMHE NO1 (kA)", CURRENT, "kA")])
+        assert len(detected) == 1
+        group = detected[0]
+        assert group.kind == KIND_CURRENT
+        assert group.display_name == "JMHE NO1 CURRENT"
+        assert group.status == STATUS_NEEDS_REVIEW
+
+    def test_unknown_similar_names_do_not_fuzzy_group(self):
+        channels = [("JMHE NO1 VOLTS", VOLTAGE, "kV"), ("JMHE NOl VOLTS", VOLTAGE, "kV")]
+        assert detect_measurement_groups(channels) == []
+
+
 class TestPhaseTokenVariants:
     def test_abc_phase_naming(self):
         channels = [("VA", VOLTAGE), ("VB", VOLTAGE), ("VC", VOLTAGE)]
