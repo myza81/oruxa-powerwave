@@ -6145,8 +6145,13 @@
         .ww-calculator-balanced-top {
             grid-template-columns: minmax(390px, 1.35fr) minmax(210px, 0.65fr);
         }
+        /* Same 60/40 split as before, as 3fr/2fr: when the first track is
+           held at its 440px minimum, the remaining flex total (2fr) is
+           >= 1, so the second card takes ALL leftover width. With 0.8fr
+           alone it received only 80% and the row ended short of the one
+           below (~1024px). */
         .ww-calculator-individual-top {
-            grid-template-columns: minmax(440px, 1.2fr) minmax(260px, 0.8fr);
+            grid-template-columns: minmax(440px, 3fr) minmax(260px, 2fr);
         }
         .ww-calculator-support-grid {
             grid-template-columns: minmax(300px, 1fr) minmax(260px, 0.78fr);
@@ -6182,9 +6187,11 @@
             color: var(--text-dim);
             font-weight: 600;
         }
+        /* Conversion and magnitude share the width; the unit select only
+           needs room for "kV", so its track is capped. */
         .ww-calculator-balanced-inputs {
             display: grid;
-            grid-template-columns: minmax(150px, 1fr) minmax(130px, 0.9fr) minmax(72px, 0.45fr);
+            grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) minmax(76px, 112px);
             gap: 8px;
             align-items: end;
             min-width: 0;
@@ -6195,19 +6202,44 @@
             gap: 10px;
             min-width: 0;
         }
-        .ww-calculator-grid :where(.ww-phasor-field),
-        .ww-calculator-phase-row :where(.ww-phasor-field) {
+        /* Calculator fields size to their own grid track. The shared
+           Analysis .ww-phasor-field rule sets min-width: 220px, a floor
+           that forced the Balanced inputs wider than their card (the Unit
+           select overlapped the result card) and defeated
+           .ww-calculator-unit-field's max-width. Two classes outrank that
+           single-class rule regardless of source order. `:is()` keeps its
+           argument's specificity (unlike `:where()`, which is zero and let
+           the shared rule win); it also keeps the shared field rules' own
+           selector text unique for the Analysis polish audit in
+           test_frontend_phasor_analysis.py, which finds them by text. */
+        .ww-calculator-tool :is(.ww-phasor-field) {
             min-width: 0;
         }
-        .ww-calculator-grid input[type="number"],
-        .ww-calculator-grid select,
-        .ww-calculator-balanced-inputs input[type="number"],
-        .ww-calculator-balanced-inputs select,
-        .ww-calculator-phase-row input[type="number"],
-        .ww-calculator-phase-row select {
+        /* ONE control look for every calculator number input and select,
+           matching the app's field styling (panel background, 1px panel
+           border, shared radius, 0.7rem text). Number inputs previously had
+           no styling at all and rendered as native boxes. The explicit
+           height (line box + padding + border) keeps inputs and selects
+           the same height side by side. Scoped through .ww-phasor-field so
+           it also outranks the later shared `.ww-phasor-field select`. */
+        .ww-calculator-tool :is(.ww-phasor-field) input[type="number"],
+        .ww-calculator-tool :is(.ww-phasor-field) select {
             width: 100%;
             min-width: 0;
             box-sizing: border-box;
+            height: calc(1.4em + 14px);
+            padding: 6px 8px;
+            font-size: 0.7rem;
+            line-height: 1.4;
+            color: var(--text);
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+        }
+        .ww-calculator-tool :is(.ww-phasor-field) input[type="number"]:focus,
+        .ww-calculator-tool :is(.ww-phasor-field) select:focus {
+            outline: none;
+            border-color: var(--accent-dim);
         }
         .ww-calculator-result {
             justify-content: center;
@@ -6254,7 +6286,10 @@
             gap: 8px;
             align-items: end;
         }
+        /* Individual-tab Unit sits in a flex header row: the same compact
+           112px as the Balanced unit track, never stretched or collapsed. */
         .ww-calculator-unit-field {
+            flex: 0 1 112px;
             max-width: 140px;
         }
         .ww-calculator-phase-head {
@@ -6344,8 +6379,12 @@
             }
         }
         @media (max-width: 720px) {
+            /* Conversion + Unit share row 1, magnitude takes row 2. `dense`
+               lets Unit backfill row 1; otherwise it dropped to a third
+               row and left an empty cell beside Conversion. */
             .ww-calculator-balanced-inputs {
                 grid-template-columns: minmax(0, 1fr) minmax(96px, 0.55fr);
+                grid-auto-flow: row dense;
             }
             .ww-calculator-balanced-inputs .ww-calculator-voltage-field {
                 grid-column: 1 / -1;
