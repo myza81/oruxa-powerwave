@@ -1,15 +1,19 @@
-// Event Reconstruction -- Slice 0 (frontend shell only).
+// Event Reconstruction -- Slice 0 shell (DEC-123) and Slice 2 selection
+// workflow (DEC-125) over the Slice 1 API (DEC-124).
 //
-// Covers the new main-menu entry, the page shell (left recording panel,
-// waveform workspace shell, standard interaction toolbar), its shared
-// Waveform visual language, and the boundary it must keep with the
-// shared Waveform engine: opening Event Reconstruction or using its
-// controls must never change Waveform state.
+// Covers the main-menu entry, the page shell and its Waveform visual
+// language, the left-panel member/Time Group workflow (chronological
+// list, eligibility, add/remove, reference, corrections, stale members
+// and re-confirmation, large-gap warning, clear), and the boundary with
+// Waveform: Event Reconstruction never changes Waveform, Time Groups or
+// Synchronise Sources state, and plots nothing yet.
 
 const { test, expect } = require("@playwright/test");
 const path = require("path");
+const fs = require("fs");
 
 const FIXTURES = path.join(__dirname, "..", "backend", "tests", "fixtures", "comtrade");
+const BACKEND = `http://127.0.0.1:${process.env.PW_BACKEND_PORT || "8000"}`;
 
 function collectConsoleErrors(page) {
   const errors = [];
@@ -20,16 +24,62 @@ function collectConsoleErrors(page) {
   return errors;
 }
 
-async function uploadSynthAscii(page) {
+// synth_ascii.cfg with its station name and start/trigger lines replaced,
+// so each upload is a recognisable recording in its own Time Group.
+function cfgBuffer(station, startClock) {
+  const lines = fs.readFileSync(path.join(FIXTURES, "synth_ascii.cfg"), "latin1").split(/\r?\n/);
+  lines[0] = lines[0].replace("SYNTH_STATION", station);
+  const stampLines = lines.map((l, i) => (/^\d{2}\/\d{2}\/\d{4},/.test(l) ? i : -1)).filter((i) => i >= 0);
+  const [h, m, s] = startClock.split(":");
+  const startSeconds = Number(h) * 3600 + Number(m) * 60 + Number(s);
+  const fmt = (t) => {
+    const hh = String(Math.floor(t / 3600)).padStart(2, "0");
+    const mm = String(Math.floor((t % 3600) / 60)).padStart(2, "0");
+    const ss = (t % 60).toFixed(6).padStart(9, "0");
+    return `06/03/2026,${hh}:${mm}:${ss}`;
+  };
+  lines[stampLines[0]] = fmt(startSeconds);
+  lines[stampLines[1]] = fmt(startSeconds + 0.005);
+  return Buffer.from(lines.join("\r\n"), "latin1");
+}
+
+async function upload(page, station, startClock) {
+  await page.locator("#mainNavRecordingsBtn").click();
   await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
   await expect(page.locator("#uploadModalOverlay")).toBeVisible();
-  await page.locator("#uploadModalFile_0").setInputFiles(path.join(FIXTURES, "synth_ascii.cfg"));
-  await page.locator("#uploadModalFile_1").setInputFiles(path.join(FIXTURES, "synth_ascii.dat"));
+  await page.locator("#uploadModalFile_0").setInputFiles({ name: `${station}.cfg`, mimeType: "application/octet-stream", buffer: cfgBuffer(station, startClock) });
+  await page.locator("#uploadModalFile_1").setInputFiles({ name: `${station}.dat`, mimeType: "application/octet-stream", buffer: fs.readFileSync(path.join(FIXTURES, "synth_ascii.dat")) });
   await page.locator("#uploadModalSubmitBtn").click();
   await page.locator("#uploadModalOverlay").waitFor({ state: "hidden" });
-  const row = page.locator("#recordingsTableBody tr[data-source-id]").first();
-  await expect(row).toBeVisible();
-  return row.getAttribute("data-source-id");
+}
+
+async function openEventReconstruction(page) {
+  await page.locator("#mainNavEventReconstructionBtn").click();
+  await expect(page.locator("#pageEventReconstruction")).toBeVisible();
+}
+
+async function workspaceId(page) {
+  return page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
+}
+
+async function api(page, pathSuffix) {
+  const resp = await page.request.get(`${BACKEND}/api/v1/workspaces/${await workspaceId(page)}${pathSuffix}`);
+  expect(resp.ok()).toBeTruthy();
+  return resp.json();
+}
+
+const groupRow = (page, station) => page.locator("#wwErGroupsPanel .ww-er-group-row", { hasText: station });
+const memberRow = (page, station) => page.locator("#wwErMembersPanel .ww-er-member-row", { hasText: station });
+
+async function addGroup(page, station) {
+  await groupRow(page, station).locator('button[data-er-action="add-group"]').click();
+  await expect(groupRow(page, station).getByText("In reconstruction")).toBeVisible();
+}
+
+async function setCorrection(page, station, ms) {
+  const row = memberRow(page, station);
+  await row.locator("input[data-er-correction-input]").fill(String(ms));
+  await row.locator('button[data-er-action="set-correction"]').click();
 }
 
 test.describe("Event Reconstruction -- Slice 0 shell", () => {
@@ -59,7 +109,6 @@ test.describe("Event Reconstruction -- Slice 0 shell", () => {
     await expect(page.locator("#workspaceRow")).toBeHidden();
     await expect(page.locator("#pageRecordings")).toBeHidden();
 
-    // Every other page still switches, and Event Reconstruction hides.
     const pages = [
       ["#mainNavWaveformBtn", "#workspaceRow"],
       ["#mainNavRecordingsBtn", "#pageRecordings"],
@@ -81,53 +130,40 @@ test.describe("Event Reconstruction -- Slice 0 shell", () => {
     expect(consoleErrors).toEqual([]);
   });
 
-  test("empty workspace shows the left recording panel, the workspace shell and the toolbar", async ({ page }) => {
+  test("empty workspace shows the left panel, the workspace shell and the toolbar", async ({ page }) => {
     const consoleErrors = collectConsoleErrors(page);
     await page.goto("/index.html");
-    await page.locator("#mainNavEventReconstructionBtn").click();
+    await openEventReconstruction(page);
 
-    // Left recording panel, left of the main workspace.
     const sidebar = page.locator("#wwErSidebar");
     await expect(sidebar).toBeVisible();
-    await expect(page.locator("#wwErRecordingsHeading")).toContainText("Recordings");
-    await expect(page.locator("#wwErRecordingsCountBadge")).toHaveText("(0)");
-    await expect(page.locator("#wwErRecordingsPanel")).toContainText("No recordings loaded yet. Upload one from Recordings.");
+    await expect(page.locator("#wwErDefinitionHeading")).toContainText("Reconstruction");
+    await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(0)");
+    await expect(page.locator("#wwErGroupsCountBadge")).toHaveText("(0)");
+    await expect(page.locator("#wwErGroupsPanel")).toContainText("No recordings loaded yet. Upload one from Recordings.");
+    await expect(page.locator("#wwErClearBtn")).toBeHidden();
     const sidebarBox = await sidebar.boundingBox();
     const mainBox = await page.locator("#wwErMain").boundingBox();
     expect(sidebarBox.x + sidebarBox.width).toBeLessThanOrEqual(mainBox.x);
     expect(Math.round(sidebarBox.width)).toBe(320);
 
-    // Workspace shell with an honest empty state -- no fake data.
     await expect(page.locator("#wwErCanvas .ww-tg-header-title")).toHaveText("Reconstruction Timeline");
     await expect(page.locator("#wwErCanvasMeta")).toHaveText("No reconstruction records selected");
     await expect(page.locator("#wwErEmptyState")).toBeVisible();
     await expect(page.locator("#wwErPanels .ww-chart")).toHaveCount(0);
     await expect(page.locator("#pageEventReconstruction .ww-time-group-canvas")).toHaveCount(0);
 
-    // Standard interaction controls.
-    await expect(page.locator("#wwErDragModeZoomBtn")).toBeVisible();
-    await expect(page.locator("#wwErDragModePanBtn")).toBeVisible();
     await expect(page.locator("#wwErDragModeZoomBtn")).toHaveAttribute("aria-label", "Box Zoom");
     await expect(page.locator("#wwErDragModePanBtn")).toHaveAttribute("aria-label", "Pan");
     for (const id of ["#wwErZoomInBtn", "#wwErZoomOutBtn", "#wwErResetViewBtn"]) {
       await expect(page.locator(id)).toBeVisible();
-      // No reconstruction canvas exists yet, so these cannot act on anything.
       await expect(page.locator(id)).toBeDisabled();
     }
-    await expect(page.locator("#wwErZoomInBtn")).toHaveText("Zoom In");
-    await expect(page.locator("#wwErZoomOutBtn")).toHaveText("Zoom Out");
-    await expect(page.locator("#wwErResetViewBtn")).toHaveText("Reset Time View");
 
-    // Same toolbar visual language as the Waveform toolbar.
     const toolbarStyles = await page.evaluate(() => {
       const pick = (el) => {
         const style = getComputedStyle(el);
-        return {
-          backgroundImage: style.backgroundImage,
-          borderBottom: style.borderBottom,
-          padding: style.padding,
-          gap: style.gap,
-        };
+        return { backgroundImage: style.backgroundImage, borderBottom: style.borderBottom, padding: style.padding, gap: style.gap };
       };
       return { er: pick(document.getElementById("wwErToolbar")), waveform: pick(document.getElementById("wwToolbar")) };
     });
@@ -138,65 +174,20 @@ test.describe("Event Reconstruction -- Slice 0 shell", () => {
 
   test("drag mode is Event Reconstruction state only and never changes Waveform", async ({ page }) => {
     await page.goto("/index.html");
-    await page.locator("#mainNavEventReconstructionBtn").click();
+    await openEventReconstruction(page);
 
     await expect(page.locator("#wwErDragModeZoomBtn")).toHaveAttribute("aria-pressed", "true");
     await page.locator("#wwErDragModePanBtn").click();
     await expect(page.locator("#wwErDragModePanBtn")).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator("#wwErDragModeZoomBtn")).toHaveAttribute("aria-pressed", "false");
-
-    // The Waveform toolbar's own drag mode is untouched.
     await expect(page.locator("#dragModeZoomBtn")).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator("#dragModePanBtn")).toHaveAttribute("aria-pressed", "false");
-
-    await page.locator("#wwErDragModeZoomBtn").click();
-    await expect(page.locator("#wwErDragModeZoomBtn")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator("#wwErDragModePanBtn")).toHaveAttribute("aria-pressed", "false");
-  });
-
-  test("lists uploaded recordings read-only and leaves the Waveform workspace intact", async ({ page }) => {
-    const consoleErrors = collectConsoleErrors(page);
-    await page.goto("/index.html");
-    const sourceId = await uploadSynthAscii(page);
-
-    // Open in Waveform and display one channel.
-    await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
-    const channelRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
-    await expect(channelRow).toBeVisible();
-    if ((await channelRow.getAttribute("aria-pressed")) !== "true") await channelRow.click();
-    await expect(channelRow).toHaveAttribute("aria-pressed", "true");
-    const waveformCanvases = page.locator("#wwTimeGroupCanvases .ww-time-group-canvas");
-    await expect(waveformCanvases.first()).toBeVisible();
-    const canvasCountBefore = await waveformCanvases.count();
-    const traceCountBefore = await page.locator("#wwTimeGroupCanvases .ww-chart .scatterlayer .trace").count();
-    expect(traceCountBefore).toBeGreaterThan(0);
-
-    // Event Reconstruction lists the recording, read-only.
-    await page.locator("#mainNavEventReconstructionBtn").click();
-    await expect(page.locator("#wwErRecordingsCountBadge")).toHaveText("(1)");
-    const erRow = page.locator(`#wwErRecordingsPanel .ww-er-source-row[data-source-id="${sourceId}"]`);
-    await expect(erRow).toBeVisible();
-    await expect(erRow.locator(".source-recording-name")).not.toHaveText("");
-    await expect(erRow.locator(".source-recording-meta")).toContainText("analog");
-    await expect(erRow.locator(".source-recording-time-identity")).not.toHaveText("");
-    await expect(page.locator("#wwErRecordingsPanel .channel-row--toggle")).toHaveCount(0);
-    await expect(page.locator("#wwErRecordingsPanel .source-recording-sync-badge")).toHaveCount(0);
-    await expect(page.locator("#wwErPanels .ww-chart")).toHaveCount(0);
-
-    // Back on Waveform, nothing was rebuilt or lost.
-    await page.locator("#mainNavWaveformBtn").click();
-    await expect(page.locator("#workspaceRow")).toBeVisible();
-    await expect(channelRow).toHaveAttribute("aria-pressed", "true");
-    await expect(waveformCanvases).toHaveCount(canvasCountBefore);
-    await expect(page.locator("#wwTimeGroupCanvases .ww-chart .scatterlayer .trace")).toHaveCount(traceCountBefore);
-
-    expect(consoleErrors).toEqual([]);
   });
 
   test("responsive Sources drawer opens the Event Reconstruction panel only", async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 800 });
     await page.goto("/index.html");
-    await page.locator("#mainNavEventReconstructionBtn").click();
+    await openEventReconstruction(page);
 
     const toggle = page.locator("#shellSidebarToggleBtn");
     await expect(toggle).toBeVisible();
@@ -208,10 +199,233 @@ test.describe("Event Reconstruction -- Slice 0 shell", () => {
     await page.locator("#wwErSidebarBackdrop").click({ position: { x: 700, y: 400 } });
     await expect(page.locator("#pageEventReconstruction")).not.toHaveClass(/shell-sidebar-open/);
 
-    // The drawer toggle still controls Waveform's own panel there.
     await page.locator("#mainNavWaveformBtn").click();
     await toggle.click();
     await expect(page.locator("#workspaceRow")).toHaveClass(/shell-sidebar-open/);
     await expect(page.locator("#pageEventReconstruction")).not.toHaveClass(/shell-sidebar-open/);
+  });
+});
+
+test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
+  test("Time Groups are listed chronologically; ineligible groups show the backend reason and cannot be added", async ({ page }) => {
+    const consoleErrors = collectConsoleErrors(page);
+    await page.goto("/index.html");
+    // Uploaded out of chronological order on purpose.
+    await upload(page, "STN_LATE", "10:00:20");
+    await upload(page, "STN_EARLY", "10:00:00");
+    await upload(page, "STN_MIDDLE", "10:00:10");
+
+    // A Time-of-Day group cannot come from a COMTRADE upload, so it is
+    // appended to the real backend response.
+    await page.route("**/event-reconstruction/time-groups", async (route) => {
+      const response = await route.fetch();
+      const groups = await response.json();
+      groups.push({
+        group_id: "tod-group", time_reference_type: "time_of_day", origin_source_id: "tod-group", source_ids: ["tod-group"],
+        membership_fingerprint: "tgm1-tod", eligible: false, reason_code: "time_of_day_not_supported",
+        reason_message: "This Time Group has a time of day but no calendar date. Time-of-day recordings are not supported by Event Reconstruction yet.",
+        start_time_utc: null, end_time_utc: null, duration_s: 1.0, note: null, reconstruction_member_id: null,
+      });
+      await route.fulfill({ response, json: groups });
+    });
+
+    await openEventReconstruction(page);
+    const eligibleRows = page.locator('#wwErGroupsPanel .ww-er-group-row[data-eligible="true"] .source-recording-name');
+    await expect(eligibleRows).toHaveText(["STN_EARLY", "STN_MIDDLE", "STN_LATE"]);
+    await expect(page.locator("#wwErGroupsCountBadge")).toHaveText("(4)");
+
+    const ineligible = page.locator('#wwErGroupsPanel .ww-er-group-row[data-eligible="false"]');
+    await expect(ineligible).toHaveCount(1);
+    await expect(ineligible).toHaveAttribute("data-reason-code", "time_of_day_not_supported");
+    await expect(ineligible).toContainText("no calendar date");
+    await expect(ineligible).toContainText("Not eligible");
+    await expect(ineligible.locator('button[data-er-action="add-group"]')).toHaveCount(0);
+    await expect(page.locator("#wwErNotices")).toContainText("Add two or more Time Groups");
+
+    expect(consoleErrors).toEqual([]);
+  });
+
+  test("create, update, change reference, correct, reset, re-enter and clear", async ({ page }) => {
+    const consoleErrors = collectConsoleErrors(page);
+    await page.goto("/index.html");
+    await upload(page, "STN_A", "10:00:00");
+    await upload(page, "STN_B", "10:00:10");
+    await upload(page, "STN_C", "10:00:20");
+    await openEventReconstruction(page);
+
+    await addGroup(page, "STN_A");
+    await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(1)");
+    await expect(memberRow(page, "STN_A").locator(".ww-er-badge--reference")).toBeVisible();
+    await expect(page.locator("#wwErNotices")).toContainText("A reconstruction needs at least two Time Groups.");
+    await addGroup(page, "STN_B");
+    await addGroup(page, "STN_C");
+    await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(3)");
+    await expect(page.locator("#wwErCanvasMeta")).toHaveText("3 Time Groups selected");
+    await expect(memberRow(page, "STN_B")).toContainText("+10.000 s from reference");
+
+    // Update membership: remove a non-reference member.
+    await memberRow(page, "STN_C").locator('button[data-er-action="remove-member"]').click();
+    await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(2)");
+    await expect(groupRow(page, "STN_C").locator('button[data-er-action="add-group"]')).toBeVisible();
+
+    // Sub-millisecond correction is stored at full precision.
+    await setCorrection(page, "STN_B", 12.3456);
+    await expect(memberRow(page, "STN_B").locator(".ww-er-correction-value")).toHaveText("+12.346 ms");
+    let definition = await api(page, "/event-reconstruction/definition");
+    const memberB = definition.members.find((m) => !m.is_reference);
+    expect(memberB.correction_s).toBeCloseTo(0.0123456, 12);
+
+    // Changing the reference keeps every stored correction.
+    await memberRow(page, "STN_B").locator('button[data-er-action="make-reference"]').click();
+    await expect(memberRow(page, "STN_B").locator(".ww-er-badge--reference")).toBeVisible();
+    await expect(memberRow(page, "STN_A")).toContainText("from reference");
+    definition = await api(page, "/event-reconstruction/definition");
+    expect(definition.reference_member_id).toBe(memberB.member_id);
+    expect(definition.members.find((m) => m.member_id === memberB.member_id).correction_s).toBeCloseTo(0.0123456, 12);
+    await expect(memberRow(page, "STN_B").locator(".ww-er-correction-value")).toHaveText("+12.346 ms");
+
+    // Reset, then leave and come back: the definition is restored from the backend.
+    await memberRow(page, "STN_B").locator('button[data-er-action="reset-correction"]').click();
+    await expect(memberRow(page, "STN_B").locator(".ww-er-correction-value")).toHaveText("0.000 ms");
+    await page.locator("#mainNavRecordingsBtn").click();
+    await openEventReconstruction(page);
+    await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(2)");
+    await expect(memberRow(page, "STN_B").locator(".ww-er-badge--reference")).toBeVisible();
+
+    // Clear asks first, then removes only the reconstruction.
+    await page.locator("#wwErClearBtn").click();
+    await expect(page.locator("#wwErClearConfirmOverlay")).toBeVisible();
+    await page.locator("#wwErClearCancelBtn").click();
+    await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(2)");
+    await page.locator("#wwErClearBtn").click();
+    await page.locator("#wwErClearConfirmBtn").click();
+    await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(0)");
+    await expect(page.locator("#wwErClearBtn")).toBeHidden();
+    await expect(page.locator("#wwErGroupsCountBadge")).toHaveText("(3)");
+    expect((await api(page, "/event-reconstruction/definition")).defined).toBe(false);
+    expect(await api(page, "/sources")).toHaveLength(3);
+
+    expect(consoleErrors).toEqual([]);
+  });
+
+  test("a stale member keeps its correction unapplied; re-confirmation adds the new group at 0", async ({ page }) => {
+    const consoleErrors = collectConsoleErrors(page);
+    await page.goto("/index.html");
+    await upload(page, "STN_BASE", "10:00:00");
+    await upload(page, "STN_REF", "10:00:10");
+    await openEventReconstruction(page);
+    await addGroup(page, "STN_REF");
+    await addGroup(page, "STN_BASE");
+    await setCorrection(page, "STN_BASE", -5);
+    await expect(memberRow(page, "STN_BASE").locator(".ww-er-correction-value")).toHaveText("-5.000 ms");
+
+    // Overlaps STN_BASE, so its Time Group membership changes.
+    await upload(page, "STN_OVERLAP", "10:00:00.005");
+    await openEventReconstruction(page);
+
+    const stale = memberRow(page, "STN_BASE");
+    await expect(stale).toHaveAttribute("data-member-status", "stale");
+    await expect(stale.getByText("Stale")).toBeVisible();
+    await expect(stale).toContainText("Correction -5.000 ms (kept, not applied)");
+    await expect(stale.locator("input[data-er-correction-input]")).toHaveCount(0);
+    await expect(page.locator("#wwErNotices")).toContainText("1 member needs re-confirmation");
+    await expect(page.locator("#wwErCanvasMeta")).toContainText("re-confirmation needed");
+    const merged = groupRow(page, "STN_OVERLAP");
+    await expect(merged.locator('button[data-er-action="add-group"]')).toBeDisabled();
+
+    await page.locator('#wwErNotices button[data-er-action="reconfirm-stale"]').click();
+    const reconfirmed = memberRow(page, "STN_OVERLAP");
+    await expect(reconfirmed).toHaveAttribute("data-member-status", "current");
+    await expect(reconfirmed.locator(".ww-er-correction-value")).toHaveText("0.000 ms");
+    await expect(reconfirmed).toContainText("Previous correction (not applied): -5.000 ms");
+    await expect(page.locator('#wwErMembersPanel .ww-er-member-row[data-member-status="stale"]')).toHaveCount(0);
+    const definition = await api(page, "/event-reconstruction/definition");
+    expect(definition.status).toBe("ready");
+    expect(definition.members.map((m) => m.correction_s)).toEqual([0, 0]);
+
+    expect(consoleErrors).toEqual([]);
+  });
+
+  test("a stale reference is never replaced automatically", async ({ page }) => {
+    await page.goto("/index.html");
+    await upload(page, "STN_BASE", "10:00:00");
+    await upload(page, "STN_OTHER", "10:00:10");
+    await openEventReconstruction(page);
+    await addGroup(page, "STN_BASE");
+    await addGroup(page, "STN_OTHER");
+    const before = await api(page, "/event-reconstruction/definition");
+
+    await upload(page, "STN_OVERLAP", "10:00:00.005");
+    await openEventReconstruction(page);
+    await expect(page.locator("#wwErNotices")).toContainText("Reference needs to be chosen again");
+    await expect(memberRow(page, "STN_BASE").locator(".ww-er-badge--reference")).toBeVisible();
+    await expect(page.locator('#wwErNotices button[data-er-action="reconfirm-stale"]')).toHaveCount(0);
+    const after = await api(page, "/event-reconstruction/definition");
+    expect(after.reference_member_id).toBe(before.reference_member_id);
+    expect(after.placements_available).toBe(false);
+
+    // The engineer chooses a current member as reference explicitly.
+    await memberRow(page, "STN_OTHER").locator('button[data-er-action="make-reference"]').click();
+    await expect(memberRow(page, "STN_OTHER").locator(".ww-er-badge--reference")).toBeVisible();
+    await expect(page.locator('#wwErNotices button[data-er-action="reconfirm-stale"]')).toBeVisible();
+  });
+
+  test("a large time gap is a warning, not a rejection", async ({ page }) => {
+    await page.goto("/index.html");
+    await upload(page, "STN_MORNING", "10:00:00");
+    await upload(page, "STN_NOON", "12:00:00");
+    await openEventReconstruction(page);
+    await addGroup(page, "STN_MORNING");
+    await addGroup(page, "STN_NOON");
+
+    const notice = page.locator('#wwErNotices .ww-er-notice--warn', { hasText: "Large time gap" });
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText("warning threshold 3600 s");
+    await expect(notice).toContainText("Between STN_MORNING and STN_NOON");
+    const definition = await api(page, "/event-reconstruction/definition");
+    expect(definition.status).toBe("ready");
+    expect(definition.warnings).toHaveLength(1);
+    await expect(page.locator("#wwErStatus")).not.toHaveClass(/error/);
+  });
+
+  test("never changes Waveform, Time Groups, Synchronise Sources or source data, and plots nothing", async ({ page }) => {
+    const consoleErrors = collectConsoleErrors(page);
+    await page.goto("/index.html");
+    await upload(page, "STN_A", "10:00:00");
+    await upload(page, "STN_B", "10:00:10");
+
+    // Display one channel in Waveform first.
+    await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
+    await expect(page.locator("#workspaceRow")).toBeVisible();
+    const channelRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
+    if ((await channelRow.getAttribute("aria-pressed")) !== "true") await channelRow.click();
+    await expect(channelRow).toHaveAttribute("aria-pressed", "true");
+    const traces = page.locator("#wwTimeGroupCanvases .ww-chart .scatterlayer .trace");
+    await expect(traces.first()).toBeVisible();
+    const traceCount = await traces.count();
+
+    const syncBefore = await api(page, "/synchronization/sources");
+    const groupsBefore = await api(page, "/synchronization/time-groups");
+    const sourcesBefore = await api(page, "/sources");
+
+    await openEventReconstruction(page);
+    await addGroup(page, "STN_A");
+    await addGroup(page, "STN_B");
+    await setCorrection(page, "STN_B", -9999);
+    await memberRow(page, "STN_B").locator('button[data-er-action="make-reference"]').click();
+    await expect(memberRow(page, "STN_B").locator(".ww-er-badge--reference")).toBeVisible();
+    await expect(page.locator("#pageEventReconstruction .plotly")).toHaveCount(0);
+    await expect(page.locator("#wwErEmptyState")).toHaveText("Plotting the reconstruction on its common timeline is not available yet.");
+    for (const id of ["#wwErZoomInBtn", "#wwErZoomOutBtn", "#wwErResetViewBtn"]) await expect(page.locator(id)).toBeDisabled();
+
+    expect(await api(page, "/synchronization/sources")).toEqual(syncBefore);
+    expect(await api(page, "/synchronization/time-groups")).toEqual(groupsBefore);
+    expect(await api(page, "/sources")).toEqual(sourcesBefore);
+
+    await page.locator("#mainNavWaveformBtn").click();
+    await expect(channelRow).toHaveAttribute("aria-pressed", "true");
+    await expect(traces).toHaveCount(traceCount);
+
+    expect(consoleErrors).toEqual([]);
   });
 });

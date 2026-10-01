@@ -1,7 +1,7 @@
 """Static structural regression checks for the Event Reconstruction
-Slice 0 frontend shell (page, left recording panel, waveform workspace
-shell and toolbar), and for the boundaries it must keep with the shared
-Waveform engine."""
+frontend: the Slice 0 shell (page, left panel, waveform workspace shell,
+toolbar), the Slice 2 selection workflow wired to the Slice 1 API, and
+the boundaries both must keep with the shared Waveform engine."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def _er_module(source: str) -> str:
     """The Event Reconstruction JS module, with `//` comments removed so
     checks see code only (its comments name the Waveform functions it
     deliberately avoids)."""
-    module = _between(source, "// Event Reconstruction -- Slice 0 (frontend shell only)", "// Phase 3B: Recordings page (section 5/8/9)")
+    module = _between(source, "// Event Reconstruction (DEC-123 Slice 0 shell; DEC-125 Slice 2", "// Phase 3B: Recordings page (section 5/8/9)")
     return "\n".join(line.split("//", 1)[0] for line in module.splitlines())
 
 
@@ -102,11 +102,13 @@ class TestEventReconstructionPageShell:
         # Never nested inside the Waveform workspace row.
         assert "pageEventReconstruction" not in _workspace_row(source)
 
-    def test_left_recording_panel_exists(self):
+    def test_left_panel_has_reconstruction_and_time_group_sections(self):
         page = _er_page(_source())
-        assert '<aside id="wwErSidebar" aria-label="Event Reconstruction recordings">' in page
-        assert 'id="wwErRecordingsHeading">Recordings <span id="wwErRecordingsCountBadge" class="count-badge">(0)</span></h2>' in page
-        assert 'id="wwErRecordingsPanel"' in page
+        assert '<aside id="wwErSidebar" aria-label="Event Reconstruction records">' in page
+        assert 'id="wwErDefinitionHeading">Reconstruction <span id="wwErMemberCountBadge" class="count-badge">(0)</span></h2>' in page
+        for element_id in ("wwErNotices", "wwErMembersPanel", "wwErClearBtn", "wwErStatus", "wwErGroupsPanel"):
+            assert f'id="{element_id}"' in page
+        assert 'id="wwErGroupsHeading">Time Groups <span id="wwErGroupsCountBadge" class="count-badge">(0)</span></h2>' in page
         assert 'class="shell-split-handle" id="wwErSplitHandle"' in page
         assert 'id="wwErSidebarBackdrop"' in page
 
@@ -118,7 +120,7 @@ class TestEventReconstructionPageShell:
         assert 'class="ww-er-canvas" id="wwErCanvas"' in page
         assert '<div class="ww-tg-panels" id="wwErPanels"></div>' in page
         assert 'id="wwErEmptyState"' in page
-        assert "Record selection and plotting are not available yet." in page
+        assert "Plotting the reconstruction is not available yet." in page
 
     def test_waveform_keeps_the_only_main_element(self):
         page = _er_page(_source())
@@ -169,7 +171,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         source = _source()
         assert 'document.getElementById("wwErDragModeZoomBtn").addEventListener("click", () => wwErSetDragMode("zoom"));' in source
         assert 'document.getElementById("wwErDragModePanBtn").addEventListener("click", () => wwErSetDragMode("pan"));' in source
-        set_mode = _between(source, "function wwErSetDragMode(mode) {", "function wwErSourceRowHtml(source)")
+        set_mode = _between(source, "function wwErSetDragMode(mode) {", "// ---- API ----")
         assert "wwErState.dragMode = mode;" in set_mode
         assert "Plotly" not in set_mode
 
@@ -177,28 +179,125 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         source = _source()
         module = _er_module(source)
         state = _between(source, "const wwErState = {", "};")
-        assert state.split("{", 1)[1].strip() == 'dragMode: "zoom",'
+        keys = re.findall(r"^\s*(\w+):", state.split("{", 1)[1], re.MULTILINE)
+        # Workspace state and the last API responses only.
+        assert keys == ["dragMode", "sources", "timeGroups", "definition", "previousCorrections", "loadSeq", "busy"]
         for forbidden in ("PresentationOverrides", "channelColors", "ColorOverride", "DisplayName =", "new Map(", "localStorage"):
             assert forbidden not in module
         # The only ER-owned persisted value is the left panel width.
         assert re.findall(r"const (?:WW_ER_|wwEr)\w+", module) == ["const WW_ER_SIDEBAR_WIDTH_STORAGE_KEY", "const wwErState"]
 
-    def test_recording_rows_are_read_only_metadata(self):
+    def test_left_panel_never_reuses_waveform_channel_tree_or_sync_state(self):
         module = _er_module(_source())
-        row = _between(_source(), "function wwErSourceRowHtml(source) {", "function wwErRenderRecordings(sources)")
-        for helper in ("recordingDisplayName(source)", "wwFormatSourceSummaryLine(source)", "wwFormatSourceTimeIdentity(source)"):
-            assert helper in row
-        # No channel tree, channel toggles, sync badge or Time Group data.
-        for forbidden in ("renderAnalogGroup", "renderDigitalGroup", "channel-row--toggle", "wwSourceSyncBadgeHtml", "timeGroup", "synchronization"):
+        for forbidden in (
+            "renderAnalogGroup", "renderDigitalGroup", "channel-row--toggle", "wwSourceSyncBadgeHtml",
+            "/synchronization", "wwOpenSyncModal", "source-recording-sync-badge",
+        ):
             assert forbidden not in module
 
-    def test_page_entry_only_reads_the_existing_sources_list(self):
-        entered = _between(_source(), "async function wwErOnPageEntered() {", "\n        }\n")
-        assert "await fetchSourcesList();" in entered
-        assert "fetch(" not in entered.replace("fetchSourcesList(", "")
+    def test_no_plotting_yet(self):
+        module = _er_module(_source())
+        assert "Plotly" not in module
+        assert "ww-chart" not in module
+
+    def test_page_entry_and_refresh_read_only_existing_lists(self):
+        source = _source()
+        entered = _between(source, "async function wwErOnPageEntered() {", "\n        }\n")
+        assert "await wwErRefresh();" in entered
+        refresh = _between(source, "async function wwErRefresh() {", "async function wwErOnPageEntered()")
+        assert 'fetchSourcesList(), wwErFetchJson("/time-groups"), wwErFetchJson("/definition"),' in refresh
+        assert "if (seq !== wwErState.loadSeq) return;" in refresh
+
+    def test_waveform_toolbar_controls_keep_their_slice_0_status(self):
+        page = _er_page(_source())
+        for element_id in ("wwErZoomInBtn", "wwErZoomInAxisBtn", "wwErZoomOutBtn", "wwErZoomOutAxisBtn", "wwErResetViewBtn"):
+            assert re.search(rf'id="{element_id}"[^>]*disabled', page)
 
     def test_sidebar_drawer_targets_the_current_page_row(self):
         source = _source()
         helper = _between(source, "function shellSidebarDrawerRowEl() {", "\n        }\n")
         assert 'shell.currentPage === "event-reconstruction" ? "pageEventReconstruction" : "workspaceRow"' in helper
         assert 'document.getElementById("wwErSidebarBackdrop").addEventListener("click", () => shellSetSidebarDrawerOpen(false));' in source
+
+
+class TestEventReconstructionSelectionWorkflow:
+    """Slice 2 (DEC-125): the left panel is driven by the Slice 1 API only."""
+
+    def test_api_base_is_the_event_reconstruction_router(self):
+        url = _between(_source(), "function wwErApiUrl(path) {", "\n        }\n")
+        assert '"/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/event-reconstruction" + path' in url
+
+    def test_every_write_is_one_of_the_slice_1_endpoints(self):
+        module = _er_module(_source())
+        writes = re.findall(r'wwErMutate\("(\w+)", "([^"]+)"', module)
+        assert sorted(set(writes)) == sorted({
+            ("PUT", "/definition"),
+            ("PUT", "/definition/reference"),
+            ("PUT", "/definition/members/"),
+            ("DELETE", "/definition/members/"),
+            ("DELETE", "/definition"),
+        })
+        assert module.count('"/correction"') == 2
+
+    def test_time_groups_are_sorted_chronologically_with_ineligible_after(self):
+        sort = _between(_source(), "function wwErSortedTimeGroups() {", "function wwErMembershipBlockedReason()")
+        assert "Date.parse(a.start_time_utc) - Date.parse(b.start_time_utc)" in sort
+        assert "filter((g) => g.eligible)" in sort and "filter((g) => !g.eligible)" in sort
+
+    def test_ineligible_groups_show_the_backend_reason_and_no_add_action(self):
+        row = _between(_source(), "function wwErGroupRowHtml(group) {", "function wwErRender()")
+        assert "group.reason_message" in row
+        assert 'data-reason-code="' in row
+        assert '\'<span class="ww-er-badge">Not eligible</span>\'' in row
+        add = row.index('wwErActionButton("add-group"')
+        assert row.rfind("group.eligible", 0, add) != -1
+
+    def test_membership_changes_never_drop_stale_members_implicitly(self):
+        source = _source()
+        blocked = _between(source, "function wwErMembershipBlockedReason() {", "function wwErReconfirmPlan()")
+        assert "Choose a current member as reference first." in blocked
+        assert "Re-confirm or remove the stale members first." in blocked
+        for name, nxt in (("function wwErAddGroup(groupId) {", "function wwErRemoveMember(memberId)"),
+                          ("function wwErRemoveMember(memberId) {", "async function wwErReconfirmStale()")):
+            assert "wwErMembershipBlockedReason()" in _between(source, name, nxt)
+
+    def test_stale_corrections_are_shown_but_never_sent(self):
+        source = _source()
+        reconfirm = _between(source, "async function wwErReconfirmStale() {", "function wwErRemoveStale()")
+        # New members start at 0: the PUT carries group ids and a reference only.
+        assert "wwErPutDefinition(plan.groupIds, plan.referenceGroupId)" in reconfirm
+        assert "correction_s:" not in reconfirm
+        member_row = _between(source, "function wwErMemberRowHtml(member) {", "function wwErGroupRowHtml(group)")
+        assert "(kept, not applied)" in member_row
+        assert "Previous correction (not applied)" in member_row
+
+    def test_corrections_use_the_existing_millisecond_conversion_point(self):
+        module = _er_module(_source())
+        assert "correction_s: wwSyncMsToOffsetSeconds(ms)" in module
+        assert "wwSyncOffsetToMsDisplay(correctionS)" in module
+
+    def test_reference_is_only_changed_by_explicit_api_call(self):
+        module = _er_module(_source())
+        assert 'wwErMutate("PUT", "/definition/reference", { member_id: memberId })' in module
+        assert module.count("/definition/reference") == 1
+
+    def test_clear_uses_a_confirmation_overlay(self):
+        source = _source()
+        assert '<div class="confirm-overlay" id="wwErClearConfirmOverlay" hidden>' in source
+        assert 'id="wwErClearConfirmBtn">Clear reconstruction</button>' in source
+        assert 'document.getElementById("wwErClearBtn").addEventListener("click", wwErOpenClearConfirm);' in source
+
+    def test_workspace_changes_trigger_a_refresh_only_when_the_page_is_current(self):
+        source = _source()
+        notify = _between(source, "function wwErNotifyWorkspaceChanged() {", "\n        }\n")
+        assert 'if (shell.currentPage === "event-reconstruction") wwErRefresh();' in notify
+        assert "wwErNotifyWorkspaceChanged();" in _between(source, "async function refreshAllSourceViews() {", "async function refreshSourceList()")
+        assert "wwErNotifyWorkspaceChanged();" in _between(
+            source, "async function wwSyncApplyOffsetChangeSideEffectsForGroup(groupId) {", "function wwRefreshSourceSyncBadges()"
+        )
+
+    def test_large_gap_warning_comes_from_the_backend_response(self):
+        notices = _between(_source(), "function wwErNoticesHtml() {", "function wwErMemberRowHtml(member)")
+        assert "wwErState.definition.warnings" in notices
+        assert "warning.message" in notices
+        assert "3600" not in _er_module(_source())

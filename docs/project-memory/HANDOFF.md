@@ -4,9 +4,42 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-01** (Event Reconstruction Slice 1 follow-up)
+Last updated: **2026-10-01** (Event Reconstruction Slice 2)
 
 ## What was most recently done
+
+**Event Reconstruction Slice 2 — selection workflow (DEC-125,
+2026-10-01).** Committed on `feat/event-reconstruction` after
+`4964713`. Not pushed or merged; the feature is not complete (no
+plotting).
+
+- **Frontend only** (`frontend/index.html`). The left panel is now the
+  reconstruction-member workflow over the Slice 1 API:
+  - chronological Time Groups with eligibility reasons;
+  - Add/Remove, Make reference, ms corrections (Set/Reset);
+  - stale members with "Re-confirm with current Time Groups" / "Remove
+    stale members";
+  - large-gap notices, and Clear with a confirmation.
+
+  Each action is one API call plus a full re-fetch. See DEC-125 for
+  the rules, notably that membership edits wait until stale members
+  are resolved, because a `PUT .../definition` would drop them.
+- **Hooks.** `wwErNotifyWorkspaceChanged()` is called from
+  `refreshAllSourceViews()` and from the Synchronise Sources side-effect
+  function. It is a no-op unless Event Reconstruction is the current
+  page.
+- **Tests.**
+  - `test_frontend_event_reconstruction.py`: 32 static checks.
+  - `browser-tests/event-reconstruction.spec.js`: 10 tests (4 Slice 0,
+    6 Slice 2). A Time-of-Day group is injected by intercepting
+    `/time-groups`, since COMTRADE cannot produce one.
+  - Full backend suite: 6203 passed, 40 skipped (`ben_reference`).
+    Full browser suite: 378/378 passed; the known Impedance Locus flake
+    did not occur this run.
+- **Next.** Slice 3 needs the renderer-architecture comparison first.
+  Open items are listed in DEC-125.
+
+## Earlier — Event Reconstruction Slice 1 follow-up
 
 **Event Reconstruction Slice 1 follow-up (DEC-124 update, 2026-10-01).**
 The large-gap threshold now comes from `app/config.py`

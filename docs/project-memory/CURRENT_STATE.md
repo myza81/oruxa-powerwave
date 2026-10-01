@@ -9,21 +9,32 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-10-01** — **Event Reconstruction Slices 0
-and 1** (DEC-123 frontend shell, DEC-124 domain model/service/API), on
-branch `feat/event-reconstruction`, not merged. Earlier the same day:
+Last meaningful update: **2026-10-01** — **Event Reconstruction Slices
+0–2** (DEC-123 frontend shell, DEC-124 domain model/service/API,
+DEC-125 selection workflow), on branch `feat/event-reconstruction`, not
+merged. The feature is not complete (no plotting yet). Earlier the same day:
 **Native BEN import: owner UAT passed; merged to `main`** (DEC-119
 parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
 DEC-122 display timezone).
 
-**Event Reconstruction (DEC-123, DEC-124) — Slices 0 and 1.**
+**Event Reconstruction (DEC-123, DEC-124, DEC-125) — Slices 0–2.**
 
-- **Frontend (Slice 0).** A main-menu entry immediately after Waveform
-  opens `#pageEventReconstruction`: a left "Recordings (N)" panel
-  (read-only source rows), a Box Zoom / Pan toolbar and an empty
-  "Reconstruction Timeline" canvas shell. Zoom In / Zoom Out / Reset
-  Time View stay disabled; no cursors. It never reads or writes the
-  Waveform `ww` state. The page does not call the Slice 1 API yet.
+- **Frontend (Slices 0 and 2).** A main-menu entry immediately after
+  Waveform opens `#pageEventReconstruction`.
+  - Its left panel is the reconstruction-member workflow, driven only
+    by the Slice 1 API (DEC-125):
+    - Time Groups listed chronologically, ineligible ones with the
+      backend reason and no Add;
+    - add/remove members, "Make reference", ms corrections (Set/Reset);
+    - stale members shown with their old correction "kept, not
+      applied", plus "Re-confirm with current Time Groups" (new members
+      start at 0) or "Remove stale members";
+    - large-gap warning notices, and Clear with a confirmation.
+  - The main area keeps the Slice 0 toolbar (Box Zoom / Pan; Zoom In /
+    Zoom Out / Reset Time View disabled) and an empty "Reconstruction
+    Timeline" canvas that only states what is selected. **Nothing is
+    plotted.**
+  - It never reads or writes the Waveform `ww` state.
 - **Backend (Slice 1).** Event Reconstruction is the one place several
   established Time Groups are combined (Waveform keeps its isolation):
   - eligibility per Time Group: `recorded_absolute` only in V1
@@ -42,10 +53,14 @@ DEC-122 display timezone).
     and cleared with the workspace.
 - **Waveform Time Group, Synchronise Sources and placement behaviour is
   unchanged** — Event Reconstruction only reads them.
-- **Next: Slice 2** — left-panel record selection wired to this API.
-- `[OPEN / UAT]` mixed-duration / mixed-sampling-rate navigation and
-  initial viewport. The Slice 3 renderer architecture still needs its
-  comparison/design step (`[DECISION MODE: COMPARISON]`).
+- **Next: Slice 3** (the common reconstruction timeline), which first
+  needs its renderer-architecture comparison (`[DECISION MODE:
+  COMPARISON]`).
+- Still open:
+  - `[OPEN / UAT]` mixed-duration / mixed-sampling-rate navigation and
+    the initial viewport;
+  - the final manual left/right synchronization UX (Slice 4);
+  - the final grouped and multi-axis visualization (Slices 6A/6B).
 
 ```text
 Upload Recording -> format "BEN" -> native BenProvider -> Fast or Slow SubBen

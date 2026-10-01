@@ -20457,6 +20457,110 @@ items.
 
 ---
 
+## DEC-125 — Event Reconstruction Slice 2: the left panel becomes the reconstruction-member workflow over the Slice 1 API; no plotting yet
+
+Date: 2026-10-01
+Status: Approved (owner, Slice 2 task) — implemented on
+`feat/event-reconstruction`; not merged. The Event Reconstruction
+feature is **not** complete.
+Source: owner task "Slice 2: Event Reconstruction selection UI".
+
+### Decision (owner, summarized)
+
+The Event Reconstruction left panel lets the engineer:
+
+- see every eligible and ineligible Time Group, chronologically;
+- explicitly choose the members and the reference;
+- see and set each member's correction;
+- see stale state and re-confirm;
+- see large-gap warnings;
+- clear the reconstruction.
+
+All of this goes through the Slice 1 API (DEC-124), which stays the
+only authority. The joined waveforms are not plotted (Slice 3).
+
+### Implementation (`[FACT]`, `frontend/index.html` only)
+
+- **Two panels.**
+  - "Reconstruction (N)": notices, member rows, Clear.
+  - "Time Groups (N)": eligible groups sorted by `start_time_utc`
+    (never the backend's `group_id` order), then a "Not eligible (N)"
+    list with the backend `reason_message`/`reason_code` and no Add
+    action.
+- **Backend-authoritative.**
+  - Every action is one API call followed by a full re-fetch
+    (`/time-groups`, `/definition`, `/sources`).
+  - There is no local rebasing and no frontend-only selection model.
+  - Responses to superseded requests are ignored.
+- **Membership.**
+  - Add/Remove call `PUT .../definition` with the current members.
+  - The first added group is the only member and therefore the
+    reference.
+  - The reference cannot be removed until another member is the
+    reference.
+  - Because every `PUT .../definition` names current groups only (and
+    would drop stale members), membership edits are blocked while any
+    member is stale or the reference is stale. The engineer resolves
+    that explicitly first.
+- **Reference.** "Make reference" → `PUT .../definition/reference`.
+  Corrections are untouched. A stale reference is shown, never
+  replaced; the notice asks for a current member (or Clear, if none is
+  current).
+- **Corrections.**
+  - Shown and entered in ms, converted at the existing Synchronise
+    Sources conversion point (`wwSyncMsToOffsetSeconds`/
+    `wwSyncOffsetToMsDisplay`), so the stored value keeps full float
+    precision.
+  - Set → `PUT .../members/{id}/correction`; Reset →
+    `DELETE .../members/{id}/correction`.
+  - This is the simple control only; the richer manual left/right
+    synchronization UX remains Slice 4.
+- **Stale members.**
+  - Badge "Stale", the reason, and the old correction shown as "kept,
+    not applied".
+  - "Re-confirm with current Time Groups" keeps the current members and
+    adds the eligible groups the stale members' recordings now belong
+    to, each starting at 0 ms. "Remove stale members" drops them.
+  - After a re-confirmation the new member shows "Previous correction
+    (not applied)" for information only, in frontend memory. There is
+    no "reuse old correction" action.
+- **Large gap.** Each backend warning becomes a warning notice with the
+  backend message and both member names, stating the reconstruction is
+  still valid. No frontend gap calculation.
+- **Clear.** A dedicated confirmation overlay, then
+  `DELETE .../definition`. Only reconstruction state is removed.
+- **Re-fetch.** On page entry and after every action.
+  `wwErNotifyWorkspaceChanged()` is also called from
+  `refreshAllSourceViews()` (upload/removal/workspace reset) and from the
+  Synchronise Sources side-effect function. It is a no-op unless Event
+  Reconstruction is the current page; page entry covers the rest.
+  No polling.
+- **Unchanged.**
+  - The Slice 0 shell; toolbar zoom/reset stay disabled.
+  - No Waveform `ww` access.
+  - No channel name/colour/line-style store.
+  - No Plotly in the module.
+  - Waveform, Time Groups, Synchronise Sources and source data.
+- **Tests.**
+  - `backend/tests/test_frontend_event_reconstruction.py` (static,
+    updated and extended);
+  - `browser-tests/event-reconstruction.spec.js`: Slice 0 tests kept;
+    new Slice 2 tests for chronology/eligibility, the full definition
+    lifecycle, stale member and re-confirmation, stale reference, large
+    gap, and isolation.
+
+### Still `[OPEN]`
+
+- **Slice 3 renderer architecture** for the common reconstruction
+  timeline (`[DECISION MODE: COMPARISON]`) — before any plotting.
+- **`[OPEN / UAT]` Mixed-duration / mixed-sampling-rate navigation and
+  initial viewport behaviour** (e.g. 5000 Hz/200 ms, 20 Hz/30 s,
+  1 s/10 min). Slice 2 locks no viewport or navigation choice.
+- **Final manual left/right synchronization UX** (Slice 4).
+- **Final grouped and multi-axis visualization** (Slices 6A/6B).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

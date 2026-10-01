@@ -3842,6 +3842,7 @@
         /* Slice 1 (waveform time synchronization) integration, optional
            per that task's own section 15 -- a subtle badge only, never a
            redesign of the Synchronize Sources modal itself. */
+        .ww-er-badge,
         .source-recording-sync-badge {
             font-size: 0.55rem;
             font-weight: 500;
@@ -3856,6 +3857,7 @@
             color: var(--text-dim);
             border: 1px solid var(--panel-border);
         }
+        .ww-er-badge--reference,
         .source-recording-sync-badge--reference { background: var(--accent-wash-soft); color: var(--accent); border-color: var(--accent-dim); }
         details.source-recording .source-recording-body { padding: 10px 10px 4px; }
         details.source-recording .source-recording-body .channel-group:last-child { margin-bottom: 0; }
@@ -5347,6 +5349,39 @@
             margin-bottom: 14px;
         }
         .ww-er-source-row-header { cursor: default; }
+        /* Event Reconstruction Slice 2: left-panel member/Time Group rows,
+           notices and compact actions -- existing tokens only. */
+        .ww-er-badge--stale { color: var(--warn); border-color: var(--warn); background: transparent; }
+        .ww-er-badges { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+        .ww-er-row-body { padding: 8px 14px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 0.65rem; color: var(--text-dim); }
+        .ww-er-row-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        button.secondary.ww-er-action { padding: 3px 9px; font-size: 0.65rem; }
+        .ww-er-correction { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .ww-er-correction-value { color: var(--text); font-variant-numeric: tabular-nums; }
+        .ww-er-correction input[type="number"] { width: 110px; padding: 3px 6px; font-size: 0.65rem; font-variant-numeric: tabular-nums; }
+        .ww-er-group-row--ineligible .source-recording-name { color: var(--text-dim); }
+        .ww-er-ineligible-reason { color: var(--text-dim); font-style: italic; }
+        .ww-er-subheading { margin: 4px 0 8px; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); }
+        .ww-er-notice {
+            border-left: 3px solid var(--accent-dim);
+            background: var(--surface-tint);
+            border-radius: var(--radius);
+            padding: 8px 10px;
+            margin-bottom: 10px;
+            font-size: 0.65rem;
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .ww-er-notice--warn { border-left-color: var(--warn); }
+        .ww-er-notice--error { border-left-color: var(--error); }
+        .ww-er-notice-title { font-weight: 600; }
+        .ww-er-notice--warn .ww-er-notice-title { color: var(--warn); }
+        .ww-er-notice--error .ww-er-notice-title { color: var(--error); }
+        .ww-er-panel-actions { display: flex; justify-content: flex-end; }
+        .ww-er-panel-actions:empty { display: none; }
+        #wwErStatus { font-size: 0.65rem; padding: 6px 10px; margin-top: 8px; }
         /* Sticky-toolbar UX task: ONE shared wrapper around `.ww-tg-header`
            + `.ww-tg-toolbar-row` (never two independently-sticky elements
            -- that could separate/overlap during a fast scroll). `position:
@@ -8990,13 +9025,27 @@
                  this page never keeps its own presentation store. -->
             <section id="pageEventReconstruction" aria-label="Event Reconstruction" hidden>
                 <div class="shell-sidebar-backdrop" id="wwErSidebarBackdrop"></div>
-                <aside id="wwErSidebar" aria-label="Event Reconstruction recordings">
-                    <!-- Future slices add reconstruction member selection,
-                         the reference indication, offsets and native/
-                         calculated channel selection to this panel. -->
-                    <section class="panel" aria-labelledby="wwErRecordingsHeading">
-                        <h2 id="wwErRecordingsHeading">Recordings <span id="wwErRecordingsCountBadge" class="count-badge">(0)</span></h2>
-                        <div id="wwErRecordingsPanel">
+                <aside id="wwErSidebar" aria-label="Event Reconstruction records">
+                    <!-- Slice 2 (DEC-125): the reconstruction-member UI,
+                         driven entirely by the Slice 1 API -- the
+                         reconstruction's own members (reference, stale
+                         state, corrections) above, every existing Time
+                         Group (chronological, eligible first) below. All
+                         rendered by wwErRender(); never a second,
+                         frontend-only selection model. Native/calculated
+                         channel selection arrives in a later slice. -->
+                    <section class="panel" aria-labelledby="wwErDefinitionHeading">
+                        <h2 id="wwErDefinitionHeading">Reconstruction <span id="wwErMemberCountBadge" class="count-badge">(0)</span></h2>
+                        <div id="wwErNotices"></div>
+                        <div id="wwErMembersPanel"></div>
+                        <div class="ww-er-panel-actions">
+                            <button type="button" class="secondary ww-er-action" id="wwErClearBtn" hidden>Clear reconstruction</button>
+                        </div>
+                        <div class="upload-status" id="wwErStatus" role="status" aria-live="polite"></div>
+                    </section>
+                    <section class="panel" aria-labelledby="wwErGroupsHeading">
+                        <h2 id="wwErGroupsHeading">Time Groups <span id="wwErGroupsCountBadge" class="count-badge">(0)</span></h2>
+                        <div id="wwErGroupsPanel">
                             <p class="empty-state">No recordings loaded yet. Upload one from Recordings.</p>
                         </div>
                     </section>
@@ -9059,7 +9108,7 @@
                                     </div>
                                 </div>
                                 <div class="ww-tg-panels" id="wwErPanels"></div>
-                                <p class="empty-state" id="wwErEmptyState">No reconstruction records selected. Event Reconstruction will place recordings from separate Time Groups on one common timeline. Record selection and plotting are not available yet.</p>
+                                <p class="empty-state" id="wwErEmptyState">No reconstruction records selected. Select Time Groups in the left panel to place them on one common timeline. Plotting the reconstruction is not available yet.</p>
                             </section>
                         </section>
                     </div>
@@ -12180,6 +12229,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         </div>
     </div>
 
+    <!-- Event Reconstruction Slice 2: confirms clearing the reconstruction
+         definition only (DELETE .../event-reconstruction/definition) --
+         same .confirm-overlay/.confirm-box shell and Cancel/danger pair as
+         every other destructive confirmation here. -->
+    <div class="confirm-overlay" id="wwErClearConfirmOverlay" hidden>
+        <div class="confirm-box" role="alertdialog" aria-modal="true" aria-labelledby="wwErClearConfirmTitle">
+            <p id="wwErClearConfirmTitle">Clear the Event Reconstruction?</p>
+            <p class="hint">The selected Time Groups, the reference and every reconstruction correction
+                are removed. Recordings, Time Groups, Waveform, calculated channels and Synchronise
+                Sources corrections are not affected.</p>
+            <div class="confirm-actions">
+                <button type="button" class="secondary" id="wwErClearCancelBtn">Cancel</button>
+                <button type="button" class="danger-solid" id="wwErClearConfirmBtn">Clear reconstruction</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Distinct from #confirmOverlay above: this confirms the whole-workspace
          reset ("Start new workspace"), not a single source's removal -- see
          docs/project-memory/DECISIONS.md DEC-018. Kept as a separate overlay
@@ -14138,6 +14204,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const comtradeRows = (sources || []).map((s) => Object.assign({ _recordingKind: "comtrade" }, s));
             const csvRows = (preparationSources || []).map(preparationSourceAsRecordingRow);
             renderRecordingsTable(comtradeRows.concat(csvRows));
+            // Event Reconstruction Time Groups/stale state depend on the
+            // source set; a no-op unless that page is current.
+            wwErNotifyWorkspaceChanged();
         }
 
         // Returns wwRenderWorkspaceRecordings()'s own "any source's
@@ -14154,38 +14223,49 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // ==================================================================
-        // Event Reconstruction -- Slice 0 (frontend shell only)
+        // Event Reconstruction (DEC-123 Slice 0 shell; DEC-125 Slice 2
+        // selection workflow)
         //
-        // Establishes the page, its left recording panel and its
-        // waveform workspace shell. Deliberately contains NO
-        // reconstruction logic: no eligibility, no Time Group selection,
-        // no reference, no offsets, no common-timeline calculation, no
-        // plotting, and no backend call beyond the existing read-only
-        // GET .../sources list.
+        // The left panel is wired to the Slice 1 API (DEC-124): every
+        // existing Time Group (chronological, ineligible ones with the
+        // backend's reason), the reconstruction's members with their
+        // reference/stale state and corrections, re-confirmation of stale
+        // members, large-gap warnings, and Clear. The backend is the only
+        // authority: every change is one API call followed by a fresh
+        // re-fetch -- no local rebasing, no frontend-only selection model.
+        // The reconstruction is NOT plotted yet (Slice 3).
         //
-        // Boundaries kept for later slices:
+        // Boundaries kept:
         // - Never reads or writes the Waveform engine's `ww` state, and
         //   never calls Waveform interaction functions (wwSetDragMode()
         //   relayouts every Waveform panel; wwStepZoomX/Y()/
         //   wwResetOneTimeGroupView() act on a real Time Group). The
-        //   reconstruction canvas that those mechanisms will drive does
-        //   not exist yet, so the canvas controls stay disabled.
+        //   canvas controls stay disabled until the reconstruction canvas
+        //   exists.
         // - Channel display names and colours will come from the
         //   Waveform-owned resolvers (wwChannelDisplayName()/
         //   wwColorForChannel()). This module keeps no presentation
         //   store of its own.
-        // - Only workspace-specific presentation state lives in
-        //   wwErState below.
+        // - Only workspace-specific state lives in wwErState below.
         // ==================================================================
 
         const WW_ER_SIDEBAR_WIDTH_STORAGE_KEY = "powerwave.shell.eventReconstructionSidebarWidth";
 
-        // Event Reconstruction's own workspace state. Slice 0 holds only
-        // the drag-mode preference, using the same Plotly dragmode values
-        // ("zoom" = Box Zoom, "pan") as ww.dragMode, but independent of
-        // it. It takes effect once the reconstruction canvas exists.
+        // Event Reconstruction's own workspace state: the drag-mode
+        // preference (same Plotly dragmode values as ww.dragMode, but
+        // independent of it; applied once the reconstruction canvas
+        // exists) and the last API responses, replaced wholesale on every
+        // re-fetch. `previousCorrections` (new member_id -> corrections of
+        // the stale members it replaced) is information only, shown after
+        // a re-confirmation and never sent back to the backend.
         const wwErState = {
             dragMode: "zoom",
+            sources: [],
+            timeGroups: [],
+            definition: null,
+            previousCorrections: {},
+            loadSeq: 0,
+            busy: false,
         };
 
         function wwErSetDragMode(mode) {
@@ -14195,41 +14275,474 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("wwErDragModePanBtn").setAttribute("aria-pressed", String(mode === "pan"));
         }
 
-        // One read-only recording row: the same name / stats / time
-        // identity lines (and formatters) as the Waveform sidebar's
-        // wwRenderSourceRecordingHtml() header -- without its channel
-        // tree, channel toggles or synchronization badge, which belong
-        // to Waveform.
-        function wwErSourceRowHtml(source) {
-            return '<div class="ww-er-source-row" data-source-id="' + escapeHtml(source.source_id) + '">' +
+        // ---- API ----
+
+        function wwErApiUrl(path) {
+            return apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/event-reconstruction" + path;
+        }
+
+        // A read: parsed JSON, or null on any failure (the previous
+        // rendering stays, like fetchSourcesList()).
+        async function wwErFetchJson(path) {
+            try {
+                const response = await fetch(wwErApiUrl(path));
+                if (response.ok) return await response.json();
+            } catch (error) {
+                // The connectivity indicator already reports reachability.
+            }
+            return null;
+        }
+
+        // A write: null on success, otherwise the backend's message.
+        async function wwErSend(method, path, body) {
+            try {
+                const response = await fetch(wwErApiUrl(path), {
+                    method,
+                    headers: body === undefined ? {} : { "Content-Type": "application/json" },
+                    body: body === undefined ? undefined : JSON.stringify(body),
+                });
+                if (response.ok) return null;
+                const payload = await response.json().catch(() => null);
+                return (payload && payload.detail && payload.detail.message) || "The Event Reconstruction could not be updated.";
+            } catch (error) {
+                return "The backend could not be reached.";
+            }
+        }
+
+        // Re-fetches everything the panel shows. Time Groups, stale state
+        // and placements are recomputed by the backend on every read, so
+        // this is the only way the panel learns about them. A response to
+        // an older request is ignored.
+        async function wwErRefresh() {
+            const seq = ++wwErState.loadSeq;
+            const [sources, timeGroups, definition] = await Promise.all([
+                fetchSourcesList(), wwErFetchJson("/time-groups"), wwErFetchJson("/definition"),
+            ]);
+            if (seq !== wwErState.loadSeq) return;
+            if (sources !== null) wwErState.sources = sources;
+            if (timeGroups !== null) wwErState.timeGroups = timeGroups;
+            if (definition !== null) wwErState.definition = definition;
+            const memberIds = new Set(wwErMembers().map((m) => m.member_id));
+            for (const memberId of Object.keys(wwErState.previousCorrections)) {
+                if (!memberIds.has(memberId)) delete wwErState.previousCorrections[memberId];
+            }
+            wwErRender();
+        }
+
+        async function wwErOnPageEntered() {
+            wwErSetStatus(null, "");
+            await wwErRefresh();
+        }
+
+        // Called where the workspace changes elsewhere (source upload/
+        // removal/workspace reset via refreshAllSourceViews(), Synchronise
+        // Sources changes). Those happen on other pages, so this is
+        // normally a no-op and page entry does the refresh; it refreshes
+        // at once only if Event Reconstruction is the current page.
+        function wwErNotifyWorkspaceChanged() {
+            if (shell.currentPage === "event-reconstruction") wwErRefresh();
+        }
+
+        // ---- Derived state (from the last backend responses only) ----
+
+        function wwErDefined() {
+            return !!(wwErState.definition && wwErState.definition.defined);
+        }
+
+        function wwErMembers() {
+            return wwErDefined() ? wwErState.definition.members : [];
+        }
+
+        function wwErCurrentMembers() {
+            return wwErMembers().filter((m) => m.status === "current");
+        }
+
+        function wwErStaleMembers() {
+            return wwErMembers().filter((m) => m.status !== "current");
+        }
+
+        function wwErReferenceMember() {
+            return wwErMembers().find((m) => m.is_reference) || null;
+        }
+
+        function wwErGroupById(groupId) {
+            return wwErState.timeGroups.find((g) => g.group_id === groupId) || null;
+        }
+
+        function wwErSourceName(sourceId) {
+            const source = wwErState.sources.find((s) => s.source_id === sourceId);
+            return source ? recordingDisplayName(source) : "Removed recording";
+        }
+
+        function wwErSourceNames(sourceIds) {
+            return sourceIds.map(wwErSourceName).join(" + ");
+        }
+
+        function wwErMemberName(memberId) {
+            const member = wwErMembers().find((m) => m.member_id === memberId);
+            return member ? wwErSourceNames(member.source_ids) : memberId;
+        }
+
+        // Eligible groups chronologically by absolute start (never the
+        // backend's group_id order); ineligible ones after, by name.
+        function wwErSortedTimeGroups() {
+            const eligible = wwErState.timeGroups.filter((g) => g.eligible).slice().sort((a, b) =>
+                (Date.parse(a.start_time_utc) - Date.parse(b.start_time_utc)) || a.group_id.localeCompare(b.group_id));
+            const ineligible = wwErState.timeGroups.filter((g) => !g.eligible).slice().sort((a, b) =>
+                wwErSourceNames(a.source_ids).localeCompare(wwErSourceNames(b.source_ids)) || a.group_id.localeCompare(b.group_id));
+            return { eligible, ineligible };
+        }
+
+        // Every PUT .../definition lists current Time Groups only, so it
+        // would drop stale members. Membership edits therefore wait until
+        // the engineer has resolved stale members explicitly, and need a
+        // current reference to name.
+        function wwErMembershipBlockedReason() {
+            if (!wwErDefined()) return null;
+            const reference = wwErReferenceMember();
+            if (!reference || reference.status !== "current") return "Choose a current member as reference first.";
+            if (wwErStaleMembers().length) return "Re-confirm or remove the stale members first.";
+            return null;
+        }
+
+        // Re-confirmation: keep every current member and add the eligible
+        // Time Groups the stale members' recordings now belong to. They
+        // join as new members with a correction of 0 -- a stale
+        // correction is never transferred.
+        function wwErReconfirmPlan() {
+            const reference = wwErReferenceMember();
+            if (!reference || reference.status !== "current") return null;
+            const groupIds = wwErCurrentMembers().map((m) => m.current_group_id);
+            const additions = [];
+            for (const member of wwErStaleMembers()) {
+                for (const groupId of member.candidate_group_ids) {
+                    const group = wwErGroupById(groupId);
+                    if (group && group.eligible && !groupIds.includes(groupId) && !additions.includes(groupId)) additions.push(groupId);
+                }
+            }
+            return { groupIds: groupIds.concat(additions), referenceGroupId: reference.current_group_id, additions };
+        }
+
+        // ---- Formatting ----
+
+        function wwErFormatCorrection(correctionS) {
+            return (correctionS > 0 ? "+" : "") + wwSyncOffsetToMsDisplay(correctionS) + " ms";
+        }
+
+        function wwErFormatSignedSeconds(seconds) {
+            return (seconds > 0 ? "+" : seconds < 0 ? "-" : "") + Math.abs(seconds).toFixed(3) + " s";
+        }
+
+        // Same compact start format as the Waveform sidebar's time identity.
+        function wwErFormatStart(canonicalIso) {
+            const text = wwFormatEngineeringTimestamp(canonicalIso);
+            if (!text) return "—";
+            const dot = text.indexOf(".");
+            return dot === -1 ? text : text.slice(0, dot + 5);
+        }
+
+        // ---- Writes: one API call, then an authoritative re-fetch ----
+
+        function wwErSetStatus(kind, message) {
+            const el = document.getElementById("wwErStatus");
+            el.className = "upload-status" + (kind ? " visible " + kind : "");
+            el.textContent = message || "";
+        }
+
+        async function wwErMutate(method, path, body) {
+            if (wwErState.busy) return false;
+            wwErState.busy = true;
+            wwErRender();
+            wwErSetStatus("busy", "Updating the reconstruction…");
+            const error = await wwErSend(method, path, body);
+            await wwErRefresh();
+            wwErState.busy = false;
+            wwErRender();
+            wwErSetStatus(error ? "error" : null, error || "");
+            return !error;
+        }
+
+        function wwErPutDefinition(groupIds, referenceGroupId) {
+            return wwErMutate("PUT", "/definition", { group_ids: groupIds, reference_group_id: referenceGroupId });
+        }
+
+        function wwErAddGroup(groupId) {
+            // The first selected Time Group is the only member, so it is
+            // the reference; the engineer can change it at any time.
+            if (!wwErDefined()) return wwErPutDefinition([groupId], groupId);
+            const blocked = wwErMembershipBlockedReason();
+            if (blocked) return wwErSetStatus("error", blocked);
+            const groupIds = wwErCurrentMembers().map((m) => m.current_group_id).concat([groupId]);
+            return wwErPutDefinition(groupIds, wwErReferenceMember().current_group_id);
+        }
+
+        function wwErRemoveMember(memberId) {
+            const blocked = wwErMembershipBlockedReason();
+            if (blocked) return wwErSetStatus("error", blocked);
+            const reference = wwErReferenceMember();
+            if (reference.member_id === memberId) return wwErSetStatus("error", "Choose another reference before removing this member.");
+            const groupIds = wwErCurrentMembers().filter((m) => m.member_id !== memberId).map((m) => m.current_group_id);
+            return wwErPutDefinition(groupIds, reference.current_group_id);
+        }
+
+        async function wwErReconfirmStale() {
+            const plan = wwErReconfirmPlan();
+            if (!plan) return wwErSetStatus("error", "Choose a current member as reference first.");
+            const notes = {};
+            for (const member of wwErStaleMembers()) {
+                if (member.correction_s === 0) continue;
+                for (const groupId of member.candidate_group_ids) {
+                    const group = wwErGroupById(groupId);
+                    if (!group || !plan.additions.includes(groupId)) continue;
+                    (notes[group.membership_fingerprint] = notes[group.membership_fingerprint] || []).push(member.correction_s);
+                }
+            }
+            const ok = await wwErPutDefinition(plan.groupIds, plan.referenceGroupId);
+            if (ok) {
+                Object.assign(wwErState.previousCorrections, notes);
+                wwErRender();
+            }
+        }
+
+        function wwErRemoveStale() {
+            const reference = wwErReferenceMember();
+            if (!reference || reference.status !== "current") return wwErSetStatus("error", "Choose a current member as reference first.");
+            return wwErPutDefinition(wwErCurrentMembers().map((m) => m.current_group_id), reference.current_group_id);
+        }
+
+        function wwErMakeReference(memberId) {
+            return wwErMutate("PUT", "/definition/reference", { member_id: memberId });
+        }
+
+        async function wwErSetCorrection(memberId, inputEl) {
+            const raw = inputEl.value.trim();
+            const ms = Number(raw);
+            if (raw === "" || !Number.isFinite(ms)) return wwErSetStatus("error", "Enter the correction as a number of milliseconds.");
+            const ok = await wwErMutate("PUT", "/definition/members/" + encodeURIComponent(memberId) + "/correction", {
+                correction_s: wwSyncMsToOffsetSeconds(ms),
+            });
+            if (ok) {
+                delete wwErState.previousCorrections[memberId];
+                wwErRender();
+            }
+        }
+
+        async function wwErResetCorrection(memberId) {
+            const ok = await wwErMutate("DELETE", "/definition/members/" + encodeURIComponent(memberId) + "/correction");
+            if (ok) {
+                delete wwErState.previousCorrections[memberId];
+                wwErRender();
+            }
+        }
+
+        async function wwErClear() {
+            const ok = await wwErMutate("DELETE", "/definition");
+            if (ok) {
+                wwErState.previousCorrections = {};
+                wwErRender();
+            }
+        }
+
+        // ---- Rendering ----
+
+        function wwErActionButton(action, label, attrs, disabledReason) {
+            const disabled = wwErState.busy || !!disabledReason;
+            return '<button type="button" class="secondary ww-er-action" data-er-action="' + action + '"' + (attrs || "") +
+                (disabled ? " disabled" : "") + (disabledReason ? ' title="' + escapeHtml(disabledReason) + '"' : "") + ">" +
+                escapeHtml(label) + "</button>";
+        }
+
+        function wwErNoticeHtml(kind, title, bodyHtml) {
+            return '<div class="ww-er-notice' + (kind ? " ww-er-notice--" + kind : "") + '" data-er-notice="' + escapeHtml(title) + '">' +
+                '<span class="ww-er-notice-title">' + escapeHtml(title) + "</span>" + bodyHtml + "</div>";
+        }
+
+        function wwErNoticesHtml() {
+            const groups = wwErState.timeGroups;
+            if (!groups.length) return "";
+            if (!wwErDefined()) {
+                if (!groups.some((g) => g.eligible)) {
+                    return wwErNoticeHtml("", "No eligible records",
+                        "<span>Event Reconstruction needs recordings with a valid absolute time reference (a recorded date and time). " +
+                        "None of the loaded Time Groups has one.</span>");
+                }
+                return wwErNoticeHtml("", "Build a reconstruction", "<span>Add two or more Time Groups from the list below.</span>");
+            }
+            let html = "";
+            const reference = wwErReferenceMember();
+            const current = wwErCurrentMembers();
+            const stale = wwErStaleMembers();
+            if (reference && reference.status !== "current") {
+                html += wwErNoticeHtml("error", "Reference needs to be chosen again", current.length
+                    ? "<span>The reference Time Group has changed since it was selected, so no placement can be shown. " +
+                      "Choose a current member as reference.</span>"
+                    : "<span>No member matches a current Time Group any more. Clear the reconstruction and select the Time Groups again.</span>");
+            }
+            if (stale.length) {
+                const plan = wwErReconfirmPlan();
+                let actions = "";
+                if (plan) {
+                    actions = '<div class="ww-er-row-actions">' +
+                        (plan.additions.length ? wwErActionButton("reconfirm-stale", "Re-confirm with current Time Groups") : "") +
+                        wwErActionButton("remove-stale", "Remove stale members") + "</div>";
+                    if (plan.additions.length) {
+                        actions += "<span>Re-confirming adds " + escapeHtml(plan.additions.map((gid) => {
+                            const group = wwErGroupById(gid);
+                            return group ? wwErSourceNames(group.source_ids) : gid;
+                        }).join("; ")) + " with a correction of 0 ms.</span>";
+                    }
+                }
+                html += wwErNoticeHtml("warn", stale.length === 1 ? "1 member needs re-confirmation" : stale.length + " members need re-confirmation",
+                    "<span>The Time Group membership changed after selection, so a stale member's correction is kept but not applied, " +
+                    "and is never moved to a new Time Group.</span>" +
+                    actions);
+            }
+            if (!stale.length && current.length === 1) {
+                html += wwErNoticeHtml("", "Add another Time Group", "<span>A reconstruction needs at least two Time Groups.</span>");
+            }
+            for (const warning of wwErState.definition.warnings || []) {
+                html += wwErNoticeHtml("warn", "Large time gap",
+                    "<span>" + escapeHtml(warning.message) + "</span>" +
+                    "<span>Between " + escapeHtml(wwErMemberName(warning.before_member_id)) + " and " +
+                    escapeHtml(wwErMemberName(warning.after_member_id)) + ". The reconstruction is still valid.</span>");
+            }
+            return html;
+        }
+
+        function wwErMemberRowHtml(member) {
+            const isCurrent = member.status === "current";
+            const group = isCurrent ? wwErGroupById(member.current_group_id) : null;
+            const blocked = wwErMembershipBlockedReason();
+            const badges = (member.is_reference ? '<span class="ww-er-badge ww-er-badge--reference">Reference</span>' : "") +
+                (isCurrent ? "" : '<span class="ww-er-badge ww-er-badge--stale">Stale</span>');
+            const meta = group
+                ? wwErFormatStart(group.start_time_utc) + " · " + wwFormatCompactDuration(group.duration_s) +
+                  (member.reconstruction_offset_s !== null && !member.is_reference ? " · " + wwErFormatSignedSeconds(member.reconstruction_offset_s) + " from reference" : "")
+                : (member.stale_reason === "sources_removed"
+                    ? "Its recordings were removed."
+                    : "Its recordings are now in " + member.candidate_group_ids.length + (member.candidate_group_ids.length === 1 ? " other Time Group." : " other Time Groups."));
+            let body;
+            if (isCurrent) {
+                const previous = wwErState.previousCorrections[member.member_id];
+                body = "<span>Correction <span class=\"ww-er-correction-value\" title=\"" + escapeHtml(member.correction_s + " s") + '">' +
+                        escapeHtml(wwErFormatCorrection(member.correction_s)) + "</span></span>" +
+                    '<div class="ww-er-correction">' +
+                        '<input type="number" step="any" data-er-correction-input data-member-id="' + escapeHtml(member.member_id) + '"' +
+                        ' value="' + escapeHtml(String(Number((member.correction_s * 1000).toPrecision(15)))) + '" aria-label="Correction in milliseconds"' +
+                        (wwErState.busy ? " disabled" : "") + ">" +
+                        "<span>ms</span>" +
+                        wwErActionButton("set-correction", "Set", ' data-member-id="' + escapeHtml(member.member_id) + '"') +
+                        wwErActionButton("reset-correction", "Reset", ' data-member-id="' + escapeHtml(member.member_id) + '"',
+                            member.correction_s === 0 ? "The correction is already 0." : null) +
+                    "</div>" +
+                    (previous ? "<span>Previous correction (not applied): " + escapeHtml(previous.map(wwErFormatCorrection).join(", ")) + "</span>" : "") +
+                    (member.is_reference ? "" : '<div class="ww-er-row-actions">' +
+                        wwErActionButton("make-reference", "Make reference", ' data-member-id="' + escapeHtml(member.member_id) + '"') +
+                        wwErActionButton("remove-member", "Remove", ' data-member-id="' + escapeHtml(member.member_id) + '"', blocked) +
+                    "</div>");
+            } else {
+                body = "<span>Correction " + escapeHtml(wwErFormatCorrection(member.correction_s)) + " (kept, not applied)</span>";
+            }
+            return '<div class="ww-er-source-row ww-er-member-row" data-member-id="' + escapeHtml(member.member_id) + '" data-member-status="' + escapeHtml(member.status) + '">' +
                 '<div class="ww-er-source-row-header">' +
                     '<span class="source-recording-header-text">' +
-                        '<span class="source-recording-name">' + escapeHtml(recordingDisplayName(source)) + '</span>' +
-                        '<span class="source-recording-meta">' + wwFormatSourceSummaryLine(source) + '</span>' +
-                        '<span class="source-recording-time-identity">' + escapeHtml(wwFormatSourceTimeIdentity(source)) + '</span>' +
-                    '</span>' +
-                '</div>' +
-                '</div>';
+                        '<span class="source-recording-name">' + escapeHtml(wwErSourceNames(member.source_ids)) + "</span>" +
+                        '<span class="source-recording-meta">' + escapeHtml(meta) + "</span>" +
+                    "</span>" +
+                    '<span class="ww-er-badges">' + badges + "</span>" +
+                "</div>" +
+                '<div class="ww-er-row-body">' + body + "</div>" +
+                "</div>";
         }
 
-        function wwErRenderRecordings(sources) {
-            const panel = document.getElementById("wwErRecordingsPanel");
-            document.getElementById("wwErRecordingsCountBadge").textContent = "(" + sources.length + ")";
-            if (sources.length === 0) {
-                panel.innerHTML = '<p class="empty-state">No recordings loaded yet. Upload one from Recordings.</p>';
-                return;
+        function wwErGroupRowHtml(group) {
+            const isMember = !!group.reconstruction_member_id;
+            const reference = wwErReferenceMember();
+            const isReference = isMember && reference && reference.member_id === group.reconstruction_member_id;
+            let meta;
+            let status;
+            if (group.eligible) {
+                meta = wwErFormatStart(group.start_time_utc) + " · " + wwFormatCompactDuration(group.duration_s);
+                status = "";
+            } else {
+                const origin = wwErState.sources.find((s) => s.source_id === group.origin_source_id);
+                meta = (origin ? wwFormatSourceTimeIdentity(origin) + " · " : "") + wwFormatCompactDuration(group.duration_s);
+                status = '<span class="source-recording-time-identity ww-er-ineligible-reason">' + escapeHtml(group.reason_message || "Not eligible.") + "</span>";
             }
-            panel.innerHTML = sources.map(wwErSourceRowHtml).join("");
+            if (group.source_ids.length > 1) meta += " · " + group.source_ids.length + " recordings";
+            const badges = group.eligible
+                ? (isReference ? '<span class="ww-er-badge ww-er-badge--reference">Reference</span>' : "") +
+                  (isMember ? '<span class="ww-er-badge">In reconstruction</span>'
+                      : wwErActionButton("add-group", "Add", ' data-group-id="' + escapeHtml(group.group_id) + '"', wwErMembershipBlockedReason()))
+                : '<span class="ww-er-badge">Not eligible</span>';
+            return '<div class="ww-er-source-row ww-er-group-row' + (group.eligible ? "" : " ww-er-group-row--ineligible") + '"' +
+                ' data-group-id="' + escapeHtml(group.group_id) + '" data-eligible="' + group.eligible + '"' +
+                (group.reason_code ? ' data-reason-code="' + escapeHtml(group.reason_code) + '"' : "") + ">" +
+                '<div class="ww-er-source-row-header">' +
+                    '<span class="source-recording-header-text">' +
+                        '<span class="source-recording-name">' + escapeHtml(wwErSourceNames(group.source_ids)) + "</span>" +
+                        '<span class="source-recording-meta">' + escapeHtml(meta) + "</span>" +
+                        status +
+                    "</span>" +
+                    '<span class="ww-er-badges">' + badges + "</span>" +
+                "</div>" +
+                "</div>";
         }
 
-        // Sources can only be added or removed from the Recordings page,
-        // so refreshing on page entry keeps this list current. A failed
-        // fetch leaves the previous rendering in place, like
-        // refreshSourceList().
-        async function wwErOnPageEntered() {
-            const sources = await fetchSourcesList();
-            if (sources === null) return;
-            wwErRenderRecordings(sources);
+        function wwErRender() {
+            const members = wwErMembers();
+            document.getElementById("wwErMemberCountBadge").textContent = "(" + members.length + ")";
+            document.getElementById("wwErNotices").innerHTML = wwErNoticesHtml();
+            document.getElementById("wwErMembersPanel").innerHTML = members.map(wwErMemberRowHtml).join("");
+            const clearBtn = document.getElementById("wwErClearBtn");
+            clearBtn.hidden = !wwErDefined();
+            clearBtn.disabled = wwErState.busy;
+
+            const groupsPanel = document.getElementById("wwErGroupsPanel");
+            document.getElementById("wwErGroupsCountBadge").textContent = "(" + wwErState.timeGroups.length + ")";
+            if (!wwErState.timeGroups.length) {
+                groupsPanel.innerHTML = '<p class="empty-state">No recordings loaded yet. Upload one from Recordings.</p>';
+            } else {
+                const sorted = wwErSortedTimeGroups();
+                groupsPanel.innerHTML = sorted.eligible.map(wwErGroupRowHtml).join("") +
+                    (sorted.ineligible.length
+                        ? '<p class="ww-er-subheading">Not eligible (' + sorted.ineligible.length + ")</p>" + sorted.ineligible.map(wwErGroupRowHtml).join("")
+                        : "");
+            }
+
+            // Main area: no plotting yet (Slice 3) -- the canvas only says
+            // what is selected.
+            const stale = wwErStaleMembers().length;
+            document.getElementById("wwErCanvasMeta").textContent = wwErDefined()
+                ? members.length + (members.length === 1 ? " Time Group selected" : " Time Groups selected") + (stale ? " · re-confirmation needed" : "")
+                : "No reconstruction records selected";
+            document.getElementById("wwErEmptyState").textContent = wwErDefined()
+                ? "Plotting the reconstruction on its common timeline is not available yet."
+                : "No reconstruction records selected. Select Time Groups in the left panel to place them on one common timeline. Plotting the reconstruction is not available yet.";
+        }
+
+        function wwErHandleAction(button) {
+            const memberId = button.dataset.memberId;
+            switch (button.dataset.erAction) {
+                case "add-group": return wwErAddGroup(button.dataset.groupId);
+                case "remove-member": return wwErRemoveMember(memberId);
+                case "make-reference": return wwErMakeReference(memberId);
+                case "set-correction":
+                    return wwErSetCorrection(memberId, button.closest(".ww-er-correction").querySelector("input[data-er-correction-input]"));
+                case "reset-correction": return wwErResetCorrection(memberId);
+                case "reconfirm-stale": return wwErReconfirmStale();
+                case "remove-stale": return wwErRemoveStale();
+                default: return null;
+            }
+        }
+
+        function wwErOpenClearConfirm() {
+            document.getElementById("wwErClearConfirmOverlay").hidden = false;
+            document.getElementById("wwErClearCancelBtn").focus();
+        }
+
+        function wwErCloseClearConfirm() {
+            document.getElementById("wwErClearConfirmOverlay").hidden = true;
         }
 
         // ------------------------------------------------------------------
@@ -27711,6 +28224,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // established "a cheap sweep is fine" precedent
             // (wwUpdateAllCursorValueCells()).
             wwRefreshSourceSyncBadges();
+            // Event Reconstruction group extents include this source
+            // placement; a no-op unless that page is current.
+            wwErNotifyWorkspaceChanged();
         }
 
         // Patches every currently-rendered source's own sync badge in
@@ -47558,6 +48074,29 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // never wwSetDragMode(), which relayouts every Waveform panel.
         document.getElementById("wwErDragModeZoomBtn").addEventListener("click", () => wwErSetDragMode("zoom"));
         document.getElementById("wwErDragModePanBtn").addEventListener("click", () => wwErSetDragMode("pan"));
+        // Event Reconstruction Slice 2: one delegated handler for every
+        // member/Time Group action button (re-rendered after each change).
+        document.getElementById("wwErSidebar").addEventListener("click", (event) => {
+            const button = event.target.closest("button[data-er-action]");
+            if (button && !button.disabled) wwErHandleAction(button);
+        });
+        document.getElementById("wwErSidebar").addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" || !event.target.matches("input[data-er-correction-input]")) return;
+            event.preventDefault();
+            if (!wwErState.busy) wwErSetCorrection(event.target.dataset.memberId, event.target);
+        });
+        document.getElementById("wwErClearBtn").addEventListener("click", wwErOpenClearConfirm);
+        document.getElementById("wwErClearCancelBtn").addEventListener("click", wwErCloseClearConfirm);
+        document.getElementById("wwErClearConfirmBtn").addEventListener("click", () => {
+            wwErCloseClearConfirm();
+            wwErClear();
+        });
+        document.getElementById("wwErClearConfirmOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "wwErClearConfirmOverlay") wwErCloseClearConfirm();
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && !document.getElementById("wwErClearConfirmOverlay").hidden) wwErCloseClearConfirm();
+        });
         document.getElementById("mainNavCalculatedChannelsBtn").addEventListener("click", () => shellSetCurrentPage("calculated-channels"));
         document.getElementById("mainNavAnalysisBtn").addEventListener("click", () => shellSetCurrentPage("analysis"));
         document.getElementById("mainNavComplianceBtn").addEventListener("click", () => shellSetCurrentPage("compliance"));
