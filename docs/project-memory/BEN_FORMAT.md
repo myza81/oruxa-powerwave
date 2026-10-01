@@ -9,8 +9,10 @@ Code: [backend/app/providers/ben/](../../backend/app/providers/ben/),
 [backend/app/services/import_service.py](../../backend/app/services/import_service.py).
 
 Status (2026-10-01): **importable through the normal upload** (Upload
-Recording → format "BEN"), on branch `feat/native-ben-parser`, awaiting
-owner UAT. See §7.
+Recording → format "BEN"). **Owner UAT passed** and the feature is
+merged to `main`. The UAT covered Fast and Slow upload, BEN/COMTRADE
+timestamp alignment, local display time, waveform plotting and the
+rejection of older layouts. See §7.
 
 **Supported:** the validated BEN32 SubBen layout family (Fast and Slow
 SubBen, header signature `2a ff … / 06 ff`).

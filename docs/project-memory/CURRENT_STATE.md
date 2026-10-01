@@ -9,65 +9,55 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-10-01** — **Engineering timestamps
-display in one timezone (DEC-122), on `feat/native-ben-parser`, awaiting
-owner UAT.**
+Last meaningful update: **2026-10-01** — **Native BEN import: owner UAT
+passed; merged to `main`** (DEC-119 parser, DEC-120 import, DEC-121
+timestamp/channel-identity hardening, DEC-122 display timezone).
+
+```text
+Upload Recording -> format "BEN" -> native BenProvider -> Fast or Slow SubBen
+  -> DisturbanceRecord -> normal Powerwave workflow
+```
+
+- **Owner UAT passed (2026-10-01): "BEN integration is working as
+  expected and the feature is accepted for merge."** It covered:
+  - `.ben` upload through the normal Upload Recording flow;
+  - Fast SubBen and Slow SubBen loading;
+  - BEN and matching BEN32 COMTRADE timestamp alignment (one Time
+    Group, 0.0 s placement);
+  - consistent Malaysia-local display time;
+  - waveform plotting and the normal recording workflow;
+  - rejection of unsupported older BEN layouts.
+- **Scope of the UAT.** It applies to the validated BEN32 SubBen layout
+  family only (header `2a ff … / 06 ff`), not to every historical BEN
+  variant. Older layouts (BPHE/GPTH, header byte `28`) and any
+  unvalidated variant are rejected with `unsupported_ben_variant`.
+- **Behaviour.** Parsing is native: no BEN32 runtime and no temporary
+  COMTRADE. Sampling rate, channel counts and stride come from each
+  file. Analog, calculated (Hz/MW) and digital channels are scaled to
+  engineering units. Slow unavailable samples are `NaN`. Duplicate
+  analog/digital names keep their own identity.
 
 | Concern | Rule |
 |---|---|
-| Source timezone | Naive engineering timestamps are read as Asia/Kuala_Lumpur (DEC-121). |
+| Source timezone | Naive engineering timestamps are read as Asia/Kuala_Lumpur; a declared offset wins (DEC-121). |
 | Canonical | UTC. The API adds `start_time_utc`/`trigger_time_utc`; the stored `start_time` is unchanged. |
-| Display timezone | Asia/Kuala_Lumpur, applied in the frontend via `wwFormatEngineeringTimestamp()` and the Absolute anchor `wwRecordingDisplayStartTime()`. |
+| Display timezone | Asia/Kuala_Lumpur, applied in the frontend via `wwFormatEngineeringTimestamp()` and the Absolute anchor `wwRecordingDisplayStartTime()` (DEC-122). |
 
-A BEN record and its BEN32 COMTRADE export now show the same time in:
-- Recording Events, the sidebar and Trigger;
-- the Time Group header, ruler and axis.
+Deferred follow-ups (`[OPEN]`, not blockers):
+- older BEN layouts (BPHE/GPTH);
+- a user- or project-selectable display timezone;
+- deployment wiring for `displayTimezone` (the container entrypoint does
+  not emit it; the default applies), and `DEFAULT_SOURCE_TIMEZONE` is a
+  constant, not a setting;
+- BEN bay/feeder and channel ids in the UI (kept in provenance only);
+- nominal frequency in the UI or configuration (BEN upload uses the
+  shared 50 Hz default; the API accepts `nominal_frequency_hz`);
+- FLOAT32/BINARY32 COMTRADE DAT;
+- any broader channel-metadata redesign;
+- the COMTRADE path still scales BEN32's legacy 99999 "unavailable"
+  value to 99.9995 Hz; the BEN path gives `NaN`.
 
-Placement is unchanged at 0.0 s. A user-selectable display timezone is
-not built (`[OPEN]`).
-
-Earlier the same day: **Recording timestamps and COMTRADE channel
-identity hardened (DEC-121), on `feat/native-ben-parser`, awaiting owner
-UAT.**
-- **Timestamps.**
-  - *Stored* values are unchanged: BEN aware UTC, COMTRADE naive local.
-  - *Source timezone interpretation*: a declared offset wins (including
-    a COMTRADE-2013 `time_code`); otherwise a naive value is read as
-    `Asia/Kuala_Lumpur` (`app.domain.source_timezone`) at the one
-    comparison point, `normalize_absolute_datetime`.
-  - A BEN record and its BEN32 COMTRADE export are now the same instant:
-    one Time Group, 0.0 s placement.
-  - *Display*: resolved by DEC-122 (Asia/Kuala_Lumpur).
-- **COMTRADE duplicate names.** The descriptors of duplicate-named
-  channels now bind to their own `_1` data column. A BEN32 Slow
-  `POWER BBTU` digital no longer reads the MW analog. Original names are
-  kept in provenance.
-
-Earlier the same day: **BEN import integrated (DEC-120), on branch
-`feat/native-ben-parser`, awaiting owner UAT.**
-A supported BEN32 Fast/Slow `.ben` record now uploads through the normal
-Upload Recording modal (format "BEN") and the same `/sources` endpoint.
-`BenProvider` is resolved through the central provider registry, and the
-record reaches the unchanged downstream workflow.
-- Canonical time is timezone-aware UTC.
-- Nominal frequency defaults to the shared 50 Hz (overridable per
-  upload).
-- BEN channel identity (id, source name, bay) is kept in source
-  provenance.
-- Older BEN layouts are rejected with `unsupported_ben_variant`.
-- `[OPEN]` The UI shows BEN's UTC wall-clock; it has no local-timezone
-  presentation. Alignment with COMTRADE is fixed by DEC-121.
-
-See [BEN_FORMAT.md §7](BEN_FORMAT.md).
-
-Earlier the same day: **Native BEN record parser (DEC-119), standalone
-backend.** `app.providers.ben` parses
-BEN32 Fast/Slow SubBen records natively (no COMTRADE intermediate) and
-can normalize them into `DisturbanceRecord`. It is proven
-sample-for-sample against four BEN32 COMTRADE exports. It is **not**
-integrated into upload/UI; that is a separate task awaiting owner
-go-ahead, with timezone and nominal-frequency policy `[OPEN]`. See
-[BEN_FORMAT.md](BEN_FORMAT.md).
+See [BEN_FORMAT.md](BEN_FORMAT.md).
 
 Earlier, on **2026-09-30** — **Calculator phase-to-neutral
 notation (DEC-117 Amendment 3).** Line / Phase Voltage shows
@@ -2726,18 +2716,19 @@ re-confirmed by the TG-FINAL audit):
     Asia/Kuala_Lumpur when compared.
   - Duplicate channel names bind each descriptor to its own `_1` column.
   - FLOAT32/BINARY32 DAT remain unsupported.
-- **BEN import (DEC-120, 2026-10-01; awaiting owner UAT).**
+- **BEN import (DEC-120, 2026-10-01; owner UAT passed, merged to
+  `main`).**
   - Upload Recording offers format "BEN" (`.ben`), posting `ben_file` to
     the same `/sources` endpoint as COMTRADE.
   - The provider registry routes the file to `BenProvider`; nothing is
     converted to COMTRADE.
   - Fast and Slow records land as ordinary sources: Recordings row,
     Waveform, digital channels, post-upload preparation.
-  - Times are aware UTC.
+  - Times are aware UTC and display in Asia/Kuala_Lumpur (DEC-122).
   - `nominal_frequency_hz` is optional; otherwise the shared 50 Hz
     default applies, recorded as assumed.
   - Unavailable Slow samples are `NaN`.
-  - `[OPEN]` Local-time display; bay/id not shown in the UI.
+  - `[OPEN]` Bay/id not shown in the UI.
 - **Native BEN parsing (DEC-119, 2026-10-01).** `app.providers.ben` decodes BEN32 3.8.9.6 "Fast SubBen"
   and "Slow SubBen" records natively into a lossless `BenRecord`.
   - Everything is derived from the file itself: sample rate, counts,
@@ -2752,9 +2743,8 @@ re-confirmed by the TG-FINAL audit):
     explicitly.
   - Validated sample-for-sample against BEN32 COMTRADE exports (2 Fast +
     2 Slow pairs).
-  - Upload, UI and workspace are untouched. The format, evidence and the
-    `[OPEN]` items that must be decided before integration (timezone,
-    nominal frequency) are in [BEN_FORMAT.md](BEN_FORMAT.md).
+  - The format, evidence and remaining `[OPEN]` items are in
+    [BEN_FORMAT.md](BEN_FORMAT.md).
 - **Application shell**: full-viewport Global Header, collapsible Main
   Sidebar Menu, drag-resizable Workspace Sidebar (source-first hierarchy:
   Recording → Analog/Digital → Category → Channel), a dominant Main

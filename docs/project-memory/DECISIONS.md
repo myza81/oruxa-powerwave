@@ -19794,9 +19794,9 @@ architecture.
 ## DEC-119 — Native BEN record parsing: BEN → native parser → normalized model; COMTRADE is a validation oracle only
 
 Date: 2026-10-01
-Status: Approved direction (owner task). The standalone parser and
-validation suite are implemented. **Not integrated**; integration into
-upload/normalization needs a separate owner go-ahead.
+Status: Approved direction (owner task). Implemented; integrated into
+upload by DEC-120. **Owner UAT passed (2026-10-01)** for the validated
+BEN32 SubBen layout family; merged to `main`.
 Source: owner task "native BEN disturbance-record parsing", which
 followed the owner's BEN32 reverse-engineering investigation.
 
@@ -19881,7 +19881,8 @@ The existing suite is unaffected. New tests are
 Date: 2026-10-01
 Status: Approved (owner decisions on timezone, nominal frequency and
 channel identity, given in the integration task). Implemented on
-`feat/native-ben-parser`; **awaiting owner UAT**, not merged to `main`.
+`feat/native-ben-parser`; **owner UAT passed (2026-10-01)**; merged to
+`main`.
 Source: owner task "integrate native BEN import"; it follows DEC-119 and
 resolves DEC-119's `[OPEN]` timezone, nominal-frequency and name items.
 
@@ -20007,7 +20008,8 @@ Impact:
 
 Date: 2026-10-01
 Status: Approved (owner hardening task before BEN UAT). Implemented on
-`feat/native-ben-parser`; **awaiting owner UAT**, not merged to `main`.
+`feat/native-ben-parser`; **owner UAT passed (2026-10-01)**; merged to
+`main`.
 Source: owner task "align recording timestamps and channel identity".
 This is a follow-up to DEC-120. It supersedes the Slice 11 (DEC-072)
 "naive = UTC label" rule in `time_grouping.normalize_absolute_datetime()`.
@@ -20101,8 +20103,8 @@ Impact:
 
 Date: 2026-10-01
 Status: Approved (owner task "display recording times in local timezone").
-Implemented on `feat/native-ben-parser`; **awaiting owner UAT**, not
-merged to `main`.
+Implemented on `feat/native-ben-parser`; **owner UAT passed
+(2026-10-01)**; merged to `main`.
 It completes DEC-121. Where DEC-120/121 listed "display timezone `[OPEN]`",
 this entry resolves it.
 

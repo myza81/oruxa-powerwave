@@ -4,13 +4,55 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-01** (display timezone)
+Last updated: **2026-10-01** (native BEN closeout)
 
 ## What was most recently done
 
+**Native BEN import closeout (2026-10-01).** Owner UAT passed:
+*"BEN integration is working as expected and the feature is accepted for
+merge."* `feat/native-ben-parser` (DEC-119 to DEC-122) is merged into
+`main` with a merge commit; the feature branch is kept.
+
+- **UAT verified:**
+  - `.ben` upload through the normal Upload Recording flow;
+  - Fast SubBen and Slow SubBen loading;
+  - BEN and matching BEN32 COMTRADE timestamp alignment;
+  - consistent Malaysia-local display time;
+  - waveform plotting and the normal recording workflow;
+  - rejection of unsupported older BEN layouts.
+- **Scope.** The UAT covers the validated BEN32 SubBen layout family
+  only, not every historical BEN variant.
+- **Final regression (before merge):**
+  - backend: 6055 passed, 40 skipped (the `ben_reference` tests, which
+    need the owner directory), twice;
+  - `ben_reference` with the owner directory: 40 passed. One unnamed
+    failure occurred once in the first run and did not recur in 11
+    reruns, 6 of them under the same concurrent load. The directory is
+    on OneDrive, so a first-access file hydration is a possible cause,
+    but this is not proven;
+  - browser: 367 of 368 passed, including every `ben-import` and
+    `display-timezone` spec. The one failure was the already-known
+    Sequence Components flake, "hiding the dominant V1 does not change
+    V2/V0's own rendered scale/position" (see its earlier entry below).
+    It then passed 10/10 alone and 33/33 with its whole spec. It stays
+    `[OPEN]` and untouched.
+- **Deferred `[OPEN]` follow-ups (not blockers):**
+  - older BEN layouts (BPHE/GPTH);
+  - a user- or project-selectable display timezone;
+  - `displayTimezone` deployment wiring (the entrypoint does not emit
+    it), and `DEFAULT_SOURCE_TIMEZONE` as a setting;
+  - BEN bay/feeder and channel ids in the UI;
+  - nominal frequency in the UI or configuration;
+  - FLOAT32/BINARY32 COMTRADE;
+  - any broader channel-metadata redesign;
+  - the COMTRADE path's legacy 99999 → 99.9995 Hz value.
+- **Next.** The owner pushes `main` (this session did not push). Any
+  follow-up above needs its own owner task.
+
+## Earlier — DEC-122 display timezone
+
 **Engineering timestamp display timezone (DEC-122, 2026-10-01). Branch
-`feat/native-ben-parser`, fourth commit; not merged. STOP: awaiting owner
-UAT.**
+`feat/native-ben-parser`, fourth commit. Owner UAT passed; merged.**
 
 - **Backend.** `SourceSummaryOut`/`TimebaseOut` add
   `start_time_utc`/`trigger_time_utc`: `canonical_utc()` of the stored
@@ -43,8 +85,8 @@ UAT.**
 ## Earlier — DEC-121 hardening
 
 **Timestamp and channel-identity hardening (DEC-121, 2026-10-01).
-Branch `feat/native-ben-parser`, third commit; not merged. STOP:
-awaiting owner UAT.**
+Branch `feat/native-ben-parser`, third commit. Owner UAT passed;
+merged.**
 
 - **Timestamps.**
   - New `app.domain.source_timezone`: `DEFAULT_SOURCE_TIMEZONE =
@@ -75,8 +117,8 @@ awaiting owner UAT.**
 ## Earlier — BEN import integration
 
 **BEN import integration (DEC-120, 2026-10-01). Branch
-`feat/native-ben-parser`, second commit after `c2f7f2a`; not merged.
-STOP: awaiting owner UAT.**
+`feat/native-ben-parser`, second commit after `c2f7f2a`. Owner UAT
+passed; merged.**
 
 - **Endpoint.** `POST /sources` takes `cfg_file`+`dat_file` (unchanged)
   or `ben_file` (+ optional `nominal_frequency_hz`).
@@ -100,8 +142,8 @@ STOP: awaiting owner UAT.**
   - `browser-tests/ben-import.spec.js`.
 - **For owner UAT.** Upload the LGNG and PMJY `.ben` files via Upload
   Recording → BEN.
-  - Expect UTC times on screen, e.g. 05:54:22 rather than 13:54:22.
-    That is the `[OPEN]` presentation item.
+  - At the time this showed UTC (05:54:22 rather than 13:54:22);
+    DEC-122 later switched the display to local time.
   - Expect frequency/power channels for PMJY.
 - **Found, then fixed by DEC-121.** The COMTRADE provider mis-read a
   digital whose CFG name equals an analog's. BEN32 Slow exports do this
@@ -112,8 +154,7 @@ STOP: awaiting owner UAT.**
 ## Earlier — native BEN parser
 
 **Native BEN record parser (DEC-119, 2026-10-01). Backend, tests and docs
-only. STOP: not integrated; the owner reviews before any upload/UI
-work.**
+only. Integrated later by DEC-120; owner UAT passed; merged.**
 
 - New package `backend/app/providers/ben/`:
   - `layout`: every structural constant, named;
