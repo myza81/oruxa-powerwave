@@ -27,7 +27,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from app.domain.event_reconstruction import (
-    LARGE_GAP_WARNING_THRESHOLD_S,
     REASON_NO_ABSOLUTE_TIME_REFERENCE,
     EventReconstructionDefinition,
     ReconstructionEligibility,
@@ -360,7 +359,7 @@ def list_reconstruction_time_groups(
 
 def get_reconstruction(
     *, workspace_id: str, registry: EventReconstructionRegistry, source_registry: WorkspaceRegistry,
-    synchronization_registry: SynchronizationRegistry, large_gap_threshold_s: float = LARGE_GAP_WARNING_THRESHOLD_S,
+    synchronization_registry: SynchronizationRegistry, large_gap_threshold_s: float,
 ) -> ReconstructionView:
     definition = registry.get(workspace_id)
     if definition is None:
@@ -377,7 +376,7 @@ def get_reconstruction(
 def set_reconstruction_definition(
     *, workspace_id: str, group_ids: list[str], reference_group_id: str, registry: EventReconstructionRegistry,
     source_registry: WorkspaceRegistry, synchronization_registry: SynchronizationRegistry,
-    large_gap_threshold_s: float = LARGE_GAP_WARNING_THRESHOLD_S,
+    large_gap_threshold_s: float,
 ) -> ReconstructionView:
     """Create or replace the reconstruction from current Time Group ids.
 
@@ -442,7 +441,7 @@ def _require_current_member(
 
 def set_reconstruction_reference(
     *, workspace_id: str, member_id: str, registry: EventReconstructionRegistry, source_registry: WorkspaceRegistry,
-    synchronization_registry: SynchronizationRegistry, large_gap_threshold_s: float = LARGE_GAP_WARNING_THRESHOLD_S,
+    synchronization_registry: SynchronizationRegistry, large_gap_threshold_s: float,
 ) -> ReconstructionView:
     """Make a current member the reference. Stored corrections are not
     touched, so every member's position relative to every other member is
@@ -457,7 +456,7 @@ def set_reconstruction_reference(
 def set_member_correction(
     *, workspace_id: str, member_id: str, correction_s: float, registry: EventReconstructionRegistry,
     source_registry: WorkspaceRegistry, synchronization_registry: SynchronizationRegistry,
-    large_gap_threshold_s: float = LARGE_GAP_WARNING_THRESHOLD_S,
+    large_gap_threshold_s: float,
 ) -> ReconstructionView:
     """Store one current member's manual correction (seconds, full float
     precision). The reference may carry a correction too: corrections
@@ -473,7 +472,7 @@ def set_member_correction(
 
 def reset_member_correction(
     *, workspace_id: str, member_id: str, registry: EventReconstructionRegistry, source_registry: WorkspaceRegistry,
-    synchronization_registry: SynchronizationRegistry, large_gap_threshold_s: float = LARGE_GAP_WARNING_THRESHOLD_S,
+    synchronization_registry: SynchronizationRegistry, large_gap_threshold_s: float,
 ) -> ReconstructionView:
     """Correction back to `0.0`: the member returns to its recorded-
     timestamp placement."""

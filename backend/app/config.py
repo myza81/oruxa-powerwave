@@ -17,6 +17,12 @@ DEFAULT_CORS_ORIGINS = ("http://localhost:8101", "http://127.0.0.1:8101")
 # values belong in configuration, not hard-coded business logic.
 DEFAULT_MAX_EVENT_UPLOAD_SIZE_MB = 100
 
+# Event Reconstruction (DEC-124): a gap of at least this many seconds in a
+# reconstruction timeline produces an advisory warning, never a rejection.
+# Central default only -- deliberately not read from the environment and
+# not user-facing yet (owner direction); change it here.
+DEFAULT_EVENT_RECONSTRUCTION_LARGE_GAP_WARNING_S = 3600.0
+
 
 class ConfigurationError(RuntimeError):
     """Raised when the environment does not describe a usable configuration."""
@@ -40,6 +46,7 @@ class Settings:
     # already uses, never a fabricated commit hash.
     git_sha: str
     version: str
+    event_reconstruction_large_gap_warning_s: float = DEFAULT_EVENT_RECONSTRUCTION_LARGE_GAP_WARNING_S
 
     @property
     def is_production(self) -> bool:

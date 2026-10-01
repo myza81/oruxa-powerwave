@@ -4,9 +4,20 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-01** (Event Reconstruction Slice 1)
+Last updated: **2026-10-01** (Event Reconstruction Slice 1 follow-up)
 
 ## What was most recently done
+
+**Event Reconstruction Slice 1 follow-up (DEC-124 update, 2026-10-01).**
+The large-gap threshold now comes from `app/config.py`
+(`Settings.event_reconstruction_large_gap_warning_s`, default 3600 s,
+not environment-read, not user-facing); the domain has no default and
+the API reports the effective value. The coordinate model is now
+documented explicitly (domain docstring, DEC-124 update table), and
+`TestCoordinateModel` proves there is no double counting of absolute
+time. No behaviour change.
+
+## Earlier — Event Reconstruction Slice 1
 
 **Event Reconstruction Slice 1 — domain model, eligibility, service and
 API (DEC-124, 2026-10-01).** Committed on `feat/event-reconstruction`

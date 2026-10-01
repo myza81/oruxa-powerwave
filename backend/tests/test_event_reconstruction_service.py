@@ -15,9 +15,9 @@ import pandas as pd
 import pytest
 
 import app.services.event_reconstruction_service as er_service
+from app.config import DEFAULT_EVENT_RECONSTRUCTION_LARGE_GAP_WARNING_S
 from app.domain.disturbance_record import DisturbanceRecord
 from app.domain.event_reconstruction import (
-    LARGE_GAP_WARNING_THRESHOLD_S,
     RELATIONSHIP_FULL_OVERLAP,
     RELATIONSHIP_GAP,
     RELATIONSHIP_PARTIAL_OVERLAP,
@@ -64,6 +64,8 @@ from app.services.synchronization_service import (
 from app.services.workspace_registry import WorkspaceRegistry
 
 WS = "ws-er"
+#: The centrally configured default (app.config), never a domain literal.
+THRESHOLD_S = DEFAULT_EVENT_RECONSTRUCTION_LARGE_GAP_WARNING_S
 T0 = datetime(2026, 3, 6, 2, 0, 0, tzinfo=timezone.utc)
 
 
@@ -109,10 +111,11 @@ class _WriteForbiddenSynchronizationRegistry(SynchronizationRegistry):
 
 
 class _Ctx:
-    def __init__(self, sync: SynchronizationRegistry):
+    def __init__(self, sync: SynchronizationRegistry, threshold_s: float = THRESHOLD_S):
         self.sources = WorkspaceRegistry()
         self.sync = sync
         self.er = EventReconstructionRegistry()
+        self.threshold_s = threshold_s
 
     def add(self, *sources: ActiveSource) -> None:
         for source in sources:
@@ -124,23 +127,26 @@ class _Ctx:
     def _kw(self) -> dict:
         return {"workspace_id": WS, "registry": self.er, "source_registry": self.sources, "synchronization_registry": self.sync}
 
+    def _view_kw(self) -> dict:
+        return {**self._kw(), "large_gap_threshold_s": self.threshold_s}
+
     def groups(self):
         return list_reconstruction_time_groups(**self._kw())
 
     def define(self, group_ids, reference):
-        return set_reconstruction_definition(group_ids=list(group_ids), reference_group_id=reference, **self._kw())
+        return set_reconstruction_definition(group_ids=list(group_ids), reference_group_id=reference, **self._view_kw())
 
     def view(self):
-        return get_reconstruction(**self._kw())
+        return get_reconstruction(**self._view_kw())
 
     def correct(self, member_id, value):
-        return set_member_correction(member_id=member_id, correction_s=value, **self._kw())
+        return set_member_correction(member_id=member_id, correction_s=value, **self._view_kw())
 
     def reset(self, member_id):
-        return reset_member_correction(member_id=member_id, **self._kw())
+        return reset_member_correction(member_id=member_id, **self._view_kw())
 
     def reference(self, member_id):
-        return set_reconstruction_reference(member_id=member_id, **self._kw())
+        return set_reconstruction_reference(member_id=member_id, **self._view_kw())
 
 
 @pytest.fixture
@@ -228,7 +234,7 @@ class TestDefinition:
         view = ctx.view()
         assert view.defined is False
         assert view.members == [] and view.warnings == []
-        assert view.large_gap_warning_threshold_s == LARGE_GAP_WARNING_THRESHOLD_S
+        assert view.large_gap_warning_threshold_s == THRESHOLD_S
 
     def test_two_groups_form_one_reconstruction_on_recorded_placement(self, ctx):
         ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10)))
@@ -387,7 +393,7 @@ class TestReferenceSwitching:
 class TestLargeGapWarning:
     @pytest.mark.parametrize(
         ("gap_s", "warns"),
-        [(LARGE_GAP_WARNING_THRESHOLD_S - 0.5, False), (LARGE_GAP_WARNING_THRESHOLD_S, True), (LARGE_GAP_WARNING_THRESHOLD_S * 24, True)],
+        [(THRESHOLD_S - 0.5, False), (THRESHOLD_S, True), (THRESHOLD_S * 24, True)],
     )
     def test_threshold_is_inclusive_and_advisory(self, ctx, gap_s, warns):
         ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=1.0 + gap_s)))
@@ -398,17 +404,106 @@ class TestLargeGapWarning:
             [warning] = view.warnings
             assert warning.code == WARNING_LARGE_GAP
             assert warning.gap_s == pytest.approx(gap_s)
-            assert warning.threshold_s == LARGE_GAP_WARNING_THRESHOLD_S
+            assert warning.threshold_s == THRESHOLD_S
             assert (warning.before_member_id, warning.after_member_id) == (_fp("A"), _fp("B"))
             assert "apart" in warning.message
         else:
             assert view.warnings == []
+
+    def test_configured_threshold_is_the_one_applied_and_reported(self):
+        ctx = _Ctx(_WriteForbiddenSynchronizationRegistry(), threshold_s=60.0)
+        ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=61)))
+        view = ctx.define(["A", "B"], "A")
+        assert view.large_gap_warning_threshold_s == 60.0
+        [warning] = view.warnings
+        assert warning.threshold_s == 60.0 and warning.gap_s == pytest.approx(60.0)
+        assert view.status == RECONSTRUCTION_STATUS_READY
 
     def test_a_correction_can_add_or_remove_the_warning(self, ctx):
         ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10)))
         ctx.define(["A", "B"], "A")
         assert len(ctx.correct(_fp("B"), 4000.0).warnings) == 1
         assert ctx.correct(_fp("B"), 0.0).warnings == []
+
+
+class TestCoordinateModel:
+    """Guards against double counting absolute time. `source_time` is a
+    source's own elapsed time (0 = its recorded start_time); absolute time
+    enters only through the two groups' ORIGIN start difference. With
+    every correction 0, reconstruction time must map each sample back to
+    its true recorded absolute instant relative to the reference origin."""
+
+    REF_ORIGIN = T0 + timedelta(seconds=5)
+
+    @pytest.fixture
+    def workspace(self):
+        ctx = _Ctx(SynchronizationRegistry())
+        ctx.add(
+            # Reference group: R (origin) + R2; not the earliest overall.
+            _source("R", start=self.REF_ORIGIN),
+            _source("R2", start=self.REF_ORIGIN + timedelta(seconds=0.4)),
+            # Other group: A (origin) + A2, recorded 5 s before R.
+            _source("A", start=T0),
+            _source("A2", start=T0 + timedelta(seconds=0.3), duration_s=1.2),
+        )
+        return ctx
+
+    @staticmethod
+    def _reconstruction_start(ctx, view, source_id):
+        """Reconstruction time of a source's first sample (elapsed 0):
+        source_time + effective within-group offset + member offset."""
+        effective = {
+            v.source_id: v.effective_alignment_offset_s
+            for v in list_source_alignments(workspace_id=WS, registry=ctx.sync, source_registry=ctx.sources)
+        }
+        member = next(m for m in view.members if source_id in m.source_ids)
+        return 0.0 + effective[source_id] + member.reconstruction_offset_s
+
+    def test_zero_corrections_reproduce_recorded_absolute_time(self, workspace):
+        view = workspace.define(["R", "A"], "R")
+        for active in workspace.sources.list_for_workspace(WS):
+            expected = (active.metadata.start_time - self.REF_ORIGIN).total_seconds()
+            actual = self._reconstruction_start(workspace, view, active.metadata.source_id)
+            assert actual == pytest.approx(expected, abs=1e-9)
+        # Member extents are the union of their sources in the same frame.
+        assert _member(view, _fp("A", "A2")).start_s == pytest.approx(-5.0, abs=1e-9)
+        assert _member(view, _fp("A", "A2")).end_s == pytest.approx(-5.0 + 0.3 + 1.2, abs=1e-9)
+        assert _member(view, _fp("R", "R2")).end_s == pytest.approx(1.4, abs=1e-9)
+
+    def test_reconstruction_correction_shifts_its_group_exactly_once(self, workspace):
+        base = workspace.define(["R", "A"], "R")
+        moved = workspace.correct(_fp("A", "A2"), 0.0125)
+        for sid in ("A", "A2"):
+            delta = self._reconstruction_start(workspace, moved, sid) - self._reconstruction_start(workspace, base, sid)
+            assert delta == pytest.approx(0.0125, abs=1e-12)
+        for sid in ("R", "R2"):
+            assert self._reconstruction_start(workspace, moved, sid) == self._reconstruction_start(workspace, base, sid)
+
+    def test_synchronise_sources_offset_shifts_only_its_source_exactly_once(self, workspace):
+        base = workspace.define(["R", "A"], "R")
+        before = {sid: self._reconstruction_start(workspace, base, sid) for sid in ("R", "R2", "A", "A2")}
+        set_source_alignment_offset(
+            workspace_id=WS, source_id="A2", alignment_offset_s=0.002, registry=workspace.sync,
+            source_registry=workspace.sources,
+        )
+        after_view = workspace.view()
+        after = {sid: self._reconstruction_start(workspace, after_view, sid) for sid in before}
+        assert after["A2"] - before["A2"] == pytest.approx(0.002, abs=1e-12)
+        assert {sid: after[sid] for sid in ("R", "R2", "A")} == {sid: before[sid] for sid in ("R", "R2", "A")}
+        # A within-group sync never changes the group's own reconstruction offset.
+        assert (
+            _member(after_view, _fp("A", "A2")).reconstruction_offset_s
+            == _member(base, _fp("A", "A2")).reconstruction_offset_s
+        )
+
+    def test_reference_switch_moves_only_the_zero_point(self, workspace):
+        from_r = workspace.define(["R", "A"], "R")
+        from_a = workspace.reference(_fp("A", "A2"))
+        shift = self._reconstruction_start(workspace, from_a, "R") - self._reconstruction_start(workspace, from_r, "R")
+        assert shift == pytest.approx(5.0, abs=1e-9)
+        for sid in ("R2", "A", "A2"):
+            moved = self._reconstruction_start(workspace, from_a, sid) - self._reconstruction_start(workspace, from_r, sid)
+            assert moved == pytest.approx(shift, abs=1e-9)
 
 
 class TestStaleMembership:

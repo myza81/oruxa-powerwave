@@ -20383,10 +20383,10 @@ items.
   real holes in the timeline union (a member bridged by an overlapping
   one does not warn), as `{code: large_gap, before_member_id,
   after_member_id, gap_s, threshold_s, message}`.
-- **Threshold:** `LARGE_GAP_WARNING_THRESHOLD_S = 3600.0`, one constant
-  in the domain module, passed as a parameter through the service and
-  returned by the API (`large_gap_warning_threshold_s`). It is not an
-  environment setting yet.
+- **Threshold:** originally `LARGE_GAP_WARNING_THRESHOLD_S = 3600.0` in
+  the domain module; moved to central configuration by the update at
+  the end of this entry. Returned by the API as
+  `large_gap_warning_threshold_s`.
 - **State:** `EventReconstructionRegistry` (in-memory, one definition
   per workspace), cleared by `DELETE /api/v1/workspaces/{id}`. Source
   removal leaves it alone; the affected member reads as stale.
@@ -20420,6 +20420,40 @@ items.
   comparison/design step.
 - **Synchronise Sources migration** (DEC-123, Slice 7).
 - **A configurable threshold** via `app/config.py`, if ever needed.
+  *(Resolved by the update below.)*
+
+### Update (2026-10-01) — Slice 1 follow-up: central threshold, explicit coordinates
+
+- **Threshold in central configuration** (owner direction). The domain
+  constant is gone. The default lives in `app/config.py`
+  (`DEFAULT_EVENT_RECONSTRUCTION_LARGE_GAP_WARNING_S = 3600.0`) and
+  reaches the API as `Settings.event_reconstruction_large_gap_warning_s`.
+  It is deliberately not read from the environment and not user-facing.
+  The domain `large_gaps()` and every service call now require the
+  threshold explicitly; the API reports the effective value. Warning
+  semantics are unchanged (`< threshold` none, `>= threshold` warning,
+  never a rejection).
+- **Coordinate definitions** (documentation and tests only — the audit
+  found no double counting, so the model is unchanged):
+
+  | Term | Meaning |
+  |---|---|
+  | `source_time` | The source's own **elapsed** time (`waveform_data["time"]`); 0 is its recorded `start_time`; may be negative. Never an absolute timestamp. |
+  | `origin_start(g)` | Recorded absolute `start_time` of group g's origin (earliest) source. |
+  | `effective_alignment_offset_s(s)` | Existing and read-only: `start_time(s) − origin_start(g)` plus the Synchronise Sources correction. Relative to the group's own origin only. |
+  | group time | `source_time + effective_alignment_offset_s(s)`; with no manual corrections, t = `origin_start(g) + t`. |
+  | `recorded_placement_s(g, ref)` | `origin_start(g) − origin_start(ref)`: the **only** use of absolute time. |
+  | `correction_s(g)` | Event Reconstruction correction, added only in `reconstruction_offset_s`. |
+  | reconstruction time | group time `+ placement(g, ref) + correction(g) − correction(ref)`; 0 = the reference origin. |
+
+  With every correction 0, reconstruction time t is the absolute
+  instant `origin_start(ref) + t`. The reference cancels out of every
+  pairwise difference, so switching it moves only the zero point.
+  `TestCoordinateModel` (service tests) locks this in: zero corrections
+  reproduce recorded absolute time for every source (including
+  non-origin sources and a non-earliest reference), and an Event
+  Reconstruction correction or a Synchronise Sources offset shifts
+  exactly what it should, exactly once.
 
 ---
 

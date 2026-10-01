@@ -7,31 +7,48 @@ isolation and grouping rules unchanged; this module never derives,
 merges or splits Time Groups (that stays `app.domain.time_grouping`'s
 job) and never touches source data.
 
-Timing model (two layers, composed at read time, never stored combined):
+Coordinates (all in seconds; absolute time enters exactly ONCE, in
+`recorded_placement_s`):
 
-    source native time                     (waveform_data["time"], immutable)
-      + effective_alignment_offset_s       (existing within-group placement
-                                            + Synchronise Sources correction,
-                                            app.services.synchronization_service,
-                                            read only)
-      = group time                         (the Time Group's own coordinate;
-                                            0 = its origin source's recorded
-                                            start instant)
-      + reconstruction_offset_s(g, ref)    (this module)
-      = reconstruction time                (0 = the reference group's origin
-                                            start instant, shifted by the
-                                            reference's own correction)
+- `source_time` -- a source's own native ELAPSED time
+  (`waveform_data["time"]`, immutable). Never an absolute timestamp.
+  `source_time = 0` is, by the convention every Time Group computation
+  already uses (`time_grouping._absolute_interval()`), the instant
+  `source.start_time`; it may be negative for pre-trigger samples.
+- `origin_start(g)` -- the recorded absolute `start_time` of Time Group
+  g's ORIGIN source (its earliest-starting member, whose source_id is
+  the group's current `group_id`), normalized to a comparable instant.
+- `effective_alignment_offset_s(s)` -- existing, unchanged, read only:
+  `timestamp_placement_offset_s(s) + manual_alignment_offset_s(s)`,
+  where the placement is `start_time(s) - origin_start(g)` (0 for the
+  origin) and the manual part is the Synchronise Sources correction.
+  It is RELATIVE to the group's own origin, so it never contains the
+  other groups' or the reference's absolute time.
+- `group_time = source_time + effective_alignment_offset_s(s)` -- the
+  Time Group's own coordinate (Waveform's per-group "workspace time").
+  With no manual correction, group time t is the absolute instant
+  `origin_start(g) + t`.
+- `recorded_placement_s(g, ref) = origin_start(g) - origin_start(ref)`
+  -- the only place recorded absolute time is used, as an exact
+  `datetime` difference between the two ORIGINS.
+- `correction_s(g)` -- the engineer's Event Reconstruction correction for
+  group g: a property of that group's clock, stored independently of
+  which group is the reference. Added here and nowhere else.
+- `reconstruction_offset_s(g, ref) = recorded_placement_s(g, ref)
+  + correction_s(g) - correction_s(ref)`.
+- `reconstruction_time = group_time + reconstruction_offset_s(g, ref)`.
+  0 is the reference group's origin instant (after the reference's own
+  correction). With every correction 0 -- Event Reconstruction and
+  Synchronise Sources alike -- reconstruction time t is exactly the
+  absolute instant `origin_start(ref) + t`, which is what guards against
+  double counting (see test_event_reconstruction_service.py's
+  `TestCoordinateModel`).
 
-    reconstruction_offset_s(g, ref) = recorded_placement_s(g, ref)
-                                      + correction_s(g) - correction_s(ref)
-
-`recorded_placement_s(g, ref)` comes from the two groups' recorded
-absolute origin timestamps. `correction_s(g)` is the engineer's manual
-Event Reconstruction correction for group g: a property of that group's
-clock, stored independently of which group is the reference. Switching
-the reference therefore changes no stored value, and every pairwise
-relationship `offset(a) - offset(b) = placement(a, b) + c_a - c_b` is
-independent of the reference by construction.
+Reference switching: for any two members,
+`offset(a, ref) - offset(b, ref) = recorded_placement_s(a, b) + c_a - c_b`
+-- the reference cancels out. Choosing a different reference only moves
+where 0 is; no stored value changes and no member moves relative to
+another.
 
 Member identity: a Time Group's `group_id` is derived (its current origin
 source) and can change when sources are added or removed, so a
@@ -56,12 +73,6 @@ from app.domain.time_grouping import (
     TIME_REFERENCE_TIME_OF_DAY,
     timestamp_placement_offset_s,
 )
-
-#: Advisory threshold (seconds) for a large gap in the reconstruction
-#: timeline (DEC-124: 1 hour, warning only, never a rejection). The one
-#: definition -- every caller passes it through, and the API returns it,
-#: so no other layer carries its own copy.
-LARGE_GAP_WARNING_THRESHOLD_S: float = 3600.0
 
 #: Interval comparisons are made on float seconds derived from exact
 #: `datetime` arithmetic plus float corrections. Endpoints closer than
@@ -232,12 +243,14 @@ class LargeGap:
 
 
 def large_gaps(
-    intervals: Sequence[tuple[str, float, float]], *, threshold_s: float = LARGE_GAP_WARNING_THRESHOLD_S,
+    intervals: Sequence[tuple[str, float, float]], *, threshold_s: float,
     tolerance_s: float = INTERVAL_TOLERANCE_S,
 ) -> list[LargeGap]:
     """Gaps in the union of `(key, start, end)` intervals that are
-    `>= threshold_s` (within `tolerance_s`, so a nominal one-hour gap is
-    never missed through float rounding). Only real holes in the timeline
+    `>= threshold_s` (within `tolerance_s`, so a gap of nominally exactly
+    the threshold is never missed through float rounding). The threshold
+    has no default here: it is configuration
+    (`Settings.event_reconstruction_large_gap_warning_s`). Only real holes in the timeline
     count: a member bridged by another overlapping member produces no
     warning. Advisory only -- callers must never reject on it."""
     if not math.isfinite(threshold_s) or threshold_s <= 0:

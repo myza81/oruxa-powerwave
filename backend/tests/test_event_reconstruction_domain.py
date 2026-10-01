@@ -13,7 +13,6 @@ import pytest
 
 from app.domain.event_reconstruction import (
     INTERVAL_TOLERANCE_S,
-    LARGE_GAP_WARNING_THRESHOLD_S,
     MEMBERSHIP_FINGERPRINT_VERSION,
     REASON_NO_ABSOLUTE_TIME_REFERENCE,
     REASON_TIME_OF_DAY_NOT_SUPPORTED,
@@ -197,42 +196,50 @@ class TestIntervalRelationships:
 
 
 class TestLargeGaps:
-    def test_threshold_is_one_hour(self):
-        assert LARGE_GAP_WARNING_THRESHOLD_S == 3600.0
+    """The threshold is configuration (app.config), so every call here
+    passes it explicitly -- the domain has no default of its own."""
+
+    THRESHOLD = 3600.0
+
+    def test_threshold_has_no_domain_default(self):
+        with pytest.raises(TypeError):
+            large_gaps([("a", 0.0, 1.0)])
 
     def test_gap_below_threshold_does_not_warn(self):
-        assert large_gaps([("a", 0.0, 1.0), ("b", 3600.5, 3601.0)]) == []
+        assert large_gaps([("a", 0.0, 1.0), ("b", 3600.5, 3601.0)], threshold_s=self.THRESHOLD) == []
 
     def test_gap_exactly_at_threshold_warns(self):
-        [warning] = large_gaps([("a", 0.0, 1.0), ("b", 3601.0, 3602.0)])
+        [warning] = large_gaps([("a", 0.0, 1.0), ("b", 3601.0, 3602.0)], threshold_s=self.THRESHOLD)
         assert warning.gap_s == 3600.0
-        assert warning.threshold_s == LARGE_GAP_WARNING_THRESHOLD_S
+        assert warning.threshold_s == self.THRESHOLD
         assert (warning.before_key, warning.after_key) == ("a", "b")
 
     def test_nominal_threshold_gap_with_float_rounding_still_warns(self):
-        assert large_gaps([("a", 0.0, 0.1 + 0.2), ("b", 0.3 + 3600.0 - 1e-12, 3700.0)])
+        assert large_gaps([("a", 0.0, 0.1 + 0.2), ("b", 0.3 + 3600.0 - 1e-12, 3700.0)], threshold_s=self.THRESHOLD)
 
     def test_gap_above_threshold_warns(self):
-        [warning] = large_gaps([("b", 90000.0, 90001.0), ("a", 0.0, 1.0)])
+        [warning] = large_gaps([("b", 90000.0, 90001.0), ("a", 0.0, 1.0)], threshold_s=self.THRESHOLD)
         assert warning.gap_s == 89999.0
         assert (warning.before_key, warning.after_key) == ("a", "b")
 
     def test_member_bridged_by_an_overlapping_member_does_not_warn(self):
         intervals = [("a", 0.0, 1.0), ("long", 0.5, 5000.0), ("c", 4000.0, 4001.0)]
-        assert large_gaps(intervals) == []
+        assert large_gaps(intervals, threshold_s=self.THRESHOLD) == []
 
     def test_gap_is_measured_from_the_latest_covered_end(self):
         intervals = [("a", 0.0, 100.0), ("inside", 10.0, 20.0), ("far", 4000.0, 4001.0)]
-        [warning] = large_gaps(intervals)
+        [warning] = large_gaps(intervals, threshold_s=self.THRESHOLD)
         assert warning.before_key == "a"
         assert warning.gap_s == 3900.0
 
     def test_multiple_gaps_are_all_reported(self):
         intervals = [("a", 0.0, 1.0), ("b", 4000.0, 4001.0), ("c", 9000.0, 9001.0)]
-        assert [(w.before_key, w.after_key) for w in large_gaps(intervals)] == [("a", "b"), ("b", "c")]
+        warnings = large_gaps(intervals, threshold_s=self.THRESHOLD)
+        assert [(w.before_key, w.after_key) for w in warnings] == [("a", "b"), ("b", "c")]
 
-    def test_custom_threshold_and_empty_input(self):
-        assert large_gaps([]) == []
+    def test_other_thresholds_and_empty_input(self):
+        assert large_gaps([], threshold_s=self.THRESHOLD) == []
         assert large_gaps([("a", 0.0, 1.0), ("b", 11.0, 12.0)], threshold_s=10.0)[0].gap_s == 10.0
+        assert large_gaps([("a", 0.0, 1.0), ("b", 10.5, 12.0)], threshold_s=10.0) == []
         with pytest.raises(ValueError):
             large_gaps([("a", 0.0, 1.0)], threshold_s=0.0)

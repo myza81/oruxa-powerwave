@@ -5,6 +5,7 @@ elapsed-only sources for the ineligible cases."""
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import re
@@ -170,6 +171,25 @@ class TestDefinitionLifecycle:
         assert warning["code"] == "large_gap"
         assert warning["threshold_s"] == 3600.0
         assert warning["gap_s"] > 3600.0
+
+
+class TestConfiguredThreshold:
+    def test_default_threshold_comes_from_settings(self, client, settings):
+        body = client.get(_url("ws-er-threshold-default", "/definition")).json()
+        assert body["large_gap_warning_threshold_s"] == settings.event_reconstruction_large_gap_warning_s
+
+    @pytest.mark.parametrize(("offset_s", "warns"), [(59.0, False), (61.0, True)])
+    def test_configured_threshold_is_reported_and_applied(self, settings, comtrade_fixtures_dir, offset_s, warns):
+        custom = dataclasses.replace(settings, event_reconstruction_large_gap_warning_s=60.0)
+        with TestClient(create_app(custom)) as client:
+            ws = "ws-er-threshold-custom"
+            a, b = _pair(client, ws, comtrade_fixtures_dir, offset_s=offset_s)
+            resp = client.put(_url(ws, "/definition"), json={"group_ids": [a, b], "reference_group_id": a})
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["large_gap_warning_threshold_s"] == 60.0
+            assert body["status"] == "ready"
+            assert len(body["warnings"]) == (1 if warns else 0)
 
 
 class TestErrors:

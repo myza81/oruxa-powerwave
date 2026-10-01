@@ -68,6 +68,12 @@ def get_synchronization_registry(request: Request) -> SynchronizationRegistry:
     return request.app.state.synchronization_registry
 
 
+def get_large_gap_warning_threshold_s(request: Request) -> float:
+    """The effective threshold, from central configuration
+    (`Settings.event_reconstruction_large_gap_warning_s`)."""
+    return request.app.state.settings.event_reconstruction_large_gap_warning_s
+
+
 def _validate_workspace_id(workspace_id: str) -> str:
     if not workspace_id or not workspace_id.strip():
         raise HTTPException(
@@ -106,12 +112,13 @@ def get_definition(
     registry: EventReconstructionRegistry = Depends(get_event_reconstruction_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     synchronization_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
+    large_gap_threshold_s: float = Depends(get_large_gap_warning_threshold_s),
 ) -> ReconstructionOut:
     """`defined: false` when none exists -- never a 404 for a read."""
     workspace_id = _validate_workspace_id(workspace_id)
     view = get_reconstruction(
         workspace_id=workspace_id, registry=registry, source_registry=source_registry,
-        synchronization_registry=synchronization_registry,
+        synchronization_registry=synchronization_registry, large_gap_threshold_s=large_gap_threshold_s,
     )
     return ReconstructionOut.from_view(view)
 
@@ -123,6 +130,7 @@ def put_definition(
     registry: EventReconstructionRegistry = Depends(get_event_reconstruction_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     synchronization_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
+    large_gap_threshold_s: float = Depends(get_large_gap_warning_threshold_s),
 ) -> ReconstructionOut:
     """Create, replace or re-confirm. 400 `invalid_reconstruction_definition`
     (no group), `duplicate_reconstruction_member`, `time_group_not_eligible`,
@@ -132,6 +140,7 @@ def put_definition(
         view = set_reconstruction_definition(
             workspace_id=workspace_id, group_ids=body.group_ids, reference_group_id=body.reference_group_id,
             registry=registry, source_registry=source_registry, synchronization_registry=synchronization_registry,
+            large_gap_threshold_s=large_gap_threshold_s,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -155,6 +164,7 @@ def put_reference(
     registry: EventReconstructionRegistry = Depends(get_event_reconstruction_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     synchronization_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
+    large_gap_threshold_s: float = Depends(get_large_gap_warning_threshold_s),
 ) -> ReconstructionOut:
     """404 `reconstruction_not_defined`/`reconstruction_member_not_found`;
     409 `reconstruction_member_stale`."""
@@ -163,6 +173,7 @@ def put_reference(
         view = set_reconstruction_reference(
             workspace_id=workspace_id, member_id=body.member_id, registry=registry,
             source_registry=source_registry, synchronization_registry=synchronization_registry,
+            large_gap_threshold_s=large_gap_threshold_s,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -177,6 +188,7 @@ def put_member_correction(
     registry: EventReconstructionRegistry = Depends(get_event_reconstruction_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     synchronization_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
+    large_gap_threshold_s: float = Depends(get_large_gap_warning_threshold_s),
 ) -> ReconstructionOut:
     """400 `invalid_reconstruction_correction`; 404
     `reconstruction_not_defined`/`reconstruction_member_not_found`; 409
@@ -186,6 +198,7 @@ def put_member_correction(
         view = set_member_correction(
             workspace_id=workspace_id, member_id=member_id, correction_s=body.correction_s, registry=registry,
             source_registry=source_registry, synchronization_registry=synchronization_registry,
+            large_gap_threshold_s=large_gap_threshold_s,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -199,6 +212,7 @@ def delete_member_correction(
     registry: EventReconstructionRegistry = Depends(get_event_reconstruction_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     synchronization_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
+    large_gap_threshold_s: float = Depends(get_large_gap_warning_threshold_s),
 ) -> ReconstructionOut:
     """Correction back to 0 (recorded-timestamp placement); same errors
     as the PUT, without the validation one."""
@@ -207,6 +221,7 @@ def delete_member_correction(
         view = reset_member_correction(
             workspace_id=workspace_id, member_id=member_id, registry=registry,
             source_registry=source_registry, synchronization_registry=synchronization_registry,
+            large_gap_threshold_s=large_gap_threshold_s,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
