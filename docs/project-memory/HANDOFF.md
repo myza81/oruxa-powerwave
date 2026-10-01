@@ -4,9 +4,57 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-01** (Event Reconstruction Slice 0)
+Last updated: **2026-10-01** (Event Reconstruction Slice 1)
 
 ## What was most recently done
+
+**Event Reconstruction Slice 1 — domain model, eligibility, service and
+API (DEC-124, 2026-10-01).** Committed on `feat/event-reconstruction`
+after Slice 0 (`acad12b`). Not pushed or merged.
+
+- **Backend only.** New files:
+  - `app/domain/event_reconstruction.py`;
+  - `app/services/event_reconstruction_registry.py` and
+    `event_reconstruction_service.py`;
+  - `app/schemas/event_reconstruction.py`;
+  - `app/api/v1/event_reconstruction.py`.
+
+  It is wired into `app/main.py` and the workspace teardown in
+  `app/api/v1/workspaces.py`, with new error codes in
+  `app/services/errors.py`. No frontend change; the Slice 0 shell does
+  not call the API yet.
+- **Model.** See DEC-124. The key points for whoever picks up Slice 2:
+  - members are addressed by `member_id` (membership fingerprint),
+    never by `group_id`;
+  - corrections are per group and reference-independent;
+  - stale is derived on every read (`status`, `stale_reason`,
+    `candidate_group_ids`), and re-confirmation is a new
+    `PUT .../definition`;
+  - a stale reference sets `placements_available: false`.
+- **Isolation guards.** A write-forbidden `SynchronizationRegistry`
+  runs the full service flow; Time Groups, Synchronise Sources views,
+  sync offsets and source timestamps/arrays are compared before and
+  after; a structural check confirms the service has no
+  synchronization write path.
+- **Tests.** 106 new (`test_event_reconstruction_{domain,registry,
+  service,api}.py`). Full backend suite: 6180 passed, 40 skipped
+  (`ben_reference`, needs the owner directory), 0 failed. No frontend
+  file changed, so the browser suite was not re-run.
+- **Slice 2 notes (before wiring the left-panel selection):**
+  - `GET .../time-groups` is ordered by `group_id` (as
+    `list_time_groups()`); sort by `start_time_utc` for display.
+  - Re-fetch the definition after any upload/removal or Synchronise
+    Sources change: staleness and group extents are derived on read.
+  - On re-confirmation the stale member's old correction is not carried
+    over; the UI should show it so the engineer can re-enter it.
+  - Placements are per group; per-source reconstruction time is
+    `source_time + effective_alignment_offset_s (synchronization/sources)
+    + reconstruction_offset_s` — needed by Slice 3, not Slice 2.
+- **Still open:** `[OPEN / UAT]` mixed-duration / mixed-sampling-rate
+  navigation and initial viewport; the Slice 3 renderer comparison; the
+  Synchronise Sources migration (Slice 7).
+
+## Earlier — Event Reconstruction Slice 0
 
 **Event Reconstruction Slice 0 — frontend shell (DEC-123, 2026-10-01).**
 Committed on branch `feat/event-reconstruction` (from `main` at

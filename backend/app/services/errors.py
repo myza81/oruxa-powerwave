@@ -1153,3 +1153,73 @@ class LineToLineInputsUnavailableError(ImportServiceError):
     nothing."""
 
     code = "line_to_line_inputs_unavailable"
+
+
+# ---- Event Reconstruction (DEC-123/DEC-124): app.domain.
+# event_reconstruction, app.services.event_reconstruction_registry/
+# _service. ----
+
+
+class TimeGroupNotFoundError(ImportServiceError):
+    """A requested `group_id` is not a current Time Group in this
+    workspace (it may have been re-derived after a source change)."""
+
+    code = "time_group_not_found"
+
+
+class TimeGroupNotEligibleError(ImportServiceError):
+    """A Time Group cannot join an Event Reconstruction (V1: only
+    `recorded_absolute` groups are eligible). The message names the
+    reason; the eligibility listing carries the reason code."""
+
+    code = "time_group_not_eligible"
+
+
+class InvalidReconstructionDefinitionError(ImportServiceError):
+    """A reconstruction definition request is structurally invalid, e.g.
+    it selects no Time Group."""
+
+    code = "invalid_reconstruction_definition"
+
+
+class DuplicateReconstructionMemberError(ImportServiceError):
+    """The same Time Group is selected more than once -- rejected rather
+    than silently de-duplicated."""
+
+    code = "duplicate_reconstruction_member"
+
+
+class ReconstructionReferenceNotMemberError(ImportServiceError):
+    """The requested reference Time Group is not one of the selected
+    members."""
+
+    code = "reconstruction_reference_not_member"
+
+
+class ReconstructionNotDefinedError(ImportServiceError):
+    """The operation needs an Event Reconstruction definition, but this
+    workspace has none."""
+
+    code = "reconstruction_not_defined"
+
+
+class ReconstructionMemberNotFoundError(ImportServiceError):
+    """No member with this `member_id` exists in the workspace's
+    reconstruction."""
+
+    code = "reconstruction_member_not_found"
+
+
+class ReconstructionMemberStaleError(ImportServiceError):
+    """The member's Time Group membership has changed since it was
+    confirmed. Its state stays frozen (never applied to a differently
+    composed group) until the engineer re-confirms the reconstruction."""
+
+    code = "reconstruction_member_stale"
+
+
+class InvalidReconstructionCorrectionError(ImportServiceError):
+    """A submitted Event Reconstruction correction is missing/non-finite/
+    non-numeric (app.domain.event_reconstruction.correction_valid)."""
+
+    code = "invalid_reconstruction_correction"

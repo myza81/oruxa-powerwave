@@ -9,33 +9,43 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-10-01** — **Event Reconstruction Slice 0:
-frontend shell** (DEC-123). Earlier the same day: **Native BEN import:
-owner UAT passed; merged to `main`** (DEC-119 parser, DEC-120 import,
-DEC-121 timestamp/channel-identity hardening, DEC-122 display timezone).
+Last meaningful update: **2026-10-01** — **Event Reconstruction Slices 0
+and 1** (DEC-123 frontend shell, DEC-124 domain model/service/API), on
+branch `feat/event-reconstruction`, not merged. Earlier the same day:
+**Native BEN import: owner UAT passed; merged to `main`** (DEC-119
+parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
+DEC-122 display timezone).
 
-**Event Reconstruction (DEC-123) — Slice 0 only.**
+**Event Reconstruction (DEC-123, DEC-124) — Slices 0 and 1.**
 
-- A new main-menu entry immediately after Waveform opens
-  `#pageEventReconstruction`: a left "Recordings (N)" panel (read-only
-  source rows), a Box Zoom / Pan toolbar and an empty "Reconstruction
-  Timeline" canvas shell with Zoom In / Zoom Out / Reset Time View.
-- It shares the Waveform layout CSS and toolbar markup but is its own
-  page; it never reads or writes the Waveform `ww` state.
-- Zoom In / Zoom Out / Reset Time View are disabled until a
-  reconstruction canvas exists; Box Zoom / Pan only set
-  `wwErState.dragMode`; there are no cursors yet.
-- **No Event Reconstruction domain model exists yet** — no eligibility,
-  Time Group selection, reference, offsets, joining or plotting, and no
-  backend change.
-- **Waveform Time Group and synchronization behaviour is unchanged.**
-- **Next: Slice 1** — the reconstruction domain/eligibility model. Its
-  open questions (crossing the Time Group isolation boundary, offset
-  model, derived group identity, Time-of-Day eligibility, gap
-  threshold) are listed `[OPEN]` in DEC-123 and need owner decisions
-  first.
-- The renderer architecture for the common reconstruction canvas is a
-  later design/refactor concern (Slice 3, `[DECISION MODE: COMPARISON]`).
+- **Frontend (Slice 0).** A main-menu entry immediately after Waveform
+  opens `#pageEventReconstruction`: a left "Recordings (N)" panel
+  (read-only source rows), a Box Zoom / Pan toolbar and an empty
+  "Reconstruction Timeline" canvas shell. Zoom In / Zoom Out / Reset
+  Time View stay disabled; no cursors. It never reads or writes the
+  Waveform `ww` state. The page does not call the Slice 1 API yet.
+- **Backend (Slice 1).** Event Reconstruction is the one place several
+  established Time Groups are combined (Waveform keeps its isolation):
+  - eligibility per Time Group: `recorded_absolute` only in V1
+    (`time_of_day_not_supported`, `no_absolute_time_reference`);
+  - placement from recorded origin timestamps plus a per-group manual
+    correction stored independently of the reference, so a reference
+    switch never changes alignment or stored data;
+  - members identified by a membership fingerprint; a changed
+    membership reads as stale, its correction is frozen and never moved
+    to another group, and re-confirmation is a new `PUT .../definition`;
+  - pairwise overlap/gap relationships, and an advisory large-gap
+    warning at `>=` 3600 s (never a rejection);
+  - API under `/api/v1/workspaces/{id}/event-reconstruction`
+    (`time-groups`, `definition`, `definition/reference`,
+    `definition/members/{member_id}/correction`); state is in-memory
+    and cleared with the workspace.
+- **Waveform Time Group, Synchronise Sources and placement behaviour is
+  unchanged** — Event Reconstruction only reads them.
+- **Next: Slice 2** — left-panel record selection wired to this API.
+- `[OPEN / UAT]` mixed-duration / mixed-sampling-rate navigation and
+  initial viewport. The Slice 3 renderer architecture still needs its
+  comparison/design step (`[DECISION MODE: COMPARISON]`).
 
 ```text
 Upload Recording -> format "BEN" -> native BenProvider -> Fast or Slow SubBen
@@ -2650,7 +2660,8 @@ modules beyond the original COMTRADE port (`domain/source.py`,
 `measurement_group.py` / `measurement_group_detection.py` /
 `voltage_group_config.py` / `current_group_config.py` / `voltage_reference.py`
 / `per_unit.py` (the Per-Unit measurement model), `event_detection.py` /
-`rms_detector.py`. `providers/` holds `base.py`, `comtrade.py` and (since
+`rms_detector.py`, `event_reconstruction.py` (DEC-124; read-only
+consumer of Time Groups and source placement). `providers/` holds `base.py`, `comtrade.py` and (since
 2026-10-01, DEC-119) the native `ben/` package — no CSV/Excel provider
 exists (CSV/Excel converts through the Preparation services).
 `import_service.build_provider_manager()` registers `ComtradeProvider`
@@ -4182,10 +4193,10 @@ correctness defects:
 - Cross-Time-Group synchronization, cross-Time-Group cursor comparison,
   and a shared cross-Time-Group t0 — deliberately not built; each Time
   Group is an intentional isolation boundary, not merely an unfinished one.
-  Event Reconstruction (DEC-123) is intended to combine Time Groups on a
-  separate page in later slices; whether and how it crosses this boundary
-  is still `[OPEN]` and needs an owner decision. Waveform keeps the
-  boundary either way.
+  Waveform keeps this boundary. Event Reconstruction (DEC-124) is the
+  one, separate place where Time Groups are deliberately combined, with
+  its own group-level correction layer that never touches Synchronise
+  Sources or Time Group membership.
 - Detect Event's UI entry point stays hidden (`WW_DETECT_EVENT_UI_ENABLED
   = false`) even though the underlying feature is fully implemented and
   group-aware.

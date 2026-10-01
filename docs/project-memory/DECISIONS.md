@@ -20281,6 +20281,11 @@ pre-implementation audit.
 
 ### `[OPEN]` — for later slices, not decided by this entry
 
+> **Update (2026-10-01): the first five items below are now approved
+> and implemented by [DEC-124](#dec-124--event-reconstruction-slice-1-cross-time-group-reconstruction-separate-group-correction-layer-membership-fingerprints-v1-eligibility-and-a-1-hour-large-gap-warning).**
+> Only the renderer architecture and the Synchronise Sources migration
+> remain open; the original wording is kept below for the record.
+
 - **Time Group isolation.** CURRENT_STATE records cross-Time-Group
   synchronization as deliberately not built (DEC-063). Event
   Reconstruction needs an explicit owner decision that it is the one
@@ -20300,6 +20305,121 @@ pre-implementation audit.
 - **Synchronise Sources migration** (Slice 7): the existing tool aligns
   sources within a group; reconstruction aligns groups. The two must
   stay separate layers.
+
+---
+
+## DEC-124 — Event Reconstruction Slice 1: cross-Time-Group reconstruction, separate group-correction layer, membership fingerprints, V1 eligibility, and a 1-hour large-gap warning
+
+Date: 2026-10-01
+Status: Approved (owner, Slice 1 task) — implemented on
+`feat/event-reconstruction`; not merged.
+Source: owner task "Slice 1 — Event Reconstruction domain model,
+eligibility, service, and API", resolving DEC-123's first five `[OPEN]`
+items.
+
+### Decisions (owner, summarized)
+
+1. **Event Reconstruction crosses Time Group boundaries.** It is the
+   explicit place where an engineer combines several established Time
+   Groups onto one reconstruction timeline. Waveform keeps its Time Group
+   isolation and grouping rules (DEC-057/DEC-063) unchanged, and
+   reconstruction state never affects Time Group membership.
+2. **Separate group-correction layer.** Existing source placement and
+   within-group Synchronise Sources stay untouched. Initial placement
+   between groups comes from recorded timestamps; a manual correction is
+   added per Time Group, stored independently of the reference. Changing
+   the reference never mutates stored corrections or visual
+   relationships. Event Reconstruction never writes
+   `SynchronizationRegistry`.
+3. **Membership identity.** A member is identified by a fingerprint of
+   its Time Group membership, not by `group_id`. When membership no
+   longer matches, the member is stale; its correction is never
+   transferred to a different group, and the engineer must re-confirm.
+4. **V1 eligibility.** `recorded_absolute` → eligible; `time_of_day` →
+   not eligible in V1; `elapsed_only` → not eligible. Explicit reason
+   codes; no date or anchor is ever invented.
+5. **Large gap.** No hard maximum. A timeline gap `>=` 3600 s produces a
+   warning only; the threshold is centralized.
+
+### Implementation (`[FACT]`)
+
+- **Timing model** (`app/domain/event_reconstruction.py`):
+
+  ```text
+  group time          = source_time + effective_alignment_offset_s   (existing, read only)
+  reconstruction time = group time + offset(g, ref)
+  offset(g, ref)      = recorded_placement(g, ref) + correction(g) - correction(ref)
+  recorded_placement  = origin_start(g) - origin_start(ref)           (exact datetime subtraction)
+  ```
+
+  `correction(g)` is a float in seconds, never rounded. Every pairwise
+  relationship `placement(a, b) + c_a - c_b` is independent of the
+  reference, so a reference switch is a change of frame only. The
+  reference may carry a correction (it belongs to the group's clock,
+  not to the reference role).
+- **Fingerprint:** `tgm1-` + the first 32 hex digits of SHA-256 over the
+  group's distinct source ids, sorted and newline-joined. Only source
+  ids contribute — never `group_id`/origin, timestamps, offsets or
+  presentation state. It is the member's `member_id`.
+- **Eligibility reason codes:** `time_of_day_not_supported`,
+  `no_absolute_time_reference` (plus `unknown_time_reference`,
+  defensive). Sampling rate and duration play no part.
+- **Stale handling** (derived on every read, never stored):
+  - member `current` when a Time Group with its fingerprint exists,
+    otherwise `stale` with `stale_reason` `membership_changed` (its
+    sources now sit in `candidate_group_ids`) or `sources_removed`;
+  - a stale member keeps its correction frozen and unapplied, has no
+    placement, and rejects correction/reference changes (409
+    `reconstruction_member_stale`);
+  - a stale reference withholds every placement
+    (`placements_available: false`); the reference is never re-picked
+    automatically (DEC-059 precedent);
+  - re-confirmation is `PUT .../definition`: a member whose fingerprint
+    still matches keeps its correction, every other selected group
+    starts at 0, and unselected members are dropped.
+- **Relationships and gaps:** pairwise `full_overlap` (containment),
+  `partial_overlap`, `touching`, `gap`, with a 1e-9 s tolerance (the
+  calculated-channel instant tolerance). Large-gap warnings come from
+  real holes in the timeline union (a member bridged by an overlapping
+  one does not warn), as `{code: large_gap, before_member_id,
+  after_member_id, gap_s, threshold_s, message}`.
+- **Threshold:** `LARGE_GAP_WARNING_THRESHOLD_S = 3600.0`, one constant
+  in the domain module, passed as a parameter through the service and
+  returned by the API (`large_gap_warning_threshold_s`). It is not an
+  environment setting yet.
+- **State:** `EventReconstructionRegistry` (in-memory, one definition
+  per workspace), cleared by `DELETE /api/v1/workspaces/{id}`. Source
+  removal leaves it alone; the affected member reads as stale.
+- **API** (`/api/v1/workspaces/{workspace_id}/event-reconstruction`):
+  `GET /time-groups`; `GET|PUT|DELETE /definition`;
+  `PUT /definition/reference`;
+  `PUT|DELETE /definition/members/{member_id}/correction`.
+- **Unchanged:** `time_grouping.py`, synchronization code and state,
+  Waveform placement and rendering, the Slice 0 frontend shell.
+
+### Alternatives considered
+
+- **Keying members by `group_id`.** Rejected: it changes with
+  membership and would let a correction drift onto a merged or split
+  group.
+- **Storing corrections relative to the reference.** Rejected: every
+  reference switch would have to rewrite them.
+- **Auto-picking a new reference when the reference goes stale.**
+  Rejected: silent migration of ambiguous analysis state (DEC-059).
+- **Pairwise large-gap warnings.** Rejected: a member bridged by a long
+  overlapping record would warn spuriously.
+
+### Still `[OPEN]`
+
+- **`[OPEN / UAT]` Mixed-duration / mixed-sampling-rate navigation and
+  initial viewport behaviour** (e.g. a 5 kHz short relay record with a
+  20 Hz or 1 s long measurement). A common physical time axis remains
+  required; options such as Fit Selected Record, overview navigation or
+  an initial-viewport strategy are subject to UAT.
+- **Slice 3 renderer architecture** (DEC-123) — needs its own
+  comparison/design step.
+- **Synchronise Sources migration** (DEC-123, Slice 7).
+- **A configurable threshold** via `app/config.py`, if ever needed.
 
 ---
 

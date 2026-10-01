@@ -22,6 +22,8 @@ from app.schemas.source import ErrorOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
+from app.services.event_reconstruction_registry import EventReconstructionRegistry
+from app.services.event_reconstruction_service import remove_workspace_event_reconstruction_state
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.preparation_session_registry import PreparationSessionRegistry
@@ -61,6 +63,10 @@ def get_current_group_config_registry(request: Request) -> CurrentGroupConfigReg
 
 def get_synchronization_registry(request: Request) -> SynchronizationRegistry:
     return request.app.state.synchronization_registry
+
+
+def get_event_reconstruction_registry(request: Request) -> EventReconstructionRegistry:
+    return request.app.state.event_reconstruction_registry
 
 
 def get_preparation_session_registry(request: Request) -> PreparationSessionRegistry:
@@ -105,6 +111,7 @@ def delete_workspace(
     engineering_context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     reference_profile_registry: ReferenceProfileRegistry = Depends(get_reference_profile_registry),
     reference_layer_registry: ReferenceLayerRegistry = Depends(get_reference_layer_registry),
+    event_reconstruction_registry: EventReconstructionRegistry = Depends(get_event_reconstruction_registry),
 ) -> None:
     """Release every source this workspace owns.
 
@@ -163,6 +170,10 @@ def delete_workspace(
     must never touch either registry (mid-conversation product
     requirement: configuring Reference Layers, then uploading a
     recording afterward, must leave those layers intact).
+
+    Event Reconstruction (DEC-124): also releases the workspace's
+    reconstruction definition. Source removal does not touch it -- an
+    affected member reads as stale instead.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     registry.remove_workspace(workspace_id)
@@ -173,6 +184,7 @@ def delete_workspace(
     voltage_group_config_registry.remove_workspace(workspace_id)
     current_group_config_registry.remove_workspace(workspace_id)
     remove_workspace_synchronization_state(workspace_id=workspace_id, registry=synchronization_registry)
+    remove_workspace_event_reconstruction_state(workspace_id=workspace_id, registry=event_reconstruction_registry)
     preparation_session_registry.remove_workspace(workspace_id)
     reference_layer_registry.remove_workspace(workspace_id)
     reference_profile_registry.remove_workspace(workspace_id)
