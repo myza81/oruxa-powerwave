@@ -22,7 +22,7 @@ import hashlib
 import json
 import os
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import cache
 from pathlib import Path
 
@@ -42,8 +42,9 @@ MATCHED = [i for i, e in RECORDS.items() if e["role"].startswith("matched")]
 UNSUPPORTED = [i for i, e in RECORDS.items() if e["role"] == "unsupported_variant"]
 
 #: BEN32 renders BEN's UTC trigger instant in the exporting PC's local
-#: time; every validated pair was exported at UTC+08:00.
-EXPORT_UTC_OFFSET = timedelta(hours=8)
+#: time (a naive CFG timestamp); every validated pair was exported at
+#: UTC+08:00. BEN itself stays UTC -- this only reproduces the export.
+EXPORT_TIMEZONE = timezone(timedelta(hours=8))
 #: Value BEN32 writes to COMTRADE for an unavailable calculated sample.
 COMTRADE_UNAVAILABLE = 99999
 #: BEN stores scale/ratings as float32; BEN32 prints them to 10 decimals.
@@ -126,7 +127,7 @@ def test_reference_record_structure(reference_root, record_id):
     assert h.sample_data_offset + h.sample_count * h.sample_stride_bytes == entry["ben"]["size"]
     assert len(record.value_channels) == expected["value_channels"]
     assert len(record.digital_channels) == expected["digital_channels"]
-    assert h.trigger_time_utc == datetime.fromisoformat(expected["trigger_time_utc"])
+    assert h.trigger_time_utc == datetime.fromisoformat(expected["trigger_time_utc"]).replace(tzinfo=timezone.utc)
     codes = {d.code for d in record.diagnostics}
     assert not codes & {
         "unresolved_digital_channels",
@@ -228,8 +229,8 @@ def test_every_digital_sample_matches_the_comtrade_export(reference_root, record
 def test_trigger_and_start_times_match_the_comtrade_export(reference_root, record_id):
     record, _, cfg, _ = _matched(reference_root, record_id)
     assert record.header.trigger_time.microsecond is not None
-    assert record.header.trigger_time_utc + EXPORT_UTC_OFFSET == cfg.trigger_time
-    assert record.header.start_time_utc + EXPORT_UTC_OFFSET == cfg.start_time
+    assert record.header.trigger_time_utc.astimezone(EXPORT_TIMEZONE).replace(tzinfo=None) == cfg.trigger_time
+    assert record.header.start_time_utc.astimezone(EXPORT_TIMEZONE).replace(tzinfo=None) == cfg.start_time
     assert cfg.sampling_rates == [record.header.sampling_rate_hz]
     assert cfg.total_samples == record.sample_count
 
@@ -240,3 +241,117 @@ def test_normalized_lgng_engineering_values_match_the_comtrade_scaling(reference
     for i, d in enumerate(cfg.analog_defs):
         expected = dat[:, 2 + i] * d.a + d.b
         np.testing.assert_allclose(dr.waveform_data[d.ch_id].to_numpy(), expected, rtol=FLOAT32_REL, atol=1e-9)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Through the real upload endpoint (DEC-120)
+# ─────────────────────────────────────────────────────────────────────────────
+
+WS_URL = "/api/v1/workspaces/ws-ref/sources"
+
+
+@pytest.fixture
+def client(settings):
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    with TestClient(create_app(settings)) as test_client:
+        yield test_client
+
+
+def _upload_ben(client, path: Path):
+    return client.post(WS_URL, files={"ben_file": (path.name, path.read_bytes(), "application/octet-stream")})
+
+
+@pytest.mark.parametrize("record_id", DECODABLE)
+def test_reference_ben_imports_through_the_upload_endpoint(reference_root, client, record_id):
+    entry = RECORDS[record_id]
+    expected = entry["expected"]
+    resp = _upload_ben(client, _locate(reference_root, entry["ben"]))
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["provider_type"] == "BEN"
+    assert body["station_name"] == expected["station_name"]
+    assert body["sample_count"] == expected["sample_count"]
+    assert body["analog_channel_count"] == expected["value_channels"]
+    assert body["digital_channel_count"] == expected["digital_channels"]
+    assert body["nominal_frequency"] == 50.0
+    trigger = datetime.fromisoformat(body["trigger_time"].replace("Z", "+00:00"))
+    start = datetime.fromisoformat(body["start_time"].replace("Z", "+00:00"))
+    assert trigger == datetime.fromisoformat(expected["trigger_time_utc"]).replace(tzinfo=timezone.utc)
+    pre_trigger_s = expected["pre_trigger_samples"] / expected["sampling_rate_hz"]
+    assert (trigger - start).total_seconds() == pytest.approx(pre_trigger_s)
+
+    timebase = client.get(f"{WS_URL}/{body['source_id']}/channels").json()["timebase"]
+    assert timebase["sampling_rates"] == [expected["sampling_rate_hz"]]
+    assert timebase["duration_seconds"] == pytest.approx((expected["sample_count"] - 1) / expected["sampling_rate_hz"])
+
+
+def test_lgng_fast_reaches_the_workspace_with_exact_values(reference_root, client):
+    record, entry, cfg, dat = _matched(reference_root, "lgng_fast")
+    body = _upload_ben(client, _locate(reference_root, entry["ben"])).json()
+    assert body["sample_count"] == 42745
+    assert (trigger := body["trigger_time"]) == "2026-01-16T05:54:23.229783Z", trigger
+    active = client.app.state.workspace_registry.get("ws-ref", body["source_id"])
+    data = active.record.waveform_data
+    assert data["time"].iloc[2500] == pytest.approx(0.5)  # the trigger sample
+    for i, d in enumerate(cfg.analog_defs):
+        np.testing.assert_allclose(data[d.ch_id].to_numpy(), dat[:, 2 + i] * d.a + d.b, rtol=FLOAT32_REL, atol=1e-9)
+    provenance = active.metadata.preparation_provenance
+    assert provenance["record_class"] == "Fast SubBen"
+    assert provenance["nominal_frequency_assumed"] is True
+    assert all(c["bay"] for c in provenance["channels"])
+
+
+def test_pmjy_slow_reaches_the_workspace_as_calculated_channels(reference_root, client):
+    entry = RECORDS["pmjy_slow"]
+    body = _upload_ben(client, _locate(reference_root, entry["ben"])).json()
+    assert body["trigger_time"] == "2022-07-27T04:41:49.926317Z"
+    channels = client.get(f"{WS_URL}/{body['source_id']}/channels").json()
+    types = {c["engineering_type"] for c in channels["analog_channels"]}
+    assert types == {"Frequency", "Power"}
+    for name in entry["expected"]["unavailable_channels"]:
+        wave = client.get(f"{WS_URL}/{body['source_id']}/waveform", params={"channel_name": name}).json()
+        assert wave["values"] == [None] * 1401
+    wave = client.get(f"{WS_URL}/{body['source_id']}/waveform", params={"channel_name": "FREQ UR BBTU"}).json()
+    assert None not in wave["values"]
+    assert wave["time"][400] == pytest.approx(20.0)  # trigger at 400 / 20 s
+    # No V/I bay can be formed from frequency/power channels.
+    contexts = client.get("/api/v1/workspaces/ws-ref/engineering-contexts").json()
+    assert all(body["source_id"] not in str(c) for c in contexts)
+
+
+@pytest.mark.parametrize("record_id", UNSUPPORTED)
+def test_unsupported_reference_layout_is_a_domain_error_through_upload(reference_root, client, record_id):
+    resp = _upload_ben(client, _locate(reference_root, RECORDS[record_id]["ben"]))
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == {
+        "code": "unsupported_ben_variant",
+        "message": "This BEN file uses a BEN layout that is not currently supported.",
+    }
+
+
+@pytest.mark.parametrize("record_id", MATCHED)
+def test_ben_and_its_comtrade_export_classify_channels_identically(reference_root, client, record_id):
+    """Downstream typing needs no BEN branch: the same event imported as
+    BEN and as BEN32 COMTRADE gives the same channel summaries."""
+    entry = RECORDS[record_id]
+    ben = _upload_ben(client, _locate(reference_root, entry["ben"])).json()
+    cfg_path, dat_path = _locate(reference_root, entry["comtrade_cfg"]), _locate(reference_root, entry["comtrade_dat"])
+    files = {"cfg_file": ("e.cfg", cfg_path.read_bytes(), "x"), "dat_file": ("e.dat", dat_path.read_bytes(), "x")}
+    comtrade = client.post(WS_URL, files=files).json()
+    ben_ch = client.get(f"{WS_URL}/{ben['source_id']}/channels").json()
+    com_ch = client.get(f"{WS_URL}/{comtrade['source_id']}/channels").json()
+
+    def analog(channels):
+        return {c["name"]: (c["engineering_type"], c["unit"], c["phase"]) for c in channels["analog_channels"]}
+
+    assert analog(ben_ch) == analog(com_ch)
+    analog_names = set(analog(com_ch))
+    # The COMTRADE provider mis-reads a digital that shares an analog's
+    # name (pre-existing, reported separately) -- compare the others.
+    com_digital = {c["name"]: c["classification"] for c in com_ch["digital_channels"] if c["name"] not in analog_names}
+    ben_digital = {c["name"]: c["classification"] for c in ben_ch["digital_channels"]}
+    assert {n: ben_digital[n] for n in com_digital} == com_digital
+    assert ben["sample_count"] == comtrade["sample_count"]

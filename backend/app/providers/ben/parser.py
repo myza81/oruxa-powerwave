@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -215,7 +215,9 @@ def _read_trigger_time(file: ByteView, diagnostics: list[BenDiagnostic]) -> BenT
     base = layout.TRIGGER_TIME_OFFSET
     year, month, day, hour, minute, second = (file.u8(base + i) for i in range(6))
     try:
-        whole = datetime(layout.TRIGGER_TIME_YEAR_BASE + year, month, day, hour, minute, second)
+        whole = datetime(
+            layout.TRIGGER_TIME_YEAR_BASE + year, month, day, hour, minute, second, tzinfo=timezone.utc
+        )
     except ValueError as exc:
         raise BenStructureError(f"trigger timestamp is not a valid date/time: {exc}", offset=base) from exc
 

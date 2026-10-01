@@ -19844,7 +19844,8 @@ Implementation (`[FACT]`, see [BEN_FORMAT.md](BEN_FORMAT.md)):
   - Two older-layout files are rejected.
 
 Choices the agent made, awaiting owner decision (`[OPEN]`, needed before
-integration):
+integration). **Update 2026-10-01:** the timezone, nominal-frequency and
+name items are resolved by DEC-120:
 
 - **Timezone.** BEN times stay UTC, while BEN32 COMTRADE carries local
   time (+08:00 in all evidence). A BEN source and a COMTRADE source of
@@ -19872,6 +19873,130 @@ Impact: backend-only additions, with no change to existing behaviour.
 The existing suite is unaffected. New tests are
 `test_ben_parser.py` (always run) and `test_ben_reference_files.py`
 (`ben_reference` marker, local only).
+
+---
+
+## DEC-120 — BEN import is integrated into the existing source upload: one endpoint, central provider registry, UTC-aware canonical time, default nominal frequency, BEN identity kept as provenance
+
+Date: 2026-10-01
+Status: Approved (owner decisions on timezone, nominal frequency and
+channel identity, given in the integration task). Implemented on
+`feat/native-ben-parser`; **awaiting owner UAT**, not merged to `main`.
+Source: owner task "integrate native BEN import"; it follows DEC-119 and
+resolves DEC-119's `[OPEN]` timezone, nominal-frequency and name items.
+
+Owner decisions:
+
+1. **Timezone.**
+   - BEN timestamps are UTC, and Powerwave's canonical event time is
+     timezone-aware UTC.
+   - The parser never adds +08:00.
+   - BEN times are not shifted to line up with legacy BEN32 COMTRADE
+     exports, which used the exporting PC's local time.
+   - Local presentation (e.g. Asia/Kuala_Lumpur) belongs to the display
+     layer, never the parser.
+2. **Nominal frequency.**
+   - It is unknown to the binary parser, and is never hard-coded there.
+   - It is resolved at the integration layer: an explicit value, else a
+     Powerwave-level default of 50 Hz, kept configurable.
+   - No duplicate BEN-only preference is created.
+3. **Channel identity.** Display names may be trimmed and de-duplicated
+   (`SPARE`, `SPARE_1`). The BEN source name, channel id and bay are never
+   destroyed. They are kept in `BenRecord` or alongside the record when
+   the normalized model cannot carry them, with no broad model redesign.
+
+Implementation (`[FACT]`):
+
+- **Endpoint.** `POST /api/v1/workspaces/{ws}/sources` accepts either
+  the existing `cfg_file` + `dat_file` pair or one `ben_file` (plus an
+  optional `nominal_frequency_hz` form field).
+  - Mixing the two forms gives `ambiguous_source_upload`.
+  - A request with neither keeps the previous 422 "field required"
+    response for `cfg_file`/`dat_file`, so COMTRADE's contract is
+    unchanged.
+- **Provider registry.**
+  - `import_service.build_provider_manager()` registers
+    `ComtradeProvider` and `BenProvider` in the existing
+    `ProviderManager`.
+  - A staged file is routed by `can_load()` (extension). The native
+    parser then validates the BEN signature and layout.
+  - A non-BEN or unsupported `.ben` fails through the BEN error path. It
+    never falls back to another parser.
+- **Provider hook.** `BaseProvider.load_with_provenance()` is a new,
+  non-abstract method; its default returns `None`. `BenProvider`
+  overrides it to return JSON-safe provenance, which is stored in the
+  existing generic `SourceMetadata.preparation_provenance`:
+  - source format and record class;
+  - `time_basis: "UTC"`;
+  - nominal frequency and `nominal_frequency_assumed`;
+  - parser diagnostics;
+  - every channel's `ben_channel_id`, byte-exact `source_name` and `bay`,
+    keyed by normalized name.
+
+  COMTRADE stores `None`, unchanged.
+- **Time.** BEN start and trigger are timezone-aware UTC datetimes. The
+  API serializes them as `…Z`. Downstream epoch maths already goes
+  through `normalize_absolute_datetime` (CSV Slice 11 precedent).
+- **Nominal frequency.** `app.domain.metadata.DEFAULT_NOMINAL_FREQUENCY_HZ
+  = 50.0` is now the single conventional default.
+  - CSV/Excel conversion uses it (same value as before).
+  - BEN uses it unless `nominal_frequency_hz` is supplied, validated by
+    the existing `nominal_frequency_valid()`.
+  - Provenance records `nominal_frequency_assumed`.
+- **Errors.** These are user-safe, and the parser detail (offsets) is
+  logged only:
+  - `unsupported_ben_variant`: "This BEN file uses a BEN layout that is
+    not currently supported.";
+  - `parse_error`: not a recognized BEN record / truncated / corrupt;
+  - `invalid_file` for an empty file;
+  - `unsupported_file_type` for a wrong extension.
+- **Frontend.** This is the one narrow change.
+  - The Upload Recording modal gains a "BEN" entry (`accept=".ben,.BEN"`).
+  - Its submit shares the COMTRADE flow (`submitSourceUpload()`).
+  - It has BEN-worded error messages.
+  - There is no BEN-specific screen.
+- **Downstream.** It is unchanged, with no BEN branches. A Slow record's
+  Hz/MW channels classify as Frequency/Power, and unavailable samples are
+  `NaN` (JSON `null`).
+
+Known limitations (recorded, not decided here):
+
+- `[OPEN]` **Local-time presentation.** The frontend deliberately shows
+  each timestamp's own wall-clock digits and ignores its offset, so a BEN
+  source displays UTC (e.g. 05:54:23). It has only a trailing `Z` in the
+  Recordings Start Time and no zone marker on the waveform ruler.
+  - Showing Asia/Kuala_Lumpur needs a presentation-layer timezone
+    policy, which would also affect CSV sources that carry offsets.
+  - A BEN source and a COMTRADE export of the same event remain 8 h apart
+    in Time Groups, by owner decision 1.
+- `[OPEN]` **Default nominal frequency.** It is configurable per import
+  (API field) and in one code constant. It is not yet a deployment
+  setting or a UI control.
+- `[OPEN]` **Bay/feeder and BEN ids.** They live only in backend
+  provenance. Channel summaries and the UI do not show them.
+
+Reason: one import path keeps BEN on every existing downstream workflow
+without format branches. The provider registry is the existing
+architecture's extension point. UTC-aware times and a recorded-as-assumed
+frequency default keep provenance honest.
+
+Alternatives considered:
+
+- A separate `/sources/ben` endpoint. Rejected: it duplicates the import
+  lifecycle.
+- Adding `.ben` checks inside unrelated code. Rejected: it bypasses the
+  registry.
+- Naive local times. Rejected by owner decision 1.
+
+Impact:
+- Backend import/API changes are additive; COMTRADE behaviour and the
+  COMTRADE API contract are unchanged.
+- Small frontend upload change.
+- New tests:
+  - `test_ben_import_api.py`;
+  - `test_ben_fixtures.py`;
+  - upload/parity cases in `test_ben_reference_files.py`;
+  - `browser-tests/ben-import.spec.js`.
 
 ---
 

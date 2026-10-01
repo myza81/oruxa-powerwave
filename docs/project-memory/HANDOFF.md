@@ -4,9 +4,46 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-01**
+Last updated: **2026-10-01** (BEN import integration)
 
 ## What was most recently done
+
+**BEN import integration (DEC-120, 2026-10-01). Branch
+`feat/native-ben-parser`, second commit after `c2f7f2a`; not merged.
+STOP: awaiting owner UAT.**
+
+- **Endpoint.** `POST /sources` takes `cfg_file`+`dat_file` (unchanged)
+  or `ben_file` (+ optional `nominal_frequency_hz`).
+- **Registry.** `import_service.build_provider_manager()` is the central
+  provider registry.
+- **Provider hook.** `BaseProvider.load_with_provenance()` (default
+  `None`) lets `BenProvider` store provenance in
+  `SourceMetadata.preparation_provenance`: BEN ids, source names, bays,
+  UTC basis, nominal frequency and whether it was assumed, and
+  diagnostics.
+- **Nominal frequency.** The default is
+  `app.domain.metadata.DEFAULT_NOMINAL_FREQUENCY_HZ` (50 Hz), shared
+  with CSV/Excel conversion.
+- **Frontend.** The upload modal has a "BEN" format, sharing
+  `submitSourceUpload()` with COMTRADE, plus BEN error wording.
+- **Tests.**
+  - `test_ben_import_api.py`;
+  - `test_ben_fixtures.py`, with committed synthetic
+    `tests/fixtures/ben/*.ben` from `tests/ben/make_fixtures.py`;
+  - reference upload/parity tests;
+  - `browser-tests/ben-import.spec.js`.
+- **For owner UAT.** Upload the LGNG and PMJY `.ben` files via Upload
+  Recording → BEN.
+  - Expect UTC times on screen, e.g. 05:54:22 rather than 13:54:22.
+    That is the `[OPEN]` presentation item.
+  - Expect frequency/power channels for PMJY.
+- **Found, not fixed (outside scope).** The COMTRADE provider mis-reads a
+  digital whose CFG name equals an analog's. BEN32 Slow exports do this
+  (`POWER BBTU` analog and digital). The digital's column is renamed
+  `_1` but its descriptor is not, so import classifies it from the
+  analog column. It is reported to the owner for approval.
+
+## Earlier — native BEN parser
 
 **Native BEN record parser (DEC-119, 2026-10-01). Backend, tests and docs
 only. STOP: not integrated; the owner reviews before any upload/UI

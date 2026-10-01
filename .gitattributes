@@ -27,3 +27,7 @@
 # (backend/tests/test_comtrade_parity.py) -- neither may be line-ending
 # normalized.
 backend/tests/fixtures/comtrade/*.dat binary
+
+# Synthetic BEN fixtures (backend/tests/ben/make_fixtures.py) are binary
+# records checked byte-for-byte by test_ben_fixtures.py.
+backend/tests/fixtures/ben/*.ben binary

@@ -1,4 +1,8 @@
-"""COMTRADE import orchestration.
+"""Source import orchestration: COMTRADE (cfg+dat) and BEN (DEC-120).
+
+Both formats resolve their provider through ``build_provider_manager()``
+and share the lifecycle below; BEN is parsed natively by ``BenProvider``,
+never converted to COMTRADE.
 
 Owns the upload -> validate -> ephemeral-parse -> metadata-extract ->
 registry lifecycle described in docs/project-memory/MIGRATION_PLAN.md's
@@ -31,12 +35,15 @@ Phase 1 update. Nothing here persists an uploaded file:
 
 from __future__ import annotations
 
+import logging
 import tempfile
 import uuid
 from pathlib import Path
+from typing import Any
 
 from fastapi import UploadFile
 
+from app.domain.calculated_channel import nominal_frequency_valid
 from app.domain.channel_classification import classify_analog_channel
 from app.domain.digital_classification import classify_digital_channel
 from app.domain.disturbance_record import DisturbanceRecord
@@ -47,20 +54,48 @@ from app.domain.source import (
     SourceMetadata,
     utc_now,
 )
-from app.providers.base import ProviderLoadError
+from app.providers.base import ProviderLoadError, ProviderManager
+from app.providers.ben import (
+    BenNotRecognizedError,
+    BenProvider,
+    BenStructureError,
+    BenTruncatedError,
+    BenUnsupportedVariantError,
+)
+from app.providers.ben.provider import BEN_SUFFIX
 from app.providers.comtrade import ComtradeProvider
 from app.services.errors import (
     InvalidFileError,
+    InvalidNominalFrequencyError,
     MissingCompanionFileError,
     ParseError,
+    UnsupportedBenVariantError,
     UnsupportedComtradeVariantError,
     UploadTooLargeError,
 )
 from app.services.upload_utils import read_bounded, validate_suffix
 from app.services.workspace_registry import WorkspaceRegistry
 
+logger = logging.getLogger(__name__)
+
 _CFG_SUFFIXES = {".cfg", ".comtrade"}
 _DAT_SUFFIXES = {".dat"}
+_BEN_SUFFIXES = {BEN_SUFFIX}
+
+
+def build_provider_manager(*, nominal_frequency_hz: float | None = None) -> ProviderManager:
+    """The providers source upload resolves against (DEC-120).
+
+    One registration point: a staged file is routed to the provider whose
+    ``can_load()`` accepts it (by extension), never by format checks
+    scattered through the import code. ``nominal_frequency_hz`` is the
+    import-context value for formats that do not declare one (BEN);
+    ``None`` means Powerwave's shared default.
+    """
+    manager = ProviderManager()
+    manager.register_provider(ComtradeProvider())
+    manager.register_provider(BenProvider(nominal_frequency_hz=nominal_frequency_hz))
+    return manager
 
 
 async def import_comtrade_source(
@@ -113,8 +148,9 @@ async def import_comtrade_source(
         cfg_path.write_bytes(cfg_bytes)
         dat_path.write_bytes(dat_bytes)
 
+        provider = build_provider_manager().find_provider(cfg_path)
         try:
-            record = ComtradeProvider().load(cfg_path)
+            record, provenance = provider.load_with_provenance(cfg_path)
         except ProviderLoadError as exc:
             raise _classify_provider_error(exc) from exc
         # temp dir (and both files) is removed here, on the way out of this
@@ -131,6 +167,7 @@ async def import_comtrade_source(
         # -- captured here since the raw bytes themselves are discarded
         # (never persisted) once this function returns.
         file_size_bytes=len(cfg_bytes) + len(dat_bytes),
+        provenance=provenance,
     )
     # record is retained by reference (never copied here) alongside the
     # lightweight metadata -- see ActiveSource's docstring and DEC-019.
@@ -138,6 +175,79 @@ async def import_comtrade_source(
     # downstream (app.services.waveform_service).
     registry.add(ActiveSource(metadata=metadata, record=record))
     return metadata
+
+
+async def import_ben_source(
+    *,
+    workspace_id: str,
+    ben_upload: UploadFile,
+    max_total_bytes: int,
+    registry: WorkspaceRegistry,
+    nominal_frequency_hz: float | None = None,
+) -> SourceMetadata:
+    """Validate, stage, and natively parse one BEN record (DEC-120).
+
+    Same lifecycle as ``import_comtrade_source``: bounded read, an
+    ephemeral temporary directory (removed before returning), provider
+    resolution, then the same ``SourceMetadata``/``ActiveSource``. The BEN
+    file is parsed by ``BenProvider`` -- never converted to COMTRADE.
+    """
+    ben_filename = validate_suffix(ben_upload.filename, _BEN_SUFFIXES, "BEN")
+    if nominal_frequency_hz is not None and not nominal_frequency_valid(nominal_frequency_hz):
+        raise InvalidNominalFrequencyError(
+            "Nominal frequency must be a finite number of hertz within the supported range."
+        )
+    if (ben_upload.size or 0) > max_total_bytes:
+        raise UploadTooLargeError(
+            f"Upload size ({ben_upload.size} bytes) exceeds the "
+            f"{max_total_bytes // (1024 * 1024)} MB limit."
+        )
+
+    ben_bytes = await read_bounded(ben_upload, max_bytes=max_total_bytes, already_read=0)
+    if not ben_bytes:
+        raise InvalidFileError("BEN file is empty.")
+
+    source_id = str(uuid.uuid4())
+
+    with tempfile.TemporaryDirectory(prefix="oruxa-ben-") as tmp_dir:
+        # Fixed, sanitized name -- the caller-supplied filename never
+        # becomes a filesystem path.
+        ben_path = Path(tmp_dir) / "event.ben"
+        ben_path.write_bytes(ben_bytes)
+        provider = build_provider_manager(nominal_frequency_hz=nominal_frequency_hz).find_provider(ben_path)
+        try:
+            record, provenance = provider.load_with_provenance(ben_path)
+        except ProviderLoadError as exc:
+            raise _classify_ben_error(exc) from exc
+
+    metadata = _build_source_metadata(
+        record=record,
+        workspace_id=workspace_id,
+        source_id=source_id,
+        original_filenames=(ben_filename,),
+        file_size_bytes=len(ben_bytes),
+        provenance=provenance,
+    )
+    registry.add(ActiveSource(metadata=metadata, record=record))
+    return metadata
+
+
+def _classify_ben_error(exc: ProviderLoadError) -> Exception:
+    """Map a BEN parser error onto a user-safe structured error.
+
+    The parser's own message (byte offsets, field values) is logged here
+    for engineering diagnosis and never returned to the client.
+    """
+    logger.info("BEN import rejected (%s): %s", type(exc).__name__, exc)
+    if isinstance(exc, BenUnsupportedVariantError):
+        return UnsupportedBenVariantError("This BEN file uses a BEN layout that is not currently supported.")
+    if isinstance(exc, BenNotRecognizedError):
+        return ParseError("This file is not a recognized BEN record.")
+    if isinstance(exc, BenTruncatedError):
+        return ParseError("This BEN file is incomplete (truncated).")
+    if isinstance(exc, BenStructureError):
+        return ParseError("This BEN file is corrupt: its internal structure is inconsistent.")
+    return ParseError("The BEN record could not be read.")
 
 
 def _classify_provider_error(exc: ProviderLoadError) -> Exception:
@@ -168,8 +278,9 @@ def _build_source_metadata(
     record: DisturbanceRecord,
     workspace_id: str,
     source_id: str,
-    original_filenames: tuple[str, str],
+    original_filenames: tuple[str, ...],
     file_size_bytes: int,
+    provenance: dict[str, Any] | None = None,
 ) -> SourceMetadata:
     analog = [
         AnalogChannelSummary(
@@ -225,4 +336,5 @@ def _build_source_metadata(
         samples_per_rate=tuple(record.sampling_info.samples_per_rate),
         analog_channels=analog,
         digital_channels=digital,
+        preparation_provenance=provenance,
     )

@@ -10,8 +10,9 @@ without changing that contract:
   established missing-sample representation (DEC-084), never a number.
 - Exported binary channels become ``DigitalChannel`` columns of states
   with 1 = active (BEN stores them active-low).
-- Times are BEN's own UTC trigger instant and the start derived from the
-  pre-trigger count; ``timezone`` says ``"UTC"`` explicitly.
+- Times are BEN's own trigger instant and the start derived from the
+  pre-trigger count, as timezone-aware UTC datetimes (``timezone`` also
+  says ``"UTC"``). Presentation in a local timezone is never done here.
 
 BEN does not declare the power-system nominal frequency anywhere that has
 been decoded, so the caller must supply it -- nothing here assumes 50 Hz.
@@ -19,8 +20,11 @@ been decoded, so the caller must supply it -- nothing here assumes 50 Hz.
 Channel names lose surrounding whitespace, as the COMTRADE provider's
 CFG fields do (BenRecord keeps them byte-exact); a repeated name gets the
 same ``_1``, ``_2`` suffix scheme the COMTRADE provider uses, so every
-descriptor names its own column. ``BenRecord`` keeps the richer native
-metadata (bay, ids, raw codes, validity) that this contract has no field for.
+descriptor names its own column. The contract has no field for BEN's
+richer channel identity (channel id, byte-exact source name, bay), so
+``channel_identities()`` returns it keyed by the normalized name for the
+caller to keep alongside the record; ``BenRecord`` keeps everything else
+(raw codes, validity).
 """
 
 from __future__ import annotations
@@ -63,12 +67,11 @@ def to_disturbance_record(
         raise ValueError(f"nominal_frequency_hz must be a positive number, got {nominal_frequency_hz!r}")
 
     header = record.header
-    unique = _UniqueNames()
+    value_names, digital_names = normalized_names(record)
     columns: dict[str, object] = {"time": record.time_axis()}
 
     analog_channels: list[AnalogChannel] = []
-    for channel in record.value_channels:
-        name = unique.take(channel.name.strip())
+    for channel, name in zip(record.value_channels, value_names):
         columns[name] = record.engineering_values(channel)
         analog_channels.append(
             AnalogChannel(
@@ -85,8 +88,7 @@ def to_disturbance_record(
         )
 
     digital_channels: list[DigitalChannel] = []
-    for position, channel in enumerate(record.digital_channels):
-        name = unique.take(channel.name.strip())
+    for position, (channel, name) in enumerate(zip(record.digital_channels, digital_names)):
         columns[name] = record.digital_states(channel)
         digital_channels.append(DigitalChannel(name=name, index=position + 1, normal_state=0))
 
@@ -114,6 +116,46 @@ def to_disturbance_record(
         ),
         disturbance_info=None,
     )
+
+
+def normalized_names(record: BenRecord) -> tuple[list[str], list[str]]:
+    """The column names ``to_disturbance_record`` gives value and binary channels."""
+    unique = _UniqueNames()
+    values = [unique.take(c.name.strip()) for c in record.value_channels]
+    digitals = [unique.take(c.name.strip()) for c in record.digital_channels]
+    return values, digitals
+
+
+def channel_identities(record: BenRecord) -> list[dict[str, object]]:
+    """BEN source identity of every normalized channel (JSON-safe).
+
+    Nothing here is renamed: ``source_name`` is the name exactly as BEN
+    stores it, ``ben_channel_id`` the file's own id.
+    """
+    value_names, digital_names = normalized_names(record)
+    identities: list[dict[str, object]] = []
+    for channel, name in zip(record.value_channels, value_names):
+        identities.append(
+            {
+                "name": name,
+                "kind": channel.kind.value,
+                "ben_channel_id": channel.channel_id,
+                "source_name": channel.name,
+                "bay": channel.bay_name,
+            }
+        )
+    for channel, name in zip(record.digital_channels, digital_names):
+        identities.append(
+            {
+                "name": name,
+                "kind": "digital",
+                "digital_source": channel.source.value,
+                "ben_channel_id": channel.bit_channel_id,
+                "source_name": channel.name,
+                "bay": channel.bay_name,
+            }
+        )
+    return identities
 
 
 class _UniqueNames:

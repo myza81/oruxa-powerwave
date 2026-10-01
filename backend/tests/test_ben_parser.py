@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import struct
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -120,9 +120,10 @@ def test_header_facts_come_from_the_file():
     assert (h.station_name, h.recorder_unit_id, h.record_number) == ("SYNTH STATION", 4321, 777)
     assert h.record_label == "New Record"
     assert h.trigger_time.fraction_digits == (12, 34, 56)
-    assert h.trigger_time_utc == datetime(2024, 3, 5, 6, 7, 8, 123456)
+    assert h.trigger_time_utc == datetime(2024, 3, 5, 6, 7, 8, 123456, tzinfo=timezone.utc)
+    assert h.trigger_time_utc.utcoffset().total_seconds() == 0  # timezone-aware UTC
     assert h.pre_trigger_seconds == pytest.approx(10 / 1200)
-    assert h.start_time_utc == datetime(2024, 3, 5, 6, 7, 8, 123456 - 8333)
+    assert h.start_time_utc == datetime(2024, 3, 5, 6, 7, 8, 123456 - 8333, tzinfo=timezone.utc)
 
 
 def test_value_channels_decode_raw_scaling_units_and_ratings():
@@ -282,6 +283,7 @@ def test_fast_record_normalizes_into_a_valid_disturbance_record():
     assert dr.metadata.nominal_frequency == 60.0
     assert dr.metadata.timezone == dr.timing_info.timezone == "UTC"
     assert dr.timing_info.trigger_time == record.header.trigger_time_utc
+    assert dr.timing_info.trigger_time.tzinfo is not None and dr.timing_info.start_time.tzinfo is not None
     assert dr.timing_info.start_time == record.header.start_time_utc
     assert dr.sampling_info.sampling_rates == [1200.0]
     assert dr.sampling_info.samples_per_rate == [N]
@@ -515,7 +517,7 @@ def _codes(record) -> set[str]:
 def test_undecodable_sub_second_digits_keep_the_whole_second_only():
     record, _, _ = _parse(_fast(trigger=(2024, 3, 5, 6, 7, 8, 12, 150, 3)))
     assert record.header.trigger_time.microsecond is None
-    assert record.header.trigger_time_utc == datetime(2024, 3, 5, 6, 7, 8)
+    assert record.header.trigger_time_utc == datetime(2024, 3, 5, 6, 7, 8, tzinfo=timezone.utc)
     assert "trigger_fraction_undecodable" in _codes(record)
 
 

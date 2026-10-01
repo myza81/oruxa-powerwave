@@ -56,7 +56,10 @@ class BenDiagnostic:
 
 @dataclass(frozen=True, slots=True)
 class BenTriggerTime:
-    """The trigger instant as stored by BEN (UTC).
+    """The trigger instant as stored by BEN, as timezone-aware UTC.
+
+    UTC is the canonical interpretation (DEC-119/DEC-120); conversion to
+    a local presentation timezone is never done here.
 
     ``fraction_digits`` are the raw base-100 digits (hundredths, 1e-4 s,
     1e-6 s). ``microsecond`` is ``None`` when those digits do not form a
@@ -64,12 +67,12 @@ class BenTriggerTime:
     sub-second value is invented.
     """
 
-    utc_whole_second: datetime  # naive, UTC
+    utc_whole_second: datetime  # timezone-aware, UTC
     fraction_digits: tuple[int, int, int]
     microsecond: int | None
 
     def as_utc(self) -> datetime:
-        """Naive UTC datetime (sub-second only when decoded)."""
+        """Timezone-aware UTC datetime (sub-second only when decoded)."""
         return self.utc_whole_second.replace(microsecond=self.microsecond or 0)
 
 

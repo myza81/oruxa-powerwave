@@ -9,8 +9,25 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-10-01** — **Native BEN record parser
-(DEC-119), standalone backend only.** `app.providers.ben` parses
+Last meaningful update: **2026-10-01** — **BEN import integrated
+(DEC-120), on branch `feat/native-ben-parser`, awaiting owner UAT.**
+A supported BEN32 Fast/Slow `.ben` record now uploads through the normal
+Upload Recording modal (format "BEN") and the same `/sources` endpoint.
+`BenProvider` is resolved through the central provider registry, and the
+record reaches the unchanged downstream workflow.
+- Canonical time is timezone-aware UTC.
+- Nominal frequency defaults to the shared 50 Hz (overridable per
+  upload).
+- BEN channel identity (id, source name, bay) is kept in source
+  provenance.
+- Older BEN layouts are rejected with `unsupported_ben_variant`.
+- `[OPEN]` The UI shows BEN's UTC wall-clock; it has no local-timezone
+  presentation.
+
+See [BEN_FORMAT.md §7](BEN_FORMAT.md).
+
+Earlier the same day: **Native BEN record parser (DEC-119), standalone
+backend.** `app.providers.ben` parses
 BEN32 Fast/Slow SubBen records natively (no COMTRADE intermediate) and
 can normalize them into `DisturbanceRecord`. It is proven
 sample-for-sample against four BEN32 COMTRADE exports. It is **not**
@@ -2587,8 +2604,9 @@ modules beyond the original COMTRADE port (`domain/source.py`,
 / `per_unit.py` (the Per-Unit measurement model), `event_detection.py` /
 `rms_detector.py`. `providers/` holds `base.py`, `comtrade.py` and (since
 2026-10-01, DEC-119) the native `ben/` package — no CSV/Excel provider
-exists (CSV/Excel converts through the Preparation services), and
-`ben/`'s `BenProvider` is not wired into any upload path yet. No persistent storage of
+exists (CSV/Excel converts through the Preparation services).
+`import_service.build_provider_manager()` registers `ComtradeProvider`
+and `BenProvider` for source upload (DEC-120). No persistent storage of
 uploaded event files (DEC-015, unchanged); the active workspace retains
 each source's full-resolution parsed record in memory only (DEC-019).
 
@@ -2669,8 +2687,19 @@ re-confirmed by the TG-FINAL audit):
 - **COMTRADE ingestion**: two-slot `.cfg`/`.dat` upload, parse, engineering-
   type channel classification (backend-computed), ephemeral per-request
   parsing (no event files ever persisted to disk/storage).
-- **Native BEN parsing (DEC-119, 2026-10-01) — backend only, NOT
-  integrated.** `app.providers.ben` decodes BEN32 3.8.9.6 "Fast SubBen"
+- **BEN import (DEC-120, 2026-10-01; awaiting owner UAT).**
+  - Upload Recording offers format "BEN" (`.ben`), posting `ben_file` to
+    the same `/sources` endpoint as COMTRADE.
+  - The provider registry routes the file to `BenProvider`; nothing is
+    converted to COMTRADE.
+  - Fast and Slow records land as ordinary sources: Recordings row,
+    Waveform, digital channels, post-upload preparation.
+  - Times are aware UTC.
+  - `nominal_frequency_hz` is optional; otherwise the shared 50 Hz
+    default applies, recorded as assumed.
+  - Unavailable Slow samples are `NaN`.
+  - `[OPEN]` Local-time display; bay/id not shown in the UI.
+- **Native BEN parsing (DEC-119, 2026-10-01).** `app.providers.ben` decodes BEN32 3.8.9.6 "Fast SubBen"
   and "Slow SubBen" records natively into a lossless `BenRecord`.
   - Everything is derived from the file itself: sample rate, counts,
     stride, data offset and every channel's word/bit.

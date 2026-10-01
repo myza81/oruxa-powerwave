@@ -53,6 +53,20 @@ class UnsupportedComtradeVariantError(ImportServiceError):
     code = "unsupported_comtrade_variant"
 
 
+class UnsupportedBenVariantError(ImportServiceError):
+    """A recognized BEN file whose layout/record class has not been
+    validated (DEC-119/DEC-120) -- e.g. the older BEN layout."""
+
+    code = "unsupported_ben_variant"
+
+
+class AmbiguousSourceUploadError(ImportServiceError):
+    """A source upload mixed the COMTRADE pair with a BEN file -- exactly
+    one recording format per request (DEC-120)."""
+
+    code = "ambiguous_source_upload"
+
+
 class UploadTooLargeError(ImportServiceError):
     code = "upload_too_large"
 

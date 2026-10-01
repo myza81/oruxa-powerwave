@@ -2,12 +2,21 @@
 
 Authoritative record of what is known about the BEN disturbance-record
 format, what the native parser supports, and the evidence behind it.
-Decision: [DEC-119](DECISIONS.md#dec-119--native-ben-record-parsing-ben--native-parser--normalized-model-comtrade-is-a-validation-oracle-only).
-Code: [backend/app/providers/ben/](../../backend/app/providers/ben/).
+Decisions: [DEC-119](DECISIONS.md#dec-119--native-ben-record-parsing-ben--native-parser--normalized-model-comtrade-is-a-validation-oracle-only)
+(parser), [DEC-120](DECISIONS.md#dec-120--ben-import-is-integrated-into-the-existing-source-upload-one-endpoint-central-provider-registry-utc-aware-canonical-time-default-nominal-frequency-ben-identity-kept-as-provenance)
+(import integration).
+Code: [backend/app/providers/ben/](../../backend/app/providers/ben/),
+[backend/app/services/import_service.py](../../backend/app/services/import_service.py).
 
-Status (2026-10-01): **standalone backend parser + validation suite.
-Not integrated** into upload, Data Preparation, the waveform workspace or
-any UI. That integration is a separate task awaiting owner go-ahead.
+Status (2026-10-01): **importable through the normal upload** (Upload
+Recording → format "BEN"), on branch `feat/native-ben-parser`, awaiting
+owner UAT. See §7.
+
+**Supported:** the validated BEN32 SubBen layout family (Fast and Slow
+SubBen, header signature `2a ff … / 06 ff`).
+**Not supported:** older BEN layouts such as the BPHE/GPTH files
+(header byte 0x04 = `28`), and any unvalidated variant. These are
+rejected with `unsupported_ben_variant`.
 
 ## 1. Scope and architecture
 
@@ -29,7 +38,7 @@ exported by BEN32 are used only as a **test oracle**.
 | `parser.py` | `parse_ben(bytes)` / `parse_ben_file(path)`: header → sections → record class → container → layout map → channels → payload boundary. |
 | `model.py` | `BenRecord` (native, lossless) and its header/channel types. |
 | `normalize.py` | `to_disturbance_record(record, source_file=, nominal_frequency_hz=)`. |
-| `provider.py` | `BenProvider(BaseProvider)` — **not registered** anywhere. |
+| `provider.py` | `BenProvider(BaseProvider)`, registered for upload by `import_service.build_provider_manager()` (DEC-120). |
 | `errors.py` | `BenFormatError` ⊂ `ProviderLoadError`; `BenNotRecognizedError`, `BenUnsupportedVariantError`, `BenTruncatedError`, `BenStructureError`. |
 
 No BEN32 executable is ever run; nothing depends on Windows or COMTRADE.
@@ -236,17 +245,118 @@ Notes:
     matches.
   - It checks every sample of every channel of the matched pairs.
 
-## 6. Open items for integration
+## 6. Open items
 
-- `[OPEN]` **Timezone policy.** BEN times are UTC (`timezone="UTC"`),
-  while BEN32 COMTRADE exports of the same event carry local time.
-  - Mixing both in one workspace would place them 8 h apart in Time
-    Groups.
-  - How BEN times are displayed and aligned needs an owner decision.
-- `[OPEN]` **Nominal frequency.** It must be supplied at integration: a
-  fixed 50 Hz, a user choice, or a setting. It is not in the file.
-- `[OPEN]` **Digital names.** Normalized binaries use BEN32's export
-  naming (derived: event name; physical: input name). Bay names are
-  available in `BenRecord` but not in `DisturbanceRecord`.
+Resolved by DEC-120 (2026-10-01):
+- timezone: UTC canonical;
+- nominal frequency: integration-layer default;
+- names: trimmed for display, BEN identity kept.
+
+See §7. Still open:
+
+- `[OPEN]` **Local-time presentation of UTC sources.** See §7.4.
+- `[OPEN]` **Bay/feeder and BEN channel ids in the UI.** See §7.5.
 - `[OPEN]` **Older BEN layout.** Support for `28 ff` files (BPHE, GPTH)
   would need its own reverse-engineering and validation pair.
+
+## 7. Import integration (DEC-120)
+
+### 7.1 Path
+
+```text
+Upload Recording modal (format "BEN", accept .ben)
+  -> POST /api/v1/workspaces/{ws}/sources   ben_file [+ nominal_frequency_hz]
+  -> import_service.import_ben_source()     bounded read, ephemeral temp dir
+  -> build_provider_manager().find_provider(event.ben)  -> BenProvider
+  -> BenProvider.load_with_provenance()     parse_ben_file -> BenRecord
+                                            -> to_disturbance_record()
+  -> SourceMetadata + ActiveSource          same as COMTRADE
+  -> prepare_workspace_source()             same post-upload preparation
+```
+
+- BEN is imported natively and never converted to COMTRADE.
+- COMTRADE uses the same endpoint (`cfg_file` + `dat_file`) and the same
+  registry.
+- Downstream code has no BEN branch.
+
+### 7.2 Time
+
+Start and trigger are **timezone-aware UTC** datetimes; the API
+serializes them as `2026-01-16T05:54:23.229783Z`.
+
+- The time axis is `sample index / rate` from the first sample.
+- The trigger sample is the pre-trigger count. LGNG: sample 2500 at
+  0.5 s. PMJY: sample 400 at 20 s.
+- BEN times are not shifted toward BEN32's local-time COMTRADE exports.
+
+### 7.3 Nominal frequency
+
+`app.domain.metadata.DEFAULT_NOMINAL_FREQUENCY_HZ` (50 Hz) is the single
+conventional default, also used by CSV/Excel conversion.
+
+- An upload may pass `nominal_frequency_hz`. It is validated like the
+  RMS parameter (1–1000 Hz).
+- Provenance records `nominal_frequency_assumed`.
+- It is never read from or written to the BEN parser.
+
+### 7.4 Values
+
+- **Slow unavailable samples:** raw −32768 becomes `NaN`, which is
+  `null` in waveform JSON. Never 99999.
+- **Channel typing:** Hz/MW channels classify as Frequency/Power through
+  the existing classifier. They form no V/I Engineering Context.
+- **Parity:** the same event imported as BEN and as BEN32 COMTRADE gives
+  identical analog summaries (type, unit, phase) for all four matched
+  pairs.
+
+`[OPEN]` **Presentation.** The frontend deliberately shows a timestamp's
+own wall-clock digits and ignores any offset, so a BEN source displays
+UTC (05:54:23 for LGNG).
+- The only zone marker is the trailing `Z` in the Recordings Start Time;
+  the waveform ruler has none.
+- Showing local time (Asia/Kuala_Lumpur) needs a presentation-layer
+  timezone policy, which would also change CSV sources with offsets.
+- A BEN source and a COMTRADE source of the same event sit 8 h apart in
+  Time Groups.
+
+### 7.5 Identity
+
+Display names are trimmed and de-duplicated (`SPARE`, `SPARE_1`).
+`SourceMetadata.preparation_provenance` keeps, per normalized name:
+- `ben_channel_id`;
+- the byte-exact `source_name`;
+- `bay`;
+- for binaries, `digital_source`.
+
+It also keeps the record class, `time_basis`, nominal frequency,
+`nominal_frequency_assumed` and the parser diagnostics.
+
+`[OPEN]` These live in the backend only; channel summaries and the UI do
+not show bay or ids yet.
+
+### 7.6 Errors
+
+The API returns user-safe messages. The parser's detail (offsets) is
+logged server-side only.
+
+| Input | Code (HTTP 400) | Message |
+|---|---|---|
+| older/unvalidated layout | `unsupported_ben_variant` | This BEN file uses a BEN layout that is not currently supported. |
+| not BEN (e.g. renamed text) | `parse_error` | This file is not a recognized BEN record. |
+| truncated | `parse_error` | This BEN file is incomplete (truncated). |
+| inconsistent | `parse_error` | This BEN file is corrupt: its internal structure is inconsistent. |
+| empty | `invalid_file` | BEN file is empty. |
+| `ben_file` without `.ben` | `unsupported_file_type` | — |
+| `ben_file` with `cfg_file`/`dat_file` | `ambiguous_source_upload` | — |
+
+### 7.7 Tests
+
+- `backend/tests/test_ben_import_api.py`: synthetic files, real
+  endpoint.
+- `backend/tests/test_ben_fixtures.py`: committed fixtures stay equal to
+  `tests/ben/make_fixtures.py`.
+- `backend/tests/test_ben_reference_files.py`: real records through the
+  endpoint (`ben_reference` marker), plus BEN/COMTRADE parity.
+- `browser-tests/ben-import.spec.js`:
+  - Fast and Slow upload → Recordings → Waveform trace;
+  - the old-layout and renamed-file error messages.
