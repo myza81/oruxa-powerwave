@@ -4,9 +4,42 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-01** (BEN import integration)
+Last updated: **2026-10-01** (timestamp/channel-identity hardening)
 
 ## What was most recently done
+
+**Timestamp and channel-identity hardening (DEC-121, 2026-10-01).
+Branch `feat/native-ben-parser`, third commit; not merged. STOP:
+awaiting owner UAT.**
+
+- **Timestamps.**
+  - New `app.domain.source_timezone`: `DEFAULT_SOURCE_TIMEZONE =
+    "Asia/Kuala_Lumpur"`, `interpret_naive()`, `canonical_utc()`.
+  - `time_grouping.normalize_absolute_datetime()` now interprets naive
+    values in that zone instead of labelling them UTC. Declared offsets
+    are untouched, and stored values are unchanged.
+  - LGNG/PMJY/BAHS/BTGH BEN ↔ COMTRADE pairs now share one Time Group
+    with 0.0 s placement.
+- **COMTRADE provider.**
+  - A 2013 CFG's `time_code` (the line after `timemult`) gives aware
+    times.
+  - Duplicate-named channels' descriptors use the same `_1` names as
+    their columns.
+  - `load_with_provenance()` reports `channel_renames`.
+- **Tests.**
+  - Three Slice 11 tests that encoded "naive = UTC label" now assert
+    the DEC-121 instant (time_grouping ×2, calculated_channel ×1).
+  - New: `test_source_timezone.py` and `test_comtrade_duplicate_names.py`.
+  - The reference parity test now covers Time Group alignment and
+    digital states.
+- **Still `[OPEN]`.**
+  - Display timezone: the UI shows each value's digits, so BEN shows
+    UTC and COMTRADE local.
+  - `DEFAULT_SOURCE_TIMEZONE` is a constant, not a deployment setting.
+  - COMTRADE's legacy BEN32 99999 still scales to 99.9995 Hz on the
+    COMTRADE path; BEN gives NaN.
+
+## Earlier — BEN import integration
 
 **BEN import integration (DEC-120, 2026-10-01). Branch
 `feat/native-ben-parser`, second commit after `c2f7f2a`; not merged.
@@ -37,11 +70,11 @@ STOP: awaiting owner UAT.**
   - Expect UTC times on screen, e.g. 05:54:22 rather than 13:54:22.
     That is the `[OPEN]` presentation item.
   - Expect frequency/power channels for PMJY.
-- **Found, not fixed (outside scope).** The COMTRADE provider mis-reads a
+- **Found, then fixed by DEC-121.** The COMTRADE provider mis-read a
   digital whose CFG name equals an analog's. BEN32 Slow exports do this
-  (`POWER BBTU` analog and digital). The digital's column is renamed
-  `_1` but its descriptor is not, so import classifies it from the
-  analog column. It is reported to the owner for approval.
+  (`POWER BBTU` analog and digital). The digital's column was renamed
+  `_1` but its descriptor was not, so import classified it from the
+  analog column. The owner approved the fix, which is now in DEC-121.
 
 ## Earlier — native BEN parser
 

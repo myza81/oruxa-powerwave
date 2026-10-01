@@ -19969,6 +19969,9 @@ Known limitations (recorded, not decided here):
     policy, which would also affect CSV sources that carry offsets.
   - A BEN source and a COMTRADE export of the same event remain 8 h apart
     in Time Groups, by owner decision 1.
+  - **Update 2026-10-01: superseded by DEC-121.** Naive COMTRADE times
+    are now interpreted as Asia/Kuala_Lumpur, so the pair shares one Time
+    Group. Display is still `[OPEN]`.
 - `[OPEN]` **Default nominal frequency.** It is configurable per import
   (API field) and in one code constant. It is not yet a deployment
   setting or a UI control.
@@ -19997,6 +20000,97 @@ Impact:
   - `test_ben_fixtures.py`;
   - upload/parity cases in `test_ben_reference_files.py`;
   - `browser-tests/ben-import.spec.js`.
+
+---
+
+## DEC-121 — Recording timestamps resolve to one canonical instant: naive engineering timestamps are interpreted in the source timezone (Asia/Kuala_Lumpur); a declared offset wins; COMTRADE channel descriptors bind to their own data column
+
+Date: 2026-10-01
+Status: Approved (owner hardening task before BEN UAT). Implemented on
+`feat/native-ben-parser`; **awaiting owner UAT**, not merged to `main`.
+Source: owner task "align recording timestamps and channel identity".
+This is a follow-up to DEC-120. It supersedes the Slice 11 (DEC-072)
+"naive = UTC label" rule in `time_grouping.normalize_absolute_datetime()`.
+
+### Timestamps: three separate concerns
+
+| Concern | Rule |
+|---|---|
+| **Stored timestamp** | Kept as the importer produced it, unchanged: BEN aware UTC; COMTRADE without `time_code` **naive** (the recorder's wall-clock digits); COMTRADE-2013 with a declared `time_code` aware at that offset; CSV/Excel naive or aware as before. |
+| **Source timezone interpretation** | A declared offset always wins. A naive value is interpreted in `app.domain.source_timezone.DEFAULT_SOURCE_TIMEZONE` = `Asia/Kuala_Lumpur`. This is applied only where instants are compared (`normalize_absolute_datetime`, which is used by Time Groups, placement offsets and analysis/calculated-channel epochs). It is never written into stored values or parsers. |
+| **Display timezone** | Unchanged and still undecided (`[OPEN]`). The frontend shows each stored value's own digits, so BEN shows UTC and COMTRADE shows local wall-clock. |
+
+Why: BEN stores UTC, while BEN32's COMTRADE export (like Malaysian
+recorders generally) stamps local time without a zone. Under the old UTC
+label, the LGNG BEN and its own export were 8 h apart. Now:
+- they are one instant;
+- they share one Time Group with 0.0 s placement;
+- this is verified for LGNG, PMJY, BAHS and BTGH.
+
+An all-naive workspace compares exactly as before, because every naive
+value gets the same zone.
+
+Behaviour that changes:
+- naive vs aware comparisons, e.g. a naive COMTRADE source next to a CSV
+  source with a declared offset;
+- `.timestamp()` epochs of naive sources move by 8 h. They are only used
+  for relative alignment.
+
+`tzdata` is pinned because `zoneinfo` needs it on Windows and in slim
+images. It was already installed through pandas/psycopg.
+
+### COMTRADE-2013 `time_code`
+
+The `time_code,local_code` line after `timemult` (e.g. `8,8`, `-5h30,…`)
+is now honored. Start and trigger become aware at that offset, and
+`timezone` = `UTC+08:00`. Anything absent or unparseable stays naive and
+is never guessed.
+
+The corpus scan found 1 of 199 CFGs with a declared `time_code` (PRGS
+2025, `8,8`). That file uses the FLOAT32 DAT format, which this provider
+does not support, so the behaviour is verified with synthetic CFGs.
+
+### COMTRADE duplicate names
+
+Root cause: `_build_dataframe` renamed a repeated name's column (`_1`),
+but the descriptors kept the original name, so a digital `POWER BBTU`
+read the analog `POWER BBTU` MW column.
+
+Fix:
+- `_unique_channel_names()` computes the names once, using the same
+  algorithm, so the column names are unchanged;
+- the same names are used for columns and descriptors;
+- `ComtradeProvider.load_with_provenance()` reports the original names
+  (`channel_renames`). It returns `None` when nothing was renamed.
+
+Result: PMJY `POWER BBTU_1` reads its own all-zero states and is
+classified `never_triggered`, as the BEN source is. Before the fix it
+read MW values and was classified "triggered".
+
+### Configuration
+
+`DEFAULT_SOURCE_TIMEZONE` is one named constant (an IANA name),
+replaceable in one place. A deployment setting or per-upload override is
+not built (`[OPEN]`, only if a non-Malaysian deployment needs it).
+
+Alternatives considered:
+- **Adding +08:00 in the BEN parser.** Rejected by owner decision.
+- **Shifting COMTRADE inside its parser.** Rejected: it embeds a
+  deployment zone in a format parser.
+- **Rewriting stored COMTRADE times as UTC.** Rejected: it would change
+  every COMTRADE screen's displayed wall-clock. That is a presentation
+  decision, still `[OPEN]`.
+
+Impact:
+- One domain module was added.
+- One canonicalization function changed.
+- The COMTRADE provider changed: `time_code`, descriptor names, and
+  provenance for renames.
+- Three Slice 11 tests that encoded the UTC label now assert the DEC-121
+  instant. Their intent is unchanged: no crash, exact mixed-awareness
+  arithmetic.
+- New tests: `test_source_timezone.py`, `test_comtrade_duplicate_names.py`,
+  and real-pair alignment in `test_ben_reference_files.py`.
 
 ---
 

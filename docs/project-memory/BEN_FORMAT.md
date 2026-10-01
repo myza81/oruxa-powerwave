@@ -288,6 +288,11 @@ serializes them as `2026-01-16T05:54:23.229783Z`.
 - The trigger sample is the pre-trigger count. LGNG: sample 2500 at
   0.5 s. PMJY: sample 400 at 20 s.
 - BEN times are not shifted toward BEN32's local-time COMTRADE exports.
+- **Alignment (DEC-121).** The export's naive local times are
+  interpreted as Asia/Kuala_Lumpur where instants are compared. A BEN
+  record and its BEN32 COMTRADE therefore share one Time Group with
+  0.0 s placement. This is verified for LGNG, PMJY, BAHS and BTGH, with
+  identical channel identities, digital states and values.
 
 ### 7.3 Nominal frequency
 
@@ -316,8 +321,10 @@ UTC (05:54:23 for LGNG).
   the waveform ruler has none.
 - Showing local time (Asia/Kuala_Lumpur) needs a presentation-layer
   timezone policy, which would also change CSV sources with offsets.
-- A BEN source and a COMTRADE source of the same event sit 8 h apart in
-  Time Groups.
+- The display difference is presentation only. Since DEC-121 the
+  two sources are the same instant in Time Groups. The ruler's Absolute
+  labels take the digits of whichever source is the group origin, so
+  they read UTC or local accordingly.
 
 ### 7.5 Identity
 

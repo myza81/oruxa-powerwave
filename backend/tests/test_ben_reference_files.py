@@ -333,25 +333,46 @@ def test_unsupported_reference_layout_is_a_domain_error_through_upload(reference
 
 
 @pytest.mark.parametrize("record_id", MATCHED)
-def test_ben_and_its_comtrade_export_classify_channels_identically(reference_root, client, record_id):
-    """Downstream typing needs no BEN branch: the same event imported as
-    BEN and as BEN32 COMTRADE gives the same channel summaries."""
+def test_ben_and_its_comtrade_export_are_the_same_recording(reference_root, client, record_id):
+    """Downstream needs no BEN branch: the same event imported as BEN
+    and as BEN32 COMTRADE gives the same canonical instant (one Time
+    Group, zero placement -- DEC-121), the same channel identities and
+    classifications, the same digital states and the same values."""
     entry = RECORDS[record_id]
-    ben = _upload_ben(client, _locate(reference_root, entry["ben"])).json()
+    ws = f"ws-pair-{record_id}"
+    url = f"/api/v1/workspaces/{ws}/sources"
+    ben_bytes = _locate(reference_root, entry["ben"]).read_bytes()
+    ben = client.post(url, files={"ben_file": ("r.ben", ben_bytes, "x")}).json()
     cfg_path, dat_path = _locate(reference_root, entry["comtrade_cfg"]), _locate(reference_root, entry["comtrade_dat"])
     files = {"cfg_file": ("e.cfg", cfg_path.read_bytes(), "x"), "dat_file": ("e.dat", dat_path.read_bytes(), "x")}
-    comtrade = client.post(WS_URL, files=files).json()
-    ben_ch = client.get(f"{WS_URL}/{ben['source_id']}/channels").json()
-    com_ch = client.get(f"{WS_URL}/{comtrade['source_id']}/channels").json()
+    comtrade = client.post(url, files=files).json()
+
+    # Same instant: BEN stores UTC, the export naive local (+08:00).
+    assert ben["trigger_time"].endswith("Z") and not comtrade["trigger_time"].endswith("Z")
+    groups = client.get(f"/api/v1/workspaces/{ws}/synchronization/time-groups").json()
+    assert len(groups) == 1 and set(groups[0]["source_ids"]) == {ben["source_id"], comtrade["source_id"]}
+    placements = client.get(f"/api/v1/workspaces/{ws}/synchronization/sources").json()
+    assert [p["timestamp_placement_offset_s"] for p in placements] == [0.0, 0.0]
+
+    ben_ch = client.get(f"{url}/{ben['source_id']}/channels").json()
+    com_ch = client.get(f"{url}/{comtrade['source_id']}/channels").json()
 
     def analog(channels):
         return {c["name"]: (c["engineering_type"], c["unit"], c["phase"]) for c in channels["analog_channels"]}
 
+    def digital(channels):
+        return [(c["name"], c["classification"]) for c in channels["digital_channels"]]
+
     assert analog(ben_ch) == analog(com_ch)
-    analog_names = set(analog(com_ch))
-    # The COMTRADE provider mis-reads a digital that shares an analog's
-    # name (pre-existing, reported separately) -- compare the others.
-    com_digital = {c["name"]: c["classification"] for c in com_ch["digital_channels"] if c["name"] not in analog_names}
-    ben_digital = {c["name"]: c["classification"] for c in ben_ch["digital_channels"]}
-    assert {n: ben_digital[n] for n in com_digital} == com_digital
+    assert sorted(digital(ben_ch)) == sorted(digital(com_ch))  # incl. duplicate-named digitals
+
+    registry = client.app.state.workspace_registry
+    ben_data = registry.get(ws, ben["source_id"]).record.waveform_data
+    com_data = registry.get(ws, comtrade["source_id"]).record.waveform_data
+    for name, _ in digital(com_ch):
+        np.testing.assert_array_equal(ben_data[name].to_numpy(), com_data[name].to_numpy(), err_msg=name)
+    for name in analog(com_ch):
+        ben_values, com_values = ben_data[name].to_numpy(), com_data[name].to_numpy()
+        available = ~np.isnan(ben_values)  # BEN NaN <-> BEN32's raw 99999 export
+        np.testing.assert_allclose(ben_values[available], com_values[available], rtol=FLOAT32_REL, atol=1e-9, err_msg=name)
     assert ben["sample_count"] == comtrade["sample_count"]

@@ -9,8 +9,25 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-10-01** — **BEN import integrated
-(DEC-120), on branch `feat/native-ben-parser`, awaiting owner UAT.**
+Last meaningful update: **2026-10-01** — **Recording timestamps and
+COMTRADE channel identity hardened (DEC-121), on
+`feat/native-ben-parser`, awaiting owner UAT.**
+- **Timestamps.**
+  - *Stored* values are unchanged: BEN aware UTC, COMTRADE naive local.
+  - *Source timezone interpretation*: a declared offset wins (including
+    a COMTRADE-2013 `time_code`); otherwise a naive value is read as
+    `Asia/Kuala_Lumpur` (`app.domain.source_timezone`) at the one
+    comparison point, `normalize_absolute_datetime`.
+  - A BEN record and its BEN32 COMTRADE export are now the same instant:
+    one Time Group, 0.0 s placement.
+  - *Display* is unchanged and `[OPEN]`: each value's own digits.
+- **COMTRADE duplicate names.** The descriptors of duplicate-named
+  channels now bind to their own `_1` data column. A BEN32 Slow
+  `POWER BBTU` digital no longer reads the MW analog. Original names are
+  kept in provenance.
+
+Earlier the same day: **BEN import integrated (DEC-120), on branch
+`feat/native-ben-parser`, awaiting owner UAT.**
 A supported BEN32 Fast/Slow `.ben` record now uploads through the normal
 Upload Recording modal (format "BEN") and the same `/sources` endpoint.
 `BenProvider` is resolved through the central provider registry, and the
@@ -22,7 +39,7 @@ record reaches the unchanged downstream workflow.
   provenance.
 - Older BEN layouts are rejected with `unsupported_ben_variant`.
 - `[OPEN]` The UI shows BEN's UTC wall-clock; it has no local-timezone
-  presentation.
+  presentation. Alignment with COMTRADE is fixed by DEC-121.
 
 See [BEN_FORMAT.md §7](BEN_FORMAT.md).
 
@@ -2687,6 +2704,11 @@ re-confirmed by the TG-FINAL audit):
 - **COMTRADE ingestion**: two-slot `.cfg`/`.dat` upload, parse, engineering-
   type channel classification (backend-computed), ephemeral per-request
   parsing (no event files ever persisted to disk/storage).
+  - DEC-121: a 2013 CFG's declared `time_code` gives timezone-aware
+    times; otherwise times stay naive and are interpreted as
+    Asia/Kuala_Lumpur when compared.
+  - Duplicate channel names bind each descriptor to its own `_1` column.
+  - FLOAT32/BINARY32 DAT remain unsupported.
 - **BEN import (DEC-120, 2026-10-01; awaiting owner UAT).**
   - Upload Recording offers format "BEN" (`.ben`), posting `ben_file` to
     the same `/sources` endpoint as COMTRADE.
