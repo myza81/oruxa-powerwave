@@ -4,9 +4,33 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-01** (Event Reconstruction Slice 2A)
+Last updated: **2026-10-01** (Event Reconstruction renderer design spike)
 
 ## What was most recently done
+
+**Event Reconstruction Slice 3 renderer design spike (2026-10-01).**
+Documentation only, in
+[EVENT_RECONSTRUCTION_RENDERER_DESIGN.md](EVENT_RECONSTRUCTION_RENDERER_DESIGN.md).
+`[PROPOSAL]` — not approved.
+
+- **Audit.** Of 1,293 functions, 225 use `ww.` directly. The core
+  panel/canvas/viewport/digital/ruler functions share one ~312-function
+  web over 44 `ww` fields. `wwFetchChannelRange` already implements the
+  hybrid fetch.
+- **Recommendation.** Option B: extract pure primitives (fetch core,
+  digital intervals/figure, trace/layout base, range math, cursor math)
+  with Waveform wrappers. ER gets its own state/canvas/pipeline.
+- **Time mapping.** One mapping (`source_elapsed + total_offset_s`) with
+  offsets composed in the backend (additive per-source placements in the
+  definition response) and applied by one frontend helper. The fetch
+  strategy is the existing hybrid one.
+- **Proposed sub-slices:** 3A–3F with three UAT checkpoints.
+- **Owner decisions needed:** the option; the provisional panel
+  arrangement; ER unit mode; the backend field. There is also a
+  `scattergl` precision risk to verify in 3C.
+- **No production code changed.**
+
+## Earlier — Event Reconstruction Slice 2A
 
 **Event Reconstruction Slice 2A — channel browser (DEC-126,
 2026-10-01).** Committed on `feat/event-reconstruction` after
