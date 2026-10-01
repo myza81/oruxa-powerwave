@@ -20561,6 +20561,105 @@ only authority. The joined waveforms are not plotted (Slice 3).
 
 ---
 
+## DEC-126 — Event Reconstruction Slice 2A: Waveform-style channel browser per member; selection is local visibility only; presentation stays mastered in Waveform
+
+Date: 2026-10-01
+Status: Approved (owner, Slice 2A task) — implemented on
+`feat/event-reconstruction`; not merged. Pre-renderer: nothing is
+plotted.
+Source: owner task "Slice 2A — Event Reconstruction channel browser /
+bay tree foundation".
+
+### Decision (owner, summarized)
+
+- Each current reconstruction member expands into the familiar Waveform
+  channel hierarchy, with the same grouping rules — never a second
+  interpretation of grouping or calculated-channel ownership.
+- **Waveform remains the only place persistent channel presentation can
+  be edited.** Event Reconstruction shows inherited names and colours
+  read-only and offers no rename, colour, trace-style or
+  calculated-channel editing — the controls are omitted, not disabled.
+- Event Reconstruction owns its own channel selection ("include this
+  channel when plotting exists"), independent of Waveform visibility.
+
+### Implementation (`[FACT]`, `frontend/index.html`)
+
+- **Hierarchy found in Waveform and mirrored.** The Waveform sidebar has
+  **no bay/measurement-group level**:
+  - Recording → Analog Channels → engineering-type subgroups
+    (`ANALOG_GROUP_ORDER`); Digital Channels → classification subgroups
+    (Triggered/Never Triggered/Spare);
+  - plus a workspace-level Calculated Channels section (engineering
+    type, sorted by name).
+
+  Event Reconstruction uses exactly these rules. Bays are not
+  introduced or inferred.
+- **One grouping rule.** The grouping was extracted, unchanged, into
+  `wwGroupChannelsByEngineeringType()` and
+  `wwGroupDigitalChannelsByClassification()`. They are used by
+  Waveform's `renderAnalogGroup()`, `renderDigitalGroup()` and
+  `wwRenderCalculatedChannelsSidebarSection()` (identical output) and by
+  Event Reconstruction.
+- **Calculated channels** are listed under their timing-parent recording
+  (`reference_source_id`) inside the member, grouped by Waveform's
+  calculated rule. That differs from Waveform's workspace-level section
+  because a member is a set of recordings. Read-only; none are created.
+  A selected calculated channel keeps its timing parent
+  (`timingSourceId`).
+- **Tree.**
+  - A member row gets a collapsed "Channels (N selected)" group. Each
+    recording is a `details.source-recording`, with the same
+    `channel-group`/`channel-subgroup`/`table.channels` markup,
+    `renderChannelTable()`, and `analogChannelNameCellHtml()` (name via
+    `wwChannelDisplayName()`, colour via `wwColorForChannel()`).
+  - Digital rows use the same neutral dot and plain name as Waveform,
+    without its cursor badges.
+  - Expansion is Event Reconstruction-local (`data-er-expand-key`,
+    captured/restored on re-render).
+- **Selection.**
+  - `wwErState.selectedChannels` maps a member-scoped key to
+    `{memberId, kind, sourceId, channelName, timingSourceId}`.
+  - Toggled by row click/Enter/Space or a subgroup "Include all/Exclude
+    all", with the same look as Waveform's shown/hidden rows.
+  - Rows use their own classes and `data-er-*` attributes. They never
+    use `.channel-row--toggle`/`.group-toggle-btn`/`data-channel-kind`,
+    which Waveform queries, so Waveform listeners, cursor sweeps and the
+    rename/colour context menu never reach them.
+  - Frontend-only, like Waveform's own visibility. Cleared with the
+    reconstruction; dropped for members no longer in it.
+- **Stale and ineligible.**
+  - A stale member shows no tree ("Channel selection is unavailable until
+    this member is re-confirmed"). Its earlier selections are kept but
+    inert.
+  - `wwErSelectedChannelsForPlotting()` — the Slice 3 entry point —
+    returns selections of current members only.
+  - A re-confirmed member starts with no selection.
+  - Time Groups that are not members (eligible or not) have no tree.
+- **Data.** The member recordings' `GET .../sources/{id}/channels`
+  (cached in `wwErState.channelsBySource`, never Waveform's
+  `ww.sourceChannelsData`) and `GET .../calculated-channels`, on every
+  refresh.
+- **Colour assignment.** `wwColorForChannel()` assigns a channel's
+  colour on first resolution and keeps it in Waveform's own colour map.
+  The Waveform sidebar already resolves every channel when sources
+  load, so Event Reconstruction resolves the same colour and stores
+  nothing of its own.
+- **Unchanged:** no Waveform `ww` access by Event Reconstruction code,
+  no plotting, Slice 0 toolbar controls disabled, Slices 0–2 behaviour.
+
+### Still `[OPEN]`
+
+- **Slice 3 renderer architecture** (`[DECISION MODE: COMPARISON]`).
+  Slice 3 consumes `wwErSelectedChannelsForPlotting()`.
+- **`[OPEN / UAT]` mixed-duration / mixed-sampling-rate navigation** and
+  **initial viewport behaviour.**
+- **Final manual left/right synchronization UX** (Slice 4).
+- **Grouped and multi-axis display** (Slices 6A/6B).
+- **Persistence of the selection** across a page reload (none today,
+  same as Waveform visibility).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

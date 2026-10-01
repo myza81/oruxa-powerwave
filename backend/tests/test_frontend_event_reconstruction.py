@@ -181,7 +181,10 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         state = _between(source, "const wwErState = {", "};")
         keys = re.findall(r"^\s*(\w+):", state.split("{", 1)[1], re.MULTILINE)
         # Workspace state and the last API responses only.
-        assert keys == ["dragMode", "sources", "timeGroups", "definition", "previousCorrections", "loadSeq", "busy"]
+        assert keys == [
+            "dragMode", "sources", "timeGroups", "definition", "previousCorrections",
+            "channelsBySource", "calculatedChannels", "selectedChannels", "loadSeq", "busy",
+        ]
         for forbidden in ("PresentationOverrides", "channelColors", "ColorOverride", "DisplayName =", "new Map(", "localStorage"):
             assert forbidden not in module
         # The only ER-owned persisted value is the left panel width.
@@ -301,3 +304,90 @@ class TestEventReconstructionSelectionWorkflow:
         assert "wwErState.definition.warnings" in notices
         assert "warning.message" in notices
         assert "3600" not in _er_module(_source())
+
+
+class TestEventReconstructionChannelBrowser:
+    """Slice 2A: the member channel tree mirrors the Waveform tree, inherits
+    presentation read-only, and keeps its own selection state."""
+
+    def test_waveform_and_event_reconstruction_share_one_grouping_rule(self):
+        source = _source()
+        analog = _between(source, "function renderAnalogGroup(channels, source, timebase) {", "const DIGITAL_GROUP_LABELS")
+        digital = _between(source, "function renderDigitalGroup(channels, source, timebase) {", "function renderChannelTable(")
+        calculated = _between(source, "function wwRenderCalculatedChannelsSidebarSection() {", "// Phase 5A-UAT (extended Phase 5A-UAT6)")
+        tree = _between(source, "function wwErSourceTreeHtml(member, sourceId, open) {", "function wwErMemberTreeHtml(member)")
+        assert "wwGroupChannelsByEngineeringType(channels)" in analog
+        assert "wwGroupDigitalChannelsByClassification(channels)" in digital
+        assert "wwGroupChannelsByEngineeringType(channels)" in calculated
+        assert "wwGroupChannelsByEngineeringType(analog)" in tree
+        assert "wwGroupDigitalChannelsByClassification(digital)" in tree
+        assert "wwGroupChannelsByEngineeringType(calculated)" in tree
+        # No second grouping implementation anywhere in Event Reconstruction.
+        module = _er_module(source)
+        assert "ANALOG_GROUP_ORDER" not in module and "engineering_type ||" not in module
+
+    def test_tree_reuses_waveform_tree_markup_and_name_cells(self):
+        tree = _between(_source(), "function wwErSourceTreeHtml(member, sourceId, open) {", "function wwErMemberTreeHtml(member)")
+        assert 'class="source-recording"' in tree
+        assert "renderChannelTable(" in tree
+        assert "analogChannelNameCellHtml({ source_id: sourceId }, c)" in tree
+        assert "analogChannelNameCellHtml({ source_id: c.id }, c)" in tree
+        assert '"Analog Channels"' in tree and '"Digital Channels"' in tree and '"Calculated Channels"' in tree
+        helpers = _between(_source(), "function wwErChannelGroupHtml(", "function wwErSourceTreeHtml(")
+        assert 'class="channel-group"' in helpers and 'class="channel-subgroup" open' in helpers
+
+    def test_calculated_channels_sit_under_their_timing_parent(self):
+        tree = _between(_source(), "function wwErSourceTreeHtml(member, sourceId, open) {", "function wwErMemberTreeHtml(member)")
+        assert "wwErState.calculatedChannels.filter((c) => c.reference_source_id === sourceId)" in tree
+        assert 'wwErChannelRowAttrs(member.member_id, "calculated", c.id, c.name, c.reference_source_id)' in tree
+
+    def test_presentation_is_read_only(self):
+        module = _er_module(_source())
+        for forbidden in (
+            "wwSetChannelDisplayName", "wwResetChannelDisplayName", "wwSetChannelColorOverride",
+            "wwResetChannelColorOverride", "wwOpenChannelContextMenu", "contextmenu", 'type="color"',
+            "Rename", "Change colour", '"POST"', "wwCreateCalculatedChannel", "wwDeleteCalculatedChannel",
+        ):
+            assert forbidden not in module
+        assert "wwChannelDisplayName(row.dataset.erSourceId, row.dataset.erChannelName)" in module
+
+    def test_rows_never_use_waveform_row_classes_or_attributes(self):
+        attrs = _between(_source(), "function wwErChannelRowAttrs(", "function wwErDigitalNameCellHtml(")
+        assert 'class="ww-er-channel-row ww-er-channel-row--unselected"' in attrs
+        for forbidden in ("channel-row--toggle", "channel-row--hidden", "data-channel-kind", "data-source-id", "data-channel-name"):
+            assert forbidden not in attrs
+        module = _er_module(_source())
+        assert "group-toggle-btn\"" not in module.replace("ww-er-group-toggle-btn", "")
+        assert "#channelGroups" not in module
+
+    def test_selection_is_event_reconstruction_state_only(self):
+        source = _source()
+        set_row = _between(source, "function wwErSetRowSelected(row, selected) {", "function wwErToggleChannelRow(row)")
+        assert "wwErState.selectedChannels[key] = {" in set_row
+        assert "delete wwErState.selectedChannels[key];" in set_row
+        plotting = _between(source, "function wwErSelectedChannelsForPlotting() {", "function wwErMemberRowHtml(member)")
+        assert "wwErCurrentMembers()" in plotting
+
+    def test_stale_members_get_no_channel_tree(self):
+        row = _between(_source(), "function wwErMemberRowHtml(member) {", "function wwErGroupRowHtml(group)")
+        current_branch, stale_branch = row.split("} else {", 1)
+        assert "wwErMemberTreeHtml(member)" in current_branch
+        assert "wwErMemberTreeHtml" not in stale_branch.split("return '<div", 1)[0]
+        assert "Channel selection is unavailable until this member is re-confirmed." in stale_branch
+
+    def test_expand_state_is_local_to_event_reconstruction(self):
+        render = _between(_source(), "function wwErRender() {", "function wwErHandleAction(button)")
+        assert 'membersPanel.querySelectorAll("details[data-er-expand-key]")' in render
+        assert "wwCaptureChannelTreeExpandState" not in render and "wwRestoreChannelTreeExpandState" not in render
+
+    def test_group_toggle_does_not_toggle_its_details(self):
+        source = _source()
+        wiring = _between(source, 'document.getElementById("wwErSidebar").addEventListener("click", (event) => {', 'document.getElementById("wwErClearBtn")')
+        assert 'button.dataset.erAction === "toggle-channel-group"' in wiring
+        assert "event.preventDefault();" in wiring and "event.stopPropagation();" in wiring
+
+    def test_row_and_group_toggle_styles_are_shared_with_waveform(self):
+        source = _source()
+        assert ".ww-er-channel-row,\n        .channel-row--toggle { cursor: pointer; }" in source
+        assert ".ww-er-channel-row--unselected,\n        .channel-row--hidden { opacity: 0.25; }" in source
+        assert ".ww-er-group-toggle-btn,\n        .group-toggle-btn {" in source

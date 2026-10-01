@@ -4000,8 +4000,11 @@
            ww.digitalDisplayed remain two separate authorities (section
            14/15 of the UAT8 task: digital visibility must never be tied
            to analog layout mode or vice versa). */
+        .ww-er-channel-row,
         .channel-row--toggle { cursor: pointer; }
+        .ww-er-channel-row:hover td,
         .channel-row--toggle:hover td { background: var(--hover-tint); }
+        .ww-er-channel-row:focus-visible,
         .channel-row--toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
         /* Section 8: a channel not currently displayed keeps its real,
            stable color visible (never removed) but visually subdued --
@@ -4012,7 +4015,9 @@
            value itself. Section 19/33: a hover/focus intermediate opacity
            keeps hidden rows discoverable without ever letting them
            disappear entirely or read as "displayed". */
+        .ww-er-channel-row--unselected,
         .channel-row--hidden { opacity: 0.25; }
+        .ww-er-channel-row--unselected:hover, .ww-er-channel-row--unselected:focus-visible,
         .channel-row--hidden:hover, .channel-row--hidden:focus-visible { opacity: 0.55; }
 
         /* "Start new workspace" + its error banner (`#workspaceResetError`,
@@ -4105,6 +4110,7 @@
            established elsewhere in this sidebar (quiet by default, a
            firmer accent only once pressed/all-visible) rather than a
            bespoke style. */
+        .ww-er-group-toggle-btn,
         .group-toggle-btn {
             appearance: none;
             border: 1px solid var(--panel-border);
@@ -4120,12 +4126,15 @@
             flex-shrink: 0;
             white-space: nowrap;
         }
+        .ww-er-group-toggle-btn:hover,
         .group-toggle-btn:hover { color: var(--text); border-color: var(--accent-dim); }
+        .ww-er-group-toggle-btn:focus-visible,
         .group-toggle-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
         /* "Hide all" (every member already visible) reads with a firmer
            accent tint -- the same visual language an already-active
            toggle uses elsewhere in this app, never a second color
            system. */
+        .ww-er-group-toggle-btn[aria-pressed="true"],
         .group-toggle-btn[aria-pressed="true"] { color: var(--accent); border-color: var(--accent-dim); }
         /* Phase 3A-UAT3 (Finding B): the channel table (several columns +
            an action link with `white-space: nowrap`) can need more width
@@ -5382,6 +5391,14 @@
         .ww-er-panel-actions { display: flex; justify-content: flex-end; }
         .ww-er-panel-actions:empty { display: none; }
         #wwErStatus { font-size: 0.65rem; padding: 6px 10px; margin-top: 8px; }
+        /* Slice 2A: the member channel tree reuses the Waveform tree classes
+           (channel-group/channel-subgroup/source-recording/table.channels);
+           these only fit it inside a member row. */
+        .ww-er-member-tree { margin: 2px 0 0; }
+        .ww-er-member-tree > summary { font-size: 0.65rem; }
+        .ww-er-member-tree details.source-recording { margin-bottom: 8px; }
+        .ww-er-member-tree details.source-recording > summary { padding: 7px 10px; }
+        .ww-er-member-tree details.source-recording .source-recording-body { padding: 8px 6px 2px; }
         /* Sticky-toolbar UX task: ONE shared wrapper around `.ww-tg-header`
            + `.ww-tg-toolbar-row` (never two independently-sticky elements
            -- that could separate/overlap during a fast scroll). `position:
@@ -14258,12 +14275,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // re-fetch. `previousCorrections` (new member_id -> corrections of
         // the stale members it replaced) is information only, shown after
         // a re-confirmation and never sent back to the backend.
+        // Slice 2A: `channelsBySource` caches each member recording's
+        // GET .../sources/{id}/channels metadata (immutable after upload;
+        // never Waveform's ww.sourceChannelsData), `calculatedChannels` is
+        // the last GET .../calculated-channels list, and
+        // `selectedChannels` is Event Reconstruction's OWN channel
+        // visibility (selection key -> {memberId, kind, sourceId,
+        // channelName, timingSourceId}) -- never ww.displayed, never a
+        // name/colour, frontend-only like Waveform's own visibility.
         const wwErState = {
             dragMode: "zoom",
             sources: [],
             timeGroups: [],
             definition: null,
             previousCorrections: {},
+            channelsBySource: {},
+            calculatedChannels: [],
+            selectedChannels: {},
             loadSeq: 0,
             busy: false,
         };
@@ -14293,6 +14321,35 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return null;
         }
 
+        // A read of an existing workspace-level resource (channel metadata,
+        // calculated channels) -- the same endpoints Waveform reads, into
+        // Event Reconstruction's own state.
+        async function wwErFetchWorkspaceJson(path) {
+            try {
+                const response = await fetch(apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + path);
+                if (response.ok) return await response.json();
+            } catch (error) {
+                // As wwErFetchJson().
+            }
+            return null;
+        }
+
+        // Channel metadata for every recording of a current member, fetched
+        // once per recording; entries for removed recordings are dropped.
+        async function wwErEnsureMemberChannelsFetched() {
+            const liveIds = new Set(wwErState.sources.map((s) => s.source_id));
+            for (const sourceId of Object.keys(wwErState.channelsBySource)) {
+                if (!liveIds.has(sourceId)) delete wwErState.channelsBySource[sourceId];
+            }
+            const needed = [...new Set(wwErCurrentMembers().flatMap((m) => m.source_ids))]
+                .filter((sourceId) => liveIds.has(sourceId) && !wwErState.channelsBySource[sourceId]);
+            const results = await Promise.all(needed.map((sourceId) =>
+                wwErFetchWorkspaceJson("/sources/" + encodeURIComponent(sourceId) + "/channels")));
+            needed.forEach((sourceId, index) => {
+                if (results[index]) wwErState.channelsBySource[sourceId] = results[index];
+            });
+        }
+
         // A write: null on success, otherwise the backend's message.
         async function wwErSend(method, path, body) {
             try {
@@ -14315,16 +14372,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // an older request is ignored.
         async function wwErRefresh() {
             const seq = ++wwErState.loadSeq;
-            const [sources, timeGroups, definition] = await Promise.all([
+            const [sources, timeGroups, definition, calculatedChannels] = await Promise.all([
                 fetchSourcesList(), wwErFetchJson("/time-groups"), wwErFetchJson("/definition"),
+                wwErFetchWorkspaceJson("/calculated-channels"),
             ]);
             if (seq !== wwErState.loadSeq) return;
             if (sources !== null) wwErState.sources = sources;
             if (timeGroups !== null) wwErState.timeGroups = timeGroups;
             if (definition !== null) wwErState.definition = definition;
+            if (calculatedChannels !== null) wwErState.calculatedChannels = calculatedChannels;
+            await wwErEnsureMemberChannelsFetched();
+            if (seq !== wwErState.loadSeq) return;
             const memberIds = new Set(wwErMembers().map((m) => m.member_id));
             for (const memberId of Object.keys(wwErState.previousCorrections)) {
                 if (!memberIds.has(memberId)) delete wwErState.previousCorrections[memberId];
+            }
+            // Selections of members no longer in the reconstruction are
+            // dropped; a stale member's selections are kept but inert (see
+            // wwErSelectedChannelsForPlotting()).
+            for (const [key, selection] of Object.entries(wwErState.selectedChannels)) {
+                if (!memberIds.has(selection.memberId)) delete wwErState.selectedChannels[key];
             }
             wwErRender();
         }
@@ -14539,6 +14606,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const ok = await wwErMutate("DELETE", "/definition");
             if (ok) {
                 wwErState.previousCorrections = {};
+                wwErState.selectedChannels = {};
                 wwErRender();
             }
         }
@@ -14609,6 +14677,185 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return html;
         }
 
+        // ---- Slice 2A: member channel tree (Waveform hierarchy, ER selection) ----
+        //
+        // Mirrors the Waveform Workspace Sidebar tree: Recording -> Analog
+        // Channels -> engineering-type subgroups, Digital Channels ->
+        // classification subgroups, with the SAME grouping helpers
+        // (wwGroupChannelsByEngineeringType()/
+        // wwGroupDigitalChannelsByClassification()), the same tree classes
+        // and the same name/colour cells (analogChannelNameCellHtml(),
+        // which resolves through wwChannelDisplayName()/
+        // wwColorForChannel()). Calculated channels use Waveform's
+        // calculated-section rule (engineering type, sorted by name) but
+        // are placed under their timing-parent recording
+        // (`reference_source_id`), since a member is a set of
+        // recordings. Read-only presentation: no rename, colour or
+        // calculated-channel editing exists here.
+        //
+        // Rows use Event Reconstruction's own classes (never
+        // .channel-row--toggle/.group-toggle-btn, which Waveform queries)
+        // and toggle wwErState.selectedChannels only.
+
+        function wwErChannelSelectionKey(memberId, sourceId, channelName) {
+            return memberId + "|" + wwChannelKey(sourceId, channelName);
+        }
+
+        function wwErChannelRowAttrs(memberId, kind, sourceId, channelName, timingSourceId) {
+            const key = wwErChannelSelectionKey(memberId, sourceId, channelName);
+            return ' class="ww-er-channel-row ww-er-channel-row--unselected" tabindex="0" role="button" aria-pressed="false"' +
+                ' data-er-channel-key="' + escapeHtml(key) + '"' +
+                ' data-er-member-id="' + escapeHtml(memberId) + '"' +
+                ' data-er-kind="' + escapeHtml(kind) + '"' +
+                ' data-er-source-id="' + escapeHtml(sourceId) + '"' +
+                ' data-er-channel-name="' + escapeHtml(channelName) + '"' +
+                ' data-er-timing-source-id="' + escapeHtml(timingSourceId) + '"';
+        }
+
+        // Digital rows: the same neutral dot + plain name as Waveform's
+        // digital cell, without its Waveform cursor badges.
+        function wwErDigitalNameCellHtml(channel) {
+            return '<span class="channel-name-cell">' +
+                '<span class="channel-color-dot channel-color-dot--neutral" aria-hidden="true"></span>' +
+                '<span class="channel-name-text">' + escapeHtml(channel.name) + "</span>" +
+                "</span>";
+        }
+
+        function wwErChannelGroupHtml(expandKey, label, count, bodyHtml, open) {
+            return '<details class="channel-group"' + (open ? " open" : "") + ' data-er-expand-key="' + escapeHtml(expandKey) + '">' +
+                '<summary><span class="chevron">&#9656;</span>' + escapeHtml(label) +
+                ' <span class="count-badge">(' + count + ")</span></summary>" +
+                '<div class="group-body">' + bodyHtml + "</div></details>";
+        }
+
+        function wwErSubgroupHtml(expandKey, label, count, tableHtml) {
+            return '<details class="channel-subgroup" open data-er-expand-key="' + escapeHtml(expandKey) + '">' +
+                '<summary><span class="chevron">&#9656;</span>' + escapeHtml(label) +
+                ' <span class="count-badge">(' + count + ")</span>" +
+                ' <button type="button" class="ww-er-group-toggle-btn" data-er-action="toggle-channel-group" aria-pressed="false">Include all</button>' +
+                "</summary>" +
+                '<div class="group-body">' + tableHtml + "</div></details>";
+        }
+
+        function wwErSourceTreeHtml(member, sourceId, open) {
+            const data = wwErState.channelsBySource[sourceId];
+            const source = wwErState.sources.find((s) => s.source_id === sourceId);
+            const base = "member:" + member.member_id + ":source:" + sourceId;
+            let body;
+            if (!data) {
+                body = '<p class="empty-state">Could not load channels for this recording.</p>';
+            } else {
+                const analog = data.analog_channels || [];
+                const digital = data.digital_channels || [];
+                const analogBody = analog.length
+                    ? '<div class="subgroup-list">' + wwGroupChannelsByEngineeringType(analog).map(({ type, channels }) =>
+                        wwErSubgroupHtml(base + ":analog:" + type, type, channels.length, renderChannelTable(channels, [
+                            ["Channel", (c) => analogChannelNameCellHtml({ source_id: sourceId }, c), { raw: true }],
+                            ["Phase", (c) => c.phase || "—"],
+                        ], null, (c) => wwErChannelRowAttrs(member.member_id, "analog", sourceId, c.name, sourceId)))).join("") + "</div>"
+                    : '<p class="empty-state">No analog channels.</p>';
+                const digitalBody = digital.length
+                    ? '<div class="subgroup-list">' + wwGroupDigitalChannelsByClassification(digital).map(({ group, channels }) =>
+                        wwErSubgroupHtml(base + ":digital:" + group, DIGITAL_GROUP_LABELS[group], channels.length, renderChannelTable(channels, [
+                            ["Channel", (c) => wwErDigitalNameCellHtml(c), { raw: true }],
+                        ], null, (c) => wwErChannelRowAttrs(member.member_id, "digital", sourceId, c.name, sourceId)))).join("") + "</div>"
+                    : '<p class="empty-state">No digital channels.</p>';
+                const calculated = wwErState.calculatedChannels.filter((c) => c.reference_source_id === sourceId);
+                const calculatedHtml = calculated.length
+                    ? wwErChannelGroupHtml(base + ":calculated", "Calculated Channels", calculated.length,
+                        '<div class="subgroup-list">' + wwGroupChannelsByEngineeringType(calculated).map(({ type, channels }) => {
+                            const sorted = channels.slice().sort((a, b) => (a.name < b.name ? -1 : 1));
+                            return wwErSubgroupHtml(base + ":calculated:" + type, type, sorted.length, renderChannelTable(sorted, [
+                                ["Channel", (c) => analogChannelNameCellHtml({ source_id: c.id }, c), { raw: true }],
+                            ], null, (c) => wwErChannelRowAttrs(member.member_id, "calculated", c.id, c.name, c.reference_source_id)));
+                        }).join("") + "</div>", true)
+                    : "";
+                body = wwErChannelGroupHtml(base + ":analog", "Analog Channels", analog.length, analogBody, true) +
+                    wwErChannelGroupHtml(base + ":digital", "Digital Channels", digital.length, digitalBody, false) +
+                    calculatedHtml;
+            }
+            return '<details class="source-recording" data-er-expand-key="' + escapeHtml(base) + '"' + (open ? " open" : "") + ">" +
+                '<summary><span class="chevron">&#9656;</span>' +
+                    '<span class="source-recording-header-text">' +
+                        '<span class="source-recording-name">' + escapeHtml(wwErSourceName(sourceId)) + "</span>" +
+                        (source ? '<span class="source-recording-meta">' + wwFormatSourceSummaryLine(source) + "</span>" : "") +
+                    "</span>" +
+                "</summary>" +
+                '<div class="source-recording-body">' + body + "</div></details>";
+        }
+
+        // Collapsed by default: the member row stays compact until the
+        // engineer opens its channels.
+        function wwErMemberTreeHtml(member) {
+            return '<details class="channel-group ww-er-member-tree" data-er-expand-key="member:' + escapeHtml(member.member_id) + '">' +
+                '<summary><span class="chevron">&#9656;</span>Channels <span class="count-badge ww-er-selected-count">(0 selected)</span></summary>' +
+                '<div class="group-body">' +
+                    member.source_ids.map((sourceId) => wwErSourceTreeHtml(member, sourceId, member.source_ids.length === 1)).join("") +
+                "</div></details>";
+        }
+
+        function wwErSetRowSelected(row, selected) {
+            const key = row.dataset.erChannelKey;
+            if (selected) {
+                wwErState.selectedChannels[key] = {
+                    memberId: row.dataset.erMemberId,
+                    kind: row.dataset.erKind,
+                    sourceId: row.dataset.erSourceId,
+                    channelName: row.dataset.erChannelName,
+                    timingSourceId: row.dataset.erTimingSourceId,
+                };
+            } else {
+                delete wwErState.selectedChannels[key];
+            }
+        }
+
+        function wwErToggleChannelRow(row) {
+            wwErSetRowSelected(row, !wwErState.selectedChannels[row.dataset.erChannelKey]);
+            wwErSyncChannelSelectionDom();
+        }
+
+        function wwErToggleChannelGroup(button) {
+            const rows = Array.from(button.closest("details").querySelectorAll("tr.ww-er-channel-row"));
+            const allSelected = rows.length > 0 && rows.every((row) => wwErState.selectedChannels[row.dataset.erChannelKey]);
+            for (const row of rows) wwErSetRowSelected(row, !allSelected);
+            wwErSyncChannelSelectionDom();
+        }
+
+        // Paints selection state onto the already-rendered tree (rows,
+        // group buttons, per-member counts) without rebuilding it.
+        function wwErSyncChannelSelectionDom() {
+            const panel = document.getElementById("wwErMembersPanel");
+            for (const row of panel.querySelectorAll("tr.ww-er-channel-row")) {
+                const selected = !!wwErState.selectedChannels[row.dataset.erChannelKey];
+                row.classList.toggle("ww-er-channel-row--unselected", !selected);
+                row.setAttribute("aria-pressed", String(selected));
+                const label = (selected ? "Exclude " : "Include ") +
+                    wwChannelDisplayName(row.dataset.erSourceId, row.dataset.erChannelName) + " in the reconstruction";
+                row.setAttribute("aria-label", label);
+                row.setAttribute("title", label);
+            }
+            for (const button of panel.querySelectorAll(".ww-er-group-toggle-btn")) {
+                const rows = Array.from(button.closest("details").querySelectorAll("tr.ww-er-channel-row"));
+                const allSelected = rows.length > 0 && rows.every((row) => wwErState.selectedChannels[row.dataset.erChannelKey]);
+                button.setAttribute("aria-pressed", String(allSelected));
+                button.textContent = allSelected ? "Exclude all" : "Include all";
+            }
+            for (const tree of panel.querySelectorAll("details.ww-er-member-tree")) {
+                const count = Array.from(tree.querySelectorAll("tr.ww-er-channel-row"))
+                    .filter((row) => wwErState.selectedChannels[row.dataset.erChannelKey]).length;
+                tree.querySelector(".ww-er-selected-count").textContent = "(" + count + " selected)";
+            }
+        }
+
+        // What Slice 3 will plot: selections of CURRENT members only -- a
+        // stale member's selections stay stored but are never returned.
+        function wwErSelectedChannelsForPlotting() {
+            const current = new Set(wwErCurrentMembers().map((m) => m.member_id));
+            return Object.values(wwErState.selectedChannels)
+                .filter((selection) => current.has(selection.memberId))
+                .map((selection) => Object.assign({}, selection));
+        }
+
         function wwErMemberRowHtml(member) {
             const isCurrent = member.status === "current";
             const group = isCurrent ? wwErGroupById(member.current_group_id) : null;
@@ -14639,9 +14886,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     (member.is_reference ? "" : '<div class="ww-er-row-actions">' +
                         wwErActionButton("make-reference", "Make reference", ' data-member-id="' + escapeHtml(member.member_id) + '"') +
                         wwErActionButton("remove-member", "Remove", ' data-member-id="' + escapeHtml(member.member_id) + '"', blocked) +
-                    "</div>");
+                    "</div>") +
+                    wwErMemberTreeHtml(member);
             } else {
-                body = "<span>Correction " + escapeHtml(wwErFormatCorrection(member.correction_s)) + " (kept, not applied)</span>";
+                // No channel tree: a stale member's channels must never look
+                // selectable as if it were current.
+                body = "<span>Correction " + escapeHtml(wwErFormatCorrection(member.correction_s)) + " (kept, not applied)</span>" +
+                    "<span>Channel selection is unavailable until this member is re-confirmed.</span>";
             }
             return '<div class="ww-er-source-row ww-er-member-row" data-member-id="' + escapeHtml(member.member_id) + '" data-member-status="' + escapeHtml(member.status) + '">' +
                 '<div class="ww-er-source-row-header">' +
@@ -14693,7 +14944,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const members = wwErMembers();
             document.getElementById("wwErMemberCountBadge").textContent = "(" + members.length + ")";
             document.getElementById("wwErNotices").innerHTML = wwErNoticesHtml();
-            document.getElementById("wwErMembersPanel").innerHTML = members.map(wwErMemberRowHtml).join("");
+            // Expand/collapse state is Event Reconstruction's own: captured
+            // and restored around every rebuild, never shared with the
+            // Waveform tree.
+            const membersPanel = document.getElementById("wwErMembersPanel");
+            const expanded = {};
+            for (const el of membersPanel.querySelectorAll("details[data-er-expand-key]")) expanded[el.dataset.erExpandKey] = el.open;
+            membersPanel.innerHTML = members.map(wwErMemberRowHtml).join("");
+            for (const el of membersPanel.querySelectorAll("details[data-er-expand-key]")) {
+                if (Object.prototype.hasOwnProperty.call(expanded, el.dataset.erExpandKey)) el.open = expanded[el.dataset.erExpandKey];
+            }
+            wwErSyncChannelSelectionDom();
             const clearBtn = document.getElementById("wwErClearBtn");
             clearBtn.hidden = !wwErDefined();
             clearBtn.disabled = wwErState.busy;
@@ -21608,24 +21869,32 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // table per UAT feedback -- they remain in the API response
         // (data.analog_channels still carries them) for any future
         // channel-detail view, just not rendered here.
+        // The ONE engineering-type grouping rule for every analog-like
+        // channel browser (Waveform source trees, the Waveform Calculated
+        // Channels section, Event Reconstruction): the backend-computed
+        // `engineering_type` (missing -> "Undefined"), in
+        // ANALOG_GROUP_ORDER, any other type afterwards in first-seen
+        // order. Channel order inside a group is the input order.
+        function wwGroupChannelsByEngineeringType(channels) {
+            const byType = new Map();
+            for (const ch of channels) {
+                const type = ch.engineering_type || "Undefined";
+                if (!byType.has(type)) byType.set(type, []);
+                byType.get(type).push(ch);
+            }
+            const orderedTypes = ANALOG_GROUP_ORDER.filter((t) => byType.has(t))
+                .concat([...byType.keys()].filter((t) => !ANALOG_GROUP_ORDER.includes(t)));
+            return orderedTypes.map((type) => ({ type, channels: byType.get(type) }));
+        }
+
         function renderAnalogGroup(channels, source, timebase) {
             const total = channels.length;
             let body;
             if (total === 0) {
                 body = '<p class="empty-state">No analog channels.</p>';
             } else {
-                const byType = new Map();
-                for (const ch of channels) {
-                    const type = ch.engineering_type || "Undefined";
-                    if (!byType.has(type)) byType.set(type, []);
-                    byType.get(type).push(ch);
-                }
-                const orderedTypes = ANALOG_GROUP_ORDER.filter((t) => byType.has(t))
-                    .concat([...byType.keys()].filter((t) => !ANALOG_GROUP_ORDER.includes(t)));
-
                 body = '<div class="subgroup-list">';
-                for (const type of orderedTypes) {
-                    const group = byType.get(type);
+                for (const { type, channels: group } of wwGroupChannelsByEngineeringType(channels)) {
                     body += '<details class="channel-subgroup" open data-subgroup="' + escapeHtml(type) + '"' +
                         ' data-expand-key="source:' + escapeHtml(source.source_id) + ':group:analog:subgroup:' + escapeHtml(type) + '">';
                     body += '<summary><span class="chevron">&#9656;</span>' + escapeHtml(type) +
@@ -21686,22 +21955,29 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // underlying `normal_state` field is untouched everywhere else --
         // backend domain model, API response, this very function's own
         // `channels` argument -- this is a UI presentation removal only).
+        // The ONE digital grouping rule (Waveform source trees, Event
+        // Reconstruction): backend-computed `classification` (missing ->
+        // never_triggered), in DIGITAL_GROUP_ORDER only, each group sorted
+        // by wwDigitalSortChannels().
+        function wwGroupDigitalChannelsByClassification(channels) {
+            const byGroup = new Map();
+            for (const ch of channels) {
+                const group = ch.classification || "never_triggered";
+                if (!byGroup.has(group)) byGroup.set(group, []);
+                byGroup.get(group).push(ch);
+            }
+            return DIGITAL_GROUP_ORDER.filter((group) => byGroup.has(group))
+                .map((group) => ({ group, channels: wwDigitalSortChannels(byGroup.get(group)) }));
+        }
+
         function renderDigitalGroup(channels, source, timebase) {
             const total = channels.length;
             let body;
             if (total === 0) {
                 body = '<p class="empty-state">No digital channels.</p>';
             } else {
-                const byGroup = new Map();
-                for (const ch of channels) {
-                    const group = ch.classification || "never_triggered";
-                    if (!byGroup.has(group)) byGroup.set(group, []);
-                    byGroup.get(group).push(ch);
-                }
                 body = '<div class="subgroup-list">';
-                for (const group of DIGITAL_GROUP_ORDER) {
-                    if (!byGroup.has(group)) continue;
-                    const sorted = wwDigitalSortChannels(byGroup.get(group));
+                for (const { group, channels: sorted } of wwGroupDigitalChannelsByClassification(channels)) {
                     body += '<details class="channel-subgroup" open data-subgroup="' + escapeHtml(group) + '"' +
                         ' data-expand-key="source:' + escapeHtml(source.source_id) + ':group:digital:subgroup:' + escapeHtml(group) + '">';
                     body += '<summary><span class="chevron">&#9656;</span>' + escapeHtml(DIGITAL_GROUP_LABELS[group]) +
@@ -33868,18 +34144,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Section 21: a calculated channel created before this field
             // existed (or any other missing/unrecognized value) safely
             // falls back to Undefined -- never crashes the renderer.
-            const byType = new Map();
-            for (const calc of channels) {
-                const type = calc.engineering_type || "Undefined";
-                if (!byType.has(type)) byType.set(type, []);
-                byType.get(type).push(calc);
-            }
-            const orderedTypes = ANALOG_GROUP_ORDER.filter((t) => byType.has(t))
-                .concat([...byType.keys()].filter((t) => !ANALOG_GROUP_ORDER.includes(t)));
-
             let subgroupsHtml = '<div class="subgroup-list">';
-            for (const type of orderedTypes) {
-                const group = byType.get(type).sort((a, b) => (a.name < b.name ? -1 : 1));
+            for (const { type, channels: typed } of wwGroupChannelsByEngineeringType(channels)) {
+                const group = typed.sort((a, b) => (a.name < b.name ? -1 : 1));
                 subgroupsHtml += '<details class="channel-subgroup" open data-subgroup="' + escapeHtml(type) + '">';
                 subgroupsHtml += '<summary><span class="chevron">&#9656;</span>' + escapeHtml(type) +
                     ' <span class="count-badge">(' + group.length + ')</span>' +
@@ -48078,9 +48345,29 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // member/Time Group action button (re-rendered after each change).
         document.getElementById("wwErSidebar").addEventListener("click", (event) => {
             const button = event.target.closest("button[data-er-action]");
-            if (button && !button.disabled) wwErHandleAction(button);
+            if (button) {
+                // Slice 2A: a subgroup's Include all/Exclude all button
+                // sits inside a <summary>; like Waveform's own group
+                // toggle, it must not also open/close that <details>.
+                if (button.dataset.erAction === "toggle-channel-group") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    wwErToggleChannelGroup(button);
+                } else if (!button.disabled) {
+                    wwErHandleAction(button);
+                }
+                return;
+            }
+            const row = event.target.closest("tr.ww-er-channel-row");
+            if (row) wwErToggleChannelRow(row);
         });
         document.getElementById("wwErSidebar").addEventListener("keydown", (event) => {
+            const row = event.target.closest("tr.ww-er-channel-row");
+            if (row && event.target === row && (event.key === "Enter" || event.key === " ")) {
+                event.preventDefault();
+                wwErToggleChannelRow(row);
+                return;
+            }
             if (event.key !== "Enter" || !event.target.matches("input[data-er-correction-input]")) return;
             event.preventDefault();
             if (!wwErState.busy) wwErSetCorrection(event.target.dataset.memberId, event.target);

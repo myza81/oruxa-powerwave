@@ -10,14 +10,15 @@
 > superseded claims, don't append to them.
 
 Last meaningful update: **2026-10-01** — **Event Reconstruction Slices
-0–2** (DEC-123 frontend shell, DEC-124 domain model/service/API,
-DEC-125 selection workflow), on branch `feat/event-reconstruction`, not
-merged. The feature is not complete (no plotting yet). Earlier the same day:
+0–2A** (DEC-123 frontend shell, DEC-124 domain model/service/API,
+DEC-125 selection workflow, DEC-126 channel browser), on branch
+`feat/event-reconstruction`, not merged. The feature is not complete
+(no plotting yet). Earlier the same day:
 **Native BEN import: owner UAT passed; merged to `main`** (DEC-119
 parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
 DEC-122 display timezone).
 
-**Event Reconstruction (DEC-123, DEC-124, DEC-125) — Slices 0–2.**
+**Event Reconstruction (DEC-123, DEC-124, DEC-125, DEC-126) — Slices 0–2A.**
 
 - **Frontend (Slices 0 and 2).** A main-menu entry immediately after
   Waveform opens `#pageEventReconstruction`.
@@ -30,6 +31,15 @@ DEC-122 display timezone).
       applied", plus "Re-confirm with current Time Groups" (new members
       start at 0) or "Remove stale members";
     - large-gap warning notices, and Clear with a confirmation.
+  - Each current member expands into the Waveform channel hierarchy
+    (DEC-126): Recording → Analog (engineering type) / Digital
+    (classification) / Calculated Channels (under their timing-parent
+    recording), using the same grouping helpers and name/colour cells.
+    Names and colours are inherited read-only from Waveform; there is no
+    rename/colour editing. Row/"Include all" selection is Event
+    Reconstruction's own local visibility (`wwErState.selectedChannels`),
+    never `ww.displayed`. Stale members show no tree.
+    `wwErSelectedChannelsForPlotting()` is what Slice 3 will consume.
   - The main area keeps the Slice 0 toolbar (Box Zoom / Pan; Zoom In /
     Zoom Out / Reset Time View disabled) and an empty "Reconstruction
     Timeline" canvas that only states what is selected. **Nothing is

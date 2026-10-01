@@ -206,6 +206,191 @@ test.describe("Event Reconstruction -- Slice 0 shell", () => {
   });
 });
 
+async function sourceIdFor(page, station) {
+  const sources = await api(page, "/sources");
+  return sources.find((s) => s.station_name === station).source_id;
+}
+
+async function createCalculatedChannel(page, sourceId) {
+  const resp = await page.request.post(`${BACKEND}/api/v1/workspaces/${await workspaceId(page)}/calculated-channels`, {
+    data: { name: "-VA", operation: "reverse_polarity", inputs: [{ kind: "source", source_id: sourceId, channel_name: "VA" }], parameters: {} },
+  });
+  expect(resp.status()).toBe(201);
+  return resp.json();
+}
+
+async function openMemberTree(page, station) {
+  const row = memberRow(page, station);
+  const tree = row.locator("details.ww-er-member-tree");
+  if (!(await tree.evaluate((el) => el.open))) await tree.locator(":scope > summary").click();
+  return row;
+}
+
+test.describe("Event Reconstruction -- Slice 2A channel browser", () => {
+  test("member tree mirrors the Waveform tree and inherits names and colours read-only", async ({ page }) => {
+    const consoleErrors = collectConsoleErrors(page);
+    await page.goto("/index.html");
+    await upload(page, "STN_A", "10:00:00");
+    await upload(page, "STN_B", "10:00:10");
+    const sourceA = await sourceIdFor(page, "STN_A");
+    const calc = await createCalculatedChannel(page, sourceA);
+
+    // Waveform is the master of presentation: rename/recolour there.
+    await page.evaluate((sid) => {
+      wwSetChannelDisplayName(sid, "VB", "Bus VB renamed");
+      wwSetChannelColorOverride(sid, "VB", "#123456");
+    }, sourceA);
+    const waveformSubgroups = await page.evaluate((sid) =>
+      Array.from(document.querySelectorAll(`#channelGroups details.source-recording[data-source-id="${sid}"] details.channel-subgroup`))
+        .map((d) => d.dataset.subgroup + ":" + d.querySelectorAll("tr").length), sourceA);
+
+    await openEventReconstruction(page);
+    await addGroup(page, "STN_A");
+    await addGroup(page, "STN_B");
+    const rowA = await openMemberTree(page, "STN_A");
+
+    // Same hierarchy and grouping as Waveform for this recording.
+    const tree = rowA.locator("details.ww-er-member-tree");
+    await expect(tree.locator("details.source-recording")).toHaveCount(1);
+    await expect(tree.locator("details.channel-group > summary")).toContainText(["Analog Channels", "Digital Channels", "Calculated Channels"]);
+    const erSubgroups = await tree.evaluate((root) =>
+      Array.from(root.querySelectorAll("details.channel-group"))
+        .filter((g) => !g.classList.contains("ww-er-member-tree") && !/Calculated Channels/.test(g.querySelector("summary").textContent))
+        .flatMap((g) => Array.from(g.querySelectorAll("details.channel-subgroup")))
+        .map((d) => d.querySelector("summary").childNodes[1].textContent.trim() + ":" + d.querySelectorAll("tr").length));
+    const asLabels = (entries) => entries.map((e) => e.replace(/^triggered:/, "Triggered:").replace(/^never_triggered:/, "Never Triggered:").replace(/^spare:/, "Spare:"));
+    expect(erSubgroups).toEqual(asLabels(waveformSubgroups));
+
+    // Calculated channel: under its timing parent only.
+    const calcRow = rowA.locator('tr.ww-er-channel-row[data-er-kind="calculated"]');
+    await expect(calcRow).toHaveCount(1);
+    await expect(calcRow).toHaveAttribute("data-er-timing-source-id", calc.reference_source_id);
+    await expect(calcRow).toContainText("-VA");
+    const rowB = await openMemberTree(page, "STN_B");
+    await expect(rowB.locator('tr.ww-er-channel-row[data-er-kind="calculated"]')).toHaveCount(0);
+
+    // Inherited name and colour, through Waveform's resolvers.
+    const renamed = rowA.locator('tr.ww-er-channel-row[data-er-channel-name="VB"]');
+    await expect(renamed).toContainText("Bus VB renamed");
+    await expect(renamed.locator(".channel-color-dot")).toHaveAttribute("style", /#123456/);
+    const vaColour = await page.evaluate((sid) => wwColorForChannel(sid, "VA"), sourceA);
+    await expect(rowA.locator('tr.ww-er-channel-row[data-er-channel-name="VA"] .channel-color-dot')).toHaveAttribute("style", new RegExp(vaColour));
+
+    // A later Waveform change is inherited on refresh -- nothing is copied.
+    await page.evaluate((sid) => wwSetChannelDisplayName(sid, "VB", "Bus VB again"), sourceA);
+    await page.locator("#mainNavRecordingsBtn").click();
+    await openEventReconstruction(page);
+    await openMemberTree(page, "STN_A");
+    await expect(memberRow(page, "STN_A").locator('tr.ww-er-channel-row[data-er-channel-name="VB"]')).toContainText("Bus VB again");
+
+    // No property editing from Event Reconstruction.
+    await memberRow(page, "STN_A").locator('tr.ww-er-channel-row[data-er-channel-name="VA"]').click({ button: "right" });
+    await expect(page.locator("#wwChannelContextMenu")).toBeHidden();
+    await expect(page.locator("#pageEventReconstruction").getByText(/Rename|Change colou?r/)).toHaveCount(0);
+    await expect(page.locator('#pageEventReconstruction input[type="color"]')).toHaveCount(0);
+
+    expect(consoleErrors).toEqual([]);
+  });
+
+  test("channel selection is Event Reconstruction state only and never changes Waveform", async ({ page }) => {
+    const consoleErrors = collectConsoleErrors(page);
+    await page.goto("/index.html");
+    await upload(page, "STN_A", "10:00:00");
+    await upload(page, "STN_B", "10:00:10");
+    const sourceA = await sourceIdFor(page, "STN_A");
+    const calc = await createCalculatedChannel(page, sourceA);
+
+    // One channel displayed in Waveform first.
+    await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
+    await expect(page.locator("#workspaceRow")).toBeVisible();
+    const wfRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
+    if ((await wfRow.getAttribute("aria-pressed")) !== "true") await wfRow.click();
+    await expect(wfRow).toHaveAttribute("aria-pressed", "true");
+    const waveformBefore = await page.evaluate(() => ({
+      displayed: Array.from(ww.displayed.keys()).sort(),
+      digital: Array.from(ww.digitalDisplayed.keys()).sort(),
+      expanded: Array.from(document.querySelectorAll("#channelGroups details[data-expand-key]")).map((d) => d.dataset.expandKey + "=" + d.open),
+    }));
+    const calcsBefore = await api(page, "/calculated-channels");
+
+    await openEventReconstruction(page);
+    await addGroup(page, "STN_A");
+    await addGroup(page, "STN_B");
+    const rowA = await openMemberTree(page, "STN_A");
+
+    // Row toggle and group "Include all".
+    const vaRow = rowA.locator('tr.ww-er-channel-row[data-er-channel-name="VA"]');
+    await expect(vaRow).toHaveAttribute("aria-pressed", "false");
+    await vaRow.click();
+    await expect(vaRow).toHaveAttribute("aria-pressed", "true");
+    await expect(vaRow).not.toHaveClass(/ww-er-channel-row--unselected/);
+    const currentSubgroup = rowA.locator("details.channel-subgroup", { has: page.locator('tr[data-er-channel-name="IA"]') });
+    await currentSubgroup.locator(".ww-er-group-toggle-btn").click();
+    await expect(currentSubgroup).toHaveAttribute("open", "");
+    await expect(currentSubgroup.locator(".ww-er-group-toggle-btn")).toHaveText("Exclude all");
+    await rowA.locator('tr.ww-er-channel-row[data-er-kind="calculated"]').click();
+    await vaRow.press("Space");
+    await expect(vaRow).toHaveAttribute("aria-pressed", "false");
+    await expect(rowA.locator(".ww-er-selected-count")).toHaveText("(2 selected)");
+
+    // Collapsing in Event Reconstruction never touches the Waveform tree.
+    await rowA.locator('details.channel-group[data-er-expand-key$=":digital"] > summary').click();
+
+    const selections = await page.evaluate(() => wwErSelectedChannelsForPlotting());
+    expect(selections.map((s) => s.kind + ":" + s.channelName).sort()).toEqual(["analog:IA", "calculated:-VA"]);
+    const calcSelection = selections.find((s) => s.kind === "calculated");
+    expect(calcSelection.sourceId).toBe(calc.id);
+    expect(calcSelection.timingSourceId).toBe(calc.reference_source_id);
+
+    const waveformAfter = await page.evaluate(() => ({
+      displayed: Array.from(ww.displayed.keys()).sort(),
+      digital: Array.from(ww.digitalDisplayed.keys()).sort(),
+      expanded: Array.from(document.querySelectorAll("#channelGroups details[data-expand-key]")).map((d) => d.dataset.expandKey + "=" + d.open),
+    }));
+    expect(waveformAfter).toEqual(waveformBefore);
+    expect(await api(page, "/calculated-channels")).toEqual(calcsBefore);
+
+    // Selections survive a page round trip; Waveform keeps its own display.
+    await page.locator("#mainNavWaveformBtn").click();
+    await expect(wfRow).toHaveAttribute("aria-pressed", "true");
+    await openEventReconstruction(page);
+    await expect(memberRow(page, "STN_A").locator(".ww-er-selected-count")).toHaveText("(2 selected)");
+
+    expect(consoleErrors).toEqual([]);
+  });
+
+  test("stale members lose their channel tree and their selections are not plotted; ineligible groups have no tree", async ({ page }) => {
+    await page.goto("/index.html");
+    await upload(page, "STN_BASE", "10:00:00");
+    await upload(page, "STN_REF", "10:00:10");
+    await openEventReconstruction(page);
+    await addGroup(page, "STN_REF");
+    await addGroup(page, "STN_BASE");
+    const base = await openMemberTree(page, "STN_BASE");
+    await base.locator('tr.ww-er-channel-row[data-er-channel-name="VA"]').click();
+    expect((await page.evaluate(() => wwErSelectedChannelsForPlotting())).length).toBe(1);
+
+    await upload(page, "STN_OVERLAP", "10:00:00.005");
+    await openEventReconstruction(page);
+    const stale = memberRow(page, "STN_BASE");
+    await expect(stale).toHaveAttribute("data-member-status", "stale");
+    await expect(stale.locator("details.ww-er-member-tree")).toHaveCount(0);
+    await expect(stale.locator("tr.ww-er-channel-row")).toHaveCount(0);
+    await expect(stale).toContainText("Channel selection is unavailable until this member is re-confirmed.");
+    expect(await page.evaluate(() => wwErSelectedChannelsForPlotting())).toEqual([]);
+
+    // Time Groups that are not members (eligible or not) never get a tree.
+    await expect(page.locator("#wwErGroupsPanel tr.ww-er-channel-row")).toHaveCount(0);
+    await expect(page.locator("#wwErGroupsPanel details.ww-er-member-tree")).toHaveCount(0);
+
+    // Re-confirmation starts the new member with no selection.
+    await page.locator('#wwErNotices button[data-er-action="reconfirm-stale"]').click();
+    await expect(memberRow(page, "STN_OVERLAP")).toHaveAttribute("data-member-status", "current");
+    await expect(memberRow(page, "STN_OVERLAP").locator(".ww-er-selected-count")).toHaveText("(0 selected)");
+    expect(await page.evaluate(() => wwErSelectedChannelsForPlotting())).toEqual([]);
+  });
+});
+
 test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
   test("Time Groups are listed chronologically; ineligible groups show the backend reason and cannot be added", async ({ page }) => {
     const consoleErrors = collectConsoleErrors(page);

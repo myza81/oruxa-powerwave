@@ -4,9 +4,41 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-01** (Event Reconstruction Slice 2)
+Last updated: **2026-10-01** (Event Reconstruction Slice 2A)
 
 ## What was most recently done
+
+**Event Reconstruction Slice 2A — channel browser (DEC-126,
+2026-10-01).** Committed on `feat/event-reconstruction` after
+`00a47a6`. Not pushed or merged; nothing is plotted yet.
+
+- **Frontend only** (`frontend/index.html`). Each current member
+  expands into the Waveform channel hierarchy (Recording → Analog /
+  Digital / Calculated Channels). The Waveform tree has no bay level,
+  so none was added. Names and colours are inherited read-only through
+  `analogChannelNameCellHtml()` → `wwChannelDisplayName()`/
+  `wwColorForChannel()`; there is no editing.
+- **Selection.** `wwErState.selectedChannels` is Event Reconstruction's
+  own visibility; Slice 3 reads `wwErSelectedChannelsForPlotting()`
+  (current members only). Stale members show no tree.
+- **Small Waveform refactor (identical output).** The grouping rules
+  were extracted into `wwGroupChannelsByEngineeringType()` and
+  `wwGroupDigitalChannelsByClassification()`, now used by
+  `renderAnalogGroup()`, `renderDigitalGroup()`,
+  `wwRenderCalculatedChannelsSidebarSection()` and Event Reconstruction.
+- **Tests.**
+  - `test_frontend_event_reconstruction.py`: 42 static checks.
+  - `event-reconstruction.spec.js`: 13 tests (3 new for Slice 2A).
+  - Full backend: 6213 passed, 40 skipped (`ben_reference`). Full
+    browser: 381/381 passed.
+- **Testing note.** The owner's `uvicorn --reload` on port 8000 restarts
+  (and wipes in-memory workspaces) whenever a file under `backend/`
+  changes, including tests. Editing a backend test during a browser run
+  once caused an `ECONNRESET`; don't edit `backend/` while a browser run
+  is in progress.
+- **Next.** Slice 3 needs the renderer-architecture comparison first.
+
+## Earlier — Event Reconstruction Slice 2
 
 **Event Reconstruction Slice 2 — selection workflow (DEC-125,
 2026-10-01).** Committed on `feat/event-reconstruction` after
