@@ -4,9 +4,59 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-01** (Event Reconstruction Slice 3B)
+Last updated: **2026-10-02** (Event Reconstruction record model, DEC-128)
 
 ## What was most recently done
+
+**Event Reconstruction record model (DEC-128, 2026-10-02).** This is a
+UAT correction made before Slice 3C. Separately imported "BAHS 275kV"
+and "BTGH" had appeared as one member, because Event Reconstruction
+members were Waveform Time Groups, and overlapping records share a Time
+Group.
+
+- **Rule.** Waveform continues to use its existing Time Group model.
+  Event Reconstruction uses independent imported event/record
+  identities as its atomic members. Timestamp overlap alone never
+  merges Event Reconstruction members.
+- **Atomic member.** One record = one imported source (`record_id` =
+  `source_id`); there is no multi-source package entity. Eligibility,
+  reference, corrections, stale detection (record removed), gaps,
+  `source_timings` and the channel tree are all per record.
+- **Timing.** `total = within_record_offset_s (0) +
+  reconstruction_record_offset_s`. Absolute time enters once. Waveform
+  Synchronise Sources corrections are not applied by Event
+  Reconstruction.
+- **API.**
+  - `GET /records`;
+  - `PUT /definition {record_ids, reference_record_id}`;
+  - `PUT /definition/reference {record_id}`;
+  - `PUT|DELETE /definition/records/{record_id}/correction`;
+  - errors `record_not_eligible` and `source_not_found`.
+
+  The full before/after table is in DEC-128.
+- **Frontend.** A "Records" list. Re-confirmation is removed; stale
+  members are resolved with "Remove stale members". Selections are keyed
+  by `recordId`.
+- **No migration.** In-memory reconstructions made under the old model
+  must be cleared and recreated.
+- **Unchanged:** `time_grouping.py`, Waveform Time Groups, Synchronise
+  Sources, `ww` state, channel presentation, analog-only scope.
+- **Tests.**
+  - ER backend: domain 40, registry 5, service 49, source timing 15,
+    API 20.
+  - Static frontend: 52.
+  - ER browser: 16, including AGJH 500kV / BAHS 275kV / BTGH as three
+    records.
+  - Full backend: 6,268 passed, 40 skipped.
+  - Full browser: 383 of 384 passed. The one failure,
+    `overcurrent_analysis.spec.js:1345` ("major gridlines still
+    render"), is intermittent (2 of 3 isolated reruns pass), is
+    untouched by this change, and is reported separately, not fixed
+    here.
+- **Next.** Slice 3C (the first plotted UAT) on the record model; the
+  Slice 3C notes below still apply, with "member" meaning record.
+
+## Earlier — Event Reconstruction Slice 3B
 
 **Event Reconstruction Slice 3B — per-source reconstruction timing
 (DEC-127 update, 2026-10-01).** Backend plus frontend helpers; no

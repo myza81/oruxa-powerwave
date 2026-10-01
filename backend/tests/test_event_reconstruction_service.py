@@ -1,13 +1,14 @@
-"""Service-layer tests for Event Reconstruction (DEC-123/DEC-124):
-eligibility listing, definition/member validation, per-group
-corrections, reference switching, large-gap warnings, stale membership,
-and isolation from Waveform Time Groups and Synchronise Sources."""
+"""Service-layer tests for Event Reconstruction (DEC-123, DEC-124,
+DEC-128): records as independent members (timestamp overlap never merges
+them), eligibility, definition/member validation, per-record
+corrections, reference switching, large-gap warnings, stale records, the
+record-level coordinate model, and isolation from Waveform Time Groups
+and Synchronise Sources."""
 
 from __future__ import annotations
 
 import inspect
 import math
-import re
 from datetime import datetime, timedelta, timezone
 
 import numpy as np
@@ -21,7 +22,6 @@ from app.domain.event_reconstruction import (
     RELATIONSHIP_FULL_OVERLAP,
     RELATIONSHIP_GAP,
     RELATIONSHIP_PARTIAL_OVERLAP,
-    membership_fingerprint,
 )
 from app.domain.metadata import RecordingMetadata
 from app.domain.source import ActiveSource, AnalogChannelSummary, SourceMetadata
@@ -34,8 +34,8 @@ from app.services.errors import (
     ReconstructionMemberStaleError,
     ReconstructionNotDefinedError,
     ReconstructionReferenceNotMemberError,
-    TimeGroupNotEligibleError,
-    TimeGroupNotFoundError,
+    RecordNotEligibleError,
+    SourceNotFoundError,
 )
 from app.services.event_reconstruction_registry import EventReconstructionRegistry
 from app.services.event_reconstruction_service import (
@@ -43,12 +43,11 @@ from app.services.event_reconstruction_service import (
     MEMBER_STATUS_STALE,
     RECONSTRUCTION_STATUS_READY,
     RECONSTRUCTION_STATUS_STALE,
-    STALE_REASON_MEMBERSHIP_CHANGED,
-    STALE_REASON_SOURCES_REMOVED,
+    STALE_REASON_RECORD_REMOVED,
     WARNING_LARGE_GAP,
     clear_reconstruction,
     get_reconstruction,
-    list_reconstruction_time_groups,
+    list_reconstruction_records,
     remove_workspace_event_reconstruction_state,
     reset_member_correction,
     set_member_correction,
@@ -64,9 +63,9 @@ from app.services.synchronization_service import (
 from app.services.workspace_registry import WorkspaceRegistry
 
 WS = "ws-er"
+T0 = datetime(2026, 3, 6, 2, 0, 0, tzinfo=timezone.utc)
 #: The centrally configured default (app.config), never a domain literal.
 THRESHOLD_S = DEFAULT_EVENT_RECONSTRUCTION_LARGE_GAP_WARNING_S
-T0 = datetime(2026, 3, 6, 2, 0, 0, tzinfo=timezone.utc)
 
 
 def _source(
@@ -99,21 +98,10 @@ def _source(
     return ActiveSource(metadata=metadata, record=record)
 
 
-class _WriteForbiddenSynchronizationRegistry(SynchronizationRegistry):
-    """Fails the test on any write -- Event Reconstruction may only read
-    Synchronise Sources state."""
-
-    def _forbidden(self, *args, **kwargs):
-        raise AssertionError("Event Reconstruction must never write SynchronizationRegistry")
-
-    set_offset = reset_offset = remove_source = remove_workspace = _forbidden
-    set_t0 = clear_t0 = clear_all_t0_for_workspace = _forbidden
-
-
 class _Ctx:
-    def __init__(self, sync: SynchronizationRegistry, threshold_s: float = THRESHOLD_S):
+    def __init__(self, threshold_s: float = THRESHOLD_S):
         self.sources = WorkspaceRegistry()
-        self.sync = sync
+        self.sync = SynchronizationRegistry()
         self.er = EventReconstructionRegistry()
         self.threshold_s = threshold_s
 
@@ -125,187 +113,209 @@ class _Ctx:
         self.sources.remove(WS, source_id)
 
     def _kw(self) -> dict:
-        return {"workspace_id": WS, "registry": self.er, "source_registry": self.sources, "synchronization_registry": self.sync}
+        return {"workspace_id": WS, "registry": self.er, "source_registry": self.sources}
 
     def _view_kw(self) -> dict:
         return {**self._kw(), "large_gap_threshold_s": self.threshold_s}
 
-    def groups(self):
-        return list_reconstruction_time_groups(**self._kw())
+    def records(self):
+        return list_reconstruction_records(**self._kw())
 
-    def define(self, group_ids, reference):
-        return set_reconstruction_definition(group_ids=list(group_ids), reference_group_id=reference, **self._view_kw())
+    def define(self, record_ids, reference):
+        return set_reconstruction_definition(record_ids=list(record_ids), reference_record_id=reference, **self._view_kw())
 
     def view(self):
         return get_reconstruction(**self._view_kw())
 
-    def correct(self, member_id, value):
-        return set_member_correction(member_id=member_id, correction_s=value, **self._view_kw())
+    def correct(self, record_id, value):
+        return set_member_correction(record_id=record_id, correction_s=value, **self._view_kw())
 
-    def reset(self, member_id):
-        return reset_member_correction(member_id=member_id, **self._view_kw())
+    def reset(self, record_id):
+        return reset_member_correction(record_id=record_id, **self._view_kw())
 
-    def reference(self, member_id):
-        return set_reconstruction_reference(member_id=member_id, **self._view_kw())
+    def reference(self, record_id):
+        return set_reconstruction_reference(record_id=record_id, **self._view_kw())
 
 
 @pytest.fixture
 def ctx() -> _Ctx:
-    return _Ctx(_WriteForbiddenSynchronizationRegistry())
+    return _Ctx()
 
 
-def _fp(*source_ids: str) -> str:
-    return membership_fingerprint(source_ids)
+def _member(view, record_id):
+    return next(m for m in view.members if m.record_id == record_id)
 
 
-def _member(view, member_id):
-    return next(m for m in view.members if m.member_id == member_id)
+def _waveform_groups(ctx):
+    return sorted(sorted(g.source_ids) for g in list_time_groups(workspace_id=WS, source_registry=ctx.sources))
 
 
 # ==============================================================================
 
 
-class TestEligibilityListing:
-    def test_absolute_groups_are_eligible_with_utc_extents(self, ctx):
-        ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10), duration_s=2.0))
-        groups = {g.group_id: g for g in ctx.groups()}
-        assert set(groups) == {"A", "B"}
-        a, b = groups["A"], groups["B"]
-        assert a.eligible and b.eligible
-        assert a.reason_code is None and a.reason_message is None
-        assert a.time_reference_type == "recorded_absolute"
-        assert a.start_time_utc == T0
-        assert a.end_time_utc == T0 + timedelta(seconds=1)
-        assert b.start_time_utc == T0 + timedelta(seconds=10)
-        assert b.duration_s == pytest.approx(2.0)
-        assert a.membership_fingerprint == _fp("A")
-        assert a.reconstruction_member_id is None
+class TestIndependentRecords:
+    """The UAT regression (DEC-128): timestamp overlap never merges Event
+    Reconstruction records, while Waveform keeps its own Time Groups."""
 
-    def test_time_of_day_group_is_ineligible_without_inventing_a_date(self, ctx):
-        ctx.add(_source("TOD", start=None, timing_reference="time_of_day", time_of_day_s=3600.0))
-        [group] = ctx.groups()
-        assert group.time_reference_type == "time_of_day"
-        assert group.eligible is False
-        assert group.reason_code == "time_of_day_not_supported"
-        assert group.start_time_utc is None and group.end_time_utc is None
-        assert group.duration_s == pytest.approx(1.0)
+    def test_identical_timestamps_stay_two_records(self, ctx):
+        ctx.add(_source("BAHS"), _source("BTGH"))
+        assert _waveform_groups(ctx) == [["BAHS", "BTGH"]]  # Waveform: one Time Group
+        records = ctx.records()
+        assert [r.record_id for r in records] == ["BAHS", "BTGH"]
+        assert all(r.eligible and r.source_ids == [r.record_id] for r in records)
+        view = ctx.define(["BAHS", "BTGH"], "BAHS")
+        assert [m.record_id for m in view.members] == ["BAHS", "BTGH"]
+        assert _member(view, "BTGH").reconstruction_offset_s == 0.0
+        [relation] = view.relationships
+        assert relation.kind == RELATIONSHIP_FULL_OVERLAP and relation.overlap_s == pytest.approx(1.0)
+        assert view.warnings == []
 
-    def test_elapsed_only_group_is_ineligible(self, ctx):
-        ctx.add(_source("EL", start=None, timing_reference="relative_elapsed"))
-        [group] = ctx.groups()
-        assert group.time_reference_type == "elapsed_only"
-        assert group.eligible is False
-        assert group.reason_code == "no_absolute_time_reference"
-        assert group.start_time_utc is None
+    def test_partially_overlapping_records_stay_separate(self, ctx):
+        ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=0.5)))
+        assert _waveform_groups(ctx) == [["A", "B"]]
+        view = ctx.define(["A", "B"], "A")
+        assert len(view.members) == 2
+        assert _member(view, "B").reconstruction_offset_s == pytest.approx(0.5)
+        assert view.relationships[0].kind == RELATIONSHIP_PARTIAL_OVERLAP
 
-    def test_sampling_rate_has_no_effect_on_eligibility(self, ctx):
+    def test_contained_record_stays_separate(self, ctx):
+        ctx.add(_source("LONG", duration_s=10.0), _source("SHORT", start=T0 + timedelta(seconds=2)))
+        assert _waveform_groups(ctx) == [["LONG", "SHORT"]]
+        view = ctx.define(["LONG", "SHORT"], "LONG")
+        assert len(view.members) == 2
+        assert view.relationships[0].kind == RELATIONSHIP_FULL_OVERLAP
+
+    def test_uat_example_three_records(self, ctx):
         ctx.add(
-            _source("FAST", rate_hz=5000.0, duration_s=1.3),
-            _source("SLOW", start=T0 + timedelta(seconds=100), rate_hz=1.0, duration_s=600.0),
+            _source("AGJH", start=T0 - timedelta(seconds=30)),
+            _source("BAHS"), _source("BTGH"),
         )
-        assert all(g.eligible for g in ctx.groups())
+        view = ctx.define(["AGJH", "BAHS", "BTGH"], "AGJH")
+        assert [m.record_id for m in view.members] == ["AGJH", "BAHS", "BTGH"]
+        assert [m.source_ids for m in view.members] == [["AGJH"], ["BAHS"], ["BTGH"]]
 
-    def test_listing_follows_existing_time_groups_exactly(self, ctx):
-        ctx.add(_source("A"), _source("A2", start=T0 + timedelta(seconds=0.5)), _source("B", start=T0 + timedelta(seconds=10)))
-        expected = list_time_groups(workspace_id=WS, source_registry=ctx.sources)
-        listed = ctx.groups()
-        assert [g.group_id for g in listed] == [g.group_id for g in expected]
-        assert [g.source_ids for g in listed] == [list(g.source_ids) for g in expected]
-
-    def test_member_id_is_reported_once_selected(self, ctx):
+    def test_overlapping_upload_does_not_stale_an_existing_member(self, ctx):
         ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10)))
         ctx.define(["A", "B"], "A")
-        assert {g.group_id: g.reconstruction_member_id for g in ctx.groups()} == {"A": _fp("A"), "B": _fp("B")}
+        ctx.add(_source("A_OVERLAP", start=T0 + timedelta(seconds=0.5)))  # joins A's Waveform Time Group
+        view = ctx.view()
+        assert view.status == RECONSTRUCTION_STATUS_READY
+        assert all(m.status == MEMBER_STATUS_CURRENT for m in view.members)
+        assert {r.record_id for r in ctx.records()} == {"A", "B", "A_OVERLAP"}
 
-    def test_group_extent_uses_existing_within_group_synchronization(self):
-        ctx = _Ctx(SynchronizationRegistry())
-        ctx.add(_source("A"), _source("A2", start=T0 + timedelta(seconds=0.5)))
-        set_source_alignment_offset(
-            workspace_id=WS, source_id="A2", alignment_offset_s=2.0, registry=ctx.sync, source_registry=ctx.sources
+    def test_each_record_owns_its_correction(self, ctx):
+        ctx.add(_source("BAHS"), _source("BTGH"))
+        ctx.define(["BAHS", "BTGH"], "BAHS")
+        view = ctx.correct("BTGH", 0.004)
+        assert _member(view, "BTGH").reconstruction_offset_s == pytest.approx(0.004)
+        assert _member(view, "BAHS").reconstruction_offset_s == 0.0
+        view = ctx.correct("BAHS", -0.002)  # the reference's own clock
+        assert _member(view, "BTGH").reconstruction_offset_s == pytest.approx(0.006)
+        assert _member(view, "BTGH").correction_s == 0.004
+
+    def test_gaps_are_between_records_not_merged_extents(self, ctx):
+        ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=0.5)))
+        ctx.define(["A", "B"], "A")
+        [warning] = ctx.correct("B", 7200.0).warnings  # only possible with independent records
+        assert (warning.before_record_id, warning.after_record_id) == ("A", "B")
+        assert warning.gap_s == pytest.approx(7200.0 + 0.5 - 1.0)
+
+
+class TestRecordListing:
+    def test_records_are_sources_with_utc_extents(self, ctx):
+        ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10), duration_s=2.0))
+        records = {r.record_id: r for r in ctx.records()}
+        a, b = records["A"], records["B"]
+        assert a.eligible and b.eligible
+        assert a.reason_code is None and a.time_reference_type == "recorded_absolute"
+        assert a.start_time_utc == T0 and a.end_time_utc == T0 + timedelta(seconds=1)
+        assert b.start_time_utc == T0 + timedelta(seconds=10) and b.duration_s == pytest.approx(2.0)
+        assert a.in_reconstruction is False
+
+    def test_eligible_records_chronological_then_ineligible(self, ctx):
+        ctx.add(
+            _source("LATE", start=T0 + timedelta(seconds=20)), _source("EL", start=None, timing_reference="relative_elapsed"),
+            _source("EARLY"),
         )
-        [group] = ctx.groups()
-        # A2: recorded +0.5 s, manual +2.0 s -> group time 2.5 .. 3.5
-        assert group.duration_s == pytest.approx(3.5)
-        assert group.end_time_utc == T0 + timedelta(seconds=3.5)
+        assert [r.record_id for r in ctx.records()] == ["EARLY", "LATE", "EL"]
+
+    def test_time_of_day_record_is_ineligible_without_inventing_a_date(self, ctx):
+        ctx.add(_source("TOD", start=None, timing_reference="time_of_day", time_of_day_s=3600.0))
+        [record] = ctx.records()
+        assert record.eligible is False and record.reason_code == "time_of_day_not_supported"
+        assert record.start_time_utc is None and record.duration_s == pytest.approx(1.0)
+
+    def test_elapsed_only_record_is_ineligible(self, ctx):
+        ctx.add(_source("EL", start=None, timing_reference="relative_elapsed"))
+        [record] = ctx.records()
+        assert record.eligible is False and record.reason_code == "no_absolute_time_reference"
+
+    def test_sampling_rate_has_no_effect_on_eligibility(self, ctx):
+        ctx.add(_source("FAST", rate_hz=5000.0, duration_s=1.3), _source("SLOW", rate_hz=1.0, duration_s=600.0))
+        assert all(r.eligible for r in ctx.records())
+
+    def test_in_reconstruction_flag(self, ctx):
+        ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10)), _source("C", start=T0 + timedelta(seconds=20)))
+        ctx.define(["A", "B"], "A")
+        assert {r.record_id: r.in_reconstruction for r in ctx.records()} == {"A": True, "B": True, "C": False}
 
 
 class TestDefinition:
     def test_undefined_reconstruction_reads_as_not_defined(self, ctx):
         view = ctx.view()
-        assert view.defined is False
-        assert view.members == [] and view.warnings == []
+        assert view.defined is False and view.members == []
         assert view.large_gap_warning_threshold_s == THRESHOLD_S
 
-    def test_two_groups_form_one_reconstruction_on_recorded_placement(self, ctx):
+    def test_two_records_on_recorded_placement(self, ctx):
         ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10)))
         view = ctx.define(["A", "B"], "A")
-        assert view.defined and view.status == RECONSTRUCTION_STATUS_READY
-        assert view.placements_available
-        assert view.reference_member_id == _fp("A")
-        assert view.reference_origin_start_time_utc == T0
-        a, b = _member(view, _fp("A")), _member(view, _fp("B"))
+        assert view.defined and view.status == RECONSTRUCTION_STATUS_READY and view.placements_available
+        assert view.reference_record_id == "A" and view.reference_origin_start_time_utc == T0
+        a, b = _member(view, "A"), _member(view, "B")
         assert a.is_reference and not b.is_reference
-        assert (a.status, b.status) == (MEMBER_STATUS_CURRENT, MEMBER_STATUS_CURRENT)
-        assert a.reconstruction_offset_s == 0.0
-        assert b.recorded_placement_s == pytest.approx(10.0)
-        assert b.reconstruction_offset_s == pytest.approx(10.0)
+        assert b.recorded_placement_s == pytest.approx(10.0) and b.reconstruction_offset_s == pytest.approx(10.0)
         assert (b.start_s, b.end_s) == (pytest.approx(10.0), pytest.approx(11.0))
-        assert a.correction_s == b.correction_s == 0.0
         [relation] = view.relationships
         assert relation.kind == RELATIONSHIP_GAP and relation.gap_s == pytest.approx(9.0)
-        assert view.warnings == []
 
     def test_member_order_follows_selection(self, ctx):
         ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10)))
-        view = ctx.define(["B", "A"], "A")
-        assert [m.member_id for m in view.members] == [_fp("B"), _fp("A")]
-
-    def test_owner_reference_example(self, ctx):
-        ctx.add(
-            _source("A", duration_s=0.05),
-            _source("B", start=T0 + timedelta(milliseconds=100), duration_s=0.05),
-            _source("C", start=T0 + timedelta(milliseconds=300), duration_s=0.05),
-        )
-        view = ctx.define(["A", "B", "C"], "A")
-        assert [m.reconstruction_offset_s for m in view.members] == pytest.approx([0.0, 0.1, 0.3], abs=1e-12)
-        view = ctx.reference(_fp("B"))
-        assert [m.reconstruction_offset_s for m in view.members] == pytest.approx([-0.1, 0.0, 0.2], abs=1e-12)
+        assert [m.record_id for m in ctx.define(["B", "A"], "A").members] == ["B", "A"]
 
     @pytest.mark.parametrize(
-        ("group_ids", "reference", "error"),
+        ("record_ids", "reference", "error"),
         [
             ([], "A", InvalidReconstructionDefinitionError),
             (["A", "A"], "A", DuplicateReconstructionMemberError),
-            (["A", "missing"], "A", TimeGroupNotFoundError),
-            (["A", "TOD"], "A", TimeGroupNotEligibleError),
-            (["A", "EL"], "A", TimeGroupNotEligibleError),
+            (["A", "missing"], "A", SourceNotFoundError),
+            (["A", "TOD"], "A", RecordNotEligibleError),
+            (["A", "EL"], "A", RecordNotEligibleError),
             (["A", "B"], "C", ReconstructionReferenceNotMemberError),
         ],
     )
-    def test_invalid_definitions_are_rejected_and_nothing_is_stored(self, ctx, group_ids, reference, error):
+    def test_invalid_definitions_are_rejected_and_nothing_is_stored(self, ctx, record_ids, reference, error):
         ctx.add(
             _source("A"), _source("B", start=T0 + timedelta(seconds=10)),
             _source("TOD", start=None, timing_reference="time_of_day", time_of_day_s=100.0),
             _source("EL", start=None, timing_reference="relative_elapsed"),
         )
         with pytest.raises(error):
-            ctx.define(group_ids, reference)
+            ctx.define(record_ids, reference)
         assert ctx.er.get(WS) is None
 
     def test_ineligible_error_names_the_reason(self, ctx):
         ctx.add(_source("A"), _source("TOD", start=None, timing_reference="time_of_day", time_of_day_s=100.0))
-        with pytest.raises(TimeGroupNotEligibleError, match="time_of_day_not_supported"):
+        with pytest.raises(RecordNotEligibleError, match="time_of_day_not_supported"):
             ctx.define(["A", "TOD"], "A")
 
-    def test_redefinition_keeps_corrections_of_retained_members_only(self, ctx):
+    def test_redefinition_keeps_corrections_of_retained_records_only(self, ctx):
         ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10)), _source("C", start=T0 + timedelta(seconds=20)))
         ctx.define(["A", "B"], "A")
-        ctx.correct(_fp("B"), 0.25)
-        ctx.correct(_fp("A"), 0.5)
+        ctx.correct("B", 0.25)
+        ctx.correct("A", 0.5)
         view = ctx.define(["B", "C"], "B")
-        assert {m.member_id: m.correction_s for m in view.members} == {_fp("B"): 0.25, _fp("C"): 0.0}
-        view = ctx.define(["A", "B"], "A")
-        assert _member(view, _fp("A")).correction_s == 0.0  # dropped earlier, so not remembered
+        assert {m.record_id: m.correction_s for m in view.members} == {"B": 0.25, "C": 0.0}
+        assert _member(ctx.define(["A", "B"], "A"), "A").correction_s == 0.0
 
 
 class TestCorrections:
@@ -315,324 +325,205 @@ class TestCorrections:
         ctx.define(["A", "B"], "A")
         return ctx
 
-    def test_correction_is_stored_per_group_and_can_create_partial_overlap(self, pair):
-        view = pair.correct(_fp("B"), -9.5)
-        b = _member(view, _fp("B"))
-        assert b.correction_s == -9.5
-        assert (b.start_s, b.end_s) == (pytest.approx(0.5), pytest.approx(1.5))
-        assert view.relationships[0].kind == RELATIONSHIP_PARTIAL_OVERLAP
-        assert view.relationships[0].overlap_s == pytest.approx(0.5)
-        assert pair.er.get(WS).member(_fp("B")).correction_s == -9.5
-
-    def test_correction_can_create_full_overlap(self, pair):
-        view = pair.correct(_fp("B"), -10.0)
-        assert view.relationships[0].kind == RELATIONSHIP_FULL_OVERLAP
+    def test_correction_can_create_partial_and_full_overlap(self, pair):
+        assert pair.correct("B", -9.5).relationships[0].kind == RELATIONSHIP_PARTIAL_OVERLAP
+        assert pair.correct("B", -10.0).relationships[0].kind == RELATIONSHIP_FULL_OVERLAP
 
     def test_sub_millisecond_correction_is_kept_exactly(self, pair):
-        view = pair.correct(_fp("B"), 0.000123456)
-        b = _member(view, _fp("B"))
+        b = _member(pair.correct("B", 0.000123456), "B")
         assert b.correction_s == 0.000123456
         assert b.reconstruction_offset_s == pytest.approx(10.000123456, abs=1e-12)
 
     def test_reset_restores_recorded_timestamp_placement(self, pair):
-        pair.correct(_fp("B"), -3.0)
-        view = pair.reset(_fp("B"))
-        b = _member(view, _fp("B"))
-        assert b.correction_s == 0.0
-        assert b.reconstruction_offset_s == pytest.approx(b.recorded_placement_s)
+        pair.correct("B", -3.0)
+        b = _member(pair.reset("B"), "B")
+        assert b.correction_s == 0.0 and b.reconstruction_offset_s == pytest.approx(b.recorded_placement_s)
 
     def test_reference_may_carry_a_correction(self, pair):
-        view = pair.correct(_fp("A"), 0.5)
-        a, b = _member(view, _fp("A")), _member(view, _fp("B"))
-        assert a.reconstruction_offset_s == 0.0
-        assert b.reconstruction_offset_s == pytest.approx(9.5)
-        assert b.correction_relative_to_reference_s == -0.5
+        view = pair.correct("A", 0.5)
+        assert _member(view, "A").reconstruction_offset_s == 0.0
+        assert _member(view, "B").reconstruction_offset_s == pytest.approx(9.5)
+        assert _member(view, "B").correction_relative_to_reference_s == -0.5
 
     @pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
     def test_non_finite_correction_is_rejected_without_change(self, pair, value):
         with pytest.raises(InvalidReconstructionCorrectionError):
-            pair.correct(_fp("B"), value)
-        assert pair.er.get(WS).member(_fp("B")).correction_s == 0.0
+            pair.correct("B", value)
+        assert pair.er.get(WS).member("B").correction_s == 0.0
 
     def test_unknown_member_and_undefined_reconstruction(self, ctx):
-        ctx.add(_source("A"))
+        ctx.add(_source("A"), _source("Z", start=T0 + timedelta(seconds=10)))
         with pytest.raises(ReconstructionNotDefinedError):
-            ctx.correct(_fp("A"), 1.0)
+            ctx.correct("A", 1.0)
         ctx.define(["A"], "A")
         with pytest.raises(ReconstructionMemberNotFoundError):
-            ctx.correct("tgm1-unknown", 1.0)
+            ctx.correct("Z", 1.0)
         with pytest.raises(ReconstructionMemberNotFoundError):
-            ctx.reference("tgm1-unknown")
+            ctx.reference("Z")
 
 
 class TestReferenceSwitching:
-    def test_switching_reference_preserves_alignment_and_stored_corrections(self, ctx):
+    def test_owner_reference_example(self, ctx):
         ctx.add(
-            _source("A"), _source("B", start=T0 + timedelta(seconds=10, microseconds=250)),
-            _source("C", start=T0 - timedelta(seconds=30)),
+            _source("A", duration_s=0.05),
+            _source("B", start=T0 + timedelta(milliseconds=100), duration_s=0.05),
+            _source("C", start=T0 + timedelta(milliseconds=300), duration_s=0.05),
         )
+        view = ctx.define(["A", "B", "C"], "A")
+        assert [m.reconstruction_offset_s for m in view.members] == pytest.approx([0.0, 0.1, 0.3], abs=1e-12)
+        view = ctx.reference("B")
+        assert [m.reconstruction_offset_s for m in view.members] == pytest.approx([-0.1, 0.0, 0.2], abs=1e-12)
+
+    def test_switching_preserves_alignment_and_stored_corrections(self, ctx):
+        ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10, microseconds=250)), _source("C"))
         ctx.define(["A", "B", "C"], "A")
-        ctx.correct(_fp("A"), 0.0021)
-        ctx.correct(_fp("B"), -0.0004)
-        before = {m.member_id: m.start_s for m in ctx.view().members}
-        stored_before = ctx.er.get(WS).members
+        ctx.correct("A", 0.0021)
+        ctx.correct("C", -0.0004)
+        before = {m.record_id: m.start_s for m in ctx.view().members}
+        stored = ctx.er.get(WS).members
         for reference in ("B", "C", "A"):
-            view = ctx.reference(_fp(reference))
-            starts = {m.member_id: m.start_s for m in view.members}
-            assert _member(view, _fp(reference)).reconstruction_offset_s == 0.0
+            view = ctx.reference(reference)
+            starts = {m.record_id: m.start_s for m in view.members}
+            assert _member(view, reference).reconstruction_offset_s == 0.0
             for a in starts:
                 for b in starts:
                     assert starts[a] - starts[b] == pytest.approx(before[a] - before[b], abs=1e-9)
-            assert ctx.er.get(WS).members == stored_before
+            assert ctx.er.get(WS).members == stored
 
     def test_reference_change_needs_a_definition(self, ctx):
+        ctx.add(_source("A"))
         with pytest.raises(ReconstructionNotDefinedError):
-            ctx.reference(_fp("A"))
+            ctx.reference("A")
 
 
 class TestLargeGapWarning:
-    @pytest.mark.parametrize(
-        ("gap_s", "warns"),
-        [(THRESHOLD_S - 0.5, False), (THRESHOLD_S, True), (THRESHOLD_S * 24, True)],
-    )
+    @pytest.mark.parametrize(("gap_s", "warns"), [(THRESHOLD_S - 0.5, False), (THRESHOLD_S, True), (THRESHOLD_S * 24, True)])
     def test_threshold_is_inclusive_and_advisory(self, ctx, gap_s, warns):
         ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=1.0 + gap_s)))
         view = ctx.define(["A", "B"], "A")
-        assert view.status == RECONSTRUCTION_STATUS_READY  # never rejected
-        assert all(m.start_s is not None for m in view.members)
+        assert view.status == RECONSTRUCTION_STATUS_READY
         if warns:
             [warning] = view.warnings
-            assert warning.code == WARNING_LARGE_GAP
-            assert warning.gap_s == pytest.approx(gap_s)
+            assert warning.code == WARNING_LARGE_GAP and warning.gap_s == pytest.approx(gap_s)
             assert warning.threshold_s == THRESHOLD_S
-            assert (warning.before_member_id, warning.after_member_id) == (_fp("A"), _fp("B"))
-            assert "apart" in warning.message
+            assert (warning.before_record_id, warning.after_record_id) == ("A", "B")
         else:
             assert view.warnings == []
 
     def test_configured_threshold_is_the_one_applied_and_reported(self):
-        ctx = _Ctx(_WriteForbiddenSynchronizationRegistry(), threshold_s=60.0)
+        ctx = _Ctx(threshold_s=60.0)
         ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=61)))
         view = ctx.define(["A", "B"], "A")
         assert view.large_gap_warning_threshold_s == 60.0
-        [warning] = view.warnings
-        assert warning.threshold_s == 60.0 and warning.gap_s == pytest.approx(60.0)
-        assert view.status == RECONSTRUCTION_STATUS_READY
+        assert view.warnings[0].threshold_s == 60.0
 
-    def test_a_correction_can_add_or_remove_the_warning(self, ctx):
+    def test_identical_records_have_zero_gap(self, ctx):
+        ctx.add(_source("BAHS"), _source("BTGH"))
+        assert ctx.define(["BAHS", "BTGH"], "BAHS").warnings == []
+
+
+class TestStaleRecords:
+    def test_removed_record_is_stale_and_frozen(self, ctx):
         ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10)))
         ctx.define(["A", "B"], "A")
-        assert len(ctx.correct(_fp("B"), 4000.0).warnings) == 1
-        assert ctx.correct(_fp("B"), 0.0).warnings == []
-
-
-class TestCoordinateModel:
-    """Guards against double counting absolute time. `source_time` is a
-    source's own elapsed time (0 = its recorded start_time); absolute time
-    enters only through the two groups' ORIGIN start difference. With
-    every correction 0, reconstruction time must map each sample back to
-    its true recorded absolute instant relative to the reference origin."""
-
-    REF_ORIGIN = T0 + timedelta(seconds=5)
-
-    @pytest.fixture
-    def workspace(self):
-        ctx = _Ctx(SynchronizationRegistry())
-        ctx.add(
-            # Reference group: R (origin) + R2; not the earliest overall.
-            _source("R", start=self.REF_ORIGIN),
-            _source("R2", start=self.REF_ORIGIN + timedelta(seconds=0.4)),
-            # Other group: A (origin) + A2, recorded 5 s before R.
-            _source("A", start=T0),
-            _source("A2", start=T0 + timedelta(seconds=0.3), duration_s=1.2),
-        )
-        return ctx
-
-    @staticmethod
-    def _reconstruction_start(ctx, view, source_id):
-        """Reconstruction time of a source's first sample (elapsed 0):
-        source_time + effective within-group offset + member offset."""
-        effective = {
-            v.source_id: v.effective_alignment_offset_s
-            for v in list_source_alignments(workspace_id=WS, registry=ctx.sync, source_registry=ctx.sources)
-        }
-        member = next(m for m in view.members if source_id in m.source_ids)
-        return 0.0 + effective[source_id] + member.reconstruction_offset_s
-
-    def test_zero_corrections_reproduce_recorded_absolute_time(self, workspace):
-        view = workspace.define(["R", "A"], "R")
-        for active in workspace.sources.list_for_workspace(WS):
-            expected = (active.metadata.start_time - self.REF_ORIGIN).total_seconds()
-            actual = self._reconstruction_start(workspace, view, active.metadata.source_id)
-            assert actual == pytest.approx(expected, abs=1e-9)
-        # Member extents are the union of their sources in the same frame.
-        assert _member(view, _fp("A", "A2")).start_s == pytest.approx(-5.0, abs=1e-9)
-        assert _member(view, _fp("A", "A2")).end_s == pytest.approx(-5.0 + 0.3 + 1.2, abs=1e-9)
-        assert _member(view, _fp("R", "R2")).end_s == pytest.approx(1.4, abs=1e-9)
-
-    def test_reconstruction_correction_shifts_its_group_exactly_once(self, workspace):
-        base = workspace.define(["R", "A"], "R")
-        moved = workspace.correct(_fp("A", "A2"), 0.0125)
-        for sid in ("A", "A2"):
-            delta = self._reconstruction_start(workspace, moved, sid) - self._reconstruction_start(workspace, base, sid)
-            assert delta == pytest.approx(0.0125, abs=1e-12)
-        for sid in ("R", "R2"):
-            assert self._reconstruction_start(workspace, moved, sid) == self._reconstruction_start(workspace, base, sid)
-
-    def test_synchronise_sources_offset_shifts_only_its_source_exactly_once(self, workspace):
-        base = workspace.define(["R", "A"], "R")
-        before = {sid: self._reconstruction_start(workspace, base, sid) for sid in ("R", "R2", "A", "A2")}
-        set_source_alignment_offset(
-            workspace_id=WS, source_id="A2", alignment_offset_s=0.002, registry=workspace.sync,
-            source_registry=workspace.sources,
-        )
-        after_view = workspace.view()
-        after = {sid: self._reconstruction_start(workspace, after_view, sid) for sid in before}
-        assert after["A2"] - before["A2"] == pytest.approx(0.002, abs=1e-12)
-        assert {sid: after[sid] for sid in ("R", "R2", "A")} == {sid: before[sid] for sid in ("R", "R2", "A")}
-        # A within-group sync never changes the group's own reconstruction offset.
-        assert (
-            _member(after_view, _fp("A", "A2")).reconstruction_offset_s
-            == _member(base, _fp("A", "A2")).reconstruction_offset_s
-        )
-
-    def test_reference_switch_moves_only_the_zero_point(self, workspace):
-        from_r = workspace.define(["R", "A"], "R")
-        from_a = workspace.reference(_fp("A", "A2"))
-        shift = self._reconstruction_start(workspace, from_a, "R") - self._reconstruction_start(workspace, from_r, "R")
-        assert shift == pytest.approx(5.0, abs=1e-9)
-        for sid in ("R2", "A", "A2"):
-            moved = self._reconstruction_start(workspace, from_a, sid) - self._reconstruction_start(workspace, from_r, sid)
-            assert moved == pytest.approx(shift, abs=1e-9)
-
-
-class TestStaleMembership:
-    def test_merge_marks_the_member_stale_and_freezes_its_correction(self, ctx):
-        ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10)))
-        ctx.define(["A", "B"], "B")
-        ctx.correct(_fp("A"), 0.75)
-        ctx.add(_source("A2", start=T0 + timedelta(seconds=0.5)))  # joins A's Time Group
-
+        ctx.correct("B", 0.75)
+        ctx.remove("B")
         view = ctx.view()
         assert view.status == RECONSTRUCTION_STATUS_STALE
-        a = _member(view, _fp("A"))
-        assert a.status == MEMBER_STATUS_STALE
-        assert a.stale_reason == STALE_REASON_MEMBERSHIP_CHANGED
-        assert a.candidate_group_ids == ["A"]
-        assert a.current_group_id is None
-        assert a.correction_s == 0.75  # kept, never applied
-        assert a.reconstruction_offset_s is None and a.start_s is None
-        b = _member(view, _fp("B"))
-        assert b.status == MEMBER_STATUS_CURRENT and b.start_s == 0.0
-        assert view.relationships == [] and view.warnings == []
-
-    def test_stale_correction_is_never_applied_to_the_changed_group(self, ctx):
-        ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10)))
-        ctx.define(["A", "B"], "B")
-        ctx.correct(_fp("A"), 0.75)
-        ctx.add(_source("A2", start=T0 + timedelta(seconds=0.5)))
-        with pytest.raises(ReconstructionMemberStaleError):
-            ctx.correct(_fp("A"), 1.0)
-        with pytest.raises(ReconstructionMemberStaleError):
-            ctx.reset(_fp("A"))
-        with pytest.raises(ReconstructionMemberStaleError):
-            ctx.reference(_fp("A"))
-        assert ctx.er.get(WS).member(_fp("A")).correction_s == 0.75
-
-        # Re-confirmation starts a fresh member for the new membership.
-        view = ctx.define(["A", "B"], "B")
-        assert view.status == RECONSTRUCTION_STATUS_READY
-        new_member = _member(view, _fp("A", "A2"))
-        assert new_member.correction_s == 0.0
-        assert all(m.member_id != _fp("A") for m in view.members)
+        b = _member(view, "B")
+        assert b.status == MEMBER_STATUS_STALE and b.stale_reason == STALE_REASON_RECORD_REMOVED
+        assert b.correction_s == 0.75
+        assert b.reconstruction_offset_s is None and b.start_s is None and b.source_timings is None
+        for action in (lambda: ctx.correct("B", 1.0), lambda: ctx.reset("B"), lambda: ctx.reference("B")):
+            with pytest.raises(ReconstructionMemberStaleError):
+                action()
+        assert ctx.er.get(WS).member("B").correction_s == 0.75
+        assert ctx.define(["A"], "A").status == RECONSTRUCTION_STATUS_READY
 
     def test_stale_reference_withholds_every_placement(self, ctx):
         ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10)))
         ctx.define(["A", "B"], "A")
-        ctx.add(_source("A2", start=T0 + timedelta(seconds=0.5)))
+        ctx.remove("A")
         view = ctx.view()
-        assert view.placements_available is False
-        assert view.reference_member_id == _fp("A")
-        assert view.reference_origin_start_time_utc is None
-        assert all(m.start_s is None and m.reconstruction_offset_s is None for m in view.members)
-        assert _member(view, _fp("B")).status == MEMBER_STATUS_CURRENT
-        # A current member can become the reference to recover placements.
-        view = ctx.reference(_fp("B"))
-        assert view.placements_available and _member(view, _fp("B")).start_s == 0.0
+        assert view.placements_available is False and view.reference_record_id == "A"
+        assert all(m.start_s is None and m.source_timings is None for m in view.members)
+        assert _member(ctx.reference("B"), "B").start_s == 0.0
 
-    def test_split_reports_every_group_the_sources_now_belong_to(self, ctx):
-        ctx.add(
-            _source("X"), _source("BRIDGE", start=T0 + timedelta(seconds=0.5), duration_s=2.0),
-            _source("Y", start=T0 + timedelta(seconds=2.0)),
-        )
-        ctx.define(["X"], "X")
-        ctx.remove("BRIDGE")
-        member = ctx.view().members[0]
-        assert member.status == MEMBER_STATUS_STALE
-        assert member.stale_reason == STALE_REASON_MEMBERSHIP_CHANGED
-        assert member.candidate_group_ids == ["X", "Y"]
-
-    def test_removing_every_source_reports_sources_removed(self, ctx):
+    def test_reuploaded_recording_is_a_new_record(self, ctx):
         ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10)))
         ctx.define(["A", "B"], "A")
+        ctx.correct("B", 0.3)
         ctx.remove("B")
-        b = _member(ctx.view(), _fp("B"))
-        assert b.stale_reason == STALE_REASON_SOURCES_REMOVED
-        assert b.candidate_group_ids == []
+        ctx.add(_source("B2", start=T0 + timedelta(seconds=10)))
+        view = ctx.define(["A", "B2"], "A")
+        assert _member(view, "B2").correction_s == 0.0  # never transferred
 
-    def test_unrelated_new_group_does_not_stale_existing_members(self, ctx):
-        ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10)))
-        ctx.define(["A", "B"], "A")
-        ctx.add(_source("C", start=T0 + timedelta(seconds=100)))
-        assert ctx.view().status == RECONSTRUCTION_STATUS_READY
+
+class TestCoordinateModel:
+    """Absolute time enters exactly once (the recorded-start difference);
+    Waveform Synchronise Sources corrections are never applied."""
+
+    REF = T0 + timedelta(seconds=5)
+
+    @pytest.fixture
+    def workspace(self, ctx):
+        ctx.add(_source("R", start=self.REF), _source("R2", start=self.REF + timedelta(seconds=0.4)), _source("A"))
+        return ctx
+
+    def test_zero_corrections_reproduce_recorded_absolute_time(self, workspace):
+        view = workspace.define(["R", "R2", "A"], "R")
+        for active in workspace.sources.list_for_workspace(WS):
+            expected = (active.metadata.start_time - self.REF).total_seconds()
+            assert _member(view, active.metadata.source_id).reconstruction_offset_s == pytest.approx(expected, abs=1e-9)
+
+    def test_synchronise_sources_correction_never_moves_a_record(self, workspace):
+        before = {m.record_id: m.reconstruction_offset_s for m in workspace.define(["R", "R2", "A"], "R").members}
+        set_source_alignment_offset(workspace_id=WS, source_id="R2", alignment_offset_s=0.25, registry=workspace.sync, source_registry=workspace.sources)
+        after = {m.record_id: m.reconstruction_offset_s for m in workspace.view().members}
+        assert after == before
+
+    def test_reconstruction_correction_shifts_its_record_exactly_once(self, workspace):
+        base = workspace.define(["R", "R2", "A"], "R")
+        moved = workspace.correct("R2", 0.0125)
+        assert _member(moved, "R2").reconstruction_offset_s - _member(base, "R2").reconstruction_offset_s == pytest.approx(0.0125, abs=1e-12)
+        for rid in ("R", "A"):
+            assert _member(moved, rid).reconstruction_offset_s == _member(base, rid).reconstruction_offset_s
 
 
 class TestIsolation:
-    def test_full_flow_never_writes_synchronization_state(self, ctx):
-        ctx.add(_source("A"), _source("B", start=T0 + timedelta(seconds=10)))
-        ctx.groups()
-        ctx.define(["A", "B"], "A")
-        ctx.correct(_fp("B"), -1.25)
-        ctx.reference(_fp("B"))
-        ctx.reset(_fp("B"))
-        ctx.view()
-        clear_reconstruction(workspace_id=WS, registry=ctx.er)
-        remove_workspace_event_reconstruction_state(workspace_id=WS, registry=ctx.er)
-        # _WriteForbiddenSynchronizationRegistry would have failed on any write.
+    def test_service_has_no_time_group_or_synchronization_dependency(self):
+        imports = "\n".join(
+            line for line in inspect.getsource(er_service).splitlines() if line.startswith(("import ", "from "))
+        )
+        # Only the pure timestamp helpers of time_grouping are shared; no
+        # group derivation and no Synchronise Sources state.
+        for forbidden in ("synchronization_service", "synchronization_registry", "SynchronizationRegistry", "TimeGroup"):
+            assert forbidden not in imports
+        code = inspect.getsource(er_service)
+        for forbidden in ("list_time_groups(", "list_source_alignments(", "derive_time_groups("):
+            assert forbidden not in code
 
-    def test_time_groups_waveform_placement_and_source_data_are_unchanged(self):
-        ctx = _Ctx(SynchronizationRegistry())
-        ctx.add(
-            _source("A"), _source("A2", start=T0 + timedelta(seconds=0.5)),
-            _source("B", start=T0 + timedelta(seconds=10)),
-        )
-        set_source_alignment_offset(
-            workspace_id=WS, source_id="A2", alignment_offset_s=0.003, registry=ctx.sync, source_registry=ctx.sources
-        )
+    def test_time_groups_synchronization_and_source_data_are_unchanged(self, ctx):
+        ctx.add(_source("A"), _source("A2", start=T0 + timedelta(seconds=0.5)), _source("B", start=T0 + timedelta(seconds=10)))
+        set_source_alignment_offset(workspace_id=WS, source_id="A2", alignment_offset_s=0.003, registry=ctx.sync, source_registry=ctx.sources)
         groups_before = list_time_groups(workspace_id=WS, source_registry=ctx.sources)
         placement_before = list_source_alignments(workspace_id=WS, registry=ctx.sync, source_registry=ctx.sources)
-        sync_offsets_before = ctx.sync.list_for_workspace(WS)
-        metadata_before = {a.metadata.source_id: (a.metadata.start_time, a.metadata.elapsed_start_seconds, a.metadata.elapsed_end_seconds) for a in ctx.sources.list_for_workspace(WS)}
+        sync_before = ctx.sync.list_for_workspace(WS)
         times_before = {a.metadata.source_id: a.record.waveform_data["time"].to_numpy().copy() for a in ctx.sources.list_for_workspace(WS)}
+        starts_before = {a.metadata.source_id: a.metadata.start_time for a in ctx.sources.list_for_workspace(WS)}
 
-        ctx.define(["A", "B"], "A")
-        ctx.correct(_fp("B"), -9.99)
-        ctx.correct(_fp("A", "A2"), 3.0)
-        ctx.reference(_fp("B"))
+        ctx.define(["A", "A2", "B"], "A")
+        ctx.correct("A2", -9.99)
+        ctx.reference("B")
+        ctx.reset("A2")
 
         assert list_time_groups(workspace_id=WS, source_registry=ctx.sources) == groups_before
         assert list_source_alignments(workspace_id=WS, registry=ctx.sync, source_registry=ctx.sources) == placement_before
-        assert ctx.sync.list_for_workspace(WS) == sync_offsets_before
+        assert ctx.sync.list_for_workspace(WS) == sync_before
         for active in ctx.sources.list_for_workspace(WS):
             sid = active.metadata.source_id
-            assert (active.metadata.start_time, active.metadata.elapsed_start_seconds, active.metadata.elapsed_end_seconds) == metadata_before[sid]
+            assert active.metadata.start_time == starts_before[sid]
             np.testing.assert_array_equal(active.record.waveform_data["time"].to_numpy(), times_before[sid])
-
-    def test_service_has_no_synchronization_write_path(self):
-        source = inspect.getsource(er_service)
-        assert not re.search(r"synchronization_registry\.\w+\(", source)
-        for forbidden in ("set_source_alignment_offset", "reset_source_alignment_offset", "reset_all_alignment_offsets", "set_t0", "clear_t0"):
-            assert forbidden not in source
 
     def test_clear_and_teardown_remove_only_this_workspace(self, ctx):
         ctx.add(_source("A"))
@@ -640,6 +531,6 @@ class TestIsolation:
         ctx.er.put("other", ctx.er.get(WS))
         clear_reconstruction(workspace_id=WS, registry=ctx.er)
         assert ctx.view().defined is False
-        clear_reconstruction(workspace_id=WS, registry=ctx.er)  # idempotent
+        clear_reconstruction(workspace_id=WS, registry=ctx.er)
         remove_workspace_event_reconstruction_state(workspace_id="other", registry=ctx.er)
         assert ctx.er.get("other") is None

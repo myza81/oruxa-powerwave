@@ -1160,37 +1160,31 @@ class LineToLineInputsUnavailableError(ImportServiceError):
 # _service. ----
 
 
-class TimeGroupNotFoundError(ImportServiceError):
-    """A requested `group_id` is not a current Time Group in this
-    workspace (it may have been re-derived after a source change)."""
+class RecordNotEligibleError(ImportServiceError):
+    """A record cannot join an Event Reconstruction (V1: only
+    `recorded_absolute` records are eligible). The message names the
+    reason; the records listing carries the reason code. An unknown
+    record id is `SourceNotFoundError` (a record is a source)."""
 
-    code = "time_group_not_found"
-
-
-class TimeGroupNotEligibleError(ImportServiceError):
-    """A Time Group cannot join an Event Reconstruction (V1: only
-    `recorded_absolute` groups are eligible). The message names the
-    reason; the eligibility listing carries the reason code."""
-
-    code = "time_group_not_eligible"
+    code = "record_not_eligible"
 
 
 class InvalidReconstructionDefinitionError(ImportServiceError):
     """A reconstruction definition request is structurally invalid, e.g.
-    it selects no Time Group."""
+    it selects no record."""
 
     code = "invalid_reconstruction_definition"
 
 
 class DuplicateReconstructionMemberError(ImportServiceError):
-    """The same Time Group is selected more than once -- rejected rather
+    """The same record is selected more than once -- rejected rather
     than silently de-duplicated."""
 
     code = "duplicate_reconstruction_member"
 
 
 class ReconstructionReferenceNotMemberError(ImportServiceError):
-    """The requested reference Time Group is not one of the selected
+    """The requested reference record is not one of the selected
     members."""
 
     code = "reconstruction_reference_not_member"
@@ -1204,16 +1198,16 @@ class ReconstructionNotDefinedError(ImportServiceError):
 
 
 class ReconstructionMemberNotFoundError(ImportServiceError):
-    """No member with this `member_id` exists in the workspace's
+    """No member with this `record_id` exists in the workspace's
     reconstruction."""
 
     code = "reconstruction_member_not_found"
 
 
 class ReconstructionMemberStaleError(ImportServiceError):
-    """The member's Time Group membership has changed since it was
-    confirmed. Its state stays frozen (never applied to a differently
-    composed group) until the engineer re-confirms the reconstruction."""
+    """The member's record no longer exists in the workspace. Its state
+    stays frozen (never applied to another record) until the engineer
+    removes it from the reconstruction."""
 
     code = "reconstruction_member_stale"
 

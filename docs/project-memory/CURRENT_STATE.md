@@ -9,28 +9,37 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-10-01** — **Event Reconstruction Slices
-0–2A** (DEC-123 frontend shell, DEC-124 domain model/service/API,
-DEC-125 selection workflow, DEC-126 channel browser), on branch
-`feat/event-reconstruction`, not merged. The feature is not complete
-(no plotting yet). Earlier the same day:
+Last meaningful update: **2026-10-02** — **Event Reconstruction record
+model** (DEC-128: members are independently imported records, not
+Waveform Time Groups), on top of Slices 0–3B (DEC-123 to DEC-127), on
+branch `feat/event-reconstruction`, not merged. The feature is not
+complete (no plotting yet). Earlier, on 2026-10-01:
 **Native BEN import: owner UAT passed; merged to `main`** (DEC-119
 parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
 DEC-122 display timezone).
 
-**Event Reconstruction (DEC-123, DEC-124, DEC-125, DEC-126) — Slices 0–2A.**
+**Event Reconstruction (DEC-123 to DEC-128) — Slices 0–3B.**
 
-- **Frontend (Slices 0 and 2).** A main-menu entry immediately after
+- **Rule (DEC-128).** Waveform continues to use its existing Time Group
+  model. Event Reconstruction uses independent imported event/record
+  identities as its atomic members. Timestamp overlap alone never merges
+  Event Reconstruction members. One record = one imported source (a
+  COMTRADE CFG+DAT pair, a BEN file, a converted CSV/Excel file);
+  `record_id` is its `source_id`.
+- **Frontend (Slices 0, 2, 2A).** A main-menu entry immediately after
   Waveform opens `#pageEventReconstruction`.
   - Its left panel is the reconstruction-member workflow, driven only
-    by the Slice 1 API (DEC-125):
-    - Time Groups listed chronologically, ineligible ones with the
-      backend reason and no Add;
-    - add/remove members, "Make reference", ms corrections (Set/Reset);
-    - stale members shown with their old correction "kept, not
-      applied", plus "Re-confirm with current Time Groups" (new members
-      start at 0) or "Remove stale members";
-    - large-gap warning notices, and Clear with a confirmation.
+    by the Event Reconstruction API:
+    - **Records** listed chronologically, one row per imported record
+      (overlapping recordings are separate rows); ineligible ones show
+      the backend reason and have no Add;
+    - add/remove members, "Make reference", ms corrections (Set/Reset),
+      all per record;
+    - a member whose recording was removed is stale: its correction is
+      shown "kept, not applied" and it is resolved with "Remove stale
+      members" (no re-confirmation, nothing is transferred);
+    - large-gap warning notices between records, and Clear with a
+      confirmation.
   - Each current member expands into the Waveform channel hierarchy
     (DEC-126), **analog-only** (DEC-127): Recording → Analog Channels
     (engineering type) / Calculated Channels (under their timing-parent
@@ -38,45 +47,53 @@ DEC-122 display timezone).
     digital channels.
     Names and colours are inherited read-only from Waveform; there is no
     rename/colour editing. Row/"Include all" selection is Event
-    Reconstruction's own local visibility (`wwErState.selectedChannels`),
-    never `ww.displayed`. Stale members show no tree.
-    `wwErSelectedChannelsForPlotting()` is what Slice 3 will consume.
+    Reconstruction's own local visibility (`wwErState.selectedChannels`,
+    keyed by record), never `ww.displayed`. Stale members show no tree.
+    `wwErSelectedChannelsForPlotting()` is what Slice 3C will consume.
   - The main area keeps the Slice 0 toolbar (Box Zoom / Pan; Zoom In /
     Zoom Out / Reset Time View disabled) and an empty "Reconstruction
     Timeline" canvas that only states what is selected. **Nothing is
     plotted.**
   - It never reads or writes the Waveform `ww` state.
-- **Backend (Slice 1).** Event Reconstruction is the one place several
-  established Time Groups are combined (Waveform keeps its isolation):
-  - eligibility per Time Group: `recorded_absolute` only in V1
-    (`time_of_day_not_supported`, `no_absolute_time_reference`);
-  - placement from recorded origin timestamps plus a per-group manual
+- **Backend.**
+  - Eligibility per record: `recorded_absolute` only in V1
+    (`time_of_day_not_supported`, `no_absolute_time_reference`).
+  - Placement from recorded start timestamps plus a per-record manual
     correction stored independently of the reference, so a reference
-    switch never changes alignment or stored data;
-  - members identified by a membership fingerprint; a changed
-    membership reads as stale, its correction is frozen and never moved
-    to another group, and re-confirmation is a new `PUT .../definition`;
-  - pairwise overlap/gap relationships, and an advisory large-gap
-    warning at `>=` 3600 s (never a rejection);
-  - API under `/api/v1/workspaces/{id}/event-reconstruction`
-    (`time-groups`, `definition`, `definition/reference`,
-    `definition/members/{member_id}/correction`); state is in-memory
-    and cleared with the workspace.
+    switch never changes alignment or stored data.
+  - Waveform Synchronise Sources corrections are neither read nor
+    applied.
+  - Members are identified by `record_id`. A removed record reads as
+    stale and its correction is frozen. A removed reference withholds
+    every placement and is never re-picked automatically.
+  - Pairwise overlap/gap relationships between records, and an advisory
+    large-gap warning at `>=` 3600 s (central configuration; never a
+    rejection).
+  - API under `/api/v1/workspaces/{id}/event-reconstruction`: `records`,
+    `definition`, `definition/reference`,
+    `definition/records/{record_id}/correction`.
+  - State is in-memory and cleared with the workspace. A definition made
+    under the superseded Time Group model must be recreated; there is no
+    migration.
 - **Waveform Time Group, Synchronise Sources and placement behaviour is
-  unchanged** — Event Reconstruction only reads them.
+  unchanged.** Event Reconstruction does not use Time Groups or
+  Synchronise Sources at all; it shares only the pure timestamp helpers.
 - **Renderer: Option B approved (DEC-127).**
   [EVENT_RECONSTRUCTION_RENDERER_DESIGN.md](EVENT_RECONSTRUCTION_RENDERER_DESIGN.md)
-  has the design. Slice 3A extracted the shared Waveform renderer
-  helpers (fetch core, offset arithmetic, trace/layout/panel markup,
-  step-zoom/clamp/cursor arithmetic); Waveform behaviour is identical.
-  Slice 3B added per-source timing to the definition response
-  (`source_timings`: within-group, group and total reconstruction
-  offsets, mapped start/end; null for stale state) and the one frontend
-  mapping pair (`reconstruction_x = source_elapsed +
-  total_reconstruction_offset_s`). **No Event Reconstruction plotting
-  exists yet** — Slice 3C is the first plotted UAT. A WebGL float32
-  precision risk for short high-rate records placed hours from the
-  reference is to be checked there.
+  has the design.
+  - Slice 3A extracted the shared Waveform renderer helpers (fetch core,
+    offset arithmetic, trace/layout/panel markup, step-zoom/clamp/cursor
+    arithmetic); Waveform behaviour is identical.
+  - Slice 3B added per-source timing to the definition response
+    (`source_timings`: `within_record_offset_s`, which is 0 for every
+    current record; `reconstruction_record_offset_s`; the total; mapped
+    start/end; null for stale state). It also added the one frontend
+    mapping pair (`reconstruction_x = source_elapsed +
+    total_reconstruction_offset_s`).
+  - **No Event Reconstruction plotting exists yet.** Slice 3C is the
+    first plotted UAT. A WebGL float32 precision risk for short
+    high-rate records placed hours from the reference is to be checked
+    there.
 - Still open:
   - `[OPEN / UAT]` mixed-duration / mixed-sampling-rate navigation and
     the initial viewport;

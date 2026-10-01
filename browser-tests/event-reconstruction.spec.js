@@ -1,10 +1,11 @@
-// Event Reconstruction -- Slice 0 shell (DEC-123) and Slice 2 selection
-// workflow (DEC-125) over the Slice 1 API (DEC-124).
+// Event Reconstruction -- Slice 0 shell (DEC-123), Slice 2 selection
+// workflow (DEC-125) and the record model (DEC-128).
 //
 // Covers the main-menu entry, the page shell and its Waveform visual
-// language, the left-panel member/Time Group workflow (chronological
-// list, eligibility, add/remove, reference, corrections, stale members
-// and re-confirmation, large-gap warning, clear), and the boundary with
+// language, the left-panel record/member workflow (chronological record
+// list, eligibility, add/remove, reference, corrections, stale (removed)
+// records, large-gap warning, clear), independent records that overlap in
+// time (never merged, unlike Waveform Time Groups), and the boundary with
 // Waveform: Event Reconstruction never changes Waveform, Time Groups or
 // Synchronise Sources state, and plots nothing yet.
 
@@ -25,7 +26,7 @@ function collectConsoleErrors(page) {
 }
 
 // synth_ascii.cfg with its station name and start/trigger lines replaced,
-// so each upload is a recognisable recording in its own Time Group.
+// so each upload is a recognisable, independently imported record.
 function cfgBuffer(station, startClock) {
   const lines = fs.readFileSync(path.join(FIXTURES, "synth_ascii.cfg"), "latin1").split(/\r?\n/);
   lines[0] = lines[0].replace("SYNTH_STATION", station);
@@ -68,18 +69,43 @@ async function api(page, pathSuffix) {
   return resp.json();
 }
 
-const groupRow = (page, station) => page.locator("#wwErGroupsPanel .ww-er-group-row", { hasText: station });
-const memberRow = (page, station) => page.locator("#wwErMembersPanel .ww-er-member-row", { hasText: station });
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
-async function addGroup(page, station) {
-  await groupRow(page, station).locator('button[data-er-action="add-group"]').click();
-  await expect(groupRow(page, station).getByText("In reconstruction")).toBeVisible();
+// Rows are matched by their exact recording name, so "STN_FAR" never
+// matches "STN_FAR_TWIN".
+const exactName = (page, station) => page.locator(".source-recording-name", { hasText: new RegExp(`^${escapeRegExp(station)}$`) });
+const recordRow = (page, station) => page.locator("#wwErRecordsPanel .ww-er-record-row", { has: exactName(page, station) });
+const memberRow = (page, station) => page.locator("#wwErMembersPanel .ww-er-member-row", { has: exactName(page, station) });
+const staleRows = (page) => page.locator('#wwErMembersPanel .ww-er-member-row[data-member-status="stale"]');
+
+async function addRecord(page, station) {
+  await recordRow(page, station).locator('button[data-er-action="add-record"]').click();
+  await expect(recordRow(page, station).getByText("In reconstruction")).toBeVisible();
 }
 
 async function setCorrection(page, station, ms) {
   const row = memberRow(page, station);
   await row.locator("input[data-er-correction-input]").fill(String(ms));
   await row.locator('button[data-er-action="set-correction"]').click();
+}
+
+async function sourceIdFor(page, station) {
+  const sources = await api(page, "/sources");
+  return sources.find((s) => s.station_name === station).source_id;
+}
+
+// Removes a recording through the Recordings page, as an engineer would.
+async function removeRecording(page, station) {
+  const sourceId = await sourceIdFor(page, station);
+  await page.locator("#mainNavRecordingsBtn").click();
+  await page.locator(`button[data-action="remove"][data-source-id="${sourceId}"]`).click();
+  await expect(page.locator("#confirmOverlay")).toBeVisible();
+  await page.locator("#confirmRemoveBtn").click();
+  await expect(page.locator("#confirmOverlay")).toBeHidden();
+  await expect(page.locator(`#recordingsTableBody tr[data-source-id="${sourceId}"]`)).toHaveCount(0);
+  return sourceId;
 }
 
 test.describe("Event Reconstruction -- Slice 0 shell", () => {
@@ -139,8 +165,8 @@ test.describe("Event Reconstruction -- Slice 0 shell", () => {
     await expect(sidebar).toBeVisible();
     await expect(page.locator("#wwErDefinitionHeading")).toContainText("Reconstruction");
     await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(0)");
-    await expect(page.locator("#wwErGroupsCountBadge")).toHaveText("(0)");
-    await expect(page.locator("#wwErGroupsPanel")).toContainText("No recordings loaded yet. Upload one from Recordings.");
+    await expect(page.locator("#wwErRecordsCountBadge")).toHaveText("(0)");
+    await expect(page.locator("#wwErRecordsPanel")).toContainText("No recordings loaded yet. Upload one from Recordings.");
     await expect(page.locator("#wwErClearBtn")).toBeHidden();
     const sidebarBox = await sidebar.boundingBox();
     const mainBox = await page.locator("#wwErMain").boundingBox();
@@ -206,11 +232,6 @@ test.describe("Event Reconstruction -- Slice 0 shell", () => {
   });
 });
 
-async function sourceIdFor(page, station) {
-  const sources = await api(page, "/sources");
-  return sources.find((s) => s.station_name === station).source_id;
-}
-
 async function createCalculatedChannel(page, sourceId) {
   const resp = await page.request.post(`${BACKEND}/api/v1/workspaces/${await workspaceId(page)}/calculated-channels`, {
     data: { name: "-VA", operation: "reverse_polarity", inputs: [{ kind: "source", source_id: sourceId, channel_name: "VA" }], parameters: {} },
@@ -225,6 +246,64 @@ async function openMemberTree(page, station) {
   if (!(await tree.evaluate((el) => el.open))) await tree.locator(":scope > summary").click();
   return row;
 }
+
+test.describe("Event Reconstruction -- independent records (DEC-128)", () => {
+  test("records with identical timestamps stay separate members while Waveform still groups them", async ({ page }) => {
+    const consoleErrors = collectConsoleErrors(page);
+    await page.goto("/index.html");
+    await upload(page, "AGJH 500kV", "09:59:30");
+    await upload(page, "BAHS 275kV", "10:00:00");
+    await upload(page, "BTGH", "10:00:00");
+    const bahs = await sourceIdFor(page, "BAHS 275kV");
+    const btgh = await sourceIdFor(page, "BTGH");
+
+    // Waveform keeps its Time Group model: BAHS and BTGH overlap, so they
+    // form one Time Group there.
+    const groupsBefore = await api(page, "/synchronization/time-groups");
+    const shared = groupsBefore.find((g) => g.source_ids.includes(bahs));
+    expect(shared.source_ids.slice().sort()).toEqual([bahs, btgh].sort());
+
+    // Event Reconstruction lists three records, one row each.
+    await openEventReconstruction(page);
+    await expect(page.locator("#wwErRecordsCountBadge")).toHaveText("(3)");
+    const names = await page.locator('#wwErRecordsPanel .ww-er-record-row[data-eligible="true"] .source-recording-name').allTextContents();
+    expect(names[0]).toBe("AGJH 500kV");
+    expect(names.slice(1).sort()).toEqual(["BAHS 275kV", "BTGH"]);
+    expect(names).toHaveLength(3); // never one merged "BAHS 275kV + BTGH" row
+
+    await addRecord(page, "AGJH 500kV");
+    await addRecord(page, "BAHS 275kV");
+    await addRecord(page, "BTGH");
+    await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(3)");
+    await expect(page.locator("#wwErCanvasMeta")).toHaveText("3 records selected");
+    for (const station of ["AGJH 500kV", "BAHS 275kV", "BTGH"]) {
+      const row = await openMemberTree(page, station);
+      await expect(row.locator("details.ww-er-member-tree details.source-recording")).toHaveCount(1);
+      await expect(row.locator("details.ww-er-member-tree .source-recording-name")).toHaveText(station);
+    }
+
+    // Each record owns its correction.
+    await setCorrection(page, "BTGH", 4);
+    await expect(memberRow(page, "BTGH").locator(".ww-er-correction-value")).toHaveText("+4.000 ms");
+    await expect(memberRow(page, "BAHS 275kV").locator(".ww-er-correction-value")).toHaveText("0.000 ms");
+    const definition = await api(page, "/event-reconstruction/definition");
+    const byId = Object.fromEntries(definition.members.map((m) => [m.record_id, m]));
+    expect(byId[bahs].reconstruction_offset_s).toBeCloseTo(30, 9);
+    expect(byId[btgh].reconstruction_offset_s).toBeCloseTo(30.004, 9);
+    expect(byId[btgh].source_timings.map((t) => t.source_id)).toEqual([btgh]);
+
+    // Channel selection is per record: the same channel name in BAHS and
+    // BTGH are two different selections.
+    await memberRow(page, "BAHS 275kV").locator('tr.ww-er-channel-row[data-er-channel-name="VA"]').click();
+    await memberRow(page, "BTGH").locator('tr.ww-er-channel-row[data-er-channel-name="VA"]').click();
+    const selections = await page.evaluate(() => wwErSelectedChannelsForPlotting());
+    expect(selections.map((s) => s.recordId).sort()).toEqual([bahs, btgh].sort());
+
+    // Waveform's Time Groups are untouched.
+    expect(await api(page, "/synchronization/time-groups")).toEqual(groupsBefore);
+    expect(consoleErrors).toEqual([]);
+  });
+});
 
 test.describe("Event Reconstruction -- Slice 2A channel browser", () => {
   test("member tree mirrors the Waveform tree and inherits names and colours read-only", async ({ page }) => {
@@ -246,8 +325,8 @@ test.describe("Event Reconstruction -- Slice 2A channel browser", () => {
         .map((d) => d.dataset.subgroup + ":" + d.querySelectorAll("tr").length), sourceA);
 
     await openEventReconstruction(page);
-    await addGroup(page, "STN_A");
-    await addGroup(page, "STN_B");
+    await addRecord(page, "STN_A");
+    await addRecord(page, "STN_B");
     const rowA = await openMemberTree(page, "STN_A");
 
     // Same hierarchy and grouping as Waveform for this recording.
@@ -314,8 +393,8 @@ test.describe("Event Reconstruction -- Slice 2A channel browser", () => {
     const calcsBefore = await api(page, "/calculated-channels");
 
     await openEventReconstruction(page);
-    await addGroup(page, "STN_A");
-    await addGroup(page, "STN_B");
+    await addRecord(page, "STN_A");
+    await addRecord(page, "STN_B");
     const rowA = await openMemberTree(page, "STN_A");
 
     // Row toggle and group "Include all".
@@ -338,6 +417,7 @@ test.describe("Event Reconstruction -- Slice 2A channel browser", () => {
 
     const selections = await page.evaluate(() => wwErSelectedChannelsForPlotting());
     expect(selections.map((s) => s.kind + ":" + s.channelName).sort()).toEqual(["analog:IA", "calculated:-VA"]);
+    expect(new Set(selections.map((s) => s.recordId))).toEqual(new Set([sourceA]));
     const calcSelection = selections.find((s) => s.kind === "calculated");
     expect(calcSelection.sourceId).toBe(calc.id);
     expect(calcSelection.timingSourceId).toBe(calc.reference_source_id);
@@ -359,35 +439,43 @@ test.describe("Event Reconstruction -- Slice 2A channel browser", () => {
     expect(consoleErrors).toEqual([]);
   });
 
-  test("stale members lose their channel tree and their selections are not plotted; ineligible groups have no tree", async ({ page }) => {
+  test("an overlapping upload never stales a member; a removed record loses its tree and its selections are not plotted", async ({ page }) => {
     await page.goto("/index.html");
     await upload(page, "STN_BASE", "10:00:00");
     await upload(page, "STN_REF", "10:00:10");
     await openEventReconstruction(page);
-    await addGroup(page, "STN_REF");
-    await addGroup(page, "STN_BASE");
+    await addRecord(page, "STN_REF");
+    await addRecord(page, "STN_BASE");
     const base = await openMemberTree(page, "STN_BASE");
     await base.locator('tr.ww-er-channel-row[data-er-channel-name="VA"]').click();
     expect((await page.evaluate(() => wwErSelectedChannelsForPlotting())).length).toBe(1);
 
+    // Overlaps STN_BASE (one Waveform Time Group) -- a separate record.
     await upload(page, "STN_OVERLAP", "10:00:00.005");
     await openEventReconstruction(page);
-    const stale = memberRow(page, "STN_BASE");
-    await expect(stale).toHaveAttribute("data-member-status", "stale");
+    await expect(memberRow(page, "STN_BASE")).toHaveAttribute("data-member-status", "current");
+    await expect(memberRow(page, "STN_BASE").locator(".ww-er-selected-count")).toHaveText("(1 selected)");
+    await expect(recordRow(page, "STN_OVERLAP").locator('button[data-er-action="add-record"]')).toBeEnabled();
+    expect((await page.evaluate(() => wwErSelectedChannelsForPlotting())).length).toBe(1);
+
+    // Removing the recording makes its member stale.
+    await removeRecording(page, "STN_BASE");
+    await openEventReconstruction(page);
+    const stale = staleRows(page);
+    await expect(stale).toHaveCount(1);
     await expect(stale.locator("details.ww-er-member-tree")).toHaveCount(0);
     await expect(stale.locator("tr.ww-er-channel-row")).toHaveCount(0);
-    await expect(stale).toContainText("Channel selection is unavailable until this member is re-confirmed.");
+    await expect(stale).toContainText("Channel selection is unavailable for a removed record.");
     expect(await page.evaluate(() => wwErSelectedChannelsForPlotting())).toEqual([]);
 
-    // Time Groups that are not members (eligible or not) never get a tree.
-    await expect(page.locator("#wwErGroupsPanel tr.ww-er-channel-row")).toHaveCount(0);
-    await expect(page.locator("#wwErGroupsPanel details.ww-er-member-tree")).toHaveCount(0);
+    // Records that are not members (eligible or not) never get a tree.
+    await expect(page.locator("#wwErRecordsPanel tr.ww-er-channel-row")).toHaveCount(0);
+    await expect(page.locator("#wwErRecordsPanel details.ww-er-member-tree")).toHaveCount(0);
 
-    // Re-confirmation starts the new member with no selection.
-    await page.locator('#wwErNotices button[data-er-action="reconfirm-stale"]').click();
-    await expect(memberRow(page, "STN_OVERLAP")).toHaveAttribute("data-member-status", "current");
-    await expect(memberRow(page, "STN_OVERLAP").locator(".ww-er-selected-count")).toHaveText("(0 selected)");
-    expect(await page.evaluate(() => wwErSelectedChannelsForPlotting())).toEqual([]);
+    // Removing the stale member drops its inert selections too.
+    await page.locator('#wwErNotices button[data-er-action="remove-stale"]').click();
+    await expect(staleRows(page)).toHaveCount(0);
+    expect(await page.evaluate(() => Object.keys(wwErState.selectedChannels))).toEqual([]);
   });
 });
 
@@ -418,8 +506,8 @@ test.describe("Event Reconstruction -- analog-only scope (DEC-127)", () => {
     expect(digitalBefore.subgroups.length).toBeGreaterThan(0);
 
     await openEventReconstruction(page);
-    await addGroup(page, "STN_A");
-    await addGroup(page, "STN_B");
+    await addRecord(page, "STN_A");
+    await addRecord(page, "STN_B");
     const rowA = await openMemberTree(page, "STN_A");
     const pageEr = page.locator("#pageEventReconstruction");
     await expect(pageEr.locator('tr.ww-er-channel-row[data-er-kind="digital"]')).toHaveCount(0);
@@ -436,7 +524,7 @@ test.describe("Event Reconstruction -- analog-only scope (DEC-127)", () => {
     // A digital selection can never reach plotting: rejected, then pruned.
     await page.evaluate(() => {
       const member = wwErCurrentMembers()[0];
-      wwErState.selectedChannels["injected"] = { memberId: member.member_id, kind: "digital", sourceId: member.source_ids[0], channelName: "BRK_A", timingSourceId: member.source_ids[0] };
+      wwErState.selectedChannels["injected"] = { recordId: member.record_id, kind: "digital", sourceId: member.source_ids[0], channelName: "BRK_A", timingSourceId: member.source_ids[0] };
     });
     expect((await page.evaluate(() => wwErSelectedChannelsForPlotting())).some((s) => s.kind === "digital")).toBe(false);
     await page.evaluate(() => wwErRefresh());
@@ -457,7 +545,7 @@ test.describe("Event Reconstruction -- analog-only scope (DEC-127)", () => {
 });
 
 test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
-  test("Time Groups are listed chronologically; ineligible groups show the backend reason and cannot be added", async ({ page }) => {
+  test("records are listed chronologically; ineligible records show the backend reason and cannot be added", async ({ page }) => {
     const consoleErrors = collectConsoleErrors(page);
     await page.goto("/index.html");
     // Uploaded out of chronological order on purpose.
@@ -465,32 +553,32 @@ test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
     await upload(page, "STN_EARLY", "10:00:00");
     await upload(page, "STN_MIDDLE", "10:00:10");
 
-    // A Time-of-Day group cannot come from a COMTRADE upload, so it is
+    // A Time-of-Day record cannot come from a COMTRADE upload, so it is
     // appended to the real backend response.
-    await page.route("**/event-reconstruction/time-groups", async (route) => {
+    await page.route("**/event-reconstruction/records", async (route) => {
       const response = await route.fetch();
-      const groups = await response.json();
-      groups.push({
-        group_id: "tod-group", time_reference_type: "time_of_day", origin_source_id: "tod-group", source_ids: ["tod-group"],
-        membership_fingerprint: "tgm1-tod", eligible: false, reason_code: "time_of_day_not_supported",
-        reason_message: "This Time Group has a time of day but no calendar date. Time-of-day recordings are not supported by Event Reconstruction yet.",
-        start_time_utc: null, end_time_utc: null, duration_s: 1.0, note: null, reconstruction_member_id: null,
+      const records = await response.json();
+      records.push({
+        record_id: "tod-record", source_ids: ["tod-record"], time_reference_type: "time_of_day",
+        eligible: false, reason_code: "time_of_day_not_supported",
+        reason_message: "This record has a time of day but no calendar date. Time-of-day records are not supported by Event Reconstruction yet.",
+        start_time_utc: null, end_time_utc: null, duration_s: 1.0, in_reconstruction: false,
       });
-      await route.fulfill({ response, json: groups });
+      await route.fulfill({ response, json: records });
     });
 
     await openEventReconstruction(page);
-    const eligibleRows = page.locator('#wwErGroupsPanel .ww-er-group-row[data-eligible="true"] .source-recording-name');
+    const eligibleRows = page.locator('#wwErRecordsPanel .ww-er-record-row[data-eligible="true"] .source-recording-name');
     await expect(eligibleRows).toHaveText(["STN_EARLY", "STN_MIDDLE", "STN_LATE"]);
-    await expect(page.locator("#wwErGroupsCountBadge")).toHaveText("(4)");
+    await expect(page.locator("#wwErRecordsCountBadge")).toHaveText("(4)");
 
-    const ineligible = page.locator('#wwErGroupsPanel .ww-er-group-row[data-eligible="false"]');
+    const ineligible = page.locator('#wwErRecordsPanel .ww-er-record-row[data-eligible="false"]');
     await expect(ineligible).toHaveCount(1);
     await expect(ineligible).toHaveAttribute("data-reason-code", "time_of_day_not_supported");
     await expect(ineligible).toContainText("no calendar date");
     await expect(ineligible).toContainText("Not eligible");
-    await expect(ineligible.locator('button[data-er-action="add-group"]')).toHaveCount(0);
-    await expect(page.locator("#wwErNotices")).toContainText("Add two or more Time Groups");
+    await expect(ineligible.locator('button[data-er-action="add-record"]')).toHaveCount(0);
+    await expect(page.locator("#wwErNotices")).toContainText("Add two or more records");
 
     expect(consoleErrors).toEqual([]);
   });
@@ -503,20 +591,20 @@ test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
     await upload(page, "STN_C", "10:00:20");
     await openEventReconstruction(page);
 
-    await addGroup(page, "STN_A");
+    await addRecord(page, "STN_A");
     await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(1)");
     await expect(memberRow(page, "STN_A").locator(".ww-er-badge--reference")).toBeVisible();
-    await expect(page.locator("#wwErNotices")).toContainText("A reconstruction needs at least two Time Groups.");
-    await addGroup(page, "STN_B");
-    await addGroup(page, "STN_C");
+    await expect(page.locator("#wwErNotices")).toContainText("A reconstruction needs at least two records.");
+    await addRecord(page, "STN_B");
+    await addRecord(page, "STN_C");
     await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(3)");
-    await expect(page.locator("#wwErCanvasMeta")).toHaveText("3 Time Groups selected");
+    await expect(page.locator("#wwErCanvasMeta")).toHaveText("3 records selected");
     await expect(memberRow(page, "STN_B")).toContainText("+10.000 s from reference");
 
     // Update membership: remove a non-reference member.
     await memberRow(page, "STN_C").locator('button[data-er-action="remove-member"]').click();
     await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(2)");
-    await expect(groupRow(page, "STN_C").locator('button[data-er-action="add-group"]')).toBeVisible();
+    await expect(recordRow(page, "STN_C").locator('button[data-er-action="add-record"]')).toBeVisible();
 
     // Sub-millisecond correction is stored at full precision.
     await setCorrection(page, "STN_B", 12.3456);
@@ -530,8 +618,8 @@ test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
     await expect(memberRow(page, "STN_B").locator(".ww-er-badge--reference")).toBeVisible();
     await expect(memberRow(page, "STN_A")).toContainText("from reference");
     definition = await api(page, "/event-reconstruction/definition");
-    expect(definition.reference_member_id).toBe(memberB.member_id);
-    expect(definition.members.find((m) => m.member_id === memberB.member_id).correction_s).toBeCloseTo(0.0123456, 12);
+    expect(definition.reference_record_id).toBe(memberB.record_id);
+    expect(definition.members.find((m) => m.record_id === memberB.record_id).correction_s).toBeCloseTo(0.0123456, 12);
     await expect(memberRow(page, "STN_B").locator(".ww-er-correction-value")).toHaveText("+12.346 ms");
 
     // Reset, then leave and come back: the definition is restored from the backend.
@@ -551,82 +639,82 @@ test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
     await page.locator("#wwErClearConfirmBtn").click();
     await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(0)");
     await expect(page.locator("#wwErClearBtn")).toBeHidden();
-    await expect(page.locator("#wwErGroupsCountBadge")).toHaveText("(3)");
+    await expect(page.locator("#wwErRecordsCountBadge")).toHaveText("(3)");
     expect((await api(page, "/event-reconstruction/definition")).defined).toBe(false);
     expect(await api(page, "/sources")).toHaveLength(3);
 
     expect(consoleErrors).toEqual([]);
   });
 
-  test("a stale member keeps its correction unapplied; re-confirmation adds the new group at 0", async ({ page }) => {
+  test("a removed record's member keeps its correction unapplied and is only removed explicitly", async ({ page }) => {
     const consoleErrors = collectConsoleErrors(page);
     await page.goto("/index.html");
     await upload(page, "STN_BASE", "10:00:00");
     await upload(page, "STN_REF", "10:00:10");
+    await upload(page, "STN_SPARE", "10:00:20");
     await openEventReconstruction(page);
-    await addGroup(page, "STN_REF");
-    await addGroup(page, "STN_BASE");
+    await addRecord(page, "STN_REF");
+    await addRecord(page, "STN_BASE");
     await setCorrection(page, "STN_BASE", -5);
     await expect(memberRow(page, "STN_BASE").locator(".ww-er-correction-value")).toHaveText("-5.000 ms");
 
-    // Overlaps STN_BASE, so its Time Group membership changes.
-    await upload(page, "STN_OVERLAP", "10:00:00.005");
+    const removedId = await removeRecording(page, "STN_BASE");
     await openEventReconstruction(page);
 
-    const stale = memberRow(page, "STN_BASE");
-    await expect(stale).toHaveAttribute("data-member-status", "stale");
+    const stale = staleRows(page);
+    await expect(stale).toHaveCount(1);
+    await expect(stale).toHaveAttribute("data-record-id", removedId);
     await expect(stale.getByText("Stale")).toBeVisible();
+    await expect(stale).toContainText("Its recording was removed.");
     await expect(stale).toContainText("Correction -5.000 ms (kept, not applied)");
     await expect(stale.locator("input[data-er-correction-input]")).toHaveCount(0);
-    await expect(page.locator("#wwErNotices")).toContainText("1 member needs re-confirmation");
-    await expect(page.locator("#wwErCanvasMeta")).toContainText("re-confirmation needed");
-    const merged = groupRow(page, "STN_OVERLAP");
-    await expect(merged.locator('button[data-er-action="add-group"]')).toBeDisabled();
+    await expect(page.locator("#wwErNotices")).toContainText("1 member was removed");
+    await expect(page.locator("#wwErCanvasMeta")).toContainText("removed records to resolve");
+    // Membership edits wait until the stale member is resolved.
+    await expect(recordRow(page, "STN_SPARE").locator('button[data-er-action="add-record"]')).toBeDisabled();
 
-    await page.locator('#wwErNotices button[data-er-action="reconfirm-stale"]').click();
-    const reconfirmed = memberRow(page, "STN_OVERLAP");
-    await expect(reconfirmed).toHaveAttribute("data-member-status", "current");
-    await expect(reconfirmed.locator(".ww-er-correction-value")).toHaveText("0.000 ms");
-    await expect(reconfirmed).toContainText("Previous correction (not applied): -5.000 ms");
-    await expect(page.locator('#wwErMembersPanel .ww-er-member-row[data-member-status="stale"]')).toHaveCount(0);
+    await page.locator('#wwErNotices button[data-er-action="remove-stale"]').click();
+    await expect(staleRows(page)).toHaveCount(0);
     const definition = await api(page, "/event-reconstruction/definition");
     expect(definition.status).toBe("ready");
-    expect(definition.members.map((m) => m.correction_s)).toEqual([0, 0]);
+    expect(definition.members.map((m) => m.correction_s)).toEqual([0]);
+    expect(definition.members.some((m) => m.record_id === removedId)).toBe(false);
+    await expect(recordRow(page, "STN_SPARE").locator('button[data-er-action="add-record"]')).toBeEnabled();
 
     expect(consoleErrors).toEqual([]);
   });
 
-  test("a stale reference is never replaced automatically", async ({ page }) => {
+  test("a removed reference is never replaced automatically", async ({ page }) => {
     await page.goto("/index.html");
     await upload(page, "STN_BASE", "10:00:00");
     await upload(page, "STN_OTHER", "10:00:10");
     await openEventReconstruction(page);
-    await addGroup(page, "STN_BASE");
-    await addGroup(page, "STN_OTHER");
+    await addRecord(page, "STN_BASE");
+    await addRecord(page, "STN_OTHER");
     const before = await api(page, "/event-reconstruction/definition");
 
-    await upload(page, "STN_OVERLAP", "10:00:00.005");
+    await removeRecording(page, "STN_BASE");
     await openEventReconstruction(page);
     await expect(page.locator("#wwErNotices")).toContainText("Reference needs to be chosen again");
-    await expect(memberRow(page, "STN_BASE").locator(".ww-er-badge--reference")).toBeVisible();
-    await expect(page.locator('#wwErNotices button[data-er-action="reconfirm-stale"]')).toHaveCount(0);
+    await expect(staleRows(page).locator(".ww-er-badge--reference")).toBeVisible();
+    await expect(page.locator('#wwErNotices button[data-er-action="remove-stale"]')).toHaveCount(0);
     const after = await api(page, "/event-reconstruction/definition");
-    expect(after.reference_member_id).toBe(before.reference_member_id);
+    expect(after.reference_record_id).toBe(before.reference_record_id);
     expect(after.placements_available).toBe(false);
 
     // The engineer chooses a current member as reference explicitly.
     await memberRow(page, "STN_OTHER").locator('button[data-er-action="make-reference"]').click();
     await expect(memberRow(page, "STN_OTHER").locator(".ww-er-badge--reference")).toBeVisible();
-    await expect(page.locator('#wwErNotices button[data-er-action="reconfirm-stale"]')).toBeVisible();
+    await expect(page.locator('#wwErNotices button[data-er-action="remove-stale"]')).toBeVisible();
   });
 
-  test("a large time gap is a warning, not a rejection", async ({ page }) => {
+  test("a large time gap between records is a warning, not a rejection", async ({ page }) => {
     await page.goto("/index.html");
     await upload(page, "STN_MORNING", "10:00:00");
     await upload(page, "STN_NOON", "12:00:00");
     await openEventReconstruction(page);
-    await addGroup(page, "STN_MORNING");
-    await addGroup(page, "STN_NOON");
+    await addRecord(page, "STN_MORNING");
+    await addRecord(page, "STN_NOON");
 
     const notice = page.locator('#wwErNotices .ww-er-notice--warn', { hasText: "Large time gap" });
     await expect(notice).toBeVisible();
@@ -643,6 +731,7 @@ test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
     await page.goto("/index.html");
     await upload(page, "STN_A", "10:00:00");
     await upload(page, "STN_B", "10:00:10");
+    await upload(page, "STN_A_TWIN", "10:00:00");
 
     // Display one channel in Waveform first.
     await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
@@ -659,8 +748,10 @@ test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
     const sourcesBefore = await api(page, "/sources");
 
     await openEventReconstruction(page);
-    await addGroup(page, "STN_A");
-    await addGroup(page, "STN_B");
+    await addRecord(page, "STN_A");
+    await addRecord(page, "STN_B");
+    await addRecord(page, "STN_A_TWIN");
+    await setCorrection(page, "STN_A_TWIN", 2);
     await setCorrection(page, "STN_B", -9999);
     await memberRow(page, "STN_B").locator('button[data-er-action="make-reference"]').click();
     await expect(memberRow(page, "STN_B").locator(".ww-er-badge--reference")).toBeVisible();
@@ -681,7 +772,7 @@ test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
 });
 
 test.describe("Event Reconstruction -- Slice 3B time mapping", () => {
-  test("frontend mapping uses the backend total offset, resolves calculated parents and drops stale members", async ({ page }) => {
+  test("frontend mapping uses the backend total offset, resolves calculated parents and drops removed records", async ({ page }) => {
     const consoleErrors = collectConsoleErrors(page);
     await page.goto("/index.html");
     await upload(page, "STN_REF", "10:00:00");
@@ -689,13 +780,14 @@ test.describe("Event Reconstruction -- Slice 3B time mapping", () => {
     const farId = await sourceIdFor(page, "STN_FAR");
     const calc = await createCalculatedChannel(page, farId);
     await openEventReconstruction(page);
-    await addGroup(page, "STN_REF");
-    await addGroup(page, "STN_FAR");
+    await addRecord(page, "STN_REF");
+    await addRecord(page, "STN_FAR");
     await setCorrection(page, "STN_FAR", 0.123);
     await expect(memberRow(page, "STN_FAR").locator(".ww-er-correction-value")).toHaveText("+0.123 ms");
 
     const definition = await api(page, "/event-reconstruction/definition");
     const apiFar = definition.members.flatMap((m) => m.source_timings || []).find((t) => t.source_id === farId);
+    expect(apiFar.within_record_offset_s).toBe(0);
     const result = await page.evaluate(({ farId, calcId }) => {
       const far = wwErSourceTiming(farId);
       const viaCalc = wwErSourceTiming(calcId);
@@ -711,6 +803,7 @@ test.describe("Event Reconstruction -- Slice 3B time mapping", () => {
     expect(result.far.totalOffsetS).toBe(apiFar.total_reconstruction_offset_s);
     expect(result.far.totalOffsetS).toBeCloseTo(7200.000123, 9);
     expect(result.far.startS).toBe(apiFar.reconstruction_start_s);
+    expect(result.far.recordId).toBe(farId);
     expect(result.viaCalc).toEqual(result.far);
     expect(result.viaCalc.timingSourceId).toBe(farId);
     expect(result.spacingError).toBeLessThan(1e-9);
@@ -718,10 +811,16 @@ test.describe("Event Reconstruction -- Slice 3B time mapping", () => {
     expect(result.openBound).toBeNull();
     await expect(page.locator("#pageEventReconstruction .plotly")).toHaveCount(0);
 
-    // A stale member exposes no mapping.
-    await upload(page, "STN_FAR_OVERLAP", "12:00:00.005");
+    // An identical-timestamp upload changes nothing for STN_FAR.
+    await upload(page, "STN_FAR_TWIN", "12:00:00");
     await openEventReconstruction(page);
-    await expect(memberRow(page, "STN_FAR")).toHaveAttribute("data-member-status", "stale");
+    await expect(memberRow(page, "STN_FAR")).toHaveAttribute("data-member-status", "current");
+    expect(await page.evaluate((id) => wwErSourceTiming(id), farId)).toEqual(result.far);
+
+    // A removed record exposes no mapping.
+    await removeRecording(page, "STN_FAR");
+    await openEventReconstruction(page);
+    await expect(staleRows(page)).toHaveCount(1);
     const afterStale = await page.evaluate(({ farId, calcId, refName }) => ({
       far: wwErSourceTiming(farId),
       calc: wwErSourceTiming(calcId),

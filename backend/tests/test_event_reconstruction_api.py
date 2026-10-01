@@ -1,6 +1,6 @@
-"""API tests for Event Reconstruction (DEC-123/DEC-124), end to end
-through the real app: real COMTRADE uploads (start time edited in the
-CFG to create separate Time Groups) plus injected Time-of-Day and
+"""API tests for Event Reconstruction (DEC-123/DEC-124/DEC-128), end to
+end through the real app: real COMTRADE uploads (start time edited in the
+CFG; each upload is one independent record) plus injected Time-of-Day and
 elapsed-only sources for the ineligible cases."""
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.domain.disturbance_record import DisturbanceRecord
-from app.domain.event_reconstruction import membership_fingerprint
 from app.domain.metadata import RecordingMetadata
 from app.domain.source import ActiveSource, SourceMetadata
 from app.domain.timing import SamplingInformation, TimingInformation
@@ -94,67 +93,94 @@ def _pair(client, ws, comtrade_fixtures_dir, *, offset_s=10.0):
     return a, b
 
 
-class TestTimeGroups:
-    def test_lists_eligible_and_ineligible_groups_with_reason_codes(self, client, comtrade_fixtures_dir):
-        ws = "ws-er-groups"
+def _define(client, ws, record_ids, reference):
+    return client.put(_url(ws, "/definition"), json={"record_ids": list(record_ids), "reference_record_id": reference})
+
+
+def _members(body):
+    return {m["record_id"]: m for m in body["members"]}
+
+
+class TestRecords:
+    def test_lists_eligible_and_ineligible_records_with_reason_codes(self, client, comtrade_fixtures_dir):
+        ws = "ws-er-records"
         a, b = _pair(client, ws, comtrade_fixtures_dir)
         _inject(client, ws, "tod-1", timing_reference="time_of_day", time_of_day_s=36000.0)
         _inject(client, ws, "el-1", timing_reference="relative_elapsed")
 
-        resp = client.get(_url(ws, "/time-groups"))
+        resp = client.get(_url(ws, "/records"))
         assert resp.status_code == 200
-        groups = {g["group_id"]: g for g in resp.json()}
-        assert set(groups) == {a, b, "tod-1", "el-1"}
-        assert groups[a]["eligible"] is True and groups[a]["reason_code"] is None
-        assert groups[a]["start_time_utc"] == "2026-03-06T02:00:00Z"
-        assert groups[b]["start_time_utc"] == "2026-03-06T02:00:10Z"
-        assert groups[a]["membership_fingerprint"] == membership_fingerprint([a])
-        assert groups["tod-1"]["eligible"] is False
-        assert groups["tod-1"]["reason_code"] == "time_of_day_not_supported"
-        assert groups["tod-1"]["start_time_utc"] is None
-        assert groups["el-1"]["reason_code"] == "no_absolute_time_reference"
-        assert groups["el-1"]["duration_s"] == pytest.approx(1.0)
+        records = {r["record_id"]: r for r in resp.json()}
+        assert set(records) == {a, b, "tod-1", "el-1"}
+        assert records[a]["eligible"] is True and records[a]["reason_code"] is None
+        assert records[a]["source_ids"] == [a]
+        assert records[a]["start_time_utc"] == "2026-03-06T02:00:00Z"
+        assert records[b]["start_time_utc"] == "2026-03-06T02:00:10Z"
+        assert records["tod-1"]["eligible"] is False
+        assert records["tod-1"]["reason_code"] == "time_of_day_not_supported"
+        assert records["tod-1"]["start_time_utc"] is None
+        assert records["el-1"]["reason_code"] == "no_absolute_time_reference"
+        assert records["el-1"]["duration_s"] == pytest.approx(1.0)
 
     def test_empty_workspace(self, client):
-        assert client.get(_url("ws-er-empty", "/time-groups")).json() == []
+        assert client.get(_url("ws-er-empty", "/records")).json() == []
+
+    def test_time_groups_endpoint_is_gone(self, client):
+        assert client.get(_url("ws-er-old", "/time-groups")).status_code == 404
+
+    def test_identical_timestamp_uploads_are_two_records_but_one_waveform_time_group(self, client, comtrade_fixtures_dir):
+        ws = "ws-er-identical"
+        bahs, btgh = _pair(client, ws, comtrade_fixtures_dir, offset_s=0.0)
+        sync_groups = f"/api/v1/workspaces/{ws}/synchronization/time-groups"
+        groups = client.get(sync_groups).json()
+        assert len(groups) == 1 and sorted(groups[0]["source_ids"]) == sorted([bahs, btgh])
+
+        assert {r["record_id"] for r in client.get(_url(ws, "/records")).json()} == {bahs, btgh}
+        resp = _define(client, ws, [bahs, btgh], bahs)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert [m["record_id"] for m in body["members"]] == [bahs, btgh]
+        assert _members(body)[btgh]["reconstruction_offset_s"] == 0.0
+        assert body["relationships"][0]["kind"] == "full_overlap"
+        assert client.get(sync_groups).json() == groups
 
 
 class TestDefinitionLifecycle:
     def test_create_get_reference_correction_and_clear(self, client, comtrade_fixtures_dir):
         ws = "ws-er-flow"
         a, b = _pair(client, ws, comtrade_fixtures_dir)
-        member_a, member_b = membership_fingerprint([a]), membership_fingerprint([b])
 
         undefined = client.get(_url(ws, "/definition")).json()
         assert undefined["defined"] is False and undefined["members"] == []
         assert undefined["large_gap_warning_threshold_s"] == 3600.0
 
-        resp = client.put(_url(ws, "/definition"), json={"group_ids": [a, b], "reference_group_id": a})
+        resp = _define(client, ws, [a, b], a)
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["defined"] is True and body["status"] == "ready"
-        assert body["reference_member_id"] == member_a
-        members = {m["member_id"]: m for m in body["members"]}
-        assert members[member_b]["reconstruction_offset_s"] == pytest.approx(10.0)
-        assert members[member_b]["confirmed_group_id"] == b
+        assert body["reference_record_id"] == a
+        assert _members(body)[b]["reconstruction_offset_s"] == pytest.approx(10.0)
+        assert _members(body)[b]["source_ids"] == [b]
         assert body["relationships"][0]["kind"] == "gap"
+        assert body["relationships"][0]["record_a_id"] == a
         assert client.get(_url(ws, "/definition")).json() == body
+        assert {r["record_id"]: r["in_reconstruction"] for r in client.get(_url(ws, "/records")).json()} == {a: True, b: True}
 
-        resp = client.put(_url(ws, "/definition/reference"), json={"member_id": member_b})
+        resp = client.put(_url(ws, "/definition/reference"), json={"record_id": b})
         assert resp.status_code == 200
-        members = {m["member_id"]: m for m in resp.json()["members"]}
-        assert members[member_a]["reconstruction_offset_s"] == pytest.approx(-10.0)
-        assert members[member_b]["is_reference"] is True
+        members = _members(resp.json())
+        assert members[a]["reconstruction_offset_s"] == pytest.approx(-10.0)
+        assert members[b]["is_reference"] is True
 
-        resp = client.put(_url(ws, f"/definition/members/{member_a}/correction"), json={"correction_s": 0.0001234})
+        resp = client.put(_url(ws, f"/definition/records/{a}/correction"), json={"correction_s": 0.0001234})
         assert resp.status_code == 200
-        members = {m["member_id"]: m for m in resp.json()["members"]}
-        assert members[member_a]["correction_s"] == 0.0001234
-        assert members[member_a]["reconstruction_offset_s"] == pytest.approx(-9.9998766, abs=1e-12)
+        members = _members(resp.json())
+        assert members[a]["correction_s"] == 0.0001234
+        assert members[a]["reconstruction_offset_s"] == pytest.approx(-9.9998766, abs=1e-12)
 
-        resp = client.delete(_url(ws, f"/definition/members/{member_a}/correction"))
+        resp = client.delete(_url(ws, f"/definition/records/{a}/correction"))
         assert resp.status_code == 200
-        assert {m["member_id"]: m["correction_s"] for m in resp.json()["members"]}[member_a] == 0.0
+        assert _members(resp.json())[a]["correction_s"] == 0.0
 
         assert client.delete(_url(ws, "/definition")).status_code == 204
         assert client.get(_url(ws, "/definition")).json()["defined"] is False
@@ -163,7 +189,7 @@ class TestDefinitionLifecycle:
     def test_large_gap_warning_is_returned_without_rejecting(self, client, comtrade_fixtures_dir):
         ws = "ws-er-gap"
         a, b = _pair(client, ws, comtrade_fixtures_dir, offset_s=7200.0)
-        resp = client.put(_url(ws, "/definition"), json={"group_ids": [a, b], "reference_group_id": a})
+        resp = _define(client, ws, [a, b], a)
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == "ready"
@@ -171,6 +197,7 @@ class TestDefinitionLifecycle:
         assert warning["code"] == "large_gap"
         assert warning["threshold_s"] == 3600.0
         assert warning["gap_s"] > 3600.0
+        assert (warning["before_record_id"], warning["after_record_id"]) == (a, b)
 
 
 class TestConfiguredThreshold:
@@ -184,7 +211,7 @@ class TestConfiguredThreshold:
         with TestClient(create_app(custom)) as client:
             ws = "ws-er-threshold-custom"
             a, b = _pair(client, ws, comtrade_fixtures_dir, offset_s=offset_s)
-            resp = client.put(_url(ws, "/definition"), json={"group_ids": [a, b], "reference_group_id": a})
+            resp = _define(client, ws, [a, b], a)
             assert resp.status_code == 200
             body = resp.json()
             assert body["large_gap_warning_threshold_s"] == 60.0
@@ -194,81 +221,80 @@ class TestConfiguredThreshold:
 
 class TestErrors:
     @pytest.mark.parametrize(
-        ("payload", "status", "code"),
+        ("record_ids", "reference", "status", "code"),
         [
-            ({"group_ids": [], "reference_group_id": "x"}, 400, "invalid_reconstruction_definition"),
-            ({"group_ids": ["A", "A"], "reference_group_id": "A"}, 400, "duplicate_reconstruction_member"),
-            ({"group_ids": ["A", "nope"], "reference_group_id": "A"}, 404, "time_group_not_found"),
-            ({"group_ids": ["A", "tod-1"], "reference_group_id": "A"}, 400, "time_group_not_eligible"),
-            ({"group_ids": ["A", "el-1"], "reference_group_id": "A"}, 400, "time_group_not_eligible"),
-            ({"group_ids": ["A", "B"], "reference_group_id": "el-1"}, 400, "reconstruction_reference_not_member"),
+            ([], "x", 400, "invalid_reconstruction_definition"),
+            (["A", "A"], "A", 400, "duplicate_reconstruction_member"),
+            (["A", "nope"], "A", 404, "source_not_found"),
+            (["A", "tod-1"], "A", 400, "record_not_eligible"),
+            (["A", "el-1"], "A", 400, "record_not_eligible"),
+            (["A", "B"], "el-1", 400, "reconstruction_reference_not_member"),
         ],
     )
-    def test_invalid_definitions(self, client, comtrade_fixtures_dir, payload, status, code):
+    def test_invalid_definitions(self, client, comtrade_fixtures_dir, record_ids, reference, status, code):
         ws = "ws-er-errors"
         a, b = _pair(client, ws, comtrade_fixtures_dir)
         _inject(client, ws, "tod-1", timing_reference="time_of_day", time_of_day_s=100.0)
         _inject(client, ws, "el-1", timing_reference="relative_elapsed")
         names = {"A": a, "B": b}
-        body = {
-            "group_ids": [names.get(g, g) for g in payload["group_ids"]],
-            "reference_group_id": names.get(payload["reference_group_id"], payload["reference_group_id"]),
-        }
-        _assert_error(client.put(_url(ws, "/definition"), json=body), status, code)
+        resp = _define(client, ws, [names.get(r, r) for r in record_ids], names.get(reference, reference))
+        _assert_error(resp, status, code)
         assert client.get(_url(ws, "/definition")).json()["defined"] is False
 
     def test_member_operations_without_definition_or_member(self, client, comtrade_fixtures_dir):
         ws = "ws-er-member-errors"
-        a, _ = _pair(client, ws, comtrade_fixtures_dir)
-        member_a = membership_fingerprint([a])
-        _assert_error(client.put(_url(ws, "/definition/reference"), json={"member_id": member_a}), 404, "reconstruction_not_defined")
-        _assert_error(client.put(_url(ws, f"/definition/members/{member_a}/correction"), json={"correction_s": 1.0}), 404, "reconstruction_not_defined")
-        client.put(_url(ws, "/definition"), json={"group_ids": [a], "reference_group_id": a})
-        _assert_error(client.put(_url(ws, "/definition/reference"), json={"member_id": "tgm1-x"}), 404, "reconstruction_member_not_found")
-        _assert_error(client.delete(_url(ws, "/definition/members/tgm1-x/correction")), 404, "reconstruction_member_not_found")
+        a, b = _pair(client, ws, comtrade_fixtures_dir)
+        _assert_error(client.put(_url(ws, "/definition/reference"), json={"record_id": a}), 404, "reconstruction_not_defined")
+        _assert_error(client.put(_url(ws, f"/definition/records/{a}/correction"), json={"correction_s": 1.0}), 404, "reconstruction_not_defined")
+        _define(client, ws, [a], a)
+        _assert_error(client.put(_url(ws, "/definition/reference"), json={"record_id": b}), 404, "reconstruction_member_not_found")
+        _assert_error(client.delete(_url(ws, f"/definition/records/{b}/correction")), 404, "reconstruction_member_not_found")
 
     def test_non_finite_and_malformed_corrections(self, client, comtrade_fixtures_dir):
         ws = "ws-er-bad-correction"
         a, _ = _pair(client, ws, comtrade_fixtures_dir)
-        member_a = membership_fingerprint([a])
-        client.put(_url(ws, "/definition"), json={"group_ids": [a], "reference_group_id": a})
+        _define(client, ws, [a], a)
         resp = client.put(
-            _url(ws, f"/definition/members/{member_a}/correction"),
+            _url(ws, f"/definition/records/{a}/correction"),
             content=json.dumps({"correction_s": float("nan")}), headers={"content-type": "application/json"},
         )
         _assert_error(resp, 400, "invalid_reconstruction_correction")
-        resp = client.put(_url(ws, f"/definition/members/{member_a}/correction"), json={"correction_s": "soon"})
+        resp = client.put(_url(ws, f"/definition/records/{a}/correction"), json={"correction_s": "soon"})
         assert resp.status_code == 422
 
 
 class TestStaleAndLifecycle:
-    def test_overlapping_upload_makes_member_stale_and_blocks_changes(self, client, comtrade_fixtures_dir):
-        ws = "ws-er-stale"
+    def test_overlapping_upload_never_stales_or_merges_a_member(self, client, comtrade_fixtures_dir):
+        ws = "ws-er-overlap-upload"
         a, b = _pair(client, ws, comtrade_fixtures_dir)
-        member_a = membership_fingerprint([a])
-        client.put(_url(ws, "/definition"), json={"group_ids": [a, b], "reference_group_id": b})
-        client.put(_url(ws, f"/definition/members/{member_a}/correction"), json={"correction_s": 0.5})
+        _define(client, ws, [a, b], b)
+        client.put(_url(ws, f"/definition/records/{a}/correction"), json={"correction_s": 0.5})
 
-        _upload(client, ws, comtrade_fixtures_dir, offset_s=0.005)  # overlaps A -> merges with A's group
+        c = _upload(client, ws, comtrade_fixtures_dir, offset_s=0.005)  # joins A's Waveform Time Group
 
         body = client.get(_url(ws, "/definition")).json()
-        assert body["status"] == "stale"
-        stale = {m["member_id"]: m for m in body["members"]}[member_a]
-        assert stale["status"] == "stale"
-        assert stale["stale_reason"] == "membership_changed"
-        assert stale["correction_s"] == 0.5 and stale["start_s"] is None
-        _assert_error(
-            client.put(_url(ws, f"/definition/members/{member_a}/correction"), json={"correction_s": 1.0}),
-            409, "reconstruction_member_stale",
-        )
+        assert body["status"] == "ready"
+        member_a = _members(body)[a]
+        assert member_a["status"] == "current" and member_a["source_ids"] == [a]
+        assert member_a["correction_s"] == 0.5 and member_a["start_s"] is not None
+        assert c not in _members(body)
 
-    def test_source_removal_marks_member_stale_and_workspace_reset_clears(self, client, comtrade_fixtures_dir):
+    def test_record_removal_marks_member_stale_and_workspace_reset_clears(self, client, comtrade_fixtures_dir):
         ws = "ws-er-remove"
         a, b = _pair(client, ws, comtrade_fixtures_dir)
-        client.put(_url(ws, "/definition"), json={"group_ids": [a, b], "reference_group_id": a})
+        _define(client, ws, [a, b], a)
+        client.put(_url(ws, f"/definition/records/{b}/correction"), json={"correction_s": 0.5})
         assert client.delete(f"/api/v1/workspaces/{ws}/sources/{b}").status_code == 204
-        member_b = {m["member_id"]: m for m in client.get(_url(ws, "/definition")).json()["members"]}[membership_fingerprint([b])]
-        assert member_b["stale_reason"] == "sources_removed"
+        body = client.get(_url(ws, "/definition")).json()
+        assert body["status"] == "stale"
+        member_b = _members(body)[b]
+        assert member_b["status"] == "stale" and member_b["stale_reason"] == "record_removed"
+        assert member_b["correction_s"] == 0.5
+        assert member_b["start_s"] is None and member_b["source_timings"] is None
+        _assert_error(
+            client.put(_url(ws, f"/definition/records/{b}/correction"), json={"correction_s": 1.0}),
+            409, "reconstruction_member_stale",
+        )
 
         assert client.delete(f"/api/v1/workspaces/{ws}").status_code == 204
         assert client.app.state.event_reconstruction_registry.get(ws) is None
@@ -277,13 +303,15 @@ class TestStaleAndLifecycle:
     def test_reconstruction_never_changes_time_groups_or_synchronization(self, client, comtrade_fixtures_dir):
         ws = "ws-er-isolation"
         a, b = _pair(client, ws, comtrade_fixtures_dir)
+        c = _upload(client, ws, comtrade_fixtures_dir, offset_s=0.0)  # same Waveform Time Group as A
         sync_sources = f"/api/v1/workspaces/{ws}/synchronization/sources"
         sync_groups = f"/api/v1/workspaces/{ws}/synchronization/time-groups"
         sources_before, groups_before = client.get(sync_sources).json(), client.get(sync_groups).json()
 
-        client.put(_url(ws, "/definition"), json={"group_ids": [a, b], "reference_group_id": a})
-        client.put(_url(ws, f"/definition/members/{membership_fingerprint([b])}/correction"), json={"correction_s": -9.999})
-        client.put(_url(ws, "/definition/reference"), json={"member_id": membership_fingerprint([b])})
+        _define(client, ws, [a, b, c], a)
+        client.put(_url(ws, f"/definition/records/{c}/correction"), json={"correction_s": -0.004})
+        client.put(_url(ws, f"/definition/records/{b}/correction"), json={"correction_s": -9.999})
+        client.put(_url(ws, "/definition/reference"), json={"record_id": b})
 
         assert client.get(sync_sources).json() == sources_before
         assert client.get(sync_groups).json() == groups_before

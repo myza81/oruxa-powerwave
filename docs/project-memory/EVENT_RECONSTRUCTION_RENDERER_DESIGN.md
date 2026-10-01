@@ -14,6 +14,20 @@ The owner also resolved the §12 open items:
 Mixed-duration navigation stays `[OPEN / UAT]`. The rest of this
 document is the original spike text.
 
+**Record model (DEC-128, 2026-10-02) — supersedes every "member = Time
+Group" assumption below.**
+- Waveform continues to use its existing Time Group model. Event
+  Reconstruction uses independent imported event/record identities as
+  its atomic members. Timestamp overlap alone never merges Event
+  Reconstruction members.
+- A member is one imported record (`record_id` = its `source_id`), not a
+  Waveform Time Group. Where this spike says "several Time Groups",
+  "member(s)" or "group", read "records".
+- §6's within-group term (`effective_alignment_offset_s`, which includes
+  Synchronise Sources) no longer applies. Event Reconstruction does not
+  apply Waveform Synchronise Sources corrections; its own per-record
+  correction is the cross-record layer.
+
 **Implementation progress.**
 - **Slice 3A (done):** the helpers in §5, items 1, 4, 5 and 6 are
   extracted — the native-range fetch core
@@ -24,10 +38,11 @@ document is the original spike text.
   helpers. Items 2 and 3 (digital) were dropped because Event
   Reconstruction is analog-only. See DEC-127's Slice 3A update for the
   full table.
-- **Slice 3B (done):** §6 is implemented. Each member's `source_timings`
-  carries `within_group_offset_s`, `reconstruction_group_offset_s`,
-  `total_reconstruction_offset_s` and `reconstruction_start_s`/`_end_s`
-  (null for stale state). The frontend applies the total through
+- **Slice 3B (done):** §6 is implemented, on the record model since
+  DEC-128. Each member's `source_timings` carries
+  `within_record_offset_s` (0 for every current, single-source record),
+  `reconstruction_record_offset_s`, `total_reconstruction_offset_s` and
+  `reconstruction_start_s`/`_end_s` (null for stale state). The frontend applies the total through
   `wwErSourceElapsedToReconstructionTime`/
   `wwErReconstructionTimeToSourceElapsed` and resolves a channel's
   timing with `wwErSourceTiming()`. The §6 precision risk is now
@@ -40,7 +55,8 @@ Date: 2026-10-01. Code references are function names in
 (`feat/event-reconstruction`). Line numbers drift; the names do not.
 
 Related: DEC-123 (shell), DEC-124 (domain/API and its coordinate-model
-update), DEC-125 (selection workflow), DEC-126 (channel browser).
+update), DEC-125 (selection workflow), DEC-126 (channel browser),
+DEC-128 (record model).
 
 ## 1. Problem
 
@@ -202,6 +218,20 @@ bodies are updated; Waveform browser suites must pass unchanged.
 - D: breaks isolation by construction.
 
 ## 6. Canonical time mapping `[PROPOSAL]`
+
+> **As implemented (Slice 3B on the DEC-128 record model).**
+>
+> ```text
+> reconstruction_x = source_elapsed_s + total_reconstruction_offset_s
+> total_reconstruction_offset_s = within_record_offset_s              # 0 for every current record
+>                               + reconstruction_record_offset_s      # placement(r, ref) + c_r - c_ref
+> ```
+>
+> The proposal below composed a within-Time-Group term including
+> Synchronise Sources. That term is superseded: records are independent,
+> and Synchronise Sources is never applied. The helper names also
+> differ: `wwErSourceTiming()` returns `{ recordId, timingSourceId,
+> totalOffsetS, startS, endS }`.
 
 Builds on the DEC-124 coordinate model. Absolute time enters exactly
 once: in the backend, as the origin difference.

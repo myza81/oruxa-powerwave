@@ -1,7 +1,8 @@
 """Static structural regression checks for the Event Reconstruction
 frontend: the Slice 0 shell (page, left panel, waveform workspace shell,
-toolbar), the Slice 2 selection workflow wired to the Slice 1 API, and
-the boundaries both must keep with the shared Waveform engine."""
+toolbar), the Slice 2 selection workflow wired to the Event
+Reconstruction API (records as independent members, DEC-128), and the
+boundaries both must keep with the shared Waveform engine."""
 
 from __future__ import annotations
 
@@ -102,13 +103,14 @@ class TestEventReconstructionPageShell:
         # Never nested inside the Waveform workspace row.
         assert "pageEventReconstruction" not in _workspace_row(source)
 
-    def test_left_panel_has_reconstruction_and_time_group_sections(self):
+    def test_left_panel_has_reconstruction_and_record_sections(self):
         page = _er_page(_source())
         assert '<aside id="wwErSidebar" aria-label="Event Reconstruction records">' in page
         assert 'id="wwErDefinitionHeading">Reconstruction <span id="wwErMemberCountBadge" class="count-badge">(0)</span></h2>' in page
-        for element_id in ("wwErNotices", "wwErMembersPanel", "wwErClearBtn", "wwErStatus", "wwErGroupsPanel"):
+        for element_id in ("wwErNotices", "wwErMembersPanel", "wwErClearBtn", "wwErStatus", "wwErRecordsPanel"):
             assert f'id="{element_id}"' in page
-        assert 'id="wwErGroupsHeading">Time Groups <span id="wwErGroupsCountBadge" class="count-badge">(0)</span></h2>' in page
+        assert 'id="wwErRecordsHeading">Records <span id="wwErRecordsCountBadge" class="count-badge">(0)</span></h2>' in page
+        assert "wwErGroups" not in page and "Time Groups" not in page
         assert 'class="shell-split-handle" id="wwErSplitHandle"' in page
         assert 'id="wwErSidebarBackdrop"' in page
 
@@ -182,7 +184,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         keys = re.findall(r"^\s*(\w+):", state.split("{", 1)[1], re.MULTILINE)
         # Workspace state and the last API responses only.
         assert keys == [
-            "dragMode", "sources", "timeGroups", "definition", "previousCorrections",
+            "dragMode", "sources", "records", "definition",
             "channelsBySource", "calculatedChannels", "selectedChannels", "loadSeq", "busy",
         ]
         for forbidden in ("PresentationOverrides", "channelColors", "ColorOverride", "DisplayName =", "new Map(", "localStorage"):
@@ -208,7 +210,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         entered = _between(source, "async function wwErOnPageEntered() {", "\n        }\n")
         assert "await wwErRefresh();" in entered
         refresh = _between(source, "async function wwErRefresh() {", "async function wwErOnPageEntered()")
-        assert 'fetchSourcesList(), wwErFetchJson("/time-groups"), wwErFetchJson("/definition"),' in refresh
+        assert 'fetchSourcesList(), wwErFetchJson("/records"), wwErFetchJson("/definition"),' in refresh
         assert "if (seq !== wwErState.loadSeq) return;" in refresh
 
     def test_waveform_toolbar_controls_keep_their_slice_0_status(self):
@@ -224,55 +226,60 @@ class TestEventReconstructionKeepsWaveformBoundaries:
 
 
 class TestEventReconstructionSelectionWorkflow:
-    """Slice 2 (DEC-125): the left panel is driven by the Slice 1 API only."""
+    """Slice 2 (DEC-125, DEC-128): the left panel is driven by the Event
+    Reconstruction API only."""
 
     def test_api_base_is_the_event_reconstruction_router(self):
         url = _between(_source(), "function wwErApiUrl(path) {", "\n        }\n")
         assert '"/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/event-reconstruction" + path' in url
 
-    def test_every_write_is_one_of_the_slice_1_endpoints(self):
+    def test_every_write_is_one_of_the_api_endpoints(self):
         module = _er_module(_source())
         writes = re.findall(r'wwErMutate\("(\w+)", "([^"]+)"', module)
         assert sorted(set(writes)) == sorted({
             ("PUT", "/definition"),
             ("PUT", "/definition/reference"),
-            ("PUT", "/definition/members/"),
-            ("DELETE", "/definition/members/"),
             ("DELETE", "/definition"),
         })
-        assert module.count('"/correction"') == 2
+        path = _between(_source(), "function wwErCorrectionPath(recordId) {", "\n        }\n")
+        assert 'return "/definition/records/" + encodeURIComponent(recordId) + "/correction";' in path
+        assert re.findall(r'wwErMutate\("(\w+)", wwErCorrectionPath\(recordId\)', module) == ["PUT", "DELETE"]
+        assert module.count('"/correction"') == 1
 
-    def test_time_groups_are_sorted_chronologically_with_ineligible_after(self):
-        sort = _between(_source(), "function wwErSortedTimeGroups() {", "function wwErMembershipBlockedReason()")
+    def test_records_are_sorted_chronologically_with_ineligible_after(self):
+        sort = _between(_source(), "function wwErSortedRecords() {", "function wwErMembershipBlockedReason()")
         assert "Date.parse(a.start_time_utc) - Date.parse(b.start_time_utc)" in sort
-        assert "filter((g) => g.eligible)" in sort and "filter((g) => !g.eligible)" in sort
+        assert "filter((r) => r.eligible)" in sort and "filter((r) => !r.eligible)" in sort
 
-    def test_ineligible_groups_show_the_backend_reason_and_no_add_action(self):
-        row = _between(_source(), "function wwErGroupRowHtml(group) {", "function wwErRender()")
-        assert "group.reason_message" in row
+    def test_ineligible_records_show_the_backend_reason_and_no_add_action(self):
+        row = _between(_source(), "function wwErRecordRowHtml(record) {", "function wwErRender()")
+        assert "record.reason_message" in row
         assert 'data-reason-code="' in row
         assert '\'<span class="ww-er-badge">Not eligible</span>\'' in row
-        add = row.index('wwErActionButton("add-group"')
-        assert row.rfind("group.eligible", 0, add) != -1
+        add = row.index('wwErActionButton("add-record"')
+        assert row.rfind("record.eligible", 0, add) != -1
 
     def test_membership_changes_never_drop_stale_members_implicitly(self):
         source = _source()
-        blocked = _between(source, "function wwErMembershipBlockedReason() {", "function wwErReconfirmPlan()")
+        blocked = _between(source, "function wwErMembershipBlockedReason() {", "// ---- Formatting ----")
         assert "Choose a current member as reference first." in blocked
-        assert "Re-confirm or remove the stale members first." in blocked
-        for name, nxt in (("function wwErAddGroup(groupId) {", "function wwErRemoveMember(memberId)"),
-                          ("function wwErRemoveMember(memberId) {", "async function wwErReconfirmStale()")):
+        assert "Remove the stale members first." in blocked
+        for name, nxt in (("function wwErAddRecord(recordId) {", "function wwErRemoveMember(recordId)"),
+                          ("function wwErRemoveMember(recordId) {", "function wwErRemoveStale()")):
             assert "wwErMembershipBlockedReason()" in _between(source, name, nxt)
 
-    def test_stale_corrections_are_shown_but_never_sent(self):
+    def test_stale_corrections_are_shown_but_never_transferred(self):
         source = _source()
-        reconfirm = _between(source, "async function wwErReconfirmStale() {", "function wwErRemoveStale()")
-        # New members start at 0: the PUT carries group ids and a reference only.
-        assert "wwErPutDefinition(plan.groupIds, plan.referenceGroupId)" in reconfirm
-        assert "correction_s:" not in reconfirm
-        member_row = _between(source, "function wwErMemberRowHtml(member) {", "function wwErGroupRowHtml(group)")
+        module = _er_module(source)
+        # A removed record has no successor: no re-confirmation, no
+        # candidate records, no carried-over corrections.
+        for forbidden in ("Reconfirm", "reconfirm", "candidate_group_ids", "previousCorrections"):
+            assert forbidden not in module
+        remove_stale = _between(source, "function wwErRemoveStale() {", "function wwErMakeReference(recordId)")
+        assert "wwErPutDefinition(wwErCurrentMembers().map((m) => m.record_id), reference.record_id)" in remove_stale
+        assert "correction_s" not in remove_stale
+        member_row = _between(source, "function wwErMemberRowHtml(member) {", "function wwErRecordRowHtml(record)")
         assert "(kept, not applied)" in member_row
-        assert "Previous correction (not applied)" in member_row
 
     def test_corrections_use_the_existing_millisecond_conversion_point(self):
         module = _er_module(_source())
@@ -281,7 +288,7 @@ class TestEventReconstructionSelectionWorkflow:
 
     def test_reference_is_only_changed_by_explicit_api_call(self):
         module = _er_module(_source())
-        assert 'wwErMutate("PUT", "/definition/reference", { member_id: memberId })' in module
+        assert 'wwErMutate("PUT", "/definition/reference", { record_id: recordId })' in module
         assert module.count("/definition/reference") == 1
 
     def test_clear_uses_a_confirmation_overlay(self):
@@ -295,7 +302,9 @@ class TestEventReconstructionSelectionWorkflow:
         notify = _between(source, "function wwErNotifyWorkspaceChanged() {", "\n        }\n")
         assert 'if (shell.currentPage === "event-reconstruction") wwErRefresh();' in notify
         assert "wwErNotifyWorkspaceChanged();" in _between(source, "async function refreshAllSourceViews() {", "async function refreshSourceList()")
-        assert "wwErNotifyWorkspaceChanged();" in _between(
+        # Records never depend on Synchronise Sources (DEC-128), so a
+        # sync change is not an Event Reconstruction trigger.
+        assert "wwErNotifyWorkspaceChanged();" not in _between(
             source, "async function wwSyncApplyOffsetChangeSideEffectsForGroup(groupId) {", "function wwRefreshSourceSyncBadges()"
         )
 
@@ -338,7 +347,7 @@ class TestEventReconstructionChannelBrowser:
     def test_calculated_channels_sit_under_their_timing_parent(self):
         tree = _between(_source(), "function wwErSourceTreeHtml(member, sourceId, open) {", "function wwErMemberTreeHtml(member)")
         assert "wwErState.calculatedChannels.filter((c) => c.reference_source_id === sourceId)" in tree
-        assert 'wwErChannelRowAttrs(member.member_id, "calculated", c.id, c.name, c.reference_source_id)' in tree
+        assert 'wwErChannelRowAttrs(member.record_id, "calculated", c.id, c.name, c.reference_source_id)' in tree
 
     def test_presentation_is_read_only(self):
         module = _er_module(_source())
@@ -366,13 +375,15 @@ class TestEventReconstructionChannelBrowser:
         assert "delete wwErState.selectedChannels[key];" in set_row
         plotting = _between(source, "function wwErSelectedChannelsForPlotting() {", "function wwErMemberRowHtml(member)")
         assert "wwErCurrentMembers()" in plotting
+        assert "current.has(selection.recordId)" in plotting
+        assert "recordId: row.dataset.erRecordId," in set_row
 
     def test_stale_members_get_no_channel_tree(self):
-        row = _between(_source(), "function wwErMemberRowHtml(member) {", "function wwErGroupRowHtml(group)")
+        row = _between(_source(), "function wwErMemberRowHtml(member) {", "function wwErRecordRowHtml(record)")
         current_branch, stale_branch = row.split("} else {", 1)
         assert "wwErMemberTreeHtml(member)" in current_branch
         assert "wwErMemberTreeHtml" not in stale_branch.split("return '<div", 1)[0]
-        assert "Channel selection is unavailable until this member is re-confirmed." in stale_branch
+        assert "Channel selection is unavailable for a removed record." in stale_branch
 
     def test_expand_state_is_local_to_event_reconstruction(self):
         render = _between(_source(), "function wwErRender() {", "function wwErHandleAction(button)")
@@ -440,9 +451,46 @@ class TestEventReconstructionTimeMapping:
         assert "member.source_timings || []" in timing
         assert "totalOffsetS: timing.total_reconstruction_offset_s," in timing
         # No second timing model: no origin/placement arithmetic in the frontend.
-        for forbidden in ("start_time_utc", "recorded_placement_s", "within_group_offset_s +", "correction_s"):
+        for forbidden in ("start_time_utc", "recorded_placement_s", "within_record_offset_s +", "correction_s"):
             assert forbidden not in timing
+        assert "recordId: member.record_id," in timing
 
     def test_mapping_arithmetic_is_not_repeated_elsewhere_in_the_module(self):
         module = _er_module(_source())
         assert module.count("total_reconstruction_offset_s") == 1
+
+
+class TestEventReconstructionRecordModel:
+    """DEC-128: every member is an independently imported record; the
+    frontend never consumes Waveform Time Groups for Event Reconstruction."""
+
+    def test_module_never_reads_time_groups_or_group_identities(self):
+        module = _er_module(_source())
+        for forbidden in (
+            "/time-groups", "timeGroups", "group_id", "group_ids", "member_id", "memberId",
+            "membership_fingerprint", "current_group_id", "Time Group", "wwErGroup",
+        ):
+            assert forbidden not in module
+
+    def test_rows_and_actions_are_keyed_by_record_id(self):
+        source = _source()
+        row = _between(source, "function wwErRecordRowHtml(record) {", "function wwErRender()")
+        assert "' data-record-id=\"' + escapeHtml(record.record_id) + '\"" in row
+        assert 'ww-er-record-row' in row
+        member_row = _between(source, "function wwErMemberRowHtml(member) {", "function wwErRecordRowHtml(record)")
+        assert "const idAttr = ' data-record-id=\"' + escapeHtml(member.record_id) + '\"';" in member_row
+        actions = _between(source, "function wwErHandleAction(button) {", "function wwErOpenClearConfirm()")
+        assert "const recordId = button.dataset.recordId;" in actions
+        assert 'case "add-record": return wwErAddRecord(recordId);' in actions
+        assert "wwErSetCorrection(event.target.dataset.recordId, event.target);" in source
+
+    def test_channel_tree_is_per_record(self):
+        source = _source()
+        assert 'const base = "record:" + member.record_id + ":source:" + sourceId;' in source
+        assert 'data-er-expand-key="record:\' + escapeHtml(member.record_id)' in source
+        assert "' data-er-record-id=\"' + escapeHtml(recordId) + '\"' +" in source
+        assert "function wwErChannelSelectionKey(recordId, sourceId, channelName) {" in source
+
+    def test_canvas_counts_records(self):
+        render = _between(_source(), "function wwErRender() {", "function wwErHandleAction(button)")
+        assert '" record selected" : " records selected"' in render

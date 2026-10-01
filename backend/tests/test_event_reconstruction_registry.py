@@ -1,5 +1,5 @@
 """EventReconstructionRegistry: one definition per workspace, analysis
-state only (DEC-124)."""
+state only (DEC-124, DEC-128)."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ from app.services.event_reconstruction_registry import EventReconstructionRegist
 def _definition(reference: str = "m1") -> EventReconstructionDefinition:
     return EventReconstructionDefinition(
         members=(
-            ReconstructionMember(member_id="m1", source_ids=("a",), confirmed_group_id="a"),
-            ReconstructionMember(member_id="m2", source_ids=("b",), confirmed_group_id="b", correction_s=0.5),
+            ReconstructionMember(record_id="m1", source_ids=("m1",)),
+            ReconstructionMember(record_id="m2", source_ids=("m2",), correction_s=0.5),
         ),
-        reference_member_id=reference,
+        reference_record_id=reference,
     )
 
 

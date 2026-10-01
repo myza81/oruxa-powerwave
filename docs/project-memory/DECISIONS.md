@@ -20312,7 +20312,13 @@ pre-implementation audit.
 
 Date: 2026-10-01
 Status: Approved (owner, Slice 1 task) — implemented on
-`feat/event-reconstruction`; not merged.
+`feat/event-reconstruction`; not merged. **Partly superseded by
+[DEC-128](#dec-128--event-reconstruction-members-are-independently-imported-records-not-waveform-time-groups-timestamp-overlap-never-merges-them):**
+the assumption "an Event Reconstruction member = a Waveform Time Group"
+(decisions 2 and 3: the per-Time-Group correction layer and the
+membership-fingerprint identity, the `/time-groups` API and the
+re-confirmation flow) is superseded. Decisions 4 (V1 eligibility, now
+per record) and 5 (large-gap warning, now between records) stand.
 Source: owner task "Slice 1 — Event Reconstruction domain model,
 eligibility, service, and API", resolving DEC-123's first five `[OPEN]`
 items.
@@ -20462,7 +20468,10 @@ items.
 Date: 2026-10-01
 Status: Approved (owner, Slice 2 task) — implemented on
 `feat/event-reconstruction`; not merged. The Event Reconstruction
-feature is **not** complete.
+feature is **not** complete. The Time Group list, membership-change
+staleness and re-confirmation described here are superseded by
+[DEC-128](#dec-128--event-reconstruction-members-are-independently-imported-records-not-waveform-time-groups-timestamp-overlap-never-merges-them)
+(a record list; stale = record removed; explicit removal only).
 Source: owner task "Slice 2: Event Reconstruction selection UI".
 
 ### Decision (owner, summarized)
@@ -20566,7 +20575,9 @@ only authority. The joined waveforms are not plotted (Slice 3).
 Date: 2026-10-01
 Status: Approved (owner, Slice 2A task) — implemented on
 `feat/event-reconstruction`; not merged. Pre-renderer: nothing is
-plotted.
+plotted. The channel tree is now per record
+([DEC-128](#dec-128--event-reconstruction-members-are-independently-imported-records-not-waveform-time-groups-timestamp-overlap-never-merges-them));
+the browser rules here are unchanged.
 Source: owner task "Slice 2A — Event Reconstruction channel browser /
 bay tree foundation".
 
@@ -20670,6 +20681,11 @@ bay tree foundation".
 Date: 2026-10-01
 Status: Approved (owner, after reviewing
 [EVENT_RECONSTRUCTION_RENDERER_DESIGN.md](EVENT_RECONSTRUCTION_RENDERER_DESIGN.md)).
+The Slice 3B timing fields `within_group_offset_s` /
+`reconstruction_group_offset_s` are renamed `within_record_offset_s` /
+`reconstruction_record_offset_s` by
+[DEC-128](#dec-128--event-reconstruction-members-are-independently-imported-records-not-waveform-time-groups-timestamp-overlap-never-merges-them),
+and Synchronise Sources corrections no longer contribute.
 Source: owner task "Slice 2A corrective follow-up + Slice 3A + Slice 3B".
 
 ### Decisions (owner)
@@ -20805,6 +20821,150 @@ calculated channels.
   extraction; per-source timing metadata and mapping helpers). Slice 3C
   is the first actual plotted UAT. Details are recorded in this
   decision's later updates and in the design document.
+
+---
+
+## DEC-128 — Event Reconstruction members are independently imported records, not Waveform Time Groups; timestamp overlap never merges them
+
+Date: 2026-10-02
+Status: Approved (owner, UAT correction before Slice 3C) — implemented on
+`feat/event-reconstruction`; not merged. Supersedes the "member = Waveform
+Time Group" assumption of DEC-124 (decisions 2 and 3), DEC-125's
+re-confirmation flow and DEC-127's Slice 3B field names.
+Source: owner UAT report — the separately imported recordings
+"BAHS 275kV" and "BTGH" were shown as one Event Reconstruction member
+("BAHS 275kV + BTGH") because their recorded times overlap.
+
+### Rule (owner)
+
+> Waveform continues to use its existing Time Group model. Event
+> Reconstruction uses independent imported event/record identities as its
+> atomic members. Timestamp overlap alone never merges Event
+> Reconstruction members.
+
+Each independently imported event/recording remains an independent
+reconstruction member by default, even if its recorded time overlaps
+exactly with another one.
+
+### Root cause (`[FACT]`)
+
+Event Reconstruction listed and keyed its members by
+`list_time_groups()`. A Waveform Time Group is a connected component of
+raw recorded-interval overlap (`app/domain/time_grouping.py`), so two
+records with identical, partial or contained overlap formed one Time
+Group, hence one member with one fingerprint over both sources. The
+grouping is correct for Waveform; it was the wrong unit for Event
+Reconstruction.
+
+### Atomic member (`[FACT]`)
+
+**One record = one `SourceMetadata` (`source_id`).** Every import path
+produces exactly one source per upload: a COMTRADE CFG+DAT pair, a BEN
+file, or a converted CSV/Excel file (one logical event, DEC-032). The
+codebase has no multi-file package or multi-source event entity, so
+nothing that should stay together is split. `record_id` is the record's
+`source_id`. Each record lists its `source_ids` (today always
+`[record_id]`), so a future multi-source record has an explicit place.
+
+### Model (`[FACT]`)
+
+```text
+reconstruction_x_s             = source_elapsed_s + total_reconstruction_offset_s
+total_reconstruction_offset_s  = within_record_offset_s + reconstruction_record_offset_s
+within_record_offset_s         = 0 for every current (single-source) record
+reconstruction_record_offset_s = recorded_placement_s(r, ref) + correction_s(r) − correction_s(ref)
+recorded_placement_s(r, ref)   = origin_start(r) − origin_start(ref)       (exact datetime subtraction)
+```
+
+- Absolute time enters exactly once, in `recorded_placement_s`.
+- **Waveform Synchronise Sources corrections are not applied by Event
+  Reconstruction.** They relate different records inside a Waveform Time
+  Group; for Event Reconstruction the cross-record correction is its own
+  per-record `correction_s`. Synchronise Sources state is never read or
+  written.
+- **Eligibility** per record: unchanged V1 rules and reason codes
+  (`time_of_day_not_supported`, `no_absolute_time_reference`,
+  `unknown_time_reference`).
+- **Reference** is a record. Switching it moves only the zero point;
+  stored corrections never change.
+- **Corrections** are stored per record and never transferred.
+- **Stale** means the record no longer exists (`stale_reason`
+  `record_removed`). An overlapping upload never makes a member stale. A
+  stale member keeps its correction (not applied) and has no placement
+  and no `source_timings`. A stale reference withholds every placement
+  (`placements_available: false`) and is never re-picked automatically.
+  The engineer removes stale members explicitly. There is no
+  re-confirmation: a removed record has no successor.
+- **Relationships and large-gap warnings** are computed between records
+  (`record_a_id`/`record_b_id`, `before_record_id`/`after_record_id`).
+  The threshold is unchanged (central configuration, `>=` warns, advisory
+  only).
+
+### API changes (`[FACT]`)
+
+Under `/api/v1/workspaces/{workspace_id}/event-reconstruction`:
+
+| Before | Now |
+|---|---|
+| `GET /time-groups` | `GET /records` (`record_id`, `source_ids`, `time_reference_type`, eligibility, UTC extents, `duration_s`, `in_reconstruction`) |
+| `PUT /definition` `{group_ids, reference_group_id}` | `{record_ids, reference_record_id}` |
+| `PUT /definition/reference` `{member_id}` | `{record_id}` |
+| `PUT\|DELETE /definition/members/{member_id}/correction` | `PUT\|DELETE /definition/records/{record_id}/correction` |
+| member `member_id`, `confirmed_group_id`, `current_group_id`, `candidate_group_ids` | member `record_id`, `source_ids` |
+| `reference_member_id` | `reference_record_id` |
+| `within_group_offset_s`, `reconstruction_group_offset_s` | `within_record_offset_s`, `reconstruction_record_offset_s` |
+| errors `time_group_not_found`, `time_group_not_eligible` | `source_not_found` (404), `record_not_eligible` (400) |
+| `stale_reason` `membership_changed` / `sources_removed` | `record_removed` |
+
+The fingerprint helper (`membership_fingerprint`) is removed.
+
+### Frontend (`[FACT]`)
+
+- The left panel lists **Records**, one row per imported record
+  (`.ww-er-record-row`, `data-record-id`).
+- Members, actions, the channel tree (`record:<id>` expand keys) and the
+  channel selection (`recordId`) are keyed by record.
+- `wwErSourceTiming()` returns `recordId`.
+- Re-confirmation and "previous correction" notes are gone; stale
+  members are resolved with "Remove stale members".
+- The Synchronise Sources side-effect hook no longer notifies Event
+  Reconstruction.
+
+### Migration
+
+None, by design. Event Reconstruction state is in-memory only and never
+persisted. Any reconstruction defined under the old Time Group model
+(for example on a long-running backend) must be **cleared and recreated**
+after this change.
+
+### Unchanged
+
+- `app/domain/time_grouping.py`, Waveform Time Groups, Synchronise
+  Sources, Waveform rendering and `ww` state, channel presentation.
+- The pure timestamp helpers `normalize_absolute_datetime()` and
+  `time_reference_type_for_source()` are still shared; Time Group
+  derivation is not used.
+- Analog-only scope (DEC-127). The Slice 2A browser rules (DEC-126) and
+  the Option B renderer plan stay as they were.
+
+### Tests
+
+- **Backend.** Separate members for identical-timestamp, partial, full
+  and contained overlap, while Waveform still groups them. Also covered:
+  - an overlapping upload never stales a member;
+  - per-record corrections and reference switching;
+  - gaps between records;
+  - `source_timings` with `within_record_offset_s = 0`;
+  - Synchronise Sources never contributes;
+  - removed record / removed reference;
+  - the calculated-channel parent;
+  - API shapes and errors;
+  - the import isolation check.
+- **Static frontend checks:** records, not Time Groups.
+- **Browser.** AGJH 500kV / BAHS 275kV / BTGH (BAHS and BTGH identical
+  timestamps) appear as three records and three members with per-record
+  trees and corrections, while the Waveform Time Group API still groups
+  BAHS + BTGH. The stale tests now remove the recording.
 
 ---
 

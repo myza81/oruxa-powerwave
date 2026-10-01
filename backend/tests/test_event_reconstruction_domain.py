@@ -1,5 +1,5 @@
-"""Pure-domain tests for Event Reconstruction (DEC-123/DEC-124):
-eligibility, membership fingerprint, timing model, reference switching,
+"""Pure-domain tests for Event Reconstruction (DEC-123/DEC-124/DEC-128):
+eligibility, the record-level timing model, reference switching,
 interval relationships and the large-gap warning."""
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ import pytest
 
 from app.domain.event_reconstruction import (
     INTERVAL_TOLERANCE_S,
-    MEMBERSHIP_FINGERPRINT_VERSION,
     REASON_NO_ABSOLUTE_TIME_REFERENCE,
     REASON_TIME_OF_DAY_NOT_SUPPORTED,
     REASON_UNKNOWN_TIME_REFERENCE,
@@ -26,10 +25,10 @@ from app.domain.event_reconstruction import (
     classify_interval_relationship,
     correction_valid,
     large_gaps,
-    membership_fingerprint,
     reconstruction_eligibility,
     reconstruction_offset_s,
     recorded_placement_s,
+    total_reconstruction_offset_s,
 )
 from app.domain.time_grouping import (
     TIME_REFERENCE_ELAPSED_ONLY,
@@ -65,29 +64,6 @@ class TestEligibility:
         assert result.reason_code == REASON_UNKNOWN_TIME_REFERENCE
 
 
-class TestMembershipFingerprint:
-    def test_deterministic_and_versioned(self):
-        first = membership_fingerprint(["src-b", "src-a"])
-        assert first == membership_fingerprint(["src-b", "src-a"])
-        assert first.startswith(MEMBERSHIP_FINGERPRINT_VERSION + "-")
-        assert len(first.split("-", 1)[1]) == 32
-
-    def test_source_order_and_duplicates_do_not_matter(self):
-        expected = membership_fingerprint(["a", "b", "c"])
-        for order in itertools.permutations(["a", "b", "c"]):
-            assert membership_fingerprint(order) == expected
-        assert membership_fingerprint(["a", "b", "b", "c", "a"]) == expected
-
-    def test_any_membership_change_changes_the_fingerprint(self):
-        base = membership_fingerprint(["a", "b"])
-        assert membership_fingerprint(["a"]) != base  # split / removal
-        assert membership_fingerprint(["a", "b", "c"]) != base  # merge / addition
-        assert membership_fingerprint(["a", "c"]) != base  # replacement
-
-    def test_ids_are_not_concatenated_ambiguously(self):
-        assert membership_fingerprint(["ab", "c"]) != membership_fingerprint(["a", "bc"])
-
-
 class TestCorrectionValidity:
     @pytest.mark.parametrize("value", [0.0, 1.0, -2.5, 1e-7, 0.0001234, 86400.0 * 3, 5])
     def test_finite_values_including_sub_millisecond_are_valid(self, value):
@@ -100,13 +76,13 @@ class TestCorrectionValidity:
 
 class TestTimingModel:
     def test_recorded_placement_is_exact_to_the_microsecond(self):
-        group = T0 + timedelta(seconds=10, microseconds=200)
-        assert recorded_placement_s(group_origin_start=group, reference_origin_start=T0) == pytest.approx(10.0002, abs=1e-12)
-        assert recorded_placement_s(group_origin_start=T0, reference_origin_start=group) == pytest.approx(-10.0002, abs=1e-12)
+        record = T0 + timedelta(seconds=10, microseconds=200)
+        assert recorded_placement_s(record_origin_start=record, reference_origin_start=T0) == pytest.approx(10.0002, abs=1e-12)
+        assert recorded_placement_s(record_origin_start=T0, reference_origin_start=record) == pytest.approx(-10.0002, abs=1e-12)
 
     def test_naive_local_and_aware_utc_origins_compare_as_instants(self):
         naive_local = datetime(2026, 3, 6, 10, 0, 0)  # Asia/Kuala_Lumpur == 02:00 UTC
-        assert recorded_placement_s(group_origin_start=naive_local, reference_origin_start=T0) == 0.0
+        assert recorded_placement_s(record_origin_start=naive_local, reference_origin_start=T0) == 0.0
 
     def test_offset_composes_placement_and_reference_independent_corrections(self):
         assert reconstruction_offset_s(recorded_placement_s=10.0, correction_s=0.25, reference_correction_s=0.0) == 10.25
@@ -117,7 +93,7 @@ class TestTimingModel:
     def _offsets(origins: dict[str, datetime], corrections: dict[str, float], reference: str) -> dict[str, float]:
         return {
             key: reconstruction_offset_s(
-                recorded_placement_s=recorded_placement_s(group_origin_start=origin, reference_origin_start=origins[reference]),
+                recorded_placement_s=recorded_placement_s(record_origin_start=origin, reference_origin_start=origins[reference]),
                 correction_s=corrections[key],
                 reference_correction_s=corrections[reference],
             )
@@ -147,20 +123,30 @@ class TestTimingModel:
 
     def test_definition_helpers_return_new_objects_and_keep_others_unchanged(self):
         members = (
-            ReconstructionMember(member_id="m1", source_ids=("a",), confirmed_group_id="a", correction_s=0.5),
-            ReconstructionMember(member_id="m2", source_ids=("b",), confirmed_group_id="b"),
+            ReconstructionMember(record_id="m1", source_ids=("m1",), correction_s=0.5),
+            ReconstructionMember(record_id="m2", source_ids=("m2",)),
         )
-        definition = EventReconstructionDefinition(members=members, reference_member_id="m1")
+        definition = EventReconstructionDefinition(members=members, reference_record_id="m1")
         corrected = definition.with_correction("m2", -0.25)
         assert definition.member("m2").correction_s == 0.0
         assert corrected.member("m2").correction_s == -0.25
         assert corrected.member("m1").correction_s == 0.5
         switched = corrected.with_reference("m2")
-        assert switched.reference_member_id == "m2"
+        assert switched.reference_record_id == "m2"
         assert [m.correction_s for m in switched.members] == [0.5, -0.25]
         assert definition.member("missing") is None
         with pytest.raises(FrozenInstanceError):
-            definition.reference_member_id = "m2"
+            definition.reference_record_id = "m2"
+
+
+    def test_total_offset_adds_within_record_and_record_offsets_once(self):
+        assert total_reconstruction_offset_s(within_record_offset_s=0.0, reconstruction_record_offset_s=7200.0004) == 7200.0004
+        assert total_reconstruction_offset_s(within_record_offset_s=0.25, reconstruction_record_offset_s=-1.0) == -0.75
+
+    def test_identical_recorded_starts_place_records_at_the_same_offset(self):
+        # Two independently imported records with identical timestamps are
+        # still two members; they simply share a placement.
+        assert recorded_placement_s(record_origin_start=T0, reference_origin_start=T0) == 0.0
 
 
 class TestIntervalRelationships:
