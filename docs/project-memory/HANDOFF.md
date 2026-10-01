@@ -4,9 +4,53 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-01** (native BEN closeout)
+Last updated: **2026-10-01** (Event Reconstruction Slice 0)
 
 ## What was most recently done
+
+**Event Reconstruction Slice 0 — frontend shell (DEC-123, 2026-10-01).**
+Committed on branch `feat/event-reconstruction` (from `main` at
+`a9d5af5`) as `feat: add event reconstruction workspace shell`. Not
+pushed and not merged; owner UAT decides the merge, as for BEN.
+
+- **What exists.** Main-menu entry immediately after Waveform →
+  `#pageEventReconstruction`:
+  - a left "Recordings (N)" panel of read-only source rows, refreshed on
+    page entry, resizable, with the responsive drawer;
+  - a `.ww-toolbar` with Box Zoom / Pan;
+  - an empty "Reconstruction Timeline" canvas shell with Zoom In /
+    Zoom Out / Reset Time View, which are disabled.
+- **What does not exist yet.** No reconstruction domain model, no
+  eligibility, no Time Group selection, no reference, no offsets, no
+  plotting, no cursors, no backend change.
+- **Boundaries.** It is its own page, not a view inside `#workspaceRow`.
+  It never touches `ww` or calls Waveform interaction functions. It has
+  no channel name/colour store. It does not use the
+  `.ww-time-group-canvas` class, which Waveform JS iterates
+  document-wide. Shared CSS rules list the ER selector *first*, so the
+  existing Waveform CSS guard tests (which match `#workspaceSidebar {`
+  etc.) keep their exact shape.
+- **Tests.**
+  - `test_frontend_event_reconstruction.py` (19 static checks);
+  - `browser-tests/event-reconstruction.spec.js` (5 tests);
+  - the nav-order lists in `calculator.spec.js`/`compliance.spec.js`
+    gained the new entry.
+- **Regression.**
+  - backend: 6074 passed, 40 skipped (`ben_reference`, needs the owner
+    directory);
+  - browser: 371 of 373 passed. Overcurrent "Minor X and Minor Y are OFF
+    by default…" then passed 5/5 alone.
+  - Impedance Locus "Play advances the marker…; Pause stops it" is a
+    **pre-existing flake**: it failed 6/10 on a clean `HEAD` export and
+    3/10 with this change. It stays `[OPEN]` and untouched. (Ports:
+    8000 was the owner's `uvicorn --reload`, reused.)
+- **Next.** Slice 1 (reconstruction domain/eligibility) needs owner
+  answers to the `[OPEN]` items in DEC-123 first: crossing the Time
+  Group isolation boundary, the offset model, derived group identity,
+  Time-of-Day eligibility, and the gap threshold. The Slice 3 renderer
+  architecture needs a design comparison.
+
+## Earlier — native BEN closeout
 
 **Native BEN import closeout (2026-10-01).** Owner UAT passed:
 *"BEN integration is working as expected and the feature is accepted for

@@ -9,9 +9,33 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-10-01** — **Native BEN import: owner UAT
-passed; merged to `main`** (DEC-119 parser, DEC-120 import, DEC-121
-timestamp/channel-identity hardening, DEC-122 display timezone).
+Last meaningful update: **2026-10-01** — **Event Reconstruction Slice 0:
+frontend shell** (DEC-123). Earlier the same day: **Native BEN import:
+owner UAT passed; merged to `main`** (DEC-119 parser, DEC-120 import,
+DEC-121 timestamp/channel-identity hardening, DEC-122 display timezone).
+
+**Event Reconstruction (DEC-123) — Slice 0 only.**
+
+- A new main-menu entry immediately after Waveform opens
+  `#pageEventReconstruction`: a left "Recordings (N)" panel (read-only
+  source rows), a Box Zoom / Pan toolbar and an empty "Reconstruction
+  Timeline" canvas shell with Zoom In / Zoom Out / Reset Time View.
+- It shares the Waveform layout CSS and toolbar markup but is its own
+  page; it never reads or writes the Waveform `ww` state.
+- Zoom In / Zoom Out / Reset Time View are disabled until a
+  reconstruction canvas exists; Box Zoom / Pan only set
+  `wwErState.dragMode`; there are no cursors yet.
+- **No Event Reconstruction domain model exists yet** — no eligibility,
+  Time Group selection, reference, offsets, joining or plotting, and no
+  backend change.
+- **Waveform Time Group and synchronization behaviour is unchanged.**
+- **Next: Slice 1** — the reconstruction domain/eligibility model. Its
+  open questions (crossing the Time Group isolation boundary, offset
+  model, derived group identity, Time-of-Day eligibility, gap
+  threshold) are listed `[OPEN]` in DEC-123 and need owner decisions
+  first.
+- The renderer architecture for the common reconstruction canvas is a
+  later design/refactor concern (Slice 3, `[DECISION MODE: COMPARISON]`).
 
 ```text
 Upload Recording -> format "BEN" -> native BenProvider -> Fast or Slow SubBen
@@ -2751,6 +2775,9 @@ re-confirmed by the TG-FINAL audit):
   Workspace, and a Bottom Status Bar. **Recordings** and **Waveform** are
   separate top-level pages; Recordings has its own upload modal
   (`RECORDING_FORMATS`-driven) and per-recording detail/Open-Analyse flow.
+  Current main-menu order: Recordings, Waveform, **Event Reconstruction**
+  (DEC-123, Slice 0 shell), Table, Calculated Channels, Analysis,
+  Compliance, Calculator.
   Light/Dark theme is a single, app-wide, `localStorage`-persisted,
   cross-tab-synced preference.
 - **RECORDINGS sidebar recording-start timestamp**: each source card's
@@ -4155,6 +4182,10 @@ correctness defects:
 - Cross-Time-Group synchronization, cross-Time-Group cursor comparison,
   and a shared cross-Time-Group t0 — deliberately not built; each Time
   Group is an intentional isolation boundary, not merely an unfinished one.
+  Event Reconstruction (DEC-123) is intended to combine Time Groups on a
+  separate page in later slices; whether and how it crosses this boundary
+  is still `[OPEN]` and needs an owner decision. Waveform keeps the
+  boundary either way.
 - Detect Event's UI entry point stays hidden (`WW_DETECT_EVENT_UI_ENABLED
   = false`) even though the underlying feature is fully implemented and
   group-aware.

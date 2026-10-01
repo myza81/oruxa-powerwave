@@ -20198,6 +20198,111 @@ what the user sees     "2026-01-16 13:54:22.729783" for BOTH
 
 ---
 
+## DEC-123 — Event Reconstruction is a top-level function immediately after Waveform; Slice 0 is a frontend shell only
+
+Date: 2026-10-01
+Status: Approved — Slice 0 implemented (frontend shell only).
+Source: owner task "Slice 0 — Event Reconstruction shell / frontend
+foundation", following the owner-requested Event Reconstruction
+pre-implementation audit.
+
+### Decision (owner direction, summarized)
+
+- **Event Reconstruction** is a new main-menu function, placed
+  **immediately after Waveform**:
+
+  ```text
+  Recordings, Waveform, Event Reconstruction, Table, Calculated Channels,
+  Analysis, Compliance, Calculator
+  ```
+
+- Its purpose (later slices): combine several independent, established
+  Waveform Time Groups onto one common timeline. Waveform keeps its
+  existing Time Group rules unchanged.
+- It must look and behave like a native extension of the Waveform
+  workspace: same theme, left recording panel, toolbar style and chart
+  interaction model. It must not become a second plotting engine.
+- Waveform stays the master of persistent channel presentation (names,
+  colours). Event Reconstruction owns only workspace-specific state.
+- Slice 0 is the UI shell only. No reconstruction domain logic.
+
+### Implementation (`[FACT]`)
+
+- **Page, not a view of `#workspaceRow`.** `#pageEventReconstruction` is
+  a sibling of `#workspaceRow`, switched by `shellSetCurrentPage("event-reconstruction")`
+  with the usual "hide, don't destroy" lifecycle. Reason: the Waveform
+  row's sidebar channel toggles and toolbar act directly on the single
+  shared `ww` engine, so a fourth view inside that row would let Event
+  Reconstruction change Waveform.
+- **Shared layout CSS.** The Waveform row/sidebar/main/view-area rules,
+  the ≤900px drawer rules and the sidebar typography rules now list the
+  ER ids alongside the Waveform ids. Waveform's own rendering is
+  unchanged.
+- **Left panel** (`#wwErSidebar`): "Recordings (N)" with one read-only
+  row per source (name, stats, time identity via the same formatters as
+  the Waveform sidebar). It has no channel tree, toggles, sync badge or
+  Time Group data. It refreshes on page entry via the existing
+  `GET .../sources` list. Resizable through `shellCreateHorizontalSplit()`
+  (own width key); the responsive "Sources" drawer opens the current
+  page's panel (`shellSidebarDrawerRowEl()`).
+- **Workspace shell**: a `.ww-toolbar` with the Box Zoom / Pan group,
+  and one "Reconstruction Timeline" canvas shell (`.ww-er-canvas`) whose
+  header and toolbar row reuse the Time Group Canvas classes (Zoom In /
+  Zoom Out split buttons, Reset Time View), plus an honest empty state.
+  It deliberately does not use `.ww-time-group-canvas`, which Waveform
+  JS iterates document-wide.
+- **Interaction status.**
+  - Box Zoom / Pan: selectable; stored only in `wwErState.dragMode`.
+    `wwSetDragMode()` is not reused because it relayouts every Waveform
+    panel.
+  - Zoom In / Zoom Out / Reset Time View: present but disabled. The
+    Waveform mechanisms (`wwStepZoomX/Y()`, `wwResetOneTimeGroupView()`,
+    `wwWirePanelRelayout()`) need a real canvas with panels.
+  - Cursors: not included yet; they are per-canvas overlays fed by
+    cursor values.
+- **No new presentation store.** Event Reconstruction keeps no channel
+  names or colours. Later plots must use `wwChannelDisplayName()` /
+  `wwColorForChannel()`.
+- **Unchanged:** `time_grouping.py`, synchronization semantics, Waveform
+  source placement, Waveform chart behaviour, every backend file.
+- **Tests:** `backend/tests/test_frontend_event_reconstruction.py`
+  (static), `browser-tests/event-reconstruction.spec.js`; the nav-order
+  lists in `calculator.spec.js`/`compliance.spec.js` gained the new entry.
+
+### Alternatives considered
+
+- **A fourth view inside `#workspaceRow`** (the Table/Split precedent).
+  Rejected for Slice 0: it shares the Waveform sidebar and toolbar,
+  which mutate `ww`.
+- **Making `ww` multi-instance now.** Rejected by the owner for Slice 0:
+  `ww` has ~900 references and the risk to Waveform is high.
+- **Wiring the zoom/reset controls to temporary logic.** Rejected: there
+  is no reconstruction canvas to act on.
+
+### `[OPEN]` — for later slices, not decided by this entry
+
+- **Time Group isolation.** CURRENT_STATE records cross-Time-Group
+  synchronization as deliberately not built (DEC-063). Event
+  Reconstruction needs an explicit owner decision that it is the one
+  place this boundary is crossed, Waveform unchanged.
+- **Reconstruction offset model** (Slice 1): recorded-absolute placement
+  plus a per-group manual correction stored independently of the
+  reference (proposal), so reference switching preserves alignment.
+- **Time Group identity is derived** (`group_id` = current origin
+  source). A merge/split could orphan per-group offsets; proposed:
+  membership fingerprint, stale-and-re-confirm.
+- **Time-of-Day groups**: proposed to be excluded in v1.
+- **Large-gap warning threshold** value and location.
+- **Renderer architecture** for the common reconstruction canvas
+  (Slice 3): a canvas key distinct from the Time Group id inside the
+  existing engine, vs a multi-instance engine. `[DECISION MODE:
+  COMPARISON]`, needs a design spike.
+- **Synchronise Sources migration** (Slice 7): the existing tool aligns
+  sources within a group; reconstruction aligns groups. The two must
+  stay separate layers.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

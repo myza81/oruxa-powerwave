@@ -227,6 +227,11 @@
             min-width: 0;
             min-height: 0;
         }
+        /* Event Reconstruction Slice 0: #pageEventReconstruction is its
+           own page, but deliberately shares the Waveform Workspace Row's
+           layout rules (sidebar / split handle / main workspace) so the
+           two workspaces can never drift apart visually. */
+        #pageEventReconstruction,
         #workspaceRow {
             flex: 1 1 auto;
             display: flex;
@@ -242,12 +247,14 @@
            class of bug already caught and fixed for #bottomStatusBar's
            .shell-status-item[hidden] and proactively handled for
            #pageRecordings[hidden] below. */
+        #pageEventReconstruction[hidden],
         #workspaceRow[hidden] { display: none; }
 
         /* ---- Workspace Sidebar: contextual to the active engineering
            workspace (Sources/Channels/etc, section 8) -- NOT global nav.
            Explicit width state (section 20), not "whatever the DOM
            happens to be" -- see shellCreateHorizontalSplit(). ---- */
+        #wwErSidebar,
         #workspaceSidebar {
             flex: 0 0 auto;
             width: 320px;
@@ -259,6 +266,7 @@
             border-right: 0;
             background: var(--bg);
         }
+        #wwErSidebar > .panel + .panel,
         #workspaceSidebar > .panel + .panel { margin-top: 16px; }
 
         /* ---- Reusable horizontal split-pane handle (section 10) -- the
@@ -287,6 +295,7 @@
         /* ---- Main Workspace: the dominant area (section 11/24). Toolbar
            (fixed) on top, Active View Area (scrollable, holds the current
            Waveform/Table/Split view) filling the rest. ---- */
+        #wwErMain,
         #mainWorkspace {
             flex: 1 1 auto;
             display: flex;
@@ -312,6 +321,7 @@
             min-height: 0;
             min-width: 0;
         }
+        #wwErViewArea,
         #activeViewArea {
             flex: 1 1 auto;
             min-width: 0;
@@ -827,7 +837,9 @@
                construction. Pure CSS -- no JS media-query duplication;
                only the open/closed toggle (`.shell-sidebar-open`) is JS
                (shellSetSidebarDrawerOpen()). */
+            #pageEventReconstruction,
             #workspaceRow { position: relative; }
+            #wwErSidebar,
             #workspaceSidebar {
                 position: absolute;
                 top: 0; bottom: 0; left: 0;
@@ -838,9 +850,11 @@
                 transform: translateX(-110%);
                 transition: transform 0.15s ease;
             }
+            #pageEventReconstruction.shell-sidebar-open #wwErSidebar,
             #workspaceRow.shell-sidebar-open #workspaceSidebar { transform: translateX(0); }
             .shell-split-handle { display: none; } /* no drag-resize while the sidebar is an overlay */
             .shell-sidebar-backdrop { display: none; }
+            #pageEventReconstruction.shell-sidebar-open .shell-sidebar-backdrop,
             #workspaceRow.shell-sidebar-open .shell-sidebar-backdrop {
                 display: block;
                 position: absolute;
@@ -854,6 +868,7 @@
             #globalHeader h1 { font-size: 0.95rem; }
             #globalHeader { gap: 10px; padding: 8px 12px; }
             #bottomStatusBar { gap: 12px; font-size: 0.65rem; padding: 5px 10px; }
+            #wwErSidebar,
             #workspaceSidebar { padding: 12px; }
         }
 
@@ -872,6 +887,7 @@
             margin: 0 0 14px;
             padding: 0 10px;
         }
+        #wwErSidebar section.panel h2,
         #workspaceSidebar section.panel h2 { font-size: 0.7rem; }
 
         .field { margin-bottom: 14px; }
@@ -3782,6 +3798,7 @@
            expanded -- "what recordings are in my workspace, what are
            their key characteristics" must never require expanding
            anything to answer. */
+        .ww-er-source-row,
         details.source-recording {
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
@@ -3789,6 +3806,7 @@
             overflow: hidden;
         }
         details.source-recording[hidden] { display: none; }
+        .ww-er-source-row-header,
         details.source-recording > summary {
             list-style: none;
             cursor: pointer;
@@ -3848,6 +3866,7 @@
             padding: 20px 4px;
             text-align: center;
         }
+        #wwErSidebar .empty-state,
         #workspaceSidebar .empty-state { font-size: 0.7rem; }
 
         table.channels {
@@ -4073,6 +4092,7 @@
             color: var(--text-dim);
             font-size: 0.78rem;
         }
+        #wwErSidebar .count-badge,
         #workspaceSidebar .count-badge { font-size: 0.7rem; }
         /* Phase 4A-UAT9: the per-group "Show all"/"Hide all" toggle --
            compact, visually subordinate to the group name/count (section
@@ -5316,6 +5336,17 @@
             position: relative;
             margin-bottom: 14px;
         }
+        /* Event Reconstruction Slice 0: the future common reconstruction
+           canvas. It reuses the Time Group Canvas header/toolbar-row
+           classes for identical styling, but deliberately NOT the
+           `.ww-time-group-canvas` class itself -- Waveform JS iterates
+           that class document-wide (wwRebuildLayout() and friends), and
+           this shell must never be picked up as a Waveform Time Group. */
+        .ww-er-canvas {
+            position: relative;
+            margin-bottom: 14px;
+        }
+        .ww-er-source-row-header { cursor: default; }
         /* Sticky-toolbar UX task: ONE shared wrapper around `.ww-tg-header`
            + `.ww-tg-toolbar-row` (never two independently-sticky elements
            -- that could separate/overlap during a fast scroll). `position:
@@ -8305,6 +8336,16 @@
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><polyline points="1,9 4,9 6,3 8,15 10,9 12,4 14,14 17,9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
                     <span class="shell-nav-label">Waveform</span>
                 </button>
+                <!-- Event Reconstruction (Slice 0, frontend shell only):
+                     combines independent Time Groups onto one common
+                     timeline in later slices. Placed immediately after
+                     Waveform per owner direction. Its own page
+                     (#pageEventReconstruction), same shellSetCurrentPage()
+                     "hide, don't destroy" lifecycle as every other page. -->
+                <button type="button" class="shell-nav-item" id="mainNavEventReconstructionBtn" title="Event Reconstruction">
+                    <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><line x1="1.5" y1="15.5" x2="16.5" y2="15.5" stroke-width="1.3" stroke-linecap="round"/><polyline points="1.5,6 3.5,6 5,2.5 6.5,9.5 8,6 9.5,6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="8.5,11.5 10.5,11.5 12,8 13.5,14 15,11.5 16.5,11.5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                    <span class="shell-nav-label">Event Reconstruction</span>
+                </button>
                 <!-- Canonical Table View (DEC-079): "coming soon" retired
                      -- opens the same waveform-page Active View shell,
                      switched to its own Table slot (task section 3:
@@ -8928,6 +8969,102 @@
                     </div>
                 </main>
             </div>
+
+            <!-- Event Reconstruction (Slice 0 -- frontend shell only).
+                 Its own page rather than a fourth view inside
+                 #workspaceRow: that row's sidebar channel toggles and
+                 toolbar act directly on the single shared Waveform
+                 engine (`ww`), so sharing it would let Event
+                 Reconstruction mutate Waveform. Instead this page mirrors
+                 the Workspace Row's structure (sidebar / resize handle /
+                 main workspace) and shares its layout CSS.
+
+                 Slice 0 deliberately has NO reconstruction logic: no
+                 eligibility, no Time Group selection, no reference, no
+                 offsets, no plotting. The recording list is read-only
+                 source metadata; the reconstruction canvas below is an
+                 empty shell whose controls stay disabled until a later
+                 slice provides the common reconstruction canvas. Channel
+                 names/colours will come from the Waveform-owned
+                 resolvers (wwChannelDisplayName()/wwColorForChannel()) --
+                 this page never keeps its own presentation store. -->
+            <section id="pageEventReconstruction" aria-label="Event Reconstruction" hidden>
+                <div class="shell-sidebar-backdrop" id="wwErSidebarBackdrop"></div>
+                <aside id="wwErSidebar" aria-label="Event Reconstruction recordings">
+                    <!-- Future slices add reconstruction member selection,
+                         the reference indication, offsets and native/
+                         calculated channel selection to this panel. -->
+                    <section class="panel" aria-labelledby="wwErRecordingsHeading">
+                        <h2 id="wwErRecordingsHeading">Recordings <span id="wwErRecordingsCountBadge" class="count-badge">(0)</span></h2>
+                        <div id="wwErRecordingsPanel">
+                            <p class="empty-state">No recordings loaded yet. Upload one from Recordings.</p>
+                        </div>
+                    </section>
+                </aside>
+
+                <div class="shell-split-handle" id="wwErSplitHandle" role="separator" aria-orientation="vertical" aria-label="Resize Event Reconstruction recordings panel" tabindex="-1"></div>
+
+                <div id="wwErMain" role="region" aria-label="Event Reconstruction workspace">
+                    <!-- Workspace-level controls, mirroring #wwToolbar's own
+                         Box Zoom / Pan segmented group (same markup, icons
+                         and classes; ER-owned ids and state). -->
+                    <div class="ww-toolbar" id="wwErToolbar">
+                        <div class="theme-toggle ww-icon-group" id="wwErDragModeToggle" role="group" aria-label="Drag mode">
+                            <button type="button" id="wwErDragModeZoomBtn" aria-pressed="true" title="Box Zoom" aria-label="Box Zoom">
+                                <span class="ww-icon"><svg viewBox="0 0 18 18"><circle cx="7.5" cy="7.5" r="4.5"/><line x1="10.8" y1="10.8" x2="15.5" y2="15.5"/></svg></span>
+                            </button>
+                            <button type="button" id="wwErDragModePanBtn" aria-pressed="false" title="Pan" aria-label="Pan">
+                                <span class="ww-icon"><svg viewBox="0 0 18 18">
+                                    <path d="M5 10V4.6a1.2 1.2 0 0 1 2.4 0V9"/>
+                                    <path d="M7.4 9V3.9a1.2 1.2 0 0 1 2.4 0V9"/>
+                                    <path d="M9.8 9V4.3a1.2 1.2 0 0 1 2.4 0V10"/>
+                                    <path d="M12.2 10V6.4a1.1 1.1 0 0 1 2.2 0v4.1c0 2.8-2 5-4.7 5-1.8 0-3-.6-3.9-1.9L4 10.4c-.4-.6-.2-1.3.4-1.6.6-.3 1.3 0 1.6.6L7 10.6"/>
+                                </svg></span>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="wwErViewArea">
+                        <section class="workspace-section" id="wwErCanvasArea" aria-label="Event Reconstruction waveform view">
+                            <!-- The one common reconstruction canvas. Header
+                                 and toolbar row reuse the Time Group
+                                 Canvas classes for identical styling (see
+                                 `.ww-er-canvas`'s CSS comment for why the
+                                 canvas class itself is not reused). Zoom
+                                 In/Out/Reset Time View mirror
+                                 wwCreateTimeGroupCanvasDom()'s own markup
+                                 and stay disabled until a reconstruction
+                                 canvas with real panels exists. -->
+                            <section class="ww-er-canvas" id="wwErCanvas" aria-label="Reconstruction timeline">
+                                <div class="ww-tg-sticky-top">
+                                    <div class="ww-tg-header">
+                                        <span class="ww-tg-header-title">Reconstruction Timeline</span>
+                                        <span class="ww-tg-header-meta" id="wwErCanvasMeta">No reconstruction records selected</span>
+                                    </div>
+                                    <div class="ww-tg-toolbar-row">
+                                        <div class="ww-tg-toolbar" id="wwErCanvasToolbar">
+                                            <div class="ww-split-btn ww-tg-zoom-in-split">
+                                                <button type="button" class="secondary ww-split-btn-main" id="wwErZoomInBtn" title="Zoom In — available once reconstruction records are plotted" aria-label="Zoom In" disabled>Zoom In</button>
+                                                <button type="button" class="ww-icon-btn ww-split-btn-trigger" id="wwErZoomInAxisBtn" aria-haspopup="menu" aria-expanded="false" title="Choose Zoom In axis" aria-label="Choose Zoom In axis" disabled>
+                                                    <span class="ww-icon ww-caret"><svg viewBox="0 0 18 18"><polyline points="4,6.5 9,11.5 14,6.5" stroke-width="1.6"/></svg></span>
+                                                </button>
+                                            </div>
+                                            <div class="ww-split-btn ww-tg-zoom-out-split">
+                                                <button type="button" class="secondary ww-split-btn-main" id="wwErZoomOutBtn" title="Zoom Out — available once reconstruction records are plotted" aria-label="Zoom Out" disabled>Zoom Out</button>
+                                                <button type="button" class="ww-icon-btn ww-split-btn-trigger" id="wwErZoomOutAxisBtn" aria-haspopup="menu" aria-expanded="false" title="Choose Zoom Out axis" aria-label="Choose Zoom Out axis" disabled>
+                                                    <span class="ww-icon ww-caret"><svg viewBox="0 0 18 18"><polyline points="4,6.5 9,11.5 14,6.5" stroke-width="1.6"/></svg></span>
+                                                </button>
+                                            </div>
+                                            <button type="button" class="secondary ww-tg-reset-view-btn" id="wwErResetViewBtn" title="Reset Time View — available once reconstruction records are plotted" disabled>Reset Time View</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="ww-tg-panels" id="wwErPanels"></div>
+                                <p class="empty-state" id="wwErEmptyState">No reconstruction records selected. Event Reconstruction will place recordings from separate Time Groups on one common timeline. Record selection and plotting are not available yet.</p>
+                            </section>
+                        </section>
+                    </div>
+                </div>
+            </section>
 
             <!-- Recordings page (Phase 3B): a sibling of Workspace Row,
                  toggled via shellSetCurrentPage() exactly like
@@ -13250,8 +13387,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Calculator: a SEVENTH first-class page, immediately after
             // Compliance in the main navigation. It hosts frontend-local
             // tools and does not require a loaded event.
+            // Event Reconstruction (Slice 0): an EIGHTH first-class page,
+            // immediately after Waveform in the main navigation -- its
+            // own #pageEventReconstruction, same "hide, don't destroy"
+            // mechanism; it never touches the Waveform workspace's `ww`
+            // state (see wwErOnPageEntered()).
             if (
                 page !== "waveform" && page !== "recordings" &&
+                page !== "event-reconstruction" &&
                 page !== "calculated-channels" && page !== "data-preparation" &&
                 page !== "analysis" && page !== "compliance" &&
                 page !== "calculator"
@@ -13261,6 +13404,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             document.getElementById("workspaceRow").hidden = page !== "waveform";
             document.getElementById("pageRecordings").hidden = page !== "recordings";
+            document.getElementById("pageEventReconstruction").hidden = page !== "event-reconstruction";
             document.getElementById("pageCalculatedChannels").hidden = page !== "calculated-channels";
             document.getElementById("pageDataPreparation").hidden = page !== "data-preparation";
             document.getElementById("pageAnalysis").hidden = page !== "analysis";
@@ -13281,6 +13425,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // see shellSetActiveView()'s own matching update.
             setShellNavCurrent("mainNavWaveformBtn", page === "waveform" && shell.activeView !== "table");
             setShellNavCurrent("mainNavRecordingsBtn", page === "recordings");
+            setShellNavCurrent("mainNavEventReconstructionBtn", page === "event-reconstruction");
             setShellNavCurrent("mainNavCalculatedChannelsBtn", page === "calculated-channels");
             setShellNavCurrent("mainNavAnalysisBtn", page === "analysis");
             setShellNavCurrent("mainNavComplianceBtn", page === "compliance");
@@ -13310,7 +13455,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // cleanup: the sibling Waveform/Table/Split selector this
             // used to toggle alongside is removed -- see
             // shellSetActiveView()'s own header comment.)
-            document.getElementById("shellSidebarToggleBtn").style.display = page === "waveform" ? "" : "none";
+            // Event Reconstruction (Slice 0) has the same responsive
+            // left-panel drawer, so the toggle stays available there too;
+            // shellSetSidebarDrawerOpen() resolves which page's row it
+            // opens. Leaving either page closes its drawer so it never
+            // reappears stale on return.
+            const hasSidebarDrawer = page === "waveform" || page === "event-reconstruction";
+            document.getElementById("shellSidebarToggleBtn").style.display = hasSidebarDrawer ? "" : "none";
+            if (page !== "event-reconstruction") {
+                document.getElementById("pageEventReconstruction").classList.remove("shell-sidebar-open");
+            }
 
             if (page === "waveform" && !wasWaveform) {
                 // Section 3A-UAT3 Finding E's exact reasoning applies one
@@ -13334,6 +13488,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // data, never a plot rebuild (section 32).
                 refreshAllSourceViews();
             }
+            if (page === "event-reconstruction") {
+                wwErOnPageEntered();
+            }
             if (page === "calculated-channels") {
                 // Cheap re-render from already-held state (ww.calculatedChannels/
                 // ww.channelMeta) -- never refetches the registry (it stays
@@ -13351,7 +13508,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // harmless no-op visually above it, since the class this toggles
         // has no effect outside that media query. ----
         function shellSetSidebarDrawerOpen(open) {
-            document.getElementById("workspaceRow").classList.toggle("shell-sidebar-open", open);
+            shellSidebarDrawerRowEl().classList.toggle("shell-sidebar-open", open);
+        }
+
+        // Event Reconstruction (Slice 0): the page whose left panel the
+        // responsive "Sources" drawer currently controls -- the Event
+        // Reconstruction row while that page is current, otherwise the
+        // Waveform Workspace Row exactly as before.
+        function shellSidebarDrawerRowEl() {
+            return document.getElementById(shell.currentPage === "event-reconstruction" ? "pageEventReconstruction" : "workspaceRow");
         }
 
         // ------------------------------------------------------------------
@@ -13986,6 +14151,85 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (sources === null) return false;
             latestSourcesCount = sources.length;
             return await wwRenderWorkspaceRecordings(sources);
+        }
+
+        // ==================================================================
+        // Event Reconstruction -- Slice 0 (frontend shell only)
+        //
+        // Establishes the page, its left recording panel and its
+        // waveform workspace shell. Deliberately contains NO
+        // reconstruction logic: no eligibility, no Time Group selection,
+        // no reference, no offsets, no common-timeline calculation, no
+        // plotting, and no backend call beyond the existing read-only
+        // GET .../sources list.
+        //
+        // Boundaries kept for later slices:
+        // - Never reads or writes the Waveform engine's `ww` state, and
+        //   never calls Waveform interaction functions (wwSetDragMode()
+        //   relayouts every Waveform panel; wwStepZoomX/Y()/
+        //   wwResetOneTimeGroupView() act on a real Time Group). The
+        //   reconstruction canvas that those mechanisms will drive does
+        //   not exist yet, so the canvas controls stay disabled.
+        // - Channel display names and colours will come from the
+        //   Waveform-owned resolvers (wwChannelDisplayName()/
+        //   wwColorForChannel()). This module keeps no presentation
+        //   store of its own.
+        // - Only workspace-specific presentation state lives in
+        //   wwErState below.
+        // ==================================================================
+
+        const WW_ER_SIDEBAR_WIDTH_STORAGE_KEY = "powerwave.shell.eventReconstructionSidebarWidth";
+
+        // Event Reconstruction's own workspace state. Slice 0 holds only
+        // the drag-mode preference, using the same Plotly dragmode values
+        // ("zoom" = Box Zoom, "pan") as ww.dragMode, but independent of
+        // it. It takes effect once the reconstruction canvas exists.
+        const wwErState = {
+            dragMode: "zoom",
+        };
+
+        function wwErSetDragMode(mode) {
+            if (mode !== "zoom" && mode !== "pan") return;
+            wwErState.dragMode = mode;
+            document.getElementById("wwErDragModeZoomBtn").setAttribute("aria-pressed", String(mode === "zoom"));
+            document.getElementById("wwErDragModePanBtn").setAttribute("aria-pressed", String(mode === "pan"));
+        }
+
+        // One read-only recording row: the same name / stats / time
+        // identity lines (and formatters) as the Waveform sidebar's
+        // wwRenderSourceRecordingHtml() header -- without its channel
+        // tree, channel toggles or synchronization badge, which belong
+        // to Waveform.
+        function wwErSourceRowHtml(source) {
+            return '<div class="ww-er-source-row" data-source-id="' + escapeHtml(source.source_id) + '">' +
+                '<div class="ww-er-source-row-header">' +
+                    '<span class="source-recording-header-text">' +
+                        '<span class="source-recording-name">' + escapeHtml(recordingDisplayName(source)) + '</span>' +
+                        '<span class="source-recording-meta">' + wwFormatSourceSummaryLine(source) + '</span>' +
+                        '<span class="source-recording-time-identity">' + escapeHtml(wwFormatSourceTimeIdentity(source)) + '</span>' +
+                    '</span>' +
+                '</div>' +
+                '</div>';
+        }
+
+        function wwErRenderRecordings(sources) {
+            const panel = document.getElementById("wwErRecordingsPanel");
+            document.getElementById("wwErRecordingsCountBadge").textContent = "(" + sources.length + ")";
+            if (sources.length === 0) {
+                panel.innerHTML = '<p class="empty-state">No recordings loaded yet. Upload one from Recordings.</p>';
+                return;
+            }
+            panel.innerHTML = sources.map(wwErSourceRowHtml).join("");
+        }
+
+        // Sources can only be added or removed from the Recordings page,
+        // so refreshing on page entry keeps this list current. A failed
+        // fetch leaves the previous rendering in place, like
+        // refreshSourceList().
+        async function wwErOnPageEntered() {
+            const sources = await fetchSourcesList();
+            if (sources === null) return;
+            wwErRenderRecordings(sources);
         }
 
         // ------------------------------------------------------------------
@@ -47309,6 +47553,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             shellSetActiveView("waveform");
         });
         document.getElementById("mainNavRecordingsBtn").addEventListener("click", () => shellSetCurrentPage("recordings"));
+        document.getElementById("mainNavEventReconstructionBtn").addEventListener("click", () => shellSetCurrentPage("event-reconstruction"));
+        // Event Reconstruction (Slice 0): its own drag-mode preference --
+        // never wwSetDragMode(), which relayouts every Waveform panel.
+        document.getElementById("wwErDragModeZoomBtn").addEventListener("click", () => wwErSetDragMode("zoom"));
+        document.getElementById("wwErDragModePanBtn").addEventListener("click", () => wwErSetDragMode("pan"));
         document.getElementById("mainNavCalculatedChannelsBtn").addEventListener("click", () => shellSetCurrentPage("calculated-channels"));
         document.getElementById("mainNavAnalysisBtn").addEventListener("click", () => shellSetCurrentPage("analysis"));
         document.getElementById("mainNavComplianceBtn").addEventListener("click", () => shellSetCurrentPage("compliance"));
@@ -48840,10 +49089,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         });
 
         document.getElementById("shellSidebarToggleBtn").addEventListener("click", () => {
-            const row = document.getElementById("workspaceRow");
+            const row = shellSidebarDrawerRowEl();
             shellSetSidebarDrawerOpen(!row.classList.contains("shell-sidebar-open"));
         });
         document.getElementById("shellSidebarBackdrop").addEventListener("click", () => shellSetSidebarDrawerOpen(false));
+        document.getElementById("wwErSidebarBackdrop").addEventListener("click", () => shellSetSidebarDrawerOpen(false));
 
         // Workspace Sidebar <-> Main Workspace horizontal resize (section
         // 9) -- the SAME reusable helper a future Waveform <-> Table split
@@ -48858,6 +49108,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             defaultWidth: SHELL_WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
             storageKey: SHELL_WORKSPACE_SIDEBAR_WIDTH_STORAGE_KEY,
             onResize: wwResizeAllVisiblePlots,
+        });
+
+        // Event Reconstruction (Slice 0): the same reusable split helper
+        // and the same min/max/default limits as the Waveform Workspace
+        // Sidebar, with its own remembered width. No onResize yet --
+        // there is no reconstruction plot to resize until the common
+        // reconstruction canvas exists.
+        const wwErSidebarSplit = shellCreateHorizontalSplit({
+            handleEl: document.getElementById("wwErSplitHandle"),
+            panelEl: document.getElementById("wwErSidebar"),
+            min: SHELL_WORKSPACE_SIDEBAR_MIN_WIDTH,
+            max: SHELL_WORKSPACE_SIDEBAR_MAX_WIDTH,
+            defaultWidth: SHELL_WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
+            storageKey: WW_ER_SIDEBAR_WIDTH_STORAGE_KEY,
         });
 
         // Split View UX V1: this codebase's own architecture already
@@ -48900,8 +49164,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function shellSyncSidebarWidthForBreakpoint(isDrawerMode) {
             if (isDrawerMode) {
                 document.getElementById("workspaceSidebar").style.width = "";
+                document.getElementById("wwErSidebar").style.width = "";
             } else {
                 workspaceSidebarSplit.setWidth(workspaceSidebarSplit.getWidth());
+                wwErSidebarSplit.setWidth(wwErSidebarSplit.getWidth());
             }
         }
         shellSyncSidebarWidthForBreakpoint(shellDrawerBreakpoint.matches);
