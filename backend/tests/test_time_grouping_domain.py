@@ -329,11 +329,23 @@ class TestMixedTimezoneAwarenessIntegration:
     in this module)."""
 
     def test_naive_and_aware_absolute_sources_do_not_crash(self):
+        # DEC-121: a naive value is interpreted in the source timezone
+        # (Asia/Kuala_Lumpur, +08:00) -- so naive T0 and T0+08:00 are now
+        # the SAME instant and share one group, while naive T0 and T0 UTC
+        # are 8 h apart. Mixing awareness never crashes either way.
         naive = T0
-        aware = T0.replace(tzinfo=timezone(timedelta(hours=8)))
+        same_instant = T0.replace(tzinfo=timezone(timedelta(hours=8)))
         groups = derive_time_groups([
             _abs_source("comtrade", start=naive),
-            _abs_source("csv", start=aware),
+            _abs_source("csv", start=same_instant),
+        ])
+        assert len(groups) == 1
+        assert set(groups[0].source_ids) == {"comtrade", "csv"}
+
+        eight_hours_apart = T0.replace(tzinfo=timezone.utc)
+        groups = derive_time_groups([
+            _abs_source("comtrade", start=naive),
+            _abs_source("csv", start=eight_hours_apart),
         ])
         assert {g.group_id for g in groups} == {"comtrade", "csv"}
 
@@ -359,10 +371,14 @@ class TestMixedTimezoneAwarenessIntegration:
         assert set(groups_before_reasoning[0].source_ids) == {"a", "b"}
 
     def test_timestamp_placement_offset_handles_mixed_awareness(self):
+        # DEC-121: the naive origin is +08:00 local time.
         naive_origin = T0
-        aware_source = T0.replace(tzinfo=timezone.utc) + timedelta(seconds=5)
+        aware_source = T0.replace(tzinfo=timezone(timedelta(hours=8))) + timedelta(seconds=5)
         offset = timestamp_placement_offset_s(source_start_time=aware_source, origin_start_time=naive_origin)
         assert offset == pytest.approx(5.0)
+        utc_source = T0.replace(tzinfo=timezone.utc)
+        offset = timestamp_placement_offset_s(source_start_time=utc_source, origin_start_time=naive_origin)
+        assert offset == pytest.approx(8 * 3600.0)
 
 
 # ---- Time of Day (additive): a THIRD, fully separate time-reference

@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.domain.channel_classification import UNDEFINED
 from app.domain.source import SourceMetadata
+from app.domain.source_timezone import canonical_utc
 
 
 class AnalogChannelOut(BaseModel):
@@ -62,10 +63,22 @@ class DigitalChannelOut(BaseModel):
     classification: str
 
 
+#: DEC-122: the canonical instant of a stored recording timestamp, as
+#: timezone-aware UTC (serialized "...Z"). `start_time`/`trigger_time`
+#: stay exactly as stored (naive for COMTRADE without time_code, aware for
+#: BEN/declared offsets); these companions resolve the source timezone
+#: (DEC-121, app.domain.source_timezone) so a display layer can convert
+#: every source to ONE display timezone without re-implementing that policy.
+def _canonical(value: datetime | None) -> datetime | None:
+    return canonical_utc(value) if value is not None else None
+
+
 class TimebaseOut(BaseModel):
     timing_reference: str
     start_time: datetime | None
     trigger_time: datetime | None
+    start_time_utc: datetime | None = None
+    trigger_time_utc: datetime | None = None
     sample_count: int
     duration_seconds: float
     elapsed_start_seconds: float
@@ -131,6 +144,9 @@ class SourceSummaryOut(BaseModel):
     timing_reference: str
     start_time: datetime | None
     trigger_time: datetime | None
+    # DEC-122 canonical companions -- see `_canonical()` above.
+    start_time_utc: datetime | None = None
+    trigger_time_utc: datetime | None = None
     sampling_rates: list[float]
     # Time of Day (Recording Events metadata display fix): mirrors
     # `SourceMetadata.time_of_day_reference_seconds` verbatim, same as
@@ -179,6 +195,8 @@ class SourceSummaryOut(BaseModel):
             timing_reference=source.timing_reference,
             start_time=source.start_time,
             trigger_time=source.trigger_time,
+            start_time_utc=_canonical(source.start_time),
+            trigger_time_utc=_canonical(source.trigger_time),
             sampling_rates=list(source.sampling_rates),
             time_of_day_reference_seconds=source.time_of_day_reference_seconds,
             preparation_interpreter_id=(
@@ -204,6 +222,8 @@ class SourceChannelsOut(BaseModel):
                 timing_reference=source.timing_reference,
                 start_time=source.start_time,
                 trigger_time=source.trigger_time,
+                start_time_utc=_canonical(source.start_time),
+                trigger_time_utc=_canonical(source.trigger_time),
                 sample_count=source.sample_count,
                 duration_seconds=source.duration_seconds,
                 elapsed_start_seconds=source.elapsed_start_seconds,

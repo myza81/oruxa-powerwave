@@ -19791,6 +19791,413 @@ architecture.
 
 ---
 
+## DEC-119 — Native BEN record parsing: BEN → native parser → normalized model; COMTRADE is a validation oracle only
+
+Date: 2026-10-01
+Status: Approved direction (owner task). Implemented; integrated into
+upload by DEC-120. **Owner UAT passed (2026-10-01)** for the validated
+BEN32 SubBen layout family; merged to `main`.
+Source: owner task "native BEN disturbance-record parsing", which
+followed the owner's BEN32 reverse-engineering investigation.
+
+Decision (owner-directed):
+
+- BEN is parsed natively:
+  `BEN → native BEN parser → Powerwave normalized model`. It never goes
+  through a temporary COMTRADE and the COMTRADE parser. BEN32-generated
+  COMTRADE is used only as a **test oracle**.
+- The layout is derived from each file's own configuration. Sample rate,
+  counts, stride, data offset and channel positions are never constants
+  taken from one reference file.
+- Unvalidated BEN variants and layouts fail explicitly. They are never
+  interpreted by assumption.
+- Invalid/missing values are represented explicitly where the evidence
+  supports it. Otherwise raw values are kept and flagged, not
+  reinterpreted.
+- Binary mapping comes from BEN's descriptor/mapping tables. It is never
+  a table inferred from one event.
+- Owner event files are immutable source data and are not committed.
+  Tests find them locally by SHA-256; CI runs synthetic tests.
+- Scope: backend parser, model and validation only. No upload, UI or
+  BEN→COMTRADE export.
+
+Implementation (`[FACT]`, see [BEN_FORMAT.md](BEN_FORMAT.md)):
+
+- `backend/app/providers/ben/` holds `layout`, `reader`, `parser`,
+  `model`, `normalize`, `provider` and `errors`.
+- `parse_ben()` → `BenRecord`. It is lossless: raw codes, ids, bay
+  names and diagnostics are kept, and sample data is a zero-copy
+  read-only big-endian view.
+- `to_disturbance_record()` → the existing `DisturbanceRecord`, with no
+  change to the normalized model:
+  - calculated channels use the existing `parameter_type` values
+    `frequency` and `active power`;
+  - an unavailable sample becomes `NaN`, the DEC-084 missing-sample form;
+  - binaries are active-high states;
+  - times are UTC with `timezone="UTC"`.
+- `BenProvider` exists, but `import_service` still instantiates only
+  `ComtradeProvider`.
+- Validation:
+  - Fast LGNG and BAHS, and Slow PMJY and BTGH: every sample of every
+    channel matches BEN32's COMTRADE export.
+  - AGJH and a second PMJY record: structural checks.
+  - Two older-layout files are rejected.
+
+Choices the agent made, awaiting owner decision (`[OPEN]`, needed before
+integration). **Update 2026-10-01:** the timezone, nominal-frequency and
+name items are resolved by DEC-120:
+
+- **Timezone.** BEN times stay UTC, while BEN32 COMTRADE carries local
+  time (+08:00 in all evidence). A BEN source and a COMTRADE source of
+  the same event would therefore sit 8 h apart in Time Groups. A display
+  and alignment policy is required.
+- **Nominal frequency.** No decoded BEN field declares it, so the caller
+  must pass `nominal_frequency_hz`. No 50 Hz is assumed.
+- **Names.** `BenRecord` keeps names byte-exact. Normalization trims
+  surrounding whitespace, matching the COMTRADE provider, and suffixes
+  repeats `_1`, `_2`.
+- **Older BEN layout.** Header byte 0x04 = 0x28, local-time files such
+  as BPHE and GPTH. Rejected; not reverse-engineered.
+
+Reason:
+BEN is the recorder's native, lossless form. An intermediate COMTRADE
+would lose information and couple BEN support to a converter. Deriving
+the layout per file and failing closed prevents silent misreads of
+engineering data.
+
+Alternatives considered: converting BEN to COMTRADE and reusing the
+COMTRADE provider (rejected by the owner); hard-coding the layout of the
+validated files (rejected — the files disprove a universal layout).
+
+Impact: backend-only additions, with no change to existing behaviour.
+The existing suite is unaffected. New tests are
+`test_ben_parser.py` (always run) and `test_ben_reference_files.py`
+(`ben_reference` marker, local only).
+
+---
+
+## DEC-120 — BEN import is integrated into the existing source upload: one endpoint, central provider registry, UTC-aware canonical time, default nominal frequency, BEN identity kept as provenance
+
+Date: 2026-10-01
+Status: Approved (owner decisions on timezone, nominal frequency and
+channel identity, given in the integration task). Implemented on
+`feat/native-ben-parser`; **owner UAT passed (2026-10-01)**; merged to
+`main`.
+Source: owner task "integrate native BEN import"; it follows DEC-119 and
+resolves DEC-119's `[OPEN]` timezone, nominal-frequency and name items.
+
+Owner decisions:
+
+1. **Timezone.**
+   - BEN timestamps are UTC, and Powerwave's canonical event time is
+     timezone-aware UTC.
+   - The parser never adds +08:00.
+   - BEN times are not shifted to line up with legacy BEN32 COMTRADE
+     exports, which used the exporting PC's local time.
+   - Local presentation (e.g. Asia/Kuala_Lumpur) belongs to the display
+     layer, never the parser.
+2. **Nominal frequency.**
+   - It is unknown to the binary parser, and is never hard-coded there.
+   - It is resolved at the integration layer: an explicit value, else a
+     Powerwave-level default of 50 Hz, kept configurable.
+   - No duplicate BEN-only preference is created.
+3. **Channel identity.** Display names may be trimmed and de-duplicated
+   (`SPARE`, `SPARE_1`). The BEN source name, channel id and bay are never
+   destroyed. They are kept in `BenRecord` or alongside the record when
+   the normalized model cannot carry them, with no broad model redesign.
+
+Implementation (`[FACT]`):
+
+- **Endpoint.** `POST /api/v1/workspaces/{ws}/sources` accepts either
+  the existing `cfg_file` + `dat_file` pair or one `ben_file` (plus an
+  optional `nominal_frequency_hz` form field).
+  - Mixing the two forms gives `ambiguous_source_upload`.
+  - A request with neither keeps the previous 422 "field required"
+    response for `cfg_file`/`dat_file`, so COMTRADE's contract is
+    unchanged.
+- **Provider registry.**
+  - `import_service.build_provider_manager()` registers
+    `ComtradeProvider` and `BenProvider` in the existing
+    `ProviderManager`.
+  - A staged file is routed by `can_load()` (extension). The native
+    parser then validates the BEN signature and layout.
+  - A non-BEN or unsupported `.ben` fails through the BEN error path. It
+    never falls back to another parser.
+- **Provider hook.** `BaseProvider.load_with_provenance()` is a new,
+  non-abstract method; its default returns `None`. `BenProvider`
+  overrides it to return JSON-safe provenance, which is stored in the
+  existing generic `SourceMetadata.preparation_provenance`:
+  - source format and record class;
+  - `time_basis: "UTC"`;
+  - nominal frequency and `nominal_frequency_assumed`;
+  - parser diagnostics;
+  - every channel's `ben_channel_id`, byte-exact `source_name` and `bay`,
+    keyed by normalized name.
+
+  COMTRADE stores `None`, unchanged.
+- **Time.** BEN start and trigger are timezone-aware UTC datetimes. The
+  API serializes them as `…Z`. Downstream epoch maths already goes
+  through `normalize_absolute_datetime` (CSV Slice 11 precedent).
+- **Nominal frequency.** `app.domain.metadata.DEFAULT_NOMINAL_FREQUENCY_HZ
+  = 50.0` is now the single conventional default.
+  - CSV/Excel conversion uses it (same value as before).
+  - BEN uses it unless `nominal_frequency_hz` is supplied, validated by
+    the existing `nominal_frequency_valid()`.
+  - Provenance records `nominal_frequency_assumed`.
+- **Errors.** These are user-safe, and the parser detail (offsets) is
+  logged only:
+  - `unsupported_ben_variant`: "This BEN file uses a BEN layout that is
+    not currently supported.";
+  - `parse_error`: not a recognized BEN record / truncated / corrupt;
+  - `invalid_file` for an empty file;
+  - `unsupported_file_type` for a wrong extension.
+- **Frontend.** This is the one narrow change.
+  - The Upload Recording modal gains a "BEN" entry (`accept=".ben,.BEN"`).
+  - Its submit shares the COMTRADE flow (`submitSourceUpload()`).
+  - It has BEN-worded error messages.
+  - There is no BEN-specific screen.
+- **Downstream.** It is unchanged, with no BEN branches. A Slow record's
+  Hz/MW channels classify as Frequency/Power, and unavailable samples are
+  `NaN` (JSON `null`).
+
+Known limitations (recorded, not decided here):
+
+- `[OPEN]` → **resolved by DEC-122 (2026-10-01).** **Local-time presentation.** The frontend deliberately shows
+  each timestamp's own wall-clock digits and ignores its offset, so a BEN
+  source displays UTC (e.g. 05:54:23). It has only a trailing `Z` in the
+  Recordings Start Time and no zone marker on the waveform ruler.
+  - Showing Asia/Kuala_Lumpur needs a presentation-layer timezone
+    policy, which would also affect CSV sources that carry offsets.
+  - A BEN source and a COMTRADE export of the same event remain 8 h apart
+    in Time Groups, by owner decision 1.
+  - **Update 2026-10-01: superseded by DEC-121.** Naive COMTRADE times
+    are now interpreted as Asia/Kuala_Lumpur, so the pair shares one Time
+    Group. Display is resolved by DEC-122.
+- `[OPEN]` **Default nominal frequency.** It is configurable per import
+  (API field) and in one code constant. It is not yet a deployment
+  setting or a UI control.
+- `[OPEN]` **Bay/feeder and BEN ids.** They live only in backend
+  provenance. Channel summaries and the UI do not show them.
+
+Reason: one import path keeps BEN on every existing downstream workflow
+without format branches. The provider registry is the existing
+architecture's extension point. UTC-aware times and a recorded-as-assumed
+frequency default keep provenance honest.
+
+Alternatives considered:
+
+- A separate `/sources/ben` endpoint. Rejected: it duplicates the import
+  lifecycle.
+- Adding `.ben` checks inside unrelated code. Rejected: it bypasses the
+  registry.
+- Naive local times. Rejected by owner decision 1.
+
+Impact:
+- Backend import/API changes are additive; COMTRADE behaviour and the
+  COMTRADE API contract are unchanged.
+- Small frontend upload change.
+- New tests:
+  - `test_ben_import_api.py`;
+  - `test_ben_fixtures.py`;
+  - upload/parity cases in `test_ben_reference_files.py`;
+  - `browser-tests/ben-import.spec.js`.
+
+---
+
+## DEC-121 — Recording timestamps resolve to one canonical instant: naive engineering timestamps are interpreted in the source timezone (Asia/Kuala_Lumpur); a declared offset wins; COMTRADE channel descriptors bind to their own data column
+
+Date: 2026-10-01
+Status: Approved (owner hardening task before BEN UAT). Implemented on
+`feat/native-ben-parser`; **owner UAT passed (2026-10-01)**; merged to
+`main`.
+Source: owner task "align recording timestamps and channel identity".
+This is a follow-up to DEC-120. It supersedes the Slice 11 (DEC-072)
+"naive = UTC label" rule in `time_grouping.normalize_absolute_datetime()`.
+
+### Timestamps: three separate concerns
+
+| Concern | Rule |
+|---|---|
+| **Stored timestamp** | Kept as the importer produced it, unchanged: BEN aware UTC; COMTRADE without `time_code` **naive** (the recorder's wall-clock digits); COMTRADE-2013 with a declared `time_code` aware at that offset; CSV/Excel naive or aware as before. |
+| **Source timezone interpretation** | A declared offset always wins. A naive value is interpreted in `app.domain.source_timezone.DEFAULT_SOURCE_TIMEZONE` = `Asia/Kuala_Lumpur`. This is applied only where instants are compared (`normalize_absolute_datetime`, which is used by Time Groups, placement offsets and analysis/calculated-channel epochs). It is never written into stored values or parsers. |
+| **Display timezone** | Unchanged and still undecided (`[OPEN]`). The frontend shows each stored value's own digits, so BEN shows UTC and COMTRADE shows local wall-clock. |
+
+**Update 2026-10-01:** the display timezone is resolved by DEC-122. Both
+sources are displayed in Asia/Kuala_Lumpur.
+
+Why: BEN stores UTC, while BEN32's COMTRADE export (like Malaysian
+recorders generally) stamps local time without a zone. Under the old UTC
+label, the LGNG BEN and its own export were 8 h apart. Now:
+- they are one instant;
+- they share one Time Group with 0.0 s placement;
+- this is verified for LGNG, PMJY, BAHS and BTGH.
+
+An all-naive workspace compares exactly as before, because every naive
+value gets the same zone.
+
+Behaviour that changes:
+- naive vs aware comparisons, e.g. a naive COMTRADE source next to a CSV
+  source with a declared offset;
+- `.timestamp()` epochs of naive sources move by 8 h. They are only used
+  for relative alignment.
+
+`tzdata` is pinned because `zoneinfo` needs it on Windows and in slim
+images. It was already installed through pandas/psycopg.
+
+### COMTRADE-2013 `time_code`
+
+The `time_code,local_code` line after `timemult` (e.g. `8,8`, `-5h30,…`)
+is now honored. Start and trigger become aware at that offset, and
+`timezone` = `UTC+08:00`. Anything absent or unparseable stays naive and
+is never guessed.
+
+The corpus scan found 1 of 199 CFGs with a declared `time_code` (PRGS
+2025, `8,8`). That file uses the FLOAT32 DAT format, which this provider
+does not support, so the behaviour is verified with synthetic CFGs.
+
+### COMTRADE duplicate names
+
+Root cause: `_build_dataframe` renamed a repeated name's column (`_1`),
+but the descriptors kept the original name, so a digital `POWER BBTU`
+read the analog `POWER BBTU` MW column.
+
+Fix:
+- `_unique_channel_names()` computes the names once, using the same
+  algorithm, so the column names are unchanged;
+- the same names are used for columns and descriptors;
+- `ComtradeProvider.load_with_provenance()` reports the original names
+  (`channel_renames`). It returns `None` when nothing was renamed.
+
+Result: PMJY `POWER BBTU_1` reads its own all-zero states and is
+classified `never_triggered`, as the BEN source is. Before the fix it
+read MW values and was classified "triggered".
+
+### Configuration
+
+`DEFAULT_SOURCE_TIMEZONE` is one named constant (an IANA name),
+replaceable in one place. A deployment setting or per-upload override is
+not built (`[OPEN]`, only if a non-Malaysian deployment needs it).
+
+Alternatives considered:
+- **Adding +08:00 in the BEN parser.** Rejected by owner decision.
+- **Shifting COMTRADE inside its parser.** Rejected: it embeds a
+  deployment zone in a format parser.
+- **Rewriting stored COMTRADE times as UTC.** Rejected: it would change
+  every COMTRADE screen's displayed wall-clock. That is a presentation
+  decision, still `[OPEN]`.
+
+Impact:
+- One domain module was added.
+- One canonicalization function changed.
+- The COMTRADE provider changed: `time_code`, descriptor names, and
+  provenance for renames.
+- Three Slice 11 tests that encoded the UTC label now assert the DEC-121
+  instant. Their intent is unchanged: no crash, exact mixed-awareness
+  arithmetic.
+- New tests: `test_source_timezone.py`, `test_comtrade_duplicate_names.py`,
+  and real-pair alignment in `test_ben_reference_files.py`.
+
+---
+
+## DEC-122 — Human-facing engineering timestamps use one display timezone (Asia/Kuala_Lumpur); canonical event time stays UTC
+
+Date: 2026-10-01
+Status: Approved (owner task "display recording times in local timezone").
+Implemented on `feat/native-ben-parser`; **owner UAT passed
+(2026-10-01)**; merged to `main`.
+It completes DEC-121. Where DEC-120/121 listed "display timezone `[OPEN]`",
+this entry resolves it.
+
+### Decision (owner wording, summarized)
+
+- Canonical event time is UTC.
+- Timezone-naive engineering sources use the configured **source
+  timezone** (DEC-121).
+- Human-facing engineering timestamps use the configured **display
+  timezone**. The current default display timezone is
+  `Asia/Kuala_Lumpur`.
+- It is generic for every source. There is never a format-specific
+  display branch.
+
+### The chain
+
+```text
+stored timestamp       BEN "…05:54:22.729783Z"   COMTRADE "…13:54:22.729783" (naive)
+source timezone        (declared UTC)            Asia/Kuala_Lumpur (DEC-121, backend)
+canonical UTC          start_time_utc = "2026-01-16T05:54:22.729783Z" for BOTH
+calculations           Time Groups / placement use the canonical instant (unchanged)
+display timezone       Asia/Kuala_Lumpur (frontend)
+what the user sees     "2026-01-16 13:54:22.729783" for BOTH
+```
+
+### Implementation (`[FACT]`)
+
+- **Backend (additive).** `SourceSummaryOut` and `TimebaseOut` gain
+  `start_time_utc`/`trigger_time_utc`. These are the canonical instant,
+  computed with `canonical_utc()` and serialized `…Z`.
+  - `start_time`/`trigger_time` are unchanged, i.e. the stored values.
+  - The frontend never reimplements the source-timezone policy.
+- **Frontend.** One helper family in `frontend/index.html`:
+  - `wwDisplayTimezone()` defaults to `"Asia/Kuala_Lumpur"`. An optional
+    deployment override is `window.POWERWAVE_CONFIG.displayTimezone`,
+    which is not emitted yet.
+  - `wwDisplayWallClockIso()` / `wwFormatEngineeringTimestamp()` use
+    `Intl.DateTimeFormat({timeZone})` for the whole-second fields and copy
+    the fractional digits verbatim. Microseconds are never rounded, and
+    there is no offset arithmetic and no browser-local zone.
+  - A value with no explicit offset gives `null`; the browser never
+    guesses.
+  - `wwRecordingDisplayStartTime()` builds the Absolute-mode anchor from
+    the canonical start. That anchor feeds the ruler, Time Group header,
+    axis ticks, cursor readouts, hover and annotation labels, which
+    already format from it.
+- **Surfaces converted:**
+  - the Recording Events Start Time, which gets a `title` naming the
+    zone;
+  - the sidebar recording identity;
+  - recording details Trigger;
+  - every Absolute-mode label.
+
+  `created_at` ("Imported") already used the browser's local time and is
+  not an engineering-event timestamp, so it is unchanged.
+- **No change to:**
+  - BEN parsing or BEN UTC storage;
+  - DEC-121 source interpretation;
+  - Time Group/placement maths (still 0.0 s for matched pairs);
+  - stored timestamp semantics.
+
+### Effects
+
+- **A naive source** displays the same digits as before, because its
+  source timezone equals the display timezone.
+- **A BEN source** now shows Malaysian time, e.g. 13:54:22 instead of
+  05:54:22Z.
+- **A CSV/Excel source that declares a different offset** now shows the
+  display-timezone equivalent rather than its raw digits. That is the
+  intended consistency.
+- **Precision is unchanged:**
+  - Recording Events shows the full stored fraction; the sidebar shows
+    4 digits.
+  - The ruler anchor keeps its pre-existing millisecond precision.
+
+### Alternatives considered
+
+- **A backend-formatted display string.** Rejected: display formatting
+  is already frontend-owned.
+- **Rewriting `start_time` to UTC.** Rejected: it mutates stored
+  semantics and is a breaking API change.
+- **A per-format +8 h shift.** Rejected by the owner.
+- **Browser local timezone.** Rejected: it is environment-dependent.
+
+`[OPEN]`:
+- There is no user/project-selectable display timezone; it is the
+  default plus a config hook.
+- The container entrypoint does not emit `displayTimezone` yet.
+- Over a DST transition (not applicable to Malaysia), a long record's
+  elapsed labels would keep the start's offset.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

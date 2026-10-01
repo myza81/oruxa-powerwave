@@ -120,33 +120,42 @@ offset is honored). For the previously-only-reachable all-naive case
 (pure COMTRADE, or COMTRADE + a timezone-unspecified CSV source), every
 value gets the identical UTC label, so every comparison/subtraction
 result is numerically IDENTICAL to before this fix -- zero behavior
-change for that case, verified in
-`tests/test_time_grouping_timezone_integration.py`.
+change for that case, verified in `tests/test_time_grouping_domain.py`
+(`TestMixedTimezoneAwarenessIntegration`; the file name originally cited
+here does not exist).
+
+**DEC-121 (2026-10-01) supersedes the UTC *label* for naive values.**
+A naive value is now interpreted in the deployment's source timezone
+(`app.domain.source_timezone.DEFAULT_SOURCE_TIMEZONE`, Asia/Kuala_Lumpur)
+-- what a naive COMTRADE/CSV timestamp actually is: the recorder's local
+wall clock. All-naive comparisons are still numerically identical (every
+naive value gets the same zone), but a naive source now compares
+correctly against a genuinely-UTC one: a BEN record (aware UTC) and its
+BEN32 COMTRADE export (naive local) resolve to the same instant and share
+a Time Group, instead of sitting 8 h apart.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+
+from app.domain.source_timezone import interpret_naive
 
 
 def normalize_absolute_datetime(value: datetime) -> datetime:
-    """Make an absolute `start_time` safe to compare/subtract against
-    another one, regardless of which one (if either) carries a real
-    declared timezone offset -- see this module's own docstring for the
-    full "CSV/Excel ingestion Slice 11" rationale. A naive value (no
-    declared offset at all, e.g. every COMTRADE recording today) is
-    given the UTC label WITHOUT converting its wall-clock numbers --
-    this is not a claim that the value truly IS UTC, only that "no
-    declared offset" must resolve to SOME consistent reference so two
-    such values remain directly comparable exactly as they always were
-    (both get the same label, so their difference is unchanged). An
-    already timezone-aware value is returned completely unmodified --
-    its genuine declared offset is never overridden or reinterpreted.
+    """Make an absolute `start_time` a comparable instant -- the single
+    point where every cross-source time comparison/subtraction (Time
+    Groups, placement, analysis epochs) resolves timezones.
+
+    A naive value (no declared offset: COMTRADE without `time_code`,
+    offset-less CSV/Excel) is interpreted in the deployment's source
+    timezone (DEC-121, `app.domain.source_timezone`) -- its wall-clock
+    digits are unchanged, only their zone becomes explicit. An already
+    timezone-aware value (BEN's UTC, a declared offset) is returned
+    completely unmodified -- a declared offset is never overridden.
     """
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value
+    return interpret_naive(value)
 
 TIME_REFERENCE_RECORDED_ABSOLUTE = "recorded_absolute"
 TIME_REFERENCE_ELAPSED_ONLY = "elapsed_only"

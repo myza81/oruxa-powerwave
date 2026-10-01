@@ -7,6 +7,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+#: Conventional power-system nominal frequency used when a source format
+#: does not declare one (CSV/Excel conversion, BEN import). A default,
+#: never a detected value -- importers record it as assumed in the
+#: source's provenance (``nominal_frequency_assumed``). Malaysia's grid
+#: is 50 Hz.
+DEFAULT_NOMINAL_FREQUENCY_HZ = 50.0
+
 
 @dataclass(slots=True)
 class RecordingMetadata:

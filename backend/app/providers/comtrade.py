@@ -16,6 +16,18 @@ Supports:
 Does NOT support:
   BINARY32 / COMTRADE 2013 float32 DAT format
 
+Changes since the port (DEC-121, 2026-10-01):
+  - A COMTRADE-2013 CFG's declared ``time_code`` (the line after
+    ``timemult``, e.g. ``8,8`` or ``-5h30,-5h30``) makes start/trigger
+    timezone-aware with that offset. Without it they stay naive, exactly
+    as before; how a naive value is interpreted is decided downstream
+    (``app.domain.source_timezone``), never here.
+  - A channel whose name repeats another's (e.g. a BEN32 Slow export's
+    analog and digital ``POWER BBTU``) gets the same ``_1``-suffixed name
+    on its descriptor as on its data column, so every descriptor binds to
+    its own column. The original names are reported by
+    ``load_with_provenance()``.
+
 load() requires *path* to be a real filesystem path with a companion .dat/
 .DAT file in the same directory and the same stem (_find_dat_file). This
 provider was not modified to accept in-memory buffers -- see
@@ -28,10 +40,12 @@ from __future__ import annotations
 
 import io
 import math
+import re
 import warnings
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -103,6 +117,7 @@ class _CfgData:
     dat_format: str
     timemult: float
     dat_file: Path
+    time_code: str | None = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -461,6 +476,18 @@ def _parse_cfg(cfg_path: Path) -> _CfgData:
             except ValueError:
                 pass
 
+    # C37.111-2013: "time_code,local_code" follows timemult. time_code is
+    # the offset from UTC of the timestamps in this file.
+    time_code: str | None = None
+    if rev_yr == "2013" and idx < len(lines):
+        offset = _parse_time_code(lines[idx].split(",")[0].strip())
+        if offset is not None:
+            zone = timezone(offset)
+            start_time = start_time.replace(tzinfo=zone)
+            trigger_time = trigger_time.replace(tzinfo=zone)
+            time_code = zone.tzname(None)
+            idx += 1
+
     dat_file = _find_dat_file(cfg_path)
 
     return _CfgData(
@@ -481,7 +508,26 @@ def _parse_cfg(cfg_path: Path) -> _CfgData:
         dat_format=dat_format,
         timemult=timemult,
         dat_file=dat_file,
+        time_code=time_code,
     )
+
+
+_TIME_CODE_PATTERN = re.compile(r"^([+-]?)(\d{1,2})(?:h(\d{2}))?$")
+
+
+def _parse_time_code(text: str) -> timedelta | None:
+    """C37.111-2013 time_code (``8``, ``-5``, ``+5h30``) -> UTC offset.
+
+    ``None`` when absent or not a valid offset -- the timestamps then stay
+    naive, never guessed."""
+    match = _TIME_CODE_PATTERN.match(text)
+    if not match:
+        return None
+    sign, hours, minutes = match.groups()
+    offset = timedelta(hours=int(hours), minutes=int(minutes or 0))
+    if offset > timedelta(hours=14):
+        return None
+    return -offset if sign == "-" else offset
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -643,20 +689,16 @@ def _extract_digital_channels(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _build_dataframe(
-    time_array: np.ndarray,
-    analog_physical: np.ndarray,
-    digital_states: np.ndarray,
+def _unique_channel_names(
     analog_defs: list[_AnalogDef],
     digital_defs: list[_DigitalDef],
-) -> pd.DataFrame:
-    """Assemble waveform_data DataFrame from pre-computed arrays.
+) -> tuple[list[str], list[str]]:
+    """Column names, unique across time/analog/digital, in CFG order.
 
-    Column order: time, [analog channels in CFG order], [digital channels in
-    CFG order]. Duplicate channel names are suffixed with _1, _2, ... and
-    warned about.
+    A repeated name is suffixed _1, _2, ... The same names are used for
+    the data columns AND the channel descriptors (DEC-121), so each
+    descriptor binds to its own column.
     """
-    col_data: dict[str, np.ndarray] = {"time": time_array}
     seen: set[str] = {"time"}
     suffix_count: dict[str, int] = {}
 
@@ -667,21 +709,31 @@ def _build_dataframe(
         count = suffix_count.get(raw_name, 0) + 1
         suffix_count[raw_name] = count
         new_name = f"{raw_name}_{count}"
-        warnings.warn(
-            f"Duplicate channel name '{raw_name}' in COMTRADE file -- "
-            f"renamed to '{new_name}'"
-        )
         seen.add(new_name)
         return new_name
 
-    for i, adef in enumerate(analog_defs):
-        name = _unique_name(adef.ch_id)
+    analog = [_unique_name(d.ch_id) for d in analog_defs]
+    digital = [_unique_name(d.ch_id) for d in digital_defs]
+    return analog, digital
+
+
+def _build_dataframe(
+    time_array: np.ndarray,
+    analog_physical: np.ndarray,
+    digital_states: np.ndarray,
+    analog_names: list[str],
+    digital_names: list[str],
+) -> pd.DataFrame:
+    """Assemble waveform_data DataFrame from pre-computed arrays.
+
+    Column order: time, [analog channels in CFG order], [digital channels in
+    CFG order], named by ``_unique_channel_names()``.
+    """
+    col_data: dict[str, np.ndarray] = {"time": time_array}
+    for i, name in enumerate(analog_names):
         col_data[name] = analog_physical[:, i]
-
-    for i, ddef in enumerate(digital_defs):
-        name = _unique_name(ddef.ch_id)
+    for i, name in enumerate(digital_names):
         col_data[name] = digital_states[:, i]
-
     return pd.DataFrame(col_data)
 
 
@@ -718,9 +770,18 @@ def _build_record(cfg: _CfgData) -> DisturbanceRecord:
 
     analog_physical = _apply_analog_scaling(analog_raw, cfg.analog_defs)
 
+    analog_names, digital_names = _unique_channel_names(cfg.analog_defs, cfg.digital_defs)
+    originals = [d.ch_id for d in cfg.analog_defs] + [d.ch_id for d in cfg.digital_defs]
+    for original, name in zip(originals, analog_names + digital_names):
+        if name != original:
+            warnings.warn(
+                f"Duplicate channel name '{original}' in COMTRADE file -- "
+                f"renamed to '{name}'"
+            )
+
     analog_channels = [
         AnalogChannel(
-            name=adef.ch_id,
+            name=name,
             unit=adef.uu,
             index=adef.index,
             phase=adef.ph,
@@ -730,21 +791,21 @@ def _build_record(cfg: _CfgData) -> DisturbanceRecord:
             primary_ratio=adef.primary,
             secondary_ratio=adef.secondary,
         )
-        for adef in cfg.analog_defs
+        for adef, name in zip(cfg.analog_defs, analog_names)
     ]
 
     digital_channels = [
         DigitalChannel(
-            name=ddef.ch_id,
+            name=name,
             index=ddef.index,
             normal_state=ddef.y,
             description=ddef.ph,
         )
-        for ddef in cfg.digital_defs
+        for ddef, name in zip(cfg.digital_defs, digital_names)
     ]
 
     waveform_data = _build_dataframe(
-        time_arr, analog_physical, digital_states, cfg.analog_defs, cfg.digital_defs
+        time_arr, analog_physical, digital_states, analog_names, digital_names
     )
 
     return DisturbanceRecord(
@@ -754,7 +815,7 @@ def _build_record(cfg: _CfgData) -> DisturbanceRecord:
             source_file=str(cfg.dat_file.parent / (cfg.dat_file.stem + ".cfg")),
             provider_type="COMTRADE",
             nominal_frequency=cfg.nominal_freq,
-            timezone=None,
+            timezone=cfg.time_code,
         ),
         waveform_data=waveform_data,
         analog_channels=analog_channels,
@@ -768,7 +829,7 @@ def _build_record(cfg: _CfgData) -> DisturbanceRecord:
             start_time=cfg.start_time,
             trigger_time=cfg.trigger_time,
             time_multiplier=cfg.timemult,
-            timezone=None,
+            timezone=cfg.time_code,
         ),
         disturbance_info=None,
     )
@@ -799,6 +860,27 @@ class ComtradeProvider(BaseProvider):
 
     def load(self, path: Path) -> DisturbanceRecord:
         """Parse the COMTRADE file at *path* and return a normalized DisturbanceRecord."""
+        return self._load(path)[0]
+
+    def load_with_provenance(self, path: Path) -> tuple[DisturbanceRecord, dict[str, Any] | None]:
+        """``load()`` plus the original names of channels renamed to keep
+        names unique (``None`` when nothing was renamed)."""
+        record, cfg = self._load(path)
+        analog_names, digital_names = _unique_channel_names(cfg.analog_defs, cfg.digital_defs)
+        renames = [
+            {"name": name, "source_name": d.ch_id, "kind": kind, "index": d.index}
+            for kind, defs, names in (
+                ("analog", cfg.analog_defs, analog_names),
+                ("digital", cfg.digital_defs, digital_names),
+            )
+            for d, name in zip(defs, names)
+            if name != d.ch_id
+        ]
+        if not renames:
+            return record, None
+        return record, {"source_format": "COMTRADE", "channel_renames": renames}
+
+    def _load(self, path: Path) -> tuple[DisturbanceRecord, _CfgData]:
         try:
             cfg = _parse_cfg(path)
         except ProviderLoadError:
@@ -815,7 +897,7 @@ class ComtradeProvider(BaseProvider):
             )
 
         try:
-            return _build_record(cfg)
+            return _build_record(cfg), cfg
         except ProviderLoadError:
             raise
         except Exception as exc:

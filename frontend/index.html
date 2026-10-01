@@ -12890,6 +12890,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     { key: "dat", label: "Data file (.dat)", accept: ".dat,.DAT" },
                 ],
             },
+            // DEC-120: a BEN record is ONE file, imported natively into the
+            // same source/workspace flow as COMTRADE (same endpoint, same
+            // "upload -> Recordings list" behavior).
+            {
+                id: "ben",
+                label: "BEN",
+                enabled: true,
+                submitLabel: "Upload & Import",
+                files: [
+                    { key: "ben", label: "BEN record (.ben)", accept: ".ben,.BEN" },
+                ],
+            },
             {
                 id: "csv",
                 label: "CSV",
@@ -13525,6 +13537,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return knownMessages[code] || (message || "Import failed.");
         }
 
+        // DEC-120: BEN-worded messages for the shared /sources endpoint --
+        // COMTRADE's ".cfg/.dat" wording would mislead for a .ben upload.
+        // The backend's own BEN messages are already user-safe (no offsets),
+        // so parse/variant errors show them as-is.
+        function friendlyBenErrorMessage(code, message) {
+            const knownMessages = {
+                unsupported_file_type: "That doesn't look like a BEN (.ben) file. Check the file extension and try again.",
+                invalid_file: "That file is empty or unreadable.",
+                parse_error: message || "The BEN record couldn't be read.",
+                unsupported_ben_variant: message || "This BEN file uses a BEN layout that is not currently supported.",
+                upload_too_large: message || ("This event is larger than the current " + CLIENT_SIZE_GUIDANCE_MB + " MB limit."),
+                invalid_workspace: "Something went wrong identifying your workspace. Try starting a new one.",
+                internal_error: "Something went wrong on our end. Please try again.",
+            };
+            return knownMessages[code] || (message || "Import failed.");
+        }
+
         // CSV/Excel ingestion Slices 1-2: a SEPARATE small message map from
         // friendlyErrorMessage() above -- reusing that function's COMTRADE-
         // worded "doesn't look like a COMTRADE .cfg/.dat file" text for a
@@ -13649,6 +13678,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // upload behavior is byte-for-byte unchanged.
             if (format.id === "comtrade") {
                 await submitComtradeUpload(files.cfg, files.dat);
+            } else if (format.id === "ben") {
+                await submitBenUpload(files.ben);
             } else if (format.id === "csv") {
                 await submitCsvUpload(files.csv);
             } else if (format.id === "excel") {
@@ -13657,11 +13688,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         });
 
         async function submitComtradeUpload(cfgFile, datFile) {
+            await submitSourceUpload([["cfg_file", cfgFile], ["dat_file", datFile]], friendlyErrorMessage);
+        }
+
+        // DEC-120: a .ben record posts its single `ben_file` part to the
+        // same /sources endpoint and follows the identical flow.
+        async function submitBenUpload(benFile) {
+            await submitSourceUpload([["ben_file", benFile]], friendlyBenErrorMessage);
+        }
+
+        // The shared /sources upload flow (COMTRADE pair or one BEN file):
+        // `parts` is [[formFieldName, File], ...].
+        async function submitSourceUpload(parts, errorMessageFor) {
             // Immediate client-side feedback -- NOT the authoritative check
             // (the backend enforces its own configured limit regardless of
             // this estimate; see docs/project-memory/MIGRATION_PLAN.md's
             // Phase 1 update on upload-size enforcement).
-            const combinedMb = (cfgFile.size + datFile.size) / (1024 * 1024);
+            const combinedMb = parts.reduce((total, part) => total + part[1].size, 0) / (1024 * 1024);
             if (combinedMb > CLIENT_SIZE_GUIDANCE_MB) {
                 setUploadStatus(
                     "error",
@@ -13679,8 +13722,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             setUploadStatus("busy", '<span class="spinner"></span>Uploading and parsing&hellip;');
 
             const formData = new FormData();
-            formData.append("cfg_file", cfgFile, cfgFile.name);
-            formData.append("dat_file", datFile, datFile.name);
+            for (const [fieldName, file] of parts) formData.append(fieldName, file, file.name);
 
             try {
                 const response = await fetch(
@@ -13691,7 +13733,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
                 if (!response.ok) {
                     const detail = (body && body.detail) || {};
-                    setUploadStatus("error", friendlyErrorMessage(detail.code, detail.message));
+                    setUploadStatus("error", errorMessageFor(detail.code, detail.message));
                     return;
                 }
 
@@ -14067,6 +14109,84 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // precision Recording Events itself shows -- the ONLY thing
         // `compact` changes; the type decision and fallback labels are
         // identical either way.
+        // ------------------------------------------------------------------
+        // DEC-122: engineering timestamp DISPLAY timezone.
+        //
+        //   source timestamp (stored; naive for COMTRADE, UTC for BEN)
+        //     -> source timezone interpretation (backend, DEC-121)
+        //     -> canonical UTC instant (API `start_time_utc` /
+        //        `trigger_time_utc`, always "...Z")
+        //     -> display timezone (HERE) -> what the engineer sees
+        //
+        // Every recording/event absolute time is shown in ONE display
+        // timezone (IANA name, default Asia/Kuala_Lumpur; overridable by a
+        // deployment's window.POWERWAVE_CONFIG.displayTimezone), whatever
+        // format or source timezone it came from -- so a BEN record and
+        // its BEN32 COMTRADE export show the same clock time. Never a
+        // per-format branch, never manual offset arithmetic, never the
+        // browser's own local timezone. Function declarations (not
+        // consts) so they are usable from any point of this script.
+        // ------------------------------------------------------------------
+        function wwDisplayTimezone() {
+            const configured = window.POWERWAVE_CONFIG && window.POWERWAVE_CONFIG.displayTimezone;
+            return configured || "Asia/Kuala_Lumpur";
+        }
+
+        function wwDisplayWallClockFormatter() {
+            const zone = wwDisplayTimezone();
+            const cached = wwDisplayWallClockFormatter.cached;
+            if (cached && cached.zone === zone) return cached.formatter;
+            const formatter = new Intl.DateTimeFormat("en-US", {
+                timeZone: zone, hourCycle: "h23",
+                year: "numeric", month: "2-digit", day: "2-digit",
+                hour: "2-digit", minute: "2-digit", second: "2-digit",
+            });
+            wwDisplayWallClockFormatter.cached = { zone: zone, formatter: formatter };
+            return formatter;
+        }
+
+        // An offset-bearing ISO instant ("...Z" / "...+08:00") -> the
+        // display timezone's wall clock as "YYYY-MM-DDTHH:MM:SS[.ffffff]"
+        // (no offset). Only the whole-second fields go through Intl; the
+        // fractional digits are copied VERBATIM (IANA offsets are whole
+        // minutes), so microseconds are never rounded. `null` for a value
+        // with no explicit offset -- interpreting a naive value is the
+        // backend's job (DEC-121), never guessed here.
+        function wwDisplayWallClockIso(canonicalIso) {
+            if (!canonicalIso) return null;
+            const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-]\d{2}:?\d{2})$/.exec(canonicalIso);
+            if (!m) return null;
+            const [, y, mo, d, h, mi, sec, frac, zone] = m;
+            let offsetMinutes = 0;
+            if (zone !== "Z") {
+                const digits = zone.slice(1).replace(":", "");
+                offsetMinutes = (zone[0] === "-" ? -1 : 1) * (Number(digits.slice(0, 2)) * 60 + Number(digits.slice(2, 4)));
+            }
+            const epochMs = Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(sec)) - offsetMinutes * 60000;
+            const parts = {};
+            for (const part of wwDisplayWallClockFormatter().formatToParts(new Date(epochMs))) parts[part.type] = part.value;
+            return parts.year + "-" + parts.month + "-" + parts.day + "T" +
+                parts.hour + ":" + parts.minute + ":" + parts.second + (frac || "");
+        }
+
+        // Human-facing engineering timestamp, "YYYY-MM-DD HH:MM:SS[.ffffff]"
+        // in the display timezone (no zone suffix, matching the existing
+        // timestamp style; the zone is named in the cell's tooltip).
+        function wwFormatEngineeringTimestamp(canonicalIso) {
+            const wallClock = wwDisplayWallClockIso(canonicalIso);
+            return wallClock ? wallClock.replace("T", " ") : null;
+        }
+
+        // The Absolute-mode anchor every ruler/header/cursor/hover label is
+        // computed from: the display-timezone wall clock of the recording's
+        // canonical start, so mixed-format Time Groups label in ONE zone.
+        // Falls back to the stored digits only when no canonical value is
+        // available (pre-DEC-122 payloads).
+        function wwRecordingDisplayStartTime(timebase) {
+            if (!timebase) return null;
+            return wwDisplayWallClockIso(timebase.start_time_utc) || timebase.start_time || null;
+        }
+
         function wwFormatRecordingTimeIdentity(source, opts) {
             opts = opts || {};
             if (source.timing_reference === "time_of_day") {
@@ -14075,7 +14195,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     : "—";
             }
             if (source.start_time) {
-                const spaced = source.start_time.replace("T", " ");
+                const spaced = wwFormatEngineeringTimestamp(source.start_time_utc) || source.start_time.replace("T", " ");
                 if (!opts.compact) return spaced;
                 const dotIndex = spaced.indexOf(".");
                 return dotIndex === -1 ? spaced : spaced.slice(0, dotIndex + 5);
@@ -14232,7 +14352,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // everywhere else in this app for that reason (never
             // `new Date(...)`, which would round microsecond precision
             // and apply a local timezone that was never really there).
-            const triggerTime = source.trigger_time ? source.trigger_time.replace("T", " ") : "—";
+            const triggerTime = wwFormatEngineeringTimestamp(source.trigger_time_utc) ||
+                (source.trigger_time ? source.trigger_time.replace("T", " ") : "—");
             // Imported Time: a DIFFERENT, session-level, timezone-AWARE
             // backend timestamp (when this browser session imported the
             // file) -- reuses formatImportedAt() unchanged, preserving
@@ -14367,7 +14488,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<td>' + escapeHtml(recordingFormatLabel(source)) + '</td>' +
                     '<td>' + formatFileSize(source.file_size_bytes) + '</td>' +
                     '<td>' + escapeHtml(formatRecordingStatus(source.status)) + '</td>' +
-                    '<td class="recording-start-time-cell">' + formatRecordingStartTime(source) + '</td>' +
+                    '<td class="recording-start-time-cell"' +
+                        (source.start_time_utc ? ' title="' + escapeHtml("Shown in " + wwDisplayTimezone()) + '"' : "") +
+                        '>' + formatRecordingStartTime(source) + '</td>' +
                     '<td>' + formatRecordingDuration(source.duration_seconds) + '</td>' +
                     '<td class="recording-sampling-rates-cell">' + formatSamplingRates(source.sampling_rates) + '</td>' +
                     '<td><div class="recording-actions">' +
@@ -20986,7 +21109,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // today (unaffected), matching engineering_type's own
                 // existing "Undefined" fallback convention above.
                 ' data-engineering-quantity="' + escapeHtml(channel.engineering_quantity || "Undefined") + '"' +
-                ' data-recording-start-time="' + escapeHtml((timebase && timebase.start_time) || "") + '"' +
+                ' data-recording-start-time="' + escapeHtml(wwRecordingDisplayStartTime(timebase) || "") + '"' +
                 ' data-timing-reference="' + escapeHtml((timebase && timebase.timing_reference) || "") + '"' +
                 ' aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '"';
         }
@@ -21036,7 +21159,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 ' data-channel-name="' + escapeHtml(channel.name) + '"' +
                 ' data-channel-index="' + escapeHtml(String(channel.index)) + '"' +
                 ' data-classification="' + escapeHtml(channel.classification || "never_triggered") + '"' +
-                ' data-recording-start-time="' + escapeHtml((timebase && timebase.start_time) || "") + '"' +
+                ' data-recording-start-time="' + escapeHtml(wwRecordingDisplayStartTime(timebase) || "") + '"' +
                 ' data-timing-reference="' + escapeHtml((timebase && timebase.timing_reference) || "") + '"' +
                 ' aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '"';
         }
@@ -22234,7 +22357,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwRememberSourceTimingFromChannelsData(data) {
             if (!data || !data.source) return;
             const timebase = data.timebase || {};
-            const recordingStartTime = timebase.start_time || null;
+            const recordingStartTime = wwRecordingDisplayStartTime(timebase);
             ww.sourceTiming.set(data.source.source_id, {
                 recordingStartTime,
                 recordingStartMs: wwParseNaiveTimestamp(recordingStartTime),
@@ -23163,6 +23286,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         var WW_MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+        // DEC-122: the `originMs` anchor these read is now the DISPLAY-
+        // timezone wall clock of the recording's canonical start
+        // (wwRecordingDisplayStartTime()), so the "naive numbers" below are
+        // display-timezone digits for every source, not raw stored digits.
         // Plain "DD Mon YYYY" from a UTC epoch ms -- same "UTC getters
         // only, never a locale-dependent Date method, never JS's own
         // local-timezone parsing" discipline every other Absolute-mode

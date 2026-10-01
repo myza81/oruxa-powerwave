@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Any
 
 from app.domain import DisturbanceRecord
 
@@ -47,6 +48,15 @@ class BaseProvider(ABC):
     @abstractmethod
     def load(self, path: Path) -> DisturbanceRecord:
         """Parse the file at *path* and return a normalized DisturbanceRecord."""
+
+    def load_with_provenance(self, path: Path) -> tuple[DisturbanceRecord, dict[str, Any] | None]:
+        """``load()`` plus optional JSON-safe provenance the record cannot carry.
+
+        Added for BEN import (DEC-120). The default returns ``None``
+        provenance, so providers that don't override it (COMTRADE) behave
+        exactly as ``load()``.
+        """
+        return self.load(path), None
 
 
 class ProviderRegistry:

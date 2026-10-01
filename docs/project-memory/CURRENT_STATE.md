@@ -9,7 +9,57 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-30** — **Calculator phase-to-neutral
+Last meaningful update: **2026-10-01** — **Native BEN import: owner UAT
+passed; merged to `main`** (DEC-119 parser, DEC-120 import, DEC-121
+timestamp/channel-identity hardening, DEC-122 display timezone).
+
+```text
+Upload Recording -> format "BEN" -> native BenProvider -> Fast or Slow SubBen
+  -> DisturbanceRecord -> normal Powerwave workflow
+```
+
+- **Owner UAT passed (2026-10-01): "BEN integration is working as
+  expected and the feature is accepted for merge."** It covered:
+  - `.ben` upload through the normal Upload Recording flow;
+  - Fast SubBen and Slow SubBen loading;
+  - BEN and matching BEN32 COMTRADE timestamp alignment (one Time
+    Group, 0.0 s placement);
+  - consistent Malaysia-local display time;
+  - waveform plotting and the normal recording workflow;
+  - rejection of unsupported older BEN layouts.
+- **Scope of the UAT.** It applies to the validated BEN32 SubBen layout
+  family only (header `2a ff … / 06 ff`), not to every historical BEN
+  variant. Older layouts (BPHE/GPTH, header byte `28`) and any
+  unvalidated variant are rejected with `unsupported_ben_variant`.
+- **Behaviour.** Parsing is native: no BEN32 runtime and no temporary
+  COMTRADE. Sampling rate, channel counts and stride come from each
+  file. Analog, calculated (Hz/MW) and digital channels are scaled to
+  engineering units. Slow unavailable samples are `NaN`. Duplicate
+  analog/digital names keep their own identity.
+
+| Concern | Rule |
+|---|---|
+| Source timezone | Naive engineering timestamps are read as Asia/Kuala_Lumpur; a declared offset wins (DEC-121). |
+| Canonical | UTC. The API adds `start_time_utc`/`trigger_time_utc`; the stored `start_time` is unchanged. |
+| Display timezone | Asia/Kuala_Lumpur, applied in the frontend via `wwFormatEngineeringTimestamp()` and the Absolute anchor `wwRecordingDisplayStartTime()` (DEC-122). |
+
+Deferred follow-ups (`[OPEN]`, not blockers):
+- older BEN layouts (BPHE/GPTH);
+- a user- or project-selectable display timezone;
+- deployment wiring for `displayTimezone` (the container entrypoint does
+  not emit it; the default applies), and `DEFAULT_SOURCE_TIMEZONE` is a
+  constant, not a setting;
+- BEN bay/feeder and channel ids in the UI (kept in provenance only);
+- nominal frequency in the UI or configuration (BEN upload uses the
+  shared 50 Hz default; the API accepts `nominal_frequency_hz`);
+- FLOAT32/BINARY32 COMTRADE DAT;
+- any broader channel-metadata redesign;
+- the COMTRADE path still scales BEN32's legacy 99999 "unavailable"
+  value to 99.9995 Hz; the BEN path gives `NaN`.
+
+See [BEN_FORMAT.md](BEN_FORMAT.md).
+
+Earlier, on **2026-09-30** — **Calculator phase-to-neutral
 notation (DEC-117 Amendment 3).** Line / Phase Voltage shows
 V<sub>RN</sub> (plain `VRN`), never V<sub>R</sub>-N. That covers the
 inputs, formula, diagram and Balanced L-N label; angles stay
@@ -2576,8 +2626,11 @@ modules beyond the original COMTRADE port (`domain/source.py`,
 `measurement_group.py` / `measurement_group_detection.py` /
 `voltage_group_config.py` / `current_group_config.py` / `voltage_reference.py`
 / `per_unit.py` (the Per-Unit measurement model), `event_detection.py` /
-`rms_detector.py`. `providers/` still holds only `base.py` and
-`comtrade.py` — no CSV/Excel provider exists yet. No persistent storage of
+`rms_detector.py`. `providers/` holds `base.py`, `comtrade.py` and (since
+2026-10-01, DEC-119) the native `ben/` package — no CSV/Excel provider
+exists (CSV/Excel converts through the Preparation services).
+`import_service.build_provider_manager()` registers `ComtradeProvider`
+and `BenProvider` for source upload (DEC-120). No persistent storage of
 uploaded event files (DEC-015, unchanged); the active workspace retains
 each source's full-resolution parsed record in memory only (DEC-019).
 
@@ -2658,6 +2711,40 @@ re-confirmed by the TG-FINAL audit):
 - **COMTRADE ingestion**: two-slot `.cfg`/`.dat` upload, parse, engineering-
   type channel classification (backend-computed), ephemeral per-request
   parsing (no event files ever persisted to disk/storage).
+  - DEC-121: a 2013 CFG's declared `time_code` gives timezone-aware
+    times; otherwise times stay naive and are interpreted as
+    Asia/Kuala_Lumpur when compared.
+  - Duplicate channel names bind each descriptor to its own `_1` column.
+  - FLOAT32/BINARY32 DAT remain unsupported.
+- **BEN import (DEC-120, 2026-10-01; owner UAT passed, merged to
+  `main`).**
+  - Upload Recording offers format "BEN" (`.ben`), posting `ben_file` to
+    the same `/sources` endpoint as COMTRADE.
+  - The provider registry routes the file to `BenProvider`; nothing is
+    converted to COMTRADE.
+  - Fast and Slow records land as ordinary sources: Recordings row,
+    Waveform, digital channels, post-upload preparation.
+  - Times are aware UTC and display in Asia/Kuala_Lumpur (DEC-122).
+  - `nominal_frequency_hz` is optional; otherwise the shared 50 Hz
+    default applies, recorded as assumed.
+  - Unavailable Slow samples are `NaN`.
+  - `[OPEN]` Bay/id not shown in the UI.
+- **Native BEN parsing (DEC-119, 2026-10-01).** `app.providers.ben` decodes BEN32 3.8.9.6 "Fast SubBen"
+  and "Slow SubBen" records natively into a lossless `BenRecord`.
+  - Everything is derived from the file itself: sample rate, counts,
+    stride, data offset and every channel's word/bit.
+  - `to_disturbance_record()` normalizes it into the unchanged
+    `DisturbanceRecord`:
+    - Hz/MW calculated channels map to `parameter_type`;
+    - an unavailable sample is `NaN`;
+    - binaries are active-high;
+    - times are UTC.
+  - An older BEN layout and any unvalidated variant are rejected
+    explicitly.
+  - Validated sample-for-sample against BEN32 COMTRADE exports (2 Fast +
+    2 Slow pairs).
+  - The format, evidence and remaining `[OPEN]` items are in
+    [BEN_FORMAT.md](BEN_FORMAT.md).
 - **Application shell**: full-viewport Global Header, collapsible Main
   Sidebar Menu, drag-resizable Workspace Sidebar (source-first hierarchy:
   Recording → Analog/Digital → Category → Channel), a dominant Main

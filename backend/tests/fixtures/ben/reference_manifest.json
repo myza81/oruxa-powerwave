@@ -1,0 +1,95 @@
+{
+  "description": "Identity and expected structure of the real BEN reference records used by tests/test_ben_reference_files.py. The records themselves are owner engineering data and are NOT committed; tests locate them by file name under --ben-reference-dir (or POWERWAVE_BEN_REFERENCE_DIR) and use a file only when its SHA-256 matches. See docs/project-memory/BEN_FORMAT.md.",
+  "records": [
+    {
+      "id": "lgng_fast",
+      "role": "matched_fast",
+      "ben": {"name": "160126_BEN RECORD TRIPPING LGNG_JMHE1 FIRST TRIP.ben", "size": 6827913, "sha256": "1f7730fe1a88150a1337e88b3912a3dec2b76a7e3a323fcfe9336dee11359257"},
+      "comtrade_cfg": {"name": "160126_BEN RECORD TRIPPING LGNG_JMHE1 FIRST TRIP.cfg", "size": 12688, "sha256": "5d9a86e205f66e6fdea005dec36bcaf0273e691aaede28fb4301bb047d980bed"},
+      "comtrade_dat": {"name": "160126_BEN RECORD TRIPPING LGNG_JMHE1 FIRST TRIP.dat", "size": 46378326, "sha256": "a4b5b0ae27a8a1936d43353f5e4c44763d3e5e6c1ed2b68e38edac74f4881136"},
+      "expected": {
+        "record_class": "Fast SubBen", "station_name": "Ben_1196_LGNG500_2", "recorder_unit_id": 1196,
+        "sampling_rate_hz": 5000.0, "sample_count": 42745, "pre_trigger_samples": 2500,
+        "value_channels": 56, "digital_channels": 335, "stride_bytes": 158, "data_offset": 74203,
+        "trigger_time_utc": "2026-01-16T05:54:23.229783", "changing_digitals": 11
+      }
+    },
+    {
+      "id": "pmjy_slow",
+      "role": "matched_slow",
+      "ben": {"name": "PMJY slow sampling time124149926.ben", "size": 50240, "sha256": "4fc9db8d53d12ddac9d6cf0aa7c0e790efdc266457985a3a6028acccc29d085a"},
+      "comtrade_cfg": {"name": "PMJY 275kV time124149926.cfg", "size": 1276, "sha256": "5bcc375160d12c2b5c1a3a8a01276d3a2c1d4eda928584f8e7820908f56b724a"},
+      "comtrade_dat": {"name": "PMJY 275kV time124149926.dat", "size": 177928, "sha256": "8f3b2f9663760bfc6318549e32fb09e802de9b855d5589339ed11b64936f9c79"},
+      "expected": {
+        "record_class": "Slow SubBen", "station_name": "PMJY", "recorder_unit_id": 1214,
+        "sampling_rate_hz": 20.0, "sample_count": 1401, "pre_trigger_samples": 400,
+        "value_channels": 12, "digital_channels": 12, "stride_bytes": 30, "data_offset": 8210,
+        "trigger_time_utc": "2022-07-27T04:41:49.926317", "changing_digitals": 2,
+        "unavailable_channels": ["FREQ SGT1 VB_HV", "FREQ SGT2 VR_HV", "FREQ SGT1 VY_LV", "FREQ SGT2 VB_LV"],
+        "varying_channels": ["POWER BBTU", "POWER PGPN", "FREQ UR BBTU", "FREQ PGPN VY"]
+      }
+    },
+    {
+      "id": "agjh_fast",
+      "role": "structural",
+      "note": "No matching COMTRADE exists; 'AGJH 275kv slow ben time124150016' is a different event and must not be used.",
+      "ben": {"name": "AGJH 221022.ben", "size": 4005737, "sha256": "bf083fbe47d02d423ecbb5076e190c7111b29588b77aa4998ae0f769c9aeeb92"},
+      "expected": {
+        "record_class": "Fast SubBen", "station_name": "AGJH 500kV", "recorder_unit_id": 1356,
+        "sampling_rate_hz": 5000.0, "sample_count": 30915, "pre_trigger_samples": 2500,
+        "value_channels": 49, "digital_channels": 182, "stride_bytes": 128, "data_offset": 48617,
+        "trigger_time_utc": "2022-10-22T09:47:16.826533"
+      }
+    },
+    {
+      "id": "bahs_fast",
+      "role": "matched_fast",
+      "note": "Additional matched pair found beside the owner-named files; identity with its COMTRADE is proven by exact sample agreement, not assumed.",
+      "ben": {"name": "BAHS 275 Fast Ben time124148659.ben", "size": 2734083, "sha256": "dfbd95ec07166debb32b8bf08ecb4ee31c008bc101385ab9a03f77c770095d22"},
+      "comtrade_cfg": {"name": "BAHS 275kV Fast Ben time124148659.cfg", "size": 4807, "sha256": "ad7475de6665f1e49a54e8df69a08a2777011d1d59faf12af492ca1eb8aab741"},
+      "comtrade_dat": {"name": "BAHS 275kV Fast Ben time124148659.dat", "size": 16053066, "sha256": "0b7597d014005c0af387005080475b8c3aab030685c2f3fa4ee9e44cf3559b2f"},
+      "expected": {
+        "record_class": "Fast SubBen", "station_name": "BAHS 275kV", "recorder_unit_id": 1343,
+        "sampling_rate_hz": 5000.0, "sample_count": 37595, "pre_trigger_samples": 500,
+        "value_channels": 28, "digital_channels": 104, "stride_bytes": 72, "data_offset": 27243,
+        "trigger_time_utc": "2022-07-27T04:41:48.659683", "changing_digitals": 25
+      }
+    },
+    {
+      "id": "btgh_slow",
+      "role": "matched_slow",
+      "note": "Additional matched pair found beside the owner-named files; identity with its COMTRADE is proven by exact sample agreement, not assumed.",
+      "ben": {"name": "BTGH Slow Ben time124150134.ben", "size": 50289, "sha256": "802095fca1483a3a556161e6cc880f41bc288e4a45be1e2410e685bcbfadf666"},
+      "comtrade_cfg": {"name": "BTGH Slow Ben time124150134.cfg", "size": 1288, "sha256": "168e467a9275b559893f6f6728df836e96bb4e46af933db9629c982aef8a95b3"},
+      "comtrade_dat": {"name": "BTGH Slow Ben time124150134.dat", "size": 182131, "sha256": "d5077f2a9a46dc13240f64d46bcbd1c498b03174bc5b338a6d37f3c2a5a308c3"},
+      "expected": {
+        "record_class": "Slow SubBen", "station_name": "BTGH", "recorder_unit_id": 1296,
+        "sampling_rate_hz": 20.0, "sample_count": 1401, "pre_trigger_samples": 400,
+        "value_channels": 12, "digital_channels": 12, "stride_bytes": 30, "data_offset": 8259,
+        "trigger_time_utc": "2022-07-27T04:41:50.134900", "changing_digitals": 5,
+        "unavailable_channels": ["FREQ TMGR VB"]
+      }
+    },
+    {
+      "id": "pmjy_slow_2",
+      "role": "structural",
+      "ben": {"name": "PMJY Slow Sampling time124937632.ben", "size": 38750, "sha256": "f5c20a62671a96c08e04390d106f68009eb0a2badc0066d0a9345eb48b7a305d"},
+      "expected": {
+        "record_class": "Slow SubBen", "station_name": "PMJY", "recorder_unit_id": 1214,
+        "sampling_rate_hz": 20.0, "sample_count": 1018, "pre_trigger_samples": 400,
+        "value_channels": 12, "digital_channels": 12, "stride_bytes": 30, "data_offset": 8210,
+        "trigger_time_utc": "2022-07-27T04:49:37.632200"
+      }
+    },
+    {
+      "id": "bphe_legacy",
+      "role": "unsupported_variant",
+      "ben": {"name": "BEN BPHE 27 JULY 2022 12.41.46.ben", "size": 62322, "sha256": "9ea6ca81eea6ef7b76210d574b73cc59f21d8fd3454999f22d440620eabc4ab9"}
+    },
+    {
+      "id": "gpth_legacy",
+      "role": "unsupported_variant",
+      "ben": {"name": "GPTH 275.ben", "size": 68212, "sha256": "ddfd892304fad179255b7984502e58c816d4b4227fbaa02cb57149819a4866b4"}
+    }
+  ]
+}
