@@ -4,9 +4,26 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-01** (Event Reconstruction analog-only correction)
+Last updated: **2026-10-01** (Event Reconstruction Slice 3A)
 
 ## What was most recently done
+
+**Event Reconstruction Slice 3A — shared renderer helpers (DEC-127
+update, 2026-10-01).** A frontend refactor only. Waveform behaviour is
+identical.
+
+- **What moved.** Pure helpers were extracted; the original Waveform
+  functions are now wrappers. See the table in DEC-127's Slice 3A update.
+- **Verified by:**
+  - an uncommitted side-by-side harness (16,021 checks);
+  - `test_frontend_shared_renderer_helpers.py` (30 checks);
+  - four existing static tests updated to assert the same semantics in
+    the helpers;
+  - full backend and browser suites.
+- **Next.** Slice 3B (per-source timing metadata + ER mapping helpers),
+  then Slice 3C, the first plotted UAT.
+
+## Earlier — Event Reconstruction analog-only correction
 
 **Event Reconstruction analog-only correction (DEC-127, 2026-10-01).**
 The owner approved Option B and made Event Reconstruction analog-only.

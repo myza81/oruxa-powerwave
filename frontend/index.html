@@ -23981,7 +23981,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // wwClampRangeToWorkspace()'s own per-group generalization.
         function wwClampRangeToTimeGroup(groupId, start, end) {
-            const bounds = wwDeriveTimeGroupBounds(groupId);
+            return wwClampRangeToBounds(wwDeriveTimeGroupBounds(groupId), start, end);
+        }
+
+        // Shared renderer helper (DEC-127, Option B): intersect a range
+        // with `bounds` (no bounds -> just normalized).
+        function wwClampRangeToBounds(bounds, start, end) {
             if (!bounds) return wwNormalizeBounds(start, end);
             return wwNormalizeBounds(Math.max(start, bounds.start), Math.min(end, bounds.end));
         }
@@ -26181,7 +26186,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwPanelPlotWidth(panel) {
-            const chartEl = panel && panel.chartEl;
+            return wwPlotWidthForChart(panel && panel.chartEl);
+        }
+
+        // Shared renderer helper (DEC-127, Option B): a Plotly chart
+        // element's plot-area width in px -- Plotly's own x-axis length
+        // once rendered, otherwise the element width minus the standard
+        // panel margins. Reads only the element it is given.
+        function wwPlotWidthForChart(chartEl) {
             if (!chartEl) return null;
 
             const fl = chartEl._fullLayout;
@@ -26196,17 +26208,74 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwPointBudgetForPanel(panel) {
-            const plotWidth = wwPanelPlotWidth(panel);
+            return wwPointBudgetForPlotWidth(wwPanelPlotWidth(panel));
+        }
+
+        // Shared renderer helper (DEC-127): the backend point budget for a
+        // plot of this width (WW_POINT_BUDGET_PER_PIXEL, clamped).
+        function wwPointBudgetForPlotWidth(plotWidth) {
             if (!Number.isFinite(plotWidth) || plotWidth <= 0) return WW_POINT_BUDGET_MIN;
             return wwClampPointBudget(plotWidth * WW_POINT_BUDGET_PER_PIXEL);
         }
 
+        // Shared renderer helpers (DEC-127): the one offset arithmetic
+        // between a plotted time coordinate and a source's own native
+        // elapsed time. The caller supplies the offset (Waveform: the
+        // source's effective alignment offset; Event Reconstruction: its
+        // total reconstruction offset). An open bound (null/undefined)
+        // stays open.
+        function wwViewportTimeToSourceElapsed(viewportTime, offsetS) {
+            return viewportTime !== null && viewportTime !== undefined ? viewportTime - offsetS : viewportTime;
+        }
+
+        function wwSourceElapsedToViewportTime(elapsedSeconds, offsetS) {
+            return elapsedSeconds + offsetS;
+        }
+
         async function wwFetchChannelRange(channelEntry, startTime, endTime, pointBudget) {
-            if (channelEntry.abortController) channelEntry.abortController.abort();
+            // Slice 1 (task section 6): the caller's startTime/endTime are
+            // WORKSPACE time (the shared viewport's own coordinate system);
+            // the backend's waveform range is always source-native, so the
+            // inverse mapping is applied here, at the one place this
+            // channel's own fetch boundary is crossed -- by the shared
+            // fetch core below, with this channel's own alignment offset
+            // (identical arithmetic to wwWorkspaceTimeToSourceTime()).
+            const alignmentOffset = wwAlignmentOffsetForDisplaySourceId(channelEntry.sourceId);
+            return wwFetchWaveformRange({
+                requestState: channelEntry,
+                sourceId: channelEntry.sourceId,
+                channelName: channelEntry.channelName,
+                isCalculated: wwIsCalculatedSourceId(channelEntry.sourceId),
+                nativeStart: wwViewportTimeToSourceElapsed(startTime, alignmentOffset),
+                nativeEnd: wwViewportTimeToSourceElapsed(endTime, alignmentOffset),
+                pointBudget,
+                // Phase 5C (DEC-049): the backend is the sole conversion
+                // authority (decision 2) -- this is the ONE place every
+                // displayed channel's waveform fetch asks for per-unit
+                // conversion; switching ww.unitMode re-fetches every
+                // currently-displayed channel's current viewport (see
+                // wwApplyUnitMode() below), never a second, frontend-side
+                // division formula.
+                unitMode: ww.unitMode,
+                timeOffsetS: alignmentOffset,
+            });
+        }
+
+        // Shared renderer helper (DEC-127, Option B): the waveform range
+        // fetch core. Everything Waveform-specific is a parameter -- the
+        // caller supplies the source-native range, the point budget, the
+        // unit mode and the offset that maps returned native times onto
+        // its own plotted time axis. `requestState` is any object that
+        // owns this channel's in-flight request (abortController/
+        // requestSeq): a newer call aborts the older one, and a superseded
+        // response is reported as `{ superseded: true }`.
+        async function wwFetchWaveformRange(request) {
+            const { requestState, sourceId, channelName, isCalculated, nativeStart, nativeEnd, pointBudget, unitMode, timeOffsetS } = request;
+            if (requestState.abortController) requestState.abortController.abort();
             const controller = new AbortController();
-            channelEntry.abortController = controller;
-            const seq = (channelEntry.requestSeq || 0) + 1;
-            channelEntry.requestSeq = seq;
+            requestState.abortController = controller;
+            const seq = (requestState.requestSeq || 0) + 1;
+            requestState.requestSeq = seq;
 
             // Phase 5A: a calculated channel's own waveform range lives
             // under /calculated-channels/{id}/waveform (no `channel_name`
@@ -26219,41 +26288,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // `extract_calculated_waveform_range`, section 48/49) -- so
             // everything below this point (restyle, representation
             // tracking) needs zero changes for either channel kind.
-            const isCalculated = wwIsCalculatedSourceId(channelEntry.sourceId);
-            // Slice 1 (task section 6): the caller's startTime/endTime are
-            // WORKSPACE time (the shared viewport's own coordinate system);
-            // the backend's waveform range is always source-native, so the
-            // inverse mapping is applied here, at the one place this
-            // channel's own fetch boundary is crossed.
-            const alignmentOffset = wwAlignmentOffsetForDisplaySourceId(channelEntry.sourceId);
-            const nativeStart = startTime !== null && startTime !== undefined
-                ? wwWorkspaceTimeToSourceTime(channelEntry.sourceId, startTime) : startTime;
-            const nativeEnd = endTime !== null && endTime !== undefined
-                ? wwWorkspaceTimeToSourceTime(channelEntry.sourceId, endTime) : endTime;
             const url = new URL(
                 apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
                 (isCalculated
-                    ? "/calculated-channels/" + encodeURIComponent(channelEntry.sourceId) + "/waveform"
-                    : "/sources/" + encodeURIComponent(channelEntry.sourceId) + "/waveform")
+                    ? "/calculated-channels/" + encodeURIComponent(sourceId) + "/waveform"
+                    : "/sources/" + encodeURIComponent(sourceId) + "/waveform")
             );
-            if (!isCalculated) url.searchParams.set("channel_name", channelEntry.channelName);
+            if (!isCalculated) url.searchParams.set("channel_name", channelName);
             if (nativeStart !== null && nativeStart !== undefined) url.searchParams.set("start_time", nativeStart);
             if (nativeEnd !== null && nativeEnd !== undefined) url.searchParams.set("end_time", nativeEnd);
             url.searchParams.set("point_budget", String(pointBudget));
-            // Phase 5C (DEC-049): the backend is the sole conversion
-            // authority (decision 2) -- this is the ONE place every
-            // displayed channel's waveform fetch asks for per-unit
-            // conversion; switching ww.unitMode re-fetches every
-            // currently-displayed channel's current viewport (see
-            // wwApplyUnitMode() below), never a second, frontend-side
-            // division formula.
-            url.searchParams.set("unit_mode", ww.unitMode);
+            url.searchParams.set("unit_mode", unitMode);
 
             const response = await fetch(url.toString(), { signal: controller.signal });
-            if (seq !== channelEntry.requestSeq) return { superseded: true };
+            if (seq !== requestState.requestSeq) return { superseded: true };
 
             const bodyText = await response.text();
-            if (seq !== channelEntry.requestSeq) return { superseded: true };
+            if (seq !== requestState.requestSeq) return { superseded: true };
 
             let body = null;
             try { body = JSON.parse(bodyText); } catch (error) { /* handled by !response.ok / null body below */ }
@@ -26265,13 +26316,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Slice 1: the response's own `time` array is source-native
             // (the backend never applies synchronization -- see
             // app.services.synchronization_service's own module
-            // docstring); shift it back into workspace time here, ONCE,
-            // so every downstream reader of channelEntry.time
-            // (wwBuildTrace/restyle/hover/customdata) already sees the
-            // synchronized coordinate this app treats as authoritative
-            // for display, with no separate offset-awareness of its own.
-            if (body && Array.isArray(body.time) && alignmentOffset !== 0) {
-                body = Object.assign({}, body, { time: body.time.map((t) => t + alignmentOffset) });
+            // docstring); shift it onto the caller's plotted time axis
+            // here, ONCE, so every downstream reader of the returned time
+            // (Waveform: wwBuildTrace/restyle/hover/customdata) already
+            // sees that coordinate, with no separate offset-awareness of
+            // its own.
+            if (body && Array.isArray(body.time) && timeOffsetS !== 0) {
+                body = Object.assign({}, body, { time: body.time.map((t) => wwSourceElapsedToViewportTime(t, timeOffsetS)) });
             }
             return { superseded: false, body };
         }
@@ -26404,15 +26455,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             };
         }
 
-        function wwCreatePanelDom(panel) {
-            const container = document.createElement("div");
-            container.className = "ww-panel";
-            container.dataset.panelId = panel.id;
-            container.innerHTML =
-                '<div class="ww-panel-header" tabindex="0" role="button" ' +
-                    'aria-label="Set ' + escapeHtml(panel.label) + ' as the active panel for Y step zoom" ' +
+        // Shared renderer helper (DEC-127, Option B): the inner markup of
+        // one waveform panel (header label, legend, chart, loading,
+        // error, height-resize handle). Placement and wiring stay with
+        // the caller.
+        function wwPanelMarkupHtml(label) {
+            return '<div class="ww-panel-header" tabindex="0" role="button" ' +
+                    'aria-label="Set ' + escapeHtml(label) + ' as the active panel for Y step zoom" ' +
                     'title="Click to make this the active Y-zoom panel">' +
-                    '<span class="ww-panel-label">' + escapeHtml(panel.label) + '</span></div>' +
+                    '<span class="ww-panel-label">' + escapeHtml(label) + '</span></div>' +
                 '<div class="ww-legend"></div>' +
                 '<div class="ww-chart-wrap">' +
                     '<div class="ww-chart"></div>' +
@@ -26420,7 +26471,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 '</div>' +
                 '<div class="ww-error" hidden role="alert"></div>' +
                 '<div class="ww-resize-handle" role="separator" aria-orientation="horizontal" ' +
-                    'aria-label="Resize ' + escapeHtml(panel.label) + ' panel height" tabindex="-1"></div>';
+                    'aria-label="Resize ' + escapeHtml(label) + ' panel height" tabindex="-1"></div>';
+        }
+
+        function wwCreatePanelDom(panel) {
+            const container = document.createElement("div");
+            container.className = "ww-panel";
+            container.dataset.panelId = panel.id;
+            container.innerHTML = wwPanelMarkupHtml(panel.label);
 
             // Time Group Canvas (task section 6): routes into THIS
             // panel's own group's canvas -- lazily created if this is
@@ -26704,19 +26762,34 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // hover/customdata and tick labels update, but trace geometry does
         // not. TG-E: this channel's own owning Time Group's t0 (never an
         // unrelated group's) shifts its own trace's X values.
-        function wwBuildTrace(channel, panel) {
-            const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
-            const xValues = (channel.time || []).map((t) => wwElapsedToPlotlyX(groupId, t));
-            const trace = {
-                x: xValues,
-                y: channel.values || [],
-                customdata: wwTraceCustomData(channel),
+        // Shared renderer helper (DEC-127, Option B): the analog line trace
+        // every waveform panel draws. The caller supplies already-mapped
+        // x values and its own name/hover/customdata/identity.
+        function wwAnalogLineTrace({ x, y, customdata, color, name, hovertemplate, meta }) {
+            return {
+                x,
+                y,
+                customdata,
                 type: "scattergl",
                 mode: "lines",
                 // shape: "linear" (Plotly's own default), explicitly NOT
                 // "spline" -- no curve smoothing between real samples,
                 // unchanged from Phase 2B.
-                line: { shape: "linear", width: 1.5, color: channel.color },
+                line: { shape: "linear", width: 1.5, color },
+                name,
+                hovertemplate,
+                meta,
+            };
+        }
+
+        function wwBuildTrace(channel, panel) {
+            const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
+            const xValues = (channel.time || []).map((t) => wwElapsedToPlotlyX(groupId, t));
+            const trace = wwAnalogLineTrace({
+                x: xValues,
+                y: channel.values || [],
+                customdata: wwTraceCustomData(channel),
+                color: channel.color,
                 name: wwChannelDisplayNamePlotly(channel.sourceId, channel.channelName),
                 hovertemplate: wwTraceHoverTemplate(channel),
                 // Phase 4A-UAT7: a stable "sourceId::channelName" identity
@@ -26729,7 +26802,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // alone, which two different sources can legitimately
                 // share (DEC-035's own source-isolation requirement).
                 meta: wwChannelKey(channel.sourceId, channel.channelName),
-            };
+            });
             // Angle-axis enhancement (DEC-078): every other channel keeps
             // Plotly's own implicit default ("y", the primary axis) --
             // never redefined here, per task section D/G's own explicit
@@ -26739,6 +26812,37 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 trace.yaxis = "y2";
             }
             return trace;
+        }
+
+        // Shared renderer helper (DEC-127, Option B): the base Plotly layout
+        // of an analog waveform panel. The caller supplies the X title,
+        // range and tick format, the Y title and the drag mode.
+        // Crosshair config identical to waveform-prototype.html's own
+        // (DEC-022/DEC-023, unchanged): thin, dashed, theme-driven,
+        // sample-snapped. Each panel's spikes are independent --
+        // cross-panel crosshair sync is explicitly not part of this
+        // slice (section 12).
+        function wwAnalogPanelLayout(colors, { xTitle, xRange, xTickFormat, yTitle, dragMode }) {
+            return {
+                paper_bgcolor: colors.surface,
+                plot_bgcolor: colors.surface,
+                font: { color: colors.text, size: 11 },
+                margin: { l: WW_PANEL_MARGIN.l, r: WW_PANEL_MARGIN.r, t: 10, b: 34 },
+                xaxis: Object.assign({
+                    type: "linear",
+                    title: xTitle, gridcolor: colors.grid, zeroline: false, range: xRange,
+                    showspikes: true, spikemode: "across", spikesnap: "data",
+                    spikethickness: 0.35, spikedash: "3px,2px", spikecolor: colors.spike,
+                }, xTickFormat),
+                yaxis: {
+                    title: yTitle, gridcolor: colors.grid, zeroline: false,
+                    showspikes: true, spikemode: "across", spikesnap: "data",
+                    spikethickness: 0.35, spikedash: "3px,2px", spikecolor: colors.spike,
+                },
+                hovermode: "closest",
+                dragmode: dragMode,
+                showlegend: false,
+            };
         }
 
         function wwBuildLayout(panel, colors) {
@@ -26761,31 +26865,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const range = wwTimeGroupVisibleRange(groupId);
             const xrange = range ? [wwElapsedToPlotlyX(groupId, range.start), wwElapsedToPlotlyX(groupId, range.end)] : undefined;
             const tickFormat = wwTimeAxisTickFormat(range && range.start, range && range.end, groupId);
-            // Crosshair config identical to waveform-prototype.html's own
-            // (DEC-022/DEC-023, unchanged): thin, dashed, theme-driven,
-            // sample-snapped. Each panel's spikes are independent --
-            // cross-panel crosshair sync is explicitly not part of this
-            // slice (section 12).
-            const layout = {
-                paper_bgcolor: colors.surface,
-                plot_bgcolor: colors.surface,
-                font: { color: colors.text, size: 11 },
-                margin: { l: WW_PANEL_MARGIN.l, r: WW_PANEL_MARGIN.r, t: 10, b: 34 },
-                xaxis: Object.assign({
-                    type: "linear",
-                    title: wwTimeAxisTitle(groupId), gridcolor: colors.grid, zeroline: false, range: xrange,
-                    showspikes: true, spikemode: "across", spikesnap: "data",
-                    spikethickness: 0.35, spikedash: "3px,2px", spikecolor: colors.spike,
-                }, tickFormat),
-                yaxis: {
-                    title: unit || "", gridcolor: colors.grid, zeroline: false,
-                    showspikes: true, spikemode: "across", spikesnap: "data",
-                    spikethickness: 0.35, spikedash: "3px,2px", spikecolor: colors.spike,
-                },
-                hovermode: "closest",
-                dragmode: ww.dragMode,
-                showlegend: false,
-            };
+            const layout = wwAnalogPanelLayout(colors, {
+                xTitle: wwTimeAxisTitle(groupId),
+                xRange: xrange,
+                xTickFormat: tickFormat,
+                yTitle: unit || "",
+                dragMode: ww.dragMode,
+            });
             // Angle-axis enhancement (DEC-078, task section E/F): a
             // genuine second Plotly y-axis, overlaid on the right,
             // created ONLY when this panel actually mixes an angle
@@ -29021,16 +29107,25 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // normal adaptive-resolution range fetch runs again for the new
         // range -- this function still contributes ONLY the new
         // [start, end] math.
-        async function wwStepZoomX(groupId, direction) {
-            const range = wwTimeGroupVisibleRange(groupId);
-            if (!range) return;
+        // Shared renderer helper (DEC-127, Option B): one staged X zoom
+        // step around the range's midpoint (WW_ZOOM_STEP_IN/OUT_FACTOR;
+        // zooming in never below WW_MIN_X_SPAN_SECONDS). `null` for an
+        // unusable range. Clamping to bounds is the caller's job.
+        function wwStepZoomXRange(range, direction) {
             const span = range.end - range.start;
-            if (!Number.isFinite(span) || span <= 0) return;
+            if (!Number.isFinite(span) || span <= 0) return null;
             const center = (range.start + range.end) / 2;
             const factor = direction === "in" ? WW_ZOOM_STEP_IN_FACTOR : WW_ZOOM_STEP_OUT_FACTOR;
             let newSpan = span * factor;
             if (direction === "in") newSpan = Math.max(newSpan, WW_MIN_X_SPAN_SECONDS);
-            let next = { start: center - newSpan / 2, end: center + newSpan / 2 };
+            return { start: center - newSpan / 2, end: center + newSpan / 2 };
+        }
+
+        async function wwStepZoomX(groupId, direction) {
+            const range = wwTimeGroupVisibleRange(groupId);
+            if (!range) return;
+            let next = wwStepZoomXRange(range, direction);
+            if (!next) return;
             if (direction === "out") {
                 // A smart window clamp that preserves the requested SPAN
                 // (shifting the window instead of asymmetrically
@@ -36471,7 +36566,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // clamp (identical shift-preserving-span requirement), so this
         // is no longer pan-drag-only despite the name.
         function wwClampPanWindowToTimeGroup(groupId, start, end) {
-            const bounds = wwDeriveTimeGroupBounds(groupId);
+            return wwClampPanWindowToBounds(wwDeriveTimeGroupBounds(groupId), start, end);
+        }
+
+        // Shared renderer helper (DEC-127, Option B): keep a window inside
+        // `bounds`, shifting it (span preserved) rather than truncating
+        // it whenever the span fits; a span at least as wide as the
+        // bounds becomes exactly the bounds. No bounds -> just normalized.
+        function wwClampPanWindowToBounds(bounds, start, end) {
             if (!bounds) return wwNormalizeBounds(start, end);
             const span = end - start;
             if (span >= bounds.end - bounds.start) return { start: bounds.start, end: bounds.end };
@@ -36972,16 +37074,41 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 groupPanel && groupPanel.plotlyReady ? groupPanel.chartEl : null,
             ];
             for (const chartEl of candidates) {
-                if (!chartEl) continue;
-                const fl = chartEl._fullLayout;
-                const offset = fl && fl.xaxis ? fl.xaxis._offset : null;
-                const length = fl && fl.xaxis ? fl.xaxis._length : null;
-                if (!Number.isFinite(offset) || !Number.isFinite(length) || length <= 0) continue;
-                const rect = chartEl.getBoundingClientRect();
-                if (rect.width === 0 && rect.height === 0) continue; // detached/hidden
-                return { plotLeftPage: rect.left + offset, plotWidth: length };
+                const metrics = wwPlotMetricsForChart(chartEl);
+                if (metrics) return metrics;
             }
             return null;
+        }
+
+        // Shared renderer helper (DEC-127, Option B): a rendered Plotly
+        // chart's plot area in page coordinates, or null when it is not
+        // rendered or is detached/hidden.
+        function wwPlotMetricsForChart(chartEl) {
+            if (!chartEl) return null;
+            const fl = chartEl._fullLayout;
+            const offset = fl && fl.xaxis ? fl.xaxis._offset : null;
+            const length = fl && fl.xaxis ? fl.xaxis._length : null;
+            if (!Number.isFinite(offset) || !Number.isFinite(length) || length <= 0) return null;
+            const rect = chartEl.getBoundingClientRect();
+            if (rect.width === 0 && rect.height === 0) return null; // detached/hidden
+            return { plotLeftPage: rect.left + offset, plotWidth: length };
+        }
+
+        // Shared renderer helpers (DEC-127, Option B): time <-> page-X
+        // arithmetic for a visible `range` drawn into plot `metrics`.
+        function wwTimeToPageX(range, metrics, time) {
+            if (!range || !metrics || !Number.isFinite(time)) return null;
+            const span = range.end - range.start;
+            if (!(span > 0)) return null;
+            const frac = (time - range.start) / span;
+            return metrics.plotLeftPage + frac * metrics.plotWidth;
+        }
+
+        function wwPageXToTime(range, metrics, pageX) {
+            if (!metrics || !range) return null;
+            const clampedX = Math.max(metrics.plotLeftPage, Math.min(metrics.plotLeftPage + metrics.plotWidth, pageX));
+            const frac = metrics.plotWidth > 0 ? (clampedX - metrics.plotLeftPage) / metrics.plotWidth : 0;
+            return range.start + frac * (range.end - range.start);
         }
 
         // Engineering elapsed seconds -> page-absolute pixel X, using
@@ -36997,12 +37124,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwCursorTimeToPixelX(groupId, time) {
             const range = wwTimeGroupVisibleRange(groupId);
             if (!range || !Number.isFinite(time)) return null;
-            const metrics = wwCursorPlotMetrics(groupId);
-            if (!metrics) return null;
-            const span = range.end - range.start;
-            if (!(span > 0)) return null;
-            const frac = (time - range.start) / span;
-            return metrics.plotLeftPage + frac * metrics.plotWidth;
+            return wwTimeToPageX(range, wwCursorPlotMetrics(groupId), time);
         }
 
         // The inverse, used only while dragging -- clamps to `groupId`'s
@@ -37014,10 +37136,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwCursorPixelXToTime(groupId, pageX, metrics) {
             const m = metrics || wwCursorPlotMetrics(groupId);
             const range = wwTimeGroupVisibleRange(groupId);
-            if (!m || !range) return null;
-            const clampedX = Math.max(m.plotLeftPage, Math.min(m.plotLeftPage + m.plotWidth, pageX));
-            const frac = m.plotWidth > 0 ? (clampedX - m.plotLeftPage) / m.plotWidth : 0;
-            return range.start + frac * (range.end - range.start);
+            return wwPageXToTime(range, m, pageX);
         }
 
         // Section 20/48: three plain tiers (µs / ms / s) -- deliberately a

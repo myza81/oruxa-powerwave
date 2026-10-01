@@ -54,13 +54,23 @@ def test_fetch_alignment_offsets_hits_the_synchronization_sources_endpoint():
 
 
 def test_analog_waveform_fetch_converts_request_and_shifts_response():
+    """Slice 3A (DEC-127): the same conversion, now through the shared
+    offset helpers -- request range `workspace - offset`, response
+    `native + offset`, with this channel's own alignment offset."""
     source = _source()
     fn_idx = source.index("async function wwFetchChannelRange(channelEntry, startTime, endTime, pointBudget)")
-    fn_body = source[fn_idx : source.index("function wwFriendlyError", fn_idx)]
-    assert "wwAlignmentOffsetForDisplaySourceId(channelEntry.sourceId)" in fn_body
-    assert "wwWorkspaceTimeToSourceTime(channelEntry.sourceId, startTime)" in fn_body
-    assert "wwWorkspaceTimeToSourceTime(channelEntry.sourceId, endTime)" in fn_body
-    assert "body.time.map((t) => t + alignmentOffset)" in fn_body
+    wrapper = source[fn_idx : source.index("async function wwFetchWaveformRange(request)", fn_idx)]
+    assert "const alignmentOffset = wwAlignmentOffsetForDisplaySourceId(channelEntry.sourceId);" in wrapper
+    assert "nativeStart: wwViewportTimeToSourceElapsed(startTime, alignmentOffset)," in wrapper
+    assert "nativeEnd: wwViewportTimeToSourceElapsed(endTime, alignmentOffset)," in wrapper
+    assert "timeOffsetS: alignmentOffset," in wrapper
+    core_idx = source.index("async function wwFetchWaveformRange(request)")
+    core = source[core_idx : source.index("function wwFriendlyError", core_idx)]
+    assert "body.time.map((t) => wwSourceElapsedToViewportTime(t, timeOffsetS))" in core
+    to_native = source[source.index("function wwViewportTimeToSourceElapsed(viewportTime, offsetS)"):]
+    assert "viewportTime - offsetS" in to_native[:300]
+    to_viewport = source[source.index("function wwSourceElapsedToViewportTime(elapsedSeconds, offsetS)"):]
+    assert "return elapsedSeconds + offsetS;" in to_viewport[:200]
 
 
 def test_cursor_values_fetch_converts_request_and_shifts_sample_time_echo():

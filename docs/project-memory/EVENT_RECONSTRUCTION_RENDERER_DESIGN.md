@@ -14,6 +14,17 @@ The owner also resolved the §12 open items:
 Mixed-duration navigation stays `[OPEN / UAT]`. The rest of this
 document is the original spike text.
 
+**Implementation progress.**
+- **Slice 3A (done):** the helpers in §5, items 1, 4, 5 and 6 are
+  extracted — the native-range fetch core
+  `wwFetchWaveformRange(request)` with the offset helpers
+  `wwViewportTimeToSourceElapsed`/`wwSourceElapsedToViewportTime`;
+  `wwAnalogLineTrace`/`wwAnalogPanelLayout`/`wwPanelMarkupHtml`;
+  `wwStepZoomXRange` and the bounds clamps; the cursor pixel↔time
+  helpers. Items 2 and 3 (digital) were dropped because Event
+  Reconstruction is analog-only. See DEC-127's Slice 3A update for the
+  full table.
+
 Date: 2026-10-01. Code references are function names in
 `frontend/index.html` and `backend/app/` at commit `33f3178`
 (`feat/event-reconstruction`). Line numbers drift; the names do not.

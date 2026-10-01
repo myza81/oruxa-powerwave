@@ -20706,6 +20706,45 @@ Source: owner task "Slice 2A corrective follow-up + Slice 3A + Slice 3B".
     pruned on refresh, and in `wwErSelectedChannelsForPlotting()` — so a
     digital selection can never reach plotting;
   - the Waveform digital browser and state are untouched.
+
+### Update (2026-10-01) — Slice 3A: shared renderer helpers extracted
+
+Waveform behaviour is identical. Each listed Waveform function keeps its
+name and signature and now delegates to a pure, parameter-driven
+helper. None of the helpers reads `ww`, Event Reconstruction state or
+the document.
+
+| Shared helper | Waveform caller |
+|---|---|
+| `wwPlotWidthForChart`, `wwPointBudgetForPlotWidth` | `wwPanelPlotWidth`, `wwPointBudgetForPanel` |
+| `wwViewportTimeToSourceElapsed`, `wwSourceElapsedToViewportTime` (open bounds stay open) | `wwFetchChannelRange` |
+| `wwFetchWaveformRange(request)` — URL, `point_budget`/`unit_mode`, abort/sequence via `requestState`, and the returned `time` shifted by `timeOffsetS` | `wwFetchChannelRange` (passes `ww.unitMode` and its alignment offset) |
+| `wwAnalogLineTrace`, `wwAnalogPanelLayout`, `wwPanelMarkupHtml` | `wwBuildTrace`, `wwBuildLayout`, `wwCreatePanelDom` |
+| `wwStepZoomXRange` | `wwStepZoomX` |
+| `wwClampRangeToBounds`, `wwClampPanWindowToBounds` | `wwClampRangeToTimeGroup`, `wwClampPanWindowToTimeGroup` |
+| `wwPlotMetricsForChart`, `wwTimeToPageX`, `wwPageXToTime` | `wwCursorPlotMetrics`, `wwCursorTimeToPixelX`, `wwCursorPixelXToTime` |
+
+**Stayed Waveform-specific (still coupled to Time Groups, t0, time
+mode, annotations, Split view, playback or global DOM):**
+- the viewport pipeline (`wwApplyAndFetchGroupViewport`,
+  `wwRefetchChannelsForGroup`);
+- `wwLoadChannelRange`;
+- relayout wiring;
+- canvas/ruler/slider;
+- toolbar wiring;
+- Y step zoom;
+- cursor overlay wiring and values;
+- the digital chart (not needed: Event Reconstruction is analog-only).
+
+Equivalence was verified by an uncommitted harness that ran the old and
+new implementations side by side: 16,021 checks, covering request URLs,
+sequencing, superseded handling, shifted times, zoom/clamp/cursor
+arithmetic, trace/layout objects and point budgets.
+
+`test_frontend_shared_renderer_helpers.py` guards purity, delegation
+and "no Event Reconstruction plotting yet". Four existing static tests
+that pinned the moved bodies now assert the same semantics in the
+helpers.
 - **Slices 3A/3B** are implementation foundations only (shared helper
   extraction; per-source timing metadata and mapping helpers). Slice 3C
   is the first actual plotted UAT. Details are recorded in this

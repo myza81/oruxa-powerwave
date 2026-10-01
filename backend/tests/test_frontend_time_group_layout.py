@@ -178,10 +178,15 @@ class TestCursorOverlayExcludesToolbarRegion:
         positions."""
         source = _source()
         fn_idx = source.index("function wwCursorTimeToPixelX(groupId, time)")
-        fn_body = source[fn_idx : fn_idx + 500]
-        assert "metrics.plotLeftPage + frac * metrics.plotWidth" in fn_body
-        assert "overlayEl" not in fn_body
-        assert ".offsetTop" not in fn_body
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        # Slice 3A (DEC-127): the arithmetic lives in the shared helper.
+        assert "return wwTimeToPageX(range, wwCursorPlotMetrics(groupId), time);" in fn_body
+        helper_idx = source.index("function wwTimeToPageX(range, metrics, time)")
+        helper = source[helper_idx : source.index("\n        }\n", helper_idx)]
+        assert "metrics.plotLeftPage + frac * metrics.plotWidth" in helper
+        for body in (fn_body, helper):
+            assert "overlayEl" not in body
+            assert ".offsetTop" not in body
 
     def test_label_layer_offset_from_the_sticky_toolbar_fix_is_unchanged(self):
         """Case M: the cursor A/B label pills lived in the SEPARATE

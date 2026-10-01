@@ -64,12 +64,13 @@ DEC-122 display timezone).
     and cleared with the workspace.
 - **Waveform Time Group, Synchronise Sources and placement behaviour is
   unchanged** — Event Reconstruction only reads them.
-- **Next: Slice 3** (the common reconstruction timeline). The
-  renderer-architecture comparison is written up in
+- **Renderer: Option B approved (DEC-127).**
   [EVENT_RECONSTRUCTION_RENDERER_DESIGN.md](EVENT_RECONSTRUCTION_RENDERER_DESIGN.md)
-  as a `[PROPOSAL]`. It recommends shared rendering primitives plus a
-  separate ER adapter, and **awaits owner approval**; no renderer exists
-  yet.
+  has the design. Slice 3A extracted the shared Waveform renderer
+  helpers (fetch core, offset arithmetic, trace/layout/panel markup,
+  step-zoom/clamp/cursor arithmetic); Waveform behaviour is identical.
+  **No Event Reconstruction plotting exists yet** — Slice 3C is the
+  first plotted UAT.
 - Still open:
   - `[OPEN / UAT]` mixed-duration / mixed-sampling-rate navigation and
     the initial viewport;

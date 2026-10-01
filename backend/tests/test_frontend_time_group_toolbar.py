@@ -100,8 +100,12 @@ class TestZoomFunctionsAcceptGroupId:
         source = _source()
         fn_idx = source.index("async function wwStepZoomX(groupId, direction)")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert "direction === \"in\" ? WW_ZOOM_STEP_IN_FACTOR : WW_ZOOM_STEP_OUT_FACTOR" in fn_body
-        assert "Math.max(newSpan, WW_MIN_X_SPAN_SECONDS)" in fn_body
+        # Slice 3A (DEC-127): the stepping math lives in the shared helper.
+        assert "let next = wwStepZoomXRange(range, direction);" in fn_body
+        helper_idx = source.index("function wwStepZoomXRange(range, direction)")
+        helper = source[helper_idx : source.index("\n        }\n", helper_idx)]
+        assert "direction === \"in\" ? WW_ZOOM_STEP_IN_FACTOR : WW_ZOOM_STEP_OUT_FACTOR" in helper
+        assert "Math.max(newSpan, WW_MIN_X_SPAN_SECONDS)" in helper
 
     def test_step_zoom_y_signature_takes_group_id_first(self):
         source = _source()

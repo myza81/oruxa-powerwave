@@ -33,11 +33,15 @@ def test_ww_state_has_unit_mode_and_per_unit_source_configs():
 
 
 def test_every_channel_waveform_fetch_requests_unit_mode():
+    """Slice 3A (DEC-127): the request itself is built by the shared
+    fetch core; Waveform's wrapper passes its own ww.unitMode."""
     source = _source()
-    body = _function_body(
-        source, "async function wwFetchChannelRange(channelEntry", "function wwFriendlyError(code, message)"
+    wrapper = _function_body(
+        source, "async function wwFetchChannelRange(channelEntry", "async function wwFetchWaveformRange(request)"
     )
-    assert 'url.searchParams.set("unit_mode", ww.unitMode)' in body
+    assert "unitMode: ww.unitMode," in wrapper
+    core = _function_body(source, "async function wwFetchWaveformRange(request)", "function wwFriendlyError(code, message)")
+    assert 'url.searchParams.set("unit_mode", unitMode);' in core
 
 
 def test_apply_unit_mode_refetches_and_regroups():
