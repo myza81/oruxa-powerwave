@@ -38,6 +38,7 @@ from app.domain.event_reconstruction import (
     reconstruction_eligibility,
     reconstruction_offset_s,
     recorded_placement_s,
+    total_reconstruction_offset_s,
 )
 from app.domain.time_grouping import TimeGroup, normalize_absolute_datetime
 from app.services.errors import (
@@ -71,6 +72,17 @@ WARNING_LARGE_GAP = "large_gap"
 
 
 @dataclass(slots=True)
+class _SourceTiming:
+    """One member source of a Time Group: its own native elapsed extent
+    and its existing effective placement in that group (read only)."""
+
+    source_id: str
+    within_group_offset_s: float
+    elapsed_start_s: float
+    elapsed_end_s: float
+
+
+@dataclass(slots=True)
 class _GroupTiming:
     """One current Time Group as Event Reconstruction sees it. Extents are
     in the group's own time (existing effective within-group placement
@@ -83,6 +95,7 @@ class _GroupTiming:
     origin_start: datetime | None
     extent_start_s: float
     extent_end_s: float
+    sources: list[_SourceTiming]
 
 
 def _group_timings(
@@ -102,8 +115,15 @@ def _group_timings(
         members = [metadata_by_id[sid] for sid in group.source_ids if sid in metadata_by_id]
         if not members:
             continue
-        starts = [m.elapsed_start_seconds + effective.get(m.source_id, 0.0) for m in members]
-        ends = [m.elapsed_end_seconds + effective.get(m.source_id, 0.0) for m in members]
+        sources = [
+            _SourceTiming(
+                source_id=m.source_id, within_group_offset_s=effective.get(m.source_id, 0.0),
+                elapsed_start_s=m.elapsed_start_seconds, elapsed_end_s=m.elapsed_end_seconds,
+            )
+            for m in members
+        ]
+        starts = [src.elapsed_start_s + src.within_group_offset_s for src in sources]
+        ends = [src.elapsed_end_s + src.within_group_offset_s for src in sources]
         eligibility = reconstruction_eligibility(group.time_reference_type)
         origin = metadata_by_id.get(group.origin_source_id)
         origin_start = None
@@ -121,7 +141,7 @@ def _group_timings(
         timings.append(
             _GroupTiming(
                 group=group, fingerprint=membership_fingerprint(group.source_ids), eligibility=eligibility,
-                origin_start=origin_start, extent_start_s=min(starts), extent_end_s=max(ends),
+                origin_start=origin_start, extent_start_s=min(starts), extent_end_s=max(ends), sources=sources,
             )
         )
     return timings
@@ -160,12 +180,39 @@ class TimeGroupEligibilityView:
 
 
 @dataclass(slots=True)
+class ReconstructionSourceTimingView:
+    """Slice 3B: how ONE member source maps onto the reconstruction
+    timeline. The frontend uses `total_reconstruction_offset_s` alone:
+
+        reconstruction_x_s = source_elapsed_s + total_reconstruction_offset_s
+
+    - `within_group_offset_s`: the source's existing effective placement in
+      its Time Group (timestamp placement relative to the group origin +
+      Synchronise Sources correction).
+    - `reconstruction_group_offset_s`: its member's offset to the
+      reference (origin difference + Event Reconstruction corrections) --
+      the member's `reconstruction_offset_s`.
+    - `total_reconstruction_offset_s`: the sum of the two.
+    - `reconstruction_start_s`/`reconstruction_end_s`: the source's own
+      native elapsed extent mapped onto the reconstruction timeline.
+    Calculated channels use the entry of their timing-parent source."""
+
+    source_id: str
+    within_group_offset_s: float
+    reconstruction_group_offset_s: float
+    total_reconstruction_offset_s: float
+    reconstruction_start_s: float
+    reconstruction_end_s: float
+
+
+@dataclass(slots=True)
 class ReconstructionMemberView:
     """One member. Placement fields (`recorded_placement_s`,
     `reconstruction_offset_s`, `start_s`, `end_s`, in reconstruction time)
-    are `None` when the member is stale or the reference is stale.
-    `correction_relative_to_reference_s` is `correction_s` minus the
-    reference's stored correction."""
+    are `None` when the member is stale or the reference is stale, and so
+    is `source_timings` -- no usable mapping is ever exposed for stale
+    state. `correction_relative_to_reference_s` is `correction_s` minus
+    the reference's stored correction."""
 
     member_id: str
     source_ids: list[str]
@@ -183,6 +230,7 @@ class ReconstructionMemberView:
     end_s: float | None
     recorded_start_time_utc: datetime | None
     recorded_end_time_utc: datetime | None
+    source_timings: list[ReconstructionSourceTimingView] | None
 
 
 @dataclass(slots=True)
@@ -243,7 +291,7 @@ def _build_view(
             status = MEMBER_STATUS_STALE
             stale_reason = STALE_REASON_MEMBERSHIP_CHANGED if candidates else STALE_REASON_SOURCES_REMOVED
 
-        placement = offset = start = end = None
+        placement = offset = start = end = source_timings = None
         if timing is not None and placements_available:
             placement = recorded_placement_s(group_origin_start=timing.origin_start, reference_origin_start=reference_timing.origin_start)
             offset = reconstruction_offset_s(
@@ -251,6 +299,19 @@ def _build_view(
             )
             start, end = timing.extent_start_s + offset, timing.extent_end_s + offset
             placed.append((member.member_id, start, end))
+            source_timings = []
+            for src in timing.sources:
+                total = total_reconstruction_offset_s(within_group_offset_s=src.within_group_offset_s, reconstruction_group_offset_s=offset)
+                source_timings.append(
+                    ReconstructionSourceTimingView(
+                        source_id=src.source_id,
+                        within_group_offset_s=src.within_group_offset_s,
+                        reconstruction_group_offset_s=offset,
+                        total_reconstruction_offset_s=total,
+                        reconstruction_start_s=src.elapsed_start_s + total,
+                        reconstruction_end_s=src.elapsed_end_s + total,
+                    )
+                )
 
         member_views.append(
             ReconstructionMemberView(
@@ -270,6 +331,7 @@ def _build_view(
                 end_s=end,
                 recorded_start_time_utc=_utc(timing.origin_start, timing.extent_start_s) if timing is not None else None,
                 recorded_end_time_utc=_utc(timing.origin_start, timing.extent_end_s) if timing is not None else None,
+                source_timings=source_timings,
             )
         )
 

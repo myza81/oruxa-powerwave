@@ -4,9 +4,34 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-01** (Event Reconstruction Slice 3A)
+Last updated: **2026-10-01** (Event Reconstruction Slice 3B)
 
 ## What was most recently done
+
+**Event Reconstruction Slice 3B — per-source reconstruction timing
+(DEC-127 update, 2026-10-01).** Backend plus frontend helpers; no
+plotting.
+
+- **API.** Each member gains `source_timings` (additive). See the DEC-127
+  Slice 3B table. It is null for stale members and while the reference
+  is stale. The total is composed once by
+  `domain.event_reconstruction.total_reconstruction_offset_s()`.
+- **Frontend.** `wwErSourceElapsedToReconstructionTime`/
+  `wwErReconstructionTimeToSourceElapsed` (pure) and
+  `wwErSourceTiming(displaySourceId)` (a calculated channel resolves
+  through `reference_source_id`; current members only).
+- **Tests.**
+  - `test_event_reconstruction_source_timing.py` (14);
+  - 3 static checks;
+  - 1 browser test;
+  - full backend and browser suites.
+- **Slice 3C notes.** Plot with `wwFetchWaveformRange` (native range from
+  the inverse helper, `timeOffsetS` = the total) and engineering units.
+  Use one panel per selected analog channel, with Fit All from the
+  plotted sources' `startS`/`endS`. Verify the float32 precision risk in
+  UAT with a short 5 kHz record about 2 h from the reference.
+
+## Earlier — Event Reconstruction Slice 3A
 
 **Event Reconstruction Slice 3A — shared renderer helpers (DEC-127
 update, 2026-10-01).** A frontend refactor only. Waveform behaviour is

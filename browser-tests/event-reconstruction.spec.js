@@ -679,3 +679,58 @@ test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
     expect(consoleErrors).toEqual([]);
   });
 });
+
+test.describe("Event Reconstruction -- Slice 3B time mapping", () => {
+  test("frontend mapping uses the backend total offset, resolves calculated parents and drops stale members", async ({ page }) => {
+    const consoleErrors = collectConsoleErrors(page);
+    await page.goto("/index.html");
+    await upload(page, "STN_REF", "10:00:00");
+    await upload(page, "STN_FAR", "12:00:00");
+    const farId = await sourceIdFor(page, "STN_FAR");
+    const calc = await createCalculatedChannel(page, farId);
+    await openEventReconstruction(page);
+    await addGroup(page, "STN_REF");
+    await addGroup(page, "STN_FAR");
+    await setCorrection(page, "STN_FAR", 0.123);
+    await expect(memberRow(page, "STN_FAR").locator(".ww-er-correction-value")).toHaveText("+0.123 ms");
+
+    const definition = await api(page, "/event-reconstruction/definition");
+    const apiFar = definition.members.flatMap((m) => m.source_timings || []).find((t) => t.source_id === farId);
+    const result = await page.evaluate(({ farId, calcId }) => {
+      const far = wwErSourceTiming(farId);
+      const viaCalc = wwErSourceTiming(calcId);
+      const elapsed = Array.from({ length: 1001 }, (_, k) => k * 0.0002); // 5 kHz, 200 ms
+      const mapped = elapsed.map((t) => wwErSourceElapsedToReconstructionTime(t, far.totalOffsetS));
+      const back = mapped.map((x) => wwErReconstructionTimeToSourceElapsed(x, far.totalOffsetS));
+      let spacingError = 0, roundTripError = 0;
+      for (let k = 1; k < mapped.length; k++) spacingError = Math.max(spacingError, Math.abs(mapped[k] - mapped[k - 1] - 0.0002));
+      for (let k = 0; k < back.length; k++) roundTripError = Math.max(roundTripError, Math.abs(back[k] - elapsed[k]));
+      return { far, viaCalc, spacingError, roundTripError, openBound: wwErReconstructionTimeToSourceElapsed(null, far.totalOffsetS) };
+    }, { farId, calcId: calc.id });
+
+    expect(result.far.totalOffsetS).toBe(apiFar.total_reconstruction_offset_s);
+    expect(result.far.totalOffsetS).toBeCloseTo(7200.000123, 9);
+    expect(result.far.startS).toBe(apiFar.reconstruction_start_s);
+    expect(result.viaCalc).toEqual(result.far);
+    expect(result.viaCalc.timingSourceId).toBe(farId);
+    expect(result.spacingError).toBeLessThan(1e-9);
+    expect(result.roundTripError).toBeLessThan(1e-9);
+    expect(result.openBound).toBeNull();
+    await expect(page.locator("#pageEventReconstruction .plotly")).toHaveCount(0);
+
+    // A stale member exposes no mapping.
+    await upload(page, "STN_FAR_OVERLAP", "12:00:00.005");
+    await openEventReconstruction(page);
+    await expect(memberRow(page, "STN_FAR")).toHaveAttribute("data-member-status", "stale");
+    const afterStale = await page.evaluate(({ farId, calcId, refName }) => ({
+      far: wwErSourceTiming(farId),
+      calc: wwErSourceTiming(calcId),
+      ref: wwErSourceTiming(wwErState.sources.find((s) => s.station_name === refName).source_id),
+    }), { farId, calcId: calc.id, refName: "STN_REF" });
+    expect(afterStale.far).toBeNull();
+    expect(afterStale.calc).toBeNull();
+    expect(afterStale.ref.totalOffsetS).toBe(0);
+
+    expect(consoleErrors).toEqual([]);
+  });
+});

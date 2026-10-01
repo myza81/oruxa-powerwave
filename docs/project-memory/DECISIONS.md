@@ -20745,6 +20745,62 @@ arithmetic, trace/layout objects and point budgets.
 and "no Event Reconstruction plotting yet". Four existing static tests
 that pinned the moved bodies now assert the same semantics in the
 helpers.
+
+### Update (2026-10-01) — Slice 3B: authoritative per-source reconstruction timing
+
+**API (additive).** Each member in `GET/PUT .../definition` (and every
+response returning the reconstruction) gains `source_timings`, one
+entry per member source, in Time Group order:
+
+| Field | Meaning |
+|---|---|
+| `within_group_offset_s` | The source's existing effective placement in its Time Group: timestamp placement relative to the group origin + Synchronise Sources correction (`effective_alignment_offset_s`, read only). |
+| `reconstruction_group_offset_s` | Its member's offset to the reference: origin-start difference + Event Reconstruction corrections (the member's `reconstruction_offset_s`). |
+| `total_reconstruction_offset_s` | `within_group_offset_s + reconstruction_group_offset_s`, composed once by `app.domain.event_reconstruction.total_reconstruction_offset_s()`. |
+| `reconstruction_start_s` / `reconstruction_end_s` | The source's own native elapsed extent mapped onto the reconstruction timeline. |
+
+```text
+reconstruction_x_s = source_elapsed_s + total_reconstruction_offset_s
+```
+
+Absolute time enters exactly once (the origin difference). No existing
+field changed.
+
+**Stale state.** `source_timings` is `null` for a stale member and for
+every member while the reference is stale (`placements_available:
+false`), so no offset is ever computed for stale state.
+
+**Calculated channels.** They have no timing of their own and use their
+timing-parent source's entry (`reference_source_id`); no cross-record
+calculated channels.
+
+**Frontend.**
+- `wwErSourceElapsedToReconstructionTime(elapsed, totalOffsetS)` and
+  `wwErReconstructionTimeToSourceElapsed(x, totalOffsetS)` are the one
+  pure mapping pair, built on the Slice 3A offset helpers.
+- `wwErSourceTiming(displaySourceId)` returns the backend total (and the
+  mapped extent) for a native or calculated channel from current
+  members only, or null.
+- No plotting.
+
+**Precision.**
+- Float64 throughout, no rounding; tests cover 5 kHz spacing, a
+  0.123 ms correction and a +2 h placement, with spacing and round trip
+  within 1e-9 s.
+- **WebGL risk (for the Slice 3C UAT):** when a short 5 kHz waveform
+  sits hours from the reference, reduced-precision (float32) storage of
+  the reconstruction X values cannot resolve its sample spacing. At
+  +7,200 s a float32 step is about 0.49 ms, larger than the 0.2 ms
+  sample period. A fixture test quantifies this, and shows that a
+  numerically local plotting origin keeps sub-µs spacing. The preferred
+  mitigation, if UAT confirms the problem, is a local plotting origin on
+  the same physical timeline. No axis break.
+
+**Tests:**
+- `test_event_reconstruction_source_timing.py` (14);
+- 3 new static checks;
+- a Slice 3B browser test (API total = frontend total, calculated
+  parent, 5 kHz round trip, stale → null).
 - **Slices 3A/3B** are implementation foundations only (shared helper
   extraction; per-source timing metadata and mapping helpers). Slice 3C
   is the first actual plotted UAT. Details are recorded in this

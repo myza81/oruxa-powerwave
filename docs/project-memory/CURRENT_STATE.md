@@ -69,8 +69,14 @@ DEC-122 display timezone).
   has the design. Slice 3A extracted the shared Waveform renderer
   helpers (fetch core, offset arithmetic, trace/layout/panel markup,
   step-zoom/clamp/cursor arithmetic); Waveform behaviour is identical.
-  **No Event Reconstruction plotting exists yet** — Slice 3C is the
-  first plotted UAT.
+  Slice 3B added per-source timing to the definition response
+  (`source_timings`: within-group, group and total reconstruction
+  offsets, mapped start/end; null for stale state) and the one frontend
+  mapping pair (`reconstruction_x = source_elapsed +
+  total_reconstruction_offset_s`). **No Event Reconstruction plotting
+  exists yet** — Slice 3C is the first plotted UAT. A WebGL float32
+  precision risk for short high-rate records placed hours from the
+  reference is to be checked there.
 - Still open:
   - `[OPEN / UAT]` mixed-duration / mixed-sampling-rate navigation and
     the initial viewport;

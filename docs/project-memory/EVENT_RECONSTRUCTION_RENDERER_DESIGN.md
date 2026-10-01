@@ -24,6 +24,16 @@ document is the original spike text.
   helpers. Items 2 and 3 (digital) were dropped because Event
   Reconstruction is analog-only. See DEC-127's Slice 3A update for the
   full table.
+- **Slice 3B (done):** §6 is implemented. Each member's `source_timings`
+  carries `within_group_offset_s`, `reconstruction_group_offset_s`,
+  `total_reconstruction_offset_s` and `reconstruction_start_s`/`_end_s`
+  (null for stale state). The frontend applies the total through
+  `wwErSourceElapsedToReconstructionTime`/
+  `wwErReconstructionTimeToSourceElapsed` and resolves a channel's
+  timing with `wwErSourceTiming()`. The §6 precision risk is now
+  quantified by a fixture test (a float32 step is about 0.49 ms at
+  +2 h); it is to be verified in the Slice 3C UAT, with the
+  local-plotting-origin mitigation if needed.
 
 Date: 2026-10-01. Code references are function names in
 `frontend/index.html` and `backend/app/` at commit `33f3178`

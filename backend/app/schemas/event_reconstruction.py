@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from app.services.event_reconstruction_service import (
     ReconstructionMemberView,
     ReconstructionRelationshipView,
+    ReconstructionSourceTimingView,
     ReconstructionView,
     ReconstructionWarningView,
     TimeGroupEligibilityView,
@@ -57,6 +58,35 @@ class ReconstructionTimeGroupOut(BaseModel):
         )
 
 
+class ReconstructionSourceTimingOut(BaseModel):
+    """Slice 3B: one member source's mapping onto the reconstruction
+    timeline -- `reconstruction_x_s = source_elapsed_s +
+    total_reconstruction_offset_s`. `total_reconstruction_offset_s` =
+    `within_group_offset_s` (existing effective placement in its Time
+    Group, incl. Synchronise Sources) + `reconstruction_group_offset_s`
+    (the member's offset to the reference, incl. Event Reconstruction
+    corrections). Start/end are the source's own extent mapped. Seconds,
+    full float precision."""
+
+    source_id: str
+    within_group_offset_s: float
+    reconstruction_group_offset_s: float
+    total_reconstruction_offset_s: float
+    reconstruction_start_s: float
+    reconstruction_end_s: float
+
+    @classmethod
+    def from_view(cls, view: ReconstructionSourceTimingView) -> "ReconstructionSourceTimingOut":
+        return cls(
+            source_id=view.source_id,
+            within_group_offset_s=view.within_group_offset_s,
+            reconstruction_group_offset_s=view.reconstruction_group_offset_s,
+            total_reconstruction_offset_s=view.total_reconstruction_offset_s,
+            reconstruction_start_s=view.reconstruction_start_s,
+            reconstruction_end_s=view.reconstruction_end_s,
+        )
+
+
 class ReconstructionMemberOut(BaseModel):
     member_id: str
     source_ids: list[str]
@@ -74,6 +104,9 @@ class ReconstructionMemberOut(BaseModel):
     end_s: float | None
     recorded_start_time_utc: datetime | None
     recorded_end_time_utc: datetime | None
+    # Slice 3B, additive: `null` whenever placements are unavailable (stale
+    # member or stale reference) -- never a mapping for stale state.
+    source_timings: list[ReconstructionSourceTimingOut] | None
 
     @classmethod
     def from_view(cls, view: ReconstructionMemberView) -> "ReconstructionMemberOut":
@@ -94,6 +127,10 @@ class ReconstructionMemberOut(BaseModel):
             end_s=view.end_s,
             recorded_start_time_utc=view.recorded_start_time_utc,
             recorded_end_time_utc=view.recorded_end_time_utc,
+            source_timings=(
+                [ReconstructionSourceTimingOut.from_view(t) for t in view.source_timings]
+                if view.source_timings is not None else None
+            ),
         )
 
 

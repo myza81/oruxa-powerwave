@@ -420,3 +420,29 @@ class TestEventReconstructionIsAnalogOnly:
         assert "wwGroupDigitalChannelsByClassification(channels)" in digital
         assert "digitalChannelNameCellHtml(source.source_id, c)" in digital
         assert "digitalChannelRowAttrs(source, c, timebase)" in digital
+
+
+class TestEventReconstructionTimeMapping:
+    """Slice 3B: one authoritative frontend mapping, fed by the backend's
+    total_reconstruction_offset_s; nothing plots yet."""
+
+    def test_mapping_pair_reuses_the_shared_offset_helpers(self):
+        source = _source()
+        forward = _between(source, "function wwErSourceElapsedToReconstructionTime(elapsedSeconds, totalOffsetS) {", "\n        }\n")
+        inverse = _between(source, "function wwErReconstructionTimeToSourceElapsed(reconstructionSeconds, totalOffsetS) {", "\n        }\n")
+        assert "return wwSourceElapsedToViewportTime(elapsedSeconds, totalOffsetS);" in forward
+        assert "return wwViewportTimeToSourceElapsed(reconstructionSeconds, totalOffsetS);" in inverse
+
+    def test_source_timing_reads_backend_totals_for_current_members_only(self):
+        timing = _between(_source(), "function wwErSourceTiming(displaySourceId) {", "function wwErMemberRowHtml(member)")
+        assert "const timingSourceId = calculated ? calculated.reference_source_id : displaySourceId;" in timing
+        assert "for (const member of wwErCurrentMembers()) {" in timing
+        assert "member.source_timings || []" in timing
+        assert "totalOffsetS: timing.total_reconstruction_offset_s," in timing
+        # No second timing model: no origin/placement arithmetic in the frontend.
+        for forbidden in ("start_time_utc", "recorded_placement_s", "within_group_offset_s +", "correction_s"):
+            assert forbidden not in timing
+
+    def test_mapping_arithmetic_is_not_repeated_elsewhere_in_the_module(self):
+        module = _er_module(_source())
+        assert module.count("total_reconstruction_offset_s") == 1

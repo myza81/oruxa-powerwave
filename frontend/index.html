@@ -14851,6 +14851,51 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 .map((selection) => Object.assign({}, selection));
         }
 
+        // ---- Slice 3B: the authoritative reconstruction time mapping ----
+        //
+        //     reconstruction_x_s = source_elapsed_s + total_reconstruction_offset_s
+        //
+        // `total_reconstruction_offset_s` comes from the backend
+        // (GET .../definition, each member's `source_timings`; DEC-124/
+        // DEC-127): the source's within-group placement plus its member's
+        // offset to the reference, composed once there -- absolute time is
+        // never added again here. These two pure functions are the only
+        // place the frontend applies it: plotting, visible-range fetches,
+        // zoom/pan and cursors must call them rather than repeat the
+        // arithmetic. They reuse the shared offset helpers (Slice 3A), so
+        // an open range bound stays open.
+        function wwErSourceElapsedToReconstructionTime(elapsedSeconds, totalOffsetS) {
+            return wwSourceElapsedToViewportTime(elapsedSeconds, totalOffsetS);
+        }
+
+        function wwErReconstructionTimeToSourceElapsed(reconstructionSeconds, totalOffsetS) {
+            return wwViewportTimeToSourceElapsed(reconstructionSeconds, totalOffsetS);
+        }
+
+        // The timing of a plotted channel's source: its own recording, or
+        // a calculated channel's timing parent (`reference_source_id`) --
+        // there is no separate calculated-channel timing. Read from CURRENT
+        // members only, so a stale member, an unknown source, or a stale
+        // reference (no `source_timings` at all) yields null and can never
+        // be plotted.
+        function wwErSourceTiming(displaySourceId) {
+            const calculated = wwErState.calculatedChannels.find((c) => c.id === displaySourceId);
+            const timingSourceId = calculated ? calculated.reference_source_id : displaySourceId;
+            for (const member of wwErCurrentMembers()) {
+                for (const timing of member.source_timings || []) {
+                    if (timing.source_id !== timingSourceId) continue;
+                    return {
+                        memberId: member.member_id,
+                        timingSourceId,
+                        totalOffsetS: timing.total_reconstruction_offset_s,
+                        startS: timing.reconstruction_start_s,
+                        endS: timing.reconstruction_end_s,
+                    };
+                }
+            }
+            return null;
+        }
+
         function wwErMemberRowHtml(member) {
             const isCurrent = member.status === "current";
             const group = isCurrent ? wwErGroupById(member.current_group_id) : null;

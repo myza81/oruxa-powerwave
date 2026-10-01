@@ -198,6 +198,21 @@ def reconstruction_offset_s(*, recorded_placement_s: float, correction_s: float,
     return recorded_placement_s + correction_s - reference_correction_s
 
 
+def total_reconstruction_offset_s(*, within_group_offset_s: float, reconstruction_group_offset_s: float) -> float:
+    """The ONE additive offset that places a source's own elapsed time on
+    the reconstruction timeline (Slice 3B):
+
+        reconstruction_x_s = source_elapsed_s + total_reconstruction_offset_s
+
+    `within_group_offset_s` is the source's existing effective placement
+    in its Time Group (`effective_alignment_offset_s`: timestamp placement
+    relative to the group origin + Synchronise Sources correction).
+    `reconstruction_group_offset_s` is `reconstruction_offset_s()` of its
+    member (origin difference to the reference + Event Reconstruction
+    corrections). Absolute time enters only once, inside the latter."""
+    return within_group_offset_s + reconstruction_group_offset_s
+
+
 RELATIONSHIP_FULL_OVERLAP = "full_overlap"
 RELATIONSHIP_PARTIAL_OVERLAP = "partial_overlap"
 RELATIONSHIP_TOUCHING = "touching"
