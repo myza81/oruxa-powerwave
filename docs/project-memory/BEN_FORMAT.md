@@ -254,7 +254,7 @@ Resolved by DEC-120 (2026-10-01):
 
 See §7. Still open:
 
-- `[OPEN]` **Local-time presentation of UTC sources.** See §7.4.
+- Local-time presentation of UTC sources is resolved by DEC-122; see §7.4.
 - `[OPEN]` **Bay/feeder and BEN channel ids in the UI.** See §7.5.
 - `[OPEN]` **Older BEN layout.** Support for `28 ff` files (BPHE, GPTH)
   would need its own reverse-engineering and validation pair.
@@ -314,17 +314,13 @@ conventional default, also used by CSV/Excel conversion.
   identical analog summaries (type, unit, phase) for all four matched
   pairs.
 
-`[OPEN]` **Presentation.** The frontend deliberately shows a timestamp's
-own wall-clock digits and ignores any offset, so a BEN source displays
-UTC (05:54:23 for LGNG).
-- The only zone marker is the trailing `Z` in the Recordings Start Time;
-  the waveform ruler has none.
-- Showing local time (Asia/Kuala_Lumpur) needs a presentation-layer
-  timezone policy, which would also change CSV sources with offsets.
-- The display difference is presentation only. Since DEC-121 the
-  two sources are the same instant in Time Groups. The ruler's Absolute
-  labels take the digits of whichever source is the group origin, so
-  they read UTC or local accordingly.
+**Presentation (DEC-122).** Every engineering timestamp is displayed in
+the display timezone (Asia/Kuala_Lumpur), converted in the frontend from
+the API's canonical `start_time_utc`/`trigger_time_utc`.
+- A BEN record and its BEN32 COMTRADE export show the same clock time:
+  LGNG `2026-01-16 13:54:22.729783`, PMJY `2022-07-27 12:41:29.926317`.
+- The Recording Events cell carries no `Z`.
+- The shared Time Group's header and ruler read local time too.
 
 ### 7.5 Identity
 

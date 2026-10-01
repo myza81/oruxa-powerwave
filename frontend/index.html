@@ -14109,6 +14109,84 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // precision Recording Events itself shows -- the ONLY thing
         // `compact` changes; the type decision and fallback labels are
         // identical either way.
+        // ------------------------------------------------------------------
+        // DEC-122: engineering timestamp DISPLAY timezone.
+        //
+        //   source timestamp (stored; naive for COMTRADE, UTC for BEN)
+        //     -> source timezone interpretation (backend, DEC-121)
+        //     -> canonical UTC instant (API `start_time_utc` /
+        //        `trigger_time_utc`, always "...Z")
+        //     -> display timezone (HERE) -> what the engineer sees
+        //
+        // Every recording/event absolute time is shown in ONE display
+        // timezone (IANA name, default Asia/Kuala_Lumpur; overridable by a
+        // deployment's window.POWERWAVE_CONFIG.displayTimezone), whatever
+        // format or source timezone it came from -- so a BEN record and
+        // its BEN32 COMTRADE export show the same clock time. Never a
+        // per-format branch, never manual offset arithmetic, never the
+        // browser's own local timezone. Function declarations (not
+        // consts) so they are usable from any point of this script.
+        // ------------------------------------------------------------------
+        function wwDisplayTimezone() {
+            const configured = window.POWERWAVE_CONFIG && window.POWERWAVE_CONFIG.displayTimezone;
+            return configured || "Asia/Kuala_Lumpur";
+        }
+
+        function wwDisplayWallClockFormatter() {
+            const zone = wwDisplayTimezone();
+            const cached = wwDisplayWallClockFormatter.cached;
+            if (cached && cached.zone === zone) return cached.formatter;
+            const formatter = new Intl.DateTimeFormat("en-US", {
+                timeZone: zone, hourCycle: "h23",
+                year: "numeric", month: "2-digit", day: "2-digit",
+                hour: "2-digit", minute: "2-digit", second: "2-digit",
+            });
+            wwDisplayWallClockFormatter.cached = { zone: zone, formatter: formatter };
+            return formatter;
+        }
+
+        // An offset-bearing ISO instant ("...Z" / "...+08:00") -> the
+        // display timezone's wall clock as "YYYY-MM-DDTHH:MM:SS[.ffffff]"
+        // (no offset). Only the whole-second fields go through Intl; the
+        // fractional digits are copied VERBATIM (IANA offsets are whole
+        // minutes), so microseconds are never rounded. `null` for a value
+        // with no explicit offset -- interpreting a naive value is the
+        // backend's job (DEC-121), never guessed here.
+        function wwDisplayWallClockIso(canonicalIso) {
+            if (!canonicalIso) return null;
+            const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-]\d{2}:?\d{2})$/.exec(canonicalIso);
+            if (!m) return null;
+            const [, y, mo, d, h, mi, sec, frac, zone] = m;
+            let offsetMinutes = 0;
+            if (zone !== "Z") {
+                const digits = zone.slice(1).replace(":", "");
+                offsetMinutes = (zone[0] === "-" ? -1 : 1) * (Number(digits.slice(0, 2)) * 60 + Number(digits.slice(2, 4)));
+            }
+            const epochMs = Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(sec)) - offsetMinutes * 60000;
+            const parts = {};
+            for (const part of wwDisplayWallClockFormatter().formatToParts(new Date(epochMs))) parts[part.type] = part.value;
+            return parts.year + "-" + parts.month + "-" + parts.day + "T" +
+                parts.hour + ":" + parts.minute + ":" + parts.second + (frac || "");
+        }
+
+        // Human-facing engineering timestamp, "YYYY-MM-DD HH:MM:SS[.ffffff]"
+        // in the display timezone (no zone suffix, matching the existing
+        // timestamp style; the zone is named in the cell's tooltip).
+        function wwFormatEngineeringTimestamp(canonicalIso) {
+            const wallClock = wwDisplayWallClockIso(canonicalIso);
+            return wallClock ? wallClock.replace("T", " ") : null;
+        }
+
+        // The Absolute-mode anchor every ruler/header/cursor/hover label is
+        // computed from: the display-timezone wall clock of the recording's
+        // canonical start, so mixed-format Time Groups label in ONE zone.
+        // Falls back to the stored digits only when no canonical value is
+        // available (pre-DEC-122 payloads).
+        function wwRecordingDisplayStartTime(timebase) {
+            if (!timebase) return null;
+            return wwDisplayWallClockIso(timebase.start_time_utc) || timebase.start_time || null;
+        }
+
         function wwFormatRecordingTimeIdentity(source, opts) {
             opts = opts || {};
             if (source.timing_reference === "time_of_day") {
@@ -14117,7 +14195,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     : "—";
             }
             if (source.start_time) {
-                const spaced = source.start_time.replace("T", " ");
+                const spaced = wwFormatEngineeringTimestamp(source.start_time_utc) || source.start_time.replace("T", " ");
                 if (!opts.compact) return spaced;
                 const dotIndex = spaced.indexOf(".");
                 return dotIndex === -1 ? spaced : spaced.slice(0, dotIndex + 5);
@@ -14274,7 +14352,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // everywhere else in this app for that reason (never
             // `new Date(...)`, which would round microsecond precision
             // and apply a local timezone that was never really there).
-            const triggerTime = source.trigger_time ? source.trigger_time.replace("T", " ") : "—";
+            const triggerTime = wwFormatEngineeringTimestamp(source.trigger_time_utc) ||
+                (source.trigger_time ? source.trigger_time.replace("T", " ") : "—");
             // Imported Time: a DIFFERENT, session-level, timezone-AWARE
             // backend timestamp (when this browser session imported the
             // file) -- reuses formatImportedAt() unchanged, preserving
@@ -14409,7 +14488,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<td>' + escapeHtml(recordingFormatLabel(source)) + '</td>' +
                     '<td>' + formatFileSize(source.file_size_bytes) + '</td>' +
                     '<td>' + escapeHtml(formatRecordingStatus(source.status)) + '</td>' +
-                    '<td class="recording-start-time-cell">' + formatRecordingStartTime(source) + '</td>' +
+                    '<td class="recording-start-time-cell"' +
+                        (source.start_time_utc ? ' title="' + escapeHtml("Shown in " + wwDisplayTimezone()) + '"' : "") +
+                        '>' + formatRecordingStartTime(source) + '</td>' +
                     '<td>' + formatRecordingDuration(source.duration_seconds) + '</td>' +
                     '<td class="recording-sampling-rates-cell">' + formatSamplingRates(source.sampling_rates) + '</td>' +
                     '<td><div class="recording-actions">' +
@@ -21028,7 +21109,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // today (unaffected), matching engineering_type's own
                 // existing "Undefined" fallback convention above.
                 ' data-engineering-quantity="' + escapeHtml(channel.engineering_quantity || "Undefined") + '"' +
-                ' data-recording-start-time="' + escapeHtml((timebase && timebase.start_time) || "") + '"' +
+                ' data-recording-start-time="' + escapeHtml(wwRecordingDisplayStartTime(timebase) || "") + '"' +
                 ' data-timing-reference="' + escapeHtml((timebase && timebase.timing_reference) || "") + '"' +
                 ' aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '"';
         }
@@ -21078,7 +21159,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 ' data-channel-name="' + escapeHtml(channel.name) + '"' +
                 ' data-channel-index="' + escapeHtml(String(channel.index)) + '"' +
                 ' data-classification="' + escapeHtml(channel.classification || "never_triggered") + '"' +
-                ' data-recording-start-time="' + escapeHtml((timebase && timebase.start_time) || "") + '"' +
+                ' data-recording-start-time="' + escapeHtml(wwRecordingDisplayStartTime(timebase) || "") + '"' +
                 ' data-timing-reference="' + escapeHtml((timebase && timebase.timing_reference) || "") + '"' +
                 ' aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '"';
         }
@@ -22276,7 +22357,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwRememberSourceTimingFromChannelsData(data) {
             if (!data || !data.source) return;
             const timebase = data.timebase || {};
-            const recordingStartTime = timebase.start_time || null;
+            const recordingStartTime = wwRecordingDisplayStartTime(timebase);
             ww.sourceTiming.set(data.source.source_id, {
                 recordingStartTime,
                 recordingStartMs: wwParseNaiveTimestamp(recordingStartTime),
@@ -23205,6 +23286,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         var WW_MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+        // DEC-122: the `originMs` anchor these read is now the DISPLAY-
+        // timezone wall clock of the recording's canonical start
+        // (wwRecordingDisplayStartTime()), so the "naive numbers" below are
+        // display-timezone digits for every source, not raw stored digits.
         // Plain "DD Mon YYYY" from a UTC epoch ms -- same "UTC getters
         // only, never a locale-dependent Date method, never JS's own
         // local-timezone parsing" discipline every other Absolute-mode

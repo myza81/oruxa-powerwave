@@ -347,8 +347,11 @@ def test_ben_and_its_comtrade_export_are_the_same_recording(reference_root, clie
     files = {"cfg_file": ("e.cfg", cfg_path.read_bytes(), "x"), "dat_file": ("e.dat", dat_path.read_bytes(), "x")}
     comtrade = client.post(url, files=files).json()
 
-    # Same instant: BEN stores UTC, the export naive local (+08:00).
+    # Same instant: BEN stores UTC, the export naive local (+08:00); the
+    # canonical companions (DEC-122) are identical.
     assert ben["trigger_time"].endswith("Z") and not comtrade["trigger_time"].endswith("Z")
+    assert ben["start_time_utc"] == comtrade["start_time_utc"]
+    assert ben["trigger_time_utc"] == comtrade["trigger_time_utc"]
     groups = client.get(f"/api/v1/workspaces/{ws}/synchronization/time-groups").json()
     assert len(groups) == 1 and set(groups[0]["source_ids"]) == {ben["source_id"], comtrade["source_id"]}
     placements = client.get(f"/api/v1/workspaces/{ws}/synchronization/sources").json()

@@ -9,9 +9,26 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-10-01** — **Recording timestamps and
-COMTRADE channel identity hardened (DEC-121), on
-`feat/native-ben-parser`, awaiting owner UAT.**
+Last meaningful update: **2026-10-01** — **Engineering timestamps
+display in one timezone (DEC-122), on `feat/native-ben-parser`, awaiting
+owner UAT.**
+
+| Concern | Rule |
+|---|---|
+| Source timezone | Naive engineering timestamps are read as Asia/Kuala_Lumpur (DEC-121). |
+| Canonical | UTC. The API adds `start_time_utc`/`trigger_time_utc`; the stored `start_time` is unchanged. |
+| Display timezone | Asia/Kuala_Lumpur, applied in the frontend via `wwFormatEngineeringTimestamp()` and the Absolute anchor `wwRecordingDisplayStartTime()`. |
+
+A BEN record and its BEN32 COMTRADE export now show the same time in:
+- Recording Events, the sidebar and Trigger;
+- the Time Group header, ruler and axis.
+
+Placement is unchanged at 0.0 s. A user-selectable display timezone is
+not built (`[OPEN]`).
+
+Earlier the same day: **Recording timestamps and COMTRADE channel
+identity hardened (DEC-121), on `feat/native-ben-parser`, awaiting owner
+UAT.**
 - **Timestamps.**
   - *Stored* values are unchanged: BEN aware UTC, COMTRADE naive local.
   - *Source timezone interpretation*: a declared offset wins (including
@@ -20,7 +37,7 @@ COMTRADE channel identity hardened (DEC-121), on
     comparison point, `normalize_absolute_datetime`.
   - A BEN record and its BEN32 COMTRADE export are now the same instant:
     one Time Group, 0.0 s placement.
-  - *Display* is unchanged and `[OPEN]`: each value's own digits.
+  - *Display*: resolved by DEC-122 (Asia/Kuala_Lumpur).
 - **COMTRADE duplicate names.** The descriptors of duplicate-named
   channels now bind to their own `_1` data column. A BEN32 Slow
   `POWER BBTU` digital no longer reads the MW analog. Original names are

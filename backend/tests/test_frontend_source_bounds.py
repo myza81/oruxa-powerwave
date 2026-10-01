@@ -34,7 +34,10 @@ def test_source_timing_comes_from_backend_absolute_timebase_metadata():
 
     assert "sourceTiming: new Map()" in source
     assert "function wwRememberSourceTimingFromChannelsData(data)" in source
-    assert "const recordingStartTime = timebase.start_time || null" in source
+    # DEC-122: the anchor is the display-timezone wall clock of the
+    # backend's canonical start (falling back to the stored start).
+    assert "const recordingStartTime = wwRecordingDisplayStartTime(timebase);" in source
+    assert "wwDisplayWallClockIso(timebase.start_time_utc) || timebase.start_time || null" in source
     assert "recordingStartMs: wwParseNaiveTimestamp(recordingStartTime)" in source
     assert "timingReference: timebase.timing_reference || null" in source
     assert "wwRememberSourceTimingFromChannelsData(data)" in source

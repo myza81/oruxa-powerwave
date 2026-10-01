@@ -29,5 +29,8 @@
 backend/tests/fixtures/comtrade/*.dat binary
 
 # Synthetic BEN fixtures (backend/tests/ben/make_fixtures.py) are binary
-# records checked byte-for-byte by test_ben_fixtures.py.
+# records checked byte-for-byte by test_ben_fixtures.py; the matching
+# BEN32-style COMTRADE export (CRLF, as BEN32 writes it) likewise.
 backend/tests/fixtures/ben/*.ben binary
+backend/tests/fixtures/ben/*.cfg binary
+backend/tests/fixtures/ben/*.dat binary

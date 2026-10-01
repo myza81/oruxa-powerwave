@@ -4,17 +4,24 @@
 
 The fixtures are fully synthetic (no owner data): a Fast record with a
 50 Hz three-phase bay and two binaries, and a Slow record with
-frequency/power channels including unavailable samples.
+frequency/power channels including unavailable samples. The Fast record
+also gets a "BEN32-style" COMTRADE export (DEC-122 display tests): the
+same samples, with BEN's UTC times rendered as naive Asia/Kuala_Lumpur
+local time -- exactly what BEN32 writes -- so the pair is one recording.
 test_ben_fixtures.py fails if a committed file drifts from this script.
 """
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import numpy as np
 
-from synthetic_ben import SynthBen, SynthDigital, SynthValue, active_low, to_word
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # backend/, for `app` in script mode
+from app.providers.ben import parse_ben  # noqa: E402
+from synthetic_ben import SynthBen, SynthDigital, SynthValue, active_low, to_word  # noqa: E402
 
 FIXTURE_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "ben"
 
@@ -82,13 +89,56 @@ def slow_spec() -> SynthBen:
     )
 
 
-FIXTURES = {"synthetic_fast.ben": fast_spec, "synthetic_slow.ben": slow_spec}
+EXPORT_TIMEZONE = ZoneInfo("Asia/Kuala_Lumpur")
+
+
+def _comtrade_time(instant) -> str:
+    local = instant.astimezone(EXPORT_TIMEZONE)
+    return local.strftime("%d/%m/%Y,%H:%M:%S.%f")
+
+
+def fast_export_files() -> tuple[bytes, bytes]:
+    """BEN32-style ASCII COMTRADE (.cfg, .dat) of the synthetic Fast record."""
+    record = parse_ben(fast_spec().build()[0])
+    h = record.header
+    values, digitals = record.value_channels, record.digital_channels
+    lines = [
+        f"{h.station_name},{h.recorder_unit_id},1999",
+        f"{len(values) + len(digitals)},{len(values)}A,{len(digitals)}D",
+    ]
+    for i, ch in enumerate(values, start=1):
+        lines.append(
+            f"{i},{ch.name},{ch.phase or ''},,{ch.unit},{ch.scale:.10f},{ch.offset:.10f},0,-32767,+32767,"
+            f"{ch.primary_rating:.6f},{ch.secondary_rating_in_channel_unit:.6f},P"
+        )
+    for i, ch in enumerate(digitals, start=1):
+        lines.append(f"{i},{ch.name},,,0")
+    lines += [
+        "50", "1", f"{h.sampling_rate_hz:.3f},{h.sample_count}",
+        _comtrade_time(h.start_time_utc), _comtrade_time(h.trigger_time_utc), "ASCII", "1",
+    ]
+    columns = [record.raw_values(ch) for ch in values] + [record.digital_states(ch) for ch in digitals]
+    step_us = 1_000_000 / h.sampling_rate_hz
+    rows = [
+        ",".join([str(i + 1), str(round(i * step_us))] + [str(int(col[i])) for col in columns])
+        for i in range(h.sample_count)
+    ]
+    crlf = chr(13) + chr(10)  # BEN32 writes Windows line endings
+    return (crlf.join(lines) + crlf).encode("latin-1"), (crlf.join(rows) + crlf).encode("latin-1")
+
+
+FIXTURES = {
+    "synthetic_fast.ben": lambda: fast_spec().build()[0],
+    "synthetic_slow.ben": lambda: slow_spec().build()[0],
+    "synthetic_fast_export.cfg": lambda: fast_export_files()[0],
+    "synthetic_fast_export.dat": lambda: fast_export_files()[1],
+}
 
 
 def main() -> None:
     FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
-    for name, spec in FIXTURES.items():
-        (FIXTURE_DIR / name).write_bytes(spec().build()[0])
+    for name, build in FIXTURES.items():
+        (FIXTURE_DIR / name).write_bytes(build())
         print(f"wrote {FIXTURE_DIR / name}")
 
 

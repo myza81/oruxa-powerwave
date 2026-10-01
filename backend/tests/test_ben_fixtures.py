@@ -16,7 +16,7 @@ from make_fixtures import FIXTURE_DIR, FIXTURES  # noqa: E402
 
 @pytest.mark.parametrize("name", sorted(FIXTURES))
 def test_committed_fixture_matches_its_generator(name):
-    assert (FIXTURE_DIR / name).read_bytes() == FIXTURES[name]().build()[0], (
+    assert (FIXTURE_DIR / name).read_bytes() == FIXTURES[name](), (
         f"{name} drifted; regenerate with: python tests/ben/make_fixtures.py"
     )
 

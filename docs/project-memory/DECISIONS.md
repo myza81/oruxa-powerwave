@@ -19961,7 +19961,7 @@ Implementation (`[FACT]`):
 
 Known limitations (recorded, not decided here):
 
-- `[OPEN]` **Local-time presentation.** The frontend deliberately shows
+- `[OPEN]` → **resolved by DEC-122 (2026-10-01).** **Local-time presentation.** The frontend deliberately shows
   each timestamp's own wall-clock digits and ignores its offset, so a BEN
   source displays UTC (e.g. 05:54:23). It has only a trailing `Z` in the
   Recordings Start Time and no zone marker on the waveform ruler.
@@ -19971,7 +19971,7 @@ Known limitations (recorded, not decided here):
     in Time Groups, by owner decision 1.
   - **Update 2026-10-01: superseded by DEC-121.** Naive COMTRADE times
     are now interpreted as Asia/Kuala_Lumpur, so the pair shares one Time
-    Group. Display is still `[OPEN]`.
+    Group. Display is resolved by DEC-122.
 - `[OPEN]` **Default nominal frequency.** It is configurable per import
   (API field) and in one code constant. It is not yet a deployment
   setting or a UI control.
@@ -20019,6 +20019,9 @@ This is a follow-up to DEC-120. It supersedes the Slice 11 (DEC-072)
 | **Stored timestamp** | Kept as the importer produced it, unchanged: BEN aware UTC; COMTRADE without `time_code` **naive** (the recorder's wall-clock digits); COMTRADE-2013 with a declared `time_code` aware at that offset; CSV/Excel naive or aware as before. |
 | **Source timezone interpretation** | A declared offset always wins. A naive value is interpreted in `app.domain.source_timezone.DEFAULT_SOURCE_TIMEZONE` = `Asia/Kuala_Lumpur`. This is applied only where instants are compared (`normalize_absolute_datetime`, which is used by Time Groups, placement offsets and analysis/calculated-channel epochs). It is never written into stored values or parsers. |
 | **Display timezone** | Unchanged and still undecided (`[OPEN]`). The frontend shows each stored value's own digits, so BEN shows UTC and COMTRADE shows local wall-clock. |
+
+**Update 2026-10-01:** the display timezone is resolved by DEC-122. Both
+sources are displayed in Asia/Kuala_Lumpur.
 
 Why: BEN stores UTC, while BEN32's COMTRADE export (like Malaysian
 recorders generally) stamps local time without a zone. Under the old UTC
@@ -20091,6 +20094,105 @@ Impact:
   arithmetic.
 - New tests: `test_source_timezone.py`, `test_comtrade_duplicate_names.py`,
   and real-pair alignment in `test_ben_reference_files.py`.
+
+---
+
+## DEC-122 — Human-facing engineering timestamps use one display timezone (Asia/Kuala_Lumpur); canonical event time stays UTC
+
+Date: 2026-10-01
+Status: Approved (owner task "display recording times in local timezone").
+Implemented on `feat/native-ben-parser`; **awaiting owner UAT**, not
+merged to `main`.
+It completes DEC-121. Where DEC-120/121 listed "display timezone `[OPEN]`",
+this entry resolves it.
+
+### Decision (owner wording, summarized)
+
+- Canonical event time is UTC.
+- Timezone-naive engineering sources use the configured **source
+  timezone** (DEC-121).
+- Human-facing engineering timestamps use the configured **display
+  timezone**. The current default display timezone is
+  `Asia/Kuala_Lumpur`.
+- It is generic for every source. There is never a format-specific
+  display branch.
+
+### The chain
+
+```text
+stored timestamp       BEN "…05:54:22.729783Z"   COMTRADE "…13:54:22.729783" (naive)
+source timezone        (declared UTC)            Asia/Kuala_Lumpur (DEC-121, backend)
+canonical UTC          start_time_utc = "2026-01-16T05:54:22.729783Z" for BOTH
+calculations           Time Groups / placement use the canonical instant (unchanged)
+display timezone       Asia/Kuala_Lumpur (frontend)
+what the user sees     "2026-01-16 13:54:22.729783" for BOTH
+```
+
+### Implementation (`[FACT]`)
+
+- **Backend (additive).** `SourceSummaryOut` and `TimebaseOut` gain
+  `start_time_utc`/`trigger_time_utc`. These are the canonical instant,
+  computed with `canonical_utc()` and serialized `…Z`.
+  - `start_time`/`trigger_time` are unchanged, i.e. the stored values.
+  - The frontend never reimplements the source-timezone policy.
+- **Frontend.** One helper family in `frontend/index.html`:
+  - `wwDisplayTimezone()` defaults to `"Asia/Kuala_Lumpur"`. An optional
+    deployment override is `window.POWERWAVE_CONFIG.displayTimezone`,
+    which is not emitted yet.
+  - `wwDisplayWallClockIso()` / `wwFormatEngineeringTimestamp()` use
+    `Intl.DateTimeFormat({timeZone})` for the whole-second fields and copy
+    the fractional digits verbatim. Microseconds are never rounded, and
+    there is no offset arithmetic and no browser-local zone.
+  - A value with no explicit offset gives `null`; the browser never
+    guesses.
+  - `wwRecordingDisplayStartTime()` builds the Absolute-mode anchor from
+    the canonical start. That anchor feeds the ruler, Time Group header,
+    axis ticks, cursor readouts, hover and annotation labels, which
+    already format from it.
+- **Surfaces converted:**
+  - the Recording Events Start Time, which gets a `title` naming the
+    zone;
+  - the sidebar recording identity;
+  - recording details Trigger;
+  - every Absolute-mode label.
+
+  `created_at` ("Imported") already used the browser's local time and is
+  not an engineering-event timestamp, so it is unchanged.
+- **No change to:**
+  - BEN parsing or BEN UTC storage;
+  - DEC-121 source interpretation;
+  - Time Group/placement maths (still 0.0 s for matched pairs);
+  - stored timestamp semantics.
+
+### Effects
+
+- **A naive source** displays the same digits as before, because its
+  source timezone equals the display timezone.
+- **A BEN source** now shows Malaysian time, e.g. 13:54:22 instead of
+  05:54:22Z.
+- **A CSV/Excel source that declares a different offset** now shows the
+  display-timezone equivalent rather than its raw digits. That is the
+  intended consistency.
+- **Precision is unchanged:**
+  - Recording Events shows the full stored fraction; the sidebar shows
+    4 digits.
+  - The ruler anchor keeps its pre-existing millisecond precision.
+
+### Alternatives considered
+
+- **A backend-formatted display string.** Rejected: display formatting
+  is already frontend-owned.
+- **Rewriting `start_time` to UTC.** Rejected: it mutates stored
+  semantics and is a breaking API change.
+- **A per-format +8 h shift.** Rejected by the owner.
+- **Browser local timezone.** Rejected: it is environment-dependent.
+
+`[OPEN]`:
+- There is no user/project-selectable display timezone; it is the
+  default plus a config hook.
+- The container entrypoint does not emit `displayTimezone` yet.
+- Over a DST transition (not applicable to Malaysia), a long record's
+  elapsed labels would keep the start's offset.
 
 ---
 
