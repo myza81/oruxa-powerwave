@@ -32,9 +32,10 @@ DEC-122 display timezone).
       start at 0) or "Remove stale members";
     - large-gap warning notices, and Clear with a confirmation.
   - Each current member expands into the Waveform channel hierarchy
-    (DEC-126): Recording → Analog (engineering type) / Digital
-    (classification) / Calculated Channels (under their timing-parent
-    recording), using the same grouping helpers and name/colour cells.
+    (DEC-126), **analog-only** (DEC-127): Recording → Analog Channels
+    (engineering type) / Calculated Channels (under their timing-parent
+    recording), using the same grouping helper and name/colour cells. No
+    digital channels.
     Names and colours are inherited read-only from Waveform; there is no
     rename/colour editing. Row/"Include all" selection is Event
     Reconstruction's own local visibility (`wwErState.selectedChannels`),

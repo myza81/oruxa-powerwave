@@ -20658,6 +20658,59 @@ bay tree foundation".
 - **Persistence of the selection** across a page reload (none today,
   same as Waveform visibility).
 
+> **Update (2026-10-01): DEC-127 makes Event Reconstruction
+> analog-only.** The digital part of the tree described above (Digital
+> Channels → classification subgroups, digital selection) has been
+> removed. The analog and calculated parts are unchanged.
+
+---
+
+## DEC-127 — Event Reconstruction renderer architecture (Option B) approved; Event Reconstruction is analog-only; first plotted UAT scope fixed
+
+Date: 2026-10-01
+Status: Approved (owner, after reviewing
+[EVENT_RECONSTRUCTION_RENDERER_DESIGN.md](EVENT_RECONSTRUCTION_RENDERER_DESIGN.md)).
+Source: owner task "Slice 2A corrective follow-up + Slice 3A + Slice 3B".
+
+### Decisions (owner)
+
+1. **Renderer architecture: Option B — shared renderer helpers plus a
+   separate Event Reconstruction adapter/state.** Waveform keeps its
+   `ww` engine and orchestration. Only genuinely state-free primitives
+   are shared, through thin Waveform wrappers with identical behaviour.
+   No multi-instance `ww` refactor.
+2. **Event Reconstruction is analog-only:** native analog channels and
+   calculated analog channels. Digital channels are not part of Event
+   Reconstruction — no listing, selection, plotting or cursor values.
+   Waveform's digital behaviour is unchanged.
+3. **First plotted UAT (Slice 3C):**
+   - one panel per selected analog channel (provisional; the
+     measurement-grouped view stays Slice 6A and the combined
+     multi-axis view Slice 6B);
+   - engineering units only (no per-unit control);
+   - initial viewport **Fit All** (provisional, `[OPEN / UAT]`);
+   - X axis in **relative reconstruction time** (absolute clock display
+     deferred).
+4. **Still `[OPEN / UAT]`:** mixed-duration / mixed-sampling-rate
+   navigation. Not to be implemented yet: Fit Selected Record, a
+   navigator, an axis break, automatic focus.
+5. **Large gaps:** physical time stays continuous; no axis break.
+
+### Implementation (`[FACT]`)
+
+- **Slice 2A correction:**
+  - the Event Reconstruction channel tree lists Analog Channels
+    (engineering-type subgroups) and Calculated Channels only;
+  - `wwErIsReconstructionChannelKind()` accepts `analog`/`calculated`
+    only, and is applied when a row is selected, when selections are
+    pruned on refresh, and in `wwErSelectedChannelsForPlotting()` — so a
+    digital selection can never reach plotting;
+  - the Waveform digital browser and state are untouched.
+- **Slices 3A/3B** are implementation foundations only (shared helper
+  extraction; per-source timing metadata and mapping helpers). Slice 3C
+  is the first actual plotted UAT. Details are recorded in this
+  decision's later updates and in the design document.
+
 ---
 
 ## How to add a decision

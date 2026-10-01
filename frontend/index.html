@@ -14280,8 +14280,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // never Waveform's ww.sourceChannelsData), `calculatedChannels` is
         // the last GET .../calculated-channels list, and
         // `selectedChannels` is Event Reconstruction's OWN channel
-        // visibility (selection key -> {memberId, kind, sourceId,
-        // channelName, timingSourceId}) -- never ww.displayed, never a
+        // visibility (selection key -> {memberId, kind ("analog" or
+        // "calculated" -- analog-only, DEC-127), sourceId, channelName,
+        // timingSourceId}) -- never ww.displayed, never a
         // name/colour, frontend-only like Waveform's own visibility.
         const wwErState = {
             dragMode: "zoom",
@@ -14387,11 +14388,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             for (const memberId of Object.keys(wwErState.previousCorrections)) {
                 if (!memberIds.has(memberId)) delete wwErState.previousCorrections[memberId];
             }
-            // Selections of members no longer in the reconstruction are
-            // dropped; a stale member's selections are kept but inert (see
-            // wwErSelectedChannelsForPlotting()).
+            // Selections of members no longer in the reconstruction, or of
+            // a kind Event Reconstruction does not accept (analog-only,
+            // DEC-127), are dropped; a stale member's selections are kept
+            // but inert (see wwErSelectedChannelsForPlotting()).
             for (const [key, selection] of Object.entries(wwErState.selectedChannels)) {
-                if (!memberIds.has(selection.memberId)) delete wwErState.selectedChannels[key];
+                if (!memberIds.has(selection.memberId) || !wwErIsReconstructionChannelKind(selection.kind)) {
+                    delete wwErState.selectedChannels[key];
+                }
             }
             wwErRender();
         }
@@ -14680,11 +14684,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // ---- Slice 2A: member channel tree (Waveform hierarchy, ER selection) ----
         //
         // Mirrors the Waveform Workspace Sidebar tree: Recording -> Analog
-        // Channels -> engineering-type subgroups, Digital Channels ->
-        // classification subgroups, with the SAME grouping helpers
-        // (wwGroupChannelsByEngineeringType()/
-        // wwGroupDigitalChannelsByClassification()), the same tree classes
-        // and the same name/colour cells (analogChannelNameCellHtml(),
+        // Channels -> engineering-type subgroups, with the SAME grouping
+        // helper (wwGroupChannelsByEngineeringType()), the same tree
+        // classes and the same name/colour cells (analogChannelNameCellHtml(),
         // which resolves through wwChannelDisplayName()/
         // wwColorForChannel()). Calculated channels use Waveform's
         // calculated-section rule (engineering type, sorted by name) but
@@ -14693,9 +14695,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // recordings. Read-only presentation: no rename, colour or
         // calculated-channel editing exists here.
         //
+        // Event Reconstruction is ANALOG-ONLY (DEC-127): native analog and
+        // calculated analog channels. Digital channels are never listed,
+        // selectable or plotted here (Waveform's digital behaviour is
+        // unchanged).
+        //
         // Rows use Event Reconstruction's own classes (never
         // .channel-row--toggle/.group-toggle-btn, which Waveform queries)
         // and toggle wwErState.selectedChannels only.
+
+        // The only channel kinds Event Reconstruction accepts (DEC-127).
+        function wwErIsReconstructionChannelKind(kind) {
+            return kind === "analog" || kind === "calculated";
+        }
 
         function wwErChannelSelectionKey(memberId, sourceId, channelName) {
             return memberId + "|" + wwChannelKey(sourceId, channelName);
@@ -14710,15 +14722,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 ' data-er-source-id="' + escapeHtml(sourceId) + '"' +
                 ' data-er-channel-name="' + escapeHtml(channelName) + '"' +
                 ' data-er-timing-source-id="' + escapeHtml(timingSourceId) + '"';
-        }
-
-        // Digital rows: the same neutral dot + plain name as Waveform's
-        // digital cell, without its Waveform cursor badges.
-        function wwErDigitalNameCellHtml(channel) {
-            return '<span class="channel-name-cell">' +
-                '<span class="channel-color-dot channel-color-dot--neutral" aria-hidden="true"></span>' +
-                '<span class="channel-name-text">' + escapeHtml(channel.name) + "</span>" +
-                "</span>";
         }
 
         function wwErChannelGroupHtml(expandKey, label, count, bodyHtml, open) {
@@ -14746,7 +14749,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 body = '<p class="empty-state">Could not load channels for this recording.</p>';
             } else {
                 const analog = data.analog_channels || [];
-                const digital = data.digital_channels || [];
                 const analogBody = analog.length
                     ? '<div class="subgroup-list">' + wwGroupChannelsByEngineeringType(analog).map(({ type, channels }) =>
                         wwErSubgroupHtml(base + ":analog:" + type, type, channels.length, renderChannelTable(channels, [
@@ -14754,12 +14756,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                             ["Phase", (c) => c.phase || "—"],
                         ], null, (c) => wwErChannelRowAttrs(member.member_id, "analog", sourceId, c.name, sourceId)))).join("") + "</div>"
                     : '<p class="empty-state">No analog channels.</p>';
-                const digitalBody = digital.length
-                    ? '<div class="subgroup-list">' + wwGroupDigitalChannelsByClassification(digital).map(({ group, channels }) =>
-                        wwErSubgroupHtml(base + ":digital:" + group, DIGITAL_GROUP_LABELS[group], channels.length, renderChannelTable(channels, [
-                            ["Channel", (c) => wwErDigitalNameCellHtml(c), { raw: true }],
-                        ], null, (c) => wwErChannelRowAttrs(member.member_id, "digital", sourceId, c.name, sourceId)))).join("") + "</div>"
-                    : '<p class="empty-state">No digital channels.</p>';
                 const calculated = wwErState.calculatedChannels.filter((c) => c.reference_source_id === sourceId);
                 const calculatedHtml = calculated.length
                     ? wwErChannelGroupHtml(base + ":calculated", "Calculated Channels", calculated.length,
@@ -14771,7 +14767,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         }).join("") + "</div>", true)
                     : "";
                 body = wwErChannelGroupHtml(base + ":analog", "Analog Channels", analog.length, analogBody, true) +
-                    wwErChannelGroupHtml(base + ":digital", "Digital Channels", digital.length, digitalBody, false) +
                     calculatedHtml;
             }
             return '<details class="source-recording" data-er-expand-key="' + escapeHtml(base) + '"' + (open ? " open" : "") + ">" +
@@ -14796,7 +14791,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         function wwErSetRowSelected(row, selected) {
             const key = row.dataset.erChannelKey;
-            if (selected) {
+            if (selected && wwErIsReconstructionChannelKind(row.dataset.erKind)) {
                 wwErState.selectedChannels[key] = {
                     memberId: row.dataset.erMemberId,
                     kind: row.dataset.erKind,
@@ -14852,7 +14847,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwErSelectedChannelsForPlotting() {
             const current = new Set(wwErCurrentMembers().map((m) => m.member_id));
             return Object.values(wwErState.selectedChannels)
-                .filter((selection) => current.has(selection.memberId))
+                .filter((selection) => current.has(selection.memberId) && wwErIsReconstructionChannelKind(selection.kind))
                 .map((selection) => Object.assign({}, selection));
         }
 

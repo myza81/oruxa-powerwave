@@ -4,9 +4,23 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-01** (Event Reconstruction renderer design spike)
+Last updated: **2026-10-01** (Event Reconstruction analog-only correction)
 
 ## What was most recently done
+
+**Event Reconstruction analog-only correction (DEC-127, 2026-10-01).**
+The owner approved Option B and made Event Reconstruction analog-only.
+
+- The channel tree no longer lists digital channels.
+- `wwErIsReconstructionChannelKind()` keeps any digital selection away
+  from plotting: it is rejected on selection, pruned on refresh, and
+  filtered from `wwErSelectedChannelsForPlotting()`.
+- The Waveform digital browser and state are unchanged; a browser test
+  covers this.
+- DEC-127 also fixes the first plotted UAT scope: one panel per selected
+  analog channel, engineering units, provisional Fit All, relative X.
+
+## Earlier — Event Reconstruction renderer design spike
 
 **Event Reconstruction Slice 3 renderer design spike (2026-10-01).**
 Documentation only, in

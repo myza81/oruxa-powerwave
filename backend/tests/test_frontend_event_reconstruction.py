@@ -320,7 +320,6 @@ class TestEventReconstructionChannelBrowser:
         assert "wwGroupDigitalChannelsByClassification(channels)" in digital
         assert "wwGroupChannelsByEngineeringType(channels)" in calculated
         assert "wwGroupChannelsByEngineeringType(analog)" in tree
-        assert "wwGroupDigitalChannelsByClassification(digital)" in tree
         assert "wwGroupChannelsByEngineeringType(calculated)" in tree
         # No second grouping implementation anywhere in Event Reconstruction.
         module = _er_module(source)
@@ -332,7 +331,7 @@ class TestEventReconstructionChannelBrowser:
         assert "renderChannelTable(" in tree
         assert "analogChannelNameCellHtml({ source_id: sourceId }, c)" in tree
         assert "analogChannelNameCellHtml({ source_id: c.id }, c)" in tree
-        assert '"Analog Channels"' in tree and '"Digital Channels"' in tree and '"Calculated Channels"' in tree
+        assert '"Analog Channels"' in tree and '"Calculated Channels"' in tree
         helpers = _between(_source(), "function wwErChannelGroupHtml(", "function wwErSourceTreeHtml(")
         assert 'class="channel-group"' in helpers and 'class="channel-subgroup" open' in helpers
 
@@ -352,7 +351,7 @@ class TestEventReconstructionChannelBrowser:
         assert "wwChannelDisplayName(row.dataset.erSourceId, row.dataset.erChannelName)" in module
 
     def test_rows_never_use_waveform_row_classes_or_attributes(self):
-        attrs = _between(_source(), "function wwErChannelRowAttrs(", "function wwErDigitalNameCellHtml(")
+        attrs = _between(_source(), "function wwErChannelRowAttrs(", "function wwErChannelGroupHtml(")
         assert 'class="ww-er-channel-row ww-er-channel-row--unselected"' in attrs
         for forbidden in ("channel-row--toggle", "channel-row--hidden", "data-channel-kind", "data-source-id", "data-channel-name"):
             assert forbidden not in attrs
@@ -391,3 +390,33 @@ class TestEventReconstructionChannelBrowser:
         assert ".ww-er-channel-row,\n        .channel-row--toggle { cursor: pointer; }" in source
         assert ".ww-er-channel-row--unselected,\n        .channel-row--hidden { opacity: 0.25; }" in source
         assert ".ww-er-group-toggle-btn,\n        .group-toggle-btn {" in source
+
+
+class TestEventReconstructionIsAnalogOnly:
+    """DEC-127: Event Reconstruction accepts native and calculated analog
+    channels only; Waveform's digital behaviour is unchanged."""
+
+    def test_tree_has_no_digital_channels(self):
+        source = _source()
+        tree = _between(source, "function wwErSourceTreeHtml(member, sourceId, open) {", "function wwErMemberTreeHtml(member)")
+        for forbidden in ("digital_channels", "Digital Channels", "wwGroupDigitalChannelsByClassification", "DIGITAL_GROUP_LABELS", '"digital"'):
+            assert forbidden not in tree
+        assert "wwErDigitalNameCellHtml" not in source
+
+    def test_only_analog_and_calculated_kinds_are_accepted(self):
+        source = _source()
+        kinds = _between(source, "function wwErIsReconstructionChannelKind(kind) {", "function wwErChannelSelectionKey(")
+        assert 'return kind === "analog" || kind === "calculated";' in kinds
+        set_row = _between(source, "function wwErSetRowSelected(row, selected) {", "function wwErToggleChannelRow(row)")
+        assert "if (selected && wwErIsReconstructionChannelKind(row.dataset.erKind)) {" in set_row
+        plotting = _between(source, "function wwErSelectedChannelsForPlotting() {", "function wwErMemberRowHtml(member)")
+        assert "wwErIsReconstructionChannelKind(selection.kind)" in plotting
+        refresh = _between(source, "async function wwErRefresh() {", "async function wwErOnPageEntered()")
+        assert "!wwErIsReconstructionChannelKind(selection.kind)" in refresh
+
+    def test_waveform_digital_browser_is_unchanged(self):
+        source = _source()
+        digital = _between(source, "function renderDigitalGroup(channels, source, timebase) {", "function renderChannelTable(")
+        assert "wwGroupDigitalChannelsByClassification(channels)" in digital
+        assert "digitalChannelNameCellHtml(source.source_id, c)" in digital
+        assert "digitalChannelRowAttrs(source, c, timebase)" in digital

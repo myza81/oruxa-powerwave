@@ -1,9 +1,18 @@
 # Event Reconstruction — Slice 3 renderer design spike
 
-Status: **`[PROPOSAL]` — awaiting owner decision.** Nothing in this
-document is approved architecture until the owner approves it (see
-[README.md — decision modes](README.md#decision-modes)). Decision mode:
-`[DECISION MODE: COMPARISON]`.
+Status: **Option B approved by the owner (DEC-127, 2026-10-01).**
+
+The owner also resolved the §12 open items:
+- Event Reconstruction is **analog-only** (native and calculated
+  analog). This supersedes the digital parts of §5, §7, §8 and §11 —
+  there is no digital region, digital figure builder use or digital
+  sub-slice for Event Reconstruction.
+- One panel per selected analog channel for the first plotted UAT.
+- Engineering units only.
+- Provisional Fit All and a relative X axis.
+
+Mixed-duration navigation stays `[OPEN / UAT]`. The rest of this
+document is the original spike text.
 
 Date: 2026-10-01. Code references are function names in
 `frontend/index.html` and `backend/app/` at commit `33f3178`

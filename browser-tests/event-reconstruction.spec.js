@@ -240,8 +240,9 @@ test.describe("Event Reconstruction -- Slice 2A channel browser", () => {
       wwSetChannelDisplayName(sid, "VB", "Bus VB renamed");
       wwSetChannelColorOverride(sid, "VB", "#123456");
     }, sourceA);
+    // Analog only (DEC-127): Waveform's analog subgroups for this recording.
     const waveformSubgroups = await page.evaluate((sid) =>
-      Array.from(document.querySelectorAll(`#channelGroups details.source-recording[data-source-id="${sid}"] details.channel-subgroup`))
+      Array.from(document.querySelectorAll(`#channelGroups details.source-recording[data-source-id="${sid}"] details.channel-group[data-group="analog"] details.channel-subgroup`))
         .map((d) => d.dataset.subgroup + ":" + d.querySelectorAll("tr").length), sourceA);
 
     await openEventReconstruction(page);
@@ -252,14 +253,13 @@ test.describe("Event Reconstruction -- Slice 2A channel browser", () => {
     // Same hierarchy and grouping as Waveform for this recording.
     const tree = rowA.locator("details.ww-er-member-tree");
     await expect(tree.locator("details.source-recording")).toHaveCount(1);
-    await expect(tree.locator("details.channel-group > summary")).toContainText(["Analog Channels", "Digital Channels", "Calculated Channels"]);
+    await expect(tree.locator("details.channel-group > summary")).toContainText(["Analog Channels", "Calculated Channels"]);
     const erSubgroups = await tree.evaluate((root) =>
       Array.from(root.querySelectorAll("details.channel-group"))
         .filter((g) => !g.classList.contains("ww-er-member-tree") && !/Calculated Channels/.test(g.querySelector("summary").textContent))
         .flatMap((g) => Array.from(g.querySelectorAll("details.channel-subgroup")))
         .map((d) => d.querySelector("summary").childNodes[1].textContent.trim() + ":" + d.querySelectorAll("tr").length));
-    const asLabels = (entries) => entries.map((e) => e.replace(/^triggered:/, "Triggered:").replace(/^never_triggered:/, "Never Triggered:").replace(/^spare:/, "Spare:"));
-    expect(erSubgroups).toEqual(asLabels(waveformSubgroups));
+    expect(erSubgroups).toEqual(waveformSubgroups);
 
     // Calculated channel: under its timing parent only.
     const calcRow = rowA.locator('tr.ww-er-channel-row[data-er-kind="calculated"]');
@@ -334,7 +334,7 @@ test.describe("Event Reconstruction -- Slice 2A channel browser", () => {
     await expect(rowA.locator(".ww-er-selected-count")).toHaveText("(2 selected)");
 
     // Collapsing in Event Reconstruction never touches the Waveform tree.
-    await rowA.locator('details.channel-group[data-er-expand-key$=":digital"] > summary').click();
+    await rowA.locator('details.channel-group[data-er-expand-key$=":calculated"] > summary').click();
 
     const selections = await page.evaluate(() => wwErSelectedChannelsForPlotting());
     expect(selections.map((s) => s.kind + ":" + s.channelName).sort()).toEqual(["analog:IA", "calculated:-VA"]);
@@ -388,6 +388,71 @@ test.describe("Event Reconstruction -- Slice 2A channel browser", () => {
     await expect(memberRow(page, "STN_OVERLAP")).toHaveAttribute("data-member-status", "current");
     await expect(memberRow(page, "STN_OVERLAP").locator(".ww-er-selected-count")).toHaveText("(0 selected)");
     expect(await page.evaluate(() => wwErSelectedChannelsForPlotting())).toEqual([]);
+  });
+});
+
+test.describe("Event Reconstruction -- analog-only scope (DEC-127)", () => {
+  test("no digital channels in Event Reconstruction; Waveform digital browser and visibility unchanged", async ({ page }) => {
+    const consoleErrors = collectConsoleErrors(page);
+    await page.goto("/index.html");
+    await upload(page, "STN_A", "10:00:00");
+    await upload(page, "STN_B", "10:00:10");
+    const sourceA = await sourceIdFor(page, "STN_A");
+    await createCalculatedChannel(page, sourceA);
+
+    // Waveform: show one digital channel and record its digital browser.
+    await page.locator("#recordingsTableBody tr[data-source-id]").first().click();
+    await expect(page.locator("#workspaceRow")).toBeVisible();
+    const digitalGroup = page.locator(`#channelGroups details.source-recording[data-source-id="${sourceA}"] details.channel-group[data-group="digital"]`);
+    await expect(digitalGroup).toHaveCount(1);
+    if (!(await digitalGroup.evaluate((el) => el.open))) await digitalGroup.locator(":scope > summary").click();
+    const digitalRow = digitalGroup.locator('tr.channel-row--toggle[data-channel-kind="digital"]').first();
+    await digitalRow.click();
+    await expect(digitalRow).toHaveAttribute("aria-pressed", "true");
+    const digitalBefore = await page.evaluate((sid) => ({
+      displayed: Array.from(ww.digitalDisplayed.keys()).sort(),
+      subgroups: Array.from(document.querySelectorAll(`#channelGroups details.source-recording[data-source-id="${sid}"] details.channel-group[data-group="digital"] details.channel-subgroup`))
+        .map((d) => d.dataset.subgroup + ":" + d.querySelectorAll("tr").length),
+    }), sourceA);
+    expect(digitalBefore.displayed.length).toBe(1);
+    expect(digitalBefore.subgroups.length).toBeGreaterThan(0);
+
+    await openEventReconstruction(page);
+    await addGroup(page, "STN_A");
+    await addGroup(page, "STN_B");
+    const rowA = await openMemberTree(page, "STN_A");
+    const pageEr = page.locator("#pageEventReconstruction");
+    await expect(pageEr.locator('tr.ww-er-channel-row[data-er-kind="digital"]')).toHaveCount(0);
+    await expect(pageEr.locator("details.channel-group > summary", { hasText: "Digital Channels" })).toHaveCount(0);
+    for (const label of ["Triggered", "Never Triggered", "Spare"]) {
+      await expect(pageEr.locator("details.channel-subgroup > summary", { hasText: label })).toHaveCount(0);
+    }
+
+    // Native analog and calculated analog remain selectable.
+    await rowA.locator('tr.ww-er-channel-row[data-er-kind="analog"]').first().click();
+    await rowA.locator('tr.ww-er-channel-row[data-er-kind="calculated"]').click();
+    expect((await page.evaluate(() => wwErSelectedChannelsForPlotting())).map((s) => s.kind).sort()).toEqual(["analog", "calculated"]);
+
+    // A digital selection can never reach plotting: rejected, then pruned.
+    await page.evaluate(() => {
+      const member = wwErCurrentMembers()[0];
+      wwErState.selectedChannels["injected"] = { memberId: member.member_id, kind: "digital", sourceId: member.source_ids[0], channelName: "BRK_A", timingSourceId: member.source_ids[0] };
+    });
+    expect((await page.evaluate(() => wwErSelectedChannelsForPlotting())).some((s) => s.kind === "digital")).toBe(false);
+    await page.evaluate(() => wwErRefresh());
+    expect(await page.evaluate(() => Object.prototype.hasOwnProperty.call(wwErState.selectedChannels, "injected"))).toBe(false);
+
+    // Waveform digital state and browser are untouched.
+    const digitalAfter = await page.evaluate((sid) => ({
+      displayed: Array.from(ww.digitalDisplayed.keys()).sort(),
+      subgroups: Array.from(document.querySelectorAll(`#channelGroups details.source-recording[data-source-id="${sid}"] details.channel-group[data-group="digital"] details.channel-subgroup`))
+        .map((d) => d.dataset.subgroup + ":" + d.querySelectorAll("tr").length),
+    }), sourceA);
+    expect(digitalAfter).toEqual(digitalBefore);
+    await page.locator("#mainNavWaveformBtn").click();
+    await expect(digitalRow).toHaveAttribute("aria-pressed", "true");
+
+    expect(consoleErrors).toEqual([]);
   });
 });
 
