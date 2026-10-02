@@ -21277,8 +21277,10 @@ Status: Approved (owner, Grouped Measurement View task, with a mid-task
 owner instruction on cursor values) — implemented on
 `feat/event-reconstruction`; not merged. The Event Reconstruction
 feature is **not** complete. Supersedes the Slice 3C
-one-panel-per-channel scaffold (DEC-127 decision 3); the Combined
-Multi-Axis View stays outstanding.
+one-panel-per-channel scaffold (DEC-127 decision 3). Update
+(2026-10-02): the Combined Multi-Axis View is now implemented as the
+second view mode ([DEC-132](#dec-132--event-reconstruction-combined-multi-axis-view-one-panel-one-y-axis-per-display-axis-presentation-only-mode-switch));
+decision 6's "shown disabled" no longer applies.
 Source: owner task "Grouped Measurement View only" and the owner's
 mid-task instruction: "Remove per-channel A/B/Δvalue readouts from
 waveform panel headers. Render those values in the Event Reconstruction
@@ -21384,6 +21386,150 @@ colour (seen with synthetic records of exactly 6 channels each). Event
 Reconstruction inherits colours unchanged by rule. Any disambiguation,
 for example a per-record line dash inside a grouped panel, needs an
 owner decision.
+
+## DEC-132 — Event Reconstruction Combined Multi-Axis View: one panel, one Y axis per display axis; presentation-only mode switch
+
+Date: 2026-10-02
+Status: Approved (owner, "Combined Multi-Axis View only" task) —
+implemented on `feat/event-reconstruction`; not merged. The Event
+Reconstruction feature is **not** complete.
+Source: owner task "Combined Multi-Axis View only".
+
+### Decisions (owner)
+
+1. **Combined Multi-Axis View is the second Event Reconstruction display
+   mode**, next to the Grouped Measurement View (DEC-131, still the
+   default). It shows every selected analog channel in **one** panel.
+2. **One Plotly Y axis per resolved display axis** (`display_axis_key`,
+   DEC-131). Channels that share a key share an axis. There is no unit
+   conversion (V ≠ kV ≠ pu; MW ≠ Mvar). Calculated channels use their
+   own axis metadata.
+3. **Axis placement is deterministic** (left, right, left, right, …)
+   with dynamic margins and no hard-coded spacing. There is **no
+   maximum axis count**. A simple advisory readability notice is
+   allowed.
+4. **Autoscale Y works per axis** and ignores traces without samples.
+   Reset is mode-aware (Fit All plus per-axis autoscale) through the one
+   reset path.
+5. **Navigation is unchanged** (DEC-129):
+   - X-only Box Zoom and Pan, with no Y zoom on any axis;
+   - Zoom In/Out and Fit All clamping;
+   - the local plotting origin, rebasing, and the per-trace fetch and
+     point budget (now from the combined panel's width).
+6. **Cursors:** one A and one B line on the combined panel. Values stay
+   in the left channel tree, and the toolbar keeps A / B / Δt only
+   (DEC-130/DEC-131).
+7. **Legend:** per trace, organised by axis; no dashed or dotted line
+   styles. Colour collisions stay `[OPEN / UAT]`.
+8. **Order:**
+   - axes in `ANALOG_GROUP_ORDER` (then first appearance);
+   - traces in axis order, then record, source and channel (the Grouped
+     order).
+9. **Mode switching is presentation-only.** Records, channels,
+   reference, corrections, cursors, X viewport, Fit All and drag mode
+   are preserved. Y ranges are **not** preserved: every axis is
+   autoscaled on entry to either mode. Valid fetched data is reused
+   rather than refetched (no caching subsystem).
+10. **Combined panel height:** a larger fixed height; there are no
+    resize handles.
+11. **Failures and empty axes:**
+    - a failed trace is trace-specific and never hides its axis;
+    - an axis whose traces have no visible samples keeps its definition
+      but shows no invented values.
+12. Unchanged and out of scope:
+    - the outlier / Fit All span warnings;
+    - mixed-duration navigation `[OPEN / UAT]`;
+    - panel resizing, an absolute time ruler and cursor-assisted
+      synchronization;
+    - a colour-palette redesign.
+
+### Implementation (`[FACT]`)
+
+- **One grouping, two presentations.** `wwErPlotGroups()` (DEC-131)
+  resolves the display axes. `wwErViewPanels(groups, viewMode)` turns
+  them into panels:
+  - **Grouped:** one panel per axis.
+  - **Combined:** one panel (`key: "combined"`) whose `axes` are all the
+    groups in the same order.
+
+  So an axis carries exactly the same traces in both modes, and the
+  combined trace order is the Grouped panels' traces concatenated.
+- **Panel model.** A panel is `{ key, combined, axes[], traces[] }`.
+  Each axis entry is `{ key, axis, traceKeys, placement,
+  autoscaleYPending, range }`. A trace records its `panel`, `axisIndex`
+  and Plotly `yRef` (`"y"`, `"y2"`, …), and is drawn with
+  `yaxis: trace.yRef`.
+- **Placement** (`wwErYAxisPlacement(index)`):
+  - axis 1 is on the left;
+  - axis 2 is on the right (`overlaying: "y"`, anchored to x);
+  - axes 3+ alternate left/right with `anchor: "free"` at the plot edge
+    and `autoshift: true`.
+
+  Every combined axis uses `automargin: true`, so Plotly pushes extra
+  axes outward and grows the margins from the real tick labels and
+  titles. No pixel spacing is hard-coded and there is no cap. Combined
+  axes are titled "Quantity (unit)" with Plotly's `{ text }` title form;
+  only the first draws grid lines. Every Y axis is `fixedrange`.
+- **Advisory notice.** `WW_ER_COMBINED_AXIS_ADVISORY = 4`: above four
+  Y axes, `#wwErAxisNotice` says that each additional axis narrows the
+  plot and the Grouped view gives every quantity and unit its own
+  panel. It is advisory only; nothing is dropped or merged.
+- **Layout.** `wwErPanelLayout(panel)` builds the whole layout from
+  state (X viewport, origin ticks, drag mode, each axis's frozen range
+  or autorange). `wwErSyncPanelTraces()` re-renders with `Plotly.react`
+  when the panel's axis set or trace set changes.
+- **Per-axis Y.** `wwErApplyPendingAutoscaleY(panel)` autoranges only
+  the pending axes and then freezes each one that has data (`range`).
+  - An axis without samples stays pending in autorange. In the combined
+    panel its tick labels are hidden (Plotly would otherwise invent
+    −1…4); its title and legend group remain.
+  - Pending is set on Reset, Autoscale Y, a new axis (every axis after
+    a mode switch) and a change in that axis's traces. X navigation
+    never changes Y.
+  - The autoscale runs once every trace that needs data has started
+    loading. This fixed a latent race in which a channel joining an
+    axis could be left out of its rescale.
+- **Mode switch.** `wwErSetViewMode(mode)` sets `plot.viewMode`, updates
+  the toggle's `aria-pressed` state, and calls `wwErRenderPlot()`.
+  - Traces are reconciled across panels, so a trace moves to its new
+    panel with its data and any request still in flight.
+    `wwErDestroyPanel()` no longer destroys traces.
+  - A trace's data is reused when its range and offset are unchanged
+    and it is full resolution, or an envelope fetched with at least the
+    new panel's point budget. Otherwise (for example, combined →
+    grouped with a larger envelope budget) it is refetched.
+  - Cursor values are keyed by record and channel and are not refetched.
+- **Chrome.**
+  - The meta line reads "N channels on K Y axes" in Combined and
+    "N channels in K panels" in Grouped.
+  - The combined panel title is "All selected channels · K Y axes".
+  - The legend is per trace, grouped under each axis's title
+    (`.ww-er-legend-axis`).
+  - The panel height is `WW_ER_COMBINED_PANEL_HEIGHT = 420` px; Grouped
+    panels stay at 180 px. There is no resize grip.
+- **Tests:**
+  - new `event-reconstruction-combined.spec.js` (9);
+  - static `TestEventReconstructionCombinedView` (8), with the
+    Grouped/navigation static guards updated to per-axis state;
+  - `plotState()` in `support/event_reconstruction_helpers.js` reports
+    per-axis state.
+
+### Noted for UAT (not changed)
+
+- **Colour collisions.** Waveform's 6-colour palette is assigned
+  first-come per channel. In one combined panel, traces on the **same**
+  axis (BTGH and PMJY power, seen on the owner's YGPN records) or on
+  **different** axes (BAHS KAWA1 VR on kV and IR on kA) can share a
+  colour. Any disambiguation needs an owner decision.
+- **Legend crowding.** With every channel of the four YGPN records (101
+  traces on 4 axes) the per-trace legend fills most of the canvas, and
+  the 101 visible-range fetches over an 87-day Fit All took about 15 s
+  to settle. With a realistic selection (9 channels) it reads well.
+- **Plotly 3 string titles.** Plotly 3.7 renders only `{ text }` axis
+  titles. The shared `wwAnalogPanelLayout()` passes plain strings, so
+  its X title and the Grouped panels' unit Y title are **not displayed**.
+  This is pre-existing (Waveform included), outside this slice, and
+  reported, not changed.
 
 ---
 

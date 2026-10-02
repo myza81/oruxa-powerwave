@@ -9,8 +9,9 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-10-02** — **Event Reconstruction Grouped
-Measurement View** (DEC-131), on top of A/B cursors (Slice 3E, DEC-130),
+Last meaningful update: **2026-10-02** — **Event Reconstruction Combined
+Multi-Axis View** (DEC-132), on top of the Grouped Measurement View
+(DEC-131), A/B cursors (Slice 3E, DEC-130),
 navigation (Slice 3D, DEC-129), the first plotted reconstruction (Slice
 3C), the record model (DEC-128) and Slices 0–3B (DEC-123 to DEC-127), on
 branch `feat/event-reconstruction`, not merged. The feature is **not**
@@ -19,7 +20,7 @@ complete. Earlier, on 2026-10-01:
 parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
 DEC-122 display timezone).
 
-**Event Reconstruction (DEC-123 to DEC-131) — Slices 0–3E + Grouped View.**
+**Event Reconstruction (DEC-123 to DEC-132) — Slices 0–3E + Grouped and Combined Views.**
 
 - **Rule (DEC-128).** Waveform continues to use its existing Time Group
   model. Event Reconstruction uses independent imported event/record
@@ -63,8 +64,22 @@ DEC-122 display timezone).
       - V vs kV and Active vs Reactive Power never share.
       - Panels follow Waveform's engineering-type order; traces follow
         the browser order.
-      - The Combined Multi-Axis View is shown disabled (later slice).
       - The one-panel-per-channel scaffold is retired;
+    - **Combined Multi-Axis View (DEC-132)**: the Grouped/Combined
+      toggle switches to one 420 px panel holding every selected
+      channel, with one Y axis per display axis.
+      - Axes and their traces are exactly the Grouped panels, in the
+        same order. Placement is left, right, then alternately
+        left/right, pushed outward by Plotly with automatic margins; no
+        maximum.
+      - Above 4 axes an advisory notice suggests the Grouped view.
+      - Autoscale Y and Reset scale each axis on its own. An axis with
+        no visible samples keeps its title and shows no tick values.
+      - The legend is per trace, grouped by axis. One A/B cursor overlay;
+        values stay in the tree.
+      - Switching modes keeps records, channels, definition, cursors,
+        the X viewport, Fit All and drag mode; Y is autoscaled on entry,
+        and valid fetched data is reused;
     - engineering units only;
     - one shared relative reconstruction-time X axis;
     - Fit All as the initial view.
@@ -109,8 +124,8 @@ DEC-122 display timezone).
       them.
 
     Not yet built: Y step zoom, Fit Selected Record, an overview
-    navigator, an absolute-time ruler and wall-clock cursor times,
-    grouped/multi-axis panels, and panel resizing (fixed 180 px).
+    navigator, an absolute-time ruler and wall-clock cursor times, and
+    panel resizing (fixed 180 px per Grouped panel, 420 px Combined).
   - It never reads or writes the Waveform `ww` state, panels or
     viewports.
 - **Backend.**
@@ -159,9 +174,14 @@ DEC-122 display timezone).
     record can be a sliver, and one wrong-event record can make every
     trace sub-pixel (now named by the Fit All span notice, which is not
     the solution);
-  - the Combined Multi-Axis View (one panel, several Y axes);
-  - colour collisions inside a grouped panel (Waveform's 6-colour
-    palette; owner decision needed for any disambiguation);
+  - colour collisions inside a grouped panel or on the combined panel,
+    including across its axes (Waveform's 6-colour palette; owner
+    decision needed for any disambiguation);
+  - legend crowding with very many traces (101 YGPN channels fill most
+    of the combined canvas);
+  - Plotly 3.7 renders only `{ text }` axis titles, so the shared panel
+    layout's X title and the Grouped panels' unit Y title are not shown
+    (pre-existing, Waveform included; reported in DEC-132, not changed);
   - the final manual left/right synchronization UX (Slice 4);
   - the final grouped and multi-axis visualization (Slices 6A/6B).
 

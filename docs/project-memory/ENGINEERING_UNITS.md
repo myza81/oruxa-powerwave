@@ -258,7 +258,8 @@ Quantity level) and `backend/tests/test_overcurrent_domain.py` /
 
 `resolve_display_axis(engineering_type, engineering_quantity, raw_unit)`
 answers a display question: may two channels share one Y axis? It does
-not perform a calculation.
+not perform a calculation. The same key decides a Grouped panel
+(DEC-131) and a Y axis of the Combined Multi-Axis View (DEC-132).
 
 - **Quantity.** The channel's known Engineering Quantity, otherwise the
   quantity its broad type unambiguously means. A broad "Power" channel

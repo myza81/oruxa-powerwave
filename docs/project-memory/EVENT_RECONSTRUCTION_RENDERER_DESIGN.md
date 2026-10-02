@@ -130,8 +130,27 @@ Group" assumption below.**
   - **Y:** Autoscale Y and Reset cover all of a panel's traces.
   - **Cursor values:** moved to the channel tree (Cur A / Cur B / Δ
     columns); the panels draw lines only.
-  - **View mode:** `grouped`; the Combined Multi-Axis View is still to
-    come.
+  - **View mode:** `grouped` (default) or `combined` (below).
+- **Combined Multi-Axis View (done, 2026-10-02, DEC-132):** one panel,
+  one Plotly Y axis per display axis.
+  - **One grouping:** `wwErViewPanels(groups, viewMode)` presents
+    `wwErPlotGroups()` either as one panel per axis or as one panel with
+    every axis. A panel is `{ key, combined, axes[], traces[] }`; an axis
+    is `{ key, axis, traceKeys, placement, autoscaleYPending, range }`;
+    a trace knows its `panel`, `axisIndex` and `yRef`.
+  - **Placement:**
+    - `y` on the left and `y2` on the right (overlaying);
+    - `y3+` alternate sides with `anchor: "free"` and `autoshift`;
+    - `automargin` sizes the margins.
+
+    Nothing is hard-coded and there is no cap. Above 4 axes an advisory
+    notice is shown.
+  - **Y:** pending/frozen state per axis. An empty axis shows no tick
+    values. Autoscale waits until every needed load has started.
+  - **Mode switch:** presentation only. Traces move between panels with
+    their data. A refetch happens only when the data no longer serves
+    the new panel's point budget.
+  - **Height:** 420 px combined, 180 px grouped; no resizing.
 
 Date: 2026-10-01. Code references are function names in
 `frontend/index.html` and `backend/app/` at commit `33f3178`

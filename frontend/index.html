@@ -5398,6 +5398,19 @@
         .ww-cursor-line--a .ww-er-cursor-tag { color: var(--accent); }
         .ww-cursor-line--b .ww-er-cursor-tag { color: var(--error); }
         .ww-er-trace-failed { color: var(--error); font-size: 0.7rem; }
+        /* Combined Multi-Axis View (DEC-132): the legend's chips under
+           their Y axis's title. */
+        .ww-er-legend-axis {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+        }
+        .ww-er-legend-axis-title {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--text-dim);
+        }
         /* The Event Reconstruction channel tree nests two levels deeper than
            the Waveform tree it mirrors (record -> Channels -> recording).
            With its Cur A / Cur B / Δ columns (Waveform's sidebar pattern) it
@@ -9156,12 +9169,12 @@
                                 </svg></span>
                             </button>
                         </div>
-                        <!-- DEC-131: Event Reconstruction view mode. Grouped Measurement
-                             View is implemented; the Combined Multi-Axis View is a later
-                             slice, shown disabled so nothing implies it works. -->
+                        <!-- Event Reconstruction view mode: the Grouped Measurement
+                             View (DEC-131, default) and the Combined Multi-Axis View
+                             (DEC-132). Presentation only (wwErSetViewMode()). -->
                         <div class="theme-toggle ww-icon-group ww-er-view-mode" id="wwErViewModeToggle" role="group" aria-label="Event Reconstruction view">
                             <button type="button" id="wwErViewGroupedBtn" aria-pressed="true" title="Grouped Measurement View: channels with the same quantity and unit share a panel">Grouped</button>
-                            <button type="button" id="wwErViewCombinedBtn" aria-pressed="false" disabled title="Combined Multi-Axis View — not available yet">Combined</button>
+                            <button type="button" id="wwErViewCombinedBtn" aria-pressed="false" title="Combined Multi-Axis View: every channel in one panel, one Y axis per quantity and unit">Combined</button>
                         </div>
                     </div>
                     <div id="wwErViewArea">
@@ -9215,6 +9228,7 @@
                                     </div>
                                 </div>
                                 <div class="ww-er-span-notice" id="wwErSpanNotice" hidden></div>
+                                <div class="ww-er-span-notice" id="wwErAxisNotice" hidden></div>
                                 <div class="ww-tg-panels" id="wwErPanels"></div>
                                 <p class="empty-state" id="wwErEmptyState">No reconstruction records selected. Select records in the left panel to place them on one common timeline.</p>
                             </section>
@@ -15037,9 +15051,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         //   two hours from the reference would otherwise sit at ~7200 s,
         //   where a float32 step is ~0.49 ms > its 0.2 ms sample spacing).
 
-        // Per-panel chart height (px) for the provisional one-panel-per-
-        // channel layout.
+        // Chart height (px) of each Grouped Measurement View panel, and of
+        // the one Combined Multi-Axis View panel (larger: it carries every
+        // channel). Fixed; panel resizing is not offered yet.
         const WW_ER_PANEL_HEIGHT = 180;
+        const WW_ER_COMBINED_PANEL_HEIGHT = 420;
+        // Combined Multi-Axis View (DEC-132): above this many Y axes an
+        // advisory notice suggests the Grouped view. Advisory only -- no
+        // axis is ever dropped, merged or capped.
+        const WW_ER_COMBINED_AXIS_ADVISORY = 4;
         // The origin is kept while the visible window stays within this
         // many spans of it, so ordinary zoom/pan nearby does not rewrite
         // every trace; beyond that it moves to the window start. Within
@@ -15357,6 +15377,31 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return axis.quantity + (axis.unit ? " (" + axis.unit + ")" : "");
         }
 
+        // The panels a view mode shows, built from the display axes
+        // wwErPlotGroups() resolved -- one grouping for both modes:
+        // Grouped (DEC-131) gives every axis its own panel; Combined
+        // (DEC-132) puts every axis, in the same order, into one panel.
+        // Either way an axis carries exactly the same traces.
+        function wwErViewPanels(groups, viewMode) {
+            if (viewMode === "combined") return groups.length ? [{ key: "combined", combined: true, axes: groups }] : [];
+            return groups.map((group) => ({ key: group.key, combined: false, axes: [group] }));
+        }
+
+        // Where a panel's n-th Y axis goes (DEC-132): the first on the left
+        // and the second on the right edge of the plot; every further axis
+        // alternately left/right, pushed outward by Plotly itself
+        // (autoshift) with the margins grown to fit (automargin) -- the
+        // spacing follows the real tick labels and titles; nothing is
+        // hard-coded and there is no maximum.
+        function wwErYAxisPlacement(index) {
+            const ref = index === 0 ? "y" : "y" + (index + 1);
+            const layoutKey = index === 0 ? "yaxis" : "yaxis" + (index + 1);
+            const side = index % 2 === 0 ? "left" : "right";
+            if (index === 0) return { ref, layoutKey, spec: { side } };
+            if (index === 1) return { ref, layoutKey, spec: { side, overlaying: "y", anchor: "x" } };
+            return { ref, layoutKey, spec: { side, overlaying: "y", anchor: "free", position: side === "left" ? 0 : 1, autoshift: true } };
+        }
+
         // -- panels and traces --
 
         // A trace's name: its record, then the Waveform-owned channel name.
@@ -15380,7 +15425,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // build/refresh, never from a copy kept here.
         function wwErBuildTrace(trace) {
             const origin = wwErState.plot.origin;
-            return wwAnalogLineTrace({
+            return Object.assign(wwAnalogLineTrace({
                 x: trace.reconstructionTime.map((r) => wwErReconstructionToPlotX(r, origin)),
                 y: trace.values,
                 customdata: trace.reconstructionTime,
@@ -15390,18 +15435,34 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // Record-scoped identity (record | source::channel), never
                 // the display name.
                 meta: trace.key,
+            }), {
+                // Its display axis in this panel ("y" in a Grouped panel).
+                yaxis: trace.yRef,
             });
         }
 
         // One chip per trace (Waveform's legend item pattern; no remove
         // control, no rename/colour actions). A trace that failed to load
         // says so on its own chip.
+        function wwErLegendChipHtml(trace) {
+            return '<span class="ww-legend-item" data-er-trace-key="' + escapeHtml(trace.key) + '">' +
+                '<span class="ww-legend-dot" style="background:' + escapeHtml(wwColorForChannel(trace.sourceId, trace.channelName)) + '"></span>' +
+                '<span class="ww-legend-label">' + wwErTraceLabelHtml(trace) + "</span>" +
+                (trace.error ? '<span class="ww-er-trace-failed">not loaded</span>' : "") +
+            "</span>";
+        }
+
+        // Grouped: the panel's chips. Combined: the chips under their Y
+        // axis's title, in axis order -- which axis a line is read on.
         function wwErRenderPanelLegend(panel) {
-            panel.legendEl.innerHTML = panel.traces.map((trace) =>
-                '<span class="ww-legend-item" data-er-trace-key="' + escapeHtml(trace.key) + '">' +
-                    '<span class="ww-legend-dot" style="background:' + escapeHtml(wwColorForChannel(trace.sourceId, trace.channelName)) + '"></span>' +
-                    '<span class="ww-legend-label">' + wwErTraceLabelHtml(trace) + "</span>" +
-                    (trace.error ? '<span class="ww-er-trace-failed">not loaded</span>' : "") +
+            if (!panel.combined) {
+                panel.legendEl.innerHTML = panel.traces.map(wwErLegendChipHtml).join("");
+                return;
+            }
+            panel.legendEl.innerHTML = panel.axes.map((axis, index) =>
+                '<span class="ww-er-legend-axis" data-er-axis-key="' + escapeHtml(axis.key) + '">' +
+                    '<span class="ww-er-legend-axis-title">' + escapeHtml(wwErAxisTitle(axis.axis)) + "</span>" +
+                    panel.traces.filter((trace) => trace.axisIndex === index).map(wwErLegendChipHtml).join("") +
                 "</span>").join("");
         }
 
@@ -15415,13 +15476,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 timingSourceId: item.timingSourceId,
                 timing: item.timing,
                 removed: false,
+                // Where it is drawn now (wwErRenderPlot()): its panel, the
+                // index of its display axis there, and that axis's Plotly
+                // id. A view-mode switch moves the trace, data and all.
+                panel: null,
+                axisIndex: 0,
+                yRef: "y",
                 // wwFetchWaveformRange()'s own abort/sequence state, per
                 // trace: every trace is fetched independently.
                 abortController: null,
                 requestSeq: 0,
-                // What the current data was fetched for (skip identical
-                // refetches on a plain re-render).
+                // What the current data was fetched for, and with what
+                // point budget (skip refetches the data already serves).
                 loadedKey: null,
+                loadedBudget: 0,
                 loading: false,
                 error: null,
                 reconstructionTime: [],
@@ -15437,12 +15505,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (trace.abortController) trace.abortController.abort();
         }
 
-        function wwErCreatePanel(group) {
+        function wwErCreatePanel(spec) {
             const panel = {
-                key: group.key,
-                axis: group.axis,
+                key: spec.key,
+                combined: spec.combined,
+                // One entry per display axis (wwErRenderPlot()): its key and
+                // metadata, its traces' keys, its Plotly placement, and its
+                // Y state -- autoscaled when the first data arrives and on
+                // Reset / Autoscale Y, then kept (`range`) through X
+                // navigation.
+                axes: [],
                 traces: [],
-                renderedTraceKeys: [],
+                renderedKey: "",
                 containerEl: null,
                 chartEl: null,
                 legendEl: null,
@@ -15451,13 +15525,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 noteEl: null,
                 plotlyReady: false,
                 removed: false,
-                // Y is autoscaled when the first data arrives and on Reset /
-                // Autoscale Y, then kept through X navigation.
-                autoscaleYPending: true,
             };
             const container = document.createElement("div");
-            container.className = "ww-panel ww-er-panel";
-            container.dataset.erPanelKey = group.key;
+            container.className = "ww-panel ww-er-panel" + (spec.combined ? " ww-er-panel--combined" : "");
+            container.dataset.erPanelKey = spec.key;
             container.innerHTML = wwPanelMarkupHtml("");
             // Not yet in Event Reconstruction: an active Y-zoom panel and
             // panel-height dragging. The shared header is a plain label
@@ -15492,13 +15563,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             panel.chartWrapEl = container.querySelector(".ww-chart-wrap");
             panel.cursorLayerEl = cursorLayer;
             wwErWirePanelCursorDrag(panel);
-            panel.chartEl.style.height = WW_ER_PANEL_HEIGHT + "px";
+            panel.chartEl.style.height = (spec.combined ? WW_ER_COMBINED_PANEL_HEIGHT : WW_ER_PANEL_HEIGHT) + "px";
             return panel;
         }
 
+        // Its traces are not the panel's to end: wwErRenderPlot() destroys
+        // those no longer plotted and moves the rest to their new panel.
         function wwErDestroyPanel(panel) {
             panel.removed = true;
-            for (const trace of panel.traces) wwErDestroyTrace(trace);
             if (panel.plotlyReady) Plotly.purge(panel.chartEl);
             panel.plotlyReady = false;
             panel.containerEl.remove();
@@ -15508,7 +15580,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // the Waveform-owned presentation (a rename/recolour there shows
         // here on the next render).
         function wwErRefreshPanelPresentation(panel) {
-            panel.labelEl.textContent = wwErAxisTitle(panel.axis);
+            const axes = panel.axes.length;
+            panel.labelEl.textContent = panel.combined
+                ? "All selected channels · " + axes + (axes === 1 ? " Y axis" : " Y axes")
+                : wwErAxisTitle(panel.axes[0].axis);
             wwErRenderPanelLegend(panel);
             if (!panel.plotlyReady || !panel.traces.length) return;
             Plotly.restyle(panel.chartEl, {
@@ -15518,26 +15593,48 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }, panel.traces.map((_, index) => index));
         }
 
-        function wwErInitPanelPlot(panel) {
+        // A panel's whole Plotly layout from Event Reconstruction state: the
+        // shared X axis (viewport, origin ticks, drag mode) and one Y axis
+        // per display axis (wwErYAxisPlacement()). Every Y axis is
+        // fixedrange, so Box Zoom and Pan are X-only (DEC-129) on all of
+        // them; a scaled axis keeps its range, a pending one autoranges
+        // until it is scaled. In the combined panel each axis is titled
+        // with its quantity and unit (Plotly 3 renders only the
+        // { text } title form), only the first draws grid lines, and
+        // an axis without any sample shows no tick values (Plotly would
+        // invent -1..4) -- its title still says what it is for.
+        function wwErPanelLayout(panel) {
             const plot = wwErState.plot;
-            const ticks = wwErTimeAxisTicks(plot.viewport, plot.origin);
             const layout = wwAnalogPanelLayout(wwThemeColors(), {
                 xTitle: WW_ER_TIME_AXIS_TITLE,
                 xRange: [wwErReconstructionToPlotX(plot.viewport.start, plot.origin), wwErReconstructionToPlotX(plot.viewport.end, plot.origin)],
-                xTickFormat: ticks,
-                yTitle: panel.axis.unit || "",
+                xTickFormat: wwErTimeAxisTicks(plot.viewport, plot.origin),
+                yTitle: "",
                 dragMode: wwErState.dragMode,
             });
-            // X-only Box Zoom and Pan (DEC-129): a drag never changes this
-            // panel's Y. Y is set only by Autoscale Y / Reset (and the first
-            // data), programmatically.
-            layout.yaxis.fixedrange = true;
+            const base = layout.yaxis;
+            panel.axes.forEach((axis, index) => {
+                const yaxis = Object.assign({}, base, axis.placement.spec, {
+                    title: panel.combined ? { text: wwErAxisTitle(axis.axis) } : (axis.axis.unit || ""),
+                    fixedrange: true,
+                }, axis.range ? { range: axis.range.slice(), autorange: false } : { autorange: true });
+                if (panel.combined) {
+                    yaxis.automargin = true;
+                    yaxis.showticklabels = !axis.autoscaleYPending || wwErAxisHasData(panel, index);
+                    if (index > 0) yaxis.showgrid = false;
+                }
+                layout[axis.placement.layoutKey] = yaxis;
+            });
+            return layout;
+        }
+
+        function wwErInitPanelPlot(panel) {
             // Double-click always autosizes (reported as xaxis.autorange),
             // which Event Reconstruction maps to Reset Time View for every
             // panel -- never Plotly's "reset to the initial range", which
             // would be expressed in a possibly outdated origin.
-            Plotly.newPlot(panel.chartEl, panel.traces.map(wwErBuildTrace), layout, { responsive: true, displayModeBar: false, doubleClick: "autosize" });
-            panel.renderedTraceKeys = panel.traces.map((t) => t.key);
+            Plotly.newPlot(panel.chartEl, panel.traces.map(wwErBuildTrace), wwErPanelLayout(panel), { responsive: true, displayModeBar: false, doubleClick: "autosize" });
+            panel.renderedKey = wwErPanelRenderKey(panel);
             panel.plotlyReady = true;
             wwErWirePanelRelayout(panel);
             // Slice 3E: any redraw (resize, relayout) re-positions this
@@ -15545,14 +15642,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             panel.chartEl.on("plotly_afterplot", () => wwErDrawPanelCursors(panel));
         }
 
-        // A trace was added to or removed from an existing panel: rebuild
-        // its trace list from each trace's own (already fetched) data;
-        // the layout, ranges and Y scale are kept.
+        // What a panel's chart was last built for: its axes in order and
+        // its traces in order.
+        function wwErPanelRenderKey(panel) {
+            return panel.axes.map((a) => a.key).join("\u0002") + "\u0003" + panel.traces.map((t) => t.key).join("\u0001");
+        }
+
+        // A trace or an axis was added to or removed from an existing
+        // panel: rebuild its chart from each trace's own (already fetched)
+        // data and each axis's own Y state; the X range is kept.
         function wwErSyncPanelTraces(panel) {
-            const keys = panel.traces.map((t) => t.key);
-            if (!panel.plotlyReady || keys.join("\u0001") === panel.renderedTraceKeys.join("\u0001")) return;
-            Plotly.react(panel.chartEl, panel.traces.map(wwErBuildTrace), panel.chartEl.layout);
-            panel.renderedTraceKeys = keys;
+            const key = wwErPanelRenderKey(panel);
+            if (!panel.plotlyReady || key === panel.renderedKey) return;
+            Plotly.react(panel.chartEl, panel.traces.map(wwErBuildTrace), wwErPanelLayout(panel));
+            panel.renderedKey = key;
         }
 
         // A user zoom/pan/double-click on ANY panel becomes the one common
@@ -15589,14 +15692,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // Reset Time View -- the toolbar button and a panel double-click
-        // alike: Fit All for X, then every panel's Y autoscaled to all of
-        // its traces' Fit All data (once they have arrived).
+        // alike, in either view mode: Fit All for X, then every Y axis of
+        // every panel autoscaled to its traces' Fit All data (once they
+        // have arrived).
         function wwErResetView() {
             const plot = wwErState.plot;
             if (!plot.fitAll) return;
             clearTimeout(plot.relayoutTimer);
             plot.atFitAll = true;
-            for (const panel of plot.panels) panel.autoscaleYPending = true;
+            for (const panel of plot.panels) for (const axis of panel.axes) axis.autoscaleYPending = true;
             wwErApplyViewport(plot.fitAll);
         }
 
@@ -15613,33 +15717,46 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwErApplyViewport(next);
         }
 
-        // Autoscale Y: every panel independently, over all of its traces'
-        // data for the current X window (each trace only ever holds its
-        // visible slice); X is untouched. A panel with a trace still
-        // loading scales once its traces have all landed.
+        // Autoscale Y: every Y axis of every panel independently, over its
+        // own traces' data for the current X window (each trace only ever
+        // holds its visible slice); X is untouched. A panel with a trace
+        // still loading scales once its traces have all landed.
         function wwErAutoscaleY() {
             for (const panel of wwErState.plot.panels) {
-                panel.autoscaleYPending = true;
+                for (const axis of panel.axes) axis.autoscaleYPending = true;
                 wwErApplyPendingAutoscaleY(panel);
             }
         }
 
-        function wwErPanelHasData(panel) {
-            return panel.traces.some((trace) => trace.values.some((value) => Number.isFinite(value)));
+        function wwErAxisHasData(panel, axisIndex) {
+            return panel.traces.some((trace) => trace.axisIndex === axisIndex && trace.values.some((value) => Number.isFinite(value)));
         }
 
-        // Plotly's own autorange over every trace of the panel (as
-        // Waveform's Autoscale Y; an empty trace adds nothing), then fixed
-        // at that range so later X navigation keeps it. A panel without
-        // samples is left in autorange -- its stale range is cleared -- and
-        // stays pending, so its first data scales it.
+        // Plotly's own autorange of each pending Y axis over its own traces
+        // (as Waveform's Autoscale Y; an empty trace adds nothing), then
+        // fixed at that range so later X navigation keeps it. An axis
+        // without samples is left in autorange -- its stale range is
+        // cleared -- and stays pending, so its first data scales it; the
+        // other axes are not touched.
         async function wwErApplyPendingAutoscaleY(panel) {
-            if (!panel.autoscaleYPending || !panel.plotlyReady || panel.traces.some((t) => t.loading)) return;
-            await Plotly.relayout(panel.chartEl, { "yaxis.autorange": true });
-            if (panel.removed || !panel.plotlyReady || !wwErPanelHasData(panel)) return;
-            panel.autoscaleYPending = false;
-            const range = panel.chartEl._fullLayout.yaxis.range.slice();
-            await Plotly.relayout(panel.chartEl, { "yaxis.range": range, "yaxis.autorange": false });
+            const pending = panel.axes.filter((axis) => axis.autoscaleYPending);
+            if (!pending.length || !panel.plotlyReady || panel.traces.some((t) => t.loading)) return;
+            const autorange = {};
+            for (const axis of pending) autorange[axis.placement.layoutKey + ".autorange"] = true;
+            await Plotly.relayout(panel.chartEl, autorange);
+            if (panel.removed || !panel.plotlyReady) return;
+            const fixed = {};
+            panel.axes.forEach((axis, index) => {
+                if (!axis.autoscaleYPending) return;
+                const hasData = wwErAxisHasData(panel, index);
+                if (panel.combined) fixed[axis.placement.layoutKey + ".showticklabels"] = hasData;
+                if (!hasData) return;
+                axis.autoscaleYPending = false;
+                axis.range = panel.chartEl._fullLayout[axis.placement.layoutKey].range.slice();
+                fixed[axis.placement.layoutKey + ".range"] = axis.range.slice();
+                fixed[axis.placement.layoutKey + ".autorange"] = false;
+            });
+            if (Object.keys(fixed).length) await Plotly.relayout(panel.chartEl, fixed);
         }
 
         // The one viewport pipeline: store it, move the origin if needed
@@ -15665,9 +15782,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
                 Plotly.relayout(panel.chartEl, wwErTimeAxisRelayout(viewport, origin));
             }
-            for (const panel of plot.panels) {
-                for (const trace of panel.traces) wwErLoadTrace(panel, trace);
-            }
+            for (const trace of wwErPlottedTraces()) wwErLoadTrace(trace);
+            // Only now -- every trace that needs data has started loading
+            // (wwErLoadTrace() runs synchronously up to its fetch) -- may a
+            // pending axis scale over what is already there; one whose
+            // traces are loading scales when the last lands.
+            for (const panel of plot.panels) wwErApplyPendingAutoscaleY(panel);
             wwErSyncToolbar();
             wwErDrawCursors();
         }
@@ -15689,9 +15809,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             panel.noteEl.hidden = !empty;
         }
 
-        function wwErSetTraceData(panel, trace) {
-            const index = panel.traces.indexOf(trace);
-            if (!panel.plotlyReady || index === -1) return;
+        function wwErSetTraceData(trace) {
+            const panel = trace.panel;
+            const index = panel ? panel.traces.indexOf(trace) : -1;
+            if (!panel || !panel.plotlyReady || index === -1) return;
             const origin = wwErState.plot.origin;
             Plotly.restyle(panel.chartEl, {
                 x: [trace.reconstructionTime.map((r) => wwErReconstructionToPlotX(r, origin))],
@@ -15702,21 +15823,28 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // Loads one trace's visible slice (hybrid fetch, design §7) with
-        // the panel's point budget. A failure marks that trace only; a
-        // superseded response (a newer viewport already asked) never
-        // overwrites it.
-        async function wwErLoadTrace(panel, trace) {
+        // its panel's point budget. Data already fetched for this range
+        // and offset is kept when it still serves: every real sample
+        // (full resolution), or an envelope of at least that budget -- so
+        // a view-mode switch, whose panels differ in plot width, does not
+        // refetch what is already plotted. A failure marks that
+        // trace only; a superseded response (a newer viewport already
+        // asked) never overwrites it. Status, legend and Y scale (a
+        // pending axis scales once none of its panel's traces is loading;
+        // wwErApplyViewport() covers the no-fetch cases) go to the
+        // panel the trace is in when the response lands (a view-mode
+        // switch may have moved it meanwhile).
+        async function wwErLoadTrace(trace) {
             const plot = wwErState.plot;
             const viewport = plot.viewport;
             const timing = trace.timing;
-            if (!panel.plotlyReady || !viewport || !timing || trace.removed) return;
+            const panel = trace.panel;
+            if (!panel || !panel.plotlyReady || !viewport || !timing || trace.removed) return;
             const pointBudget = wwPointBudgetForPlotWidth(wwPlotWidthForChart(panel.chartEl));
             const request = wwErFetchRequestFor(trace, timing, viewport, pointBudget);
-            const loadKey = [viewport.start, viewport.end, timing.totalOffsetS, request ? pointBudget : "skip"].join("|");
-            if (loadKey === trace.loadedKey) {
-                wwErApplyPendingAutoscaleY(panel);
-                return;
-            }
+            const loadKey = [viewport.start, viewport.end, timing.totalOffsetS, request ? "range" : "skip"].join("|");
+            const served = !request || trace.representation === "full_resolution" || trace.loadedBudget >= pointBudget;
+            if (loadKey === trace.loadedKey && served) return;
             trace.error = null;
             if (!request) {
                 // No sample of this record in view: invalidate any request
@@ -15727,9 +15855,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 trace.reconstructionTime = [];
                 trace.values = [];
                 trace.loadedKey = loadKey;
-                wwErSetTraceData(panel, trace);
+                trace.loadedBudget = 0;
+                wwErSetTraceData(trace);
                 wwErSyncPanelStatus(panel);
-                wwErApplyPendingAutoscaleY(panel);
                 return;
             }
             trace.loading = true;
@@ -15742,13 +15870,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 result = { superseded: false, error: { message: "Could not reach the backend. Check your connection and try again." } };
             }
             if (result.superseded || trace.removed) return;
+            const current = trace.panel;
             trace.loading = false;
             if (result.error || !result.body) {
                 trace.error = result.error ? wwFriendlyError(result.error.code, result.error.message)
                     : "Could not reach the backend. Check your connection and try again.";
-                wwErRenderPanelLegend(panel);
-                wwErSyncPanelStatus(panel);
-                wwErApplyPendingAutoscaleY(panel);
+                wwErRenderPanelLegend(current);
+                wwErSyncPanelStatus(current);
+                wwErApplyPendingAutoscaleY(current);
                 return;
             }
             const body = result.body;
@@ -15759,10 +15888,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             trace.representation = body.representation;
             trace.unit = body.unit;
             trace.loadedKey = loadKey;
-            wwErSetTraceData(panel, trace);
-            wwErRenderPanelLegend(panel);
-            wwErSyncPanelStatus(panel);
-            wwErApplyPendingAutoscaleY(panel);
+            trace.loadedBudget = pointBudget;
+            wwErSetTraceData(trace);
+            wwErRenderPanelLegend(current);
+            wwErSyncPanelStatus(current);
+            wwErApplyPendingAutoscaleY(current);
         }
 
         // Every plotted trace, panel by panel.
@@ -15780,31 +15910,52 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwErRenderPlot() {
             const plot = wwErState.plot;
             const items = wwErPlotItems();
-            const groups = wwErPlotGroups(items);
-            const wantedPanels = new Set(groups.map((g) => g.key));
+            const specs = wwErViewPanels(wwErPlotGroups(items), plot.viewMode);
+            // Traces are reconciled across all panels: one that moves to
+            // another panel (a view-mode switch, a changed display axis)
+            // keeps its fetched data and any request in flight.
+            const wantedTraces = new Set(items.map((item) => item.key));
+            const traces = new Map();
+            for (const trace of wwErPlottedTraces()) {
+                if (wantedTraces.has(trace.key)) traces.set(trace.key, trace);
+                else wwErDestroyTrace(trace);
+            }
+            const wantedPanels = new Set(specs.map((spec) => spec.key));
             for (const panel of plot.panels) {
                 if (!wantedPanels.has(panel.key)) wwErDestroyPanel(panel);
             }
             const existingPanels = new Map(plot.panels.filter((p) => !p.removed).map((p) => [p.key, p]));
             const panelsEl = document.getElementById("wwErPanels");
-            plot.panels = groups.map((group) => {
-                const panel = existingPanels.get(group.key) || wwErCreatePanel(group);
-                panel.axis = group.axis;
-                const existingTraces = new Map(panel.traces.map((t) => [t.key, t]));
-                const wantedTraces = new Set(group.items.map((item) => item.key));
-                for (const trace of panel.traces) {
-                    if (!wantedTraces.has(trace.key)) wwErDestroyTrace(trace);
-                }
-                const previousKeys = panel.traces.map((t) => t.key).join("");
-                panel.traces = group.items.map((item) => {
-                    const trace = existingTraces.get(item.key) || wwErCreateTrace(item);
-                    trace.timing = item.timing;
-                    return trace;
+            plot.panels = specs.map((spec) => {
+                const panel = existingPanels.get(spec.key) || wwErCreatePanel(spec);
+                const previousAxes = new Map(panel.axes.map((axis) => [axis.key, axis]));
+                panel.traces = [];
+                panel.axes = spec.axes.map((group, index) => {
+                    const placement = wwErYAxisPlacement(index);
+                    for (const item of group.items) {
+                        const trace = traces.get(item.key) || wwErCreateTrace(item);
+                        trace.timing = item.timing;
+                        trace.panel = panel;
+                        trace.axisIndex = index;
+                        trace.yRef = placement.ref;
+                        panel.traces.push(trace);
+                    }
+                    const traceKeys = group.items.map((item) => item.key).join("\u0001");
+                    const previous = previousAxes.get(group.key);
+                    // A new axis (every axis after a view-mode switch), or a
+                    // channel joined or left it: its Y range is autoscaled
+                    // once over the new set. X navigation alone never
+                    // changes Y.
+                    const pending = !previous || previous.autoscaleYPending || previous.traceKeys !== traceKeys;
+                    return {
+                        key: group.key,
+                        axis: group.axis,
+                        traceKeys,
+                        placement,
+                        autoscaleYPending: pending,
+                        range: pending ? null : previous.range,
+                    };
                 });
-                // A channel joined or left this panel: its Y range is
-                // re-autoscaled once over the new set (X navigation alone
-                // never changes Y).
-                if (panel.traces.map((t) => t.key).join("") !== previousKeys) panel.autoscaleYPending = true;
                 wwErSyncPanelTraces(panel);
                 return panel;
             });
@@ -15836,16 +15987,39 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwErRefreshCursorValues();
         }
 
+        // Grouped <-> Combined (DEC-132): presentation only. Records,
+        // channels, reference, corrections, cursors, the X viewport, Fit
+        // All and the drag mode are untouched; the panels are rebuilt
+        // around the same traces (their fetched data is reused) and every
+        // Y axis is autoscaled afresh in the new mode.
+        function wwErSetViewMode(mode) {
+            const plot = wwErState.plot;
+            if (mode === plot.viewMode) return;
+            plot.viewMode = mode;
+            wwErSyncViewModeButtons();
+            wwErRenderPlot();
+        }
+
+        function wwErSyncViewModeButtons() {
+            const mode = wwErState.plot.viewMode;
+            document.getElementById("wwErViewGroupedBtn").setAttribute("aria-pressed", String(mode === "grouped"));
+            document.getElementById("wwErViewCombinedBtn").setAttribute("aria-pressed", String(mode === "combined"));
+        }
+
         // Canvas meta line and empty-state text.
         function wwErSyncPlotChrome() {
+            const plot = wwErState.plot;
             const members = wwErMembers();
-            const panels = wwErState.plot.panels.length;
+            const panels = plot.panels.length;
+            const axes = plot.panels.reduce((count, panel) => count + panel.axes.length, 0);
             const channels = wwErPlottedTraces().length;
             const stale = wwErStaleMembers().length;
             document.getElementById("wwErCanvasMeta").textContent = wwErDefined()
                 ? members.length + (members.length === 1 ? " record selected" : " records selected") +
                   " · " + channels + (channels === 1 ? " channel" : " channels") +
-                  " in " + panels + (panels === 1 ? " panel" : " panels") +
+                  (plot.viewMode === "combined"
+                      ? " on " + axes + (axes === 1 ? " Y axis" : " Y axes")
+                      : " in " + panels + (panels === 1 ? " panel" : " panels")) +
                   (stale ? " · removed records to resolve" : "")
                 : "No reconstruction records selected";
             const empty = document.getElementById("wwErEmptyState");
@@ -15854,6 +16028,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 ? "No channels plotted. Open a record's Channels in the left panel and select analog channels to plot them on the common timeline."
                 : "No reconstruction records selected. Select records in the left panel to place them on one common timeline.";
             wwErSyncSpanNotice();
+            wwErSyncAxisNotice();
             wwErSyncToolbar();
         }
 
@@ -15897,6 +16072,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             el.hidden = false;
         }
 
+        // Combined Multi-Axis View (DEC-132): an advisory note once the one
+        // panel carries more than WW_ER_COMBINED_AXIS_ADVISORY Y axes. It
+        // never limits, merges or drops an axis.
+        function wwErSyncAxisNotice() {
+            const el = document.getElementById("wwErAxisNotice");
+            const panel = wwErState.plot.panels.find((p) => p.combined);
+            const axes = panel ? panel.axes.length : 0;
+            if (axes <= WW_ER_COMBINED_AXIS_ADVISORY) {
+                el.hidden = true;
+                el.innerHTML = "";
+                return;
+            }
+            el.innerHTML = wwErNoticeHtml("", axes + " Y axes in one panel",
+                "<span>Each additional axis narrows the plot area. The Grouped view gives every quantity and unit its own panel.</span>");
+            el.hidden = false;
+        }
+
         // Zoom In/Out, Reset Time View and Autoscale Y follow whether
         // anything is plotted; Zoom Out also reads as unavailable at Fit
         // All. The axis menus stay disabled: Event Reconstruction zooms X
@@ -15925,15 +16117,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const colors = wwThemeColors();
             for (const panel of wwErState.plot.panels) {
                 if (!panel.plotlyReady) continue;
-                Plotly.relayout(panel.chartEl, {
+                const update = {
                     paper_bgcolor: colors.surface,
                     plot_bgcolor: colors.surface,
                     "font.color": colors.text,
                     "xaxis.gridcolor": colors.grid,
-                    "yaxis.gridcolor": colors.grid,
                     "xaxis.spikecolor": colors.spike,
-                    "yaxis.spikecolor": colors.spike,
-                });
+                };
+                for (const axis of panel.axes) {
+                    update[axis.placement.layoutKey + ".gridcolor"] = colors.grid;
+                    update[axis.placement.layoutKey + ".spikecolor"] = colors.spike;
+                }
+                Plotly.relayout(panel.chartEl, update);
             }
         }
 
@@ -49894,6 +50089,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwErZoomOutBtn").addEventListener("click", () => wwErStepZoomX("out"));
         document.getElementById("wwErResetViewBtn").addEventListener("click", wwErResetView);
         document.getElementById("wwErAutoscaleYBtn").addEventListener("click", wwErAutoscaleY);
+        // DEC-132: Grouped / Combined view mode (presentation only).
+        document.getElementById("wwErViewGroupedBtn").addEventListener("click", () => wwErSetViewMode("grouped"));
+        document.getElementById("wwErViewCombinedBtn").addEventListener("click", () => wwErSetViewMode("combined"));
         // Slice 3E: Event Reconstruction's own A/B cursors.
         document.getElementById("wwErCursorModeBtn").addEventListener("click", wwErToggleCursors);
         document.getElementById("wwErCursorCloseA").addEventListener("click", () => wwErCloseCursor("a"));

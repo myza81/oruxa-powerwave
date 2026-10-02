@@ -45,7 +45,7 @@ test.describe("Event Reconstruction Grouped View -- group formation", () => {
 
     await addRecords(page, ["STN_A", "STN_B"]);
     await expect(page.locator("#wwErViewGroupedBtn")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator("#wwErViewCombinedBtn")).toBeDisabled();
+    await expect(page.locator("#wwErViewCombinedBtn")).toHaveAttribute("aria-pressed", "false");
     await selectAll(page, "STN_A", ["VA", "VKV", "IA", "P", "Q", "F", "-VA"]);
     await selectAll(page, "STN_B", ["VA", "P", "F"]);
     await waitForPlot(page, 10);

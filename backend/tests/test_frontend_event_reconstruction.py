@@ -199,7 +199,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         # rest are renderer constants.
         assert re.findall(r"const (?:WW_ER_|wwEr)\w+", module) == [
             "const WW_ER_SIDEBAR_WIDTH_STORAGE_KEY", "const wwErState", "const WW_ER_PANEL_HEIGHT",
-            "const WW_ER_ORIGIN_MAX_SPANS", "const WW_ER_RELAYOUT_DEBOUNCE_MS", "const WW_ER_TIME_AXIS_TITLE",
+            "const WW_ER_COMBINED_PANEL_HEIGHT", "const WW_ER_COMBINED_AXIS_ADVISORY", "const WW_ER_ORIGIN_MAX_SPANS", "const WW_ER_RELAYOUT_DEBOUNCE_MS", "const WW_ER_TIME_AXIS_TITLE",
             "const WW_ER_OUTLIER_GAP_FRACTION",
         ]
 
@@ -552,7 +552,7 @@ class TestEventReconstructionPlotting:
         assert "wwErReconstructionTimeToSourceElapsed(viewport.start, timing.totalOffsetS)" in request
         assert "wwErReconstructionTimeToSourceElapsed(viewport.end, timing.totalOffsetS)" in request
         assert "if (timing.endS < viewport.start || timing.startS > viewport.end) return null;" in request
-        load = _between(source, "async function wwErLoadTrace(panel, trace) {", "function wwErPlottedTraces()")
+        load = _between(source, "async function wwErLoadTrace(trace) {", "function wwErPlottedTraces()")
         assert "body.time.map((t) => wwErSourceElapsedToReconstructionTime(t, timing.totalOffsetS))" in load
         assert "if (result.superseded || trace.removed) return;" in load
         module = _er_module(source)
@@ -610,14 +610,14 @@ class TestEventReconstructionPlotting:
 
     def test_presentation_is_resolved_from_waveform_on_every_render(self):
         source = _source()
-        trace = _between(source, "function wwErBuildTrace(trace) {", "function wwErRenderPanelLegend(panel)")
+        trace = _between(source, "function wwErBuildTrace(trace) {", "function wwErLegendChipHtml(trace)")
         assert "color: wwColorForChannel(trace.sourceId, trace.channelName)," in trace
         assert "name: wwChannelDisplayNamePlotly(trace.sourceId, trace.channelName)," in trace
-        refresh = _between(source, "function wwErRefreshPanelPresentation(panel) {", "function wwErInitPanelPlot(panel)")
+        refresh = _between(source, "function wwErRefreshPanelPresentation(panel) {", "function wwErPanelLayout(panel)")
         assert '"line.color": panel.traces.map((t) => wwColorForChannel(t.sourceId, t.channelName))' in refresh
         label = _between(source, "function wwErTraceLabelHtml(trace) {", "\n        }\n")
         assert "wwRichLabelHtml(" in label and "wwChannelDisplayNameHtml(trace.sourceId, trace.channelName)" in label
-        legend = _between(source, "function wwErRenderPanelLegend(panel) {", "\n        }\n")
+        legend = _between(source, "function wwErLegendChipHtml(trace) {", "function wwErCreateTrace(item)")
         assert "wwColorForChannel(trace.sourceId, trace.channelName)" in legend
         for forbidden in ("ww-legend-remove", "wwRemoveChannelByKey"):
             assert forbidden not in legend
@@ -649,8 +649,15 @@ class TestEventReconstructionTimelineNavigation:
     Fit All span notice -- all in reconstruction time."""
 
     def test_box_zoom_and_pan_are_x_only(self):
-        init = _between(_source(), "function wwErInitPanelPlot(panel) {", "function wwErWirePanelRelayout(panel)")
-        assert "layout.yaxis.fixedrange = true;" in init
+        source = _source()
+        # Every Y axis of every panel (Grouped: one; Combined: one per
+        # display axis) is fixedrange.
+        layout = _between(source, "function wwErPanelLayout(panel) {", "function wwErInitPanelPlot(panel)")
+        assert "panel.axes.forEach((axis, index) => {" in layout
+        assert "fixedrange: true," in layout
+        assert "layout[axis.placement.layoutKey] = yaxis;" in layout
+        init = _between(source, "function wwErInitPanelPlot(panel) {", "function wwErWirePanelRelayout(panel)")
+        assert "wwErPanelLayout(panel)" in init
 
     def test_toolbar_is_wired_to_event_reconstruction_functions_only(self):
         source = _source()
@@ -680,16 +687,18 @@ class TestEventReconstructionTimelineNavigation:
     def test_reset_is_one_path_for_button_and_double_click(self):
         source = _source()
         reset = _between(source, "function wwErResetView() {", "\n        }\n")
-        assert "for (const panel of plot.panels) panel.autoscaleYPending = true;" in reset
+        assert "for (const panel of plot.panels) for (const axis of panel.axes) axis.autoscaleYPending = true;" in reset
         assert "wwErApplyViewport(plot.fitAll);" in reset
         assert "wwErRequestFitAll" not in source
 
     def test_autoscale_y_uses_plotly_autorange_then_keeps_the_range(self):
         source = _source()
         apply = _between(source, "async function wwErApplyPendingAutoscaleY(panel) {", "\n        }\n")
-        assert 'await Plotly.relayout(panel.chartEl, { "yaxis.autorange": true });' in apply
-        assert "if (panel.removed || !panel.plotlyReady || !wwErPanelHasData(panel)) return;" in apply
-        assert '{ "yaxis.range": range, "yaxis.autorange": false }' in apply
+        assert 'autorange[axis.placement.layoutKey + ".autorange"] = true;' in apply
+        assert "await Plotly.relayout(panel.chartEl, autorange);" in apply
+        assert "if (!hasData) return;" in apply  # an empty axis stays pending
+        assert "axis.range = panel.chartEl._fullLayout[axis.placement.layoutKey].range.slice();" in apply
+        assert 'fixed[axis.placement.layoutKey + ".autorange"] = false;' in apply
         autoscale = _between(source, "function wwErAutoscaleY() {", "\n        }\n")
         assert "for (const panel of wwErState.plot.panels)" in autoscale
         assert "wwErApplyViewport" not in autoscale
@@ -765,7 +774,7 @@ class TestEventReconstructionCursors:
         for element_id in ("wwErCursorReadoutA", "wwErCursorReadoutB", "wwErCursorReadoutDelta", "wwErCursorCloseA", "wwErCursorCloseB"):
             assert 'id="' + element_id + '"' in page
         assert 'document.getElementById("wwErCursorModeBtn").addEventListener("click", wwErToggleCursors);' in source
-        create = _between(source, "function wwErCreatePanel(group) {", "function wwErDestroyPanel(panel)")
+        create = _between(source, "function wwErCreatePanel(spec) {", "function wwErDestroyPanel(panel)")
         assert 'data-er-cursor-line="' in create and 'data-er-cursor-drag="' in create
         assert 'data-cursor-line="' not in create  # never Waveform's cursor hooks
 
@@ -774,8 +783,7 @@ class TestEventReconstructionGroupedView:
     """DEC-131: the Grouped Measurement View -- one panel per backend display
     axis (engineering quantity + normalized unit), shared across records and
     by native and calculated channels; every trace keeps its own fetch and
-    timing; per-channel cursor values live in the channel tree; the
-    Combined Multi-Axis View is not available yet."""
+    timing; per-channel cursor values live in the channel tree."""
 
     def test_grouping_uses_the_backend_display_axis_only(self):
         source = _source()
@@ -793,24 +801,25 @@ class TestEventReconstructionGroupedView:
 
     def test_each_trace_fetches_and_maps_independently(self):
         source = _source()
-        create = _between(source, "function wwErCreatePanel(group) {", "function wwErDestroyPanel(panel)")
+        create = _between(source, "function wwErCreatePanel(spec) {", "function wwErDestroyPanel(panel)")
         assert "abortController" not in create and "requestSeq" not in create  # fetch state is per trace
         trace = _between(source, "function wwErCreateTrace(item) {", "function wwErDestroyTrace(trace)")
         assert "abortController: null," in trace and "requestSeq: 0," in trace and "timing: item.timing," in trace
         apply = _between(source, "function wwErApplyViewport(viewport) {", "function wwErSyncPanelStatus(panel)")
-        assert "for (const trace of panel.traces) wwErLoadTrace(panel, trace);" in apply
-        load = _between(source, "async function wwErLoadTrace(panel, trace) {", "function wwErPlottedTraces()")
+        assert "for (const trace of wwErPlottedTraces()) wwErLoadTrace(trace);" in apply
+        load = _between(source, "async function wwErLoadTrace(trace) {", "function wwErPlottedTraces()")
         assert "wwErFetchRequestFor(trace, timing, viewport, pointBudget)" in load
         assert "trace.error = result.error ? wwFriendlyError(" in load  # one trace fails, the rest plot
 
     def test_autoscale_covers_every_trace_of_a_panel(self):
         source = _source()
-        has_data = _between(source, "function wwErPanelHasData(panel) {", "\n        }\n")
-        assert "panel.traces.some((trace) => trace.values.some((value) => Number.isFinite(value)))" in has_data
+        has_data = _between(source, "function wwErAxisHasData(panel, axisIndex) {", "\n        }\n")
+        assert "panel.traces.some((trace) => trace.axisIndex === axisIndex && trace.values.some((value) => Number.isFinite(value)))" in has_data
         apply = _between(source, "async function wwErApplyPendingAutoscaleY(panel) {", "\n        }\n")
         assert "panel.traces.some((t) => t.loading)" in apply
-        render = _between(source, "function wwErRenderPlot() {", "function wwErSyncPlotChrome()")
-        assert "panel.autoscaleYPending = true;" in render  # a channel joined or left
+        render = _between(source, "function wwErRenderPlot() {", "function wwErSetViewMode(mode)")
+        # A channel joined or left an axis: that axis re-autoscales.
+        assert "const pending = !previous || previous.autoscaleYPending || previous.traceKeys !== traceKeys;" in render
 
     def test_cursor_values_live_in_the_channel_tree_not_the_panels(self):
         source = _source()
@@ -825,12 +834,10 @@ class TestEventReconstructionGroupedView:
             assert gone not in module
         assert "wwErSyncTreeCursorValues();" in _between(source, "function wwErSyncCursorReadout() {", "\n        }\n")
 
-    def test_view_mode_is_grouped_with_combined_explicitly_unavailable(self):
+    def test_view_mode_defaults_to_grouped(self):
         source = _source()
         page = _er_page(source)
         assert '<button type="button" id="wwErViewGroupedBtn" aria-pressed="true"' in page
-        assert re.search(r'id="wwErViewCombinedBtn"[^>]*\bdisabled\b[^>]*not available yet', page)
-        assert 'getElementById("wwErViewCombinedBtn").addEventListener' not in source
         assert 'viewMode: "grouped",' in _between(source, "const wwErState = {", "};")
 
     def test_waveform_grouping_is_untouched(self):
@@ -838,3 +845,98 @@ class TestEventReconstructionGroupedView:
         for waveform_fn in ("function wwPanelGroupKeyFor(channel) {", "function wwPanelLabelFor(channel) {"):
             body = source[source.index(waveform_fn) : source.index("\n        }\n", source.index(waveform_fn))]
             assert "wwEr" not in body and "display_axis" not in body
+
+
+class TestEventReconstructionCombinedView:
+    """DEC-132: the Combined Multi-Axis View -- every selected channel in one
+    panel, one Plotly Y axis per backend display axis (the Grouped View's
+    own grouping), deterministic left/right placement with Plotly-sized
+    margins, per-axis autoscale, X-only navigation, one cursor overlay;
+    switching modes is presentation only and reuses fetched data."""
+
+    def test_both_modes_use_the_one_display_axis_grouping(self):
+        source = _source()
+        render = _between(source, "function wwErRenderPlot() {", "function wwErSetViewMode(mode)")
+        assert "const specs = wwErViewPanels(wwErPlotGroups(items), plot.viewMode);" in render
+        view = _between(source, "function wwErViewPanels(groups, viewMode) {", "\n        }\n")
+        assert 'if (viewMode === "combined") return groups.length ? [{ key: "combined", combined: true, axes: groups }] : [];' in view
+        assert "return groups.map((group) => ({ key: group.key, combined: false, axes: [group] }));" in view
+        # Never a second grouping or a conversion between units.
+        module = _er_module(source)
+        for forbidden in ("1000 *", "* 1000", "/ 1000", "toLowerCase()", "unitScale"):
+            assert forbidden not in _between(source, "function wwErViewPanels(groups, viewMode) {", "function wwErTraceLabelHtml(trace)")
+        assert module.count("function wwErPlotGroups(") == 1
+
+    def test_axis_placement_is_deterministic_and_plotly_sized(self):
+        placement = _between(_source(), "function wwErYAxisPlacement(index) {", "\n        }\n")
+        assert 'const side = index % 2 === 0 ? "left" : "right";' in placement
+        assert 'if (index === 1) return { ref, layoutKey, spec: { side, overlaying: "y", anchor: "x" } };' in placement
+        assert 'spec: { side, overlaying: "y", anchor: "free", position: side === "left" ? 0 : 1, autoshift: true } };' in placement
+        layout = _between(_source(), "function wwErPanelLayout(panel) {", "function wwErInitPanelPlot(panel)")
+        assert "yaxis.automargin = true;" in layout
+        assert "if (index > 0) yaxis.showgrid = false;" in layout
+        # No pixel spacing, no cap on the axis count.
+        for forbidden in (" shift:", "margin.l", "margin.r", "domain:", "Math.min(", "slice(0,"):
+            assert forbidden not in placement + layout
+
+    def test_empty_axis_keeps_its_title_and_shows_no_invented_values(self):
+        source = _source()
+        layout = _between(source, "function wwErPanelLayout(panel) {", "function wwErInitPanelPlot(panel)")
+        assert "title: panel.combined ? { text: wwErAxisTitle(axis.axis) } : (axis.axis.unit || \"\")," in layout
+        assert "yaxis.showticklabels = !axis.autoscaleYPending || wwErAxisHasData(panel, index);" in layout
+        apply = _between(source, "async function wwErApplyPendingAutoscaleY(panel) {", "\n        }\n")
+        assert 'if (panel.combined) fixed[axis.placement.layoutKey + ".showticklabels"] = hasData;' in apply
+
+    def test_traces_carry_their_axis_and_move_between_panels(self):
+        source = _source()
+        build = _between(source, "function wwErBuildTrace(trace) {", "function wwErLegendChipHtml(trace)")
+        assert "yaxis: trace.yRef," in build
+        render = _between(source, "function wwErRenderPlot() {", "function wwErSetViewMode(mode)")
+        assert "const trace = traces.get(item.key) || wwErCreateTrace(item);" in render
+        assert "trace.panel = panel;" in render and "trace.axisIndex = index;" in render and "trace.yRef = placement.ref;" in render
+        destroy = _between(source, "function wwErDestroyPanel(panel) {", "\n        }\n")
+        assert "wwErDestroyTrace" not in destroy  # traces outlive a panel
+        load = _between(source, "async function wwErLoadTrace(trace) {", "function wwErPlottedTraces()")
+        assert "const current = trace.panel;" in load  # results go to the trace's panel now
+        assert 'const served = !request || trace.representation === "full_resolution" || trace.loadedBudget >= pointBudget;' in load
+        assert "if (loadKey === trace.loadedKey && served) return;" in load
+        # A pending axis scales only once every trace that needs data has
+        # started loading (a channel joining an axis is never left out).
+        assert "wwErApplyPendingAutoscaleY" not in load.split("await wwFetchWaveformRange(request)")[0]
+        apply = _between(source, "function wwErApplyViewport(viewport) {", "function wwErSyncPanelStatus(panel)")
+        assert apply.index("wwErLoadTrace(trace);") < apply.index("for (const panel of plot.panels) wwErApplyPendingAutoscaleY(panel);")
+
+    def test_mode_switch_is_presentation_only(self):
+        source = _source()
+        switch = _between(source, "function wwErSetViewMode(mode) {", "\n        }\n")
+        assert "plot.viewMode = mode;" in switch and "wwErRenderPlot();" in switch
+        for forbidden in ("viewport", "fitAll", "cursors", "dragMode", "selectedChannels", "Definition", "reference", "fetch("):
+            assert forbidden not in switch
+        assert 'document.getElementById("wwErViewGroupedBtn").addEventListener("click", () => wwErSetViewMode("grouped"));' in source
+        assert 'document.getElementById("wwErViewCombinedBtn").addEventListener("click", () => wwErSetViewMode("combined"));' in source
+        page = _er_page(source)
+        assert not re.search(r'id="wwErViewCombinedBtn"[^>]*\bdisabled\b', page)
+
+    def test_combined_panel_height_and_advisory_notice(self):
+        source = _source()
+        assert "const WW_ER_COMBINED_PANEL_HEIGHT = 420;" in source
+        assert "const WW_ER_COMBINED_AXIS_ADVISORY = 4;" in source
+        create = _between(source, "function wwErCreatePanel(spec) {", "function wwErDestroyPanel(panel)")
+        assert 'panel.chartEl.style.height = (spec.combined ? WW_ER_COMBINED_PANEL_HEIGHT : WW_ER_PANEL_HEIGHT) + "px";' in create
+        assert ".ww-resize-handle\").remove();" in create  # still no resize grip
+        notice = _between(source, "function wwErSyncAxisNotice() {", "\n        }\n")
+        assert "if (axes <= WW_ER_COMBINED_AXIS_ADVISORY) {" in notice
+        assert 'id="wwErAxisNotice"' in _er_page(source)
+
+    def test_legend_is_per_trace_organised_by_axis(self):
+        legend = _between(_source(), "function wwErRenderPanelLegend(panel) {", "function wwErCreateTrace(item)")
+        assert "panel.traces.filter((trace) => trace.axisIndex === index).map(wwErLegendChipHtml)" in legend
+        assert "escapeHtml(wwErAxisTitle(axis.axis))" in legend
+        for forbidden in ("dash", "dot"):
+            assert forbidden not in _between(_source(), "function wwErBuildTrace(trace) {", "function wwErLegendChipHtml(trace)")
+
+    def test_waveform_layout_helpers_are_untouched(self):
+        source = _source()
+        layout = source[source.index("function wwAnalogPanelLayout(") : source.index("\n        }\n", source.index("function wwAnalogPanelLayout("))]
+        for forbidden in ("autoshift", "overlaying", "wwEr"):
+            assert forbidden not in layout

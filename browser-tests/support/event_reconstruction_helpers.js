@@ -104,9 +104,11 @@ async function plotState(page) {
     const plot = wwErState.plot;
     const channels = [];
     plot.panels.forEach((p, panelIndex) => {
-      const yRange = p.chartEl._fullLayout.yaxis.range.slice();
       p.traces.forEach((t, traceIndex) => {
         const data = p.chartEl.data[traceIndex] || { x: [], customdata: [], line: {} };
+        // The trace's own Y axis (Grouped: the panel's only one).
+        const axis = p.axes[t.axisIndex];
+        const layoutKey = axis.placement.layoutKey;
         const chip = p.legendEl.querySelector('[data-er-trace-key="' + CSS.escape(t.key) + '"]');
         channels.push({
           key: t.key,
@@ -132,14 +134,16 @@ async function plotState(page) {
           traceColor: data.line && data.line.color,
           traceMeta: data.meta,
           traceType: data.type,
+          traceYAxis: data.yaxis || "y",
+          axisKey: axis.key,
           xRange: p.chartEl.layout.xaxis.range.slice(),
           tickvals: (p.chartEl.layout.xaxis.tickvals || []).slice(),
           ticktext: (p.chartEl.layout.xaxis.ticktext || []).slice(),
           dragmode: p.chartEl.layout.dragmode,
-          yRange,
-          yAutorange: p.chartEl.layout.yaxis.autorange,
-          yFixedRange: p.chartEl.layout.yaxis.fixedrange,
-          autoscaleYPending: p.autoscaleYPending,
+          yRange: p.chartEl._fullLayout[layoutKey].range.slice(),
+          yAutorange: p.chartEl.layout[layoutKey].autorange,
+          yFixedRange: p.chartEl.layout[layoutKey].fixedrange,
+          autoscaleYPending: axis.autoscaleYPending,
           note: t.loadedKey !== null && !t.reconstructionTime.length ? "No samples of this record in the visible time range." : "",
           error: t.error || "",
           panelNote: p.noteEl.hidden ? "" : p.noteEl.textContent,
@@ -160,9 +164,39 @@ async function plotState(page) {
         traces: p.traces.map((t) => wwErTraceLabelText(t)),
         traceKeys: p.traces.map((t) => t.key),
         xRange: p.chartEl.layout.xaxis.range.slice(),
+        combined: p.combined,
+        height: p.chartEl.getBoundingClientRect().height,
+        // Grouped panels have one axis: these are its values.
         yRange: p.chartEl._fullLayout.yaxis.range.slice(),
         yAutorange: p.chartEl.layout.yaxis.autorange,
-        autoscaleYPending: p.autoscaleYPending,
+        autoscaleYPending: p.axes.some((a) => a.autoscaleYPending),
+        axes: p.axes.map((a, index) => {
+          const full = p.chartEl._fullLayout[a.placement.layoutKey];
+          const own = p.chartEl.layout[a.placement.layoutKey];
+          return {
+            key: a.key,
+            title: full.title && full.title.text,
+            ref: a.placement.ref,
+            layoutKey: a.placement.layoutKey,
+            side: full.side,
+            anchor: full.anchor,
+            overlaying: full.overlaying || null,
+            autoshift: !!own.autoshift,
+            shift: full._shift || 0,
+            fixedRange: own.fixedrange,
+            range: full.range.slice(),
+            autorange: own.autorange,
+            showTickLabels: full.showticklabels,
+            pending: a.autoscaleYPending,
+            traceKeys: p.traces.filter((t) => t.axisIndex === index).map((t) => t.key),
+          };
+        }),
+        plotLeft: p.chartEl._fullLayout._size.l,
+        plotWidth: p.chartEl._fullLayout._size.w,
+        axisLegend: Array.from(p.legendEl.querySelectorAll(".ww-er-legend-axis")).map((el) => ({
+          title: el.querySelector(".ww-er-legend-axis-title").textContent,
+          chips: Array.from(el.querySelectorAll(".ww-legend-item")).map((chip) => chip.textContent),
+        })),
         note: p.noteEl.hidden ? "" : p.noteEl.textContent,
         error: p.errorEl.hidden ? "" : p.errorEl.textContent,
         legend: Array.from(p.legendEl.querySelectorAll(".ww-legend-item")).map((el) => el.textContent),

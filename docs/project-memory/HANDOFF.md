@@ -4,9 +4,53 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-02** (Event Reconstruction Grouped Measurement View)
+Last updated: **2026-10-02** (Event Reconstruction Combined Multi-Axis View)
 
 ## What was most recently done
+
+**Event Reconstruction Combined Multi-Axis View (DEC-132,
+2026-10-02).** The feature is not complete.
+
+- **View.** The Grouped/Combined toggle is live. Combined shows every
+  selected analog channel in one 420 px panel with one Y axis per
+  display axis (DEC-131's key, no unit conversion).
+  - Axes and traces are exactly the Grouped panels, in the same order.
+  - Axes go left, right, then alternately left/right with Plotly
+    `autoshift` + `automargin`, so there is no hard-coded spacing and
+    no maximum. An advisory notice appears above 4 axes.
+- **Y.**
+  - Autoscale Y and Reset work per axis. An axis without visible
+    samples keeps its title and legend group but shows no tick values.
+  - A channel joining or leaving an axis rescales only that axis.
+  - The autoscale waits until every needed load has started. This fixed
+    a latent race that also affected Grouped.
+- **Mode switch.** Presentation only: records, channels, definition,
+  cursors, X viewport, Fit All and drag mode are kept; Y is autoscaled
+  on entry. Traces move between panels with their data. Full-resolution
+  data, or an envelope with at least the new budget, is reused.
+- **Real-data UAT (owner YGPN files, local only).**
+  - 9 channels gave 4 axes: Voltage (kV) left, Current (kA) right,
+    Active Power (MW) outer left, Frequency (Hz) outer right.
+  - A 300 ms zoom on BAHS showed full-resolution phases with one
+    cursor pair.
+  - Grouped ↔ Combined kept the zoom.
+  - 101 channels settled in about 15 s and the legend crowds the canvas.
+- **Synthetic UAT.** 2/4/6/8 axes laid out cleanly. At 8 axes the plot
+  area is 818 of 1,190 px.
+- **UAT items (not changed).**
+  - Colour collisions, on one axis and across axes (6-colour palette).
+  - Legend crowding with many traces.
+  - Plotly 3.7 renders no string axis titles: the shared layout's X
+    title and the Grouped unit titles are not shown (pre-existing,
+    Waveform too).
+- **Tests.**
+  - New `event-reconstruction-combined.spec.js` (9).
+  - Static `TestEventReconstructionCombinedView` (8).
+  - Grouped/navigation guards updated to per-axis state.
+- **Next.** Owner UAT of Combined. Mixed-duration navigation is still
+  `[OPEN / UAT]`.
+
+## Earlier — Event Reconstruction Grouped Measurement View
 
 **Event Reconstruction Grouped Measurement View (DEC-131,
 2026-10-02).** The feature is not complete.
@@ -23,7 +67,7 @@ Last updated: **2026-10-02** (Event Reconstruction Grouped Measurement View)
   from the panel headers to the left channel tree as Cur A / Cur B / Δ
   columns (Waveform's pattern). Only the global A/B/Δt readout stays in
   the sticky toolbar.
-- **View mode.** Grouped (default); Combined shown disabled.
+- **View mode.** Grouped (default); Combined followed in DEC-132.
 - **Real-data smoke (owner YGPN files, local only).** 8 channels gave 3
   panels:
   - Voltage (kV): BAHS VR/VY/VB;
@@ -40,9 +84,6 @@ Last updated: **2026-10-02** (Event Reconstruction Grouped Measurement View)
   - Static `TestEventReconstructionGroupedView` (6).
   - Cursor/plot/navigation specs updated.
   - Full backend: 6,322 passed, 40 skipped. Full browser: 420 of 420 passed.
-- **Next.** The Combined Multi-Axis View. Mixed-duration navigation is
-  still `[OPEN / UAT]`.
-
 ## Earlier — Event Reconstruction Slice 3E
 
 **Event Reconstruction Slice 3E — A/B cursors and values (DEC-130,
