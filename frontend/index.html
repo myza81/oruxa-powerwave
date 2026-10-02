@@ -5398,6 +5398,9 @@
         .ww-cursor-line--a .ww-er-cursor-tag { color: var(--accent); }
         .ww-cursor-line--b .ww-er-cursor-tag { color: var(--error); }
         .ww-er-trace-failed { color: var(--error); font-size: 0.7rem; }
+        /* Event Reconstruction legend chips: smaller than the shared
+           .ww-legend-item base (Waveform's own legends keep theirs). */
+        .ww-er-panel .ww-legend-item { font-size: 0.65rem; }
         /* DEC-134: each Y axis's own scale is draggable (Plotly's native
            ns/n/s-resize cursors); a faint tint on hover shows the region.
            The plot area keeps its X-only cursors (DEC-129), which Plotly
@@ -15146,6 +15149,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // advisory notice suggests the Grouped view. Advisory only -- no
         // axis is ever dropped, merged or capped.
         const WW_ER_COMBINED_AXIS_ADVISORY = 4;
+        // Y-axis title size (px), Grouped and Combined alike.
+        const WW_ER_Y_AXIS_TITLE_FONT_SIZE = 11;
         // The axis-title quantity of a channel whose quantity is unknown --
         // the backend's own engineering_units.UNKNOWN_QUANTITY_LABEL (its
         // display_axis_quantity for such a channel), and the fallback when
@@ -15719,11 +15724,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // none is fixedrange; plot-area Box Zoom and Pan stay X-only
         // (DEC-129) through wwErKeepPlotAreaDragXOnly(). A scaled or
         // manual axis keeps its range, a pending one autoranges until it
-        // is scaled. In the combined panel each axis is titled
-        // with its quantity and unit (Plotly 3 renders only the
-        // { text } title form), only the first draws grid lines, and
-        // an axis without any sample shows no tick values (Plotly would
-        // invent -1..4) -- its title still says what it is for.
+        // is scaled. Every Y title is WW_ER_Y_AXIS_TITLE_FONT_SIZE: a
+        // Grouped axis is titled with its unit, a combined one with its
+        // quantity and unit. In the combined panel only the first axis
+        // draws grid lines, and an axis without any sample shows no tick
+        // values (Plotly would invent -1..4) -- its title still says what
+        // it is for.
         function wwErPanelLayout(panel) {
             const plot = wwErState.plot;
             const layout = wwAnalogPanelLayout(wwThemeColors(), {
@@ -15736,7 +15742,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const base = layout.yaxis;
             panel.axes.forEach((axis, index) => {
                 const yaxis = Object.assign({}, base, axis.placement.spec, {
-                    title: panel.combined ? { text: wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index)) } : (axis.axis.unit || ""),
+                    // Plotly 3 renders only the { text } title form.
+                    title: {
+                        text: panel.combined ? wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index)) : (axis.axis.unit || ""),
+                        font: { size: WW_ER_Y_AXIS_TITLE_FONT_SIZE },
+                    },
                     fixedrange: false,
                 }, axis.range ? { range: axis.range.slice(), autorange: false } : { autorange: true });
                 if (panel.combined) {

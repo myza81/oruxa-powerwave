@@ -200,7 +200,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         assert re.findall(r"const (?:WW_ER_|wwEr)\w+", module) == [
             "const WW_ER_SIDEBAR_WIDTH_STORAGE_KEY", "const wwErState", "const WW_ER_PANEL_HEIGHT",
             "const WW_ER_COMBINED_PANEL_HEIGHT", "const WW_ER_COMBINED_AXIS_ADVISORY",
-            "const WW_ER_UNKNOWN_QUANTITY_LABEL", "const WW_ER_ORIGIN_MAX_SPANS", "const WW_ER_RELAYOUT_DEBOUNCE_MS", "const WW_ER_TIME_AXIS_TITLE",
+            "const WW_ER_Y_AXIS_TITLE_FONT_SIZE", "const WW_ER_UNKNOWN_QUANTITY_LABEL", "const WW_ER_ORIGIN_MAX_SPANS", "const WW_ER_RELAYOUT_DEBOUNCE_MS", "const WW_ER_TIME_AXIS_TITLE",
             "const WW_ER_OUTLIER_GAP_FRACTION",
         ]
 
@@ -819,7 +819,7 @@ class TestEventReconstructionGroupedView:
         # from an axis quantity.
         module = _er_module(source)
         assert module.count(".quantity") == title.count(".quantity")
-        for use in ("{ text: wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index)) }", ": wwErAxisTitle(panel.axes[0].axis, panel.traces);",
+        for use in ("text: panel.combined ? wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index))", ": wwErAxisTitle(panel.axes[0].axis, panel.traces);",
                     "escapeHtml(wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index)))"):
             assert use in module
 
@@ -906,7 +906,8 @@ class TestEventReconstructionCombinedView:
     def test_empty_axis_keeps_its_title_and_shows_no_invented_values(self):
         source = _source()
         layout = _between(source, "function wwErPanelLayout(panel) {", "function wwErInitPanelPlot(panel)")
-        assert "title: panel.combined ? { text: wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index)) } : (axis.axis.unit || \"\")," in layout
+        assert "text: panel.combined ? wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index)) : (axis.axis.unit || \"\")," in layout
+        assert "font: { size: WW_ER_Y_AXIS_TITLE_FONT_SIZE }," in layout
         assert "yaxis.showticklabels = !axis.autoscaleYPending || wwErAxisHasData(panel, index);" in layout
         apply = _between(source, "async function wwErApplyPendingAutoscaleY(panel) {", "\n        }\n")
         assert 'if (panel.combined) fixed[axis.placement.layoutKey + ".showticklabels"] = hasData;' in apply

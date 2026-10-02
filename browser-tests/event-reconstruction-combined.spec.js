@@ -688,3 +688,46 @@ test.describe("Event Reconstruction Combined View -- axis titles", () => {
     expect((await plotState(page)).groups[0].axes.map((a) => a.title)).toEqual(["Unknown quantity (deg) — ANGLE X", "Unknown quantity — CHANNEL X"]);
   });
 });
+
+test.describe("Event Reconstruction typography", () => {
+  test("every Y-axis title is 11 px in Grouped and Combined; ER legend chips are 0.65rem; tick labels unchanged", async ({ page }) => {
+    await page.goto("/index.html");
+    await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", channels: MIXED });
+    await addRecords(page, ["STN_A"]);
+    await selectAll(page, "STN_A", ["VA", "IA", "P", "F"]);
+    await waitForPlot(page, 4);
+    const typography = () => page.evaluate(() => {
+      const root = parseFloat(getComputedStyle(document.documentElement).fontSize);
+      return {
+        root,
+        titles: wwErState.plot.panels.flatMap((p) => p.axes.map((a) => {
+          const full = p.chartEl._fullLayout[a.placement.layoutKey];
+          const rendered = p.chartEl.querySelector("." + a.placement.ref + "title");
+          return {
+            text: full.title.text,
+            size: full.title.font.size,
+            rendered: rendered ? rendered.textContent : null,
+            renderedSize: rendered ? parseFloat(rendered.style.fontSize) : null,
+            tickSize: full.tickfont.size,
+          };
+        })),
+        chips: Array.from(document.querySelectorAll("#wwErPanels .ww-legend-item")).map((el) => parseFloat(getComputedStyle(el).fontSize)),
+      };
+    });
+    // Grouped: each panel's unit title, now rendered, at 11 px.
+    let t = await typography();
+    expect(t.titles.map((x) => [x.text, x.rendered, x.size, x.renderedSize])).toEqual([
+      ["V", "V", 11, 11], ["A", "A", 11, 11], ["MW", "MW", 11, 11], ["Hz", "Hz", 11, 11],
+    ]);
+    expect(t.titles.every((x) => x.tickSize === 11)).toBe(true); // the panel font, unchanged
+    expect(t.chips.every((size) => Math.abs(size - 0.65 * t.root) < 0.01)).toBe(true);
+    // Combined: every axis title at 11 px.
+    await setMode(page, "combined");
+    await waitForPlot(page, 4);
+    t = await typography();
+    expect(t.titles.map((x) => [x.rendered, x.size, x.renderedSize])).toEqual([
+      ["Voltage (V)", 11, 11], ["Current (A)", 11, 11], ["Active Power (MW)", 11, 11], ["Frequency (Hz)", 11, 11],
+    ]);
+    expect(t.chips.every((size) => Math.abs(size - 0.65 * t.root) < 0.01)).toBe(true);
+  });
+});
