@@ -117,6 +117,21 @@ Group" assumption below.**
   - **Rebasing:** A and B follow the DEC-129 frame shift, keeping the
     same physical instant. A non-reference correction leaves them
     fixed.
+- **Grouped Measurement View (done, 2026-10-02, DEC-131):** this
+  replaces §8's provisional one panel per channel.
+  - **Panel key:** the backend display axis (`display_axis_key` =
+    engineering quantity + normalized unit, through the closed unit
+    table; blank unit = own panel).
+  - **Panel contents:** traces from several records share a panel, each
+    with its own fetch, envelope and timing. A panel is
+    `{ key, axis, traces[] }`; a trace is the former per-channel state.
+  - **Order:** panels follow `ANALOG_GROUP_ORDER` then first appearance;
+    traces follow the browser order.
+  - **Y:** Autoscale Y and Reset cover all of a panel's traces.
+  - **Cursor values:** moved to the channel tree (Cur A / Cur B / Δ
+    columns); the panels draw lines only.
+  - **View mode:** `grouped`; the Combined Multi-Axis View is still to
+    come.
 
 Date: 2026-10-01. Code references are function names in
 `frontend/index.html` and `backend/app/` at commit `33f3178`

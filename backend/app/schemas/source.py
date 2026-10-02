@@ -12,9 +12,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 
 from app.domain.channel_classification import UNDEFINED
+from app.domain.engineering_units import DisplayAxis, resolve_display_axis
 from app.domain.source import SourceMetadata
 from app.domain.source_timezone import canonical_utc
 
@@ -49,6 +50,30 @@ class AnalogChannelOut(BaseModel):
     offset: float
     primary_ratio: float | None = None
     secondary_ratio: float | None = None
+
+    def _display_axis(self) -> DisplayAxis:
+        return resolve_display_axis(self.engineering_type, self.engineering_quantity, self.unit)
+
+    # Event Reconstruction Grouped Measurement View (DEC-131): additive,
+    # computed by app.domain.engineering_units.resolve_display_axis() from
+    # this channel's own engineering_type/engineering_quantity/unit.
+    # Channels with the same non-null `display_axis_key` may share one Y
+    # axis; quantity/unit are the axis title parts. Every pre-existing
+    # field is unchanged.
+    @computed_field
+    @property
+    def display_axis_key(self) -> str | None:
+        return self._display_axis().key
+
+    @computed_field
+    @property
+    def display_axis_quantity(self) -> str:
+        return self._display_axis().quantity
+
+    @computed_field
+    @property
+    def display_axis_unit(self) -> str:
+        return self._display_axis().unit
 
 
 class DigitalChannelOut(BaseModel):

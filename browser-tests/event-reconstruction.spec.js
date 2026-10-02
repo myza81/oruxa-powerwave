@@ -276,7 +276,7 @@ test.describe("Event Reconstruction -- independent records (DEC-128)", () => {
     await addRecord(page, "BAHS 275kV");
     await addRecord(page, "BTGH");
     await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(3)");
-    await expect(page.locator("#wwErCanvasMeta")).toHaveText("3 records selected · 0 channels plotted");
+    await expect(page.locator("#wwErCanvasMeta")).toHaveText("3 records selected · 0 channels in 0 panels");
     for (const station of ["AGJH 500kV", "BAHS 275kV", "BTGH"]) {
       const row = await openMemberTree(page, station);
       await expect(row.locator("details.ww-er-member-tree details.source-recording")).toHaveCount(1);
@@ -599,7 +599,7 @@ test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
     await addRecord(page, "STN_B");
     await addRecord(page, "STN_C");
     await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(3)");
-    await expect(page.locator("#wwErCanvasMeta")).toHaveText("3 records selected · 0 channels plotted");
+    await expect(page.locator("#wwErCanvasMeta")).toHaveText("3 records selected · 0 channels in 0 panels");
     await expect(memberRow(page, "STN_B")).toContainText("+10.000 s from reference");
 
     // Update membership: remove a non-reference member.

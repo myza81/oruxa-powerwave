@@ -52,7 +52,7 @@ test.describe("Event Reconstruction Slice 3D -- X-only Box Zoom and Pan", () => 
     const before = await plotState(page);
     expect(before.panels.every((p) => p.yFixedRange === true)).toBe(true);
     // Diagonal drag on the last panel: X follows, Y does not.
-    await dragOnPanel(page, 2, 0.25, 0.5, 60);
+    await dragOnPanel(page, 1, 0.25, 0.5, 60);
     await expect.poll(async () => (await plotState(page)).atFitAll).toBe(false);
     await waitForSharedAxis(page);
     await waitForPlot(page, 3);
@@ -157,9 +157,11 @@ test.describe("Event Reconstruction Slice 3D -- staged zoom", () => {
     await waitForViewport(page, 7200.055 - (outSpan * factors.zoomIn) / 2, 7200.055 + (outSpan * factors.zoomIn) / 2);
     state = await plotState(page);
     expectSharedAxis(state);
-    state.panels[1].ticktext.forEach((text, k) => expect(Number(text)).toBeCloseTo(state.panels[1].tickvals[k] + state.origin, 6));
-    for (let k = 1; k < state.panels[1].x.length; k++) {
-      expect(Math.fround(state.panels[1].x[k]) - Math.fround(state.panels[1].x[k - 1])).toBeCloseTo(0.0002, 7);
+    const far = state.panels.find((p) => p.label === "STN_FAR · VA");
+    expect(far.x.length).toBeGreaterThan(10);
+    far.ticktext.forEach((text, k) => expect(Number(text)).toBeCloseTo(far.tickvals[k] + state.origin, 6));
+    for (let k = 1; k < far.x.length; k++) {
+      expect(Math.fround(far.x[k]) - Math.fround(far.x[k - 1])).toBeCloseTo(0.0002, 7);
     }
     // Pan stays inside Fit All even from far out.
     await page.locator("#wwErDragModePanBtn").click();
@@ -180,16 +182,16 @@ test.describe("Event Reconstruction Slice 3D -- Reset Time View and Autoscale Y"
     await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", durationS: 4 });
     await uploadRecord(page, { station: "STN_B", startClock: "10:00:10.000000", durationS: 4 });
     await addRecords(page, ["STN_A", "STN_B"]);
+    // Different units, so two panels: Voltage (V) [A VA], Current (A) [B IA].
     await selectChannel(page, "STN_A", "VA");
-    await selectChannel(page, "STN_B", "VA");
+    await selectChannel(page, "STN_B", "IA");
     await waitForPlot(page, 2);
     let state = await plotState(page);
     const full = state.panels.map((p) => p.yRange);
     // First data autoscaled, then fixed (not autorange any more).
-    for (const panel of state.panels) {
-      expect(panel.yAutorange).toBe(false);
-      expect(span(panel.yRange)).toBeGreaterThan(200);
-    }
+    for (const panel of state.panels) expect(panel.yAutorange).toBe(false);
+    expect(span(state.panels[0].yRange)).toBeGreaterThan(200);
+    expect(span(state.panels[1].yRange)).toBeGreaterThan(10);
 
     // A 2 ms window on A (values 0..~59); B has no samples there.
     await zoomTo(page, 1, 1.002);
@@ -216,7 +218,8 @@ test.describe("Event Reconstruction Slice 3D -- Reset Time View and Autoscale Y"
     // Reset: Fit All and every panel autoscaled to its Fit All data.
     await page.locator("#wwErResetViewBtn").click();
     await waitForViewport(page, 0, 14);
-    await expect.poll(async () => (await plotState(page)).panels.map((p) => span(p.yRange) > 200 && p.yAutorange === false)).toEqual([true, true]);
+    await expect.poll(async () => (await plotState(page)).panels.map((p) => span(p.yRange) > 10 && p.yAutorange === false)).toEqual([true, true]);
+    expect(span((await plotState(page)).panels[0].yRange)).toBeGreaterThan(200);
     expect((await plotState(page)).atFitAll).toBe(true);
 
     // Double-click follows the same path.
@@ -225,7 +228,8 @@ test.describe("Event Reconstruction Slice 3D -- Reset Time View and Autoscale Y"
     await expect.poll(async () => span((await plotState(page)).panels[0].yRange)).toBeLessThan(80);
     await page.locator("#wwErPanels .ww-er-panel").nth(0).locator(".nsewdrag").dblclick();
     await waitForViewport(page, 0, 14);
-    await expect.poll(async () => (await plotState(page)).panels.map((p) => span(p.yRange) > 200 && p.yAutorange === false)).toEqual([true, true]);
+    await expect.poll(async () => (await plotState(page)).panels.map((p) => span(p.yRange) > 10 && p.yAutorange === false)).toEqual([true, true]);
+    expect(span((await plotState(page)).panels[0].yRange)).toBeGreaterThan(200);
   });
 });
 
@@ -368,7 +372,7 @@ test.describe("Event Reconstruction Slice 3D -- Waveform isolation", () => {
     await page.locator("#wwErZoomOutBtn").click();
     await page.locator("#wwErAutoscaleYBtn").click();
     await dragOnPanel(page, 0, 0.3, 0.6, 40);
-    await page.locator("#wwErPanels .ww-er-panel").nth(1).locator(".nsewdrag").dblclick();
+    await page.locator("#wwErPanels .ww-er-panel").nth(0).locator(".nsewdrag").dblclick();
     await page.locator("#wwErResetViewBtn").click();
     await waitForPlot(page, 2);
 

@@ -253,3 +253,25 @@ Quantity level) and `backend/tests/test_overcurrent_domain.py` /
 | 120 MVA | 120 000 000 VA |
 | 500 kVA | 500 000 VA |
 | 2.4 kA primary, CT 1200:1, pickup 0.8 A secondary | relay current 2.0 A, pickup multiple 2.5x |
+
+## Display axis (Event Reconstruction Grouped Measurement View, DEC-131)
+
+`resolve_display_axis(engineering_type, engineering_quantity, raw_unit)`
+answers a display question: may two channels share one Y axis? It does
+not perform a calculation.
+
+- **Quantity.** The channel's known Engineering Quantity, otherwise the
+  quantity its broad type unambiguously means. A broad "Power" channel
+  resolves to Active, Reactive or Apparent Power only when exactly one
+  of those unit families in `_ALIASES` contains its unit.
+- **Unit.** It is normalized through `parse_engineering_unit()`, for
+  example kV/KV/kv → `kV`. The key is `"<quantity>|<unit>"`.
+- **No conversion.** Display units are never converted: V and kV are
+  different axes, and the values stay as recorded.
+- **Units outside the table** (pu, deg, …) key on the exact stripped
+  string (`"<quantity>|raw:<unit>"`).
+- **A blank unit** gives no key, so it never shares an axis.
+
+It is exposed as the additive computed fields `display_axis_key` /
+`display_axis_quantity` / `display_axis_unit` on the channel and
+calculated-channel APIs. Nothing here changes any calculation path.

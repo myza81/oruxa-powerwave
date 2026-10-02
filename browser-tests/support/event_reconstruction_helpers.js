@@ -85,54 +85,87 @@ async function selectChannel(page, station, channelName) {
 
 // Waits until `count` panels exist and every one has finished loading
 // for the current viewport.
+// Waits until `count` channels (traces) are plotted and every one has
+// finished loading for the current viewport.
 async function waitForPlot(page, count) {
   await expect.poll(() => page.evaluate(() => {
     const plot = wwErState.plot;
-    return plot.panels.length + ":" + plot.panels.every((p) => p.plotlyReady && p.loadedKey !== null && p.loadingEl.hidden);
+    const traces = plot.panels.flatMap((p) => p.traces);
+    return traces.length + ":" + (plot.panels.every((p) => p.plotlyReady) &&
+      traces.every((t) => !t.loading && (t.loadedKey !== null || t.error !== null)));
   })).toBe(count + ":true");
 }
 
-// A snapshot of every panel: identity, data and what Plotly holds.
+// A snapshot of the plot. `panels` is CHANNEL-level (one entry per trace,
+// in panel order then trace order), each carrying its own data and the
+// axis state of the panel it is drawn on; `groups` is panel-level.
 async function plotState(page) {
   return page.evaluate(() => {
     const plot = wwErState.plot;
+    const channels = [];
+    plot.panels.forEach((p, panelIndex) => {
+      const yRange = p.chartEl._fullLayout.yaxis.range.slice();
+      p.traces.forEach((t, traceIndex) => {
+        const data = p.chartEl.data[traceIndex] || { x: [], customdata: [], line: {} };
+        const chip = p.legendEl.querySelector('[data-er-trace-key="' + CSS.escape(t.key) + '"]');
+        channels.push({
+          key: t.key,
+          recordId: t.recordId,
+          sourceId: t.sourceId,
+          channelName: t.channelName,
+          kind: t.kind,
+          label: wwErTraceLabelText(t),
+          panelIndex,
+          panelTitle: p.labelEl.textContent,
+          legend: chip ? chip.textContent : "",
+          legendColor: chip ? chip.querySelector(".ww-legend-dot").style.background : "",
+          r: t.reconstructionTime.slice(),
+          values: t.values.slice(),
+          representation: t.representation,
+          unit: t.unit,
+          totalOffsetS: t.timing.totalOffsetS,
+          timingStartS: t.timing.startS,
+          timingEndS: t.timing.endS,
+          x: Array.from(data.x || []),
+          customdata: Array.from(data.customdata || []),
+          traceName: data.name,
+          traceColor: data.line && data.line.color,
+          traceMeta: data.meta,
+          traceType: data.type,
+          xRange: p.chartEl.layout.xaxis.range.slice(),
+          tickvals: (p.chartEl.layout.xaxis.tickvals || []).slice(),
+          ticktext: (p.chartEl.layout.xaxis.ticktext || []).slice(),
+          dragmode: p.chartEl.layout.dragmode,
+          yRange,
+          yAutorange: p.chartEl.layout.yaxis.autorange,
+          yFixedRange: p.chartEl.layout.yaxis.fixedrange,
+          autoscaleYPending: p.autoscaleYPending,
+          note: t.loadedKey !== null && !t.reconstructionTime.length ? "No samples of this record in the visible time range." : "",
+          error: t.error || "",
+          panelNote: p.noteEl.hidden ? "" : p.noteEl.textContent,
+          panelError: p.errorEl.hidden ? "" : p.errorEl.textContent,
+        });
+      });
+    });
     return {
       viewport: plot.viewport,
       fitAll: plot.fitAll,
       origin: plot.origin,
       atFitAll: plot.atFitAll,
-      panels: plot.panels.map((p) => ({
+      viewMode: plot.viewMode,
+      panels: channels,
+      groups: plot.panels.map((p) => ({
         key: p.key,
-        recordId: p.recordId,
-        sourceId: p.sourceId,
-        channelName: p.channelName,
-        kind: p.kind,
-        label: p.labelEl.textContent,
-        legend: p.legendEl.textContent,
-        legendColor: p.legendEl.querySelector(".ww-legend-dot").style.background,
-        r: p.reconstructionTime.slice(),
-        values: p.values.slice(),
-        representation: p.representation,
-        unit: p.unit,
-        totalOffsetS: p.timing.totalOffsetS,
-        timingStartS: p.timing.startS,
-        timingEndS: p.timing.endS,
-        x: Array.from(p.chartEl.data[0].x),
-        customdata: Array.from(p.chartEl.data[0].customdata || []),
-        traceName: p.chartEl.data[0].name,
-        traceColor: p.chartEl.data[0].line.color,
-        traceMeta: p.chartEl.data[0].meta,
-        traceType: p.chartEl.data[0].type,
+        title: p.labelEl.textContent,
+        traces: p.traces.map((t) => wwErTraceLabelText(t)),
+        traceKeys: p.traces.map((t) => t.key),
         xRange: p.chartEl.layout.xaxis.range.slice(),
-        tickvals: (p.chartEl.layout.xaxis.tickvals || []).slice(),
-        ticktext: (p.chartEl.layout.xaxis.ticktext || []).slice(),
-        dragmode: p.chartEl.layout.dragmode,
         yRange: p.chartEl._fullLayout.yaxis.range.slice(),
         yAutorange: p.chartEl.layout.yaxis.autorange,
-        yFixedRange: p.chartEl.layout.yaxis.fixedrange,
         autoscaleYPending: p.autoscaleYPending,
         note: p.noteEl.hidden ? "" : p.noteEl.textContent,
         error: p.errorEl.hidden ? "" : p.errorEl.textContent,
+        legend: Array.from(p.legendEl.querySelectorAll(".ww-legend-item")).map((el) => el.textContent),
       })),
     };
   });

@@ -44,8 +44,11 @@ test.describe("Event Reconstruction Slice 3C -- basic plotting", () => {
     await waitForPlot(page, 3);
 
     const state = await plotState(page);
-    await expect(page.locator("#wwErPanels .ww-er-panel")).toHaveCount(3);
-    await expect(page.locator("#wwErCanvasMeta")).toHaveText("2 records selected · 3 channels plotted");
+    // Grouped Measurement View: VA and the calculated -VA share the
+    // Voltage (V) panel; IA has the Current (A) panel.
+    await expect(page.locator("#wwErPanels .ww-er-panel")).toHaveCount(2);
+    await expect(page.locator("#wwErCanvasMeta")).toHaveText("2 records selected · 3 channels in 2 panels");
+    expect(state.groups.map((g) => g.title)).toEqual(["Voltage (V)", "Current (A)"]);
     const [va, negVa, ib] = state.panels;
     expect([va.label, negVa.label, ib.label]).toEqual(["STN_A · Bus VA renamed", "STN_A · -VA", "STN_B · IA"]);
     expect(va.kind).toBe("analog");
@@ -54,7 +57,7 @@ test.describe("Event Reconstruction Slice 3C -- basic plotting", () => {
     expect(va.traceName).toBe("Bus VA renamed");
     expect(va.traceColor).toBe("#123456");
     expect(va.legendColor).toBe("rgb(18, 52, 86)");
-    expect(va.legend).toBe("Bus VA renamed (V)");
+    expect(va.legend).toBe("STN_A · Bus VA renamed");
     expect(va.traceType).toBe("scattergl");
     expect(va.traceMeta).toBe(va.key);
     // Calculated channel: its parent's timing, its own values.
@@ -93,10 +96,10 @@ test.describe("Event Reconstruction Slice 3C -- basic plotting", () => {
     await selectChannel(page, "STN_LATE", "VA");
     await waitForPlot(page, 4);
     const labels = (await plotState(page)).panels.map((p) => p.label);
-    // Reconstruction record order (STN_LATE was added first), then the
-    // tree's engineering-type order (Voltage before Current).
-    expect(labels).toEqual(["STN_LATE · VA", "STN_LATE · IA", "STN_EARLY · VA", "STN_EARLY · IA"]);
-    await expect(page.locator("#wwErPanels .ww-panel-label")).toHaveText(labels);
+    // Panels in engineering-type order (Voltage before Current); inside
+    // each, reconstruction record order (STN_LATE was added first).
+    expect(labels).toEqual(["STN_LATE · VA", "STN_EARLY · VA", "STN_LATE · IA", "STN_EARLY · IA"]);
+    await expect(page.locator("#wwErPanels .ww-panel-label")).toHaveText(["Voltage (V)", "Current (A)"]);
   });
 });
 
@@ -239,7 +242,8 @@ test.describe("Event Reconstruction Slice 3C -- mixed sampling and precision", (
     await selectChannel(page, "STN_FAR", "VA");
     await waitForPlot(page, 2);
     let state = await plotState(page);
-    const far = state.panels[1];
+    const byLabel = (st, label) => st.panels.find((p) => p.label === label);
+    const far = byLabel(state, "STN_FAR · VA");
     expect(far.totalOffsetS).toBeCloseTo(7200.000123, 9);
     // Under Fit All every sample is there, including both boundary samples.
     expect(far.r.length).toBe(1001);
@@ -251,7 +255,7 @@ test.describe("Event Reconstruction Slice 3C -- mixed sampling and precision", (
     await zoomTo(page, start, start + 0.01);
     state = await plotState(page);
     expectSharedAxis(state);
-    const zoomed = state.panels[1];
+    const zoomed = byLabel(state, "STN_FAR · VA");
     // The origin moved next to the window: Plotly sees small numbers.
     expect(Math.abs(state.origin - state.viewport.start)).toBeLessThan(0.01 * 101);
     expect(Math.max(...zoomed.x.map(Math.abs))).toBeLessThan(1);
@@ -271,8 +275,8 @@ test.describe("Event Reconstruction Slice 3C -- mixed sampling and precision", (
     const roundTrip = await page.evaluate((r) => wwErPlotXToReconstruction(wwErReconstructionToPlotX(r, 7200.05), 7200.05), 7200.0501234);
     expect(roundTrip).toBeCloseTo(7200.0501234, 10);
     // The reference record has no sample in this window.
-    expect(state.panels[0].note).toBe("No samples of this record in the visible time range.");
-    expect(state.panels[0].x).toEqual([]);
+    expect(byLabel(state, "STN_REF · F").note).toBe("No samples of this record in the visible time range.");
+    expect(byLabel(state, "STN_REF · F").x).toEqual([]);
   });
 });
 
@@ -299,7 +303,7 @@ test.describe("Event Reconstruction Slice 3C -- shared viewport and interaction"
     expectSharedAxis(state);
 
     // Box zoom on the LAST panel: every panel follows.
-    await dragOnPanel(page, 2, 0.25, 0.5, 60);
+    await dragOnPanel(page, 1, 0.25, 0.5, 60);
     await expect.poll(async () => (await plotState(page)).atFitAll).toBe(false);
     await waitForSharedAxis(page);
     await waitForPlot(page, 3);
@@ -332,7 +336,7 @@ test.describe("Event Reconstruction Slice 3C -- shared viewport and interaction"
     expectSharedAxis(state);
 
     // Double-click any panel: Fit All for every panel.
-    await page.locator("#wwErPanels .ww-er-panel").nth(1).locator(".nsewdrag").dblclick();
+    await page.locator("#wwErPanels .ww-er-panel").nth(0).locator(".nsewdrag").dblclick();
     await expect.poll(async () => (await plotState(page)).atFitAll).toBe(true);
     await waitForSharedAxis(page);
     await waitForPlot(page, 3);
@@ -477,7 +481,10 @@ test.describe("Event Reconstruction Slice 3C -- empty, error and removed states"
       route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ detail: { code: "internal_error", message: "boom" } }) }));
     await addRecords(page, ["STN_A", "STN_B", "STN_C"]);
     for (const station of ["STN_A", "STN_B", "STN_C"]) await selectChannel(page, station, "VA");
-    await expect(page.locator("#wwErPanels .ww-er-panel").nth(1).locator(".ww-error")).toHaveText("Something went wrong on our end. Please try again.");
+    // All three VA channels share one Voltage panel: the failure is
+    // named on that panel and on its own legend chip; the others plot.
+    await expect(page.locator("#wwErPanels .ww-er-panel").nth(0).locator(".ww-error")).toHaveText("STN_B · VA: Something went wrong on our end. Please try again.");
+    await expect(page.locator('#wwErPanels .ww-legend-item', { hasText: "STN_B · VA" })).toContainText("not loaded");
     // The healthy panels still load (the failing one never completes).
     await expect.poll(async () => (await plotState(page)).panels.map((p) => p.r.length)).toEqual([1001, 0, 1001]);
     let state = await plotState(page);
@@ -492,7 +499,7 @@ test.describe("Event Reconstruction Slice 3C -- empty, error and removed states"
     await expect(page.locator(`#recordingsTableBody tr[data-source-id="${sourceC}"]`)).toHaveCount(0);
     await openEventReconstruction(page);
     await expect(page.locator('#wwErMembersPanel .ww-er-member-row[data-member-status="stale"]')).toHaveCount(1);
-    await expect(page.locator("#wwErPanels .ww-er-panel")).toHaveCount(2);
+    await expect(page.locator("#wwErPanels .ww-er-panel")).toHaveCount(1); // both remaining VA channels share one panel
     state = await plotState(page);
     expect(state.panels.map((p) => p.label)).toEqual(["STN_A · VA", "STN_B · VA"]);
     expect(state.fitAll.end).toBeCloseTo(2, 9);
@@ -535,7 +542,7 @@ test.describe("Event Reconstruction Slice 3C -- Waveform isolation", () => {
     await selectChannel(page, "STN_A", "IA");
     await selectChannel(page, "STN_B", "VA");
     await waitForPlot(page, 2);
-    expect((await plotState(page)).panels[0].label).toBe("STN_A · Feeder IA");
+    expect((await plotState(page)).panels.map((p) => p.label)).toContain("STN_A · Feeder IA");
     await zoomTo(page, 0.6, 1.2);
     await page.locator("#wwErDragModePanBtn").click();
     await expect.poll(async () => (await plotState(page)).panels.every((p) => p.dragmode === "pan")).toBe(true);

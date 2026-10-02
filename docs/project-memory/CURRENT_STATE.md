@@ -9,17 +9,17 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-10-02** — **Event Reconstruction Slice
-3E: A/B cursors and values** (DEC-130), on top of navigation (Slice 3D,
-DEC-129), the first plotted reconstruction (Slice 3C, DEC-127 update),
-the record model (DEC-128) and Slices 0–3B (DEC-123 to DEC-127), on
+Last meaningful update: **2026-10-02** — **Event Reconstruction Grouped
+Measurement View** (DEC-131), on top of A/B cursors (Slice 3E, DEC-130),
+navigation (Slice 3D, DEC-129), the first plotted reconstruction (Slice
+3C), the record model (DEC-128) and Slices 0–3B (DEC-123 to DEC-127), on
 branch `feat/event-reconstruction`, not merged. The feature is **not**
 complete. Earlier, on 2026-10-01:
 **Native BEN import: owner UAT passed; merged to `main`** (DEC-119
 parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
 DEC-122 display timezone).
 
-**Event Reconstruction (DEC-123 to DEC-130) — Slices 0–3E.**
+**Event Reconstruction (DEC-123 to DEC-131) — Slices 0–3E + Grouped View.**
 
 - **Rule (DEC-128).** Waveform continues to use its existing Time Group
   model. Event Reconstruction uses independent imported event/record
@@ -51,10 +51,20 @@ DEC-122 display timezone).
     Reconstruction's own local visibility (`wwErState.selectedChannels`,
     keyed by record), never `ww.displayed`. Stale members show no tree.
   - **Plotting (Slice 3C).** The "Reconstruction Timeline" canvas plots
-    every selected analog channel of the current records. All of this
-    is first-UAT scope and provisional:
-    - one panel per channel, in the browser's order (record → recording
-      → engineering type → channel);
+    every selected analog channel of the current records:
+    - **Grouped Measurement View (DEC-131)**: one panel per display axis
+      (engineering quantity + normalized unit, resolved by the backend's
+      `resolve_display_axis()` and exposed as `display_axis_*` on the
+      channel APIs). For example Voltage (kV), Active Power (MW),
+      Frequency (Hz).
+      - Compatible channels share a panel across records, native and
+        calculated alike; each trace keeps its own timing, fetch and
+        envelope.
+      - V vs kV and Active vs Reactive Power never share.
+      - Panels follow Waveform's engineering-type order; traces follow
+        the browser order.
+      - The Combined Multi-Axis View is shown disabled (later slice).
+      - The one-panel-per-channel scaffold is retired;
     - engineering units only;
     - one shared relative reconstruction-time X axis;
     - Fit All as the initial view.
@@ -86,9 +96,11 @@ DEC-122 display timezone).
     - Global cursors in reconstruction time, one each, drawn on every
       panel; dragged on any panel; kept inside Fit All.
     - The readout shows A, B and Δt with µs digits (relative time only).
-    - Each panel shows its nearest real sample at A and B (no
-      interpolation) and Δ. Outside a record's data it says "No
-      sample"; a recorded gap says "Unavailable".
+    - Each plotted channel's nearest real sample at A and B (no
+      interpolation) and Δ appear in the left channel tree's Cur A /
+      Cur B / Δ columns (Waveform's sidebar pattern). The panels show
+      only the lines. Outside a record's data it says "No sample"; a
+      recorded gap says "Unavailable".
     - Calculated channels use their timing parent.
     - Cursors rebase with the reconstruction zero (reference change,
       reference correction), keeping the physical instant. A correction
@@ -147,7 +159,9 @@ DEC-122 display timezone).
     record can be a sliver, and one wrong-event record can make every
     trace sub-pixel (now named by the Fit All span notice, which is not
     the solution);
-  - the panel layout (one panel per channel is provisional);
+  - the Combined Multi-Axis View (one panel, several Y axes);
+  - colour collisions inside a grouped panel (Waveform's 6-colour
+    palette; owner decision needed for any disambiguation);
   - the final manual left/right synchronization UX (Slice 4);
   - the final grouped and multi-axis visualization (Slices 6A/6B).
 

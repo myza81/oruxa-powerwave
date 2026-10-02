@@ -65,6 +65,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from app.domain.channel_classification import (
+    CURRENT,
     ENGINEERING_QUANTITY_ACTIVE_POWER,
     ENGINEERING_QUANTITY_APPARENT_POWER,
     ENGINEERING_QUANTITY_CURRENT,
@@ -72,6 +73,12 @@ from app.domain.channel_classification import (
     ENGINEERING_QUANTITY_REACTIVE_POWER,
     ENGINEERING_QUANTITY_ROCOF,
     ENGINEERING_QUANTITY_VOLTAGE,
+    FREQUENCY,
+    KNOWN_ENGINEERING_QUANTITIES,
+    POWER,
+    ROCOF,
+    UNDEFINED,
+    VOLTAGE,
 )
 
 # ---------------------------------------------------------------------------
@@ -252,3 +259,85 @@ def convert_array_to_canonical(
     if scale is None:
         return None
     return values.astype(np.float64, copy=True) * scale
+
+
+# ---------------------------------------------------------------------------
+# Display axis -- which channels may share one Y axis (Event
+# Reconstruction Grouped Measurement View, DEC-131)
+# ---------------------------------------------------------------------------
+
+#: Broad `engineering_type` -> the Engineering Quantity it unambiguously
+#: means. "Power" is deliberately absent: Active/Reactive/Apparent share
+#: that broad type and are told apart by their unit family below.
+_BROAD_TYPE_TO_QUANTITY: dict[str, str] = {
+    VOLTAGE: ENGINEERING_QUANTITY_VOLTAGE,
+    CURRENT: ENGINEERING_QUANTITY_CURRENT,
+    FREQUENCY: ENGINEERING_QUANTITY_FREQUENCY,
+    ROCOF: ENGINEERING_QUANTITY_ROCOF,
+}
+
+_POWER_QUANTITIES = (
+    ENGINEERING_QUANTITY_ACTIVE_POWER,
+    ENGINEERING_QUANTITY_REACTIVE_POWER,
+    ENGINEERING_QUANTITY_APPARENT_POWER,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class DisplayAxis:
+    """The Y-axis interpretation of one channel's values as recorded.
+
+    Two channels may share one Y axis exactly when their `key`s are equal
+    (and not `None`). `quantity`/`unit` are the user-facing axis title
+    parts ("Active Power", "MW"). `key` is `None` when no safe shared
+    interpretation exists (blank unit), so such a channel never shares an
+    axis with anything."""
+
+    quantity: str
+    unit: str
+    key: str | None
+    normalized: bool
+
+
+def resolve_display_axis(engineering_type: str, engineering_quantity: str, raw_unit: str | None) -> DisplayAxis:
+    """The display axis for a channel's own engineering values -- never
+    guessed from a channel name, and only ever using this module's closed,
+    quantity-aware alias table (no generic unit parsing):
+
+    1. The quantity is the channel's own `engineering_quantity` when it is
+       a known one, otherwise the quantity its broad `engineering_type`
+       unambiguously means (Voltage, Current, Frequency, ROCOF). A broad
+       "Power" channel resolves to Active, Reactive or Apparent Power only
+       when exactly one of those unit families contains its unit (MW vs
+       Mvar vs MVA).
+    2. A unit the table recognises for that quantity is normalized to its
+       canonical spelling (kV/KV/kv -> kV); channels then share an axis by
+       (quantity, normalized unit). Display units are NOT converted -- V
+       and kV stay separate axes.
+    3. Otherwise (angle units, "pu", an unsupported spelling) the exact
+       stripped unit string is kept and only identical strings of the same
+       quantity share an axis.
+    4. A blank unit has no safe shared interpretation: `key` is `None`.
+    """
+    unit = (raw_unit or "").strip()
+    if engineering_quantity in KNOWN_ENGINEERING_QUANTITIES and engineering_quantity != UNDEFINED:
+        candidates: tuple[str, ...] = (engineering_quantity,)
+    elif engineering_type in _BROAD_TYPE_TO_QUANTITY:
+        candidates = (_BROAD_TYPE_TO_QUANTITY[engineering_type],)
+    elif engineering_type == POWER:
+        candidates = _POWER_QUANTITIES
+    else:
+        candidates = ()
+    resolved = [
+        (quantity, parsed.canonical_unit)
+        for quantity in candidates
+        for parsed in (parse_engineering_unit(quantity, unit),)
+        if parsed.canonical_unit is not None
+    ]
+    if len(resolved) == 1:
+        quantity, canonical_unit = resolved[0]
+        return DisplayAxis(quantity=quantity, unit=canonical_unit, key=quantity + "|" + canonical_unit, normalized=True)
+    quantity = candidates[0] if len(candidates) == 1 else (engineering_type or UNDEFINED)
+    if not unit:
+        return DisplayAxis(quantity=quantity, unit="", key=None, normalized=False)
+    return DisplayAxis(quantity=quantity, unit=unit, key=quantity + "|raw:" + unit, normalized=False)

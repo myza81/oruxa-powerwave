@@ -5397,8 +5397,23 @@
         }
         .ww-cursor-line--a .ww-er-cursor-tag { color: var(--accent); }
         .ww-cursor-line--b .ww-er-cursor-tag { color: var(--error); }
-        .ww-er-panel-cursor-values { gap: 4px; }
-        .ww-er-panel-cursor-values .ww-er-cursor-value-item { padding: 0 6px; }
+        .ww-er-trace-failed { color: var(--error); font-size: 0.7rem; }
+        /* The Event Reconstruction channel tree nests two levels deeper than
+           the Waveform tree it mirrors (record -> Channels -> recording).
+           With its Cur A / Cur B / Δ columns (Waveform's sidebar pattern) it
+           keeps Waveform's usable table width by tightening only its own
+           nested padding and cell padding. */
+        .ww-er-member-row > .ww-er-row-body { padding-left: 8px; padding-right: 8px; }
+        .ww-er-member-tree > .group-body,
+        .ww-er-member-tree .channel-group > .group-body { padding-left: 2px; padding-right: 2px; }
+        .ww-er-member-tree .source-recording-body { padding-left: 0; padding-right: 0; }
+        .ww-er-member-tree table.channels th, .ww-er-member-tree table.channels td { padding-left: 5px; padding-right: 5px; }
+        /* The channel name takes the remaining width and ellipsizes
+           (.channel-name-text), so the cursor columns stay in view. */
+        .ww-er-member-tree table.channels td:first-child { width: 100%; max-width: 0; }
+        .ww-toolbar .theme-toggle.ww-icon-group.ww-er-view-mode button { width: auto; padding: 0 10px; font-size: 0.72rem; }
+        .ww-toolbar .theme-toggle.ww-icon-group.ww-er-view-mode button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .ww-er-panel .ww-error { white-space: pre-line; }
         .ww-er-cursor-close {
             appearance: none;
             border: none;
@@ -9140,6 +9155,13 @@
                                     <path d="M12.2 10V6.4a1.1 1.1 0 0 1 2.2 0v4.1c0 2.8-2 5-4.7 5-1.8 0-3-.6-3.9-1.9L4 10.4c-.4-.6-.2-1.3.4-1.6.6-.3 1.3 0 1.6.6L7 10.6"/>
                                 </svg></span>
                             </button>
+                        </div>
+                        <!-- DEC-131: Event Reconstruction view mode. Grouped Measurement
+                             View is implemented; the Combined Multi-Axis View is a later
+                             slice, shown disabled so nothing implies it works. -->
+                        <div class="theme-toggle ww-icon-group ww-er-view-mode" id="wwErViewModeToggle" role="group" aria-label="Event Reconstruction view">
+                            <button type="button" id="wwErViewGroupedBtn" aria-pressed="true" title="Grouped Measurement View: channels with the same quantity and unit share a panel">Grouped</button>
+                            <button type="button" id="wwErViewCombinedBtn" aria-pressed="false" disabled title="Combined Multi-Axis View — not available yet">Combined</button>
                         </div>
                     </div>
                     <div id="wwErViewArea">
@@ -14373,6 +14395,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             loadSeq: 0,
             busy: false,
             plot: {
+                // DEC-131: "grouped" (implemented) | "combined" (the future
+                // one-panel multi-axis view, not available yet).
+                viewMode: "grouped",
                 panels: [],
                 viewport: null,
                 fitAll: null,
@@ -14795,6 +14820,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 '<div class="group-body">' + tableHtml + "</div></details>";
         }
 
+        // The Cur A / Cur B / Δ columns of a channel table (Slice 3E
+        // values, shown Waveform's way: in the channel tree, not on the
+        // waveform panels).
+        function wwErTreeCursorColumns(keyFor) {
+            return [
+                ["Cur A", (c) => wwErTreeCursorCellHtml(keyFor(c), "a"), { raw: true, className: "cur-value-col" }],
+                ["Cur B", (c) => wwErTreeCursorCellHtml(keyFor(c), "b"), { raw: true, className: "cur-value-col" }],
+                ["Δ", (c) => wwErTreeCursorCellHtml(keyFor(c), "delta"), { raw: true, className: "cur-value-col" }],
+            ];
+        }
+
         function wwErSourceTreeHtml(member, sourceId, open) {
             const data = wwErState.channelsBySource[sourceId];
             const source = wwErState.sources.find((s) => s.source_id === sourceId);
@@ -14809,6 +14845,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         wwErSubgroupHtml(base + ":analog:" + type, type, channels.length, renderChannelTable(channels, [
                             ["Channel", (c) => analogChannelNameCellHtml({ source_id: sourceId }, c), { raw: true }],
                             ["Phase", (c) => c.phase || "—"],
+                            ...wwErTreeCursorColumns((c) => wwErChannelSelectionKey(member.record_id, sourceId, c.name)),
                         ], null, (c) => wwErChannelRowAttrs(member.record_id, "analog", sourceId, c.name, sourceId)))).join("") + "</div>"
                     : '<p class="empty-state">No analog channels.</p>';
                 const calculated = wwErState.calculatedChannels.filter((c) => c.reference_source_id === sourceId);
@@ -14818,6 +14855,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                             const sorted = channels.slice().sort((a, b) => (a.name < b.name ? -1 : 1));
                             return wwErSubgroupHtml(base + ":calculated:" + type, type, sorted.length, renderChannelTable(sorted, [
                                 ["Channel", (c) => analogChannelNameCellHtml({ source_id: c.id }, c), { raw: true }],
+                                ...wwErTreeCursorColumns((c) => wwErChannelSelectionKey(member.record_id, c.id, c.name)),
                             ], null, (c) => wwErChannelRowAttrs(member.record_id, "calculated", c.id, c.name, c.reference_source_id)));
                         }).join("") + "</div>", true)
                     : "";
@@ -14962,9 +15000,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // wwAnalogPanelLayout, wwPanelMarkupHtml, point budget, clamps).
         // Never ww.panels, ww.displayed or a Time Group viewport.
         //
-        // First-UAT scope (all provisional): one panel per selected analog
-        // channel, in the browser's own order; engineering units only;
-        // relative reconstruction time on X; Fit All as the initial view.
+        // Grouped Measurement View (DEC-131, replacing the Slice 3C
+        // one-panel-per-channel scaffold): one panel per display axis
+        // (engineering quantity + normalized unit, from the backend), each
+        // holding every selected channel on that axis -- across records,
+        // native and calculated alike; every trace keeps its own timing,
+        // fetch and envelope. Engineering units only; relative
+        // reconstruction time on X; Fit All as the initial view.
         // Navigation (Slice 3D, DEC-129): X-only Box Zoom and Pan, staged
         // Zoom In/Out, Reset Time View (Fit All + autoscale Y) and
         // Autoscale Y -- every one acting on the one shared viewport in
@@ -15126,7 +15168,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             };
         }
 
-        // The shared fetch core's request for one plotted channel, or null
+        // The shared fetch core's request for one plotted channel (trace), or null
         // when the source has no sample in the viewport (skipped: no
         // request). Native range from the Slice 3B inverse; engineering
         // units only; timeOffsetS 0, so the core returns native times and
@@ -15136,14 +15178,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // sample): `r - offset` can land a rounding error inside the
         // source and drop its boundary sample (e.g. 7200.2 - 7200 =
         // 0.19999999999982 excludes the sample at 0.2 under Fit All).
-        function wwErFetchRequestFor(panel, timing, viewport, pointBudget) {
+        function wwErFetchRequestFor(trace, timing, viewport, pointBudget) {
             if (!timing || !viewport) return null;
             if (timing.endS < viewport.start || timing.startS > viewport.end) return null;
             return {
-                requestState: panel,
-                sourceId: panel.sourceId,
-                channelName: panel.channelName,
-                isCalculated: panel.kind === "calculated",
+                requestState: trace,
+                sourceId: trace.sourceId,
+                channelName: trace.channelName,
+                isCalculated: trace.kind === "calculated",
                 nativeStart: viewport.start <= timing.startS ? null : wwErReconstructionTimeToSourceElapsed(viewport.start, timing.totalOffsetS),
                 nativeEnd: viewport.end >= timing.endS ? null : wwErReconstructionTimeToSourceElapsed(viewport.end, timing.totalOffsetS),
                 pointBudget,
@@ -15229,6 +15271,25 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // -- what to plot --
 
+        // The display axis of a plotted channel (DEC-131): the backend's
+        // `display_axis_key`/`_quantity`/`_unit` (app.domain.
+        // engineering_units.resolve_display_axis()) for a recording's
+        // channel or a calculated channel, plus its broad engineering_type
+        // for panel ordering. Never derived from a channel name or unit
+        // string here.
+        function wwErChannelAxis(item) {
+            const channel = item.kind === "calculated"
+                ? wwErState.calculatedChannels.find((c) => c.id === item.sourceId)
+                : ((wwErState.channelsBySource[item.sourceId] || {}).analog_channels || []).find((c) => c.name === item.channelName);
+            if (!channel) return { key: null, quantity: "Undefined", unit: "", engineeringType: "Undefined" };
+            return {
+                key: channel.display_axis_key === undefined ? null : channel.display_axis_key,
+                quantity: channel.display_axis_quantity || channel.engineering_type || "Undefined",
+                unit: channel.display_axis_unit || "",
+                engineeringType: channel.engineering_type || "Undefined",
+            };
+        }
+
         // The selected analog channels in the browser's own order:
         // reconstruction record order, then each record's recordings, then
         // Analog Channels by engineering type (wwGroupChannelsByEngineeringType(),
@@ -15265,51 +15326,87 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // loaded) keep a stable order after the rest.
             for (const key of [...selected.keys()].sort()) ordered.push(Object.assign({ key }, selected.get(key)));
             return ordered
-                .map((item) => Object.assign(item, { timing: wwErSourceTiming(item.sourceId) }))
+                .map((item) => Object.assign(item, { timing: wwErSourceTiming(item.sourceId), axis: wwErChannelAxis(item) }))
                 .filter((item) => item.timing && item.timing.recordId === item.recordId);
         }
 
-        // -- panels --
+        // Grouped Measurement View (DEC-131): channels whose display axis
+        // keys are equal share one panel -- across records, native and
+        // calculated alike. A channel with no safe shared axis (key null)
+        // gets a panel of its own. Panels follow Waveform's
+        // engineering-type order (ANALOG_GROUP_ORDER), then first
+        // appearance; traces inside a panel keep the browser order.
+        function wwErPlotGroups(items) {
+            const groups = new Map();
+            items.forEach((item, index) => {
+                const key = item.axis.key !== null ? "axis:" + item.axis.key : "solo:" + item.key;
+                if (!groups.has(key)) groups.set(key, { key, axis: item.axis, first: index, items: [] });
+                groups.get(key).items.push(item);
+            });
+            const rank = (type) => {
+                const index = ANALOG_GROUP_ORDER.indexOf(type);
+                return index === -1 ? ANALOG_GROUP_ORDER.length : index;
+            };
+            return [...groups.values()].sort((a, b) =>
+                (rank(a.axis.engineeringType) - rank(b.axis.engineeringType)) || (a.first - b.first));
+        }
 
-        function wwErPanelLabelHtml(panel) {
-            return wwRichLabelHtml(escapeHtml(wwErMemberName(panel.recordId)) + " · " +
-                wwChannelDisplayNameHtml(panel.sourceId, panel.channelName));
+        // "Active Power (MW)", "Voltage (kV)", ... from the backend's axis
+        // quantity/unit.
+        function wwErAxisTitle(axis) {
+            return axis.quantity + (axis.unit ? " (" + axis.unit + ")" : "");
+        }
+
+        // -- panels and traces --
+
+        // A trace's name: its record, then the Waveform-owned channel name.
+        function wwErTraceLabelHtml(trace) {
+            return wwRichLabelHtml(escapeHtml(wwErMemberName(trace.recordId)) + " · " +
+                wwChannelDisplayNameHtml(trace.sourceId, trace.channelName));
+        }
+
+        function wwErTraceLabelText(trace) {
+            return wwErMemberName(trace.recordId) + " · " + wwChannelDisplayName(trace.sourceId, trace.channelName);
         }
 
         // Plain text for Plotly's hover box (escaped; Plotly renders the
         // <extra> part as pseudo-HTML).
-        function wwErHoverTemplate(panel) {
-            return "%{customdata:.6f} s: %{y}" + (panel.unit ? " " + escapeHtml(panel.unit) : "") +
-                "<extra>" + escapeHtml(wwErMemberName(panel.recordId) + " · " +
-                wwChannelDisplayName(panel.sourceId, panel.channelName)) + "</extra>";
+        function wwErHoverTemplate(trace) {
+            return "%{customdata:.6f} s: %{y}" + (trace.unit ? " " + escapeHtml(trace.unit) : "") +
+                "<extra>" + escapeHtml(wwErTraceLabelText(trace)) + "</extra>";
         }
 
         // Name and colour come from the Waveform-owned resolvers on every
         // build/refresh, never from a copy kept here.
-        function wwErBuildTrace(panel) {
+        function wwErBuildTrace(trace) {
             const origin = wwErState.plot.origin;
             return wwAnalogLineTrace({
-                x: panel.reconstructionTime.map((r) => wwErReconstructionToPlotX(r, origin)),
-                y: panel.values,
-                customdata: panel.reconstructionTime,
-                color: wwColorForChannel(panel.sourceId, panel.channelName),
-                name: wwChannelDisplayNamePlotly(panel.sourceId, panel.channelName),
-                hovertemplate: wwErHoverTemplate(panel),
+                x: trace.reconstructionTime.map((r) => wwErReconstructionToPlotX(r, origin)),
+                y: trace.values,
+                customdata: trace.reconstructionTime,
+                color: wwColorForChannel(trace.sourceId, trace.channelName),
+                name: wwChannelDisplayNamePlotly(trace.sourceId, trace.channelName),
+                hovertemplate: wwErHoverTemplate(trace),
                 // Record-scoped identity (record | source::channel), never
                 // the display name.
-                meta: panel.key,
+                meta: trace.key,
             });
         }
 
+        // One chip per trace (Waveform's legend item pattern; no remove
+        // control, no rename/colour actions). A trace that failed to load
+        // says so on its own chip.
         function wwErRenderPanelLegend(panel) {
-            panel.legendEl.innerHTML = '<span class="ww-legend-item">' +
-                '<span class="ww-legend-dot" style="background:' + escapeHtml(wwColorForChannel(panel.sourceId, panel.channelName)) + '"></span>' +
-                '<span class="ww-legend-label">' + wwRichLabelHtml(wwChannelDisplayNameHtml(panel.sourceId, panel.channelName) +
-                (panel.unit ? " (" + escapeHtml(panel.unit) + ")" : "")) + "</span></span>";
+            panel.legendEl.innerHTML = panel.traces.map((trace) =>
+                '<span class="ww-legend-item" data-er-trace-key="' + escapeHtml(trace.key) + '">' +
+                    '<span class="ww-legend-dot" style="background:' + escapeHtml(wwColorForChannel(trace.sourceId, trace.channelName)) + '"></span>' +
+                    '<span class="ww-legend-label">' + wwErTraceLabelHtml(trace) + "</span>" +
+                    (trace.error ? '<span class="ww-er-trace-failed">not loaded</span>' : "") +
+                "</span>").join("");
         }
 
-        function wwErCreatePanel(item) {
-            const panel = {
+        function wwErCreateTrace(item) {
+            return {
                 key: item.key,
                 recordId: item.recordId,
                 kind: item.kind,
@@ -15317,6 +15414,35 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 channelName: item.channelName,
                 timingSourceId: item.timingSourceId,
                 timing: item.timing,
+                removed: false,
+                // wwFetchWaveformRange()'s own abort/sequence state, per
+                // trace: every trace is fetched independently.
+                abortController: null,
+                requestSeq: 0,
+                // What the current data was fetched for (skip identical
+                // refetches on a plain re-render).
+                loadedKey: null,
+                loading: false,
+                error: null,
+                reconstructionTime: [],
+                values: [],
+                unit: null,
+                representation: null,
+                cursorValues: null,
+            };
+        }
+
+        function wwErDestroyTrace(trace) {
+            trace.removed = true;
+            if (trace.abortController) trace.abortController.abort();
+        }
+
+        function wwErCreatePanel(group) {
+            const panel = {
+                key: group.key,
+                axis: group.axis,
+                traces: [],
+                renderedTraceKeys: [],
                 containerEl: null,
                 chartEl: null,
                 legendEl: null,
@@ -15325,28 +15451,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 noteEl: null,
                 plotlyReady: false,
                 removed: false,
-                // wwFetchWaveformRange()'s own abort/sequence state.
-                abortController: null,
-                requestSeq: 0,
-                // What the current trace was fetched for (skip identical
-                // refetches on a plain re-render).
-                loadedKey: null,
-                loading: false,
                 // Y is autoscaled when the first data arrives and on Reset /
                 // Autoscale Y, then kept through X navigation.
                 autoscaleYPending: true,
-                reconstructionTime: [],
-                values: [],
-                unit: null,
-                representation: null,
             };
             const container = document.createElement("div");
             container.className = "ww-panel ww-er-panel";
-            container.dataset.erPanelKey = item.key;
+            container.dataset.erPanelKey = group.key;
             container.innerHTML = wwPanelMarkupHtml("");
-            // Not yet in Event Reconstruction (Slice 3D): an active Y-zoom
-            // panel and panel-height dragging. The shared header is a plain
-            // label here, and the resize grip is not offered.
+            // Not yet in Event Reconstruction: an active Y-zoom panel and
+            // panel-height dragging. The shared header is a plain label
+            // here, and the resize grip is not offered.
             const header = container.querySelector(".ww-panel-header");
             for (const attribute of ["tabindex", "role", "aria-label", "title"]) header.removeAttribute(attribute);
             container.querySelector(".ww-resize-handle").remove();
@@ -15355,7 +15470,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             note.hidden = true;
             container.querySelector(".ww-chart-wrap").appendChild(note);
             // Slice 3E: this panel's view of the two global cursors (lines,
-            // drag strips, A-B band) and its A/B values in the header.
+            // drag strips, A-B band). Per-channel values live in the left
+            // channel tree, not here.
             const cursorLayer = document.createElement("div");
             cursorLayer.className = "ww-er-cursor-layer";
             cursorLayer.hidden = true;
@@ -15366,10 +15482,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<span class="ww-er-cursor-tag">' + kind.toUpperCase() + "</span>" +
                 "</div>").join("");
             container.querySelector(".ww-chart-wrap").appendChild(cursorLayer);
-            const cursorValues = document.createElement("span");
-            cursorValues.className = "ww-tg-cursor-readout ww-er-panel-cursor-values";
-            cursorValues.hidden = true;
-            container.querySelector(".ww-panel-header").appendChild(cursorValues);
             panel.containerEl = container;
             panel.labelEl = container.querySelector(".ww-panel-label");
             panel.legendEl = container.querySelector(".ww-legend");
@@ -15379,34 +15491,31 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             panel.noteEl = note;
             panel.chartWrapEl = container.querySelector(".ww-chart-wrap");
             panel.cursorLayerEl = cursorLayer;
-            panel.cursorValuesEl = cursorValues;
-            panel.cursorValues = null;
             wwErWirePanelCursorDrag(panel);
             panel.chartEl.style.height = WW_ER_PANEL_HEIGHT + "px";
-            wwErRefreshPanelPresentation(panel);
             return panel;
         }
 
         function wwErDestroyPanel(panel) {
             panel.removed = true;
-            if (panel.abortController) panel.abortController.abort();
+            for (const trace of panel.traces) wwErDestroyTrace(trace);
             if (panel.plotlyReady) Plotly.purge(panel.chartEl);
             panel.plotlyReady = false;
             panel.containerEl.remove();
         }
 
-        // Label, legend and trace name/colour, re-resolved from the
-        // Waveform-owned presentation (a rename/recolour there shows here
-        // on the next render).
+        // Title, legend and every trace's name/colour, re-resolved from
+        // the Waveform-owned presentation (a rename/recolour there shows
+        // here on the next render).
         function wwErRefreshPanelPresentation(panel) {
-            panel.labelEl.innerHTML = wwErPanelLabelHtml(panel);
+            panel.labelEl.textContent = wwErAxisTitle(panel.axis);
             wwErRenderPanelLegend(panel);
-            if (!panel.plotlyReady) return;
+            if (!panel.plotlyReady || !panel.traces.length) return;
             Plotly.restyle(panel.chartEl, {
-                "line.color": [wwColorForChannel(panel.sourceId, panel.channelName)],
-                name: [wwChannelDisplayNamePlotly(panel.sourceId, panel.channelName)],
-                hovertemplate: [wwErHoverTemplate(panel)],
-            }, [0]);
+                "line.color": panel.traces.map((t) => wwColorForChannel(t.sourceId, t.channelName)),
+                name: panel.traces.map((t) => wwChannelDisplayNamePlotly(t.sourceId, t.channelName)),
+                hovertemplate: panel.traces.map(wwErHoverTemplate),
+            }, panel.traces.map((_, index) => index));
         }
 
         function wwErInitPanelPlot(panel) {
@@ -15416,7 +15525,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 xTitle: WW_ER_TIME_AXIS_TITLE,
                 xRange: [wwErReconstructionToPlotX(plot.viewport.start, plot.origin), wwErReconstructionToPlotX(plot.viewport.end, plot.origin)],
                 xTickFormat: ticks,
-                yTitle: panel.unit || "",
+                yTitle: panel.axis.unit || "",
                 dragMode: wwErState.dragMode,
             });
             // X-only Box Zoom and Pan (DEC-129): a drag never changes this
@@ -15427,12 +15536,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // which Event Reconstruction maps to Reset Time View for every
             // panel -- never Plotly's "reset to the initial range", which
             // would be expressed in a possibly outdated origin.
-            Plotly.newPlot(panel.chartEl, [wwErBuildTrace(panel)], layout, { responsive: true, displayModeBar: false, doubleClick: "autosize" });
+            Plotly.newPlot(panel.chartEl, panel.traces.map(wwErBuildTrace), layout, { responsive: true, displayModeBar: false, doubleClick: "autosize" });
+            panel.renderedTraceKeys = panel.traces.map((t) => t.key);
             panel.plotlyReady = true;
             wwErWirePanelRelayout(panel);
             // Slice 3E: any redraw (resize, relayout) re-positions this
             // panel's cursor lines.
             panel.chartEl.on("plotly_afterplot", () => wwErDrawPanelCursors(panel));
+        }
+
+        // A trace was added to or removed from an existing panel: rebuild
+        // its trace list from each trace's own (already fetched) data;
+        // the layout, ranges and Y scale are kept.
+        function wwErSyncPanelTraces(panel) {
+            const keys = panel.traces.map((t) => t.key);
+            if (!panel.plotlyReady || keys.join("\u0001") === panel.renderedTraceKeys.join("\u0001")) return;
+            Plotly.react(panel.chartEl, panel.traces.map(wwErBuildTrace), panel.chartEl.layout);
+            panel.renderedTraceKeys = keys;
         }
 
         // A user zoom/pan/double-click on ANY panel becomes the one common
@@ -15469,8 +15589,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // Reset Time View -- the toolbar button and a panel double-click
-        // alike: Fit All for X, then every panel's Y autoscaled to its
-        // Fit All data (as each panel's data arrives).
+        // alike: Fit All for X, then every panel's Y autoscaled to all of
+        // its traces' Fit All data (once they have arrived).
         function wwErResetView() {
             const plot = wwErState.plot;
             if (!plot.fitAll) return;
@@ -15493,26 +15613,28 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwErApplyViewport(next);
         }
 
-        // Autoscale Y: every panel independently, to the data it holds for
-        // the current X window (a panel only ever holds its visible slice);
-        // X is untouched. A panel still loading scales when its data lands.
+        // Autoscale Y: every panel independently, over all of its traces'
+        // data for the current X window (each trace only ever holds its
+        // visible slice); X is untouched. A panel with a trace still
+        // loading scales once its traces have all landed.
         function wwErAutoscaleY() {
             for (const panel of wwErState.plot.panels) {
                 panel.autoscaleYPending = true;
-                if (!panel.loading) wwErApplyPendingAutoscaleY(panel);
+                wwErApplyPendingAutoscaleY(panel);
             }
         }
 
         function wwErPanelHasData(panel) {
-            return panel.values.some((value) => Number.isFinite(value));
+            return panel.traces.some((trace) => trace.values.some((value) => Number.isFinite(value)));
         }
 
-        // Plotly's own autorange (as Waveform's Autoscale Y), then fixed at
-        // that range so later X navigation keeps it. A panel without
+        // Plotly's own autorange over every trace of the panel (as
+        // Waveform's Autoscale Y; an empty trace adds nothing), then fixed
+        // at that range so later X navigation keeps it. A panel without
         // samples is left in autorange -- its stale range is cleared -- and
         // stays pending, so its first data scales it.
         async function wwErApplyPendingAutoscaleY(panel) {
-            if (!panel.autoscaleYPending || !panel.plotlyReady) return;
+            if (!panel.autoscaleYPending || !panel.plotlyReady || panel.traces.some((t) => t.loading)) return;
             await Plotly.relayout(panel.chartEl, { "yaxis.autorange": true });
             if (panel.removed || !panel.plotlyReady || !wwErPanelHasData(panel)) return;
             panel.autoscaleYPending = false;
@@ -15524,7 +15646,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // (re-mapping every existing trace at once so nothing is drawn
         // against a stale origin), create any new panel's chart, give
         // every panel the same X range and ticks, then refetch what the
-        // new range needs.
+        // new range needs -- per trace.
         function wwErApplyViewport(viewport) {
             const plot = wwErState.plot;
             plot.viewport = viewport;
@@ -15536,117 +15658,154 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     wwErInitPanelPlot(panel);
                     continue;
                 }
-                if (originChanged) {
-                    Plotly.restyle(panel.chartEl, { x: [panel.reconstructionTime.map((r) => wwErReconstructionToPlotX(r, origin))] }, [0]);
+                if (originChanged && panel.traces.length) {
+                    Plotly.restyle(panel.chartEl, {
+                        x: panel.traces.map((t) => t.reconstructionTime.map((r) => wwErReconstructionToPlotX(r, origin))),
+                    }, panel.traces.map((_, index) => index));
                 }
                 Plotly.relayout(panel.chartEl, wwErTimeAxisRelayout(viewport, origin));
             }
-            for (const panel of plot.panels) wwErLoadPanel(panel);
+            for (const panel of plot.panels) {
+                for (const trace of panel.traces) wwErLoadTrace(panel, trace);
+            }
             wwErSyncToolbar();
             wwErDrawCursors();
         }
 
-        function wwErSetPanelNote(panel, text) {
-            panel.noteEl.textContent = text || "";
-            panel.noteEl.hidden = !text;
+        // A panel's loading spinner, error list and empty note, from its
+        // traces: loading while any trace loads; one line per failed trace
+        // (the others keep plotting); the note only when no trace has a
+        // sample in view.
+        function wwErSyncPanelStatus(panel) {
+            wwSetLoading(panel, panel.traces.some((t) => t.loading));
+            const failed = panel.traces.filter((t) => t.error);
+            if (failed.length) {
+                wwShowError(panel, failed.map((t) => wwErTraceLabelText(t) + ": " + t.error).join("\n"));
+            } else {
+                wwClearError(panel);
+            }
+            const empty = panel.traces.every((t) => !t.loading && !t.error && t.loadedKey !== null && t.reconstructionTime.length === 0);
+            panel.noteEl.textContent = empty ? "No samples of these channels in the visible time range." : "";
+            panel.noteEl.hidden = !empty;
         }
 
-        function wwErSetPanelTrace(panel) {
-            if (!panel.plotlyReady) return;
+        function wwErSetTraceData(panel, trace) {
+            const index = panel.traces.indexOf(trace);
+            if (!panel.plotlyReady || index === -1) return;
             const origin = wwErState.plot.origin;
             Plotly.restyle(panel.chartEl, {
-                x: [panel.reconstructionTime.map((r) => wwErReconstructionToPlotX(r, origin))],
-                y: [panel.values],
-                customdata: [panel.reconstructionTime],
-                hovertemplate: [wwErHoverTemplate(panel)],
-            }, [0]);
+                x: [trace.reconstructionTime.map((r) => wwErReconstructionToPlotX(r, origin))],
+                y: [trace.values],
+                customdata: [trace.reconstructionTime],
+                hovertemplate: [wwErHoverTemplate(trace)],
+            }, [index]);
         }
 
-        // Loads one panel's visible slice (hybrid fetch, design §7). A
-        // failure is shown on that panel only; a superseded response
-        // (a newer viewport already asked) never overwrites the trace.
-        async function wwErLoadPanel(panel) {
+        // Loads one trace's visible slice (hybrid fetch, design §7) with
+        // the panel's point budget. A failure marks that trace only; a
+        // superseded response (a newer viewport already asked) never
+        // overwrites it.
+        async function wwErLoadTrace(panel, trace) {
             const plot = wwErState.plot;
             const viewport = plot.viewport;
-            const timing = panel.timing;
-            if (!panel.plotlyReady || !viewport || !timing) return;
+            const timing = trace.timing;
+            if (!panel.plotlyReady || !viewport || !timing || trace.removed) return;
             const pointBudget = wwPointBudgetForPlotWidth(wwPlotWidthForChart(panel.chartEl));
-            const request = wwErFetchRequestFor(panel, timing, viewport, pointBudget);
+            const request = wwErFetchRequestFor(trace, timing, viewport, pointBudget);
             const loadKey = [viewport.start, viewport.end, timing.totalOffsetS, request ? pointBudget : "skip"].join("|");
-            if (loadKey === panel.loadedKey) {
-                if (!panel.loading) wwErApplyPendingAutoscaleY(panel);
-                return;
-            }
-            wwClearError(panel);
-            if (!request) {
-                // No sample of this record in view: invalidate any request
-                // still in flight and show an empty, labelled panel.
-                if (panel.abortController) panel.abortController.abort();
-                panel.requestSeq += 1;
-                panel.loading = false;
-                wwSetLoading(panel, false);
-                panel.reconstructionTime = [];
-                panel.values = [];
-                panel.loadedKey = loadKey;
-                wwErSetPanelTrace(panel);
-                wwErSetPanelNote(panel, "No samples of this record in the visible time range.");
+            if (loadKey === trace.loadedKey) {
                 wwErApplyPendingAutoscaleY(panel);
                 return;
             }
-            panel.loading = true;
-            wwSetLoading(panel, true);
+            trace.error = null;
+            if (!request) {
+                // No sample of this record in view: invalidate any request
+                // still in flight; the trace is simply absent here.
+                if (trace.abortController) trace.abortController.abort();
+                trace.requestSeq += 1;
+                trace.loading = false;
+                trace.reconstructionTime = [];
+                trace.values = [];
+                trace.loadedKey = loadKey;
+                wwErSetTraceData(panel, trace);
+                wwErSyncPanelStatus(panel);
+                wwErApplyPendingAutoscaleY(panel);
+                return;
+            }
+            trace.loading = true;
+            wwErSyncPanelStatus(panel);
             let result;
             try {
                 result = await wwFetchWaveformRange(request);
             } catch (error) {
                 if (error.name === "AbortError") return;
-                panel.loading = false;
-                wwSetLoading(panel, false);
-                wwShowError(panel, "Could not reach the backend. Check your connection and try again.");
-                return;
+                result = { superseded: false, error: { message: "Could not reach the backend. Check your connection and try again." } };
             }
-            if (result.superseded || panel.removed) return;
-            panel.loading = false;
-            wwSetLoading(panel, false);
+            if (result.superseded || trace.removed) return;
+            trace.loading = false;
             if (result.error || !result.body) {
-                wwShowError(panel, result.error ? wwFriendlyError(result.error.code, result.error.message)
-                    : "Could not reach the backend. Check your connection and try again.");
+                trace.error = result.error ? wwFriendlyError(result.error.code, result.error.message)
+                    : "Could not reach the backend. Check your connection and try again.";
+                wwErRenderPanelLegend(panel);
+                wwErSyncPanelStatus(panel);
                 wwErApplyPendingAutoscaleY(panel);
                 return;
             }
             const body = result.body;
             // Native times -> reconstruction time with the total captured
             // for THIS request (the one the native range was derived from).
-            panel.reconstructionTime = body.time.map((t) => wwErSourceElapsedToReconstructionTime(t, timing.totalOffsetS));
-            panel.values = body.values;
-            panel.representation = body.representation;
-            panel.loadedKey = loadKey;
-            const unitChanged = panel.unit !== body.unit;
-            panel.unit = body.unit;
-            wwErSetPanelNote(panel, panel.reconstructionTime.length ? "" : "No samples of this record in the visible time range.");
-            wwErSetPanelTrace(panel);
-            if (unitChanged) {
-                Plotly.relayout(panel.chartEl, { "yaxis.title": panel.unit || "" });
-                wwErRenderPanelLegend(panel);
-            }
+            trace.reconstructionTime = body.time.map((t) => wwErSourceElapsedToReconstructionTime(t, timing.totalOffsetS));
+            trace.values = body.values;
+            trace.representation = body.representation;
+            trace.unit = body.unit;
+            trace.loadedKey = loadKey;
+            wwErSetTraceData(panel, trace);
+            wwErRenderPanelLegend(panel);
+            wwErSyncPanelStatus(panel);
             wwErApplyPendingAutoscaleY(panel);
         }
 
-        // Reconciles the plotted panels with the current selection, record
-        // timings and viewport. Safe to call on every render: unchanged
-        // panels keep their trace and are not refetched.
+        // Every plotted trace, panel by panel.
+        function wwErPlottedTraces() {
+            return wwErState.plot.panels.flatMap((panel) => panel.traces);
+        }
+
+        function wwErTraceByKey(key) {
+            return wwErPlottedTraces().find((trace) => trace.key === key) || null;
+        }
+
+        // Reconciles the plotted panels and traces with the current
+        // selection, record timings and viewport. Safe to call on every
+        // render: unchanged traces keep their data and are not refetched.
         function wwErRenderPlot() {
             const plot = wwErState.plot;
             const items = wwErPlotItems();
-            const wanted = new Set(items.map((item) => item.key));
+            const groups = wwErPlotGroups(items);
+            const wantedPanels = new Set(groups.map((g) => g.key));
             for (const panel of plot.panels) {
-                if (!wanted.has(panel.key)) wwErDestroyPanel(panel);
+                if (!wantedPanels.has(panel.key)) wwErDestroyPanel(panel);
             }
-            const existing = new Map(plot.panels.filter((panel) => !panel.removed).map((panel) => [panel.key, panel]));
+            const existingPanels = new Map(plot.panels.filter((p) => !p.removed).map((p) => [p.key, p]));
             const panelsEl = document.getElementById("wwErPanels");
-            plot.panels = items.map((item) => {
-                const panel = existing.get(item.key) || wwErCreatePanel(item);
-                panel.timing = item.timing;
+            plot.panels = groups.map((group) => {
+                const panel = existingPanels.get(group.key) || wwErCreatePanel(group);
+                panel.axis = group.axis;
+                const existingTraces = new Map(panel.traces.map((t) => [t.key, t]));
+                const wantedTraces = new Set(group.items.map((item) => item.key));
+                for (const trace of panel.traces) {
+                    if (!wantedTraces.has(trace.key)) wwErDestroyTrace(trace);
+                }
+                const previousKeys = panel.traces.map((t) => t.key).join("");
+                panel.traces = group.items.map((item) => {
+                    const trace = existingTraces.get(item.key) || wwErCreateTrace(item);
+                    trace.timing = item.timing;
+                    return trace;
+                });
+                // A channel joined or left this panel: its Y range is
+                // re-autoscaled once over the new set (X navigation alone
+                // never changes Y).
+                if (panel.traces.map((t) => t.key).join("") !== previousKeys) panel.autoscaleYPending = true;
+                wwErSyncPanelTraces(panel);
                 return panel;
             });
             const inOrder = plot.panels.length === panelsEl.children.length &&
@@ -15663,14 +15822,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 plot.atFitAll = true;
             } else {
                 plot.atFitAll = wwErSameRange(viewport, fitAll);
-                for (const panel of plot.panels) {
-                    if (panel.plotlyReady) wwErRefreshPanelPresentation(panel);
-                }
                 wwErApplyViewport(viewport);
+            }
+            for (const panel of plot.panels) {
+                wwErRefreshPanelPresentation(panel);
+                wwErSyncPanelStatus(panel);
             }
             wwErSyncPlotChrome();
             // Slice 3E: cursor positions never change with the panel set;
-            // new panels get their values, removed ones take theirs along.
+            // new traces get their values, removed ones take theirs along.
             wwErDrawCursors();
             wwErSyncCursorReadout();
             wwErRefreshCursorValues();
@@ -15680,10 +15840,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwErSyncPlotChrome() {
             const members = wwErMembers();
             const panels = wwErState.plot.panels.length;
+            const channels = wwErPlottedTraces().length;
             const stale = wwErStaleMembers().length;
             document.getElementById("wwErCanvasMeta").textContent = wwErDefined()
                 ? members.length + (members.length === 1 ? " record selected" : " records selected") +
-                  " · " + panels + (panels === 1 ? " channel plotted" : " channels plotted") +
+                  " · " + channels + (channels === 1 ? " channel" : " channels") +
+                  " in " + panels + (panels === 1 ? " panel" : " panels") +
                   (stale ? " · removed records to resolve" : "")
                 : "No reconstruction records selected";
             const empty = document.getElementById("wwErEmptyState");
@@ -15698,11 +15860,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // The plotted records' extents, one interval per record.
         function wwErPlottedRecordIntervals() {
             const byRecord = new Map();
-            for (const panel of wwErState.plot.panels) {
-                const known = byRecord.get(panel.recordId);
-                byRecord.set(panel.recordId, known
-                    ? { recordId: panel.recordId, start: Math.min(known.start, panel.timing.startS), end: Math.max(known.end, panel.timing.endS) }
-                    : { recordId: panel.recordId, start: panel.timing.startS, end: panel.timing.endS });
+            for (const trace of wwErPlottedTraces()) {
+                const known = byRecord.get(trace.recordId);
+                byRecord.set(trace.recordId, known
+                    ? { recordId: trace.recordId, start: Math.min(known.start, trace.timing.startS), end: Math.max(known.end, trace.timing.endS) }
+                    : { recordId: trace.recordId, start: trace.timing.startS, end: trace.timing.endS });
             }
             return [...byRecord.values()];
         }
@@ -15846,13 +16008,39 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const point = entry[kind];
             if (point.noSample) return "No sample";
             if (point.value === null) return "Unavailable";
-            return wwFormatEngineeringValue(point.value) + (entry.unit ? " " + entry.unit : "");
+            return wwFormatEngineeringValue(point.value);
         }
 
         function wwErCursorDeltaText(entry) {
             if (!entry || !entry.a || !entry.b || entry.a.value === null || entry.b.value === null) return "—";
             const delta = entry.b.value - entry.a.value;
-            return (delta > 0 ? "+" : "") + wwFormatEngineeringValue(delta) + (entry.unit ? " " + entry.unit : "");
+            return (delta > 0 ? "+" : "") + wwFormatEngineeringValue(delta);
+        }
+
+        // A channel-tree row's Cur A / Cur B / Δ text (Waveform's
+        // sidebar pattern: no unit, already in the channel label; "—"
+        // when that cursor is not shown or the channel is not plotted).
+        function wwErTreeCursorText(key, kind) {
+            const shown = wwErShownCursorTimes();
+            if ((kind === "a" && shown.a === null) || (kind === "b" && shown.b === null) ||
+                (kind === "delta" && (shown.a === null || shown.b === null))) return "—";
+            const trace = wwErTraceByKey(key);
+            if (!trace || !trace.cursorValues) return "—";
+            return kind === "delta" ? wwErCursorDeltaText(trace.cursorValues) : wwErCursorValueText(trace.cursorValues, kind);
+        }
+
+        function wwErTreeCursorCellHtml(key, kind) {
+            return '<span class="cur-value cur-value--' + kind + '">' + escapeHtml(wwErTreeCursorText(key, kind)) + "</span>";
+        }
+
+        // Re-paints every channel row's cursor cells in place.
+        function wwErSyncTreeCursorValues() {
+            for (const row of document.querySelectorAll("#wwErMembersPanel tr.ww-er-channel-row")) {
+                for (const kind of ["a", "b", "delta"]) {
+                    const cell = row.querySelector(".cur-value--" + kind);
+                    if (cell) cell.textContent = wwErTreeCursorText(row.dataset.erChannelKey, kind);
+                }
+            }
         }
 
         // The cursors actually shown: mode on, cursor not closed, time set.
@@ -15922,6 +16110,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 shown.a !== null && shown.b !== null ? wwErFormatCursorDelta(shown.b - shown.a) : "—";
             document.getElementById("wwErCursorCloseA").hidden = shown.a === null;
             document.getElementById("wwErCursorCloseB").hidden = shown.b === null;
+            wwErSyncTreeCursorValues();
         }
 
         // Positions both cursor lines (and the A-B band) on every rendered
@@ -16030,27 +16219,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // channels per timing source (they share its total offset).
         function wwErCursorValueGroups() {
             const groups = new Map();
-            for (const panel of wwErState.plot.panels) {
-                const calculated = panel.kind === "calculated";
-                const id = (calculated ? "calc|" : "src|") + (calculated ? panel.timingSourceId : panel.sourceId);
-                if (!groups.has(id)) groups.set(id, { id, calculated, sourceId: panel.sourceId, timing: panel.timing, panels: [] });
-                groups.get(id).panels.push(panel);
+            for (const trace of wwErPlottedTraces()) {
+                const calculated = trace.kind === "calculated";
+                const id = (calculated ? "calc|" : "src|") + (calculated ? trace.timingSourceId : trace.sourceId);
+                if (!groups.has(id)) groups.set(id, { id, calculated, sourceId: trace.sourceId, timing: trace.timing, traces: [] });
+                groups.get(id).traces.push(trace);
             }
             return [...groups.values()];
-        }
-
-        function wwErRenderPanelCursorValues(panel) {
-            const el = panel.cursorValuesEl;
-            const shown = wwErShownCursorTimes();
-            el.hidden = !panel.cursorValues || (shown.a === null && shown.b === null);
-            if (el.hidden) return;
-            const entry = panel.cursorValues;
-            const item = (cls, label, text) => '<span class="ww-tg-cursor-readout-item ww-er-cursor-value-item ' + cls + '">' +
-                '<span class="ww-tg-cursor-readout-label">' + label + "</span>" +
-                '<span class="ww-tg-cursor-readout-value">' + escapeHtml(text) + "</span></span>";
-            el.innerHTML = (shown.a !== null ? item("ww-cursor-readout-a", "A", wwErCursorValueText(entry, "a")) : "") +
-                (shown.b !== null ? item("ww-cursor-readout-b", "B", wwErCursorValueText(entry, "b")) : "") +
-                (shown.a !== null && shown.b !== null ? item("", "&Delta;", wwErCursorDeltaText(entry)) : "");
         }
 
         // Fetches each group's values for the shown cursors (skipping a
@@ -16061,21 +16236,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const shown = wwErShownCursorTimes();
             const groups = wwErCursorValueGroups();
             if (shown.a === null && shown.b === null) {
-                for (const panel of plot.panels) {
-                    panel.cursorValues = null;
-                    wwErRenderPanelCursorValues(panel);
-                }
+                for (const trace of wwErPlottedTraces()) trace.cursorValues = null;
                 plot.cursorRequests = {};
+                wwErSyncTreeCursorValues();
                 return;
             }
             await Promise.all(groups.map(async (group) => {
                 const offset = group.timing.totalOffsetS;
                 const nativeA = shown.a !== null ? wwErReconstructionTimeToSourceElapsed(shown.a, offset) : null;
                 const nativeB = shown.b !== null ? wwErReconstructionTimeToSourceElapsed(shown.b, offset) : null;
-                const names = group.panels.map((p) => (group.calculated ? p.sourceId : p.channelName));
+                const names = group.traces.map((t) => (group.calculated ? t.sourceId : t.channelName));
                 const key = [nativeA, nativeB, names.join("\u0001")].join("|");
                 const known = plot.cursorRequests[group.id];
-                if (known && known.key === key && known.done && group.panels.every((p) => p.cursorValues)) return;
+                if (known && known.key === key && known.done && group.traces.every((t) => t.cursorValues)) return;
                 const seq = (known ? known.seq : 0) + 1;
                 plot.cursorRequests[group.id] = { key, seq, done: false };
                 const base = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId());
@@ -16095,13 +16268,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (!current || current.seq !== seq) return; // superseded
                 current.done = true;
                 const outside = (r) => r < group.timing.startS || r > group.timing.endS;
-                for (const panel of group.panels) {
-                    if (panel.removed) continue;
+                for (const trace of group.traces) {
+                    if (trace.removed) continue;
                     const item = !payload ? null : group.calculated
-                        ? payload.channels.find((c) => c.calculated_channel_id === panel.sourceId)
-                        : payload.channels.find((c) => c.channel_name === panel.channelName);
+                        ? payload.channels.find((c) => c.calculated_channel_id === trace.sourceId)
+                        : payload.channels.find((c) => c.channel_name === trace.channelName);
                     if (!item) {
-                        panel.cursorValues = null;
+                        trace.cursorValues = null;
                         current.done = false;
                     } else {
                         // "No sample": the backend's own out-of-bounds
@@ -16111,14 +16284,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                             value,
                             noSample: group.calculated ? outside(time) : sampleTime === null,
                         };
-                        panel.cursorValues = {
+                        trace.cursorValues = {
                             unit: item.unit,
                             a: point(shown.a, item.a_value, payload.cursor_a ? payload.cursor_a.sample_time : null),
                             b: point(shown.b, item.b_value, payload.cursor_b ? payload.cursor_b.sample_time : null),
                         };
                     }
-                    wwErRenderPanelCursorValues(panel);
                 }
+                wwErSyncTreeCursorValues();
             }));
         }
 

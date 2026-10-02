@@ -21270,6 +21270,123 @@ values".
 
 ---
 
+## DEC-131 — Event Reconstruction Grouped Measurement View: one panel per display axis (engineering quantity + normalized unit), across records; per-channel cursor values in the channel tree
+
+Date: 2026-10-02
+Status: Approved (owner, Grouped Measurement View task, with a mid-task
+owner instruction on cursor values) — implemented on
+`feat/event-reconstruction`; not merged. The Event Reconstruction
+feature is **not** complete. Supersedes the Slice 3C
+one-panel-per-channel scaffold (DEC-127 decision 3); the Combined
+Multi-Axis View stays outstanding.
+Source: owner task "Grouped Measurement View only" and the owner's
+mid-task instruction: "Remove per-channel A/B/Δvalue readouts from
+waveform panel headers. Render those values in the Event Reconstruction
+left channel tree using the same pattern as the existing Waveform page.
+Keep only the global A/B/Δt timeline readout in the sticky toolbar."
+
+### Decisions (owner)
+
+1. **Grouped Measurement View is the Event Reconstruction display
+   mode** (and the default). Compatible selected channels of the same
+   engineering measurement share one panel. The temporary
+   one-channel-per-panel renderer is retired, not kept as a third mode.
+2. **Grouping uses authoritative metadata, never channel names.** Two
+   channels share a panel only when they can safely use one Y axis: the
+   same engineering quantity and a compatible (normalized) unit.
+   - Different quantities (Active vs Reactive Power) never share.
+   - Incompatible units (V vs kV vs pu) never share.
+3. **Across records, native and calculated alike.** Compatible channels
+   from different records share a panel. Each trace keeps its own
+   timing, sampling rate, visible-range fetch, envelope and no-sample
+   span; nothing is resampled. Calculated channels are grouped by their
+   own engineering metadata, with timing from their parent.
+4. **Navigation and cursors are unchanged** (DEC-129/DEC-130):
+   - one shared X viewport;
+   - Autoscale Y and Reset scale each panel over all of its traces;
+   - one global Cursor A/B.
+5. **Per-channel cursor values live in the left channel tree**, as on
+   the Waveform page (Cur A / Cur B columns, plus Δ for Event
+   Reconstruction). The panels carry only the cursor lines; the sticky
+   toolbar keeps only the global A / B / Δt timeline readout.
+6. **View mode** is `grouped`. The Combined Multi-Axis View (`combined`)
+   is a later slice and is shown disabled.
+7. Unchanged: mixed-duration navigation stays `[OPEN / UAT]`; the
+   large-gap and Fit All span warnings are unchanged; the panel height
+   stays a fixed 180 px.
+
+### Implementation (`[FACT]`)
+
+- **Display axis (backend, additive).**
+  `app.domain.engineering_units.resolve_display_axis(engineering_type,
+  engineering_quantity, unit)` works as follows:
+  - The quantity is the channel's known `engineering_quantity`, otherwise
+    the quantity its broad type unambiguously means (Voltage, Current,
+    Frequency, ROCOF). "Power" resolves to Active, Reactive or Apparent
+    Power only when exactly one unit family in the closed alias table
+    contains its unit.
+  - A recognised unit is normalized (kV/KV/kv → `kV`), and the key is
+    `"<quantity>|<unit>"`. Display units are never converted, so V and
+    kV stay separate axes.
+  - An unrecognised unit (pu, deg, …) keys on the exact stripped string
+    (`"<quantity>|raw:<unit>"`).
+  - A blank unit gives no key: the channel gets its own panel.
+
+  It is exposed as computed fields `display_axis_key`,
+  `display_axis_quantity` and `display_axis_unit` on `AnalogChannelOut`
+  (GET …/channels) and `CalculatedChannelOut` (calculated channels:
+  engineering_type + unit). No existing field changed. Event
+  Reconstruction is engineering-units-only (DEC-127), so per-unit status
+  does not enter the key; PER_UNIT_MEASUREMENT_MODEL.md's per-unit
+  Measurement Groups are a different concept and are untouched.
+- **Panels.**
+  - Panels are keyed by the axis key. A panel's title is
+    `"<quantity> (<unit>)"` and its Y title is the unit.
+  - Panels are ordered by Waveform's `ANALOG_GROUP_ORDER` (broad
+    engineering type), then first appearance.
+  - Traces keep the browser order: record, recording, engineering
+    type, channel (native before calculated). Never sampling rate.
+  - There is one legend chip per trace, `"<record> · <channel>"`, with
+    the Waveform-owned name and colour, and "not loaded" on a failed
+    trace.
+  - A panel appears with its first channel and disappears with its last.
+- **Traces.** Each trace has its own fetch/abort/sequence state, timing,
+  data, error and cursor values. Panels compose them: Plotly restyles a
+  trace by index, and `Plotly.react` runs when the trace set changes.
+  - One failed trace shows a line in the panel's error list; the others
+    keep plotting.
+  - The empty note appears only when no trace has samples in view.
+- **Y.** Autoscale Y and Reset use Plotly autorange over all of a
+  panel's traces (empty traces add nothing), once none of them is still
+  loading. A panel re-autoscales once when a channel joins or leaves it.
+  X navigation still never changes Y.
+- **Cursor values.** These are fetched per record / per timing source as
+  in DEC-130 and stored per trace. The channel tree's tables gain
+  `Cur A`, `Cur B` and `Δ` columns (Waveform's `.cur-value` cells, no
+  unit repeated): values, "No sample", "Unavailable", or "—" (cursor not
+  shown, or channel not plotted).
+  - The header value row is removed.
+  - The tree's own nested padding is tightened and the name column
+    ellipsizes, so the five columns fit the default 320 px sidebar like
+    Waveform's four.
+- **Tests:**
+  - `event-reconstruction-grouped.spec.js` (7);
+  - the cursor/plot/navigation specs updated to grouped panels and tree
+    values;
+  - backend `test_display_axis.py` (27);
+  - static `TestEventReconstructionGroupedView` (6).
+
+### Noted for UAT (not changed)
+
+Waveform's colour authority uses a 6-colour palette assigned first-come
+per channel. Two traces in one grouped panel can therefore share a
+colour (seen with synthetic records of exactly 6 channels each). Event
+Reconstruction inherits colours unchanged by rule. Any disambiguation,
+for example a per-record line dash inside a grouped panel, needs an
+owner decision.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

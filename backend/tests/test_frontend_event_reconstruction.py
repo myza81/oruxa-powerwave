@@ -190,7 +190,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         ]
         plot_keys = re.findall(r"^ {16}(\w+):", state.split("plot: {", 1)[1], re.MULTILINE)
         assert plot_keys == [
-            "panels", "viewport", "fitAll", "atFitAll", "origin", "relayoutTimer",
+            "viewMode", "panels", "viewport", "fitAll", "atFitAll", "origin", "relayoutTimer",
             "cursors", "cursorRequests", "cursorValuesTimer",
         ]
         for forbidden in ("PresentationOverrides", "channelColors", "ColorOverride", "DisplayName =", "localStorage"):
@@ -345,9 +345,14 @@ class TestEventReconstructionChannelBrowser:
         assert "wwGroupChannelsByEngineeringType(channels)" in calculated
         assert "wwGroupChannelsByEngineeringType(analog)" in tree
         assert "wwGroupChannelsByEngineeringType(calculated)" in tree
-        # No second grouping implementation anywhere in Event Reconstruction.
+        # No second grouping implementation anywhere in Event Reconstruction:
+        # the tree uses Waveform's helper; the Grouped View's panels use the
+        # backend's display axis and only Waveform's ANALOG_GROUP_ORDER for
+        # their order (DEC-131).
         module = _er_module(source)
-        assert "ANALOG_GROUP_ORDER" not in module and "engineering_type ||" not in module
+        assert module.count("ANALOG_GROUP_ORDER") == 2
+        groups = _between(source, "function wwErPlotGroups(items) {", "\n        }\n")
+        assert groups.count("ANALOG_GROUP_ORDER") == 2
 
     def test_tree_reuses_waveform_tree_markup_and_name_cells(self):
         tree = _between(_source(), "function wwErSourceTreeHtml(member, sourceId, open) {", "function wwErMemberTreeHtml(member)")
@@ -515,7 +520,7 @@ class TestEventReconstructionRecordModel:
     def test_canvas_counts_records(self):
         chrome = _between(_source(), "function wwErSyncPlotChrome() {", "function wwErApplyDragMode()")
         assert '" record selected" : " records selected"' in chrome
-        assert '" channel plotted" : " channels plotted"' in chrome
+        assert '" channel" : " channels"' in chrome and '" panel" : " panels"' in chrome
 
 
 class TestEventReconstructionPlotting:
@@ -541,15 +546,15 @@ class TestEventReconstructionPlotting:
 
     def test_fetch_is_engineering_units_with_the_slice_3b_mapping_only(self):
         source = _source()
-        request = _between(source, "function wwErFetchRequestFor(panel, timing, viewport, pointBudget) {", "\n        }\n")
+        request = _between(source, "function wwErFetchRequestFor(trace, timing, viewport, pointBudget) {", "\n        }\n")
         assert 'unitMode: "engineering",' in request
         assert "timeOffsetS: 0," in request
         assert "wwErReconstructionTimeToSourceElapsed(viewport.start, timing.totalOffsetS)" in request
         assert "wwErReconstructionTimeToSourceElapsed(viewport.end, timing.totalOffsetS)" in request
         assert "if (timing.endS < viewport.start || timing.startS > viewport.end) return null;" in request
-        load = _between(source, "async function wwErLoadPanel(panel) {", "function wwErRenderPlot()")
+        load = _between(source, "async function wwErLoadTrace(panel, trace) {", "function wwErPlottedTraces()")
         assert "body.time.map((t) => wwErSourceElapsedToReconstructionTime(t, timing.totalOffsetS))" in load
-        assert "if (result.superseded || panel.removed) return;" in load
+        assert "if (result.superseded || trace.removed) return;" in load
         module = _er_module(source)
         for forbidden in ("per_unit", "unitMode: ww", "wwAlignmentOffset", "effective_alignment", "alignment_offset_s", "digital-waveform",
                           "wwRebuildDigitalChart", "start_time_utc +", "Date.parse(timing"):
@@ -577,7 +582,7 @@ class TestEventReconstructionPlotting:
         wire = _between(source, "function wwErWirePanelRelayout(panel) {", "function wwErRequestViewport(start, end)")
         assert "wwErPlotXToReconstruction(x0, plot.origin)" in wire
         assert 'if (eventData["xaxis.autorange"] === true) wwErResetView();' in wire
-        apply = _between(source, "function wwErApplyViewport(viewport) {", "function wwErSetPanelNote(panel, text)")
+        apply = _between(source, "function wwErApplyViewport(viewport) {", "function wwErSyncPanelStatus(panel)")
         assert "for (const panel of plot.panels)" in apply
         assert "Plotly.relayout(panel.chartEl, wwErTimeAxisRelayout(viewport, origin));" in apply
         assert 'doubleClick: "autosize"' in source
@@ -594,7 +599,7 @@ class TestEventReconstructionPlotting:
         assert "for (const panel of wwErState.plot.panels)" in drag
 
     def test_panels_follow_the_browser_order(self):
-        items = _between(_source(), "function wwErPlotItems() {", "// -- panels --")
+        items = _between(_source(), "function wwErPlotItems() {", "function wwErPlotGroups(items)")
         assert "for (const member of wwErCurrentMembers())" in items
         assert "wwGroupChannelsByEngineeringType((data && data.analog_channels) || [])" in items
         assert "wwGroupChannelsByEngineeringType(calculated)" in items
@@ -605,13 +610,17 @@ class TestEventReconstructionPlotting:
 
     def test_presentation_is_resolved_from_waveform_on_every_render(self):
         source = _source()
-        trace = _between(source, "function wwErBuildTrace(panel) {", "function wwErRenderPanelLegend(panel)")
-        assert "color: wwColorForChannel(panel.sourceId, panel.channelName)," in trace
-        assert "name: wwChannelDisplayNamePlotly(panel.sourceId, panel.channelName)," in trace
+        trace = _between(source, "function wwErBuildTrace(trace) {", "function wwErRenderPanelLegend(panel)")
+        assert "color: wwColorForChannel(trace.sourceId, trace.channelName)," in trace
+        assert "name: wwChannelDisplayNamePlotly(trace.sourceId, trace.channelName)," in trace
         refresh = _between(source, "function wwErRefreshPanelPresentation(panel) {", "function wwErInitPanelPlot(panel)")
-        assert '"line.color": [wwColorForChannel(panel.sourceId, panel.channelName)]' in refresh
-        label = _between(source, "function wwErPanelLabelHtml(panel) {", "\n        }\n")
-        assert "wwRichLabelHtml(" in label and "wwChannelDisplayNameHtml(panel.sourceId, panel.channelName)" in label
+        assert '"line.color": panel.traces.map((t) => wwColorForChannel(t.sourceId, t.channelName))' in refresh
+        label = _between(source, "function wwErTraceLabelHtml(trace) {", "\n        }\n")
+        assert "wwRichLabelHtml(" in label and "wwChannelDisplayNameHtml(trace.sourceId, trace.channelName)" in label
+        legend = _between(source, "function wwErRenderPanelLegend(panel) {", "\n        }\n")
+        assert "wwColorForChannel(trace.sourceId, trace.channelName)" in legend
+        for forbidden in ("ww-legend-remove", "wwRemoveChannelByKey"):
+            assert forbidden not in legend
 
     def test_own_theme_and_resize_hooks_without_touching_waveform_ones(self):
         source = _source()
@@ -756,6 +765,76 @@ class TestEventReconstructionCursors:
         for element_id in ("wwErCursorReadoutA", "wwErCursorReadoutB", "wwErCursorReadoutDelta", "wwErCursorCloseA", "wwErCursorCloseB"):
             assert 'id="' + element_id + '"' in page
         assert 'document.getElementById("wwErCursorModeBtn").addEventListener("click", wwErToggleCursors);' in source
-        create = _between(source, "function wwErCreatePanel(item) {", "function wwErDestroyPanel(panel)")
+        create = _between(source, "function wwErCreatePanel(group) {", "function wwErDestroyPanel(panel)")
         assert 'data-er-cursor-line="' in create and 'data-er-cursor-drag="' in create
         assert 'data-cursor-line="' not in create  # never Waveform's cursor hooks
+
+
+class TestEventReconstructionGroupedView:
+    """DEC-131: the Grouped Measurement View -- one panel per backend display
+    axis (engineering quantity + normalized unit), shared across records and
+    by native and calculated channels; every trace keeps its own fetch and
+    timing; per-channel cursor values live in the channel tree; the
+    Combined Multi-Axis View is not available yet."""
+
+    def test_grouping_uses_the_backend_display_axis_only(self):
+        source = _source()
+        axis = _between(source, "function wwErChannelAxis(item) {", "\n        }\n")
+        assert "channel.display_axis_key" in axis
+        assert "channel.display_axis_quantity" in axis and "channel.display_axis_unit" in axis
+        groups = _between(source, "function wwErPlotGroups(items) {", "\n        }\n")
+        assert 'item.axis.key !== null ? "axis:" + item.axis.key : "solo:" + item.key' in groups
+        # Never a rule over channel names or unit strings in the frontend.
+        for body in (axis, groups):
+            for forbidden in (".test(", ".match(", "toLowerCase", "toUpperCase", "indexOf(\"k", "channelName.", "name.includes"):
+                assert forbidden not in body
+        title = _between(source, "function wwErAxisTitle(axis) {", "\n        }\n")
+        assert 'axis.quantity + (axis.unit ? " (" + axis.unit + ")" : "")' in title
+
+    def test_each_trace_fetches_and_maps_independently(self):
+        source = _source()
+        create = _between(source, "function wwErCreatePanel(group) {", "function wwErDestroyPanel(panel)")
+        assert "abortController" not in create and "requestSeq" not in create  # fetch state is per trace
+        trace = _between(source, "function wwErCreateTrace(item) {", "function wwErDestroyTrace(trace)")
+        assert "abortController: null," in trace and "requestSeq: 0," in trace and "timing: item.timing," in trace
+        apply = _between(source, "function wwErApplyViewport(viewport) {", "function wwErSyncPanelStatus(panel)")
+        assert "for (const trace of panel.traces) wwErLoadTrace(panel, trace);" in apply
+        load = _between(source, "async function wwErLoadTrace(panel, trace) {", "function wwErPlottedTraces()")
+        assert "wwErFetchRequestFor(trace, timing, viewport, pointBudget)" in load
+        assert "trace.error = result.error ? wwFriendlyError(" in load  # one trace fails, the rest plot
+
+    def test_autoscale_covers_every_trace_of_a_panel(self):
+        source = _source()
+        has_data = _between(source, "function wwErPanelHasData(panel) {", "\n        }\n")
+        assert "panel.traces.some((trace) => trace.values.some((value) => Number.isFinite(value)))" in has_data
+        apply = _between(source, "async function wwErApplyPendingAutoscaleY(panel) {", "\n        }\n")
+        assert "panel.traces.some((t) => t.loading)" in apply
+        render = _between(source, "function wwErRenderPlot() {", "function wwErSyncPlotChrome()")
+        assert "panel.autoscaleYPending = true;" in render  # a channel joined or left
+
+    def test_cursor_values_live_in_the_channel_tree_not_the_panels(self):
+        source = _source()
+        tree = _between(source, "function wwErSourceTreeHtml(member, sourceId, open) {", "function wwErMemberTreeHtml(member)")
+        assert tree.count("...wwErTreeCursorColumns(") == 2
+        columns = _between(source, "function wwErTreeCursorColumns(keyFor) {", "\n        }\n")
+        for label in ('"Cur A"', '"Cur B"', '"Δ"'):
+            assert label in columns
+        assert columns.count('className: "cur-value-col"') == 3
+        module = _er_module(source)
+        for gone in ("cursorValuesEl", "wwErRenderPanelCursorValues", "ww-er-panel-cursor-values"):
+            assert gone not in module
+        assert "wwErSyncTreeCursorValues();" in _between(source, "function wwErSyncCursorReadout() {", "\n        }\n")
+
+    def test_view_mode_is_grouped_with_combined_explicitly_unavailable(self):
+        source = _source()
+        page = _er_page(source)
+        assert '<button type="button" id="wwErViewGroupedBtn" aria-pressed="true"' in page
+        assert re.search(r'id="wwErViewCombinedBtn"[^>]*\bdisabled\b[^>]*not available yet', page)
+        assert 'getElementById("wwErViewCombinedBtn").addEventListener' not in source
+        assert 'viewMode: "grouped",' in _between(source, "const wwErState = {", "};")
+
+    def test_waveform_grouping_is_untouched(self):
+        source = _source()
+        for waveform_fn in ("function wwPanelGroupKeyFor(channel) {", "function wwPanelLabelFor(channel) {"):
+            body = source[source.index(waveform_fn) : source.index("\n        }\n", source.index(waveform_fn))]
+            assert "wwEr" not in body and "display_axis" not in body

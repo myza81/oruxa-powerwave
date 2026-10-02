@@ -4,9 +4,46 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-02** (Event Reconstruction Slice 3E)
+Last updated: **2026-10-02** (Event Reconstruction Grouped Measurement View)
 
 ## What was most recently done
+
+**Event Reconstruction Grouped Measurement View (DEC-131,
+2026-10-02).** The feature is not complete.
+
+- **Panels.** There is one panel per display axis: engineering quantity
+  plus normalized unit, from the new backend
+  `resolve_display_axis()`, exposed additively as `display_axis_key` /
+  `_quantity` / `_unit` on the channel and calculated-channel APIs.
+  - Compatible channels from several records, native and calculated,
+    share a panel.
+  - V vs kV and Active vs Reactive Power stay apart.
+  - Each trace keeps its own fetch, envelope, timing and errors.
+- **Cursor values.** Per the owner's mid-task instruction these moved
+  from the panel headers to the left channel tree as Cur A / Cur B / Δ
+  columns (Waveform's pattern). Only the global A/B/Δt readout stays in
+  the sticky toolbar.
+- **View mode.** Grouped (default); Combined shown disabled.
+- **Real-data smoke (owner YGPN files, local only).** 8 channels gave 3
+  panels:
+  - Voltage (kV): BAHS VR/VY/VB;
+  - Active Power (MW): three BTGH power channels and PMJY POWER BBTU;
+  - Frequency (Hz): BTGH.
+
+  The tree columns fit the default 320 px sidebar.
+- **UAT item.** Waveform's 6-colour palette can give two traces in one
+  grouped panel the same colour. ER inherits colours by rule, so any
+  disambiguation needs an owner decision.
+- **Tests.**
+  - New `event-reconstruction-grouped.spec.js` (7) and backend
+    `test_display_axis.py` (27).
+  - Static `TestEventReconstructionGroupedView` (6).
+  - Cursor/plot/navigation specs updated.
+  - Full backend: 6,322 passed, 40 skipped. Full browser: 420 of 420 passed.
+- **Next.** The Combined Multi-Axis View. Mixed-duration navigation is
+  still `[OPEN / UAT]`.
+
+## Earlier — Event Reconstruction Slice 3E
 
 **Event Reconstruction Slice 3E — A/B cursors and values (DEC-130,
 2026-10-02).** The feature is not complete.
