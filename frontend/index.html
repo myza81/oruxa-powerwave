@@ -5398,9 +5398,12 @@
         .ww-cursor-line--a .ww-er-cursor-tag { color: var(--accent); }
         .ww-cursor-line--b .ww-er-cursor-tag { color: var(--error); }
         .ww-er-trace-failed { color: var(--error); font-size: 0.7rem; }
-        /* DEC-136: Event Reconstruction event markers -- Waveform's cursor
-           line/stroke/hit overlay classes in a neutral dashed style (never
-           a cursor colour); a compact label pill on the top panel. */
+        /* DEC-137: Event Reconstruction annotations use Waveform's own
+           classes (.ww-annotation*, .ww-callout-connector-layer,
+           .ww-annotation-overlay, .ww-annotation-drawer); only the overlay
+           frame and the Text Note placement strip are Event
+           Reconstruction's. */
+        .ww-er-panels-wrap { position: relative; }
         .ww-er-annotation-layer {
             position: absolute;
             inset: 0;
@@ -5408,30 +5411,6 @@
             z-index: 3;
         }
         .ww-er-annotation-layer[hidden] { display: none; }
-        .ww-er-annotation .ww-cursor-stroke {
-            background: transparent;
-            width: 0;
-            border-left: 1px dashed var(--text-dim);
-        }
-        .ww-er-annotation .ww-cursor-hit { cursor: ew-resize; }
-        .ww-er-annotation-label {
-            position: absolute;
-            top: 2px;
-            left: 4px;
-            max-width: 180px;
-            padding: 1px 6px;
-            border: 1px solid var(--panel-border);
-            border-radius: 999px;
-            background: var(--surface);
-            color: var(--text);
-            font-size: 0.65rem;
-            line-height: 1.3;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            pointer-events: auto;
-            cursor: pointer;
-        }
         .ww-er-annotation-capture {
             position: absolute;
             top: 0;
@@ -5441,26 +5420,6 @@
             background: color-mix(in srgb, var(--accent) 4%, transparent);
         }
         .ww-er-annotation-capture[hidden] { display: none; }
-        .ww-er-annotation-hint { font-size: 0.72rem; color: var(--text-dim); align-self: center; }
-        .ww-er-annotation-hint[hidden] { display: none; }
-        .ww-er-annotation-editor {
-            position: fixed;
-            z-index: 60;
-            width: 280px;
-            padding: 10px;
-            border: 1px solid var(--panel-border);
-            border-radius: 8px;
-            background: var(--surface);
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-        .ww-er-annotation-editor[hidden] { display: none; }
-        .ww-er-annotation-editor-title { font-size: 0.78rem; font-weight: 600; }
-        .ww-er-annotation-editor-time { font-size: 0.7rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
-        .ww-er-annotation-editor-actions { display: flex; gap: 6px; justify-content: flex-end; }
-        .ww-er-annotation-editor-actions button[hidden] { display: none; }
         /* Event Reconstruction legend chips: smaller than the shared
            .ww-legend-item base (Waveform's own legends keep theirs). */
         .ww-er-panel .ww-legend-item { font-size: 0.65rem; }
@@ -9221,6 +9180,17 @@
                  resolvers (wwChannelDisplayName()/wwColorForChannel()) --
                  this page never keeps its own presentation store. -->
             <section id="pageEventReconstruction" aria-label="Event Reconstruction" hidden>
+                <!-- DEC-137: Event Reconstruction's own Annotations manager (Waveform's
+                     drawer pattern and classes; Event Reconstruction annotations only). -->
+                <div class="ww-annotation-drawer" id="wwErAnnotationDrawer" aria-hidden="true">
+                    <div class="ww-annotation-drawer-header">
+                        <h3>Annotations <span class="ww-annotation-drawer-count" id="wwErAnnotationDrawerCount">0</span></h3>
+                        <button type="button" class="ww-annotation-drawer-close" id="wwErAnnotationDrawerCloseBtn" aria-label="Close annotations">&times;</button>
+                    </div>
+                    <div class="ww-annotation-drawer-body" id="wwErAnnotationListBody">
+                        <p class="empty-state">No annotations yet.</p>
+                    </div>
+                </div>
                 <div class="shell-sidebar-backdrop" id="wwErSidebarBackdrop"></div>
                 <aside id="wwErSidebar" aria-label="Event Reconstruction records">
                     <!-- Slice 2 (DEC-125, DEC-128): the reconstruction-
@@ -9282,6 +9252,41 @@
                             <button type="button" id="wwErTimeRelativeBtn" aria-pressed="true" title="Relative: time relative to the reconstruction reference">Relative</button>
                             <button type="button" id="wwErTimeAbsoluteBtn" aria-pressed="false" title="Absolute: reconstructed recorded wall-clock time, including timing corrections (display timezone)">Absolute</button>
                         </div>
+                        <!-- DEC-137: Waveform's own Annotate menu and Annotations
+                             button -- identical icons, labels and tooltips --
+                             driving Event Reconstruction's own annotations. -->
+                        <div class="ww-split-btn" id="wwErAnnotateSplit">
+                            <button type="button" class="ww-icon-btn" id="wwErAnnotateBtn" aria-haspopup="menu" aria-expanded="false" aria-pressed="false" title="Annotate" aria-label="Annotate">
+                                <span class="ww-icon"><svg viewBox="0 0 18 18"><rect x="2.5" y="3" width="10" height="8.5" rx="1.5"/><line x1="4.7" y1="6" x2="9.3" y2="6" stroke-width="1.1"/><line x1="4.7" y1="8.3" x2="7.7" y2="8.3" stroke-width="1.1"/><line x1="14" y1="10" x2="14" y2="15.5" stroke-width="1.4"/><line x1="11.25" y1="12.75" x2="16.75" y2="12.75" stroke-width="1.4"/></svg></span>
+                            </button>
+                            <div class="ww-split-menu" id="wwErAnnotateMenu" role="menu" aria-label="Annotation type" hidden>
+                                <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="text_note" aria-pressed="false">
+                                    <span class="ww-icon"><svg viewBox="0 0 18 18"><rect x="2.5" y="3" width="13" height="12" rx="1.5"/><line x1="5" y1="6.5" x2="13" y2="6.5" stroke-width="1.1"/><line x1="5" y1="9" x2="13" y2="9" stroke-width="1.1"/><line x1="5" y1="11.5" x2="10" y2="11.5" stroke-width="1.1"/></svg></span>
+                                    Text Note
+                                </button>
+                                <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="callout" aria-pressed="false">
+                                    <span class="ww-icon"><svg viewBox="0 0 18 18"><circle cx="6" cy="12" r="1.6"/><line x1="7.3" y1="10.8" x2="12" y2="5" stroke-width="1.1"/><rect x="9" y="2.5" width="7" height="4.5" rx="1" stroke-width="1.1"/></svg></span>
+                                    Callout
+                                </button>
+                                <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="peak_max" aria-pressed="false">
+                                    <span class="ww-icon"><svg viewBox="0 0 18 18"><polyline points="2.5,13 6,9.5 9,12 15.5,4" stroke-width="1.3"/><polyline points="11.5,4 15.5,4 15.5,8" stroke-width="1.3"/></svg></span>
+                                    Maximum Peak (+Peak)
+                                </button>
+                                <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="peak_min" aria-pressed="false">
+                                    <span class="ww-icon"><svg viewBox="0 0 18 18"><polyline points="2.5,5 6,8.5 9,6 15.5,14" stroke-width="1.3"/><polyline points="15.5,10 15.5,14 11.5,14" stroke-width="1.3"/></svg></span>
+                                    Minimum Peak (-Peak)
+                                </button>
+                            </div>
+                        </div>
+                        <button class="ww-icon-btn" type="button" id="wwErAnnotationListBtn" aria-pressed="false" aria-expanded="false" title="Annotations" aria-label="Annotations">
+                            <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="3" y1="4.5" x2="15" y2="4.5" stroke-width="1.4"/><line x1="3" y1="9" x2="15" y2="9" stroke-width="1.4"/><line x1="3" y1="13.5" x2="11" y2="13.5" stroke-width="1.4"/></svg></span>
+                            <span class="ww-annotation-count-badge" id="wwErAnnotationCountBadge" hidden>0</span>
+                        </button>
+                    </div>
+                    <div class="ww-annotation-guidance" id="wwErAnnotationGuidance" role="status" hidden>
+                        <span class="ww-annotation-guidance-icon" id="wwErAnnotationGuidanceIcon" aria-hidden="true"></span>
+                        <span class="ww-annotation-guidance-text" id="wwErAnnotationGuidanceText"></span>
+                        <span class="ww-annotation-guidance-esc" aria-hidden="true">Esc</span>
                     </div>
                     <div id="wwErViewArea">
                         <section class="workspace-section" id="wwErCanvasArea" aria-label="Event Reconstruction waveform view">
@@ -9307,23 +9312,25 @@
                                         <div class="ww-tg-toolbar" id="wwErCanvasToolbar">
                                             <div class="ww-split-btn ww-tg-zoom-in-split">
                                                 <button type="button" class="secondary ww-split-btn-main" id="wwErZoomInBtn" title="Zoom In — X axis" aria-label="Zoom In — X axis" disabled>Zoom In</button>
-                                                <button type="button" class="ww-icon-btn ww-split-btn-trigger" id="wwErZoomInAxisBtn" aria-haspopup="menu" aria-expanded="false" title="Event Reconstruction zooms the time axis only" aria-label="Choose Zoom In axis" disabled>
+                                                <button type="button" class="ww-icon-btn ww-split-btn-trigger" id="wwErZoomInAxisBtn" aria-haspopup="menu" aria-expanded="false" title="Choose Zoom In axis" aria-label="Choose Zoom In axis" disabled>
                                                     <span class="ww-icon ww-caret"><svg viewBox="0 0 18 18"><polyline points="4,6.5 9,11.5 14,6.5" stroke-width="1.6"/></svg></span>
                                                 </button>
                                             </div>
                                             <div class="ww-split-btn ww-tg-zoom-out-split">
-                                                <button type="button" class="secondary ww-split-btn-main" id="wwErZoomOutBtn" title="Zoom Out — X axis (never beyond Fit All)" aria-label="Zoom Out — X axis" disabled>Zoom Out</button>
-                                                <button type="button" class="ww-icon-btn ww-split-btn-trigger" id="wwErZoomOutAxisBtn" aria-haspopup="menu" aria-expanded="false" title="Event Reconstruction zooms the time axis only" aria-label="Choose Zoom Out axis" disabled>
+                                                <button type="button" class="secondary ww-split-btn-main" id="wwErZoomOutBtn" title="Zoom Out — X axis" aria-label="Zoom Out — X axis" disabled>Zoom Out</button>
+                                                <button type="button" class="ww-icon-btn ww-split-btn-trigger" id="wwErZoomOutAxisBtn" aria-haspopup="menu" aria-expanded="false" title="Choose Zoom Out axis" aria-label="Choose Zoom Out axis" disabled>
                                                     <span class="ww-icon ww-caret"><svg viewBox="0 0 18 18"><polyline points="4,6.5 9,11.5 14,6.5" stroke-width="1.6"/></svg></span>
                                                 </button>
                                             </div>
-                                            <button type="button" class="secondary ww-tg-reset-view-btn" id="wwErResetViewBtn" title="Reset Time View — Fit All and autoscale Y on every panel" disabled>Reset Time View</button>
-                                            <button type="button" class="secondary ww-er-fit-record-btn" id="wwErFitRecordBtn" title="Fit selected record" disabled>Fit Record</button>
-                                            <button type="button" class="secondary ww-er-annotate-btn" id="wwErAnnotateBtn" aria-pressed="false" title="Add an event marker: click the timeline where it happened" disabled>Annotate</button>
-                                            <span class="ww-er-annotation-hint" id="wwErAnnotationHint" hidden>Click the timeline to place an event marker. Esc cancels.</span>
-                                            <button type="button" class="secondary ww-tg-autoscale-btn" id="wwErAutoscaleYBtn" title="Autoscale Y on every panel" disabled>Autoscale Y</button>
+                                            <button type="button" class="secondary ww-tg-reset-view-btn" id="wwErResetViewBtn" title="Reset Time View" disabled>Reset Time View</button>
+                                            <button type="button" class="secondary ww-tg-autoscale-btn" id="wwErAutoscaleYBtn" title="Autoscale Y" disabled>Autoscale Y</button>
                                             <button type="button" class="ww-icon-btn ww-tg-cursor-mode-btn" id="wwErCursorModeBtn" aria-pressed="false" title="A/B Time Cursors" aria-label="A/B Time Cursors" disabled>
                                                 <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="6" y1="2.5" x2="6" y2="15.5" stroke-width="1.3" stroke="var(--accent)"/><line x1="12" y1="2.5" x2="12" y2="15.5" stroke-width="1.3" stroke="var(--error)"/><text x="6" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--accent)" font-weight="700">A</text><text x="12" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--error)" font-weight="700">B</text></svg></span>
+                                            </button>
+                                            <!-- Event Reconstruction-specific tool (no Waveform equivalent):
+                                                 its own icon in the shared compact icon-button style. -->
+                                            <button type="button" class="ww-icon-btn ww-er-fit-record-btn" id="wwErFitRecordBtn" title="Fit selected record" aria-label="Fit selected record" disabled>
+                                                <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="2.5" y1="4" x2="2.5" y2="14" stroke-width="1.4"/><line x1="15.5" y1="4" x2="15.5" y2="14" stroke-width="1.4"/><rect x="6" y="6.5" width="6" height="5" rx="1" stroke-width="1.1"/><polyline points="4.6,7.4 3.4,9 4.6,10.6" stroke-width="1.2"/><polyline points="13.4,7.4 14.6,9 13.4,10.6" stroke-width="1.2"/></svg></span>
                                             </button>
                                         </div>
                                         <!-- Slice 3E: the global cursor readout (reconstruction
@@ -9338,18 +9345,14 @@
                                 </div>
                                 <div class="ww-er-span-notice" id="wwErSpanNotice" hidden></div>
                                 <div class="ww-er-span-notice" id="wwErAxisNotice" hidden></div>
-                                <!-- DEC-136: Event Reconstruction event-marker editor (never Waveform's annotation UI). -->
-                                <div class="ww-er-annotation-editor" id="wwErAnnotationEditor" role="dialog" aria-labelledby="wwErAnnotationEditorTitle" hidden>
-                                    <div class="ww-er-annotation-editor-title" id="wwErAnnotationEditorTitle">New event marker</div>
-                                    <div class="ww-er-annotation-editor-time" id="wwErAnnotationEditorTime"></div>
-                                    <input type="text" id="wwErAnnotationEditorText" maxlength="200" placeholder="e.g. Fault inception" aria-label="Event marker label">
-                                    <div class="ww-er-annotation-editor-actions">
-                                        <button type="button" class="secondary" id="wwErAnnotationDeleteBtn">Delete</button>
-                                        <button type="button" class="secondary" id="wwErAnnotationCancelBtn">Cancel</button>
-                                        <button type="button" id="wwErAnnotationSaveBtn">Save</button>
-                                    </div>
+                                <!-- DEC-137: one annotation overlay + connector layer over the
+                                     whole panel stack (Waveform's model), so boxes are never
+                                     clipped by a panel frame. -->
+                                <div class="ww-er-panels-wrap" id="wwErPanelsWrap">
+                                    <div class="ww-tg-panels" id="wwErPanels"></div>
+                                    <svg id="wwErCalloutConnectorLayer" class="ww-callout-connector-layer" aria-hidden="true"></svg>
+                                    <div id="wwErAnnotationOverlay" class="ww-annotation-overlay" aria-hidden="true"></div>
                                 </div>
-                                <div class="ww-tg-panels" id="wwErPanels"></div>
                                 <p class="empty-state" id="wwErEmptyState">No reconstruction records selected. Select records in the left panel to place them on one common timeline.</p>
                             </section>
                         </section>
@@ -14535,12 +14538,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // IDENTITY (record_id), never a position, a time or the
             // reference -- see wwErSyncActiveRecord().
             activeRecordId: null,
-            // Event Reconstruction annotations (DEC-136): the annotations
-            // themselves are the backend definition's (`definition.
-            // annotations`, reconstruction seconds); this is only the
-            // transient UI -- placement mode, the marker being dragged
-            // ({ id, time }) and the open editor ({ id|null, time }).
-            annotationUi: { placing: false, dragging: null, editing: null },
+            // Event Reconstruction annotations (DEC-136/DEC-137): the
+            // annotations themselves are the backend definition's
+            // (`definition.annotations`); this is only the transient UI --
+            // placement type, the selected annotation, a drag in progress
+            // and the live Maximum/Minimum Peak measurements (by id).
+            annotationUi: {
+                placing: null, busy: false, generation: 0, selectedId: null, drag: null,
+                peakResults: {}, peakRequests: {}, renderFrame: 0,
+            },
             loadSeq: 0,
             busy: false,
             plot: {
@@ -15543,8 +15549,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
             }
             wwErSyncCursorReadout();
-            wwErDrawAnnotations();
-            wwErSyncAnnotationEditorTime();
+            wwErRenderAnnotations();
+            wwErRenderAnnotationList();
         }
 
         function wwErSyncTimeDisplayButtons() {
@@ -15952,13 +15958,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<span class="ww-er-cursor-tag">' + kind.toUpperCase() + "</span>" +
                 "</div>").join("");
             container.querySelector(".ww-chart-wrap").appendChild(cursorLayer);
-            // DEC-136: this panel's view of the reconstruction's annotations
-            // (vertical event markers) and, in placement mode, the capture
-            // strip over its plot area.
+            // DEC-137: Text Note placement takes one click on this panel's
+            // plot area through this capture strip (shown only while placing).
             const annotationLayer = document.createElement("div");
             annotationLayer.className = "ww-er-annotation-layer";
             annotationLayer.hidden = true;
-            annotationLayer.innerHTML = '<div class="ww-er-annotation-capture" hidden title="Click to place an event marker here"></div>';
+            annotationLayer.innerHTML = '<div class="ww-er-annotation-capture" hidden></div>';
             container.querySelector(".ww-chart-wrap").appendChild(annotationLayer);
             panel.annotationLayerEl = annotationLayer;
             panel.containerEl = container;
@@ -16066,6 +16071,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Slice 3E: any redraw (resize, relayout) re-positions this
             // panel's cursor lines.
             panel.chartEl.on("plotly_afterplot", () => wwErDrawPanelCursors(panel));
+            // DEC-137: Callout / Maximum Peak / Minimum Peak are placed on
+            // the clicked TRACE (Waveform's plotly_click rule).
+            panel.chartEl.on("plotly_click", (eventData) => wwErAnnotationTraceClick(panel, eventData));
         }
 
         // What a panel's chart was last built for: its axes in order and
@@ -16335,6 +16343,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // pending axis scale over what is already there; one whose
             // traces are loading scales when the last lands.
             for (const panel of plot.panels) wwErApplyPendingAutoscaleY(panel);
+            wwErRecalculatePeaks();
             wwErSyncToolbar();
             wwErDrawCursors();
         }
@@ -16667,7 +16676,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             fitBtn.disabled = !fit.range;
             fitBtn.title = fit.range ? "Fit selected record — " + fit.name : "Fit selected record — " + fit.reason;
             document.getElementById("wwErAnnotateBtn").disabled = !plotted;
-            if (!plotted && wwErState.annotationUi.placing) wwErToggleAnnotationPlacement(false);
+            if (!plotted && wwErState.annotationUi.placing) wwErExitAnnotationPlacement();
             const cursorBtn = document.getElementById("wwErCursorModeBtn");
             cursorBtn.disabled = !plotted;
             cursorBtn.setAttribute("aria-pressed", String(plot.cursors.enabled));
@@ -16708,23 +16717,39 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwErDrawCursors();
         }
 
-        // ---- Event Reconstruction annotations (DEC-136) ----
+        // ---- Event Reconstruction annotations (DEC-136, DEC-137) ----
         //
-        // The reconstruction's own storyline: vertical event markers with a
-        // label ("Fault inception", "Breaker opened", ...). Owned by the
-        // backend definition (`definition.annotations`), stored in
-        // reconstruction seconds of the current frame -- the backend
-        // rebases them with a reference switch or reference correction
-        // (same physical instant); a non-reference correction leaves them
-        // fixed. Never Waveform's annotation state, never attached to a
-        // record. Drawn like the cursors (shared wwTimeToPageX() and
-        // Waveform's .ww-cursor-line/-stroke/-hit overlay classes), on
-        // every panel; the label on the top panel, staggered into rows
-        // when labels would overlap. Relative/Absolute changes only the
-        // time text (wwErCursorTimeLabel()).
+        // The SAME four tools as Waveform's annotation framework (DEC-044/
+        // 045/046) -- Text Note, Callout, Maximum Peak, Minimum Peak -- and
+        // an Annotations manager, with Event Reconstruction's OWN state:
+        // the backend definition's `annotations` (never Waveform's
+        // annotation state, never Time Groups). Shared with Waveform: the
+        // box markup (wwAnnotationNoteBodyHtml/wwCalloutBodyHtml/
+        // wwPeakBodyHtml), connector geometry (wwUpdateCalloutConnector-
+        // Geometry/wwHideCalloutConnector), category/summary/peak-value
+        // text (wwAnnotationCategoryLabel/wwAnnotationSummary/
+        // wwPeakValueLineText), placement guidance, the anchor and
+        // peak-value endpoints, and every CSS class. Page-specific: these
+        // adapters (render, drag, edit, manager) over reconstruction time.
+        //
+        // * Text Note -- reconstruction-level: X = reconstruction time
+        //   (rebased by the backend with a reference switch/correction),
+        //   Y = fraction of its panel's plot height, on the Grouped panel
+        //   of its display axis (or the first / combined panel).
+        // * Callout / Peak -- channel-attached to one plotted trace
+        //   (record + source + channel); X = source time + that source's
+        //   CURRENT reconstruction offset, so they follow their record's
+        //   corrections (same physical sample); Y = the trace's own Y axis
+        //   (Grouped panel, or its Combined axis).
+        // * Relative/Absolute changes only time text (wwErAnnotationTime-
+        //   Text()).
 
         function wwErAnnotations() {
             return (wwErState.definition && wwErState.definition.annotations) || [];
+        }
+
+        function wwErAnnotationById(id) {
+            return wwErAnnotations().find((a) => a.annotation_id === id) || null;
         }
 
         function wwErAnnotationTimeText(seconds) {
@@ -16732,198 +16757,759 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return label.date ? label.date + " " + label.text : label.text;
         }
 
-        function wwErDrawAnnotations() {
-            for (const panel of wwErState.plot.panels) wwErDrawPanelAnnotations(panel);
+        // The plotted trace a channel-attached annotation sits on, if any.
+        function wwErAnnotationTrace(annotation) {
+            const channel = annotation.channel;
+            if (!channel) return null;
+            return wwErPlottedTraces().find((t) => t.recordId === channel.record_id &&
+                t.sourceId === channel.source_id && t.channelName === channel.channel_name) || null;
         }
 
-        function wwErDrawPanelAnnotations(panel) {
+        // Its source's current reconstruction timing (record still a current
+        // member), whether or not the channel is plotted.
+        function wwErAnnotationTiming(annotation) {
+            if (!annotation.channel) return null;
+            const timing = wwErSourceTiming(annotation.channel.source_id);
+            return timing && timing.recordId === annotation.channel.record_id ? timing : null;
+        }
+
+        function wwErAnnotationPeak(annotation) {
+            return wwErState.annotationUi.peakResults[annotation.annotation_id] || null;
+        }
+
+        // Reconstruction time of an annotation, or null.
+        function wwErAnnotationTime(annotation) {
+            if (annotation.type === "text_note") return annotation.reconstruction_time_s;
+            const timing = wwErAnnotationTiming(annotation);
+            if (!timing) return null;
+            if (annotation.type === "callout") return wwErSourceElapsedToReconstructionTime(annotation.anchor.source_elapsed_s, timing.totalOffsetS);
+            const peak = wwErAnnotationPeak(annotation);
+            return peak && peak.available ? wwErSourceElapsedToReconstructionTime(peak.sourceElapsed, timing.totalOffsetS) : null;
+        }
+
+        function wwErAnnotationValue(annotation) {
+            if (annotation.type === "callout") return annotation.anchor.value;
+            const peak = wwErAnnotationPeak(annotation);
+            return peak && peak.available ? peak.value : null;
+        }
+
+        // The shape Waveform's shared presentation helpers read
+        // ({ type, data: { text, available, peakValue, unit } }).
+        function wwErAsWaveformAnnotation(annotation) {
+            const peak = wwErAnnotationPeak(annotation);
+            return {
+                type: annotation.type,
+                data: {
+                    text: annotation.text,
+                    available: !!(peak && peak.available),
+                    peakValue: peak ? peak.value : null,
+                    unit: peak ? peak.unit : (annotation.anchor ? annotation.anchor.unit : null),
+                },
+            };
+        }
+
+        function wwErAnnotationChannelText(annotation) {
+            const channel = annotation.channel;
+            return wwErMemberName(channel.record_id) + " · " + wwChannelDisplayName(channel.source_id, channel.channel_name);
+        }
+
+        // The manager's metadata line (Waveform's wwAnnotationMetaLine()
+        // pattern): channel · time · value for a Callout; channel · t = time
+        // (or why it is unavailable) for a Peak; the time for a Text Note.
+        function wwErAnnotationMetaLine(annotation) {
+            if (annotation.type === "text_note") return "t = " + wwErAnnotationTimeText(annotation.reconstruction_time_s);
+            const channelText = wwErAnnotationChannelText(annotation);
+            if (!wwErAnnotationTiming(annotation)) return channelText + " · Record not in the reconstruction";
+            if (annotation.type === "callout") {
+                const value = Number.isFinite(annotation.anchor.value)
+                    ? annotation.anchor.value.toFixed(3) + (annotation.anchor.unit ? " " + annotation.anchor.unit : "") : "—";
+                return channelText + " · " + wwErAnnotationTimeText(wwErAnnotationTime(annotation)) + " · " + value;
+            }
+            const peak = wwErAnnotationPeak(annotation);
+            if (!peak || !peak.available) return channelText + " · Unavailable for current view";
+            return channelText + " · t = " + wwErAnnotationTimeText(wwErAnnotationTime(annotation));
+        }
+
+        // -- geometry (relative to #wwErPanelsWrap, the overlay's frame) --
+
+        function wwErAnnotationHostPanel(annotation) {
             const plot = wwErState.plot;
+            if (annotation.type === "text_note") {
+                if (!plot.panels.length) return null;
+                if (plot.panels[0].combined) return plot.panels[0];
+                return plot.panels.find((p) => p.axes[0] && p.axes[0].key === annotation.axis_key) || plot.panels[0];
+            }
+            const trace = wwErAnnotationTrace(annotation);
+            return trace ? trace.panel : null;
+        }
+
+        function wwErPanelPlotBox(panel, wrapRect) {
+            const fl = panel.plotlyReady ? panel.chartEl._fullLayout : null;
+            if (!fl || !fl._size) return null;
+            const rect = panel.chartEl.getBoundingClientRect();
+            if (rect.width === 0 && rect.height === 0) return null;
+            return { left: rect.left - wrapRect.left + fl._size.l, top: rect.top - wrapRect.top + fl._size.t, width: fl._size.w, height: fl._size.h };
+        }
+
+        // A value on a trace's OWN Y axis (its Grouped panel's, or its
+        // Combined axis) -> overlay Y; null outside that axis's range.
+        function wwErTraceValueToY(trace, value, wrapRect) {
+            const panel = trace.panel;
+            const axis = panel.axes[trace.axisIndex];
+            const fl = panel.plotlyReady ? panel.chartEl._fullLayout : null;
+            const ya = fl && axis ? fl[axis.placement.layoutKey] : null;
+            if (!ya || !Number.isFinite(value) || !ya.range) return null;
+            const lo = Math.min(ya.range[0], ya.range[1]);
+            const hi = Math.max(ya.range[0], ya.range[1]);
+            if (!(hi > lo)) return null;
+            const fraction = (value - lo) / (hi - lo);
+            if (fraction < 0 || fraction > 1) return null;
+            return panel.chartEl.getBoundingClientRect().top - wrapRect.top + ya._offset + (1 - fraction) * ya._length;
+        }
+
+        function wwErTimeToOverlayX(panel, time, wrapRect) {
+            const plot = wwErState.plot;
+            if (!plot.viewport || !Number.isFinite(time) || time < plot.viewport.start || time > plot.viewport.end) return null;
+            const metrics = wwPlotMetricsForChart(panel.chartEl);
+            const pageX = metrics ? wwTimeToPageX(plot.viewport, metrics, time) : null;
+            return pageX === null ? null : pageX - wrapRect.left;
+        }
+
+        // Where an annotation is drawn now: { panel, anchor: {x, y} } (the
+        // Text Note's top-left / the Callout or Peak sample), or null when
+        // it is hidden (outside the view, its channel not plotted, its value
+        // outside the Y range, unavailable) -- it stays in the manager.
+        function wwErAnnotationPlacement(annotation, wrapRect) {
+            const panel = wwErAnnotationHostPanel(annotation);
+            if (!panel || !panel.plotlyReady) return null;
+            const x = wwErTimeToOverlayX(panel, wwErAnnotationTime(annotation), wrapRect);
+            if (x === null) return null;
+            if (annotation.type === "text_note") {
+                const box = wwErPanelPlotBox(panel, wrapRect);
+                return box ? { panel, anchor: { x, y: box.top + annotation.y_fraction * box.height } } : null;
+            }
+            const y = wwErTraceValueToY(wwErAnnotationTrace(annotation), wwErAnnotationValue(annotation), wrapRect);
+            return y === null ? null : { panel, anchor: { x, y } };
+        }
+
+        // -- render --
+
+        function wwErScheduleAnnotationRender() {
             const ui = wwErState.annotationUi;
-            const layer = panel.annotationLayerEl;
-            if (!layer) return;
-            const metrics = panel.plotlyReady ? wwPlotMetricsForChart(panel.chartEl) : null;
-            for (const el of Array.from(layer.querySelectorAll(".ww-er-annotation"))) el.remove();
-            if (!plot.viewport || !metrics) {
-                layer.hidden = true;
+            if (ui.renderFrame) return;
+            ui.renderFrame = requestAnimationFrame(() => {
+                ui.renderFrame = 0;
+                wwErRenderAnnotations();
+            });
+        }
+
+        function wwErRenderAnnotations() {
+            const ui = wwErState.annotationUi;
+            const wrap = document.getElementById("wwErPanelsWrap");
+            const overlay = document.getElementById("wwErAnnotationOverlay");
+            const connectors = document.getElementById("wwErCalloutConnectorLayer");
+            for (const panel of wwErState.plot.panels) {
+                const capture = panel.annotationLayerEl && panel.annotationLayerEl.querySelector(".ww-er-annotation-capture");
+                if (!capture) continue;
+                panel.annotationLayerEl.hidden = ui.placing !== "text_note";
+                capture.hidden = ui.placing !== "text_note";
+                const metrics = panel.plotlyReady ? wwPlotMetricsForChart(panel.chartEl) : null;
+                if (metrics) {
+                    capture.style.left = (metrics.plotLeftPage - panel.chartWrapEl.getBoundingClientRect().left) + "px";
+                    capture.style.width = metrics.plotWidth + "px";
+                }
+            }
+            const wrapRect = wrap.getBoundingClientRect();
+            const seen = new Set();
+            for (const annotation of wwErAnnotations()) {
+                const id = annotation.annotation_id;
+                seen.add(id);
+                const anchored = annotation.type !== "text_note";
+                let el = overlay.querySelector('.ww-annotation[data-er-annotation-id="' + CSS.escape(id) + '"]');
+                if (!el) {
+                    el = document.createElement("div");
+                    el.className = "ww-annotation ww-annotation--" + annotation.type;
+                    el.dataset.erAnnotationId = id;
+                    el.dataset.editing = "false";
+                    el.innerHTML = annotation.type === "callout" ? wwCalloutBodyHtml()
+                        : anchored ? wwPeakBodyHtml(annotation.type) : wwAnnotationNoteBodyHtml();
+                    overlay.appendChild(el);
+                    wwErWireAnnotationBox(el, id);
+                }
+                const selected = ui.selectedId === id;
+                el.classList.toggle("ww-annotation--selected", selected);
+                el.style.zIndex = String(selected ? 100000 : annotation.sequence);
+                if (el.dataset.editing !== "true" && (annotation.type === "text_note" || annotation.type === "callout")) {
+                    const body = el.querySelector(".ww-annotation-body");
+                    if (body) {
+                        body.textContent = annotation.text || "Click to add text"; // textContent only
+                        body.classList.toggle("ww-annotation-body--placeholder", !annotation.text);
+                    }
+                }
+                if (anchored && annotation.type !== "callout") {
+                    const valueLine = el.querySelector(".ww-peak-value-line");
+                    const timeLine = el.querySelector(".ww-peak-time-line");
+                    if (valueLine) valueLine.textContent = wwPeakValueLineText(wwErAsWaveformAnnotation(annotation));
+                    if (timeLine) {
+                        const time = wwErAnnotationTime(annotation);
+                        timeLine.textContent = time === null ? "" : "t = " + wwErAnnotationTimeText(time);
+                    }
+                }
+                // A drag in progress draws its own preview.
+                if (ui.drag && ui.drag.id === id) continue;
+                const placed = wwErAnnotationPlacement(annotation, wrapRect);
+                if (!placed) {
+                    el.style.display = "none";
+                    wwHideCalloutConnector(connectors, id);
+                    continue;
+                }
+                el.style.display = "";
+                if (!anchored) {
+                    el.style.left = placed.anchor.x + "px";
+                    el.style.top = placed.anchor.y + "px";
+                    continue;
+                }
+                const left = placed.anchor.x + annotation.box_offset.x;
+                const top = placed.anchor.y + annotation.box_offset.y;
+                el.style.left = left + "px";
+                el.style.top = top + "px";
+                wwUpdateCalloutConnectorGeometry(connectors, id, placed.anchor, left, top, el.offsetWidth || 200, el.offsetHeight || 80,
+                    selected, false, annotation.type !== "callout");
+            }
+            for (const el of Array.from(overlay.querySelectorAll(".ww-annotation"))) {
+                if (!seen.has(el.dataset.erAnnotationId)) el.remove();
+            }
+            for (const group of Array.from(connectors.children)) {
+                if (!seen.has(group.dataset.annotationId)) group.remove();
+            }
+            const badge = document.getElementById("wwErAnnotationCountBadge");
+            badge.hidden = seen.size === 0;
+            badge.textContent = String(seen.size);
+        }
+
+        // -- selection, manager --
+
+        function wwErSelectAnnotation(id) {
+            wwErState.annotationUi.selectedId = id || null;
+            wwErRenderAnnotations();
+            wwErRenderAnnotationList();
+        }
+
+        function wwErSelectAnnotationAndReveal(id) {
+            wwErSelectAnnotation(id);
+            const el = document.querySelector('#wwErAnnotationOverlay .ww-annotation[data-er-annotation-id="' + CSS.escape(id) + '"]');
+            if (el && el.style.display !== "none" && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "nearest", inline: "nearest" });
+        }
+
+        // The Annotations manager: Event Reconstruction's annotations only,
+        // newest first, in Waveform's list pattern (category, summary,
+        // metadata line, delete; a row selects and reveals).
+        function wwErRenderAnnotationList() {
+            const listEl = document.getElementById("wwErAnnotationListBody");
+            const all = wwErAnnotations().slice().sort((a, b) => b.sequence - a.sequence);
+            document.getElementById("wwErAnnotationDrawerCount").textContent = String(all.length);
+            listEl.innerHTML = "";
+            if (!all.length) {
+                const empty = document.createElement("p");
+                empty.className = "empty-state";
+                empty.textContent = "No annotations yet.";
+                listEl.appendChild(empty);
                 return;
             }
-            layer.hidden = false;
-            const wrapLeft = panel.chartWrapEl.getBoundingClientRect().left;
-            const capture = layer.querySelector(".ww-er-annotation-capture");
-            capture.hidden = !ui.placing;
-            capture.style.left = (metrics.plotLeftPage - wrapLeft) + "px";
-            capture.style.width = metrics.plotWidth + "px";
-            const withLabels = panel === plot.panels[0];
-            const markers = wwErAnnotations()
-                .map((annotation) => ({
-                    annotation,
-                    time: ui.dragging && ui.dragging.id === annotation.annotation_id ? ui.dragging.time : annotation.reconstruction_time_s,
-                }))
-                .filter((marker) => marker.time >= plot.viewport.start && marker.time <= plot.viewport.end)
-                .sort((a, b) => a.time - b.time);
-            const labels = [];
-            for (const { annotation, time } of markers) {
-                const title = annotation.text + " — " + wwErAnnotationTimeText(time);
-                const el = document.createElement("div");
-                el.className = "ww-cursor-line ww-er-annotation";
-                el.dataset.erAnnotationId = annotation.annotation_id;
-                el.style.left = (wwTimeToPageX(plot.viewport, metrics, time) - wrapLeft) + "px";
-                el.innerHTML = '<div class="ww-cursor-stroke"></div><div class="ww-cursor-hit" data-er-annotation-drag></div>';
-                el.querySelector(".ww-cursor-hit").title = title + " (drag to move, click to edit)";
-                if (withLabels) {
-                    const label = document.createElement("button");
-                    label.type = "button";
-                    label.className = "ww-er-annotation-label";
-                    label.dataset.erAnnotationEdit = annotation.annotation_id;
-                    label.textContent = annotation.text;
-                    label.title = title;
-                    el.appendChild(label);
-                    labels.push(label);
-                }
-                layer.appendChild(el);
-            }
-            // Close markers keep every label: a label that would overlap the
-            // previous one in its row drops to the next row.
-            const rowEnds = [];
-            for (const label of labels) {
-                const left = label.parentElement.offsetLeft + 4;
-                let row = rowEnds.findIndex((end) => end + 4 <= left);
-                if (row === -1) {
-                    row = rowEnds.length;
-                    rowEnds.push(0);
-                }
-                rowEnds[row] = left + label.offsetWidth;
-                label.style.top = (2 + row * 18) + "px";
+            for (const annotation of all) {
+                const shape = wwErAsWaveformAnnotation(annotation);
+                const row = document.createElement("div");
+                row.className = "ww-annotation-list-item";
+                row.dataset.erAnnotationId = annotation.annotation_id;
+                row.tabIndex = 0;
+                row.setAttribute("role", "button");
+                if (wwErState.annotationUi.selectedId === annotation.annotation_id) row.classList.add("ww-annotation-list-item--selected");
+                const main = document.createElement("div");
+                main.className = "ww-annotation-list-item-main";
+                const category = document.createElement("div");
+                category.className = "ww-annotation-list-item-category";
+                category.textContent = wwAnnotationCategoryLabel(shape);
+                const preview = document.createElement("div");
+                preview.className = "ww-annotation-list-item-preview";
+                const summary = wwAnnotationSummary(shape);
+                preview.textContent = summary;
+                const meta = document.createElement("div");
+                meta.className = "ww-annotation-list-item-meta";
+                meta.textContent = wwErAnnotationMetaLine(annotation);
+                main.append(category, preview, meta);
+                const shortPreview = summary.length > 40 ? summary.slice(0, 40) + "…" : summary;
+                const deleteBtn = document.createElement("button");
+                deleteBtn.type = "button";
+                deleteBtn.className = "ww-icon-btn ww-annotation-delete-btn";
+                deleteBtn.title = "Delete annotation";
+                deleteBtn.setAttribute("aria-label", "Delete annotation \"" + shortPreview + "\"");
+                deleteBtn.innerHTML = '<span class="ww-icon"><svg viewBox="0 0 18 18"><path d="M4 5h10M7.5 5V3.5a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1V5M6 5v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V5"/><line x1="7.5" y1="8" x2="7.5" y2="12"/><line x1="10.5" y1="8" x2="10.5" y2="12"/></svg></span>';
+                deleteBtn.addEventListener("click", (event) => {
+                    event.stopPropagation();
+                    wwErDeleteAnnotation(annotation.annotation_id);
+                });
+                row.append(main, deleteBtn);
+                row.addEventListener("click", () => wwErSelectAnnotationAndReveal(annotation.annotation_id));
+                row.addEventListener("keydown", (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        wwErSelectAnnotationAndReveal(annotation.annotation_id);
+                    }
+                });
+                listEl.appendChild(row);
             }
         }
 
-        // Annotate: one placement, then back to normal. While placing, each
-        // panel's plot area takes one click (no Box Zoom/Pan/cursor drag);
-        // Esc cancels.
-        function wwErToggleAnnotationPlacement(on) {
+        function wwErSetAnnotationDrawerOpen(open) {
+            const drawer = document.getElementById("wwErAnnotationDrawer");
+            drawer.classList.toggle("ww-annotation-drawer--open", open);
+            drawer.setAttribute("aria-hidden", String(!open));
+            const btn = document.getElementById("wwErAnnotationListBtn");
+            btn.setAttribute("aria-pressed", String(open));
+            btn.setAttribute("aria-expanded", String(open));
+            if (open) wwErRenderAnnotationList();
+        }
+
+        // -- writes (the Event Reconstruction API; wwErMutate() refreshes) --
+
+        async function wwErDeleteAnnotation(id) {
+            if (wwErState.annotationUi.selectedId === id) wwErState.annotationUi.selectedId = null;
+            delete wwErState.annotationUi.peakResults[id];
+            await wwErMutate("DELETE", "/definition/annotations/" + encodeURIComponent(id));
+        }
+
+        async function wwErUpdateAnnotation(id, patch) {
+            return wwErMutate("PUT", "/definition/annotations/" + encodeURIComponent(id), patch);
+        }
+
+        // Creates one annotation; resolves to its new id (or null).
+        async function wwErCreateAnnotation(body) {
+            const before = new Set(wwErAnnotations().map((a) => a.annotation_id));
+            const ok = await wwErMutate("POST", "/definition/annotations", body);
+            if (!ok) return null;
+            const created = wwErAnnotations().find((a) => !before.has(a.annotation_id));
+            return created ? created.annotation_id : null;
+        }
+
+        // -- placement (Waveform's Annotate menu + guidance ribbon) --
+
+        function wwErEnterAnnotationPlacement(type) {
             const ui = wwErState.annotationUi;
-            const placing = on === undefined ? !ui.placing : on;
-            if (placing && (!wwErState.plot.viewport || !wwErState.plot.panels.length)) return;
-            ui.placing = placing;
-            document.getElementById("wwErAnnotateBtn").setAttribute("aria-pressed", String(placing));
-            document.getElementById("wwErAnnotationHint").hidden = !placing;
-            wwErDrawAnnotations();
+            if (ui.placing === type) return;
+            ui.placing = type;
+            ui.busy = false;
+            ui.generation += 1;
+            wwErSyncAnnotationPlacementChrome();
         }
 
+        function wwErExitAnnotationPlacement() {
+            const ui = wwErState.annotationUi;
+            if (!ui.placing) return;
+            ui.placing = null;
+            ui.busy = false;
+            ui.generation += 1;
+            wwErSyncAnnotationPlacementChrome();
+        }
+
+        function wwErSyncAnnotationPlacementChrome() {
+            const type = wwErState.annotationUi.placing;
+            document.getElementById("wwErAnnotateBtn").setAttribute("aria-pressed", String(!!type));
+            for (const item of document.querySelectorAll("#wwErAnnotateMenu .ww-split-menu-item")) {
+                item.setAttribute("aria-pressed", String(item.dataset.annotationType === type));
+            }
+            const ribbon = document.getElementById("wwErAnnotationGuidance");
+            const guidance = type ? wwAnnotationPlacementGuidance(type) : null;
+            ribbon.hidden = !guidance;
+            if (guidance) {
+                document.getElementById("wwErAnnotationGuidanceIcon").innerHTML = guidance.icon; // static glyph markup
+                document.getElementById("wwErAnnotationGuidanceText").textContent = guidance.message + " Press Esc to cancel.";
+            }
+            wwErRenderAnnotations();
+        }
+
+        function wwErSetAnnotateMenuOpen(open) {
+            document.getElementById("wwErAnnotateMenu").hidden = !open;
+            document.getElementById("wwErAnnotateBtn").setAttribute("aria-expanded", String(open));
+        }
+
+        // Text Note placement: a click in a panel's plot area (the capture
+        // strip shown only in this mode). X -> reconstruction time, Y ->
+        // fraction of that panel's plot height; the Grouped panel's display
+        // axis is remembered. Then straight into editing (Waveform).
         function wwErWirePanelAnnotationInput(panel) {
-            const layer = panel.annotationLayerEl;
-            let drag = null;
-            layer.addEventListener("click", (event) => {
-                const label = event.target.closest("[data-er-annotation-edit]");
-                if (label) {
-                    wwErOpenAnnotationEditor(label.dataset.erAnnotationEdit, null, event);
-                    return;
-                }
-                if (!event.target.closest(".ww-er-annotation-capture")) return;
+            panel.annotationLayerEl.addEventListener("click", async (event) => {
+                const ui = wwErState.annotationUi;
+                if (ui.placing !== "text_note" || !event.target.closest(".ww-er-annotation-capture")) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const plot = wwErState.plot;
                 const metrics = wwPlotMetricsForChart(panel.chartEl);
-                const time = metrics ? wwPageXToTime(wwErState.plot.viewport, metrics, event.clientX) : null;
-                if (time === null) return;
-                wwErToggleAnnotationPlacement(false);
-                wwErOpenAnnotationEditor(null, wwErClampCursorTime(wwErState.plot.fitAll, time), event);
+                const box = wwErPanelPlotBox(panel, { left: 0, top: 0 });
+                const time = metrics ? wwPageXToTime(plot.viewport, metrics, event.clientX) : null;
+                if (time === null || !box) return;
+                const yFraction = Math.min(1, Math.max(0, (event.clientY - box.top) / box.height));
+                wwErExitAnnotationPlacement();
+                const id = await wwErCreateAnnotation({
+                    type: "text_note", reconstruction_time_s: wwErClampCursorTime(plot.fitAll, time), y_fraction: yFraction,
+                    axis_key: panel.combined ? null : panel.axes[0].key, text: "",
+                });
+                if (id) wwErBeginAnnotationEdit(id);
             });
-            const onMove = (event) => {
-                if (!drag) return;
-                if (Math.abs(event.clientX - drag.startX) < 3 && !wwErState.annotationUi.dragging) return;
-                const time = wwPageXToTime(wwErState.plot.viewport, drag.metrics, event.clientX);
-                if (time === null) return;
-                wwErState.annotationUi.dragging = { id: drag.id, time: wwErClampCursorTime(wwErState.plot.fitAll, time) };
-                wwErDrawAnnotations();
-            };
-            // Tracked on window: every redraw during the drag recreates the
-            // marker elements, so the grabbed one cannot hold the pointer.
-            const onEnd = async (event) => {
-                if (!drag) return;
-                const { id } = drag;
-                drag = null;
-                window.removeEventListener("pointermove", onMove);
-                window.removeEventListener("pointerup", onEnd);
-                window.removeEventListener("pointercancel", onEnd);
-                const moved = wwErState.annotationUi.dragging;
-                if (!moved) {
-                    if (event.type === "pointerup") wwErOpenAnnotationEditor(id, null, event); // a click, not a drag
+        }
+
+        // Callout / Peak placement: the CLICKED trace (Plotly's own point
+        // `meta` = the trace key), never "the first trace in the panel".
+        function wwErAnnotationTraceClick(panel, eventData) {
+            const ui = wwErState.annotationUi;
+            const type = ui.placing;
+            if (type !== "callout" && type !== "peak_max" && type !== "peak_min") return;
+            const point = eventData && eventData.points && eventData.points[0];
+            const trace = point ? panel.traces.find((t) => t.key === (point.data && point.data.meta)) : null;
+            if (!trace) return;
+            if (type === "callout") {
+                wwErExitAnnotationPlacement(); // one-shot, as Waveform
+                wwErCreateCallout(trace, wwErPlotXToReconstruction(point.x, wwErState.plot.origin));
+            } else if (!ui.busy) {
+                wwErCreatePeak(trace, type);
+            }
+        }
+
+        function wwErAnnotationChannelOf(trace) {
+            return { record_id: trace.recordId, source_id: trace.sourceId, channel_name: trace.channelName };
+        }
+
+        // Waveform's nearest-real-sample endpoint, at the trace's SOURCE time.
+        async function wwErResolveAnchor(trace, reconstructionTime) {
+            const timing = trace.timing;
+            const r = Math.min(timing.endS, Math.max(timing.startS, reconstructionTime));
+            const native = wwErReconstructionTimeToSourceElapsed(r, timing.totalOffsetS);
+            const calculated = trace.kind === "calculated";
+            const base = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId());
+            try {
+                const response = await fetch(base + (calculated
+                    ? "/calculated-channels/" + encodeURIComponent(trace.sourceId) + "/annotation-anchor"
+                    : "/sources/" + encodeURIComponent(trace.sourceId) + "/annotation-anchor"), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(calculated
+                        ? { approximate_elapsed_seconds: native, unit_mode: "engineering" }
+                        : { channel_name: trace.channelName, approximate_elapsed_seconds: native, unit_mode: "engineering" }),
+                });
+                const body = await response.json().catch(() => null);
+                if (!response.ok || !body) return { error: (body && body.detail && body.detail.message) || "Could not resolve the anchor point." };
+                return { anchor: { sample_index: body.sample_index, source_elapsed_s: body.elapsed_seconds, value: body.value, unit: body.unit } };
+            } catch (error) {
+                return { error: "could not reach the backend." };
+            }
+        }
+
+        async function wwErCreateCallout(trace, reconstructionTime) {
+            const resolved = await wwErResolveAnchor(trace, reconstructionTime);
+            if (resolved.error) {
+                wwErSetStatus("error", "Could not create callout: " + resolved.error);
+                return;
+            }
+            const id = await wwErCreateAnnotation({ type: "callout", channel: wwErAnnotationChannelOf(trace), anchor: resolved.anchor, text: "" });
+            if (id) wwErBeginAnnotationEdit(id);
+        }
+
+        // Waveform's peak-values endpoint over the CURRENT visible range,
+        // mapped into the source's own time (and clipped to its extent).
+        async function wwErMeasurePeaks(sourceId, calculated, items) {
+            const timing = wwErSourceTiming(sourceId);
+            const viewport = wwErState.plot.viewport;
+            if (!timing || !viewport || timing.endS < viewport.start || timing.startS > viewport.end) return { results: items.map(() => ({ available: false })) };
+            const start = wwErReconstructionTimeToSourceElapsed(Math.max(viewport.start, timing.startS), timing.totalOffsetS);
+            const end = wwErReconstructionTimeToSourceElapsed(Math.min(viewport.end, timing.endS), timing.totalOffsetS);
+            const base = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId());
+            try {
+                const response = await fetch(base + (calculated ? "/calculated-channels/peak-values" : "/sources/" + encodeURIComponent(sourceId) + "/peak-values"), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        requests: items.map((item) => (calculated
+                            ? { calculated_channel_id: sourceId, mode: item.mode }
+                            : { channel_name: item.channelName, mode: item.mode })),
+                        start_time: start, end_time: end, unit_mode: "engineering",
+                    }),
+                });
+                const body = await response.json().catch(() => null);
+                if (!response.ok || !body || !Array.isArray(body.results)) return { error: (body && body.detail && body.detail.message) || "Could not resolve a peak value." };
+                return { results: body.results };
+            } catch (error) {
+                return { error: "could not reach the backend." };
+            }
+        }
+
+        function wwErPeakResult(result) {
+            return result && result.available
+                ? { available: true, sampleIndex: result.sample_index, sourceElapsed: result.elapsed_seconds, value: result.value, unit: result.unit }
+                : { available: false };
+        }
+
+        // Placement stays active until a peak is created (Waveform).
+        async function wwErCreatePeak(trace, type) {
+            const ui = wwErState.annotationUi;
+            const generation = ui.generation;
+            const label = type === "peak_max" ? "+Peak" : "-Peak";
+            ui.busy = true;
+            try {
+                const measured = await wwErMeasurePeaks(trace.sourceId, trace.kind === "calculated",
+                    [{ channelName: trace.channelName, mode: type === "peak_max" ? "max" : "min" }]);
+                if (ui.generation !== generation) return;
+                const result = measured.results ? measured.results[0] : null;
+                if (measured.error || !result) {
+                    wwErSetStatus("error", "Could not create " + label + ": " + (measured.error || "no result."));
                     return;
                 }
-                await wwErMutate("PUT", "/definition/annotations/" + encodeURIComponent(id), { reconstruction_time_s: moved.time });
-                wwErState.annotationUi.dragging = null;
-                wwErDrawAnnotations();
-            };
-            layer.addEventListener("pointerdown", (event) => {
-                const handle = event.target.closest("[data-er-annotation-drag]");
-                if (!handle || (event.button !== undefined && event.button !== 0) || wwErState.busy) return;
-                const metrics = wwPlotMetricsForChart(panel.chartEl);
-                if (!metrics || !wwErState.plot.viewport) return;
-                drag = { id: handle.closest(".ww-er-annotation").dataset.erAnnotationId, startX: event.clientX, metrics };
-                wwErState.annotationUi.dragging = null;
+                if (!result.available) {
+                    wwErSetStatus("error", "Could not create " + label + ": no valid samples for " + trace.channelName + " in the current visible range.");
+                    return;
+                }
+                const id = await wwErCreateAnnotation({ type, channel: wwErAnnotationChannelOf(trace) });
+                if (id) {
+                    ui.peakResults[id] = wwErPeakResult(result);
+                    wwErExitAnnotationPlacement();
+                    wwErRenderAnnotations();
+                    wwErRenderAnnotationList();
+                }
+            } finally {
+                ui.busy = false;
+            }
+        }
+
+        // Maximum/Minimum Peak follow the visible range (Waveform's live
+        // recalculation): one batched request per source, only when the
+        // window, offset or set changed; a superseded response is dropped.
+        function wwErRecalculatePeaks() {
+            const ui = wwErState.annotationUi;
+            const viewport = wwErState.plot.viewport;
+            const bySource = new Map();
+            for (const annotation of wwErAnnotations()) {
+                if (annotation.type !== "peak_max" && annotation.type !== "peak_min") continue;
+                const key = annotation.channel.source_id;
+                if (!bySource.has(key)) bySource.set(key, []);
+                bySource.get(key).push(annotation);
+            }
+            for (const [sourceId, items] of bySource) {
+                const timing = wwErAnnotationTiming(items[0]);
+                const key = [viewport && viewport.start, viewport && viewport.end, timing && timing.totalOffsetS, items.map((a) => a.annotation_id).join(",")].join("|");
+                const known = ui.peakRequests[sourceId];
+                if (known && known.key === key) continue;
+                const seq = (known ? known.seq : 0) + 1;
+                ui.peakRequests[sourceId] = { key, seq };
+                const calculated = wwState_isCalculatedErSource(sourceId);
+                wwErMeasurePeaks(sourceId, calculated, items.map((a) => ({ channelName: a.channel.channel_name, mode: a.type === "peak_max" ? "max" : "min" })))
+                    .then((measured) => {
+                        const current = ui.peakRequests[sourceId];
+                        if (!current || current.seq !== seq) return;
+                        if (!measured.results) {
+                            current.key = null; // retry on the next change
+                            return;
+                        }
+                        items.forEach((annotation, index) => { ui.peakResults[annotation.annotation_id] = wwErPeakResult(measured.results[index]); });
+                        wwErRenderAnnotations();
+                        wwErRenderAnnotationList();
+                    });
+            }
+        }
+
+        function wwState_isCalculatedErSource(sourceId) {
+            return wwErState.calculatedChannels.some((c) => c.id === sourceId);
+        }
+
+        // -- editing (Waveform's in-place textarea) --
+
+        function wwErBeginAnnotationEdit(id) {
+            // A just-created box exists only after the next render.
+            wwErRenderAnnotations();
+            const el = document.querySelector('#wwErAnnotationOverlay .ww-annotation[data-er-annotation-id="' + CSS.escape(id) + '"]');
+            const annotation = wwErAnnotationById(id);
+            if (!el || !annotation || el.dataset.editing === "true" || (annotation.type !== "text_note" && annotation.type !== "callout")) return;
+            const body = el.querySelector(".ww-annotation-body");
+            if (!body) return;
+            wwErSelectAnnotation(id);
+            el.dataset.editing = "true";
+            const textarea = document.createElement("textarea");
+            textarea.className = "ww-annotation-textarea";
+            textarea.value = annotation.text || "";
+            body.replaceWith(textarea);
+            textarea.focus();
+            textarea.addEventListener("blur", () => wwErEndAnnotationEdit(id, true));
+            textarea.addEventListener("keydown", (event) => {
+                event.stopPropagation();
+                if (event.key === "Escape") {
+                    event.preventDefault();
+                    wwErEndAnnotationEdit(id, false);
+                }
+            });
+            textarea.addEventListener("pointerdown", (event) => event.stopPropagation());
+        }
+
+        function wwErEndAnnotationEdit(id, save) {
+            const el = document.querySelector('#wwErAnnotationOverlay .ww-annotation[data-er-annotation-id="' + CSS.escape(id) + '"]');
+            if (!el || el.dataset.editing !== "true") return;
+            const textarea = el.querySelector(".ww-annotation-textarea");
+            const text = textarea ? textarea.value : null;
+            el.dataset.editing = "false";
+            const body = document.createElement("div");
+            body.className = "ww-annotation-body";
+            body.tabIndex = 0;
+            if (textarea) textarea.replaceWith(body);
+            wwErWireAnnotationBody(el, body, id);
+            const annotation = wwErAnnotationById(id);
+            if (save && annotation && text !== null && text !== annotation.text) wwErUpdateAnnotation(id, { text });
+            else wwErRenderAnnotations();
+        }
+
+        // -- dragging (boxes, Callout anchor) --
+
+        function wwErWireAnnotationBody(el, body, id) {
+            const annotation = wwErAnnotationById(id);
+            if (annotation && (annotation.type === "text_note" || annotation.type === "callout")) {
+                body.addEventListener("dblclick", (event) => {
+                    event.stopPropagation();
+                    wwErBeginAnnotationEdit(id);
+                });
+            }
+            wwErWireBoxDrag(el, body, id);
+        }
+
+        function wwErWireAnnotationBox(el, id) {
+            wwErWireBoxDrag(el, el.querySelector(".ww-annotation-header"), id);
+            const body = el.querySelector(".ww-annotation-body");
+            if (body) wwErWireAnnotationBody(el, body, id);
+        }
+
+        // A Text Note moves its own position (reconstruction time + plot
+        // fraction, inside its panel); a Callout/Peak box moves its offset
+        // from the anchor only (Waveform). Tracked on window; one write on
+        // release, none for a plain click.
+        function wwErWireBoxDrag(el, handle, id) {
+            if (!handle) return;
+            handle.addEventListener("pointerdown", (event) => {
+                if (el.dataset.editing === "true" || (event.button !== undefined && event.button !== 0)) return;
+                event.stopPropagation();
+                const annotation = wwErAnnotationById(id);
+                if (!annotation) return;
+                wwErSelectAnnotation(id);
+                const ui = wwErState.annotationUi;
+                const start = { x: event.clientX, y: event.clientY, left: parseFloat(el.style.left) || 0, top: parseFloat(el.style.top) || 0 };
+                let moved = false;
+                const onMove = (moveEvent) => {
+                    const dx = moveEvent.clientX - start.x;
+                    const dy = moveEvent.clientY - start.y;
+                    if (!moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
+                    moved = true;
+                    ui.drag = { id };
+                    el.style.left = (start.left + dx) + "px";
+                    el.style.top = (start.top + dy) + "px";
+                    if (annotation.type !== "text_note") {
+                        const placed = wwErAnnotationPlacement(annotation, document.getElementById("wwErPanelsWrap").getBoundingClientRect());
+                        if (placed) {
+                            wwUpdateCalloutConnectorGeometry(document.getElementById("wwErCalloutConnectorLayer"), id, placed.anchor,
+                                start.left + dx, start.top + dy, el.offsetWidth || 200, el.offsetHeight || 80, true, false, annotation.type !== "callout");
+                        }
+                    }
+                };
+                const onEnd = async () => {
+                    window.removeEventListener("pointermove", onMove);
+                    window.removeEventListener("pointerup", onEnd);
+                    window.removeEventListener("pointercancel", onEnd);
+                    ui.drag = null;
+                    if (!moved) return;
+                    const left = parseFloat(el.style.left) || 0;
+                    const top = parseFloat(el.style.top) || 0;
+                    const wrapRect = document.getElementById("wwErPanelsWrap").getBoundingClientRect();
+                    if (annotation.type === "text_note") {
+                        const panel = wwErAnnotationHostPanel(annotation);
+                        const metrics = panel ? wwPlotMetricsForChart(panel.chartEl) : null;
+                        const box = panel ? wwErPanelPlotBox(panel, wrapRect) : null;
+                        const time = metrics ? wwPageXToTime(wwErState.plot.viewport, metrics, wrapRect.left + left) : null;
+                        if (time === null || !box) return wwErRenderAnnotations();
+                        await wwErUpdateAnnotation(id, {
+                            reconstruction_time_s: wwErClampCursorTime(wwErState.plot.fitAll, time),
+                            y_fraction: Math.min(1, Math.max(0, (top - box.top) / box.height)),
+                        });
+                    } else {
+                        const placed = wwErAnnotationPlacement(annotation, wrapRect);
+                        if (!placed) return wwErRenderAnnotations();
+                        await wwErUpdateAnnotation(id, { box_offset: { x: left - placed.anchor.x, y: top - placed.anchor.y } });
+                    }
+                };
                 window.addEventListener("pointermove", onMove);
                 window.addEventListener("pointerup", onEnd);
                 window.addEventListener("pointercancel", onEnd);
-                event.preventDefault();
-                event.stopPropagation();
             });
         }
 
-        // The editor: a new marker (`id` null, at `time`) or an existing
-        // one (label, Delete). Saving writes through the Event
-        // Reconstruction API (wwErMutate()), which returns the rebased,
-        // authoritative definition.
-        function wwErOpenAnnotationEditor(id, time, event) {
-            const annotation = id ? wwErAnnotations().find((a) => a.annotation_id === id) : null;
-            if (id && !annotation) return;
-            const ui = wwErState.annotationUi;
-            ui.editing = { id: annotation ? annotation.annotation_id : null, time: annotation ? annotation.reconstruction_time_s : time };
-            const editor = document.getElementById("wwErAnnotationEditor");
-            document.getElementById("wwErAnnotationEditorTitle").textContent = annotation ? "Event marker" : "New event marker";
-            document.getElementById("wwErAnnotationDeleteBtn").hidden = !annotation;
-            const input = document.getElementById("wwErAnnotationEditorText");
-            input.value = annotation ? annotation.text : "";
-            wwErSyncAnnotationEditorTime();
-            editor.hidden = false;
-            const x = event && Number.isFinite(event.clientX) ? event.clientX : window.innerWidth / 2;
-            const y = event && Number.isFinite(event.clientY) ? event.clientY : window.innerHeight / 3;
-            editor.style.left = Math.max(8, Math.min(x + 8, window.innerWidth - editor.offsetWidth - 8)) + "px";
-            editor.style.top = Math.max(8, Math.min(y + 8, window.innerHeight - editor.offsetHeight - 8)) + "px";
-            input.focus();
+        // A Callout's anchor marker drags along its OWN channel (Waveform):
+        // free 2-D preview, then the pointer's X alone is resolved to the
+        // nearest real sample of that channel on release. Esc cancels.
+        function wwErWireCalloutAnchorDrag() {
+            const layer = document.getElementById("wwErCalloutConnectorLayer");
+            layer.addEventListener("pointerdown", (event) => {
+                const hit = event.target.closest("[data-callout-anchor-hit]");
+                if (!hit || (event.button !== undefined && event.button !== 0)) return;
+                const id = hit.getAttribute("data-callout-anchor-hit");
+                const annotation = wwErAnnotationById(id);
+                const trace = annotation && annotation.type === "callout" ? wwErAnnotationTrace(annotation) : null;
+                if (!trace) return;
+                event.preventDefault();
+                event.stopPropagation();
+                wwErSelectAnnotation(id);
+                const ui = wwErState.annotationUi;
+                const el = document.querySelector('#wwErAnnotationOverlay .ww-annotation[data-er-annotation-id="' + CSS.escape(id) + '"]');
+                const metrics = wwPlotMetricsForChart(trace.panel.chartEl);
+                let cancelled = false;
+                const preview = (clientX, clientY) => {
+                    const wrapRect = document.getElementById("wwErPanelsWrap").getBoundingClientRect();
+                    const x = Math.max(metrics.plotLeftPage, Math.min(metrics.plotLeftPage + metrics.plotWidth, clientX)) - wrapRect.left;
+                    const anchor = { x, y: clientY - wrapRect.top };
+                    const left = anchor.x + annotation.box_offset.x;
+                    const top = anchor.y + annotation.box_offset.y;
+                    if (el) {
+                        el.style.left = left + "px";
+                        el.style.top = top + "px";
+                    }
+                    wwUpdateCalloutConnectorGeometry(layer, id, anchor, left, top, (el && el.offsetWidth) || 200, (el && el.offsetHeight) || 80, true, true);
+                };
+                const stop = () => {
+                    window.removeEventListener("pointermove", onMove);
+                    window.removeEventListener("pointerup", onUp);
+                    document.removeEventListener("keydown", onKey, true);
+                    ui.drag = null;
+                };
+                const onMove = (moveEvent) => {
+                    ui.drag = { id };
+                    preview(moveEvent.clientX, moveEvent.clientY);
+                };
+                const onKey = (keyEvent) => {
+                    if (keyEvent.key !== "Escape") return;
+                    keyEvent.preventDefault();
+                    cancelled = true;
+                    stop();
+                    wwErRenderAnnotations();
+                };
+                const onUp = async (upEvent) => {
+                    stop();
+                    if (cancelled) return;
+                    const time = metrics ? wwPageXToTime(wwErState.plot.viewport, metrics, upEvent.clientX) : null;
+                    if (time === null) return wwErRenderAnnotations();
+                    const resolved = await wwErResolveAnchor(trace, time);
+                    if (resolved.error) {
+                        wwErSetStatus("error", "Could not move callout: " + resolved.error);
+                        return wwErRenderAnnotations();
+                    }
+                    await wwErUpdateAnnotation(id, { anchor: resolved.anchor });
+                };
+                window.addEventListener("pointermove", onMove);
+                window.addEventListener("pointerup", onUp);
+                document.addEventListener("keydown", onKey, true);
+            });
         }
 
-        function wwErSyncAnnotationEditorTime() {
-            const editing = wwErState.annotationUi.editing;
-            if (editing) document.getElementById("wwErAnnotationEditorTime").textContent = wwErAnnotationTimeText(editing.time);
-        }
-
-        function wwErCloseAnnotationEditor() {
-            wwErState.annotationUi.editing = null;
-            document.getElementById("wwErAnnotationEditor").hidden = true;
-        }
-
-        async function wwErSaveAnnotation() {
-            const editing = wwErState.annotationUi.editing;
-            if (!editing) return;
-            const text = document.getElementById("wwErAnnotationEditorText").value.trim();
-            if (!text) {
-                wwErSetStatus("error", "Give the event marker a label.");
-                return;
-            }
-            wwErCloseAnnotationEditor();
-            if (editing.id) {
-                await wwErMutate("PUT", "/definition/annotations/" + encodeURIComponent(editing.id), { text });
-            } else {
-                await wwErMutate("POST", "/definition/annotations", { reconstruction_time_s: editing.time, text });
-            }
-        }
-
-        async function wwErDeleteAnnotation() {
-            const editing = wwErState.annotationUi.editing;
-            if (!editing || !editing.id) return;
-            wwErCloseAnnotationEditor();
-            await wwErMutate("DELETE", "/definition/annotations/" + encodeURIComponent(editing.id));
-        }
-
-        // ---- Slice 3E: global A/B cursors (DEC-130) ----
+        // ---- Slice 3E: global A/B cursors (DEC-130) ----        // ---- Slice 3E: global A/B cursors (DEC-130) ----
         //
         // Two cursors on the reconstruction timeline -- never per panel,
         // never Waveform's cursor state. `wwErState.plot.cursors` stores
@@ -17117,7 +17703,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwErDrawPanelCursors(panel) {
-            wwErDrawPanelAnnotations(panel);
+            wwErScheduleAnnotationRender();
             const plot = wwErState.plot;
             const layer = panel.cursorLayerEl;
             if (!layer) return;
@@ -17417,6 +18003,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Main area (Slice 3C): the plotted panels, meta line and
             // empty state.
             wwErRenderPlot();
+            // DEC-137: annotations follow every definition refresh (create,
+            // edit, delete, timing changes, reload).
+            const annotationIds = new Set(wwErAnnotations().map((a) => a.annotation_id));
+            for (const id of Object.keys(wwErState.annotationUi.peakResults)) {
+                if (!annotationIds.has(id)) delete wwErState.annotationUi.peakResults[id];
+            }
+            if (wwErState.annotationUi.selectedId && !annotationIds.has(wwErState.annotationUi.selectedId)) wwErState.annotationUi.selectedId = null;
+            wwErRecalculatePeaks();
+            wwErRenderAnnotationList();
+            wwErScheduleAnnotationRender();
         }
 
         function wwErHandleAction(button) {
@@ -50903,23 +51499,42 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwErAutoscaleYBtn").addEventListener("click", wwErAutoscaleY);
         // Mixed-duration navigation: Fit Record (the active record's extent).
         document.getElementById("wwErFitRecordBtn").addEventListener("click", wwErFitRecord);
-        // DEC-136: Event Reconstruction annotations (event markers).
-        document.getElementById("wwErAnnotateBtn").addEventListener("click", () => wwErToggleAnnotationPlacement());
-        document.getElementById("wwErAnnotationSaveBtn").addEventListener("click", wwErSaveAnnotation);
-        document.getElementById("wwErAnnotationDeleteBtn").addEventListener("click", wwErDeleteAnnotation);
-        document.getElementById("wwErAnnotationCancelBtn").addEventListener("click", wwErCloseAnnotationEditor);
-        document.getElementById("wwErAnnotationEditorText").addEventListener("keydown", (event) => {
-            if (event.key === "Enter") {
-                event.preventDefault();
-                wwErSaveAnnotation();
+        // DEC-137: Event Reconstruction annotations -- Waveform's Annotate
+        // menu / Annotations manager conventions over Event Reconstruction's
+        // own state.
+        document.getElementById("wwErAnnotateBtn").addEventListener("click", (event) => {
+            event.stopPropagation();
+            wwErSetAnnotateMenuOpen(document.getElementById("wwErAnnotateMenu").hidden);
+        });
+        for (const item of document.querySelectorAll("#wwErAnnotateMenu .ww-split-menu-item")) {
+            item.addEventListener("click", () => {
+                wwErSetAnnotateMenuOpen(false);
+                wwErEnterAnnotationPlacement(item.dataset.annotationType);
+            });
+        }
+        document.getElementById("wwErAnnotationListBtn").addEventListener("click", () =>
+            wwErSetAnnotationDrawerOpen(!document.getElementById("wwErAnnotationDrawer").classList.contains("ww-annotation-drawer--open")));
+        document.getElementById("wwErAnnotationDrawerCloseBtn").addEventListener("click", () => wwErSetAnnotationDrawerOpen(false));
+        wwErWireCalloutAnchorDrag();
+        document.addEventListener("click", (event) => {
+            if (shell.currentPage !== "event-reconstruction") return;
+            const split = document.getElementById("wwErAnnotateSplit");
+            if (!document.getElementById("wwErAnnotateMenu").hidden && !split.contains(event.target)) wwErSetAnnotateMenuOpen(false);
+            if (wwErState.annotationUi.selectedId && !event.target.closest("#wwErAnnotationOverlay .ww-annotation") &&
+                !event.target.closest("#wwErAnnotationDrawer") && !event.target.closest(".ww-annotation-list-item") &&
+                !event.target.closest("#wwErCalloutConnectorLayer")) {
+                // (A manager row re-renders on click, so its target may be
+                // detached by now: matched by class, as Waveform does.)
+                wwErSelectAnnotation(null);
             }
         });
         document.addEventListener("keydown", (event) => {
             if (event.key !== "Escape" || shell.currentPage !== "event-reconstruction") return;
-            if (wwErState.annotationUi.editing) wwErCloseAnnotationEditor();
-            else if (wwErState.annotationUi.placing) wwErToggleAnnotationPlacement(false);
+            if (!document.getElementById("wwErAnnotateMenu").hidden) wwErSetAnnotateMenuOpen(false);
+            if (wwErState.annotationUi.placing) wwErExitAnnotationPlacement();
+            if (document.getElementById("wwErAnnotationDrawer").classList.contains("ww-annotation-drawer--open")) wwErSetAnnotationDrawerOpen(false);
         });
-        // DEC-132: Grouped / Combined view mode (presentation only).
+                // DEC-132: Grouped / Combined view mode (presentation only).
         document.getElementById("wwErViewGroupedBtn").addEventListener("click", () => wwErSetViewMode("grouped"));
         document.getElementById("wwErViewCombinedBtn").addEventListener("click", () => wwErSetViewMode("combined"));
         // DEC-135: Relative / Absolute time display (labels only).

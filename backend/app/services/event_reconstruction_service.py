@@ -30,13 +30,14 @@ from app.domain.event_reconstruction import (
     REASON_NO_ABSOLUTE_TIME_REFERENCE,
     EventReconstructionDefinition,
     ReconstructionAnnotation,
+    ReconstructionChannelRef,
     ReconstructionEligibility,
     ReconstructionMember,
-    annotation_time_valid,
+    ReconstructionSampleAnchor,
+    annotation_problem,
     classify_interval_relationship,
     correction_valid,
     large_gaps,
-    normalized_annotation_text,
     reconstruction_eligibility,
     reconstruction_frame_shift_s,
     reconstruction_offset_s,
@@ -239,9 +240,7 @@ class ReconstructionWarningView:
 
 @dataclass(slots=True)
 class ReconstructionAnnotationView:
-    annotation_id: str
-    reconstruction_time_s: float
-    text: str
+    annotation: ReconstructionAnnotation
 
 
 @dataclass(slots=True)
@@ -260,8 +259,8 @@ class ReconstructionView:
     placements_available: bool
     large_gap_warning_threshold_s: float
     members: list[ReconstructionMemberView] = field(default_factory=list)
-    # The reconstruction's own annotations (DEC-136), by time then id, in
-    # the current reconstruction frame.
+    # The reconstruction's own annotations (DEC-136/DEC-137), in creation
+    # order; Text Note times in the current reconstruction frame.
     annotations: list[ReconstructionAnnotationView] = field(default_factory=list)
     relationships: list[ReconstructionRelationshipView] = field(default_factory=list)
     warnings: list[ReconstructionWarningView] = field(default_factory=list)
@@ -366,10 +365,7 @@ def _build_view(
         relationships=relationships,
         warnings=warnings,
         annotations=[
-            ReconstructionAnnotationView(
-                annotation_id=a.annotation_id, reconstruction_time_s=a.reconstruction_time_s, text=a.text
-            )
-            for a in sorted(definition.annotations, key=lambda a: (a.reconstruction_time_s, a.annotation_id))
+            ReconstructionAnnotationView(annotation=a) for a in sorted(definition.annotations, key=lambda a: a.sequence)
         ],
     )
 
@@ -561,52 +557,82 @@ def _require_definition(workspace_id: str, registry: EventReconstructionRegistry
     return definition
 
 
-def _validated_time(reconstruction_time_s: float) -> float:
-    if not annotation_time_valid(reconstruction_time_s):
-        raise InvalidReconstructionAnnotationError("reconstruction_time_s must be a finite number of seconds.")
-    return float(reconstruction_time_s)
+def _checked(definition: EventReconstructionDefinition, annotation: ReconstructionAnnotation) -> ReconstructionAnnotation:
+    problem = annotation_problem(annotation)
+    if problem is None and annotation.channel is not None and definition.member(annotation.channel.record_id) is None:
+        problem = f"Record '{annotation.channel.record_id}' is not in the reconstruction."
+    if problem is not None:
+        raise InvalidReconstructionAnnotationError(problem)
+    return annotation
 
 
-def _validated_text(text: str | None) -> str:
-    normalized = normalized_annotation_text(text)
-    if normalized is None:
-        raise InvalidReconstructionAnnotationError("An annotation needs a label of 1 to 200 characters.")
-    return normalized
+@dataclass(slots=True)
+class AnnotationFields:
+    """What a create or update may carry (unset = `None`)."""
+
+    text: str | None = None
+    reconstruction_time_s: float | None = None
+    y_fraction: float | None = None
+    axis_key: str | None = None
+    axis_key_set: bool = False
+    channel: ReconstructionChannelRef | None = None
+    anchor: ReconstructionSampleAnchor | None = None
+    box_offset: tuple[float, float] | None = None
 
 
 def add_reconstruction_annotation(
-    *, workspace_id: str, reconstruction_time_s: float, text: str, registry: EventReconstructionRegistry,
+    *, workspace_id: str, annotation_type: str, fields: AnnotationFields, registry: EventReconstructionRegistry,
     source_registry: WorkspaceRegistry, large_gap_threshold_s: float,
 ) -> tuple[ReconstructionView, str]:
-    """Add one annotation at a reconstruction time (current frame). Returns
-    the view and the new annotation's id."""
+    """Add one annotation of `annotation_type`. Returns the view and the new
+    annotation's id."""
     definition = _require_definition(workspace_id, registry)
+    sequence = max((a.sequence for a in definition.annotations), default=0) + 1
     annotation = ReconstructionAnnotation(
         annotation_id="ann-" + uuid.uuid4().hex[:12],
-        reconstruction_time_s=_validated_time(reconstruction_time_s),
-        text=_validated_text(text),
+        type=annotation_type,
+        sequence=sequence,
+        text=fields.text or "",
+        reconstruction_time_s=fields.reconstruction_time_s,
+        y_fraction=fields.y_fraction,
+        axis_key=fields.axis_key,
+        channel=fields.channel,
+        anchor=fields.anchor,
+        **({} if fields.box_offset is None else {"box_offset_x": fields.box_offset[0], "box_offset_y": fields.box_offset[1]}),
     )
-    definition = definition.with_annotations((*definition.annotations, annotation))
+    definition = definition.with_annotations((*definition.annotations, _checked(definition, annotation)))
     registry.put(workspace_id, definition)
     timings = _record_timings(workspace_id=workspace_id, source_registry=source_registry)
     return _build_view(definition, timings, large_gap_threshold_s), annotation.annotation_id
 
 
 def update_reconstruction_annotation(
-    *, workspace_id: str, annotation_id: str, reconstruction_time_s: float | None, text: str | None,
-    registry: EventReconstructionRegistry, source_registry: WorkspaceRegistry, large_gap_threshold_s: float,
+    *, workspace_id: str, annotation_id: str, fields: AnnotationFields, registry: EventReconstructionRegistry,
+    source_registry: WorkspaceRegistry, large_gap_threshold_s: float,
 ) -> ReconstructionView:
-    """Move and/or relabel one annotation; a field left `None` is kept."""
+    """Change what a type allows: text (Text Note, Callout), the Text Note's
+    position, the Callout's anchor sample (same channel) and the
+    Callout/Peak box offset. A channel never changes; anything not
+    applicable to the type is rejected."""
     definition = _require_definition(workspace_id, registry)
     existing = definition.annotation(annotation_id)
     if existing is None:
         raise ReconstructionAnnotationNotFoundError(f"No annotation '{annotation_id}' in the reconstruction.")
+    if fields.channel is not None and fields.channel != existing.channel:
+        raise InvalidReconstructionAnnotationError("An annotation's channel cannot be changed.")
     updated = replace(
         existing,
-        reconstruction_time_s=existing.reconstruction_time_s if reconstruction_time_s is None else _validated_time(reconstruction_time_s),
-        text=existing.text if text is None else _validated_text(text),
+        text=existing.text if fields.text is None else fields.text,
+        reconstruction_time_s=existing.reconstruction_time_s if fields.reconstruction_time_s is None else fields.reconstruction_time_s,
+        y_fraction=existing.y_fraction if fields.y_fraction is None else fields.y_fraction,
+        axis_key=fields.axis_key if fields.axis_key_set else existing.axis_key,
+        anchor=existing.anchor if fields.anchor is None else fields.anchor,
+        box_offset_x=existing.box_offset_x if fields.box_offset is None else fields.box_offset[0],
+        box_offset_y=existing.box_offset_y if fields.box_offset is None else fields.box_offset[1],
     )
-    definition = definition.with_annotations(updated if a.annotation_id == annotation_id else a for a in definition.annotations)
+    definition = definition.with_annotations(
+        _checked(definition, updated) if a.annotation_id == annotation_id else a for a in definition.annotations
+    )
     registry.put(workspace_id, definition)
     timings = _record_timings(workspace_id=workspace_id, source_registry=source_registry)
     return _build_view(definition, timings, large_gap_threshold_s)

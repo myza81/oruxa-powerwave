@@ -4,12 +4,41 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-02** (Event Reconstruction annotations)
+Last updated: **2026-10-03** (Event Reconstruction annotation parity)
 
 ## What was most recently done
 
-**Event Reconstruction annotations (DEC-136, 2026-10-02).** The feature
-is not complete.
+**Event Reconstruction annotation parity with Waveform (DEC-137,
+2026-10-03).** The feature is not complete. This corrects DEC-136's
+simplified event markers (below).
+
+- **Tools.** Waveform's Annotate split-menu (Text Note, Callout, Maximum
+  Peak, Minimum Peak), guidance ribbon and Annotations manager — identical
+  icons, labels and tooltips — over Event Reconstruction's own
+  backend-stored annotations. Shared presentation helpers and CSS; page
+  adapters in the `wwEr…Annotation…` module.
+- **Schema.** Typed per `type` (create bodies discriminated by `type`,
+  `extra="forbid"`). Text Note: `reconstruction_time_s`, `y_fraction`,
+  `axis_key`. Callout: `channel` + `anchor` (source sample). Peak:
+  `channel`. All: `box_offset`, `sequence`.
+- **Timing.** Text Notes rebase with the reference frame (DEC-136
+  rules); Callouts and Peaks follow their own record's corrections.
+  Peaks are measured live over the visible range (not stored).
+- **Toolbar consistency.** Annotate/Annotations reuse Waveform's
+  controls; Fit Record is an icon button with its own icon; Zoom Out,
+  zoom-axis triggers, Reset Time View and Autoscale Y use Waveform's base
+  tooltip wording; mode selectors stay labelled. Waveform unchanged.
+- **Tests.** Backend annotations (16); static annotations (8) + tool
+  consistency (5); browser `event-reconstruction-annotations.spec.js`
+  (6).
+- **Next.** Event Reconstruction Per-Unit Display (Waveform owns
+  per-unit configuration; Event Reconstruction only consumes the
+  resolved settings). Then owner UAT of the whole branch.
+
+## Earlier — Event Reconstruction annotations (DEC-136)
+
+**Event Reconstruction annotations (DEC-136, 2026-10-02).** Superseded in
+its UX by DEC-137 above.
 
 - **Independent storylines.** Event Reconstruction event markers never
   appear in Waveform, and Waveform annotations never appear in Event

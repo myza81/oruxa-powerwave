@@ -383,9 +383,11 @@ class TestEventReconstructionChannelBrowser:
         ):
             assert forbidden not in module
         assert "wwChannelDisplayName(row.dataset.erSourceId, row.dataset.erChannelName)" in module
-        # The only POST is the read-only cursor-values query (Slice 3E):
-        # nothing is created, renamed or recoloured from here.
-        assert module.count('method: "POST"') == 1
+        # The only direct POSTs are read-only queries -- cursor values
+        # (Slice 3E) and, for annotations (DEC-137), Waveform's sample-anchor
+        # and peak-value endpoints: nothing is created, renamed or recoloured
+        # from here (annotation writes go through wwErMutate()).
+        assert module.count('method: "POST"') == 3
         values = _between(_source(), "async function wwErRefreshCursorValues() {", "\n        }\n\n")
         assert 'method: "POST"' in values
         assert '"/calculated-channels/cursor-values"' in values and '"/cursor-values"' in values
@@ -543,10 +545,14 @@ class TestEventReconstructionPlotting:
         # No second fetch, abort or reduction implementation.
         for forbidden in ("/waveform", "new AbortController", "point_budget", "envelope("):
             assert forbidden not in module
-        # The renderer's only direct request is the cursor-values query;
-        # waveform data only ever comes through wwFetchWaveformRange().
+        # The renderer's only direct requests are the cursor-values query
+        # and the annotation anchor / peak-value queries (DEC-137); waveform
+        # data only ever comes through wwFetchWaveformRange().
         plotting = _between(_source(), "// ---- Slice 3C: the reconstruction renderer", "function wwErMemberRowHtml(member)")
-        assert plotting.count("await fetch(") == 1
+        assert plotting.count("await fetch(") == 3
+        annotations = _between(_source(), "// ---- Event Reconstruction annotations (DEC-136, DEC-137) ----", "// ---- Slice 3E: global A/B cursors (DEC-130) ----")
+        assert annotations.count("await fetch(") == 2
+        assert "/waveform" not in annotations
         assert "await fetch(url, { method: \"POST\"" in _between(_source(), "async function wwErRefreshCursorValues() {", "\n        }\n\n")
 
     def test_fetch_is_engineering_units_with_the_slice_3b_mapping_only(self):
@@ -1022,7 +1028,10 @@ class TestEventReconstructionFitRecord:
     def test_toolbar_button(self):
         source = _source()
         page = _er_page(source)
-        assert '<button type="button" class="secondary ww-er-fit-record-btn" id="wwErFitRecordBtn" title="Fit selected record" disabled>Fit Record</button>' in page
+        # DEC-137: an Event Reconstruction-specific tool -> the shared
+        # compact icon button with its own icon and an accessible name.
+        assert '<button type="button" class="ww-icon-btn ww-er-fit-record-btn" id="wwErFitRecordBtn" title="Fit selected record" aria-label="Fit selected record" disabled>' in page
+        assert ">Fit Record</button>" not in page
         assert 'document.getElementById("wwErFitRecordBtn").addEventListener("click", wwErFitRecord);' in source
         toolbar = _between(source, "function wwErSyncToolbar() {", "\n        }\n")
         assert "fitBtn.disabled = !fit.range;" in toolbar
@@ -1114,43 +1123,195 @@ class TestEventReconstructionTimeDisplay:
         assert "wwErFormatAbsoluteClock(wwErAbsoluteInstant(zero, seconds), 6)" in label
 
 
+def _er_annotations(source: str) -> str:
+    return _between(source, "// ---- Event Reconstruction annotations (DEC-136, DEC-137) ----", "// ---- Slice 3E: global A/B cursors (DEC-130) ----")
+
+
+def _element(source: str, element_id: str, tag: str) -> str:
+    """The element with `id` through its matching close tag (no nesting of
+    the same tag inside)."""
+    start = source.index(f'id="{element_id}"')
+    start = source.rindex(f"<{tag}", 0, start)
+    return source[start:source.index(f"</{tag}>", start) + len(f"</{tag}>")]
+
+
+def _svgs(markup: str) -> list[str]:
+    out, at = [], 0
+    while (i := markup.find("<svg", at)) != -1:
+        j = markup.index("</svg>", i) + len("</svg>")
+        out.append(markup[i:j])
+        at = j
+    return out
+
+
 class TestEventReconstructionAnnotations:
-    """DEC-136: the reconstruction's own annotations -- backend-owned
-    (definition.annotations, reconstruction seconds), never Waveform's
-    ww.annotations; drawn with the shared time<->pixel helpers and cursor
-    overlay classes; Relative/Absolute changes only their time text."""
+    """DEC-136 as amended by DEC-137: the SAME four annotation tools as
+    Waveform (Text Note, Callout, Maximum Peak, Minimum Peak) and an
+    Annotations manager, over Event Reconstruction's OWN backend-owned
+    state (`definition.annotations`) -- never Waveform's annotation state,
+    never Time Groups; shared presentation helpers, page adapters."""
 
     def test_state_is_the_backend_definition_never_waveform(self):
         source = _source()
         annotations = _between(source, "function wwErAnnotations() {", "\n        }\n")
         assert "wwErState.definition.annotations" in annotations
-        block = _between(source, "// ---- Event Reconstruction annotations (DEC-136) ----", "// ---- Slice 3E: global A/B cursors (DEC-130) ----")
-        for forbidden in ("ww.annotations", "wwCreateAnnotation", "wwUpdateAnnotation", "wwDeleteAnnotation(", "wwRenderAnnotations", "ww.annotation"):
-            assert forbidden not in block
+        block = _er_annotations(source)
+        for forbidden in ("ww.annotations", "ww.annotation", "wwCreateAnnotation(", "wwUpdateAnnotation(", "wwDeleteAnnotation(",
+                          "wwRenderAnnotations(", "wwSelectAnnotation(", "timeGroup", "TimeGroup", "#wwAnnotationOverlay",
+                          'getElementById("wwAnnotation', 'getElementById("wwCalloutConnectorLayer")', "data-annotation-id=\""):
+            assert forbidden not in block, forbidden
         # And Waveform's annotation code never reads Event Reconstruction state.
         waveform = _between(source, "function wwCreateAnnotation(type, region, position, data) {", "function wwAnnotationCategoryLabel(annotation)")
         assert "wwEr" not in waveform
 
-    def test_markers_use_reconstruction_time_and_shared_geometry(self):
+    def test_the_four_waveform_types_and_the_shared_presentation(self):
+        block = _er_annotations(_source())
+        # The same box markup, connector geometry and texts as Waveform.
+        for shared in ("wwCalloutBodyHtml()", "wwPeakBodyHtml(annotation.type)", "wwAnnotationNoteBodyHtml()",
+                       "wwUpdateCalloutConnectorGeometry(", "wwHideCalloutConnector(connectors, id)",
+                       "wwAnnotationCategoryLabel(shape)", "wwAnnotationSummary(shape)",
+                       "wwPeakValueLineText(wwErAsWaveformAnnotation(annotation))", "wwAnnotationPlacementGuidance(type)",
+                       'el.className = "ww-annotation ww-annotation--" + annotation.type;'):
+            assert shared in block, shared
+        # Every write is Event Reconstruction's own API.
+        assert 'wwErMutate("POST", "/definition/annotations", body)' in block
+        assert 'wwErMutate("PUT", "/definition/annotations/" + encodeURIComponent(id), patch)' in block
+        assert 'wwErMutate("DELETE", "/definition/annotations/" + encodeURIComponent(id))' in block
+        for body in ('type: "text_note", reconstruction_time_s:', 'type: "callout", channel: wwErAnnotationChannelOf(trace), anchor: resolved.anchor',
+                     "{ type, channel: wwErAnnotationChannelOf(trace) }"):
+            assert body in block, body
+        # Boxes are told apart from Waveform's by their own attribute.
+        assert "el.dataset.erAnnotationId = id;" in block
+
+    def test_channel_attached_annotations_use_the_clicked_trace_and_its_axis(self):
         source = _source()
-        draw = _between(source, "function wwErDrawPanelAnnotations(panel) {", "function wwErToggleAnnotationPlacement(on)")
-        assert "wwTimeToPageX(plot.viewport, metrics, time)" in draw
-        assert 'el.className = "ww-cursor-line ww-er-annotation";' in draw
-        assert "annotation.reconstruction_time_s" in draw
-        assert "const withLabels = panel === plot.panels[0];" in draw
-        # Placement and drag convert the pointer to reconstruction time and
-        # clamp it to Fit All; never a Plotly-local or pixel value stored.
-        wire = _between(source, "function wwErWirePanelAnnotationInput(panel) {", "function wwErOpenAnnotationEditor(id, time, event)")
-        assert "wwErClampCursorTime(wwErState.plot.fitAll, time)" in wire
-        assert 'wwErMutate("PUT", "/definition/annotations/" + encodeURIComponent(id), { reconstruction_time_s: moved.time })' in wire
-        save = _between(source, "async function wwErSaveAnnotation() {", "\n        }\n")
-        assert 'wwErMutate("POST", "/definition/annotations", { reconstruction_time_s: editing.time, text })' in save
+        click = _between(source, "function wwErAnnotationTraceClick(panel, eventData) {", "function wwErAnnotationChannelOf(trace)")
+        assert "panel.traces.find((t) => t.key === (point.data && point.data.meta))" in click
+        assert 'panel.chartEl.on("plotly_click", (eventData) => wwErAnnotationTraceClick(panel, eventData));' in source
+        match = _between(source, "function wwErAnnotationTrace(annotation) {", "\n        }\n")
+        assert "t.recordId === channel.record_id" in match and "t.sourceId === channel.source_id" in match
+        assert "t.channelName === channel.channel_name" in match
+        # Y from the trace's OWN axis (Grouped panel or its Combined axis).
+        y = _between(source, "function wwErTraceValueToY(trace, value, wrapRect) {", "\n        }\n")
+        assert "panel.axes[trace.axisIndex]" in y and "fl[axis.placement.layoutKey]" in y
+
+    def test_timing_model(self):
+        source = _source()
+        time = _between(source, "function wwErAnnotationTime(annotation) {", "\n        }\n")
+        # Text Note: reconstruction-level (the backend rebases it).
+        assert 'if (annotation.type === "text_note") return annotation.reconstruction_time_s;' in time
+        # Callout / Peak: the record's CURRENT offset -> follow corrections.
+        assert "wwErSourceElapsedToReconstructionTime(annotation.anchor.source_elapsed_s, timing.totalOffsetS)" in time
+        assert "wwErSourceElapsedToReconstructionTime(peak.sourceElapsed, timing.totalOffsetS)" in time
+        timing = _between(source, "function wwErAnnotationTiming(annotation) {", "\n        }\n")
+        assert "timing.recordId === annotation.channel.record_id" in timing
+
+    def test_anchor_and_peaks_use_waveforms_endpoints_in_source_time(self):
+        source = _source()
+        anchor = _between(source, "async function wwErResolveAnchor(trace, reconstructionTime) {", "async function wwErCreateCallout(")
+        assert "wwErReconstructionTimeToSourceElapsed(r, timing.totalOffsetS)" in anchor
+        assert '"/annotation-anchor"' in anchor and 'unit_mode: "engineering"' in anchor
+        peaks = _between(source, "async function wwErMeasurePeaks(sourceId, calculated, items) {", "function wwErPeakResult(result)")
+        assert '"/calculated-channels/peak-values"' in peaks and '"/peak-values"' in peaks
+        assert "Math.max(viewport.start, timing.startS)" in peaks and "Math.min(viewport.end, timing.endS)" in peaks
+        # Live recalculation on every viewport change, stale responses dropped.
+        assert "wwErRecalculatePeaks();\n            wwErSyncToolbar();" in _between(source, "function wwErApplyViewport(", "\n        }\n")
+        recalc = _between(source, "function wwErRecalculatePeaks() {", "function wwState_isCalculatedErSource(sourceId)")
+        assert "if (!current || current.seq !== seq) return;" in recalc
+
+    def test_manager_lists_event_reconstruction_annotations_only(self):
+        source = _source()
+        page = _er_page(source)
+        drawer = _between(page, '<div class="ww-annotation-drawer" id="wwErAnnotationDrawer"', "No annotations yet.")
+        assert 'id="wwErAnnotationListBody"' in drawer and 'id="wwErAnnotationDrawerCloseBtn"' in drawer
+        listing = _between(source, "function wwErRenderAnnotationList() {", "function wwErSetAnnotationDrawerOpen(open)")
+        assert "wwErAnnotations().slice().sort((a, b) => b.sequence - a.sequence)" in listing
+        assert 'deleteBtn.title = "Delete annotation";' in listing
+        assert "wwErDeleteAnnotation(annotation.annotation_id)" in listing
+        assert "wwErSelectAnnotationAndReveal(annotation.annotation_id)" in listing
+        assert 'meta.textContent = wwErAnnotationMetaLine(annotation);' in listing
 
     def test_time_text_uses_the_one_time_display_helper(self):
         source = _source()
         text = _between(source, "function wwErAnnotationTimeText(seconds) {", "\n        }\n")
         assert "wwErCursorTimeLabel(seconds)" in text
         switch = _between(source, "function wwErSetTimeDisplay(mode) {", "function wwErSyncTimeDisplayButtons()")
-        assert "wwErDrawAnnotations();" in switch
-        # Every cursor redraw path also redraws the markers.
-        assert "wwErDrawPanelAnnotations(panel);" in _between(source, "function wwErDrawPanelCursors(panel) {", "const layer = panel.cursorLayerEl;")
+        assert "wwErRenderAnnotations();" in switch and "wwErRenderAnnotationList();" in switch
+        # Every cursor redraw path also re-places the annotations.
+        assert "wwErScheduleAnnotationRender();" in _between(source, "function wwErDrawPanelCursors(panel) {", "const layer = panel.cursorLayerEl;")
+
+    def test_the_simplified_marker_ux_is_gone(self):
+        source = _source()
+        for gone in ("wwErAnnotationEditor", "wwErAnnotationHint", "ww-er-annotation-marker", "ww-er-annotation-label",
+                     "ww-er-annotate-btn", "wwErDrawPanelAnnotations", "wwErToggleAnnotationPlacement", ">Annotate</button>"):
+            assert gone not in source, gone
+
+
+class TestEventReconstructionToolConsistency:
+    """DEC-137: common tools across Powerwave pages share iconography and
+    interaction language; page state and workflow stay independently
+    owned."""
+
+    def test_annotate_and_annotations_controls_are_waveforms(self):
+        source = _source()
+        page = _er_page(source)
+        wf_split = _between(source, '<div class="ww-split-btn" id="wwAnnotateSplit">', 'id="wwAnnotationListBtn"')
+        er_split = _between(page, '<div class="ww-split-btn" id="wwErAnnotateSplit">', 'id="wwErAnnotationListBtn"')
+        assert _svgs(er_split) == _svgs(wf_split)
+        assert len(_svgs(er_split)) == 5
+        for same in ('title="Annotate" aria-label="Annotate"', 'aria-label="Annotation type"', "Text Note", "Callout",
+                     "Maximum Peak (+Peak)", "Minimum Peak (-Peak)"):
+            assert same in er_split and same in wf_split, same
+        for kind in ("text_note", "callout", "peak_max", "peak_min"):
+            assert f'data-annotation-type="{kind}"' in er_split
+        wf_list = _element(source, "wwAnnotationListBtn", "button")
+        er_list = _element(page, "wwErAnnotationListBtn", "button")
+        assert _svgs(er_list) == _svgs(wf_list)
+        assert 'title="Annotations" aria-label="Annotations"' in er_list and 'title="Annotations" aria-label="Annotations"' in wf_list
+        assert 'class="ww-annotation-count-badge" id="wwErAnnotationCountBadge"' in er_list
+        # Inside Event Reconstruction's own toolbar.
+        toolbar = _between(page, '<div class="ww-toolbar" id="wwErToolbar">', 'id="wwErAnnotationGuidance"')
+        assert 'id="wwErAnnotateSplit"' in toolbar and 'id="wwErAnnotationListBtn"' in toolbar
+
+    def test_equivalent_canvas_tools_reuse_waveforms_wording(self):
+        page = _er_page(_source())
+        for markup in (
+            'id="wwErZoomInBtn" title="Zoom In — X axis" aria-label="Zoom In — X axis"',
+            'title="Choose Zoom In axis" aria-label="Choose Zoom In axis"',
+            'id="wwErZoomOutBtn" title="Zoom Out — X axis" aria-label="Zoom Out — X axis"',
+            'title="Choose Zoom Out axis" aria-label="Choose Zoom Out axis"',
+            'id="wwErResetViewBtn" title="Reset Time View" disabled>Reset Time View</button>',
+            'id="wwErAutoscaleYBtn" title="Autoscale Y" disabled>Autoscale Y</button>',
+        ):
+            assert markup in page, markup
+        for old in ("never beyond Fit All", "Fit All and autoscale Y on every panel", "Autoscale Y on every panel",
+                    "Event Reconstruction zooms the time axis only"):
+            assert old not in page, old
+        # Waveform's own cursor icon (same function, same icon).
+        er_cursor = _element(page, "wwErCursorModeBtn", "button")
+        wf_cursor = _between(_source(), "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
+        assert _svgs(er_cursor)[0] in wf_cursor
+
+    def test_event_reconstruction_specific_tools_get_their_own_icon(self):
+        source = _source()
+        fit = _element(_er_page(source), "wwErFitRecordBtn", "button")
+        assert 'class="ww-icon-btn ww-er-fit-record-btn"' in fit and 'aria-label="Fit selected record"' in fit
+        icon = _svgs(fit)[0]
+        others = _svgs(_between(source, '<div class="ww-toolbar" id="wwToolbar"', 'id="wwAnnotationGuidance"')) + _svgs(_between(_er_page(source), '<div class="ww-toolbar" id="wwErToolbar">', 'id="wwErAnnotationGuidance"'))
+        assert icon not in others
+
+    def test_mode_selectors_stay_labelled_segmented_controls(self):
+        page = _er_page(_source())
+        for button, label in (("wwErViewGroupedBtn", "Grouped"), ("wwErViewCombinedBtn", "Combined"),
+                              ("wwErTimeRelativeBtn", "Relative"), ("wwErTimeAbsoluteBtn", "Absolute")):
+            element = _element(page, button, "button")
+            assert element.endswith(f">{label}</button>"), element
+            assert "<svg" not in element
+
+    def test_waveform_toolbar_is_unchanged(self):
+        source = _source()
+        assert '<button type="button" class="ww-icon-btn" id="wwAnnotateBtn" aria-haspopup="menu" aria-expanded="false" aria-pressed="false" title="Annotate" aria-label="Annotate">' in source
+        assert '<button class="ww-icon-btn" type="button" id="wwAnnotationListBtn" aria-pressed="false" aria-expanded="false" title="Annotations" aria-label="Annotations">' in source
+        canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
+        for wording in ("Reset Time View for this Time Group", "Autoscale Y for this Time Group", "Choose Zoom In axis"):
+            assert wording in canvas, wording

@@ -21870,8 +21870,11 @@ planned ticket of DEC-133/DEC-134.
 
 Date: 2026-10-02
 Status: Approved (owner, "Event Reconstruction Annotations" task) —
-implemented on `feat/event-reconstruction`; not merged. The Event
-Reconstruction feature is **not** complete.
+implemented on `feat/event-reconstruction`; not merged. **Partially
+superseded by DEC-137** (2026-10-03): the simplified event-marker UX
+(decisions 2 and 6 and the UI below) is replaced by Waveform's four
+annotation tools; decisions 1 and 3–5 and the backend persistence stand.
+The Event Reconstruction feature is **not** complete.
 
 ### Decisions (owner)
 
@@ -21956,6 +21959,163 @@ Reconstruction feature is **not** complete.
 - **Event Reconstruction Per-Unit Display.** Agreed architecture:
   Waveform owns the per-unit configuration; Event Reconstruction only
   consumes and applies the resolved per-unit settings.
+
+## DEC-137 — Event Reconstruction annotations use Waveform's four tools and manager over Event Reconstruction's own state; common tools share iconography and interaction language
+
+Date: 2026-10-03
+Status: Approved (owner, "annotation-parity correction" and "App-wide
+tool UI consistency" tasks) — implemented on `feat/event-reconstruction`;
+not merged. It partially supersedes DEC-136: DEC-136's simplified "event
+marker" UX (decisions 2 and 6, its UI) is replaced; DEC-136 decision 1
+(independent state), 3–5 (reconstruction time, frame rules, display-only
+Relative/Absolute) and its backend persistence stand. The Event
+Reconstruction feature is **not** complete.
+
+### Decisions (owner)
+
+1. **Same toolset as Waveform.** Event Reconstruction exposes Text Note,
+   Callout, Maximum Peak, Minimum Peak and an Annotations manager — the
+   tools, behaviour and wording of Waveform's annotation framework
+   (DEC-044/045/046).
+2. **Independent state.** Waveform annotation state ≠ Event
+   Reconstruction annotation state; tools/functionality ≈ the same.
+   Shared helpers plus page-specific adapters; no coupling to Time
+   Groups. Event Reconstruction keeps its backend persistence (DEC-136)
+   with an explicit typed schema.
+3. **Timing model.**
+   - **Text Note — reconstruction-level.** Stored as reconstruction time
+     (`reconstruction_time_s`) plus a vertical fraction of its panel's
+     plot (`y_fraction`) and, in Grouped, the display axis it was placed
+     on (`axis_key`). A reference switch or reference correction rebases
+     it (same physical instant, DEC-129 frame shift); a non-reference
+     correction leaves it fixed.
+   - **Callout / Maximum Peak / Minimum Peak — channel-attached.** Stored
+     against one channel (`record_id`, `source_id` — recording or
+     calculated channel —, `channel_name`); a Callout keeps its resolved
+     sample in the SOURCE's own time (`anchor.sample_index`,
+     `source_elapsed_s`, value, unit). Drawn at source time + that
+     source's current reconstruction offset, so they follow their own
+     record's corrections (the same physical sample). They never store a
+     reconstruction time; the backend never rebases them.
+   - Navigation, Fit Record, Reset, Y-axis drag, cursors and the view
+     mode never move any annotation; Relative/Absolute changes only time
+     text.
+4. **Views.** Grouped and Combined both draw every annotation: a Text
+   Note on its display axis's panel (Combined: the one panel); a
+   Callout/Peak on its own trace and that trace's own Y axis (Grouped
+   panel, or its Combined axis). Hidden — still listed — when outside
+   the view, outside the Y range, unavailable, or its channel not
+   plotted.
+5. **Peaks** measure the targeted channel only, over the displayed time
+   range mapped into that channel's source time (clipped to its extent),
+   for native and calculated channels, and follow every viewport change.
+6. **Manager** lists Event Reconstruction annotations only (newest
+   first), with select/reveal, delete, and in-place edit on the box.
+7. **App-wide tool UI consistency (standing principle).** *Common tools
+   across Powerwave pages should share iconography and interaction
+   language, while page state and workflow remain independently owned.*
+   - Same function = same icon, the same compact button treatment, the
+     exact same tooltip text and accessible label, and the same
+     disabled-state explanation pattern — tooltip wording is part of the
+     shared tool design system, not page copy.
+   - A page-specific tool gets its own distinct icon with an accessible
+     tooltip.
+   - Mode selectors (Grouped|Combined, Relative|Absolute, and later
+     Engineering|Per Unit) may stay labelled segmented controls.
+   - Reuse the shared button/CSS primitives; no broad Waveform refactor.
+
+### Implementation (`[FACT]`)
+
+- **Backend.** `ReconstructionAnnotation(annotation_id, type, sequence,
+  text, reconstruction_time_s, y_fraction, axis_key, channel, anchor,
+  box_offset_x/y)`; `annotation_problem()` enforces each type's fields
+  (Text Note: finite time, `y_fraction` in [0, 1], no channel; Callout:
+  channel + anchor; Peak: channel, no anchor, no text). The channel's
+  record must be a member. `with_frame_shift()` rebases only annotations
+  with a reconstruction time.
+  - API: `POST .../definition/annotations` takes a body discriminated by
+    `type` (`TextNoteCreateRequest` / `CalloutCreateRequest` /
+    `PeakCreateRequest`, `extra="forbid"`); `PUT .../{id}` edits what the
+    type allows (text, Text Note position, Callout anchor, box offset;
+    never the channel); `DELETE .../{id}`. `ReconstructionOut.annotations`
+    are ordered by `sequence`.
+  - Peak values are not stored: they depend on the view and are
+    measured on demand, as in Waveform.
+- **Frontend.** One `// ---- Event Reconstruction annotations (DEC-136,
+  DEC-137) ----` module.
+  - Shared with Waveform: box markup (`wwAnnotationNoteBodyHtml`,
+    `wwCalloutBodyHtml`, `wwPeakBodyHtml`), connector geometry
+    (`wwUpdateCalloutConnectorGeometry`, `wwHideCalloutConnector`),
+    category/summary/peak text (`wwAnnotationCategoryLabel`,
+    `wwAnnotationSummary`, `wwPeakValueLineText` through the adapter
+    `wwErAsWaveformAnnotation`), placement guidance
+    (`wwAnnotationPlacementGuidance`), the annotation-anchor and
+    peak-values endpoints, and every CSS class.
+  - Event Reconstruction's own: `wwErState.annotationUi` (placement,
+    selection, drag, live peak results); one overlay
+    (`#wwErAnnotationOverlay`) and connector layer
+    (`#wwErCalloutConnectorLayer`) over the whole panel stack inside
+    `#wwErPanelsWrap`; boxes carry `data-er-annotation-id` (never
+    Waveform's `data-annotation-id` lookups).
+  - Placement: Text Note by one click in a panel's plot (capture strip),
+    then straight into editing; Callout / Peak by `plotly_click` on the
+    clicked trace (its `meta` = trace key). Callout is one-shot; Peak
+    placement stays active until a peak is created (Waveform).
+  - Interaction (Waveform's): double-click edits (blur commits, Esc
+    cancels); a Text Note box drag moves its position, a Callout/Peak box
+    drag only its offset; a Callout anchor drags along its own channel
+    and is re-resolved to the nearest real sample on release (Esc
+    cancels); click outside deselects.
+  - Peaks recalculate at the end of `wwErApplyViewport` and on every
+    definition refresh: one batched request per source, keyed by window +
+    offset + set, superseded responses dropped.
+- **Toolbar audit (classification).**
+  - *Waveform-equivalent:* Box Zoom / Pan (same icons and titles); Zoom
+    In / Zoom Out split buttons, Reset Time View, Autoscale Y (Waveform's
+    Time-Group canvas toolbar uses TEXT buttons for these, so Event
+    Reconstruction's stay text); A/B Time Cursors (same icon); Annotate
+    split-menu and Annotations button (now Waveform's identical icons,
+    menu, labels and tooltips).
+  - Tooltips aligned to Waveform's base wording: "Zoom Out — X axis",
+    "Choose Zoom In axis" / "Choose Zoom Out axis", "Reset Time View",
+    "Autoscale Y". Waveform's suffix "for this Time Group" names a
+    Waveform-only context and is not used; Waveform's tooltips are
+    unchanged.
+  - *Event Reconstruction-specific:* Fit Record — now a compact icon
+    button with its own icon (bracketed span) and `aria-label`/title "Fit
+    selected record"; its title still explains why it is disabled.
+  - *Mode selectors:* Grouped | Combined and Relative | Absolute stay
+    labelled segmented controls.
+- **Intentional differences from Waveform (reported).**
+  - An Event Reconstruction Text Note is anchored to reconstruction time
+    and a panel-height fraction (it moves with zoom/pan), where
+    Waveform's floats at a workspace position; its manager line shows its
+    time.
+  - Event Reconstruction annotations persist in the backend; Waveform's
+    are frontend session state (DEC-044).
+  - Annotate is disabled while nothing is plotted (there is nothing to
+    annotate and no reconstruction to store it in).
+  - The Annotate menu wraps "Minimum Peak (-Peak)" exactly as Waveform's
+    does (shared `.ww-split-menu` CSS); left as is.
+- **Tests.**
+  - Backend `test_event_reconstruction_annotations.py` (16): per-type
+    validation, round trip, updates, membership, timing (switch,
+    reference correction, non-reference correction, stale reference).
+  - Static `TestEventReconstructionAnnotations` (8) and
+    `TestEventReconstructionToolConsistency` (5): byte-identical
+    Annotate/Annotations SVGs and wording, aligned tooltips, a distinct
+    Fit Record icon, labelled mode selectors, Waveform unchanged.
+  - `event-reconstruction-annotations.spec.js` (6): toolset/guidance/
+    manager chrome; Text Note; Callout (clicked trace, real sample,
+    Grouped + Combined axis, box and anchor drags, hidden when unplotted);
+    Peaks (targeted channel, calculated channel, visible range, live,
+    unavailable); timing model; manager + Waveform independence.
+
+### Next planned (not implemented)
+
+- **Event Reconstruction Per-Unit Display.** Waveform owns per-unit
+  configuration; Event Reconstruction only consumes the resolved
+  settings.
 
 ---
 

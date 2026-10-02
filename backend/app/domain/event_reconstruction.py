@@ -130,38 +130,109 @@ class ReconstructionMember:
     correction_s: float = 0.0
 
 
-#: Longest Event Reconstruction annotation label (characters, after
-#: trimming).
-RECONSTRUCTION_ANNOTATION_TEXT_MAX_LENGTH = 200
+#: Event Reconstruction annotation types (DEC-137) -- the same four tools as
+#: Waveform's annotation framework (DEC-044/045/046), with page-specific
+#: state: a reconstruction-level Text Note and three channel-attached
+#: types.
+ANNOTATION_TYPE_TEXT_NOTE = "text_note"
+ANNOTATION_TYPE_CALLOUT = "callout"
+ANNOTATION_TYPE_PEAK_MAX = "peak_max"
+ANNOTATION_TYPE_PEAK_MIN = "peak_min"
+ANNOTATION_TYPES = (ANNOTATION_TYPE_TEXT_NOTE, ANNOTATION_TYPE_CALLOUT, ANNOTATION_TYPE_PEAK_MAX, ANNOTATION_TYPE_PEAK_MIN)
+#: Longest annotation text (characters). Text may be empty, as on Waveform.
+RECONSTRUCTION_ANNOTATION_TEXT_MAX_LENGTH = 2000
+#: Waveform's default Callout/Peak box offset from its anchor (px).
+DEFAULT_ANNOTATION_BOX_OFFSET = (80.0, -60.0)
+
+
+@dataclass(frozen=True, slots=True)
+class ReconstructionChannelRef:
+    """The channel a Callout/Peak is attached to: its reconstruction record,
+    its display source (a recording's source id, or a calculated channel's
+    id) and channel name -- the same identity a plotted trace carries."""
+
+    record_id: str
+    source_id: str
+    channel_name: str
+
+
+@dataclass(frozen=True, slots=True)
+class ReconstructionSampleAnchor:
+    """A Callout's one real sample, in its SOURCE's own time (as resolved by
+    the existing nearest-sample endpoint): never a reconstruction time, so
+    the anchor stays on the same physical sample whatever the reference or
+    the record's correction."""
+
+    sample_index: int
+    source_elapsed_s: float
+    value: float | None
+    unit: str | None
 
 
 @dataclass(frozen=True, slots=True)
 class ReconstructionAnnotation:
-    """One reconstruction-level event marker on the reconstruction's own
-    storyline (DEC-136) -- never a record's, never a Waveform annotation.
-    `reconstruction_time_s` is authoritative and is in the CURRENT
-    reconstruction frame: a reference switch or reference correction
-    rebases it so it stays on the same physical instant
-    (`reconstruction_frame_shift_s()`); a non-reference correction leaves
-    it fixed while that record moves beneath it."""
+    """One Event Reconstruction annotation (DEC-136/DEC-137) -- never a
+    Waveform annotation. Explicit fields per type:
+
+    * ``text_note`` -- reconstruction-level: `reconstruction_time_s`
+      (authoritative X, current frame; rebased with a reference switch or
+      reference correction), `y_fraction` (0 = top .. 1 = bottom of its
+      panel's plot area) and `axis_key` (the display axis of the Grouped
+      panel it was placed on; `None` = the first / combined panel).
+    * ``callout`` -- channel-attached: `channel` + `anchor` (source-local
+      sample) + `text` + box offset.
+    * ``peak_max`` / ``peak_min`` -- channel-attached: `channel` + box
+      offset; the value is measured over the visible range, never stored.
+    """
 
     annotation_id: str
-    reconstruction_time_s: float
-    text: str
+    type: str
+    sequence: int
+    text: str = ""
+    reconstruction_time_s: float | None = None
+    y_fraction: float | None = None
+    axis_key: str | None = None
+    channel: ReconstructionChannelRef | None = None
+    anchor: ReconstructionSampleAnchor | None = None
+    box_offset_x: float = DEFAULT_ANNOTATION_BOX_OFFSET[0]
+    box_offset_y: float = DEFAULT_ANNOTATION_BOX_OFFSET[1]
 
 
-def annotation_time_valid(reconstruction_time_s: float) -> bool:
-    return isinstance(reconstruction_time_s, (int, float)) and not isinstance(reconstruction_time_s, bool) and math.isfinite(reconstruction_time_s)
+def _finite(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
-def normalized_annotation_text(text: str | None) -> str | None:
-    """The trimmed label, or `None` when it is empty or too long."""
-    if not isinstance(text, str):
+def annotation_problem(annotation: ReconstructionAnnotation) -> str | None:
+    """Why `annotation` is not a valid annotation of its type, or `None`."""
+    if annotation.type not in ANNOTATION_TYPES:
+        return f"Unknown annotation type '{annotation.type}'."
+    if not isinstance(annotation.text, str) or len(annotation.text) > RECONSTRUCTION_ANNOTATION_TEXT_MAX_LENGTH:
+        return f"Annotation text must be at most {RECONSTRUCTION_ANNOTATION_TEXT_MAX_LENGTH} characters."
+    if not (_finite(annotation.box_offset_x) and _finite(annotation.box_offset_y)):
+        return "The box offset must be finite pixels."
+    if annotation.type == ANNOTATION_TYPE_TEXT_NOTE:
+        if not _finite(annotation.reconstruction_time_s):
+            return "A Text Note needs a finite reconstruction_time_s."
+        if not _finite(annotation.y_fraction) or not 0.0 <= annotation.y_fraction <= 1.0:
+            return "A Text Note needs a y_fraction between 0 and 1."
+        if annotation.channel is not None or annotation.anchor is not None:
+            return "A Text Note is not attached to a channel."
         return None
-    stripped = text.strip()
-    if not stripped or len(stripped) > RECONSTRUCTION_ANNOTATION_TEXT_MAX_LENGTH:
+    if annotation.reconstruction_time_s is not None or annotation.y_fraction is not None or annotation.axis_key is not None:
+        return "A channel-attached annotation has no reconstruction-level position."
+    channel = annotation.channel
+    if channel is None or not all(isinstance(v, str) and v for v in (channel.record_id, channel.source_id, channel.channel_name)):
+        return "A Callout or Peak needs its record, source and channel."
+    if annotation.type == ANNOTATION_TYPE_CALLOUT:
+        anchor = annotation.anchor
+        if anchor is None or not isinstance(anchor.sample_index, int) or isinstance(anchor.sample_index, bool) or anchor.sample_index < 0:
+            return "A Callout needs its resolved sample."
+        if not _finite(anchor.source_elapsed_s) or (anchor.value is not None and not _finite(anchor.value)):
+            return "A Callout's sample time and value must be finite."
         return None
-    return stripped
+    if annotation.anchor is not None or annotation.text:
+        return "A Peak has no stored sample and no text (it is measured over the visible range)."
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,14 +273,16 @@ class EventReconstructionDefinition:
         return replace(self, annotations=tuple(annotations))
 
     def with_frame_shift(self, shift_s: float | None) -> "EventReconstructionDefinition":
-        """Annotations rebased by a reconstruction frame shift (see
-        `reconstruction_frame_shift_s()`): each keeps its physical instant,
-        r_after = r_before - shift. `None` (no common anchor) or 0 leaves
-        them as they are."""
+        """Reconstruction-level annotations (Text Notes) rebased by a
+        reconstruction frame shift (see `reconstruction_frame_shift_s()`):
+        each keeps its physical instant, r_after = r_before - shift.
+        Channel-attached ones (Callout, Peaks) are stored in source time
+        and need nothing. `None` (no common anchor) or 0 leaves them."""
         if not shift_s:
             return self
         return self.with_annotations(
-            replace(a, reconstruction_time_s=a.reconstruction_time_s - shift_s) for a in self.annotations
+            replace(a, reconstruction_time_s=a.reconstruction_time_s - shift_s) if a.reconstruction_time_s is not None else a
+            for a in self.annotations
         )
 
 

@@ -183,15 +183,23 @@ Group" assumption below.**
   - Hover uses the trace `text`, so `customdata` stays numeric.
   - The cursor readout carries µs.
   - A switch relabels without any fetch.
-- **Annotations (done, 2026-10-02, DEC-136).**
-  - Backend-owned reconstruction-level markers (`definition.annotations`,
-    `reconstruction_time_s`), rebased by the backend frame shift.
-  - Each panel's `.ww-er-annotation-layer` (z-index under the cursor
-    layer) draws them with `wwTimeToPageX()` against the reconstruction
-    viewport, so the plotting origin never enters annotation state.
-  - Every cursor redraw path (`wwErDrawPanelCursors`) redraws them.
-  - Placement and drag use `wwPageXToTime()`, clamped to Fit All. A drag
-    is tracked on `window` (redraws recreate marker elements).
+- **Annotations (done, 2026-10-02, DEC-136; parity 2026-10-03,
+  DEC-137).**
+  - Waveform's four types over backend-owned `definition.annotations`.
+    Text Notes hold `reconstruction_time_s` (rebased by the backend frame
+    shift); Callouts/Peaks hold a channel (and a Callout its source
+    sample) and are placed at source time + the source's current offset.
+  - One `#wwErAnnotationOverlay` + `#wwErCalloutConnectorLayer` inside
+    `#wwErPanelsWrap` spans every panel (no per-panel clipping). X from
+    Plotly's own axis metrics (`wwPlotMetricsForChart`,
+    `wwTimeToPageX`); Y from the trace's own axis
+    (`_fullLayout[axis.placement.layoutKey]`) or, for a Text Note, a
+    fraction of its panel's plot height.
+  - Every cursor redraw path (`wwErDrawPanelCursors`) schedules one
+    overlay render (rAF); `wwErApplyViewport` and `wwErRender` trigger
+    the live peak recalculation.
+  - Each panel's `.ww-er-annotation-layer` is now only the Text Note
+    placement capture strip.
   - Next planned: Event Reconstruction Per-Unit Display.
 
 Date: 2026-10-01. Code references are function names in

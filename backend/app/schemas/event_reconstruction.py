@@ -12,8 +12,11 @@ correction. `*_utc` values are absolute instants in UTC.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.domain.event_reconstruction import ReconstructionAnnotation
 
 from app.services.event_reconstruction_service import (
     ReconstructionMemberView,
@@ -153,13 +156,60 @@ class ReconstructionWarningOut(BaseModel):
         )
 
 
+class AnnotationChannelIO(BaseModel):
+    """The channel a Callout/Peak is attached to (a plotted trace's identity:
+    record, display source -- recording source or calculated channel id --
+    and channel name)."""
+
+    record_id: str
+    source_id: str
+    channel_name: str
+
+
+class AnnotationAnchorIO(BaseModel):
+    """A Callout's resolved sample in its SOURCE's own time."""
+
+    sample_index: int
+    source_elapsed_s: float
+    value: float | None
+    unit: str | None = None
+
+
+class AnnotationBoxOffsetIO(BaseModel):
+    x: float
+    y: float
+
+
 class ReconstructionAnnotationOut(BaseModel):
-    """One reconstruction-level annotation (DEC-136): `reconstruction_time_s`
-    in the current reconstruction frame (seconds, full float precision)."""
+    """One Event Reconstruction annotation (DEC-136/DEC-137), explicit fields
+    per `type` (`text_note` | `callout` | `peak_max` | `peak_min`):
+    a Text Note's `reconstruction_time_s` (current frame) / `y_fraction` /
+    `axis_key`; a Callout's or Peak's `channel`; a Callout's `anchor`; a
+    Callout's or Peak's `box_offset`. A field that does not apply is null."""
 
     annotation_id: str
-    reconstruction_time_s: float
+    type: str
+    sequence: int
     text: str
+    reconstruction_time_s: float | None
+    y_fraction: float | None
+    axis_key: str | None
+    channel: AnnotationChannelIO | None
+    anchor: AnnotationAnchorIO | None
+    box_offset: AnnotationBoxOffsetIO
+
+    @classmethod
+    def from_domain(cls, a: ReconstructionAnnotation) -> "ReconstructionAnnotationOut":
+        return cls(
+            annotation_id=a.annotation_id, type=a.type, sequence=a.sequence, text=a.text,
+            reconstruction_time_s=a.reconstruction_time_s, y_fraction=a.y_fraction, axis_key=a.axis_key,
+            channel=AnnotationChannelIO(record_id=a.channel.record_id, source_id=a.channel.source_id, channel_name=a.channel.channel_name)
+            if a.channel is not None else None,
+            anchor=AnnotationAnchorIO(
+                sample_index=a.anchor.sample_index, source_elapsed_s=a.anchor.source_elapsed_s, value=a.anchor.value, unit=a.anchor.unit
+            ) if a.anchor is not None else None,
+            box_offset=AnnotationBoxOffsetIO(x=a.box_offset_x, y=a.box_offset_y),
+        )
 
 
 class ReconstructionOut(BaseModel):
@@ -200,12 +250,7 @@ class ReconstructionOut(BaseModel):
             members=[ReconstructionMemberOut.from_view(m) for m in view.members],
             relationships=[ReconstructionRelationshipOut.from_view(r) for r in view.relationships],
             warnings=[ReconstructionWarningOut.from_view(w) for w in view.warnings],
-            annotations=[
-                ReconstructionAnnotationOut(
-                    annotation_id=a.annotation_id, reconstruction_time_s=a.reconstruction_time_s, text=a.text
-                )
-                for a in view.annotations
-            ],
+            annotations=[ReconstructionAnnotationOut.from_domain(a.annotation) for a in view.annotations],
         )
 
 
@@ -225,13 +270,47 @@ class ReconstructionCorrectionRequest(BaseModel):
     correction_s: float
 
 
-class ReconstructionAnnotationCreateRequest(BaseModel):
+class TextNoteCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["text_note"]
     reconstruction_time_s: float
-    text: str
+    y_fraction: float
+    axis_key: str | None = None
+    text: str = ""
+
+
+class CalloutCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["callout"]
+    channel: AnnotationChannelIO
+    anchor: AnnotationAnchorIO
+    text: str = ""
+    box_offset: AnnotationBoxOffsetIO | None = None
+
+
+class PeakCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["peak_max", "peak_min"]
+    channel: AnnotationChannelIO
+    box_offset: AnnotationBoxOffsetIO | None = None
+
+
+#: One create body per annotation type (discriminated by `type`).
+ReconstructionAnnotationCreateRequest = Annotated[
+    Union[TextNoteCreateRequest, CalloutCreateRequest, PeakCreateRequest], Field(discriminator="type")
+]
 
 
 class ReconstructionAnnotationUpdateRequest(BaseModel):
-    """A field left out (or null) is kept."""
+    """A field left out is kept. What a type accepts: `text` (Text Note,
+    Callout); `reconstruction_time_s` / `y_fraction` / `axis_key` (Text
+    Note); `anchor` (Callout -- same channel); `box_offset` (Callout,
+    Peak). The channel never changes."""
 
-    reconstruction_time_s: float | None = None
+    model_config = ConfigDict(extra="forbid")
     text: str | None = None
+    reconstruction_time_s: float | None = None
+    y_fraction: float | None = None
+    axis_key: str | None = None
+    anchor: AnnotationAnchorIO | None = None
+    box_offset: AnnotationBoxOffsetIO | None = None

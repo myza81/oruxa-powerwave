@@ -159,16 +159,22 @@ DEC-122 display timezone).
       it changes; µs hover and cursor readouts. Nothing is refetched on a
       switch.
 
-  - **Annotations (DEC-136).** These are the reconstruction's own event
-    markers, independent of Waveform annotations.
-    - They are stored in the backend with the definition, in
-      reconstruction seconds.
-    - Reference switches and reference corrections rebase them to the
-      same physical instant; non-reference corrections leave them fixed.
-    - The editor offers "Annotate", then click; click to edit or delete;
-      drag to move.
-    - They are drawn on every panel, with the label on the top panel.
+  - **Annotations (DEC-136, DEC-137).** Waveform's four tools — Text
+    Note, Callout, Maximum Peak, Minimum Peak — and its Annotations
+    manager, over Event Reconstruction's own backend-stored state (never
+    Waveform's, never Time Groups).
+    - Text Notes are reconstruction-level: rebased with a reference
+      switch or reference correction, fixed under a non-reference
+      correction.
+    - Callouts and Peaks are attached to one channel and follow their
+      record's corrections (the same physical sample); Peaks measure the
+      targeted channel over the visible range, live.
+    - Grouped and Combined draw them on the right trace and Y axis;
       Relative/Absolute changes only their time text.
+    - The toolbar uses Waveform's Annotate split-menu and Annotations
+      button (identical icons and tooltips); Fit Record is an icon tool.
+      Standing principle: common tools share iconography and interaction
+      language; page state and workflow stay page-owned.
 
     Not yet built: Event Reconstruction Per-Unit Display (next planned;
     Waveform owns per-unit configuration, Event Reconstruction only

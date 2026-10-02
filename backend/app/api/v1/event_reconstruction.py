@@ -32,7 +32,9 @@ from app.schemas.event_reconstruction import (
 from app.schemas.source import ErrorOut
 from app.services.errors import ImportServiceError
 from app.services.event_reconstruction_registry import EventReconstructionRegistry
+from app.domain.event_reconstruction import ReconstructionChannelRef, ReconstructionSampleAnchor
 from app.services.event_reconstruction_service import (
+    AnnotationFields,
     add_reconstruction_annotation,
     clear_reconstruction,
     delete_reconstruction_annotation,
@@ -224,6 +226,24 @@ def delete_record_correction(
 # ------------------------------------------------------------------------------
 
 
+def _annotation_fields(body) -> AnnotationFields:
+    """API body -> service fields; unset stays `None`."""
+    channel = getattr(body, "channel", None)
+    anchor = getattr(body, "anchor", None)
+    box = getattr(body, "box_offset", None)
+    fields_set = getattr(body, "model_fields_set", set())
+    return AnnotationFields(
+        text=getattr(body, "text", None),
+        reconstruction_time_s=getattr(body, "reconstruction_time_s", None),
+        y_fraction=getattr(body, "y_fraction", None),
+        axis_key=getattr(body, "axis_key", None),
+        axis_key_set="axis_key" in fields_set,
+        channel=ReconstructionChannelRef(channel.record_id, channel.source_id, channel.channel_name) if channel is not None else None,
+        anchor=ReconstructionSampleAnchor(anchor.sample_index, anchor.source_elapsed_s, anchor.value, anchor.unit) if anchor is not None else None,
+        box_offset=(box.x, box.y) if box is not None else None,
+    )
+
+
 @router.post("/definition/annotations", response_model=ReconstructionOut, status_code=status.HTTP_201_CREATED)
 def post_annotation(
     workspace_id: str,
@@ -232,12 +252,13 @@ def post_annotation(
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     large_gap_threshold_s: float = Depends(get_large_gap_warning_threshold_s),
 ) -> ReconstructionOut:
-    """Add an annotation at a reconstruction time (current frame). 400
-    `invalid_reconstruction_annotation`; 404 `reconstruction_not_defined`."""
+    """Add a Text Note, Callout or Maximum/Minimum Peak (body discriminated
+    by `type`). 400 `invalid_reconstruction_annotation`; 404
+    `reconstruction_not_defined`."""
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         view, _ = add_reconstruction_annotation(
-            workspace_id=workspace_id, reconstruction_time_s=body.reconstruction_time_s, text=body.text,
+            workspace_id=workspace_id, annotation_type=body.type, fields=_annotation_fields(body),
             registry=registry, source_registry=source_registry, large_gap_threshold_s=large_gap_threshold_s,
         )
     except ImportServiceError as exc:
@@ -254,14 +275,15 @@ def put_annotation(
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     large_gap_threshold_s: float = Depends(get_large_gap_warning_threshold_s),
 ) -> ReconstructionOut:
-    """Move and/or relabel an annotation. 400
+    """Edit what the annotation's type allows (text, Text Note position,
+    Callout anchor, box offset). 400
     `invalid_reconstruction_annotation`; 404 `reconstruction_not_defined`/
     `reconstruction_annotation_not_found`."""
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         view = update_reconstruction_annotation(
-            workspace_id=workspace_id, annotation_id=annotation_id, reconstruction_time_s=body.reconstruction_time_s,
-            text=body.text, registry=registry, source_registry=source_registry, large_gap_threshold_s=large_gap_threshold_s,
+            workspace_id=workspace_id, annotation_id=annotation_id, fields=_annotation_fields(body),
+            registry=registry, source_registry=source_registry, large_gap_threshold_s=large_gap_threshold_s,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
