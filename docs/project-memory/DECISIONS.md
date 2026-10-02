@@ -21531,6 +21531,46 @@ Source: owner task "Combined Multi-Axis View only".
   This is pre-existing (Waveform included), outside this slice, and
   reported, not changed.
 
+### Fix (2026-10-02): axis titles never show the "Undefined" sentinel
+
+- **UAT defect.** A Combined Y axis was titled "Undefined" (owner
+  screenshot with `R.POWER GSU 12UBF`).
+- **Root cause (`[FACT]`).**
+  - In the owner's PCGP record (2025-10-15), BEN32 codes the `R.POWER …`
+    channels with unit code 63 (multiplier 6).
+  - The validated BEN unit table (5 A, 29 V, 33 Hz, 38 W) does not list
+    63. By DEC-119/DEC-121's no-guessing rule, the import leaves the unit
+    blank, warns `unknown_unit_code`, and classifies the channel
+    `Undefined`.
+  - `resolve_display_axis()` then returned that classification sentinel
+    as `display_axis_quantity` (documented as a title part), with no key.
+    The frontend's one title helper rendered it.
+  - It was not JavaScript `undefined`. The title-to-axis association
+    was correct: the axis, its trace and its range were the R.POWER
+    channel's own.
+- **Fix.** `resolve_display_axis()` titles an unknown quantity
+  (an `UNDEFINED` or blank engineering type)
+  `UNKNOWN_QUANTITY_LABEL` = "Unknown quantity". The axis `key` still
+  uses `UNDEFINED`, so grouping is unchanged.
+- **Frontend.**
+  - `wwErChannelAxis()` no longer substitutes `engineering_type` or
+    "Undefined" for the title quantity.
+  - `wwErAxisTitle()` stays the single title helper (Grouped panel title,
+    Combined axis title, legend heading) and falls back to the same label
+    only when metadata is absent.
+  - A broad "Power" type without a recognised unit stays "Power"; it is
+    never guessed as Active/Reactive/Apparent.
+- **Owner decisions noted, not implemented.**
+  1. BEN unit code 63 looks like MVAr. BEN32's own `.prn` export of the
+     sibling JMHE U1 record labels its code-63 `R.POWER UNIT NO.1`
+     column `MVAr`, and Powerwave's decoded values match that export
+     exactly (69.078, …, 67.26). Adding 63 → "VAr" to the validated BEN
+     table would put these channels on a shared "Reactive Power (Mvar)"
+     axis. That is a BEN import change and needs approval.
+  2. Until then, each such blank-unit channel has an axis of its own
+     (DEC-131 rule), so several of them show several "Unknown quantity"
+     axes. Only the legend tells them apart.
+
 ---
 
 ## How to add a decision

@@ -47,6 +47,15 @@ Last updated: **2026-10-02** (Event Reconstruction Combined Multi-Axis View)
   - New `event-reconstruction-combined.spec.js` (9).
   - Static `TestEventReconstructionCombinedView` (8).
   - Grouped/navigation guards updated to per-axis state.
+- **Axis-title fix (follow-up commit).**
+  - A Combined axis read "Undefined": BEN unit code 63 is unvalidated, so
+    the `R.POWER` channel was unitless and Undefined, and the backend
+    returned the sentinel as the title quantity.
+  - Such an axis is now titled "Unknown quantity" (backend
+    `UNKNOWN_QUANTITY_LABEL`); grouping is unchanged.
+  - New regression test: title ↔ Plotly axis ↔ scale ↔ traces.
+  - Owner decision pending: validate BEN code 63 as VAr (BEN32's `.prn`
+    export says MVAr, and the values match).
 - **Next.** Owner UAT of Combined. Mixed-duration navigation is still
   `[OPEN / UAT]`.
 

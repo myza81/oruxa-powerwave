@@ -282,6 +282,13 @@ _POWER_QUANTITIES = (
     ENGINEERING_QUANTITY_APPARENT_POWER,
 )
 
+#: The axis-title quantity of a channel whose quantity is unknown -- its
+#: engineering type is the `UNDEFINED` classification sentinel (or blank).
+#: `UNDEFINED` is a classification value, not a title: shown as a title it
+#: reads like a software fault ("Undefined"). Display only -- the axis
+#: `key` still uses `UNDEFINED`, so grouping is unchanged.
+UNKNOWN_QUANTITY_LABEL = "Unknown quantity"
+
 
 @dataclass(frozen=True, slots=True)
 class DisplayAxis:
@@ -297,6 +304,10 @@ class DisplayAxis:
     unit: str
     key: str | None
     normalized: bool
+
+
+def _display_quantity(quantity: str) -> str:
+    return UNKNOWN_QUANTITY_LABEL if quantity in ("", UNDEFINED) else quantity
 
 
 def resolve_display_axis(engineering_type: str, engineering_quantity: str, raw_unit: str | None) -> DisplayAxis:
@@ -318,6 +329,12 @@ def resolve_display_axis(engineering_type: str, engineering_quantity: str, raw_u
        stripped unit string is kept and only identical strings of the same
        quantity share an axis.
     4. A blank unit has no safe shared interpretation: `key` is `None`.
+
+    `quantity` is the axis title's quantity: an unknown quantity (an
+    `UNDEFINED` or blank engineering type) is titled
+    `UNKNOWN_QUANTITY_LABEL`, never the sentinel itself. A broad type that
+    could not be narrowed (e.g. "Power" with no recognised unit) keeps its
+    broad name -- it is never guessed as Active/Reactive/Apparent.
     """
     unit = (raw_unit or "").strip()
     if engineering_quantity in KNOWN_ENGINEERING_QUANTITIES and engineering_quantity != UNDEFINED:
@@ -339,5 +356,5 @@ def resolve_display_axis(engineering_type: str, engineering_quantity: str, raw_u
         return DisplayAxis(quantity=quantity, unit=canonical_unit, key=quantity + "|" + canonical_unit, normalized=True)
     quantity = candidates[0] if len(candidates) == 1 else (engineering_type or UNDEFINED)
     if not unit:
-        return DisplayAxis(quantity=quantity, unit="", key=None, normalized=False)
-    return DisplayAxis(quantity=quantity, unit=unit, key=quantity + "|raw:" + unit, normalized=False)
+        return DisplayAxis(quantity=_display_quantity(quantity), unit="", key=None, normalized=False)
+    return DisplayAxis(quantity=_display_quantity(quantity), unit=unit, key=quantity + "|raw:" + unit, normalized=False)

@@ -549,3 +549,90 @@ test.describe("Event Reconstruction Combined View -- failures, fetching and isol
     expect(consoleErrors).toEqual([]);
   });
 });
+
+// Axis-title regression (owner UAT, 2026-10-02): a BEN32 "R.POWER" channel
+// whose unit code is not in the validated BEN table imports with a blank
+// unit and an Undefined type; its Combined axis was titled "Undefined".
+// Every axis must be titled from its own display-axis metadata, carry its
+// own traces (data[k].yaxis), and be scaled to those traces.
+const TITLED = [
+  { name: "VKV", unit: "kV", phase: "A", amplitude: 300, frequencyHz: 50 },
+  { name: "IKA", unit: "kA", phase: "A", amplitude: 2, frequencyHz: 50 },
+  { name: "P", unit: "MW", amplitude: 350, frequencyHz: 0.5 },
+  { name: "Q", unit: "Mvar", amplitude: 40, frequencyHz: 0.5 },
+  { name: "S", unit: "MVA", amplitude: 400, frequencyHz: 0.5 },
+  { name: "F", unit: "Hz", amplitude: 1, frequencyHz: 0.5 },
+  { name: "R.POWER GSU 12UBF", unit: "", amplitude: 60, frequencyHz: 0.5 },
+];
+// The expected title of each channel's axis, from its quantity and unit.
+const EXPECTED_TITLE = {
+  "VKV": "Voltage (kV)", "-VKV": "Voltage (kV)", "IKA": "Current (kA)", "P": "Active Power (MW)",
+  "Q": "Reactive Power (Mvar)", "S": "Apparent Power (MVA)", "F": "Frequency (Hz)",
+  "R.POWER GSU 12UBF": "Unknown quantity",
+};
+
+test.describe("Event Reconstruction Combined View -- axis titles", () => {
+  test("title, Plotly axis, scale and traces all refer to the same display axis; an unclassified channel is an Unknown quantity", async ({ page }) => {
+    const consoleErrors = collectConsoleErrors(page);
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await page.goto("/index.html");
+    await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", channels: TITLED });
+    const sourceA = await sourceIdFor(page, "STN_A");
+    const calc = await (await page.request.post(`${BACKEND}/api/v1/workspaces/${await workspaceId(page)}/calculated-channels`, {
+      data: { name: "-VKV", operation: "reverse_polarity", inputs: [{ kind: "source", source_id: sourceA, channel_name: "VKV" }], parameters: {} },
+    })).json();
+    // The backend metadata: the unclassified channel has no shared axis and
+    // a deliberate title quantity -- never the "Undefined" sentinel.
+    const meta = Object.fromEntries((await api(page, `/sources/${sourceA}/channels`)).analog_channels
+      .map((c) => [c.name, [c.engineering_type, c.display_axis_key, c.display_axis_quantity, c.display_axis_unit]]));
+    expect(meta["R.POWER GSU 12UBF"]).toEqual(["Undefined", null, "Unknown quantity", ""]);
+    expect(meta.Q).toEqual(["Power", "Reactive Power|Mvar", "Reactive Power", "Mvar"]);
+    expect([calc.display_axis_key, calc.display_axis_quantity]).toEqual(["Voltage|kV", "Voltage"]);
+
+    await addRecords(page, ["STN_A"]);
+    await selectAll(page, "STN_A", [...TITLED.map((c) => c.name), "-VKV"]);
+    await waitForPlot(page, 8);
+    await waitForAxesScaled(page);
+    const grouped = await plotState(page);
+    const groupedTitles = grouped.groups.map((g) => g.title);
+    expect(groupedTitles).toEqual([
+      "Voltage (kV)", "Current (kA)", "Active Power (MW)", "Reactive Power (Mvar)", "Apparent Power (MVA)", "Frequency (Hz)", "Unknown quantity",
+    ]);
+    // Grouped: every channel sits in the panel its metadata names.
+    for (const channel of grouped.panels) expect(channel.panelTitle).toBe(EXPECTED_TITLE[channel.channelName]);
+
+    await setMode(page, "combined");
+    await waitForPlot(page, 8);
+    await waitForAxesScaled(page);
+    const state = await plotState(page);
+    const panel = state.groups[0];
+    // Grouped panel title == Combined axis title == legend heading, per group.
+    expect(panel.axes.map((a) => a.title)).toEqual(groupedTitles);
+    expect(panel.axisLegend.map((l) => l.title)).toEqual(groupedTitles);
+    expect(panel.axes.map((a) => a.key)).toEqual(grouped.groups.map((g) => g.key));
+    // Left/right alternation does not shift a title to a neighbour's axis.
+    expect(panel.axes.map((a) => a.side)).toEqual(["left", "right", "left", "right", "left", "right", "left"]);
+    const byRef = Object.fromEntries(panel.axes.map((a) => [a.ref, a]));
+    for (const channel of state.panels) {
+      // Plotly's own trace -> axis reference (data[k].yaxis) lands on the
+      // axis titled for this channel's quantity and unit...
+      const axis = byRef[channel.traceYAxis];
+      expect(axis.title).toBe(EXPECTED_TITLE[channel.channelName]);
+      expect(axis.traceKeys).toContain(channel.key);
+      // ...and that axis is scaled to its own traces, not a neighbour's.
+      const values = state.panels.filter((c) => c.traceYAxis === channel.traceYAxis).flatMap((c) => c.values);
+      const dataSpan = Math.max(...values) - Math.min(...values);
+      expect(axis.range[0]).toBeLessThanOrEqual(Math.min(...values));
+      expect(axis.range[1]).toBeGreaterThanOrEqual(Math.max(...values));
+      expect(span(axis.range)).toBeLessThan(1.25 * dataSpan);
+    }
+    // The calculated channel joins the native Voltage (kV) axis.
+    const voltage = panel.axes.find((a) => a.title === "Voltage (kV)");
+    expect(voltage.traceKeys).toHaveLength(2);
+    expect(state.panels.find((c) => c.channelName === "-VKV").traceYAxis).toBe(voltage.ref);
+    // The unclassified channel has an axis of its own (no shared key).
+    expect(panel.axes.find((a) => a.title === "Unknown quantity").traceKeys)
+      .toEqual([state.panels.find((c) => c.channelName === "R.POWER GSU 12UBF").key]);
+    expect(consoleErrors).toEqual([]);
+  });
+});

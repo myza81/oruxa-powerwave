@@ -41,7 +41,10 @@ from app.schemas.source import AnalogChannelOut
         # normalized unit.
         ("Voltage", "Undefined", "pu", "Voltage|raw:pu", "Voltage", "pu"),
         ("Voltage", "Voltage Angle", "deg", "Voltage Angle|raw:deg", "Voltage Angle", "deg"),
-        ("Undefined", "Undefined", "bar", "Undefined|raw:bar", "Undefined", "bar"),
+        # An unknown quantity is titled deliberately; its key keeps the
+        # classification sentinel, so grouping is unchanged.
+        ("Undefined", "Undefined", "bar", "Undefined|raw:bar", "Unknown quantity", "bar"),
+        ("", "Undefined", "bar", "Undefined|raw:bar", "Unknown quantity", "bar"),
         ("Power", "Undefined", "MWh", "Power|raw:MWh", "Power", "MWh"),
     ],
 )
@@ -54,6 +57,34 @@ def test_resolved_axes(engineering_type, engineering_quantity, unit, key, quanti
 def test_a_blank_unit_never_shares_an_axis(unit):
     assert resolve_display_axis("Voltage", "Undefined", unit).key is None
     assert resolve_display_axis("Undefined", "Undefined", unit).key is None
+
+
+def test_unvalidated_ben_reactive_power_unit_is_an_unknown_quantity_not_undefined():
+    """The UAT case: BEN32 R.POWER channels use BEN unit code 63, which the
+    validated BEN unit table does not list, so the import leaves the unit
+    blank and the type Undefined. The axis is titled "Unknown quantity" --
+    never the sentinel "Undefined", and never guessed as Reactive Power."""
+    axis = resolve_display_axis("Undefined", "Undefined", "")
+    assert (axis.key, axis.quantity, axis.unit) == (None, "Unknown quantity", "")
+    channel = AnalogChannelOut(name="R.POWER  GSU 12UBF", index=0, unit="", engineering_type="Undefined", scale=1, offset=0)
+    dumped = channel.model_dump()
+    assert (dumped["display_axis_key"], dumped["display_axis_quantity"], dumped["display_axis_unit"]) == (None, "Unknown quantity", "")
+
+
+def test_a_broad_power_type_without_a_recognised_unit_is_never_guessed():
+    for unit in ("", "MWh", "pu"):
+        axis = resolve_display_axis("Power", "Undefined", unit)
+        assert axis.quantity == "Power"
+        assert axis.quantity not in ("Active Power", "Reactive Power", "Apparent Power")
+
+
+@pytest.mark.parametrize("engineering_type", ["Voltage", "Current", "Power", "Frequency", "ROCOF", "Undefined", ""])
+@pytest.mark.parametrize("unit", ["", " ", "kV", "V", "kA", "A", "MW", "Mvar", "MVA", "Hz", "Hz/s", "pu", "deg", "bar", "MWh"])
+def test_every_axis_has_a_real_title_quantity(engineering_type, unit):
+    axis = resolve_display_axis(engineering_type, "Undefined", unit)
+    assert isinstance(axis.quantity, str) and axis.quantity.strip()
+    assert axis.quantity != "Undefined"
+    assert "undefined" not in axis.quantity.lower()
 
 
 def test_compatibility_is_quantity_and_normalized_unit():

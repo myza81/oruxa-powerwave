@@ -182,6 +182,10 @@ DEC-122 display timezone).
   - Plotly 3.7 renders only `{ text }` axis titles, so the shared panel
     layout's X title and the Grouped panels' unit Y title are not shown
     (pre-existing, Waveform included; reported in DEC-132, not changed);
+  - BEN unit code 63 (BEN32 `R.POWER` channels, evidently MVAr) is not in
+    the validated BEN unit table. Such channels import unitless, each on
+    its own "Unknown quantity" axis. Validating 63 is an owner decision
+    (DEC-132 fix note);
   - the final manual left/right synchronization UX (Slice 4);
   - the final grouped and multi-axis visualization (Slices 6A/6B).
 

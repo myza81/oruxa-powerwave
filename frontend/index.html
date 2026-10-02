@@ -15060,6 +15060,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // advisory notice suggests the Grouped view. Advisory only -- no
         // axis is ever dropped, merged or capped.
         const WW_ER_COMBINED_AXIS_ADVISORY = 4;
+        // An axis title's quantity when the channel's display-axis metadata
+        // is not available (the backend titles a known-unknown quantity the
+        // same way: engineering_units.UNKNOWN_QUANTITY_LABEL).
+        const WW_ER_UNKNOWN_QUANTITY_LABEL = "Unknown quantity";
         // The origin is kept while the visible window stays within this
         // many spans of it, so ordinary zoom/pan nearby does not rewrite
         // every trace; beyond that it moves to the window start. Within
@@ -15301,10 +15305,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const channel = item.kind === "calculated"
                 ? wwErState.calculatedChannels.find((c) => c.id === item.sourceId)
                 : ((wwErState.channelsBySource[item.sourceId] || {}).analog_channels || []).find((c) => c.name === item.channelName);
-            if (!channel) return { key: null, quantity: "Undefined", unit: "", engineeringType: "Undefined" };
+            if (!channel) return { key: null, quantity: null, unit: "", engineeringType: "Undefined" };
             return {
                 key: channel.display_axis_key === undefined ? null : channel.display_axis_key,
-                quantity: channel.display_axis_quantity || channel.engineering_type || "Undefined",
+                // The backend's axis-title quantity; never a classification
+                // sentinel or type copied in here (wwErAxisTitle() titles a
+                // missing one).
+                quantity: channel.display_axis_quantity || null,
                 unit: channel.display_axis_unit || "",
                 engineeringType: channel.engineering_type || "Undefined",
             };
@@ -15371,10 +15378,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 (rank(a.axis.engineeringType) - rank(b.axis.engineeringType)) || (a.first - b.first));
         }
 
-        // "Active Power (MW)", "Voltage (kV)", ... from the backend's axis
-        // quantity/unit.
+        // The one title of a display axis -- a Grouped panel's title, a
+        // Combined Y axis's title and its legend heading alike: "Active
+        // Power (MW)", "Voltage (kV)", "Unknown quantity" ... from the
+        // backend's axis quantity/unit (DEC-131/DEC-132).
         function wwErAxisTitle(axis) {
-            return axis.quantity + (axis.unit ? " (" + axis.unit + ")" : "");
+            return (axis.quantity || WW_ER_UNKNOWN_QUANTITY_LABEL) + (axis.unit ? " (" + axis.unit + ")" : "");
         }
 
         // The panels a view mode shows, built from the display axes

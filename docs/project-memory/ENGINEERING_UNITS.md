@@ -272,6 +272,10 @@ not perform a calculation. The same key decides a Grouped panel
 - **Units outside the table** (pu, deg, …) key on the exact stripped
   string (`"<quantity>|raw:<unit>"`).
 - **A blank unit** gives no key, so it never shares an axis.
+- **An unknown quantity** (an `Undefined` or blank engineering type) is
+  titled `UNKNOWN_QUANTITY_LABEL` ("Unknown quantity"), never the
+  `Undefined` sentinel. Its key still uses the sentinel, so grouping is
+  unchanged.
 
 It is exposed as the additive computed fields `display_axis_key` /
 `display_axis_quantity` / `display_axis_unit` on the channel and

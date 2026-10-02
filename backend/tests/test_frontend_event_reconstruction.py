@@ -199,7 +199,8 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         # rest are renderer constants.
         assert re.findall(r"const (?:WW_ER_|wwEr)\w+", module) == [
             "const WW_ER_SIDEBAR_WIDTH_STORAGE_KEY", "const wwErState", "const WW_ER_PANEL_HEIGHT",
-            "const WW_ER_COMBINED_PANEL_HEIGHT", "const WW_ER_COMBINED_AXIS_ADVISORY", "const WW_ER_ORIGIN_MAX_SPANS", "const WW_ER_RELAYOUT_DEBOUNCE_MS", "const WW_ER_TIME_AXIS_TITLE",
+            "const WW_ER_COMBINED_PANEL_HEIGHT", "const WW_ER_COMBINED_AXIS_ADVISORY",
+            "const WW_ER_UNKNOWN_QUANTITY_LABEL", "const WW_ER_ORIGIN_MAX_SPANS", "const WW_ER_RELAYOUT_DEBOUNCE_MS", "const WW_ER_TIME_AXIS_TITLE",
             "const WW_ER_OUTLIER_GAP_FRACTION",
         ]
 
@@ -797,7 +798,18 @@ class TestEventReconstructionGroupedView:
             for forbidden in (".test(", ".match(", "toLowerCase", "toUpperCase", "indexOf(\"k", "channelName.", "name.includes"):
                 assert forbidden not in body
         title = _between(source, "function wwErAxisTitle(axis) {", "\n        }\n")
-        assert 'axis.quantity + (axis.unit ? " (" + axis.unit + ")" : "")' in title
+        assert '(axis.quantity || WW_ER_UNKNOWN_QUANTITY_LABEL) + (axis.unit ? " (" + axis.unit + ")" : "")' in title
+        # The title quantity is the backend's; never a classification
+        # sentinel or broad type copied in by the frontend.
+        assert "quantity: channel.display_axis_quantity || null," in axis
+        assert 'quantity: "Undefined"' not in axis
+        assert "display_axis_quantity || channel.engineering_type" not in axis
+        # One title helper: no other place in the module builds a title
+        # from an axis quantity.
+        module = _er_module(source)
+        assert module.count(".quantity") == title.count(".quantity")
+        for use in ("{ text: wwErAxisTitle(axis.axis) }", ": wwErAxisTitle(panel.axes[0].axis);", "escapeHtml(wwErAxisTitle(axis.axis))"):
+            assert use in module
 
     def test_each_trace_fetches_and_maps_independently(self):
         source = _source()
