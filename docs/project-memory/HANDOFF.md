@@ -4,9 +4,44 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-02** (Event Reconstruction Relative / Absolute time display)
+Last updated: **2026-10-02** (Event Reconstruction annotations)
 
 ## What was most recently done
+
+**Event Reconstruction annotations (DEC-136, 2026-10-02).** The feature
+is not complete.
+
+- **Independent storylines.** Event Reconstruction event markers never
+  appear in Waveform, and Waveform annotations never appear in Event
+  Reconstruction. Only geometry helpers and overlay classes are shared;
+  Waveform code is unchanged.
+- **Storage.** The backend definition holds
+  `annotations[{annotation_id, reconstruction_time_s, text}]`, via
+  `POST/PUT/DELETE .../definition/annotations`. They survive page
+  reloads and are cleared with the reconstruction.
+- **Frame.** `reconstruction_frame_shift_s()` rebases them on a
+  reference switch or reference correction (same physical instant).
+  Non-reference corrections and membership changes leave them fixed.
+- **UI.** "Annotate" (one placement, Esc cancels), then click the
+  timeline and enter the label. Click a label or marker to edit or
+  delete; drag the strip on any panel to move.
+  - Dashed neutral lines on every panel; labels on the top panel,
+    staggered into rows.
+  - Relative/Absolute changes only the time text.
+- **Real-data UAT (YGPN).** Four markers (Fault inception / Protection
+  operated / Breaker opened / Voltage recovered) were readable in
+  Grouped and in Combined Absolute. Close labels drop to new rows (3 rows
+  for 3 markers within 70 ms), and labels at the top can cover a little
+  waveform.
+- **Tests.**
+  - Backend `test_event_reconstruction_annotations.py` (10).
+  - `event-reconstruction-annotations.spec.js` (6).
+  - Static `TestEventReconstructionAnnotations` (3).
+- **Next.** Event Reconstruction Per-Unit Display (Waveform owns
+  per-unit configuration; Event Reconstruction only consumes the
+  resolved settings). Then owner UAT of the whole branch.
+
+## Earlier — Event Reconstruction Relative / Absolute time display
 
 **Event Reconstruction Relative / Absolute time display (DEC-135,
 2026-10-02).** The feature is not complete.
@@ -31,7 +66,7 @@ Last updated: **2026-10-02** (Event Reconstruction Relative / Absolute time disp
   - `event-reconstruction-time-display.spec.js` (5).
   - Backend `test_event_reconstruction_absolute_time.py` (5).
   - Static `TestEventReconstructionTimeDisplay` (4).
-- **Next.** Owner UAT of the whole Event Reconstruction branch.
+- **Next (then).** Owner UAT of the whole Event Reconstruction branch.
 
 ## Earlier — Event Reconstruction individual Y-axis drag zoom
 

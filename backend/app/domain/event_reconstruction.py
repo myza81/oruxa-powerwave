@@ -54,7 +54,7 @@ kept but never applied, and never moved to another record.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
@@ -130,14 +130,50 @@ class ReconstructionMember:
     correction_s: float = 0.0
 
 
+#: Longest Event Reconstruction annotation label (characters, after
+#: trimming).
+RECONSTRUCTION_ANNOTATION_TEXT_MAX_LENGTH = 200
+
+
+@dataclass(frozen=True, slots=True)
+class ReconstructionAnnotation:
+    """One reconstruction-level event marker on the reconstruction's own
+    storyline (DEC-136) -- never a record's, never a Waveform annotation.
+    `reconstruction_time_s` is authoritative and is in the CURRENT
+    reconstruction frame: a reference switch or reference correction
+    rebases it so it stays on the same physical instant
+    (`reconstruction_frame_shift_s()`); a non-reference correction leaves
+    it fixed while that record moves beneath it."""
+
+    annotation_id: str
+    reconstruction_time_s: float
+    text: str
+
+
+def annotation_time_valid(reconstruction_time_s: float) -> bool:
+    return isinstance(reconstruction_time_s, (int, float)) and not isinstance(reconstruction_time_s, bool) and math.isfinite(reconstruction_time_s)
+
+
+def normalized_annotation_text(text: str | None) -> str | None:
+    """The trimmed label, or `None` when it is empty or too long."""
+    if not isinstance(text, str):
+        return None
+    stripped = text.strip()
+    if not stripped or len(stripped) > RECONSTRUCTION_ANNOTATION_TEXT_MAX_LENGTH:
+        return None
+    return stripped
+
+
 @dataclass(frozen=True, slots=True)
 class EventReconstructionDefinition:
-    """A workspace's reconstruction: its member records in selection order
-    and the reference record. Holds analysis state only -- never source
-    data, rewritten timestamps or channel presentation."""
+    """A workspace's reconstruction: its member records in selection order,
+    the reference record and its own annotations (DEC-136). Holds analysis
+    state only -- never source data, rewritten timestamps or channel
+    presentation."""
 
     members: tuple[ReconstructionMember, ...]
     reference_record_id: str
+    annotations: tuple[ReconstructionAnnotation, ...] = ()
 
     def member(self, record_id: str) -> ReconstructionMember | None:
         for member in self.members:
@@ -155,6 +191,55 @@ class EventReconstructionDefinition:
 
     def with_reference(self, record_id: str) -> "EventReconstructionDefinition":
         return replace(self, reference_record_id=record_id)
+
+    def annotation(self, annotation_id: str) -> ReconstructionAnnotation | None:
+        for annotation in self.annotations:
+            if annotation.annotation_id == annotation_id:
+                return annotation
+        return None
+
+    def with_annotations(self, annotations: Sequence[ReconstructionAnnotation]) -> "EventReconstructionDefinition":
+        return replace(self, annotations=tuple(annotations))
+
+    def with_frame_shift(self, shift_s: float | None) -> "EventReconstructionDefinition":
+        """Annotations rebased by a reconstruction frame shift (see
+        `reconstruction_frame_shift_s()`): each keeps its physical instant,
+        r_after = r_before - shift. `None` (no common anchor) or 0 leaves
+        them as they are."""
+        if not shift_s:
+            return self
+        return self.with_annotations(
+            replace(a, reconstruction_time_s=a.reconstruction_time_s - shift_s) for a in self.annotations
+        )
+
+
+def reconstruction_frame_shift_s(
+    *, before: EventReconstructionDefinition, after: EventReconstructionDefinition, origin_starts: Mapping[str, datetime]
+) -> float | None:
+    """How far reconstruction time 0 moved between two definitions,
+    in seconds: F_after - F_before with F = reference recorded start +
+    reference correction (the instant `reconstruction_zero_instant()`
+    returns). One physical instant at r_before sits at r_before - shift
+    afterwards -- the same frame shift the frontend applies to its viewport
+    and cursors (DEC-129/DEC-130):
+
+    * a reference switch: the new reference's old offset;
+    * a reference correction: that correction's change;
+    * a non-reference correction or a membership change: 0.
+
+    `origin_starts` maps record ids to their recorded starts (current
+    eligible records). `None` when either reference has no recorded start
+    (a stale reference): there is no common anchor to rebase against."""
+    old_reference = before.member(before.reference_record_id)
+    new_reference = after.member(after.reference_record_id)
+    old_origin = origin_starts.get(before.reference_record_id)
+    new_origin = origin_starts.get(after.reference_record_id)
+    if old_reference is None or new_reference is None or old_origin is None or new_origin is None:
+        return None
+    placement = 0.0 if after.reference_record_id == before.reference_record_id else recorded_placement_s(
+        record_origin_start=new_origin, reference_origin_start=old_origin
+    )
+    return placement + new_reference.correction_s - old_reference.correction_s
 
 
 def recorded_placement_s(*, record_origin_start: datetime, reference_origin_start: datetime) -> float:

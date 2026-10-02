@@ -186,7 +186,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         # renderer's own plot state only.
         assert keys == [
             "dragMode", "timeDisplay", "sources", "records", "definition",
-            "channelsBySource", "calculatedChannels", "selectedChannels", "activeRecordId", "loadSeq", "busy", "plot",
+            "channelsBySource", "calculatedChannels", "selectedChannels", "activeRecordId", "annotationUi", "loadSeq", "busy", "plot",
         ]
         plot_keys = re.findall(r"^ {16}(\w+):", state.split("plot: {", 1)[1], re.MULTILINE)
         assert plot_keys == [
@@ -257,6 +257,9 @@ class TestEventReconstructionSelectionWorkflow:
             ("PUT", "/definition"),
             ("PUT", "/definition/reference"),
             ("DELETE", "/definition"),
+            ("POST", "/definition/annotations"),  # DEC-136
+            ("PUT", "/definition/annotations/"),
+            ("DELETE", "/definition/annotations/"),
         })
         path = _between(_source(), "function wwErCorrectionPath(recordId) {", "\n        }\n")
         assert 'return "/definition/records/" + encodeURIComponent(recordId) + "/correction";' in path
@@ -1109,3 +1112,45 @@ class TestEventReconstructionTimeDisplay:
         assert "wwErFormatCursorDelta(shown.b - shown.a)" in readout
         label = _between(source, "function wwErCursorTimeLabel(seconds) {", "\n        }\n")
         assert "wwErFormatAbsoluteClock(wwErAbsoluteInstant(zero, seconds), 6)" in label
+
+
+class TestEventReconstructionAnnotations:
+    """DEC-136: the reconstruction's own annotations -- backend-owned
+    (definition.annotations, reconstruction seconds), never Waveform's
+    ww.annotations; drawn with the shared time<->pixel helpers and cursor
+    overlay classes; Relative/Absolute changes only their time text."""
+
+    def test_state_is_the_backend_definition_never_waveform(self):
+        source = _source()
+        annotations = _between(source, "function wwErAnnotations() {", "\n        }\n")
+        assert "wwErState.definition.annotations" in annotations
+        block = _between(source, "// ---- Event Reconstruction annotations (DEC-136) ----", "// ---- Slice 3E: global A/B cursors (DEC-130) ----")
+        for forbidden in ("ww.annotations", "wwCreateAnnotation", "wwUpdateAnnotation", "wwDeleteAnnotation(", "wwRenderAnnotations", "ww.annotation"):
+            assert forbidden not in block
+        # And Waveform's annotation code never reads Event Reconstruction state.
+        waveform = _between(source, "function wwCreateAnnotation(type, region, position, data) {", "function wwAnnotationCategoryLabel(annotation)")
+        assert "wwEr" not in waveform
+
+    def test_markers_use_reconstruction_time_and_shared_geometry(self):
+        source = _source()
+        draw = _between(source, "function wwErDrawPanelAnnotations(panel) {", "function wwErToggleAnnotationPlacement(on)")
+        assert "wwTimeToPageX(plot.viewport, metrics, time)" in draw
+        assert 'el.className = "ww-cursor-line ww-er-annotation";' in draw
+        assert "annotation.reconstruction_time_s" in draw
+        assert "const withLabels = panel === plot.panels[0];" in draw
+        # Placement and drag convert the pointer to reconstruction time and
+        # clamp it to Fit All; never a Plotly-local or pixel value stored.
+        wire = _between(source, "function wwErWirePanelAnnotationInput(panel) {", "function wwErOpenAnnotationEditor(id, time, event)")
+        assert "wwErClampCursorTime(wwErState.plot.fitAll, time)" in wire
+        assert 'wwErMutate("PUT", "/definition/annotations/" + encodeURIComponent(id), { reconstruction_time_s: moved.time })' in wire
+        save = _between(source, "async function wwErSaveAnnotation() {", "\n        }\n")
+        assert 'wwErMutate("POST", "/definition/annotations", { reconstruction_time_s: editing.time, text })' in save
+
+    def test_time_text_uses_the_one_time_display_helper(self):
+        source = _source()
+        text = _between(source, "function wwErAnnotationTimeText(seconds) {", "\n        }\n")
+        assert "wwErCursorTimeLabel(seconds)" in text
+        switch = _between(source, "function wwErSetTimeDisplay(mode) {", "function wwErSyncTimeDisplayButtons()")
+        assert "wwErDrawAnnotations();" in switch
+        # Every cursor redraw path also redraws the markers.
+        assert "wwErDrawPanelAnnotations(panel);" in _between(source, "function wwErDrawPanelCursors(panel) {", "const layer = panel.cursorLayerEl;")

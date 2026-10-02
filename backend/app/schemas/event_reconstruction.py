@@ -153,6 +153,15 @@ class ReconstructionWarningOut(BaseModel):
         )
 
 
+class ReconstructionAnnotationOut(BaseModel):
+    """One reconstruction-level annotation (DEC-136): `reconstruction_time_s`
+    in the current reconstruction frame (seconds, full float precision)."""
+
+    annotation_id: str
+    reconstruction_time_s: float
+    text: str
+
+
 class ReconstructionOut(BaseModel):
     """`defined: false` (with empty lists) when the workspace has no
     reconstruction yet. `status` is `ready` or `stale`; `stale` means at
@@ -175,6 +184,8 @@ class ReconstructionOut(BaseModel):
     members: list[ReconstructionMemberOut]
     relationships: list[ReconstructionRelationshipOut]
     warnings: list[ReconstructionWarningOut]
+    # Additive (DEC-136): the reconstruction's own annotations, by time.
+    annotations: list[ReconstructionAnnotationOut] = []
 
     @classmethod
     def from_view(cls, view: ReconstructionView) -> "ReconstructionOut":
@@ -189,6 +200,12 @@ class ReconstructionOut(BaseModel):
             members=[ReconstructionMemberOut.from_view(m) for m in view.members],
             relationships=[ReconstructionRelationshipOut.from_view(r) for r in view.relationships],
             warnings=[ReconstructionWarningOut.from_view(w) for w in view.warnings],
+            annotations=[
+                ReconstructionAnnotationOut(
+                    annotation_id=a.annotation_id, reconstruction_time_s=a.reconstruction_time_s, text=a.text
+                )
+                for a in view.annotations
+            ],
         )
 
 
@@ -206,3 +223,15 @@ class ReconstructionReferenceRequest(BaseModel):
 
 class ReconstructionCorrectionRequest(BaseModel):
     correction_s: float
+
+
+class ReconstructionAnnotationCreateRequest(BaseModel):
+    reconstruction_time_s: float
+    text: str
+
+
+class ReconstructionAnnotationUpdateRequest(BaseModel):
+    """A field left out (or null) is kept."""
+
+    reconstruction_time_s: float | None = None
+    text: str | None = None

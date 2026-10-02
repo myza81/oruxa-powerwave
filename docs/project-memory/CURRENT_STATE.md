@@ -159,9 +159,22 @@ DEC-122 display timezone).
       it changes; µs hover and cursor readouts. Nothing is refetched on a
       switch.
 
-    Not yet built: Y step zoom; an overview navigator (deferred until
-    Fit Record UAT); panel resizing (fixed 180 px per Grouped panel,
-    420 px Combined).
+  - **Annotations (DEC-136).** These are the reconstruction's own event
+    markers, independent of Waveform annotations.
+    - They are stored in the backend with the definition, in
+      reconstruction seconds.
+    - Reference switches and reference corrections rebase them to the
+      same physical instant; non-reference corrections leave them fixed.
+    - The editor offers "Annotate", then click; click to edit or delete;
+      drag to move.
+    - They are drawn on every panel, with the label on the top panel.
+      Relative/Absolute changes only their time text.
+
+    Not yet built: Event Reconstruction Per-Unit Display (next planned;
+    Waveform owns per-unit configuration, Event Reconstruction only
+    consumes the resolved settings); Y step zoom; an overview navigator
+    (deferred until Fit Record UAT); panel resizing (fixed 180 px per
+    Grouped panel, 420 px Combined).
   - It never reads or writes the Waveform `ww` state, panels or
     viewports.
 - **Backend.**

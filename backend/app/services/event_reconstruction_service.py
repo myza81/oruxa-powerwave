@@ -21,19 +21,24 @@ migrate).
 
 from __future__ import annotations
 
+import uuid
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 
 from app.domain.event_reconstruction import (
     REASON_NO_ABSOLUTE_TIME_REFERENCE,
     EventReconstructionDefinition,
+    ReconstructionAnnotation,
     ReconstructionEligibility,
     ReconstructionMember,
+    annotation_time_valid,
     classify_interval_relationship,
     correction_valid,
     large_gaps,
+    normalized_annotation_text,
     reconstruction_eligibility,
+    reconstruction_frame_shift_s,
     reconstruction_offset_s,
     reconstruction_zero_instant,
     recorded_placement_s,
@@ -42,7 +47,9 @@ from app.domain.event_reconstruction import (
 from app.domain.time_grouping import normalize_absolute_datetime, time_reference_type_for_source
 from app.services.errors import (
     DuplicateReconstructionMemberError,
+    InvalidReconstructionAnnotationError,
     InvalidReconstructionCorrectionError,
+    ReconstructionAnnotationNotFoundError,
     InvalidReconstructionDefinitionError,
     ReconstructionMemberNotFoundError,
     ReconstructionMemberStaleError,
@@ -231,6 +238,13 @@ class ReconstructionWarningView:
 
 
 @dataclass(slots=True)
+class ReconstructionAnnotationView:
+    annotation_id: str
+    reconstruction_time_s: float
+    text: str
+
+
+@dataclass(slots=True)
 class ReconstructionView:
     """The workspace's reconstruction as the API reports it. `defined` is
     `False` (and everything else empty) when none exists -- "not defined
@@ -246,6 +260,9 @@ class ReconstructionView:
     placements_available: bool
     large_gap_warning_threshold_s: float
     members: list[ReconstructionMemberView] = field(default_factory=list)
+    # The reconstruction's own annotations (DEC-136), by time then id, in
+    # the current reconstruction frame.
+    annotations: list[ReconstructionAnnotationView] = field(default_factory=list)
     relationships: list[ReconstructionRelationshipView] = field(default_factory=list)
     warnings: list[ReconstructionWarningView] = field(default_factory=list)
 
@@ -348,6 +365,12 @@ def _build_view(
         members=member_views,
         relationships=relationships,
         warnings=warnings,
+        annotations=[
+            ReconstructionAnnotationView(
+                annotation_id=a.annotation_id, reconstruction_time_s=a.reconstruction_time_s, text=a.text
+            )
+            for a in sorted(definition.annotations, key=lambda a: (a.reconstruction_time_s, a.annotation_id))
+        ],
     )
 
 
@@ -439,6 +462,9 @@ def set_reconstruction_definition(
 
     existing = registry.get(workspace_id)
     previous_corrections = {m.record_id: m.correction_s for m in existing.members} if existing is not None else {}
+    # A membership change keeps the reconstruction's annotations (they
+    # belong to its storyline, not to a record), rebased if the frame moved.
+    previous_annotations = existing.annotations if existing is not None else ()
     members = tuple(
         ReconstructionMember(
             record_id=record_id,
@@ -447,9 +473,22 @@ def set_reconstruction_definition(
         )
         for record_id in record_ids
     )
-    definition = EventReconstructionDefinition(members=members, reference_record_id=reference_record_id)
+    definition = EventReconstructionDefinition(
+        members=members, reference_record_id=reference_record_id, annotations=previous_annotations
+    )
+    if existing is not None:
+        definition = _rebased(existing, definition, timings)
     registry.put(workspace_id, definition)
     return _build_view(definition, timings, large_gap_threshold_s)
+
+
+def _rebased(
+    before: EventReconstructionDefinition, after: EventReconstructionDefinition, timings: list[_RecordTiming]
+) -> EventReconstructionDefinition:
+    """`after` with its annotations moved by the reconstruction frame shift
+    from `before`, so each stays on its physical instant (DEC-136)."""
+    origins = {t.record_id: t.origin_start for t in timings if t.eligibility.eligible and t.origin_start is not None}
+    return after.with_frame_shift(reconstruction_frame_shift_s(before=before, after=after, origin_starts=origins))
 
 
 def _require_current_member(
@@ -476,7 +515,7 @@ def set_reconstruction_reference(
     unchanged; only the frame they are reported in moves."""
     timings = _record_timings(workspace_id=workspace_id, source_registry=source_registry)
     definition = _require_current_member(workspace_id=workspace_id, record_id=record_id, registry=registry, timings=timings)
-    definition = definition.with_reference(record_id)
+    definition = _rebased(definition, definition.with_reference(record_id), timings)
     registry.put(workspace_id, definition)
     return _build_view(definition, timings, large_gap_threshold_s)
 
@@ -492,7 +531,7 @@ def set_member_correction(
         raise InvalidReconstructionCorrectionError("correction_s must be a finite number of seconds.")
     timings = _record_timings(workspace_id=workspace_id, source_registry=source_registry)
     definition = _require_current_member(workspace_id=workspace_id, record_id=record_id, registry=registry, timings=timings)
-    definition = definition.with_correction(record_id, float(correction_s))
+    definition = _rebased(definition, definition.with_correction(record_id, float(correction_s)), timings)
     registry.put(workspace_id, definition)
     return _build_view(definition, timings, large_gap_threshold_s)
 
@@ -507,6 +546,83 @@ def reset_member_correction(
         workspace_id=workspace_id, record_id=record_id, correction_s=0.0, registry=registry,
         source_registry=source_registry, large_gap_threshold_s=large_gap_threshold_s,
     )
+
+
+# ------------------------------------------------------------------------------
+# Annotations (DEC-136): the reconstruction's own storyline markers -- never
+# Waveform annotations, never attached to a record.
+# ------------------------------------------------------------------------------
+
+
+def _require_definition(workspace_id: str, registry: EventReconstructionRegistry) -> EventReconstructionDefinition:
+    definition = registry.get(workspace_id)
+    if definition is None:
+        raise ReconstructionNotDefinedError(f"Workspace '{workspace_id}' has no Event Reconstruction.")
+    return definition
+
+
+def _validated_time(reconstruction_time_s: float) -> float:
+    if not annotation_time_valid(reconstruction_time_s):
+        raise InvalidReconstructionAnnotationError("reconstruction_time_s must be a finite number of seconds.")
+    return float(reconstruction_time_s)
+
+
+def _validated_text(text: str | None) -> str:
+    normalized = normalized_annotation_text(text)
+    if normalized is None:
+        raise InvalidReconstructionAnnotationError("An annotation needs a label of 1 to 200 characters.")
+    return normalized
+
+
+def add_reconstruction_annotation(
+    *, workspace_id: str, reconstruction_time_s: float, text: str, registry: EventReconstructionRegistry,
+    source_registry: WorkspaceRegistry, large_gap_threshold_s: float,
+) -> tuple[ReconstructionView, str]:
+    """Add one annotation at a reconstruction time (current frame). Returns
+    the view and the new annotation's id."""
+    definition = _require_definition(workspace_id, registry)
+    annotation = ReconstructionAnnotation(
+        annotation_id="ann-" + uuid.uuid4().hex[:12],
+        reconstruction_time_s=_validated_time(reconstruction_time_s),
+        text=_validated_text(text),
+    )
+    definition = definition.with_annotations((*definition.annotations, annotation))
+    registry.put(workspace_id, definition)
+    timings = _record_timings(workspace_id=workspace_id, source_registry=source_registry)
+    return _build_view(definition, timings, large_gap_threshold_s), annotation.annotation_id
+
+
+def update_reconstruction_annotation(
+    *, workspace_id: str, annotation_id: str, reconstruction_time_s: float | None, text: str | None,
+    registry: EventReconstructionRegistry, source_registry: WorkspaceRegistry, large_gap_threshold_s: float,
+) -> ReconstructionView:
+    """Move and/or relabel one annotation; a field left `None` is kept."""
+    definition = _require_definition(workspace_id, registry)
+    existing = definition.annotation(annotation_id)
+    if existing is None:
+        raise ReconstructionAnnotationNotFoundError(f"No annotation '{annotation_id}' in the reconstruction.")
+    updated = replace(
+        existing,
+        reconstruction_time_s=existing.reconstruction_time_s if reconstruction_time_s is None else _validated_time(reconstruction_time_s),
+        text=existing.text if text is None else _validated_text(text),
+    )
+    definition = definition.with_annotations(updated if a.annotation_id == annotation_id else a for a in definition.annotations)
+    registry.put(workspace_id, definition)
+    timings = _record_timings(workspace_id=workspace_id, source_registry=source_registry)
+    return _build_view(definition, timings, large_gap_threshold_s)
+
+
+def delete_reconstruction_annotation(
+    *, workspace_id: str, annotation_id: str, registry: EventReconstructionRegistry,
+    source_registry: WorkspaceRegistry, large_gap_threshold_s: float,
+) -> ReconstructionView:
+    definition = _require_definition(workspace_id, registry)
+    if definition.annotation(annotation_id) is None:
+        raise ReconstructionAnnotationNotFoundError(f"No annotation '{annotation_id}' in the reconstruction.")
+    definition = definition.with_annotations(a for a in definition.annotations if a.annotation_id != annotation_id)
+    registry.put(workspace_id, definition)
+    timings = _record_timings(workspace_id=workspace_id, source_registry=source_registry)
+    return _build_view(definition, timings, large_gap_threshold_s)
 
 
 def clear_reconstruction(*, workspace_id: str, registry: EventReconstructionRegistry) -> None:

@@ -5,7 +5,10 @@ one record, DEC-128) with its V1 eligibility. `GET/PUT/DELETE
 .../definition` reads, creates/replaces and clears the workspace's
 reconstruction. `PUT .../definition/reference` changes the reference
 record, and `PUT/DELETE .../definition/records/{record_id}/correction`
-sets or resets one record's manual correction. Every response that
+sets or resets one record's manual correction. `POST
+.../definition/annotations` and `PUT/DELETE
+.../definition/annotations/{annotation_id}` manage the reconstruction's
+own annotations (DEC-136). Every response that
 changes state returns the full reconstruction, recomputed against the
 current records.
 
@@ -18,6 +21,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.schemas.event_reconstruction import (
+    ReconstructionAnnotationCreateRequest,
+    ReconstructionAnnotationUpdateRequest,
     ReconstructionCorrectionRequest,
     ReconstructionDefinitionRequest,
     ReconstructionOut,
@@ -28,13 +33,16 @@ from app.schemas.source import ErrorOut
 from app.services.errors import ImportServiceError
 from app.services.event_reconstruction_registry import EventReconstructionRegistry
 from app.services.event_reconstruction_service import (
+    add_reconstruction_annotation,
     clear_reconstruction,
+    delete_reconstruction_annotation,
     get_reconstruction,
     list_reconstruction_records,
     reset_member_correction,
     set_member_correction,
     set_reconstruction_definition,
     set_reconstruction_reference,
+    update_reconstruction_annotation,
 )
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -51,6 +59,8 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "reconstruction_member_not_found": status.HTTP_404_NOT_FOUND,
     "reconstruction_member_stale": status.HTTP_409_CONFLICT,
     "invalid_reconstruction_correction": status.HTTP_400_BAD_REQUEST,
+    "invalid_reconstruction_annotation": status.HTTP_400_BAD_REQUEST,
+    "reconstruction_annotation_not_found": status.HTTP_404_NOT_FOUND,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -202,6 +212,75 @@ def delete_record_correction(
     try:
         view = reset_member_correction(
             workspace_id=workspace_id, record_id=record_id, registry=registry,
+            source_registry=source_registry, large_gap_threshold_s=large_gap_threshold_s,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return ReconstructionOut.from_view(view)
+
+
+# ------------------------------------------------------------------------------
+# Annotations (DEC-136)
+# ------------------------------------------------------------------------------
+
+
+@router.post("/definition/annotations", response_model=ReconstructionOut, status_code=status.HTTP_201_CREATED)
+def post_annotation(
+    workspace_id: str,
+    body: ReconstructionAnnotationCreateRequest,
+    registry: EventReconstructionRegistry = Depends(get_event_reconstruction_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    large_gap_threshold_s: float = Depends(get_large_gap_warning_threshold_s),
+) -> ReconstructionOut:
+    """Add an annotation at a reconstruction time (current frame). 400
+    `invalid_reconstruction_annotation`; 404 `reconstruction_not_defined`."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        view, _ = add_reconstruction_annotation(
+            workspace_id=workspace_id, reconstruction_time_s=body.reconstruction_time_s, text=body.text,
+            registry=registry, source_registry=source_registry, large_gap_threshold_s=large_gap_threshold_s,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return ReconstructionOut.from_view(view)
+
+
+@router.put("/definition/annotations/{annotation_id}", response_model=ReconstructionOut)
+def put_annotation(
+    workspace_id: str,
+    annotation_id: str,
+    body: ReconstructionAnnotationUpdateRequest,
+    registry: EventReconstructionRegistry = Depends(get_event_reconstruction_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    large_gap_threshold_s: float = Depends(get_large_gap_warning_threshold_s),
+) -> ReconstructionOut:
+    """Move and/or relabel an annotation. 400
+    `invalid_reconstruction_annotation`; 404 `reconstruction_not_defined`/
+    `reconstruction_annotation_not_found`."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        view = update_reconstruction_annotation(
+            workspace_id=workspace_id, annotation_id=annotation_id, reconstruction_time_s=body.reconstruction_time_s,
+            text=body.text, registry=registry, source_registry=source_registry, large_gap_threshold_s=large_gap_threshold_s,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return ReconstructionOut.from_view(view)
+
+
+@router.delete("/definition/annotations/{annotation_id}", response_model=ReconstructionOut)
+def delete_annotation(
+    workspace_id: str,
+    annotation_id: str,
+    registry: EventReconstructionRegistry = Depends(get_event_reconstruction_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    large_gap_threshold_s: float = Depends(get_large_gap_warning_threshold_s),
+) -> ReconstructionOut:
+    """404 `reconstruction_not_defined`/`reconstruction_annotation_not_found`."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        view = delete_reconstruction_annotation(
+            workspace_id=workspace_id, annotation_id=annotation_id, registry=registry,
             source_registry=source_registry, large_gap_threshold_s=large_gap_threshold_s,
         )
     except ImportServiceError as exc:

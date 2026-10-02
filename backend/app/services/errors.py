@@ -1197,6 +1197,19 @@ class ReconstructionNotDefinedError(ImportServiceError):
     code = "reconstruction_not_defined"
 
 
+class InvalidReconstructionAnnotationError(ImportServiceError):
+    """An Event Reconstruction annotation's time is not a finite number of
+    seconds, or its label is empty or too long (DEC-136)."""
+
+    code = "invalid_reconstruction_annotation"
+
+
+class ReconstructionAnnotationNotFoundError(ImportServiceError):
+    """No annotation with that id in this workspace's reconstruction."""
+
+    code = "reconstruction_annotation_not_found"
+
+
 class ReconstructionMemberNotFoundError(ImportServiceError):
     """No member with this `record_id` exists in the workspace's
     reconstruction."""

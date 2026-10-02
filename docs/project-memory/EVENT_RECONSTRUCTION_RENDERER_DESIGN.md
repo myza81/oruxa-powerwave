@@ -183,6 +183,16 @@ Group" assumption below.**
   - Hover uses the trace `text`, so `customdata` stays numeric.
   - The cursor readout carries µs.
   - A switch relabels without any fetch.
+- **Annotations (done, 2026-10-02, DEC-136).**
+  - Backend-owned reconstruction-level markers (`definition.annotations`,
+    `reconstruction_time_s`), rebased by the backend frame shift.
+  - Each panel's `.ww-er-annotation-layer` (z-index under the cursor
+    layer) draws them with `wwTimeToPageX()` against the reconstruction
+    viewport, so the plotting origin never enters annotation state.
+  - Every cursor redraw path (`wwErDrawPanelCursors`) redraws them.
+  - Placement and drag use `wwPageXToTime()`, clamped to Fit All. A drag
+    is tracked on `window` (redraws recreate marker elements).
+  - Next planned: Event Reconstruction Per-Unit Display.
 
 Date: 2026-10-01. Code references are function names in
 `frontend/index.html` and `backend/app/` at commit `33f3178`

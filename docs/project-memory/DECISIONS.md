@@ -21866,6 +21866,97 @@ planned ticket of DEC-133/DEC-134.
   1.415–1.495 s), the ticks, cursors and hover were identical.
 - The 87-day Fit All shows dates (`28 Jul 2022 … 20 Oct 2022`).
 
+## DEC-136 — Waveform and Event Reconstruction own independent annotations; Event Reconstruction annotations are reconstruction-level markers in reconstruction time
+
+Date: 2026-10-02
+Status: Approved (owner, "Event Reconstruction Annotations" task) —
+implemented on `feat/event-reconstruction`; not merged. The Event
+Reconstruction feature is **not** complete.
+
+### Decisions (owner)
+
+1. **Architecture rule.** Waveform and Event Reconstruction own
+   independent annotations and storylines. Annotation tooling and helpers
+   may be shared, but annotation state is page-specific.
+   - A Waveform annotation never appears in Event Reconstruction, and the
+     reverse is also true.
+   - Creating, editing, deleting or clearing on one page never touches
+     the other.
+2. **Event Reconstruction annotations are reconstruction-level** event
+   markers ("Fault inception", "Breaker opened", …), not attached to a
+   record or a Waveform source.
+   - Removing a record keeps them.
+   - Clearing the reconstruction removes them.
+3. **The authoritative position is `reconstruction_time_s`** in the
+   current reconstruction frame: never Plotly-local, never pixels, never
+   a formatted timestamp. Rendering is Plotly x = r − plotting origin.
+4. **Frame rules** (as the viewport and cursors, DEC-129/DEC-130):
+   - A reference switch or a reference correction rebases them onto the
+     same physical instant.
+   - A non-reference correction leaves them fixed; only that record moves
+     beneath them.
+   - Navigation, Fit Record, Reset, Y-axis drag and cursors never move
+     them.
+5. **Relative / Absolute changes only their time text**, through the one
+   DEC-135 helper.
+6. **They are shared by Grouped and Combined.** The marker is drawn on
+   every panel; the label sits on the top panel.
+
+### Implementation (`[FACT]`)
+
+- **Persistence: backend, with the Event Reconstruction definition**
+  (which already lives in the backend registry). It survives page reloads
+  and is cleared with the reconstruction or the workspace.
+  - Waveform annotations remain frontend session state (DEC-044); that
+    is unchanged.
+  - `EventReconstructionDefinition.annotations` holds
+    `ReconstructionAnnotation(annotation_id, reconstruction_time_s,
+    text)`; labels are 1–200 characters, trimmed.
+  - The routes are `POST .../definition/annotations` and
+    `PUT/DELETE .../definition/annotations/{id}`. `ReconstructionOut`
+    gains `annotations`, sorted by time.
+- **Rebasing.** `reconstruction_frame_shift_s(before, after,
+  origin_starts)` computes `F_after − F_before` with F = reference
+  recorded start + reference correction. That is exactly the frontend's
+  DEC-129 frame shift.
+  - It is applied in `set_reconstruction_reference`,
+    `set_member_correction` / reset and definition replace:
+    `r_after = r_before − shift`.
+  - It is `None` with a stale reference (no common anchor), so the
+    number is kept and nothing is invented.
+- **Frontend.**
+  - The markers come from `definition.annotations` only; the only
+    frontend state is `wwErState.annotationUi` (placement, drag,
+    editor).
+  - Each panel has its own annotation layer, drawn with the shared
+    `wwTimeToPageX()` / `wwPageXToTime()` and Waveform's
+    `.ww-cursor-line` / `-stroke` / `-hit` overlay classes, dashed and
+    neutral.
+  - Labels sit on the top panel, staggered into rows when they would
+    overlap.
+  - **Create:** "Annotate" (one placement, Esc cancels) → click the
+    timeline → the editor, which takes the label.
+  - **Edit / delete:** click the label or the marker.
+  - **Move:** drag the marker's strip, on any panel. The time is clamped
+    to Fit All.
+- **Reuse audit.** Waveform's framework (`ww.annotations`, region
+  overlays, Time-Group anchoring; types text note / callout / peak) is
+  Waveform-state-bound and has no time-marker type. Only the low-level
+  geometry helpers and overlay classes are shared; Waveform code is
+  unchanged.
+- **Tests:**
+  - backend `test_event_reconstruction_annotations.py` (10);
+  - `event-reconstruction-annotations.spec.js` (6): CRUD, Grouped and
+    Combined, Relative/Absolute, reload persistence, frame rules,
+    navigation, +2 h precision, Waveform independence;
+  - static `TestEventReconstructionAnnotations` (3).
+
+### Next planned (not implemented)
+
+- **Event Reconstruction Per-Unit Display.** Agreed architecture:
+  Waveform owns the per-unit configuration; Event Reconstruction only
+  consumes and applies the resolved per-unit settings.
+
 ---
 
 ## How to add a decision
