@@ -151,6 +151,18 @@ Group" assumption below.**
     their data. A refetch happens only when the data no longer serves
     the new panel's point budget.
   - **Height:** 420 px combined, 180 px grouped; no resizing.
+- **Fit Record (done, 2026-10-02, DEC-133):** the first mixed-duration
+  navigation aid (§10).
+  - `wwErState.activeRecordId` is an explicit record identity: the
+    member header click, never the reference and never inferred from a
+    trace.
+  - The fit target is the backend member `start_s`/`end_s`. It is
+    applied through `wwErClampViewport()` (minimum span only) and the one
+    `wwErApplyViewport()` pipeline: origin relocation, per-trace
+    visible-range fetch and data reuse, no record-wide data path.
+  - X only, Grouped and Combined alike. There is no time compression and
+    no axis break.
+  - The overview navigator stays deferred until UAT.
 
 Date: 2026-10-01. Code references are function names in
 `frontend/index.html` and `backend/app/` at commit `33f3178`
@@ -441,8 +453,8 @@ wwErReconstructionToElapsed(displaySourceId, reconstructionSeconds) -> number | 
 - No padding and no sampling-rate-based expansion.
 - A zero span gets the existing minimum-span floor.
 - Reset Time View = Fit All.
-- This is provisional; Fit Selected Record, overview navigation and
-  automatic focus stay `[OPEN / UAT]`.
+- This is provisional. Fit Selected Record is now built (DEC-133);
+  overview navigation and automatic focus stay `[OPEN / UAT]`.
 
 **As built (Slice 3C).**
 - Fit All uses the plotted channels' sources only. With nothing plotted

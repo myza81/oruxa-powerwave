@@ -123,9 +123,26 @@ DEC-122 display timezone).
     - Zoom, pan, Reset, selection changes and record removal never move
       them.
 
-    Not yet built: Y step zoom, Fit Selected Record, an overview
-    navigator, an absolute-time ruler and wall-clock cursor times, and
-    panel resizing (fixed 180 px per Grouped panel, 420 px Combined).
+  - **Fit Record (mixed-duration navigation, DEC-133).**
+    - Clicking a member's header makes it the **active navigation
+      record**. It is shown by a tinted header with an accent edge and
+      ring, and is distinct from the reference: e.g. reference BTGH,
+      active BAHS.
+    - Initially it is the reference record. Removing that record clears
+      it, and no other record is chosen automatically.
+    - "Fit Record" sets the common X viewport to the record's backend
+      extent (member `start_s`/`end_s`) in Grouped and Combined.
+    - It changes X only: Y and cursors stay, and time is never
+      compressed. Fit All and Reset are unchanged.
+    - It is disabled, with the reason in its tooltip, when there is no
+      usable target, including when none of the record's channels is
+      plotted.
+
+    Not yet built (planned): individual Y-axis drag zoom;
+    Relative/Absolute time display (labels only, internal timing
+    unchanged); Y step zoom; an overview navigator (deferred until Fit
+    Record UAT); wall-clock cursor times; panel resizing (fixed 180 px
+    per Grouped panel, 420 px Combined).
   - It never reads or writes the Waveform `ww` state, panels or
     viewports.
 - **Backend.**
@@ -172,8 +189,11 @@ DEC-122 display timezone).
   - `[OPEN / UAT]` mixed-duration / mixed-sampling-rate navigation and
     the initial viewport. Fit All keeps time physical, so a short fast
     record can be a sliver, and one wrong-event record can make every
-    trace sub-pixel (now named by the Fit All span notice, which is not
-    the solution);
+    trace sub-pixel (named by the Fit All span notice).
+    - Fit Record (DEC-133) is the first remedy, still to be UAT'd in
+      real workflows.
+    - Whether an overview navigator is still needed is decided after
+      that UAT;
   - colour collisions inside a grouped panel or on the combined panel,
     including across its axes (Waveform's 6-colour palette; owner
     decision needed for any disambiguation);

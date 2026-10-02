@@ -186,7 +186,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         # renderer's own plot state only.
         assert keys == [
             "dragMode", "sources", "records", "definition",
-            "channelsBySource", "calculatedChannels", "selectedChannels", "loadSeq", "busy", "plot",
+            "channelsBySource", "calculatedChannels", "selectedChannels", "activeRecordId", "loadSeq", "busy", "plot",
         ]
         plot_keys = re.findall(r"^ {16}(\w+):", state.split("plot: {", 1)[1], re.MULTILINE)
         assert plot_keys == [
@@ -958,3 +958,60 @@ class TestEventReconstructionCombinedView:
         layout = source[source.index("function wwAnalogPanelLayout(") : source.index("\n        }\n", source.index("function wwAnalogPanelLayout("))]
         for forbidden in ("autoshift", "overlaying", "wwEr"):
             assert forbidden not in layout
+
+
+class TestEventReconstructionFitRecord:
+    """Mixed-duration navigation -- Fit Record: an explicit active navigation
+    record (a record identity, distinct from the reference), whose backend
+    reconstruction extent becomes the common X viewport; X only."""
+
+    def test_active_record_is_an_identity_separate_from_the_reference(self):
+        source = _source()
+        state = _between(source, "const wwErState = {", "};")
+        assert "activeRecordId: null," in state
+        sync = _between(source, "function wwErSyncActiveRecord(wasDefined) {", "\n        }\n")
+        # Initialised once (reference record) when a reconstruction appears;
+        # cleared when its record leaves; never replaced by another record.
+        assert "if (!wasDefined) {" in sync and "wwErState.activeRecordId = reference ? reference.record_id : null;" in sync
+        assert "if (id !== null && !wwErMembers().some((m) => m.record_id === id)) wwErState.activeRecordId = null;" in sync
+        refresh = _between(source, "async function wwErRefresh() {", "async function wwErOnPageEntered()")
+        assert "wwErSyncActiveRecord(wasDefined);" in refresh
+        setter = _between(source, "function wwErSetActiveRecord(recordId) {", "\n        }\n")
+        for forbidden in ("is_reference", "make-reference", "selectedChannels", "correction", "PUT", "wwErRenderPlot", "viewport"):
+            assert forbidden not in setter
+        # Neither the reference action nor channel selection touches it.
+        module = _er_module(source)
+        assert module.count("wwState.activeRecordId") == 0
+        assert module.count("activeRecordId =") == 4  # init/clear (3 in sync) + explicit selection
+        toggle = _between(source, "function wwErToggleChannelRow(row) {", "\n        }\n")
+        assert "activeRecordId" not in toggle
+
+    def test_record_header_is_the_selection_target(self):
+        source = _source()
+        row = _between(source, "function wwErMemberRowHtml(member) {", "function wwErRecordRowHtml(record)")
+        assert "' data-er-activate-record role=\"button\" tabindex=\"0\" aria-pressed=\"' + active + '\"'" in row
+        assert '" ww-er-member-row--active"' in row and "ww-er-active-marker" in row
+        assert "ww-er-badge--reference" in row  # the reference keeps its own, different marker
+        click = source[source.index('document.getElementById("wwErSidebar").addEventListener("click"'):]
+        assert click.index('closest("[data-er-activate-record]")') < click.index('closest("button[data-er-action]")')
+
+    def test_fit_uses_the_backend_record_extent_only(self):
+        source = _source()
+        target = _between(source, "function wwErFitRecordTarget() {", "function wwErFitRecord()")
+        assert "return { range: { start: member.start_s, end: member.end_s }, name, reason: null };" in target
+        for forbidden in ("sample_count", "sampling_rate", "reconstructionTime", "values", "duration_s", ".timing."):
+            assert forbidden not in target
+        fit = _between(source, "function wwErFitRecord() {", "\n        }\n")
+        assert 'wwErClampViewport(plot.fitAll, target.range.start, target.range.end, "zoom")' in fit
+        assert "wwErApplyViewport(next);" in fit
+        # X only: no Y autoscale, no cursor or timing change.
+        for forbidden in ("autoscaleYPending", "cursors", "wwErAutoscaleY", "definition", "fetch("):
+            assert forbidden not in fit
+
+    def test_toolbar_button(self):
+        source = _source()
+        page = _er_page(source)
+        assert '<button type="button" class="secondary ww-er-fit-record-btn" id="wwErFitRecordBtn" title="Fit selected record" disabled>Fit Record</button>' in page
+        assert 'document.getElementById("wwErFitRecordBtn").addEventListener("click", wwErFitRecord);' in source
+        toolbar = _between(source, "function wwErSyncToolbar() {", "\n        }\n")
+        assert "fitBtn.disabled = !fit.range;" in toolbar

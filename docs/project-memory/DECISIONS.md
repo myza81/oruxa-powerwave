@@ -21593,6 +21593,101 @@ Source: owner task "Combined Multi-Axis View only".
    A shared unknown axis (same exact unit) keeps the plain title. Names
    never take part in grouping or classification.
 
+## DEC-133 — Event Reconstruction Fit Record: an explicit active navigation record, distinct from the reference; the common viewport fits its backend reconstruction extent
+
+Date: 2026-10-02
+Status: Approved (owner, "Mixed-Duration Navigation — Fit Selected
+Record" task) — implemented on `feat/event-reconstruction`; not merged.
+The Event Reconstruction feature is **not** complete. Mixed-duration
+navigation stays `[OPEN / UAT]` until Fit Record is used in real
+workflows.
+
+### Decisions (owner)
+
+1. **Fit Selected Record** (toolbar "Fit Record", tooltip "Fit selected
+   record") sets the common X viewport to one record's own
+   reconstruction extent.
+   - Fit All is unchanged: the earliest to latest plotted extent.
+   - Reset Time View is unchanged: Fit All plus autoscale Y.
+2. **Active navigation record ≠ reference ≠ membership.**
+   - The active record is an explicit, single choice made by clicking or
+     selecting a record's header in the left Reconstruction panel.
+   - It is stored as a record identity.
+   - It never changes the reference, corrections, membership or channel
+     selection, and none of those changes it.
+   - A valid example: reference BTGH, active BAHS.
+3. **Initial and removal rules.**
+   - The reference record becomes the active record once, when a
+     reconstruction comes into being (or is first seen).
+   - Removing the active record clears it, and so does clearing the
+     reconstruction. No other record is ever chosen automatically.
+4. **The extent is authoritative**: the backend member `start_s`/`end_s`
+   (the record's recorded extent plus its reconstruction offset,
+   corrections included, rebased with the reference). It is never taken
+   from channels, sample counts, sampling rates or fetched data.
+5. **X only.** Y ranges stay, and cursors A/B keep their reconstruction
+   times (off-screen ones are hidden and reappear). Timing, corrections,
+   reference, membership and channel selection are untouched.
+   - Time is never compressed, and nothing is hidden or broken out of
+     the axis.
+   - The Fit All span notice and the large-gap warning are unchanged.
+6. **Identical in Grouped and Combined.** There is one active record,
+   which survives a mode switch.
+7. **Disabled with the reason in its tooltip** when:
+   - there is no reconstruction;
+   - there is no active record;
+   - the active record is stale;
+   - its timing is unavailable;
+   - none of its channels is plotted.
+
+   The last condition exists because the viewport is bounded by Fit All,
+   i.e. by the plotted channels.
+8. Deferred, not built here:
+   - the overview navigator / minimap (decided after UAT);
+   - axis breaks and time compression;
+   - absolute-time display;
+   - individual Y-axis drag zoom.
+
+### Implementation (`[FACT]`)
+
+- **State and sync.**
+  - `wwErState.activeRecordId` holds the record id.
+  - `wwErSyncActiveRecord(wasDefined)` runs on every definition refresh:
+    it initialises on the undefined→defined transition and clears when
+    the record leaves.
+  - `wwErSetActiveRecord(id)` responds to a click, or Enter/Space, on a
+    current member's header (`[data-er-activate-record]`,
+    `role="button"`, `aria-pressed`). Channel rows and action buttons
+    are separate targets.
+- **Indication.** The active member header gets a tinted background, an
+  accent left edge and a small accent ring before the name. The
+  Reference badge is unchanged.
+- **Fit.**
+  - `wwErFitRecordTarget()` returns the extent, or the reason there is
+    none.
+  - `wwErFitRecord()` applies it through `wwErClampViewport(fitAll, …)`,
+    which only enforces the minimum span (the record lies inside Fit
+    All), and then the single `wwErApplyViewport()` pipeline.
+  - That pipeline handles origin relocation, per-trace visible-range
+    fetch and data reuse. A record with no sample in the window is not
+    fetched.
+- **Rebasing.** Reference switches and corrections need no special
+  handling: the stored identity reads the current definition's rebased
+  extent on every fit.
+- **Tests:**
+  - `event-reconstruction-fit-record.spec.js` (6): the active-record
+    model; identical timestamps; mixed 5 kHz / 0.2 s, 20 Hz / 60 s and
+    1 Hz / 300 s records in Grouped and Combined; an 87-day outlier;
+    corrections and reference switch; Waveform isolation.
+  - Static `TestEventReconstructionFitRecord` (4).
+
+### Planned, not implemented (owner-approved future tickets)
+
+- **Individual Y-axis drag zoom.** Dragging a specific Y-axis scale
+  changes only that axis; X is unchanged.
+- **Relative / Absolute time display.** Selectable relative/absolute
+  labels; the internal reconstruction-relative timing is unchanged.
+
 ---
 
 ## How to add a decision

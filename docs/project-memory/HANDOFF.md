@@ -4,9 +4,43 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-02** (Event Reconstruction Combined Multi-Axis View)
+Last updated: **2026-10-02** (Event Reconstruction Fit Record)
 
 ## What was most recently done
+
+**Event Reconstruction Fit Record — mixed-duration navigation (DEC-133,
+2026-10-02).** The feature is not complete.
+
+- **Active navigation record.**
+  - Click (or Enter/Space) on a member's header. It is shown by a tinted
+    header with an accent edge and ring.
+  - It is a record identity, separate from the reference, membership and
+    channel selection.
+  - It starts as the reference record. Removal clears it, and it is
+    never replaced automatically.
+- **Fit Record** (toolbar, after Reset Time View) sets the common X
+  viewport to the backend member `start_s`/`end_s`, in Grouped and
+  Combined.
+  - X only: Y ranges and cursors stay (off-screen cursors are hidden),
+    and time is never compressed.
+  - It is disabled, with the reason in its tooltip, when there is no
+    reconstruction, no active record, the record is stale, its timing is
+    unavailable, or none of its channels is plotted.
+- **Real-data UAT (owner YGPN, local only).** From an 87-day Fit All
+  (AGJH outlier):
+  - Fit Record on BAHS gave its 7.52 s (a 5 kHz envelope at that
+    width; the existing zoom path resolves it to full samples);
+  - BTGH gave 0–70 s at full resolution;
+  - AGJH in Combined gave its own 6.18 s;
+  - the cursors did not move and there were no console errors.
+- **Tests.**
+  - `event-reconstruction-fit-record.spec.js` (6).
+  - Static `TestEventReconstructionFitRecord` (4).
+- **Next.** Owner UAT of Fit Record. Then decide on an overview
+  navigator. Planned and not started: individual Y-axis drag zoom;
+  Relative/Absolute time display.
+
+## Earlier — Event Reconstruction Combined Multi-Axis View
 
 **Event Reconstruction Combined Multi-Axis View (DEC-132,
 2026-10-02).** The feature is not complete.
