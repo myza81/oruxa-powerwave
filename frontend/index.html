@@ -5377,6 +5377,39 @@
         }
         .ww-er-panel-note[hidden] { display: none; }
         .ww-er-span-notice { margin: 0 0 10px; }
+        /* Event Reconstruction Slice 3E: each panel's own cursor layer over
+           its chart area, reusing Waveform's cursor line/stroke/hit/band
+           classes; a tiny A/B tag at the top of each line. */
+        .ww-er-cursor-layer {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 4;
+        }
+        .ww-er-cursor-layer[hidden] { display: none; }
+        .ww-er-cursor-tag {
+            position: absolute;
+            top: 2px;
+            left: 3px;
+            font-size: 0.6rem;
+            font-weight: 700;
+            pointer-events: none;
+        }
+        .ww-cursor-line--a .ww-er-cursor-tag { color: var(--accent); }
+        .ww-cursor-line--b .ww-er-cursor-tag { color: var(--error); }
+        .ww-er-panel-cursor-values { gap: 4px; }
+        .ww-er-panel-cursor-values .ww-er-cursor-value-item { padding: 0 6px; }
+        .ww-er-cursor-close {
+            appearance: none;
+            border: none;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 0 2px;
+            line-height: 1;
+        }
+        .ww-er-cursor-close:hover { color: var(--error); }
+        .ww-er-cursor-close[hidden] { display: none; }
         .ww-er-span-notice[hidden] { display: none; }
         /* Event Reconstruction Slice 2: left-panel member/record rows,
            notices and compact actions -- existing tokens only. */
@@ -9145,6 +9178,17 @@
                                             </div>
                                             <button type="button" class="secondary ww-tg-reset-view-btn" id="wwErResetViewBtn" title="Reset Time View — Fit All and autoscale Y on every panel" disabled>Reset Time View</button>
                                             <button type="button" class="secondary ww-tg-autoscale-btn" id="wwErAutoscaleYBtn" title="Autoscale Y on every panel" disabled>Autoscale Y</button>
+                                            <button type="button" class="ww-icon-btn ww-tg-cursor-mode-btn" id="wwErCursorModeBtn" aria-pressed="false" title="A/B Time Cursors" aria-label="A/B Time Cursors" disabled>
+                                                <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="6" y1="2.5" x2="6" y2="15.5" stroke-width="1.3" stroke="var(--accent)"/><line x1="12" y1="2.5" x2="12" y2="15.5" stroke-width="1.3" stroke="var(--error)"/><text x="6" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--accent)" font-weight="700">A</text><text x="12" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--error)" font-weight="700">B</text></svg></span>
+                                            </button>
+                                        </div>
+                                        <!-- Slice 3E: the global cursor readout (reconstruction
+                                             time; Waveform's readout classes, Event
+                                             Reconstruction's own ids and state). -->
+                                        <div class="ww-tg-cursor-readout ww-er-cursor-readout" id="wwErCursorReadout" hidden>
+                                            <span class="ww-tg-cursor-readout-item ww-cursor-readout-a"><span class="ww-tg-cursor-readout-label">A</span><span class="ww-tg-cursor-readout-value" id="wwErCursorReadoutA">—</span><button type="button" class="ww-er-cursor-close" id="wwErCursorCloseA" aria-label="Remove cursor A" title="Remove cursor A">&times;</button></span>
+                                            <span class="ww-tg-cursor-readout-item ww-cursor-readout-b"><span class="ww-tg-cursor-readout-label">B</span><span class="ww-tg-cursor-readout-value" id="wwErCursorReadoutB">—</span><button type="button" class="ww-er-cursor-close" id="wwErCursorCloseB" aria-label="Remove cursor B" title="Remove cursor B">&times;</button></span>
+                                            <span class="ww-tg-cursor-readout-item"><span class="ww-tg-cursor-readout-label">&Delta;t</span><span class="ww-tg-cursor-readout-value" id="wwErCursorReadoutDelta">—</span></span>
                                         </div>
                                     </div>
                                 </div>
@@ -14314,7 +14358,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // per plotted channel, each owning its fetch/abort state), the one
         // common viewport and Fit All (reconstruction seconds), whether the
         // viewport is still Fit All, the numerical plotting origin and the
-        // relayout debounce timer. Session-only, like the selection.
+        // relayout debounce timer. Slice 3E adds the global A/B cursors
+        // (reconstruction seconds, never per panel, never Waveform's) and
+        // their value-request bookkeeping. Session-only, like the
+        // selection.
         const wwErState = {
             dragMode: "zoom",
             sources: [],
@@ -14332,6 +14379,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 atFitAll: true,
                 origin: null,
                 relayoutTimer: null,
+                cursors: { enabled: false, a: { time: null, visible: true }, b: { time: null, visible: true } },
+                cursorRequests: {},
+                cursorValuesTimer: null,
             },
         };
 
@@ -14444,11 +14494,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // amount, so the same physical segment stays in view
         // (wwErReferenceFrameShift()); wwErRenderPlot() then intersects it
         // with the new Fit All. At Fit All the view simply follows Fit All.
+        // Cursors A/B (DEC-130) move by the same shift ALWAYS -- zoomed or
+        // not, shown or not -- so each keeps marking the same physical
+        // instant; they are not clamped by it. A correction on a
+        // non-reference record gives no shift: the cursors stay and that
+        // record moves beneath them.
         function wwErRebaseViewport(previous, next) {
             const plot = wwErState.plot;
-            if (!plot.viewport || plot.atFitAll) return;
             const shift = wwErReferenceFrameShift(previous, next);
             if (shift === null || shift === 0) return;
+            for (const kind of ["a", "b"]) {
+                const cursor = plot.cursors[kind];
+                if (Number.isFinite(cursor.time)) cursor.time -= shift;
+            }
+            if (!plot.viewport || plot.atFitAll) return;
             plot.viewport = { start: plot.viewport.start - shift, end: plot.viewport.end - shift };
         }
 
@@ -14910,6 +14969,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Zoom In/Out, Reset Time View (Fit All + autoscale Y) and
         // Autoscale Y -- every one acting on the one shared viewport in
         // reconstruction time; Pan and Zoom Out never leave Fit All.
+        // Global A/B cursors and nearest-sample values: Slice 3E (DEC-130),
+        // see the cursor section below.
         // Mixed-duration navigation stays [OPEN / UAT]: time is never
         // compressed.
         //
@@ -15293,6 +15354,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             note.className = "ww-er-panel-note";
             note.hidden = true;
             container.querySelector(".ww-chart-wrap").appendChild(note);
+            // Slice 3E: this panel's view of the two global cursors (lines,
+            // drag strips, A-B band) and its A/B values in the header.
+            const cursorLayer = document.createElement("div");
+            cursorLayer.className = "ww-er-cursor-layer";
+            cursorLayer.hidden = true;
+            cursorLayer.innerHTML = '<div class="ww-cursor-range" data-er-cursor-range hidden></div>' +
+                ["a", "b"].map((kind) => '<div class="ww-cursor-line ww-cursor-line--' + kind + '" data-er-cursor-line="' + kind + '" hidden>' +
+                    '<div class="ww-cursor-stroke"></div>' +
+                    '<div class="ww-cursor-hit" data-er-cursor-drag="' + kind + '" title="Drag Cursor ' + kind.toUpperCase() + '"></div>' +
+                    '<span class="ww-er-cursor-tag">' + kind.toUpperCase() + "</span>" +
+                "</div>").join("");
+            container.querySelector(".ww-chart-wrap").appendChild(cursorLayer);
+            const cursorValues = document.createElement("span");
+            cursorValues.className = "ww-tg-cursor-readout ww-er-panel-cursor-values";
+            cursorValues.hidden = true;
+            container.querySelector(".ww-panel-header").appendChild(cursorValues);
             panel.containerEl = container;
             panel.labelEl = container.querySelector(".ww-panel-label");
             panel.legendEl = container.querySelector(".ww-legend");
@@ -15300,6 +15377,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             panel.loadingEl = container.querySelector(".ww-chart-loading");
             panel.errorEl = container.querySelector(".ww-error");
             panel.noteEl = note;
+            panel.chartWrapEl = container.querySelector(".ww-chart-wrap");
+            panel.cursorLayerEl = cursorLayer;
+            panel.cursorValuesEl = cursorValues;
+            panel.cursorValues = null;
+            wwErWirePanelCursorDrag(panel);
             panel.chartEl.style.height = WW_ER_PANEL_HEIGHT + "px";
             wwErRefreshPanelPresentation(panel);
             return panel;
@@ -15348,6 +15430,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             Plotly.newPlot(panel.chartEl, [wwErBuildTrace(panel)], layout, { responsive: true, displayModeBar: false, doubleClick: "autosize" });
             panel.plotlyReady = true;
             wwErWirePanelRelayout(panel);
+            // Slice 3E: any redraw (resize, relayout) re-positions this
+            // panel's cursor lines.
+            panel.chartEl.on("plotly_afterplot", () => wwErDrawPanelCursors(panel));
         }
 
         // A user zoom/pan/double-click on ANY panel becomes the one common
@@ -15458,6 +15543,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             for (const panel of plot.panels) wwErLoadPanel(panel);
             wwErSyncToolbar();
+            wwErDrawCursors();
         }
 
         function wwErSetPanelNote(panel, text) {
@@ -15583,6 +15669,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwErApplyViewport(viewport);
             }
             wwErSyncPlotChrome();
+            // Slice 3E: cursor positions never change with the panel set;
+            // new panels get their values, removed ones take theirs along.
+            wwErDrawCursors();
+            wwErSyncCursorReadout();
+            wwErRefreshCursorValues();
         }
 
         // Canvas meta line and empty-state text.
@@ -15655,6 +15746,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("wwErZoomOutBtn").disabled = !plotted || plot.atFitAll;
             document.getElementById("wwErResetViewBtn").disabled = !plotted;
             document.getElementById("wwErAutoscaleYBtn").disabled = !plotted;
+            const cursorBtn = document.getElementById("wwErCursorModeBtn");
+            cursorBtn.disabled = !plotted;
+            cursorBtn.setAttribute("aria-pressed", String(plot.cursors.enabled));
         }
 
         function wwErApplyDragMode() {
@@ -15686,6 +15780,346 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             for (const panel of wwErState.plot.panels) {
                 if (panel.plotlyReady) Plotly.Plots.resize(panel.chartEl);
             }
+            wwErDrawCursors();
+        }
+
+        // ---- Slice 3E: global A/B cursors (DEC-130) ----
+        //
+        // Two cursors on the reconstruction timeline -- never per panel,
+        // never Waveform's cursor state. `wwErState.plot.cursors` stores
+        // each cursor's RECONSTRUCTION time (seconds); every panel draws
+        // the same time through its own small overlay, so the lines stay
+        // aligned down the whole (scrollable) panel stack.
+        //
+        // Drawing and dragging use the shared pixel <-> time helpers with
+        // the reconstruction-time viewport (wwTimeToPageX()/wwPageXToTime()
+        // against plot.viewport): the fraction (r - start) / span is the
+        // same in reconstruction and origin-relative Plotly coordinates,
+        // so the plotting origin never enters cursor state or cursor
+        // arithmetic, and a moved origin cannot move a cursor.
+        //
+        // Values: the backend's nearest-REAL-sample lookup (the endpoints
+        // Waveform uses: /sources/{id}/cursor-values, one request per
+        // record; /calculated-channels/cursor-values, one per timing
+        // source), at native time = cursor time - total offset
+        // (wwErReconstructionTimeToSourceElapsed()). No interpolation, no
+        // tolerance: within a record's own first..last sample the nearest
+        // sample answers, whatever the sampling rate; outside it the
+        // answer is "No sample".
+
+        // The first-time positions (Waveform's 1/3 and 2/3 of the visible
+        // window), inside Fit All.
+        function wwErDefaultCursorTimes(viewport, fitAll) {
+            const span = viewport.end - viewport.start;
+            return {
+                a: wwErClampCursorTime(fitAll, viewport.start + span / 3),
+                b: wwErClampCursorTime(fitAll, viewport.start + (2 * span) / 3),
+            };
+        }
+
+        // A cursor placed or dragged by the engineer stays inside Fit All.
+        function wwErClampCursorTime(fitAll, time) {
+            if (!fitAll || !Number.isFinite(time)) return time;
+            return Math.min(fitAll.end, Math.max(fitAll.start, time));
+        }
+
+        // Cursor point times: signed reconstruction seconds with µs digits
+        // (relative time only; no wall clock yet).
+        function wwErFormatCursorTime(seconds) {
+            if (!Number.isFinite(seconds)) return "—";
+            return (seconds < 0 ? "-" : "+") + Math.abs(seconds).toFixed(6) + " s";
+        }
+
+        // Δt = B - A: µs / ms (wwFormatCursorDuration(), as Waveform) below
+        // one second, µs-precise seconds above it.
+        function wwErFormatCursorDelta(seconds) {
+            if (!Number.isFinite(seconds)) return "—";
+            return Math.abs(seconds) < 1 ? wwFormatCursorDuration(seconds) : seconds.toFixed(6) + " s";
+        }
+
+        // One panel's text for cursor `kind`: the nearest real sample's
+        // value (Waveform's own value format), "No sample" when the cursor
+        // is outside the record's data, "Unavailable" for a recorded gap
+        // at that sample (backend null, DEC-084).
+        function wwErCursorValueText(entry, kind) {
+            if (!entry || !entry[kind]) return "—";
+            const point = entry[kind];
+            if (point.noSample) return "No sample";
+            if (point.value === null) return "Unavailable";
+            return wwFormatEngineeringValue(point.value) + (entry.unit ? " " + entry.unit : "");
+        }
+
+        function wwErCursorDeltaText(entry) {
+            if (!entry || !entry.a || !entry.b || entry.a.value === null || entry.b.value === null) return "—";
+            const delta = entry.b.value - entry.a.value;
+            return (delta > 0 ? "+" : "") + wwFormatEngineeringValue(delta) + (entry.unit ? " " + entry.unit : "");
+        }
+
+        // The cursors actually shown: mode on, cursor not closed, time set.
+        function wwErShownCursorTimes() {
+            const cursors = wwErState.plot.cursors;
+            const shown = (cursor) => cursors.enabled && cursor.visible && Number.isFinite(cursor.time) ? cursor.time : null;
+            return { a: shown(cursors.a), b: shown(cursors.b) };
+        }
+
+        // The A/B button: on (placing both the first time, restoring them
+        // afterwards, both shown again) or off (positions kept).
+        function wwErToggleCursors() {
+            const plot = wwErState.plot;
+            const cursors = plot.cursors;
+            if (cursors.enabled) {
+                cursors.enabled = false;
+                wwErSyncCursors();
+                return;
+            }
+            if (!plot.viewport || !plot.fitAll) return;
+            if (!Number.isFinite(cursors.a.time) || !Number.isFinite(cursors.b.time)) {
+                const initial = wwErDefaultCursorTimes(plot.viewport, plot.fitAll);
+                cursors.a.time = initial.a;
+                cursors.b.time = initial.b;
+            }
+            cursors.enabled = true;
+            cursors.a.visible = true;
+            cursors.b.visible = true;
+            wwErSyncCursors();
+        }
+
+        // A cursor's own x in the readout: hides that cursor only.
+        function wwErCloseCursor(kind) {
+            const cursor = wwErState.plot.cursors[kind];
+            if (!cursor) return;
+            cursor.visible = false;
+            wwErSyncCursors();
+        }
+
+        // Moves one cursor (engineer placement/drag), clamped to Fit All.
+        function wwErSetCursorTime(kind, time, { immediate = true } = {}) {
+            const plot = wwErState.plot;
+            const cursor = plot.cursors[kind];
+            if (!cursor || !Number.isFinite(time)) return;
+            cursor.time = wwErClampCursorTime(plot.fitAll, time);
+            wwErDrawCursors();
+            wwErSyncCursorReadout();
+            if (immediate) wwErRefreshCursorValues();
+            else wwErScheduleCursorValues();
+        }
+
+        // Everything cursor-related after a state change.
+        function wwErSyncCursors() {
+            wwErDrawCursors();
+            wwErSyncCursorReadout();
+            wwErSyncToolbar();
+            wwErRefreshCursorValues();
+        }
+
+        function wwErSyncCursorReadout() {
+            const readout = document.getElementById("wwErCursorReadout");
+            const shown = wwErShownCursorTimes();
+            readout.hidden = !wwErState.plot.cursors.enabled || wwErState.plot.panels.length === 0;
+            document.getElementById("wwErCursorReadoutA").textContent = wwErFormatCursorTime(shown.a);
+            document.getElementById("wwErCursorReadoutB").textContent = wwErFormatCursorTime(shown.b);
+            document.getElementById("wwErCursorReadoutDelta").textContent =
+                shown.a !== null && shown.b !== null ? wwErFormatCursorDelta(shown.b - shown.a) : "—";
+            document.getElementById("wwErCursorCloseA").hidden = shown.a === null;
+            document.getElementById("wwErCursorCloseB").hidden = shown.b === null;
+        }
+
+        // Positions both cursor lines (and the A-B band) on every rendered
+        // panel. A cursor outside the visible window keeps its time and is
+        // simply not drawn.
+        function wwErDrawCursors() {
+            for (const panel of wwErState.plot.panels) wwErDrawPanelCursors(panel);
+        }
+
+        function wwErDrawPanelCursors(panel) {
+            const plot = wwErState.plot;
+            const layer = panel.cursorLayerEl;
+            if (!layer) return;
+            const metrics = panel.plotlyReady ? wwPlotMetricsForChart(panel.chartEl) : null;
+            const shown = wwErShownCursorTimes();
+            if (!plot.viewport || !metrics || (shown.a === null && shown.b === null)) {
+                layer.hidden = true;
+                return;
+            }
+            layer.hidden = false;
+            const wrapLeft = panel.chartWrapEl.getBoundingClientRect().left;
+            const xs = {};
+            for (const kind of ["a", "b"]) {
+                const line = layer.querySelector('[data-er-cursor-line="' + kind + '"]');
+                const time = shown[kind];
+                const inView = time !== null && time >= plot.viewport.start && time <= plot.viewport.end;
+                const pageX = inView ? wwTimeToPageX(plot.viewport, metrics, time) : null;
+                line.hidden = pageX === null;
+                if (pageX !== null) {
+                    xs[kind] = pageX - wrapLeft;
+                    line.style.left = xs[kind] + "px";
+                }
+            }
+            // The A-B band, clipped to the plot area.
+            const band = layer.querySelector("[data-er-cursor-range]");
+            if (shown.a === null || shown.b === null) {
+                band.hidden = true;
+                return;
+            }
+            const plotLeft = metrics.plotLeftPage - wrapLeft;
+            const plotRight = plotLeft + metrics.plotWidth;
+            const edge = (time) => (time < plot.viewport.start ? plotLeft : time > plot.viewport.end ? plotRight
+                : wwTimeToPageX(plot.viewport, metrics, time) - wrapLeft);
+            const left = Math.min(edge(shown.a), edge(shown.b));
+            const right = Math.max(edge(shown.a), edge(shown.b));
+            band.hidden = right <= left;
+            band.style.left = left + "px";
+            band.style.width = (right - left) + "px";
+        }
+
+        // Drag: grabbing a cursor line on ANY panel moves the one global
+        // cursor; the time comes from that panel's plot geometry and the
+        // reconstruction viewport (clamped to it by wwPageXToTime(), then
+        // to Fit All). Values refresh throttled while dragging and once,
+        // immediately, on release.
+        function wwErWirePanelCursorDrag(panel) {
+            let kind = null;
+            let metrics = null;
+            let target = null;
+            const onMove = (event) => {
+                if (!kind || !metrics) return;
+                const time = wwPageXToTime(wwErState.plot.viewport, metrics, event.clientX);
+                if (time !== null) wwErSetCursorTime(kind, time, { immediate: false });
+            };
+            const onEnd = (event) => {
+                if (!target) return;
+                target.removeEventListener("pointermove", onMove);
+                target.removeEventListener("pointerup", onEnd);
+                target.removeEventListener("pointercancel", onEnd);
+                if (target.hasPointerCapture && target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
+                target = null;
+                kind = null;
+                metrics = null;
+                wwErDrawCursors();
+                wwErRefreshCursorValues();
+            };
+            panel.cursorLayerEl.addEventListener("pointerdown", (event) => {
+                const handle = event.target.closest("[data-er-cursor-drag]");
+                if (!handle || (event.button !== undefined && event.button !== 0)) return;
+                metrics = wwPlotMetricsForChart(panel.chartEl);
+                if (!metrics || !wwErState.plot.viewport) return;
+                kind = handle.getAttribute("data-er-cursor-drag");
+                target = handle;
+                if (handle.setPointerCapture) handle.setPointerCapture(event.pointerId);
+                handle.addEventListener("pointermove", onMove);
+                handle.addEventListener("pointerup", onEnd);
+                handle.addEventListener("pointercancel", onEnd);
+                event.preventDefault();
+                event.stopPropagation();
+            });
+        }
+
+        // ~50 ms throttle while dragging (as Waveform), so a fast drag
+        // never sends one request per pointer move.
+        function wwErScheduleCursorValues() {
+            const plot = wwErState.plot;
+            if (plot.cursorValuesTimer) return;
+            plot.cursorValuesTimer = setTimeout(() => {
+                plot.cursorValuesTimer = null;
+                wwErRefreshCursorValues();
+            }, 50);
+        }
+
+        // The value requests for the current cursors, grouped the way the
+        // backend answers them: native channels per record, calculated
+        // channels per timing source (they share its total offset).
+        function wwErCursorValueGroups() {
+            const groups = new Map();
+            for (const panel of wwErState.plot.panels) {
+                const calculated = panel.kind === "calculated";
+                const id = (calculated ? "calc|" : "src|") + (calculated ? panel.timingSourceId : panel.sourceId);
+                if (!groups.has(id)) groups.set(id, { id, calculated, sourceId: panel.sourceId, timing: panel.timing, panels: [] });
+                groups.get(id).panels.push(panel);
+            }
+            return [...groups.values()];
+        }
+
+        function wwErRenderPanelCursorValues(panel) {
+            const el = panel.cursorValuesEl;
+            const shown = wwErShownCursorTimes();
+            el.hidden = !panel.cursorValues || (shown.a === null && shown.b === null);
+            if (el.hidden) return;
+            const entry = panel.cursorValues;
+            const item = (cls, label, text) => '<span class="ww-tg-cursor-readout-item ww-er-cursor-value-item ' + cls + '">' +
+                '<span class="ww-tg-cursor-readout-label">' + label + "</span>" +
+                '<span class="ww-tg-cursor-readout-value">' + escapeHtml(text) + "</span></span>";
+            el.innerHTML = (shown.a !== null ? item("ww-cursor-readout-a", "A", wwErCursorValueText(entry, "a")) : "") +
+                (shown.b !== null ? item("ww-cursor-readout-b", "B", wwErCursorValueText(entry, "b")) : "") +
+                (shown.a !== null && shown.b !== null ? item("", "&Delta;", wwErCursorDeltaText(entry)) : "");
+        }
+
+        // Fetches each group's values for the shown cursors (skipping a
+        // group whose cursor times, offset and channels are unchanged). A
+        // response is applied only if it is still the latest for its group.
+        async function wwErRefreshCursorValues() {
+            const plot = wwErState.plot;
+            const shown = wwErShownCursorTimes();
+            const groups = wwErCursorValueGroups();
+            if (shown.a === null && shown.b === null) {
+                for (const panel of plot.panels) {
+                    panel.cursorValues = null;
+                    wwErRenderPanelCursorValues(panel);
+                }
+                plot.cursorRequests = {};
+                return;
+            }
+            await Promise.all(groups.map(async (group) => {
+                const offset = group.timing.totalOffsetS;
+                const nativeA = shown.a !== null ? wwErReconstructionTimeToSourceElapsed(shown.a, offset) : null;
+                const nativeB = shown.b !== null ? wwErReconstructionTimeToSourceElapsed(shown.b, offset) : null;
+                const names = group.panels.map((p) => (group.calculated ? p.sourceId : p.channelName));
+                const key = [nativeA, nativeB, names.join("\u0001")].join("|");
+                const known = plot.cursorRequests[group.id];
+                if (known && known.key === key && known.done && group.panels.every((p) => p.cursorValues)) return;
+                const seq = (known ? known.seq : 0) + 1;
+                plot.cursorRequests[group.id] = { key, seq, done: false };
+                const base = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId());
+                const url = group.calculated ? base + "/calculated-channels/cursor-values"
+                    : base + "/sources/" + encodeURIComponent(group.sourceId) + "/cursor-values";
+                const body = group.calculated
+                    ? { calculated_channel_ids: names, cursor_a_time: nativeA, cursor_b_time: nativeB, unit_mode: "engineering" }
+                    : { analog_channel_names: names, cursor_a_time: nativeA, cursor_b_time: nativeB, unit_mode: "engineering" };
+                let payload = null;
+                try {
+                    const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+                    if (response.ok) payload = await response.json();
+                } catch (error) {
+                    // Shown as "—" below; the connectivity indicator reports reachability.
+                }
+                const current = plot.cursorRequests[group.id];
+                if (!current || current.seq !== seq) return; // superseded
+                current.done = true;
+                const outside = (r) => r < group.timing.startS || r > group.timing.endS;
+                for (const panel of group.panels) {
+                    if (panel.removed) continue;
+                    const item = !payload ? null : group.calculated
+                        ? payload.channels.find((c) => c.calculated_channel_id === panel.sourceId)
+                        : payload.channels.find((c) => c.channel_name === panel.channelName);
+                    if (!item) {
+                        panel.cursorValues = null;
+                        current.done = false;
+                    } else {
+                        // "No sample": the backend's own out-of-bounds
+                        // signal (sample_time null) for a record; for a
+                        // calculated channel its timing source's extent.
+                        const point = (time, value, sampleTime) => time === null ? null : {
+                            value,
+                            noSample: group.calculated ? outside(time) : sampleTime === null,
+                        };
+                        panel.cursorValues = {
+                            unit: item.unit,
+                            a: point(shown.a, item.a_value, payload.cursor_a ? payload.cursor_a.sample_time : null),
+                            b: point(shown.b, item.b_value, payload.cursor_b ? payload.cursor_b.sample_time : null),
+                        };
+                    }
+                    wwErRenderPanelCursorValues(panel);
+                }
+            }));
         }
 
         function wwErMemberRowHtml(member) {
@@ -49287,6 +49721,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwErZoomOutBtn").addEventListener("click", () => wwErStepZoomX("out"));
         document.getElementById("wwErResetViewBtn").addEventListener("click", wwErResetView);
         document.getElementById("wwErAutoscaleYBtn").addEventListener("click", wwErAutoscaleY);
+        // Slice 3E: Event Reconstruction's own A/B cursors.
+        document.getElementById("wwErCursorModeBtn").addEventListener("click", wwErToggleCursors);
+        document.getElementById("wwErCursorCloseA").addEventListener("click", () => wwErCloseCursor("a"));
+        document.getElementById("wwErCursorCloseB").addEventListener("click", () => wwErCloseCursor("b"));
         // Event Reconstruction Slice 2: one delegated handler for every
         // member/Time Group action button (re-rendered after each change).
         document.getElementById("wwErSidebar").addEventListener("click", (event) => {

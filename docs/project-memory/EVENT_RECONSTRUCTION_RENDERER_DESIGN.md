@@ -101,6 +101,22 @@ Group" assumption below.**
     untouched as a concept.
   - Still `[OPEN / UAT]`: mixed-duration navigation. Next: cursors
     (3E/3F).
+- **Slice 3E (done, 2026-10-02, DEC-130):** global A/B cursors (§5,
+  item 6; the planned 3F scope delivered as 3E).
+  - **State:** `plot.cursors` holds reconstruction seconds. Each panel
+    draws the same time in its own overlay, so the lines scroll with
+    their panel.
+  - **Geometry:** `wwTimeToPageX`/`wwPageXToTime` with the
+    reconstruction viewport. The fraction is origin-invariant, so the
+    plotting origin never touches cursor state.
+  - **Values:** the existing nearest-sample endpoints at native time
+    `cursor − total_reconstruction_offset_s` (§7's cursor line, as
+    planned): per record for native channels, and per timing source for
+    calculated ones. Outside a record's data the value is "No sample";
+    there is no interpolation and no rate-based tolerance.
+  - **Rebasing:** A and B follow the DEC-129 frame shift, keeping the
+    same physical instant. A non-reference correction leaves them
+    fixed.
 
 Date: 2026-10-01. Code references are function names in
 `frontend/index.html` and `backend/app/` at commit `33f3178`

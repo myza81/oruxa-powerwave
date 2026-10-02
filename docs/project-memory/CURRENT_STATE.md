@@ -10,16 +10,16 @@
 > superseded claims, don't append to them.
 
 Last meaningful update: **2026-10-02** — **Event Reconstruction Slice
-3D: navigation controls** (DEC-129), on top of the first plotted
-reconstruction (Slice 3C, DEC-127 update), the record model (DEC-128)
-and Slices 0–3B (DEC-123 to DEC-127), on branch
-`feat/event-reconstruction`, not merged. The feature is **not**
+3E: A/B cursors and values** (DEC-130), on top of navigation (Slice 3D,
+DEC-129), the first plotted reconstruction (Slice 3C, DEC-127 update),
+the record model (DEC-128) and Slices 0–3B (DEC-123 to DEC-127), on
+branch `feat/event-reconstruction`, not merged. The feature is **not**
 complete. Earlier, on 2026-10-01:
 **Native BEN import: owner UAT passed; merged to `main`** (DEC-119
 parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
 DEC-122 display timezone).
 
-**Event Reconstruction (DEC-123 to DEC-129) — Slices 0–3D.**
+**Event Reconstruction (DEC-123 to DEC-130) — Slices 0–3E.**
 
 - **Rule (DEC-128).** Waveform continues to use its existing Time Group
   model. Event Reconstruction uses independent imported event/record
@@ -82,9 +82,23 @@ DEC-122 display timezone).
     - A Fit All span notice names the record or group when one gap is
       ≥ 3600 s and ≥ 90 % of Fit All. It is advisory only.
 
-    Not yet built: cursors (Slice 3E), Y step zoom, Fit Selected Record,
-    an overview navigator, an absolute-time ruler, grouped/multi-axis
-    panels, and panel resizing (fixed 180 px).
+  - **A/B cursors (Slice 3E, DEC-130).**
+    - Global cursors in reconstruction time, one each, drawn on every
+      panel; dragged on any panel; kept inside Fit All.
+    - The readout shows A, B and Δt with µs digits (relative time only).
+    - Each panel shows its nearest real sample at A and B (no
+      interpolation) and Δ. Outside a record's data it says "No
+      sample"; a recorded gap says "Unavailable".
+    - Calculated channels use their timing parent.
+    - Cursors rebase with the reconstruction zero (reference change,
+      reference correction), keeping the physical instant. A correction
+      on any other record leaves them in place.
+    - Zoom, pan, Reset, selection changes and record removal never move
+      them.
+
+    Not yet built: Y step zoom, Fit Selected Record, an overview
+    navigator, an absolute-time ruler and wall-clock cursor times,
+    grouped/multi-axis panels, and panel resizing (fixed 180 px).
   - It never reads or writes the Waveform `ww` state, panels or
     viewports.
 - **Backend.**

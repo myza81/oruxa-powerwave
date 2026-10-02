@@ -189,7 +189,10 @@ class TestEventReconstructionKeepsWaveformBoundaries:
             "channelsBySource", "calculatedChannels", "selectedChannels", "loadSeq", "busy", "plot",
         ]
         plot_keys = re.findall(r"^ {16}(\w+):", state.split("plot: {", 1)[1], re.MULTILINE)
-        assert plot_keys == ["panels", "viewport", "fitAll", "atFitAll", "origin", "relayoutTimer"]
+        assert plot_keys == [
+            "panels", "viewport", "fitAll", "atFitAll", "origin", "relayoutTimer",
+            "cursors", "cursorRequests", "cursorValuesTimer",
+        ]
         for forbidden in ("PresentationOverrides", "channelColors", "ColorOverride", "DisplayName =", "localStorage"):
             assert forbidden not in module
         # The only ER-owned persisted value is the left panel width; the
@@ -366,10 +369,16 @@ class TestEventReconstructionChannelBrowser:
         for forbidden in (
             "wwSetChannelDisplayName", "wwResetChannelDisplayName", "wwSetChannelColorOverride",
             "wwResetChannelColorOverride", "wwOpenChannelContextMenu", "contextmenu", 'type="color"',
-            "Rename", "Change colour", '"POST"', "wwCreateCalculatedChannel", "wwDeleteCalculatedChannel",
+            "Rename", "Change colour", "wwCreateCalculatedChannel", "wwDeleteCalculatedChannel",
         ):
             assert forbidden not in module
         assert "wwChannelDisplayName(row.dataset.erSourceId, row.dataset.erChannelName)" in module
+        # The only POST is the read-only cursor-values query (Slice 3E):
+        # nothing is created, renamed or recoloured from here.
+        assert module.count('method: "POST"') == 1
+        values = _between(_source(), "async function wwErRefreshCursorValues() {", "\n        }\n\n")
+        assert 'method: "POST"' in values
+        assert '"/calculated-channels/cursor-values"' in values and '"/cursor-values"' in values
 
     def test_rows_never_use_waveform_row_classes_or_attributes(self):
         attrs = _between(_source(), "function wwErChannelRowAttrs(", "function wwErChannelGroupHtml(")
@@ -522,8 +531,13 @@ class TestEventReconstructionPlotting:
                        "wwTickValuesForRange(viewport.start, viewport.end, 7)"):
             assert helper in module
         # No second fetch, abort or reduction implementation.
-        for forbidden in ("/waveform", "new AbortController", "point_budget", "envelope(", "fetch(url"):
+        for forbidden in ("/waveform", "new AbortController", "point_budget", "envelope("):
             assert forbidden not in module
+        # The renderer's only direct request is the cursor-values query;
+        # waveform data only ever comes through wwFetchWaveformRange().
+        plotting = _between(_source(), "// ---- Slice 3C: the reconstruction renderer", "function wwErMemberRowHtml(member)")
+        assert plotting.count("await fetch(") == 1
+        assert "await fetch(url, { method: \"POST\"" in _between(_source(), "async function wwErRefreshCursorValues() {", "\n        }\n\n")
 
     def test_fetch_is_engineering_units_with_the_slice_3b_mapping_only(self):
         source = _source()
@@ -607,7 +621,7 @@ class TestEventReconstructionPlotting:
             body = source[source.index(waveform_fn) : source.index("\n        }\n", source.index(waveform_fn))]
             assert "wwEr" not in body
 
-    def test_cursors_and_y_step_zoom_stay_out(self):
+    def test_y_step_zoom_stays_out(self):
         source = _source()
         page = _er_page(source)
         # Slice 3D zooms X only: the axis menus stay disabled and unwired.
@@ -615,7 +629,7 @@ class TestEventReconstructionPlotting:
             assert re.search(r'id="' + control + r'"[^>]*\bdisabled\b', page)
             assert 'getElementById("' + control + '").addEventListener' not in source
         module = _er_module(source)
-        for forbidden in ("Cursor", "cursor", "wwTimeToPageX(", "wwPageXToTime(", "wwStepZoomY(", "yaxis.range\": [center"):
+        for forbidden in ("wwStepZoomY(", "yaxis.range\": [center"):
             assert forbidden not in module
 
 
@@ -691,3 +705,57 @@ class TestEventReconstructionTimelineNavigation:
         assert 'id="wwErSpanNotice"' in _er_page(source)
         module = _er_module(source)
         assert "3600" not in module and "86400" not in module
+
+
+class TestEventReconstructionCursors:
+    """Slice 3E (DEC-130): global A/B cursors in reconstruction time, drawn
+    on every panel, nearest-real-sample values, rebasing with the
+    reconstruction zero -- never Waveform's cursor state."""
+
+    def test_cursor_state_is_reconstruction_time_and_event_reconstruction_owned(self):
+        source = _source()
+        state = _between(source, "const wwErState = {", "};")
+        assert "cursors: { enabled: false, a: { time: null, visible: true }, b: { time: null, visible: true } }," in state
+        module = _er_module(source)
+        for waveform in ("timeGroupCursorState", "wwToggleMeasurementCursors(", "wwSetMeasurementCursorVisible(",
+                         "wwFetchCursorValuesForSource(", "wwUpdateCursorOverlayForGroup(", "wwCurValueText(", "#viewWaveform",
+                         "wwCursorTimeToPixelX(", "wwCursorPixelXToTime("):
+            assert waveform not in module
+
+    def test_cursor_geometry_uses_the_shared_helpers_and_never_the_origin(self):
+        source = _source()
+        draw = _between(source, "function wwErDrawPanelCursors(panel) {", "function wwErWirePanelCursorDrag(panel)")
+        assert "wwPlotMetricsForChart(panel.chartEl)" in draw
+        assert "wwTimeToPageX(plot.viewport, metrics, time)" in draw
+        assert "origin" not in draw
+        drag = _between(source, "function wwErWirePanelCursorDrag(panel) {", "function wwErScheduleCursorValues()")
+        assert "wwPageXToTime(wwErState.plot.viewport, metrics, event.clientX)" in drag
+        assert "origin" not in drag
+        assert "wwErClampCursorTime(plot.fitAll, time)" in _between(source, "function wwErSetCursorTime(kind, time,", "\n        }\n")
+
+    def test_values_are_the_backend_nearest_sample_at_native_time(self):
+        values = _between(_source(), "async function wwErRefreshCursorValues() {", "\n        }\n\n")
+        assert "wwErReconstructionTimeToSourceElapsed(shown.a, offset)" in values
+        assert "wwErReconstructionTimeToSourceElapsed(shown.b, offset)" in values
+        assert 'unit_mode: "engineering"' in values
+        assert "if (!current || current.seq !== seq) return; // superseded" in values
+        for forbidden in ("interpolat", "Math.round(", "sampling_rate"):
+            assert forbidden not in values
+        text = _between(_source(), "function wwErCursorValueText(entry, kind) {", "\n        }\n")
+        assert 'if (point.noSample) return "No sample";' in text
+        assert "wwFormatEngineeringValue(point.value)" in text
+
+    def test_cursors_rebase_with_the_reconstruction_zero(self):
+        rebase = _between(_source(), "function wwErRebaseViewport(previous, next) {", "\n        }\n")
+        assert rebase.index("if (Number.isFinite(cursor.time)) cursor.time -= shift;") < rebase.index("if (!plot.viewport || plot.atFitAll) return;")
+
+    def test_controls_and_readout_are_event_reconstruction_ids(self):
+        source = _source()
+        page = _er_page(source)
+        assert 'id="wwErCursorModeBtn"' in page and 'id="wwErCursorReadout"' in page
+        for element_id in ("wwErCursorReadoutA", "wwErCursorReadoutB", "wwErCursorReadoutDelta", "wwErCursorCloseA", "wwErCursorCloseB"):
+            assert 'id="' + element_id + '"' in page
+        assert 'document.getElementById("wwErCursorModeBtn").addEventListener("click", wwErToggleCursors);' in source
+        create = _between(source, "function wwErCreatePanel(item) {", "function wwErDestroyPanel(panel)")
+        assert 'data-er-cursor-line="' in create and 'data-er-cursor-drag="' in create
+        assert 'data-cursor-line="' not in create  # never Waveform's cursor hooks

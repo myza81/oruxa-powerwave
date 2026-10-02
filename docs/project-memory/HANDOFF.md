@@ -4,9 +4,45 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-02** (Event Reconstruction Slice 3D)
+Last updated: **2026-10-02** (Event Reconstruction Slice 3E)
 
 ## What was most recently done
+
+**Event Reconstruction Slice 3E — A/B cursors and values (DEC-130,
+2026-10-02).** The feature is not complete.
+
+- **Cursors.** Global A/B cursors in reconstruction time:
+  - the A/B button places them at 1/3 and 2/3 of the view the first
+    time;
+  - each panel draws the same time in its own overlay;
+  - dragging a line on any panel moves the global cursor (clamped to
+    Fit All);
+  - each cursor has a × in the readout;
+  - the readout shows A, B and Δt with µs digits.
+- **Values.** The nearest real sample, from the existing backend
+  endpoints (no new API), at native time = cursor − total offset:
+  - per record for native channels;
+  - per timing source for calculated channels.
+
+  Outside a record's data a panel says "No sample"; a recorded gap says
+  "Unavailable". The panel headers show A, B and Δ.
+- **Rebasing.** Cursors follow the reconstruction-zero shift (reference
+  change, reference correction) and keep the physical instant. A
+  correction on any other record leaves them fixed.
+- **Real-data smoke (owner YGPN same-day files, local only).** Cursors
+  at 19.85/19.90 s gave aligned lines on BTGH and three BAHS phases,
+  with values in MW and kV, and "No sample" for PMJY. The readout stays
+  in the sticky toolbar row while the panel stack scrolls.
+- **Tests.**
+  - New `event-reconstruction-cursors.spec.js` (7).
+  - Static `TestEventReconstructionCursors` (5); earlier guards were
+    updated for the cursor-values POST.
+  - Full backend: 6,289 passed, 40 skipped. Full browser: 412 of 413 passed; the one failure (sequence_components_analysis.spec.js:840, a phasor-plot render-timing check outside Event Reconstruction) passed 3 of 3 in isolation.
+- **Still `[OPEN / UAT]`:** mixed-duration navigation (a cursor inside
+  a sliver-wide fast record under Fit All is hard to place). Panel
+  height is fixed at 180 px.
+
+## Earlier — Event Reconstruction Slice 3D
 
 **Event Reconstruction Slice 3D — navigation controls (DEC-129,
 2026-10-02).** The feature is not complete.

@@ -21183,6 +21183,93 @@ Source: owner task "Slice 3D only", following the Slice 3C UAT findings
 
 ---
 
+## DEC-130 — Event Reconstruction A/B cursors (Slice 3E): global reconstruction-time cursors, nearest real sample only, physical-instant rebasing
+
+Date: 2026-10-02
+Status: Approved (owner, Slice 3E task) — implemented on
+`feat/event-reconstruction`; not merged. The Event Reconstruction
+feature is **not** complete.
+Source: owner task "Slice 3E only: Event Reconstruction A/B cursors and
+values".
+
+### Decisions (owner)
+
+1. **Global cursors.** Cursor A and Cursor B belong to the Event
+   Reconstruction timeline:
+   - one reconstruction time each, drawn on every analog panel;
+   - never per panel;
+   - never Waveform's cursor state.
+2. **Values are the nearest real sample only.** There is no
+   interpolation. Outside a record's or channel's data the value is an
+   explicit **No sample**, never zero, a stale value or a blank.
+3. **Rebasing (locked):**
+   - A reference change, or a correction of the reference record, moves
+     the reconstruction zero. A and B are rebased by the same shift as
+     the viewport (DEC-129), so each stays on the same physical instant.
+   - A correction of any other record leaves A and B where they are;
+     only that record moves beneath them. This is what manual
+     synchronisation needs.
+4. **Bounds.** A placed or dragged cursor stays inside Fit All. A cursor
+   left outside the visible window keeps its time and simply is not
+   drawn. Zoom, pan, Reset, selection changes and record removal never
+   move a cursor.
+5. **Relative time only.** The readout shows A, B and Δt in
+   reconstruction time; there is no wall-clock display yet.
+6. **Still `[OPEN / UAT]`:** mixed-duration navigation. Placing a cursor
+   inside a short fast record under Fit All is not solved here.
+
+### Implementation (`[FACT]`)
+
+- **State:** `wwErState.plot.cursors = { enabled, a: { time, visible },
+  b: { time, visible } }`, in reconstruction seconds.
+- **Toolbar:**
+  - an A/B button (Waveform's icon; Event Reconstruction's own id);
+  - a readout `A / B / Δt`, with a × per cursor, in the sticky toolbar
+    row.
+- **First placement:** the first time cursors are switched on, A and B
+  go to 1/3 and 2/3 of the visible window (as Waveform). Off/on restores
+  their positions.
+- **Drawing:** each panel has its own overlay in its chart area (so it
+  scrolls with the panel), reusing Waveform's cursor line, stroke, hit
+  and band classes.
+  - Pixel ↔ time uses the shared `wwTimeToPageX`/`wwPageXToTime` with
+    the reconstruction-time viewport.
+  - The fraction `(r − start) / span` is identical in reconstruction and
+    origin-relative coordinates, so the Slice 3C plotting origin never
+    enters cursor state or cursor arithmetic.
+  - Lines are re-positioned on every Plotly redraw (`plotly_afterplot`).
+- **Drag:** a cursor line on any panel moves the one global cursor,
+  clamped to the viewport and then to Fit All. Values refresh with a
+  ~50 ms throttle while dragging and once on release.
+- **Values:** the existing backend nearest-sample endpoints, unchanged:
+  - `POST /sources/{id}/cursor-values`, one per record;
+  - `POST /calculated-channels/cursor-values`, one per timing source
+    (calculated channels use their timing parent's offset; no separate
+    timing).
+
+  The native time is `cursor − total_reconstruction_offset_s`, in
+  engineering units. The backend searches the source's own time array:
+  the nearest sample, with ties going to the earlier sample, and `null`
+  outside the source's first..last sample. There is no rate-based
+  tolerance, so a 1 Hz record answers with a sample up to 0.5 s away,
+  and a 5 kHz record with one within 0.1 ms.
+
+  "No sample" comes from the backend's out-of-bounds signal
+  (`sample_time: null`), or, for a calculated channel, from its timing
+  source's extent. A recorded gap (null value at a real sample) shows
+  "Unavailable" (DEC-084).
+
+  Each panel header shows `A`, `B` and `Δ = B − A` (Waveform's
+  engineering value format, with unit). Responses are sequenced per
+  group so a stale one never overwrites a newer one.
+- **Rebasing:** `wwErRebaseViewport()` applies `wwErReferenceFrameShift()`
+  to A and B always (zoomed or not), and to the viewport only when
+  zoomed. The cursors are not clamped by it.
+- **Tests:** `event-reconstruction-cursors.spec.js` (7 browser tests)
+  and the static `TestEventReconstructionCursors` (5).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
