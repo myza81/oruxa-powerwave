@@ -163,6 +163,16 @@ Group" assumption below.**
   - X only, Grouped and Combined alike. There is no time compression and
     no axis break.
   - The overview navigator stays deferred until UAT.
+- **Individual Y-axis drag zoom (done, 2026-10-02, DEC-134).**
+  - Y axes are `fixedrange: false`, so Plotly wires its own per-axis
+    `nsdrag` / `ndrag` / `sdrag` regions.
+  - `wwErKeepPlotAreaDragXOnly()` marks them fixed for drags that start
+    in the plot area, keeping Box Zoom and Pan X-only.
+  - Per-axis relayout events (`yaxisN.range[...]` / `.autorange`) become
+    manual or automatic axis state. ER's own Y relayouts are flagged.
+  - State: `plot.axisStates[mode]` maps a display-axis key to the axis
+    entry (manual ranges win over trace changes), pruned with the axes.
+  - Not built: Relative/Absolute time display (planned).
 
 Date: 2026-10-01. Code references are function names in
 `frontend/index.html` and `backend/app/` at commit `33f3178`

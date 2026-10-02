@@ -129,9 +129,10 @@ test.describe("Event Reconstruction Combined View -- axes and rendering", () => 
     expect(panel.axes[4].shift).toBeLessThan(panel.axes[2].shift);
     expect(panel.axes[3].shift).toBeGreaterThan(0);
     expect(panel.axes[5].shift).toBeGreaterThan(panel.axes[3].shift);
-    // X-only navigation on every axis; every axis scaled to its own data.
+    // Every axis draggable on its own scale (DEC-134); every axis scaled
+    // to its own data.
     for (const axis of panel.axes) {
-      expect(axis.fixedRange).toBe(true);
+      expect(axis.fixedRange).toBe(false);
       expect(axis.autorange).toBe(false);
       expect(axis.showTickLabels).toBe(true);
       expectAxisCovers(state, axis);

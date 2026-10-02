@@ -5398,6 +5398,18 @@
         .ww-cursor-line--a .ww-er-cursor-tag { color: var(--accent); }
         .ww-cursor-line--b .ww-er-cursor-tag { color: var(--error); }
         .ww-er-trace-failed { color: var(--error); font-size: 0.7rem; }
+        /* DEC-134: each Y axis's own scale is draggable (Plotly's native
+           ns/n/s-resize cursors); a faint tint on hover shows the region.
+           The plot area keeps its X-only cursors (DEC-129), which Plotly
+           would otherwise draw as 2-D now that Y is not fixedrange. */
+        .ww-er-panel .draglayer .nsdrag:hover,
+        .ww-er-panel .draglayer .ndrag:hover,
+        .ww-er-panel .draglayer .sdrag:hover { fill: var(--accent) !important; fill-opacity: 0.08 !important; }
+        .ww-er-panel .draglayer .nsewdrag:not(.cursor-move) { cursor: ew-resize !important; }
+        .ww-er-panel .draglayer .nwdrag,
+        .ww-er-panel .draglayer .swdrag { cursor: w-resize !important; }
+        .ww-er-panel .draglayer .nedrag,
+        .ww-er-panel .draglayer .sedrag { cursor: e-resize !important; }
         /* The active navigation record (Fit Record's target): a tinted
            header with an accent edge and a small ring before the name --
            distinct from the Reference badge and from channel selection. */
@@ -14434,9 +14446,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             loadSeq: 0,
             busy: false,
             plot: {
-                // DEC-131: "grouped" (implemented) | "combined" (the future
-                // one-panel multi-axis view, not available yet).
+                // "grouped" (DEC-131, default) | "combined" (DEC-132).
                 viewMode: "grouped",
+                // Y state per view mode (DEC-134): display-axis key -> that
+                // axis's entry ({ range, manual, autoscaleYPending, ... }),
+                // kept for the session so each mode returns to its own Y;
+                // never copied between modes.
+                axisStates: { grouped: new Map(), combined: new Map() },
                 panels: [],
                 viewport: null,
                 fitAll: null,
@@ -15698,10 +15714,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // A panel's whole Plotly layout from Event Reconstruction state: the
         // shared X axis (viewport, origin ticks, drag mode) and one Y axis
-        // per display axis (wwErYAxisPlacement()). Every Y axis is
-        // fixedrange, so Box Zoom and Pan are X-only (DEC-129) on all of
-        // them; a scaled axis keeps its range, a pending one autoranges
-        // until it is scaled. In the combined panel each axis is titled
+        // per display axis (wwErYAxisPlacement()). Every Y axis can be
+        // dragged on its own scale (DEC-134: Plotly's native axis drag), so
+        // none is fixedrange; plot-area Box Zoom and Pan stay X-only
+        // (DEC-129) through wwErKeepPlotAreaDragXOnly(). A scaled or
+        // manual axis keeps its range, a pending one autoranges until it
+        // is scaled. In the combined panel each axis is titled
         // with its quantity and unit (Plotly 3 renders only the
         // { text } title form), only the first draws grid lines, and
         // an axis without any sample shows no tick values (Plotly would
@@ -15719,7 +15737,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             panel.axes.forEach((axis, index) => {
                 const yaxis = Object.assign({}, base, axis.placement.spec, {
                     title: panel.combined ? { text: wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index)) } : (axis.axis.unit || ""),
-                    fixedrange: true,
+                    fixedrange: false,
                 }, axis.range ? { range: axis.range.slice(), autorange: false } : { autorange: true });
                 if (panel.combined) {
                     yaxis.automargin = true;
@@ -15739,6 +15757,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             Plotly.newPlot(panel.chartEl, panel.traces.map(wwErBuildTrace), wwErPanelLayout(panel), { responsive: true, displayModeBar: false, doubleClick: "autosize" });
             panel.renderedKey = wwErPanelRenderKey(panel);
             panel.plotlyReady = true;
+            panel.chartEl.addEventListener("pointerdown", (event) => wwErKeepPlotAreaDragXOnly(panel, event), true);
             wwErWirePanelRelayout(panel);
             // Slice 3E: any redraw (resize, relayout) re-positions this
             // panel's cursor lines.
@@ -15757,7 +15776,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwErSyncPanelTraces(panel) {
             const key = wwErPanelRenderKey(panel);
             if (!panel.plotlyReady || key === panel.renderedKey) return;
-            Plotly.react(panel.chartEl, panel.traces.map(wwErBuildTrace), wwErPanelLayout(panel));
+            panel.internalYRelayouts = (panel.internalYRelayouts || 0) + 1;
+            Plotly.react(panel.chartEl, panel.traces.map(wwErBuildTrace), wwErPanelLayout(panel))
+                .finally(() => { panel.internalYRelayouts -= 1; });
             panel.renderedKey = key;
         }
 
@@ -15769,6 +15790,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             panel.chartEl.on("plotly_relayout", (eventData) => {
                 const plot = wwErState.plot;
                 if (panel.removed || !plot.viewport) return;
+                if (!panel.internalYRelayouts) wwErApplyUserAxisChange(panel, eventData);
                 let x0 = eventData["xaxis.range[0]"];
                 let x1 = eventData["xaxis.range[1]"];
                 if ((x0 === undefined || x1 === undefined) && Array.isArray(eventData["xaxis.range"])) {
@@ -15781,6 +15803,70 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
                 if (eventData["xaxis.autorange"] === true) wwErResetView();
             });
+        }
+
+        // Individual Y-axis drag zoom (DEC-134), Plotly-native: dragging
+        // the middle of one axis's scale pans that axis; dragging its top
+        // or bottom end moves that end (towards the centre zooms out, away
+        // from it zooms in); a double-click on it autoranges it. Plotly
+        // reports exactly that axis ("yaxis2.range[0]"/"[1]" or
+        // "yaxis2.autorange"). A dragged range becomes the axis's MANUAL
+        // range, kept through X navigation, Fit Record and channel changes
+        // until Autoscale Y / Reset; a double-click autoscales that axis
+        // only. Our own Y relayouts are not user changes
+        // (panel.internalYRelayouts). X, the other axes, cursors and timing
+        // are untouched.
+        function wwErApplyUserAxisChange(panel, eventData) {
+            for (const axis of panel.axes) {
+                const key = axis.placement.layoutKey;
+                let y0 = eventData[key + ".range[0]"];
+                let y1 = eventData[key + ".range[1]"];
+                if ((y0 === undefined || y1 === undefined) && Array.isArray(eventData[key + ".range"])) [y0, y1] = eventData[key + ".range"];
+                if (y0 !== undefined && y1 !== undefined) {
+                    axis.manual = true;
+                    axis.autoscaleYPending = false;
+                    axis.range = [Number(y0), Number(y1)];
+                } else if (eventData[key + ".autorange"] === true) {
+                    axis.manual = false;
+                    axis.autoscaleYPending = true;
+                    wwErApplyPendingAutoscaleY(panel);
+                }
+            }
+        }
+
+        // Plot-area Box Zoom and Pan stay X-only (DEC-129) although the Y
+        // axes are not fixedrange (they must not be, or Plotly would not
+        // wire their own axis drags). Plotly reads each axis's fixedrange
+        // from its full layout when a drag STARTS; so for a drag that
+        // starts in the plot area (or its corners) the Y axes are marked
+        // fixed for that drag only and restored on release. Drags on an
+        // axis's own scale are left to Plotly. (Plotly has no per-drag-
+        // region fixedrange; verified on the vendored Plotly 3.7.)
+        function wwErKeepPlotAreaDragXOnly(panel, event) {
+            if (!event.target.closest(".nsewdrag, .nwdrag, .nedrag, .swdrag, .sedrag")) return;
+            const fullLayout = panel.chartEl._fullLayout;
+            if (!fullLayout) return;
+            const keys = panel.axes.map((axis) => axis.placement.layoutKey).filter((key) => fullLayout[key]);
+            for (const key of keys) fullLayout[key].fixedrange = true;
+            const restore = () => {
+                window.removeEventListener("mouseup", restore);
+                window.removeEventListener("touchend", restore);
+                const current = panel.chartEl._fullLayout;
+                for (const key of keys) if (current && current[key]) current[key].fixedrange = false;
+            };
+            window.addEventListener("mouseup", restore);
+            window.addEventListener("touchend", restore);
+        }
+
+        // Event Reconstruction's own Y relayouts -- never read back as a
+        // user's axis drag.
+        async function wwErRelayoutY(panel, update) {
+            panel.internalYRelayouts = (panel.internalYRelayouts || 0) + 1;
+            try {
+                await Plotly.relayout(panel.chartEl, update);
+            } finally {
+                panel.internalYRelayouts -= 1;
+            }
         }
 
         function wwErRequestViewport(start, end) {
@@ -15845,7 +15931,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!plot.fitAll) return;
             clearTimeout(plot.relayoutTimer);
             plot.atFitAll = true;
-            for (const panel of plot.panels) for (const axis of panel.axes) axis.autoscaleYPending = true;
+            for (const panel of plot.panels) {
+                for (const axis of panel.axes) {
+                    axis.manual = false;
+                    axis.autoscaleYPending = true;
+                }
+            }
+            // Reset is global (DEC-134): the other view mode's Y state goes
+            // too, so it autoscales when next shown.
+            plot.axisStates[plot.viewMode === "combined" ? "grouped" : "combined"].clear();
             wwErApplyViewport(plot.fitAll);
         }
 
@@ -15862,13 +15956,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwErApplyViewport(next);
         }
 
-        // Autoscale Y: every Y axis of every panel independently, over its
-        // own traces' data for the current X window (each trace only ever
-        // holds its visible slice); X is untouched. A panel with a trace
-        // still loading scales once its traces have all landed.
+        // Autoscale Y: every Y axis of every panel of the current view mode
+        // independently, over its own traces' data for the current X window
+        // (each trace only ever holds its visible slice); manual (dragged)
+        // ranges are cleared (DEC-134). X is untouched. A panel with a
+        // trace still loading scales once its traces have all landed.
         function wwErAutoscaleY() {
             for (const panel of wwErState.plot.panels) {
-                for (const axis of panel.axes) axis.autoscaleYPending = true;
+                for (const axis of panel.axes) {
+                    axis.manual = false;
+                    axis.autoscaleYPending = true;
+                }
                 wwErApplyPendingAutoscaleY(panel);
             }
         }
@@ -15888,7 +15986,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!pending.length || !panel.plotlyReady || panel.traces.some((t) => t.loading)) return;
             const autorange = {};
             for (const axis of pending) autorange[axis.placement.layoutKey + ".autorange"] = true;
-            await Plotly.relayout(panel.chartEl, autorange);
+            await wwErRelayoutY(panel, autorange);
             if (panel.removed || !panel.plotlyReady) return;
             const fixed = {};
             panel.axes.forEach((axis, index) => {
@@ -15901,7 +15999,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 fixed[axis.placement.layoutKey + ".range"] = axis.range.slice();
                 fixed[axis.placement.layoutKey + ".autorange"] = false;
             });
-            if (Object.keys(fixed).length) await Plotly.relayout(panel.chartEl, fixed);
+            if (Object.keys(fixed).length) await wwErRelayoutY(panel, fixed);
         }
 
         // The one viewport pipeline: store it, move the origin if needed
@@ -16055,7 +16153,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwErRenderPlot() {
             const plot = wwErState.plot;
             const items = wwErPlotItems();
-            const specs = wwErViewPanels(wwErPlotGroups(items), plot.viewMode);
+            const groups = wwErPlotGroups(items);
+            const specs = wwErViewPanels(groups, plot.viewMode);
+            // An axis whose last channel went away takes its Y state along,
+            // in both modes; recreated, it autoscales normally.
+            const liveAxes = new Set(groups.map((group) => group.key));
+            for (const store of Object.values(plot.axisStates)) {
+                for (const key of [...store.keys()]) if (!liveAxes.has(key)) store.delete(key);
+            }
+            const axisStore = plot.axisStates[plot.viewMode];
             // Traces are reconciled across all panels: one that moves to
             // another panel (a view-mode switch, a changed display axis)
             // keeps its fetched data and any request in flight.
@@ -16073,7 +16179,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const panelsEl = document.getElementById("wwErPanels");
             plot.panels = specs.map((spec) => {
                 const panel = existingPanels.get(spec.key) || wwErCreatePanel(spec);
-                const previousAxes = new Map(panel.axes.map((axis) => [axis.key, axis]));
                 panel.traces = [];
                 panel.axes = spec.axes.map((group, index) => {
                     const placement = wwErYAxisPlacement(index);
@@ -16086,20 +16191,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         panel.traces.push(trace);
                     }
                     const traceKeys = group.items.map((item) => item.key).join("\u0001");
-                    const previous = previousAxes.get(group.key);
-                    // A new axis (every axis after a view-mode switch), or a
-                    // channel joined or left it: its Y range is autoscaled
-                    // once over the new set. X navigation alone never
-                    // changes Y.
-                    const pending = !previous || previous.autoscaleYPending || previous.traceKeys !== traceKeys;
-                    return {
+                    // This mode's own Y state for the axis (DEC-134). A new
+                    // axis -- or one this mode has not shown yet -- is
+                    // autoscaled once; so is an automatic axis a channel
+                    // joined or left. A manual range (the engineer dragged
+                    // the axis) wins over both and is kept. X navigation
+                    // alone never changes Y.
+                    const previous = axisStore.get(group.key);
+                    const manual = !!previous && previous.manual;
+                    const pending = !manual && (!previous || previous.autoscaleYPending || previous.traceKeys !== traceKeys);
+                    const entry = {
                         key: group.key,
                         axis: group.axis,
                         traceKeys,
                         placement,
                         autoscaleYPending: pending,
+                        manual,
                         range: pending ? null : previous.range,
                     };
+                    axisStore.set(group.key, entry);
+                    return entry;
                 });
                 wwErSyncPanelTraces(panel);
                 return panel;

@@ -188,6 +188,7 @@ async function plotState(page) {
             autorange: own.autorange,
             showTickLabels: full.showticklabels,
             pending: a.autoscaleYPending,
+            manual: !!a.manual,
             traceKeys: p.traces.filter((t) => t.axisIndex === index).map((t) => t.key),
           };
         }),

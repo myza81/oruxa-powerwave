@@ -190,7 +190,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         ]
         plot_keys = re.findall(r"^ {16}(\w+):", state.split("plot: {", 1)[1], re.MULTILINE)
         assert plot_keys == [
-            "viewMode", "panels", "viewport", "fitAll", "atFitAll", "origin", "relayoutTimer",
+            "viewMode", "axisStates", "panels", "viewport", "fitAll", "atFitAll", "origin", "relayoutTimer",
             "cursors", "cursorRequests", "cursorValuesTimer",
         ]
         for forbidden in ("PresentationOverrides", "channelColors", "ColorOverride", "DisplayName =", "localStorage"):
@@ -651,11 +651,17 @@ class TestEventReconstructionTimelineNavigation:
 
     def test_box_zoom_and_pan_are_x_only(self):
         source = _source()
-        # Every Y axis of every panel (Grouped: one; Combined: one per
-        # display axis) is fixedrange.
+        # Every Y axis can be dragged on its own scale (DEC-134), so none is
+        # fixedrange in the layout; a drag that starts in the plot area (or
+        # its corners) sees every Y axis as fixed for that drag only.
         layout = _between(source, "function wwErPanelLayout(panel) {", "function wwErInitPanelPlot(panel)")
         assert "panel.axes.forEach((axis, index) => {" in layout
-        assert "fixedrange: true," in layout
+        assert "fixedrange: false," in layout and "fixedrange: true" not in layout
+        guard = _between(source, "function wwErKeepPlotAreaDragXOnly(panel, event) {", "async function wwErRelayoutY(panel, update)")
+        assert 'if (!event.target.closest(".nsewdrag, .nwdrag, .nedrag, .swdrag, .sedrag")) return;' in guard
+        assert "for (const key of keys) fullLayout[key].fixedrange = true;" in guard
+        assert 'window.addEventListener("mouseup", restore);' in guard
+        assert 'panel.chartEl.addEventListener("pointerdown", (event) => wwErKeepPlotAreaDragXOnly(panel, event), true);' in source
         assert "layout[axis.placement.layoutKey] = yaxis;" in layout
         init = _between(source, "function wwErInitPanelPlot(panel) {", "function wwErWirePanelRelayout(panel)")
         assert "wwErPanelLayout(panel)" in init
@@ -688,7 +694,7 @@ class TestEventReconstructionTimelineNavigation:
     def test_reset_is_one_path_for_button_and_double_click(self):
         source = _source()
         reset = _between(source, "function wwErResetView() {", "\n        }\n")
-        assert "for (const panel of plot.panels) for (const axis of panel.axes) axis.autoscaleYPending = true;" in reset
+        assert "axis.autoscaleYPending = true;" in reset and "for (const axis of panel.axes) {" in reset
         assert "wwErApplyViewport(plot.fitAll);" in reset
         assert "wwErRequestFitAll" not in source
 
@@ -696,7 +702,7 @@ class TestEventReconstructionTimelineNavigation:
         source = _source()
         apply = _between(source, "async function wwErApplyPendingAutoscaleY(panel) {", "\n        }\n")
         assert 'autorange[axis.placement.layoutKey + ".autorange"] = true;' in apply
-        assert "await Plotly.relayout(panel.chartEl, autorange);" in apply
+        assert "await wwErRelayoutY(panel, autorange);" in apply
         assert "if (!hasData) return;" in apply  # an empty axis stays pending
         assert "axis.range = panel.chartEl._fullLayout[axis.placement.layoutKey].range.slice();" in apply
         assert 'fixed[axis.placement.layoutKey + ".autorange"] = false;' in apply
@@ -837,7 +843,7 @@ class TestEventReconstructionGroupedView:
         assert "panel.traces.some((t) => t.loading)" in apply
         render = _between(source, "function wwErRenderPlot() {", "function wwErSetViewMode(mode)")
         # A channel joined or left an axis: that axis re-autoscales.
-        assert "const pending = !previous || previous.autoscaleYPending || previous.traceKeys !== traceKeys;" in render
+        assert "const pending = !manual && (!previous || previous.autoscaleYPending || previous.traceKeys !== traceKeys);" in render
 
     def test_cursor_values_live_in_the_channel_tree_not_the_panels(self):
         source = _source()
@@ -875,7 +881,7 @@ class TestEventReconstructionCombinedView:
     def test_both_modes_use_the_one_display_axis_grouping(self):
         source = _source()
         render = _between(source, "function wwErRenderPlot() {", "function wwErSetViewMode(mode)")
-        assert "const specs = wwErViewPanels(wwErPlotGroups(items), plot.viewMode);" in render
+        assert "const groups = wwErPlotGroups(items);" in render and "const specs = wwErViewPanels(groups, plot.viewMode);" in render
         view = _between(source, "function wwErViewPanels(groups, viewMode) {", "\n        }\n")
         assert 'if (viewMode === "combined") return groups.length ? [{ key: "combined", combined: true, axes: groups }] : [];' in view
         assert "return groups.map((group) => ({ key: group.key, combined: false, axes: [group] }));" in view
@@ -1015,3 +1021,48 @@ class TestEventReconstructionFitRecord:
         assert 'document.getElementById("wwErFitRecordBtn").addEventListener("click", wwErFitRecord);' in source
         toolbar = _between(source, "function wwErSyncToolbar() {", "\n        }\n")
         assert "fitBtn.disabled = !fit.range;" in toolbar
+
+
+class TestEventReconstructionYAxisDragZoom:
+    """DEC-134: individual Y-axis drag zoom -- Plotly's native drag on one
+    axis's own scale; a dragged range is that axis's manual range, keyed by
+    display-axis key, per view mode, kept through X navigation until
+    Autoscale Y / Reset."""
+
+    def test_user_axis_changes_touch_only_the_named_axis(self):
+        source = _source()
+        apply = _between(source, "function wwErApplyUserAxisChange(panel, eventData) {", "function wwErKeepPlotAreaDragXOnly(panel, event)")
+        assert 'let y0 = eventData[key + ".range[0]"];' in apply
+        assert "axis.manual = true;" in apply and "axis.range = [Number(y0), Number(y1)];" in apply
+        assert 'eventData[key + ".autorange"] === true' in apply  # double-click: that axis only
+        for forbidden in ("viewport", "cursors", "wwErApplyViewport", "xaxis", "definition"):
+            assert forbidden not in apply
+        relayout = _between(source, "function wwErWirePanelRelayout(panel) {", "function wwErApplyUserAxisChange(panel, eventData)")
+        assert "if (!panel.internalYRelayouts) wwErApplyUserAxisChange(panel, eventData);" in relayout
+        # Our own Y relayouts are never read back as a user's drag.
+        pending = _between(source, "async function wwErApplyPendingAutoscaleY(panel) {", "\n        }\n")
+        assert "await wwErRelayoutY(panel, autorange);" in pending and "await wwErRelayoutY(panel, fixed);" in pending
+        assert "Plotly.relayout" not in pending
+
+    def test_state_is_keyed_by_display_axis_per_view_mode(self):
+        source = _source()
+        state = _between(source, "const wwErState = {", "};")
+        assert "axisStates: { grouped: new Map(), combined: new Map() }," in state
+        render = _between(source, "function wwErRenderPlot() {", "function wwErSetViewMode(mode)")
+        assert "const axisStore = plot.axisStates[plot.viewMode];" in render
+        assert "const previous = axisStore.get(group.key);" in render  # never "y2"
+        assert "axisStore.set(group.key, entry);" in render
+        assert "if (!liveAxes.has(key)) store.delete(key);" in render
+        # A manual range survives a channel joining or leaving its axis.
+        assert "const manual = !!previous && previous.manual;" in render
+
+    def test_autoscale_and_reset_clear_manual_ranges(self):
+        source = _source()
+        autoscale = _between(source, "function wwErAutoscaleY() {", "function wwErAxisHasData(panel, axisIndex)")
+        assert "axis.manual = false;" in autoscale and "axis.autoscaleYPending = true;" in autoscale
+        reset = _between(source, "function wwErResetView() {", "\n        }\n")
+        assert "axis.manual = false;" in reset
+        assert 'plot.axisStates[plot.viewMode === "combined" ? "grouped" : "combined"].clear();' in reset
+        assert "wwErApplyViewport(plot.fitAll);" in reset
+        fit = _between(source, "function wwErFitRecord() {", "\n        }\n")
+        assert "manual" not in fit and "autoscaleYPending" not in fit  # Fit Record is X only

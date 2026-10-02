@@ -8,6 +8,38 @@ Last updated: **2026-10-02** (Event Reconstruction Fit Record)
 
 ## What was most recently done
 
+**Event Reconstruction individual Y-axis drag zoom (DEC-134,
+2026-10-02).** The feature is not complete.
+
+- **Interaction.** Plotly's native drag on one Y axis's own scale, in
+  Grouped (one panel) and Combined (one display axis):
+  - the middle pans;
+  - an end zooms (away from the centre = in);
+  - a double-click autoranges that axis only.
+- **Plot area stays X-only.** Y axes are no longer `fixedrange`, because
+  Plotly would not wire their drags otherwise. A capture-phase
+  `pointerdown` guard marks them fixed for plot-area drags only. A test
+  proves it is needed.
+- **Manual ranges.**
+  - They are keyed by display-axis key, per view mode, and kept for the
+    session (amends DEC-132 decision 9).
+  - They survive Box Zoom, Pan, Zoom In/Out, Fit Record and a channel
+    joining their axis.
+  - Autoscale Y clears the current mode's manual ranges; Reset clears
+    both modes'.
+  - A removed axis drops its state.
+- **Real-data UAT (owner YGPN, local only).** Combined with 4 axes
+  (kV/kA/MW/Hz): drags on the inner left/right and outer left/right
+  axes each changed only that axis. The plot area and outer shifts did
+  not move.
+- **Tests.**
+  - `event-reconstruction-yaxis-zoom.spec.js` (7).
+  - Static `TestEventReconstructionYAxisDragZoom` (3).
+- **Next.** Owner UAT. Relative/Absolute time display stays planned and
+  not started.
+
+## Earlier — Event Reconstruction Fit Record
+
 **Event Reconstruction Fit Record — mixed-duration navigation (DEC-133,
 2026-10-02).** The feature is not complete.
 
@@ -36,9 +68,8 @@ Last updated: **2026-10-02** (Event Reconstruction Fit Record)
 - **Tests.**
   - `event-reconstruction-fit-record.spec.js` (6).
   - Static `TestEventReconstructionFitRecord` (4).
-- **Next.** Owner UAT of Fit Record. Then decide on an overview
-  navigator. Planned and not started: individual Y-axis drag zoom;
-  Relative/Absolute time display.
+- **Next (then).** Owner UAT of Fit Record. Then decide on an overview
+  navigator. Y-axis drag zoom followed in DEC-134.
 
 ## Earlier — Event Reconstruction Combined Multi-Axis View
 

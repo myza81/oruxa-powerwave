@@ -50,7 +50,9 @@ test.describe("Event Reconstruction Slice 3D -- X-only Box Zoom and Pan", () => 
     const consoleErrors = collectConsoleErrors(page);
     await twoOverlapping(page);
     const before = await plotState(page);
-    expect(before.panels.every((p) => p.yFixedRange === true)).toBe(true);
+    // DEC-134: Y axes are draggable on their own scale (not fixedrange);
+    // a drag in the plot area is still X-only.
+    expect(before.panels.every((p) => p.yFixedRange === false)).toBe(true);
     // Diagonal drag on the last panel: X follows, Y does not.
     await dragOnPanel(page, 1, 0.25, 0.5, 60);
     await expect.poll(async () => (await plotState(page)).atFitAll).toBe(false);

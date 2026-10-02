@@ -21688,6 +21688,89 @@ workflows.
 - **Relative / Absolute time display.** Selectable relative/absolute
   labels; the internal reconstruction-relative timing is unchanged.
 
+## DEC-134 — Event Reconstruction individual Y-axis drag zoom: Plotly's native drag on one axis's own scale; manual ranges keyed by display axis, per view mode
+
+Date: 2026-10-02
+Status: Approved (owner, "Individual Y-Axis Drag Zoom" task) —
+implemented on `feat/event-reconstruction`; not merged. The Event
+Reconstruction feature is **not** complete. Amends DEC-132 decision 9:
+Y ranges are now kept **per view mode** for the session, not discarded
+on a mode switch. They are still never copied between modes.
+
+### Decisions (owner)
+
+1. **Drag on a Y axis's own scale changes that axis only**: one Grouped
+   panel's axis, or one Combined display axis.
+   - X, the other axes, cursors, timing, corrections and channel
+     selection are untouched.
+   - Plot-area Box Zoom and Pan stay X-only (DEC-129).
+2. **Plotly-native semantics, recorded:**
+   - dragging the middle of the scale pans that axis (same span; a
+     downward drag brings higher values into view);
+   - dragging its top or bottom end moves that end: away from the centre
+     zooms in, towards the centre zooms out;
+   - a double-click on the scale autoranges that axis only.
+
+   The scale shows `ns-resize` / `n-resize` / `s-resize` cursors and a
+   faint hover tint.
+3. **A dragged range is that axis's manual range.**
+   - It is kept through Box Zoom, Pan, Zoom In/Out, Fit Record and a
+     channel joining its axis.
+   - It is kept with no visible samples, and no value is invented.
+   - **Autoscale Y** clears every manual range of the current view mode
+     and autoscales each axis.
+   - **Reset Time View** = Fit All plus every Y axis automatic again, in
+     both view modes.
+4. **State is keyed by display-axis key** (`Voltage|kV`, …), never by
+   panel index or `y2`.
+   - It is mode-local: Grouped and Combined each keep their own state
+     for the session.
+   - An axis whose last channel goes away takes its state along;
+     recreated, it autoscales.
+5. Keyboard: Autoscale Y remains the non-drag alternative. No focusable
+   per-axis control is added in this slice.
+
+### Implementation (`[FACT]`)
+
+- **Why the guard is needed.** Plotly 3.7 only wires an axis's own drag
+  regions (`nsdrag` / `ndrag` / `sdrag` per subplot) when the axis is not
+  `fixedrange`. But a non-fixed Y axis also makes plot-area Box Zoom 2-D:
+  verified on the vendored build, and Plotly has no per-region setting.
+- **The guard.** Event Reconstruction Y axes are therefore `fixedrange:
+  false`. `wwErKeepPlotAreaDragXOnly()` is a capture-phase `pointerdown`
+  on the chart. For a drag starting in the plot area or its corners
+  (`.nsewdrag`, `.nwdrag`, `.nedrag`, `.swdrag`, `.sedrag`), it marks the
+  panel's Y axes `fixedrange` in Plotly's full layout for that drag only
+  and restores them on release.
+  - This works because Plotly reads `fixedrange` when a drag starts. A
+    test proves the guard: without it, a diagonal Box Zoom changes Y.
+- **User changes.** `wwErApplyUserAxisChange()` reads Plotly's per-axis
+  relayout:
+  - `yaxisN.range[0/1]` makes that axis manual with that range;
+  - `yaxisN.autorange` makes that axis automatic and pending.
+
+  Event Reconstruction's own Y relayouts (`wwErRelayoutY()`,
+  `Plotly.react`) are flagged, so they are never read back as a user
+  change.
+- **State.** `plot.axisStates = { grouped: Map, combined: Map }` maps a
+  display-axis key to the axis entry
+  (`range`, `manual`, `autoscaleYPending`, …). `wwErRenderPlot()` reuses
+  the entry from the current mode's map. A manual entry keeps its range
+  when its traces change; stale keys are pruned in both maps.
+- **Placement and margins.** These are unchanged by a drag. On the
+  owner's YGPN records with 4 axes the plot area stayed exactly
+  96/95/999 px, and the outer shifts stayed −52/+46 px.
+- **Tests:**
+  - `event-reconstruction-yaxis-zoom.spec.js` (7);
+  - static `TestEventReconstructionYAxisDragZoom` (3);
+  - the X-only guard's existing navigation test now runs with
+    non-fixed Y.
+
+### Still planned (not implemented)
+
+- **Relative / Absolute time display**: selectable labels; internal
+  reconstruction-relative timing unchanged.
+
 ---
 
 ## How to add a decision

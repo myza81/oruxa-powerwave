@@ -94,6 +94,15 @@ DEC-122 display timezone).
   - **Navigation (Slice 3D, DEC-129).**
     - Box Zoom and Pan are X-only (no Y change on any panel), in Event
       Reconstruction's own drag mode.
+    - **Individual Y-axis drag zoom (DEC-134).** Dragging one Y axis's
+      own scale changes that axis only: one Grouped panel, or one
+      Combined display axis. Plotly-native: the middle pans, an end
+      zooms, a double-click autoranges that axis.
+      - The dragged range is manual. It survives X navigation, Fit Record
+        and a channel joining its axis.
+      - Autoscale Y clears the current mode's manual ranges; Reset (Fit
+        All plus Y) clears both modes'.
+      - Y state is per view mode and keyed by display axis.
     - Zoom In and Zoom Out use Waveform's shared step with the centre
       kept. Zoom Out and Pan never leave Fit All, and Zoom Out is
       disabled at Fit All.
@@ -138,9 +147,8 @@ DEC-122 display timezone).
       usable target, including when none of the record's channels is
       plotted.
 
-    Not yet built (planned): individual Y-axis drag zoom;
-    Relative/Absolute time display (labels only, internal timing
-    unchanged); Y step zoom; an overview navigator (deferred until Fit
+    Not yet built (planned): Relative/Absolute time display (labels
+    only, internal timing unchanged); Y step zoom; an overview navigator (deferred until Fit
     Record UAT); wall-clock cursor times; panel resizing (fixed 180 px
     per Grouped panel, 420 px Combined).
   - It never reads or writes the Waveform `ww` state, panels or
