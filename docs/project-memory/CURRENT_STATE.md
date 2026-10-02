@@ -147,10 +147,21 @@ DEC-122 display timezone).
       usable target, including when none of the record's channels is
       plotted.
 
-    Not yet built (planned): Relative/Absolute time display (labels
-    only, internal timing unchanged); Y step zoom; an overview navigator (deferred until Fit
-    Record UAT); wall-clock cursor times; panel resizing (fixed 180 px
-    per Grouped panel, 420 px Combined).
+  - **Relative / Absolute time display (DEC-135).** A toolbar control,
+    "Time [Relative | Absolute]", labels only.
+    - Reconstruction seconds stay internal.
+    - Absolute = reference recorded start + reference correction + r
+      (backend `reconstruction_zero_time_utc`), shown in the display
+      timezone (DEC-122).
+    - Reference switches never change a sample's absolute time; a
+      correction shifts its record.
+    - Adaptive calendar ticks, with the date at the first tick and where
+      it changes; µs hover and cursor readouts. Nothing is refetched on a
+      switch.
+
+    Not yet built: Y step zoom; an overview navigator (deferred until
+    Fit Record UAT); panel resizing (fixed 180 px per Grouped panel,
+    420 px Combined).
   - It never reads or writes the Waveform `ww` state, panels or
     viewports.
 - **Backend.**

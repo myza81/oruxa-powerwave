@@ -21769,7 +21769,102 @@ on a mode switch. They are still never copied between modes.
 ### Still planned (not implemented)
 
 - **Relative / Absolute time display**: selectable labels; internal
-  reconstruction-relative timing unchanged.
+  reconstruction-relative timing unchanged. (Implemented later:
+  DEC-135.)
+
+## DEC-135 — Event Reconstruction Relative / Absolute time display: labels only; absolute = corrected reference anchor + reconstruction time, in the display timezone
+
+Date: 2026-10-02
+Status: Approved (owner, "Relative / Absolute Time Display" task) —
+implemented on `feat/event-reconstruction`; not merged. The Event
+Reconstruction feature is **not** complete. This implements the last
+planned ticket of DEC-133/DEC-134.
+
+### Decisions (owner)
+
+1. **Reconstruction seconds stay the only internal coordinate**:
+   - viewport and Fit All;
+   - record extents;
+   - cursors;
+   - fetch mapping;
+   - Plotly x = r − plotting origin.
+
+   **Relative** (the default) shows them. **Absolute** shows the
+   reconstructed wall-clock instant of the same point, for labels and
+   readouts only.
+2. **Corrected anchor:**
+
+   ```text
+   absolute(r) = reference recorded start + correction(reference) + r
+               = record recorded start + correction(record) + source elapsed
+   ```
+
+   - A reference switch never changes the absolute time of a physical
+     sample.
+   - A correction moves its own record's absolute placement by exactly
+     that correction.
+   - A reference correction moves the reference's absolute placement.
+     The relative coordinates rebase under the existing rules (DEC-129).
+3. **Switching is presentation-only.** It leaves the X viewport, Fit All,
+   origin, cursors, Y state, active record, view mode and drag mode
+   unchanged, and refetches nothing (waveforms, envelopes, cursor
+   values). Grouped and Combined share the one setting.
+4. **Timezone (follows DEC-121/DEC-122, not reinvented).** "Absolute"
+   means the canonical instant shown in the configured display timezone
+   (`wwDisplayTimezone()`, Asia/Kuala_Lumpur). A naive COMTRADE record
+   therefore shows exactly its recorded digits; BEN (UTC) shows the
+   Malaysian wall clock. The browser's local zone is never used.
+5. **Precision.**
+   - The fraction never passes through a JS `Date`, so 200 µs samples
+     stay distinct; tested at +2 h.
+   - Cursor A/B readouts carry µs, and Δt is always a duration.
+   - Waveform's `customdata` stays numeric reconstruction time; absolute
+     hover text uses the trace `text`.
+   - WebGL x values stay small (local origin).
+
+### Implementation (`[FACT]`)
+
+- **Backend (additive).** `ReconstructionOut.reconstruction_zero_time_utc`
+  is computed by the domain function
+  `event_reconstruction.reconstruction_zero_instant(reference_origin_start,
+  reference_correction_s)` (`datetime` arithmetic, µs; a sub-µs part of a
+  correction is rounded). It is `null` without placements.
+- **Frontend.**
+  - `wwErState.timeDisplay` holds the setting.
+  - `wwErAbsoluteZero()` parses the anchor's exact digits into
+    `{ epochSecond, fraction }`. `wwErAbsoluteInstant(zero, r)` then
+    computes `t = fraction + r` and splits it into whole seconds and a
+    fraction.
+  - `wwErWallClock()` gets the calendar fields of a whole epoch second
+    from DEC-122's `wwDisplayWallClockFormatter()`.
+- **Ticks** (`wwErAbsoluteTimeAxisTicks`):
+  - a calendar step for about 7 ticks (1 µs … 28 days), aligned to the
+    display-timezone wall clock;
+  - fraction digits from the step (µs at most); `HH:MM` from one minute
+    up; dates only from one day up;
+  - the date under the first tick and wherever it changes, so midnight
+    and year crossings are unambiguous.
+- **Hover:** `"27 Jul 2022 12:41:48.559683"` in Absolute; the numeric
+  reconstruction time in Relative.
+- **Cursor readout:** wall clock with µs. The date is prefixed when A and
+  B fall on different dates; the tooltip carries the date and timezone.
+- **UI:** a toolbar control, "Time [Relative | Absolute]".
+- **Tests:**
+  - backend `test_event_reconstruction_absolute_time.py` (5): the
+    invariant across all three reference choices, correction shifts, null
+    without placements, and µs on the wire;
+  - `event-reconstruction-time-display.spec.js` (5);
+  - static `TestEventReconstructionTimeDisplay` (4).
+
+### Real data (owner YGPN, local only)
+
+- BAHS's first sample shows `27 Jul 2022 12:41:48.559683` (BEN
+  04:41:48.559683Z).
+- Zoomed to 19.84–19.92 s with BTGH as reference, the ticks read
+  `12:41:49.98 … 12:41:50.04` and the cursors `12:41:49.984900` /
+  `12:41:50.034900`. After switching the reference to BAHS (relative
+  1.415–1.495 s), the ticks, cursors and hover were identical.
+- The 87-day Fit All shows dates (`28 Jul 2022 … 20 Oct 2022`).
 
 ---
 

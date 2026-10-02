@@ -172,7 +172,17 @@ Group" assumption below.**
     manual or automatic axis state. ER's own Y relayouts are flagged.
   - State: `plot.axisStates[mode]` maps a display-axis key to the axis
     entry (manual ranges win over trace changes), pruned with the axes.
-  - Not built: Relative/Absolute time display (planned).
+- **Relative / Absolute time display (done, 2026-10-02, DEC-135).**
+  - The coordinate model is unchanged: Plotly x = r − origin.
+  - Absolute labels come from `absolute(r) = reconstruction_zero_time_utc
+    + r`. The zero is the backend's reference recorded start + reference
+    correction. It is carried as an integer epoch second plus a float
+    fraction; calendar fields come from DEC-122's display-timezone
+    formatter (whole seconds only).
+  - Absolute ticks are calendar-aligned (`wwErAbsoluteTimeAxisTicks`).
+  - Hover uses the trace `text`, so `customdata` stays numeric.
+  - The cursor readout carries µs.
+  - A switch relabels without any fetch.
 
 Date: 2026-10-01. Code references are function names in
 `frontend/index.html` and `backend/app/` at commit `33f3178`

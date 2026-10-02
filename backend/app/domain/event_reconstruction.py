@@ -56,7 +56,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.domain.synchronization import alignment_offset_valid
 from app.domain.time_grouping import (
@@ -167,6 +167,23 @@ def recorded_placement_s(*, record_origin_start: datetime, reference_origin_star
 def reconstruction_offset_s(*, recorded_placement_s: float, correction_s: float, reference_correction_s: float) -> float:
     """Shift from a record's own time to reconstruction time."""
     return recorded_placement_s + correction_s - reference_correction_s
+
+
+def reconstruction_zero_instant(*, reference_origin_start: datetime, reference_correction_s: float) -> datetime:
+    """The absolute instant of reconstruction time 0 (Relative / Absolute
+    time display): the reference record's recorded start plus the
+    reference's own Event Reconstruction correction. For any point,
+
+        absolute = reconstruction_zero_instant + reconstruction_x_s
+                 = record_recorded_start + correction(record) + source_elapsed_s
+
+    because reconstruction_x_s = source_elapsed_s + (record start -
+    reference start) + correction(record) - correction(reference). So a
+    physical sample keeps its absolute instant whichever record is the
+    reference, and a record's correction moves its absolute placement by
+    exactly that correction. `datetime` arithmetic: microsecond
+    resolution (a sub-microsecond part of the correction is rounded)."""
+    return reference_origin_start + timedelta(seconds=reference_correction_s)
 
 
 def total_reconstruction_offset_s(*, within_record_offset_s: float, reconstruction_record_offset_s: float) -> float:

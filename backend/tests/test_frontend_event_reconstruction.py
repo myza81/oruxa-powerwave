@@ -185,7 +185,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         # Workspace state, the last API responses and (Slice 3C) the
         # renderer's own plot state only.
         assert keys == [
-            "dragMode", "sources", "records", "definition",
+            "dragMode", "timeDisplay", "sources", "records", "definition",
             "channelsBySource", "calculatedChannels", "selectedChannels", "activeRecordId", "loadSeq", "busy", "plot",
         ]
         plot_keys = re.findall(r"^ {16}(\w+):", state.split("plot: {", 1)[1], re.MULTILINE)
@@ -200,7 +200,8 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         assert re.findall(r"const (?:WW_ER_|wwEr)\w+", module) == [
             "const WW_ER_SIDEBAR_WIDTH_STORAGE_KEY", "const wwErState", "const WW_ER_PANEL_HEIGHT",
             "const WW_ER_COMBINED_PANEL_HEIGHT", "const WW_ER_COMBINED_AXIS_ADVISORY",
-            "const WW_ER_Y_AXIS_TITLE_FONT_SIZE", "const WW_ER_UNKNOWN_QUANTITY_LABEL", "const WW_ER_ORIGIN_MAX_SPANS", "const WW_ER_RELAYOUT_DEBOUNCE_MS", "const WW_ER_TIME_AXIS_TITLE",
+            "const WW_ER_Y_AXIS_TITLE_FONT_SIZE", "const WW_ER_SECONDS_PER_DAY", "const WW_ER_ABSOLUTE_TICK_STEPS",
+            "const WW_ER_MONTHS", "const WW_ER_UNKNOWN_QUANTITY_LABEL", "const WW_ER_ORIGIN_MAX_SPANS", "const WW_ER_RELAYOUT_DEBOUNCE_MS", "const WW_ER_TIME_AXIS_TITLE",
             "const WW_ER_OUTLIER_GAP_FRACTION",
         ]
 
@@ -1067,3 +1068,44 @@ class TestEventReconstructionYAxisDragZoom:
         assert "wwErApplyViewport(plot.fitAll);" in reset
         fit = _between(source, "function wwErFitRecord() {", "\n        }\n")
         assert "manual" not in fit and "autoscaleYPending" not in fit  # Fit Record is X only
+
+
+class TestEventReconstructionTimeDisplay:
+    """DEC-135: Relative / Absolute time display -- labels only; reconstruction
+    seconds stay the internal coordinate; Absolute = the backend's
+    reconstruction_zero_time_utc + r, in the display timezone (DEC-122),
+    precision-safe."""
+
+    def test_default_relative_and_backend_anchor(self):
+        source = _source()
+        assert 'timeDisplay: "relative",' in _between(source, "const wwErState = {", "};")
+        zero = _between(source, "function wwErAbsoluteZero() {", "\n        }\n")
+        assert "wwErState.definition.reconstruction_zero_time_utc" in zero
+        instant = _between(source, "function wwErAbsoluteInstant(zero, r) {", "\n        }\n")
+        assert "const t = zero.fraction + r;" in instant and "epochSecond: zero.epochSecond + whole" in instant
+
+    def test_calendar_from_the_display_timezone_whole_seconds_only(self):
+        source = _source()
+        clock = _between(source, "function wwErWallClock(epochSecond) {", "\n        }\n")
+        assert "wwDisplayWallClockFormatter().formatToParts(new Date(epochSecond * 1000))" in clock
+        block = _between(source, "// ---- Relative / Absolute time display (DEC-135) ----", "function wwErTimeAxisRelayout(viewport, origin)")
+        for forbidden in ("getHours", "getMinutes", "toLocale", "getTimezoneOffset", "Date.now", "new Date(epochSecond * 1000 +"):
+            assert forbidden not in block
+
+    def test_switching_is_presentation_only(self):
+        source = _source()
+        switch = _between(source, "function wwErSetTimeDisplay(mode) {", "function wwErSyncTimeDisplayButtons()")
+        assert "Plotly.relayout(panel.chartEl, wwErTimeAxisRelayout(plot.viewport, plot.origin));" in switch
+        for forbidden in ("wwErLoadTrace", "wwErRefreshCursorValues", "wwErApplyViewport", "fetch(", "viewport =", "cursors", "autoscaleYPending", "wwErRefresh("):
+            assert forbidden not in switch
+        # Trace x stays origin-relative reconstruction time; customdata numeric.
+        build = _between(source, "function wwErBuildTrace(trace) {", "function wwErLegendChipHtml(trace)")
+        assert "x: trace.reconstructionTime.map((r) => wwErReconstructionToPlotX(r, origin))," in build
+        assert "customdata: trace.reconstructionTime," in build and "text: wwErHoverTexts(trace)," in build
+
+    def test_cursor_delta_stays_a_duration(self):
+        source = _source()
+        readout = _between(source, "function wwErSyncCursorReadout() {", "\n        }\n")
+        assert "wwErFormatCursorDelta(shown.b - shown.a)" in readout
+        label = _between(source, "function wwErCursorTimeLabel(seconds) {", "\n        }\n")
+        assert "wwErFormatAbsoluteClock(wwErAbsoluteInstant(zero, seconds), 6)" in label

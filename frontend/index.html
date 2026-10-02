@@ -5461,6 +5461,7 @@
         .ww-er-member-tree table.channels td:first-child { width: 100%; max-width: 0; }
         .ww-toolbar .theme-toggle.ww-icon-group.ww-er-view-mode button { width: auto; padding: 0 10px; font-size: 0.72rem; }
         .ww-toolbar .theme-toggle.ww-icon-group.ww-er-view-mode button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .ww-toolbar .ww-er-toolbar-label { font-size: 0.72rem; color: var(--text-dim); margin-left: 4px; }
         .ww-er-panel .ww-error { white-space: pre-line; }
         .ww-er-cursor-close {
             appearance: none;
@@ -9210,6 +9211,13 @@
                         <div class="theme-toggle ww-icon-group ww-er-view-mode" id="wwErViewModeToggle" role="group" aria-label="Event Reconstruction view">
                             <button type="button" id="wwErViewGroupedBtn" aria-pressed="true" title="Grouped Measurement View: channels with the same quantity and unit share a panel">Grouped</button>
                             <button type="button" id="wwErViewCombinedBtn" aria-pressed="false" title="Combined Multi-Axis View: every channel in one panel, one Y axis per quantity and unit">Combined</button>
+                        </div>
+                        <!-- DEC-135: X-axis time display. Labels only; the internal
+                             coordinate stays reconstruction seconds (wwErSetTimeDisplay()). -->
+                        <span class="ww-er-toolbar-label" id="wwErTimeDisplayLabel">Time</span>
+                        <div class="theme-toggle ww-icon-group ww-er-view-mode" id="wwErTimeDisplayToggle" role="group" aria-labelledby="wwErTimeDisplayLabel">
+                            <button type="button" id="wwErTimeRelativeBtn" aria-pressed="true" title="Relative: time relative to the reconstruction reference">Relative</button>
+                            <button type="button" id="wwErTimeAbsoluteBtn" aria-pressed="false" title="Absolute: reconstructed recorded wall-clock time, including timing corrections (display timezone)">Absolute</button>
                         </div>
                     </div>
                     <div id="wwErViewArea">
@@ -14436,6 +14444,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // selection.
         const wwErState = {
             dragMode: "zoom",
+            // X-axis time display (DEC-135): "relative" (reconstruction
+            // seconds, the default) | "absolute" (the reconstructed
+            // wall-clock instant of the same point). Labels only -- the
+            // internal coordinate is always reconstruction seconds.
+            timeDisplay: "relative",
             sources: [],
             records: [],
             definition: null,
@@ -15151,6 +15164,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_ER_COMBINED_AXIS_ADVISORY = 4;
         // Y-axis title size (px), Grouped and Combined alike.
         const WW_ER_Y_AXIS_TITLE_FONT_SIZE = 11;
+        // Absolute time display (DEC-135): calendar-friendly tick steps (s),
+        // aligned to the display timezone's wall clock; beyond the list,
+        // whole multiples of its last (28-day) step.
+        const WW_ER_SECONDS_PER_DAY = 24 * 60 * 60;
+        const WW_ER_ABSOLUTE_TICK_STEPS = [
+            1e-6, 2e-6, 5e-6, 1e-5, 2e-5, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5,
+            1, 2, 5, 10, 15, 30,
+            ...[1, 2, 5, 10, 15, 30].map((m) => m * 60),
+            ...[1, 2, 3, 6, 12].map((h) => h * 60 * 60),
+            ...[1, 2, 7, 14, 28].map((d) => d * WW_ER_SECONDS_PER_DAY),
+        ];
+        const WW_ER_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         // The axis-title quantity of a channel whose quantity is unknown --
         // the backend's own engineering_units.UNKNOWN_QUANTITY_LABEL (its
         // display_axis_quantity for such a channel), and the fallback when
@@ -15264,6 +15289,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // value -- so the axis reads true reconstruction time whatever
         // the origin is.
         function wwErTimeAxisTicks(viewport, origin) {
+            const zero = wwErState.timeDisplay === "absolute" ? wwErAbsoluteZero() : null;
+            if (zero) return wwErAbsoluteTimeAxisTicks(viewport, origin, zero);
             const values = wwTickValuesForRange(viewport.start, viewport.end, 7);
             const step = values.length > 1 ? values[1] - values[0] : viewport.end - viewport.start;
             const decimals = wwErTickDecimals(step);
@@ -15272,6 +15299,176 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 tickvals: values.map((value) => wwErReconstructionToPlotX(value, origin)),
                 ticktext: values.map((value) => wwErFormatReconstructionSeconds(value, decimals)),
             };
+        }
+
+        // ---- Relative / Absolute time display (DEC-135) ----
+        //
+        // Reconstruction seconds remain the ONLY internal coordinate
+        // (viewport, Fit All, record extents, cursors, fetch mapping; Plotly
+        // x = r - origin). Absolute is derived for labels and readouts only:
+        //
+        //   absolute(r) = reconstruction_zero_time_utc + r
+        //   reconstruction_zero_time_utc = reference recorded start
+        //                                  + reference correction (backend)
+        //               = record recorded start + correction(record)
+        //                 + source elapsed, for a point of any record
+        //
+        // so a physical sample keeps its absolute instant whichever record is
+        // the reference, and a correction moves its record's absolute
+        // placement by exactly that correction. The instant is carried as an
+        // integer epoch second plus a float fraction (float64 at the scale
+        // of r, so 200 µs steps survive even 87 days out); the calendar
+        // fields come from the display timezone (DEC-122,
+        // wwDisplayWallClockFormatter()) for WHOLE seconds only -- the
+        // fraction never passes through a Date, and no browser-local zone
+        // is ever used.
+
+        // A canonical "...Z" instant -> { epochSecond, fraction } from its
+        // exact digits; null when absent or not a UTC instant.
+        function wwErParseInstant(iso) {
+            const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?Z$/.exec(iso || "");
+            if (!m) return null;
+            return {
+                epochSecond: Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6])) / 1000,
+                fraction: m[7] ? Number("0." + m[7]) : 0,
+            };
+        }
+
+        // The absolute instant of reconstruction time 0, from the backend
+        // definition; null when placements (and so the anchor) are
+        // unavailable -- Absolute then falls back to Relative labels and is
+        // not offered; nothing is invented.
+        function wwErAbsoluteZero() {
+            return wwErState.definition ? wwErParseInstant(wwErState.definition.reconstruction_zero_time_utc) : null;
+        }
+
+        function wwErAbsoluteInstant(zero, r) {
+            const t = zero.fraction + r;
+            const whole = Math.floor(t);
+            return { epochSecond: zero.epochSecond + whole, fraction: t - whole };
+        }
+
+        // Display-timezone wall-clock fields of a WHOLE epoch second.
+        function wwErWallClock(epochSecond) {
+            const parts = {};
+            for (const part of wwDisplayWallClockFormatter().formatToParts(new Date(epochSecond * 1000))) parts[part.type] = part.value;
+            return {
+                date: Number(parts.day) + " " + WW_ER_MONTHS[Number(parts.month) - 1] + " " + parts.year,
+                hour: parts.hour, minute: parts.minute, second: parts.second,
+                secondOfDay: (Number(parts.hour) * 60 + Number(parts.minute)) * 60 + Number(parts.second),
+            };
+        }
+
+        // An instant as wall-clock text with `digits` fraction digits
+        // (rounded with carry), plus its date: { text, date }.
+        function wwErFormatAbsoluteClock(instant, digits, withSeconds = true) {
+            const scale = Math.pow(10, digits);
+            let units = Math.round(instant.fraction * scale);
+            let epochSecond = instant.epochSecond;
+            if (units >= scale) {
+                epochSecond += 1;
+                units -= scale;
+            }
+            const clock = wwErWallClock(epochSecond);
+            let text = clock.hour + ":" + clock.minute;
+            if (withSeconds) text += ":" + clock.second + (digits > 0 ? "." + String(units).padStart(digits, "0") : "");
+            return { text, date: clock.date };
+        }
+
+        // Absolute X ticks: a calendar-friendly step for ~7 ticks, aligned
+        // to the display timezone's wall clock (steps up to a day divide it;
+        // longer steps start at a local midnight). Labels: wall-clock time
+        // with as many fraction digits as the step needs (µs at most;
+        // HH:MM from one minute up), the date under the first tick and
+        // under every tick where the date changes (so midnight and 87-day
+        // spans are never ambiguous); a step of a day or more shows dates.
+        // Tick values stay reconstruction seconds, drawn at r - origin.
+        function wwErAbsoluteTimeAxisTicks(viewport, origin, zero) {
+            const span = viewport.end - viewport.start;
+            const rawStep = span / 6;
+            const day = WW_ER_SECONDS_PER_DAY;
+            const longest = WW_ER_ABSOLUTE_TICK_STEPS[WW_ER_ABSOLUTE_TICK_STEPS.length - 1];
+            const step = WW_ER_ABSOLUTE_TICK_STEPS.find((candidate) => candidate >= rawStep) || Math.ceil(rawStep / longest) * longest;
+            const startInstant = wwErAbsoluteInstant(zero, viewport.start);
+            const secondOfDay = wwErWallClock(startInstant.epochSecond).secondOfDay + startInstant.fraction;
+            const align = Math.min(step, day);
+            const first = viewport.start + (Math.ceil(secondOfDay / align - 1e-9) * align - secondOfDay);
+            const values = [];
+            for (let k = 0; values.length < 40; k++) {
+                const r = first + k * step;
+                if (r > viewport.end + step * 1e-9) break;
+                values.push(r);
+            }
+            const digits = step < 1 ? Math.min(6, Math.max(1, Math.ceil(-Math.log10(step) - 1e-9))) : 0;
+            let previousDate = null;
+            const ticktext = values.map((r) => {
+                const label = wwErFormatAbsoluteClock(wwErAbsoluteInstant(zero, r), digits, step < 60);
+                if (step >= day) return label.date;
+                const text = label.date !== previousDate ? label.text + "<br>" + label.date : label.text;
+                previousDate = label.date;
+                return text;
+            });
+            return {
+                tickmode: "array",
+                tickvals: values.map((value) => wwErReconstructionToPlotX(value, origin)),
+                ticktext,
+            };
+        }
+
+        // Absolute hover text per sample ("27 Jul 2022 12:41:48.559912"),
+        // or null in Relative (the hover then reads the numeric
+        // reconstruction time from customdata, which always stays numeric).
+        // The calendar lookup is cached per whole second.
+        function wwErHoverTexts(trace) {
+            const zero = wwErState.timeDisplay === "absolute" ? wwErAbsoluteZero() : null;
+            if (!zero) return null;
+            const cache = new Map();
+            return trace.reconstructionTime.map((r) => {
+                const instant = wwErAbsoluteInstant(zero, r);
+                let units = Math.round(instant.fraction * 1e6);
+                let epochSecond = instant.epochSecond;
+                if (units >= 1e6) {
+                    epochSecond += 1;
+                    units -= 1e6;
+                }
+                let clock = cache.get(epochSecond);
+                if (!clock) {
+                    clock = wwErWallClock(epochSecond);
+                    cache.set(epochSecond, clock);
+                }
+                return clock.date + " " + clock.hour + ":" + clock.minute + ":" + clock.second + "." + String(units).padStart(6, "0");
+            });
+        }
+
+        // Relative <-> Absolute (DEC-135): labels only. X viewport, Fit All,
+        // origin, cursors, Y state, active record, view mode, drag mode and
+        // all fetched data stay exactly as they are; nothing is refetched
+        // (traces, envelopes, cursor values). Relabels ticks, hover text and
+        // the cursor readout.
+        function wwErSetTimeDisplay(mode) {
+            if (mode === wwErState.timeDisplay || (mode === "absolute" && !wwErAbsoluteZero())) return;
+            wwErState.timeDisplay = mode;
+            wwErSyncTimeDisplayButtons();
+            const plot = wwErState.plot;
+            for (const panel of plot.panels) {
+                if (!panel.plotlyReady || !plot.viewport) continue;
+                Plotly.relayout(panel.chartEl, wwErTimeAxisRelayout(plot.viewport, plot.origin));
+                if (panel.traces.length) {
+                    Plotly.restyle(panel.chartEl, {
+                        text: panel.traces.map(wwErHoverTexts),
+                        hovertemplate: panel.traces.map(wwErHoverTemplate),
+                    }, panel.traces.map((_, index) => index));
+                }
+            }
+            wwErSyncCursorReadout();
+        }
+
+        function wwErSyncTimeDisplayButtons() {
+            const absolute = wwErState.timeDisplay === "absolute";
+            document.getElementById("wwErTimeRelativeBtn").setAttribute("aria-pressed", String(!absolute));
+            const absoluteBtn = document.getElementById("wwErTimeAbsoluteBtn");
+            absoluteBtn.setAttribute("aria-pressed", String(absolute));
+            absoluteBtn.disabled = !absolute && !wwErAbsoluteZero();
         }
 
         function wwErTimeAxisRelayout(viewport, origin) {
@@ -15532,7 +15729,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Plain text for Plotly's hover box (escaped; Plotly renders the
         // <extra> part as pseudo-HTML).
         function wwErHoverTemplate(trace) {
-            return "%{customdata:.6f} s: %{y}" + (trace.unit ? " " + escapeHtml(trace.unit) : "") +
+            const time = wwErState.timeDisplay === "absolute" && wwErAbsoluteZero() ? "%{text}" : "%{customdata:.6f} s";
+            return time + ": %{y}" + (trace.unit ? " " + escapeHtml(trace.unit) : "") +
                 "<extra>" + escapeHtml(wwErTraceLabelText(trace)) + "</extra>";
         }
 
@@ -15553,6 +15751,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }), {
                 // Its display axis in this panel ("y" in a Grouped panel).
                 yaxis: trace.yRef,
+                // Absolute hover labels (DEC-135); null in Relative.
+                text: wwErHoverTexts(trace),
             });
         }
 
@@ -16071,6 +16271,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 x: [trace.reconstructionTime.map((r) => wwErReconstructionToPlotX(r, origin))],
                 y: [trace.values],
                 customdata: [trace.reconstructionTime],
+                text: [wwErHoverTexts(trace)],
                 hovertemplate: [wwErHoverTemplate(trace)],
             }, [index]);
         }
@@ -16366,6 +16567,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("wwErZoomOutBtn").disabled = !plotted || plot.atFitAll;
             document.getElementById("wwErResetViewBtn").disabled = !plotted;
             document.getElementById("wwErAutoscaleYBtn").disabled = !plotted;
+            wwErSyncTimeDisplayButtons();
             const fit = wwErFitRecordTarget();
             const fitBtn = document.getElementById("wwErFitRecordBtn");
             fitBtn.disabled = !fit.range;
@@ -16455,6 +16657,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwErFormatCursorTime(seconds) {
             if (!Number.isFinite(seconds)) return "—";
             return (seconds < 0 ? "-" : "+") + Math.abs(seconds).toFixed(6) + " s";
+        }
+
+        // A cursor point in the current time display: Relative signed
+        // reconstruction seconds; Absolute wall-clock time with µs digits
+        // (200 µs samples and sub-ms corrections stay visible) and its date.
+        // Δt is always a duration (wwErFormatCursorDelta()).
+        function wwErCursorTimeLabel(seconds) {
+            const zero = wwErState.timeDisplay === "absolute" ? wwErAbsoluteZero() : null;
+            if (!zero || !Number.isFinite(seconds)) return { text: wwErFormatCursorTime(seconds), date: null };
+            return wwErFormatAbsoluteClock(wwErAbsoluteInstant(zero, seconds), 6);
         }
 
         // Δt = B - A: µs / ms (wwFormatCursorDuration(), as Waveform) below
@@ -16569,8 +16781,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const readout = document.getElementById("wwErCursorReadout");
             const shown = wwErShownCursorTimes();
             readout.hidden = !wwErState.plot.cursors.enabled || wwErState.plot.panels.length === 0;
-            document.getElementById("wwErCursorReadoutA").textContent = wwErFormatCursorTime(shown.a);
-            document.getElementById("wwErCursorReadoutB").textContent = wwErFormatCursorTime(shown.b);
+            const a = wwErCursorTimeLabel(shown.a);
+            const b = wwErCursorTimeLabel(shown.b);
+            // Absolute: the date is prefixed when A and B fall on different
+            // dates; the tooltip always carries date and display timezone.
+            const dated = a.date && b.date && a.date !== b.date;
+            for (const [kind, label] of [["A", a], ["B", b]]) {
+                const el = document.getElementById("wwErCursorReadout" + kind);
+                el.textContent = (dated ? label.date + " " : "") + label.text;
+                el.title = label.date ? label.date + " " + label.text + " (" + wwDisplayTimezone() + ")" : "";
+            }
             document.getElementById("wwErCursorReadoutDelta").textContent =
                 shown.a !== null && shown.b !== null ? wwErFormatCursorDelta(shown.b - shown.a) : "—";
             document.getElementById("wwErCursorCloseA").hidden = shown.a === null;
@@ -50374,6 +50594,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // DEC-132: Grouped / Combined view mode (presentation only).
         document.getElementById("wwErViewGroupedBtn").addEventListener("click", () => wwErSetViewMode("grouped"));
         document.getElementById("wwErViewCombinedBtn").addEventListener("click", () => wwErSetViewMode("combined"));
+        // DEC-135: Relative / Absolute time display (labels only).
+        document.getElementById("wwErTimeRelativeBtn").addEventListener("click", () => wwErSetTimeDisplay("relative"));
+        document.getElementById("wwErTimeAbsoluteBtn").addEventListener("click", () => wwErSetTimeDisplay("absolute"));
         // Slice 3E: Event Reconstruction's own A/B cursors.
         document.getElementById("wwErCursorModeBtn").addEventListener("click", wwErToggleCursors);
         document.getElementById("wwErCursorCloseA").addEventListener("click", () => wwErCloseCursor("a"));

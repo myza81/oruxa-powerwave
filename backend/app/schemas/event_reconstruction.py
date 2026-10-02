@@ -157,12 +157,19 @@ class ReconstructionOut(BaseModel):
     """`defined: false` (with empty lists) when the workspace has no
     reconstruction yet. `status` is `ready` or `stale`; `stale` means at
     least one member record was removed. `placements_available` is
-    `false` while the reference record is stale."""
+    `false` while the reference record is stale.
+
+    `reconstruction_zero_time_utc` (additive) is the absolute instant of
+    reconstruction time 0 -- the reference's recorded start plus its own
+    correction -- so `absolute = reconstruction_zero_time_utc + x` for any
+    reconstruction time x (Relative / Absolute time display). `null` when
+    placements are unavailable."""
 
     defined: bool
     status: str | None
     reference_record_id: str | None
     reference_origin_start_time_utc: datetime | None
+    reconstruction_zero_time_utc: datetime | None
     placements_available: bool
     large_gap_warning_threshold_s: float
     members: list[ReconstructionMemberOut]
@@ -176,6 +183,7 @@ class ReconstructionOut(BaseModel):
             status=view.status,
             reference_record_id=view.reference_record_id,
             reference_origin_start_time_utc=view.reference_origin_start_time_utc,
+            reconstruction_zero_time_utc=view.reconstruction_zero_time_utc,
             placements_available=view.placements_available,
             large_gap_warning_threshold_s=view.large_gap_warning_threshold_s,
             members=[ReconstructionMemberOut.from_view(m) for m in view.members],

@@ -35,6 +35,7 @@ from app.domain.event_reconstruction import (
     large_gaps,
     reconstruction_eligibility,
     reconstruction_offset_s,
+    reconstruction_zero_instant,
     recorded_placement_s,
     total_reconstruction_offset_s,
 )
@@ -239,6 +240,9 @@ class ReconstructionView:
     status: str | None
     reference_record_id: str | None
     reference_origin_start_time_utc: datetime | None
+    # Absolute instant of reconstruction time 0 (reference recorded start +
+    # reference correction); `None` whenever placements are unavailable.
+    reconstruction_zero_time_utc: datetime | None
     placements_available: bool
     large_gap_warning_threshold_s: float
     members: list[ReconstructionMemberView] = field(default_factory=list)
@@ -333,6 +337,12 @@ def _build_view(
         status=RECONSTRUCTION_STATUS_READY if all_current else RECONSTRUCTION_STATUS_STALE,
         reference_record_id=reference.record_id,
         reference_origin_start_time_utc=reference_timing.origin_start.astimezone(timezone.utc) if placements_available else None,
+        reconstruction_zero_time_utc=(
+            reconstruction_zero_instant(
+                reference_origin_start=reference_timing.origin_start, reference_correction_s=reference.correction_s
+            ).astimezone(timezone.utc)
+            if placements_available else None
+        ),
         placements_available=placements_available,
         large_gap_warning_threshold_s=threshold_s,
         members=member_views,
@@ -344,6 +354,7 @@ def _build_view(
 def _undefined_view(threshold_s: float) -> ReconstructionView:
     return ReconstructionView(
         defined=False, status=None, reference_record_id=None, reference_origin_start_time_utc=None,
+        reconstruction_zero_time_utc=None,
         placements_available=False, large_gap_warning_threshold_s=threshold_s,
     )
 

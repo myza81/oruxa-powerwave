@@ -4,9 +4,36 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-02** (Event Reconstruction Fit Record)
+Last updated: **2026-10-02** (Event Reconstruction Relative / Absolute time display)
 
 ## What was most recently done
+
+**Event Reconstruction Relative / Absolute time display (DEC-135,
+2026-10-02).** The feature is not complete.
+
+- **Labels only.** A toolbar control, "Time [Relative | Absolute]"
+  (default Relative). Reconstruction seconds stay the internal
+  coordinate, and nothing is refetched on a switch.
+- **Anchor.** The backend adds `reconstruction_zero_time_utc` =
+  reference recorded start + reference correction, so
+  `absolute(r) = zero + r` = record start + its correction + elapsed.
+  - Reference switches never change a sample's absolute time.
+  - Corrections shift their own record; tested with 3 records and every
+    reference choice.
+- **Display.** The display timezone (DEC-122), with no browser-local
+  zone and precision-safe integer seconds + fraction. Ticks are adaptive
+  (µs … dates), with the date at the first tick and where it changes.
+  Hover and cursor readouts carry µs; Δt stays a duration.
+- **Real data (YGPN).** Absolute ticks, cursors and hover were identical
+  before and after a BTGH→BAHS reference switch; the 87-day Fit All is
+  date-labelled.
+- **Tests.**
+  - `event-reconstruction-time-display.spec.js` (5).
+  - Backend `test_event_reconstruction_absolute_time.py` (5).
+  - Static `TestEventReconstructionTimeDisplay` (4).
+- **Next.** Owner UAT of the whole Event Reconstruction branch.
+
+## Earlier — Event Reconstruction individual Y-axis drag zoom
 
 **Event Reconstruction individual Y-axis drag zoom (DEC-134,
 2026-10-02).** The feature is not complete.
@@ -35,8 +62,8 @@ Last updated: **2026-10-02** (Event Reconstruction Fit Record)
 - **Tests.**
   - `event-reconstruction-yaxis-zoom.spec.js` (7).
   - Static `TestEventReconstructionYAxisDragZoom` (3).
-- **Next.** Owner UAT. Relative/Absolute time display stays planned and
-  not started.
+- **Next (then).** Owner UAT. Relative/Absolute time display followed in
+  DEC-135.
 
 ## Earlier — Event Reconstruction Fit Record
 
