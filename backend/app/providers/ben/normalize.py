@@ -53,6 +53,7 @@ _PARAMETER_TYPES = {
     "current": "current",
     "frequency": "frequency",
     "active_power": "active power",
+    "reactive_power": "reactive power",
 }
 
 

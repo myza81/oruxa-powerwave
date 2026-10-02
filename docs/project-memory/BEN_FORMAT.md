@@ -148,8 +148,19 @@ two structural-only files — see §4.
 - **UTC.** The stored trigger time is UTC; the +08:00 is the export PC's
   zone. No timezone field was found in BEN.
 - **Unit codes.** They coincide with IEC 61850-7-3 SIUnit numbering (5 A,
-  29 V, 33 Hz, 38 W). Only those four codes and the multipliers 0/3/6 are
-  mapped. Any other code leaves the unit unknown, with a diagnostic.
+  29 V, 33 Hz, 38 W, 63 VAr). Only those five codes and the multipliers
+  0/3/6 are mapped. Any other code leaves the unit unknown, with a
+  diagnostic.
+  - **63 = VAr (reactive power), validated 2026-10-02** against BEN32's
+    own `.prn` export rather than a COMTRADE pair. The `.prn` of the JMHE
+    U1 Slow record labels its code-63 channel (`R.POWER UNIT NO.1`)
+    `MVAr`, and all 3 500 decoded samples of all four value channels
+    equal the export to its printed 5 significant digits.
+  - The decoded symbol is Powerwave's canonical spelling `var`, so
+    multiplier 6 reads `Mvar`. This is the same unit BEN32 spells `MVAr`.
+  - The channel's measurement kind is `reactive_power`, normalized as
+    parameter type "reactive power" (broad type Power). Scaling is
+    unchanged.
 - **Constant binaries.** The mapping is taken from descriptors. Channels
   that never change in a test file are consistent with the mapping but
   do not confirm it uniquely.
@@ -212,6 +223,8 @@ holds their names, sizes, SHA-256 and expected structure.
 | `BTGH Slow Ben time124150134.ben` | Slow | 20 | 1 401 | 400 | 12 / 12 | 30 | 8 259 | matched |
 | `PMJY Slow Sampling time124937632.ben` | Slow | 20 | 1 018 | 400 | 12 / 12 | 30 | 8 210 | none (structural) |
 | `BEN BPHE 27 JULY 2022 12.41.46.ben`, `GPTH 275.ben` | older layout | — | — | — | — | — | — | rejected |
+| `JMHE U1_251015_161236973.ben` | Slow | 50 | 3 500 | 500 | 4 / 18 | — | — | none; BEN32 `.prn` export matched (unit code 63) |
+| `JMHE U2_251015_161236967.ben`, `SPG U1_251015_161232299.ben`, `PCGP Machines_251015_161233304.ben` | Slow | 50 / 20 / 50 | 3 500 / 1 200 / 8 033 | 500 / 200 / 500 | 4 / 18, 3 / 5, 24 / 43 | — | — | none (unit code 63, structural) |
 
 Notes:
 - `AGJH 275kv slow ben time124150016.cfg/.dat` is a **different event**
@@ -246,6 +259,10 @@ Notes:
   - Files are found recursively by name and used only when the SHA-256
     matches.
   - It checks every sample of every channel of the matched pairs.
+  - The unit-code-63 records (role `reactive_power_unit_code`) pin their
+    structure and full diagnostic set, and decode their code-63 channels
+    as `Mvar` / reactive power. JMHE U1 is also compared sample by sample
+    with its BEN32 `.prn` export.
 
 ## 6. Open items
 

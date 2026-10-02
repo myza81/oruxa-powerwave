@@ -54,8 +54,16 @@ Last updated: **2026-10-02** (Event Reconstruction Combined Multi-Axis View)
   - Such an axis is now titled "Unknown quantity" (backend
     `UNKNOWN_QUANTITY_LABEL`); grouping is unchanged.
   - New regression test: title ↔ Plotly axis ↔ scale ↔ traces.
-  - Owner decision pending: validate BEN code 63 as VAr (BEN32's `.prn`
-    export says MVAr, and the values match).
+- **BEN unit code 63 (follow-up commit).**
+  - Validated as VAr (owner-approved): code 63 → `var` base symbol →
+    `Mvar` at multiplier 6 → Reactive Power.
+  - `unknown_unit_code` is gone for 63 only; decoded values are
+    unchanged.
+  - JMHE U1 matches its BEN32 `.prn` sample by sample (5 significant
+    digits).
+  - The JMHE U1/U2, SPG U1 and PCGP records are added to the opt-in
+    reference manifest.
+  - Unknown-quantity axes with one channel are now titled after it.
 - **Next.** Owner UAT of Combined. Mixed-duration navigation is still
   `[OPEN / UAT]`.
 

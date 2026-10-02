@@ -276,6 +276,21 @@ not perform a calculation. The same key decides a Grouped panel
   titled `UNKNOWN_QUANTITY_LABEL` ("Unknown quantity"), never the
   `Undefined` sentinel. Its key still uses the sentinel, so grouping is
   unchanged.
+- **Unknown-axis titles (Event Reconstruction).** An axis of unknown
+  quantity that carries exactly one channel is titled after that
+  channel's Waveform-owned display name:
+  - "Unknown quantity — CHANNEL X";
+  - "Unknown quantity (deg) — ANGLE X".
+
+  A channel without a unit never shares an axis, so this always applies
+  to it. A shared unknown axis (same exact unit) keeps "Unknown quantity
+  (deg)", and its legend lists the channels. This is display only: no
+  name is ever used for grouping or classification.
+- **BEN reactive power.** BEN unit code 63 is validated as VAr
+  ([BEN_FORMAT.md](BEN_FORMAT.md)) and decodes to the canonical spelling
+  (`Mvar` at multiplier 6). Such channels therefore resolve to
+  `Reactive Power|Mvar` through the existing alias table. The table
+  itself is unchanged.
 
 It is exposed as the additive computed fields `display_axis_key` /
 `display_axis_quantity` / `display_axis_unit` on the channel and

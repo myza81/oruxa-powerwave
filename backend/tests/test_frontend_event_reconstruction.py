@@ -797,8 +797,13 @@ class TestEventReconstructionGroupedView:
         for body in (axis, groups):
             for forbidden in (".test(", ".match(", "toLowerCase", "toUpperCase", "indexOf(\"k", "channelName.", "name.includes"):
                 assert forbidden not in body
-        title = _between(source, "function wwErAxisTitle(axis) {", "\n        }\n")
-        assert '(axis.quantity || WW_ER_UNKNOWN_QUANTITY_LABEL) + (axis.unit ? " (" + axis.unit + ")" : "")' in title
+        title = _between(source, "function wwErAxisTitle(axis, traces) {", "\n        }\n")
+        assert 'const title = (axis.quantity || WW_ER_UNKNOWN_QUANTITY_LABEL) + (axis.unit ? " (" + axis.unit + ")" : "");' in title
+        # An unknown-quantity axis with one channel is named after it, with
+        # the Waveform-owned display name -- display only.
+        assert "if (!axis.unknown || !traces || traces.length !== 1) return title;" in title
+        assert 'return title + " — " + wwChannelDisplayName(traces[0].sourceId, traces[0].channelName);' in title
+        assert "unknown: !channel.display_axis_quantity || channel.display_axis_quantity === WW_ER_UNKNOWN_QUANTITY_LABEL," in axis
         # The title quantity is the backend's; never a classification
         # sentinel or broad type copied in by the frontend.
         assert "quantity: channel.display_axis_quantity || null," in axis
@@ -808,7 +813,8 @@ class TestEventReconstructionGroupedView:
         # from an axis quantity.
         module = _er_module(source)
         assert module.count(".quantity") == title.count(".quantity")
-        for use in ("{ text: wwErAxisTitle(axis.axis) }", ": wwErAxisTitle(panel.axes[0].axis);", "escapeHtml(wwErAxisTitle(axis.axis))"):
+        for use in ("{ text: wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index)) }", ": wwErAxisTitle(panel.axes[0].axis, panel.traces);",
+                    "escapeHtml(wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index)))"):
             assert use in module
 
     def test_each_trace_fetches_and_maps_independently(self):
@@ -894,7 +900,7 @@ class TestEventReconstructionCombinedView:
     def test_empty_axis_keeps_its_title_and_shows_no_invented_values(self):
         source = _source()
         layout = _between(source, "function wwErPanelLayout(panel) {", "function wwErInitPanelPlot(panel)")
-        assert "title: panel.combined ? { text: wwErAxisTitle(axis.axis) } : (axis.axis.unit || \"\")," in layout
+        assert "title: panel.combined ? { text: wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index)) } : (axis.axis.unit || \"\")," in layout
         assert "yaxis.showticklabels = !axis.autoscaleYPending || wwErAxisHasData(panel, index);" in layout
         apply = _between(source, "async function wwErApplyPendingAutoscaleY(panel) {", "\n        }\n")
         assert 'if (panel.combined) fixed[axis.placement.layoutKey + ".showticklabels"] = hasData;' in apply
@@ -943,7 +949,7 @@ class TestEventReconstructionCombinedView:
     def test_legend_is_per_trace_organised_by_axis(self):
         legend = _between(_source(), "function wwErRenderPanelLegend(panel) {", "function wwErCreateTrace(item)")
         assert "panel.traces.filter((trace) => trace.axisIndex === index).map(wwErLegendChipHtml)" in legend
-        assert "escapeHtml(wwErAxisTitle(axis.axis))" in legend
+        assert "escapeHtml(wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index)))" in legend
         for forbidden in ("dash", "dot"):
             assert forbidden not in _between(_source(), "function wwErBuildTrace(trace) {", "function wwErLegendChipHtml(trace)")
 

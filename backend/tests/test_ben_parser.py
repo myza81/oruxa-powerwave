@@ -551,3 +551,78 @@ def test_unvalidated_unit_code_leaves_the_unit_unknown():
 def test_clean_record_reports_only_duplicate_names():
     record, _, _ = _parse(_fast())
     assert _codes(record) == {"duplicate_channel_names"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Unit code 63 -- reactive power (VAr), validated against BEN32's own export
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _slow_with_reactive_power(reactive_unit_code: int = 63) -> SynthBen:
+    """The shape of the JMHE / SPG / PCGP Slow records: MW, two code-63
+    reactive-power channels (multiplier 6) and Hz, as calculated channels."""
+    n = 30
+    words = np.zeros((n, 6), dtype=np.uint16)
+    i = np.arange(n)
+    words[:, 0] = to_word(i * 3 - 40)  # MW
+    words[:, 1] = to_word(i * 7 - 90)  # Mvar
+    words[:, 3] = to_word(-(i * 5) + 12)  # Mvar
+    words[:, 4] = to_word((i - 15) * 20)  # Hz
+    words[:, 2] = active_low((i >= 12).astype(np.uint16)) << 4
+    return SynthBen(
+        record_class="slow",
+        rate_field=50_000,
+        pre_trigger=8,
+        words_per_sample=6,
+        values=[
+            SynthValue(12000, "POWER UNIT NO.1", word=0, unit_code=38, multiplier=6, phase_code=0, quantity_code=14, scale=2.25),
+            SynthValue(12001, "R.POWER UNIT NO.1", word=1, unit_code=reactive_unit_code, multiplier=6, phase_code=0, quantity_code=14, scale=0.18183),
+            SynthValue(12002, "R.POWER  GSU 12UBF", word=3, unit_code=reactive_unit_code, multiplier=6, phase_code=0, quantity_code=14, scale=0.0625, offset=-1.5),
+            SynthValue(12003, "FREQ UR UNIT NO.1", word=4, unit_code=33, multiplier=0, phase_code=1, quantity_code=14, scale=0.0005, offset=50.0),
+        ],
+        digitals=[SynthDigital("derived", 20060, "FREQ UR UNIT NO.1", word=2, bit=4, source_channel_id=12003)],
+        samples=words,
+    )
+
+
+def test_unit_code_63_is_validated_as_reactive_power():
+    record, _, _ = _parse(_slow_with_reactive_power())
+    power, reactive_1, reactive_2, freq = record.value_channels
+    for channel in (reactive_1, reactive_2):
+        assert (channel.unit_code, channel.unit_multiplier_exponent) == (63, 6)
+        assert (channel.base_unit, channel.unit, channel.measurement) == ("var", "Mvar", "reactive_power")
+    assert (power.unit, freq.unit) == ("MW", "Hz")
+    assert "unknown_unit_code" not in _codes(record)
+
+
+def test_unit_code_63_leaves_every_decoded_value_unchanged():
+    validated, _, _ = _parse(_slow_with_reactive_power(63))
+    unvalidated, _, _ = _parse(_slow_with_reactive_power(30))  # the pre-fix state: unit unknown
+    assert [c.unit for c in unvalidated.value_channels][1:3] == [None, None]
+    spec = _slow_with_reactive_power()
+    for before, after, word in zip(unvalidated.value_channels, validated.value_channels, (0, 1, 3, 4)):
+        assert (before.scale, before.offset) == (after.scale, after.offset)
+        np.testing.assert_array_equal(validated.raw_values(after), unvalidated.raw_values(before))
+        np.testing.assert_array_equal(validated.engineering_values(after), unvalidated.engineering_values(before))
+        expected_raw = spec.samples[:, word].astype(np.uint16).view(np.int16)
+        np.testing.assert_allclose(validated.engineering_values(after), expected_raw * after.scale + after.offset)
+
+
+def test_unit_code_63_normalizes_into_a_reactive_power_channel():
+    record, _, _ = _parse(_slow_with_reactive_power())
+    dr = to_disturbance_record(record, source_file="slow.ben", nominal_frequency_hz=50.0)
+    assert dr.validate() == []
+    units = {c.name: (c.unit, c.parameter_type) for c in dr.analog_channels}
+    assert units["R.POWER UNIT NO.1"] == ("Mvar", "reactive power")
+    assert units["R.POWER  GSU 12UBF"] == ("Mvar", "reactive power")
+    assert units["POWER UNIT NO.1"] == ("MW", "active power")
+    np.testing.assert_array_equal(
+        dr.waveform_data["R.POWER UNIT NO.1"].to_numpy(), record.engineering_values(record.value_channels[1])
+    )
+
+
+@pytest.mark.parametrize("unit_code", [30, 61, 62, 64])
+def test_other_unvalidated_unit_codes_stay_unknown(unit_code):
+    record, _, _ = _parse(_slow_with_reactive_power(unit_code))
+    assert [c.unit for c in record.value_channels] == ["MW", None, None, "Hz"]
+    assert "unknown_unit_code" in _codes(record)

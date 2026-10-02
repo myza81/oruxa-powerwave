@@ -37,9 +37,15 @@ pytestmark = pytest.mark.ben_reference
 
 MANIFEST = json.loads((Path(__file__).parent / "fixtures" / "ben" / "reference_manifest.json").read_text())
 RECORDS = {entry["id"]: entry for entry in MANIFEST["records"]}
-DECODABLE = [i for i, e in RECORDS.items() if e["role"] != "unsupported_variant"]
+DECODABLE = [i for i, e in RECORDS.items() if e["role"].startswith(("matched", "structural"))]
 MATCHED = [i for i, e in RECORDS.items() if e["role"].startswith("matched")]
 UNSUPPORTED = [i for i, e in RECORDS.items() if e["role"] == "unsupported_variant"]
+#: Slow records carrying BEN unit code 63 (reactive power), validated against
+#: BEN32's own .prn export where one exists. They also carry diagnostics the
+#: structural set excludes (e.g. unreferenced layout entries), so their full
+#: diagnostic set is pinned per record instead.
+REACTIVE = [i for i, e in RECORDS.items() if e["role"] == "reactive_power_unit_code"]
+REACTIVE_WITH_PRN = [i for i in REACTIVE if "prn" in RECORDS[i]]
 
 #: BEN32 renders BEN's UTC trigger instant in the exporting PC's local
 #: time (a naive CFG timestamp); every validated pair was exported at
@@ -379,3 +385,72 @@ def test_ben_and_its_comtrade_export_are_the_same_recording(reference_root, clie
         available = ~np.isnan(ben_values)  # BEN NaN <-> BEN32's raw 99999 export
         np.testing.assert_allclose(ben_values[available], com_values[available], rtol=FLOAT32_REL, atol=1e-9, err_msg=name)
     assert ben["sample_count"] == comtrade["sample_count"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Unit code 63 -- reactive power, against BEN32's own .prn export
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _prn(path: Path) -> tuple[list[str], list[str], np.ndarray]:
+    """A BEN32 .prn export: a "Serial number"/"Sampling Rate" line, a channel
+    name row, a unit row (value channels only), then one row per sample."""
+    import csv
+
+    rows = list(csv.reader(path.read_text().splitlines()))
+    names, units = rows[1], rows[2]
+    return names, units, np.array([[float(x) for x in row[: len(units)]] for row in rows[3:]])
+
+
+@pytest.mark.parametrize("record_id", REACTIVE)
+def test_unit_code_63_records_decode_reactive_power(reference_root, record_id):
+    record, entry = _record(reference_root, record_id)
+    expected = entry["expected"]
+    h = record.header
+    assert (h.station_name, h.recorder_unit_id, h.sampling_rate_hz) == (
+        expected["station_name"], expected["recorder_unit_id"], expected["sampling_rate_hz"])
+    assert (h.sample_count, h.pre_trigger_samples) == (expected["sample_count"], expected["pre_trigger_samples"])
+    assert (len(record.value_channels), len(record.digital_channels)) == (expected["value_channels"], expected["digital_channels"])
+    assert h.trigger_time_utc == datetime.fromisoformat(expected["trigger_time_utc"]).replace(tzinfo=timezone.utc)
+    reactive = [c for c in record.value_channels if c.unit_code == 63]
+    assert [c.name for c in reactive] == expected["reactive_power_channels"]
+    for channel in reactive:
+        assert (channel.unit_multiplier_exponent, channel.unit, channel.measurement) == (6, "Mvar", "reactive_power")
+    # Only unknown_unit_code went away; every other diagnostic is as before.
+    assert sorted({d.code for d in record.diagnostics}) == expected["diagnostics"]
+    assert "unknown_unit_code" not in expected["diagnostics"]
+    dr = to_disturbance_record(record, source_file=entry["ben"]["name"], nominal_frequency_hz=50.0)
+    assert dr.validate() == []
+    # Normalized names are trimmed (DEC-120).
+    wanted = {c.name.strip() for c in reactive}
+    normalized = [c for c in dr.analog_channels if c.name in wanted]
+    assert len(normalized) == len(reactive)
+    assert {(c.unit, c.parameter_type) for c in normalized} == {("Mvar", "reactive power")}
+
+
+@pytest.mark.parametrize("record_id", REACTIVE_WITH_PRN)
+def test_unit_code_63_values_and_units_match_the_ben32_prn_export(reference_root, record_id):
+    record, entry = _record(reference_root, record_id)
+    names, units, prn = _prn(_locate(reference_root, entry["prn"]))
+    assert len(prn) == record.header.sample_count
+    for channel in record.value_channels:
+        column = names.index(channel.name)
+        # BEN32 spells reactive power "MVAr"; Powerwave's canonical spelling
+        # is "Mvar" -- the same unit.
+        assert units[column].lower() == channel.unit.lower()
+        # BEN32 prints 5 significant digits: every sample agrees to that.
+        np.testing.assert_allclose(record.engineering_values(channel), prn[:, column], rtol=5e-5, atol=0)
+
+
+@pytest.mark.parametrize("record_id", REACTIVE)
+def test_unit_code_63_channels_share_one_reactive_power_axis_through_upload(reference_root, client, record_id):
+    entry = RECORDS[record_id]
+    resp = _upload_ben(client, _locate(reference_root, entry["ben"]))
+    assert resp.status_code == 201, resp.text
+    channels = client.get(f"{WS_URL}/{resp.json()['source_id']}/channels").json()["analog_channels"]
+    wanted = {name.strip() for name in entry["expected"]["reactive_power_channels"]}
+    reactive = [c for c in channels if c["name"] in wanted]
+    assert len(reactive) == len(entry["expected"]["reactive_power_channels"])
+    for c in reactive:
+        assert (c["engineering_type"], c["unit"]) == ("Power", "Mvar")
+        assert (c["display_axis_key"], c["display_axis_quantity"], c["display_axis_unit"]) == ("Reactive Power|Mvar", "Reactive Power", "Mvar")

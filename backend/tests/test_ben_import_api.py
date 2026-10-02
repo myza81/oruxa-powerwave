@@ -316,3 +316,50 @@ def test_oversized_ben_is_rejected_without_parsing(settings):
     with TestClient(create_app(small)) as client:
         resp = _upload(client, big)
     assert (resp.status_code, resp.json()["detail"]["code"]) == (413, "upload_too_large")
+
+
+def _reactive_slow_bytes(station_suffix: int = 0) -> bytes:
+    n = 30
+    words = np.zeros((n, 4), dtype=np.uint16)
+    i = np.arange(n)
+    words[:, 0] = to_word(i * 4 - 50)  # MW
+    words[:, 1] = to_word(i * 7 - 90)  # Mvar
+    words[:, 2] = to_word(-(i * 5) + 12 + station_suffix)  # Mvar
+    words[:, 3] = active_low((i >= 15).astype(np.uint16)) << 5
+    spec = SynthBen(
+        record_class="slow",
+        rate_field=50_000,
+        pre_trigger=8,
+        words_per_sample=4,
+        values=[
+            SynthValue(12000, "POWER GSU 12UBF", word=0, unit_code=38, multiplier=6, phase_code=0, quantity_code=14, scale=2.0),
+            SynthValue(12001, "R.POWER  GSU 12UBF", word=1, unit_code=63, multiplier=6, phase_code=0, quantity_code=14, scale=0.18183),
+            SynthValue(12002, "R.POWER GSU 11UBF", word=2, unit_code=63, multiplier=6, phase_code=0, quantity_code=14, scale=0.0625, offset=-1.5),
+        ],
+        digitals=[SynthDigital("derived", 20060, "POWER GSU 12UBF", word=3, bit=5, source_channel_id=12000)],
+        samples=words,
+    )
+    return spec.build()[0], spec
+
+
+def test_ben_reactive_power_channels_share_one_reactive_power_display_axis(client):
+    """Code 63 is classified by its validated unit code -- not by its name --
+    so every code-63 channel resolves to Reactive Power (Mvar) and they
+    share one display axis; values are exactly scale * raw + offset."""
+    data, spec = _reactive_slow_bytes()
+    body = _upload(client, data, name="PCGP like.ben").json()
+    channels = {c["name"]: c for c in client.get(f"{URL}/{body['source_id']}/channels").json()["analog_channels"]}
+    for name in ("R.POWER  GSU 12UBF", "R.POWER GSU 11UBF"):
+        c = channels[name]
+        assert (c["engineering_type"], c["unit"]) == ("Power", "Mvar")
+        assert (c["display_axis_key"], c["display_axis_quantity"], c["display_axis_unit"]) == ("Reactive Power|Mvar", "Reactive Power", "Mvar")
+    assert channels["POWER GSU 12UBF"]["display_axis_key"] == "Active Power|MW"
+    for name, word in (("R.POWER  GSU 12UBF", 1), ("R.POWER GSU 11UBF", 2)):
+        value = next(v for v in spec.values if v.name == name)
+        wave = client.get(f"{URL}/{body['source_id']}/waveform", params={"channel_name": name}).json()
+        raw = spec.samples[:, word].astype(np.uint16).view(np.int16)
+        np.testing.assert_allclose(wave["values"], raw * np.float32(value.scale) + np.float32(value.offset), rtol=1e-6)
+    # A second record's code-63 channel shares the same axis key.
+    other = _upload(client, _reactive_slow_bytes(3)[0], name="JMHE like.ben").json()
+    other_channels = client.get(f"{URL}/{other['source_id']}/channels").json()["analog_channels"]
+    assert {c["display_axis_key"] for c in other_channels if c["name"].startswith("R.POWER")} == {"Reactive Power|Mvar"}

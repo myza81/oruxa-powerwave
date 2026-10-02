@@ -15060,9 +15060,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // advisory notice suggests the Grouped view. Advisory only -- no
         // axis is ever dropped, merged or capped.
         const WW_ER_COMBINED_AXIS_ADVISORY = 4;
-        // An axis title's quantity when the channel's display-axis metadata
-        // is not available (the backend titles a known-unknown quantity the
-        // same way: engineering_units.UNKNOWN_QUANTITY_LABEL).
+        // The axis-title quantity of a channel whose quantity is unknown --
+        // the backend's own engineering_units.UNKNOWN_QUANTITY_LABEL (its
+        // display_axis_quantity for such a channel), and the fallback when
+        // display-axis metadata is not available.
         const WW_ER_UNKNOWN_QUANTITY_LABEL = "Unknown quantity";
         // The origin is kept while the visible window stays within this
         // many spans of it, so ordinary zoom/pan nearby does not rewrite
@@ -15305,13 +15306,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const channel = item.kind === "calculated"
                 ? wwErState.calculatedChannels.find((c) => c.id === item.sourceId)
                 : ((wwErState.channelsBySource[item.sourceId] || {}).analog_channels || []).find((c) => c.name === item.channelName);
-            if (!channel) return { key: null, quantity: null, unit: "", engineeringType: "Undefined" };
+            if (!channel) return { key: null, quantity: null, unknown: true, unit: "", engineeringType: "Undefined" };
             return {
                 key: channel.display_axis_key === undefined ? null : channel.display_axis_key,
                 // The backend's axis-title quantity; never a classification
                 // sentinel or type copied in here (wwErAxisTitle() titles a
                 // missing one).
                 quantity: channel.display_axis_quantity || null,
+                unknown: !channel.display_axis_quantity || channel.display_axis_quantity === WW_ER_UNKNOWN_QUANTITY_LABEL,
                 unit: channel.display_axis_unit || "",
                 engineeringType: channel.engineering_type || "Undefined",
             };
@@ -15380,10 +15382,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // The one title of a display axis -- a Grouped panel's title, a
         // Combined Y axis's title and its legend heading alike: "Active
-        // Power (MW)", "Voltage (kV)", "Unknown quantity" ... from the
-        // backend's axis quantity/unit (DEC-131/DEC-132).
-        function wwErAxisTitle(axis) {
-            return (axis.quantity || WW_ER_UNKNOWN_QUANTITY_LABEL) + (axis.unit ? " (" + axis.unit + ")" : "");
+        // Power (MW)", "Voltage (kV)" ... from the backend's axis
+        // quantity/unit (DEC-131/DEC-132), given the axis's own traces.
+        // An axis of unknown quantity that carries exactly one channel --
+        // always so for a channel without a unit, which never shares an
+        // axis -- is named after it with the Waveform-owned display name
+        // ("Unknown quantity — CHANNEL X", "Unknown quantity (deg) — ANGLE
+        // X"), so several such axes stay distinguishable. Display only:
+        // grouping never reads a name.
+        function wwErAxisTitle(axis, traces) {
+            const title = (axis.quantity || WW_ER_UNKNOWN_QUANTITY_LABEL) + (axis.unit ? " (" + axis.unit + ")" : "");
+            if (!axis.unknown || !traces || traces.length !== 1) return title;
+            return title + " — " + wwChannelDisplayName(traces[0].sourceId, traces[0].channelName);
+        }
+
+        // The traces drawn on a panel's index-th display axis.
+        function wwErAxisTraces(panel, index) {
+            return panel.traces.filter((trace) => trace.axisIndex === index);
         }
 
         // The panels a view mode shows, built from the display axes
@@ -15470,7 +15485,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             panel.legendEl.innerHTML = panel.axes.map((axis, index) =>
                 '<span class="ww-er-legend-axis" data-er-axis-key="' + escapeHtml(axis.key) + '">' +
-                    '<span class="ww-er-legend-axis-title">' + escapeHtml(wwErAxisTitle(axis.axis)) + "</span>" +
+                    '<span class="ww-er-legend-axis-title">' + escapeHtml(wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index))) + "</span>" +
                     panel.traces.filter((trace) => trace.axisIndex === index).map(wwErLegendChipHtml).join("") +
                 "</span>").join("");
         }
@@ -15592,7 +15607,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const axes = panel.axes.length;
             panel.labelEl.textContent = panel.combined
                 ? "All selected channels · " + axes + (axes === 1 ? " Y axis" : " Y axes")
-                : wwErAxisTitle(panel.axes[0].axis);
+                : wwErAxisTitle(panel.axes[0].axis, panel.traces);
             wwErRenderPanelLegend(panel);
             if (!panel.plotlyReady || !panel.traces.length) return;
             Plotly.restyle(panel.chartEl, {
@@ -15600,6 +15615,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 name: panel.traces.map((t) => wwChannelDisplayNamePlotly(t.sourceId, t.channelName)),
                 hovertemplate: panel.traces.map(wwErHoverTemplate),
             }, panel.traces.map((_, index) => index));
+            // A combined axis named after its channel follows a rename.
+            if (!panel.combined) return;
+            const titles = {};
+            panel.axes.forEach((axis, index) => {
+                const text = wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index));
+                const current = panel.chartEl.layout[axis.placement.layoutKey];
+                if (!current || !current.title || current.title.text !== text) titles[axis.placement.layoutKey + ".title.text"] = text;
+            });
+            if (Object.keys(titles).length) Plotly.relayout(panel.chartEl, titles);
         }
 
         // A panel's whole Plotly layout from Event Reconstruction state: the
@@ -15624,7 +15648,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const base = layout.yaxis;
             panel.axes.forEach((axis, index) => {
                 const yaxis = Object.assign({}, base, axis.placement.spec, {
-                    title: panel.combined ? { text: wwErAxisTitle(axis.axis) } : (axis.axis.unit || ""),
+                    title: panel.combined ? { text: wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index)) } : (axis.axis.unit || ""),
                     fixedrange: true,
                 }, axis.range ? { range: axis.range.slice(), autorange: false } : { autorange: true });
                 if (panel.combined) {

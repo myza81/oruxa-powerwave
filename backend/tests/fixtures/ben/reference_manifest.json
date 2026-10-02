@@ -90,6 +90,63 @@
       "id": "gpth_legacy",
       "role": "unsupported_variant",
       "ben": {"name": "GPTH 275.ben", "size": 68212, "sha256": "ddfd892304fad179255b7984502e58c816d4b4227fbaa02cb57149819a4866b4"}
+    },
+    {
+      "id": "jmhe_u1_slow",
+      "role": "reactive_power_unit_code",
+      "note": "Slow SubBen with BEN unit code 63 (reactive power, var x 10^6). Its BEN32 .prn export is the value/unit oracle.",
+      "ben": {"name": "JMHE U1_251015_161236973.ben", "size": 134407, "sha256": "a987d3282e1a5c8a4ff70a62a7955a9a3f0bc55a209861b31f2acace01d200c0"},
+      "prn": {"name": "JMHE U1_251015_161236973.prn", "size": 423920, "sha256": "51c532dcdceb72f24c38ad935bc40e1e660021d123b15cac30de835cea5f44d1"},
+      "expected": {
+        "record_class": "Slow SubBen", "station_name": "JMHE U1", "recorder_unit_id": 1239,
+        "sampling_rate_hz": 50.0, "sample_count": 3500, "pre_trigger_samples": 500,
+        "value_channels": 4, "digital_channels": 18,
+        "trigger_time_utc": "2025-10-15T08:12:36.973450",
+        "reactive_power_channels": ["R.POWER UNIT NO.1"],
+        "diagnostics": ["duplicate_channel_names", "unreferenced_layout_entries"]
+      }
+    },
+    {
+      "id": "jmhe_u2_slow",
+      "role": "reactive_power_unit_code",
+      "note": "Slow SubBen with BEN unit code 63 (reactive power, var x 10^6). No BEN32 export; structure and unit decoding only.",
+      "ben": {"name": "JMHE U2_251015_161236967.ben", "size": 134431, "sha256": "f37f52778fc599e8a125e516534ef8831a25c38d6b63497dd50feb51510d893b"},
+      "expected": {
+        "record_class": "Slow SubBen", "station_name": "JMHE U2", "recorder_unit_id": 1259,
+        "sampling_rate_hz": 50.0, "sample_count": 3500, "pre_trigger_samples": 500,
+        "value_channels": 4, "digital_channels": 18,
+        "trigger_time_utc": "2025-10-15T08:12:36.967667",
+        "reactive_power_channels": ["R.POWER UNIT NO.2"],
+        "diagnostics": ["duplicate_channel_names", "unreferenced_layout_entries"]
+      }
+    },
+    {
+      "id": "spg_u1_slow",
+      "role": "reactive_power_unit_code",
+      "note": "Slow SubBen with BEN unit code 63 (reactive power, var x 10^6). No BEN32 export; structure and unit decoding only.",
+      "ben": {"name": "SPG U1_251015_161232299.ben", "size": 35365, "sha256": "951d3125b1118663850713120b59db31b18b3fc56c6b3ee26c8ac2983e84e88f"},
+      "expected": {
+        "record_class": "Slow SubBen", "station_name": "SPG U1", "recorder_unit_id": 1324,
+        "sampling_rate_hz": 20.0, "sample_count": 1200, "pre_trigger_samples": 200,
+        "value_channels": 3, "digital_channels": 5,
+        "trigger_time_utc": "2025-10-15T08:12:32.299533",
+        "reactive_power_channels": ["R.POWER 11 GEN"],
+        "diagnostics": ["duplicate_channel_names", "unreferenced_layout_entries"]
+      }
+    },
+    {
+      "id": "pcgp_machines_slow",
+      "role": "reactive_power_unit_code",
+      "note": "Slow SubBen with BEN unit code 63 (reactive power, var x 10^6). No BEN32 export; structure and unit decoding only.",
+      "ben": {"name": "PCGP Machines_251015_161233304.ben", "size": 2752526, "sha256": "b273ad2ae4944ecf8f207022349705bedcc9888154b33f25ea51be88f6c8a956"},
+      "expected": {
+        "record_class": "Slow SubBen", "station_name": "PCGP Machines", "recorder_unit_id": 1157,
+        "sampling_rate_hz": 50.0, "sample_count": 8033, "pre_trigger_samples": 500,
+        "value_channels": 24, "digital_channels": 43,
+        "trigger_time_utc": "2025-10-15T08:12:33.304967",
+        "reactive_power_channels": ["R.POWER GSU 11UBF", "R.POWER  GSU 12UBF", "R.POWER GSU 21UBF", "R.POWER GSU 22UBF", "R.POWERGSU 31UBF", "R.POWER GSU 32UBF", "R.POWER SKELETON GSU NO 1", "R.POWER SKELETON GSU NO 2"],
+        "diagnostics": ["duplicate_channel_names", "unavailable_samples", "unreferenced_layout_entries", "unresolved_digital_channels"]
+      }
     }
   ]
 }

@@ -256,11 +256,20 @@ PHASE_CODES: dict[int, str | None] = {0: None, 1: "A", 2: "B", 3: "C", 4: "N"}
 #: observed in the validated files are listed; the numbering coincides
 #: with IEC 61850-7-3 SIUnit, but codes not seen here are deliberately not
 #: guessed. value: (base unit symbol, measurement kind).
+#:
+#: 63 (VAr) is validated against BEN32's own export, not a COMTRADE pair:
+#: its .prn export of the JMHE U1 Slow record labels the code-63 channel
+#: "R.POWER UNIT NO.1" "MVAr", and all 3500 decoded samples of every value
+#: channel equal that export to its printed 5 significant digits (see
+#: BEN_FORMAT.md). The symbol is Powerwave's
+#: canonical reactive-power spelling ("var", app.domain.engineering_units),
+#: so multiplier 6 reads "Mvar".
 UNIT_CODES: dict[int, tuple[str, str]] = {
     5: ("A", "current"),
     29: ("V", "voltage"),
     33: ("Hz", "frequency"),
     38: ("W", "active_power"),
+    63: ("var", "reactive_power"),
 }
 
 #: Power-of-ten unit multipliers observed (0 -> none, 3 -> k, 6 -> M).

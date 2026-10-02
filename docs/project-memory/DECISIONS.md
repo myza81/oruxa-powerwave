@@ -21571,6 +21571,28 @@ Source: owner task "Combined Multi-Axis View only".
      (DEC-131 rule), so several of them show several "Unknown quantity"
      axes. Only the legend tells them apart.
 
+### Follow-up (2026-10-02, owner-approved): BEN unit code 63 and unknown-axis titles
+
+1. **BEN unit code 63 is validated as VAr (reactive power).** The
+   evidence is BEN32's own `.prn` export of JMHE U1 (code-63 column
+   `MVAr`, every sample equal to 5 significant digits); code 63 also
+   occurs in JMHE U2, SPG U1 and PCGP Machines.
+   - `layout.UNIT_CODES[63] = ("var", "reactive_power")`. Powerwave's
+     canonical spelling makes multiplier 6 read `Mvar`. The BEN
+     normalizer maps the measurement to parameter type "reactive power".
+   - `resolve_display_axis()` then gives `Reactive Power|Mvar` through
+     the unchanged alias table, so all such channels share one Grouped
+     panel / Combined axis.
+   - Scaling is untouched. `unknown_unit_code` disappears for 63 only;
+     every other unvalidated code still leaves the unit unknown.
+2. **An unknown-quantity axis carrying one channel is titled after it**,
+   in the single title helper `wwErAxisTitle()`:
+   - "Unknown quantity — <Waveform display name>";
+   - "Unknown quantity (<unit>) — <name>".
+
+   A shared unknown axis (same exact unit) keeps the plain title. Names
+   never take part in grouping or classification.
+
 ---
 
 ## How to add a decision
