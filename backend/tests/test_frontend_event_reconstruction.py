@@ -197,6 +197,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         assert re.findall(r"const (?:WW_ER_|wwEr)\w+", module) == [
             "const WW_ER_SIDEBAR_WIDTH_STORAGE_KEY", "const wwErState", "const WW_ER_PANEL_HEIGHT",
             "const WW_ER_ORIGIN_MAX_SPANS", "const WW_ER_RELAYOUT_DEBOUNCE_MS", "const WW_ER_TIME_AXIS_TITLE",
+            "const WW_ER_OUTLIER_GAP_FRACTION",
         ]
 
     def test_left_panel_never_reuses_waveform_channel_tree_or_sync_state(self):
@@ -456,7 +457,7 @@ class TestEventReconstructionTimeMapping:
         assert "return wwViewportTimeToSourceElapsed(reconstructionSeconds, totalOffsetS);" in inverse
 
     def test_source_timing_reads_backend_totals_for_current_members_only(self):
-        timing = _between(_source(), "function wwErSourceTiming(displaySourceId) {", "function wwErMemberRowHtml(member)")
+        timing = _between(_source(), "function wwErSourceTiming(displaySourceId) {", "\n        }\n")
         assert "const timingSourceId = calculated ? calculated.reference_source_id : displaySourceId;" in timing
         assert "for (const member of wwErCurrentMembers()) {" in timing
         assert "member.source_timings || []" in timing
@@ -561,12 +562,12 @@ class TestEventReconstructionPlotting:
         source = _source()
         wire = _between(source, "function wwErWirePanelRelayout(panel) {", "function wwErRequestViewport(start, end)")
         assert "wwErPlotXToReconstruction(x0, plot.origin)" in wire
-        assert 'if (eventData["xaxis.autorange"] === true) wwErRequestFitAll();' in wire
+        assert 'if (eventData["xaxis.autorange"] === true) wwErResetView();' in wire
         apply = _between(source, "function wwErApplyViewport(viewport) {", "function wwErSetPanelNote(panel, text)")
         assert "for (const panel of plot.panels)" in apply
         assert "Plotly.relayout(panel.chartEl, wwErTimeAxisRelayout(viewport, origin));" in apply
         assert 'doubleClick: "autosize"' in source
-        request = _between(source, "function wwErRequestViewport(start, end) {", "function wwErRequestFitAll()")
+        request = _between(source, "function wwErRequestViewport(start, end) {", "function wwErResetView()")
         assert "wwErClampViewport(plot.fitAll, start, end, wwErState.dragMode)" in request
 
     def test_selection_and_drag_mode_reach_the_renderer(self):
@@ -606,12 +607,87 @@ class TestEventReconstructionPlotting:
             body = source[source.index(waveform_fn) : source.index("\n        }\n", source.index(waveform_fn))]
             assert "wwEr" not in body
 
-    def test_slice_3d_controls_and_cursors_stay_out(self):
+    def test_cursors_and_y_step_zoom_stay_out(self):
         source = _source()
         page = _er_page(source)
-        for control in ("wwErZoomInBtn", "wwErZoomOutBtn", "wwErResetViewBtn", "wwErZoomInAxisBtn", "wwErZoomOutAxisBtn"):
+        # Slice 3D zooms X only: the axis menus stay disabled and unwired.
+        for control in ("wwErZoomInAxisBtn", "wwErZoomOutAxisBtn"):
             assert re.search(r'id="' + control + r'"[^>]*\bdisabled\b', page)
             assert 'getElementById("' + control + '").addEventListener' not in source
         module = _er_module(source)
-        for forbidden in ("wwStepZoomXRange(", "Cursor", "cursor", "wwTimeToPageX(", "wwPageXToTime(", "autoscaleY", "AutoscaleY"):
+        for forbidden in ("Cursor", "cursor", "wwTimeToPageX(", "wwPageXToTime(", "wwStepZoomY(", "yaxis.range\": [center"):
             assert forbidden not in module
+
+
+class TestEventReconstructionTimelineNavigation:
+    """Slice 3D (DEC-129): X-only Box Zoom/Pan, staged Zoom In/Out clamped to
+    Fit All, Reset Time View = Fit All + autoscale Y (button and
+    double-click), Autoscale Y on every panel, viewport rebasing, and the
+    Fit All span notice -- all in reconstruction time."""
+
+    def test_box_zoom_and_pan_are_x_only(self):
+        init = _between(_source(), "function wwErInitPanelPlot(panel) {", "function wwErWirePanelRelayout(panel)")
+        assert "layout.yaxis.fixedrange = true;" in init
+
+    def test_toolbar_is_wired_to_event_reconstruction_functions_only(self):
+        source = _source()
+        assert 'document.getElementById("wwErZoomInBtn").addEventListener("click", () => wwErStepZoomX("in"));' in source
+        assert 'document.getElementById("wwErZoomOutBtn").addEventListener("click", () => wwErStepZoomX("out"));' in source
+        assert 'document.getElementById("wwErResetViewBtn").addEventListener("click", wwErResetView);' in source
+        assert 'document.getElementById("wwErAutoscaleYBtn").addEventListener("click", wwErAutoscaleY);' in source
+        page = _er_page(source)
+        assert '<button type="button" class="secondary ww-tg-autoscale-btn" id="wwErAutoscaleYBtn"' in page
+        module = _er_module(source)
+        for waveform_fn in ("wwStepZoomX(", "wwResetTimeView(", "wwAutoscaleY(", "wwAutoscaleYForGroup(", "wwPerformZoomStep("):
+            assert waveform_fn not in module
+
+    def test_staged_zoom_uses_the_shared_step_and_fit_all_bounds(self):
+        source = _source()
+        step = _between(source, "function wwErZoomStepRange(viewport, fitAll, direction) {", "\n        }\n")
+        assert "wwStepZoomXRange(viewport, direction)" in step
+        assert "wwClampPanWindowToBounds(fitAll, stepped.start, stepped.end)" in step
+        assert "wwClampRangeToBounds(fitAll, stepped.start, stepped.end)" in step
+        zoom = _between(source, "function wwErStepZoomX(direction) {", "\n        }\n")
+        assert "wwErZoomStepRange(plot.viewport, plot.fitAll, direction)" in zoom
+        assert "if (!next || wwErSameRange(next, plot.viewport)) return;" in zoom
+        assert "wwErApplyViewport(next);" in zoom
+        # Toolbar actions never read Plotly's (origin-relative) ranges.
+        assert "layout.xaxis.range" not in _er_module(source)
+
+    def test_reset_is_one_path_for_button_and_double_click(self):
+        source = _source()
+        reset = _between(source, "function wwErResetView() {", "\n        }\n")
+        assert "for (const panel of plot.panels) panel.autoscaleYPending = true;" in reset
+        assert "wwErApplyViewport(plot.fitAll);" in reset
+        assert "wwErRequestFitAll" not in source
+
+    def test_autoscale_y_uses_plotly_autorange_then_keeps_the_range(self):
+        source = _source()
+        apply = _between(source, "async function wwErApplyPendingAutoscaleY(panel) {", "\n        }\n")
+        assert 'await Plotly.relayout(panel.chartEl, { "yaxis.autorange": true });' in apply
+        assert "if (panel.removed || !panel.plotlyReady || !wwErPanelHasData(panel)) return;" in apply
+        assert '{ "yaxis.range": range, "yaxis.autorange": false }' in apply
+        autoscale = _between(source, "function wwErAutoscaleY() {", "\n        }\n")
+        assert "for (const panel of wwErState.plot.panels)" in autoscale
+        assert "wwErApplyViewport" not in autoscale
+
+    def test_viewport_rebasing_keeps_the_physical_segment(self):
+        source = _source()
+        shift = _between(source, "function wwErReferenceFrameShift(previous, next) {", "\n        }\n")
+        assert "return before.reconstruction_offset_s + (after.correction_s - before.correction_s);" in shift
+        rebase = _between(source, "function wwErRebaseViewport(previous, next) {", "\n        }\n")
+        assert "if (!plot.viewport || plot.atFitAll) return;" in rebase
+        assert "plot.viewport = { start: plot.viewport.start - shift, end: plot.viewport.end - shift };" in rebase
+        refresh = _between(source, "async function wwErRefresh() {", "async function wwErOnPageEntered()")
+        assert refresh.index("wwErRebaseViewport(wwErState.definition, definition);") < refresh.index("wwErState.definition = definition;")
+
+    def test_span_notice_is_advisory_and_uses_the_configured_threshold(self):
+        source = _source()
+        assert "const WW_ER_OUTLIER_GAP_FRACTION = 0.9;" in source
+        check = _between(source, "function wwErFitAllOutlier(intervals, thresholdS) {", "\n        }\n")
+        assert "best.gapS < thresholdS || best.gapS < WW_ER_OUTLIER_GAP_FRACTION * spanS" in check
+        notice = _between(source, "function wwErSyncSpanNotice() {", "\n        }\n")
+        assert "wwErState.definition.large_gap_warning_threshold_s" in notice
+        assert 'id="wwErSpanNotice"' in _er_page(source)
+        module = _er_module(source)
+        assert "3600" not in module and "86400" not in module

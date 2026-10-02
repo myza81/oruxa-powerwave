@@ -21090,6 +21090,99 @@ after this change.
 
 ---
 
+## DEC-129 — Event Reconstruction navigation (Slice 3D): X-only Box Zoom, Reset = Fit All + autoscale Y, Fit All bounds for Pan/Zoom Out, physical-segment rebasing, Fit All span notice
+
+Date: 2026-10-02
+Status: Approved (owner, Slice 3D task) — implemented on
+`feat/event-reconstruction`; not merged. The Event Reconstruction
+feature is **not** complete.
+Source: owner task "Slice 3D only", following the Slice 3C UAT findings
+(DEC-127 Slice 3C update).
+
+### Decisions (owner)
+
+1. **Box Zoom is X-only.** Event Reconstruction is a shared-timeline
+   workspace: a box zoom (and a pan) changes the shared X range only and
+   never the Y range of the panel it was drawn on. Waveform's box zoom
+   is unchanged.
+2. **Zoom In / Zoom Out** act on the shared X viewport with the existing
+   shared step (`wwStepZoomXRange`: Waveform's factors, centre kept).
+   Zoom Out never goes beyond Fit All, and is a no-op at Fit All. **Pan
+   and Zoom Out share the same bounds: Fit All.**
+3. **Reset Time View = the default readable view: X to Fit All, then Y
+   autoscaled on every panel.** Double-click does exactly the same
+   thing, through the same path.
+4. **Autoscale Y = every Event Reconstruction panel, independently,** to
+   the data each holds for the current X window. It does not change X
+   and needs no active-panel model. Y does not follow X navigation
+   automatically; Autoscale Y (and Reset) are the explicit actions.
+5. **A reference or correction change keeps the same physical event
+   segment in view** (not the same numeric window). If the rebased
+   window falls partly outside the new Fit All, it is clamped.
+6. **A stronger Fit All span notice** names the record (or group) that
+   makes Fit All dramatically wider than the rest. It is advisory: no
+   record is hidden, no time is compressed, there is no axis break, and
+   the backend's 3600 s large-gap semantics are unchanged.
+7. **Still `[OPEN / UAT]`:** mixed-duration / mixed-sampling-rate
+   navigation. The notice is not that solution. Panel height stays a
+   fixed 180 px.
+
+### Implementation (`[FACT]`)
+
+- **X-only:** the Event Reconstruction panel layout sets
+  `yaxis.fixedrange = true`, so Plotly's zoom and pan drags change X
+  only. Y is set programmatically only.
+- **Y rule:** each panel autoscales when its first data arrives, then
+  keeps that range through X navigation and refetches.
+  - Autoscale Y uses Plotly's own `yaxis.autorange` (as Waveform's
+    Autoscale Y does), then fixes the resolved range.
+  - A panel with no samples in view is left in autorange: its stale
+    range is cleared, and its next data scales it.
+  - Reset marks every panel for autoscaling and applies Fit All; each
+    panel scales when its Fit All data arrives.
+- **Zoom:** `wwErZoomStepRange()`. Zoom In uses the shared step,
+  intersected with Fit All. Zoom Out uses the shared step, then the
+  span-preserving pan clamp (`wwClampPanWindowToBounds`), so near an
+  edge the window shifts inside rather than being truncated. Zoom Out
+  is disabled at Fit All.
+- **Rebasing:** reconstruction time is
+  `r = (recorded start + own correction) − F`, where
+  `F = reference recorded start + reference correction`. Keeping one
+  physical instant gives `r_new = r_old − (F_new − F_old)`, and from the
+  previous definition alone:
+
+  ```text
+  F_new − F_old = old reconstruction_offset_s of the new reference record
+                  + (its new correction_s − its old correction_s)
+  ```
+
+  - a reference switch gives that record's old offset;
+  - a correction on the reference gives the correction change;
+  - a correction (or reset) on any other record gives 0: the window
+    stays and that record moves.
+
+  The shifted window is then intersected with the new Fit All, falling
+  back to Fit All if none of it remains. At Fit All the view simply
+  follows the new Fit All. There is no rebasing when placements are
+  unavailable (stale reference).
+- **Fit All span notice:** the plotted records' extents (one interval
+  per record) are merged in time order. If the widest empty stretch is
+  **≥ the backend large-gap threshold (3600 s, read from the definition
+  response) and ≥ 90 % of the Fit All span**, a notice above the panels
+  reads, for example, "Fit All spans 87 days because AGJH 500kV is
+  87 days away from the other plotted records." The side of the gap
+  with fewer records is named; with equal sides, both groups are named.
+- **Coordinates:** every toolbar action computes in reconstruction time
+  from `wwErState.plot.viewport`/`fitAll` and goes through the one
+  viewport pipeline. Plotly's origin-relative ranges are never read for
+  navigation; the Slice 3C plotting origin stays a rendering detail.
+- **Tests:** `event-reconstruction-navigation.spec.js` (8 browser tests)
+  and the static `TestEventReconstructionTimelineNavigation` (7). The
+  plotting spec's helpers moved to
+  `browser-tests/support/event_reconstruction_helpers.js`.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

@@ -4,9 +4,50 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-02** (Event Reconstruction Slice 3C)
+Last updated: **2026-10-02** (Event Reconstruction Slice 3D)
 
 ## What was most recently done
+
+**Event Reconstruction Slice 3D — navigation controls (DEC-129,
+2026-10-02).** The feature is not complete.
+
+- **Controls.**
+  - Box Zoom and Pan are X-only.
+  - Zoom In and Zoom Out use the shared step, with the centre kept.
+    Zoom Out and Pan never leave Fit All, and Zoom Out is disabled at
+    Fit All.
+  - Reset Time View = Fit All + autoscale Y on every panel; a
+    double-click uses the same `wwErResetView()`.
+  - Autoscale Y applies to every panel. Y otherwise keeps its range
+    through X navigation, and an empty panel's stale range clears.
+- **Rebasing.** A reference or correction change while zoomed moves the
+  window by the change of the reconstruction zero:
+
+  ```text
+  F_new − F_old = old offset of the new reference + its correction change
+  ```
+
+  The same physical segment stays in view, clamped to the new Fit All.
+- **Fit All span notice.** Shown when one gap is ≥ the backend large-gap
+  threshold and ≥ 90 % of Fit All. It names the outlying record or
+  group. It is advisory: nothing is hidden or compressed.
+- **Real-data smoke (owner YGPN files, local only).**
+  - With `AGJH 221022.ben` added, the notice reads "Fit All spans
+    87 days because AGJH 500kV is 87 days away from the other plotted
+    records."
+  - Switching the reference to BAHS while zoomed on the same-day
+    cluster kept the BTGH/BAHS disturbance in view (window shifted by
+    BAHS's 18.425 s offset).
+- **Tests.**
+  - New `event-reconstruction-navigation.spec.js` (8).
+  - Shared helpers moved to `support/event_reconstruction_helpers.js`.
+  - Static `TestEventReconstructionTimelineNavigation` (7).
+  - Full backend: 6,284 passed, 40 skipped. Full browser: 404 of 406 passed; the 2 failures (impedance_analysis.spec.js:289 Play/Pause, a known flake; phasor_analysis.spec.js:909 a Recordings-row timeout) are outside Event Reconstruction and passed 3 of 3 in isolation.
+- **Still `[OPEN / UAT]`:** mixed-duration navigation. Panel height is
+  fixed at 180 px.
+- **Next:** A/B cursors and values (Slice 3E/3F).
+
+## Earlier — Event Reconstruction Slice 3C
 
 **Event Reconstruction Slice 3C — first plotted reconstruction (DEC-127
 update, 2026-10-02).** This is UAT 1. The feature is not complete.

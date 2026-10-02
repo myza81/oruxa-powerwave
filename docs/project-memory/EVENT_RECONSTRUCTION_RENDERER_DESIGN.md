@@ -80,6 +80,27 @@ Group" assumption below.**
   - Still `[OPEN / UAT]`: mixed-duration navigation (§10). Not built:
     staged zoom, Reset, Autoscale Y (3D); cursors (3F); the ruler;
     grouped/multi-axis panels (6A/6B).
+- **Slice 3D (done, 2026-10-02, DEC-129):** navigation controls.
+  - Box Zoom and Pan are X-only (`yaxis.fixedrange` on Event
+    Reconstruction panels).
+  - Zoom In/Out use the shared step (`wwStepZoomXRange`). Zoom Out and
+    Pan are both bounded by Fit All (the span-preserving clamp), and
+    Zoom Out is disabled at Fit All.
+  - Reset Time View = Fit All + autoscale Y on every panel; a
+    double-click uses the same function.
+  - Autoscale Y covers every panel. Y keeps its range through X
+    navigation; an empty panel is left in autorange.
+  - **Viewport rebasing:** a zoomed window moves by the change of the
+    reconstruction zero, `F_new − F_old` = (old offset of the new
+    reference) + (its correction change), so the same physical segment
+    stays in view. It is then intersected with the new Fit All.
+  - **Fit All span notice:** shown when the widest empty stretch between
+    plotted records is ≥ the backend large-gap threshold and ≥ 90 % of
+    Fit All. It names the outlying record or group and is advisory only.
+  - Every action works in reconstruction time; the plotting origin is
+    untouched as a concept.
+  - Still `[OPEN / UAT]`: mixed-duration navigation. Next: cursors
+    (3E/3F).
 
 Date: 2026-10-01. Code references are function names in
 `frontend/index.html` and `backend/app/` at commit `33f3178`
@@ -379,7 +400,9 @@ wwErReconstructionToElapsed(displaySourceId, reconstructionSeconds) -> number | 
   members' extents.
 - Selection changes follow Fit All while the view is at Fit All, and
   keep a manual window otherwise (intersected with the new Fit All).
-- Double-click is the Reset gesture until Slice 3D enables the button.
+- Double-click and the Reset Time View button share one path (Slice 3D):
+  Fit All, then Y autoscaled on every panel.
+- Zoom Out and Pan share Fit All as their bounds (Slice 3D).
 - **First UAT observations** (owner YGPN 275 kV records, local run):
   - The same-day records (BAHS 5 kHz / 7.5 s, BTGH 20 Hz / 70 s, PMJY
     20 Hz / 51 s, PMJY about 467 s later) read well under Fit All. The

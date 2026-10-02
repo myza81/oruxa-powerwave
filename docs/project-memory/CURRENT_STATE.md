@@ -10,15 +10,16 @@
 > superseded claims, don't append to them.
 
 Last meaningful update: **2026-10-02** — **Event Reconstruction Slice
-3C: first plotted reconstruction** (DEC-127 update), on top of the
-record model (DEC-128) and Slices 0–3B (DEC-123 to DEC-127), on branch
+3D: navigation controls** (DEC-129), on top of the first plotted
+reconstruction (Slice 3C, DEC-127 update), the record model (DEC-128)
+and Slices 0–3B (DEC-123 to DEC-127), on branch
 `feat/event-reconstruction`, not merged. The feature is **not**
-complete: it is ready for its first plotted UAT. Earlier, on 2026-10-01:
+complete. Earlier, on 2026-10-01:
 **Native BEN import: owner UAT passed; merged to `main`** (DEC-119
 parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
 DEC-122 display timezone).
 
-**Event Reconstruction (DEC-123 to DEC-128) — Slices 0–3C.**
+**Event Reconstruction (DEC-123 to DEC-129) — Slices 0–3D.**
 
 - **Rule (DEC-128).** Waveform continues to use its existing Time Group
   model. Event Reconstruction uses independent imported event/record
@@ -56,10 +57,7 @@ DEC-122 display timezone).
       → engineering type → channel);
     - engineering units only;
     - one shared relative reconstruction-time X axis;
-    - Fit All as the initial view;
-    - Box Zoom and Pan in Event Reconstruction's own drag mode, with Pan
-      clamped to Fit All;
-    - double-click a panel to return to Fit All.
+    - Fit All as the initial view.
 
     Data comes through the shared visible-range fetch, with the same
     point budget and min/max envelope as Waveform, mapped by the
@@ -68,9 +66,25 @@ DEC-122 display timezone).
     depend on Plotly internals. Names and colours are re-resolved from
     Waveform on every render.
 
-    Still disabled: Zoom In/Out, Reset Time View and Autoscale Y (Slice
-    3D). Not yet built: cursors, an absolute-time ruler, and
-    grouped/multi-axis panels.
+  - **Navigation (Slice 3D, DEC-129).**
+    - Box Zoom and Pan are X-only (no Y change on any panel), in Event
+      Reconstruction's own drag mode.
+    - Zoom In and Zoom Out use Waveform's shared step with the centre
+      kept. Zoom Out and Pan never leave Fit All, and Zoom Out is
+      disabled at Fit All.
+    - Reset Time View = Fit All, then Y autoscaled on every panel; a
+      double-click does the same.
+    - Autoscale Y works on every panel independently. Otherwise Y keeps
+      its range through X navigation, and an empty panel's stale range
+      clears.
+    - A reference or correction change rebases a zoomed window, so the
+      same physical segment stays in view (clamped to the new Fit All).
+    - A Fit All span notice names the record or group when one gap is
+      ≥ 3600 s and ≥ 90 % of Fit All. It is advisory only.
+
+    Not yet built: cursors (Slice 3E), Y step zoom, Fit Selected Record,
+    an overview navigator, an absolute-time ruler, grouped/multi-axis
+    panels, and panel resizing (fixed 180 px).
   - It never reads or writes the Waveform `ww` state, panels or
     viewports.
 - **Backend.**
@@ -117,7 +131,8 @@ DEC-122 display timezone).
   - `[OPEN / UAT]` mixed-duration / mixed-sampling-rate navigation and
     the initial viewport. Fit All keeps time physical, so a short fast
     record can be a sliver, and one wrong-event record can make every
-    trace sub-pixel;
+    trace sub-pixel (now named by the Fit All span notice, which is not
+    the solution);
   - the panel layout (one panel per channel is provisional);
   - the final manual left/right synchronization UX (Slice 4);
   - the final grouped and multi-axis visualization (Slices 6A/6B).

@@ -5376,6 +5376,8 @@
             pointer-events: none;
         }
         .ww-er-panel-note[hidden] { display: none; }
+        .ww-er-span-notice { margin: 0 0 10px; }
+        .ww-er-span-notice[hidden] { display: none; }
         /* Event Reconstruction Slice 2: left-panel member/record rows,
            notices and compact actions -- existing tokens only. */
         .ww-er-badge--stale { color: var(--warn); border-color: var(--warn); background: transparent; }
@@ -9116,8 +9118,11 @@
                                  canvas class itself is not reused). Zoom
                                  In/Out/Reset Time View mirror
                                  wwCreateTimeGroupCanvasDom()'s own markup
-                                 and stay disabled until Slice 3D; Slice 3C
-                                 panels are rendered into #wwErPanels. -->
+                                 and Autoscale Y mirrors its button (Slice
+                                 3D: enabled once channels are plotted; the
+                                 axis menus stay disabled, X only). Panels
+                                 are rendered into #wwErPanels; the Fit All
+                                 span notice sits above them. -->
                             <section class="ww-er-canvas" id="wwErCanvas" aria-label="Reconstruction timeline">
                                 <div class="ww-tg-sticky-top">
                                     <div class="ww-tg-header">
@@ -9127,21 +9132,23 @@
                                     <div class="ww-tg-toolbar-row">
                                         <div class="ww-tg-toolbar" id="wwErCanvasToolbar">
                                             <div class="ww-split-btn ww-tg-zoom-in-split">
-                                                <button type="button" class="secondary ww-split-btn-main" id="wwErZoomInBtn" title="Zoom In is not available yet — use Box Zoom" aria-label="Zoom In" disabled>Zoom In</button>
-                                                <button type="button" class="ww-icon-btn ww-split-btn-trigger" id="wwErZoomInAxisBtn" aria-haspopup="menu" aria-expanded="false" title="Choose Zoom In axis" aria-label="Choose Zoom In axis" disabled>
+                                                <button type="button" class="secondary ww-split-btn-main" id="wwErZoomInBtn" title="Zoom In — X axis" aria-label="Zoom In — X axis" disabled>Zoom In</button>
+                                                <button type="button" class="ww-icon-btn ww-split-btn-trigger" id="wwErZoomInAxisBtn" aria-haspopup="menu" aria-expanded="false" title="Event Reconstruction zooms the time axis only" aria-label="Choose Zoom In axis" disabled>
                                                     <span class="ww-icon ww-caret"><svg viewBox="0 0 18 18"><polyline points="4,6.5 9,11.5 14,6.5" stroke-width="1.6"/></svg></span>
                                                 </button>
                                             </div>
                                             <div class="ww-split-btn ww-tg-zoom-out-split">
-                                                <button type="button" class="secondary ww-split-btn-main" id="wwErZoomOutBtn" title="Zoom Out is not available yet — double-click a panel to return to Fit All" aria-label="Zoom Out" disabled>Zoom Out</button>
-                                                <button type="button" class="ww-icon-btn ww-split-btn-trigger" id="wwErZoomOutAxisBtn" aria-haspopup="menu" aria-expanded="false" title="Choose Zoom Out axis" aria-label="Choose Zoom Out axis" disabled>
+                                                <button type="button" class="secondary ww-split-btn-main" id="wwErZoomOutBtn" title="Zoom Out — X axis (never beyond Fit All)" aria-label="Zoom Out — X axis" disabled>Zoom Out</button>
+                                                <button type="button" class="ww-icon-btn ww-split-btn-trigger" id="wwErZoomOutAxisBtn" aria-haspopup="menu" aria-expanded="false" title="Event Reconstruction zooms the time axis only" aria-label="Choose Zoom Out axis" disabled>
                                                     <span class="ww-icon ww-caret"><svg viewBox="0 0 18 18"><polyline points="4,6.5 9,11.5 14,6.5" stroke-width="1.6"/></svg></span>
                                                 </button>
                                             </div>
-                                            <button type="button" class="secondary ww-tg-reset-view-btn" id="wwErResetViewBtn" title="Reset Time View is not available yet — double-click a panel to return to Fit All" disabled>Reset Time View</button>
+                                            <button type="button" class="secondary ww-tg-reset-view-btn" id="wwErResetViewBtn" title="Reset Time View — Fit All and autoscale Y on every panel" disabled>Reset Time View</button>
+                                            <button type="button" class="secondary ww-tg-autoscale-btn" id="wwErAutoscaleYBtn" title="Autoscale Y on every panel" disabled>Autoscale Y</button>
                                         </div>
                                     </div>
                                 </div>
+                                <div class="ww-er-span-notice" id="wwErSpanNotice" hidden></div>
                                 <div class="ww-tg-panels" id="wwErPanels"></div>
                                 <p class="empty-state" id="wwErEmptyState">No reconstruction records selected. Select records in the left panel to place them on one common timeline.</p>
                             </section>
@@ -14279,8 +14286,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // - Never reads or writes the Waveform engine's `ww` state, and
         //   never calls Waveform interaction functions (wwSetDragMode()
         //   relayouts every Waveform panel; wwStepZoomX/Y()/
-        //   wwResetOneTimeGroupView() act on a real Time Group). Zoom
-        //   In/Out and Reset Time View stay disabled until Slice 3D.
+        //   wwResetOneTimeGroupView() act on a real Time Group). Slice 3D
+        //   has its own Zoom In/Out, Reset Time View and Autoscale Y.
         // - Channel display names and colours come from the Waveform-owned
         //   resolvers (wwChannelDisplayName*()/wwColorForChannel()). This
         //   module keeps no presentation store of its own.
@@ -14412,7 +14419,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (seq !== wwErState.loadSeq) return;
             if (sources !== null) wwErState.sources = sources;
             if (records !== null) wwErState.records = records;
-            if (definition !== null) wwErState.definition = definition;
+            if (definition !== null) {
+                wwErRebaseViewport(wwErState.definition, definition);
+                wwErState.definition = definition;
+            }
             if (calculatedChannels !== null) wwErState.calculatedChannels = calculatedChannels;
             await wwErEnsureMemberChannelsFetched();
             if (seq !== wwErState.loadSeq) return;
@@ -14427,6 +14437,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
             }
             wwErRender();
+        }
+
+        // A reference switch or correction moves the reconstruction zero
+        // (DEC-129): a manually zoomed/panned window is moved by the same
+        // amount, so the same physical segment stays in view
+        // (wwErReferenceFrameShift()); wwErRenderPlot() then intersects it
+        // with the new Fit All. At Fit All the view simply follows Fit All.
+        function wwErRebaseViewport(previous, next) {
+            const plot = wwErState.plot;
+            if (!plot.viewport || plot.atFitAll) return;
+            const shift = wwErReferenceFrameShift(previous, next);
+            if (shift === null || shift === 0) return;
+            plot.viewport = { start: plot.viewport.start - shift, end: plot.viewport.end - shift };
         }
 
         async function wwErOnPageEntered() {
@@ -14882,9 +14905,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         //
         // First-UAT scope (all provisional): one panel per selected analog
         // channel, in the browser's own order; engineering units only;
-        // relative reconstruction time on X; Fit All as the initial view;
-        // Box Zoom/Pan with pan clamped to Fit All. Mixed-duration
-        // navigation stays [OPEN / UAT]: time is never compressed.
+        // relative reconstruction time on X; Fit All as the initial view.
+        // Navigation (Slice 3D, DEC-129): X-only Box Zoom and Pan, staged
+        // Zoom In/Out, Reset Time View (Fit All + autoscale Y) and
+        // Autoscale Y -- every one acting on the one shared viewport in
+        // reconstruction time; Pan and Zoom Out never leave Fit All.
+        // Mixed-duration navigation stays [OPEN / UAT]: time is never
+        // compressed.
         //
         // Coordinates (seconds):
         //
@@ -14919,6 +14946,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Same coalescing window as Waveform's relayout -> viewport path.
         const WW_ER_RELAYOUT_DEBOUNCE_MS = 120;
         const WW_ER_TIME_AXIS_TITLE = "Reconstruction time (s)";
+        // Fit All span notice (Slice 3D): one empty stretch at least this
+        // share of the Fit All span (and at least the large-gap threshold)
+        // means Fit All is dominated by that gap.
+        const WW_ER_OUTLIER_GAP_FRACTION = 0.9;
 
         // -- pure helpers (no DOM, no state) --
 
@@ -15060,6 +15091,81 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             };
         }
 
+        // Staged X zoom (shared wwStepZoomXRange(): Waveform's factors,
+        // centre kept). Zoom In stays inside the window; Zoom Out is
+        // clamped to Fit All like Pan (span kept, shifted inside) and
+        // equals Fit All once it would exceed it.
+        function wwErZoomStepRange(viewport, fitAll, direction) {
+            const stepped = wwStepZoomXRange(viewport, direction);
+            if (!stepped || !fitAll) return null;
+            return direction === "out"
+                ? wwClampPanWindowToBounds(fitAll, stepped.start, stepped.end)
+                : wwClampRangeToBounds(fitAll, stepped.start, stepped.end);
+        }
+
+        // How far the reconstruction zero moved between two definitions,
+        // in seconds (DEC-129 viewport rebasing). Reconstruction time is
+        // r = (recorded start + own correction) - F, with F the reference
+        // record's recorded start plus its correction, so one physical
+        // instant keeps r_new = r_old - (F_new - F_old). From the old
+        // definition alone:
+        //   F_new - F_old = old offset of the new reference record
+        //                   + (its new correction - its old correction)
+        // A reference switch gives that record's old offset; a correction
+        // on the reference gives the correction change; a correction on any
+        // other record gives 0 (the window stays, that record moves). null
+        // when it cannot be known (no placements, reference not in both).
+        function wwErReferenceFrameShift(previous, next) {
+            if (!previous || !next || !previous.defined || !next.defined) return null;
+            if (!previous.placements_available || !next.placements_available) return null;
+            const reference = next.reference_record_id;
+            const before = previous.members.find((m) => m.record_id === reference);
+            const after = next.members.find((m) => m.record_id === reference);
+            if (!before || !after || before.reconstruction_offset_s === null) return null;
+            return before.reconstruction_offset_s + (after.correction_s - before.correction_s);
+        }
+
+        // The Fit All span check (DEC-129): plotted records' extents
+        // (`[{recordId, start, end}]`, reconstruction time) merged in time
+        // order. When the widest empty stretch is >= `thresholdS` (the
+        // backend large-gap threshold) AND >= WW_ER_OUTLIER_GAP_FRACTION
+        // of the Fit All span, Fit All is dominated by that one gap.
+        // Returns `{ spanS, gapS, before, after }` (record ids either side
+        // of the gap, in time order) or null. Advisory only.
+        function wwErFitAllOutlier(intervals, thresholdS) {
+            if (intervals.length < 2 || !Number.isFinite(thresholdS)) return null;
+            const sorted = intervals.slice().sort((a, b) => (a.start - b.start) || (a.end - b.end));
+            const spanS = Math.max(...sorted.map((i) => i.end)) - sorted[0].start;
+            let reach = sorted[0].end;
+            let best = null;
+            for (let index = 1; index < sorted.length; index++) {
+                const gapS = sorted[index].start - reach;
+                if (!best || gapS > best.gapS) best = { gapS, index };
+                reach = Math.max(reach, sorted[index].end);
+            }
+            if (!best || !(spanS > 0) || best.gapS < thresholdS || best.gapS < WW_ER_OUTLIER_GAP_FRACTION * spanS) return null;
+            return {
+                spanS,
+                gapS: best.gapS,
+                before: sorted.slice(0, best.index).map((i) => i.recordId),
+                after: sorted.slice(best.index).map((i) => i.recordId),
+            };
+        }
+
+        // A long span in words: days, hours, minutes or seconds.
+        function wwErFormatSpan(seconds) {
+            const minute = 60;
+            const hour = 60 * minute;
+            const day = 24 * hour;
+            if (seconds >= 2 * day) {
+                const days = seconds / day;
+                return (days >= 10 ? Math.round(days) : days.toFixed(1)) + " days";
+            }
+            if (seconds >= 2 * hour) return (seconds / hour).toFixed(1) + " h";
+            if (seconds >= 2 * minute) return (seconds / minute).toFixed(1) + " min";
+            return seconds.toFixed(1) + " s";
+        }
+
         // -- what to plot --
 
         // The selected analog channels in the browser's own order:
@@ -15164,6 +15270,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // What the current trace was fetched for (skip identical
                 // refetches on a plain re-render).
                 loadedKey: null,
+                loading: false,
+                // Y is autoscaled when the first data arrives and on Reset /
+                // Autoscale Y, then kept through X navigation.
+                autoscaleYPending: true,
                 reconstructionTime: [],
                 values: [],
                 unit: null,
@@ -15227,10 +15337,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 yTitle: panel.unit || "",
                 dragMode: wwErState.dragMode,
             });
+            // X-only Box Zoom and Pan (DEC-129): a drag never changes this
+            // panel's Y. Y is set only by Autoscale Y / Reset (and the first
+            // data), programmatically.
+            layout.yaxis.fixedrange = true;
             // Double-click always autosizes (reported as xaxis.autorange),
-            // which Event Reconstruction maps to Fit All for every panel --
-            // never Plotly's "reset to the initial range", which would be
-            // expressed in a possibly outdated origin.
+            // which Event Reconstruction maps to Reset Time View for every
+            // panel -- never Plotly's "reset to the initial range", which
+            // would be expressed in a possibly outdated origin.
             Plotly.newPlot(panel.chartEl, [wwErBuildTrace(panel)], layout, { responsive: true, displayModeBar: false, doubleClick: "autosize" });
             panel.plotlyReady = true;
             wwErWirePanelRelayout(panel);
@@ -15254,7 +15368,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     if (!wwErSameRange(requested, plot.viewport)) wwErRequestViewport(requested.start, requested.end);
                     return;
                 }
-                if (eventData["xaxis.autorange"] === true) wwErRequestFitAll();
+                if (eventData["xaxis.autorange"] === true) wwErResetView();
             });
         }
 
@@ -15269,13 +15383,56 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }, WW_ER_RELAYOUT_DEBOUNCE_MS);
         }
 
-        // Fit All for every panel (double-click; Reset Time View is Slice 3D).
-        function wwErRequestFitAll() {
+        // Reset Time View -- the toolbar button and a panel double-click
+        // alike: Fit All for X, then every panel's Y autoscaled to its
+        // Fit All data (as each panel's data arrives).
+        function wwErResetView() {
             const plot = wwErState.plot;
             if (!plot.fitAll) return;
             clearTimeout(plot.relayoutTimer);
             plot.atFitAll = true;
+            for (const panel of plot.panels) panel.autoscaleYPending = true;
             wwErApplyViewport(plot.fitAll);
+        }
+
+        // Zoom In / Zoom Out (X only, reconstruction time). A no-op when
+        // the step changes nothing (Zoom Out at Fit All, Zoom In at the
+        // minimum span).
+        function wwErStepZoomX(direction) {
+            const plot = wwErState.plot;
+            if (!plot.viewport || !plot.fitAll) return;
+            const next = wwErZoomStepRange(plot.viewport, plot.fitAll, direction);
+            if (!next || wwErSameRange(next, plot.viewport)) return;
+            clearTimeout(plot.relayoutTimer);
+            plot.atFitAll = wwErSameRange(next, plot.fitAll);
+            wwErApplyViewport(next);
+        }
+
+        // Autoscale Y: every panel independently, to the data it holds for
+        // the current X window (a panel only ever holds its visible slice);
+        // X is untouched. A panel still loading scales when its data lands.
+        function wwErAutoscaleY() {
+            for (const panel of wwErState.plot.panels) {
+                panel.autoscaleYPending = true;
+                if (!panel.loading) wwErApplyPendingAutoscaleY(panel);
+            }
+        }
+
+        function wwErPanelHasData(panel) {
+            return panel.values.some((value) => Number.isFinite(value));
+        }
+
+        // Plotly's own autorange (as Waveform's Autoscale Y), then fixed at
+        // that range so later X navigation keeps it. A panel without
+        // samples is left in autorange -- its stale range is cleared -- and
+        // stays pending, so its first data scales it.
+        async function wwErApplyPendingAutoscaleY(panel) {
+            if (!panel.autoscaleYPending || !panel.plotlyReady) return;
+            await Plotly.relayout(panel.chartEl, { "yaxis.autorange": true });
+            if (panel.removed || !panel.plotlyReady || !wwErPanelHasData(panel)) return;
+            panel.autoscaleYPending = false;
+            const range = panel.chartEl._fullLayout.yaxis.range.slice();
+            await Plotly.relayout(panel.chartEl, { "yaxis.range": range, "yaxis.autorange": false });
         }
 
         // The one viewport pipeline: store it, move the origin if needed
@@ -15300,6 +15457,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 Plotly.relayout(panel.chartEl, wwErTimeAxisRelayout(viewport, origin));
             }
             for (const panel of plot.panels) wwErLoadPanel(panel);
+            wwErSyncToolbar();
         }
 
         function wwErSetPanelNote(panel, text) {
@@ -15329,36 +15487,45 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const pointBudget = wwPointBudgetForPlotWidth(wwPlotWidthForChart(panel.chartEl));
             const request = wwErFetchRequestFor(panel, timing, viewport, pointBudget);
             const loadKey = [viewport.start, viewport.end, timing.totalOffsetS, request ? pointBudget : "skip"].join("|");
-            if (loadKey === panel.loadedKey) return;
+            if (loadKey === panel.loadedKey) {
+                if (!panel.loading) wwErApplyPendingAutoscaleY(panel);
+                return;
+            }
             wwClearError(panel);
             if (!request) {
                 // No sample of this record in view: invalidate any request
                 // still in flight and show an empty, labelled panel.
                 if (panel.abortController) panel.abortController.abort();
                 panel.requestSeq += 1;
+                panel.loading = false;
                 wwSetLoading(panel, false);
                 panel.reconstructionTime = [];
                 panel.values = [];
                 panel.loadedKey = loadKey;
                 wwErSetPanelTrace(panel);
                 wwErSetPanelNote(panel, "No samples of this record in the visible time range.");
+                wwErApplyPendingAutoscaleY(panel);
                 return;
             }
+            panel.loading = true;
             wwSetLoading(panel, true);
             let result;
             try {
                 result = await wwFetchWaveformRange(request);
             } catch (error) {
                 if (error.name === "AbortError") return;
+                panel.loading = false;
                 wwSetLoading(panel, false);
                 wwShowError(panel, "Could not reach the backend. Check your connection and try again.");
                 return;
             }
             if (result.superseded || panel.removed) return;
+            panel.loading = false;
             wwSetLoading(panel, false);
             if (result.error || !result.body) {
                 wwShowError(panel, result.error ? wwFriendlyError(result.error.code, result.error.message)
                     : "Could not reach the backend. Check your connection and try again.");
+                wwErApplyPendingAutoscaleY(panel);
                 return;
             }
             const body = result.body;
@@ -15376,6 +15543,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 Plotly.relayout(panel.chartEl, { "yaxis.title": panel.unit || "" });
                 wwErRenderPanelLegend(panel);
             }
+            wwErApplyPendingAutoscaleY(panel);
         }
 
         // Reconciles the plotted panels with the current selection, record
@@ -15432,6 +15600,61 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             empty.textContent = wwErDefined()
                 ? "No channels plotted. Open a record's Channels in the left panel and select analog channels to plot them on the common timeline."
                 : "No reconstruction records selected. Select records in the left panel to place them on one common timeline.";
+            wwErSyncSpanNotice();
+            wwErSyncToolbar();
+        }
+
+        // The plotted records' extents, one interval per record.
+        function wwErPlottedRecordIntervals() {
+            const byRecord = new Map();
+            for (const panel of wwErState.plot.panels) {
+                const known = byRecord.get(panel.recordId);
+                byRecord.set(panel.recordId, known
+                    ? { recordId: panel.recordId, start: Math.min(known.start, panel.timing.startS), end: Math.max(known.end, panel.timing.endS) }
+                    : { recordId: panel.recordId, start: panel.timing.startS, end: panel.timing.endS });
+            }
+            return [...byRecord.values()];
+        }
+
+        // Advisory notice above the panels when one gap dominates Fit All
+        // (wwErFitAllOutlier()). Never hides a record, never compresses
+        // time; the backend's own large-gap warning is unchanged.
+        function wwErSyncSpanNotice() {
+            const el = document.getElementById("wwErSpanNotice");
+            const threshold = wwErState.definition ? wwErState.definition.large_gap_warning_threshold_s : null;
+            const outlier = wwErState.plot.panels.length ? wwErFitAllOutlier(wwErPlottedRecordIntervals(), threshold) : null;
+            if (!outlier) {
+                el.hidden = true;
+                el.innerHTML = "";
+                return;
+            }
+            const names = (ids) => ids.map(wwErMemberName).join(", ");
+            const span = wwErFormatSpan(outlier.spanS);
+            const gap = wwErFormatSpan(outlier.gapS);
+            const lone = outlier.before.length < outlier.after.length ? outlier.before
+                : outlier.after.length < outlier.before.length ? outlier.after : null;
+            const reason = lone
+                ? "because " + names(lone) + (lone.length === 1 ? " is " : " are ") + gap + " away from the other plotted records."
+                : "because the plotted records are in two groups " + gap + " apart: " + names(outlier.before) + " and " + names(outlier.after) + ".";
+            el.innerHTML = wwErNoticeHtml("warn", "Fit All is dominated by one time gap",
+                "<span>" + escapeHtml("Fit All spans " + span + " " + reason) + "</span>" +
+                "<span>Each side is squeezed into a few pixels. Check that every record belongs to this event, or zoom into one side. " +
+                "Nothing is hidden and time is not compressed.</span>");
+            el.dataset.erGapS = String(outlier.gapS);
+            el.hidden = false;
+        }
+
+        // Zoom In/Out, Reset Time View and Autoscale Y follow whether
+        // anything is plotted; Zoom Out also reads as unavailable at Fit
+        // All. The axis menus stay disabled: Event Reconstruction zooms X
+        // only (no Y step zoom).
+        function wwErSyncToolbar() {
+            const plot = wwErState.plot;
+            const plotted = plot.panels.length > 0 && !!plot.viewport;
+            document.getElementById("wwErZoomInBtn").disabled = !plotted;
+            document.getElementById("wwErZoomOutBtn").disabled = !plotted || plot.atFitAll;
+            document.getElementById("wwErResetViewBtn").disabled = !plotted;
+            document.getElementById("wwErAutoscaleYBtn").disabled = !plotted;
         }
 
         function wwErApplyDragMode() {
@@ -49059,6 +49282,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Slice 3C: Event Reconstruction's own panels re-theme themselves
         // (Waveform's wwApplyTheme() only iterates ww.panels).
         document.addEventListener("powerwave:theme-change", wwErApplyTheme);
+        // Slice 3D: Event Reconstruction's own navigation controls.
+        document.getElementById("wwErZoomInBtn").addEventListener("click", () => wwErStepZoomX("in"));
+        document.getElementById("wwErZoomOutBtn").addEventListener("click", () => wwErStepZoomX("out"));
+        document.getElementById("wwErResetViewBtn").addEventListener("click", wwErResetView);
+        document.getElementById("wwErAutoscaleYBtn").addEventListener("click", wwErAutoscaleY);
         // Event Reconstruction Slice 2: one delegated handler for every
         // member/Time Group action button (re-rendered after each change).
         document.getElementById("wwErSidebar").addEventListener("click", (event) => {
