@@ -7,7 +7,8 @@
 // records, large-gap warning, clear), independent records that overlap in
 // time (never merged, unlike Waveform Time Groups), and the boundary with
 // Waveform: Event Reconstruction never changes Waveform, Time Groups or
-// Synchronise Sources state, and plots nothing yet.
+// Synchronise Sources state. Plotting itself (Slice 3C) is covered by
+// event-reconstruction-plot.spec.js.
 
 const { test, expect } = require("@playwright/test");
 const path = require("path");
@@ -275,7 +276,7 @@ test.describe("Event Reconstruction -- independent records (DEC-128)", () => {
     await addRecord(page, "BAHS 275kV");
     await addRecord(page, "BTGH");
     await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(3)");
-    await expect(page.locator("#wwErCanvasMeta")).toHaveText("3 records selected");
+    await expect(page.locator("#wwErCanvasMeta")).toHaveText("3 records selected · 0 channels plotted");
     for (const station of ["AGJH 500kV", "BAHS 275kV", "BTGH"]) {
       const row = await openMemberTree(page, station);
       await expect(row.locator("details.ww-er-member-tree details.source-recording")).toHaveCount(1);
@@ -598,7 +599,7 @@ test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
     await addRecord(page, "STN_B");
     await addRecord(page, "STN_C");
     await expect(page.locator("#wwErMemberCountBadge")).toHaveText("(3)");
-    await expect(page.locator("#wwErCanvasMeta")).toHaveText("3 records selected");
+    await expect(page.locator("#wwErCanvasMeta")).toHaveText("3 records selected · 0 channels plotted");
     await expect(memberRow(page, "STN_B")).toContainText("+10.000 s from reference");
 
     // Update membership: remove a non-reference member.
@@ -726,7 +727,7 @@ test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
     await expect(page.locator("#wwErStatus")).not.toHaveClass(/error/);
   });
 
-  test("never changes Waveform, Time Groups, Synchronise Sources or source data, and plots nothing", async ({ page }) => {
+  test("never changes Waveform, Time Groups, Synchronise Sources or source data, and plots nothing until channels are selected", async ({ page }) => {
     const consoleErrors = collectConsoleErrors(page);
     await page.goto("/index.html");
     await upload(page, "STN_A", "10:00:00");
@@ -756,7 +757,7 @@ test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
     await memberRow(page, "STN_B").locator('button[data-er-action="make-reference"]').click();
     await expect(memberRow(page, "STN_B").locator(".ww-er-badge--reference")).toBeVisible();
     await expect(page.locator("#pageEventReconstruction .plotly")).toHaveCount(0);
-    await expect(page.locator("#wwErEmptyState")).toHaveText("Plotting the reconstruction on its common timeline is not available yet.");
+    await expect(page.locator("#wwErEmptyState")).toHaveText("No channels plotted. Open a record's Channels in the left panel and select analog channels to plot them on the common timeline.");
     for (const id of ["#wwErZoomInBtn", "#wwErZoomOutBtn", "#wwErResetViewBtn"]) await expect(page.locator(id)).toBeDisabled();
 
     expect(await api(page, "/synchronization/sources")).toEqual(syncBefore);

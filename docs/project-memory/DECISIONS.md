@@ -20822,6 +20822,128 @@ calculated channels.
   is the first actual plotted UAT. Details are recorded in this
   decision's later updates and in the design document.
 
+### Update (2026-10-02) — Slice 3C: first plotted reconstruction (UAT 1)
+
+Implementation facts (`[FACT]`) on the record model (DEC-128). This
+records how the approved first-UAT scope was built. The behaviours below
+are **provisional**, for UAT, and are not new locked decisions.
+
+**Renderer (Option B).**
+- Event Reconstruction's own state is `wwErState.plot`:
+  - `panels`;
+  - `viewport` and `fitAll` (reconstruction seconds);
+  - `atFitAll`, `origin` and the relayout debounce timer.
+- Each panel owns its DOM, its chart and its fetch abort/sequence state.
+- Panels are built from the shared helpers:
+  - `wwPanelMarkupHtml`;
+  - `wwAnalogLineTrace` (scattergl);
+  - `wwAnalogPanelLayout`;
+  - `wwFetchWaveformRange`;
+  - `wwPointBudgetForPlotWidth` / `wwPlotWidthForChart`;
+  - `wwClampRangeToBounds` / `wwClampPanWindowToBounds`;
+  - `wwTickValuesForRange`.
+- Panels are rendered into `#wwErPanels` only. `ww.panels`, `ww.displayed`,
+  Time Group viewports and Waveform's viewport pipeline are never used.
+- One panel per selected analog channel (native or calculated), in the
+  browser's order:
+  1. reconstruction record order;
+  2. the record's recordings;
+  3. Analog Channels by engineering type
+     (`wwGroupChannelsByEngineeringType`);
+  4. Calculated Channels by type and name.
+
+  Never by sampling rate or duration. A panel's label is "record ·
+  channel".
+- Names, colours and legends are re-resolved from the Waveform-owned
+  resolvers on every render.
+- Engineering units only. Each panel has its own Y axis and unit.
+
+**Coordinates.**
+
+```text
+source elapsed t --(+ total_reconstruction_offset_s)--> reconstruction time r
+reconstruction r --(- plot.origin)--------------------> Plotly x
+```
+
+- The viewport, Fit All, pan bounds, hover text (`customdata` = r) and
+  tick labels are always r.
+- Only Plotly-facing values (trace x, `xaxis.range`, `tickvals`) are
+  origin-relative. A relayout's x comes back as r = x + origin.
+- **Fetch:** viewport → native range through
+  `wwErReconstructionTimeToSourceElapsed()`. The fetch core is called
+  with `timeOffsetS: 0`, and the returned native times become r through
+  `wwErSourceElapsedToReconstructionTime()`. This is the only place the
+  backend total is applied. Waveform sync offsets are never read.
+- **Origin:** one per canvas (every panel shares it, so alignment is
+  exact). It is kept while the window stays within 100 spans of it,
+  otherwise moved to the window start, and every existing trace is
+  remapped at once. It is a numerical rendering origin only: there is no
+  axis break and no spacing change.
+
+**Fetch / performance.**
+- Each panel requests only its visible native slice, with the shared
+  point budget (4/px, 4k–20k). The backend keeps its full-resolution
+  threshold (10k samples) and min/max envelope.
+- A source with no sample in the viewport sends no request. Its trace is
+  emptied and its panel says so.
+- A viewport edge at or beyond a source's own edge is sent as an open
+  bound. Otherwise `r − offset` rounding drops the boundary sample (e.g.
+  7200.2 − 7200 = 0.19999999999982).
+- A newer request aborts and supersedes an older one (shared core). A
+  plain re-render does not refetch an unchanged panel.
+- A failed channel shows its error on its own panel only.
+
+**Interaction (provisional).**
+- **Fit All:** [earliest `reconstruction_start_s`, latest
+  `reconstruction_end_s`] of the plotted sources. No padding, no
+  rate-based expansion; a zero span gets the minimum-span floor. Stale
+  records are excluded. No viewport is fabricated when nothing is
+  plotted.
+- **Box Zoom / Pan:** Event Reconstruction's own drag mode. A relayout
+  on any panel becomes the one viewport, applied to every panel. Pan
+  keeps its span and is clamped to Fit All; a box zoom is intersected
+  with Fit All.
+- **Double-click** a panel → Fit All for every panel (Plotly
+  `doubleClick: "autosize"`; never "reset to initial range", which would
+  be in a stale origin).
+- **Selection changes:** at Fit All, the viewport follows the new Fit
+  All. After a manual zoom/pan, the window is kept, intersected with the
+  new Fit All, and falls back to Fit All if nothing of it remains. The
+  same rule applies when a correction or reference change moves records.
+- **Still disabled / not built:**
+  - staged Zoom In/Out, Reset Time View and Autoscale Y (Slice 3D);
+  - cursors;
+  - the absolute-time ruler;
+  - grouped/multi-axis panels;
+  - panel-height dragging.
+
+**Precision finding.**
+- In the browser, Plotly 3.7's scattergl (regl-line2d hi/lo position
+  split) drew 0.2 ms samples correctly at +7,200 s, +30 days and
+  +10 years.
+- Plotly's own auto tick labels become unreadable at large offsets
+  ("2.592000001M").
+- So the float32 risk does not appear with the bundled Plotly. Event
+  Reconstruction still plots against the local origin with its own
+  reconstruction-time ticks, so it depends on neither.
+
+**Tests.**
+- `event-reconstruction-plot.spec.js` (14 browser tests):
+  - plotting and presentation;
+  - order;
+  - BAHS/BTGH independence;
+  - time mapping, overlap and gaps;
+  - 5 kHz / 20 Hz / 1 Hz spacing;
+  - +2 h precision;
+  - box zoom, pan clamp, double-click;
+  - selection rule;
+  - fetch ranges, skip, budget, envelope, superseded responses;
+  - error, removed record and clear;
+  - Waveform isolation.
+- `support/synthetic_comtrade.js` builds the synthetic records.
+- Static: `TestEventReconstructionPlotting` (9) plus updated
+  shell/shared-helper checks.
+
 ---
 
 ## DEC-128 — Event Reconstruction members are independently imported records, not Waveform Time Groups; timestamp overlap never merges them

@@ -9,16 +9,16 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-10-02** — **Event Reconstruction record
-model** (DEC-128: members are independently imported records, not
-Waveform Time Groups), on top of Slices 0–3B (DEC-123 to DEC-127), on
-branch `feat/event-reconstruction`, not merged. The feature is not
-complete (no plotting yet). Earlier, on 2026-10-01:
+Last meaningful update: **2026-10-02** — **Event Reconstruction Slice
+3C: first plotted reconstruction** (DEC-127 update), on top of the
+record model (DEC-128) and Slices 0–3B (DEC-123 to DEC-127), on branch
+`feat/event-reconstruction`, not merged. The feature is **not**
+complete: it is ready for its first plotted UAT. Earlier, on 2026-10-01:
 **Native BEN import: owner UAT passed; merged to `main`** (DEC-119
 parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
 DEC-122 display timezone).
 
-**Event Reconstruction (DEC-123 to DEC-128) — Slices 0–3B.**
+**Event Reconstruction (DEC-123 to DEC-128) — Slices 0–3C.**
 
 - **Rule (DEC-128).** Waveform continues to use its existing Time Group
   model. Event Reconstruction uses independent imported event/record
@@ -49,12 +49,30 @@ DEC-122 display timezone).
     rename/colour editing. Row/"Include all" selection is Event
     Reconstruction's own local visibility (`wwErState.selectedChannels`,
     keyed by record), never `ww.displayed`. Stale members show no tree.
-    `wwErSelectedChannelsForPlotting()` is what Slice 3C will consume.
-  - The main area keeps the Slice 0 toolbar (Box Zoom / Pan; Zoom In /
-    Zoom Out / Reset Time View disabled) and an empty "Reconstruction
-    Timeline" canvas that only states what is selected. **Nothing is
-    plotted.**
-  - It never reads or writes the Waveform `ww` state.
+  - **Plotting (Slice 3C).** The "Reconstruction Timeline" canvas plots
+    every selected analog channel of the current records. All of this
+    is first-UAT scope and provisional:
+    - one panel per channel, in the browser's order (record → recording
+      → engineering type → channel);
+    - engineering units only;
+    - one shared relative reconstruction-time X axis;
+    - Fit All as the initial view;
+    - Box Zoom and Pan in Event Reconstruction's own drag mode, with Pan
+      clamped to Fit All;
+    - double-click a panel to return to Fit All.
+
+    Data comes through the shared visible-range fetch, with the same
+    point budget and min/max envelope as Waveform, mapped by the
+    backend's `total_reconstruction_offset_s`. One local plotting origin
+    per canvas keeps Plotly's numbers small, so precision does not
+    depend on Plotly internals. Names and colours are re-resolved from
+    Waveform on every render.
+
+    Still disabled: Zoom In/Out, Reset Time View and Autoscale Y (Slice
+    3D). Not yet built: cursors, an absolute-time ruler, and
+    grouped/multi-axis panels.
+  - It never reads or writes the Waveform `ww` state, panels or
+    viewports.
 - **Backend.**
   - Eligibility per record: `recorded_absolute` only in V1
     (`time_of_day_not_supported`, `no_absolute_time_reference`).
@@ -90,13 +108,17 @@ DEC-122 display timezone).
     start/end; null for stale state). It also added the one frontend
     mapping pair (`reconstruction_x = source_elapsed +
     total_reconstruction_offset_s`).
-  - **No Event Reconstruction plotting exists yet.** Slice 3C is the
-    first plotted UAT. A WebGL float32 precision risk for short
-    high-rate records placed hours from the reference is to be checked
-    there.
+  - Slice 3C is the first plotted reconstruction. The WebGL float32
+    risk was checked: Plotly 3.7's scattergl keeps 0.2 ms spacing even
+    at +30 days (hi/lo position split), but its own auto tick labels
+    degrade at large offsets. Event Reconstruction plots against a local
+    origin with its own reconstruction-time ticks, so neither matters.
 - Still open:
   - `[OPEN / UAT]` mixed-duration / mixed-sampling-rate navigation and
-    the initial viewport;
+    the initial viewport. Fit All keeps time physical, so a short fast
+    record can be a sliver, and one wrong-event record can make every
+    trace sub-pixel;
+  - the panel layout (one panel per channel is provisional);
   - the final manual left/right synchronization UX (Slice 4);
   - the final grouped and multi-axis visualization (Slices 6A/6B).
 

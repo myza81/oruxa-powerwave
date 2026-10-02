@@ -122,7 +122,7 @@ class TestEventReconstructionPageShell:
         assert 'class="ww-er-canvas" id="wwErCanvas"' in page
         assert '<div class="ww-tg-panels" id="wwErPanels"></div>' in page
         assert 'id="wwErEmptyState"' in page
-        assert "Plotting the reconstruction is not available yet." in page
+        assert "not available yet." not in _between(page, 'id="wwErEmptyState"', "</p>")
 
     def test_waveform_keeps_the_only_main_element(self):
         page = _er_page(_source())
@@ -181,16 +181,23 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         source = _source()
         module = _er_module(source)
         state = _between(source, "const wwErState = {", "};")
-        keys = re.findall(r"^\s*(\w+):", state.split("{", 1)[1], re.MULTILINE)
-        # Workspace state and the last API responses only.
+        keys = re.findall(r"^ {12}(\w+):", state.split("{", 1)[1], re.MULTILINE)
+        # Workspace state, the last API responses and (Slice 3C) the
+        # renderer's own plot state only.
         assert keys == [
             "dragMode", "sources", "records", "definition",
-            "channelsBySource", "calculatedChannels", "selectedChannels", "loadSeq", "busy",
+            "channelsBySource", "calculatedChannels", "selectedChannels", "loadSeq", "busy", "plot",
         ]
-        for forbidden in ("PresentationOverrides", "channelColors", "ColorOverride", "DisplayName =", "new Map(", "localStorage"):
+        plot_keys = re.findall(r"^ {16}(\w+):", state.split("plot: {", 1)[1], re.MULTILINE)
+        assert plot_keys == ["panels", "viewport", "fitAll", "atFitAll", "origin", "relayoutTimer"]
+        for forbidden in ("PresentationOverrides", "channelColors", "ColorOverride", "DisplayName =", "localStorage"):
             assert forbidden not in module
-        # The only ER-owned persisted value is the left panel width.
-        assert re.findall(r"const (?:WW_ER_|wwEr)\w+", module) == ["const WW_ER_SIDEBAR_WIDTH_STORAGE_KEY", "const wwErState"]
+        # The only ER-owned persisted value is the left panel width; the
+        # rest are renderer constants.
+        assert re.findall(r"const (?:WW_ER_|wwEr)\w+", module) == [
+            "const WW_ER_SIDEBAR_WIDTH_STORAGE_KEY", "const wwErState", "const WW_ER_PANEL_HEIGHT",
+            "const WW_ER_ORIGIN_MAX_SPANS", "const WW_ER_RELAYOUT_DEBOUNCE_MS", "const WW_ER_TIME_AXIS_TITLE",
+        ]
 
     def test_left_panel_never_reuses_waveform_channel_tree_or_sync_state(self):
         module = _er_module(_source())
@@ -200,10 +207,14 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         ):
             assert forbidden not in module
 
-    def test_no_plotting_yet(self):
+    def test_panels_live_only_in_the_event_reconstruction_canvas(self):
         module = _er_module(_source())
-        assert "Plotly" not in module
-        assert "ww-chart" not in module
+        # Slice 3C plots into #wwErPanels only, never a Time Group canvas
+        # or Waveform's panel registry/pipeline.
+        assert 'document.getElementById("wwErPanels")' in module
+        for forbidden in ("ww-time-group-canvas", "wwEnsureTimeGroupCanvasDom", "wwCreatePanelDom(", "wwInitPanelPlot(",
+                          "wwLoadChannelRange(", "wwApplyAndFetchGroupViewport(", "wwWirePanelRelayout(", "#wwTimeGroupCanvases"):
+            assert forbidden not in module
 
     def test_page_entry_and_refresh_read_only_existing_lists(self):
         source = _source()
@@ -492,5 +503,115 @@ class TestEventReconstructionRecordModel:
         assert "function wwErChannelSelectionKey(recordId, sourceId, channelName) {" in source
 
     def test_canvas_counts_records(self):
-        render = _between(_source(), "function wwErRender() {", "function wwErHandleAction(button)")
-        assert '" record selected" : " records selected"' in render
+        chrome = _between(_source(), "function wwErSyncPlotChrome() {", "function wwErApplyDragMode()")
+        assert '" record selected" : " records selected"' in chrome
+        assert '" channel plotted" : " channels plotted"' in chrome
+
+
+class TestEventReconstructionPlotting:
+    """Slice 3C (DEC-127 Option B): Event Reconstruction's own renderer over
+    the shared helpers -- analog only, engineering units, the Slice 3B
+    mapping and one numerical plotting origin."""
+
+    def test_render_uses_the_shared_helpers(self):
+        module = _er_module(_source())
+        for helper in ("wwFetchWaveformRange(request)", "wwAnalogLineTrace({", "wwAnalogPanelLayout(wwThemeColors(), {",
+                       "wwPanelMarkupHtml(\"\")", "wwPointBudgetForPlotWidth(wwPlotWidthForChart(panel.chartEl))",
+                       "wwClampPanWindowToBounds(fitAll, start, end)", "wwClampRangeToBounds(fitAll, start, end)",
+                       "wwTickValuesForRange(viewport.start, viewport.end, 7)"):
+            assert helper in module
+        # No second fetch, abort or reduction implementation.
+        for forbidden in ("/waveform", "new AbortController", "point_budget", "envelope(", "fetch(url"):
+            assert forbidden not in module
+
+    def test_fetch_is_engineering_units_with_the_slice_3b_mapping_only(self):
+        source = _source()
+        request = _between(source, "function wwErFetchRequestFor(panel, timing, viewport, pointBudget) {", "\n        }\n")
+        assert 'unitMode: "engineering",' in request
+        assert "timeOffsetS: 0," in request
+        assert "wwErReconstructionTimeToSourceElapsed(viewport.start, timing.totalOffsetS)" in request
+        assert "wwErReconstructionTimeToSourceElapsed(viewport.end, timing.totalOffsetS)" in request
+        assert "if (timing.endS < viewport.start || timing.startS > viewport.end) return null;" in request
+        load = _between(source, "async function wwErLoadPanel(panel) {", "function wwErRenderPlot()")
+        assert "body.time.map((t) => wwErSourceElapsedToReconstructionTime(t, timing.totalOffsetS))" in load
+        assert "if (result.superseded || panel.removed) return;" in load
+        module = _er_module(source)
+        for forbidden in ("per_unit", "unitMode: ww", "wwAlignmentOffset", "effective_alignment", "alignment_offset_s", "digital-waveform",
+                          "wwRebuildDigitalChart", "start_time_utc +", "Date.parse(timing"):
+            assert forbidden not in module
+        assert module.count("unitMode:") == 1
+
+    def test_one_plotting_origin_for_every_panel(self):
+        source = _source()
+        to_x = _between(source, "function wwErReconstructionToPlotX(reconstructionSeconds, origin) {", "\n        }\n")
+        assert "return reconstructionSeconds - origin;" in to_x
+        from_x = _between(source, "function wwErPlotXToReconstruction(plotX, origin) {", "\n        }\n")
+        assert "return Number(plotX) + origin;" in from_x
+        module = _er_module(source)
+        # Every Plotly-facing x goes through the one converter, with the
+        # canvas-wide origin.
+        assert module.count("- origin") == 1
+        assert "wwErState.plot.origin" in module
+        assert "panel.origin" not in module
+        ticks = _between(source, "function wwErTimeAxisTicks(viewport, origin) {", "\n        }\n")
+        assert "tickvals: values.map((value) => wwErReconstructionToPlotX(value, origin))" in ticks
+        assert "ticktext: values.map((value) => wwErFormatReconstructionSeconds(value, decimals))" in ticks
+
+    def test_relayout_drives_one_common_viewport(self):
+        source = _source()
+        wire = _between(source, "function wwErWirePanelRelayout(panel) {", "function wwErRequestViewport(start, end)")
+        assert "wwErPlotXToReconstruction(x0, plot.origin)" in wire
+        assert 'if (eventData["xaxis.autorange"] === true) wwErRequestFitAll();' in wire
+        apply = _between(source, "function wwErApplyViewport(viewport) {", "function wwErSetPanelNote(panel, text)")
+        assert "for (const panel of plot.panels)" in apply
+        assert "Plotly.relayout(panel.chartEl, wwErTimeAxisRelayout(viewport, origin));" in apply
+        assert 'doubleClick: "autosize"' in source
+        request = _between(source, "function wwErRequestViewport(start, end) {", "function wwErRequestFitAll()")
+        assert "wwErClampViewport(plot.fitAll, start, end, wwErState.dragMode)" in request
+
+    def test_selection_and_drag_mode_reach_the_renderer(self):
+        source = _source()
+        assert "wwErRenderPlot();" in _between(source, "function wwErToggleChannelRow(row) {", "function wwErToggleChannelGroup(button)")
+        assert "wwErRenderPlot();" in _between(source, "function wwErToggleChannelGroup(button) {", "function wwErSyncChannelSelectionDom()")
+        assert "wwErRenderPlot();" in _between(source, "function wwErRender() {", "function wwErHandleAction(button)")
+        assert "wwErApplyDragMode();" in _between(source, "function wwErSetDragMode(mode) {", "// ---- API ----")
+        drag = _between(source, "function wwErApplyDragMode() {", "\n        }\n")
+        assert "for (const panel of wwErState.plot.panels)" in drag
+
+    def test_panels_follow_the_browser_order(self):
+        items = _between(_source(), "function wwErPlotItems() {", "// -- panels --")
+        assert "for (const member of wwErCurrentMembers())" in items
+        assert "wwGroupChannelsByEngineeringType((data && data.analog_channels) || [])" in items
+        assert "wwGroupChannelsByEngineeringType(calculated)" in items
+        assert "wwErSelectedChannelsForPlotting()" in items
+        assert "wwErSourceTiming(item.sourceId)" in items
+        for forbidden in ("sampling_rate", "duration", "sample_count"):
+            assert forbidden not in items
+
+    def test_presentation_is_resolved_from_waveform_on_every_render(self):
+        source = _source()
+        trace = _between(source, "function wwErBuildTrace(panel) {", "function wwErRenderPanelLegend(panel)")
+        assert "color: wwColorForChannel(panel.sourceId, panel.channelName)," in trace
+        assert "name: wwChannelDisplayNamePlotly(panel.sourceId, panel.channelName)," in trace
+        refresh = _between(source, "function wwErRefreshPanelPresentation(panel) {", "function wwErInitPanelPlot(panel)")
+        assert '"line.color": [wwColorForChannel(panel.sourceId, panel.channelName)]' in refresh
+        label = _between(source, "function wwErPanelLabelHtml(panel) {", "\n        }\n")
+        assert "wwRichLabelHtml(" in label and "wwChannelDisplayNameHtml(panel.sourceId, panel.channelName)" in label
+
+    def test_own_theme_and_resize_hooks_without_touching_waveform_ones(self):
+        source = _source()
+        assert 'document.addEventListener("powerwave:theme-change", wwErApplyTheme);' in source
+        assert "onResize: wwErResizePlots," in source
+        for waveform_fn in ("function wwApplyTheme() {", "function wwResizeAllVisiblePlots("):
+            body = source[source.index(waveform_fn) : source.index("\n        }\n", source.index(waveform_fn))]
+            assert "wwEr" not in body
+
+    def test_slice_3d_controls_and_cursors_stay_out(self):
+        source = _source()
+        page = _er_page(source)
+        for control in ("wwErZoomInBtn", "wwErZoomOutBtn", "wwErResetViewBtn", "wwErZoomInAxisBtn", "wwErZoomOutAxisBtn"):
+            assert re.search(r'id="' + control + r'"[^>]*\bdisabled\b', page)
+            assert 'getElementById("' + control + '").addEventListener' not in source
+        module = _er_module(source)
+        for forbidden in ("wwStepZoomXRange(", "Cursor", "cursor", "wwTimeToPageX(", "wwPageXToTime(", "autoscaleY", "AutoscaleY"):
+            assert forbidden not in module

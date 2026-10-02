@@ -5358,6 +5358,24 @@
             margin-bottom: 14px;
         }
         .ww-er-source-row-header { cursor: default; }
+        /* Event Reconstruction Slice 3C: a reconstruction panel's header is
+           a plain label (no active-Y-zoom panel yet), and an empty panel
+           says why -- existing tokens only. */
+        .ww-er-panel .ww-panel-header { cursor: default; }
+        .ww-er-panel .ww-panel-header:hover { background: transparent; }
+        .ww-er-panel-note {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 16px;
+            text-align: center;
+            font-size: 0.74rem;
+            color: var(--text-dim);
+            pointer-events: none;
+        }
+        .ww-er-panel-note[hidden] { display: none; }
         /* Event Reconstruction Slice 2: left-panel member/record rows,
            notices and compact actions -- existing tokens only. */
         .ww-er-badge--stale { color: var(--warn); border-color: var(--warn); background: transparent; }
@@ -9098,8 +9116,8 @@
                                  canvas class itself is not reused). Zoom
                                  In/Out/Reset Time View mirror
                                  wwCreateTimeGroupCanvasDom()'s own markup
-                                 and stay disabled until a reconstruction
-                                 canvas with real panels exists. -->
+                                 and stay disabled until Slice 3D; Slice 3C
+                                 panels are rendered into #wwErPanels. -->
                             <section class="ww-er-canvas" id="wwErCanvas" aria-label="Reconstruction timeline">
                                 <div class="ww-tg-sticky-top">
                                     <div class="ww-tg-header">
@@ -9109,23 +9127,23 @@
                                     <div class="ww-tg-toolbar-row">
                                         <div class="ww-tg-toolbar" id="wwErCanvasToolbar">
                                             <div class="ww-split-btn ww-tg-zoom-in-split">
-                                                <button type="button" class="secondary ww-split-btn-main" id="wwErZoomInBtn" title="Zoom In — available once reconstruction records are plotted" aria-label="Zoom In" disabled>Zoom In</button>
+                                                <button type="button" class="secondary ww-split-btn-main" id="wwErZoomInBtn" title="Zoom In is not available yet — use Box Zoom" aria-label="Zoom In" disabled>Zoom In</button>
                                                 <button type="button" class="ww-icon-btn ww-split-btn-trigger" id="wwErZoomInAxisBtn" aria-haspopup="menu" aria-expanded="false" title="Choose Zoom In axis" aria-label="Choose Zoom In axis" disabled>
                                                     <span class="ww-icon ww-caret"><svg viewBox="0 0 18 18"><polyline points="4,6.5 9,11.5 14,6.5" stroke-width="1.6"/></svg></span>
                                                 </button>
                                             </div>
                                             <div class="ww-split-btn ww-tg-zoom-out-split">
-                                                <button type="button" class="secondary ww-split-btn-main" id="wwErZoomOutBtn" title="Zoom Out — available once reconstruction records are plotted" aria-label="Zoom Out" disabled>Zoom Out</button>
+                                                <button type="button" class="secondary ww-split-btn-main" id="wwErZoomOutBtn" title="Zoom Out is not available yet — double-click a panel to return to Fit All" aria-label="Zoom Out" disabled>Zoom Out</button>
                                                 <button type="button" class="ww-icon-btn ww-split-btn-trigger" id="wwErZoomOutAxisBtn" aria-haspopup="menu" aria-expanded="false" title="Choose Zoom Out axis" aria-label="Choose Zoom Out axis" disabled>
                                                     <span class="ww-icon ww-caret"><svg viewBox="0 0 18 18"><polyline points="4,6.5 9,11.5 14,6.5" stroke-width="1.6"/></svg></span>
                                                 </button>
                                             </div>
-                                            <button type="button" class="secondary ww-tg-reset-view-btn" id="wwErResetViewBtn" title="Reset Time View — available once reconstruction records are plotted" disabled>Reset Time View</button>
+                                            <button type="button" class="secondary ww-tg-reset-view-btn" id="wwErResetViewBtn" title="Reset Time View is not available yet — double-click a panel to return to Fit All" disabled>Reset Time View</button>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="ww-tg-panels" id="wwErPanels"></div>
-                                <p class="empty-state" id="wwErEmptyState">No reconstruction records selected. Select records in the left panel to place them on one common timeline. Plotting the reconstruction is not available yet.</p>
+                                <p class="empty-state" id="wwErEmptyState">No reconstruction records selected. Select records in the left panel to place them on one common timeline.</p>
                             </section>
                         </section>
                     </div>
@@ -14253,20 +14271,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // times overlap -- even identically -- stay separate members. The
         // backend is the only authority: every change is one API call
         // followed by a fresh re-fetch -- no local rebasing, no
-        // frontend-only selection model. The reconstruction is NOT
-        // plotted yet (Slice 3C).
+        // frontend-only selection model. Slice 3C plots the selected
+        // analog channels on the common reconstruction timeline (see the
+        // renderer section below).
         //
         // Boundaries kept:
         // - Never reads or writes the Waveform engine's `ww` state, and
         //   never calls Waveform interaction functions (wwSetDragMode()
         //   relayouts every Waveform panel; wwStepZoomX/Y()/
-        //   wwResetOneTimeGroupView() act on a real Time Group). The
-        //   canvas controls stay disabled until the reconstruction canvas
-        //   exists.
-        // - Channel display names and colours will come from the
-        //   Waveform-owned resolvers (wwChannelDisplayName()/
-        //   wwColorForChannel()). This module keeps no presentation
-        //   store of its own.
+        //   wwResetOneTimeGroupView() act on a real Time Group). Zoom
+        //   In/Out and Reset Time View stay disabled until Slice 3D.
+        // - Channel display names and colours come from the Waveform-owned
+        //   resolvers (wwChannelDisplayName*()/wwColorForChannel()). This
+        //   module keeps no presentation store of its own.
         // - Only workspace-specific state lives in wwErState below.
         // ==================================================================
 
@@ -14286,6 +14303,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // "calculated" -- analog-only, DEC-127), sourceId, channelName,
         // timingSourceId}) -- never ww.displayed, never a
         // name/colour, frontend-only like Waveform's own visibility.
+        // Slice 3C: `plot` is the renderer's own state -- its panels (one
+        // per plotted channel, each owning its fetch/abort state), the one
+        // common viewport and Fit All (reconstruction seconds), whether the
+        // viewport is still Fit All, the numerical plotting origin and the
+        // relayout debounce timer. Session-only, like the selection.
         const wwErState = {
             dragMode: "zoom",
             sources: [],
@@ -14296,6 +14318,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             selectedChannels: {},
             loadSeq: 0,
             busy: false,
+            plot: {
+                panels: [],
+                viewport: null,
+                fitAll: null,
+                atFitAll: true,
+                origin: null,
+                relayoutTimer: null,
+            },
         };
 
         function wwErSetDragMode(mode) {
@@ -14303,6 +14333,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwErState.dragMode = mode;
             document.getElementById("wwErDragModeZoomBtn").setAttribute("aria-pressed", String(mode === "zoom"));
             document.getElementById("wwErDragModePanBtn").setAttribute("aria-pressed", String(mode === "pan"));
+            wwErApplyDragMode();
         }
 
         // ---- API ----
@@ -14401,6 +14432,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         async function wwErOnPageEntered() {
             wwErSetStatus(null, "");
             await wwErRefresh();
+            // The page was hidden; let every chart re-measure its width.
+            wwErResizePlots();
         }
 
         // Called where the workspace's records change elsewhere (source
@@ -14747,6 +14780,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwErToggleChannelRow(row) {
             wwErSetRowSelected(row, !wwErState.selectedChannels[row.dataset.erChannelKey]);
             wwErSyncChannelSelectionDom();
+            wwErRenderPlot();
         }
 
         function wwErToggleChannelGroup(button) {
@@ -14754,6 +14788,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const allSelected = rows.length > 0 && rows.every((row) => wwErState.selectedChannels[row.dataset.erChannelKey]);
             for (const row of rows) wwErSetRowSelected(row, !allSelected);
             wwErSyncChannelSelectionDom();
+            wwErRenderPlot();
         }
 
         // Paints selection state onto the already-rendered tree (rows,
@@ -14835,6 +14870,599 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
             }
             return null;
+        }
+
+        // ---- Slice 3C: the reconstruction renderer (DEC-127 Option B) ----
+        //
+        // Event Reconstruction's OWN panels, viewport, fetch/abort state
+        // and drag mode (wwErState.plot), built on the Slice 3A shared
+        // helpers (wwFetchWaveformRange, wwAnalogLineTrace,
+        // wwAnalogPanelLayout, wwPanelMarkupHtml, point budget, clamps).
+        // Never ww.panels, ww.displayed or a Time Group viewport.
+        //
+        // First-UAT scope (all provisional): one panel per selected analog
+        // channel, in the browser's own order; engineering units only;
+        // relative reconstruction time on X; Fit All as the initial view;
+        // Box Zoom/Pan with pan clamped to Fit All. Mixed-duration
+        // navigation stays [OPEN / UAT]: time is never compressed.
+        //
+        // Coordinates (seconds):
+        //
+        //   source elapsed t --(+ total_reconstruction_offset_s)--> reconstruction time r
+        //   reconstruction r --(- plot.origin)--------------------> Plotly x
+        //
+        // - The viewport, Fit All, pan bounds, hover text and tick labels
+        //   are always reconstruction time r.
+        // - ONLY the numbers handed to Plotly (trace x, xaxis.range,
+        //   tickvals) are origin-relative. A relayout's reported x comes
+        //   back as r = x + origin.
+        // - Fetch: the viewport [r0, r1] becomes each source's native range
+        //   through wwErReconstructionTimeToSourceElapsed(); returned native
+        //   times become r through wwErSourceElapsedToReconstructionTime()
+        //   (the Slice 3B pair, the one place the backend total is applied).
+        // - `plot.origin` is ONE value for the whole canvas, so every panel
+        //   uses the same x <-> r map and stays exactly aligned. It is a
+        //   numerical rendering origin only: no axis break, no change in
+        //   spacing. It keeps Plotly's values small (a short 5 kHz record
+        //   two hours from the reference would otherwise sit at ~7200 s,
+        //   where a float32 step is ~0.49 ms > its 0.2 ms sample spacing).
+
+        // Per-panel chart height (px) for the provisional one-panel-per-
+        // channel layout.
+        const WW_ER_PANEL_HEIGHT = 180;
+        // The origin is kept while the visible window stays within this
+        // many spans of it, so ordinary zoom/pan nearby does not rewrite
+        // every trace; beyond that it moves to the window start. Within
+        // 100 spans a float32 step is below ~1/80,000 of the visible span
+        // -- far below one pixel.
+        const WW_ER_ORIGIN_MAX_SPANS = 100;
+        // Same coalescing window as Waveform's relayout -> viewport path.
+        const WW_ER_RELAYOUT_DEBOUNCE_MS = 120;
+        const WW_ER_TIME_AXIS_TITLE = "Reconstruction time (s)";
+
+        // -- pure helpers (no DOM, no state) --
+
+        // Two ranges equal to within float noise of the x <-> r round trip.
+        function wwErSameRange(a, b) {
+            if (!a || !b) return a === b;
+            const tolerance = Math.max(Math.abs(a.end - a.start), WW_MIN_X_SPAN_SECONDS) * 1e-9;
+            return Math.abs(a.start - b.start) <= tolerance && Math.abs(a.end - b.end) <= tolerance;
+        }
+
+        // Provisional Fit All (design §10): [earliest start, latest end]
+        // over the plotted sources' backend-mapped extents. No padding, no
+        // sampling-rate expansion; a zero span gets the minimum-span floor.
+        // null when nothing is plotted (no viewport is ever fabricated).
+        function wwErFitAllRange(timings) {
+            let start = Infinity;
+            let end = -Infinity;
+            for (const timing of timings) {
+                if (!timing) continue;
+                start = Math.min(start, timing.startS);
+                end = Math.max(end, timing.endS);
+            }
+            if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+            if (end - start < WW_MIN_X_SPAN_SECONDS) {
+                const center = (start + end) / 2;
+                return { start: center - WW_MIN_X_SPAN_SECONDS / 2, end: center + WW_MIN_X_SPAN_SECONDS / 2 };
+            }
+            return { start, end };
+        }
+
+        // A user-requested window kept inside Fit All (the provisional pan
+        // bounds). Pan keeps the dragged span and shifts it back inside;
+        // a zoom is intersected. Never narrower than WW_MIN_X_SPAN_SECONDS.
+        function wwErClampViewport(fitAll, start, end, dragMode) {
+            if (!fitAll) return null;
+            let range = dragMode === "pan" ? wwClampPanWindowToBounds(fitAll, start, end) : wwClampRangeToBounds(fitAll, start, end);
+            if (!range) return null;
+            if (range.end - range.start < WW_MIN_X_SPAN_SECONDS) {
+                const center = (range.start + range.end) / 2;
+                range = wwClampPanWindowToBounds(fitAll, center - WW_MIN_X_SPAN_SECONDS / 2, center + WW_MIN_X_SPAN_SECONDS / 2);
+            }
+            return range;
+        }
+
+        // The viewport after the plotted channel set changed (Slice 3C
+        // rule): while at Fit All (or with nothing shown yet) it follows the
+        // new Fit All; after a manual zoom/pan the same window is kept,
+        // intersected with the new Fit All, falling back to Fit All when
+        // none of it remains.
+        function wwErNextViewport(previous, wasAtFitAll, fitAll) {
+            if (!fitAll) return null;
+            if (!previous || wasAtFitAll) return fitAll;
+            return wwClampRangeToBounds(fitAll, previous.start, previous.end) || fitAll;
+        }
+
+        // The plotting origin for `viewport`, given the current one (see
+        // WW_ER_ORIGIN_MAX_SPANS).
+        function wwErPlotOriginFor(currentOrigin, viewport) {
+            if (!viewport) return null;
+            const span = viewport.end - viewport.start;
+            if (Number.isFinite(currentOrigin)) {
+                const farthest = Math.max(Math.abs(viewport.start - currentOrigin), Math.abs(viewport.end - currentOrigin));
+                if (farthest <= WW_ER_ORIGIN_MAX_SPANS * span) return currentOrigin;
+            }
+            return viewport.start;
+        }
+
+        function wwErReconstructionToPlotX(reconstructionSeconds, origin) {
+            return reconstructionSeconds - origin;
+        }
+
+        function wwErPlotXToReconstruction(plotX, origin) {
+            return Number(plotX) + origin;
+        }
+
+        // The fewest decimals (<= 9) that show `step` exactly.
+        function wwErTickDecimals(step) {
+            for (let decimals = 0; decimals < 9; decimals++) {
+                const scaled = step * Math.pow(10, decimals);
+                if (Math.abs(scaled - Math.round(scaled)) < 1e-6 * Math.max(1, scaled)) return decimals;
+            }
+            return 9;
+        }
+
+        function wwErFormatReconstructionSeconds(value, decimals) {
+            const text = value.toFixed(decimals);
+            return /^-0(\.0*)?$/.test(text) ? text.slice(1) : text;
+        }
+
+        // X-axis settings for a viewport: nice tick positions in
+        // reconstruction time (wwTickValuesForRange), drawn at
+        // origin-relative tickvals and labelled with the reconstruction
+        // value -- so the axis reads true reconstruction time whatever
+        // the origin is.
+        function wwErTimeAxisTicks(viewport, origin) {
+            const values = wwTickValuesForRange(viewport.start, viewport.end, 7);
+            const step = values.length > 1 ? values[1] - values[0] : viewport.end - viewport.start;
+            const decimals = wwErTickDecimals(step);
+            return {
+                tickmode: "array",
+                tickvals: values.map((value) => wwErReconstructionToPlotX(value, origin)),
+                ticktext: values.map((value) => wwErFormatReconstructionSeconds(value, decimals)),
+            };
+        }
+
+        function wwErTimeAxisRelayout(viewport, origin) {
+            const ticks = wwErTimeAxisTicks(viewport, origin);
+            return {
+                "xaxis.range": [wwErReconstructionToPlotX(viewport.start, origin), wwErReconstructionToPlotX(viewport.end, origin)],
+                "xaxis.tickmode": ticks.tickmode,
+                "xaxis.tickvals": ticks.tickvals,
+                "xaxis.ticktext": ticks.ticktext,
+            };
+        }
+
+        // The shared fetch core's request for one plotted channel, or null
+        // when the source has no sample in the viewport (skipped: no
+        // request). Native range from the Slice 3B inverse; engineering
+        // units only; timeOffsetS 0, so the core returns native times and
+        // ER maps them itself (wwErSourceElapsedToReconstructionTime).
+        // A viewport edge at or beyond the source's own edge is sent as an
+        // open bound (the backend then uses the record's true first/last
+        // sample): `r - offset` can land a rounding error inside the
+        // source and drop its boundary sample (e.g. 7200.2 - 7200 =
+        // 0.19999999999982 excludes the sample at 0.2 under Fit All).
+        function wwErFetchRequestFor(panel, timing, viewport, pointBudget) {
+            if (!timing || !viewport) return null;
+            if (timing.endS < viewport.start || timing.startS > viewport.end) return null;
+            return {
+                requestState: panel,
+                sourceId: panel.sourceId,
+                channelName: panel.channelName,
+                isCalculated: panel.kind === "calculated",
+                nativeStart: viewport.start <= timing.startS ? null : wwErReconstructionTimeToSourceElapsed(viewport.start, timing.totalOffsetS),
+                nativeEnd: viewport.end >= timing.endS ? null : wwErReconstructionTimeToSourceElapsed(viewport.end, timing.totalOffsetS),
+                pointBudget,
+                unitMode: "engineering",
+                timeOffsetS: 0,
+            };
+        }
+
+        // -- what to plot --
+
+        // The selected analog channels in the browser's own order:
+        // reconstruction record order, then each record's recordings, then
+        // Analog Channels by engineering type (wwGroupChannelsByEngineeringType(),
+        // as the tree) and Calculated Channels by type and name -- never by
+        // sampling rate or duration. Only selections
+        // wwErSelectedChannelsForPlotting() returns (current records,
+        // analog kinds) that have a current timing (wwErSourceTiming()).
+        function wwErPlotItems() {
+            const selected = new Map(wwErSelectedChannelsForPlotting().map((selection) =>
+                [wwErChannelSelectionKey(selection.recordId, selection.sourceId, selection.channelName), selection]));
+            const ordered = [];
+            const take = (recordId, sourceId, channelName) => {
+                const key = wwErChannelSelectionKey(recordId, sourceId, channelName);
+                const selection = selected.get(key);
+                if (!selection) return;
+                selected.delete(key);
+                ordered.push(Object.assign({ key }, selection));
+            };
+            for (const member of wwErCurrentMembers()) {
+                for (const sourceId of member.source_ids) {
+                    const data = wwErState.channelsBySource[sourceId];
+                    for (const { channels } of wwGroupChannelsByEngineeringType((data && data.analog_channels) || [])) {
+                        for (const channel of channels) take(member.record_id, sourceId, channel.name);
+                    }
+                    const calculated = wwErState.calculatedChannels.filter((c) => c.reference_source_id === sourceId);
+                    for (const { channels } of wwGroupChannelsByEngineeringType(calculated)) {
+                        for (const channel of channels.slice().sort((a, b) => (a.name < b.name ? -1 : 1))) {
+                            take(member.record_id, channel.id, channel.name);
+                        }
+                    }
+                }
+            }
+            // Selections the tree walk did not reach (channel metadata not
+            // loaded) keep a stable order after the rest.
+            for (const key of [...selected.keys()].sort()) ordered.push(Object.assign({ key }, selected.get(key)));
+            return ordered
+                .map((item) => Object.assign(item, { timing: wwErSourceTiming(item.sourceId) }))
+                .filter((item) => item.timing && item.timing.recordId === item.recordId);
+        }
+
+        // -- panels --
+
+        function wwErPanelLabelHtml(panel) {
+            return wwRichLabelHtml(escapeHtml(wwErMemberName(panel.recordId)) + " · " +
+                wwChannelDisplayNameHtml(panel.sourceId, panel.channelName));
+        }
+
+        // Plain text for Plotly's hover box (escaped; Plotly renders the
+        // <extra> part as pseudo-HTML).
+        function wwErHoverTemplate(panel) {
+            return "%{customdata:.6f} s: %{y}" + (panel.unit ? " " + escapeHtml(panel.unit) : "") +
+                "<extra>" + escapeHtml(wwErMemberName(panel.recordId) + " · " +
+                wwChannelDisplayName(panel.sourceId, panel.channelName)) + "</extra>";
+        }
+
+        // Name and colour come from the Waveform-owned resolvers on every
+        // build/refresh, never from a copy kept here.
+        function wwErBuildTrace(panel) {
+            const origin = wwErState.plot.origin;
+            return wwAnalogLineTrace({
+                x: panel.reconstructionTime.map((r) => wwErReconstructionToPlotX(r, origin)),
+                y: panel.values,
+                customdata: panel.reconstructionTime,
+                color: wwColorForChannel(panel.sourceId, panel.channelName),
+                name: wwChannelDisplayNamePlotly(panel.sourceId, panel.channelName),
+                hovertemplate: wwErHoverTemplate(panel),
+                // Record-scoped identity (record | source::channel), never
+                // the display name.
+                meta: panel.key,
+            });
+        }
+
+        function wwErRenderPanelLegend(panel) {
+            panel.legendEl.innerHTML = '<span class="ww-legend-item">' +
+                '<span class="ww-legend-dot" style="background:' + escapeHtml(wwColorForChannel(panel.sourceId, panel.channelName)) + '"></span>' +
+                '<span class="ww-legend-label">' + wwRichLabelHtml(wwChannelDisplayNameHtml(panel.sourceId, panel.channelName) +
+                (panel.unit ? " (" + escapeHtml(panel.unit) + ")" : "")) + "</span></span>";
+        }
+
+        function wwErCreatePanel(item) {
+            const panel = {
+                key: item.key,
+                recordId: item.recordId,
+                kind: item.kind,
+                sourceId: item.sourceId,
+                channelName: item.channelName,
+                timingSourceId: item.timingSourceId,
+                timing: item.timing,
+                containerEl: null,
+                chartEl: null,
+                legendEl: null,
+                loadingEl: null,
+                errorEl: null,
+                noteEl: null,
+                plotlyReady: false,
+                removed: false,
+                // wwFetchWaveformRange()'s own abort/sequence state.
+                abortController: null,
+                requestSeq: 0,
+                // What the current trace was fetched for (skip identical
+                // refetches on a plain re-render).
+                loadedKey: null,
+                reconstructionTime: [],
+                values: [],
+                unit: null,
+                representation: null,
+            };
+            const container = document.createElement("div");
+            container.className = "ww-panel ww-er-panel";
+            container.dataset.erPanelKey = item.key;
+            container.innerHTML = wwPanelMarkupHtml("");
+            // Not yet in Event Reconstruction (Slice 3D): an active Y-zoom
+            // panel and panel-height dragging. The shared header is a plain
+            // label here, and the resize grip is not offered.
+            const header = container.querySelector(".ww-panel-header");
+            for (const attribute of ["tabindex", "role", "aria-label", "title"]) header.removeAttribute(attribute);
+            container.querySelector(".ww-resize-handle").remove();
+            const note = document.createElement("div");
+            note.className = "ww-er-panel-note";
+            note.hidden = true;
+            container.querySelector(".ww-chart-wrap").appendChild(note);
+            panel.containerEl = container;
+            panel.labelEl = container.querySelector(".ww-panel-label");
+            panel.legendEl = container.querySelector(".ww-legend");
+            panel.chartEl = container.querySelector(".ww-chart");
+            panel.loadingEl = container.querySelector(".ww-chart-loading");
+            panel.errorEl = container.querySelector(".ww-error");
+            panel.noteEl = note;
+            panel.chartEl.style.height = WW_ER_PANEL_HEIGHT + "px";
+            wwErRefreshPanelPresentation(panel);
+            return panel;
+        }
+
+        function wwErDestroyPanel(panel) {
+            panel.removed = true;
+            if (panel.abortController) panel.abortController.abort();
+            if (panel.plotlyReady) Plotly.purge(panel.chartEl);
+            panel.plotlyReady = false;
+            panel.containerEl.remove();
+        }
+
+        // Label, legend and trace name/colour, re-resolved from the
+        // Waveform-owned presentation (a rename/recolour there shows here
+        // on the next render).
+        function wwErRefreshPanelPresentation(panel) {
+            panel.labelEl.innerHTML = wwErPanelLabelHtml(panel);
+            wwErRenderPanelLegend(panel);
+            if (!panel.plotlyReady) return;
+            Plotly.restyle(panel.chartEl, {
+                "line.color": [wwColorForChannel(panel.sourceId, panel.channelName)],
+                name: [wwChannelDisplayNamePlotly(panel.sourceId, panel.channelName)],
+                hovertemplate: [wwErHoverTemplate(panel)],
+            }, [0]);
+        }
+
+        function wwErInitPanelPlot(panel) {
+            const plot = wwErState.plot;
+            const ticks = wwErTimeAxisTicks(plot.viewport, plot.origin);
+            const layout = wwAnalogPanelLayout(wwThemeColors(), {
+                xTitle: WW_ER_TIME_AXIS_TITLE,
+                xRange: [wwErReconstructionToPlotX(plot.viewport.start, plot.origin), wwErReconstructionToPlotX(plot.viewport.end, plot.origin)],
+                xTickFormat: ticks,
+                yTitle: panel.unit || "",
+                dragMode: wwErState.dragMode,
+            });
+            // Double-click always autosizes (reported as xaxis.autorange),
+            // which Event Reconstruction maps to Fit All for every panel --
+            // never Plotly's "reset to the initial range", which would be
+            // expressed in a possibly outdated origin.
+            Plotly.newPlot(panel.chartEl, [wwErBuildTrace(panel)], layout, { responsive: true, displayModeBar: false, doubleClick: "autosize" });
+            panel.plotlyReady = true;
+            wwErWirePanelRelayout(panel);
+        }
+
+        // A user zoom/pan/double-click on ANY panel becomes the one common
+        // viewport, applied to every panel. Events that only echo the
+        // current viewport (our own relayouts) and Y-only changes are
+        // ignored.
+        function wwErWirePanelRelayout(panel) {
+            panel.chartEl.on("plotly_relayout", (eventData) => {
+                const plot = wwErState.plot;
+                if (panel.removed || !plot.viewport) return;
+                let x0 = eventData["xaxis.range[0]"];
+                let x1 = eventData["xaxis.range[1]"];
+                if ((x0 === undefined || x1 === undefined) && Array.isArray(eventData["xaxis.range"])) {
+                    [x0, x1] = eventData["xaxis.range"];
+                }
+                if (x0 !== undefined && x1 !== undefined) {
+                    const requested = { start: wwErPlotXToReconstruction(x0, plot.origin), end: wwErPlotXToReconstruction(x1, plot.origin) };
+                    if (!wwErSameRange(requested, plot.viewport)) wwErRequestViewport(requested.start, requested.end);
+                    return;
+                }
+                if (eventData["xaxis.autorange"] === true) wwErRequestFitAll();
+            });
+        }
+
+        function wwErRequestViewport(start, end) {
+            const plot = wwErState.plot;
+            const next = wwErClampViewport(plot.fitAll, start, end, wwErState.dragMode);
+            if (!next) return;
+            clearTimeout(plot.relayoutTimer);
+            plot.relayoutTimer = setTimeout(() => {
+                plot.atFitAll = wwErSameRange(next, plot.fitAll);
+                wwErApplyViewport(next);
+            }, WW_ER_RELAYOUT_DEBOUNCE_MS);
+        }
+
+        // Fit All for every panel (double-click; Reset Time View is Slice 3D).
+        function wwErRequestFitAll() {
+            const plot = wwErState.plot;
+            if (!plot.fitAll) return;
+            clearTimeout(plot.relayoutTimer);
+            plot.atFitAll = true;
+            wwErApplyViewport(plot.fitAll);
+        }
+
+        // The one viewport pipeline: store it, move the origin if needed
+        // (re-mapping every existing trace at once so nothing is drawn
+        // against a stale origin), create any new panel's chart, give
+        // every panel the same X range and ticks, then refetch what the
+        // new range needs.
+        function wwErApplyViewport(viewport) {
+            const plot = wwErState.plot;
+            plot.viewport = viewport;
+            const origin = wwErPlotOriginFor(plot.origin, viewport);
+            const originChanged = origin !== plot.origin;
+            plot.origin = origin;
+            for (const panel of plot.panels) {
+                if (!panel.plotlyReady) {
+                    wwErInitPanelPlot(panel);
+                    continue;
+                }
+                if (originChanged) {
+                    Plotly.restyle(panel.chartEl, { x: [panel.reconstructionTime.map((r) => wwErReconstructionToPlotX(r, origin))] }, [0]);
+                }
+                Plotly.relayout(panel.chartEl, wwErTimeAxisRelayout(viewport, origin));
+            }
+            for (const panel of plot.panels) wwErLoadPanel(panel);
+        }
+
+        function wwErSetPanelNote(panel, text) {
+            panel.noteEl.textContent = text || "";
+            panel.noteEl.hidden = !text;
+        }
+
+        function wwErSetPanelTrace(panel) {
+            if (!panel.plotlyReady) return;
+            const origin = wwErState.plot.origin;
+            Plotly.restyle(panel.chartEl, {
+                x: [panel.reconstructionTime.map((r) => wwErReconstructionToPlotX(r, origin))],
+                y: [panel.values],
+                customdata: [panel.reconstructionTime],
+                hovertemplate: [wwErHoverTemplate(panel)],
+            }, [0]);
+        }
+
+        // Loads one panel's visible slice (hybrid fetch, design §7). A
+        // failure is shown on that panel only; a superseded response
+        // (a newer viewport already asked) never overwrites the trace.
+        async function wwErLoadPanel(panel) {
+            const plot = wwErState.plot;
+            const viewport = plot.viewport;
+            const timing = panel.timing;
+            if (!panel.plotlyReady || !viewport || !timing) return;
+            const pointBudget = wwPointBudgetForPlotWidth(wwPlotWidthForChart(panel.chartEl));
+            const request = wwErFetchRequestFor(panel, timing, viewport, pointBudget);
+            const loadKey = [viewport.start, viewport.end, timing.totalOffsetS, request ? pointBudget : "skip"].join("|");
+            if (loadKey === panel.loadedKey) return;
+            wwClearError(panel);
+            if (!request) {
+                // No sample of this record in view: invalidate any request
+                // still in flight and show an empty, labelled panel.
+                if (panel.abortController) panel.abortController.abort();
+                panel.requestSeq += 1;
+                wwSetLoading(panel, false);
+                panel.reconstructionTime = [];
+                panel.values = [];
+                panel.loadedKey = loadKey;
+                wwErSetPanelTrace(panel);
+                wwErSetPanelNote(panel, "No samples of this record in the visible time range.");
+                return;
+            }
+            wwSetLoading(panel, true);
+            let result;
+            try {
+                result = await wwFetchWaveformRange(request);
+            } catch (error) {
+                if (error.name === "AbortError") return;
+                wwSetLoading(panel, false);
+                wwShowError(panel, "Could not reach the backend. Check your connection and try again.");
+                return;
+            }
+            if (result.superseded || panel.removed) return;
+            wwSetLoading(panel, false);
+            if (result.error || !result.body) {
+                wwShowError(panel, result.error ? wwFriendlyError(result.error.code, result.error.message)
+                    : "Could not reach the backend. Check your connection and try again.");
+                return;
+            }
+            const body = result.body;
+            // Native times -> reconstruction time with the total captured
+            // for THIS request (the one the native range was derived from).
+            panel.reconstructionTime = body.time.map((t) => wwErSourceElapsedToReconstructionTime(t, timing.totalOffsetS));
+            panel.values = body.values;
+            panel.representation = body.representation;
+            panel.loadedKey = loadKey;
+            const unitChanged = panel.unit !== body.unit;
+            panel.unit = body.unit;
+            wwErSetPanelNote(panel, panel.reconstructionTime.length ? "" : "No samples of this record in the visible time range.");
+            wwErSetPanelTrace(panel);
+            if (unitChanged) {
+                Plotly.relayout(panel.chartEl, { "yaxis.title": panel.unit || "" });
+                wwErRenderPanelLegend(panel);
+            }
+        }
+
+        // Reconciles the plotted panels with the current selection, record
+        // timings and viewport. Safe to call on every render: unchanged
+        // panels keep their trace and are not refetched.
+        function wwErRenderPlot() {
+            const plot = wwErState.plot;
+            const items = wwErPlotItems();
+            const wanted = new Set(items.map((item) => item.key));
+            for (const panel of plot.panels) {
+                if (!wanted.has(panel.key)) wwErDestroyPanel(panel);
+            }
+            const existing = new Map(plot.panels.filter((panel) => !panel.removed).map((panel) => [panel.key, panel]));
+            const panelsEl = document.getElementById("wwErPanels");
+            plot.panels = items.map((item) => {
+                const panel = existing.get(item.key) || wwErCreatePanel(item);
+                panel.timing = item.timing;
+                return panel;
+            });
+            const inOrder = plot.panels.length === panelsEl.children.length &&
+                plot.panels.every((panel, index) => panelsEl.children[index] === panel.containerEl);
+            if (!inOrder) for (const panel of plot.panels) panelsEl.appendChild(panel.containerEl);
+
+            const fitAll = wwErFitAllRange(items.map((item) => item.timing));
+            const viewport = wwErNextViewport(plot.viewport, plot.atFitAll, fitAll);
+            plot.fitAll = fitAll;
+            clearTimeout(plot.relayoutTimer);
+            if (!viewport) {
+                plot.viewport = null;
+                plot.origin = null;
+                plot.atFitAll = true;
+            } else {
+                plot.atFitAll = wwErSameRange(viewport, fitAll);
+                for (const panel of plot.panels) {
+                    if (panel.plotlyReady) wwErRefreshPanelPresentation(panel);
+                }
+                wwErApplyViewport(viewport);
+            }
+            wwErSyncPlotChrome();
+        }
+
+        // Canvas meta line and empty-state text.
+        function wwErSyncPlotChrome() {
+            const members = wwErMembers();
+            const panels = wwErState.plot.panels.length;
+            const stale = wwErStaleMembers().length;
+            document.getElementById("wwErCanvasMeta").textContent = wwErDefined()
+                ? members.length + (members.length === 1 ? " record selected" : " records selected") +
+                  " · " + panels + (panels === 1 ? " channel plotted" : " channels plotted") +
+                  (stale ? " · removed records to resolve" : "")
+                : "No reconstruction records selected";
+            const empty = document.getElementById("wwErEmptyState");
+            empty.hidden = panels > 0;
+            empty.textContent = wwErDefined()
+                ? "No channels plotted. Open a record's Channels in the left panel and select analog channels to plot them on the common timeline."
+                : "No reconstruction records selected. Select records in the left panel to place them on one common timeline.";
+        }
+
+        function wwErApplyDragMode() {
+            for (const panel of wwErState.plot.panels) {
+                if (panel.plotlyReady) Plotly.relayout(panel.chartEl, { dragmode: wwErState.dragMode });
+            }
+        }
+
+        // Event Reconstruction's own theme/resize hooks (Waveform's
+        // wwApplyTheme()/wwResizeAllVisiblePlots() only see ww.panels).
+        function wwErApplyTheme() {
+            const colors = wwThemeColors();
+            for (const panel of wwErState.plot.panels) {
+                if (!panel.plotlyReady) continue;
+                Plotly.relayout(panel.chartEl, {
+                    paper_bgcolor: colors.surface,
+                    plot_bgcolor: colors.surface,
+                    "font.color": colors.text,
+                    "xaxis.gridcolor": colors.grid,
+                    "yaxis.gridcolor": colors.grid,
+                    "xaxis.spikecolor": colors.spike,
+                    "yaxis.spikecolor": colors.spike,
+                });
+            }
+        }
+
+        function wwErResizePlots() {
+            if (shell.currentPage !== "event-reconstruction") return;
+            for (const panel of wwErState.plot.panels) {
+                if (panel.plotlyReady) Plotly.Plots.resize(panel.chartEl);
+            }
         }
 
         function wwErMemberRowHtml(member) {
@@ -14949,15 +15577,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         : "");
             }
 
-            // Main area: no plotting yet (Slice 3C) -- the canvas only says
-            // what is selected.
-            const stale = wwErStaleMembers().length;
-            document.getElementById("wwErCanvasMeta").textContent = wwErDefined()
-                ? members.length + (members.length === 1 ? " record selected" : " records selected") + (stale ? " · removed records to resolve" : "")
-                : "No reconstruction records selected";
-            document.getElementById("wwErEmptyState").textContent = wwErDefined()
-                ? "Plotting the reconstruction on its common timeline is not available yet."
-                : "No reconstruction records selected. Select records in the left panel to place them on one common timeline. Plotting the reconstruction is not available yet.";
+            // Main area (Slice 3C): the plotted panels, meta line and
+            // empty state.
+            wwErRenderPlot();
         }
 
         function wwErHandleAction(button) {
@@ -48434,6 +49056,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // never wwSetDragMode(), which relayouts every Waveform panel.
         document.getElementById("wwErDragModeZoomBtn").addEventListener("click", () => wwErSetDragMode("zoom"));
         document.getElementById("wwErDragModePanBtn").addEventListener("click", () => wwErSetDragMode("pan"));
+        // Slice 3C: Event Reconstruction's own panels re-theme themselves
+        // (Waveform's wwApplyTheme() only iterates ww.panels).
+        document.addEventListener("powerwave:theme-change", wwErApplyTheme);
         // Event Reconstruction Slice 2: one delegated handler for every
         // member/Time Group action button (re-rendered after each change).
         document.getElementById("wwErSidebar").addEventListener("click", (event) => {
@@ -50031,9 +50656,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // Event Reconstruction (Slice 0): the same reusable split helper
         // and the same min/max/default limits as the Waveform Workspace
-        // Sidebar, with its own remembered width. No onResize yet --
-        // there is no reconstruction plot to resize until the common
-        // reconstruction canvas exists.
+        // Sidebar, with its own remembered width. Slice 3C: resizing it
+        // re-measures the reconstruction panels.
         const wwErSidebarSplit = shellCreateHorizontalSplit({
             handleEl: document.getElementById("wwErSplitHandle"),
             panelEl: document.getElementById("wwErSidebar"),
@@ -50041,6 +50665,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             max: SHELL_WORKSPACE_SIDEBAR_MAX_WIDTH,
             defaultWidth: SHELL_WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
             storageKey: WW_ER_SIDEBAR_WIDTH_STORAGE_KEY,
+            onResize: wwErResizePlots,
         });
 
         // Split View UX V1: this codebase's own architecture already

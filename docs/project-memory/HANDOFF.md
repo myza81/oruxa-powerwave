@@ -4,9 +4,65 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-02** (Event Reconstruction record model, DEC-128)
+Last updated: **2026-10-02** (Event Reconstruction Slice 3C)
 
 ## What was most recently done
+
+**Event Reconstruction Slice 3C — first plotted reconstruction (DEC-127
+update, 2026-10-02).** This is UAT 1. The feature is not complete.
+
+- **What it does.** The selected analog channels (native and calculated)
+  of the current records plot on one relative reconstruction timeline:
+  - one panel per channel, in the browser's order;
+  - engineering units;
+  - Fit All initially;
+  - Box Zoom/Pan shared by every panel, with Pan clamped to Fit All;
+  - double-click a panel for Fit All.
+
+  All of this is provisional and recorded in DEC-127's Slice 3C update.
+- **How.**
+  - Event Reconstruction's own `wwErState.plot` drives the Slice 3A
+    shared helpers.
+  - Time follows `r = native + total_reconstruction_offset_s`, through
+    the Slice 3B pair.
+  - Plotly x is `r − origin`, with one local origin per canvas.
+  - Each source fetches only its visible slice, with an open bound at
+    its own edges.
+- **Precision.** Plotly 3.7 scattergl does not lose the 0.2 ms spacing
+  even at +30 days; only its auto tick labels degrade. The local origin
+  and ER's own ticks make this irrelevant.
+- **Real-data UAT smoke (owner YGPN 275 kV files, local only, not
+  committed).**
+  - BAHS 5 kHz (envelope under Fit All, full resolution when zoomed),
+    BTGH 20 Hz and PMJY 20 Hz plot correctly on one timeline. The BTGH
+    power drop lines up with the BAHS disturbance.
+  - The file `BEN Files/AGJH/AGJH 221022.ben` in that folder is dated
+    22 Oct 2022. Adding it makes Fit All span 87 days, so every trace is
+    sub-pixel; the large-gap warning fires.
+- **Owner UAT scenario.**
+  1. Upload BAHS 275kV (fast), BTGH and PMJY (slow) from the YGPN
+     275 kV folder.
+  2. Add them as records and open each record's Channels.
+  3. Select one channel per record.
+  4. Check:
+     - Fit All;
+     - box zoom on any panel (all follow);
+     - Pan (clamped);
+     - double-click (Fit All);
+     - a correction on one record (only it moves);
+     - "Make reference" (the zero moves; the spacing doesn't).
+- **Tests.**
+  - New `event-reconstruction-plot.spec.js` (14), plus
+    `support/synthetic_comtrade.js`.
+  - Static `TestEventReconstructionPlotting` (9).
+  - Existing ER spec and static checks updated for the new
+    meta/empty-state text and the end of "no plotting yet".
+  - Full backend: 6,277 passed, 40 skipped. Full browser: 398 of 398 passed (the intermittent overcurrent_analysis.spec.js:1345 gridline test also passed this run).
+- **Next (Slice 3D).** Staged Zoom In/Out, Reset Time View (= Fit All)
+  and Autoscale Y. Open points to decide first are listed in the final
+  Slice 3C report and the design doc §10.
+
+## Earlier — Event Reconstruction record model
 
 **Event Reconstruction record model (DEC-128, 2026-10-02).** This is a
 UAT correction made before Slice 3C. Separately imported "BAHS 275kV"

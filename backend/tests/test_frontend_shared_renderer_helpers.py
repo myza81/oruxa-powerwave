@@ -1,7 +1,7 @@
 """Slice 3A (DEC-127, Option B): the renderer helpers shared by Waveform
-and (later) Event Reconstruction are pure/parameter-driven, Waveform's
-own functions delegate to them unchanged, and nothing plots Event
-Reconstruction yet."""
+and Event Reconstruction are pure/parameter-driven, Waveform's own
+functions delegate to them unchanged, and (Slice 3C) Event
+Reconstruction plots through them rather than copies."""
 
 from __future__ import annotations
 
@@ -101,11 +101,14 @@ def test_fetch_core_keeps_the_existing_request_contract():
         assert expected in core
 
 
-def test_event_reconstruction_does_not_plot_yet():
+def test_event_reconstruction_plots_through_the_shared_helpers():
     source = _source()
     module = _code(source[source.index("// Event Reconstruction (DEC-123 Slice 0 shell") : source.index("// Phase 3B: Recordings page (section 5/8/9)")])
-    for forbidden in ("Plotly", "wwFetchWaveformRange", "wwAnalogLineTrace", "wwAnalogPanelLayout", "wwPanelMarkupHtml"):
-        assert forbidden not in module
+    for shared in ("wwFetchWaveformRange(", "wwAnalogLineTrace(", "wwAnalogPanelLayout(", "wwPanelMarkupHtml(", "wwPointBudgetForPlotWidth("):
+        assert shared in module
+    # Waveform's own (ww-coupled) wrappers are never used by it.
+    for wrapper in ("wwFetchChannelRange(", "wwBuildTrace(", "wwBuildLayout(", "wwPointBudgetForPanel(", "wwStepZoomX("):
+        assert wrapper not in module
 
 
 def test_no_event_reconstruction_state_in_the_waveform_engine():

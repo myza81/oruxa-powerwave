@@ -49,6 +49,37 @@ Group" assumption below.**
   quantified by a fixture test (a float32 step is about 0.49 ms at
   +2 h); it is to be verified in the Slice 3C UAT, with the
   local-plotting-origin mitigation if needed.
+- **Slice 3C (done, UAT 1, 2026-10-02):** the first plotted
+  reconstruction. Full detail is in DEC-127's Slice 3C update.
+  - Scope: one panel per selected analog channel in the browser's
+    order, engineering units, a relative X axis, and Fit All as the
+    initial view.
+  - Box Zoom/Pan are Event Reconstruction's own drag mode; every panel
+    follows the one viewport; Pan is clamped to Fit All; a double-click
+    returns to Fit All.
+  - Fetch: the hybrid visible-range fetch (§7) with the shared point
+    budget and envelope.
+  - **Coordinate translation** (r = reconstruction seconds, O = the
+    canvas's one plotting origin):
+
+    | Value | Coordinate |
+    |---|---|
+    | viewport, Fit All, pan bounds | r |
+    | trace x / `xaxis.range` / `tickvals` handed to Plotly | r − O |
+    | displayed tick labels (`ticktext`) and hover (`customdata`) | r |
+    | relayout event range from Plotly | x → r = x + O |
+    | source fetch range | native = r − `total_reconstruction_offset_s` (open bound at the source's own edge) |
+    | returned samples | r = native + `total_reconstruction_offset_s` |
+
+    O is kept while the window stays within 100 spans of it, and is
+    otherwise moved to the window start; every trace is remapped at once.
+  - **Precision result.** Plotly 3.7's scattergl kept 0.2 ms spacing at
+    +7,200 s, +30 days and +10 years (regl-line2d hi/lo split); only its
+    auto tick labels degraded. The local origin and Event
+    Reconstruction's own ticks remove the dependency on either.
+  - Still `[OPEN / UAT]`: mixed-duration navigation (§10). Not built:
+    staged zoom, Reset, Autoscale Y (3D); cursors (3F); the ruler;
+    grouped/multi-axis panels (6A/6B).
 
 Date: 2026-10-01. Code references are function names in
 `frontend/index.html` and `backend/app/` at commit `33f3178`
@@ -341,6 +372,24 @@ wwErReconstructionToElapsed(displaySourceId, reconstructionSeconds) -> number | 
 - Reset Time View = Fit All.
 - This is provisional; Fit Selected Record, overview navigation and
   automatic focus stay `[OPEN / UAT]`.
+
+**As built (Slice 3C).**
+- Fit All uses the plotted channels' sources only. With nothing plotted
+  there is no viewport (the empty state shows instead), rather than the
+  members' extents.
+- Selection changes follow Fit All while the view is at Fit All, and
+  keep a manual window otherwise (intersected with the new Fit All).
+- Double-click is the Reset gesture until Slice 3D enables the button.
+- **First UAT observations** (owner YGPN 275 kV records, local run):
+  - The same-day records (BAHS 5 kHz / 7.5 s, BTGH 20 Hz / 70 s, PMJY
+    20 Hz / 51 s, PMJY about 467 s later) read well under Fit All. The
+    5 kHz record arrives as an envelope and resolves to full samples
+    when zoomed.
+  - One record from a different event (dated 87 days later) turns Fit
+    All into an 87-day span where every trace is sub-pixel. The
+    large-gap warning is the only cue.
+  - Both observations are inputs to the open mixed-duration navigation
+    question.
 
 ## 11. Proposed Slice 3 sub-slices
 
