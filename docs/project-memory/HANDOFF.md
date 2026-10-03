@@ -4,14 +4,69 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-03** (Global Powerwave Waveform Tool Icon System)
+Last updated: **2026-10-03** (Global waveform toolbar composition)
 
 ## What was most recently done
 
+**Global waveform toolbar composition (DEC-141, 2026-10-03, app-wide —
+not Event-Reconstruction-only).** The feature is not complete. See
+[POWERWAVE_ICON_SYSTEM.md §11](POWERWAVE_ICON_SYSTEM.md#11-toolbar-composition-dec-141)
+for the full record. Builds on DEC-140 (below) and explicitly reverses
+two of its findings.
+
+- **Event Reconstruction's `#wwErToolbar`** now holds every common
+  waveform tool in one consolidated header, in seven ordered,
+  separator-divided families: View Mode → Time Display → Units → Time
+  Navigation → Y-axis Scale → Fit/Reset → Analysis. Its Reconstruction
+  Timeline canvas's own toolbar (`#wwErCanvasToolbar`) is **removed
+  entirely** — not hidden, not kept as a fallback. Every relocated
+  control kept its existing element id and handler; only DOM location,
+  CSS class (text button → compact `.ww-icon-btn`) and icon changed.
+- **View Mode reversed (supersedes DEC-140).** Separate/Custom/Split now
+  exist on Event Reconstruction too, reusing Waveform's own icons
+  verbatim, permanently disabled with explanatory tooltips — owner UAT
+  explicitly reversed DEC-140's "no invented stubs" reading: never omit
+  a global slot, show it disabled instead.
+- **Zoom In/Out now wired (supersedes DEC-140).** `ZOOM_X_IN`/`_OUT` back
+  Event Reconstruction's Time Navigation family (same ids/handler as
+  before); its own decorative, always-disabled, never-wired axis-chooser
+  dropdown is retired (confirmed zero functional loss). `ZOOM_Y_IN`/
+  `_OUT` back two new, permanently-disabled buttons in a new Y-axis
+  Scale family — placed in the header now per explicit owner
+  instruction, even though no "active Y-axis target" concept exists yet
+  to drive them (that's the next dedicated ticket).
+- **Waveform's own per-Time-Group canvas toolbar kept in place**
+  (reported architectural constraint, not silently applied): multiple
+  independent, simultaneous Time Groups each need their own Reset/
+  Autoscale/Zoom/Cursor state; globalizing them would need an "active
+  Time Group" targeting concept that doesn't exist. Only its icons
+  changed (text → registry composites, incl. a new permanently-disabled
+  `FIT_SELECTED_RECORD` stub); its split-button's main icon now also
+  swaps live between X/Y composites in sync with its existing, unchanged
+  axis-chooser dropdown.
+- **New registry composites:** `RESET_TIME_VIEW`, `AUTOSCALE_Y`,
+  `FIT_SELECTED_RECORD`.
+- **Units (ENG/PU) stays text**, and the mock's "Y target" readout is
+  **not implemented** — both reported as deliberate mock deviations (see
+  the doc's §11 for the reasoning).
+- **Tests.** Rewrote 11 static tests in
+  `test_frontend_event_reconstruction.py` whose premises this ticket
+  reversed (old text-button markup, the old axis-chooser dropdown ids,
+  `#wwErCanvasToolbar`'s existence, "no invented View Mode stubs").
+- **Next.** The dedicated Y-axis interaction ticket (active-axis
+  targeting, Y-axis end drag zoom, Combined View Y target semantics) —
+  explicitly out of scope here. Then owner UAT of the whole branch.
+
+## Earlier — Global Powerwave Waveform Tool Icon System (DEC-140)
+
 **Global Powerwave Waveform Tool Icon System (DEC-140, 2026-10-03,
-app-wide — not Event-Reconstruction-only).** The feature is not
-complete. See [POWERWAVE_ICON_SYSTEM.md](POWERWAVE_ICON_SYSTEM.md) for
-the full registry/capability-matrix/tooltip record.
+app-wide — not Event-Reconstruction-only).** See
+[POWERWAVE_ICON_SYSTEM.md](POWERWAVE_ICON_SYSTEM.md) for the full
+registry/capability-matrix/tooltip record. Two of its findings (View
+Mode's "no invented stubs," Zoom In/Out "registered but not wired") were
+superseded by DEC-141 above; the rest (the registry itself, the geometry
+finding, the Time Display capability matrix, Unit Mode staying text)
+remain current.
 
 - **One shared icon registry** (`WW_TOOL_ICONS` + `data-ww-icon="KEY"`
   placeholders + `wwApplyToolIcons()`) replaces duplicated inline `<svg>`
@@ -27,25 +82,11 @@ the full registry/capability-matrix/tooltip record.
   BOTH pages (Waveform gained a disabled Relative Time stub; Event
   Reconstruction gained a disabled Elapsed Time stub), each with an
   explanatory tooltip, never hidden.
-- **View Mode:** Event Reconstruction's Grouped/Combined are now icon
-  buttons (Grouped reuses Waveform's own icon verbatim; Combined is a
-  new composite in the same family). No disabled Separate/Custom/Split
-  stubs were added to Event Reconstruction, and no disabled Combined
-  stub to Waveform — neither page has ever had the other's concept (see
-  the doc's own §6 for the full reasoning, including a real gap in the
-  ticket's own 4-slot framing: Waveform's actual "Separate Layout" mode).
-- **Zoom In/Out composites** (`ZOOM_X_IN`/`_OUT`/`ZOOM_Y_IN`/`_OUT`) are
-  registered but deliberately not wired to a live control — that is
-  Y-axis interaction surface for the next dedicated ticket. Only the
-  tooltip wording changed ("Time Axis"/"Selected Y Axis").
 - **Unit Mode (ENG/PU)** stays a text toggle, not an icon — recorded
   decision, no clear pictogram exists.
 - **Tests.** `TestPowerwaveIconSystem` (6), `TestGlobalTimeDisplayFamily`
   (4), `TestGlobalViewModeFamily` (2); `TestEventReconstructionToolConsistency`
   updated for the registry.
-- **Next.** The dedicated Y-axis interaction ticket (active-axis
-  targeting, Y-axis end drag zoom, Combined View Y target semantics) —
-  explicitly out of scope here. Then owner UAT of the whole branch.
 
 ## Earlier — Event Reconstruction large-gap time formatting
 

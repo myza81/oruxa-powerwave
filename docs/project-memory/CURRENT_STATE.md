@@ -176,10 +176,10 @@ DEC-122 display timezone).
       Standing principle (DEC-139, app-wide, not Event-Reconstruction-only):
       common tools across Powerwave pages share iconography, tooltip
       wording and compact button styling; page state and workflow stay
-      page-owned. Event Reconstruction's own two toolbars are now grouped
-      with Waveform's own `.ww-toolbar-sep` component: mode selectors |
-      annotation tools in the main toolbar; Waveform-equivalent tools |
-      Fit Record in the canvas toolbar.
+      page-owned. Event Reconstruction's toolbar is now one single global
+      header (`#wwErToolbar`, DEC-141) — its Reconstruction Timeline
+      canvas has no toolbar of its own any more; see the global icon
+      system entry below.
 
   - **Per-Unit Display (DEC-138).** "Units [ENG | PU]", Engineering by
     default; display only. Waveform owns per-unit configuration; Event

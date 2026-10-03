@@ -129,20 +129,26 @@ class TestEventReconstructionPageShell:
         assert "<main" not in page
 
     def test_standard_interaction_controls_exist(self):
+        """DEC-141: every general waveform tool is now a compact icon
+        button in the global header, not a text button."""
         page = _er_page(_source())
         assert 'id="wwErDragModeZoomBtn" aria-pressed="true" title="Box Zoom" aria-label="Box Zoom"' in page
         assert 'id="wwErDragModePanBtn" aria-pressed="false" title="Pan" aria-label="Pan"' in page
-        assert re.search(r'id="wwErZoomInBtn"[^>]*disabled>Zoom In</button>', page)
-        assert re.search(r'id="wwErZoomOutBtn"[^>]*disabled>Zoom Out</button>', page)
-        assert re.search(r'id="wwErResetViewBtn"[^>]*disabled>Reset Time View</button>', page)
+        assert 'id="wwErZoomInBtn" title="Zoom In — Time Axis" aria-label="Zoom In — Time Axis" disabled>' in page
+        assert 'id="wwErZoomOutBtn" title="Zoom Out — Time Axis" aria-label="Zoom Out — Time Axis" disabled>' in page
+        assert 'id="wwErResetViewBtn" title="Reset Time View" aria-label="Reset Time View" disabled>' in page
+        assert ">Zoom In</button>" not in page and ">Zoom Out</button>" not in page and ">Reset Time View</button>" not in page
 
     def test_controls_reuse_waveform_toolbar_markup_classes(self):
+        """DEC-141: every one of these controls now lives in the global
+        header (#wwErToolbar); the Reconstruction Timeline canvas no
+        longer has its own copy (#wwErCanvasToolbar is gone)."""
         page = _er_page(_source())
         assert '<div class="theme-toggle ww-icon-group" id="wwErDragModeToggle" role="group" aria-label="Drag mode">' in page
-        assert '<div class="ww-split-btn ww-tg-zoom-in-split">' in page
-        assert '<div class="ww-split-btn ww-tg-zoom-out-split">' in page
-        assert 'class="secondary ww-tg-reset-view-btn" id="wwErResetViewBtn"' in page
-        assert '<div class="ww-tg-toolbar" id="wwErCanvasToolbar">' in page
+        assert '<div class="ww-split-btn" id="wwErAnnotateSplit">' in page  # the one remaining split-btn family
+        assert 'class="ww-icon-btn ww-tg-reset-view-btn" id="wwErResetViewBtn"' in page
+        assert 'id="wwErCanvasToolbar"' not in page
+        assert 'class="ww-tg-toolbar"' not in _between(page, '<section class="ww-er-canvas"', "</section>")
 
     def test_shares_waveform_layout_css(self):
         # The ER selector is listed first so each original Waveform
@@ -232,7 +238,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
 
     def test_waveform_toolbar_controls_keep_their_slice_0_status(self):
         page = _er_page(_source())
-        for element_id in ("wwErZoomInBtn", "wwErZoomInAxisBtn", "wwErZoomOutBtn", "wwErZoomOutAxisBtn", "wwErResetViewBtn"):
+        for element_id in ("wwErZoomInBtn", "wwErZoomOutBtn", "wwErResetViewBtn"):
             assert re.search(rf'id="{element_id}"[^>]*disabled', page)
 
     def test_sidebar_drawer_targets_the_current_page_row(self):
@@ -652,12 +658,22 @@ class TestEventReconstructionPlotting:
             assert "wwEr" not in body
 
     def test_y_step_zoom_stays_out(self):
+        """Slice 3D/DEC-141: Event Reconstruction zooms X only. The
+        dedicated Y Zoom In/Out buttons (DEC-141's own Y-axis Scale
+        family) exist, carry the SAME registry icons/tooltip wording as
+        Waveform's own Y-targeted zoom, and stay permanently disabled and
+        unwired -- there is no "active Y axis target" concept to drive
+        them (that is explicitly the next ticket's own scope, not this
+        one's)."""
         source = _source()
         page = _er_page(source)
-        # Slice 3D zooms X only: the axis menus stay disabled and unwired.
-        for control in ("wwErZoomInAxisBtn", "wwErZoomOutAxisBtn"):
+        for control in ("wwErZoomYInBtn", "wwErZoomYOutBtn"):
             assert re.search(r'id="' + control + r'"[^>]*\bdisabled\b', page)
             assert 'getElementById("' + control + '").addEventListener' not in source
+        assert _icon_key(_element(page, "wwErZoomYInBtn", "button")) == "ZOOM_Y_IN"
+        assert _icon_key(_element(page, "wwErZoomYOutBtn", "button")) == "ZOOM_Y_OUT"
+        assert 'title="Zoom In — Selected Y Axis"' in page
+        assert 'title="Zoom Out — Selected Y Axis"' in page
         module = _er_module(source)
         for forbidden in ("wwStepZoomY(", "yaxis.range\": [center"):
             assert forbidden not in module
@@ -693,7 +709,7 @@ class TestEventReconstructionTimelineNavigation:
         assert 'document.getElementById("wwErResetViewBtn").addEventListener("click", wwErResetView);' in source
         assert 'document.getElementById("wwErAutoscaleYBtn").addEventListener("click", wwErAutoscaleY);' in source
         page = _er_page(source)
-        assert '<button type="button" class="secondary ww-tg-autoscale-btn" id="wwErAutoscaleYBtn"' in page
+        assert '<button type="button" class="ww-icon-btn ww-tg-autoscale-btn" id="wwErAutoscaleYBtn"' in page
         module = _er_module(source)
         for waveform_fn in ("wwStepZoomX(", "wwResetTimeView(", "wwAutoscaleY(", "wwAutoscaleYForGroup(", "wwPerformZoomStep("):
             assert waveform_fn not in module
@@ -1410,11 +1426,32 @@ class TestPowerwaveIconSystem:
         canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
         assert 'data-ww-icon="CURSORS_AB"' in canvas
         assert _icon_key(_element(page, "wwErCursorModeBtn", "button")) == "CURSORS_AB"
-        # The zoom-axis caret: Waveform's dynamic template and Event
-        # Reconstruction's static (always-disabled) triggers.
+        # DEC-141: Reset Time View / Autoscale Y / Fit Selected Record all
+        # now reference the same registry key on both pages (Waveform's
+        # own Fit Selected Record is its new, permanently-disabled stub --
+        # it has no "active record" concept of its own).
+        for key in ("RESET_TIME_VIEW", "AUTOSCALE_Y", "FIT_SELECTED_RECORD"):
+            assert canvas.count(f'data-ww-icon="{key}"') == 1, key
+            assert page.count(f'data-ww-icon="{key}"') == 1, key
+        # DEC-141: the Zoom In/Out MAIN action -- Waveform's own dynamic
+        # X/Y choice (ZOOM_X_IN/_OUT by default, swapped to ZOOM_Y_IN/_OUT
+        # by wwSyncTimeGroupZoomControls()) and Event Reconstruction's own
+        # static, always-X (it has no axis choice to make).
+        for key in ("ZOOM_X_IN", "ZOOM_X_OUT"):
+            assert f'data-ww-icon="{key}"' in canvas, key
+        assert _icon_key(_element(page, "wwErZoomInBtn", "button")) == "ZOOM_X_IN"
+        assert _icon_key(_element(page, "wwErZoomOutBtn", "button")) == "ZOOM_X_OUT"
+        # DEC-141: the Y-axis Scale family's own dedicated Zoom In/Out --
+        # Event Reconstruction's own (permanently disabled: no active-Y-
+        # axis-target concept) use the SAME ZOOM_Y_IN/_OUT composites
+        # Waveform's dynamic swap uses, never a separate definition.
+        assert _icon_key(_element(page, "wwErZoomYInBtn", "button")) == "ZOOM_Y_IN"
+        assert _icon_key(_element(page, "wwErZoomYOutBtn", "button")) == "ZOOM_Y_OUT"
+        # The zoom-axis caret: Waveform's dynamic template only now --
+        # Event Reconstruction retired its own (always-disabled, never
+        # wired) copy once it gained dedicated Y buttons (DEC-141).
         assert canvas.count('data-ww-icon="CARET_DOWN"') == 2
-        assert _icon_key(_element(page, "wwErZoomInAxisBtn", "button")) == "CARET_DOWN"
-        assert _icon_key(_element(page, "wwErZoomOutAxisBtn", "button")) == "CARET_DOWN"
+        assert "wwErZoomInAxisBtn" not in page and "wwErZoomOutAxisBtn" not in page
         # The four annotation-type menu items, both menus.
         for kind, key in (("text_note", "ANNOTATION_TEXT_NOTE"), ("callout", "ANNOTATION_CALLOUT"),
                           ("peak_max", "ANNOTATION_PEAK_MAX"), ("peak_min", "ANNOTATION_PEAK_MIN")):
@@ -1446,18 +1483,22 @@ class TestPowerwaveIconSystem:
             element = _element(page, button, "button")
             assert element.endswith(f">{label}</button>") and "data-ww-icon" not in element
 
-    def test_zoom_xy_composites_are_registered_but_not_yet_wired(self):
-        """Section 20's own scope boundary: this slice defines the
-        ZOOM_X/Y_IN/OUT composites (one canonical definition each,
-        satisfying section 2/5/7/8) but does not restructure the Zoom
-        In/Out split-buttons' own interaction pattern -- that is explicit
-        Y-axis interaction work for the next dedicated ticket."""
+    def test_zoom_xy_composites_are_registered_and_now_wired(self):
+        """DEC-141 (amending DEC-140's own deferral): the ZOOM_X/Y_IN/OUT
+        composites are now live -- Waveform's Zoom In/Out own MAIN action
+        icon (dynamically swapped with its existing X/Y choice, never
+        changing the choice/interaction logic itself) and Event
+        Reconstruction's consolidated Time Navigation (X, live) and
+        Y-axis Scale (Y, permanently disabled -- no target concept yet)
+        families. Still never a second definition per key."""
         source = _source()
         registry = _icon_registry(source)
         for key in ("ZOOM_X_IN", "ZOOM_X_OUT", "ZOOM_Y_IN", "ZOOM_Y_OUT"):
             assert key in registry
-        for key in ("ZOOM_X_IN", "ZOOM_X_OUT", "ZOOM_Y_IN", "ZOOM_Y_OUT"):
-            assert f'data-ww-icon="{key}"' not in source  # reserved, not live yet
+            assert source.count(f'data-ww-icon="{key}"') >= 1, key
+        sync = _between(source, "function wwSyncTimeGroupZoomControls(groupId) {", "\n        }\n")
+        assert 'const iconKey = "ZOOM_" + axis.toUpperCase() + "_" + (action === "in" ? "IN" : "OUT");' in sync
+        assert "iconSpan.innerHTML = WW_TOOL_ICONS[iconKey];" in sync
 
 
 class TestEventReconstructionToolConsistency:
@@ -1496,39 +1537,37 @@ class TestEventReconstructionToolConsistency:
         er_list = _element(page, "wwErAnnotationListBtn", "button")
         assert 'title="Annotations" aria-label="Annotations"' in er_list and 'title="Annotations" aria-label="Annotations"' in wf_list
         assert 'class="ww-annotation-count-badge" id="wwErAnnotationCountBadge"' in er_list
-        # Inside Event Reconstruction's own toolbar, grouped (DEC-139:
-        # Waveform's own separator) away from the mode selectors before it.
+        # Inside Event Reconstruction's own global toolbar, in the
+        # Analysis family (DEC-141): Cursors, Annotate, Annotations.
         toolbar = _between(page, '<div class="ww-toolbar" id="wwErToolbar">', 'id="wwErAnnotationGuidance"')
         assert 'id="wwErAnnotateSplit"' in toolbar and 'id="wwErAnnotationListBtn"' in toolbar
-        assert toolbar.count('<span class="ww-toolbar-sep" aria-hidden="true"></span>') == 1
-        sep_index = toolbar.index('<span class="ww-toolbar-sep"')
-        assert toolbar.index('id="wwErUnitModeToggle"') < sep_index < toolbar.index('id="wwErAnnotateSplit"')
+        assert toolbar.index('id="wwErCursorModeBtn"') < toolbar.index('id="wwErAnnotateSplit"')
 
     def test_equivalent_canvas_tools_reuse_waveforms_classes_and_exact_tooltips(self):
         """Section 1/9/18: not just the tooltip string -- the same compact
-        button CLASS every one of these controls carries in Waveform's own
-        canvas toolbar, read from wwCreateTimeGroupCanvasDom() itself, and
-        the new canonical "Time Axis"/"Selected Y Axis" wording (DEC-140)
-        in place of the old generic "X axis"/"Y axis"."""
+        button CLASS every one of these controls carries (DEC-141: Event
+        Reconstruction's own copies are now `.ww-icon-btn`, consolidated
+        into the global header, since the owner's own explicit "do not
+        leave Reset/Autoscale/Zoom as a large text button" instruction for
+        THIS page -- Waveform's own canvas-toolbar precedent, DEC-139, is
+        unaffected), and the canonical "Time Axis"/"Selected Y Axis"
+        wording (DEC-140) in place of the old generic "X axis"/"Y axis"."""
         source = _source()
         page = _er_page(source)
         canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
-        for shared_class in ("ww-split-btn-main", "ww-split-btn-trigger", "ww-tg-reset-view-btn", "ww-tg-autoscale-btn", "ww-tg-cursor-mode-btn"):
+        for shared_class in ("ww-tg-reset-view-btn", "ww-tg-autoscale-btn", "ww-tg-cursor-mode-btn"):
             assert shared_class in canvas, shared_class
             assert shared_class in page, shared_class
-        assert 'class="secondary ww-split-btn-main" id="wwErZoomInBtn"' in page
-        assert 'class="secondary ww-split-btn-main" id="wwErZoomOutBtn"' in page
-        assert 'class="ww-icon-btn ww-split-btn-trigger" id="wwErZoomInAxisBtn"' in page
-        assert 'class="secondary ww-tg-reset-view-btn" id="wwErResetViewBtn"' in page
-        assert 'class="secondary ww-tg-autoscale-btn" id="wwErAutoscaleYBtn"' in page
+        assert 'class="ww-icon-btn" id="wwErZoomInBtn"' in page
+        assert 'class="ww-icon-btn" id="wwErZoomOutBtn"' in page
+        assert 'class="ww-icon-btn ww-tg-reset-view-btn" id="wwErResetViewBtn"' in page
+        assert 'class="ww-icon-btn ww-tg-autoscale-btn" id="wwErAutoscaleYBtn"' in page
         assert 'class="ww-icon-btn ww-tg-cursor-mode-btn" id="wwErCursorModeBtn"' in page
         for markup in (
             'id="wwErZoomInBtn" title="Zoom In — Time Axis" aria-label="Zoom In — Time Axis"',
-            'title="Choose Zoom In axis" aria-label="Choose Zoom In axis"',
             'id="wwErZoomOutBtn" title="Zoom Out — Time Axis" aria-label="Zoom Out — Time Axis"',
-            'title="Choose Zoom Out axis" aria-label="Choose Zoom Out axis"',
-            'id="wwErResetViewBtn" title="Reset Time View" disabled>Reset Time View</button>',
-            'id="wwErAutoscaleYBtn" title="Autoscale Y" disabled>Autoscale Y</button>',
+            'id="wwErResetViewBtn" title="Reset Time View" aria-label="Reset Time View" disabled>',
+            'id="wwErAutoscaleYBtn" title="Autoscale Y" aria-label="Autoscale Y" disabled>',
         ):
             assert markup in page, markup
         for base in ("Zoom In — Time Axis", "Zoom Out — Time Axis", "Choose Zoom In axis", "Choose Zoom Out axis"):
@@ -1548,16 +1587,22 @@ class TestEventReconstructionToolConsistency:
         assert 'title="A/B Time Cursors" aria-label="A/B Time Cursors"' in er_cursor
 
     def test_event_reconstruction_specific_tools_get_their_own_icon_same_compact_design(self):
+        """DEC-141: Fit Selected Record now sits in the global header's
+        Fit/Reset family (no page-specific canvas toolbar left at all),
+        and its own icon is a registry entry (FIT_SELECTED_RECORD) --
+        Waveform's own new disabled stub reuses the identical key."""
         source = _source()
         page = _er_page(source)
         fit = _element(page, "wwErFitRecordBtn", "button")
         assert 'class="ww-icon-btn ww-er-fit-record-btn"' in fit and 'aria-label="Fit selected record"' in fit
-        assert "ww-icon-btn" in fit and "ww-icon" in fit
-        assert "data-ww-icon" not in fit  # its own icon, not a registry entry reused elsewhere
-        canvas_toolbar = _div_matching_by_id(page, "wwErCanvasToolbar")
-        assert canvas_toolbar.count('<span class="ww-toolbar-sep" aria-hidden="true"></span>') == 1
-        sep_index = canvas_toolbar.index('<span class="ww-toolbar-sep"')
-        assert canvas_toolbar.index('id="wwErCursorModeBtn"') < sep_index < canvas_toolbar.index('id="wwErFitRecordBtn"')
+        assert _icon_key(fit) == "FIT_SELECTED_RECORD"
+        canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
+        assert 'class="ww-icon-btn ww-tg-fit-record-btn"' in canvas
+        assert 'title="Fit selected record — unavailable in Waveform"' in canvas
+        # Within the header's own Fit/Reset family: Fit Selected Record,
+        # then Reset Time View (section 8's own order).
+        toolbar = _between(page, '<div class="ww-toolbar" id="wwErToolbar">', 'id="wwErAnnotationGuidance"')
+        assert toolbar.index('id="wwErFitRecordBtn"') < toolbar.index('id="wwErResetViewBtn"')
 
     def test_unit_mode_stays_the_one_labelled_mode_selector(self):
         """Section 11's own escalation (Time Display and View Mode move
@@ -1686,10 +1731,27 @@ class TestGlobalViewModeFamily:
             element = _element(page, button, "button")
             assert "data-ww-icon" in element and "<svg" not in element
 
-    def test_er_has_no_invented_custom_or_split_controls(self):
-        page = _er_page(_source())
-        for forbidden in ("wwErViewCustomBtn", "wwErViewSplitBtn", "wwErCustomLayoutBtn", "wwErSplitViewBtn"):
-            assert forbidden not in page, forbidden
+    def test_er_shows_the_full_view_mode_family_separate_custom_split_disabled(self):
+        """DEC-141 (reversing DEC-140's own prior "no invented stubs"
+        reasoning for View Mode specifically, per the owner's explicit,
+        UAT-informed "do not omit unsupported global slots" instruction):
+        Separate/Custom/Split now exist on Event Reconstruction too,
+        permanently disabled, each with a tooltip naming the page."""
+        source = _source()
+        page = _er_page(source)
+        group = _element(page, "wwErViewModeToggle", "div")
+        ids = __import__("re").findall(r'id="(wwErView\w+Btn)"', group)
+        assert ids == ["wwErViewGroupedBtn", "wwErViewCombinedBtn", "wwErViewSeparateBtn", "wwErViewCustomBtn", "wwErViewSplitBtn"]
+        for button_id, key in (("wwErViewSeparateBtn", "VIEW_SEPARATE"), ("wwErViewCustomBtn", "VIEW_CUSTOM"), ("wwErViewSplitBtn", "VIEW_SPLIT")):
+            element = _element(page, button_id, "button")
+            assert "disabled" in element
+            assert _icon_key(element) == key
+            assert "unavailable in Event Reconstruction" in element
+        # The SAME registry keys as Waveform's own existing icons -- never
+        # a second definition.
+        assert _icon_key(_element(source, "layoutModeSeparateBtn", "button")) == "VIEW_SEPARATE"
+        assert _icon_key(_element(source, "layoutModeCustomBtn", "button")) == "VIEW_CUSTOM"
+        assert _icon_key(_element(source, "wwSplitViewBtn", "button")) == "VIEW_SPLIT"
 
 
 class TestEventReconstructionPerUnitDisplay:

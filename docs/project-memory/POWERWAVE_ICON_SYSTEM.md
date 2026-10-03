@@ -105,11 +105,148 @@ weight/style.
 
 - **Waveform** (`#wwToolbar` + each Time Group's own canvas toolbar,
   `wwCreateTimeGroupCanvasDom()`).
-- **Event Reconstruction** (`#wwErToolbar` + `#wwErCanvasToolbar`).
+- **Event Reconstruction** (`#wwErToolbar`; its Reconstruction Timeline
+  canvas no longer has its own toolbar at all — see §11).
 - Every other page (Table, Calculated Channels, Analysis/Phasor/
   Overcurrent/Sequence Components/Impedance/Distance, Compliance) was
   checked and has **no** waveform-style Box Zoom/Pan/A-B-cursor/Annotate
   toolbar of its own — nothing else to migrate.
+
+---
+
+## 11. Toolbar composition (DEC-141)
+
+DEC-140 established the icon registry and the per-function capability
+matrix, but left Event Reconstruction's controls split across two DOM
+locations: the global `#wwErToolbar` header (drag mode, View Mode, Time
+Display, Unit Mode, Annotate/Annotations) and its Reconstruction
+Timeline canvas's own `#wwErCanvasToolbar` (Zoom In/Out, Reset Time
+View, Autoscale Y, A/B Cursors, Fit Record). Owner UAT found this an
+unacceptable "split toolbar" experience. DEC-141 consolidates every
+general waveform tool into the one global header, in seven ordered,
+separator-divided families, and **removes** `#wwErCanvasToolbar`
+entirely — the Reconstruction Timeline canvas now holds only its own
+contextual content (title/meta header, the cursor VALUE readout, the
+plotted panels).
+
+### Family order (`#wwErToolbar`, left to right)
+
+1. **View Mode** — Grouped, Combined, Separate (disabled), Custom
+   (disabled), Split (disabled).
+2. **Time Display** — Elapsed (disabled), Relative, Absolute.
+3. **Units** — ENG / PU (text, unchanged, §9).
+4. **Time Navigation** — Box Zoom, Pan, Zoom Out (X), Zoom In (X).
+5. **Y-axis Scale** — Zoom Out (Y, disabled), Zoom In (Y, disabled),
+   Autoscale Y.
+6. **Fit / Reset** — Fit Selected Record, Reset Time View.
+7. **Analysis** — A/B Cursors, Annotate, Annotations.
+
+Every control keeps its **existing element id and handler** — only its
+markup's DOM location, CSS class (text button → `.ww-icon-btn`) and icon
+changed. `wwErSyncToolbar()`, `wwErStepZoomX()`, `wwErResetView()`,
+`wwErAutoscaleY()`, `wwErFitRecord()` and the Annotate/Cursor wiring are
+byte-for-byte unchanged.
+
+### Reversed: Separate/Custom/Split now shown, disabled (§6 superseded)
+
+§6 above (DEC-140) recorded a decision **not** to add disabled Separate/
+Custom/Split stub buttons to Event Reconstruction. Owner UAT on DEC-141
+explicitly reversed this, with the unambiguous instruction "do not omit
+unsupported global slots — keep them visible but disabled with
+explanatory tooltip." All three now exist on Event Reconstruction's own
+View Mode family, reusing Waveform's own existing icons verbatim
+(`VIEW_SEPARATE`/`VIEW_CUSTOM`/`VIEW_SPLIT`), permanently disabled, each
+tooltipped `"<Name> — unavailable in Event Reconstruction"`. §6's own
+finding (Separate is missing from the ticket's literal 4-slot list, the
+true union is 5 slots) still stands and is now fully implemented, not
+just documented.
+
+### Zoom In/Out: now wired (§7 superseded)
+
+§7 above (DEC-140) registered `ZOOM_X_IN`/`ZOOM_X_OUT`/`ZOOM_Y_IN`/
+`ZOOM_Y_OUT` but deliberately left them unused. DEC-141's own owner
+instruction is explicit: "the Y Zoom buttons must still be placed in the
+global header now... preserve the current behavior and clearly report
+that limitation." Both pages now use these composites live:
+
+- **Event Reconstruction's Time Navigation** — Zoom In/Out (X) are the
+  SAME `wwErZoomInBtn`/`wwErZoomOutBtn` ids and `wwErStepZoomX()`
+  handler as before, now rendered with `ZOOM_X_IN`/`ZOOM_X_OUT` instead
+  of text. Its own axis-chooser dropdown (`wwErZoomInAxisBtn`/
+  `wwErZoomOutAxisBtn`) is **retired** — it was always permanently
+  disabled and never wired to anything (Event Reconstruction has only
+  ever zoomed the time axis), so removing it loses no real behaviour.
+- **Event Reconstruction's Y-axis Scale** — two brand-new buttons,
+  `wwErZoomYInBtn`/`wwErZoomYOutBtn`, using `ZOOM_Y_IN`/`ZOOM_Y_OUT`,
+  **permanently disabled** with the tooltip `"Zoom In/Out — Selected Y
+  Axis"` (the base function name, identical to Waveform's — see §8). No
+  "active Y axis target" concept exists to drive a stepped Y zoom when
+  a view may have several panels/axes at once (Grouped) or several
+  axes on one panel (Combined); inventing that targeting model is
+  explicitly out of scope here — the dedicated next interaction ticket.
+  This is the owner's own anticipated state ("if no valid Y target
+  exists: disable Y Zoom In/Out, tooltip should explain why"), not a
+  gap.
+- **Waveform's own Zoom In/Out** — the split-button's MAIN action icon
+  now swaps between `ZOOM_X_IN`/`ZOOM_X_OUT` and `ZOOM_Y_IN`/
+  `ZOOM_Y_OUT` live, exactly as its tooltip already dynamically swapped
+  (`wwSyncTimeGroupZoomControls()`, one added `iconSpan.innerHTML`
+  write keyed off the same `axis` variable the tooltip already reads).
+  The split-button structure, its X/Y axis-chooser dropdown, and every
+  interaction/zoom-amount behaviour are **completely unchanged** —
+  Waveform already has a real, working "which axis" resolution
+  mechanism (the dropdown), so retiring it (as Event Reconstruction's
+  decorative copy safely was) would be a genuine functional regression,
+  not a presentation change.
+- **Waveform's own new Fit Selected Record stub** — `FIT_SELECTED_RECORD`
+  (moved into the registry from Event Reconstruction's own pre-existing
+  icon, reused verbatim), permanently disabled, tooltip "Fit selected
+  record — unavailable in Waveform" (Waveform has no single "active
+  record" concept — a Time Group may hold several independently-aligned
+  sources, never one record to fit to).
+
+### `RESET_TIME_VIEW` / `AUTOSCALE_Y`: new composites
+
+Both were text-only before this slice (Waveform's own established
+canvas-toolbar precedent, DEC-139). The owner's own explicit "do not
+leave Reset Time View / Autoscale Y as a large text button" instruction
+for the NOW-GLOBAL-HEADER context applies to both pages' consolidated
+copies: `RESET_TIME_VIEW` (a counter-clockwise arc + arrowhead,
+Lucide RotateCcw metaphor) and `AUTOSCALE_Y` (a vertical line with
+outward arrowheads at both ends — "stretch to fit the full vertical
+range"), both redrawn at the 18-unit house grammar (§2).
+
+### Why Waveform's own per-Time-Group controls were not globalized
+
+Waveform can have **multiple, independent, simultaneously-open Time
+Groups** (DEC-057), each needing its own Reset/Autoscale/Zoom/Cursor
+state — collapsing them into ONE set of global header buttons would need
+an "active Time Group" targeting concept Waveform does not have today,
+exactly the kind of interaction redesign this slice (and DEC-141's own
+scope boundary) must not attempt. Event Reconstruction has exactly one
+shared timeline, so its own consolidation is structurally sound without
+inventing anything. Waveform's canvas-toolbar controls therefore stay in
+their existing per-canvas location; what changed for them is icon/
+registry conversion only (§7), never their placement.
+
+### Deliberate mock deviations (reported, not silently applied)
+
+- The attached mock's Units group appeared to show two icons rather than
+  the existing ENG/PU text toggle. The ticket's own written §5
+  ("Keep the current compact ENG/PU selector... concise state selectors
+  only where icon semantics are genuinely weaker") is explicit and
+  unambiguous, and is reaffirmed by §9 above (DEC-140); at the mock's
+  rendered resolution, two bold uppercase glyphs in a compact pill are
+  difficult to distinguish confidently from a true icon. ENG/PU stays
+  text, per the written instruction.
+- The mock's Y-axis Scale group showed a third element, a "Y target:
+  <quantity> (<unit>)" text readout, alongside Zoom Out/In (Y). Populating
+  that readout requires the same "active Y axis target" concept the
+  owner's own instructions (both this ticket's §16 and the follow-up
+  clarification) explicitly defer to a later ticket; it is not
+  implemented. Autoscale Y (which already, unchanged, operates on every
+  axis of the current view, never one "target") needed no such concept
+  and is live.
 
 ---
 

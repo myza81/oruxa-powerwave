@@ -22403,6 +22403,116 @@ fully custom shape, last resort.
   interaction ticket (active-axis targeting, Y-axis end drag zoom,
   Combined View Y target semantics).
 
+**Superseded in part by [DEC-141](#dec-141--global-waveform-toolbar-composition-one-consolidated-header-toolbar-per-page-seven-ordered-families-replaces-event-reconstructions-split-header--canvas-toolbars):**
+the View Mode family's "no invented Separate/Custom/Split stubs for
+Event Reconstruction" finding, and the Zoom In/Out "registered but
+deliberately not wired" status, were both explicitly reversed by owner
+UAT on the very next ticket. DEC-140's own registry, geometry contract,
+Time Display capability matrix, and Unit Mode/state-isolation findings
+are unaffected and remain current.
+
+---
+
+## DEC-141 — Global waveform toolbar composition: one consolidated header toolbar per page, seven ordered families, replaces Event Reconstruction's split header + canvas toolbars
+
+Date: 2026-10-03
+Status: Approved (owner, "GLOBAL WAVEFORM TOOLBAR COMPOSITION" task,
+confirmed by a follow-up owner clarification message) — implemented on
+`feat/event-reconstruction`; not merged. Builds directly on
+[DEC-140](#dec-140--the-global-powerwave-waveform-tool-icon-system-one-shared-icon-registryCapability-matrix-replaces-page-specific-duplicated-icon-markup)'s
+registry and explicitly reverses two of its findings (see "Supersedes"
+below). See [POWERWAVE_ICON_SYSTEM.md §11](POWERWAVE_ICON_SYSTEM.md#11-toolbar-composition-dec-141)
+for the full record.
+
+### Decision (owner)
+
+> Consolidate every common waveform tool into one global header toolbar
+> surface, organized into seven ordered, separator-divided families:
+> View Mode → Time Display → Units → Time Navigation → Y-axis Scale →
+> Fit/Reset → Analysis. Never omit a global slot a page doesn't support
+> — show it disabled with an explanatory tooltip instead. Remove the
+> lower/canvas-local general-tool toolbar after migration; do not retain
+> it as a fallback or leave both versions in place. The Y Zoom buttons
+> must still be placed in the global header now even though their
+> interaction semantics (active Y-axis targeting) are not yet
+> implemented — preserve current behaviour and clearly report that
+> limitation rather than leaving the controls in the lower panel.
+
+### Implementation (`[FACT]`)
+
+- **Event Reconstruction's `#wwErToolbar`** now holds all seven
+  families in the required order; its Reconstruction Timeline canvas's
+  own `#wwErCanvasToolbar` is **removed entirely** (not hidden, not kept
+  as a fallback) — the canvas now holds only contextual content (title/
+  meta, the A/B/Δt cursor value readout, plotted panels). Every
+  relocated control (Zoom In/Out, Reset Time View, Autoscale Y, A/B
+  Cursors, Fit Record) kept its existing element id and handler — only
+  its DOM location, CSS class (text button → `.ww-icon-btn`, 28px
+  compact square) and icon changed.
+- **View Mode family reversed (supersedes DEC-140 §"View Mode
+  family").** Separate/Custom/Split now exist on Event Reconstruction,
+  reusing Waveform's own icons verbatim, permanently disabled with
+  `"<Name> — unavailable in Event Reconstruction"` tooltips — the owner's
+  explicit "never omit a global slot" instruction is read as the
+  override for this family now, replacing DEC-140's prior "no invented
+  stubs" reading of the same ambiguity.
+- **Zoom In/Out now wired (supersedes DEC-140 §"Zoom In/Out").**
+  `ZOOM_X_IN`/`_OUT` back Event Reconstruction's Time Navigation family
+  (same ids/handler as before: `wwErZoomInBtn`/`wwErZoomOutBtn`,
+  `wwErStepZoomX()`); its own always-disabled, never-wired axis-chooser
+  dropdown (`wwErZoomInAxisBtn`/`wwErZoomOutAxisBtn`) is retired with no
+  functional loss (confirmed via grep: zero click listeners existed).
+  `ZOOM_Y_IN`/`_OUT` back two **new, permanently disabled** buttons
+  (`wwErZoomYInBtn`/`wwErZoomYOutBtn`) in the new Y-axis Scale family —
+  placed in the header now per the owner's explicit instruction, with no
+  "active Y-axis target" concept behind them yet (that targeting model
+  is out of scope for this slice; see "Open" below).
+- **Waveform's own per-Time-Group canvas toolbar kept in place**
+  (architectural constraint, reported rather than silently applied):
+  Waveform supports multiple independent, simultaneously-open Time
+  Groups (DEC-057), each needing its own Reset/Autoscale/Zoom/Cursor
+  state; collapsing them into one global set of buttons would require an
+  "active Time Group" targeting concept that does not exist and that
+  this slice must not invent. Only Waveform's canvas-toolbar **icons**
+  changed (text → `ZOOM_X_IN`/`_OUT`/`RESET_TIME_VIEW`/`AUTOSCALE_Y`,
+  plus a new permanently-disabled `FIT_SELECTED_RECORD` stub, "...
+  unavailable in Waveform" — Waveform has no single "active record" to
+  fit); its split-button's main-action icon now also swaps live between
+  `ZOOM_X_IN`/`_OUT` and `ZOOM_Y_IN`/`_OUT` in sync with its own existing,
+  unchanged X/Y axis-chooser dropdown.
+- **New registry composites:** `RESET_TIME_VIEW`, `AUTOSCALE_Y`,
+  `FIT_SELECTED_RECORD` (the last reused verbatim from Event
+  Reconstruction's pre-existing icon).
+- **Units stays the ENG/PU text toggle** — the mock's apparent two-icon
+  rendering is read as a resolution artifact, not an instruction to
+  replace it; the ticket's own written text explicitly says to keep it.
+  Reported as a deliberate mock deviation.
+- **The mock's "Y target: <quantity> (<unit>)" readout is not
+  implemented** — it requires the same active-Y-axis-target concept
+  named out of scope above. Reported as a deliberate mock deviation.
+- **Tests.** Rewrote 11 static tests in
+  `test_frontend_event_reconstruction.py` that encoded the now-reversed
+  premises (old text-button markup, the old axis-chooser dropdown ids,
+  `#wwErCanvasToolbar`'s existence, "no invented View Mode stubs").
+  `TestGlobalViewModeFamily.test_er_has_no_invented_custom_or_split_controls`
+  renamed to `test_er_shows_the_full_view_mode_family_separate_custom_split_disabled`
+  and rewritten for the reversed premise.
+  `TestPowerwaveIconSystem.test_zoom_xy_composites_are_registered_but_not_yet_wired`
+  renamed to `test_zoom_xy_composites_are_registered_and_now_wired`.
+  State-isolation and "same function, same key" tests extended to cover
+  the three new composites.
+
+### Open (not this slice)
+
+- Active Y-axis targeting, direct Y-axis drag-zoom redesign, and
+  Combined View Y-target semantics — the dedicated next interaction
+  ticket. Until then, Event Reconstruction's Y Zoom In/Out stay
+  permanently disabled and Waveform's own Y zoom keeps its existing
+  axis-chooser-dropdown-driven behaviour, unchanged.
+- An "active Time Group" targeting concept for Waveform, needed before
+  its own per-canvas Reset/Autoscale/Zoom/Cursor controls could ever be
+  safely globalized without breaking multi-Time-Group independence.
+
 ---
 
 ## How to add a decision
