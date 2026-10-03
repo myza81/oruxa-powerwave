@@ -4,9 +4,35 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-03** (Event Reconstruction toolbar consistency)
+Last updated: **2026-10-03** (Event Reconstruction large-gap time formatting)
 
 ## What was most recently done
+
+**Event Reconstruction large-gap time formatting (2026-10-03, display
+only — no DEC, a UX refinement, not an architecture decision).** Both
+notices that show a record-to-record time gap now read in the smallest
+human-friendly unit for their size (seconds/minutes/hours/days/weeks/
+months/years, per fixed thresholds), instead of raw seconds once a gap
+reaches into the thousands.
+
+- `wwErFormatSpan(seconds)` (used by the "Fit All is dominated by one
+  time gap" advisory) now buckets by threshold (`WW_ER_SPAN_UNITS`,
+  built from unit constants, never a bare `3600`/`86400` literal) up to
+  years, with 1 decimal for seconds and 2 for every larger unit, trailing
+  zeros trimmed, correct singular/plural.
+- The backend's own "Large time gap" warning notice (`#wwErNotices`) is
+  now built client-side from the warning's own `gap_s`/`threshold_s`
+  numeric fields through the same formatter, rather than showing the
+  backend's pre-rendered raw-seconds `.message` string — the backend's
+  own threshold DECISION (whether a gap warns at all) is unchanged.
+- **Tests.** A new browser test proves the exact worked thresholds
+  against the real running formatter; the existing 87-day-gap and
+  large-gap-warning browser tests are updated for their new (now
+  correctly bucketed) expected text; a new static test proves the
+  warning notice no longer uses the backend's raw `.message`.
+- **Next.** Owner UAT of the whole Event Reconstruction branch.
+
+## Earlier — Event Reconstruction toolbar consistency (DEC-139)
 
 **Event Reconstruction toolbar consistency correction (DEC-139,
 2026-10-03).** The feature is not complete. This is an app-wide UI rule,

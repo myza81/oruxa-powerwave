@@ -719,7 +719,7 @@ test.describe("Event Reconstruction -- Slice 2 selection workflow", () => {
 
     const notice = page.locator('#wwErNotices .ww-er-notice--warn', { hasText: "Large time gap" });
     await expect(notice).toBeVisible();
-    await expect(notice).toContainText("warning threshold 3600 s");
+    await expect(notice).toContainText("Records are 2 hours apart on the reconstruction timeline (warning threshold 1 hour).");
     await expect(notice).toContainText("Between STN_MORNING and STN_NOON");
     const definition = await api(page, "/event-reconstruction/definition");
     expect(definition.status).toBe("ready");

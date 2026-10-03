@@ -15017,8 +15017,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 html += wwErNoticeHtml("", "Add another record", "<span>A reconstruction needs at least two records.</span>");
             }
             for (const warning of wwErState.definition.warnings || []) {
+                // Display only (style: improve event reconstruction
+                // large-gap time formatting): the backend's own `gap_s`/
+                // `threshold_s` (the threshold DECISION stays entirely
+                // backend-side, unchanged) rendered in a human-friendly
+                // unit, never the backend's own raw-seconds `.message`
+                // text, exactly as every other duration in this file is
+                // formatted client-side from a backend number.
                 html += wwErNoticeHtml("warn", "Large time gap",
-                    "<span>" + escapeHtml(warning.message) + "</span>" +
+                    "<span>" + escapeHtml("Records are " + wwErFormatSpan(warning.gap_s) + " apart on the reconstruction timeline " +
+                        "(warning threshold " + wwErFormatSpan(warning.threshold_s) + "). Check the event selection, recorder clocks and timezones.") + "</span>" +
                     "<span>Between " + escapeHtml(wwErMemberName(warning.before_record_id)) + " and " +
                     escapeHtml(wwErMemberName(warning.after_record_id)) + ". The reconstruction is still valid.</span>");
             }
@@ -15726,18 +15734,34 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             };
         }
 
-        // A long span in words: days, hours, minutes or seconds.
+        // A long span in words, in the smallest unit that reads naturally --
+        // never raw seconds once a gap reaches into minutes, hours, days,
+        // weeks, months or years (the large-gap notice's own UX
+        // requirement: awareness, not a digit count). Each bucket's own
+        // threshold is the point the NEXT bucket takes over; its divisor is
+        // that bucket's own unit (seconds/minute/hour/day/week/[365/12
+        // days]/year) -- the two are equal for every bucket except weeks,
+        // whose bucket reaches up to 30 days while still counting in whole
+        // weeks, exactly as specified. `toFixed()` then `Number()` is the
+        // trim: "2.00" -> 2 -> "2", "2.08" -> 2.08 -> "2.08" -- at most 1
+        // decimal for seconds, 2 for every larger unit, never a trailing
+        // zero. Singular only for a value that rounds to exactly 1.
+        const WW_ER_SPAN_UNITS = (() => {
+            const minute = 60, hour = 60 * minute, day = WW_ER_SECONDS_PER_DAY, week = 7 * day, year = 365 * day;
+            return [
+                { threshold: minute, divisor: 1, singular: "second", plural: "seconds", decimals: 1 },
+                { threshold: hour, divisor: minute, singular: "minute", plural: "minutes", decimals: 2 },
+                { threshold: day, divisor: hour, singular: "hour", plural: "hours", decimals: 2 },
+                { threshold: week, divisor: day, singular: "day", plural: "days", decimals: 2 },
+                { threshold: 30 * day, divisor: week, singular: "week", plural: "weeks", decimals: 2 },
+                { threshold: year, divisor: year / 12, singular: "month", plural: "months", decimals: 2 },
+                { threshold: Infinity, divisor: year, singular: "year", plural: "years", decimals: 2 },
+            ];
+        })();
         function wwErFormatSpan(seconds) {
-            const minute = 60;
-            const hour = 60 * minute;
-            const day = 24 * hour;
-            if (seconds >= 2 * day) {
-                const days = seconds / day;
-                return (days >= 10 ? Math.round(days) : days.toFixed(1)) + " days";
-            }
-            if (seconds >= 2 * hour) return (seconds / hour).toFixed(1) + " h";
-            if (seconds >= 2 * minute) return (seconds / minute).toFixed(1) + " min";
-            return seconds.toFixed(1) + " s";
+            const unit = WW_ER_SPAN_UNITS.find((u) => seconds < u.threshold);
+            const value = Number((seconds / unit.divisor).toFixed(unit.decimals));
+            return value + " " + (value === 1 ? unit.singular : unit.plural);
         }
 
         // -- what to plot --

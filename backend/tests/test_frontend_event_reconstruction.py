@@ -202,7 +202,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
             "const WW_ER_COMBINED_PANEL_HEIGHT", "const WW_ER_COMBINED_AXIS_ADVISORY",
             "const WW_ER_Y_AXIS_TITLE_FONT_SIZE", "const WW_ER_SECONDS_PER_DAY", "const WW_ER_ABSOLUTE_TICK_STEPS",
             "const WW_ER_MONTHS", "const WW_ER_UNKNOWN_QUANTITY_LABEL", "const WW_ER_PU_UNAVAILABLE_CELL", "const WW_ER_PU_UNAVAILABLE_CELL_TITLE", "const WW_ER_ORIGIN_MAX_SPANS", "const WW_ER_RELAYOUT_DEBOUNCE_MS", "const WW_ER_TIME_AXIS_TITLE",
-            "const WW_ER_OUTLIER_GAP_FRACTION",
+            "const WW_ER_OUTLIER_GAP_FRACTION", "const WW_ER_SPAN_UNITS",
         ]
 
     def test_left_panel_never_reuses_waveform_channel_tree_or_sync_state(self):
@@ -331,7 +331,16 @@ class TestEventReconstructionSelectionWorkflow:
     def test_large_gap_warning_comes_from_the_backend_response(self):
         notices = _between(_source(), "function wwErNoticesHtml() {", "function wwErMemberRowHtml(member)")
         assert "wwErState.definition.warnings" in notices
-        assert "warning.message" in notices
+        # The backend's own threshold DECISION (whether a gap triggers this
+        # warning at all) and its two raw numbers (gap_s/threshold_s) are
+        # unchanged and still authoritative; the human-friendly TEXT is
+        # built client-side from those numbers (style: improve event
+        # reconstruction large-gap time formatting) -- the backend's own
+        # pre-rendered raw-seconds `.message` string is no longer shown.
+        assert "warning.gap_s" in notices and "warning.threshold_s" in notices
+        assert "wwErFormatSpan(warning.gap_s)" in notices
+        assert "wwErFormatSpan(warning.threshold_s)" in notices
+        assert "warning.message" not in notices
         assert "3600" not in _er_module(_source())
 
 
@@ -742,6 +751,23 @@ class TestEventReconstructionTimelineNavigation:
         module = _er_module(source)
         assert "3600" not in module and "86400" not in module
 
+    def test_span_formatting_is_human_friendly_never_raw_seconds_for_a_large_gap(self):
+        """UX refinement: the large-gap notice's own span/gap durations
+        read in the smallest unit that is natural for their size -- a
+        reader should not have to mentally divide a 5-digit second count.
+        Display only; the threshold/outlier LOGIC above is untouched."""
+        source = _source()
+        fmt = _between(source, "function wwErFormatSpan(seconds) {", "\n        }\n")
+        assert "const unit = WW_ER_SPAN_UNITS.find((u) => seconds < u.threshold);" in fmt
+        assert "Number((seconds / unit.divisor).toFixed(unit.decimals));" in fmt
+        # Every threshold/divisor is built from units, never a bare literal
+        # (the module-wide "3600"/"86400" guard above already enforces the
+        # two Waveform-precedent magic numbers specifically).
+        units = _between(source, "const WW_ER_SPAN_UNITS = (() => {", "\n        })();")
+        assert "WW_ER_SECONDS_PER_DAY" in units
+        assert "2592000" not in units and "604800" not in units and "31536000" not in units
+        module = _er_module(source)
+        assert "2592000" not in module
 
 class TestEventReconstructionCursors:
     """Slice 3E (DEC-130): global A/B cursors in reconstruction time, drawn

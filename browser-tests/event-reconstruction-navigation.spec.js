@@ -321,7 +321,7 @@ test.describe("Event Reconstruction Slice 3D -- Fit All span notice", () => {
     await waitForPlot(page, 3);
     await expect(notice).toBeVisible();
     await expect(notice).toContainText("Fit All is dominated by one time gap");
-    await expect(notice).toContainText("Fit All spans 87 days because STN_FAR is 87 days away from the other plotted records.");
+    await expect(notice).toContainText("Fit All spans 2.86 months because STN_FAR is 2.86 months away from the other plotted records.");
     await expect(notice).toContainText("Nothing is hidden and time is not compressed.");
     const state = await plotState(page);
     // Every record still plotted; physical time kept.
@@ -333,12 +333,35 @@ test.describe("Event Reconstruction Slice 3D -- Fit All span notice", () => {
     // Two records only: two groups, both named.
     await (await channelRow(page, "STN_B", "VA")).click();
     await waitForPlot(page, 2);
-    await expect(notice).toContainText("because the plotted records are in two groups 87 days apart: STN_A and STN_FAR.");
+    await expect(notice).toContainText("because the plotted records are in two groups 2.86 months apart: STN_A and STN_FAR.");
     // Removing the far channel removes the notice.
     await (await channelRow(page, "STN_FAR", "VA")).click();
     await waitForPlot(page, 1);
     await expect(notice).toBeHidden();
     expect(consoleErrors).toEqual([]);
+  });
+
+  test("the large-gap notice reads in a human-friendly unit, never raw seconds, across every bucket", async ({ page }) => {
+    // The exact worked examples the UX refinement was specified with
+    // (style: improve event reconstruction large-gap time formatting),
+    // evaluated against the REAL running wwErFormatSpan() -- not a
+    // re-implementation here that could silently drift from it.
+    await page.goto("/index.html");
+    const cases = [
+      [45.2, "45.2 seconds"], [1, "1 second"], [59.9, "59.9 seconds"],
+      [125, "2.08 minutes"], [60, "1 minute"],
+      [7200, "2 hours"], [3600, "1 hour"],
+      [90000, "1.04 days"], [7 * 86400 - 1, "7 days"],
+      [1500000, "2.48 weeks"], [30 * 86400 - 1, "4.29 weeks"],
+      [12275440.073, "4.67 months"], [365 * 86400 - 1, "12 months"],
+      [365 * 86400 + 1, "1 year"], [2 * 365 * 86400, "2 years"],
+    ];
+    const results = await page.evaluate((cases) => cases.map(([seconds]) => wwErFormatSpan(seconds)), cases);
+    expect(results).toEqual(cases.map(([, expected]) => expected));
+    // The underlying threshold/outlier LOGIC (never shown directly, only
+    // through this formatter) is unchanged -- same gap/span SECONDS the
+    // backend's own large-gap warning and data-er-gap-s always carried.
+    expect(await page.evaluate(() => typeof WW_ER_OUTLIER_GAP_FRACTION)).toBe("number");
   });
 });
 
