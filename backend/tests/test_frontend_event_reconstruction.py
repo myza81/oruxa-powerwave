@@ -1322,8 +1322,146 @@ def _div_matching_by_id(source: str, element_id: str) -> str:
             j = next_close
 
 
+def _icon_registry(source: str) -> dict:
+    """`WW_TOOL_ICONS` parsed into {KEY: svg_markup} -- the ONE place every
+    `data-ww-icon="KEY"` placeholder's actual rendered markup comes from
+    (DEC-140). Parsed from the real source, never retyped, so a future
+    edit to the registry is what these tests see too."""
+    import ast
+    body = _between(source, "const WW_TOOL_ICONS = {", "\n        };")
+    entries = {}
+    for line in body.split("\n"):
+        line = line.strip().rstrip(",")
+        if not line.startswith("//") and ":" in line:
+            key, _, value = line.partition(":")
+            key = key.strip()
+            if key.isidentifier() and key.isupper():
+                entries[key] = ast.literal_eval(value.strip())
+    assert entries, "WW_TOOL_ICONS parsed empty -- check the anchors above"
+    return entries
+
+
+def _icon_key(markup: str) -> str:
+    i = markup.index('data-ww-icon="') + len('data-ww-icon="')
+    return markup[i:markup.index('"', i)]
+
+
+class TestPowerwaveIconSystem:
+    """DEC-140: the global Powerwave Waveform Tool Icon System. One
+    registry is the canonical source for every common-tool icon; a
+    control's markup names which registry entry it wants
+    (`data-ww-icon="KEY"`) rather than carrying its own copy, so "two
+    pages use the same icon" is a structural fact (one shared string),
+    never a coincidence two separately-typed `<svg>` blocks happen to
+    agree. wwApplyToolIcons() fills every placeholder from the registry,
+    once at init (so there is no flash of an empty icon) and again, scoped,
+    for any canvas built later."""
+
+    def test_every_data_ww_icon_placeholder_resolves_to_one_registry_entry(self):
+        source = _source()
+        registry = _icon_registry(source)
+        used = set()
+        for match in __import__("re").finditer(r'data-ww-icon="([A-Z_]+)"', source):
+            assert match.group(1) in registry, match.group(1)
+            used.add(match.group(1))
+        assert len(used) >= 15  # every family this slice wires, not a token few
+
+    def test_every_registry_icon_follows_the_global_geometry_contract(self):
+        """Section 6's own goal (one stroke weight, round caps/joins,
+        inherited colour) is already the file's ONE shared `.ww-icon svg`
+        rule -- at this file's own native 18-unit grammar, not Lucide's
+        native 24-unit one (see the registry's own comment for why pasting
+        Lucide markup unmodified would visibly mismatch weight under that
+        rule). Every entry's own viewBox must therefore be the house
+        18x18, so no icon, old or new, silently breaks that shared rule."""
+        source = _source()
+        assert '.ww-icon svg {' in source
+        shared_rule = _between(source, ".ww-icon svg {", "\n        }\n")
+        for prop in ("stroke: currentColor", "fill: none", "stroke-width: 1.5", "stroke-linecap: round", "stroke-linejoin: round"):
+            assert prop in shared_rule, prop
+        for key, markup in _icon_registry(source).items():
+            assert 'viewBox="0 0 18 18"' in markup, key
+
+    def test_same_function_same_registry_key_waveform_and_er(self):
+        """Section 1/22: the literal proof that Waveform and Event
+        Reconstruction reference the SAME icon for the same function --
+        not that their markup happens to match, but that they name the
+        identical registry key."""
+        source = _source()
+        page = _er_page(source)
+        pairs = [
+            ("dragModeZoomBtn", "wwErDragModeZoomBtn", "BOX_ZOOM"),
+            ("dragModePanBtn", "wwErDragModePanBtn", "PAN"),
+            ("wwAnnotateBtn", "wwErAnnotateBtn", "ANNOTATE"),
+            ("wwAnnotationListBtn", "wwErAnnotationListBtn", "ANNOTATIONS"),
+            ("timeModeElapsedBtn", "wwErTimeElapsedBtn", "TIME_ELAPSED"),
+            ("timeModeAbsoluteBtn", "wwErTimeAbsoluteBtn", "TIME_ABSOLUTE"),
+            ("layoutModeGroupedBtn", "wwErViewGroupedBtn", "VIEW_GROUPED"),
+        ]
+        for wf_id, er_id, key in pairs:
+            assert _icon_key(_element(source, wf_id, "button")) == key, wf_id
+            assert _icon_key(_element(page, er_id, "button")) == key, er_id
+        # Waveform's Relative Time (disabled stub) and Event
+        # Reconstruction's own Relative Time (enabled) also share one key.
+        assert _icon_key(_element(source, "timeModeRelativeBtn", "button")) == "TIME_RELATIVE"
+        assert _icon_key(_element(page, "wwErTimeRelativeBtn", "button")) == "TIME_RELATIVE"
+        # The A/B cursors icon used by every Time Group canvas and Event
+        # Reconstruction's own canvas.
+        canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
+        assert 'data-ww-icon="CURSORS_AB"' in canvas
+        assert _icon_key(_element(page, "wwErCursorModeBtn", "button")) == "CURSORS_AB"
+        # The zoom-axis caret: Waveform's dynamic template and Event
+        # Reconstruction's static (always-disabled) triggers.
+        assert canvas.count('data-ww-icon="CARET_DOWN"') == 2
+        assert _icon_key(_element(page, "wwErZoomInAxisBtn", "button")) == "CARET_DOWN"
+        assert _icon_key(_element(page, "wwErZoomOutAxisBtn", "button")) == "CARET_DOWN"
+        # The four annotation-type menu items, both menus.
+        for kind, key in (("text_note", "ANNOTATION_TEXT_NOTE"), ("callout", "ANNOTATION_CALLOUT"),
+                          ("peak_max", "ANNOTATION_PEAK_MAX"), ("peak_min", "ANNOTATION_PEAK_MIN")):
+            assert source.count(f'data-annotation-type="{kind}"') == 2
+            assert page.count(f'data-ww-icon="{key}"') == 1 and source.count(f'data-ww-icon="{key}"') == 2
+
+    def test_view_combined_is_a_new_composite_in_the_grouped_family_not_a_fresh_invention(self):
+        """Section 2/8: a composite is the BASE of an existing icon plus a
+        small modifier, never an unrelated fresh shape."""
+        registry = _icon_registry(_source())
+        grouped, combined = registry["VIEW_GROUPED"], registry["VIEW_COMBINED"]
+        # The combined icon's own two polylines (the shared base shape)
+        # are byte-identical to Grouped's; only the extra tick-mark
+        # modifier lines are new.
+        for polyline in __import__("re").findall(r"<polyline[^/]*/>", grouped):
+            assert polyline in combined
+        assert combined != grouped  # it is still visually distinct
+
+    def test_unit_mode_deliberately_stays_a_text_label_not_an_icon(self):
+        """Section 13: "if icons become too ambiguous, keep a compact
+        labelled control only if necessary" -- the owner's own recorded
+        decision (see POWERWAVE_ICON_SYSTEM.md) is that Engineering/Per
+        Unit has no unambiguous icon metaphor, so it is not in the
+        registry and ENG/PU stay text."""
+        registry = _icon_registry(_source())
+        assert "UNIT_ENGINEERING" not in registry and "UNIT_PER_UNIT" not in registry
+        page = _er_page(_source())
+        for button, label in (("wwErUnitEngineeringBtn", "ENG"), ("wwErUnitPerUnitBtn", "PU")):
+            element = _element(page, button, "button")
+            assert element.endswith(f">{label}</button>") and "data-ww-icon" not in element
+
+    def test_zoom_xy_composites_are_registered_but_not_yet_wired(self):
+        """Section 20's own scope boundary: this slice defines the
+        ZOOM_X/Y_IN/OUT composites (one canonical definition each,
+        satisfying section 2/5/7/8) but does not restructure the Zoom
+        In/Out split-buttons' own interaction pattern -- that is explicit
+        Y-axis interaction work for the next dedicated ticket."""
+        source = _source()
+        registry = _icon_registry(source)
+        for key in ("ZOOM_X_IN", "ZOOM_X_OUT", "ZOOM_Y_IN", "ZOOM_Y_OUT"):
+            assert key in registry
+        for key in ("ZOOM_X_IN", "ZOOM_X_OUT", "ZOOM_Y_IN", "ZOOM_Y_OUT"):
+            assert f'data-ww-icon="{key}"' not in source  # reserved, not live yet
+
+
 class TestEventReconstructionToolConsistency:
-    """DEC-137/DEC-139: common tools across Powerwave pages share
+    """DEC-137/DEC-139/DEC-140: common tools across Powerwave pages share
     iconography, tooltip wording, compact button styling and interaction
     language (the icon/component, not just its presence); page state and
     workflow stay independently owned. Every assertion below compares
@@ -1333,7 +1471,7 @@ class TestEventReconstructionToolConsistency:
 
     def test_box_zoom_and_pan_are_byte_identical_to_waveform(self):
         """Section 4/15A/15C: not merely "an icon exists" -- the whole
-        control (wrapper class, icon SVG, tooltip, aria-label, button
+        control (wrapper class, icon KEY, tooltip, aria-label, button
         geometry class) is identical, modulo only the id."""
         source = _source()
         page = _er_page(source)
@@ -1343,15 +1481,12 @@ class TestEventReconstructionToolConsistency:
         normalized = _stripped_id(normalized, "wwErDragModeZoomBtn", "dragModeZoomBtn")
         normalized = _stripped_id(normalized, "wwErDragModePanBtn", "dragModePanBtn")
         assert normalized == wf_wrap
-        assert _svgs(er_wrap) == _svgs(wf_wrap) and len(_svgs(er_wrap)) == 2
 
     def test_annotate_and_annotations_controls_are_waveforms(self):
         source = _source()
         page = _er_page(source)
         wf_split = _between(source, '<div class="ww-split-btn" id="wwAnnotateSplit">', 'id="wwAnnotationListBtn"')
         er_split = _between(page, '<div class="ww-split-btn" id="wwErAnnotateSplit">', 'id="wwErAnnotationListBtn"')
-        assert _svgs(er_split) == _svgs(wf_split)
-        assert len(_svgs(er_split)) == 5
         for same in ('title="Annotate" aria-label="Annotate"', 'aria-label="Annotation type"', "Text Note", "Callout",
                      "Maximum Peak (+Peak)", "Minimum Peak (-Peak)"):
             assert same in er_split and same in wf_split, same
@@ -1359,7 +1494,6 @@ class TestEventReconstructionToolConsistency:
             assert f'data-annotation-type="{kind}"' in er_split
         wf_list = _element(source, "wwAnnotationListBtn", "button")
         er_list = _element(page, "wwErAnnotationListBtn", "button")
-        assert _svgs(er_list) == _svgs(wf_list)
         assert 'title="Annotations" aria-label="Annotations"' in er_list and 'title="Annotations" aria-label="Annotations"' in wf_list
         assert 'class="ww-annotation-count-badge" id="wwErAnnotationCountBadge"' in er_list
         # Inside Event Reconstruction's own toolbar, grouped (DEC-139:
@@ -1371,16 +1505,14 @@ class TestEventReconstructionToolConsistency:
         assert toolbar.index('id="wwErUnitModeToggle"') < sep_index < toolbar.index('id="wwErAnnotateSplit"')
 
     def test_equivalent_canvas_tools_reuse_waveforms_classes_and_exact_tooltips(self):
-        """Section 1/9: not just the tooltip string -- the same compact
-        button CLASS (secondary/.ww-split-btn-main/.ww-icon-btn/.ww-tg-*)
-        every one of these controls carries in Waveform's own canvas
-        toolbar, read from wwCreateTimeGroupCanvasDom() itself."""
+        """Section 1/9/18: not just the tooltip string -- the same compact
+        button CLASS every one of these controls carries in Waveform's own
+        canvas toolbar, read from wwCreateTimeGroupCanvasDom() itself, and
+        the new canonical "Time Axis"/"Selected Y Axis" wording (DEC-140)
+        in place of the old generic "X axis"/"Y axis"."""
         source = _source()
         page = _er_page(source)
         canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
-        # The shared compact-button classes (Waveform's zoom buttons also
-        # carry one further function-specific class, e.g.
-        # "ww-tg-zoom-in-btn" -- the SHARED part is what must match).
         for shared_class in ("ww-split-btn-main", "ww-split-btn-trigger", "ww-tg-reset-view-btn", "ww-tg-autoscale-btn", "ww-tg-cursor-mode-btn"):
             assert shared_class in canvas, shared_class
             assert shared_class in page, shared_class
@@ -1391,30 +1523,27 @@ class TestEventReconstructionToolConsistency:
         assert 'class="secondary ww-tg-autoscale-btn" id="wwErAutoscaleYBtn"' in page
         assert 'class="ww-icon-btn ww-tg-cursor-mode-btn" id="wwErCursorModeBtn"' in page
         for markup in (
-            'id="wwErZoomInBtn" title="Zoom In — X axis" aria-label="Zoom In — X axis"',
+            'id="wwErZoomInBtn" title="Zoom In — Time Axis" aria-label="Zoom In — Time Axis"',
             'title="Choose Zoom In axis" aria-label="Choose Zoom In axis"',
-            'id="wwErZoomOutBtn" title="Zoom Out — X axis" aria-label="Zoom Out — X axis"',
+            'id="wwErZoomOutBtn" title="Zoom Out — Time Axis" aria-label="Zoom Out — Time Axis"',
             'title="Choose Zoom Out axis" aria-label="Choose Zoom Out axis"',
             'id="wwErResetViewBtn" title="Reset Time View" disabled>Reset Time View</button>',
             'id="wwErAutoscaleYBtn" title="Autoscale Y" disabled>Autoscale Y</button>',
         ):
             assert markup in page, markup
-        # Waveform's own literal tooltips use this same base wording too,
-        # only with a Time-Group-specific qualifier Event Reconstruction
-        # has no Time Group to name.
-        for base in ("Zoom In — X axis", "Zoom Out — X axis", "Choose Zoom In axis", "Choose Zoom Out axis"):
+        for base in ("Zoom In — Time Axis", "Zoom Out — Time Axis", "Choose Zoom In axis", "Choose Zoom Out axis"):
             assert base in canvas
         for old in ("never beyond Fit All", "Fit All and autoscale Y on every panel", "Autoscale Y on every panel",
-                    "Event Reconstruction zooms the time axis only"):
+                    "Event Reconstruction zooms the time axis only", "— X axis", "— Y axis"):
             assert old not in page, old
 
     def test_ab_cursors_icon_is_byte_identical_to_waveform(self):
         source = _source()
         page = _er_page(source)
-        wf_canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
-        wf_svgs = _svgs(wf_canvas)
+        canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
+        assert 'data-ww-icon="CURSORS_AB"' in canvas
         er_cursor = _element(page, "wwErCursorModeBtn", "button")
-        assert _svgs(er_cursor) and _svgs(er_cursor)[0] in wf_svgs
+        assert _icon_key(er_cursor) == "CURSORS_AB"
         assert 'class="ww-icon-btn ww-tg-cursor-mode-btn"' in er_cursor
         assert 'title="A/B Time Cursors" aria-label="A/B Time Cursors"' in er_cursor
 
@@ -1423,41 +1552,38 @@ class TestEventReconstructionToolConsistency:
         page = _er_page(source)
         fit = _element(page, "wwErFitRecordBtn", "button")
         assert 'class="ww-icon-btn ww-er-fit-record-btn"' in fit and 'aria-label="Fit selected record"' in fit
-        icon = _svgs(fit)[0]
-        others = _svgs(_between(source, '<div class="ww-toolbar" id="wwToolbar"', 'id="wwAnnotationGuidance"')) + _svgs(_between(page, '<div class="ww-toolbar" id="wwErToolbar">', 'id="wwErAnnotationGuidance"'))
-        assert icon not in others
         assert "ww-icon-btn" in fit and "ww-icon" in fit
-        # Set apart from the Waveform-equivalent tools before it by
-        # Waveform's own separator component (DEC-139) -- never a new style.
+        assert "data-ww-icon" not in fit  # its own icon, not a registry entry reused elsewhere
         canvas_toolbar = _div_matching_by_id(page, "wwErCanvasToolbar")
         assert canvas_toolbar.count('<span class="ww-toolbar-sep" aria-hidden="true"></span>') == 1
         sep_index = canvas_toolbar.index('<span class="ww-toolbar-sep"')
         assert canvas_toolbar.index('id="wwErCursorModeBtn"') < sep_index < canvas_toolbar.index('id="wwErFitRecordBtn"')
 
-    def test_mode_selectors_stay_labelled_segmented_controls(self):
+    def test_unit_mode_stays_the_one_labelled_mode_selector(self):
+        """Section 11's own escalation (Time Display and View Mode move
+        from the DEC-137-era "may stay labelled" to full icon families,
+        DEC-140) does not touch Unit Mode, per section 13's own hedge --
+        see TestPowerwaveIconSystem's own dedicated test for the reasoning."""
         page = _er_page(_source())
-        for button, label in (("wwErViewGroupedBtn", "Grouped"), ("wwErViewCombinedBtn", "Combined"),
-                              ("wwErTimeRelativeBtn", "Relative"), ("wwErTimeAbsoluteBtn", "Absolute"),
-                              ("wwErUnitEngineeringBtn", "ENG"), ("wwErUnitPerUnitBtn", "PU")):
+        for button, label in (("wwErUnitEngineeringBtn", "ENG"), ("wwErUnitPerUnitBtn", "PU")):
             element = _element(page, button, "button")
             assert element.endswith(f">{label}</button>"), element
-            assert "<svg" not in element
-        # Every one reuses Waveform's own segmented-control primitive
-        # (section 13/6: same height/radii/spacing, never a bespoke one).
-        for toggle in ("wwErViewModeToggle", "wwErTimeDisplayToggle", "wwErUnitModeToggle"):
-            group = _element(page, toggle, "div")
-            assert 'class="theme-toggle ww-icon-group ww-er-view-mode"' in group
+            assert "<svg" not in element and "data-ww-icon" not in element
+        group = _element(page, "wwErUnitModeToggle", "div")
+        assert 'class="theme-toggle ww-icon-group ww-er-view-mode"' in group
 
     def test_disabled_state_uses_the_shared_rule_no_er_specific_override(self):
-        """Section 15D: no Event Reconstruction-only CSS rule weakens or
-        replaces the shared disabled treatment every Waveform compact tool
-        already uses."""
+        """Section 15D/16: no page-scoped CSS rule weakens or replaces the
+        shared disabled treatment every compact tool -- icon-button or
+        icon-group member alike -- already uses."""
         source = _source()
         assert ".ww-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; background: transparent; }" in source
+        assert ".ww-toolbar .theme-toggle.ww-icon-group button:disabled { opacity: 0.5; cursor: not-allowed; }" in source
         page = _er_page(source)
-        for button_id in ("wwErZoomInBtn", "wwErZoomOutBtn", "wwErResetViewBtn", "wwErAutoscaleYBtn", "wwErCursorModeBtn", "wwErFitRecordBtn"):
+        for button_id in ("wwErZoomInBtn", "wwErZoomOutBtn", "wwErResetViewBtn", "wwErAutoscaleYBtn", "wwErCursorModeBtn",
+                          "wwErFitRecordBtn", "wwErTimeElapsedBtn"):
             assert "disabled" in _element(page, button_id, "button")
-        # No page-scoped CSS re-defines opacity/cursor for these shared classes.
+        assert "disabled" in _element(source, "timeModeRelativeBtn", "button")
         for forbidden in (".ww-er-fit-record-btn:disabled", "#wwErCanvasToolbar .ww-icon-btn:disabled", "#wwErToolbar .secondary:disabled"):
             assert forbidden not in source, forbidden
 
@@ -1468,29 +1594,102 @@ class TestEventReconstructionToolConsistency:
         assert '<button type="button" id="dragModeZoomBtn" aria-pressed="true" title="Box Zoom" aria-label="Box Zoom">' in source
         assert '<button type="button" id="dragModePanBtn" aria-pressed="false" title="Pan" aria-label="Pan">' in source
         canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
-        for wording in ("Reset Time View for this Time Group", "Autoscale Y for this Time Group", "Choose Zoom In axis",
-                        "A/B Time Cursors for this Time Group"):
+        for wording in ("Reset Time View for this Time Group", "Autoscale Y for this Time Group",
+                        "Choose Zoom In axis", "A/B Time Cursors for this Time Group"):
             assert wording in canvas, wording
-        # Waveform's own canvas toolbar is untouched -- no new separator was
-        # added there; the one DEC-139 adds lives only in Event
-        # Reconstruction's own toolbars, at the ER-specific-tool boundary
-        # Waveform itself never has.
+        # Section 18's new wording lands on BOTH pages via the one shared
+        # sync function (the owner's own worked example: "Zoom In — Time
+        # Axis" if the ER function is the same) -- Waveform's zoom
+        # behaviour/markup structure is otherwise untouched.
         assert "ww-toolbar-sep" not in canvas
 
     def test_shared_toolbar_primitives_never_introduce_shared_state(self):
-        """Section 12/15I: the same icon/component, ER's own handler and
-        state -- never a read of Waveform's own `ww` drag mode, cursor
-        state, annotation state or toolbar sync function."""
+        """Section 12/19/24: the same icon/component, ER's own handler and
+        state -- never a read of Waveform's own `ww` drag mode, time mode,
+        view mode, cursor state or annotation state."""
         module = _er_module(_source())
         for forbidden in (
             "ww.dragMode", "ww.panels", "ww.timeGroupCursorState", "ww.annotationPlacementType", "ww.annotations",
-            "wwSyncTimeGroupZoomControls", "wwCreateTimeGroupCanvasDom", "wwSetDragMode(", "wwToggleTimeGroupCursors",
+            "ww.timeMode", "ww.layoutMode", "wwSyncTimeGroupZoomControls", "wwCreateTimeGroupCanvasDom",
+            "wwSetDragMode(", "wwSetTimeMode(", "wwSetLayoutMode(", "wwToggleTimeGroupCursors",
         ):
             assert forbidden not in module, forbidden
-        # Its own drag mode only ever writes its own state/DOM.
         drag = _between(_source(), "function wwErSetDragMode(mode) {", "\n        }\n")
         assert "wwErState.dragMode = mode;" in drag
         assert "ww." not in drag
+
+
+class TestGlobalTimeDisplayFamily:
+    """DEC-140 section 9/10/16/23/24: one coherent 3-icon Time Display
+    family (Elapsed/Relative/Absolute) on every waveform-capable page.
+    Each page enables only the modes it genuinely supports; the rest stay
+    visible, disabled, with a tooltip explaining why -- never hidden."""
+
+    def test_order_and_icons_match_on_both_pages(self):
+        source = _source()
+        page = _er_page(source)
+        wf_group = _div_by_id(source, "timeModeToggle")
+        er_group = _div_by_id(page, "wwErTimeDisplayToggle")
+        wf_order = sorted(("timeModeElapsedBtn", "timeModeRelativeBtn", "timeModeAbsoluteBtn"), key=lambda i: wf_group.index(f'id="{i}"'))
+        assert wf_order == ["timeModeElapsedBtn", "timeModeRelativeBtn", "timeModeAbsoluteBtn"]
+        assert __import__("re").findall(r'id="(wwErTime\w+Btn)"', er_group) == ["wwErTimeElapsedBtn", "wwErTimeRelativeBtn", "wwErTimeAbsoluteBtn"]
+        assert _icon_key(_element(wf_group, "timeModeElapsedBtn", "button")) == "TIME_ELAPSED"
+        assert _icon_key(_element(wf_group, "timeModeRelativeBtn", "button")) == "TIME_RELATIVE"
+        assert _icon_key(_element(wf_group, "timeModeAbsoluteBtn", "button")) == "TIME_ABSOLUTE"
+        assert _icon_key(_element(er_group, "wwErTimeElapsedBtn", "button")) == "TIME_ELAPSED"
+        assert _icon_key(_element(er_group, "wwErTimeRelativeBtn", "button")) == "TIME_RELATIVE"
+        assert _icon_key(_element(er_group, "wwErTimeAbsoluteBtn", "button")) == "TIME_ABSOLUTE"
+
+    def test_capability_matrix(self):
+        """Section 15's own matrix: Waveform Elapsed=ON/Relative=OFF/
+        Absolute=ON; Event Reconstruction Elapsed=OFF/Relative=ON/
+        Absolute=ON."""
+        source = _source()
+        page = _er_page(source)
+        assert "disabled" not in _element(source, "timeModeElapsedBtn", "button")
+        wf_relative = _element(source, "timeModeRelativeBtn", "button")
+        assert "disabled" in wf_relative
+        assert "disabled" not in _element(source, "timeModeAbsoluteBtn", "button")
+        er_elapsed = _element(page, "wwErTimeElapsedBtn", "button")
+        assert "disabled" in er_elapsed
+        assert "disabled" not in _element(page, "wwErTimeRelativeBtn", "button")
+        assert "disabled" not in _element(page, "wwErTimeAbsoluteBtn", "button")
+
+    def test_disabled_tooltips_explain_why_section_16(self):
+        source = _source()
+        page = _er_page(source)
+        assert 'title="Relative Time — unavailable in Waveform" aria-label="Relative Time — unavailable in Waveform"' in source
+        assert 'title="Elapsed Time — unavailable in Event Reconstruction" aria-label="Elapsed Time — unavailable in Event Reconstruction"' in page
+
+    def test_tooltip_wording_is_identical_across_pages_for_the_same_mode(self):
+        """Section 18: same semantic tool, same tooltip -- the disabled
+        reason clause is the only thing that may differ (it names the
+        page), the base mode name never does."""
+        source = _source()
+        page = _er_page(source)
+        assert 'title="Absolute Time" aria-label="Absolute Time"' in source
+        assert 'title="Absolute Time" aria-label="Absolute Time"' in page
+        assert 'title="Relative Time"' in page and "aria-label=\"Relative Time\"" in page
+        assert 'title="Elapsed Time" aria-label="Elapsed Time"' in source
+
+
+class TestGlobalViewModeFamily:
+    """DEC-140 section 11/12/14/23: Grouped/Combined use one shared icon
+    family. Event Reconstruction has no Custom Layout or Split View
+    concept (neither per-channel custom grouping nor a table to split
+    with) -- no stub buttons are invented for capabilities it never had
+    (section 12/21's own "do not invent functionality")."""
+
+    def test_grouped_combined_are_icon_buttons_on_both_pages(self):
+        page = _er_page(_source())
+        for button in ("wwErViewGroupedBtn", "wwErViewCombinedBtn"):
+            element = _element(page, button, "button")
+            assert "data-ww-icon" in element and "<svg" not in element
+
+    def test_er_has_no_invented_custom_or_split_controls(self):
+        page = _er_page(_source())
+        for forbidden in ("wwErViewCustomBtn", "wwErViewSplitBtn", "wwErCustomLayoutBtn", "wwErSplitViewBtn"):
+            assert forbidden not in page, forbidden
 
 
 class TestEventReconstructionPerUnitDisplay:

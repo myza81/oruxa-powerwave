@@ -216,9 +216,12 @@ test.describe("Event Reconstruction annotations -- Waveform's toolset", () => {
     await expect(page.locator("#wwErAnnotationListBody")).toHaveText("No annotations yet.");
     await page.keyboard.press("Escape");
     await expect(page.locator("#wwErAnnotationDrawer")).not.toHaveClass(/ww-annotation-drawer--open/);
-    // Mode selectors stay labelled segmented controls.
-    await expect(page.locator("#wwErViewGroupedBtn")).toHaveText("Grouped");
-    await expect(page.locator("#wwErTimeAbsoluteBtn")).toHaveText("Absolute");
+    // DEC-140: Grouped/Combined and Elapsed/Relative/Absolute are now the
+    // global icon families (Waveform's own); Unit Mode (ENG/PU) is the one
+    // mode selector that stays a labelled text control (section 13).
+    await expect(page.locator("#wwErViewGroupedBtn")).toHaveAttribute("title", "Grouped Measurement View");
+    await expect(page.locator("#wwErTimeAbsoluteBtn")).toHaveAttribute("title", "Absolute Time");
+    await expect(page.locator("#wwErUnitEngineeringBtn")).toHaveText("ENG");
     expect(consoleErrors).toEqual([]);
   });
 });

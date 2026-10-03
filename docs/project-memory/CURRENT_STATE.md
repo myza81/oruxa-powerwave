@@ -195,6 +195,16 @@ DEC-122 display timezone).
       samples and show the current unit's value.
     - Settings changed in Waveform are read again on the next visit.
 
+  - **Global icon system (DEC-140, app-wide).** Waveform and Event
+    Reconstruction's shared toolbar controls (Box Zoom, Pan, A/B
+    Cursors, Annotate/Annotations, Time Display, View Mode) draw from
+    one shared icon registry (`WW_TOOL_ICONS`) instead of duplicated
+    inline SVG. Time Display is now a full 3-button family (Elapsed/
+    Relative/Absolute) on both pages, each enabling only its own modes
+    and disabling (never hiding) the rest, with an explanatory tooltip.
+    Event Reconstruction's Grouped/Combined are now icon buttons too.
+    See [POWERWAVE_ICON_SYSTEM.md](POWERWAVE_ICON_SYSTEM.md).
+
     Not yet built: Y step zoom; an overview navigator
     (deferred until Fit Record UAT); panel resizing (fixed 180 px per
     Grouped panel, 420 px Combined).

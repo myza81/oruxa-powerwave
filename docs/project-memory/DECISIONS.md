@@ -22291,6 +22291,118 @@ has — never a new separator style.
   and carries no new separator; Event Reconstruction's handlers never
   read Waveform's `ww` drag/cursor/annotation state.
 
+## DEC-140 — The global Powerwave Waveform Tool Icon System: one shared icon registry/capability matrix replaces page-specific duplicated icon markup
+
+Date: 2026-10-03
+Status: Approved (owner, "GLOBAL POWERWAVE WAVEFORM TOOL ICON SYSTEM"
+task) — implemented on `feat/event-reconstruction`; not merged. This is
+an **app-wide UI/UX foundation**, not an Event-Reconstruction-only
+change: it generalizes DEC-137/DEC-139's own icon/tooltip-reuse
+principle from annotations and the toolbar's grouping into a single
+registry every waveform-capable page draws from. See
+[POWERWAVE_ICON_SYSTEM.md](POWERWAVE_ICON_SYSTEM.md) for the full
+record (registry contents, capability matrix, tooltip table,
+provenance). The Event Reconstruction feature is **not** complete.
+
+### Decision (owner)
+
+> Powerwave waveform-capable pages use one global tool system. Shared
+> tools reuse the same semantic icon, tooltip wording, compact control
+> treatment and interaction language. Individual pages own their own
+> state and enable only the capabilities valid for that page.
+
+> Powerwave selects icons from the approved shared icon system; coding
+> agents must not independently redraw common tool icons.
+
+Icon-selection hierarchy: (1) reuse an existing Powerwave icon verbatim;
+(2) a recognised standard metaphor (Lucide, redrawn into this file's own
+18-unit/1.5-stroke-weight grammar — see the geometry finding below, not
+pasted at Lucide's native 24-unit geometry); (3) a composite (existing/
+standard base + one small modifier, same family as its siblings); (4) a
+fully custom shape, last resort.
+
+### Implementation (`[FACT]`)
+
+- **`WW_TOOL_ICONS`** (`frontend/index.html`): the one registry,
+  `{ SEMANTIC_KEY: svg_markup }`. A control's markup carries
+  `data-ww-icon="KEY"` on an empty `<span class="ww-icon">` instead of
+  repeating the `<svg>`; `wwApplyToolIcons(root)` fills every placeholder
+  from the registry (called once for the static page, before any other
+  init wiring, and again, scoped, by `wwCreateTimeGroupCanvasDom()` for
+  each canvas it builds). "Same function, same icon" is therefore a
+  structural fact (one shared key), not two separately-typed `<svg>`
+  blocks that happen to agree.
+- **Geometry finding (`[FACT]`, not a style preference).** Every icon in
+  this codebase already renders through the ONE shared
+  `.ww-icon svg { width/height: 18px; stroke-width: 1.5; stroke-linecap/
+  linejoin: round; stroke: currentColor; fill: none; }` rule — an
+  18-unit space, not Lucide's native 24-unit one. Pasting Lucide markup
+  verbatim under that rule renders it measurably thinner relative to its
+  own size than an 18-unit-native icon (the same stroke-width is a
+  smaller fraction of a wider path) — a real, visible weight mismatch.
+  Every registry entry is therefore hand-adapted into the existing
+  18-unit grammar; Lucide is a source of shapes/metaphors only.
+- **Time Display family** (Elapsed/Relative/Absolute): one shared clock
+  base + a distinct modifier each (stopwatch crown / reference pin /
+  calendar). Full capability matrix on both pages — Waveform: Elapsed ON,
+  Relative OFF (new disabled stub, tooltip "Relative Time — unavailable
+  in Waveform"), Absolute ON; Event Reconstruction: Elapsed OFF (new
+  disabled stub, "...unavailable in Event Reconstruction"), Relative ON,
+  Absolute ON. Disabled stubs stay visible, never hidden (owner rule).
+  Event Reconstruction's Relative/Absolute tooltips are shortened to the
+  canonical short form (from DEC-135's own longer explanatory text) —
+  see POWERWAVE_ICON_SYSTEM.md §8 for the explicit record of that change.
+- **View Mode family.** `VIEW_GROUPED` is Waveform's existing "Grouped
+  Layout" icon, reused verbatim for Event Reconstruction's "Grouped"
+  (the same "channels sharing a panel" concept at a page-appropriate
+  grouping precision — engineering_type vs display_axis_key).
+  `VIEW_COMBINED` is a new composite in the same family (Grouped's own
+  base + a dual-axis tick modifier) for Event Reconstruction only.
+  **Finding**: the ticket's own 4-slot framing (Grouped/Combined/Custom/
+  Split) omits Waveform's real "Separate Layout" mode; the true union is
+  5 slots. No disabled Custom/Separate/Split stubs are added to Event
+  Reconstruction, and no disabled Combined stub to Waveform — neither
+  page has ever had the other's concept, and the ticket's own "do not
+  invent functionality" rule is read as the override for this one family
+  (Time Display's explicit 3-button-everywhere mandate is unaffected and
+  implemented in full). See POWERWAVE_ICON_SYSTEM.md §6 for the full
+  reasoning.
+- **Zoom In/Out.** `ZOOM_X_IN`/`_OUT`/`ZOOM_Y_IN`/`_OUT` composites are
+  registered (one canonical definition each) but deliberately **not
+  wired to any live control** — restructuring the split-button's own
+  rendering is Y-axis interaction surface, explicitly deferred to the
+  dedicated next ticket this task's own owner instructions name. What
+  did change, safely: the shared `wwSyncTimeGroupZoomControls()`
+  tooltip wording moved from generic "X axis"/"Y axis" to the canonical
+  "Time Axis"/"Selected Y Axis" (presentation only — same function, same
+  disabling logic, same menu).
+- **Unit Mode** (Engineering/Per Unit) has no registry entry and stays
+  the existing ENG/PU text toggle — `[DECISION]`, per the ticket's own
+  §13 hedge ("if icons become too ambiguous, keep a compact labelled
+  control"): no widely-recognised pictogram exists for this distinction,
+  and a guessed one would mislead rather than clarify.
+- **State isolation unchanged.** Every shared icon/tooltip/button-class
+  control still drives only its own page's state
+  (`ww.timeMode`/`ww.layoutMode`/`ww.dragMode` vs
+  `wwErState.timeDisplay`/`wwErState.plot.viewMode`/`wwErState.dragMode`)
+  — enforced by a static forbidden-substring test.
+- **Tests.** `TestPowerwaveIconSystem` (6): registry resolution, the
+  geometry contract, same-key proof for every shared function, the
+  Combined composite's shared base, Unit Mode's deliberate text form,
+  the Zoom X/Y composites' registered-but-unwired state.
+  `TestGlobalTimeDisplayFamily` (4) and `TestGlobalViewModeFamily` (2):
+  the capability matrix, disabled tooltips, no invented Event
+  Reconstruction controls. `TestEventReconstructionToolConsistency`
+  updated for the registry (byte-duplicate SVG checks replaced by
+  same-registry-key checks) and the new tooltip wording.
+
+### Open (not this slice)
+
+- Whether/how `ZOOM_X_IN`/`_OUT`/`ZOOM_Y_IN`/`_OUT` replace the Zoom
+  In/Out split-buttons' own text main action — the dedicated Y-axis
+  interaction ticket (active-axis targeting, Y-axis end drag zoom,
+  Combined View Y target semantics).
+
 ---
 
 ## How to add a decision

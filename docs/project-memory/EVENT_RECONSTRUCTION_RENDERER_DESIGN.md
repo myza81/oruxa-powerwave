@@ -219,6 +219,17 @@ Group" assumption below.**
   is fixed with two `.ww-toolbar-sep` (Waveform's own component): before
   the annotation tools in `#wwErToolbar`, and before Fit Record (the one
   page-specific tool) in `#wwErCanvasToolbar`.
+- **Global icon system (done, 2026-10-03, DEC-140, app-wide -- not
+  Event-Reconstruction-only).** Full record in
+  [POWERWAVE_ICON_SYSTEM.md](POWERWAVE_ICON_SYSTEM.md). Every shared
+  Waveform/Event Reconstruction icon now comes from one registry
+  (`WW_TOOL_ICONS` + `data-ww-icon`/`wwApplyToolIcons()`) instead of
+  duplicated inline SVG. Event Reconstruction's Time Display is now the
+  full Elapsed/Relative/Absolute family (Elapsed disabled, with a
+  tooltip explaining why); its Grouped/Combined are now icon buttons
+  (Grouped reused verbatim from Waveform's own; Combined a new composite
+  in the same family). No disabled Separate/Custom/Split stubs were
+  added here -- Event Reconstruction never had those concepts.
 
 Date: 2026-10-01. Code references are function names in
 `frontend/index.html` and `backend/app/` at commit `33f3178`
