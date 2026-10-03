@@ -195,19 +195,29 @@ DEC-122 display timezone).
       samples and show the current unit's value.
     - Settings changed in Waveform are read again on the next visit.
 
-  - **Global icon system (DEC-140, app-wide).** Waveform and Event
-    Reconstruction's shared toolbar controls (Box Zoom, Pan, A/B
-    Cursors, Annotate/Annotations, Time Display, View Mode) draw from
-    one shared icon registry (`WW_TOOL_ICONS`) instead of duplicated
-    inline SVG. Time Display is now a full 3-button family (Elapsed/
-    Relative/Absolute) on both pages, each enabling only its own modes
-    and disabling (never hiding) the rest, with an explanatory tooltip.
-    Event Reconstruction's Grouped/Combined are now icon buttons too.
-    See [POWERWAVE_ICON_SYSTEM.md](POWERWAVE_ICON_SYSTEM.md).
+  - **Global icon system (DEC-140, app-wide) and toolbar composition
+    (DEC-141, app-wide).** One shared icon registry (`WW_TOOL_ICONS`);
+    every common tool lives in one global header (`#wwErToolbar`),
+    seven ordered families — the Reconstruction Timeline canvas has no
+    toolbar of its own. See
+    [POWERWAVE_ICON_SYSTEM.md](POWERWAVE_ICON_SYSTEM.md).
+  - **Active Y-axis target (DEC-142).** The explicit target
+    (`wwErState.plot.activeAxisKey`, a stable display-axis key, never a
+    Plotly axis number) the global Zoom Y In/Out buttons act on. Set by
+    clicking a Grouped panel's header or a Combined axis's legend
+    heading, or any direct interaction with a Y axis's own scale
+    (DEC-134's existing pan/end-zoom/double-click-autoscale drag,
+    unchanged). Exactly one axis auto-targets; several stay untargeted
+    until chosen. Carries over Grouped <-> Combined unchanged; re-maps
+    by physical quantity (or clears) across Engineering <-> Per Unit.
+    Toolbar Y Zoom In/Out step only the active axis, by Waveform's own
+    ±20%/25% factors. Autoscale Y, Reset, Fit Record, X navigation,
+    cursors and annotations are all unaffected.
 
-    Not yet built: Y step zoom; an overview navigator
-    (deferred until Fit Record UAT); panel resizing (fixed 180 px per
-    Grouped panel, 420 px Combined).
+    Not yet built: an overview navigator (deferred until Fit Record
+    UAT); panel resizing (fixed 180 px per Grouped panel, 420 px
+    Combined); a dedicated end-zoom hit-region ergonomics enhancement
+    (only if UAT still finds direct drag insufficient after DEC-142).
   - It never reads or writes the Waveform `ww` state, panels or
     viewports.
 - **Backend.**

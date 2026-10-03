@@ -177,16 +177,19 @@ that limitation." Both pages now use these composites live:
   disabled and never wired to anything (Event Reconstruction has only
   ever zoomed the time axis), so removing it loses no real behaviour.
 - **Event Reconstruction's Y-axis Scale** — two brand-new buttons,
-  `wwErZoomYInBtn`/`wwErZoomYOutBtn`, using `ZOOM_Y_IN`/`ZOOM_Y_OUT`,
-  **permanently disabled** with the tooltip `"Zoom In/Out — Selected Y
-  Axis"` (the base function name, identical to Waveform's — see §8). No
-  "active Y axis target" concept exists to drive a stepped Y zoom when
-  a view may have several panels/axes at once (Grouped) or several
-  axes on one panel (Combined); inventing that targeting model is
-  explicitly out of scope here — the dedicated next interaction ticket.
-  This is the owner's own anticipated state ("if no valid Y target
-  exists: disable Y Zoom In/Out, tooltip should explain why"), not a
-  gap.
+  `wwErZoomYInBtn`/`wwErZoomYOutBtn`, using `ZOOM_Y_IN`/`ZOOM_Y_OUT`.
+  At the time of this slice (DEC-141) no "active Y axis target" concept
+  existed to drive a stepped Y zoom when a view may have several
+  panels/axes at once (Grouped) or several axes on one panel (Combined),
+  so they were permanently disabled with the tooltip `"Zoom In/Out —
+  Selected Y Axis"` — the owner's own anticipated state ("if no valid Y
+  target exists: disable Y Zoom In/Out, tooltip should explain why"),
+  not a gap. **DEC-142 (the very next slice) built that targeting
+  concept and wired these buttons live** — see
+  [EVENT_RECONSTRUCTION_RENDERER_DESIGN.md](EVENT_RECONSTRUCTION_RENDERER_DESIGN.md)'s
+  own DEC-142 entry for the full record; they now disable only when
+  nothing is plotted or no target is set, with the tooltip "Select a Y
+  axis to zoom".
 - **Waveform's own Zoom In/Out** — the split-button's MAIN action icon
   now swaps between `ZOOM_X_IN`/`ZOOM_X_OUT` and `ZOOM_Y_IN`/
   `ZOOM_Y_OUT` live, exactly as its tooltip already dynamically swapped
@@ -256,16 +259,16 @@ registry conversion only (§7), never their placement.
 |---|---|---|---|
 | `BOX_ZOOM` | Powerwave (existing) | Waveform, ER | magnifier, plain |
 | `PAN` | Powerwave (existing) | Waveform, ER | open hand |
-| `CARET_DOWN` | Powerwave (existing) | Waveform (Zoom In/Out axis trigger, both Time-Group templates), ER (same, always disabled) | the one shared split-button caret, also used by Annotate/Unit Mode |
-| `ZOOM_X_IN` / `ZOOM_X_OUT` / `ZOOM_Y_IN` / `ZOOM_Y_OUT` | Composite: base magnifier (Lucide ZoomIn/ZoomOut metaphor, redrawn) + a small +/− glyph + a small axis-arrow cue | registered, **not yet wired to a live control** | see §7 |
+| `CARET_DOWN` | Powerwave (existing) | Waveform (Zoom In/Out axis trigger, both Time-Group templates) | the one shared split-button caret, also used by Annotate/Unit Mode; ER's own equivalent decorative dropdown was retired (DEC-141 §11 — always disabled, never wired) |
+| `ZOOM_X_IN` / `ZOOM_X_OUT` / `ZOOM_Y_IN` / `ZOOM_Y_OUT` | Composite: base magnifier (Lucide ZoomIn/ZoomOut metaphor, redrawn) + a small +/− glyph + a small axis-arrow cue | Waveform, ER — wired live | see §7 and DEC-142 |
 | `TIME_ELAPSED` | Composite: shared clock base (existing Powerwave clock, redrawn for a common base) + stopwatch-crown modifier | Waveform, ER | |
 | `TIME_RELATIVE` | Composite: same clock base + reference-pin modifier | Waveform (new, disabled stub), ER | new icon this slice |
 | `TIME_ABSOLUTE` | Composite: same clock base + calendar modifier (Lucide CalendarClock metaphor) | Waveform, ER | existing Absolute Time icon redrawn onto the shared base + given its calendar cue |
 | `VIEW_GROUPED` | Powerwave (existing, Waveform's "Grouped Layout") | Waveform, ER | reused verbatim — see §6 |
-| `VIEW_SEPARATE` | Powerwave (existing) | Waveform only | no Event Reconstruction concept |
-| `VIEW_CUSTOM` | Powerwave (existing) | Waveform only | no Event Reconstruction concept |
-| `VIEW_COMBINED` | Composite: `VIEW_GROUPED`'s own base + a dual-axis tick modifier (both edges) | ER only | new icon this slice; no Waveform concept — see §6 |
-| `VIEW_SPLIT` | Powerwave (existing) | Waveform only | no Event Reconstruction concept (no table to split with) |
+| `VIEW_SEPARATE` | Powerwave (existing) | Waveform (enabled), ER (disabled stub) | DEC-141 §11 reversed the original "no ER concept" finding — shown disabled, never omitted |
+| `VIEW_CUSTOM` | Powerwave (existing) | Waveform (enabled), ER (disabled stub) | DEC-141 §11, same reversal |
+| `VIEW_COMBINED` | Composite: `VIEW_GROUPED`'s own base + a dual-axis tick modifier (both edges) | ER only | new icon this slice; still no Waveform concept or stub (DEC-141 §11 only reversed the Separate/Custom/Split finding, not this one) — see §6 |
+| `VIEW_SPLIT` | Powerwave (existing) | Waveform (enabled), ER (disabled stub) | DEC-141 §11, same reversal (no table to split with) |
 | `CURSORS_AB` | Powerwave (existing) | Waveform, ER | |
 | `ANNOTATE` | Powerwave (existing) | Waveform, ER | |
 | `ANNOTATION_TEXT_NOTE` / `ANNOTATION_CALLOUT` / `ANNOTATION_PEAK_MAX` / `ANNOTATION_PEAK_MIN` | Powerwave (existing) | Waveform, ER | |
@@ -288,13 +291,13 @@ an explanatory `title`/`aria-label`.
 | Relative Time | OFF — "Relative Time — unavailable in Waveform" | **ON** |
 | Absolute Time | **ON** | **ON** |
 | Grouped | **ON** (page-rule: default) | **ON** |
-| Separate | **ON** (page-rule) | *(no control — §6)* |
-| Custom Layout | **ON** (page-rule) | *(no control — §6)* |
-| Combined | *(no control — §6)* | **ON** |
-| Split View | **ON** (page-rule) | *(no control — §6)* |
+| Separate | **ON** (page-rule) | OFF — "Separate Layout — unavailable in Event Reconstruction" (DEC-141 §11; never omitted) |
+| Custom Layout | **ON** (page-rule) | OFF — same treatment (DEC-141 §11) |
+| Combined | *(no control — §6, unchanged by DEC-141)* | **ON** |
+| Split View | **ON** (page-rule) | OFF — same treatment (DEC-141 §11) |
 | Box Zoom / Pan | **ON** | **ON** |
 | Zoom In/Out (X) | **ON** | **ON** |
-| Zoom In/Out (Y, via the axis menu) | **ON** | OFF (axis trigger stays disabled; Event Reconstruction zooms the time axis only — individual-Y-axis drag zoom, DEC-134, is the supported Y interaction) |
+| Zoom In/Out (Y) | **ON** (its own axis-chooser dropdown) | **ON** when an active Y-axis target is set (DEC-142); disabled with "Select a Y axis to zoom" otherwise — direct individual-Y-axis drag zoom (DEC-134) is also still supported |
 | Autoscale Y | **ON** | **ON** |
 | Reset Time View | **ON** | **ON** |
 | Fit Selected Record | *(no control — Waveform has no "active record" concept)* | **ON** |
@@ -304,7 +307,14 @@ an explanatory `title`/`aria-label`.
 
 ---
 
-## 6. Why Event Reconstruction has no Separate/Custom/Split stubs
+## 6. Why Event Reconstruction has no Separate/Custom/Split stubs (superseded by §11/DEC-141)
+
+**This section's own decision not to add the stub buttons below was
+reversed by owner UAT on the very next ticket (DEC-141, §11) — Event
+Reconstruction now shows all three, permanently disabled. The finding
+below (the ticket's own 4-slot framing omits Separate; the true union
+is 5 slots) is still correct and unaffected; only the "do not invent a
+button" conclusion built on it was overridden.**
 
 Section 14 of the owner's own ticket lists the View Mode family as
 "Grouped / Combined / Custom / Split" — four slots, omitting Separate
@@ -321,14 +331,20 @@ near line 26100) and Event Reconstruction's own DEC-131/DEC-132 Grouped/
 Combined design.
 
 Per the ticket's own "do not invent functionality" rule (§12/§21), this
-document records the decision **not** to add disabled Separate/Custom/
-Split stub buttons to Event Reconstruction, nor a disabled Combined stub
-to Waveform: none of these concepts has ever existed on the other page,
-unlike Time Display (§9/§10's own explicit three-button-everywhere
-mandate, which this document does implement in full). Inventing a
-greyed-out button for a capability that was never discussed as a future
-feature of that page risks misleading an engineer into thinking it is
-planned, which is a worse outcome than simply not showing it.
+document originally recorded the decision **not** to add disabled
+Separate/Custom/Split stub buttons to Event Reconstruction (nor a
+disabled Combined stub to Waveform — that half stands unchanged): none
+of these concepts has ever existed on the other page, unlike Time
+Display (§9/§10's own explicit three-button-everywhere mandate, which
+this document does implement in full). **DEC-141's own owner UAT
+explicitly reversed the Event-Reconstruction half of this reasoning**
+("never omit a global slot — keep it visible but disabled with an
+explanatory tooltip" overrides the risk described below for this
+family); Combined still has no Waveform stub, since that reversal was
+never extended to it. The risk this section originally weighed —
+inventing a greyed-out button for a capability never discussed as a
+future feature risks misleading an engineer into thinking it is
+planned — is recorded for context, not as the current rule.
 
 Grouped **is** shared: Waveform's "Grouped Layout" groups channels by
 `engineering_type`; Event Reconstruction's "Grouped" groups by the finer

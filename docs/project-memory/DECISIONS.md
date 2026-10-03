@@ -22513,6 +22513,124 @@ for the full record.
   its own per-canvas Reset/Autoscale/Zoom/Cursor controls could ever be
   safely globalized without breaking multi-Time-Group independence.
 
+**Resolved by [DEC-142](#dec-142--event-reconstructions-active-y-axis-target-completes-dec-134s-individual-y-axis-drag-zoom-so-the-global-y-zoom-toolbar-buttons-become-usable):**
+the active Y-axis targeting item above is now built (Event
+Reconstruction only — Waveform's own "active Time Group" item remains
+open, unaffected).
+
+---
+
+## DEC-142 — Event Reconstruction's active Y-axis target, completing DEC-134's individual Y-axis drag zoom so the global Y Zoom toolbar buttons become usable
+
+Date: 2026-10-03
+Status: Approved (owner, "Y-AXIS INTERACTION MODEL" task) — implemented
+on `feat/event-reconstruction`; not merged. Completes
+[DEC-134](EVENT_RECONSTRUCTION_RENDERER_DESIGN.md)'s individual Y-axis
+drag zoom and activates the Y Zoom In/Out buttons
+[DEC-141](#dec-141--global-waveform-toolbar-composition-one-consolidated-header-toolbar-per-page-seven-ordered-families-replaces-event-reconstructions-split-header--canvas-toolbars)
+placed in the global header permanently disabled. Event Reconstruction
+only; Waveform's own Y zoom (its existing axis-chooser-dropdown-driven
+`wwStepZoomY()`) is unchanged.
+
+### Decision (owner)
+
+> Powerwave must have a clear separation of interaction scope: the plot
+> area navigates time/X only; a Y axis's own scale is local Y-axis
+> manipulation; the global Y tools operate only on an explicit active
+> Y-axis target. This must be predictable in both Grouped and Combined.
+> Introduce the active target by stable semantic axis identity, not a
+> Plotly axis number. The Y Zoom buttons must be placed in the global
+> header now even if direct drag's own ergonomics need a later
+> refinement — report that limitation rather than leaving the controls
+> disabled indefinitely.
+
+### Implementation (`[FACT]`)
+
+- **State:** `wwErState.plot.activeAxisKey`, the display-axis GROUP key
+  (`wwErAxisGroupKey()`), kept separate from the per-mode Y range store
+  (`axisStates`) — never a Plotly axis number.
+- **Set by:** a Grouped panel's header click/Enter/Space (Waveform's
+  own `.ww-panel-header` tabindex/role pattern reused — one axis per
+  panel there, `wwWireAxisTargetSelection()`'s Grouped branch); a
+  Combined axis's own legend heading (a new, equally accessible
+  per-axis control, event-delegated since the legend is rebuilt every
+  render); or a pointerdown anywhere on a Y axis's own drag region
+  (`wwErActivateAxisFromDragEvent()` — a plain click, a pan drag, an
+  end-zoom drag, or a double-click's first click, all count). Never a
+  hover; never an X-axis gesture (Box Zoom, Pan, Zoom In/Out, Fit
+  Record, Fit All, Reset).
+- **Default (section 7):** `wwErReconcileActiveAxisTarget()`, run after
+  every render — exactly one live Y axis and no target chosen yet
+  auto-targets it; several axes stay untargeted until the engineer
+  picks one. Never guesses among several.
+- **Grouped <-> Combined:** the same key carries over unchanged (it
+  never depended on view mode — Plotly axis numbers like `yaxis2` are
+  never used as the identity, by construction).
+- **Engineering <-> Per Unit:** display-axis keys differ even for the
+  same physical quantity (DEC-138), so the exact key is gone after the
+  switch; `wwErRemapActiveAxisTargetForUnitMode()` re-targets the new
+  mode's axis of the same `quantity` only when exactly one match
+  exists, otherwise clears rather than guessing.
+- **Channel removal:** the last trace on the active axis disappearing
+  clears the target (never silently retargets a different axis of the
+  same quantity within one unit mode — that scenario cannot arise, since
+  a quantity+unit pair is already one axis key within a single mode);
+  down to exactly one remaining axis, the default re-applies.
+- **Toolbar Y Zoom In/Out** (`wwErStepZoomY()`): steps only the active
+  axis's Y range, by the exact same ±20%/25% factors and
+  "keep the midpoint fixed" math as Waveform's own `wwStepZoomY()`
+  (`WW_ZOOM_STEP_IN_FACTOR`/`_OUT_FACTOR`, `WW_MIN_Y_SPAN`) — parity, not
+  a new Event Reconstruction factor, as the owner's own instruction
+  asked for. Disabled, with the owner's own exact wording ("Select a Y
+  axis to zoom"), whenever nothing is plotted or no target is set.
+- **Visual indicator (section 6):** Waveform's own `.ww-panel--active`
+  accent (Grouped, toggled on the panel card) and a matching accent on
+  the Combined legend heading, plus the compact toolbar readout
+  ("Y: Voltage (kV)" / "Y: Select axis", `#wwErActiveAxisReadout`).
+  Never a change to Plotly's own rendered axis styling.
+- **X-only guard (`wwErKeepPlotAreaDragXOnly()`) audited, unchanged:**
+  it only ever matches the plot area's own corner/interior drag classes
+  (`.nsewdrag`/`.nwdrag`/`.nedrag`/`.swdrag`/`.sedrag`), never a Y
+  axis's own drag classes (`.nsdrag`/`.ndrag`/`.sdrag`) — already scoped
+  correctly; no change needed.
+- **Root-cause finding (section 12, measured, not theoretical):**
+  Plotly's native end-zoom hit region measured 13.6 px tall in Grouped
+  (a 267 px-tall rendered panel), 37.6 px in Combined — genuinely narrow
+  for a real mouse, consistent with the owner's own UAT finding that
+  direct end-zoom was "not reliably working." DEC-134's own direct drag
+  (pan, end-zoom, double-click autoscale) is left completely unmodified
+  — it is already proven correct against these exact hit regions (the
+  existing DEC-134 browser suite passes unchanged) — rather than
+  patching vendored Plotly's own hit-region geometry, a disproportionate
+  risk for an ergonomics improvement this slice's own toolbar + per-axis
+  accessible controls already resolve. If owner UAT still finds direct
+  drag insufficient after this, a dedicated hit-region enhancement
+  (widening the perceived end-zoom zone without changing Plotly's
+  rendering) is the natural next, separately-scoped ticket.
+- **Unaffected (none of them read or write the active target):**
+  Autoscale Y (still every axis of the current view), Reset Time View,
+  Fit Selected Record, Box Zoom/Pan, Zoom In/Out (X), cursors,
+  annotations, corrections, reference.
+- **Tests.** A new `event-reconstruction-active-yaxis.spec.js`: Grouped
+  single/multi-axis targeting and switching, toolbar Y zoom step math,
+  direct-interaction activation, X-navigation independence,
+  Grouped/Combined and Engineering/Per-Unit target carry-over or clear,
+  channel-removal clearing, plus real pointer drags (page.mouse) on the
+  actual rendered Y-axis drag regions proving numeric span/centre math
+  (pan preserves span, zoom in/out shrinks/grows it) per section 11's
+  own explicit requirement. The existing DEC-134 drag-zoom suite
+  (`event-reconstruction-yaxis-zoom.spec.js`) runs unchanged and passes,
+  proving no regression to the direct-manipulation behaviour this slice
+  builds on.
+
+### Open (not this slice)
+
+- A dedicated end-zoom hit-region ergonomics enhancement, only if owner
+  UAT of this slice's toolbar + accessible per-axis controls still finds
+  direct drag insufficient on its own.
+- Waveform's own "active Time Group" targeting concept (unrelated to
+  this Event-Reconstruction-only slice; Waveform's Y zoom is unchanged).
+
 ---
 
 ## How to add a decision

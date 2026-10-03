@@ -230,6 +230,55 @@ Group" assumption below.**
   (Grouped reused verbatim from Waveform's own; Combined a new composite
   in the same family). No disabled Separate/Custom/Split stubs were
   added here -- Event Reconstruction never had those concepts.
+- **Global toolbar composition (done, 2026-10-03, DEC-141, app-wide).**
+  Every common tool consolidated into one global header
+  (`#wwErToolbar`), seven ordered families; the Reconstruction Timeline
+  canvas's own toolbar removed. Reverses the DEC-140 finding above:
+  Separate/Custom/Split now exist, disabled, on Event Reconstruction.
+- **Active Y-axis target (done, 2026-10-03, DEC-142) -- completes
+  DEC-134's own individual Y-axis drag zoom.** DEC-134 already let an
+  engineer drag any Y axis's own scale directly (pan the middle, zoom
+  an end, double-click to autoscale); this slice adds the explicit
+  TARGET concept the global Y Zoom In/Out toolbar buttons (registered
+  since DEC-140/141 but disabled until now) need to know which axis to
+  act on in Grouped (several panels) or Combined (several axes in one
+  panel).
+  - **State:** `wwErState.plot.activeAxisKey`, the display-axis GROUP
+    key (`wwErAxisGroupKey()`'s own stable identity, never a Plotly
+    axis number) -- separate from the per-mode Y range store
+    (`axisStates`), so it is not accidentally mode/unit-mode-scoped.
+  - **Set by:** clicking a Grouped panel's header (Waveform's own
+    `.ww-panel-header` tabindex/role pattern, reused -- one axis per
+    panel there) or a Combined axis's legend heading (a new, equally
+    accessible per-axis control); or any direct pointerdown on a Y
+    axis's own drag region (pan, either zoom end, or a double-click) --
+    never a hover, never an X-axis gesture.
+  - **Default:** exactly one Y axis and no target chosen yet
+    auto-targets it; several axes stay untargeted until chosen
+    (`wwErReconcileActiveAxisTarget()`, run after every render).
+  - **Across view modes:** the same key carries over Grouped <->
+    Combined unchanged (it never depended on view mode). Across
+    Engineering <-> Per Unit (whose display-axis keys differ even for
+    the same physical quantity, DEC-138), the target is re-mapped to
+    the new mode's axis of the same `quantity` only when that is
+    unambiguous (`wwErRemapActiveAxisTargetForUnitMode()`); otherwise
+    cleared, never guessed.
+  - **Toolbar Y Zoom In/Out** (`wwErStepZoomY()`) step only the active
+    axis, by the exact same +/-20%/25% factors and "keep the midpoint
+    fixed" math as Waveform's own `wwStepZoomY()`
+    (`WW_ZOOM_STEP_IN_FACTOR`/`_OUT_FACTOR`, `WW_MIN_Y_SPAN`) -- parity,
+    not a new Event Reconstruction factor.
+  - **Root-cause finding:** Plotly's native end-zoom hit region measured
+    13.6 px tall in Grouped (267 px panel), 37.6 px in Combined -- a
+    real, narrow target for a mouse, backing the owner's own "not
+    reliably working" UAT finding. Plotly's own rendering/hit-region
+    sizing is left unmodified (preserving DEC-134's own already-tested
+    direct-drag behaviour, which passes against these exact regions);
+    the toolbar + accessible per-axis target controls are the robust
+    path this slice adds. See DEC-142 for the full reasoning.
+  - **Autoscale Y, Reset Time View, Fit Selected Record, Box Zoom/Pan,
+    Zoom In/Out (X), cursors and annotations are all unchanged** -- none
+    of them read or write the active target.
 
 Date: 2026-10-01. Code references are function names in
 `frontend/index.html` and `backend/app/` at commit `33f3178`

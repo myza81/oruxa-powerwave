@@ -157,6 +157,14 @@ async function plotState(page) {
       origin: plot.origin,
       atFitAll: plot.atFitAll,
       viewMode: plot.viewMode,
+      // DEC-142: the explicit active Y-axis target.
+      activeAxisKey: plot.activeAxisKey,
+      activeAxisQuantity: plot.activeAxisQuantity,
+      yZoomInDisabled: document.getElementById("wwErZoomYInBtn").disabled,
+      yZoomOutDisabled: document.getElementById("wwErZoomYOutBtn").disabled,
+      yZoomInTitle: document.getElementById("wwErZoomYInBtn").title,
+      yZoomOutTitle: document.getElementById("wwErZoomYOutBtn").title,
+      activeAxisReadout: document.getElementById("wwErActiveAxisReadout").textContent,
       panels: channels,
       groups: plot.panels.map((p) => ({
         key: p.key,
@@ -170,6 +178,8 @@ async function plotState(page) {
         yRange: p.chartEl._fullLayout.yaxis.range.slice(),
         yAutorange: p.chartEl.layout.yaxis.autorange,
         autoscaleYPending: p.axes.some((a) => a.autoscaleYPending),
+        // DEC-142: Grouped's own active-target visual (its header card).
+        headerActive: p.containerEl.classList.contains("ww-panel--active"),
         axes: p.axes.map((a, index) => {
           const full = p.chartEl._fullLayout[a.placement.layoutKey];
           const own = p.chartEl.layout[a.placement.layoutKey];
@@ -189,6 +199,7 @@ async function plotState(page) {
             showTickLabels: full.showticklabels,
             pending: a.autoscaleYPending,
             manual: !!a.manual,
+            active: a.key === plot.activeAxisKey,
             traceKeys: p.traces.filter((t) => t.axisIndex === index).map((t) => t.key),
           };
         }),
@@ -197,6 +208,10 @@ async function plotState(page) {
         axisLegend: Array.from(p.legendEl.querySelectorAll(".ww-er-legend-axis")).map((el) => ({
           title: el.querySelector(".ww-er-legend-axis-title").textContent,
           chips: Array.from(el.querySelectorAll(".ww-legend-item")).map((chip) => chip.textContent),
+          // DEC-142: Combined's own per-axis active-target visual.
+          key: el.dataset.erAxisKey,
+          active: el.classList.contains("ww-er-legend-axis--active"),
+          ariaPressed: el.getAttribute("aria-pressed"),
         })),
         note: p.noteEl.hidden ? "" : p.noteEl.textContent,
         error: p.errorEl.hidden ? "" : p.errorEl.textContent,
@@ -251,6 +266,20 @@ async function dragOnPanel(page, panelIndex, fromFraction, toFraction, dy = 0) {
   await page.mouse.up();
 }
 
+// DEC-142: Grouped's own active-Y-axis-target control -- the panel's
+// header (its one axis).
+async function clickPanelHeader(page, panelIndex) {
+  await page.locator("#wwErPanels .ww-er-panel").nth(panelIndex).locator(".ww-panel-header").click();
+}
+
+// DEC-142: Combined's own per-axis active-Y-axis-target control -- one
+// axis's legend heading, found by its title text.
+async function clickLegendAxis(page, panelIndex, title) {
+  await page.locator("#wwErPanels .ww-er-panel").nth(panelIndex)
+    .locator(".ww-er-legend-axis", { has: page.locator(".ww-er-legend-axis-title", { hasText: title }) })
+    .click();
+}
+
 function expectSharedAxis(state) {
   for (const panel of state.panels) {
     expect(panel.xRange).toEqual(state.panels[0].xRange);
@@ -265,4 +294,5 @@ module.exports = {
   BACKEND, VI, SLOW_VI, collectConsoleErrors, uploadRecord, workspaceId, api, sourceIdFor,
   recordRow, memberRow, openEventReconstruction, addRecords, channelRow, selectChannel,
   waitForPlot, plotState, zoomTo, waitForSharedAxis, expectSharedAxis, dragOnPanel,
+  clickPanelHeader, clickLegendAxis,
 };

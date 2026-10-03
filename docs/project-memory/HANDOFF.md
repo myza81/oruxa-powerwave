@@ -4,12 +4,58 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-03** (Global waveform toolbar composition)
+Last updated: **2026-10-03** (Active Y-axis target)
 
 ## What was most recently done
 
+**Event Reconstruction's active Y-axis target (DEC-142, 2026-10-03,
+Event Reconstruction only).** The feature is not complete. See
+[DECISIONS.md — DEC-142](DECISIONS.md#dec-142--event-reconstructions-active-y-axis-target-completing-dec-134s-individual-y-axis-drag-zoom-so-the-global-y-zoom-toolbar-buttons-become-usable)
+for the full record. Completes DEC-134's own direct Y-axis drag zoom
+and activates the Y Zoom In/Out buttons DEC-141 placed in the header
+permanently disabled.
+
+- **State:** `wwErState.plot.activeAxisKey`, the stable display-axis
+  key (never a Plotly axis number), kept separate from the per-mode Y
+  range store.
+- **Set by:** a Grouped panel's header (Waveform's own tabindex/role
+  pattern reused), a Combined axis's own legend heading (new, equally
+  accessible), or any pointerdown on a Y axis's own drag region (pan,
+  either zoom end, or a double-click) — never a hover, never an X-axis
+  gesture.
+- **Default:** exactly one live axis and no target chosen auto-targets
+  it; several stay untargeted until chosen. Never guesses among several.
+- **Grouped <-> Combined:** carries over unchanged (same key, by
+  design). **Engineering <-> Per Unit:** re-mapped by physical quantity
+  when unambiguous, else cleared (their display-axis keys differ even
+  for the same quantity).
+- **Toolbar Y Zoom In/Out** (`wwErStepZoomY()`) step only the active
+  axis, by Waveform's own exact ±20%/25% factors
+  (`WW_ZOOM_STEP_IN_FACTOR`/`_OUT_FACTOR`) — parity, not a new factor.
+- **Root-cause finding:** Plotly's native end-zoom hit region measured
+  13.6 px (Grouped) / 37.6 px (Combined) tall — genuinely narrow,
+  backing the owner's own "not reliably working" UAT finding. Left
+  unmodified (DEC-134's own drag is already proven correct against it);
+  the toolbar + accessible per-axis controls are the robust path added
+  here, not a change to Plotly's rendering.
+- **Unaffected:** Autoscale Y (still every axis), Reset Time View, Fit
+  Selected Record, Box Zoom/Pan, Zoom In/Out (X), cursors, annotations.
+- **Tests.** New `event-reconstruction-active-yaxis.spec.js`: targeting/
+  switching in both view modes, toolbar step math, direct-interaction
+  activation, X-navigation independence, Grouped/Combined and
+  Engineering/Per-Unit carry-over or clear, channel-removal clearing,
+  and real `page.mouse` drags on the actual Y-axis regions proving
+  numeric span/centre math. The existing DEC-134 drag-zoom suite passes
+  unchanged (no regression to the direct-manipulation behaviour this
+  builds on).
+- **Next.** A dedicated end-zoom hit-region ergonomics enhancement, only
+  if owner UAT still finds direct drag insufficient on its own. Then
+  owner UAT of the whole branch.
+
+## Earlier — Global waveform toolbar composition (DEC-141)
+
 **Global waveform toolbar composition (DEC-141, 2026-10-03, app-wide —
-not Event-Reconstruction-only).** The feature is not complete. See
+not Event-Reconstruction-only).** See
 [POWERWAVE_ICON_SYSTEM.md §11](POWERWAVE_ICON_SYSTEM.md#11-toolbar-composition-dec-141)
 for the full record. Builds on DEC-140 (below) and explicitly reverses
 two of its findings.
@@ -46,16 +92,15 @@ two of its findings.
   axis-chooser dropdown.
 - **New registry composites:** `RESET_TIME_VIEW`, `AUTOSCALE_Y`,
   `FIT_SELECTED_RECORD`.
-- **Units (ENG/PU) stays text**, and the mock's "Y target" readout is
-  **not implemented** — both reported as deliberate mock deviations (see
-  the doc's §11 for the reasoning).
+- **Units (ENG/PU) stays text** — a deliberate mock deviation (see the
+  doc's §11 for the reasoning). The mock's "Y target" readout was not
+  implemented here; it is now (DEC-142 above).
 - **Tests.** Rewrote 11 static tests in
   `test_frontend_event_reconstruction.py` whose premises this ticket
   reversed (old text-button markup, the old axis-chooser dropdown ids,
   `#wwErCanvasToolbar`'s existence, "no invented View Mode stubs").
-- **Next.** The dedicated Y-axis interaction ticket (active-axis
-  targeting, Y-axis end drag zoom, Combined View Y target semantics) —
-  explicitly out of scope here. Then owner UAT of the whole branch.
+- **Next.** Done — DEC-142 above is the dedicated Y-axis interaction
+  ticket this entry deferred.
 
 ## Earlier — Global Powerwave Waveform Tool Icon System (DEC-140)
 

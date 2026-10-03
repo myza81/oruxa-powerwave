@@ -197,7 +197,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         plot_keys = re.findall(r"^ {16}(\w+):", state.split("plot: {", 1)[1], re.MULTILINE)
         assert plot_keys == [
             "viewMode", "axisStates", "panels", "viewport", "fitAll", "atFitAll", "origin", "relayoutTimer",
-            "cursors", "cursorRequests", "cursorValuesTimer",
+            "cursors", "cursorRequests", "cursorValuesTimer", "activeAxisKey", "activeAxisQuantity",
         ]
         for forbidden in ("PresentationOverrides", "channelColors", "ColorOverride", "DisplayName =", "localStorage"):
             assert forbidden not in module
@@ -657,26 +657,28 @@ class TestEventReconstructionPlotting:
             body = source[source.index(waveform_fn) : source.index("\n        }\n", source.index(waveform_fn))]
             assert "wwEr" not in body
 
-    def test_y_step_zoom_stays_out(self):
-        """Slice 3D/DEC-141: Event Reconstruction zooms X only. The
-        dedicated Y Zoom In/Out buttons (DEC-141's own Y-axis Scale
-        family) exist, carry the SAME registry icons/tooltip wording as
-        Waveform's own Y-targeted zoom, and stay permanently disabled and
-        unwired -- there is no "active Y axis target" concept to drive
-        them (that is explicitly the next ticket's own scope, not this
-        one's)."""
+    def test_y_step_zoom_targets_the_active_axis(self):
+        """DEC-142: Event Reconstruction's Y Zoom In/Out act on the
+        explicit active Y-axis target. The buttons carry the SAME
+        registry icons as Waveform's own Y-targeted zoom, start disabled
+        in markup (dynamically re-enabled once a target exists,
+        wwErSyncToolbar()) and are now wired to wwErStepZoomY(), which
+        uses the SAME step factors/midpoint math as Waveform's own
+        wwStepZoomY() -- parity, not a new factor."""
         source = _source()
         page = _er_page(source)
         for control in ("wwErZoomYInBtn", "wwErZoomYOutBtn"):
             assert re.search(r'id="' + control + r'"[^>]*\bdisabled\b', page)
-            assert 'getElementById("' + control + '").addEventListener' not in source
+        assert 'getElementById("wwErZoomYInBtn").addEventListener("click", () => wwErStepZoomY("in"));' in source
+        assert 'getElementById("wwErZoomYOutBtn").addEventListener("click", () => wwErStepZoomY("out"));' in source
         assert _icon_key(_element(page, "wwErZoomYInBtn", "button")) == "ZOOM_Y_IN"
         assert _icon_key(_element(page, "wwErZoomYOutBtn", "button")) == "ZOOM_Y_OUT"
-        assert 'title="Zoom In — Selected Y Axis"' in page
-        assert 'title="Zoom Out — Selected Y Axis"' in page
         module = _er_module(source)
-        for forbidden in ("wwStepZoomY(", "yaxis.range\": [center"):
-            assert forbidden not in module
+        step = _between(module, "function wwErStepZoomY(direction) {", "function wwErSyncActiveAxisReadout(")
+        assert "wwErActiveAxisEntry()" in step
+        assert "WW_ZOOM_STEP_IN_FACTOR" in step and "WW_ZOOM_STEP_OUT_FACTOR" in step and "WW_MIN_Y_SPAN" in step
+        assert "center - newSpan / 2" in step and "center + newSpan / 2" in step
+        assert "entry.axis.manual = true;" in step
 
 
 class TestEventReconstructionTimelineNavigation:
@@ -697,7 +699,14 @@ class TestEventReconstructionTimelineNavigation:
         assert 'if (!event.target.closest(".nsewdrag, .nwdrag, .nedrag, .swdrag, .sedrag")) return;' in guard
         assert "for (const key of keys) fullLayout[key].fixedrange = true;" in guard
         assert 'window.addEventListener("mouseup", restore);' in guard
-        assert 'panel.chartEl.addEventListener("pointerdown", (event) => wwErKeepPlotAreaDragXOnly(panel, event), true);' in source
+        # DEC-142: the same pointerdown also resolves the active Y-axis
+        # target (wwErActivateAxisFromDragEvent()) -- a different
+        # selector (.nsdrag/.ndrag/.sdrag, the axis's own scale, never
+        # this guard's plot-area corner classes), so the two coexist on
+        # one listener without either one changing the other's scope.
+        pointerdown = _between(source, 'panel.chartEl.addEventListener("pointerdown", (event) => {', "wwErWirePanelRelayout(panel);")
+        assert "wwErKeepPlotAreaDragXOnly(panel, event);" in pointerdown
+        assert "wwErActivateAxisFromDragEvent(panel, event);" in pointerdown
         assert "layout[axis.placement.layoutKey] = yaxis;" in layout
         init = _between(source, "function wwErInitPanelPlot(panel) {", "function wwErWirePanelRelayout(panel)")
         assert "wwErPanelLayout(panel)" in init
@@ -876,9 +885,17 @@ class TestEventReconstructionGroupedView:
         # One title helper: no other place in the module builds a title
         # from an axis quantity.
         module = _er_module(source)
-        assert module.count(".quantity") == title.count(".quantity")
-        for use in ("text: panel.combined ? wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index))", ": wwErAxisTitle(panel.axes[0].axis, panel.traces);",
-                    "escapeHtml(wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index)))"):
+        # DEC-142: the active Y-axis target re-targets across an
+        # Engineering <-> Per Unit switch by physical quantity (never a
+        # title string) -- three legitimate reads outside wwErAxisTitle
+        # itself (wwErSetActiveAxisTarget, wwErReconcileActiveAxisTarget,
+        # wwErRemapActiveAxisTargetForUnitMode). wwErAxisTitle is still
+        # the only place that builds a TITLE from one.
+        active_target = _between(module, "function wwErLiveAxisEntries() {", "function wwErSyncActiveAxisVisual() {")
+        assert active_target.count(".axis.quantity") == 3
+        assert module.count(".quantity") == title.count(".quantity") + active_target.count(".axis.quantity")
+        for use in ("text: panel.combined ? wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index))", "const title = wwErAxisTitle(panel.axes[0].axis, panel.traces);",
+                    "const title = wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index));"):
             assert use in module
 
     def test_each_trace_fetches_and_maps_independently(self):
@@ -1014,7 +1031,8 @@ class TestEventReconstructionCombinedView:
     def test_legend_is_per_trace_organised_by_axis(self):
         legend = _between(_source(), "function wwErRenderPanelLegend(panel) {", "function wwErCreateTrace(item)")
         assert "panel.traces.filter((trace) => trace.axisIndex === index).map(wwErLegendChipHtml)" in legend
-        assert "escapeHtml(wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index)))" in legend
+        assert "const title = wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index));" in legend
+        assert "escapeHtml(title)" in legend
         for forbidden in ("dash", "dot"):
             assert forbidden not in _between(_source(), "function wwErBuildTrace(trace) {", "function wwErLegendChipHtml(trace)")
 

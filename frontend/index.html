@@ -5358,11 +5358,14 @@
             margin-bottom: 14px;
         }
         .ww-er-source-row-header { cursor: default; }
-        /* Event Reconstruction Slice 3C: a reconstruction panel's header is
-           a plain label (no active-Y-zoom panel yet), and an empty panel
-           says why -- existing tokens only. */
-        .ww-er-panel .ww-panel-header { cursor: default; }
-        .ww-er-panel .ww-panel-header:hover { background: transparent; }
+        /* DEC-142: a Grouped panel has exactly one axis, so its header IS
+           that axis's active-Y-zoom-target control (Waveform's own
+           .ww-panel-header/.ww-panel--active pattern, reused verbatim).
+           A Combined panel holds several axes in one panel, so ITS header
+           stays a plain label -- targeting there is per-axis, on the
+           legend headings below. */
+        .ww-er-panel--combined .ww-panel-header { cursor: default; }
+        .ww-er-panel--combined .ww-panel-header:hover { background: transparent; }
         .ww-er-panel-note {
             position: absolute;
             inset: 0;
@@ -5476,11 +5479,29 @@
             flex-wrap: wrap;
             align-items: center;
             gap: 6px;
+            cursor: pointer;
+            border-radius: 6px;
+            padding: 2px 4px;
+            margin: -2px -4px;
         }
+        .ww-er-legend-axis:hover { background: var(--hover-tint); }
+        .ww-er-legend-axis:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
         .ww-er-legend-axis-title {
             font-size: 0.72rem;
             font-weight: 600;
             color: var(--text-dim);
+        }
+        /* DEC-142: the active Y-axis target, Combined's per-axis equivalent
+           of Grouped's .ww-panel--active header. */
+        .ww-er-legend-axis--active { box-shadow: inset 3px 0 0 var(--accent); }
+        .ww-er-legend-axis--active .ww-er-legend-axis-title { color: var(--accent); }
+        .ww-er-active-axis-readout {
+            font-size: 0.68rem;
+            color: var(--text-dim);
+            max-width: 130px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         /* The Event Reconstruction channel tree nests two levels deeper than
            the Waveform tree it mirrors (record -> Channels -> recording).
@@ -9361,27 +9382,26 @@
                             <span class="ww-icon" data-ww-icon="ZOOM_X_IN"></span>
                         </button>
                         <span class="ww-toolbar-sep" aria-hidden="true"></span>
-                        <!-- DEC-141: Y-axis Scale. Zoom In/Out — Selected Y
-                             Axis are new, permanently disabled: Event
-                             Reconstruction has no "active Y axis target"
-                             concept (a stepped Y zoom needs one to know
-                             WHICH of possibly several panels/axes it acts
-                             on) -- inventing that targeting model is
-                             explicitly out of scope here (the next
-                             dedicated Y-axis interaction ticket); showing
-                             them honestly disabled, with a tooltip saying
-                             so, is what the owner's own "if no valid Y
-                             target exists: disable, tooltip explains why"
-                             instruction asks for. Autoscale Y is
-                             unchanged behaviour (every axis of the current
-                             view), only its presentation moved here and
-                             became a compact icon. -->
+                        <!-- DEC-142: Y-axis Scale. Zoom In/Out — Selected Y
+                             Axis act on the explicit active Y-axis target
+                             (wwErState.plot.activeAxisKey): clicking a
+                             panel's header (Grouped, one axis per panel)
+                             or a Y axis's own legend heading (Combined),
+                             or interacting with a Y axis directly (drag,
+                             double-click), makes it the target -- never a
+                             hover. Disabled, with a tooltip explaining why,
+                             whenever nothing is plotted or no target is
+                             set yet (several axes exist and none has been
+                             chosen). Autoscale Y is unchanged behaviour
+                             (every axis of the current view, not just the
+                             active one) -- see wwErAutoscaleY(). -->
                         <button type="button" class="ww-icon-btn" id="wwErZoomYOutBtn" title="Zoom Out — Selected Y Axis" aria-label="Zoom Out — Selected Y Axis" disabled>
                             <span class="ww-icon" data-ww-icon="ZOOM_Y_OUT"></span>
                         </button>
                         <button type="button" class="ww-icon-btn" id="wwErZoomYInBtn" title="Zoom In — Selected Y Axis" aria-label="Zoom In — Selected Y Axis" disabled>
                             <span class="ww-icon" data-ww-icon="ZOOM_Y_IN"></span>
                         </button>
+                        <span class="ww-er-active-axis-readout" id="wwErActiveAxisReadout">Y: Select axis</span>
                         <button type="button" class="ww-icon-btn ww-tg-autoscale-btn" id="wwErAutoscaleYBtn" title="Autoscale Y" aria-label="Autoscale Y" disabled>
                             <span class="ww-icon" data-ww-icon="AUTOSCALE_Y"></span>
                         </button>
@@ -14859,6 +14879,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 cursors: { enabled: false, a: { time: null, visible: true }, b: { time: null, visible: true } },
                 cursorRequests: {},
                 cursorValuesTimer: null,
+                // Active Y-axis target (DEC-142): the display-axis GROUP
+                // key the global Y Zoom In/Out buttons and a double-click
+                // autoscale act on -- never a Plotly axis number, which is
+                // meaningless across a Grouped <-> Combined switch.
+                // `activeAxisQuantity` is kept alongside only to re-target
+                // the equivalent axis across an Engineering <-> Per Unit
+                // switch (see wwErRemapActiveAxisTargetForUnitMode()).
+                activeAxisKey: null,
+                activeAxisQuantity: null,
             },
         };
 
@@ -16186,9 +16215,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // selection are untouched; each unit mode keeps its own Y state.
         function wwErSetUnitMode(mode) {
             if ((mode !== "engineering" && mode !== "per_unit") || mode === wwErState.unitMode) return;
+            // DEC-142/section 16: the active Y-axis target's own key
+            // always changes across this switch (each unit mode has its
+            // own display-axis keys, even for the same physical
+            // quantity); remember its quantity so it can be re-targeted
+            // to the equivalent axis once the new mode's axes exist.
+            const previousAxisQuantity = wwErState.plot.activeAxisQuantity;
             wwErState.unitMode = mode;
             wwErSyncUnitModeButtons();
             wwErRenderPlot();
+            wwErRemapActiveAxisTargetForUnitMode(previousAxisQuantity);
+            wwErSyncToolbar();
             wwErSyncPerUnitTreeDom();
             wwErRefreshAnnotationValues();
             wwErRenderAnnotations();
@@ -16405,11 +16442,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 panel.legendEl.innerHTML = panel.traces.map(wwErLegendChipHtml).join("");
                 return;
             }
-            panel.legendEl.innerHTML = panel.axes.map((axis, index) =>
-                '<span class="ww-er-legend-axis" data-er-axis-key="' + escapeHtml(axis.key) + '">' +
-                    '<span class="ww-er-legend-axis-title">' + escapeHtml(wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index))) + "</span>" +
+            // DEC-142: each axis heading is also its own active-Y-zoom-
+            // target control (Combined's per-axis equivalent of Grouped's
+            // panel header, wwErWireAxisTargetSelection() wires the click/
+            // keydown delegated on panel.legendEl; wwErSyncActiveAxisVisual()
+            // keeps aria-pressed/the accent class current).
+            panel.legendEl.innerHTML = panel.axes.map((axis, index) => {
+                const title = wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index));
+                return '<span class="ww-er-legend-axis" data-er-axis-key="' + escapeHtml(axis.key) + '" ' +
+                        'tabindex="0" role="button" aria-pressed="false" ' +
+                        'aria-label="Set ' + escapeHtml(title) + ' as the active Y-axis target" ' +
+                        'title="Click to make this axis the Y zoom target">' +
+                    '<span class="ww-er-legend-axis-title">' + escapeHtml(title) + "</span>" +
                     panel.traces.filter((trace) => trace.axisIndex === index).map(wwErLegendChipHtml).join("") +
-                "</span>").join("");
+                "</span>";
+            }).join("");
         }
 
         function wwErCreateTrace(item) {
@@ -16482,11 +16529,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             container.className = "ww-panel ww-er-panel" + (spec.combined ? " ww-er-panel--combined" : "");
             container.dataset.erPanelKey = spec.key;
             container.innerHTML = wwPanelMarkupHtml("");
-            // Not yet in Event Reconstruction: an active Y-zoom panel and
-            // panel-height dragging. The shared header is a plain label
-            // here, and the resize grip is not offered.
+            // DEC-142: a Grouped panel's header IS its one axis's active-
+            // Y-zoom-target control (Waveform's own tabindex/role/
+            // aria-label pattern, reused -- see wwErWireAxisTargetSelection()).
+            // A Combined panel holds several axes in one panel, so its
+            // header stays the plain, non-interactive label it always was;
+            // targeting there is per-axis, on the legend headings instead.
+            // Panel-height dragging is still not offered in either mode.
             const header = container.querySelector(".ww-panel-header");
-            for (const attribute of ["tabindex", "role", "aria-label", "title"]) header.removeAttribute(attribute);
+            if (spec.combined) {
+                for (const attribute of ["tabindex", "role", "aria-label", "title"]) header.removeAttribute(attribute);
+            }
             container.querySelector(".ww-resize-handle").remove();
             const note = document.createElement("div");
             note.className = "ww-er-panel-note";
@@ -16514,6 +16567,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             container.querySelector(".ww-chart-wrap").appendChild(annotationLayer);
             panel.annotationLayerEl = annotationLayer;
             panel.containerEl = container;
+            panel.headerEl = header;
             panel.labelEl = container.querySelector(".ww-panel-label");
             panel.legendEl = container.querySelector(".ww-legend");
             panel.chartEl = container.querySelector(".ww-chart");
@@ -16524,6 +16578,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             panel.cursorLayerEl = cursorLayer;
             wwErWirePanelCursorDrag(panel);
             wwErWirePanelAnnotationInput(panel);
+            wwErWireAxisTargetSelection(panel);
             panel.chartEl.style.height = (spec.combined ? WW_ER_COMBINED_PANEL_HEIGHT : WW_ER_PANEL_HEIGHT) + "px";
             return panel;
         }
@@ -16542,9 +16597,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // here on the next render).
         function wwErRefreshPanelPresentation(panel) {
             const axes = panel.axes.length;
-            panel.labelEl.textContent = panel.combined
-                ? "All selected channels · " + axes + (axes === 1 ? " Y axis" : " Y axes")
-                : wwErAxisTitle(panel.axes[0].axis, panel.traces);
+            if (panel.combined) {
+                panel.labelEl.textContent = "All selected channels · " + axes + (axes === 1 ? " Y axis" : " Y axes");
+            } else {
+                const title = wwErAxisTitle(panel.axes[0].axis, panel.traces);
+                panel.labelEl.textContent = title;
+                // DEC-142: this header doubles as the panel's one axis's
+                // active-Y-zoom-target control (set once at creation, kept
+                // live here so a rename follows, same as the Combined
+                // legend heading below).
+                if (panel.headerEl) {
+                    panel.headerEl.setAttribute("aria-label", "Set " + title + " as the active Y-axis target");
+                    panel.headerEl.setAttribute("title", "Click to make this axis the Y zoom target");
+                }
+            }
             wwErRenderPanelLegend(panel);
             if (!panel.plotlyReady || !panel.traces.length) return;
             Plotly.restyle(panel.chartEl, {
@@ -16613,7 +16679,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             Plotly.newPlot(panel.chartEl, panel.traces.map(wwErBuildTrace), wwErPanelLayout(panel), { responsive: true, displayModeBar: false, doubleClick: "autosize" });
             panel.renderedKey = wwErPanelRenderKey(panel);
             panel.plotlyReady = true;
-            panel.chartEl.addEventListener("pointerdown", (event) => wwErKeepPlotAreaDragXOnly(panel, event), true);
+            panel.chartEl.addEventListener("pointerdown", (event) => {
+                wwErKeepPlotAreaDragXOnly(panel, event);
+                wwErActivateAxisFromDragEvent(panel, event);
+            }, true);
             wwErWirePanelRelayout(panel);
             // Slice 3E: any redraw (resize, relayout) re-positions this
             // panel's cursor lines.
@@ -16716,6 +16785,219 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             };
             window.addEventListener("mouseup", restore);
             window.addEventListener("touchend", restore);
+        }
+
+        // ------------------------------------------------------------------
+        // Active Y-axis target (DEC-142)
+        // ------------------------------------------------------------------
+        //
+        // The explicit target the global Y Zoom In/Out buttons act on --
+        // required because Combined may hold several Y axes in one panel,
+        // and even Grouped can show several panels at once. Stored by the
+        // display-axis GROUP key (the same stable semantic identity
+        // wwErAxisStore() already keys by, e.g. "axis:Voltage|V"), never a
+        // Plotly axis number ("yaxis2"), which is meaningless across a
+        // Grouped <-> Combined switch.
+        //
+        // Set when the engineer: clicks a Grouped panel's header (its one
+        // axis's own control, Waveform's .ww-panel-header pattern reused);
+        // clicks a Combined axis's legend heading (its own per-axis
+        // control); or starts any direct interaction on a Y axis's own
+        // scale (wwErActivateAxisFromDragEvent() below) -- a plain click,
+        // a pan drag, an end-zoom drag or a double-click alike. Never set
+        // by hovering, and never by an X-axis gesture (Box Zoom, Pan, Zoom
+        // In/Out, Fit Record, Fit All).
+
+        // Every currently rendered axis, across every panel of the current
+        // view mode, with enough context for the resolvers below.
+        function wwErLiveAxisEntries() {
+            const entries = [];
+            for (const panel of wwErState.plot.panels) {
+                panel.axes.forEach((axis, axisIndex) => entries.push({ panel, axis, axisIndex }));
+            }
+            return entries;
+        }
+
+        // The active target's own panel/axis, or null while none is set or
+        // its axis no longer exists (wwErReconcileActiveAxisTarget() keeps
+        // the key itself in sync with that; this is a pure lookup).
+        function wwErActiveAxisEntry() {
+            const key = wwErState.plot.activeAxisKey;
+            if (!key) return null;
+            return wwErLiveAxisEntries().find((entry) => entry.axis.key === key) || null;
+        }
+
+        function wwErSetActiveAxisTarget(key) {
+            const plot = wwErState.plot;
+            if (plot.activeAxisKey === key) return;
+            const entry = key ? wwErLiveAxisEntries().find((e) => e.axis.key === key) : null;
+            plot.activeAxisKey = entry ? key : null;
+            plot.activeAxisQuantity = entry ? entry.axis.axis.quantity : null;
+            wwErSyncActiveAxisVisual();
+            wwErSyncToolbar();
+        }
+
+        // Called after every render (wwErRenderPlot(): a channel/selection
+        // change or a Grouped <-> Combined switch): keeps the active
+        // target if its exact axis still exists -- Grouped <-> Combined
+        // never needs remapping, since the display-axis key itself does
+        // not depend on view mode (section 17) -- otherwise clears it
+        // (section 18: the last trace on the active axis disappeared).
+        // Never guesses a replacement axis. The one exception is the
+        // deliberately narrow default (section 7): no target was ever
+        // chosen and exactly one Y axis exists.
+        function wwErReconcileActiveAxisTarget() {
+            const plot = wwErState.plot;
+            const live = wwErLiveAxisEntries();
+            if (plot.activeAxisKey && !live.some((e) => e.axis.key === plot.activeAxisKey)) {
+                plot.activeAxisKey = null;
+                plot.activeAxisQuantity = null;
+            }
+            if (!plot.activeAxisKey && live.length === 1) {
+                plot.activeAxisKey = live[0].axis.key;
+                plot.activeAxisQuantity = live[0].axis.axis.quantity;
+            }
+            wwErSyncActiveAxisVisual();
+        }
+
+        // Engineering <-> Per Unit (DEC-138, section 16): the active
+        // target's own key always changes across this switch (each unit
+        // mode has its own display-axis keys, even for the same physical
+        // quantity), so wwErReconcileActiveAxisTarget() above has already
+        // cleared it by the time this runs (called right after
+        // wwErRenderPlot() in wwErSetUnitMode()). Re-targets the new
+        // mode's axis of the SAME quantity only when that is unambiguous;
+        // several axes sharing that quantity, or none, leaves it cleared
+        // rather than guessing.
+        function wwErRemapActiveAxisTargetForUnitMode(previousQuantity) {
+            const plot = wwErState.plot;
+            if (plot.activeAxisKey || !previousQuantity) return;
+            const matches = wwErLiveAxisEntries().filter((e) => e.axis.axis.quantity === previousQuantity);
+            if (matches.length === 1) {
+                plot.activeAxisKey = matches[0].axis.key;
+                plot.activeAxisQuantity = previousQuantity;
+                wwErSyncActiveAxisVisual();
+            }
+        }
+
+        // Section 6's own subtle visual cue: Waveform's existing
+        // .ww-panel--active accent (toggled on the panel CARD, same as
+        // Waveform's own wwSyncActivePanelVisual()), reused verbatim for a
+        // Grouped panel (its one axis's control), and a matching accent on
+        // a Combined axis's own legend heading. Presentation only, on the
+        // accessible controls themselves -- never a parallel source of
+        // truth, and never a change to Plotly's own rendered axis.
+        function wwErSyncActiveAxisVisual() {
+            const activeKey = wwErState.plot.activeAxisKey;
+            for (const panel of wwErState.plot.panels) {
+                if (!panel.combined) {
+                    const isActive = !!activeKey && panel.axes[0] && panel.axes[0].key === activeKey;
+                    if (panel.containerEl) panel.containerEl.classList.toggle("ww-panel--active", isActive);
+                    continue;
+                }
+                for (const el of panel.legendEl.querySelectorAll(".ww-er-legend-axis")) {
+                    const isActive = el.dataset.erAxisKey === activeKey;
+                    el.classList.toggle("ww-er-legend-axis--active", isActive);
+                    el.setAttribute("aria-pressed", String(isActive));
+                }
+            }
+        }
+
+        // Wired once per panel at creation (wwErCreatePanel()). Grouped:
+        // the header is a real, keyboard-reachable control (tabindex/role
+        // set in wwPanelMarkupHtml()/wwErCreatePanel()) for that panel's
+        // one axis. Combined: the legend is event-delegated (its own
+        // per-axis headings are rebuilt on every wwErRenderPanelLegend()
+        // call, so a listener bound to one heading would not survive a
+        // re-render).
+        function wwErWireAxisTargetSelection(panel) {
+            if (!panel.combined) {
+                const header = panel.headerEl;
+                if (!header) return;
+                const activate = () => { if (panel.axes[0]) wwErSetActiveAxisTarget(panel.axes[0].key); };
+                header.addEventListener("click", activate);
+                header.addEventListener("keydown", (event) => {
+                    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+                        event.preventDefault();
+                        activate();
+                    }
+                });
+                return;
+            }
+            const activateFromEvent = (event) => {
+                const el = event.target.closest(".ww-er-legend-axis");
+                if (el && el.dataset.erAxisKey) wwErSetActiveAxisTarget(el.dataset.erAxisKey);
+            };
+            panel.legendEl.addEventListener("click", activateFromEvent);
+            panel.legendEl.addEventListener("keydown", (event) => {
+                if (event.key !== "Enter" && event.key !== " " && event.key !== "Spacebar") return;
+                if (!event.target.closest(".ww-er-legend-axis")) return;
+                event.preventDefault();
+                activateFromEvent(event);
+            });
+        }
+
+        // A pointerdown on any axis's own scale -- its pan middle
+        // (.nsdrag) or either zoom end (.ndrag/.sdrag) -- makes that axis
+        // the active Y-zoom target, whether or not a drag follows (a
+        // plain click counts too, and so does the first of a double-
+        // click's two clicks). Never fires for the plot area's own box-
+        // zoom/pan regions (a different class, handled by
+        // wwErKeepPlotAreaDragXOnly() above) and never for hover.
+        function wwErActivateAxisFromDragEvent(panel, event) {
+            const region = event.target.closest(".nsdrag, .ndrag, .sdrag");
+            if (!region || !region.dataset.subplot) return;
+            const axis = panel.axes.find((a) => "x" + a.placement.ref === region.dataset.subplot);
+            if (axis) wwErSetActiveAxisTarget(axis.key);
+        }
+
+        // Toolbar Y Zoom In/Out: steps ONLY the active axis's Y range, by
+        // the same +/-20%/25% factors and "keep the current midpoint
+        // fixed" math as Waveform's own wwStepZoomY()
+        // (WW_ZOOM_STEP_IN_FACTOR/_OUT_FACTOR, WW_MIN_Y_SPAN) -- preserving
+        // parity rather than inventing a different Event Reconstruction
+        // factor. A no-op without a valid target (the toolbar button is
+        // disabled then anyway). X, the other axes, cursors, corrections
+        // and the reference are untouched.
+        function wwErStepZoomY(direction) {
+            const entry = wwErActiveAxisEntry();
+            if (!entry || !entry.panel.plotlyReady) return;
+            const layoutKey = entry.axis.placement.layoutKey;
+            const fullLayout = entry.panel.chartEl._fullLayout;
+            const currentRange = fullLayout && fullLayout[layoutKey] ? fullLayout[layoutKey].range : null;
+            if (!currentRange || currentRange.length !== 2) return;
+            const lo = Number(currentRange[0]);
+            const hi = Number(currentRange[1]);
+            if (!Number.isFinite(lo) || !Number.isFinite(hi)) return;
+            const span = hi - lo;
+            if (!Number.isFinite(span) || span === 0) return;
+            const center = (lo + hi) / 2;
+            const factor = direction === "in" ? WW_ZOOM_STEP_IN_FACTOR : WW_ZOOM_STEP_OUT_FACTOR;
+            const sign = span < 0 ? -1 : 1;
+            let newSpan = Math.abs(span) * factor;
+            if (direction === "in") newSpan = Math.max(newSpan, WW_MIN_Y_SPAN);
+            newSpan *= sign;
+            entry.axis.manual = true;
+            entry.axis.autoscaleYPending = false;
+            entry.axis.range = [center - newSpan / 2, center + newSpan / 2];
+            wwErRelayoutY(entry.panel, {
+                [layoutKey + ".range"]: entry.axis.range.slice(),
+                [layoutKey + ".autorange"]: false,
+            });
+        }
+
+        // The compact "Y: <axis>" toolbar readout (section 23): the
+        // active target's own title, or an explanatory placeholder.
+        function wwErSyncActiveAxisReadout(entry) {
+            const el = document.getElementById("wwErActiveAxisReadout");
+            if (!entry) {
+                el.textContent = "Y: Select axis";
+                el.title = "";
+                return;
+            }
+            const text = "Y: " + wwErAxisTitle(entry.axis.axis, wwErAxisTraces(entry.panel, entry.axisIndex));
+            el.textContent = text;
+            el.title = text;
         }
 
         // Event Reconstruction's own Y relayouts -- never read back as a
@@ -17118,6 +17400,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwErRefreshPanelPresentation(panel);
                 wwErSyncPanelStatus(panel);
             }
+            // DEC-142: keep (or clear) the active Y-axis target now that
+            // this render's panels/axes are final.
+            wwErReconcileActiveAxisTarget();
             wwErSyncPlotChrome();
             // Slice 3E: cursor positions never change with the panel set;
             // new traces get their values, removed ones take theirs along.
@@ -17269,6 +17554,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("wwErZoomOutBtn").disabled = !plotted || plot.atFitAll;
             document.getElementById("wwErResetViewBtn").disabled = !plotted;
             document.getElementById("wwErAutoscaleYBtn").disabled = !plotted;
+            // DEC-142: Zoom Y In/Out act on the active axis target; without
+            // one (several axes exist and none is chosen yet) they stay
+            // disabled with the owner's own exact wording.
+            const activeEntry = wwErActiveAxisEntry();
+            const zoomYIn = document.getElementById("wwErZoomYInBtn");
+            const zoomYOut = document.getElementById("wwErZoomYOutBtn");
+            zoomYIn.disabled = !plotted || !activeEntry;
+            zoomYOut.disabled = !plotted || !activeEntry;
+            const ySuffix = activeEntry
+                ? wwErAxisTitle(activeEntry.axis.axis, wwErAxisTraces(activeEntry.panel, activeEntry.axisIndex))
+                : plotted ? "Select a Y axis to zoom" : "Selected Y Axis";
+            zoomYIn.title = "Zoom In — " + ySuffix;
+            zoomYOut.title = "Zoom Out — " + ySuffix;
+            zoomYIn.setAttribute("aria-label", zoomYIn.title);
+            zoomYOut.setAttribute("aria-label", zoomYOut.title);
+            wwErSyncActiveAxisReadout(activeEntry);
             wwErSyncTimeDisplayButtons();
             const fit = wwErFitRecordTarget();
             const fitBtn = document.getElementById("wwErFitRecordBtn");
@@ -52279,6 +52580,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Slice 3D: Event Reconstruction's own navigation controls.
         document.getElementById("wwErZoomInBtn").addEventListener("click", () => wwErStepZoomX("in"));
         document.getElementById("wwErZoomOutBtn").addEventListener("click", () => wwErStepZoomX("out"));
+        document.getElementById("wwErZoomYInBtn").addEventListener("click", () => wwErStepZoomY("in"));
+        document.getElementById("wwErZoomYOutBtn").addEventListener("click", () => wwErStepZoomY("out"));
         document.getElementById("wwErResetViewBtn").addEventListener("click", wwErResetView);
         document.getElementById("wwErAutoscaleYBtn").addEventListener("click", wwErAutoscaleY);
         // Mixed-duration navigation: Fit Record (the active record's extent).
