@@ -114,10 +114,13 @@ test.describe("Event Reconstruction Per-Unit Display -- ownership and selector",
     await setup(page);
     await selectAll(page, [["STN_A", "VA"], ["STN_A", "IA"]]);
     await expect(page.locator("#wwErUnitModeToggle")).toHaveAttribute("aria-label", "Unit Mode");
-    await expect(page.locator("#wwErUnitEngineeringBtn")).toHaveText("ENG");
+    // DEC-143: ENG/PU are now icon buttons (owner-supplied
+    // engineering_unit.svg/per_unit.svg) -- the "wording" this test's own
+    // title refers to now lives in title/aria-label, not visible text.
     await expect(page.locator("#wwErUnitEngineeringBtn")).toHaveAttribute("title", "Engineering Units");
-    await expect(page.locator("#wwErUnitPerUnitBtn")).toHaveText("PU");
+    await expect(page.locator("#wwErUnitEngineeringBtn")).toHaveAttribute("aria-label", "Engineering Units");
     await expect(page.locator("#wwErUnitPerUnitBtn")).toHaveAttribute("title", "Per Unit");
+    await expect(page.locator("#wwErUnitPerUnitBtn")).toHaveAttribute("aria-label", "Per Unit");
     // Default Engineering, even though bases are configured.
     await expect(page.locator("#wwErUnitEngineeringBtn")).toHaveAttribute("aria-pressed", "true");
     expect(titles(await plotState(page))).toEqual(["Voltage (kV)", "Current (A)"]);

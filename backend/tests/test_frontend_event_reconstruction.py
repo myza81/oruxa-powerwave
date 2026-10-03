@@ -1400,20 +1400,25 @@ class TestPowerwaveIconSystem:
             used.add(match.group(1))
         assert len(used) >= 15  # every family this slice wires, not a token few
 
-    def test_every_registry_icon_follows_the_global_geometry_contract(self):
+    def test_every_remaining_inline_registry_icon_follows_the_global_geometry_contract(self):
         """Section 6's own goal (one stroke weight, round caps/joins,
         inherited colour) is already the file's ONE shared `.ww-icon svg`
         rule -- at this file's own native 18-unit grammar, not Lucide's
         native 24-unit one (see the registry's own comment for why pasting
         Lucide markup unmodified would visibly mismatch weight under that
-        rule). Every entry's own viewBox must therefore be the house
-        18x18, so no icon, old or new, silently breaks that shared rule."""
+        rule). DEC-143: most entries are now owner-supplied asset PATHS,
+        exempt from this rule by design (they are masked, not stroked --
+        see .ww-icon-asset's own comment); only a REMAINING inline <svg>
+        entry (no owner asset exists for it yet) must still be the house
+        18x18, so no icon silently breaks that shared rule."""
         source = _source()
         assert '.ww-icon svg {' in source
         shared_rule = _between(source, ".ww-icon svg {", "\n        }\n")
         for prop in ("stroke: currentColor", "fill: none", "stroke-width: 1.5", "stroke-linecap: round", "stroke-linejoin: round"):
             assert prop in shared_rule, prop
-        for key, markup in _icon_registry(source).items():
+        inline = {k: v for k, v in _icon_registry(source).items() if v.startswith("<")}
+        assert len(inline) >= 5  # BOX_ZOOM/CARET_DOWN/VIEW_GROUPED/AUTOSCALE_Y/4 annotation-type icons
+        for key, markup in inline.items():
             assert 'viewBox="0 0 18 18"' in markup, key
 
     def test_same_function_same_registry_key_waveform_and_er(self):
@@ -1476,30 +1481,42 @@ class TestPowerwaveIconSystem:
             assert source.count(f'data-annotation-type="{kind}"') == 2
             assert page.count(f'data-ww-icon="{key}"') == 1 and source.count(f'data-ww-icon="{key}"') == 2
 
-    def test_view_combined_is_a_new_composite_in_the_grouped_family_not_a_fresh_invention(self):
-        """Section 2/8: a composite is the BASE of an existing icon plus a
-        small modifier, never an unrelated fresh shape."""
+    def test_view_grouped_and_combined_are_both_owner_supplied_unrelated_files(self):
+        """Section 2/8 (DEC-140): VIEW_COMBINED was ORIGINALLY a composite
+        built from VIEW_GROUPED's own inline shape. DEC-143 resolved
+        VIEW_GROUPED's own icon gap with an owner-supplied asset
+        (grouped_view.svg) -- both are now independent owner files with
+        no shape relationship expected or enforced between them."""
         registry = _icon_registry(_source())
-        grouped, combined = registry["VIEW_GROUPED"], registry["VIEW_COMBINED"]
-        # The combined icon's own two polylines (the shared base shape)
-        # are byte-identical to Grouped's; only the extra tick-mark
-        # modifier lines are new.
-        for polyline in __import__("re").findall(r"<polyline[^/]*/>", grouped):
-            assert polyline in combined
-        assert combined != grouped  # it is still visually distinct
+        assert registry["VIEW_GROUPED"] == "assets/icons/waveform/grouped_view.svg"
+        assert not registry["VIEW_COMBINED"].startswith("<")
+        assert registry["VIEW_GROUPED"] != registry["VIEW_COMBINED"]
 
-    def test_unit_mode_deliberately_stays_a_text_label_not_an_icon(self):
-        """Section 13: "if icons become too ambiguous, keep a compact
-        labelled control only if necessary" -- the owner's own recorded
-        decision (see POWERWAVE_ICON_SYSTEM.md) is that Engineering/Per
-        Unit has no unambiguous icon metaphor, so it is not in the
-        registry and ENG/PU stay text."""
+    def test_unit_mode_now_uses_owner_supplied_icons_not_text(self):
+        """DEC-143 supersedes DEC-140's §13 finding ("no unambiguous icon
+        metaphor exists for Engineering/Per Unit, keep text") -- the
+        owner has since supplied dedicated engineering_unit.svg/
+        per_unit.svg and explicitly instructed removing the former
+        "Units" label and ENG/PU text buttons. Both are now individual
+        icon buttons (never a joined/segmented pair -- the owner's own
+        separate "global tool button geometry" correction), same
+        .ww-icon-btn-equivalent markup pattern as every other family."""
         registry = _icon_registry(_source())
-        assert "UNIT_ENGINEERING" not in registry and "UNIT_PER_UNIT" not in registry
+        assert registry["UNIT_ENGINEERING"] == "assets/icons/waveform/engineering_unit.svg"
+        assert registry["UNIT_PER_UNIT"] == "assets/icons/waveform/per_unit.svg"
         page = _er_page(_source())
-        for button, label in (("wwErUnitEngineeringBtn", "ENG"), ("wwErUnitPerUnitBtn", "PU")):
-            element = _element(page, button, "button")
-            assert element.endswith(f">{label}</button>") and "data-ww-icon" not in element
+        assert "Units</span>" not in page and 'id="wwErUnitModeLabel"' not in page
+        eng = _element(page, "wwErUnitEngineeringBtn", "button")
+        pu = _element(page, "wwErUnitPerUnitBtn", "button")
+        assert ">ENG<" not in eng and ">PU<" not in pu
+        assert _icon_key(eng) == "UNIT_ENGINEERING"
+        assert _icon_key(pu) == "UNIT_PER_UNIT"
+        assert 'title="Engineering Units"' in eng and 'title="Per Unit"' in pu
+        # Individual buttons, not a joined pill: no .ww-er-view-mode (the
+        # one exception class DEC-143 retired once Unit Mode joined every
+        # other family's treatment).
+        toggle = _between(page, 'id="wwErUnitModeToggle"', ">")
+        assert "ww-er-view-mode" not in toggle
 
     def test_zoom_xy_composites_are_registered_and_now_wired(self):
         """DEC-141 (amending DEC-140's own deferral): the ZOOM_X/Y_IN/OUT
@@ -1516,7 +1533,7 @@ class TestPowerwaveIconSystem:
             assert source.count(f'data-ww-icon="{key}"') >= 1, key
         sync = _between(source, "function wwSyncTimeGroupZoomControls(groupId) {", "\n        }\n")
         assert 'const iconKey = "ZOOM_" + axis.toUpperCase() + "_" + (action === "in" ? "IN" : "OUT");' in sync
-        assert "iconSpan.innerHTML = WW_TOOL_ICONS[iconKey];" in sync
+        assert "if (iconSpan.dataset.wwIcon !== iconKey) wwSetToolIcon(iconSpan, iconKey);" in sync
 
 
 class TestEventReconstructionToolConsistency:
@@ -1622,18 +1639,21 @@ class TestEventReconstructionToolConsistency:
         toolbar = _between(page, '<div class="ww-toolbar" id="wwErToolbar">', 'id="wwErAnnotationGuidance"')
         assert toolbar.index('id="wwErFitRecordBtn"') < toolbar.index('id="wwErResetViewBtn"')
 
-    def test_unit_mode_stays_the_one_labelled_mode_selector(self):
-        """Section 11's own escalation (Time Display and View Mode move
-        from the DEC-137-era "may stay labelled" to full icon families,
-        DEC-140) does not touch Unit Mode, per section 13's own hedge --
-        see TestPowerwaveIconSystem's own dedicated test for the reasoning."""
+    def test_unit_mode_is_now_an_icon_family_like_every_other(self):
+        """DEC-143 supersedes section 11/13's own DEC-140-era hedge: Unit
+        Mode is now an icon family exactly like Time Display/View Mode --
+        individual compact buttons (no joined .ww-er-view-mode pill), the
+        owner-supplied engineering_unit.svg/per_unit.svg, and no leftover
+        ENG/PU/"Units" text. See TestPowerwaveIconSystem's own dedicated
+        test for the full reasoning."""
         page = _er_page(_source())
-        for button, label in (("wwErUnitEngineeringBtn", "ENG"), ("wwErUnitPerUnitBtn", "PU")):
+        for button, key in (("wwErUnitEngineeringBtn", "UNIT_ENGINEERING"), ("wwErUnitPerUnitBtn", "UNIT_PER_UNIT")):
             element = _element(page, button, "button")
-            assert element.endswith(f">{label}</button>"), element
-            assert "<svg" not in element and "data-ww-icon" not in element
+            assert ">ENG<" not in element and ">PU<" not in element
+            assert _icon_key(element) == key
         group = _element(page, "wwErUnitModeToggle", "div")
-        assert 'class="theme-toggle ww-icon-group ww-er-view-mode"' in group
+        assert 'class="theme-toggle ww-icon-group"' in group
+        assert "ww-er-view-mode" not in group
 
     def test_disabled_state_uses_the_shared_rule_no_er_specific_override(self):
         """Section 15D/16: no page-scoped CSS rule weakens or replaces the
@@ -1641,7 +1661,14 @@ class TestEventReconstructionToolConsistency:
         icon-group member alike -- already uses."""
         source = _source()
         assert ".ww-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; background: transparent; }" in source
-        assert ".ww-toolbar .theme-toggle.ww-icon-group button:disabled { opacity: 0.5; cursor: not-allowed; }" in source
+        # Owner correction (individual-button geometry): a disabled icon-
+        # group member now shares .ww-toolbar .ww-icon-btn's own exact
+        # disabled treatment (opacity 0.42) rather than a group-specific
+        # 0.5 rule -- see .ww-toolbar .theme-toggle.ww-icon-group
+        # button:disabled's own definition.
+        assert ".ww-toolbar .theme-toggle.ww-icon-group button:disabled {" in source
+        group_disabled = _between(source, ".ww-toolbar .theme-toggle.ww-icon-group button:disabled {", "\n        }\n")
+        assert "opacity: 0.42;" in group_disabled
         page = _er_page(source)
         for button_id in ("wwErZoomInBtn", "wwErZoomOutBtn", "wwErResetViewBtn", "wwErAutoscaleYBtn", "wwErCursorModeBtn",
                           "wwErFitRecordBtn", "wwErTimeElapsedBtn"):
@@ -1778,13 +1805,18 @@ class TestEventReconstructionPerUnitDisplay:
     display between Engineering and Per Unit."""
 
     def test_unit_selector_uses_waveforms_wording_as_a_labelled_mode_selector(self):
+        """DEC-143: Event Reconstruction's own ENG/PU switch is now two
+        icon buttons (owner-supplied engineering_unit.svg/per_unit.svg),
+        not text -- but the ARIA wording ("Unit Mode", "Engineering
+        Units", "Per Unit") is unchanged, still Waveform's own words, via
+        title/aria-label rather than visible text content."""
         source = _source()
         page = _er_page(source)
-        toggle = _between(page, '<div class="theme-toggle ww-icon-group ww-er-view-mode" id="wwErUnitModeToggle"', "</div>")
+        toggle = _between(page, '<div class="theme-toggle ww-icon-group" id="wwErUnitModeToggle"', "</div>")
         assert 'role="group" aria-label="Unit Mode"' in toggle
-        assert '<button type="button" id="wwErUnitEngineeringBtn" aria-pressed="true" title="Engineering Units">ENG</button>' in toggle
-        assert '<button type="button" id="wwErUnitPerUnitBtn" aria-pressed="false" title="Per Unit">PU</button>' in toggle
-        assert ">Units</span>" in page
+        assert 'id="wwErUnitEngineeringBtn" aria-pressed="true" title="Engineering Units" aria-label="Engineering Units"' in toggle
+        assert 'id="wwErUnitPerUnitBtn" aria-pressed="false" title="Per Unit" aria-label="Per Unit"' in toggle
+        assert ">Units</span>" not in page  # the former text label is gone
         # Waveform's own words for the same switch.
         assert 'title="Unit Mode" aria-label="Unit Mode"' in source
         for words in ("Engineering Units", "Per Unit"):
@@ -1850,3 +1882,149 @@ class TestEventReconstructionPerUnitDisplay:
         waveform = _between(source, "function wwPanelGroupKeyFor(", "function wwTimeGroupLabelSuffix(")
         assert "wwEr" not in waveform
         assert 'if (channel.perUnitStatus === "base_required") return baseKey + ":base_required";' in waveform
+
+
+class TestPowerwaveIconAssets:
+    """DEC-143: Powerwave icons are owner-approved local SVG assets under
+    frontend/assets/icons/**, referenced by the semantic registry through
+    a path rather than duplicated inline markup. Static guards proving
+    the asset structure, the manifest, and the registry/markup's use of
+    it -- independent of (and in addition to) TestPowerwaveIconSystem's
+    own DEC-140-era checks, most of which still hold for the handful of
+    entries with no owner asset yet."""
+
+    ICONS_DIR = FRONTEND.parent / "assets" / "icons"
+    BRANDING_DIR = FRONTEND.parent / "assets" / "branding"
+
+    def test_asset_folder_structure_exists(self):
+        for sub in ("common", "navigation", "waveform"):
+            d = self.ICONS_DIR / sub
+            assert d.is_dir(), d
+        assert self.BRANDING_DIR.is_dir()
+        assert (self.ICONS_DIR / "README.md").is_file()
+        assert (self.ICONS_DIR / "manifest.json").is_file()
+        assert (self.BRANDING_DIR / "README.md").is_file()
+
+    def test_manifest_entries_all_resolve_to_a_real_file_or_are_explicit_gaps(self):
+        import json
+        manifest = json.loads((self.ICONS_DIR / "manifest.json").read_text(encoding="utf-8"))
+        assert len(manifest) >= 25
+        for key, entry in manifest.items():
+            if entry["source"] == "inline-fallback":
+                assert entry["file"] is None, key  # an explicit, reported gap -- not a broken path
+                continue
+            assert entry["source"] == "owner-supplied", key
+            path = self.ICONS_DIR / entry["file"]
+            assert path.is_file(), f"{key}: {path}"
+            assert path.suffix == ".svg", key
+
+    def test_registry_matches_the_manifest(self):
+        """Every manifest entry with a file is the SAME path the registry
+        itself resolves that key to -- the manifest is a true record of
+        what ships, not a separate, driftable catalogue."""
+        import json
+        manifest = json.loads((self.ICONS_DIR / "manifest.json").read_text(encoding="utf-8"))
+        registry = _icon_registry(_source())
+        for key, entry in manifest.items():
+            assert key in registry, key
+            if entry["file"] is None:
+                assert registry[key].startswith("<"), key
+            else:
+                assert registry[key] == "assets/icons/" + entry["file"], key
+
+    def test_migrated_entries_are_asset_paths_not_inline_markup(self):
+        """Section 19's own guard: a migrated entry is a path, never SVG
+        markup -- the opposite of the handful of still-inline (no owner
+        asset yet) entries TestPowerwaveIconSystem's geometry test covers."""
+        registry = _icon_registry(_source())
+        migrated = ("ANNOTATIONS", "ANNOTATE", "SEARCH", "PAN", "ZOOM_IN", "ZOOM_OUT",
+                    "ZOOM_HORIZONTAL", "ZOOM_VERTICAL", "ZOOM_X_IN", "ZOOM_X_OUT", "ZOOM_Y_IN", "ZOOM_Y_OUT",
+                    "TIME_ELAPSED", "TIME_RELATIVE", "TIME_ABSOLUTE", "UNIT_ENGINEERING", "UNIT_PER_UNIT",
+                    "VIEW_SEPARATE", "VIEW_CUSTOM", "VIEW_COMBINED", "VIEW_SPLIT", "VIEW_GROUPED",
+                    "CURSORS_AB", "RESET_TIME_VIEW", "FIT_SELECTED_RECORD")
+        for key in migrated:
+            value = registry[key]
+            assert not value.startswith("<"), key
+            assert not value.startswith("http://") and not value.startswith("https://") and not value.startswith("//"), key
+            assert value.startswith("assets/icons/"), key
+            assert (self.ICONS_DIR.parent.parent / value).is_file(), key
+
+    def test_same_semantic_function_resolves_to_the_same_physical_file(self):
+        """The axis-specific zoom keys are deliberate aliases of the two
+        plain zoom files (section 7's own 'do not invent compound icons'
+        instruction) -- proving they are the SAME file, not drifted
+        copies, for every pairing this matters for."""
+        registry = _icon_registry(_source())
+        assert registry["ZOOM_X_IN"] == registry["ZOOM_Y_IN"] == registry["ZOOM_IN"]
+        assert registry["ZOOM_X_OUT"] == registry["ZOOM_Y_OUT"] == registry["ZOOM_OUT"]
+
+    def test_no_remote_icon_urls(self):
+        source = _source()
+        registry = _icon_registry(source)
+        for key, value in registry.items():
+            assert "http://" not in value and "https://" not in value, key
+        # No CDN/remote <link> or <script> feeds an icon anywhere in the
+        # file's own icon machinery.
+        icon_region = _between(source, "const WW_TOOL_ICONS = {", "function wwApplyToolIcons(")
+        assert "cdn." not in icon_region and "googleapis" not in icon_region
+
+    def test_owner_supplied_icons_are_never_also_duplicated_inline(self):
+        """A migrated key's old inline <svg> definition is gone -- asset
+        and inline fallback never coexist for the same key (section 17:
+        "do not keep asset + inline fallback unless there is a proven
+        technical necessity", and none is claimed here)."""
+        registry = _icon_registry(_source())
+        for key, value in registry.items():
+            if not value.startswith("<"):
+                continue
+            # The few still-inline keys are exactly the reported gaps --
+            # never one that also has a manifest/asset entry.
+            import json
+            manifest = json.loads((self.ICONS_DIR / "manifest.json").read_text(encoding="utf-8"))
+            assert manifest[key]["source"] == "inline-fallback", key
+
+    def test_no_new_inline_svg_blocks_for_migrated_controls(self):
+        """Section 19's own guard: a migrated control's markup carries
+        `data-ww-icon`, never a hand-written `<svg>` of its own -- the
+        nav icons (DEC-143) and every pre-existing toolbar control alike."""
+        source = _source()
+        for btn_id in ("mainNavRecordingsBtn", "mainNavWaveformBtn", "mainNavEventReconstructionBtn",
+                       "mainNavTableBtn", "mainNavCalculatedChannelsBtn", "mainNavAnalysisBtn",
+                       "mainNavComplianceBtn", "mainNavCalculatorBtn"):
+            element = _element(source, btn_id, "button")
+            assert "<svg" not in element, btn_id
+            assert 'data-ww-icon="PAGE_' in element, btn_id
+        # Settings keeps its own inline icon -- no owner asset supplied
+        # for it; the one deliberate exception among nav items.
+        settings = _element(source, "mainNavSettingsBtn", "button")
+        assert "<svg" in settings and "data-ww-icon" not in settings
+
+    def test_asset_rendering_uses_css_mask_not_img_or_fetch_inject(self):
+        """Section 11's own technique decision: the supplied files are not
+        colour-uniform (some stroke="currentColor", most a hardcoded
+        fill/stroke), so a plain <img> would show the wrong fixed colour
+        in at least one theme, and fetch+inject would have to parse/strip
+        each file's own colour to theme it (editing the artwork in
+        spirit). A CSS mask reads only the silhouette and paints it with
+        the control's own currentColor -- correct for every file, in
+        both themes, without touching any artwork."""
+        source = _source()
+        assert ".ww-icon-asset {" in source
+        mask_rule = _between(source, ".ww-icon-asset {", "\n        }\n")
+        assert "background-color: currentColor" in mask_rule
+        assert "mask-image" not in mask_rule  # the per-icon mask-image is set inline by wwSetToolIcon(), not hardcoded here
+        assert "mask-size: contain" in mask_rule
+        set_icon = _between(source, "function wwSetToolIcon(el, key) {", "\n        }\n")
+        assert 'el.style.maskImage = \'url("\' + value + \'")\';' in set_icon
+        assert 'el.style.webkitMaskImage = \'url("\' + value + \'")\';' in set_icon
+        assert "new Image(" not in set_icon and "<img" not in set_icon
+        assert "await fetch(" not in set_icon and ".then(" not in set_icon
+
+    def test_dockerfile_ships_the_assets_folder(self):
+        """A packaging guard, not a frontend-source one: WW_TOOL_ICONS
+        references assets/icons/** by relative path at runtime, so the
+        production image must actually contain it -- the Dockerfile's
+        existing COPY list (vendor/, config.js, ...) does not do this
+        automatically; nothing else in it would either."""
+        dockerfile = (FRONTEND.parent / "Dockerfile").read_text(encoding="utf-8")
+        assert "COPY assets /usr/share/nginx/html/assets" in dockerfile

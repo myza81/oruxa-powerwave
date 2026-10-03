@@ -7,6 +7,7 @@
 #   docker-entrypoint.d/
 #   waveform-prototype.html (Phase 2B renderer-UAT prototype)
 #   vendor/ (vendored plotting-library static builds, see vendor/README.md)
+#   assets/ (owner-approved icon/branding SVGs, DEC-143 -- see assets/icons/README.md)
 # None of those are excluded below. Note in particular that config.js must
 # remain available: it is the checked-in default that the entrypoint rewrites
 # from API_BASE_URL at container start.

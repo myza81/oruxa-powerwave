@@ -1,0 +1,48 @@
+{
+  "ANNOTATIONS": { "file": "common/annotations.svg", "source": "owner-supplied" },
+  "ANNOTATE": { "file": "common/annotate.svg", "source": "owner-supplied" },
+  "SEARCH": { "file": "common/search.svg", "source": "owner-supplied" },
+
+  "PAGE_RECORDINGS": { "file": "navigation/recordings_page.svg", "source": "owner-supplied" },
+  "PAGE_WAVEFORM": { "file": "navigation/waveform_page.svg", "source": "owner-supplied" },
+  "PAGE_EVENT_RECONSTRUCTION": { "file": "navigation/event_reconstruction_page.svg", "source": "owner-supplied" },
+  "PAGE_TABLE": { "file": "navigation/table_page.svg", "source": "owner-supplied" },
+  "PAGE_CALCULATED_CHANNEL": { "file": "navigation/calculated_channel_page.svg", "source": "owner-supplied" },
+  "PAGE_ANALYSIS": { "file": "navigation/analysis_page.svg", "source": "owner-supplied" },
+  "PAGE_COMPLIANCE": { "file": "navigation/compliance_page.svg", "source": "owner-supplied" },
+  "PAGE_CALCULATOR": { "file": "navigation/calculator_page.svg", "source": "owner-supplied" },
+
+  "PAN": { "file": "waveform/pan.svg", "source": "owner-supplied" },
+  "ZOOM_IN": { "file": "waveform/zoom_in.svg", "source": "owner-supplied" },
+  "ZOOM_OUT": { "file": "waveform/zoom_out.svg", "source": "owner-supplied" },
+  "ZOOM_HORIZONTAL": { "file": "waveform/zoom_horizontal.svg", "source": "owner-supplied", "wired": false, "note": "registered, not yet composed into any control (deferred to a future ticket)" },
+  "ZOOM_VERTICAL": { "file": "waveform/zoom_vertical.svg", "source": "owner-supplied", "wired": false, "note": "registered, not yet composed into any control (deferred to a future ticket)" },
+  "ZOOM_X_IN": { "file": "waveform/zoom_in.svg", "source": "owner-supplied", "note": "alias of ZOOM_IN -- the axis-specific icon this key used to hold is retired; the axis distinction now lives in the control's tooltip/aria-label text only" },
+  "ZOOM_X_OUT": { "file": "waveform/zoom_out.svg", "source": "owner-supplied", "note": "alias of ZOOM_OUT, same reasoning" },
+  "ZOOM_Y_IN": { "file": "waveform/zoom_in.svg", "source": "owner-supplied", "note": "alias of ZOOM_IN, same reasoning" },
+  "ZOOM_Y_OUT": { "file": "waveform/zoom_out.svg", "source": "owner-supplied", "note": "alias of ZOOM_OUT, same reasoning" },
+
+  "TIME_ELAPSED": { "file": "waveform/elapsed_time.svg", "source": "owner-supplied" },
+  "TIME_RELATIVE": { "file": "waveform/relative_time.svg", "source": "owner-supplied" },
+  "TIME_ABSOLUTE": { "file": "waveform/absolute_time.svg", "source": "owner-supplied" },
+
+  "UNIT_ENGINEERING": { "file": "waveform/engineering_unit.svg", "source": "owner-supplied", "note": "wired to Event Reconstruction's own ENG/PU buttons (owner correction superseding DEC-140 section 13's text-only finding) -- the former 'Units' text label and ENG/PU text content are removed" },
+  "UNIT_PER_UNIT": { "file": "waveform/per_unit.svg", "source": "owner-supplied", "note": "see UNIT_ENGINEERING" },
+
+  "VIEW_SEPARATE": { "file": "waveform/separate_layout.svg", "source": "owner-supplied" },
+  "VIEW_CUSTOM": { "file": "waveform/custom_layout.svg", "source": "owner-supplied" },
+  "VIEW_COMBINED": { "file": "waveform/combine_view.svg", "source": "owner-supplied", "note": "owner's delivered filename is combine_view.svg, not combine_waveform.svg as the ticket text assumed -- used as-is per the 'do not rename owner files' rule" },
+  "VIEW_SPLIT": { "file": "waveform/split_view.svg", "source": "owner-supplied" },
+  "VIEW_GROUPED": { "file": "waveform/grouped_view.svg", "source": "owner-supplied", "note": "owner's delivered filename is grouped_measurement_view.svg (Downloads); placed in the project assets folder as grouped_view.svg, the name a follow-up owner instruction itself expected -- same artwork, byte-identical" },
+
+  "CURSORS_AB": { "file": "waveform/a_b_line_cursors.svg", "source": "owner-supplied" },
+  "RESET_TIME_VIEW": { "file": "waveform/reset_time_view.svg", "source": "owner-supplied" },
+  "FIT_SELECTED_RECORD": { "file": "waveform/fit_selected_record.svg", "source": "owner-supplied", "note": "owner's delivered filename is fit_selected_record.svg, not fit_view.svg as the ticket text assumed -- used as-is per the 'do not rename owner files' rule" },
+  "AUTOSCALE_Y": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" },
+  "BOX_ZOOM": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" },
+  "CARET_DOWN": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" },
+  "ANNOTATION_TEXT_NOTE": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" },
+  "ANNOTATION_CALLOUT": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" },
+  "ANNOTATION_PEAK_MAX": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" },
+  "ANNOTATION_PEAK_MIN": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" }
+}

@@ -264,17 +264,20 @@ registry conversion only (§7), never their placement.
 | `TIME_ELAPSED` | Composite: shared clock base (existing Powerwave clock, redrawn for a common base) + stopwatch-crown modifier | Waveform, ER | |
 | `TIME_RELATIVE` | Composite: same clock base + reference-pin modifier | Waveform (new, disabled stub), ER | new icon this slice |
 | `TIME_ABSOLUTE` | Composite: same clock base + calendar modifier (Lucide CalendarClock metaphor) | Waveform, ER | existing Absolute Time icon redrawn onto the shared base + given its calendar cue |
-| `VIEW_GROUPED` | Powerwave (existing, Waveform's "Grouped Layout") | Waveform, ER | reused verbatim — see §6 |
+| `VIEW_GROUPED` | Owner-supplied (`grouped_view.svg`, DEC-143 §12 — the original inline composite it replaced was Powerwave's existing "Grouped Layout" shape) | Waveform, ER | gap resolved — see §6/§12 |
 | `VIEW_SEPARATE` | Powerwave (existing) | Waveform (enabled), ER (disabled stub) | DEC-141 §11 reversed the original "no ER concept" finding — shown disabled, never omitted |
 | `VIEW_CUSTOM` | Powerwave (existing) | Waveform (enabled), ER (disabled stub) | DEC-141 §11, same reversal |
-| `VIEW_COMBINED` | Composite: `VIEW_GROUPED`'s own base + a dual-axis tick modifier (both edges) | ER only | new icon this slice; still no Waveform concept or stub (DEC-141 §11 only reversed the Separate/Custom/Split finding, not this one) — see §6 |
+| `VIEW_COMBINED` | Owner-supplied (`combine_view.svg`, DEC-143 §12 — originally a composite of `VIEW_GROUPED`'s own inline base + a dual-axis tick modifier; no shape relationship to Grouped is expected or enforced any more, both being independent owner files) | ER only | still no Waveform concept or stub (DEC-141 §11 only reversed the Separate/Custom/Split finding, not this one) — see §6 |
 | `VIEW_SPLIT` | Powerwave (existing) | Waveform (enabled), ER (disabled stub) | DEC-141 §11, same reversal (no table to split with) |
 | `CURSORS_AB` | Powerwave (existing) | Waveform, ER | |
 | `ANNOTATE` | Powerwave (existing) | Waveform, ER | |
 | `ANNOTATION_TEXT_NOTE` / `ANNOTATION_CALLOUT` / `ANNOTATION_PEAK_MAX` / `ANNOTATION_PEAK_MIN` | Powerwave (existing) | Waveform, ER | |
 | `ANNOTATIONS` | Powerwave (existing) | Waveform, ER | |
 
-**No `UNIT_ENGINEERING`/`UNIT_PER_UNIT` entries exist** — see §8.
+**`UNIT_ENGINEERING`/`UNIT_PER_UNIT` now exist (DEC-143, §12)** —
+`assets/icons/waveform/engineering_unit.svg`/`per_unit.svg`, Event
+Reconstruction's own ENG/PU buttons; see §9 for the superseded
+reasoning they originally didn't.
 
 ---
 
@@ -356,7 +359,15 @@ tooltips name that single word.
 
 ---
 
-## 7. Zoom X/Y composites: registered, not yet wired
+## 7. Zoom X/Y composites: registered, not yet wired (superseded by §11/DEC-141, then §12/DEC-143)
+
+**Doubly superseded, recorded for context only.** §11/DEC-141 wired
+these keys live (still as hand-drawn composites then). §12/DEC-143 went
+further: the composites themselves are retired — `ZOOM_X_IN`/`ZOOM_Y_IN`
+now alias the owner-supplied plain `ZOOM_IN` file (same for `_OUT`), per
+the owner's own "do not invent compound icons" instruction. The axis
+distinction this section describes moving into tooltip wording is still
+accurate; the "icon swaps by axis" description below is not — see §12.
 
 `ZOOM_X_IN`/`ZOOM_X_OUT`/`ZOOM_Y_IN`/`ZOOM_Y_OUT` exist in the registry
 (one canonical definition each, satisfying the icon-selection rule) but
@@ -416,17 +427,23 @@ the tooltip itself.
 
 ---
 
-## 9. Unit Mode: deliberately not an icon
+## 9. Unit Mode: deliberately not an icon (superseded by §12/DEC-143)
 
-Engineering Units / Per Unit has no icon registry entry. `[DECISION]`
-(this slice, per the ticket's own §13 hedge: "if icons become too
-ambiguous, keep a compact labelled control only if necessary — do not
-sacrifice usability merely to make everything icon-only"). An electrical
-engineer's "Engineering vs Per Unit" distinction has no widely-recognised
-pictogram, and a guessed one (a ruler? a fraction symbol? a percent
-sign?) would be actively misleading rather than merely unclear. ENG/PU
-stays the compact text toggle it already was, shared verbatim between
-Waveform and Event Reconstruction (DEC-138).
+**This section's own decision was reversed by the owner on a later
+ticket (DEC-143, §12 below) once dedicated `engineering_unit.svg`/
+`per_unit.svg` assets existed — Event Reconstruction's ENG/PU is now an
+icon pair, not text. The reasoning below is recorded for context (why
+no icon existed at the time), not as the current rule.**
+
+Engineering Units / Per Unit originally had no icon registry entry.
+`[DECISION]` (DEC-140, per the ticket's own §13 hedge: "if icons become
+too ambiguous, keep a compact labelled control only if necessary — do
+not sacrifice usability merely to make everything icon-only"). An
+electrical engineer's "Engineering vs Per Unit" distinction has no
+widely-recognised pictogram, and a guessed one (a ruler? a fraction
+symbol? a percent sign?) would be actively misleading rather than
+merely unclear. That blocker no longer applies once the owner supplies
+an approved pictogram — see §12.
 
 ---
 
@@ -447,3 +464,89 @@ Event Reconstruction's own module never reads any of Waveform's `ww.*`
 state or calls any of Waveform's own handler functions — enforced by a
 static forbidden-substring test (see `test_frontend_event_reconstruction.py`'s
 `TestEventReconstructionToolConsistency.test_shared_toolbar_primitives_never_introduce_shared_state`).
+
+---
+
+## 12. Owner-approved local SVG assets (DEC-143)
+
+Full decision record: [DECISIONS.md — DEC-143](DECISIONS.md#dec-143--powerwave-icons-become-owner-approved-local-svg-assets-individually-bordered-tool-buttons-and-unit-mode-joins-the-icon-system).
+This section records the architecture every future icon addition must
+follow; the decision record carries the one-time migration's own detail.
+
+### The rule
+
+> Powerwave icons are maintained as owner-approved local SVG assets
+> under `frontend/assets/icons`. Application code references these
+> physical assets through semantic registry mappings. Coding agents
+> must not independently redraw or reinterpret approved icon artwork.
+
+### Where the files live
+
+```
+frontend/assets/
+  icons/
+    README.md        -- the rule above, in full, plus folder purposes
+    manifest.json     -- { KEY: { file, source: "owner-supplied" | ... } }
+    common/            -- generic reusable controls (Annotate, Annotations, Search)
+    navigation/        -- #mainSidebarMenu's per-page icons
+    waveform/          -- waveform display/time/units/layout/zoom/cursor/fit icons
+  branding/
+    README.md          -- reserved; favicon/logo not yet supplied
+```
+
+**Before adding any icon, search this directory and `manifest.json`.** A
+function with a file here reuses that file; it is never redrawn. A
+function with no file yet keeps its inline fallback (§2's own geometry
+contract still governs that inline markup) until the owner supplies one
+— never substitute a generated or library icon to "fill the gap."
+
+### Registry value: path, or inline fallback
+
+```js
+KEY: "assets/icons/<folder>/<file>.svg"   // owner-supplied (most entries)
+KEY: '<svg viewBox="0 0 18 18">...</svg>' // no owner asset yet (§2's rule governs this)
+```
+
+`wwSetToolIcon(el, key)` (`frontend/index.html`) is the one place that
+tells the two apart (does the value start with `"<"`) and renders
+either: a path becomes a CSS `mask-image` (`.ww-icon-asset`); inline
+markup becomes `innerHTML`, as before DEC-143. `wwApplyToolIcons()` and
+the one dynamic icon-swap site (`wwSyncTimeGroupZoomControls()`, the
+Zoom In/Out split-button's own X/Y icon swap) both go through it.
+
+### Rendering: CSS mask, not `<img>` or fetch+inject
+
+The delivered files are **not colour-uniform**: a few use
+`stroke="currentColor"` (Lucide-sourced), most use a hardcoded
+fill/stroke colour and their own viewBox (SVG-Repo-sourced). `<img>`
+cannot inherit `currentColor` at all, so it would show every
+hardcoded-colour file wrong in at least one theme; fetch+inject would
+need to parse and strip each file's own colour attributes to theme it,
+which edits the artwork in spirit even without touching the file on
+disk. `.ww-icon-asset` instead sets `background-color: currentColor`
+plus `mask-image`/`-webkit-mask-image: url(...)` — the mask reads only
+each file's silhouette (any opaque pixel) and paints it with the
+control's own colour, correct in both themes for every file, exactly
+as delivered.
+
+### Individual-button geometry (owner correction, DEC-143)
+
+Every action/mode tool group (Box Zoom/Pan, Time Display, View Mode,
+Unit Mode) is a row of **individual** compact buttons — the same
+`.ww-toolbar .ww-icon-btn` geometry as A/B Cursors/Annotate (30px cell,
+6px radius, its own full border) — never one shared-border/segmented
+pill. `.ww-toolbar`'s own flex `gap` is **2px** (within one family); a
+family boundary reads through the existing `.ww-toolbar-sep` hairline's
+own margin, never a bigger uniform gap. `.ww-tg-toolbar` (Waveform's
+own per-Time-Group canvas toolbar, §11's "why Waveform's own per-Time-
+Group controls were not globalized") is a separate surface, not covered
+by this spacing rule.
+
+### Known gaps (no owner asset in this delivery)
+
+`BOX_ZOOM`, `CARET_DOWN`, `AUTOSCALE_Y`, and the four annotation TYPE
+icons (`ANNOTATION_TEXT_NOTE`/`_CALLOUT`/`_PEAK_MAX`/`_PEAK_MIN`) stay
+on their original inline markup. `ZOOM_HORIZONTAL`/`ZOOM_VERTICAL` are
+registered (owner-supplied) but deliberately not composed into any
+control yet — the "how should these combine with Zoom In/Out" question
+is explicitly open.

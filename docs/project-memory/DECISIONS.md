@@ -22633,6 +22633,170 @@ only; Waveform's own Y zoom (its existing axis-chooser-dropdown-driven
 
 ---
 
+## DEC-143 — Powerwave icons become owner-approved local SVG assets, individually-bordered tool buttons, and Unit Mode joins the icon system
+
+Date: 2026-10-03
+Status: Approved (owner, "POWERWAVE ICON ARCHITECTURE" task and three
+follow-up owner corrections delivered in the same session: "GLOBAL TOOL
+BUTTON GEOMETRY," "WITHIN-GROUP SPACING," "UNIT MODE," and "GROUPED
+MEASUREMENT VIEW") — implemented on `feat/event-reconstruction`; not
+merged. Builds on DEC-140/141/142's icon/toolbar work and explicitly
+supersedes two of DEC-140's findings (Unit Mode staying text; the
+segmented/joined-pill geometry for tool groups).
+
+### Decision (owner)
+
+> Powerwave icons are maintained as owner-approved local SVG assets
+> under `frontend/assets/icons`. Application code references these
+> physical assets through semantic registry mappings. Coding agents
+> must not independently redraw or reinterpret approved icon artwork.
+> Branding assets are stored separately under `frontend/assets/branding`
+> and will be supplied by the owner. Every action/mode tool group
+> (Box Zoom/Pan, Time Display, View Mode, Unit Mode) renders as a row
+> of individual compact buttons, matching A/B Cursors'/Annotate's own
+> geometry — never a joined/segmented pill. Within one functional
+> family the gap between buttons is exactly 2px; a family boundary is
+> expressed by the existing separator, never by a bigger uniform gap.
+> Engineering/Per Unit becomes two individual icon buttons
+> (`engineering_unit.svg`/`per_unit.svg`), the "Units" text label and
+> ENG/PU text content removed.
+
+### Implementation (`[FACT]`)
+
+- **Source and destination.** The owner's approved SVG files live in
+  `C:\Users\fairizat\Downloads` (the owner's own source copy, never
+  moved or deleted); copied byte-for-byte into
+  `frontend/assets/icons/{common,navigation,waveform}/` and
+  `frontend/assets/branding/` (the latter empty except its own
+  `README.md` — reserved for not-yet-supplied favicon/logo assets).
+  28 files copied and verified identical to their Downloads originals.
+- **Two filename mismatches between the ticket's own prose and the
+  actual delivered files**, resolved by using the real filename (never
+  renamed) and noting the mismatch: `fit_view` → the delivered file is
+  `fit_selected_record.svg`; `combine_waveform` → the delivered file is
+  `combine_view.svg`.
+- **`custom_layout11.svg` does not exist** in the delivered set (only
+  `custom_layout.svg`) — confirmed with the owner directly; no
+  duplicate-resolution decision was needed.
+- **Registry (`WW_TOOL_ICONS`, `frontend/index.html`).** A value is now
+  either an asset path (`"assets/icons/<folder>/<file>.svg"`, the
+  project's own existing relative-path convention — `vendor/plotly/...`,
+  `config.js` — not the ticket's own absolute-path example) or, for a
+  function with no owner asset yet, the original inline `<svg>` markup,
+  unchanged. `wwSetToolIcon(el, key)` (used by `wwApplyToolIcons()` and
+  the one dynamic icon-swap site, `wwSyncTimeGroupZoomControls()`) tells
+  the two apart by whether the value starts with `<`.
+- **Rendering: CSS `mask-image`, not `<img>` or fetch+inject.** The
+  delivered files are not colour-uniform — some use
+  `stroke="currentColor"` (Lucide-sourced), most use a hardcoded
+  fill/stroke colour and their own viewBox (SVG-Repo-sourced) — so a
+  plain `<img>` would show the wrong, fixed colour in at least one
+  theme, and fetch+inject would need to parse/strip each file's own
+  colour to theme it. The new `.ww-icon-asset` class
+  (`background-color: currentColor` + `mask-image`/`-webkit-mask-image`
+  set inline per icon) reads only each file's silhouette and paints it
+  with the control's own `currentColor` — correct in both themes for
+  every file, with no artwork touched. Verified live (light/dark/hover/
+  active/disabled) across the nav sidebar and both global toolbars.
+- **Zoom In/Out/Horizontal/Vertical (section 7's own explicit "do not
+  invent compound icons" instruction).** `ZOOM_IN`/`ZOOM_OUT` are the
+  owner's plain icons, used for the action regardless of axis; the
+  former axis-specific `ZOOM_X_IN`/`ZOOM_X_OUT`/`ZOOM_Y_IN`/`ZOOM_Y_OUT`
+  composites are retired and now simply alias the same two files — the
+  axis distinction lives in each button's tooltip/aria-label text only
+  (unchanged: "Zoom In — Time Axis" vs "— Selected Y Axis"). The
+  owner's own `zoom_horizontal.svg`/`zoom_vertical.svg` are registered
+  (`ZOOM_HORIZONTAL`/`ZOOM_VERTICAL`) but deliberately not composed into
+  any control — that composition question is explicitly deferred.
+- **Unit Mode (supersedes DEC-140 §13).** The owner's own follow-up
+  instruction explicitly reverses DEC-140's "no unambiguous icon
+  metaphor exists, keep text" finding now that dedicated
+  `engineering_unit.svg`/`per_unit.svg` exist. Event Reconstruction's
+  ENG/PU buttons are now icon buttons (`UNIT_ENGINEERING`/
+  `UNIT_PER_UNIT`), the former "Units" text label removed entirely;
+  `aria-pressed` mutual exclusivity and the handler are unchanged.
+  Waveform's own Unit Mode control is structurally a split-button +
+  dropdown menu (ENG/PU trigger label plus a Per-Unit Settings… entry),
+  not the simple two-button toggle Event Reconstruction uses — DEC-143
+  does not alter that control's structure (an icon-only trigger would
+  need to either drop its settings-menu affordance or invent new UI,
+  both out of scope); reported, not forced. See Open items.
+- **Grouped View's icon gap (DEC-140 §6) is now resolved.** The owner
+  supplied `grouped_measurement_view.svg` after the rest of this slice
+  landed; placed as `assets/icons/waveform/grouped_view.svg` (the name
+  the owner's own follow-up instruction expected), used verbatim.
+  `VIEW_GROUPED` and `VIEW_COMBINED` are now independent owner files —
+  the old "Combined is a composite of Grouped's own shape" relationship
+  (DEC-140) no longer applies or is enforced.
+- **Individual-button geometry (supersedes DEC-140's segmented-pill
+  styling for tool groups).** `.ww-toolbar .theme-toggle.ww-icon-group`
+  no longer draws one shared-border pill; each button inside now draws
+  its own border/radius/background, identical to `.ww-toolbar
+  .ww-icon-btn` (30px cell, 6px radius, panel background, same hover/
+  active/disabled treatment, opacity 0.42 disabled). Applies uniformly
+  to every group — Box Zoom/Pan, Time Display, View Mode, and now Unit
+  Mode alike; no more exception. Mutual exclusivity (`aria-pressed`) is
+  unchanged — a pure border/background restructuring.
+- **2px within-group spacing, strict.** `.ww-toolbar`'s own flex `gap`
+  changed from 7px to 2px (both pages' global header; the Dockerfile-
+  packaged Time Group canvas toolbar, `.ww-tg-toolbar`, is a separate,
+  architecturally distinct surface — not touched here, reported as a
+  scope boundary). A family boundary now reads through the existing
+  `.ww-toolbar-sep` hairline's own 4px-each-side margin layered on top
+  of the reduced 2px gap (effectively ~13px around a separator vs 2px
+  within a family) — never through a bigger uniform `gap` value, which
+  could not by itself distinguish the two.
+- **Page navigation icons (`.shell-nav-icon`, `#mainSidebarMenu`).** All
+  8 first-class pages (Recordings, Waveform, Event Reconstruction,
+  Table, Calculated Channels, Analysis, Compliance, Calculator) migrated
+  from their own hand-drawn inline `<svg>` to `data-ww-icon="PAGE_*"`.
+  Settings has no owner-supplied asset in this delivery and keeps its
+  own inline icon — the one deliberate exception.
+- **Packaging.** `frontend/Dockerfile` now `COPY`s the `assets/`
+  directory — it was not covered by any existing `COPY` line (each is
+  explicit, no catch-all), so without this the icons would have worked
+  in local dev (`python -m http.server`, which serves the whole
+  `frontend/` tree) but been entirely missing from the production image.
+  `.dockerignore`'s own descriptive comment updated to match.
+- **Gaps (no owner asset in this delivery, inline icon retained,
+  reported rather than guessed or generated):** `BOX_ZOOM`,
+  `CARET_DOWN` (the shared split-button caret), `AUTOSCALE_Y`, and the
+  four annotation TYPE icons (`ANNOTATION_TEXT_NOTE`/`_CALLOUT`/
+  `_PEAK_MAX`/`_PEAK_MIN`). None substituted with a generated or
+  Lucide icon.
+- **Tests.** New `TestPowerwaveIconAssets` (static guards: folder
+  structure, manifest-to-registry-to-filesystem consistency, migrated
+  entries are paths not markup, same-file aliasing, no remote URLs, no
+  asset+inline double-definition, no new inline `<svg>` for migrated nav
+  controls, the mask-image technique itself, Dockerfile packaging).
+  `TestPowerwaveIconSystem`'s own DEC-140-era geometry test narrowed to
+  the remaining inline entries only; its View Mode/Unit Mode tests and
+  `TestEventReconstructionToolConsistency`/`TestEventReconstructionPerUnitDisplay`'s
+  own Unit Mode tests rewritten for the reversed premises. Visual
+  verification (Playwright screenshots, light/dark, hover/active/
+  disabled, zero console errors) of the nav sidebar and both global
+  toolbars.
+
+### Open (not this slice)
+
+- Whether/how `ZOOM_HORIZONTAL`/`ZOOM_VERTICAL` ever compose with
+  `ZOOM_IN`/`ZOOM_OUT` into a single control (paired controls, a split-
+  button indicator, or another presentation) — explicitly deferred by
+  the owner's own instruction.
+- Waveform's own Unit Mode split-button + settings-menu control was not
+  restructured to match Event Reconstruction's new icon-only pair;
+  needs an explicit owner decision on whether/how to preserve its
+  settings-menu affordance if it is ever converted.
+- `.ww-tg-toolbar` (Waveform's own per-Time-Group canvas toolbar) keeps
+  its existing 6px gap — a different, already architecturally distinct
+  surface (DEC-141's own finding) from the global header this slice's
+  spacing rule targets; not extended here without a separate decision.
+- A dedicated end-zoom hit-region enhancement and Waveform's "active
+  Time Group" targeting concept remain open from DEC-142, unaffected by
+  this slice.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

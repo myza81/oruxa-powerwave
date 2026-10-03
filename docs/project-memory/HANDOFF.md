@@ -4,12 +4,76 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-03** (Active Y-axis target)
+Last updated: **2026-10-03** (Owner-approved SVG icon assets)
 
 ## What was most recently done
 
+**Powerwave icons become owner-approved local SVG assets (DEC-143,
+2026-10-03, app-wide).** The feature is not complete. See
+[DECISIONS.md — DEC-143](DECISIONS.md#dec-143--powerwave-icons-become-owner-approved-local-svg-assets-individually-bordered-tool-buttons-and-unit-mode-joins-the-icon-system)
+and [POWERWAVE_ICON_SYSTEM.md §12](POWERWAVE_ICON_SYSTEM.md#12-owner-approved-local-svg-assets-dec-143)
+for the full record.
+
+- **Assets.** 28 owner-supplied SVG files (source: `C:\Users\fairizat\Downloads`,
+  never moved/deleted) copied into
+  `frontend/assets/icons/{common,navigation,waveform}/` and
+  `frontend/assets/branding/` (empty, reserved). `manifest.json` +
+  `README.md` record provenance and the "search here before adding
+  anything" rule. `frontend/Dockerfile` now `COPY`s `assets/` — it
+  wasn't covered by any existing line, so without this the icons would
+  have worked in local dev but been missing from the production image.
+- **Registry (`WW_TOOL_ICONS`).** A value is now an asset path or (for a
+  function with no owner file yet) the original inline `<svg>`,
+  unchanged — `wwSetToolIcon()` tells the two apart. Rendering is a CSS
+  `mask-image` (`.ww-icon-asset`), not `<img>`/fetch+inject: the
+  delivered files are not colour-uniform, so a mask (reads only the
+  silhouette, paints with the control's own `currentColor`) is the one
+  technique that themes every file correctly without touching artwork.
+  Verified live: light/dark/hover/active/disabled, zero console errors.
+- **Zoom In/Out/Horizontal/Vertical (owner's own "do not invent
+  compound icons" instruction).** The former axis-specific `ZOOM_X_IN`/
+  `_OUT`/`ZOOM_Y_IN`/`_OUT` composites now alias the plain owner
+  `ZOOM_IN`/`ZOOM_OUT` files; the axis distinction lives in
+  tooltip/aria-label text only. `ZOOM_HORIZONTAL`/`ZOOM_VERTICAL` are
+  registered, not yet composed into any control (deferred).
+- **Unit Mode (supersedes DEC-140 §13).** The owner's own follow-up
+  instruction reversed "no icon, keep text" now that
+  `engineering_unit.svg`/`per_unit.svg` exist. Event Reconstruction's
+  ENG/PU are now icon buttons, the "Units" text label removed.
+  Waveform's own Unit Mode control (a split-button + settings-menu, not
+  a simple toggle) was intentionally left unchanged — converting it
+  would need to either drop its Per-Unit Settings… entry or invent new
+  UI; reported as an open item, not forced.
+- **Individual-button geometry + 2px spacing (owner correction).** Every
+  tool group (Box Zoom/Pan, Time Display, View Mode, Unit Mode) is now a
+  row of individual compact buttons matching A/B Cursors'/Annotate's own
+  geometry — never a joined/segmented pill. `.ww-toolbar`'s own gap is
+  2px within a family; a family boundary reads through the existing
+  separator's own margin. `.ww-tg-toolbar` (Waveform's own per-canvas
+  toolbar, a separate surface) is untouched.
+- **Grouped View's icon gap (open since DEC-140) is resolved** —
+  `grouped_view.svg`, used verbatim; `VIEW_GROUPED`/`VIEW_COMBINED` are
+  now independent owner files (no shape relationship expected).
+- **Nav icons.** All 8 first-class pages migrated from inline `<svg>` to
+  `data-ww-icon="PAGE_*"`; Settings keeps its own inline icon (no owner
+  asset supplied for it).
+- **Gaps (no owner asset, inline icon retained, reported):** `BOX_ZOOM`,
+  `CARET_DOWN`, `AUTOSCALE_Y`, the four annotation TYPE icons.
+- **Tests.** New `TestPowerwaveIconAssets` (folder structure, manifest/
+  registry/filesystem consistency, no remote URLs, no inline+asset
+  double-definition, Dockerfile packaging, the mask technique itself).
+  Several DEC-140-era tests rewritten for the Unit Mode/View Mode
+  reversals; 3 browser-test files (`event-reconstruction-annotations`,
+  `event-reconstruction-per-unit`, and the new active-yaxis suite from
+  DEC-142) updated for the ENG/PU text → icon change.
+- **Next.** Owner decision on Waveform's own Unit Mode control; whether/
+  how `ZOOM_HORIZONTAL`/`ZOOM_VERTICAL` ever compose with `ZOOM_IN`/
+  `ZOOM_OUT`. Then owner UAT of the whole branch.
+
+## Earlier — Event Reconstruction's active Y-axis target (DEC-142)
+
 **Event Reconstruction's active Y-axis target (DEC-142, 2026-10-03,
-Event Reconstruction only).** The feature is not complete. See
+Event Reconstruction only).** See
 [DECISIONS.md — DEC-142](DECISIONS.md#dec-142--event-reconstructions-active-y-axis-target-completing-dec-134s-individual-y-axis-drag-zoom-so-the-global-y-zoom-toolbar-buttons-become-usable)
 for the full record. Completes DEC-134's own direct Y-axis drag zoom
 and activates the Y Zoom In/Out buttons DEC-141 placed in the header
