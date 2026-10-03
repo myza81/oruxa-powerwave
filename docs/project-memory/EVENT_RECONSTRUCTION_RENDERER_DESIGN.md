@@ -200,7 +200,17 @@ Group" assumption below.**
     the live peak recalculation.
   - Each panel's `.ww-er-annotation-layer` is now only the Text Note
     placement capture strip.
-  - Next planned: Event Reconstruction Per-Unit Display.
+- **Per-Unit Display (done, 2026-10-03, DEC-138).**
+  - `wwErState.unitMode`; per-channel resolutions in `wwErState.perUnit`
+    (backend GET …/per-unit-resolution, re-read per page entry).
+  - `wwErPlotItems()` carries each item's unit display; only plottable
+    items get traces, all items count for Fit All.
+  - A trace's request `unitMode` is "per_unit" only when its resolution is
+    configured; its data is cached per unit display (`unitKey`,
+    `unitCache`) and the render key includes `unitKey`, so a changed base
+    refetches and a switch never shows the other unit's values.
+  - Y state lives in `plot.axisStates["<viewMode>|<unitMode>"]`
+    (`wwErAxisStore()`).
 
 Date: 2026-10-01. Code references are function names in
 `frontend/index.html` and `backend/app/` at commit `33f3178`

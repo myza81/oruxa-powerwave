@@ -185,7 +185,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         # Workspace state, the last API responses and (Slice 3C) the
         # renderer's own plot state only.
         assert keys == [
-            "dragMode", "timeDisplay", "sources", "records", "definition",
+            "dragMode", "timeDisplay", "unitMode", "perUnit", "sources", "records", "definition",
             "channelsBySource", "calculatedChannels", "selectedChannels", "activeRecordId", "annotationUi", "loadSeq", "busy", "plot",
         ]
         plot_keys = re.findall(r"^ {16}(\w+):", state.split("plot: {", 1)[1], re.MULTILINE)
@@ -201,7 +201,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
             "const WW_ER_SIDEBAR_WIDTH_STORAGE_KEY", "const wwErState", "const WW_ER_PANEL_HEIGHT",
             "const WW_ER_COMBINED_PANEL_HEIGHT", "const WW_ER_COMBINED_AXIS_ADVISORY",
             "const WW_ER_Y_AXIS_TITLE_FONT_SIZE", "const WW_ER_SECONDS_PER_DAY", "const WW_ER_ABSOLUTE_TICK_STEPS",
-            "const WW_ER_MONTHS", "const WW_ER_UNKNOWN_QUANTITY_LABEL", "const WW_ER_ORIGIN_MAX_SPANS", "const WW_ER_RELAYOUT_DEBOUNCE_MS", "const WW_ER_TIME_AXIS_TITLE",
+            "const WW_ER_MONTHS", "const WW_ER_UNKNOWN_QUANTITY_LABEL", "const WW_ER_PU_UNAVAILABLE_CELL", "const WW_ER_PU_UNAVAILABLE_CELL_TITLE", "const WW_ER_ORIGIN_MAX_SPANS", "const WW_ER_RELAYOUT_DEBOUNCE_MS", "const WW_ER_TIME_AXIS_TITLE",
             "const WW_ER_OUTLIER_GAP_FRACTION",
         ]
 
@@ -558,7 +558,9 @@ class TestEventReconstructionPlotting:
     def test_fetch_is_engineering_units_with_the_slice_3b_mapping_only(self):
         source = _source()
         request = _between(source, "function wwErFetchRequestFor(trace, timing, viewport, pointBudget) {", "\n        }\n")
-        assert 'unitMode: "engineering",' in request
+        # DEC-138: the trace's own unit_mode ("per_unit" only for a channel
+        # whose resolution is "configured"); the backend converts.
+        assert "unitMode: trace.unitMode," in request
         assert "timeOffsetS: 0," in request
         assert "wwErReconstructionTimeToSourceElapsed(viewport.start, timing.totalOffsetS)" in request
         assert "wwErReconstructionTimeToSourceElapsed(viewport.end, timing.totalOffsetS)" in request
@@ -567,10 +569,9 @@ class TestEventReconstructionPlotting:
         assert "body.time.map((t) => wwErSourceElapsedToReconstructionTime(t, timing.totalOffsetS))" in load
         assert "if (result.superseded || trace.removed) return;" in load
         module = _er_module(source)
-        for forbidden in ("per_unit", "unitMode: ww", "wwAlignmentOffset", "effective_alignment", "alignment_offset_s", "digital-waveform",
+        for forbidden in ("unitMode: ww", "ww.unitMode", "wwAlignmentOffset", "effective_alignment", "alignment_offset_s", "digital-waveform",
                           "wwRebuildDigitalChart", "start_time_utc +", "Date.parse(timing"):
             assert forbidden not in module
-        assert module.count("unitMode:") == 1
 
     def test_one_plotting_origin_for_every_panel(self):
         source = _source()
@@ -772,7 +773,7 @@ class TestEventReconstructionCursors:
         values = _between(_source(), "async function wwErRefreshCursorValues() {", "\n        }\n\n")
         assert "wwErReconstructionTimeToSourceElapsed(shown.a, offset)" in values
         assert "wwErReconstructionTimeToSourceElapsed(shown.b, offset)" in values
-        assert 'unit_mode: "engineering"' in values
+        assert "unit_mode: group.unitMode" in values
         assert "if (!current || current.seq !== seq) return; // superseded" in values
         for forbidden in ("interpolat", "Math.round(", "sampling_rate"):
             assert forbidden not in values
@@ -804,11 +805,16 @@ class TestEventReconstructionGroupedView:
 
     def test_grouping_uses_the_backend_display_axis_only(self):
         source = _source()
-        axis = _between(source, "function wwErChannelAxis(item) {", "\n        }\n")
-        assert "channel.display_axis_key" in axis
-        assert "channel.display_axis_quantity" in axis and "channel.display_axis_unit" in axis
+        axis = _between(source, "function wwErChannelAxis(item, perUnit = false) {", "\n        }\n")
+        # The backend's display axis -- or, shown in Per Unit, its
+        # per_unit_display_axis (DEC-138).
+        assert 'const prefix = perUnit ? "per_unit_display_axis_" : "display_axis_";' in axis
+        assert 'key: channel[prefix + "key"] === undefined ? null : channel[prefix + "key"],' in axis
+        assert 'unit: channel[prefix + "unit"] || "",' in axis
         groups = _between(source, "function wwErPlotGroups(items) {", "\n        }\n")
-        assert 'item.axis.key !== null ? "axis:" + item.axis.key : "solo:" + item.key' in groups
+        assert "const key = wwErAxisGroupKey(item, item.axis);" in groups
+        group_key = _between(source, "function wwErAxisGroupKey(item, axis) {", "\n        }\n")
+        assert 'return axis.key !== null ? "axis:" + axis.key : "solo:" + item.key;' in group_key
         # Never a rule over channel names or unit strings in the frontend.
         for body in (axis, groups):
             for forbidden in (".test(", ".match(", "toLowerCase", "toUpperCase", "indexOf(\"k", "channelName.", "name.includes"):
@@ -819,10 +825,10 @@ class TestEventReconstructionGroupedView:
         # the Waveform-owned display name -- display only.
         assert "if (!axis.unknown || !traces || traces.length !== 1) return title;" in title
         assert 'return title + " — " + wwChannelDisplayName(traces[0].sourceId, traces[0].channelName);' in title
-        assert "unknown: !channel.display_axis_quantity || channel.display_axis_quantity === WW_ER_UNKNOWN_QUANTITY_LABEL," in axis
+        assert "unknown: !quantity || quantity === WW_ER_UNKNOWN_QUANTITY_LABEL," in axis
         # The title quantity is the backend's; never a classification
         # sentinel or broad type copied in by the frontend.
-        assert "quantity: channel.display_axis_quantity || null," in axis
+        assert 'const quantity = channel[prefix + "quantity"];' in axis and "quantity: quantity || null," in axis
         assert 'quantity: "Undefined"' not in axis
         assert "display_axis_quantity || channel.engineering_type" not in axis
         # One title helper: no other place in the module builds a title
@@ -891,7 +897,7 @@ class TestEventReconstructionCombinedView:
     def test_both_modes_use_the_one_display_axis_grouping(self):
         source = _source()
         render = _between(source, "function wwErRenderPlot() {", "function wwErSetViewMode(mode)")
-        assert "const groups = wwErPlotGroups(items);" in render and "const specs = wwErViewPanels(groups, plot.viewMode);" in render
+        assert "const groups = wwErPlotGroups(plotted);" in render and "const specs = wwErViewPanels(groups, plot.viewMode);" in render
         view = _between(source, "function wwErViewPanels(groups, viewMode) {", "\n        }\n")
         assert 'if (viewMode === "combined") return groups.length ? [{ key: "combined", combined: true, axes: groups }] : [];' in view
         assert "return groups.map((group) => ({ key: group.key, combined: false, axes: [group] }));" in view
@@ -1061,9 +1067,12 @@ class TestEventReconstructionYAxisDragZoom:
     def test_state_is_keyed_by_display_axis_per_view_mode(self):
         source = _source()
         state = _between(source, "const wwErState = {", "};")
-        assert "axisStates: { grouped: new Map(), combined: new Map() }," in state
+        # Per view mode AND unit mode (DEC-138): "<viewMode>|<unitMode>".
+        assert "axisStates: {}," in state
+        store = _between(source, "function wwErAxisStore(viewMode, unitMode) {", "\n        }\n")
+        assert 'const key = viewMode + "|" + unitMode;' in store
         render = _between(source, "function wwErRenderPlot() {", "function wwErSetViewMode(mode)")
-        assert "const axisStore = plot.axisStates[plot.viewMode];" in render
+        assert "const axisStore = wwErAxisStore(plot.viewMode, wwErState.unitMode);" in render
         assert "const previous = axisStore.get(group.key);" in render  # never "y2"
         assert "axisStore.set(group.key, entry);" in render
         assert "if (!liveAxes.has(key)) store.delete(key);" in render
@@ -1076,7 +1085,8 @@ class TestEventReconstructionYAxisDragZoom:
         assert "axis.manual = false;" in autoscale and "axis.autoscaleYPending = true;" in autoscale
         reset = _between(source, "function wwErResetView() {", "\n        }\n")
         assert "axis.manual = false;" in reset
-        assert 'plot.axisStates[plot.viewMode === "combined" ? "grouped" : "combined"].clear();' in reset
+        # The other view mode's Y in the CURRENT unit mode only (DEC-138).
+        assert 'wwErAxisStore(plot.viewMode === "combined" ? "grouped" : "combined", wwErState.unitMode).clear();' in reset
         assert "wwErApplyViewport(plot.fitAll);" in reset
         fit = _between(source, "function wwErFitRecord() {", "\n        }\n")
         assert "manual" not in fit and "autoscaleYPending" not in fit  # Fit Record is X only
@@ -1208,14 +1218,17 @@ class TestEventReconstructionAnnotations:
 
     def test_anchor_and_peaks_use_waveforms_endpoints_in_source_time(self):
         source = _source()
-        anchor = _between(source, "async function wwErResolveAnchor(trace, reconstructionTime) {", "async function wwErCreateCallout(")
+        anchor = _between(source, "async function wwErResolveAnchor(trace, reconstructionTime) {", "function wwErRefreshCalloutValues()")
         assert "wwErReconstructionTimeToSourceElapsed(r, timing.totalOffsetS)" in anchor
-        assert '"/annotation-anchor"' in anchor and 'unit_mode: "engineering"' in anchor
-        peaks = _between(source, "async function wwErMeasurePeaks(sourceId, calculated, items) {", "function wwErPeakResult(result)")
+        # The stored anchor is always in engineering units (DEC-138).
+        assert 'wwErRequestAnchor(trace.kind, trace.sourceId, trace.channelName, native, "engineering")' in anchor
+        request = _between(source, "async function wwErRequestAnchor(kind, sourceId, channelName, nativeTime, unitMode) {", "async function wwErResolveAnchor(")
+        assert '"/annotation-anchor"' in request and "unit_mode: unitMode" in request
+        peaks = _between(source, "async function wwErMeasurePeaks(sourceId, calculated, items, unitMode = \"engineering\") {", "function wwErPeakResult(result, displayKey, unitMode)")
         assert '"/calculated-channels/peak-values"' in peaks and '"/peak-values"' in peaks
         assert "Math.max(viewport.start, timing.startS)" in peaks and "Math.min(viewport.end, timing.endS)" in peaks
         # Live recalculation on every viewport change, stale responses dropped.
-        assert "wwErRecalculatePeaks();\n            wwErSyncToolbar();" in _between(source, "function wwErApplyViewport(", "\n        }\n")
+        assert "wwErRefreshAnnotationValues();\n            wwErSyncToolbar();" in _between(source, "function wwErApplyViewport(", "\n        }\n")
         recalc = _between(source, "function wwErRecalculatePeaks() {", "function wwState_isCalculatedErSource(sourceId)")
         assert "if (!current || current.seq !== seq) return;" in recalc
 
@@ -1315,3 +1328,83 @@ class TestEventReconstructionToolConsistency:
         canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
         for wording in ("Reset Time View for this Time Group", "Autoscale Y for this Time Group", "Choose Zoom In axis"):
             assert wording in canvas, wording
+
+
+class TestEventReconstructionPerUnitDisplay:
+    """DEC-138: Waveform owns per-unit configuration; Event Reconstruction
+    consumes the backend's RESOLVED per-unit result and only switches its
+    display between Engineering and Per Unit."""
+
+    def test_unit_selector_uses_waveforms_wording_as_a_labelled_mode_selector(self):
+        source = _source()
+        page = _er_page(source)
+        toggle = _between(page, '<div class="theme-toggle ww-icon-group ww-er-view-mode" id="wwErUnitModeToggle"', "</div>")
+        assert 'role="group" aria-label="Unit Mode"' in toggle
+        assert '<button type="button" id="wwErUnitEngineeringBtn" aria-pressed="true" title="Engineering Units">ENG</button>' in toggle
+        assert '<button type="button" id="wwErUnitPerUnitBtn" aria-pressed="false" title="Per Unit">PU</button>' in toggle
+        assert ">Units</span>" in page
+        # Waveform's own words for the same switch.
+        assert 'title="Unit Mode" aria-label="Unit Mode"' in source
+        for words in ("Engineering Units", "Per Unit"):
+            assert words in _between(source, '<div class="ww-split-menu" id="wwUnitModeMenu"', "</div>")
+        assert 'textContent = ww.unitMode === "per_unit" ? "PU" : "ENG";' in source
+        # Default Engineering.
+        assert 'unitMode: "engineering",' in _between(source, "const wwErState = {", "};")
+
+    def test_no_per_unit_configuration_in_event_reconstruction(self):
+        source = _source()
+        page = _er_page(source)
+        for forbidden in ("Per-Unit Settings</button>", "wwOpenPerUnitSettingsBtn", "Manage Per-Unit", "Measurement Group", "nominal_voltage_ll_kv",
+                          'type="number"', "Line-to-Ground", "line_to_ground"):
+            assert forbidden not in page, forbidden
+        module = _er_module(source)
+        # Never a write to (or a read of the editors of) per-unit settings.
+        for forbidden in ("/per-unit/sources", "/measurement-groups", "voltage-config", "current-config", "wwOpenPerUnit",
+                          "wwApplyUnitMode", "ww.unitMode", "ww.perUnit", "wwSavePerUnit"):
+            assert forbidden not in module, forbidden
+        # The settings writes that exist stay Waveform's.
+        assert "voltage-config" in source
+
+    def test_resolution_is_the_backends_and_values_are_never_converted_here(self):
+        source = _source()
+        fetch = _between(source, "async function wwErFetchPerUnitResolution(kind, sourceId, channelName) {", "\n        }\n")
+        assert "wwFetchChannelPerUnitResolution(sourceId, channelName)" in fetch
+        assert '"/per-unit-resolution"' in fetch
+        display = _between(source, "function wwErChannelUnitDisplay(kind, sourceId, channelName, unitMode = wwErState.unitMode) {", "\n        }\n")
+        assert 'if (resolution.status === "configured") return { state: "per_unit", unitMode: "per_unit"' in display
+        assert 'if (resolution.status === "not_applicable") return { state: "engineering", unitMode: "engineering"' in display
+        assert 'return { state: "unavailable", unitMode: null' in display
+        module = _er_module(source)
+        # No base is derived and no value converted in the frontend.
+        for forbidden in ("Math.sqrt", "SQRT", "1.732", "effective_base_amount", "nominal_base_kv", "/ base", "* base"):
+            assert forbidden not in module, forbidden
+
+    def test_unavailable_channels_stay_selected_never_plotted_never_valued(self):
+        source = _source()
+        items = _between(source, "function wwErPlotItems() {", "// ---- Per-Unit Display (DEC-138) ----")
+        assert 'plottable: display.state === "engineering" || display.state === "per_unit",' in items
+        render = _between(source, "function wwErRenderPlot() {", "function wwErSetViewMode(mode)")
+        assert "const plotted = items.filter((item) => item.plottable);" in render
+        assert "const fitAll = wwErFitAllRange(items.map((item) => item.timing));" in render
+        tree = _between(source, "function wwErTreeCursorText(key, kind) {", "\n        }\n")
+        assert 'return kind === "delta" ? "—" : WW_ER_PU_UNAVAILABLE_CELL;' in tree
+        assert 'if (entry.puUnavailable) return WW_ER_PU_UNAVAILABLE_CELL;' in _between(source, "function wwErCursorValueText(entry, kind) {", "\n        }\n")
+        load = _between(source, "async function wwErLoadTrace(trace) {", "function wwErPlottedTraces()")
+        assert 'if (trace.unitMode === "per_unit" && body.per_unit_status !== "configured") {' in load
+        # Engineering values never land on a pu axis: a unit switch starts
+        # the trace empty unless that display's own data is kept.
+        assign = _between(source, "function wwErAssignTraceUnit(trace, item) {", "\n        }\n")
+        assert "reconstructionTime: [], values: []," in assign and "trace.unitCache[key]" in assign
+
+    def test_the_switch_is_display_only(self):
+        source = _source()
+        switch = _between(source, "function wwErSetUnitMode(mode) {", "\n        }\n")
+        for forbidden in ("viewport", "cursors", "definition", "selectedChannels", "activeRecordId", "timeDisplay", "viewMode", "wwErMutate", "fetch("):
+            assert forbidden not in switch, forbidden
+        assert "wwErRenderPlot();" in switch
+
+    def test_waveform_unit_mode_is_untouched(self):
+        source = _source()
+        waveform = _between(source, "function wwPanelGroupKeyFor(", "function wwTimeGroupLabelSuffix(")
+        assert "wwEr" not in waveform
+        assert 'if (channel.perUnitStatus === "base_required") return baseKey + ":base_required";' in waveform

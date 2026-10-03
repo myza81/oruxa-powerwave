@@ -4,9 +4,35 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-03** (Event Reconstruction annotation parity)
+Last updated: **2026-10-03** (Event Reconstruction Per-Unit Display)
 
 ## What was most recently done
+
+**Event Reconstruction Per-Unit Display (DEC-138, 2026-10-03).** The
+feature is not complete.
+
+- **Ownership.** Waveform owns per-unit configuration; Event
+  Reconstruction only consumes the resolved result (per-channel GET
+  …/per-unit-resolution; pu values from the existing waveform / cursor /
+  peak / anchor endpoints with `unit_mode="per_unit"`). No settings UI,
+  no settings writes, no frontend base or √3.
+- **UI.** "Units [ENG | PU]" (Waveform's wording: Unit Mode, ENG/PU,
+  Engineering Units / Per Unit), Engineering by default, display only.
+- **Statuses.** configured → pu; base_required → stays selected, "PU
+  unavailable" (badge, notice, "PU n/a" cursor cells), not plotted;
+  not_applicable (Power, Frequency, ROCOF, angles) → engineering, as in
+  Waveform. Fit All still counts unavailable channels.
+- **Axes / Y.** Quantity-aware pu axes from the new additive backend
+  fields `per_unit_display_axis_*`; Y state per view mode and unit mode.
+- **Regression.** 275 kV L-L group base on an L-G channel → 158.77 kV
+  base (~1.0046 pu for 159.5 kV), never the conflicting legacy 132 kV
+  Source Default — backend and browser tests.
+- **Tests.** Backend per-unit (12), static (6 new), browser
+  `event-reconstruction-per-unit.spec.js` (8).
+- **Next.** Owner UAT of the whole Event Reconstruction branch (see the
+  open items below).
+
+## Earlier — Event Reconstruction annotation parity (DEC-137)
 
 **Event Reconstruction annotation parity with Waveform (DEC-137,
 2026-10-03).** The feature is not complete. This corrects DEC-136's
@@ -31,9 +57,8 @@ simplified event markers (below).
 - **Tests.** Backend annotations (16); static annotations (8) + tool
   consistency (5); browser `event-reconstruction-annotations.spec.js`
   (6).
-- **Next.** Event Reconstruction Per-Unit Display (Waveform owns
-  per-unit configuration; Event Reconstruction only consumes the
-  resolved settings). Then owner UAT of the whole branch.
+- **Next (then).** Event Reconstruction Per-Unit Display — done, DEC-138
+  above.
 
 ## Earlier — Event Reconstruction annotations (DEC-136)
 

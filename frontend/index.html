@@ -5404,6 +5404,20 @@
            frame and the Text Note placement strip are Event
            Reconstruction's. */
         .ww-er-panels-wrap { position: relative; }
+        /* DEC-138: a selected channel without a per-unit basis, in Per Unit. */
+        .ww-er-pu-unavailable {
+            display: block;
+            width: fit-content;
+            margin: 2px 0 0 14px;
+            padding: 0 6px;
+            border: 1px solid var(--panel-border);
+            border-radius: 999px;
+            font-size: 0.62rem;
+            line-height: 1.5;
+            color: var(--text-dim);
+            white-space: nowrap;
+            vertical-align: middle;
+        }
         .ww-er-annotation-layer {
             position: absolute;
             inset: 0;
@@ -9252,6 +9266,16 @@
                             <button type="button" id="wwErTimeRelativeBtn" aria-pressed="true" title="Relative: time relative to the reconstruction reference">Relative</button>
                             <button type="button" id="wwErTimeAbsoluteBtn" aria-pressed="false" title="Absolute: reconstructed recorded wall-clock time, including timing corrections (display timezone)">Absolute</button>
                         </div>
+                        <!-- DEC-138: Engineering / Per Unit display. A labelled mode
+                             selector (as Grouped|Combined, Relative|Absolute) in
+                             Waveform's own wording: "Unit Mode", ENG / PU,
+                             "Engineering Units" / "Per Unit". Display only -- no
+                             per-unit configuration lives on this page. -->
+                        <span class="ww-er-toolbar-label" id="wwErUnitModeLabel" aria-hidden="true">Units</span>
+                        <div class="theme-toggle ww-icon-group ww-er-view-mode" id="wwErUnitModeToggle" role="group" aria-label="Unit Mode">
+                            <button type="button" id="wwErUnitEngineeringBtn" aria-pressed="true" title="Engineering Units">ENG</button>
+                            <button type="button" id="wwErUnitPerUnitBtn" aria-pressed="false" title="Per Unit">PU</button>
+                        </div>
                         <!-- DEC-137: Waveform's own Annotate menu and Annotations
                              button -- identical icons, labels and tooltips --
                              driving Event Reconstruction's own annotations. -->
@@ -9345,6 +9369,7 @@
                                 </div>
                                 <div class="ww-er-span-notice" id="wwErSpanNotice" hidden></div>
                                 <div class="ww-er-span-notice" id="wwErAxisNotice" hidden></div>
+                                <div class="ww-er-span-notice" id="wwErUnitNotice" hidden></div>
                                 <!-- DEC-137: one annotation overlay + connector layer over the
                                      whole panel stack (Waveform's model), so boxes are never
                                      clipped by a panel frame. -->
@@ -14528,6 +14553,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // wall-clock instant of the same point). Labels only -- the
             // internal coordinate is always reconstruction seconds.
             timeDisplay: "relative",
+            // Per-Unit Display (DEC-138): "engineering" (the default) |
+            // "per_unit". Display only -- Waveform owns every per-unit
+            // setting; this page never writes one.
+            unitMode: "engineering",
+            // The backend's RESOLVED per-unit result per channel (GET
+            // .../per-unit-resolution), keyed by wwErPerUnitKey(); a read
+            // never decides a base. `requested` holds the generation each
+            // key was last asked in (a page entry starts a new one, so
+            // settings changed in Waveform are read again).
+            perUnit: { resolutions: {}, requested: {}, generation: 0, renderTimer: null },
             sources: [],
             records: [],
             definition: null,
@@ -14546,17 +14581,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             annotationUi: {
                 placing: null, busy: false, generation: 0, selectedId: null, drag: null,
                 peakResults: {}, peakRequests: {}, renderFrame: 0,
+                // A Callout's value in Per Unit (its same stored sample,
+                // read in pu), by id.
+                calloutValues: {},
             },
             loadSeq: 0,
             busy: false,
             plot: {
                 // "grouped" (DEC-131, default) | "combined" (DEC-132).
                 viewMode: "grouped",
-                // Y state per view mode (DEC-134): display-axis key -> that
-                // axis's entry ({ range, manual, autoscaleYPending, ... }),
-                // kept for the session so each mode returns to its own Y;
-                // never copied between modes.
-                axisStates: { grouped: new Map(), combined: new Map() },
+                // Y state per view mode (DEC-134) AND unit mode (DEC-138),
+                // "<viewMode>|<unitMode>" (wwErAxisStore()): display-axis
+                // key -> that axis's entry ({ range, manual,
+                // autoscaleYPending, ... }), kept for the session so each
+                // mode returns to its own Y; never copied between modes --
+                // an Engineering range never reaches a pu axis.
+                axisStates: {},
                 panels: [],
                 viewport: null,
                 fitAll: null,
@@ -14742,6 +14782,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         async function wwErOnPageEntered() {
             wwErSetStatus(null, "");
+            // Per-unit settings may have changed in Waveform meanwhile:
+            // every resolution is read again (the known one keeps showing
+            // until its replacement lands).
+            wwErState.perUnit.generation += 1;
             await wwErRefresh();
             // The page was hidden; let every chart re-measure its width.
             wwErResizePlots();
@@ -15119,6 +15163,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // group buttons, per-member counts) without rebuilding it.
         function wwErSyncChannelSelectionDom() {
             const panel = document.getElementById("wwErMembersPanel");
+            wwErSyncPerUnitTreeDom();
             for (const row of panel.querySelectorAll("tr.ww-er-channel-row")) {
                 const selected = !!wwErState.selectedChannels[row.dataset.erChannelKey];
                 row.classList.toggle("ww-er-channel-row--unselected", !selected);
@@ -15269,6 +15314,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // display_axis_quantity for such a channel), and the fallback when
         // display-axis metadata is not available.
         const WW_ER_UNKNOWN_QUANTITY_LABEL = "Unknown quantity";
+        // DEC-138: a cursor value cell of a channel without a per-unit basis
+        // in Per Unit -- compact for the narrow Cur A / Cur B columns (the
+        // row's own badge and the cell's tooltip say "PU unavailable");
+        // distinct from "No sample" and "Unavailable" (recorded gap).
+        const WW_ER_PU_UNAVAILABLE_CELL = "PU n/a";
+        const WW_ER_PU_UNAVAILABLE_CELL_TITLE = "PU unavailable: no per-unit basis is resolved for this channel. Configure it in Waveform.";
         // The origin is kept while the visible window stays within this
         // many spans of it, so ordinary zoom/pan nearby does not rewrite
         // every trace; beyond that it moves to the window start. Within
@@ -15592,7 +15643,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 nativeStart: viewport.start <= timing.startS ? null : wwErReconstructionTimeToSourceElapsed(viewport.start, timing.totalOffsetS),
                 nativeEnd: viewport.end >= timing.endS ? null : wwErReconstructionTimeToSourceElapsed(viewport.end, timing.totalOffsetS),
                 pointBudget,
-                unitMode: "engineering",
+                // DEC-138: "per_unit" only for a channel whose resolution is
+                // "configured" -- the backend converts; never done here.
+                unitMode: trace.unitMode,
                 timeOffsetS: 0,
             };
         }
@@ -15680,19 +15733,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // channel or a calculated channel, plus its broad engineering_type
         // for panel ordering. Never derived from a channel name or unit
         // string here.
-        function wwErChannelAxis(item) {
+        // DEC-138: a channel shown in Per Unit uses the backend's
+        // `per_unit_display_axis_*` instead (app.domain.engineering_units.
+        // resolve_per_unit_display_axis()) -- quantity-aware, so Voltage
+        // (pu) and Current (pu) never share an axis merely because both
+        // read "pu".
+        function wwErChannelAxis(item, perUnit = false) {
             const channel = item.kind === "calculated"
                 ? wwErState.calculatedChannels.find((c) => c.id === item.sourceId)
                 : ((wwErState.channelsBySource[item.sourceId] || {}).analog_channels || []).find((c) => c.name === item.channelName);
             if (!channel) return { key: null, quantity: null, unknown: true, unit: "", engineeringType: "Undefined" };
+            const prefix = perUnit ? "per_unit_display_axis_" : "display_axis_";
+            const quantity = channel[prefix + "quantity"];
             return {
-                key: channel.display_axis_key === undefined ? null : channel.display_axis_key,
+                key: channel[prefix + "key"] === undefined ? null : channel[prefix + "key"],
                 // The backend's axis-title quantity; never a classification
                 // sentinel or type copied in here (wwErAxisTitle() titles a
                 // missing one).
-                quantity: channel.display_axis_quantity || null,
-                unknown: !channel.display_axis_quantity || channel.display_axis_quantity === WW_ER_UNKNOWN_QUANTITY_LABEL,
-                unit: channel.display_axis_unit || "",
+                quantity: quantity || null,
+                unknown: !quantity || quantity === WW_ER_UNKNOWN_QUANTITY_LABEL,
+                unit: channel[prefix + "unit"] || "",
                 engineeringType: channel.engineering_type || "Undefined",
             };
         }
@@ -15732,9 +15792,209 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Selections the tree walk did not reach (channel metadata not
             // loaded) keep a stable order after the rest.
             for (const key of [...selected.keys()].sort()) ordered.push(Object.assign({ key }, selected.get(key)));
+            // DEC-138: each item also says how the current unit mode shows
+            // it (wwErChannelUnitDisplay()). Every item keeps counting for
+            // Fit All; only `plottable` ones get a trace -- a PU-unavailable
+            // channel stays selected but is never drawn in Per Unit.
             return ordered
-                .map((item) => Object.assign(item, { timing: wwErSourceTiming(item.sourceId), axis: wwErChannelAxis(item) }))
+                .map((item) => {
+                    const display = wwErChannelUnitDisplay(item.kind, item.sourceId, item.channelName);
+                    return Object.assign(item, {
+                        timing: wwErSourceTiming(item.sourceId),
+                        display,
+                        unitMode: display.unitMode || "engineering",
+                        plottable: display.state === "engineering" || display.state === "per_unit",
+                        axis: wwErChannelAxis(item, display.state === "per_unit"),
+                    });
+                })
                 .filter((item) => item.timing && item.timing.recordId === item.recordId);
+        }
+
+        // ---- Per-Unit Display (DEC-138) ----
+        //
+        // Waveform owns per-unit configuration (Measurement Groups, Source
+        // Default, voltage reference); Event Reconstruction only CONSUMES
+        // the resolved result and switches its display between Engineering
+        // and Per Unit. A channel's resolution is the backend's own GET
+        // .../per-unit-resolution (built from the exact resolver GET
+        // .../waveform?unit_mode=per_unit uses; for a recording's channel
+        // through Waveform's wwFetchChannelPerUnitResolution()), and pu
+        // values come from the same waveform / cursor / peak / anchor
+        // endpoints with unit_mode "per_unit". Nothing here derives a base,
+        // applies sqrt(3), converts a value or writes a setting.
+        //
+        //   configured     -> plotted in pu on its quantity's pu axis
+        //   base_required  -> stays selected, "PU unavailable", not plotted
+        //   not_applicable -> unchanged engineering values (Waveform's own
+        //                     rule: Power, Frequency, ROCOF, angles)
+
+        function wwErPerUnitKey(kind, sourceId, channelName) {
+            return kind === "calculated" ? "calc|" + sourceId : "src|" + sourceId + "|" + channelName;
+        }
+
+        function wwErChannelKindOf(sourceId) {
+            return wwErState.calculatedChannels.some((c) => c.id === sourceId) ? "calculated" : "analog";
+        }
+
+        // How a channel is shown in `unitMode` (default: the current one):
+        // { state: "engineering" | "per_unit" | "unavailable" | "pending",
+        //   unitMode (the unit_mode its values are requested in), key (its
+        //   display identity -- a changed resolution changes it), resolution }.
+        function wwErChannelUnitDisplay(kind, sourceId, channelName, unitMode = wwErState.unitMode) {
+            if (unitMode !== "per_unit") return { state: "engineering", unitMode: "engineering", key: "engineering", resolution: null };
+            const resolution = wwErState.perUnit.resolutions[wwErPerUnitKey(kind, sourceId, channelName)];
+            if (resolution === undefined) return { state: "pending", unitMode: null, key: "pending", resolution: null };
+            const signature = JSON.stringify(resolution);
+            if (resolution.status === "configured") return { state: "per_unit", unitMode: "per_unit", key: "per_unit|" + signature, resolution };
+            if (resolution.status === "not_applicable") return { state: "engineering", unitMode: "engineering", key: "engineering", resolution };
+            // base_required, or the resolution could not be read.
+            return { state: "unavailable", unitMode: null, key: "unavailable|" + signature, resolution };
+        }
+
+        async function wwErFetchPerUnitResolution(kind, sourceId, channelName) {
+            if (kind !== "calculated") return wwFetchChannelPerUnitResolution(sourceId, channelName);
+            return wwErFetchWorkspaceJson("/calculated-channels/" + encodeURIComponent(sourceId) + "/per-unit-resolution");
+        }
+
+        // The channels whose resolution Per Unit needs: the selected ones
+        // and every Callout's / Peak's own channel.
+        function wwErPerUnitChannelsNeeded(items) {
+            const channels = new Map();
+            for (const item of items) channels.set(wwErPerUnitKey(item.kind, item.sourceId, item.channelName), item);
+            for (const annotation of wwErAnnotations()) {
+                if (!annotation.channel) continue;
+                const kind = wwErChannelKindOf(annotation.channel.source_id);
+                channels.set(wwErPerUnitKey(kind, annotation.channel.source_id, annotation.channel.channel_name),
+                    { kind, sourceId: annotation.channel.source_id, channelName: annotation.channel.channel_name });
+            }
+            return [...channels.values()];
+        }
+
+        // Reads every needed resolution not yet read in this generation; a
+        // changed one re-renders. A failed read counts as unavailable
+        // ("unresolved") until the next page entry reads it again.
+        function wwErEnsurePerUnitResolutions(channels) {
+            const pu = wwErState.perUnit;
+            const generation = pu.generation;
+            for (const channel of channels) {
+                const key = wwErPerUnitKey(channel.kind, channel.sourceId, channel.channelName);
+                if (pu.requested[key] === generation) continue;
+                pu.requested[key] = generation;
+                wwErFetchPerUnitResolution(channel.kind, channel.sourceId, channel.channelName).then((resolution) => {
+                    if (pu.requested[key] !== generation) return; // superseded
+                    const next = resolution || { status: "unresolved" };
+                    if (JSON.stringify(pu.resolutions[key]) === JSON.stringify(next)) return;
+                    pu.resolutions[key] = next;
+                    wwErSchedulePerUnitRender();
+                });
+            }
+        }
+
+        function wwErSchedulePerUnitRender() {
+            const pu = wwErState.perUnit;
+            if (pu.renderTimer) return;
+            pu.renderTimer = setTimeout(() => {
+                pu.renderTimer = null;
+                wwErRenderPlot();
+                wwErSyncPerUnitTreeDom();
+                wwErRefreshAnnotationValues();
+                wwErRenderAnnotations();
+                wwErRenderAnnotationList();
+            }, 0);
+        }
+
+        // Engineering <-> Per Unit: display only. Records, reference,
+        // corrections, annotations, cursors, the X viewport, Fit All, the
+        // time display, the view mode, the active record and the channel
+        // selection are untouched; each unit mode keeps its own Y state.
+        function wwErSetUnitMode(mode) {
+            if ((mode !== "engineering" && mode !== "per_unit") || mode === wwErState.unitMode) return;
+            wwErState.unitMode = mode;
+            wwErSyncUnitModeButtons();
+            wwErRenderPlot();
+            wwErSyncPerUnitTreeDom();
+            wwErRefreshAnnotationValues();
+            wwErRenderAnnotations();
+            wwErRenderAnnotationList();
+        }
+
+        function wwErSyncUnitModeButtons() {
+            const mode = wwErState.unitMode;
+            document.getElementById("wwErUnitEngineeringBtn").setAttribute("aria-pressed", String(mode === "engineering"));
+            document.getElementById("wwErUnitPerUnitBtn").setAttribute("aria-pressed", String(mode === "per_unit"));
+        }
+
+        function wwErPerUnitUnavailableText(resolution) {
+            if (!resolution || resolution.status === "unresolved") return "PU unavailable: the per-unit basis of this channel could not be read.";
+            return "PU unavailable: no per-unit basis is resolved for this channel. Configure it in Waveform (Unit Mode → Per-Unit Settings…)." +
+                (resolution.reason ? " Reason: " + resolution.reason + "." : "");
+        }
+
+        // The left tree: a selected channel without a per-unit basis says
+        // so in Per Unit (it stays selected).
+        function wwErSyncPerUnitTreeDom() {
+            for (const row of document.querySelectorAll("#wwErMembersPanel tr.ww-er-channel-row")) {
+                const selected = !!wwErState.selectedChannels[row.dataset.erChannelKey];
+                const display = selected ? wwErChannelUnitDisplay(row.dataset.erKind, row.dataset.erSourceId, row.dataset.erChannelName) : null;
+                const unavailable = !!display && display.state === "unavailable";
+                row.classList.toggle("ww-er-channel-row--pu-unavailable", unavailable);
+                let badge = row.querySelector(".ww-er-pu-unavailable");
+                if (unavailable && !badge) {
+                    badge = document.createElement("span");
+                    badge.className = "ww-er-pu-unavailable";
+                    badge.textContent = "PU unavailable";
+                    row.querySelector("td").appendChild(badge);
+                }
+                if (!unavailable && badge) badge.remove();
+                if (unavailable) badge.title = wwErPerUnitUnavailableText(display.resolution);
+            }
+        }
+
+        // The Y state store of one view mode in one unit mode.
+        function wwErAxisStore(viewMode, unitMode) {
+            const stores = wwErState.plot.axisStates;
+            const key = viewMode + "|" + unitMode;
+            if (!stores[key]) stores[key] = new Map();
+            return stores[key];
+        }
+
+        // The display axes `items` have in `unitMode`, or null while a
+        // resolution is still unknown.
+        function wwErLiveAxisKeys(items, unitMode) {
+            const keys = new Set();
+            for (const item of items) {
+                const display = wwErChannelUnitDisplay(item.kind, item.sourceId, item.channelName, unitMode);
+                if (display.state === "pending") return null;
+                if (display.state === "unavailable") continue;
+                keys.add(wwErAxisGroupKey(item, wwErChannelAxis(item, display.state === "per_unit")));
+            }
+            return keys;
+        }
+
+        // A trace moves between unit displays: what it holds is kept for
+        // that display, and what the new one already has comes back
+        // (switching back and forth does not refetch an unchanged view);
+        // otherwise it starts empty -- never engineering values on a pu
+        // axis. A request in flight for the old display is dropped.
+        function wwErAssignTraceUnit(trace, item) {
+            const key = item.display.key;
+            if (trace.unitKey === key) return;
+            if (trace.loadedKey !== null) {
+                trace.unitCache[trace.unitKey] = {
+                    loadedKey: trace.loadedKey, loadedBudget: trace.loadedBudget, representation: trace.representation,
+                    unit: trace.unit, reconstructionTime: trace.reconstructionTime, values: trace.values,
+                };
+            }
+            if (trace.abortController) trace.abortController.abort();
+            trace.requestSeq += 1;
+            trace.loading = false;
+            trace.error = null;
+            Object.assign(trace, trace.unitCache[key] || {
+                loadedKey: null, loadedBudget: 0, representation: null, unit: null, reconstructionTime: [], values: [],
+            });
+            trace.unitKey = key;
+            trace.unitMode = item.unitMode;
+            trace.cursorValues = null;
         }
 
         // Grouped Measurement View (DEC-131): channels whose display axis
@@ -15743,10 +16003,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // gets a panel of its own. Panels follow Waveform's
         // engineering-type order (ANALOG_GROUP_ORDER), then first
         // appearance; traces inside a panel keep the browser order.
+        function wwErAxisGroupKey(item, axis) {
+            return axis.key !== null ? "axis:" + axis.key : "solo:" + item.key;
+        }
+
         function wwErPlotGroups(items) {
             const groups = new Map();
             items.forEach((item, index) => {
-                const key = item.axis.key !== null ? "axis:" + item.axis.key : "solo:" + item.key;
+                const key = wwErAxisGroupKey(item, item.axis);
                 if (!groups.has(key)) groups.set(key, { key, axis: item.axis, first: index, items: [] });
                 groups.get(key).items.push(item);
             });
@@ -15876,6 +16140,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 key: item.key,
                 recordId: item.recordId,
                 kind: item.kind,
+                // DEC-138: the unit display its data is for
+                // (wwErAssignTraceUnit()), the unit_mode it is requested in,
+                // and data kept per display.
+                unitKey: item.display.key,
+                unitMode: item.unitMode,
+                unitCache: {},
                 sourceId: item.sourceId,
                 channelName: item.channelName,
                 timingSourceId: item.timingSourceId,
@@ -16079,7 +16349,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // What a panel's chart was last built for: its axes in order and
         // its traces in order.
         function wwErPanelRenderKey(panel) {
-            return panel.axes.map((a) => a.key).join("\u0002") + "\u0003" + panel.traces.map((t) => t.key).join("\u0001");
+            return panel.axes.map((a) => a.key).join("\u0002") + "\u0003" +
+                panel.traces.map((t) => t.key + "\u0004" + t.unitKey).join("\u0001");
         }
 
         // A trace or an axis was added to or removed from an existing
@@ -16210,7 +16481,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!Number.isFinite(member.start_s) || !Number.isFinite(member.end_s)) {
                 return { range: null, reason: "the timing of " + name + " is unavailable" };
             }
-            if (!wwErState.plot.fitAll || !wwErPlottedTraces().some((t) => t.recordId === id)) {
+            // A selected channel of it (plotted or PU unavailable, DEC-138).
+            if (!wwErState.plot.fitAll || !wwErPlotItems().some((item) => item.recordId === id)) {
                 return { range: null, reason: "plot a channel of " + name + " first" };
             }
             return { range: { start: member.start_s, end: member.end_s }, name, reason: null };
@@ -16250,8 +16522,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
             }
             // Reset is global (DEC-134): the other view mode's Y state goes
-            // too, so it autoscales when next shown.
-            plot.axisStates[plot.viewMode === "combined" ? "grouped" : "combined"].clear();
+            // too, so it autoscales when next shown -- in the current unit
+            // mode only; the other unit mode keeps its own Y (DEC-138).
+            wwErAxisStore(plot.viewMode === "combined" ? "grouped" : "combined", wwErState.unitMode).clear();
             wwErApplyViewport(plot.fitAll);
         }
 
@@ -16343,7 +16616,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // pending axis scale over what is already there; one whose
             // traces are loading scales when the last lands.
             for (const panel of plot.panels) wwErApplyPendingAutoscaleY(panel);
-            wwErRecalculatePeaks();
+            wwErRefreshAnnotationValues();
             wwErSyncToolbar();
             wwErDrawCursors();
         }
@@ -16399,7 +16672,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!panel || !panel.plotlyReady || !viewport || !timing || trace.removed) return;
             const pointBudget = wwPointBudgetForPlotWidth(wwPlotWidthForChart(panel.chartEl));
             const request = wwErFetchRequestFor(trace, timing, viewport, pointBudget);
-            const loadKey = [viewport.start, viewport.end, timing.totalOffsetS, request ? "range" : "skip"].join("|");
+            const loadKey = [viewport.start, viewport.end, timing.totalOffsetS, request ? "range" : "skip", trace.unitKey].join("|");
             const served = !request || trace.representation === "full_resolution" || trace.loadedBudget >= pointBudget;
             if (loadKey === trace.loadedKey && served) return;
             trace.error = null;
@@ -16438,6 +16711,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return;
             }
             const body = result.body;
+            // DEC-138: a pu request must come back converted; otherwise the
+            // per-unit settings changed after they were read -- nothing is
+            // drawn, and the channel's resolution is read again.
+            if (trace.unitMode === "per_unit" && body.per_unit_status !== "configured") {
+                wwErState.perUnit.requested[wwErPerUnitKey(trace.kind, trace.sourceId, trace.channelName)] = null;
+                wwErEnsurePerUnitResolutions([trace]);
+                wwErSyncPanelStatus(current);
+                return;
+            }
             // Native times -> reconstruction time with the total captured
             // for THIS request (the one the native range was derived from).
             trace.reconstructionTime = body.time.map((t) => wwErSourceElapsedToReconstructionTime(t, timing.totalOffsetS));
@@ -16467,19 +16749,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwErRenderPlot() {
             const plot = wwErState.plot;
             const items = wwErPlotItems();
-            const groups = wwErPlotGroups(items);
+            if (wwErState.unitMode === "per_unit") wwErEnsurePerUnitResolutions(wwErPerUnitChannelsNeeded(items));
+            const plotted = items.filter((item) => item.plottable);
+            const groups = wwErPlotGroups(plotted);
             const specs = wwErViewPanels(groups, plot.viewMode);
             // An axis whose last channel went away takes its Y state along,
-            // in both modes; recreated, it autoscales normally.
-            const liveAxes = new Set(groups.map((group) => group.key));
-            for (const store of Object.values(plot.axisStates)) {
-                for (const key of [...store.keys()]) if (!liveAxes.has(key)) store.delete(key);
+            // in both view modes, in each unit mode (DEC-138) once that
+            // mode's axes are known; recreated, it autoscales normally.
+            for (const unitMode of ["engineering", "per_unit"]) {
+                const liveAxes = wwErLiveAxisKeys(items, unitMode);
+                if (!liveAxes) continue;
+                for (const viewMode of ["grouped", "combined"]) {
+                    const store = wwErAxisStore(viewMode, unitMode);
+                    for (const key of [...store.keys()]) if (!liveAxes.has(key)) store.delete(key);
+                }
             }
-            const axisStore = plot.axisStates[plot.viewMode];
+            const axisStore = wwErAxisStore(plot.viewMode, wwErState.unitMode);
             // Traces are reconciled across all panels: one that moves to
             // another panel (a view-mode switch, a changed display axis)
             // keeps its fetched data and any request in flight.
-            const wantedTraces = new Set(items.map((item) => item.key));
+            const wantedTraces = new Set(plotted.map((item) => item.key));
             const traces = new Map();
             for (const trace of wwErPlottedTraces()) {
                 if (wantedTraces.has(trace.key)) traces.set(trace.key, trace);
@@ -16498,6 +16787,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     const placement = wwErYAxisPlacement(index);
                     for (const item of group.items) {
                         const trace = traces.get(item.key) || wwErCreateTrace(item);
+                        wwErAssignTraceUnit(trace, item);
                         trace.timing = item.timing;
                         trace.panel = panel;
                         trace.axisIndex = index;
@@ -16533,6 +16823,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 plot.panels.every((panel, index) => panelsEl.children[index] === panel.containerEl);
             if (!inOrder) for (const panel of plot.panels) panelsEl.appendChild(panel.containerEl);
 
+            // Fit All counts every selected channel, plotted or not (a
+            // PU-unavailable channel never moves the view).
             const fitAll = wwErFitAllRange(items.map((item) => item.timing));
             const viewport = wwErNextViewport(plot.viewport, plot.atFitAll, fitAll);
             plot.fitAll = fitAll;
@@ -16584,21 +16876,30 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const axes = plot.panels.reduce((count, panel) => count + panel.axes.length, 0);
             const channels = wwErPlottedTraces().length;
             const stale = wwErStaleMembers().length;
+            const items = wwErPlotItems();
+            const puUnavailable = items.filter((item) => item.display.state === "unavailable").length;
+            const puPending = items.some((item) => item.display.state === "pending");
             document.getElementById("wwErCanvasMeta").textContent = wwErDefined()
                 ? members.length + (members.length === 1 ? " record selected" : " records selected") +
                   " · " + channels + (channels === 1 ? " channel" : " channels") +
                   (plot.viewMode === "combined"
                       ? " on " + axes + (axes === 1 ? " Y axis" : " Y axes")
                       : " in " + panels + (panels === 1 ? " panel" : " panels")) +
+                  (puUnavailable ? " · " + puUnavailable + " PU unavailable" : "") +
                   (stale ? " · removed records to resolve" : "")
                 : "No reconstruction records selected";
             const empty = document.getElementById("wwErEmptyState");
             empty.hidden = panels > 0;
-            empty.textContent = wwErDefined()
-                ? "No channels plotted. Open a record's Channels in the left panel and select analog channels to plot them on the common timeline."
-                : "No reconstruction records selected. Select records in the left panel to place them on one common timeline.";
+            empty.textContent = !wwErDefined()
+                ? "No reconstruction records selected. Select records in the left panel to place them on one common timeline."
+                : items.length && puPending
+                    ? "Reading the per-unit bases of the selected channels…"
+                    : items.length
+                        ? "No selected channel can be shown in Per Unit. Switch Units to ENG, or configure per-unit bases in Waveform."
+                        : "No channels plotted. Open a record's Channels in the left panel and select analog channels to plot them on the common timeline.";
             wwErSyncSpanNotice();
             wwErSyncAxisNotice();
+            wwErSyncUnitNotice(items);
             wwErSyncToolbar();
         }
 
@@ -16656,6 +16957,27 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             el.innerHTML = wwErNoticeHtml("", axes + " Y axes in one panel",
                 "<span>Each additional axis narrows the plot area. The Grouped view gives every quantity and unit its own panel.</span>");
+            el.hidden = false;
+        }
+
+        // Per Unit (DEC-138): the selected channels that are not plotted
+        // because they have no per-unit basis -- they stay selected.
+        function wwErSyncUnitNotice(items) {
+            const el = document.getElementById("wwErUnitNotice");
+            const unavailable = items.filter((item) => item.display.state === "unavailable");
+            if (!unavailable.length) {
+                el.hidden = true;
+                el.innerHTML = "";
+                return;
+            }
+            const one = unavailable.length === 1;
+            const names = unavailable.map((item) => wwRichLabelHtml(escapeHtml(wwErMemberName(item.recordId)) + " · " +
+                wwChannelDisplayNameHtml(item.sourceId, item.channelName))).join(", ");
+            el.innerHTML = wwErNoticeHtml("warn", unavailable.length + (one ? " selected channel is" : " selected channels are") + " PU unavailable",
+                "<span>" + names + "</span>" +
+                "<span>No per-unit basis is resolved for " + (one ? "it" : "them") + ", so " + (one ? "it is" : "they are") +
+                " not plotted in Per Unit and " + (one ? "stays" : "stay") + " selected. Per-unit bases are configured in Waveform " +
+                "(Unit Mode → Per-Unit Settings…). Switch Units to ENG to see the recorded values.</span>");
             el.hidden = false;
         }
 
@@ -16773,8 +17095,28 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return timing && timing.recordId === annotation.channel.record_id ? timing : null;
         }
 
+        // How a Callout's / Peak's channel is shown now (DEC-138).
+        function wwErAnnotationDisplay(annotation) {
+            const channel = annotation.channel;
+            return wwErChannelUnitDisplay(wwErChannelKindOf(channel.source_id), channel.source_id, channel.channel_name);
+        }
+
+        // A Peak's measurement for the CURRENT display of its channel (a
+        // measurement in the other unit is not this view's).
         function wwErAnnotationPeak(annotation) {
-            return wwErState.annotationUi.peakResults[annotation.annotation_id] || null;
+            const result = wwErState.annotationUi.peakResults[annotation.annotation_id] || null;
+            return result && result.displayKey === wwErAnnotationDisplay(annotation).key ? result : null;
+        }
+
+        // A Callout in Per Unit (DEC-138): its SAME stored sample, read in
+        // pu -- the anchor never moves because the unit changed.
+        function wwErCalloutValueKey(annotation) {
+            return wwErAnnotationDisplay(annotation).key + "|" + annotation.anchor.sample_index + "|" + annotation.anchor.source_elapsed_s;
+        }
+
+        function wwErCalloutDisplayValue(annotation) {
+            const entry = wwErState.annotationUi.calloutValues[annotation.annotation_id];
+            return entry && entry.key === wwErCalloutValueKey(annotation) ? entry : null;
         }
 
         // Reconstruction time of an annotation, or null.
@@ -16787,10 +17129,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return peak && peak.available ? wwErSourceElapsedToReconstructionTime(peak.sourceElapsed, timing.totalOffsetS) : null;
         }
 
+        // The value an annotation is drawn at, in its channel's current
+        // unit display (null: not drawn).
         function wwErAnnotationValue(annotation) {
-            if (annotation.type === "callout") return annotation.anchor.value;
+            if (annotation.type === "callout") {
+                if (wwErAnnotationDisplay(annotation).state === "engineering") return annotation.anchor.value;
+                const shown = wwErCalloutDisplayValue(annotation);
+                return shown && shown.available ? shown.value : null;
+            }
             const peak = wwErAnnotationPeak(annotation);
             return peak && peak.available ? peak.value : null;
+        }
+
+        // A Peak's value line: Waveform's text, or "PU unavailable".
+        function wwErPeakValueLine(annotation) {
+            const peak = wwErAnnotationPeak(annotation);
+            if (peak && peak.puUnavailable) return (annotation.type === "peak_max" ? "+Peak" : "-Peak") + ": PU unavailable";
+            return wwPeakValueLineText(wwErAsWaveformAnnotation(annotation));
         }
 
         // The shape Waveform's shared presentation helpers read
@@ -16821,11 +17176,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const channelText = wwErAnnotationChannelText(annotation);
             if (!wwErAnnotationTiming(annotation)) return channelText + " · Record not in the reconstruction";
             if (annotation.type === "callout") {
-                const value = Number.isFinite(annotation.anchor.value)
-                    ? annotation.anchor.value.toFixed(3) + (annotation.anchor.unit ? " " + annotation.anchor.unit : "") : "—";
+                const display = wwErAnnotationDisplay(annotation);
+                const shown = display.state === "engineering"
+                    ? { available: Number.isFinite(annotation.anchor.value), value: annotation.anchor.value, unit: annotation.anchor.unit }
+                    : wwErCalloutDisplayValue(annotation);
+                const value = display.state === "unavailable" || (shown && shown.puUnavailable) ? "PU unavailable"
+                    : shown && shown.available ? shown.value.toFixed(3) + (shown.unit ? " " + shown.unit : "") : "—";
                 return channelText + " · " + wwErAnnotationTimeText(wwErAnnotationTime(annotation)) + " · " + value;
             }
             const peak = wwErAnnotationPeak(annotation);
+            if (peak && peak.puUnavailable) return channelText + " · PU unavailable";
             if (!peak || !peak.available) return channelText + " · Unavailable for current view";
             return channelText + " · t = " + wwErAnnotationTimeText(wwErAnnotationTime(annotation));
         }
@@ -16949,7 +17309,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (anchored && annotation.type !== "callout") {
                     const valueLine = el.querySelector(".ww-peak-value-line");
                     const timeLine = el.querySelector(".ww-peak-time-line");
-                    if (valueLine) valueLine.textContent = wwPeakValueLineText(wwErAsWaveformAnnotation(annotation));
+                    if (valueLine) valueLine.textContent = wwErPeakValueLine(annotation);
                     if (timeLine) {
                         const time = wwErAnnotationTime(annotation);
                         timeLine.textContent = time === null ? "" : "t = " + wwErAnnotationTimeText(time);
@@ -17031,7 +17391,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 category.textContent = wwAnnotationCategoryLabel(shape);
                 const preview = document.createElement("div");
                 preview.className = "ww-annotation-list-item-preview";
-                const summary = wwAnnotationSummary(shape);
+                const summary = annotation.type === "peak_max" || annotation.type === "peak_min"
+                    ? wwErPeakValueLine(annotation) : wwAnnotationSummary(shape);
                 preview.textContent = summary;
                 const meta = document.createElement("div");
                 meta.className = "ww-annotation-list-item-meta";
@@ -17178,29 +17539,83 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return { record_id: trace.recordId, source_id: trace.sourceId, channel_name: trace.channelName };
         }
 
-        // Waveform's nearest-real-sample endpoint, at the trace's SOURCE time.
+        // Waveform's nearest-real-sample endpoint, at a channel's SOURCE
+        // time, in `unitMode`: { body } or { error }.
+        async function wwErRequestAnchor(kind, sourceId, channelName, nativeTime, unitMode) {
+            const calculated = kind === "calculated";
+            const base = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId());
+            try {
+                const response = await fetch(base + (calculated
+                    ? "/calculated-channels/" + encodeURIComponent(sourceId) + "/annotation-anchor"
+                    : "/sources/" + encodeURIComponent(sourceId) + "/annotation-anchor"), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(calculated
+                        ? { approximate_elapsed_seconds: nativeTime, unit_mode: unitMode }
+                        : { channel_name: channelName, approximate_elapsed_seconds: nativeTime, unit_mode: unitMode }),
+                });
+                const body = await response.json().catch(() => null);
+                if (!response.ok || !body) return { error: (body && body.detail && body.detail.message) || "Could not resolve the anchor point." };
+                return { body };
+            } catch (error) {
+                return { error: "could not reach the backend." };
+            }
+        }
+
+        // A Callout's anchor: the nearest real sample at the trace's source
+        // time, stored in engineering units whatever the display (DEC-138).
         async function wwErResolveAnchor(trace, reconstructionTime) {
             const timing = trace.timing;
             const r = Math.min(timing.endS, Math.max(timing.startS, reconstructionTime));
             const native = wwErReconstructionTimeToSourceElapsed(r, timing.totalOffsetS);
-            const calculated = trace.kind === "calculated";
-            const base = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId());
-            try {
-                const response = await fetch(base + (calculated
-                    ? "/calculated-channels/" + encodeURIComponent(trace.sourceId) + "/annotation-anchor"
-                    : "/sources/" + encodeURIComponent(trace.sourceId) + "/annotation-anchor"), {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(calculated
-                        ? { approximate_elapsed_seconds: native, unit_mode: "engineering" }
-                        : { channel_name: trace.channelName, approximate_elapsed_seconds: native, unit_mode: "engineering" }),
+            const resolved = await wwErRequestAnchor(trace.kind, trace.sourceId, trace.channelName, native, "engineering");
+            if (resolved.error) return resolved;
+            const body = resolved.body;
+            return { anchor: { sample_index: body.sample_index, source_elapsed_s: body.elapsed_seconds, value: body.value, unit: body.unit } };
+        }
+
+        // Per Unit (DEC-138): each Callout's value is its stored sample read
+        // in pu (the same sample index, or it is not shown); a channel
+        // without a basis reads "PU unavailable".
+        function wwErRefreshCalloutValues() {
+            const ui = wwErState.annotationUi;
+            for (const annotation of wwErAnnotations()) {
+                if (annotation.type !== "callout") continue;
+                const id = annotation.annotation_id;
+                const display = wwErAnnotationDisplay(annotation);
+                if (display.state !== "per_unit" && display.state !== "unavailable") continue;
+                const key = wwErCalloutValueKey(annotation);
+                const known = ui.calloutValues[id];
+                if (known && known.key === key) continue;
+                if (display.state === "unavailable") {
+                    ui.calloutValues[id] = { key, available: false, puUnavailable: true };
+                    continue;
+                }
+                ui.calloutValues[id] = { key, available: false, pending: true };
+                const channel = annotation.channel;
+                wwErRequestAnchor(wwErChannelKindOf(channel.source_id), channel.source_id, channel.channel_name,
+                    annotation.anchor.source_elapsed_s, "per_unit").then((resolved) => {
+                    const current = ui.calloutValues[id];
+                    if (!current || current.key !== key) return;
+                    const body = resolved.body;
+                    if (!body) {
+                        delete ui.calloutValues[id]; // read again on the next change
+                        return;
+                    }
+                    const same = body.sample_index === annotation.anchor.sample_index;
+                    ui.calloutValues[id] = same && body.per_unit_status === "configured"
+                        ? { key, available: true, value: body.value, unit: body.unit }
+                        : { key, available: false, puUnavailable: body.per_unit_status !== "configured" };
+                    wwErRenderAnnotations();
+                    wwErRenderAnnotationList();
                 });
-                const body = await response.json().catch(() => null);
-                if (!response.ok || !body) return { error: (body && body.detail && body.detail.message) || "Could not resolve the anchor point." };
-                return { anchor: { sample_index: body.sample_index, source_elapsed_s: body.elapsed_seconds, value: body.value, unit: body.unit } };
-            } catch (error) {
-                return { error: "could not reach the backend." };
             }
+        }
+
+        // Every live annotation measurement for the current view and unit.
+        function wwErRefreshAnnotationValues() {
+            wwErRecalculatePeaks();
+            wwErRefreshCalloutValues();
         }
 
         async function wwErCreateCallout(trace, reconstructionTime) {
@@ -17215,7 +17630,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // Waveform's peak-values endpoint over the CURRENT visible range,
         // mapped into the source's own time (and clipped to its extent).
-        async function wwErMeasurePeaks(sourceId, calculated, items) {
+        async function wwErMeasurePeaks(sourceId, calculated, items, unitMode = "engineering") {
             const timing = wwErSourceTiming(sourceId);
             const viewport = wwErState.plot.viewport;
             if (!timing || !viewport || timing.endS < viewport.start || timing.startS > viewport.end) return { results: items.map(() => ({ available: false })) };
@@ -17230,7 +17645,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         requests: items.map((item) => (calculated
                             ? { calculated_channel_id: sourceId, mode: item.mode }
                             : { channel_name: item.channelName, mode: item.mode })),
-                        start_time: start, end_time: end, unit_mode: "engineering",
+                        start_time: start, end_time: end, unit_mode: unitMode,
                     }),
                 });
                 const body = await response.json().catch(() => null);
@@ -17241,10 +17656,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
         }
 
-        function wwErPeakResult(result) {
+        // One measured peak for the channel display `displayKey`; a pu
+        // answer that is not converted is "PU unavailable", never a value.
+        function wwErPeakResult(result, displayKey, unitMode) {
+            if (unitMode === "per_unit" && result && result.per_unit_status && result.per_unit_status !== "configured") {
+                return { available: false, puUnavailable: true, displayKey };
+            }
             return result && result.available
-                ? { available: true, sampleIndex: result.sample_index, sourceElapsed: result.elapsed_seconds, value: result.value, unit: result.unit }
-                : { available: false };
+                ? { available: true, sampleIndex: result.sample_index, sourceElapsed: result.elapsed_seconds, value: result.value, unit: result.unit, displayKey }
+                : { available: false, displayKey };
         }
 
         // Placement stays active until a peak is created (Waveform).
@@ -17254,8 +17674,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const label = type === "peak_max" ? "+Peak" : "-Peak";
             ui.busy = true;
             try {
+                const displayKey = wwErChannelUnitDisplay(trace.kind, trace.sourceId, trace.channelName).key;
                 const measured = await wwErMeasurePeaks(trace.sourceId, trace.kind === "calculated",
-                    [{ channelName: trace.channelName, mode: type === "peak_max" ? "max" : "min" }]);
+                    [{ channelName: trace.channelName, mode: type === "peak_max" ? "max" : "min" }], trace.unitMode);
                 if (ui.generation !== generation) return;
                 const result = measured.results ? measured.results[0] : null;
                 if (measured.error || !result) {
@@ -17268,7 +17689,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
                 const id = await wwErCreateAnnotation({ type, channel: wwErAnnotationChannelOf(trace) });
                 if (id) {
-                    ui.peakResults[id] = wwErPeakResult(result);
+                    ui.peakResults[id] = wwErPeakResult(result, displayKey, trace.unitMode);
                     wwErExitAnnotationPlacement();
                     wwErRenderAnnotations();
                     wwErRenderAnnotationList();
@@ -17281,33 +17702,48 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Maximum/Minimum Peak follow the visible range (Waveform's live
         // recalculation): one batched request per source, only when the
         // window, offset or set changed; a superseded response is dropped.
+        // DEC-138: in the unit each Peak's channel is shown in (one batch per
+        // source AND unit_mode); the same channel, the same visible range,
+        // so the same sample for any positive base. A channel without a
+        // per-unit basis reads "PU unavailable" and is not measured.
         function wwErRecalculatePeaks() {
             const ui = wwErState.annotationUi;
             const viewport = wwErState.plot.viewport;
-            const bySource = new Map();
+            const batches = new Map();
             for (const annotation of wwErAnnotations()) {
                 if (annotation.type !== "peak_max" && annotation.type !== "peak_min") continue;
-                const key = annotation.channel.source_id;
-                if (!bySource.has(key)) bySource.set(key, []);
-                bySource.get(key).push(annotation);
+                const display = wwErAnnotationDisplay(annotation);
+                if (display.state === "pending") continue;
+                if (display.state === "unavailable") {
+                    ui.peakResults[annotation.annotation_id] = { available: false, puUnavailable: true, displayKey: display.key };
+                    continue;
+                }
+                const batchKey = annotation.channel.source_id + "|" + display.unitMode;
+                if (!batches.has(batchKey)) batches.set(batchKey, { sourceId: annotation.channel.source_id, unitMode: display.unitMode, items: [] });
+                batches.get(batchKey).items.push({ annotation, displayKey: display.key });
             }
-            for (const [sourceId, items] of bySource) {
+            for (const [batchKey, batch] of batches) {
+                const { sourceId, unitMode } = batch;
+                const items = batch.items.map((entry) => entry.annotation);
                 const timing = wwErAnnotationTiming(items[0]);
-                const key = [viewport && viewport.start, viewport && viewport.end, timing && timing.totalOffsetS, items.map((a) => a.annotation_id).join(",")].join("|");
-                const known = ui.peakRequests[sourceId];
+                const key = [viewport && viewport.start, viewport && viewport.end, timing && timing.totalOffsetS,
+                    batch.items.map((entry) => entry.annotation.annotation_id + "@" + entry.displayKey).join(",")].join("|");
+                const known = ui.peakRequests[batchKey];
                 if (known && known.key === key) continue;
                 const seq = (known ? known.seq : 0) + 1;
-                ui.peakRequests[sourceId] = { key, seq };
+                ui.peakRequests[batchKey] = { key, seq };
                 const calculated = wwState_isCalculatedErSource(sourceId);
-                wwErMeasurePeaks(sourceId, calculated, items.map((a) => ({ channelName: a.channel.channel_name, mode: a.type === "peak_max" ? "max" : "min" })))
+                wwErMeasurePeaks(sourceId, calculated, items.map((a) => ({ channelName: a.channel.channel_name, mode: a.type === "peak_max" ? "max" : "min" })), unitMode)
                     .then((measured) => {
-                        const current = ui.peakRequests[sourceId];
+                        const current = ui.peakRequests[batchKey];
                         if (!current || current.seq !== seq) return;
                         if (!measured.results) {
                             current.key = null; // retry on the next change
                             return;
                         }
-                        items.forEach((annotation, index) => { ui.peakResults[annotation.annotation_id] = wwErPeakResult(measured.results[index]); });
+                        batch.items.forEach((entry, index) => {
+                            ui.peakResults[entry.annotation.annotation_id] = wwErPeakResult(measured.results[index], entry.displayKey, unitMode);
+                        });
                         wwErRenderAnnotations();
                         wwErRenderAnnotationList();
                     });
@@ -17579,6 +18015,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // at that sample (backend null, DEC-084).
         function wwErCursorValueText(entry, kind) {
             if (!entry || !entry[kind]) return "—";
+            // DEC-138: never a value in another unit instead.
+            if (entry.puUnavailable) return WW_ER_PU_UNAVAILABLE_CELL;
             const point = entry[kind];
             if (point.noSample) return "No sample";
             if (point.value === null) return "Unavailable";
@@ -17586,7 +18024,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwErCursorDeltaText(entry) {
-            if (!entry || !entry.a || !entry.b || entry.a.value === null || entry.b.value === null) return "—";
+            if (!entry || entry.puUnavailable || !entry.a || !entry.b || entry.a.value === null || entry.b.value === null) return "—";
             const delta = entry.b.value - entry.a.value;
             return (delta > 0 ? "+" : "") + wwFormatEngineeringValue(delta);
         }
@@ -17598,13 +18036,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const shown = wwErShownCursorTimes();
             if ((kind === "a" && shown.a === null) || (kind === "b" && shown.b === null) ||
                 (kind === "delta" && (shown.a === null || shown.b === null))) return "—";
+            // A selected channel without a per-unit basis is not plotted in
+            // Per Unit (DEC-138): it says so instead of a value.
+            const selection = wwErState.selectedChannels[key];
+            if (selection && wwErChannelUnitDisplay(selection.kind, selection.sourceId, selection.channelName).state === "unavailable") {
+                return kind === "delta" ? "—" : WW_ER_PU_UNAVAILABLE_CELL;
+            }
             const trace = wwErTraceByKey(key);
             if (!trace || !trace.cursorValues) return "—";
             return kind === "delta" ? wwErCursorDeltaText(trace.cursorValues) : wwErCursorValueText(trace.cursorValues, kind);
         }
 
         function wwErTreeCursorCellHtml(key, kind) {
-            return '<span class="cur-value cur-value--' + kind + '">' + escapeHtml(wwErTreeCursorText(key, kind)) + "</span>";
+            const text = wwErTreeCursorText(key, kind);
+            const title = text === WW_ER_PU_UNAVAILABLE_CELL ? ' title="' + escapeHtml(WW_ER_PU_UNAVAILABLE_CELL_TITLE) + '"' : "";
+            return '<span class="cur-value cur-value--' + kind + '"' + title + ">" + escapeHtml(text) + "</span>";
         }
 
         // Re-paints every channel row's cursor cells in place.
@@ -17612,7 +18058,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             for (const row of document.querySelectorAll("#wwErMembersPanel tr.ww-er-channel-row")) {
                 for (const kind of ["a", "b", "delta"]) {
                     const cell = row.querySelector(".cur-value--" + kind);
-                    if (cell) cell.textContent = wwErTreeCursorText(row.dataset.erChannelKey, kind);
+                    if (!cell) continue;
+                    cell.textContent = wwErTreeCursorText(row.dataset.erChannelKey, kind);
+                    if (cell.textContent === WW_ER_PU_UNAVAILABLE_CELL) cell.title = WW_ER_PU_UNAVAILABLE_CELL_TITLE;
+                    else cell.removeAttribute("title");
                 }
             }
         }
@@ -17799,13 +18248,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         // The value requests for the current cursors, grouped the way the
         // backend answers them: native channels per record, calculated
-        // channels per timing source (they share its total offset).
+        // channels per timing source (they share its total offset) -- and
+        // per unit_mode (DEC-138): a pu channel's values are asked in pu,
+        // every other channel's in engineering units.
         function wwErCursorValueGroups() {
             const groups = new Map();
             for (const trace of wwErPlottedTraces()) {
                 const calculated = trace.kind === "calculated";
-                const id = (calculated ? "calc|" : "src|") + (calculated ? trace.timingSourceId : trace.sourceId);
-                if (!groups.has(id)) groups.set(id, { id, calculated, sourceId: trace.sourceId, timing: trace.timing, traces: [] });
+                const id = (calculated ? "calc|" : "src|") + (calculated ? trace.timingSourceId : trace.sourceId) + "|" + trace.unitMode;
+                if (!groups.has(id)) groups.set(id, { id, calculated, sourceId: trace.sourceId, timing: trace.timing, unitMode: trace.unitMode, traces: [] });
                 groups.get(id).traces.push(trace);
             }
             return [...groups.values()];
@@ -17829,7 +18280,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const nativeA = shown.a !== null ? wwErReconstructionTimeToSourceElapsed(shown.a, offset) : null;
                 const nativeB = shown.b !== null ? wwErReconstructionTimeToSourceElapsed(shown.b, offset) : null;
                 const names = group.traces.map((t) => (group.calculated ? t.sourceId : t.channelName));
-                const key = [nativeA, nativeB, names.join("\u0001")].join("|");
+                const key = [nativeA, nativeB, names.join("\u0001"), group.traces.map((t) => t.unitKey).join("\u0001")].join("|");
                 const known = plot.cursorRequests[group.id];
                 if (known && known.key === key && known.done && group.traces.every((t) => t.cursorValues)) return;
                 const seq = (known ? known.seq : 0) + 1;
@@ -17838,8 +18289,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const url = group.calculated ? base + "/calculated-channels/cursor-values"
                     : base + "/sources/" + encodeURIComponent(group.sourceId) + "/cursor-values";
                 const body = group.calculated
-                    ? { calculated_channel_ids: names, cursor_a_time: nativeA, cursor_b_time: nativeB, unit_mode: "engineering" }
-                    : { analog_channel_names: names, cursor_a_time: nativeA, cursor_b_time: nativeB, unit_mode: "engineering" };
+                    ? { calculated_channel_ids: names, cursor_a_time: nativeA, cursor_b_time: nativeB, unit_mode: group.unitMode }
+                    : { analog_channel_names: names, cursor_a_time: nativeA, cursor_b_time: nativeB, unit_mode: group.unitMode };
                 let payload = null;
                 try {
                     const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -17869,6 +18320,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         };
                         trace.cursorValues = {
                             unit: item.unit,
+                            // The SAME nearest samples in the other unit;
+                            // a pu answer that is not converted is never
+                            // shown as a value (DEC-138).
+                            puUnavailable: group.unitMode === "per_unit" && item.per_unit_status !== "configured",
                             a: point(shown.a, item.a_value, payload.cursor_a ? payload.cursor_a.sample_time : null),
                             b: point(shown.b, item.b_value, payload.cursor_b ? payload.cursor_b.sample_time : null),
                         };
@@ -18010,7 +18465,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (!annotationIds.has(id)) delete wwErState.annotationUi.peakResults[id];
             }
             if (wwErState.annotationUi.selectedId && !annotationIds.has(wwErState.annotationUi.selectedId)) wwErState.annotationUi.selectedId = null;
-            wwErRecalculatePeaks();
+            wwErRefreshAnnotationValues();
             wwErRenderAnnotationList();
             wwErScheduleAnnotationRender();
         }
@@ -51540,6 +51995,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // DEC-135: Relative / Absolute time display (labels only).
         document.getElementById("wwErTimeRelativeBtn").addEventListener("click", () => wwErSetTimeDisplay("relative"));
         document.getElementById("wwErTimeAbsoluteBtn").addEventListener("click", () => wwErSetTimeDisplay("absolute"));
+        // DEC-138: Engineering / Per Unit display (Waveform owns the settings).
+        document.getElementById("wwErUnitEngineeringBtn").addEventListener("click", () => wwErSetUnitMode("engineering"));
+        document.getElementById("wwErUnitPerUnitBtn").addEventListener("click", () => wwErSetUnitMode("per_unit"));
         // Slice 3E: Event Reconstruction's own A/B cursors.
         document.getElementById("wwErCursorModeBtn").addEventListener("click", wwErToggleCursors);
         document.getElementById("wwErCursorCloseA").addEventListener("click", () => wwErCloseCursor("a"));

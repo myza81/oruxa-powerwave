@@ -113,6 +113,15 @@ Unary operations on source channels, source channels themselves and
 Current arithmetic are unchanged. See
 [DECISIONS.md — DEC-116](DECISIONS.md#dec-116--per-unit-base-selection-follows-one-representation-rule-on-both-the-measurement-group-and-source-default-paths-generic-multi-input-voltage-arithmetic-and-its-unary-descendants-never-auto-resolves-a-base).
 
+**Revision note (2026-10-03, DEC-138)**: Event Reconstruction displays
+Per Unit as a **consumer only**. Configuration stays on Waveform; Event
+Reconstruction reads each channel's resolved basis (GET
+…/per-unit-resolution) and pu values from the same endpoints, so the
+precedence, L-L / L-G denominators and calculated-channel rules in this
+document apply to it unchanged. A `base_required` channel is shown there
+as "PU unavailable" (not plotted) rather than in engineering units. See
+[DECISIONS.md — DEC-138](DECISIONS.md#dec-138--waveform-owns-per-unit-configuration-event-reconstruction-consumes-the-resolved-per-unit-result-and-provides-engineering--per-unit-display-only).
+
 ---
 
 ## 1. Fundamental purpose

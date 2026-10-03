@@ -358,3 +358,24 @@ def resolve_display_axis(engineering_type: str, engineering_quantity: str, raw_u
     if not unit:
         return DisplayAxis(quantity=_display_quantity(quantity), unit="", key=None, normalized=False)
     return DisplayAxis(quantity=_display_quantity(quantity), unit=unit, key=quantity + "|raw:" + unit, normalized=False)
+
+
+#: The unit a per-unit-converted value is displayed in (the waveform /
+#: cursor / peak responses' own `unit` once `per_unit_status` is
+#: "configured").
+PER_UNIT_DISPLAY_UNIT = "pu"
+
+
+def resolve_per_unit_display_axis(engineering_type: str, engineering_quantity: str) -> DisplayAxis:
+    """The display axis of a channel's values once converted to per unit
+    (Event Reconstruction Per-Unit Display, DEC-138): the same quantity-
+    aware rule as `resolve_display_axis()`, for the unit "pu" -- so
+    Voltage (pu), Current (pu), ... stay separate axes and never collapse
+    into one "pu" axis merely because the unit string is equal.
+
+    Display metadata only. Whether a channel's values ARE converted is
+    never decided here: that is the per-unit resolution
+    (`app.services.waveform_service._resolve_effective_per_unit()` and its
+    calculated-channel counterpart); this axis applies only to a channel
+    whose resolution is "configured"."""
+    return resolve_display_axis(engineering_type, engineering_quantity, PER_UNIT_DISPLAY_UNIT)

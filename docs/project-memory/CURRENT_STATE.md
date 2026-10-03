@@ -176,9 +176,21 @@ DEC-122 display timezone).
       Standing principle: common tools share iconography and interaction
       language; page state and workflow stay page-owned.
 
-    Not yet built: Event Reconstruction Per-Unit Display (next planned;
-    Waveform owns per-unit configuration, Event Reconstruction only
-    consumes the resolved settings); Y step zoom; an overview navigator
+  - **Per-Unit Display (DEC-138).** "Units [ENG | PU]", Engineering by
+    default; display only. Waveform owns per-unit configuration; Event
+    Reconstruction consumes the backend's resolved basis (GET
+    …/per-unit-resolution) and the existing endpoints' pu values — never
+    a base, √3 or conversion of its own, never a settings write.
+    - Configured channels plot in pu on quantity-aware axes (Voltage (pu),
+      Current (pu), … in Grouped and Combined); Power / Frequency stay in
+      engineering units, as in Waveform.
+    - A channel without a basis stays selected and reads "PU unavailable"
+      (tree badge, notice, cursor cells "PU n/a"); it is not plotted.
+    - Y state is per unit mode; cursors, Callouts and Peaks keep their
+      samples and show the current unit's value.
+    - Settings changed in Waveform are read again on the next visit.
+
+    Not yet built: Y step zoom; an overview navigator
     (deferred until Fit Record UAT); panel resizing (fixed 180 px per
     Grouped panel, 420 px Combined).
   - It never reads or writes the Waveform `ww` state, panels or

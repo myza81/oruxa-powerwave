@@ -22117,6 +22117,107 @@ Reconstruction feature is **not** complete.
   configuration; Event Reconstruction only consumes the resolved
   settings.
 
+## DEC-138 — Waveform owns per-unit configuration; Event Reconstruction consumes the resolved per-unit result and provides Engineering / Per Unit display only
+
+Date: 2026-10-03
+Status: Approved (owner, "Event Reconstruction Per-Unit Display" task) —
+implemented on `feat/event-reconstruction`; not merged. The Event
+Reconstruction feature is **not** complete.
+
+### Decisions (owner)
+
+1. **Ownership rule (durable).** Waveform owns per-unit configuration
+   (Measurement Groups, Source Default, voltage reference, current base).
+   Event Reconstruction consumes the RESOLVED per-unit result and provides
+   an Engineering / Per Unit display only. It never edits, saves or
+   derives a per-unit setting: no Manage Per-Unit, no group editor, no
+   base entry, no L-L / L-G choice, no channel-to-group assignment.
+2. **Display only.** The switch changes only Y values/units. Records,
+   reference, corrections, annotations, the X viewport, Fit All, the time
+   display, cursors, the channel selection, the view mode and the active
+   record are untouched. The default is Engineering.
+3. **Unavailable basis.** A selected channel without a valid resolved
+   basis stays selected and is shown as **PU unavailable** in Per Unit:
+   never deselected, never plotted with engineering values on a pu axis,
+   never zero, never a stale or invented value. Engineering restores it
+   at once.
+4. **Grouping stays quantity-aware.** Voltage (pu), Current (pu), … are
+   separate axes (Grouped panels / Combined Y axes); native and calculated
+   channels of one quantity share one.
+5. **Y state is unit-mode-local.** Engineering and Per Unit Y ranges
+   (automatic or manual) are never copied between unit modes.
+
+### Implementation (`[FACT]`)
+
+- **Resolved basis path.** For every selected channel (and every Callout's
+  / Peak's channel) in Per Unit, Event Reconstruction reads the backend's
+  own resolution — `GET …/sources/{id}/per-unit-resolution?channel_name=`
+  (through Waveform's `wwFetchChannelPerUnitResolution()`) or
+  `GET …/calculated-channels/{id}/per-unit-resolution` — built from the
+  exact resolver `GET …/waveform?unit_mode=per_unit` uses
+  (`waveform_service._resolve_effective_per_unit()`: Measurement Group
+  first, DEC-051 precedence, the DEC-078 angle guardrail, then Source
+  Default; calculated channels through the existing inheritance incl.
+  DEC-052 / DEC-116). pu values come from the existing waveform, cursor-
+  values, peak-values and annotation-anchor endpoints with
+  `unit_mode="per_unit"`. The frontend never derives a base, applies √3 or
+  converts a value; a pu response that is not `configured` is never shown
+  as a value.
+- **Status → display.** `configured` → plotted in pu; `base_required` (or
+  an unreadable resolution) → PU unavailable; `not_applicable` → unchanged
+  engineering values, exactly as Waveform shows Power, Frequency, ROCOF
+  and angle channels in its Per Unit mode (the engine has no per-unit
+  definition for them; not invented here).
+- **Additive backend metadata.** `AnalogChannelOut` / `CalculatedChannelOut`
+  gain `per_unit_display_axis_key/_quantity/_unit` from
+  `engineering_units.resolve_per_unit_display_axis()` (the DEC-131 display
+  axis rule for the unit "pu": `Voltage|raw:pu`, `Current|raw:pu`, …).
+  Meaningful only for a `configured` channel; it never decides conversion.
+- **Frontend.** `wwErState.unitMode` ("engineering" | "per_unit") and
+  `wwErState.perUnit` (resolutions per channel, re-read on every page
+  entry so settings changed in Waveform are consumed without recreating
+  the reconstruction). `wwErChannelUnitDisplay()` maps a resolution to
+  the display; `wwErPlotItems()` marks PU-unavailable items not
+  plottable but keeps them in Fit All, so the viewport never moves.
+  - A trace keeps fetched data per unit display (`unitCache`), so
+    switching back does not refetch an unchanged view; a switch never
+    draws engineering values on a pu axis; a request in flight for the
+    other unit is dropped. Visible-range fetching, the min/max envelope
+    and stale-response handling are unchanged (the backend converts after
+    reduction; a positive base keeps min/max order — tested).
+  - Y state: `plot.axisStates["<viewMode>|<unitMode>"]`; Autoscale Y and
+    Reset act on the current unit mode only.
+  - Cursors: the same nearest samples, values requested per unit mode;
+    A, B and Δ all in pu, or "PU n/a" (tooltip "PU unavailable…") —
+    distinct from "No sample" and "Unavailable".
+  - Annotations: ownership and timing unchanged. A Callout keeps its
+    engineering anchor; in Per Unit its value is that same sample read in
+    pu (the same `sample_index` or it is not shown). Peaks are measured in
+    the channel's current unit (the same sample for a positive base).
+    PU-unavailable channels read "PU unavailable". Text Notes unaffected.
+  - UI: a labelled mode selector "Units [ENG | PU]" in Waveform's own
+    wording (group `aria-label` "Unit Mode", ENG/PU, titles "Engineering
+    Units" / "Per Unit"); Waveform's split-menu is not reused because it
+    carries the Per-Unit Settings entry. A tree badge "PU unavailable"
+    (tooltip: configure in Waveform), a notice listing such channels and
+    a meta-line count.
+  - Fit Record's target now needs a *selected* channel of the record
+    (plotted or PU unavailable), not a plotted one.
+- **Intentional difference from Waveform (owner rule 3).** In its Per
+  Unit mode Waveform keeps a `base_required` channel plotted in
+  engineering units in a separate "(Base required)" panel; Event
+  Reconstruction does not plot it (PU unavailable).
+- **Tests.** Backend `test_event_reconstruction_per_unit.py` (12):
+  quantity-aware pu axis, the 275 kV L-L / L-G regression with a
+  conflicting legacy Source Default, pu = engineering / resolved base on
+  full resolution and envelope, same samples for cursors / peaks /
+  anchors, calculated inheritance and DEC-052. Static
+  `TestEventReconstructionPerUnitDisplay` (6). Browser
+  `event-reconstruction-per-unit.spec.js` (8): ownership / no writes,
+  regression + grouping in Grouped and Combined, unavailable channels and
+  settings changed in Waveform, calculated channels, display-only
+  snapshot, unit-local Y, cursors, annotations.
+
 ---
 
 ## How to add a decision

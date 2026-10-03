@@ -278,7 +278,8 @@ test.describe("Event Reconstruction Y-axis drag zoom -- channels and isolation",
     }
     await waitForPlot(page, 2);
     expect((await plotState(page)).groups.map((g) => g.title)).toEqual(["Active Power (MW)", "Frequency (Hz)"]);
-    expect(await page.evaluate(() => wwErState.plot.axisStates.grouped.has("axis:Voltage|V"))).toBe(false);
+    // (Y state per view mode and unit mode, DEC-138.)
+    expect(await page.evaluate(() => wwErAxisStore("grouped", "engineering").has("axis:Voltage|V"))).toBe(false);
     // Recreated: autoscaled normally.
     await selectChannel(page, "STN_A", "VA");
     await waitForPlot(page, 3);
