@@ -22218,6 +22218,79 @@ Reconstruction feature is **not** complete.
   settings changed in Waveform, calculated channels, display-only
   snapshot, unit-local Y, cursors, annotations.
 
+## DEC-139 — Common tools across Powerwave pages share iconography, tooltip wording and compact button styling; Waveform is the reference implementation; page state and workflow stay independently owned
+
+Date: 2026-10-03
+Status: Approved (owner, "STRICT toolbar consistency correction" task) —
+implemented on `feat/event-reconstruction`; not merged. This is a durable,
+**app-wide** UI rule, not an Event-Reconstruction-only one (it generalizes
+DEC-137's own tooltip/icon-reuse principle from annotations to every
+toolbar control). The Event Reconstruction feature is **not** complete.
+
+### Decision (owner)
+
+> Common tools across Powerwave pages must share iconography, tooltip
+> wording, compact button styling and interaction language. Page state
+> and workflow remain independently owned.
+
+Waveform is the reference implementation. When a page's tool performs the
+same function as an existing Waveform tool, that page reuses, unchanged:
+the icon/SVG, the tooltip text, the accessible-name pattern, the compact
+button class (`.ww-icon-btn`, `.secondary`, `.ww-split-btn*`, segmented
+`.theme-toggle.ww-icon-group`), and the hover/active/disabled treatment
+those shared classes already carry — never a second icon, a shortened or
+lengthened tooltip, or a page-specific CSS override of the shared
+disabled/active rule. A page-specific tool gets its own icon in the same
+compact design language. A mode/state selector (not a one-shot action)
+may stay a labelled segmented control. Grouping/separators reuse the
+existing `.ww-toolbar-sep` component at the boundaries a page actually
+has — never a new separator style.
+
+### Implementation (`[FACT]`) — this pass (Event Reconstruction)
+
+- **Audit finding.** Event Reconstruction's toolbar already reached
+  byte-for-byte or wording parity with Waveform for every shared control
+  in the two prior slices (DEC-137 annotations, DEC-138 per-unit): Box
+  Zoom/Pan (verified here to be identical modulo id), the Annotate
+  split-menu and Annotations button, the Zoom In/Out split buttons
+  (Waveform's own `secondary`/`ww-split-btn-main` text-button treatment,
+  not an icon — Waveform has no icon form of these four functions to
+  reuse instead), Reset Time View, Autoscale Y, and A/B Time Cursors.
+  Mode selectors (Grouped|Combined, Relative|Absolute, ENG|PU) already
+  reuse Waveform's own `.theme-toggle.ww-icon-group` segmented-control
+  primitive. The one genuine gap was grouping: neither of Event
+  Reconstruction's two toolbars had any `.ww-toolbar-sep`.
+- **Added.** One separator in `#wwErToolbar`, between the mode/state
+  selectors (drag mode, view mode, time display, unit mode) and the
+  annotation tools — the same "related toggles adjacent, separator
+  before the first standalone tool" logic Waveform's own `#wwToolbar`
+  already follows. One separator in `#wwErCanvasToolbar`, between the
+  Waveform-equivalent tools (Zoom In/Out, Reset Time View, Autoscale Y,
+  A/B Time Cursors) and the Event Reconstruction-specific Fit Record —
+  Waveform's own per-Time-Group canvas toolbar has no internal separator
+  because it has no page-specific tool there; this is the same component
+  reused at the one boundary Event Reconstruction actually has, not
+  reused at a position copied from Waveform's canvas toolbar (which has
+  none).
+- **Confirmed, not changed:** the "Reset Time View"/"Autoscale Y"/"A/B
+  Time Cursors" tooltips use Waveform's own base function name, without
+  the "for this Time Group" qualifier — Event Reconstruction has no Time
+  Group to name, so that qualifier does not apply; the base wording is
+  identical.
+- **Waveform:** unchanged (no markup, CSS or JS edited).
+- **Tests.** `TestEventReconstructionToolConsistency` (9): Box Zoom/Pan
+  byte-identical to Waveform modulo id; Annotate/Annotations
+  byte-identical SVGs and exact tooltips, plus the one separator before
+  them; shared canvas tools' exact classes and tooltips, read from
+  Waveform's own `wwCreateTimeGroupCanvasDom()`; the A/B Cursors icon
+  byte-identical; Fit Record's distinct icon, the shared compact-button
+  class, and the one separator before it; all six mode selectors stay
+  labelled and share the one segmented-control primitive; the shared
+  disabled-state rule has no page-specific override; Waveform's own
+  toolbar markup (including its Time-Group qualifiers) is byte-unchanged
+  and carries no new separator; Event Reconstruction's handlers never
+  read Waveform's `ww` drag/cursor/annotation state.
+
 ---
 
 ## How to add a decision

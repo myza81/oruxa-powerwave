@@ -1260,10 +1260,64 @@ class TestEventReconstructionAnnotations:
             assert gone not in source, gone
 
 
+def _stripped_id(markup: str, old_id: str, new_id: str) -> str:
+    """One control's markup with its page-specific id swapped for its
+    Waveform counterpart's, so the REST can be compared byte for byte --
+    the strongest possible "same icon/tooltip/class/geometry" proof,
+    stronger than checking each attribute separately."""
+    return markup.replace(old_id, new_id)
+
+
+def _div_by_id(source: str, element_id: str) -> str:
+    """A `<div id="...">`, up to its own first `</div>` -- only valid for
+    a div with no nested div, which every control wrapper used below is."""
+    i = source.index(f'id="{element_id}"')
+    start = source.rindex("<div", 0, i)
+    end = source.index("</div>", start) + len("</div>")
+    return source[start:end]
+
+
+def _div_matching_by_id(source: str, element_id: str) -> str:
+    """A `<div id="...">`, up to its own true matching `</div>` (nesting
+    depth tracked), for a wrapper that DOES contain further divs."""
+    i = source.index(f'id="{element_id}"')
+    start = source.rindex("<div", 0, i)
+    depth, j = 0, start
+    while True:
+        next_open = source.find("<div", j + 1)
+        next_close = source.find("</div>", j + 1)
+        if depth == 0 and next_close < next_open:
+            return source[start:next_close + len("</div>")]
+        if next_open != -1 and (next_close == -1 or next_open < next_close):
+            depth += 1
+            j = next_open
+        else:
+            depth -= 1
+            j = next_close
+
+
 class TestEventReconstructionToolConsistency:
-    """DEC-137: common tools across Powerwave pages share iconography and
-    interaction language; page state and workflow stay independently
-    owned."""
+    """DEC-137/DEC-139: common tools across Powerwave pages share
+    iconography, tooltip wording, compact button styling and interaction
+    language (the icon/component, not just its presence); page state and
+    workflow stay independently owned. Every assertion below compares
+    against the ACTUAL Waveform markup read from the same source -- never
+    an assumed/expected string -- so a future Waveform edit that drifts
+    from this file would fail these tests rather than go unnoticed."""
+
+    def test_box_zoom_and_pan_are_byte_identical_to_waveform(self):
+        """Section 4/15A/15C: not merely "an icon exists" -- the whole
+        control (wrapper class, icon SVG, tooltip, aria-label, button
+        geometry class) is identical, modulo only the id."""
+        source = _source()
+        page = _er_page(source)
+        wf_wrap = _div_by_id(source, "dragModeToggle")
+        er_wrap = _div_by_id(page, "wwErDragModeToggle")
+        normalized = _stripped_id(er_wrap, "wwErDragModeToggle", "dragModeToggle")
+        normalized = _stripped_id(normalized, "wwErDragModeZoomBtn", "dragModeZoomBtn")
+        normalized = _stripped_id(normalized, "wwErDragModePanBtn", "dragModePanBtn")
+        assert normalized == wf_wrap
+        assert _svgs(er_wrap) == _svgs(wf_wrap) and len(_svgs(er_wrap)) == 2
 
     def test_annotate_and_annotations_controls_are_waveforms(self):
         source = _source()
@@ -1282,12 +1336,34 @@ class TestEventReconstructionToolConsistency:
         assert _svgs(er_list) == _svgs(wf_list)
         assert 'title="Annotations" aria-label="Annotations"' in er_list and 'title="Annotations" aria-label="Annotations"' in wf_list
         assert 'class="ww-annotation-count-badge" id="wwErAnnotationCountBadge"' in er_list
-        # Inside Event Reconstruction's own toolbar.
+        # Inside Event Reconstruction's own toolbar, grouped (DEC-139:
+        # Waveform's own separator) away from the mode selectors before it.
         toolbar = _between(page, '<div class="ww-toolbar" id="wwErToolbar">', 'id="wwErAnnotationGuidance"')
         assert 'id="wwErAnnotateSplit"' in toolbar and 'id="wwErAnnotationListBtn"' in toolbar
+        assert toolbar.count('<span class="ww-toolbar-sep" aria-hidden="true"></span>') == 1
+        sep_index = toolbar.index('<span class="ww-toolbar-sep"')
+        assert toolbar.index('id="wwErUnitModeToggle"') < sep_index < toolbar.index('id="wwErAnnotateSplit"')
 
-    def test_equivalent_canvas_tools_reuse_waveforms_wording(self):
-        page = _er_page(_source())
+    def test_equivalent_canvas_tools_reuse_waveforms_classes_and_exact_tooltips(self):
+        """Section 1/9: not just the tooltip string -- the same compact
+        button CLASS (secondary/.ww-split-btn-main/.ww-icon-btn/.ww-tg-*)
+        every one of these controls carries in Waveform's own canvas
+        toolbar, read from wwCreateTimeGroupCanvasDom() itself."""
+        source = _source()
+        page = _er_page(source)
+        canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
+        # The shared compact-button classes (Waveform's zoom buttons also
+        # carry one further function-specific class, e.g.
+        # "ww-tg-zoom-in-btn" -- the SHARED part is what must match).
+        for shared_class in ("ww-split-btn-main", "ww-split-btn-trigger", "ww-tg-reset-view-btn", "ww-tg-autoscale-btn", "ww-tg-cursor-mode-btn"):
+            assert shared_class in canvas, shared_class
+            assert shared_class in page, shared_class
+        assert 'class="secondary ww-split-btn-main" id="wwErZoomInBtn"' in page
+        assert 'class="secondary ww-split-btn-main" id="wwErZoomOutBtn"' in page
+        assert 'class="ww-icon-btn ww-split-btn-trigger" id="wwErZoomInAxisBtn"' in page
+        assert 'class="secondary ww-tg-reset-view-btn" id="wwErResetViewBtn"' in page
+        assert 'class="secondary ww-tg-autoscale-btn" id="wwErAutoscaleYBtn"' in page
+        assert 'class="ww-icon-btn ww-tg-cursor-mode-btn" id="wwErCursorModeBtn"' in page
         for markup in (
             'id="wwErZoomInBtn" title="Zoom In — X axis" aria-label="Zoom In — X axis"',
             'title="Choose Zoom In axis" aria-label="Choose Zoom In axis"',
@@ -1297,37 +1373,98 @@ class TestEventReconstructionToolConsistency:
             'id="wwErAutoscaleYBtn" title="Autoscale Y" disabled>Autoscale Y</button>',
         ):
             assert markup in page, markup
+        # Waveform's own literal tooltips use this same base wording too,
+        # only with a Time-Group-specific qualifier Event Reconstruction
+        # has no Time Group to name.
+        for base in ("Zoom In — X axis", "Zoom Out — X axis", "Choose Zoom In axis", "Choose Zoom Out axis"):
+            assert base in canvas
         for old in ("never beyond Fit All", "Fit All and autoscale Y on every panel", "Autoscale Y on every panel",
                     "Event Reconstruction zooms the time axis only"):
             assert old not in page, old
-        # Waveform's own cursor icon (same function, same icon).
-        er_cursor = _element(page, "wwErCursorModeBtn", "button")
-        wf_cursor = _between(_source(), "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
-        assert _svgs(er_cursor)[0] in wf_cursor
 
-    def test_event_reconstruction_specific_tools_get_their_own_icon(self):
+    def test_ab_cursors_icon_is_byte_identical_to_waveform(self):
         source = _source()
-        fit = _element(_er_page(source), "wwErFitRecordBtn", "button")
+        page = _er_page(source)
+        wf_canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
+        wf_svgs = _svgs(wf_canvas)
+        er_cursor = _element(page, "wwErCursorModeBtn", "button")
+        assert _svgs(er_cursor) and _svgs(er_cursor)[0] in wf_svgs
+        assert 'class="ww-icon-btn ww-tg-cursor-mode-btn"' in er_cursor
+        assert 'title="A/B Time Cursors" aria-label="A/B Time Cursors"' in er_cursor
+
+    def test_event_reconstruction_specific_tools_get_their_own_icon_same_compact_design(self):
+        source = _source()
+        page = _er_page(source)
+        fit = _element(page, "wwErFitRecordBtn", "button")
         assert 'class="ww-icon-btn ww-er-fit-record-btn"' in fit and 'aria-label="Fit selected record"' in fit
         icon = _svgs(fit)[0]
-        others = _svgs(_between(source, '<div class="ww-toolbar" id="wwToolbar"', 'id="wwAnnotationGuidance"')) + _svgs(_between(_er_page(source), '<div class="ww-toolbar" id="wwErToolbar">', 'id="wwErAnnotationGuidance"'))
+        others = _svgs(_between(source, '<div class="ww-toolbar" id="wwToolbar"', 'id="wwAnnotationGuidance"')) + _svgs(_between(page, '<div class="ww-toolbar" id="wwErToolbar">', 'id="wwErAnnotationGuidance"'))
         assert icon not in others
+        assert "ww-icon-btn" in fit and "ww-icon" in fit
+        # Set apart from the Waveform-equivalent tools before it by
+        # Waveform's own separator component (DEC-139) -- never a new style.
+        canvas_toolbar = _div_matching_by_id(page, "wwErCanvasToolbar")
+        assert canvas_toolbar.count('<span class="ww-toolbar-sep" aria-hidden="true"></span>') == 1
+        sep_index = canvas_toolbar.index('<span class="ww-toolbar-sep"')
+        assert canvas_toolbar.index('id="wwErCursorModeBtn"') < sep_index < canvas_toolbar.index('id="wwErFitRecordBtn"')
 
     def test_mode_selectors_stay_labelled_segmented_controls(self):
         page = _er_page(_source())
         for button, label in (("wwErViewGroupedBtn", "Grouped"), ("wwErViewCombinedBtn", "Combined"),
-                              ("wwErTimeRelativeBtn", "Relative"), ("wwErTimeAbsoluteBtn", "Absolute")):
+                              ("wwErTimeRelativeBtn", "Relative"), ("wwErTimeAbsoluteBtn", "Absolute"),
+                              ("wwErUnitEngineeringBtn", "ENG"), ("wwErUnitPerUnitBtn", "PU")):
             element = _element(page, button, "button")
             assert element.endswith(f">{label}</button>"), element
             assert "<svg" not in element
+        # Every one reuses Waveform's own segmented-control primitive
+        # (section 13/6: same height/radii/spacing, never a bespoke one).
+        for toggle in ("wwErViewModeToggle", "wwErTimeDisplayToggle", "wwErUnitModeToggle"):
+            group = _element(page, toggle, "div")
+            assert 'class="theme-toggle ww-icon-group ww-er-view-mode"' in group
+
+    def test_disabled_state_uses_the_shared_rule_no_er_specific_override(self):
+        """Section 15D: no Event Reconstruction-only CSS rule weakens or
+        replaces the shared disabled treatment every Waveform compact tool
+        already uses."""
+        source = _source()
+        assert ".ww-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; background: transparent; }" in source
+        page = _er_page(source)
+        for button_id in ("wwErZoomInBtn", "wwErZoomOutBtn", "wwErResetViewBtn", "wwErAutoscaleYBtn", "wwErCursorModeBtn", "wwErFitRecordBtn"):
+            assert "disabled" in _element(page, button_id, "button")
+        # No page-scoped CSS re-defines opacity/cursor for these shared classes.
+        for forbidden in (".ww-er-fit-record-btn:disabled", "#wwErCanvasToolbar .ww-icon-btn:disabled", "#wwErToolbar .secondary:disabled"):
+            assert forbidden not in source, forbidden
 
     def test_waveform_toolbar_is_unchanged(self):
         source = _source()
         assert '<button type="button" class="ww-icon-btn" id="wwAnnotateBtn" aria-haspopup="menu" aria-expanded="false" aria-pressed="false" title="Annotate" aria-label="Annotate">' in source
         assert '<button class="ww-icon-btn" type="button" id="wwAnnotationListBtn" aria-pressed="false" aria-expanded="false" title="Annotations" aria-label="Annotations">' in source
+        assert '<button type="button" id="dragModeZoomBtn" aria-pressed="true" title="Box Zoom" aria-label="Box Zoom">' in source
+        assert '<button type="button" id="dragModePanBtn" aria-pressed="false" title="Pan" aria-label="Pan">' in source
         canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
-        for wording in ("Reset Time View for this Time Group", "Autoscale Y for this Time Group", "Choose Zoom In axis"):
+        for wording in ("Reset Time View for this Time Group", "Autoscale Y for this Time Group", "Choose Zoom In axis",
+                        "A/B Time Cursors for this Time Group"):
             assert wording in canvas, wording
+        # Waveform's own canvas toolbar is untouched -- no new separator was
+        # added there; the one DEC-139 adds lives only in Event
+        # Reconstruction's own toolbars, at the ER-specific-tool boundary
+        # Waveform itself never has.
+        assert "ww-toolbar-sep" not in canvas
+
+    def test_shared_toolbar_primitives_never_introduce_shared_state(self):
+        """Section 12/15I: the same icon/component, ER's own handler and
+        state -- never a read of Waveform's own `ww` drag mode, cursor
+        state, annotation state or toolbar sync function."""
+        module = _er_module(_source())
+        for forbidden in (
+            "ww.dragMode", "ww.panels", "ww.timeGroupCursorState", "ww.annotationPlacementType", "ww.annotations",
+            "wwSyncTimeGroupZoomControls", "wwCreateTimeGroupCanvasDom", "wwSetDragMode(", "wwToggleTimeGroupCursors",
+        ):
+            assert forbidden not in module, forbidden
+        # Its own drag mode only ever writes its own state/DOM.
+        drag = _between(_source(), "function wwErSetDragMode(mode) {", "\n        }\n")
+        assert "wwErState.dragMode = mode;" in drag
+        assert "ww." not in drag
 
 
 class TestEventReconstructionPerUnitDisplay:

@@ -9276,6 +9276,13 @@
                             <button type="button" id="wwErUnitEngineeringBtn" aria-pressed="true" title="Engineering Units">ENG</button>
                             <button type="button" id="wwErUnitPerUnitBtn" aria-pressed="false" title="Per Unit">PU</button>
                         </div>
+                        <!-- DEC-139: Waveform's own toolbar separator (never a
+                             new style) marking the boundary Waveform itself
+                             draws -- between its mode/interaction toggles and
+                             its first standalone tool -- here between the
+                             mode selectors above and the annotation tools
+                             below. -->
+                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
                         <!-- DEC-137: Waveform's own Annotate menu and Annotations
                              button -- identical icons, labels and tooltips --
                              driving Event Reconstruction's own annotations. -->
@@ -9351,6 +9358,14 @@
                                             <button type="button" class="ww-icon-btn ww-tg-cursor-mode-btn" id="wwErCursorModeBtn" aria-pressed="false" title="A/B Time Cursors" aria-label="A/B Time Cursors" disabled>
                                                 <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="6" y1="2.5" x2="6" y2="15.5" stroke-width="1.3" stroke="var(--accent)"/><line x1="12" y1="2.5" x2="12" y2="15.5" stroke-width="1.3" stroke="var(--error)"/><text x="6" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--accent)" font-weight="700">A</text><text x="12" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--error)" font-weight="700">B</text></svg></span>
                                             </button>
+                                            <!-- DEC-139: the boundary between the tools above (all
+                                                 functionally equivalent to a Waveform tool) and the
+                                                 Event Reconstruction-specific tool below. Waveform's
+                                                 own separator component has no occasion to appear
+                                                 inside its own canvas toolbar (it has no page-specific
+                                                 tool there) -- this is that same component, reused at
+                                                 the one boundary Event Reconstruction actually has. -->
+                                            <span class="ww-toolbar-sep" aria-hidden="true"></span>
                                             <!-- Event Reconstruction-specific tool (no Waveform equivalent):
                                                  its own icon in the shared compact icon-button style. -->
                                             <button type="button" class="ww-icon-btn ww-er-fit-record-btn" id="wwErFitRecordBtn" title="Fit selected record" aria-label="Fit selected record" disabled>

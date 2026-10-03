@@ -173,8 +173,13 @@ DEC-122 display timezone).
       Relative/Absolute changes only their time text.
     - The toolbar uses Waveform's Annotate split-menu and Annotations
       button (identical icons and tooltips); Fit Record is an icon tool.
-      Standing principle: common tools share iconography and interaction
-      language; page state and workflow stay page-owned.
+      Standing principle (DEC-139, app-wide, not Event-Reconstruction-only):
+      common tools across Powerwave pages share iconography, tooltip
+      wording and compact button styling; page state and workflow stay
+      page-owned. Event Reconstruction's own two toolbars are now grouped
+      with Waveform's own `.ww-toolbar-sep` component: mode selectors |
+      annotation tools in the main toolbar; Waveform-equivalent tools |
+      Fit Record in the canvas toolbar.
 
   - **Per-Unit Display (DEC-138).** "Units [ENG | PU]", Engineering by
     default; display only. Waveform owns per-unit configuration; Event

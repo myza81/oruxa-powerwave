@@ -4,9 +4,42 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-03** (Event Reconstruction Per-Unit Display)
+Last updated: **2026-10-03** (Event Reconstruction toolbar consistency)
 
 ## What was most recently done
+
+**Event Reconstruction toolbar consistency correction (DEC-139,
+2026-10-03).** The feature is not complete. This is an app-wide UI rule,
+not only an Event Reconstruction one: *common tools across Powerwave
+pages share iconography, tooltip wording, compact button styling and
+interaction language; page state and workflow stay independently owned.*
+Waveform is the reference implementation.
+
+- **Audit result.** Every shared Event Reconstruction toolbar control
+  already matched Waveform byte-for-byte or in exact wording, from the
+  two prior slices (DEC-137 annotations, DEC-138 per-unit) — confirmed,
+  not re-done, for Box Zoom/Pan, the Annotate/Annotations controls, the
+  Zoom In/Out split buttons, Reset Time View, Autoscale Y and A/B Time
+  Cursors (Waveform's own canvas toolbar uses TEXT buttons for the first
+  four, not icons — Event Reconstruction's text buttons already are the
+  correct parity, not a gap).
+- **One real gap, fixed.** Neither of Event Reconstruction's toolbars had
+  any grouping separator. Added two, reusing Waveform's own
+  `.ww-toolbar-sep` component (never a new style): one separating the
+  mode selectors from the annotation tools in the main toolbar, one
+  separating the Waveform-equivalent canvas tools from the
+  Event-Reconstruction-specific Fit Record.
+- **No behavior change.** Presentation only; zoom/pan/reset/autoscale/
+  cursor/annotation/view-mode/time-mode/unit-mode/membership/correction
+  behavior is unchanged, confirmed by the full existing Event
+  Reconstruction test suite passing unchanged.
+- **Tests.** `TestEventReconstructionToolConsistency` (9), each proving
+  genuine parity (byte-identical markup, exact class names, exact
+  tooltip strings) against the actual Waveform source, not merely "an
+  icon exists."
+- **Next.** Owner UAT of the whole Event Reconstruction branch.
+
+## Earlier — Event Reconstruction Per-Unit Display (DEC-138)
 
 **Event Reconstruction Per-Unit Display (DEC-138, 2026-10-03).** The
 feature is not complete.
@@ -29,8 +62,8 @@ feature is not complete.
   Source Default — backend and browser tests.
 - **Tests.** Backend per-unit (12), static (6 new), browser
   `event-reconstruction-per-unit.spec.js` (8).
-- **Next.** Owner UAT of the whole Event Reconstruction branch (see the
-  open items below).
+- **Next (then).** Event Reconstruction toolbar consistency — done,
+  DEC-139 above.
 
 ## Earlier — Event Reconstruction annotation parity (DEC-137)
 

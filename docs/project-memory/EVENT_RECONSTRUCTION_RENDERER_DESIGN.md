@@ -211,6 +211,14 @@ Group" assumption below.**
     refetches and a switch never shows the other unit's values.
   - Y state lives in `plot.axisStates["<viewMode>|<unitMode>"]`
     (`wwErAxisStore()`).
+- **Toolbar consistency (done, 2026-10-03, DEC-139, app-wide rule).**
+  Every shared control already matched Waveform's icon/tooltip/class
+  exactly (Box Zoom/Pan, Annotate/Annotations, Zoom In/Out, Reset Time
+  View, Autoscale Y, A/B Time Cursors, all confirmed against the actual
+  Waveform source, not assumed). The one gap -- no grouping separators --
+  is fixed with two `.ww-toolbar-sep` (Waveform's own component): before
+  the annotation tools in `#wwErToolbar`, and before Fit Record (the one
+  page-specific tool) in `#wwErCanvasToolbar`.
 
 Date: 2026-10-01. Code references are function names in
 `frontend/index.html` and `backend/app/` at commit `33f3178`
