@@ -1949,8 +1949,8 @@ class TestPowerwaveIconAssets:
         markup -- the opposite of the handful of still-inline (no owner
         asset yet) entries TestPowerwaveIconSystem's geometry test covers."""
         registry = _icon_registry(_source())
-        migrated = ("ANNOTATIONS", "ANNOTATE", "SEARCH", "PAN", "ZOOM_IN", "ZOOM_OUT",
-                    "ZOOM_HORIZONTAL", "ZOOM_VERTICAL", "ZOOM_X_IN", "ZOOM_X_OUT", "ZOOM_Y_IN", "ZOOM_Y_OUT",
+        migrated = ("ANNOTATIONS", "ANNOTATE", "SEARCH", "PAN",
+                    "ZOOM_X_IN", "ZOOM_X_OUT", "ZOOM_Y_IN", "ZOOM_Y_OUT",
                     "TIME_ELAPSED", "TIME_RELATIVE", "TIME_ABSOLUTE", "UNIT_ENGINEERING", "UNIT_PER_UNIT",
                     "VIEW_SEPARATE", "VIEW_CUSTOM", "VIEW_COMBINED", "VIEW_SPLIT", "VIEW_GROUPED",
                     "CURSORS_AB", "AUTOSCALE_X", "AUTOSCALE_Y", "FIT_SELECTED_RECORD")
@@ -1961,14 +1961,17 @@ class TestPowerwaveIconAssets:
             assert value.startswith("assets/icons/"), key
             assert (self.ICONS_DIR.parent.parent / value).is_file(), key
 
-    def test_same_semantic_function_resolves_to_the_same_physical_file(self):
-        """The axis-specific zoom keys are deliberate aliases of the two
-        plain zoom files (section 7's own 'do not invent compound icons'
-        instruction) -- proving they are the SAME file, not drifted
-        copies, for every pairing this matters for."""
+    def test_axis_specific_zoom_keys_each_have_their_own_distinct_file(self):
+        """DEC-146: a follow-up owner delivery gave each axis-specific
+        zoom key its own dedicated icon, superseding the former
+        ZOOM_IN/ZOOM_OUT-aliasing scheme (section 7's 'do not invent
+        compound icons' placeholder) -- the four keys must now resolve
+        to four DIFFERENT files, never collapse back to a shared pair."""
         registry = _icon_registry(_source())
-        assert registry["ZOOM_X_IN"] == registry["ZOOM_Y_IN"] == registry["ZOOM_IN"]
-        assert registry["ZOOM_X_OUT"] == registry["ZOOM_Y_OUT"] == registry["ZOOM_OUT"]
+        values = {registry["ZOOM_X_IN"], registry["ZOOM_X_OUT"], registry["ZOOM_Y_IN"], registry["ZOOM_Y_OUT"]}
+        assert len(values) == 4
+        assert "ZOOM_IN" not in registry and "ZOOM_OUT" not in registry
+        assert "ZOOM_HORIZONTAL" not in registry and "ZOOM_VERTICAL" not in registry
 
     def test_no_remote_icon_urls(self):
         source = _source()

@@ -22937,9 +22937,69 @@ move unrelated tools" instruction.
 
 ### Tests
 
-`test_autoscale_x_and_y_are_paired_adjacent_individual_buttons`: proves
-nothing else sits between the two buttons' markup and that they are not
+`test_autoscale_x_and_y_are_paired_adjacent_individual_buttons` (renamed
+`test_autoscale_x_autoscale_y_and_fit_selected_record_are_one_group` by
+DEC-147, which extends this same proof to a third button): proves
+nothing else sits between the buttons' markup and that they are not
 wrapped in a `.theme-toggle`/`.ww-icon-group` segmented container.
+
+---
+
+## DEC-146 — Zoom X/Y get dedicated owner icons; the plain/scope-only zoom icons are removed
+
+Date: 2026-10-04
+Status: Approved (owner, "OWNER ICON UPDATE — ZOOM X / Y ICONS + UNUSED
+ICON CLEANUP") -- implemented on `feat/event-reconstruction`; not merged.
+
+### Decision (owner)
+
+> Replace ZOOM_X_IN/_OUT and ZOOM_Y_IN/_OUT with four new dedicated
+> owner-supplied icons (`zoom_in_x.svg`, `zoom_out_x.svg`,
+> `zoom_in_y.svg`, `zoom_out_y.svg`); do not invent or modify artwork;
+> clean up icon files left with zero live references so the folder
+> does not accumulate dead files.
+
+### Implementation (`[FACT]`)
+
+`WW_TOOL_ICONS` updated: `ZOOM_X_IN` -> `waveform/zoom_in_x.svg`,
+`ZOOM_X_OUT` -> `waveform/zoom_out_x.svg`, `ZOOM_Y_IN` ->
+`waveform/zoom_in_y.svg`, `ZOOM_Y_OUT` -> `waveform/zoom_out_y.svg` --
+each axis/direction now has its own distinct owner file, not a shared
+alias (DEC-143 section 7's "do not invent compound icons" placeholder,
+which aliased all four to the same two plain zoom files, is
+superseded). No handler, interaction, tooltip, aria-label, toolbar
+order, spacing or geometry changed -- `wwSyncTimeGroupZoomControls()`'s
+existing dynamic key-building (`"ZOOM_" + axis.toUpperCase() + "_" +
+...`) already picks up the new files automatically, since it was
+already constructing these exact key names.
+
+**Cleanup (removed, both registry entries and the on-disk `.svg`
+files):**
+- `ZOOM_IN`/`ZOOM_OUT` (`waveform/zoom_in.svg`/`zoom_out.svg`) -- had
+  zero live references anywhere once the axis-specific keys stopped
+  aliasing them; only the four axis-specific keys were ever read by a
+  control.
+- `ZOOM_HORIZONTAL`/`ZOOM_VERTICAL` (`waveform/zoom_horizontal.svg`/
+  `zoom_vertical.svg`) -- registered but never wired to any control;
+  their only stated purpose (a future composite with `zoom_in`/
+  `zoom_out`) is now moot since dedicated per-axis icons exist instead.
+
+**Not touched (out of this ticket's scope):** `waveform/
+reset_time_view.svg`, orphaned by DEC-144's own `AUTOSCALE_X` icon
+swap -- a pre-existing, already-documented orphan, not a zoom icon.
+
+### Tests
+
+Static: `migrated` tuple in
+`test_migrated_entries_are_asset_paths_not_inline_markup` drops the
+four removed keys; `test_same_semantic_function_resolves_to_the_same_
+physical_file` (which asserted the OLD aliasing) replaced by
+`test_axis_specific_zoom_keys_each_have_their_own_distinct_file`
+(asserts four distinct files, and that the four removed keys are
+gone). Browser: full Event Reconstruction suite re-run clean; a
+scratch script (not committed) confirmed each of the four buttons'
+computed `mask-image` resolves to its correct new file in both light
+and dark theme, with zero console errors.
 
 ---
 

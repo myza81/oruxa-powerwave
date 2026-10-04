@@ -13636,8 +13636,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // asset is NEVER redrawn/recoloured/resized; see
         // frontend/assets/icons/README.md and manifest.json for
         // provenance. Same function, same file, everywhere (Waveform
-        // and Event Reconstruction alike) -- e.g. ZOOM_IN is one path,
-        // read by every Zoom In button on both pages.
+        // and Event Reconstruction alike) -- e.g. CARET_DOWN is one
+        // path, read by every split-button's own dropdown trigger on
+        // both pages.
         const WW_TOOL_ICONS = {
             // -- Time Navigation. Box Zoom is retired (DEC-144) -- its own
             // BOX_ZOOM entry (an inline composite, never an owner asset)
@@ -13653,31 +13654,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // own axis/trigger dropdown (Annotate, Unit Mode, Zoom
             // In/Out) -- no owner asset supplied for this; stays inline.
             CARET_DOWN: '<svg viewBox="0 0 18 18"><polyline points="4,6.5 9,11.5 14,6.5" stroke-width="1.6"/></svg>',
-            // Owner-supplied, used as-is (DEC-143 section 7): plain
-            // zoom-in/zoom-out, no axis cue baked into the icon itself --
-            // the owner's own zoom_horizontal.svg/zoom_vertical.svg are
-            // registered separately below but deliberately NOT combined
-            // into a compound icon in this ticket (explicit owner
-            // instruction: "do not invent new compound SVGs... until we
-            // review how these should be combined/presented"). The axis
-            // distinction these composites used to draw now lives in the
-            // button's own tooltip/aria-label text only ("Zoom In — Time
-            // Axis" vs "— Selected Y Axis") -- unchanged, nothing lost.
-            // ZOOM_X_IN/_OUT and ZOOM_Y_IN/_OUT are kept as the exact
-            // same IDs every existing button/test already references,
-            // now aliased to these same two files rather than their own
-            // former hand-drawn composites.
-            ZOOM_IN: "assets/icons/waveform/zoom_in.svg",
-            ZOOM_OUT: "assets/icons/waveform/zoom_out.svg",
-            ZOOM_X_IN: "assets/icons/waveform/zoom_in.svg",
-            ZOOM_X_OUT: "assets/icons/waveform/zoom_out.svg",
-            ZOOM_Y_IN: "assets/icons/waveform/zoom_in.svg",
-            ZOOM_Y_OUT: "assets/icons/waveform/zoom_out.svg",
-            // Owner-supplied scope-only cues (horizontal/vertical) --
-            // registered, not yet wired to any control: the composition
-            // question above is explicitly deferred to a later ticket.
-            ZOOM_HORIZONTAL: "assets/icons/waveform/zoom_horizontal.svg",
-            ZOOM_VERTICAL: "assets/icons/waveform/zoom_vertical.svg",
+            // Owner-supplied, dedicated per-axis icons (follow-up
+            // delivery, supersedes DEC-143 section 7's "do not invent
+            // compound icons" placeholder aliasing): ZOOM_X_IN/_OUT and
+            // ZOOM_Y_IN/_OUT each now resolve to their OWN distinct
+            // owner file, not a shared plain zoom-in/zoom-out icon --
+            // the axis distinction is drawn into the icon itself, not
+            // only the button's tooltip/aria-label text (which stays
+            // unchanged, "Zoom In — Time Axis" vs "— Selected Y Axis").
+            // The former plain ZOOM_IN/ZOOM_OUT keys, and the
+            // zoom_horizontal.svg/zoom_vertical.svg scope-only cues kept
+            // for a possible compound-icon composition, are removed --
+            // that composition question is moot now that dedicated
+            // per-axis icons exist, and nothing else referenced any of
+            // the four keys (zoom_in.svg/zoom_out.svg/
+            // zoom_horizontal.svg/zoom_vertical.svg deleted from the
+            // asset folder too -- a clean folder, not dead files).
+            ZOOM_X_IN: "assets/icons/waveform/zoom_in_x.svg",
+            ZOOM_X_OUT: "assets/icons/waveform/zoom_out_x.svg",
+            ZOOM_Y_IN: "assets/icons/waveform/zoom_in_y.svg",
+            ZOOM_Y_OUT: "assets/icons/waveform/zoom_out_y.svg",
 
             // -- Time Display family -- owner-supplied. --
             TIME_ELAPSED: "assets/icons/waveform/elapsed_time.svg",
@@ -33582,16 +33578,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     const label = actionLabel + " — " + axisLabel;
                     mainBtn.title = label;
                     mainBtn.setAttribute("aria-label", label);
-                    // DEC-141/DEC-143: the icon key still swaps with the
-                    // axis exactly as the tooltip above does -- ZOOM_X_IN/
-                    // _OUT while X is chosen, ZOOM_Y_IN/_OUT while Y is
-                    // (same keys Event Reconstruction's own Y buttons use)
-                    // -- even though, since DEC-143, both resolve to the
-                    // SAME owner-supplied zoom_in.svg/zoom_out.svg (the
-                    // axis distinction lives in the tooltip/aria-label
-                    // text only now, not a separate icon); kept so a
-                    // later owner-supplied axis-specific pair can be
-                    // dropped in by changing only these two keys' values.
+                    // DEC-141/DEC-143/DEC-146: the icon key swaps with
+                    // the axis exactly as the tooltip above does --
+                    // ZOOM_X_IN/_OUT while X is chosen, ZOOM_Y_IN/_OUT
+                    // while Y is (same keys Event Reconstruction's own Y
+                    // buttons use) -- each now its own dedicated
+                    // owner-supplied icon (DEC-146), so the swap changes
+                    // the icon itself, not only the tooltip/aria-label
+                    // text.
                     const iconSpan = mainBtn.querySelector(".ww-icon");
                     if (iconSpan) {
                         const iconKey = "ZOOM_" + axis.toUpperCase() + "_" + (action === "in" ? "IN" : "OUT");
