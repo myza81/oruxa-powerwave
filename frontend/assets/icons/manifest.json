@@ -22,8 +22,8 @@
   "TIME_RELATIVE": { "file": "waveform/relative_time.svg", "source": "owner-supplied" },
   "TIME_ABSOLUTE": { "file": "waveform/absolute_time.svg", "source": "owner-supplied" },
 
-  "UNIT_ENGINEERING": { "file": "waveform/engineering_unit.svg", "source": "owner-supplied", "note": "wired to Event Reconstruction's own ENG/PU buttons (owner correction superseding DEC-140 section 13's text-only finding) -- the former 'Units' text label and ENG/PU text content are removed" },
-  "UNIT_PER_UNIT": { "file": "waveform/per_unit.svg", "source": "owner-supplied", "note": "see UNIT_ENGINEERING" },
+  "UNIT_ENGINEERING": { "file": "waveform/engineering_unit.svg", "source": "owner-supplied", "note": "wired to Event Reconstruction's own ENG/PU buttons (owner correction superseding DEC-140 section 13's text-only finding) -- the former 'Units' text label and ENG/PU text content are removed; artwork refreshed 2026-10-04 (DEC-148), same filename and semantics" },
+  "UNIT_PER_UNIT": { "file": "waveform/per_unit.svg", "source": "owner-supplied", "note": "see UNIT_ENGINEERING; artwork refreshed 2026-10-04 (DEC-148), same filename and semantics" },
 
   "VIEW_SEPARATE": { "file": "waveform/separate_layout.svg", "source": "owner-supplied" },
   "VIEW_CUSTOM": { "file": "waveform/custom_layout.svg", "source": "owner-supplied" },

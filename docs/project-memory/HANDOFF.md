@@ -4,10 +4,57 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-04** (Box Zoom retired; Pan cursor feedback;
-Autoscale X/Y renamed, re-iconed and paired)
+Last updated: **2026-10-04** (dedicated zoom-axis icons; fit/scale-view
+toolbar group; Engineering/Per-Unit artwork refresh)
 
 ## What was most recently done
+
+**Zoom X/Y get dedicated owner icons and dead icon files are cleaned up;
+Autoscale X/Y/Fit Selected Record become one toolbar group; Engineering
+Unit/Per Unit artwork is refreshed (DEC-146/147/148, 2026-10-04,
+app-wide).** Three more owner follow-up tickets on the same branch. See
+[DECISIONS.md — DEC-146](DECISIONS.md#dec-146--zoom-xy-get-dedicated-owner-icons-the-plainscope-only-zoom-icons-are-removed),
+[DEC-147](DECISIONS.md#dec-147--autoscale-x-autoscale-y-and-fit-selected-record-become-one-toolbar-group-amends-dec-145),
+[DEC-148](DECISIONS.md#dec-148--engineering-unit--per-unit-icon-artwork-refreshed-same-filenames-same-semantics)
+and [POWERWAVE_ICON_SYSTEM.md §14](POWERWAVE_ICON_SYSTEM.md#14-dedicated-zoom-axis-icons-the-fitscale-view-group-and-an-engineeringper-unit-artwork-refresh-dec-146dec-147dec-148)
+for the full record.
+
+- **Dedicated zoom-axis icons (DEC-146).** `ZOOM_X_IN`/`ZOOM_X_OUT`/
+  `ZOOM_Y_IN`/`ZOOM_Y_OUT` each now resolve to their own distinct owner
+  file (`zoom_in_x.svg`/`zoom_out_x.svg`/`zoom_in_y.svg`/`zoom_out_y.svg`)
+  instead of the former shared plain-zoom aliasing. No handler/
+  tooltip/behaviour change — `wwSyncTimeGroupZoomControls()`'s existing
+  dynamic key-building already read these exact key names.
+- **Cleanup.** `ZOOM_IN`/`ZOOM_OUT` (zero live references once the
+  aliasing stopped) and `ZOOM_HORIZONTAL`/`ZOOM_VERTICAL` (never wired;
+  their one stated purpose, a future composite icon, is now moot) are
+  removed — registry entries AND the on-disk `.svg` files. The
+  pre-existing `reset_time_view.svg` orphan (from DEC-144) is untouched
+  — a different ticket's scope.
+- **Fit/scale-view toolbar group (DEC-147, amends DEC-145).** Fit
+  Selected Record moved to join Autoscale X/Y in one group —
+  `[Autoscale X][Autoscale Y][Fit Selected Record]`, each its own
+  individual button. Pure DOM reorder, no id/class/handler/behaviour
+  change.
+- **Engineering Unit/Per Unit artwork refresh (DEC-148).** Owner
+  delivered new artwork for `engineering_unit.svg`/`per_unit.svg` at the
+  same filenames — asset-only, registry/manifest semantics unchanged
+  (manifest notes extended with a provenance mention only).
+- **Tests.** Static: `test_axis_specific_zoom_keys_each_have_their_own_
+  distinct_file` replaces the old aliasing-proof test; `migrated` tuple
+  updated; `test_autoscale_x_autoscale_y_and_fit_selected_record_are_
+  one_group` (renamed/extended from DEC-145's own pairing test) and the
+  Fit-Record-order assertion in
+  `test_event_reconstruction_specific_tools_get_their_own_icon_same_
+  compact_design` updated for the new sequence. 145 static tests
+  passing; full Event Reconstruction browser suite and full backend
+  suite re-run clean. Live verification (scratch script, not committed):
+  all six touched icons resolve to their correct, newly-served files in
+  both themes, zero console errors.
+- **Next.** Owner UAT of the whole branch (all tickets this session:
+  DEC-144 through DEC-148).
+
+## Earlier — Box Zoom retired; Pan cursor feedback; Autoscale X/Y renamed, re-iconed and paired (DEC-144/145)
 
 **Box Zoom is retired; Pan gets grab/grabbing cursor feedback; Reset Time
 View is renamed Autoscale X; Autoscale X/Y get owner icons and are paired

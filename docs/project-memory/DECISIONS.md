@@ -23047,6 +23047,44 @@ compact_design`'s own order assertion updated to the new sequence
 
 ---
 
+## DEC-148 — Engineering Unit / Per Unit icon artwork refreshed (same filenames, same semantics)
+
+Date: 2026-10-04
+Status: Approved (owner, "OWNER ASSET REFRESH — ENGINEERING UNIT / PER
+UNIT") -- implemented on `feat/event-reconstruction`; not merged.
+
+### Decision (owner)
+
+> The owner updated the artwork of `engineering_unit.svg` and
+> `per_unit.svg`, keeping the same filenames. Asset refresh only: no
+> rename, no registry/semantic change, no toolbar/behaviour change.
+
+### Implementation (`[FACT]`)
+
+Both files, at their existing path
+(`frontend/assets/icons/waveform/{engineering_unit,per_unit}.svg`),
+now hold the owner's refreshed artwork (both still `stroke=
+"currentColor"`, compatible with the existing `.ww-icon-asset` CSS
+mask rendering -- no CSS/JS change needed). `WW_TOOL_ICONS`'
+`UNIT_ENGINEERING`/`UNIT_PER_UNIT` mappings are untouched (same
+path, same keys); no other copy of either filename exists anywhere in
+the repo, and no inline fallback was ever defined for either key, so
+there is nothing stale to clean up. `manifest.json`'s own two notes
+extended with a one-line provenance mention of this refresh (metadata
+only -- no new semantic entry, no `file`/`source` field changed).
+
+### Tests
+
+A scratch script (not committed) confirmed: both buttons' computed
+`mask-image` resolves to the correct file in both light and dark
+theme; a direct HTTP fetch of each served file's bytes contains the
+new artwork's own distinguishing path data (proving the dev server
+serves the refreshed file, not a cached/stale copy); zero console
+errors. Full backend and Event Reconstruction browser suites
+re-run clean (shared with DEC-146/147's own validation pass).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

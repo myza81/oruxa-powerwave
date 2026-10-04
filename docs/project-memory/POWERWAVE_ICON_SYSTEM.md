@@ -268,7 +268,7 @@ below for the architecture that superseded this table's own original
 |---|---|---|---|
 | `PAN` | Owner-supplied (`pan.svg`) | no dedicated button on either page any more (DEC-144 — Pan is the only plot-area mode, communicated by cursor feedback instead); kept registered as a real, surviving concept | open hand |
 | `CARET_DOWN` | Powerwave (existing) | Waveform (Zoom In/Out axis trigger, both Time-Group templates) | the one shared split-button caret, also used by Annotate/Unit Mode; ER's own equivalent decorative dropdown was retired (DEC-141 §11 — always disabled, never wired) |
-| `ZOOM_X_IN` / `ZOOM_X_OUT` / `ZOOM_Y_IN` / `ZOOM_Y_OUT` | Composite: base magnifier (Lucide ZoomIn/ZoomOut metaphor, redrawn) + a small +/− glyph + a small axis-arrow cue | Waveform, ER — wired live | see §7 and DEC-142 |
+| `ZOOM_X_IN` / `ZOOM_X_OUT` / `ZOOM_Y_IN` / `ZOOM_Y_OUT` | Owner-supplied (`zoom_in_x.svg`/`zoom_out_x.svg`/`zoom_in_y.svg`/`zoom_out_y.svg`, DEC-146) — each a dedicated, distinct file; the former shared plain `ZOOM_IN`/`ZOOM_OUT` aliasing (and the unwired `ZOOM_HORIZONTAL`/`ZOOM_VERTICAL` scope-only cues) is retired, both files deleted | Waveform, ER — wired live | see §7, DEC-142 and DEC-146 |
 | `TIME_ELAPSED` | Composite: shared clock base (existing Powerwave clock, redrawn for a common base) + stopwatch-crown modifier | Waveform, ER | |
 | `TIME_RELATIVE` | Composite: same clock base + reference-pin modifier | Waveform (new, disabled stub), ER | new icon this slice |
 | `TIME_ABSOLUTE` | Composite: same clock base + calendar modifier (Lucide CalendarClock metaphor) | Waveform, ER | existing Absolute Time icon redrawn onto the shared base + given its calendar cue |
@@ -281,9 +281,9 @@ below for the architecture that superseded this table's own original
 | `ANNOTATE` | Powerwave (existing) | Waveform, ER | |
 | `ANNOTATION_TEXT_NOTE` / `ANNOTATION_CALLOUT` / `ANNOTATION_PEAK_MAX` / `ANNOTATION_PEAK_MIN` | Powerwave (existing) | Waveform, ER | |
 | `ANNOTATIONS` | Powerwave (existing) | Waveform, ER | |
-| `AUTOSCALE_X` | Owner-supplied (`autoscale_x.svg`, DEC-144) | Waveform, ER | renamed from `RESET_TIME_VIEW` — same function; paired with `AUTOSCALE_Y` in its own toolbar group (DEC-145) |
-| `AUTOSCALE_Y` | Owner-supplied (`autoscale_y.svg`, DEC-144 — gap open since DEC-143 now resolved) | Waveform, ER | paired with `AUTOSCALE_X` (DEC-145) |
-| `FIT_SELECTED_RECORD` | Owner-supplied (`fit_selected_record.svg`) | ER (enabled), Waveform (disabled stub — no "active record" concept) | |
+| `AUTOSCALE_X` | Owner-supplied (`autoscale_x.svg`, DEC-144) | Waveform, ER | renamed from `RESET_TIME_VIEW` — same function; groups with `AUTOSCALE_Y` and `FIT_SELECTED_RECORD` (DEC-145, extended by DEC-147) |
+| `AUTOSCALE_Y` | Owner-supplied (`autoscale_y.svg`, DEC-144 — gap open since DEC-143 now resolved) | Waveform, ER | groups with `AUTOSCALE_X` and `FIT_SELECTED_RECORD` (DEC-145, extended by DEC-147) |
+| `FIT_SELECTED_RECORD` | Owner-supplied (`fit_selected_record.svg`) | ER (enabled), Waveform (disabled stub — no "active record" concept) | sits in the same group as `AUTOSCALE_X`/`AUTOSCALE_Y`, after Autoscale Y (DEC-147) |
 
 **`UNIT_ENGINEERING`/`UNIT_PER_UNIT` now exist (DEC-143, §12)** —
 `assets/icons/waveform/engineering_unit.svg`/`per_unit.svg`, Event
@@ -314,7 +314,7 @@ an explanatory `title`/`aria-label`.
 | Zoom In/Out (Y) | **ON** (its own axis-chooser dropdown) | **ON** when an active Y-axis target is set (DEC-142); disabled with "Select a Y axis to zoom" otherwise — direct individual-Y-axis drag zoom (DEC-134) is also still supported |
 | Autoscale X (DEC-144, renamed from Reset Time View) | **ON** | **ON** |
 | Autoscale Y | **ON** | **ON** |
-| Fit Selected Record | *(no control — Waveform has no "active record" concept)* | **ON** |
+| Fit Selected Record (groups with Autoscale X/Y, DEC-147) | *(no control — Waveform has no "active record" concept)* | **ON** |
 | A/B Cursors | **ON** | **ON** |
 | Annotate / Annotations | **ON** | **ON** |
 | Unit Mode (ENG/PU) | **ON** | **ON** |
@@ -370,15 +370,19 @@ tooltips name that single word.
 
 ---
 
-## 7. Zoom X/Y composites: registered, not yet wired (superseded by §11/DEC-141, then §12/DEC-143)
+## 7. Zoom X/Y composites: registered, not yet wired (superseded by §11/DEC-141, then §12/DEC-143, then §14/DEC-146)
 
-**Doubly superseded, recorded for context only.** §11/DEC-141 wired
+**Triply superseded, recorded for context only.** §11/DEC-141 wired
 these keys live (still as hand-drawn composites then). §12/DEC-143 went
-further: the composites themselves are retired — `ZOOM_X_IN`/`ZOOM_Y_IN`
-now alias the owner-supplied plain `ZOOM_IN` file (same for `_OUT`), per
-the owner's own "do not invent compound icons" instruction. The axis
+further: the composites themselves were retired — `ZOOM_X_IN`/`ZOOM_Y_IN`
+aliased the owner-supplied plain `ZOOM_IN` file (same for `_OUT`), per
+the owner's own "do not invent compound icons" instruction at the time.
+§14/DEC-146 (a later owner delivery) superseded that aliasing in turn:
+each of the four keys now has its own dedicated owner file, and the
+"icon swaps by axis" description below IS accurate again, just with
+real per-axis artwork instead of a hand-drawn composite. The axis
 distinction this section describes moving into tooltip wording is still
-accurate; the "icon swaps by axis" description below is not — see §12.
+accurate throughout.
 
 `ZOOM_X_IN`/`ZOOM_X_OUT`/`ZOOM_Y_IN`/`ZOOM_Y_OUT` exist in the registry
 (one canonical definition each, satisfying the icon-selection rule) but
@@ -414,7 +418,7 @@ the base mode name itself (`"Elapsed Time"`, `"Relative Time"`,
 | Zoom Out (time axis) | `Zoom Out — Time Axis` |
 | Zoom In/Out (selected Y axis, Waveform only) | `Zoom In — Selected Y Axis` / `Zoom Out — Selected Y Axis` |
 | Autoscale X (DEC-144, renamed from Reset Time View) | `Autoscale X` (Waveform's own canvas-toolbar form additionally says "for this Time Group" — a real context qualifier Event Reconstruction has no Time Group to name; see DEC-139) |
-| Autoscale Y | `Autoscale Y` (same qualifier note; paired adjacent to Autoscale X in its own toolbar group, DEC-145) |
+| Autoscale Y | `Autoscale Y` (same qualifier note; groups with Autoscale X and Fit Selected Record, DEC-145/DEC-147) |
 | A/B Time Cursors | `A/B Time Cursors` (same qualifier note) |
 | Annotate | `Annotate` |
 | Annotations | `Annotations` |
@@ -423,7 +427,7 @@ the base mode name itself (`"Elapsed Time"`, `"Relative Time"`,
 | Absolute Time | `Absolute Time` |
 | Grouped | `Grouped Layout` (Waveform) / `Grouped Measurement View` (Event Reconstruction — see §6: related, page-appropriate, not forced identical) |
 | Combined | `Combined Multi-Axis View` (Event Reconstruction only) |
-| Fit Selected Record | `Fit selected record` (Event Reconstruction-specific) |
+| Fit Selected Record | `Fit selected record` (Event Reconstruction-specific; groups with Autoscale X/Y, after Autoscale Y, DEC-147) |
 
 Event Reconstruction's own Relative/Absolute tooltips previously carried
 additional explanatory clauses (e.g. "reconstructed recorded wall-clock
@@ -541,7 +545,7 @@ as delivered.
 
 ### Individual-button geometry (owner correction, DEC-143)
 
-Every action/mode tool group (Box Zoom/Pan, Time Display, View Mode,
+Every action/mode tool group (Pan, Time Display, View Mode,
 Unit Mode) is a row of **individual** compact buttons — the same
 `.ww-toolbar .ww-icon-btn` geometry as A/B Cursors/Annotate (30px cell,
 6px radius, its own full border) — never one shared-border/segmented
@@ -556,12 +560,13 @@ by this spacing rule.
 
 `CARET_DOWN` and the four annotation TYPE icons
 (`ANNOTATION_TEXT_NOTE`/`_CALLOUT`/`_PEAK_MAX`/`_PEAK_MIN`) stay on
-their original inline markup. `ZOOM_HORIZONTAL`/`ZOOM_VERTICAL` are
-registered (owner-supplied) but deliberately not composed into any
-control yet — the "how should these combine with Zoom In/Out" question
-is explicitly open. `BOX_ZOOM` is not a gap — the function itself is
-retired (DEC-144), not pending an icon. `AUTOSCALE_Y`'s own gap (open
-when this section was first written) is resolved — see §13.
+their original inline markup. `BOX_ZOOM` is not a gap — the function
+itself is retired (DEC-144), not pending an icon. `AUTOSCALE_Y`'s own
+gap (open when this section was first written) is resolved — see §13.
+`ZOOM_HORIZONTAL`/`ZOOM_VERTICAL` are no longer registered at all —
+removed (DEC-146) once dedicated per-axis zoom icons made the
+"how should these combine with Zoom In/Out" composition question moot;
+see §14.
 
 ---
 
@@ -582,3 +587,30 @@ and [DEC-145](DECISIONS.md#dec-145--autoscale-x-and-autoscale-y-are-paired-adjac
   paired, adjacent, in their own toolbar group — `[Autoscale X]
   [Autoscale Y]`, each its own individual button, 2px apart, never
   joined.
+
+---
+
+## 14. Dedicated zoom-axis icons, the fit/scale-view group, and an Engineering/Per-Unit artwork refresh (DEC-146/DEC-147/DEC-148)
+
+Full decision records: [DECISIONS.md — DEC-146](DECISIONS.md#dec-146--zoom-xy-get-dedicated-owner-icons-the-plainscope-only-zoom-icons-are-removed),
+[DEC-147](DECISIONS.md#dec-147--autoscale-x-autoscale-y-and-fit-selected-record-become-one-toolbar-group-amends-dec-145)
+and [DEC-148](DECISIONS.md#dec-148--engineering-unit--per-unit-icon-artwork-refreshed-same-filenames-same-semantics).
+
+- **`ZOOM_X_IN`/`ZOOM_X_OUT`/`ZOOM_Y_IN`/`ZOOM_Y_OUT`** each now have
+  their own dedicated owner file (`zoom_in_x.svg`/`zoom_out_x.svg`/
+  `zoom_in_y.svg`/`zoom_out_y.svg`) instead of aliasing a shared plain
+  zoom-in/zoom-out pair. The former `ZOOM_IN`/`ZOOM_OUT` keys and files,
+  and the never-wired `ZOOM_HORIZONTAL`/`ZOOM_VERTICAL` scope-only
+  cues, are removed — both the registry entries and the on-disk `.svg`
+  files. `waveform/reset_time_view.svg` (DEC-144's own, unrelated,
+  pre-existing orphan) was left untouched — out of this ticket's scope.
+- **Autoscale X, Autoscale Y and Fit Selected Record** now sit in one
+  "fit/scale view" toolbar group (DEC-147, amending DEC-145's narrower
+  Autoscale-X/Y-only pairing) — `[Autoscale X][Autoscale Y][Fit Selected
+  Record]`, each its own individual button, 2px apart throughout, never
+  joined into a segmented control. Pure DOM reorder; no id, class,
+  handler or behaviour changed on any of the three.
+- **`engineering_unit.svg`/`per_unit.svg` artwork refreshed (DEC-148).**
+  Same filenames, same `UNIT_ENGINEERING`/`UNIT_PER_UNIT` registry
+  mapping, same `.ww-icon-asset` mask rendering — an asset-only
+  update, no semantic/behavioural change.
