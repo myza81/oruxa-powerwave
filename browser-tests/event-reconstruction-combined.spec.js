@@ -319,13 +319,19 @@ test.describe("Event Reconstruction Combined View -- navigation and Y", () => {
     expect(state.groups[0].note).toBe(""); // the panel still has data
     expect(state.groups[0].axisLegend.map((l) => l.title)).toEqual(["Voltage (V)", "Frequency (Hz)"]);
 
-    // Reset: Fit All, every axis rescaled, the Hz axis shows values again.
+    // Autoscale X (DEC-149): Fit All for X only -- volts (already
+    // scaled, not pending) is left exactly as Autoscale Y set it above;
+    // hertz (still pending -- it never had data to resolve against)
+    // scales once Fit All brings its own data back into view, via the
+    // same "a pending axis scales when its data lands" rule any X
+    // navigation obeys (DEC-134), not something Autoscale X does to Y.
+    const narrowVoltsRange = volts.range;
     await page.locator("#wwErResetViewBtn").click();
     await waitForPlot(page, 3);
     await waitForAxesScaled(page);
     state = await plotState(page);
     [volts, hertz] = state.groups[0].axes;
-    expect(span(volts.range)).toBeGreaterThan(600);
+    expect(volts.range).toEqual(narrowVoltsRange);
     expect(hertz.showTickLabels).toBe(true);
     expectAxisCovers(state, hertz);
     expect(state.atFitAll).toBe(true);

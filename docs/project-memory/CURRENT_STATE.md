@@ -212,9 +212,10 @@ DEC-122 display timezone).
     label removed. **Box Zoom is retired** — Pan is the only plot-area
     interaction mode (no toggle button; `grab`/`grabbing` cursor
     feedback over the plot area instead). "Reset Time View" is renamed
-    "Autoscale X" (same behaviour, including its own long-standing
-    "also autoscales Y" side effect — flagged as a possible future
-    tightening, not changed). **Zoom X/Y In/Out** (`ZOOM_X_IN`/`_OUT`,
+    "Autoscale X" and (DEC-149) is now strictly X only — the "also
+    autoscales every panel's Y" side effect it inherited from Reset
+    Time View is removed; Autoscale X and Autoscale Y are each
+    single-axis, matching their own names. **Zoom X/Y In/Out** (`ZOOM_X_IN`/`_OUT`,
     `ZOOM_Y_IN`/`_OUT`) each now has its own dedicated owner icon
     (DEC-146) instead of sharing a plain zoom-in/zoom-out pair — the
     former plain `ZOOM_IN`/`ZOOM_OUT` and the unwired scope-only

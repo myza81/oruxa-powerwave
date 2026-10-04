@@ -23085,6 +23085,82 @@ re-run clean (shared with DEC-146/147's own validation pass).
 
 ---
 
+## DEC-149 — Autoscale X is strictly X only; reset_time_view.svg removed
+
+Date: 2026-10-04
+Status: Approved (owner, "FOLLOW-UP — FINALIZE AUTOSCALE X + REMOVE
+ORPHAN RESET ICON") -- implemented on `feat/event-reconstruction`; not
+merged. Closes DEC-144's own "Open" item.
+
+### Decision (owner)
+
+> Autoscale X must restore/fit the full relevant X/time extent and must
+> NOT modify any Y-axis range. Autoscale Y must preserve its current
+> Y-only behaviour and must not modify X. This is no longer treated as
+> a pure rename of Reset Time View -- its runtime behaviour must be
+> axis-isolated. The current always-available Pan behaviour is
+> approved and must not change.
+
+### Implementation (`[FACT]`)
+
+`wwErResetView()` reduced to exactly: `plot.atFitAll = true;
+wwErApplyViewport(plot.fitAll);` (plus the existing `fitAll`/timer
+guards). Removed: the `for (const panel of plot.panels) { for (const
+axis of panel.axes) { axis.manual = false; axis.autoscaleYPending =
+true; } }` loop (the "also autoscale every Y axis" side effect
+inherited from the old Reset Time View, DEC-129), and the
+`wwErAxisStore(otherViewMode, unitMode).clear()` call (which discarded
+the OTHER view mode's stored Y state). Neither Waveform's own
+per-Time-Group "Autoscale X" (`wwResetOneTimeGroupView()`) nor its
+workspace-wide compatibility wrapper (`wwResetTimeView()`, already
+unwired to any button) ever had this side effect -- only Event
+Reconstruction's `wwErResetView()` needed the fix. A Y axis already
+pending from an earlier action (e.g. Autoscale Y left it pending
+because it had no data in view at the time) still scales once its data
+returns -- that is `wwErApplyViewport()`'s own pre-existing "a pending
+axis scales when its data lands" rule (DEC-134), shared by every X
+navigation (Pan, Zoom In/Out, Fit Record, Autoscale X alike), not
+something Autoscale X itself does to Y.
+
+**`reset_time_view.svg` cleanup.** Full codebase reference check: zero
+live references anywhere (not the registry, not any manifest `file`
+field, not any markup `data-ww-icon`) -- every remaining hit was
+historical prose in docs/comments, or an unrelated Waveform function
+name (`wwResetTimeView()`/`test_reset_time_view_uses_workspace_bounds_
+not_waveform_response_bounds`/`test_workspace_wide_reset_time_view_
+kept_only_as_a_compatibility_wrapper`, a different, already-compliant,
+X-only concept that merely shares a word). The file is deleted; the
+`AUTOSCALE_X` manifest note and its own registry comment updated to
+record the deletion rather than "left in the asset folder."
+
+**Pan: untouched**, as explicitly required -- no button added, no
+cursor/drag-behaviour change, Box Zoom stays retired.
+
+### Tests
+
+Static: `test_reset_is_one_path_for_button_and_double_click_and_is_x_
+only` and `test_autoscale_y_clears_manual_ranges_reset_and_fit_record_
+are_x_only` replace the two tests that asserted the old Y side effect
+(`axis.autoscaleYPending`/`axis.manual`/`wwErAxisStore(...).clear()` in
+`wwErResetView()`). Browser: a new, minimal test in
+`event-reconstruction-navigation.spec.js` proves the owner's exact
+required sequence -- narrow X, manual Y, invoke Autoscale X, X returns
+to Fit All, Y (range and manual flag) unchanged -- plus the
+complementary Autoscale-Y-touches-Y-only check. Six existing spec
+files updated wherever they asserted or described the old "Reset also
+rescales/clears Y" behaviour: `event-reconstruction-navigation.spec.js`
+(the larger "Y keeps its range..." test), `-yaxis-zoom.spec.js`
+(including its Combined cross-view-mode "Reset clears both modes'
+manual ranges" case, now "clears neither"), `-combined.spec.js`,
+`-grouped.spec.js`, `-per-unit.spec.js` (all four rewritten to prove Y
+is preserved across Autoscale X, where a *different*, already-pending
+axis's independent scale-on-data-return is kept separate from
+Autoscale X's own now-isolated effect), and `-fit-record.spec.js`
+(stale comment only). 145 static tests passing; full backend and
+Event Reconstruction browser suites re-run clean.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

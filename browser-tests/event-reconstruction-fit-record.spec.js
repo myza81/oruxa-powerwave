@@ -245,7 +245,8 @@ test.describe("Event Reconstruction Fit Record -- mixed durations", () => {
     await activate(page, "STN_P");
     expect((await activeState(page)).fitTitle).toContain("plot a channel of STN_P first");
     expect((await activeState(page)).fitDisabled).toBe(true);
-    // Autoscale X is still Fit All + autoscale Y.
+    // Autoscale X is still Fit All for X (DEC-149: X only, no longer
+    // also autoscales Y).
     await page.locator("#wwErResetViewBtn").click();
     await expect.poll(async () => (await plotState(page)).atFitAll).toBe(true);
     expect(consoleErrors).toEqual([]);

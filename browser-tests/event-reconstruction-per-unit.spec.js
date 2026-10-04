@@ -365,9 +365,13 @@ test.describe("Event Reconstruction Per-Unit Display -- display only", () => {
     await setUnits(page, "engineering");
     await settle(page, 2);
     expect((await voltageAxis()).range).toEqual(engManual);
-    // Reset in Engineering keeps the unit mode and clears Engineering's.
+    // Autoscale X (DEC-149) in Engineering: X only -- Engineering's own
+    // manual Y range is left exactly as it was; only Autoscale Y, not
+    // Autoscale X, ever clears a manual range. The unit mode is unchanged.
     await page.locator("#wwErResetViewBtn").click();
-    await expect.poll(async () => (await voltageAxis()).manual).toBe(false);
+    await expect.poll(async () => (await plotState(page)).atFitAll).toBe(true);
+    expect((await voltageAxis()).manual).toBe(true);
+    expect((await voltageAxis()).range).toEqual(engManual);
     await expect(page.locator("#wwErUnitEngineeringBtn")).toHaveAttribute("aria-pressed", "true");
     expect(consoleErrors).toEqual([]);
   });

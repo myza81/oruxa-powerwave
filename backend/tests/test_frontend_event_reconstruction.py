@@ -743,10 +743,16 @@ class TestEventReconstructionTimelineNavigation:
         # Toolbar actions never read Plotly's (origin-relative) ranges.
         assert "layout.xaxis.range" not in _er_module(source)
 
-    def test_reset_is_one_path_for_button_and_double_click(self):
+    def test_reset_is_one_path_for_button_and_double_click_and_is_x_only(self):
+        """DEC-149 (owner decision): Autoscale X is X only -- the old
+        Reset Time View's "also autoscale every Y axis" side effect
+        (DEC-129) is removed. wwErResetView() must never touch an
+        axis's manual/autoscaleYPending state any more."""
         source = _source()
         reset = _between(source, "function wwErResetView() {", "\n        }\n")
-        assert "axis.autoscaleYPending = true;" in reset and "for (const axis of panel.axes) {" in reset
+        assert "axis.autoscaleYPending" not in reset and "axis.manual" not in reset
+        assert "for (const axis of panel.axes)" not in reset
+        assert "wwErAxisStore(" not in reset
         assert "wwErApplyViewport(plot.fitAll);" in reset
         assert "wwErRequestFitAll" not in source
 
@@ -1146,14 +1152,17 @@ class TestEventReconstructionYAxisDragZoom:
         # A manual range survives a channel joining or leaving its axis.
         assert "const manual = !!previous && previous.manual;" in render
 
-    def test_autoscale_and_reset_clear_manual_ranges(self):
+    def test_autoscale_y_clears_manual_ranges_reset_and_fit_record_are_x_only(self):
+        """DEC-149 (owner decision): only Autoscale Y ever clears a
+        manual Y range. Autoscale X (wwErResetView) and Fit Record are
+        both X only, exactly alike -- neither touches axis.manual or
+        axis.autoscaleYPending."""
         source = _source()
         autoscale = _between(source, "function wwErAutoscaleY() {", "function wwErAxisHasData(panel, axisIndex)")
         assert "axis.manual = false;" in autoscale and "axis.autoscaleYPending = true;" in autoscale
         reset = _between(source, "function wwErResetView() {", "\n        }\n")
-        assert "axis.manual = false;" in reset
-        # The other view mode's Y in the CURRENT unit mode only (DEC-138).
-        assert 'wwErAxisStore(plot.viewMode === "combined" ? "grouped" : "combined", wwErState.unitMode).clear();' in reset
+        assert "manual" not in reset and "autoscaleYPending" not in reset
+        assert "wwErAxisStore(" not in reset
         assert "wwErApplyViewport(plot.fitAll);" in reset
         fit = _between(source, "function wwErFitRecord() {", "\n        }\n")
         assert "manual" not in fit and "autoscaleYPending" not in fit  # Fit Record is X only

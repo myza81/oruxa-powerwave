@@ -614,3 +614,18 @@ and [DEC-148](DECISIONS.md#dec-148--engineering-unit--per-unit-icon-artwork-refr
   Same filenames, same `UNIT_ENGINEERING`/`UNIT_PER_UNIT` registry
   mapping, same `.ww-icon-asset` mask rendering — an asset-only
   update, no semantic/behavioural change.
+
+---
+
+## 15. Autoscale X is strictly X only; reset_time_view.svg removed (DEC-149)
+
+Full decision record: [DECISIONS.md — DEC-149](DECISIONS.md#dec-149--autoscale-x-is-strictly-x-only-reset_time_viewsvg-removed).
+
+- **Autoscale X's runtime behaviour is now X only** — the "also
+  autoscales every panel's Y" side effect it inherited from the old
+  Reset Time View (DEC-129) is removed, closing DEC-144's own "Open"
+  item. Autoscale X and Autoscale Y are each strictly single-axis now.
+- **`waveform/reset_time_view.svg`** — the orphan §14 noted as "left
+  untouched, out of this ticket's scope" — is now confirmed to have
+  zero live references anywhere and is deleted.
+- **Pan is untouched**, per the owner's own explicit instruction.

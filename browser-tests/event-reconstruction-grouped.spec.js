@@ -147,7 +147,7 @@ test.describe("Event Reconstruction Grouped View -- records, timing and Y", () =
     expect(btgh.customdata).toEqual(btgh.r);
   });
 
-  test("Autoscale Y and Reset cover every trace in a panel; a trace with no samples in view does not distort it", async ({ page }) => {
+  test("Autoscale Y covers every trace in a panel without distortion; Autoscale X never touches Y", async ({ page }) => {
     await page.goto("/index.html");
     await uploadRecord(page, { station: "STN_SMALL", startClock: "10:00:00.000000", durationS: 2 });
     await uploadRecord(page, { station: "STN_BIG", startClock: "10:00:01.000000", durationS: 2,
@@ -168,10 +168,13 @@ test.describe("Event Reconstruction Grouped View -- records, timing and Y", () =
     state = await plotState(page);
     expect(state.groups[0].yRange[0]).toBeLessThanOrEqual(Math.min(...state.panels[0].values));
     expect(state.groups[0].yRange[1]).toBeGreaterThanOrEqual(Math.max(...state.panels[0].values));
-    // Reset: Fit All and both traces' range again.
+    // Autoscale X (DEC-149): Fit All for X only -- the narrow Y range
+    // Autoscale Y just set is left exactly alone.
+    const narrowYRange = state.groups[0].yRange;
     await page.locator("#wwErResetViewBtn").click();
-    await expect.poll(async () => span((await plotState(page)).groups[0].yRange)).toBeGreaterThan(600);
-    expect((await plotState(page)).atFitAll).toBe(true);
+    await expect.poll(async () => (await plotState(page)).atFitAll).toBe(true);
+    state = await plotState(page);
+    expect(state.groups[0].yRange).toEqual(narrowYRange);
   });
 
   test("each trace fetches independently: one envelope next to full resolution in the same panel", async ({ page }) => {

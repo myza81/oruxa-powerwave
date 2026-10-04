@@ -46,6 +46,22 @@ function captureWaveformRequests(page) {
 
 const span = (range) => range[1] - range[0];
 
+// Drags one Y axis's own scale (DEC-134, same helper as the dedicated
+// Y-axis drag-zoom suite): region "nsdrag" (middle, pans/sets a manual
+// range), "ndrag"/"sdrag" (an end, zooms) of Plotly subplot "xy", "xy2", ...
+async function dragAxis(page, panelIndex, region, subplot, dy) {
+  const target = page.locator("#wwErPanels .ww-er-panel").nth(panelIndex).locator(`.draglayer .${region}[data-subplot="${subplot}"]`);
+  await target.scrollIntoViewIfNeeded();
+  const box = await target.boundingBox();
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y + dy / 2, { steps: 5 });
+  await page.mouse.move(x, y + dy, { steps: 5 });
+  await page.mouse.up();
+}
+
 test.describe("Event Reconstruction Slice 3D -- X-only Pan", () => {
   test("a plot-area drag pans the shared X range only, preserving its span; every panel keeps its Y range", async ({ page }) => {
     // DEC-144: Box Zoom is retired -- Pan is the only plot-area
@@ -179,7 +195,7 @@ test.describe("Event Reconstruction Slice 3D -- staged zoom", () => {
 });
 
 test.describe("Event Reconstruction Slice 3D -- Autoscale X and Autoscale Y", () => {
-  test("Y keeps its range through X navigation; Autoscale Y and Reset rescale every panel; an empty panel's stale range clears", async ({ page }) => {
+  test("Y keeps its range through X navigation; Autoscale Y rescales, Autoscale X never touches Y; an empty panel's stale range clears when its data returns", async ({ page }) => {
     await page.goto("/index.html");
     await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", durationS: 4 });
     await uploadRecord(page, { station: "STN_B", startClock: "10:00:10.000000", durationS: 4 });
@@ -217,21 +233,73 @@ test.describe("Event Reconstruction Slice 3D -- Autoscale X and Autoscale Y", ()
     expect(state.viewport.end).toBeCloseTo(1.002, 12);
     expect(requests).toHaveLength(0);
 
-    // Reset: Fit All and every panel autoscaled to its Fit All data.
+    // Autoscale X (DEC-149): Fit All for X only. Panel 0's Y is already
+    // scaled (not pending) from the Autoscale Y click above -- Autoscale
+    // X leaves it exactly alone. Panel 1's Y was already pending (it had
+    // no data in the narrow window above), so it scales once Fit All
+    // brings its data back into view -- that is the pre-existing
+    // "a pending axis scales when its data lands" rule any X navigation
+    // obeys (DEC-134), not something Autoscale X itself does to Y.
+    const narrowRange0 = (await plotState(page)).panels[0].yRange;
     await page.locator("#wwErResetViewBtn").click();
     await waitForViewport(page, 0, 14);
-    await expect.poll(async () => (await plotState(page)).panels.map((p) => span(p.yRange) > 10 && p.yAutorange === false)).toEqual([true, true]);
-    expect(span((await plotState(page)).panels[0].yRange)).toBeGreaterThan(200);
-    expect((await plotState(page)).atFitAll).toBe(true);
+    await expect.poll(async () => (await plotState(page)).atFitAll).toBe(true);
+    state = await plotState(page);
+    expect(state.panels[0].yRange).toEqual(narrowRange0); // untouched by Autoscale X
+    expect(state.panels[0].yAutorange).toBe(false);
+    expect(span(state.panels[1].yRange)).toBeGreaterThan(10);
+    expect(state.panels[1].yAutorange).toBe(false);
 
-    // Double-click follows the same path.
+    // Double-click follows the exact same X-only path as the button.
     await zoomTo(page, 1, 1.002);
     await page.locator("#wwErAutoscaleYBtn").click();
     await expect.poll(async () => span((await plotState(page)).panels[0].yRange)).toBeLessThan(80);
+    const narrowRange0b = (await plotState(page)).panels[0].yRange;
     await page.locator("#wwErPanels .ww-er-panel").nth(0).locator(".nsewdrag").dblclick();
     await waitForViewport(page, 0, 14);
-    await expect.poll(async () => (await plotState(page)).panels.map((p) => span(p.yRange) > 10 && p.yAutorange === false)).toEqual([true, true]);
-    expect(span((await plotState(page)).panels[0].yRange)).toBeGreaterThan(200);
+    state = await plotState(page);
+    expect(state.panels[0].yRange).toEqual(narrowRange0b);
+    expect(span(state.panels[1].yRange)).toBeGreaterThan(10);
+  });
+
+  test("Autoscale X restores the full X extent and never touches Y; Autoscale Y rescales Y only and never touches X", async ({ page }) => {
+    // DEC-149 (owner decision): the explicit axis-isolation contract --
+    // Autoscale X affects X only, Autoscale Y affects Y only, neither
+    // ever touches the other axis's viewport/range.
+    await page.goto("/index.html");
+    await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", durationS: 4 });
+    await addRecords(page, ["STN_A"]);
+    await selectChannel(page, "STN_A", "VA");
+    await waitForPlot(page, 1);
+    const fitAll = (await plotState(page)).fitAll;
+
+    // 1. A narrowed, non-default X viewport.
+    await zoomTo(page, 1, 3);
+    // 2. A non-default (manual) Y range.
+    await dragAxis(page, 0, "nsdrag", "xy", 30);
+    await expect.poll(async () => (await plotState(page)).groups[0].axes[0].manual).toBe(true);
+    const manualYBefore = (await plotState(page)).groups[0].yRange;
+
+    // 3. Invoke Autoscale X.
+    await page.locator("#wwErResetViewBtn").click();
+    // 4. X returns to the full/default relevant time extent.
+    await expect.poll(async () => (await plotState(page)).viewport.start).toBeCloseTo(fitAll.start, 9);
+    let state = await plotState(page);
+    expect(state.viewport.end).toBeCloseTo(fitAll.end, 9);
+    expect(state.atFitAll).toBe(true);
+    // 5. The Y range (and its manual flag) is unchanged.
+    expect(state.groups[0].yRange).toEqual(manualYBefore);
+    expect(state.groups[0].axes[0].manual).toBe(true);
+
+    // Complementary rule: Autoscale Y changes Y only, leaves X unchanged.
+    await zoomTo(page, 1, 3);
+    const xBefore = (await plotState(page)).viewport;
+    await page.locator("#wwErAutoscaleYBtn").click();
+    await expect.poll(async () => (await plotState(page)).groups[0].axes[0].manual).toBe(false);
+    state = await plotState(page);
+    expect(state.viewport.start).toBeCloseTo(xBefore.start, 9);
+    expect(state.viewport.end).toBeCloseTo(xBefore.end, 9);
+    expect(state.atFitAll).toBe(false); // X is still the narrowed window
   });
 });
 

@@ -101,7 +101,7 @@ test.describe("Event Reconstruction Y-axis drag zoom -- Grouped", () => {
     expect(consoleErrors).toEqual([]);
   });
 
-  test("a manual range survives Pan, Zoom In/Out and Fit Record; Autoscale Y and Reset clear it", async ({ page }) => {
+  test("a manual range survives Pan, Zoom In/Out, Fit Record and Autoscale X; only Autoscale Y clears it", async ({ page }) => {
     // DEC-144: Box Zoom is retired -- every plot-area drag is Pan (no
     // mode toggle to click). At Fit All itself there is no room to pan
     // (the window already spans the full bounds), so zoomTo() first
@@ -133,7 +133,13 @@ test.describe("Event Reconstruction Y-axis drag zoom -- Grouped", () => {
     await page.locator("#wwErFitRecordBtn").click();
     await keeps("fit record");
 
-    // Autoscale Y: every axis automatic again, scaled to its data.
+    // Autoscale X (DEC-149): X only -- the manual range survives this too.
+    await page.locator("#wwErResetViewBtn").click();
+    await expect.poll(async () => (await plotState(page)).atFitAll).toBe(true);
+    await keeps("autoscale x");
+
+    // Autoscale Y: every axis automatic again, scaled to its data --
+    // the one action that DOES clear a manual range.
     await page.locator("#wwErAutoscaleYBtn").click();
     await expect.poll(async () => (await plotState(page)).groups[0].axes[0].manual).toBe(false);
     await waitForScaled(page);
@@ -145,14 +151,15 @@ test.describe("Event Reconstruction Y-axis drag zoom -- Grouped", () => {
     await zoomTo(page, 1.2, 1.6);
     expect((await plotState(page)).groups[0].yRange).toEqual(auto);
 
-    // Reset: Fit All and every manual range cleared.
+    // A fresh manual range on another panel also survives Autoscale X.
     await dragAxis(page, 1, "nsdrag", "xy", 30);
     await expect.poll(async () => (await plotState(page)).groups[1].axes[0].manual).toBe(true);
+    const manual1 = (await plotState(page)).groups[1].yRange;
     await page.locator("#wwErResetViewBtn").click();
     await expect.poll(async () => (await plotState(page)).atFitAll).toBe(true);
-    await waitForScaled(page);
     state = await plotState(page);
-    expect(state.groups.flatMap((g) => g.axes).some((a) => a.manual)).toBe(false);
+    expect(state.groups[1].axes[0].manual).toBe(true);
+    expect(state.groups[1].yRange).toEqual(manual1);
   });
 
   test("a double-click on one Y scale autoscales that axis only", async ({ page }) => {
@@ -226,7 +233,7 @@ test.describe("Event Reconstruction Y-axis drag zoom -- Combined", () => {
     expect(xState(await plotState(page))).toBe(x);
   });
 
-  test("Y state is per view mode: never copied across, restored on return", async ({ page }) => {
+  test("Y state is per view mode: never copied across, restored on return; Autoscale X clears neither mode's manual range", async ({ page }) => {
     await setup(page);
     await dragAxis(page, 0, "ndrag", "xy", -40);
     await expect.poll(async () => (await plotState(page)).groups[0].axes[0].manual).toBe(true);
@@ -251,14 +258,18 @@ test.describe("Event Reconstruction Y-axis drag zoom -- Combined", () => {
     await waitForPlot(page, 3);
     voltage = axisByTitle(await plotState(page), "Voltage (V)");
     expect([voltage.range, voltage.manual]).toEqual([combined, true]);
-    // Reset clears both modes' manual ranges.
+    // Autoscale X (DEC-149): X only -- it clears neither mode's manual
+    // range (the old "Reset also clears the OTHER mode's Y" side
+    // effect is removed along with the current mode's).
     await page.locator("#wwErResetViewBtn").click();
-    await waitForScaled(page);
+    await expect.poll(async () => (await plotState(page)).atFitAll).toBe(true);
+    voltage = axisByTitle(await plotState(page), "Voltage (V)");
+    expect([voltage.range, voltage.manual]).toEqual([combined, true]);
     await page.locator("#wwErViewGroupedBtn").click();
     await waitForPlot(page, 3);
-    await waitForScaled(page);
     state = await plotState(page);
-    expect(state.groups.flatMap((g) => g.axes).some((a) => a.manual)).toBe(false);
+    expect(state.groups[0].yRange).toEqual(grouped);
+    expect(state.groups[0].axes[0].manual).toBe(true);
   });
 });
 

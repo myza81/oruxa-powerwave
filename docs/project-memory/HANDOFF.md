@@ -4,10 +4,49 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-04** (dedicated zoom-axis icons; fit/scale-view
-toolbar group; Engineering/Per-Unit artwork refresh)
+Last updated: **2026-10-04** (Autoscale X is now strictly X only;
+orphaned reset_time_view.svg removed)
 
 ## What was most recently done
+
+**Autoscale X's "also autoscales Y" side effect is removed -- an
+explicit owner decision closing DEC-144's own "Open" item; the orphaned
+reset_time_view.svg is deleted (DEC-149, 2026-10-04, Event
+Reconstruction).** See
+[DECISIONS.md — DEC-149](DECISIONS.md#dec-149--autoscale-x-is-strictly-x-only-reset_time_viewsvg-removed)
+for the full record.
+
+- **Autoscale X is X only.** `wwErResetView()` no longer sets
+  `axis.manual = false`/`axis.autoscaleYPending = true` on every panel,
+  and no longer clears the other view mode's axis store. It now does
+  exactly one thing: `plot.atFitAll = true; wwErApplyViewport(plot.
+  fitAll);`. A Y axis that is already pending from an earlier action
+  still scales once its data returns -- that is `wwErApplyViewport()`'s
+  own pre-existing "a pending axis scales when its data lands" rule
+  (DEC-134), shared by every X navigation, not something Autoscale X
+  itself does.
+- **The owner's own explicit decision:** the current Pan behaviour is
+  approved and untouched; this ticket and DEC-149 only touch Autoscale
+  X's Y side effect and the orphaned icon file below.
+- **`reset_time_view.svg` deleted.** Confirmed zero live references
+  anywhere (registry, manifest `file` fields, markup) -- only
+  historical prose in docs/comments and an unrelated Waveform function
+  name (`wwResetTimeView()`, a different, compliant, already-X-only
+  concept) mentioned the string.
+- **Tests.** Static: `test_reset_is_one_path_for_button_and_double_
+  click_and_is_x_only` and `test_autoscale_y_clears_manual_ranges_
+  reset_and_fit_record_are_x_only` replace the two tests that asserted
+  the old Y side effect. Browser: a new, minimal, focused test
+  (`event-reconstruction-navigation.spec.js`) proves the exact
+  before/after sequence the owner specified (narrow X, manual Y,
+  Autoscale X, X restored + Y unchanged, then the complementary
+  Autoscale-Y-only-touches-Y check); five other spec files
+  (`-yaxis-zoom`, `-combined`, `-per-unit`, `-navigation`'s own larger
+  test, `-fit-record`'s comment) updated wherever they asserted or
+  described the old behaviour.
+- **Next.** Owner UAT of the whole branch.
+
+## Earlier — Zoom X/Y icons, fit/scale-view toolbar group, Engineering/Per-Unit artwork refresh (DEC-146/147/148)
 
 **Zoom X/Y get dedicated owner icons and dead icon files are cleaned up;
 Autoscale X/Y/Fit Selected Record become one toolbar group; Engineering

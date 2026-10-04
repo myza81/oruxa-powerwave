@@ -9511,11 +9511,13 @@
                              used to be separated by a sep -- DEC-145's own
                              pairing of Autoscale X/Y is extended, not
                              reversed). DEC-144: user-visible wording
-                             renamed "Reset Time View" -> "Autoscale X";
-                             same id/handler/behaviour (Autoscale X also
-                             still autoscales every panel's Y as a side
-                             effect, DEC-129 -- see DEC-144's own "Open"
-                             item). Fit Selected Record (DEC-141): a
+                             renamed "Reset Time View" -> "Autoscale X".
+                             DEC-149 (owner decision, closing DEC-144's
+                             own "Open" item): Autoscale X is X only --
+                             the "also autoscales every panel's Y" side
+                             effect it inherited from Reset Time View
+                             (DEC-129) is removed. Fit Selected Record
+                             (DEC-141): a
                              compact icon (Waveform's own canvas-toolbar
                              text-button precedent; Waveform itself is
                              unchanged, only Event Reconstruction's
@@ -13725,16 +13727,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             // -- Fit / Reset family. AUTOSCALE_X (DEC-144: renamed from
             // RESET_TIME_VIEW for X/Y terminology symmetry with
-            // AUTOSCALE_Y -- a pure rename, same function/behaviour,
-            // INCLUDING its own long-standing "also autoscales every
-            // panel's Y" side effect (DEC-129) -- see DEC-144's own
-            // "Open" item: the owner's new naming implies Autoscale X
-            // should be X-only, which the current implementation is
-            // not; flagged, not silently changed) and AUTOSCALE_Y are
-            // both owner-supplied as of a follow-up delivery
+            // AUTOSCALE_Y) and AUTOSCALE_Y are both owner-supplied
             // (autoscale_x.svg/autoscale_y.svg, replacing the former
             // reset_time_view.svg reuse and AUTOSCALE_Y's own inline
-            // icon respectively). FIT_SELECTED_RECORD is also
+            // icon respectively) -- reset_time_view.svg itself,
+            // confirmed to have zero live references anywhere, is
+            // deleted (DEC-149). DEC-149 (owner decision, closing
+            // DEC-144's own "Open" item): Autoscale X's runtime
+            // behaviour is now X-only -- the "also autoscales every
+            // panel's Y" side effect it inherited from the old Reset
+            // Time View (DEC-129) is removed; it is no longer treated
+            // as a pure rename. FIT_SELECTED_RECORD is also
             // owner-supplied. --
             AUTOSCALE_X: "assets/icons/waveform/autoscale_x.svg",
             AUTOSCALE_Y: "assets/icons/waveform/autoscale_y.svg",
@@ -15743,10 +15746,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // native and calculated alike; every trace keeps its own timing,
         // fetch and envelope. Engineering units only; relative
         // reconstruction time on X; Fit All as the initial view.
-        // Navigation (Slice 3D, DEC-129): X-only Box Zoom and Pan, staged
-        // Zoom In/Out, Reset Time View (Fit All + autoscale Y) and
-        // Autoscale Y -- every one acting on the one shared viewport in
-        // reconstruction time; Pan and Zoom Out never leave Fit All.
+        // Navigation (Slice 3D, DEC-129): X-only Pan (DEC-144: Box Zoom
+        // retired), staged Zoom In/Out, Autoscale X (X only, DEC-149)
+        // and Autoscale Y (Y only) -- every one acting on the one
+        // shared viewport in reconstruction time; Pan and Zoom Out
+        // never leave Fit All.
         // Global A/B cursors and nearest-sample values: Slice 3E (DEC-130),
         // see the cursor section below.
         // Mixed-duration navigation stays [OPEN / UAT]: time is never
@@ -17285,25 +17289,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwErApplyViewport(next);
         }
 
-        // Reset Time View -- the toolbar button and a panel double-click
-        // alike, in either view mode: Fit All for X, then every Y axis of
-        // every panel autoscaled to its traces' Fit All data (once they
-        // have arrived).
+        // Autoscale X -- the toolbar button and a panel double-click
+        // alike, in either view mode: Fit All for X ONLY. DEC-149 (owner
+        // decision): the "also autoscale every Y axis" side effect this
+        // inherited from the old Reset Time View (DEC-129) is removed --
+        // Autoscale X and Autoscale Y are each strictly single-axis now,
+        // matching their own names. A Y axis that is still pending from
+        // an earlier action (e.g. Autoscale Y left it pending because it
+        // had no data in view) still scales once its data returns here
+        // -- that is wwErApplyViewport()'s own pre-existing "a pending
+        // axis scales when its data lands" rule (DEC-134), the same for
+        // every X navigation, not something Autoscale X itself does.
         function wwErResetView() {
             const plot = wwErState.plot;
             if (!plot.fitAll) return;
             clearTimeout(plot.relayoutTimer);
             plot.atFitAll = true;
-            for (const panel of plot.panels) {
-                for (const axis of panel.axes) {
-                    axis.manual = false;
-                    axis.autoscaleYPending = true;
-                }
-            }
-            // Reset is global (DEC-134): the other view mode's Y state goes
-            // too, so it autoscales when next shown -- in the current unit
-            // mode only; the other unit mode keeps its own Y (DEC-138).
-            wwErAxisStore(plot.viewMode === "combined" ? "grouped" : "combined", wwErState.unitMode).clear();
             wwErApplyViewport(plot.fitAll);
         }
 
@@ -17763,7 +17764,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             el.hidden = false;
         }
 
-        // Zoom In/Out, Reset Time View and Autoscale Y follow whether
+        // Zoom In/Out, Autoscale X and Autoscale Y follow whether
         // anything is plotted; Zoom Out also reads as unavailable at Fit
         // All. The axis menus stay disabled: Event Reconstruction zooms X
         // only (no Y step zoom).
