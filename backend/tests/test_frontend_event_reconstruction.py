@@ -130,21 +130,24 @@ class TestEventReconstructionPageShell:
 
     def test_standard_interaction_controls_exist(self):
         """DEC-141: every general waveform tool is now a compact icon
-        button in the global header, not a text button."""
+        button in the global header, not a text button. DEC-144: Box Zoom
+        is retired (no drag-mode toggle at all -- Pan is the only
+        plot-area mode); Reset Time View is renamed Autoscale X."""
         page = _er_page(_source())
-        assert 'id="wwErDragModeZoomBtn" aria-pressed="true" title="Box Zoom" aria-label="Box Zoom"' in page
-        assert 'id="wwErDragModePanBtn" aria-pressed="false" title="Pan" aria-label="Pan"' in page
+        assert 'id="wwErDragModeZoomBtn"' not in page and 'id="wwErDragModePanBtn"' not in page
         assert 'id="wwErZoomInBtn" title="Zoom In — Time Axis" aria-label="Zoom In — Time Axis" disabled>' in page
         assert 'id="wwErZoomOutBtn" title="Zoom Out — Time Axis" aria-label="Zoom Out — Time Axis" disabled>' in page
-        assert 'id="wwErResetViewBtn" title="Reset Time View" aria-label="Reset Time View" disabled>' in page
-        assert ">Zoom In</button>" not in page and ">Zoom Out</button>" not in page and ">Reset Time View</button>" not in page
+        assert 'id="wwErResetViewBtn" title="Autoscale X" aria-label="Autoscale X" disabled>' in page
+        assert ">Zoom In</button>" not in page and ">Zoom Out</button>" not in page
+        assert ">Reset Time View</button>" not in page and 'title="Reset Time View"' not in page
 
     def test_controls_reuse_waveform_toolbar_markup_classes(self):
         """DEC-141: every one of these controls now lives in the global
         header (#wwErToolbar); the Reconstruction Timeline canvas no
-        longer has its own copy (#wwErCanvasToolbar is gone)."""
+        longer has its own copy (#wwErCanvasToolbar is gone). DEC-144:
+        there is no drag-mode toggle at all any more (Box Zoom retired)."""
         page = _er_page(_source())
-        assert '<div class="theme-toggle ww-icon-group" id="wwErDragModeToggle" role="group" aria-label="Drag mode">' in page
+        assert 'id="wwErDragModeToggle"' not in page
         assert '<div class="ww-split-btn" id="wwErAnnotateSplit">' in page  # the one remaining split-btn family
         assert 'class="ww-icon-btn ww-tg-reset-view-btn" id="wwErResetViewBtn"' in page
         assert 'id="wwErCanvasToolbar"' not in page
@@ -172,16 +175,18 @@ class TestEventReconstructionKeepsWaveformBoundaries:
     def test_module_never_touches_waveform_engine_state_or_interactions(self):
         module = _er_module(_source())
         assert not re.search(r"\bww\.", module)
-        for forbidden in ("wwSetDragMode(", "wwStepZoomX(", "wwStepZoomY(", "wwResetOneTimeGroupView(", "wwWireTimeGroupToolbar("):
+        for forbidden in ("wwStepZoomX(", "wwStepZoomY(", "wwResetOneTimeGroupView(", "wwWireTimeGroupToolbar("):
             assert forbidden not in module
 
-    def test_drag_mode_buttons_use_event_reconstruction_state_only(self):
+    def test_drag_mode_is_pan_only_and_never_toggled(self):
+        """DEC-144: Box Zoom is retired -- there is no wwErSetDragMode()
+        left to call (or exist) since there is no longer a mode to
+        switch TO. wwErState.dragMode stays the fixed "pan" it is
+        initialised to; Plotly's own dragmode layout property reads it
+        via wwErPanelLayout(), not a runtime setter."""
         source = _source()
-        assert 'document.getElementById("wwErDragModeZoomBtn").addEventListener("click", () => wwErSetDragMode("zoom"));' in source
-        assert 'document.getElementById("wwErDragModePanBtn").addEventListener("click", () => wwErSetDragMode("pan"));' in source
-        set_mode = _between(source, "function wwErSetDragMode(mode) {", "// ---- API ----")
-        assert "wwErState.dragMode = mode;" in set_mode
-        assert "Plotly" not in set_mode
+        assert "wwErSetDragMode" not in source and "wwErApplyDragMode" not in source
+        assert 'dragMode: "pan",' in _between(source, "const wwErState = {", "\n        };")
 
     def test_no_event_reconstruction_channel_presentation_store(self):
         source = _source()
@@ -540,7 +545,7 @@ class TestEventReconstructionRecordModel:
         assert "function wwErChannelSelectionKey(recordId, sourceId, channelName) {" in source
 
     def test_canvas_counts_records(self):
-        chrome = _between(_source(), "function wwErSyncPlotChrome() {", "function wwErApplyDragMode()")
+        chrome = _between(_source(), "function wwErSyncPlotChrome() {", "function wwErPlottedRecordIntervals()")
         assert '" record selected" : " records selected"' in chrome
         assert '" channel" : " channels"' in chrome and '" panel" : " panels"' in chrome
 
@@ -616,14 +621,11 @@ class TestEventReconstructionPlotting:
         request = _between(source, "function wwErRequestViewport(start, end) {", "function wwErResetView()")
         assert "wwErClampViewport(plot.fitAll, start, end, wwErState.dragMode)" in request
 
-    def test_selection_and_drag_mode_reach_the_renderer(self):
+    def test_selection_reaches_the_renderer(self):
         source = _source()
         assert "wwErRenderPlot();" in _between(source, "function wwErToggleChannelRow(row) {", "function wwErToggleChannelGroup(button)")
         assert "wwErRenderPlot();" in _between(source, "function wwErToggleChannelGroup(button) {", "function wwErSyncChannelSelectionDom()")
         assert "wwErRenderPlot();" in _between(source, "function wwErRender() {", "function wwErHandleAction(button)")
-        assert "wwErApplyDragMode();" in _between(source, "function wwErSetDragMode(mode) {", "// ---- API ----")
-        drag = _between(source, "function wwErApplyDragMode() {", "\n        }\n")
-        assert "for (const panel of wwErState.plot.panels)" in drag
 
     def test_panels_follow_the_browser_order(self):
         items = _between(_source(), "function wwErPlotItems() {", "function wwErPlotGroups(items)")
@@ -682,12 +684,13 @@ class TestEventReconstructionPlotting:
 
 
 class TestEventReconstructionTimelineNavigation:
-    """Slice 3D (DEC-129): X-only Box Zoom/Pan, staged Zoom In/Out clamped to
-    Fit All, Reset Time View = Fit All + autoscale Y (button and
-    double-click), Autoscale Y on every panel, viewport rebasing, and the
-    Fit All span notice -- all in reconstruction time."""
+    """Slice 3D (DEC-129), Pan-only since DEC-144 (Box Zoom retired):
+    X-only Pan, staged Zoom In/Out clamped to Fit All, Autoscale X = Fit
+    All + autoscale Y (button and double-click), Autoscale Y on every
+    panel, viewport rebasing, and the Fit All span notice -- all in
+    reconstruction time."""
 
-    def test_box_zoom_and_pan_are_x_only(self):
+    def test_pan_is_x_only(self):
         source = _source()
         # Every Y axis can be dragged on its own scale (DEC-134), so none is
         # fixedrange in the layout; a drag that starts in the plot area (or
@@ -707,6 +710,10 @@ class TestEventReconstructionTimelineNavigation:
         pointerdown = _between(source, 'panel.chartEl.addEventListener("pointerdown", (event) => {', "wwErWirePanelRelayout(panel);")
         assert "wwErKeepPlotAreaDragXOnly(panel, event);" in pointerdown
         assert "wwErActivateAxisFromDragEvent(panel, event);" in pointerdown
+        # DEC-144: the same pointerdown also drives Pan's own grab/grabbing
+        # cursor feedback -- a third, independent concern on the one
+        # listener.
+        assert "wwWirePlotAreaGrabCursor(event);" in pointerdown
         assert "layout[axis.placement.layoutKey] = yaxis;" in layout
         init = _between(source, "function wwErInitPanelPlot(panel) {", "function wwErWirePanelRelayout(panel)")
         assert "wwErPanelLayout(panel)" in init
@@ -1320,14 +1327,6 @@ class TestEventReconstructionAnnotations:
             assert gone not in source, gone
 
 
-def _stripped_id(markup: str, old_id: str, new_id: str) -> str:
-    """One control's markup with its page-specific id swapped for its
-    Waveform counterpart's, so the REST can be compared byte for byte --
-    the strongest possible "same icon/tooltip/class/geometry" proof,
-    stronger than checking each attribute separately."""
-    return markup.replace(old_id, new_id)
-
-
 def _div_by_id(source: str, element_id: str) -> str:
     """A `<div id="...">`, up to its own first `</div>` -- only valid for
     a div with no nested div, which every control wrapper used below is."""
@@ -1417,7 +1416,7 @@ class TestPowerwaveIconSystem:
         for prop in ("stroke: currentColor", "fill: none", "stroke-width: 1.5", "stroke-linecap: round", "stroke-linejoin: round"):
             assert prop in shared_rule, prop
         inline = {k: v for k, v in _icon_registry(source).items() if v.startswith("<")}
-        assert len(inline) >= 5  # BOX_ZOOM/CARET_DOWN/VIEW_GROUPED/AUTOSCALE_Y/4 annotation-type icons
+        assert len(inline) >= 5  # CARET_DOWN/4 annotation-type icons
         for key, markup in inline.items():
             assert 'viewBox="0 0 18 18"' in markup, key
 
@@ -1429,8 +1428,6 @@ class TestPowerwaveIconSystem:
         source = _source()
         page = _er_page(source)
         pairs = [
-            ("dragModeZoomBtn", "wwErDragModeZoomBtn", "BOX_ZOOM"),
-            ("dragModePanBtn", "wwErDragModePanBtn", "PAN"),
             ("wwAnnotateBtn", "wwErAnnotateBtn", "ANNOTATE"),
             ("wwAnnotationListBtn", "wwErAnnotationListBtn", "ANNOTATIONS"),
             ("timeModeElapsedBtn", "wwErTimeElapsedBtn", "TIME_ELAPSED"),
@@ -1449,11 +1446,12 @@ class TestPowerwaveIconSystem:
         canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
         assert 'data-ww-icon="CURSORS_AB"' in canvas
         assert _icon_key(_element(page, "wwErCursorModeBtn", "button")) == "CURSORS_AB"
-        # DEC-141: Reset Time View / Autoscale Y / Fit Selected Record all
-        # now reference the same registry key on both pages (Waveform's
-        # own Fit Selected Record is its new, permanently-disabled stub --
-        # it has no "active record" concept of its own).
-        for key in ("RESET_TIME_VIEW", "AUTOSCALE_Y", "FIT_SELECTED_RECORD"):
+        # DEC-141: Autoscale X (DEC-144: renamed from Reset Time View) /
+        # Autoscale Y / Fit Selected Record all now reference the same
+        # registry key on both pages (Waveform's own Fit Selected Record
+        # is its new, permanently-disabled stub -- it has no "active
+        # record" concept of its own).
+        for key in ("AUTOSCALE_X", "AUTOSCALE_Y", "FIT_SELECTED_RECORD"):
             assert canvas.count(f'data-ww-icon="{key}"') == 1, key
             assert page.count(f'data-ww-icon="{key}"') == 1, key
         # DEC-141: the Zoom In/Out MAIN action -- Waveform's own dynamic
@@ -1545,18 +1543,16 @@ class TestEventReconstructionToolConsistency:
     an assumed/expected string -- so a future Waveform edit that drifts
     from this file would fail these tests rather than go unnoticed."""
 
-    def test_box_zoom_and_pan_are_byte_identical_to_waveform(self):
-        """Section 4/15A/15C: not merely "an icon exists" -- the whole
-        control (wrapper class, icon KEY, tooltip, aria-label, button
-        geometry class) is identical, modulo only the id."""
+    def test_no_drag_mode_toggle_remains_on_either_page(self):
+        """DEC-144: Box Zoom is retired -- there is no "drag mode" to
+        select any more (Pan is the only plot-area interaction mode), so
+        neither page has a dragModeToggle/wwErDragModeToggle control."""
         source = _source()
         page = _er_page(source)
-        wf_wrap = _div_by_id(source, "dragModeToggle")
-        er_wrap = _div_by_id(page, "wwErDragModeToggle")
-        normalized = _stripped_id(er_wrap, "wwErDragModeToggle", "dragModeToggle")
-        normalized = _stripped_id(normalized, "wwErDragModeZoomBtn", "dragModeZoomBtn")
-        normalized = _stripped_id(normalized, "wwErDragModePanBtn", "dragModePanBtn")
-        assert normalized == wf_wrap
+        for forbidden in ('id="dragModeToggle"', 'id="dragModeZoomBtn"', 'id="dragModePanBtn"',
+                           'id="wwErDragModeToggle"', 'id="wwErDragModeZoomBtn"', 'id="wwErDragModePanBtn"'):
+            assert forbidden not in source, forbidden
+        assert 'title="Box Zoom"' not in source and 'title="Box Zoom"' not in page
 
     def test_annotate_and_annotations_controls_are_waveforms(self):
         source = _source()
@@ -1601,7 +1597,7 @@ class TestEventReconstructionToolConsistency:
         for markup in (
             'id="wwErZoomInBtn" title="Zoom In — Time Axis" aria-label="Zoom In — Time Axis"',
             'id="wwErZoomOutBtn" title="Zoom Out — Time Axis" aria-label="Zoom Out — Time Axis"',
-            'id="wwErResetViewBtn" title="Reset Time View" aria-label="Reset Time View" disabled>',
+            'id="wwErResetViewBtn" title="Autoscale X" aria-label="Autoscale X" disabled>',
             'id="wwErAutoscaleYBtn" title="Autoscale Y" aria-label="Autoscale Y" disabled>',
         ):
             assert markup in page, markup
@@ -1634,10 +1630,26 @@ class TestEventReconstructionToolConsistency:
         canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
         assert 'class="ww-icon-btn ww-tg-fit-record-btn"' in canvas
         assert 'title="Fit selected record — unavailable in Waveform"' in canvas
-        # Within the header's own Fit/Reset family: Fit Selected Record,
-        # then Reset Time View (section 8's own order).
+        # Within the header: Fit Selected Record precedes the paired
+        # Autoscale X/Y group (section 8's own order).
         toolbar = _between(page, '<div class="ww-toolbar" id="wwErToolbar">', 'id="wwErAnnotationGuidance"')
         assert toolbar.index('id="wwErFitRecordBtn"') < toolbar.index('id="wwErResetViewBtn"')
+
+    def test_autoscale_x_and_y_are_paired_adjacent_individual_buttons(self):
+        """DEC-145 (owner correction): Autoscale X and Autoscale Y are a
+        paired axis-scaling function and sit adjacent in their own group
+        -- [Autoscale X][Autoscale Y], nothing else between them, each
+        its own individual button (never a joined/segmented pair)."""
+        page = _er_page(_source())
+        x_btn = _element(page, "wwErResetViewBtn", "button")
+        x_end = page.index(x_btn) + len(x_btn)
+        y_start = page.index('<button type="button" class="ww-icon-btn ww-tg-autoscale-btn" id="wwErAutoscaleYBtn"')
+        gap = page[x_end:y_start]
+        assert "<button" not in gap  # no other control in between
+        assert "theme-toggle" not in gap and "ww-icon-group" not in gap  # not a segmented pair
+        y_btn = _element(page, "wwErAutoscaleYBtn", "button")
+        assert 'title="Autoscale X"' in x_btn and 'title="Autoscale Y"' in y_btn
+        assert _icon_key(x_btn) == "AUTOSCALE_X" and _icon_key(y_btn) == "AUTOSCALE_Y"
 
     def test_unit_mode_is_now_an_icon_family_like_every_other(self):
         """DEC-143 supersedes section 11/13's own DEC-140-era hedge: Unit
@@ -1681,10 +1693,8 @@ class TestEventReconstructionToolConsistency:
         source = _source()
         assert '<button type="button" class="ww-icon-btn" id="wwAnnotateBtn" aria-haspopup="menu" aria-expanded="false" aria-pressed="false" title="Annotate" aria-label="Annotate">' in source
         assert '<button class="ww-icon-btn" type="button" id="wwAnnotationListBtn" aria-pressed="false" aria-expanded="false" title="Annotations" aria-label="Annotations">' in source
-        assert '<button type="button" id="dragModeZoomBtn" aria-pressed="true" title="Box Zoom" aria-label="Box Zoom">' in source
-        assert '<button type="button" id="dragModePanBtn" aria-pressed="false" title="Pan" aria-label="Pan">' in source
         canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
-        for wording in ("Reset Time View for this Time Group", "Autoscale Y for this Time Group",
+        for wording in ("Autoscale X for this Time Group", "Autoscale Y for this Time Group",
                         "Choose Zoom In axis", "A/B Time Cursors for this Time Group"):
             assert wording in canvas, wording
         # Section 18's new wording lands on BOTH pages via the one shared
@@ -1696,17 +1706,19 @@ class TestEventReconstructionToolConsistency:
     def test_shared_toolbar_primitives_never_introduce_shared_state(self):
         """Section 12/19/24: the same icon/component, ER's own handler and
         state -- never a read of Waveform's own `ww` drag mode, time mode,
-        view mode, cursor state or annotation state."""
+        view mode, cursor state or annotation state. DEC-144: there is no
+        wwErSetDragMode()/wwSetDragMode() left at all (Box Zoom retired,
+        nothing to toggle) -- wwErState.dragMode is set once, at
+        initialisation, to the fixed "pan"."""
         module = _er_module(_source())
         for forbidden in (
             "ww.dragMode", "ww.panels", "ww.timeGroupCursorState", "ww.annotationPlacementType", "ww.annotations",
             "ww.timeMode", "ww.layoutMode", "wwSyncTimeGroupZoomControls", "wwCreateTimeGroupCanvasDom",
-            "wwSetDragMode(", "wwSetTimeMode(", "wwSetLayoutMode(", "wwToggleTimeGroupCursors",
+            "wwSetTimeMode(", "wwSetLayoutMode(", "wwToggleTimeGroupCursors",
         ):
             assert forbidden not in module, forbidden
-        drag = _between(_source(), "function wwErSetDragMode(mode) {", "\n        }\n")
-        assert "wwErState.dragMode = mode;" in drag
-        assert "ww." not in drag
+        source = _source()
+        assert "wwSetDragMode" not in source and "wwErSetDragMode" not in source
 
 
 class TestGlobalTimeDisplayFamily:
@@ -1941,7 +1953,7 @@ class TestPowerwaveIconAssets:
                     "ZOOM_HORIZONTAL", "ZOOM_VERTICAL", "ZOOM_X_IN", "ZOOM_X_OUT", "ZOOM_Y_IN", "ZOOM_Y_OUT",
                     "TIME_ELAPSED", "TIME_RELATIVE", "TIME_ABSOLUTE", "UNIT_ENGINEERING", "UNIT_PER_UNIT",
                     "VIEW_SEPARATE", "VIEW_CUSTOM", "VIEW_COMBINED", "VIEW_SPLIT", "VIEW_GROUPED",
-                    "CURSORS_AB", "RESET_TIME_VIEW", "FIT_SELECTED_RECORD")
+                    "CURSORS_AB", "AUTOSCALE_X", "AUTOSCALE_Y", "FIT_SELECTED_RECORD")
         for key in migrated:
             value = registry[key]
             assert not value.startswith("<"), key

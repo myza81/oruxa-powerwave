@@ -4,12 +4,73 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-03** (Owner-approved SVG icon assets)
+Last updated: **2026-10-04** (Box Zoom retired; Pan cursor feedback;
+Autoscale X/Y renamed, re-iconed and paired)
 
 ## What was most recently done
 
+**Box Zoom is retired; Pan gets grab/grabbing cursor feedback; Reset Time
+View is renamed Autoscale X; Autoscale X/Y get owner icons and are paired
+adjacent in the toolbar (DEC-144/145, 2026-10-04, app-wide).** Five owner
+tickets implemented together as one coherent slice. See
+[DECISIONS.md — DEC-144](DECISIONS.md#dec-144--box-zoom-is-retired-pan-gets-cursor-feedback-grabgrabbing-reset-time-view-is-renamed-autoscale-x)
+and [DECISIONS.md — DEC-145](DECISIONS.md#dec-145--autoscale-x-and-autoscale-y-are-paired-adjacent-in-their-own-toolbar-group)
+and [POWERWAVE_ICON_SYSTEM.md §13](POWERWAVE_ICON_SYSTEM.md#13-box-zoom-retired-pan-cursor-feedback-autoscale-xy-renamed-re-iconed-and-paired-dec-144dec-145)
+for the full record.
+
+- **Box Zoom retired.** Pan is now the only plot-area interaction mode on
+  both pages — no mode toggle exists any more. `wwErState.dragMode`/
+  `ww.dragMode` are permanently `"pan"` from initialization (no setter
+  function exists); the field is kept only because `wwErPanelLayout()`/
+  `wwBuildLayout()` and Plotly's own `dragmode` layout property still need
+  a value to read. `wwErSetDragMode`/`wwErApplyDragMode`/`wwSetDragMode`
+  deleted (zero remaining callers). Both toggle-button DOM blocks
+  (`dragModeToggle`/`wwErDragModeToggle`) removed from the toolbars.
+- **Pan cursor feedback.** New shared `wwWirePlotAreaGrabCursor(event)`
+  toggles a `.ww-panning` class on the Plotly `.nsewdrag` draglayer region
+  on `pointerdown`, restored on a window-level `mouseup`/`touchend` (same
+  pattern as the pre-existing `wwErKeepPlotAreaDragXOnly()`). CSS:
+  `cursor: grab` normally, `cursor: grabbing` while `.ww-panning`. This
+  replaces the old ER-specific `ew-resize`/`w-resize`/`e-resize` cues
+  (DEC-129/134) that used to signal "this drag is X-only" against a
+  Box-Zoom-vs-Pan distinction that no longer exists.
+- **"Reset Time View" renamed "Autoscale X".** Pure rename (registry key,
+  button id/title/aria-label kept as internal names, tooltip, error-string
+  wording, Waveform per-canvas toolbar) — same function, same behaviour,
+  including its own pre-existing "also autoscales every panel's Y" side
+  effect (DEC-129). **Open:** this side effect contradicts the owner's own
+  "Autoscale X must NOT change Y" framing; not silently resolved either
+  way — flagged for explicit owner confirmation before any behaviour
+  change.
+- **Autoscale X/Y icons.** New owner SVGs `waveform/autoscale_x.svg` and
+  `waveform/autoscale_y.svg` wired into the registry
+  (`AUTOSCALE_X`/`AUTOSCALE_Y`), replacing the reused `reset_time_view.svg`
+  and the old inline fallback respectively. `manifest.json` updated;
+  `reset_time_view.svg` itself left in the folder, unreferenced.
+- **Autoscale X/Y paired (DEC-145, owner correction).** `wwErAutoscaleYBtn`
+  moved (pure DOM reposition, no handler/id/class change) to sit
+  immediately after `wwErResetViewBtn` (Autoscale X) — `[Autoscale X][2px]
+  [Autoscale Y]`, each its own individual button, not a segmented pair.
+  Fit Selected Record's position is unchanged. Zero new CSS needed —
+  relies entirely on `.ww-toolbar`'s existing 2px gap/separator rules.
+- **`PAN` registry entry kept** even though no button references it any
+  more — a real, legitimate owner-supplied concept, not Box-Zoom-only;
+  likely useful for future UI.
+- **Tests.** `backend/tests/test_frontend_event_reconstruction.py`: Box
+  Zoom assertions removed/replaced with "no drag-mode toggle exists"
+  checks; new `test_autoscale_x_and_y_are_paired_adjacent_individual_buttons`.
+  147 tests passing. Six `browser-tests/event-reconstruction*.spec.js`
+  files updated — several "box zoom then pan" two-phase drag tests
+  simplified to a single pan-drag check now that every plot-area drag is
+  pan-style (span-preserving, not narrowing).
+- **Next.** Owner confirmation on the Autoscale-X-also-autoscales-Y
+  tension; whether a lone Pan indicator belongs back in the toolbar; then
+  owner UAT of the whole branch.
+
+## Earlier — Powerwave icons become owner-approved local SVG assets (DEC-143)
+
 **Powerwave icons become owner-approved local SVG assets (DEC-143,
-2026-10-03, app-wide).** The feature is not complete. See
+2026-10-03, app-wide).** See
 [DECISIONS.md — DEC-143](DECISIONS.md#dec-143--powerwave-icons-become-owner-approved-local-svg-assets-individually-bordered-tool-buttons-and-unit-mode-joins-the-icon-system)
 and [POWERWAVE_ICON_SYSTEM.md §12](POWERWAVE_ICON_SYSTEM.md#12-owner-approved-local-svg-assets-dec-143)
 for the full record.

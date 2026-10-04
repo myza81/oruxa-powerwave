@@ -4535,9 +4535,9 @@
            with the .svg itself completely untouched. `wwSetToolIcon()`
            toggles this class instead of writing innerHTML for any
            registry entry that is an asset PATH rather than inline
-           markup (VIEW_GROUPED/CARET_DOWN/BOX_ZOOM and a few annotation
-           shapes stay inline -- no owner asset exists for them yet, see
-           the registry's own per-entry comments). Sizing/layout stay
+           markup (CARET_DOWN, AUTOSCALE_Y and a few annotation shapes
+           stay inline -- no owner asset exists for them yet, see the
+           registry's own per-entry comments). Sizing/layout stay
            owned by each icon's existing wrapper rule (.ww-icon/
            .shell-nav-icon/.ww-caret, above/below) -- this rule only ever
            sets the mask itself, never width/height/display, so it
@@ -5525,17 +5525,37 @@
            .ww-legend-item base (Waveform's own legends keep theirs). */
         .ww-er-panel .ww-legend-item { font-size: 0.65rem; }
         /* DEC-134: each Y axis's own scale is draggable (Plotly's native
-           ns/n/s-resize cursors); a faint tint on hover shows the region.
-           The plot area keeps its X-only cursors (DEC-129), which Plotly
-           would otherwise draw as 2-D now that Y is not fixedrange. */
+           ns/n/s-resize cursors); a faint tint on hover shows the region. */
         .ww-er-panel .draglayer .nsdrag:hover,
         .ww-er-panel .draglayer .ndrag:hover,
         .ww-er-panel .draglayer .sdrag:hover { fill: var(--accent) !important; fill-opacity: 0.08 !important; }
-        .ww-er-panel .draglayer .nsewdrag:not(.cursor-move) { cursor: ew-resize !important; }
-        .ww-er-panel .draglayer .nwdrag,
-        .ww-er-panel .draglayer .swdrag { cursor: w-resize !important; }
-        .ww-er-panel .draglayer .nedrag,
-        .ww-er-panel .draglayer .sedrag { cursor: e-resize !important; }
+        /* Pan cursor feedback (DEC-144): grab while hovering the plot
+           area's own interior drag region, grabbing while actively
+           panning (the .ww-panning class, toggled by
+           wwWirePlotAreaGrabCursor() on pointerdown/mouseup -- CSS
+           :active alone does not track a drag once the pointer leaves
+           the originating element, the same reason
+           wwErKeepPlotAreaDragXOnly() already uses a window-level
+           mouseup/touchend restore instead of relying on :active).
+           Unconditional: Box Zoom is retired (DEC-144), so Pan is the
+           ONLY plot-area interaction mode on every waveform-capable
+           page now -- both .ww-panel (Waveform) and .ww-er-panel (Event
+           Reconstruction) get the same treatment. `!important` beats
+           Plotly's own inline cursor style, same precedent as the
+           corner-drag rules this replaces (DEC-129/134's own X-only
+           "ew-resize" Box Zoom cue no longer applies -- Pan's own X-only
+           scope, unchanged, is still enforced by
+           wwErKeepPlotAreaDragXOnly()/its Waveform equivalent, just no
+           longer visually distinguished from Pan itself since there is
+           nothing left to distinguish it FROM). */
+        .ww-panel .draglayer .nsewdrag,
+        .ww-er-panel .draglayer .nsewdrag {
+            cursor: grab !important;
+        }
+        .ww-panel .draglayer .nsewdrag.ww-panning,
+        .ww-er-panel .draglayer .nsewdrag.ww-panning {
+            cursor: grabbing !important;
+        }
         /* The active navigation record (Fit Record's target): a tinted
            header with an accent edge and a small ring before the name --
            distinct from the Reference badge and from channel selection. */
@@ -8859,14 +8879,14 @@
                          thin dividers (section 33) instead of one
                          undifferentiated wall of icons. -->
                     <div class="ww-toolbar" id="wwToolbar" hidden>
-                        <div class="theme-toggle ww-icon-group" id="dragModeToggle" role="group" aria-label="Drag mode">
-                            <button type="button" id="dragModeZoomBtn" aria-pressed="true" title="Box Zoom" aria-label="Box Zoom">
-                                <span class="ww-icon" data-ww-icon="BOX_ZOOM"></span>
-                            </button>
-                            <button type="button" id="dragModePanBtn" aria-pressed="false" title="Pan" aria-label="Pan">
-                                <span class="ww-icon" data-ww-icon="PAN"></span>
-                            </button>
-                        </div>
+                        <!-- DEC-144: Box Zoom is retired; Pan is the only
+                             plot-area interaction mode now, so there is no
+                             longer a "drag mode" to select -- the former
+                             dragModeToggle (Box Zoom/Pan) is gone. Pan's own
+                             presence is now communicated by cursor feedback
+                             (grab/grabbing over the plot area) rather than a
+                             toolbar control -- see .ww-panel .draglayer
+                             .nsewdrag's own CSS comment. -->
 
                         <!-- TG-D1: Zoom In/Zoom Out split buttons (Phase 4D)
                              moved into each Time Group Canvas's own local
@@ -9438,26 +9458,17 @@
                             </button>
                         </div>
                         <span class="ww-toolbar-sep" aria-hidden="true"></span>
-                        <!-- DEC-141: Time Navigation -- Box Zoom/Pan (moved
-                             here from their former standalone first-in-
-                             toolbar position, same ids/handlers/state)
-                             plus the time-axis Zoom In/Out, now compact
-                             icon buttons (ZOOM_X_IN/_OUT) instead of text.
-                             Event Reconstruction's own axis-chooser
-                             dropdown was always permanently disabled (it
-                             never did anything -- this page has only ever
-                             zoomed the time axis), so retiring it here
-                             loses no real behaviour; Waveform's own,
-                               genuinely-live X/Y chooser is untouched (see
-                             POWERWAVE_ICON_SYSTEM.md). -->
-                        <div class="theme-toggle ww-icon-group" id="wwErDragModeToggle" role="group" aria-label="Drag mode">
-                            <button type="button" id="wwErDragModeZoomBtn" aria-pressed="true" title="Box Zoom" aria-label="Box Zoom">
-                                <span class="ww-icon" data-ww-icon="BOX_ZOOM"></span>
-                            </button>
-                            <button type="button" id="wwErDragModePanBtn" aria-pressed="false" title="Pan" aria-label="Pan">
-                                <span class="ww-icon" data-ww-icon="PAN"></span>
-                            </button>
-                        </div>
+                        <!-- DEC-144: Box Zoom is retired; Pan is the only
+                             plot-area interaction mode now (its own former
+                             toggle, Box Zoom/Pan, is gone -- cursor feedback,
+                             grab/grabbing over the plot area, communicates it
+                             instead). Time Navigation is now just the
+                             time-axis Zoom In/Out, compact icon buttons
+                             (ZOOM_X_IN/_OUT). Event Reconstruction's own
+                             axis-chooser dropdown was already retired
+                             (DEC-141 -- always permanently disabled, never
+                             wired); Waveform's own, genuinely-live X/Y
+                             chooser is untouched (see POWERWAVE_ICON_SYSTEM.md). -->
                         <button type="button" class="ww-icon-btn" id="wwErZoomOutBtn" title="Zoom Out — Time Axis" aria-label="Zoom Out — Time Axis" disabled>
                             <span class="ww-icon" data-ww-icon="ZOOM_X_OUT"></span>
                         </button>
@@ -9475,9 +9486,9 @@
                              hover. Disabled, with a tooltip explaining why,
                              whenever nothing is plotted or no target is
                              set yet (several axes exist and none has been
-                             chosen). Autoscale Y is unchanged behaviour
-                             (every axis of the current view, not just the
-                             active one) -- see wwErAutoscaleY(). -->
+                             chosen). DEC-145: Autoscale Y moved out of this
+                             family into the new paired Autoscale X/Y group
+                             below -- see that group's own comment. -->
                         <button type="button" class="ww-icon-btn" id="wwErZoomYOutBtn" title="Zoom Out — Selected Y Axis" aria-label="Zoom Out — Selected Y Axis" disabled>
                             <span class="ww-icon" data-ww-icon="ZOOM_Y_OUT"></span>
                         </button>
@@ -9485,23 +9496,34 @@
                             <span class="ww-icon" data-ww-icon="ZOOM_Y_IN"></span>
                         </button>
                         <span class="ww-er-active-axis-readout" id="wwErActiveAxisReadout">Y: Select axis</span>
-                        <button type="button" class="ww-icon-btn ww-tg-autoscale-btn" id="wwErAutoscaleYBtn" title="Autoscale Y" aria-label="Autoscale Y" disabled>
-                            <span class="ww-icon" data-ww-icon="AUTOSCALE_Y"></span>
-                        </button>
                         <span class="ww-toolbar-sep" aria-hidden="true"></span>
-                        <!-- DEC-141: Fit / Reset -- both now compact icons
-                             (Reset Time View was Waveform's own canvas-
-                             toolbar text-button precedent; Waveform itself
-                             is unchanged, only Event Reconstruction's
-                             consolidated-into-the-header copy becomes an
-                             icon, per the owner's own explicit "do not
-                             leave Reset Time View as a large text button"
-                             instruction for this page). -->
+                        <!-- DEC-141: Fit Selected Record -- a compact icon
+                             (Waveform's own canvas-toolbar text-button
+                             precedent; Waveform itself is unchanged, only
+                             Event Reconstruction's consolidated-into-the-
+                             header copy becomes an icon). -->
                         <button type="button" class="ww-icon-btn ww-er-fit-record-btn" id="wwErFitRecordBtn" title="Fit selected record" aria-label="Fit selected record" disabled>
                             <span class="ww-icon" data-ww-icon="FIT_SELECTED_RECORD"></span>
                         </button>
-                        <button type="button" class="ww-icon-btn ww-tg-reset-view-btn" id="wwErResetViewBtn" title="Reset Time View" aria-label="Reset Time View" disabled>
-                            <span class="ww-icon" data-ww-icon="RESET_TIME_VIEW"></span>
+                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
+                        <!-- DEC-145 (owner correction): Autoscale X and
+                             Autoscale Y are a paired axis-scaling function
+                             and sit adjacent, in their own group -- never
+                             joined into one segmented control, each its
+                             own individual button (same geometry as every
+                             other tool group, DEC-144's own "individual
+                             button" correction), with the standard 2px
+                             within-group gap. DEC-144: user-visible
+                             wording renamed "Reset Time View" ->
+                             "Autoscale X"; same id/handler/behaviour
+                             (Autoscale X also still autoscales every
+                             panel's Y as a side effect, DEC-129 -- see
+                             DEC-144's own "Open" item). -->
+                        <button type="button" class="ww-icon-btn ww-tg-reset-view-btn" id="wwErResetViewBtn" title="Autoscale X" aria-label="Autoscale X" disabled>
+                            <span class="ww-icon" data-ww-icon="AUTOSCALE_X"></span>
+                        </button>
+                        <button type="button" class="ww-icon-btn ww-tg-autoscale-btn" id="wwErAutoscaleYBtn" title="Autoscale Y" aria-label="Autoscale Y" disabled>
+                            <span class="ww-icon" data-ww-icon="AUTOSCALE_Y"></span>
                         </button>
                         <span class="ww-toolbar-sep" aria-hidden="true"></span>
                         <!-- DEC-141: Analysis -- A/B Time Cursors (moved here
@@ -13614,13 +13636,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // asset is NEVER redrawn/recoloured/resized; see
         // frontend/assets/icons/README.md and manifest.json for
         // provenance. Same function, same file, everywhere (Waveform
-        // and Event Reconstruction alike) -- e.g. PAN is one path, read
-        // by both pages' Pan buttons.
+        // and Event Reconstruction alike) -- e.g. ZOOM_IN is one path,
+        // read by every Zoom In button on both pages.
         const WW_TOOL_ICONS = {
-            // -- Time Navigation. Box Zoom has no owner-supplied asset
-            // (not in the owner's delivered set) -- stays the original
-            // inline composite until one exists. Pan is owner-supplied. --
-            BOX_ZOOM: '<svg viewBox="0 0 18 18"><circle cx="7.5" cy="7.5" r="4.5"/><line x1="10.8" y1="10.8" x2="15.5" y2="15.5"/></svg>',
+            // -- Time Navigation. Box Zoom is retired (DEC-144) -- its own
+            // BOX_ZOOM entry (an inline composite, never an owner asset)
+            // is removed, not left as an unused stub: nothing reads it any
+            // more. Pan is owner-supplied and is now the ONLY plot-area
+            // interaction mode -- kept registered even though no control
+            // currently reads it (Pan has no dedicated toggle button any
+            // more; it is communicated by cursor feedback instead, see
+            // .ww-panel .draglayer .nsewdrag's own comment) -- a real,
+            // surviving concept, not a Box-Zoom-only orphan. --
             PAN: "assets/icons/waveform/pan.svg",
             // The one shared caret already used by every split-button's
             // own axis/trigger dropdown (Annotate, Unit Mode, Zoom
@@ -13694,11 +13721,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             ANNOTATION_PEAK_MIN: '<svg viewBox="0 0 18 18"><polyline points="2.5,5 6,8.5 9,6 15.5,14" stroke-width="1.3"/><polyline points="15.5,10 15.5,14 11.5,14" stroke-width="1.3"/></svg>',
             ANNOTATIONS: "assets/icons/common/annotations.svg",
 
-            // -- Fit / Reset family. RESET_TIME_VIEW and
-            // FIT_SELECTED_RECORD are owner-supplied; AUTOSCALE_Y has no
-            // owner asset in this delivery -- stays inline. --
-            RESET_TIME_VIEW: "assets/icons/waveform/reset_time_view.svg",
-            AUTOSCALE_Y: '<svg viewBox="0 0 18 18"><line x1="9" y1="2.6" x2="9" y2="15.4" stroke-width="1.3"/><polyline points="6,5.2 9,2.4 12,5.2" stroke-width="1.2"/><polyline points="6,12.8 9,15.6 12,12.8" stroke-width="1.2"/></svg>',
+            // -- Fit / Reset family. AUTOSCALE_X (DEC-144: renamed from
+            // RESET_TIME_VIEW for X/Y terminology symmetry with
+            // AUTOSCALE_Y -- a pure rename, same function/behaviour,
+            // INCLUDING its own long-standing "also autoscales every
+            // panel's Y" side effect (DEC-129) -- see DEC-144's own
+            // "Open" item: the owner's new naming implies Autoscale X
+            // should be X-only, which the current implementation is
+            // not; flagged, not silently changed) and AUTOSCALE_Y are
+            // both owner-supplied as of a follow-up delivery
+            // (autoscale_x.svg/autoscale_y.svg, replacing the former
+            // reset_time_view.svg reuse and AUTOSCALE_Y's own inline
+            // icon respectively). FIT_SELECTED_RECORD is also
+            // owner-supplied. --
+            AUTOSCALE_X: "assets/icons/waveform/autoscale_x.svg",
+            AUTOSCALE_Y: "assets/icons/waveform/autoscale_y.svg",
             FIT_SELECTED_RECORD: "assets/icons/waveform/fit_selected_record.svg",
 
             // -- Generic/reusable (common/) -- owner-supplied, not yet
@@ -14947,10 +14984,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         //
         // Boundaries kept:
         // - Never reads or writes the Waveform engine's `ww` state, and
-        //   never calls Waveform interaction functions (wwSetDragMode()
-        //   relayouts every Waveform panel; wwStepZoomX/Y()/
+        //   never calls Waveform interaction functions (wwStepZoomX/Y()/
         //   wwResetOneTimeGroupView() act on a real Time Group). Slice 3D
-        //   has its own Zoom In/Out, Reset Time View and Autoscale Y.
+        //   has its own Zoom In/Out, Autoscale X and Autoscale Y.
         // - Channel display names and colours come from the Waveform-owned
         //   resolvers (wwChannelDisplayName*()/wwColorForChannel()). This
         //   module keeps no presentation store of its own.
@@ -14982,7 +15018,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // their value-request bookkeeping. Session-only, like the
         // selection.
         const wwErState = {
-            dragMode: "zoom",
+            // DEC-144: Box Zoom is retired -- Pan is the only plot-area
+            // interaction mode now, so this never changes from "pan"
+            // (kept as a field, not a literal, since wwErPanelLayout()
+            // and Plotly's own `dragmode` layout property still need a
+            // value to read).
+            dragMode: "pan",
             // X-axis time display (DEC-135): "relative" (reconstruction
             // seconds, the default) | "absolute" (the reconstructed
             // wall-clock instant of the same point). Labels only -- the
@@ -15052,14 +15093,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 activeAxisQuantity: null,
             },
         };
-
-        function wwErSetDragMode(mode) {
-            if (mode !== "zoom" && mode !== "pan") return;
-            wwErState.dragMode = mode;
-            document.getElementById("wwErDragModeZoomBtn").setAttribute("aria-pressed", String(mode === "zoom"));
-            document.getElementById("wwErDragModePanBtn").setAttribute("aria-pressed", String(mode === "pan"));
-            wwErApplyDragMode();
-        }
 
         // ---- API ----
 
@@ -16844,6 +16877,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             panel.chartEl.addEventListener("pointerdown", (event) => {
                 wwErKeepPlotAreaDragXOnly(panel, event);
                 wwErActivateAxisFromDragEvent(panel, event);
+                wwWirePlotAreaGrabCursor(event);
             }, true);
             wwErWirePanelRelayout(panel);
             // Slice 3E: any redraw (resize, relayout) re-positions this
@@ -16925,7 +16959,29 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
         }
 
-        // Plot-area Box Zoom and Pan stay X-only (DEC-129) although the Y
+        // Pan cursor feedback (DEC-144): the `.ww-panning` class CSS keys
+        // off (see `.ww-panel .draglayer .nsewdrag`'s own comment) to
+        // switch from grab to grabbing for the duration of an actual
+        // drag. Page-agnostic -- called from both Waveform's and Event
+        // Reconstruction's own panel-init pointerdown wiring; takes the
+        // raw event only; a window-level mouseup/touchend restore, same
+        // pattern as wwErKeepPlotAreaDragXOnly() below (CSS :active alone
+        // would drop the state if the pointer leaves the element while
+        // still held, which a real pan drag does constantly).
+        function wwWirePlotAreaGrabCursor(event) {
+            const region = event.target.closest(".nsewdrag");
+            if (!region) return;
+            region.classList.add("ww-panning");
+            const restore = () => {
+                window.removeEventListener("mouseup", restore);
+                window.removeEventListener("touchend", restore);
+                region.classList.remove("ww-panning");
+            };
+            window.addEventListener("mouseup", restore);
+            window.addEventListener("touchend", restore);
+        }
+
+        // Plot-area Pan stays X-only (DEC-129, DEC-144) although the Y
         // axes are not fixedrange (they must not be, or Plotly would not
         // wire their own axis drags). Plotly reads each axis's fixedrange
         // from its full layout when a drag STARTS; so for a drag that
@@ -17742,12 +17798,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const cursorBtn = document.getElementById("wwErCursorModeBtn");
             cursorBtn.disabled = !plotted;
             cursorBtn.setAttribute("aria-pressed", String(plot.cursors.enabled));
-        }
-
-        function wwErApplyDragMode() {
-            for (const panel of wwErState.plot.panels) {
-                if (panel.plotlyReady) Plotly.relayout(panel.chartEl, { dragmode: wwErState.dragMode });
-            }
         }
 
         // Event Reconstruction's own theme/resize hooks (Waveform's
@@ -27050,7 +27100,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Group A's panel/slider can never coalesce with or cancel a
             // concurrent drag in Group B's).
             timeGroupViewportDebounceTimers: new Map(),
-            dragMode: "zoom",
+            // DEC-144: Box Zoom is retired -- Pan is the only plot-area
+            // interaction mode now, so this never changes from "pan"
+            // (kept as a field: wwBuildLayout()/Plotly's own `dragmode`
+            // layout property still read it).
+            dragMode: "pan",
             // Phase 2C-B1: which algorithm currently derives ww.panels from
             // the flat set of displayed channels -- "grouped" (by
             // engineering_type, Phase 2C-A's original and still-default
@@ -28422,8 +28476,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                             '<button type="button" class="ww-split-menu-item" role="menuitemradio" data-axis="y" aria-checked="false">Vertical (Y)</button>' +
                         '</div>' +
                     '</div>' +
-                    '<button type="button" class="ww-icon-btn ww-tg-reset-view-btn" title="Reset Time View for this Time Group" aria-label="Reset Time View for this Time Group">' +
-                        '<span class="ww-icon" data-ww-icon="RESET_TIME_VIEW"></span>' +
+                    '<button type="button" class="ww-icon-btn ww-tg-reset-view-btn" title="Autoscale X for this Time Group" aria-label="Autoscale X for this Time Group">' +
+                        '<span class="ww-icon" data-ww-icon="AUTOSCALE_X"></span>' +
                     '</button>' +
                     '<button type="button" class="ww-icon-btn ww-tg-autoscale-btn" title="Autoscale Y for this Time Group" aria-label="Autoscale Y for this Time Group">' +
                         '<span class="ww-icon" data-ww-icon="AUTOSCALE_Y"></span>' +
@@ -30598,7 +30652,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 source_not_found: "This source is no longer available in this workspace.",
                 channel_not_found: "This channel is no longer available on this source.",
                 channel_not_analog: "This channel is digital and can't be displayed here.",
-                invalid_time_range: "That time range wasn't valid. Use Reset Time View to recover.",
+                invalid_time_range: "That time range wasn't valid. Use Autoscale X to recover.",
                 invalid_workspace: "Something went wrong identifying your workspace.",
                 internal_error: "Something went wrong on our end. Please try again.",
             };
@@ -31165,6 +31219,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             Plotly.newPlot(panel.chartEl, traces, layout, config);
             panel.plotlyReady = true;
+            // Pan cursor feedback (DEC-144): grab/grabbing over the plot
+            // area's own interior drag region -- see
+            // wwWirePlotAreaGrabCursor()'s own comment.
+            panel.chartEl.addEventListener("pointerdown", wwWirePlotAreaGrabCursor, true);
             wwWirePanelRelayout(panel);
             // Phase 4F (DEC-045): Callout placement -- see
             // wwWireAnalogPanelClick()'s own comment for why this is safe
@@ -33730,15 +33788,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     "xaxis.title": "",
                 });
             });
-        }
-
-        function wwSetDragMode(mode) {
-            ww.dragMode = mode;
-            for (const panel of ww.panels) {
-                Plotly.relayout(panel.chartEl, { dragmode: mode });
-            }
-            document.getElementById("dragModeZoomBtn").setAttribute("aria-pressed", String(mode === "zoom"));
-            document.getElementById("dragModePanBtn").setAttribute("aria-pressed", String(mode === "pan"));
         }
 
         // ==================================================================
@@ -52734,10 +52783,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         });
         document.getElementById("mainNavRecordingsBtn").addEventListener("click", () => shellSetCurrentPage("recordings"));
         document.getElementById("mainNavEventReconstructionBtn").addEventListener("click", () => shellSetCurrentPage("event-reconstruction"));
-        // Event Reconstruction (Slice 0): its own drag-mode preference --
-        // never wwSetDragMode(), which relayouts every Waveform panel.
-        document.getElementById("wwErDragModeZoomBtn").addEventListener("click", () => wwErSetDragMode("zoom"));
-        document.getElementById("wwErDragModePanBtn").addEventListener("click", () => wwErSetDragMode("pan"));
         // Slice 3C: Event Reconstruction's own panels re-theme themselves
         // (Waveform's wwApplyTheme() only iterates ww.panels).
         document.addEventListener("powerwave:theme-change", wwErApplyTheme);
@@ -54484,8 +54529,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("activeViewArea").addEventListener("scroll", wwScheduleCursorOverlayRefresh, { passive: true });
 
         // Phase 2C-A: central Powerwave toolbar + theme integration.
-        document.getElementById("dragModeZoomBtn").addEventListener("click", () => wwSetDragMode("zoom"));
-        document.getElementById("dragModePanBtn").addEventListener("click", () => wwSetDragMode("pan"));
+        // DEC-144: Box Zoom retired, Pan is the only plot-area interaction
+        // mode now -- no drag-mode toggle buttons left to wire here.
         // TG-D1: Reset Time View/Zoom In/Zoom Out/Autoscale Y moved into
         // each Time Group Canvas's own local toolbar (wwWireTimeGroupToolbar(),
         // called per-canvas from wwCreateTimeGroupCanvasDom()) -- the old

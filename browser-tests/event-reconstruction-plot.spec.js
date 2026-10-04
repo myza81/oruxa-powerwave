@@ -1,6 +1,7 @@
 // Event Reconstruction Slice 3C (DEC-127, DEC-128): the first plotted
 // reconstruction. One panel per selected analog channel on one shared
-// relative reconstruction timeline, Fit All, Box Zoom/Pan, the hybrid
+// relative reconstruction timeline, Fit All, Pan (DEC-144: Box Zoom
+// retired), the hybrid
 // visible-range fetch, the numerical plotting origin, and isolation from
 // Waveform.
 //
@@ -292,7 +293,12 @@ test.describe("Event Reconstruction Slice 3C -- shared viewport and interaction"
     await waitForPlot(page, 3);
   }
 
-  test("Fit All, box zoom on one panel, pan clamped to Fit All, and double-click back to Fit All", async ({ page }) => {
+  test("Fit All, staged zoom on the toolbar, pan clamped to Fit All, and double-click back to Fit All", async ({ page }) => {
+    // DEC-144: Box Zoom is retired -- every panel's own dragmode is
+    // permanently "pan" (no mode toggle to click), so a plot-area drag
+    // always translates the viewport rather than narrowing it. A
+    // narrower-than-Fit-All span to then pan around is reached via the
+    // Zoom In toolbar button instead of a drag.
     const consoleErrors = collectConsoleErrors(page);
     await threePanels(page);
     let state = await plotState(page);
@@ -301,23 +307,20 @@ test.describe("Event Reconstruction Slice 3C -- shared viewport and interaction"
     expect(state.viewport).toEqual(state.fitAll);
     expect(state.atFitAll).toBe(true);
     expectSharedAxis(state);
+    expect(state.panels.every((p) => p.dragmode === "pan")).toBe(true);
 
-    // Box zoom on the LAST panel: every panel follows.
-    await dragOnPanel(page, 1, 0.25, 0.5, 60);
+    await page.locator("#wwErZoomInBtn").click();
+    await page.locator("#wwErZoomInBtn").click();
     await expect.poll(async () => (await plotState(page)).atFitAll).toBe(false);
     await waitForSharedAxis(page);
     await waitForPlot(page, 3);
     state = await plotState(page);
-    expect(state.viewport.start).toBeGreaterThan(1.3);
-    expect(state.viewport.end).toBeLessThan(3.2);
     expectSharedAxis(state);
     const zoomSpan = state.viewport.end - state.viewport.start;
+    expect(zoomSpan).toBeLessThan(6);
 
-    // Pan (ER's own drag mode) on the first panel: every panel follows,
-    // and dragging far right is clamped at Fit All's start with the
-    // span kept.
-    await page.locator("#wwErDragModePanBtn").click();
-    await expect.poll(async () => (await plotState(page)).panels.every((p) => p.dragmode === "pan")).toBe(true);
+    // Pan on the first panel: every panel follows, and dragging far
+    // right is clamped at Fit All's start with the span kept.
     const before = state.viewport.start;
     await dragOnPanel(page, 0, 0.3, 0.45);
     await expect.poll(async () => (await plotState(page)).viewport.start).toBeLessThan(before - 0.05);
@@ -514,7 +517,7 @@ test.describe("Event Reconstruction Slice 3C -- empty, error and removed states"
 });
 
 test.describe("Event Reconstruction Slice 3C -- Waveform isolation", () => {
-  test("plotting, zooming, panning and drag mode never change Waveform state", async ({ page }) => {
+  test("plotting, zooming and panning never change Waveform state", async ({ page }) => {
     const consoleErrors = collectConsoleErrors(page);
     await page.goto("/index.html");
     await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", durationS: 2 });
@@ -544,14 +547,11 @@ test.describe("Event Reconstruction Slice 3C -- Waveform isolation", () => {
     await waitForPlot(page, 2);
     expect((await plotState(page)).panels.map((p) => p.label)).toContain("STN_A · Feeder IA");
     await zoomTo(page, 0.6, 1.2);
-    await page.locator("#wwErDragModePanBtn").click();
-    await expect.poll(async () => (await plotState(page)).panels.every((p) => p.dragmode === "pan")).toBe(true);
     await zoomTo(page, 0.8, 1.4);
 
-    expect(await waveform()).toEqual(before);
+    expect(await waveform()).toEqual(before); // includes ww.dragMode, unaffected by ER's own (DEC-144: both pages' dragMode is now the fixed "pan")
     expect(await api(page, "/synchronization/time-groups")).toEqual(groupsBefore);
     expect(await api(page, "/synchronization/sources")).toEqual(syncBefore);
-    await expect(page.locator("#dragModeZoomBtn")).toHaveAttribute("aria-pressed", "true");
     // Waveform's own panels never include Event Reconstruction's.
     expect(await page.evaluate(() => ww.panels.some((p) => p.chartEl.closest("#pageEventReconstruction")))).toBe(false);
 

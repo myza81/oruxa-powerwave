@@ -242,21 +242,25 @@ test.describe("Event Reconstruction active Y-axis target -- Combined", () => {
 });
 
 test.describe("Event Reconstruction active Y-axis target -- X navigation independence", () => {
-  test("Box Zoom, Pan, Zoom X In/Out change X only and never the active target", async ({ page }) => {
+  test("Pan, Zoom X In/Out change X only and never the active target", async ({ page }) => {
+    // DEC-144: Box Zoom is retired -- every plot-area drag is Pan (no
+    // mode toggle to click). At Fit All itself there is no room to pan
+    // (the window already spans the full bounds), so zoomTo() first
+    // reaches a narrower window to pan within.
     await setup(page);
     await clickPanelHeader(page, 0);
+    await zoomTo(page, 1, 3, 0);
     const before = await plotState(page);
     const activeKey = before.activeAxisKey;
     const yRanges = before.groups.map((g) => g.yRange);
 
-    await dragOnPanel(page, 1, 0.2, 0.5, 0); // Box Zoom (X)
+    await dragOnPanel(page, 1, 0.2, 0.5, 0); // Pan (X)
     await expect.poll(async () => (await plotState(page)).atFitAll).toBe(false);
     let state = await plotState(page);
     expect(state.activeAxisKey).toBe(activeKey);
     expect(state.groups.map((g) => g.yRange)).toEqual(yRanges);
 
-    await page.locator("#wwErDragModePanBtn").click();
-    await dragOnPanel(page, 2, 0.6, 0.4, 0); // Pan (X)
+    await dragOnPanel(page, 2, 0.6, 0.4, 0); // Pan (X), another panel
     state = await plotState(page);
     expect(state.activeAxisKey).toBe(activeKey);
 

@@ -22797,6 +22797,152 @@ segmented/joined-pill geometry for tool groups).
 
 ---
 
+## DEC-144 — Box Zoom is retired; Pan gets cursor feedback (grab/grabbing); Reset Time View is renamed Autoscale X
+
+Date: 2026-10-04
+Status: Approved (owner, three sequential tasks delivered in one session
+-- "PAN CURSOR FEEDBACK," "OWNER TOOL TERMINOLOGY UPDATE — AUTOSCALE X /
+Y," "OWNER TOOL CLEANUP — RETIRE BOX ZOOM" -- implemented together as one
+coherent interaction-model simplification, since retiring Box Zoom
+subsumes the cursor-feedback ticket's own "when Pan is inactive" premise
+and shares scope with the rename) -- implemented on
+`feat/event-reconstruction`; not merged.
+
+### Decision (owner)
+
+> Box Zoom is retired from the global waveform tool system. Direct
+> navigation is handled by Pan, while scale changes are handled
+> explicitly by Zoom X/Y In/Out and Autoscale X/Y. Pan remains the
+> primary direct plot-area navigation interaction, unchanged in
+> behaviour; its cursor becomes `grab` while hovering the plot area and
+> `grabbing` while actively dragging. "Reset Time View" is renamed
+> "Autoscale X" everywhere it appears (tooltip, aria-label, semantic
+> registry key), for symmetry with "Autoscale Y."
+
+### Implementation (`[FACT]`)
+
+- **Box Zoom removed, not disabled.** The former `dragModeToggle`/
+  `wwErDragModeToggle` groups (Box Zoom + Pan, both pages) are deleted
+  entirely -- not left as a disabled placeholder. There is no longer a
+  "drag mode" to select: `ww.dragMode`/`wwErState.dragMode` are now
+  fixed at `"pan"` from initialisation, read only by
+  `wwBuildLayout()`/`wwErPanelLayout()` to set Plotly's own `dragmode`
+  layout property; the two runtime setter functions
+  (`wwSetDragMode()`/`wwErSetDragMode()`) and Event Reconstruction's own
+  now-orphaned `wwErApplyDragMode()` are deleted (their only callers
+  were the removed buttons).
+- **`BOX_ZOOM` registry entry removed** (it was always an inline
+  composite, never an owner asset -- nothing left references it). `PAN`
+  stays registered: it is a real owner-supplied asset and a surviving
+  concept, just with no dedicated toggle button any more (Pan's own
+  presence is communicated by cursor feedback instead).
+- **Pan cursor feedback, unconditional** (Box Zoom's retirement means
+  Pan is the only plot-area mode on every waveform-capable page, so
+  there is nothing left to distinguish it from): a new shared
+  `wwWirePlotAreaGrabCursor(event)` toggles a `.ww-panning` class on a
+  `.nsewdrag` region on `pointerdown`, removed on a window-level
+  `mouseup`/`touchend` (the same restore pattern
+  `wwErKeepPlotAreaDragXOnly()` already used -- CSS `:active` alone
+  would drop the state the moment the pointer leaves the originating
+  element, which a real pan drag does constantly). `.ww-panel
+  .draglayer .nsewdrag` / `.ww-er-panel .draglayer .nsewdrag` get
+  `cursor: grab !important`; `.ww-panning` switches it to `grabbing
+  !important`. This replaces Event Reconstruction's own former
+  DEC-129/134 `ew-resize`/`w-resize`/`e-resize` cursor cues (which
+  signalled "this drag is X-only" against a Box-Zoom-vs-Pan distinction
+  that no longer exists) -- the underlying X-only guard itself
+  (`wwErKeepPlotAreaDragXOnly()`) is completely unchanged, still
+  temporarily fixedranging the Y axes for the duration of a plot-area
+  drag.
+- **Reset Time View → Autoscale X: a pure rename.** `RESET_TIME_VIEW`
+  is renamed `AUTOSCALE_X` in the registry; the button's `title`/
+  `aria-label` change from "Reset Time View" to "Autoscale X" on both
+  pages (Event Reconstruction's global header; Waveform's own
+  per-Time-Group canvas toolbar, `wwCreateTimeGroupCanvasDom()`); the
+  one user-facing error string ("That time range wasn't valid...") is
+  updated too. Internal names (`wwErResetViewBtn`, `wwErResetView()`,
+  `.ww-tg-reset-view-btn`) are deliberately NOT renamed -- not
+  user-facing, and renaming them would be unrelated churn.
+- **Icon follow-up (same session): `autoscale_x.svg`/`autoscale_y.svg`
+  delivered.** `AUTOSCALE_X` moved from reusing `reset_time_view.svg` to
+  its own dedicated asset; `AUTOSCALE_Y`'s own icon gap (open since
+  DEC-143) is resolved the same way -- both now owner-supplied, neither
+  inline any more. `reset_time_view.svg` is no longer referenced by any
+  registry key but is left in the asset folder (a real owner file, not
+  deleted).
+- **Open, flagged rather than silently resolved:** the owner's own
+  framing ("AUTOSCALE X affects X/time only... must NOT change any
+  Y-axis range") describes a stricter contract than the CURRENT
+  implementation, which still also autoscales every panel's Y as a
+  side effect (DEC-129's own "Reset Time View = Fit All + autoscale Y"
+  design). This rename does not change that behaviour -- "existing
+  reconstruction/time semantics remain unchanged" is read as the
+  governing instruction over the new naming's own implication, since
+  removing a working, tested side effect was not unambiguously
+  requested. See Open items below.
+- **Tests.** Static: the two drag-mode-toggle markup/handler tests
+  retired (`test_no_drag_mode_toggle_remains_on_either_page` proves
+  absence on both pages); `RESET_TIME_VIEW`/`BOX_ZOOM` references
+  updated throughout `TestPowerwaveIconSystem`/`TestPowerwaveIconAssets`/
+  `TestEventReconstructionToolConsistency`; a new assertion in
+  `test_pan_is_x_only` (renamed from `test_box_zoom_and_pan_are_x_only`)
+  proves the same pointerdown also wires the grab-cursor helper. Browser:
+  every ER spec's own "switch to Pan then drag" two-phase flow
+  (`event-reconstruction-navigation/-combined/-plot/-yaxis-zoom/
+  -active-yaxis.spec.js`) simplified to a single pan-drag phase (no
+  button to click); assertions that expected a drag to NARROW the span
+  (the old Box-Zoom behaviour) corrected to expect the span PRESERVED
+  (Pan's own, unchanged behaviour) -- one test's "box zoom" phase
+  (`event-reconstruction-plot.spec.js`) now reaches a narrower span via
+  the Zoom In button instead, since a drag can no longer do that.
+
+### Open (not this slice)
+
+- Whether Autoscale X's own long-standing "also autoscales every
+  panel's Y" side effect should be removed to match the new name's own
+  literal "X only" implication -- flagged above, not decided here.
+  Needs explicit owner confirmation before any behaviour change.
+- Whether a lone, non-interactive "Pan" indicator belongs back in the
+  toolbar if cursor feedback alone proves insufficient in UAT.
+
+---
+
+## DEC-145 — Autoscale X and Autoscale Y are paired, adjacent, in their own toolbar group
+
+Date: 2026-10-04
+Status: Approved (owner, "OWNER TOOLBAR GROUPING CORRECTION — AUTOSCALE
+X / Y") -- implemented on `feat/event-reconstruction`; not merged.
+
+### Decision (owner)
+
+> Autoscale X and Autoscale Y must be placed in the SAME functional
+> toolbar group: `[Autoscale X][2px][Autoscale Y]`, each its own
+> individual button, never joined into a segmented control. Their
+> separate tooltips and separate X-only/Y-only behaviour are unchanged.
+
+### Implementation (`[FACT]`)
+
+Event Reconstruction's global header (`#wwErToolbar`) regrouped:
+`wwErAutoscaleYBtn` moved out of the Y-axis Scale family (which keeps
+Zoom Y Out/In and the active-axis-target readout) into a new group
+immediately after Fit Selected Record, directly adjacent to
+`wwErResetViewBtn` (Autoscale X) -- `[[Fit Selected Record] sep
+[Autoscale X][Autoscale Y] sep [Analysis...]]`. No id, handler, class,
+or behaviour changed on either button; DEC-144's own individual-button
+geometry and the standing 2px within-group gap (`.ww-toolbar`'s own
+flex `gap`) apply automatically, so the pairing needed no new CSS.
+Fit Selected Record keeps its own existing position (not "moved" by
+this change, just acquires a new neighbour) per the owner's own "do not
+move unrelated tools" instruction.
+
+### Tests
+
+`test_autoscale_x_and_y_are_paired_adjacent_individual_buttons`: proves
+nothing else sits between the two buttons' markup and that they are not
+wrapped in a `.theme-toggle`/`.ww-icon-group` segmented container.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

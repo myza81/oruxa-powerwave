@@ -3,8 +3,8 @@
 // moves that end, a double-click autoranges it -- changes that axis only.
 // A dragged range is the axis's manual range (keyed by display-axis key,
 // per view mode), kept through X navigation, Fit Record and channel
-// changes until Autoscale Y / Reset. Plot-area Box Zoom and Pan stay
-// X-only.
+// changes until Autoscale Y / Reset. Plot-area Pan (DEC-144: the only
+// plot-area mode -- Box Zoom is retired) stays X-only.
 
 const { test, expect } = require("@playwright/test");
 const {
@@ -101,8 +101,13 @@ test.describe("Event Reconstruction Y-axis drag zoom -- Grouped", () => {
     expect(consoleErrors).toEqual([]);
   });
 
-  test("a manual range survives Pan, Box Zoom, Zoom In/Out and Fit Record; Autoscale Y and Reset clear it", async ({ page }) => {
+  test("a manual range survives Pan, Zoom In/Out and Fit Record; Autoscale Y and Reset clear it", async ({ page }) => {
+    // DEC-144: Box Zoom is retired -- every plot-area drag is Pan (no
+    // mode toggle to click). At Fit All itself there is no room to pan
+    // (the window already spans the full bounds), so zoomTo() first
+    // reaches a narrower window to pan within.
     await setup(page);
+    await zoomTo(page, 1, 4);
     await dragAxis(page, 0, "ndrag", "xy", -40);
     await expect.poll(async () => (await plotState(page)).groups[0].axes[0].manual).toBe(true);
     const manual = (await plotState(page)).groups[0].yRange;
@@ -115,12 +120,11 @@ test.describe("Event Reconstruction Y-axis drag zoom -- Grouped", () => {
       expect(state.groups[0].axes[0].manual, what).toBe(true);
       expect(state.groups.slice(1).map((g) => g.yRange), what).toEqual(others);
     };
-    await dragOnPanel(page, 1, 0.2, 0.5, 60); // diagonal Box Zoom
+    await dragOnPanel(page, 1, 0.2, 0.5, 60); // diagonal Pan
     await expect.poll(async () => (await plotState(page)).atFitAll).toBe(false);
-    await keeps("box zoom");
-    await page.locator("#wwErDragModePanBtn").click();
-    await dragOnPanel(page, 2, 0.6, 0.4, 40); // diagonal Pan
     await keeps("pan");
+    await dragOnPanel(page, 2, 0.6, 0.4, 40); // diagonal Pan, another panel
+    await keeps("pan again");
     await page.locator("#wwErZoomInBtn").click();
     await keeps("zoom in");
     await page.locator("#wwErZoomOutBtn").click();

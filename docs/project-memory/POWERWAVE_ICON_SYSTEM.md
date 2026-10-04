@@ -255,10 +255,18 @@ registry conversion only (§7), never their placement.
 
 ## 4. The registry
 
+**Note on `Source`:** rows below mostly still carry their original
+DEC-140 "Powerwave (existing)"/composite description; many of these
+(`ANNOTATE`, `ANNOTATIONS`, `CURSORS_AB`, `VIEW_SEPARATE`/`_CUSTOM`/
+`_SPLIT`, etc.) have since become owner-supplied assets under DEC-143 —
+see `frontend/assets/icons/manifest.json` (the manifest, not this
+table, is kept current for provenance on every migration) and §12
+below for the architecture that superseded this table's own original
+"Source = how the artwork was drawn" framing.
+
 | Key | Source | Pages | Notes |
 |---|---|---|---|
-| `BOX_ZOOM` | Powerwave (existing) | Waveform, ER | magnifier, plain |
-| `PAN` | Powerwave (existing) | Waveform, ER | open hand |
+| `PAN` | Owner-supplied (`pan.svg`) | no dedicated button on either page any more (DEC-144 — Pan is the only plot-area mode, communicated by cursor feedback instead); kept registered as a real, surviving concept | open hand |
 | `CARET_DOWN` | Powerwave (existing) | Waveform (Zoom In/Out axis trigger, both Time-Group templates) | the one shared split-button caret, also used by Annotate/Unit Mode; ER's own equivalent decorative dropdown was retired (DEC-141 §11 — always disabled, never wired) |
 | `ZOOM_X_IN` / `ZOOM_X_OUT` / `ZOOM_Y_IN` / `ZOOM_Y_OUT` | Composite: base magnifier (Lucide ZoomIn/ZoomOut metaphor, redrawn) + a small +/− glyph + a small axis-arrow cue | Waveform, ER — wired live | see §7 and DEC-142 |
 | `TIME_ELAPSED` | Composite: shared clock base (existing Powerwave clock, redrawn for a common base) + stopwatch-crown modifier | Waveform, ER | |
@@ -273,6 +281,9 @@ registry conversion only (§7), never their placement.
 | `ANNOTATE` | Powerwave (existing) | Waveform, ER | |
 | `ANNOTATION_TEXT_NOTE` / `ANNOTATION_CALLOUT` / `ANNOTATION_PEAK_MAX` / `ANNOTATION_PEAK_MIN` | Powerwave (existing) | Waveform, ER | |
 | `ANNOTATIONS` | Powerwave (existing) | Waveform, ER | |
+| `AUTOSCALE_X` | Owner-supplied (`autoscale_x.svg`, DEC-144) | Waveform, ER | renamed from `RESET_TIME_VIEW` — same function; paired with `AUTOSCALE_Y` in its own toolbar group (DEC-145) |
+| `AUTOSCALE_Y` | Owner-supplied (`autoscale_y.svg`, DEC-144 — gap open since DEC-143 now resolved) | Waveform, ER | paired with `AUTOSCALE_X` (DEC-145) |
+| `FIT_SELECTED_RECORD` | Owner-supplied (`fit_selected_record.svg`) | ER (enabled), Waveform (disabled stub — no "active record" concept) | |
 
 **`UNIT_ENGINEERING`/`UNIT_PER_UNIT` now exist (DEC-143, §12)** —
 `assets/icons/waveform/engineering_unit.svg`/`per_unit.svg`, Event
@@ -298,11 +309,11 @@ an explanatory `title`/`aria-label`.
 | Custom Layout | **ON** (page-rule) | OFF — same treatment (DEC-141 §11) |
 | Combined | *(no control — §6, unchanged by DEC-141)* | **ON** |
 | Split View | **ON** (page-rule) | OFF — same treatment (DEC-141 §11) |
-| Box Zoom / Pan | **ON** | **ON** |
+| Pan | **ON** (the only plot-area mode, DEC-144 — Box Zoom retired; no toggle button, cursor feedback only) | **ON**, same |
 | Zoom In/Out (X) | **ON** | **ON** |
 | Zoom In/Out (Y) | **ON** (its own axis-chooser dropdown) | **ON** when an active Y-axis target is set (DEC-142); disabled with "Select a Y axis to zoom" otherwise — direct individual-Y-axis drag zoom (DEC-134) is also still supported |
+| Autoscale X (DEC-144, renamed from Reset Time View) | **ON** | **ON** |
 | Autoscale Y | **ON** | **ON** |
-| Reset Time View | **ON** | **ON** |
 | Fit Selected Record | *(no control — Waveform has no "active record" concept)* | **ON** |
 | A/B Cursors | **ON** | **ON** |
 | Annotate / Annotations | **ON** | **ON** |
@@ -398,13 +409,12 @@ the base mode name itself (`"Elapsed Time"`, `"Relative Time"`,
 
 | Function | Canonical tooltip |
 |---|---|
-| Box Zoom | `Box Zoom` |
-| Pan | `Pan` |
+| Pan | *(no dedicated button since DEC-144 — Box Zoom retired, Pan is the only plot-area mode; grab/grabbing cursor feedback instead)* |
 | Zoom In (time axis) | `Zoom In — Time Axis` |
 | Zoom Out (time axis) | `Zoom Out — Time Axis` |
 | Zoom In/Out (selected Y axis, Waveform only) | `Zoom In — Selected Y Axis` / `Zoom Out — Selected Y Axis` |
-| Reset Time View | `Reset Time View` (Waveform's own canvas-toolbar form additionally says "for this Time Group" — a real context qualifier Event Reconstruction has no Time Group to name; see DEC-139) |
-| Autoscale Y | `Autoscale Y` (same qualifier note) |
+| Autoscale X (DEC-144, renamed from Reset Time View) | `Autoscale X` (Waveform's own canvas-toolbar form additionally says "for this Time Group" — a real context qualifier Event Reconstruction has no Time Group to name; see DEC-139) |
+| Autoscale Y | `Autoscale Y` (same qualifier note; paired adjacent to Autoscale X in its own toolbar group, DEC-145) |
 | A/B Time Cursors | `A/B Time Cursors` (same qualifier note) |
 | Annotate | `Annotate` |
 | Annotations | `Annotations` |
@@ -544,9 +554,31 @@ by this spacing rule.
 
 ### Known gaps (no owner asset in this delivery)
 
-`BOX_ZOOM`, `CARET_DOWN`, `AUTOSCALE_Y`, and the four annotation TYPE
-icons (`ANNOTATION_TEXT_NOTE`/`_CALLOUT`/`_PEAK_MAX`/`_PEAK_MIN`) stay
-on their original inline markup. `ZOOM_HORIZONTAL`/`ZOOM_VERTICAL` are
+`CARET_DOWN` and the four annotation TYPE icons
+(`ANNOTATION_TEXT_NOTE`/`_CALLOUT`/`_PEAK_MAX`/`_PEAK_MIN`) stay on
+their original inline markup. `ZOOM_HORIZONTAL`/`ZOOM_VERTICAL` are
 registered (owner-supplied) but deliberately not composed into any
 control yet — the "how should these combine with Zoom In/Out" question
-is explicitly open.
+is explicitly open. `BOX_ZOOM` is not a gap — the function itself is
+retired (DEC-144), not pending an icon. `AUTOSCALE_Y`'s own gap (open
+when this section was first written) is resolved — see §13.
+
+---
+
+## 13. Box Zoom retired; Pan cursor feedback; Autoscale X/Y renamed, re-iconed and paired (DEC-144/DEC-145)
+
+Full decision records: [DECISIONS.md — DEC-144](DECISIONS.md#dec-144--box-zoom-is-retired-pan-gets-cursor-feedback-grabgrabbing-reset-time-view-is-renamed-autoscale-x)
+and [DEC-145](DECISIONS.md#dec-145--autoscale-x-and-autoscale-y-are-paired-adjacent-in-their-own-toolbar-group).
+
+- **Box Zoom retired.** No toggle, no button, no `BOX_ZOOM` registry
+  entry, on either page. Pan is the only plot-area interaction mode;
+  `ww.dragMode`/`wwErState.dragMode` are fixed at `"pan"`.
+- **Pan cursor feedback.** `.ww-panel .draglayer .nsewdrag` /
+  `.ww-er-panel .draglayer .nsewdrag` get `cursor: grab`, switching to
+  `grabbing` via a `.ww-panning` class toggled by the shared
+  `wwWirePlotAreaGrabCursor()` on pointerdown/mouseup/touchend.
+- **`AUTOSCALE_X`** (renamed from `RESET_TIME_VIEW`) and **`AUTOSCALE_Y`**
+  are both owner-supplied (`autoscale_x.svg`/`autoscale_y.svg`) and sit
+  paired, adjacent, in their own toolbar group — `[Autoscale X]
+  [Autoscale Y]`, each its own individual button, 2px apart, never
+  joined.

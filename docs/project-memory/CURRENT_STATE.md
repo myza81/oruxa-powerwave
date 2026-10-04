@@ -196,18 +196,25 @@ DEC-122 display timezone).
     - Settings changed in Waveform are read again on the next visit.
 
   - **Global icon system (DEC-140, app-wide), toolbar composition
-    (DEC-141, app-wide) and owner-approved SVG assets (DEC-143,
-    app-wide).** One shared icon registry (`WW_TOOL_ICONS`); every
-    common tool lives in one global header (`#wwErToolbar`), seven
-    ordered families — the Reconstruction Timeline canvas has no
-    toolbar of its own. Icons are now owner-supplied physical SVG files
-    under `frontend/assets/icons/**`, rendered via a CSS `mask-image`
-    (themes correctly regardless of a file's own internal colour).
-    Every tool group (Box Zoom/Pan, Time Display, View Mode, Unit Mode)
-    is a row of individual compact buttons with a strict 2px gap within
-    one family — never a joined/segmented pill. Unit Mode (ENG/PU) is
-    now an icon pair (`engineering_unit.svg`/`per_unit.svg`), the
-    former "Units" text label removed. See
+    (DEC-141, app-wide), owner-approved SVG assets (DEC-143, app-wide)
+    and Box Zoom retirement (DEC-144/145, app-wide).** One shared icon
+    registry (`WW_TOOL_ICONS`); every common tool lives in one global
+    header (`#wwErToolbar`), ordered families — the Reconstruction
+    Timeline canvas has no toolbar of its own. Icons are owner-supplied
+    physical SVG files under `frontend/assets/icons/**`, rendered via a
+    CSS `mask-image` (themes correctly regardless of a file's own
+    internal colour). Every tool group (Pan, Time Display, View Mode,
+    Unit Mode, the paired Autoscale X/Y) is a row of individual compact
+    buttons with a strict 2px gap within one family — never a joined/
+    segmented pill. Unit Mode (ENG/PU) is an icon pair
+    (`engineering_unit.svg`/`per_unit.svg`), the former "Units" text
+    label removed. **Box Zoom is retired** — Pan is the only plot-area
+    interaction mode (no toggle button; `grab`/`grabbing` cursor
+    feedback over the plot area instead). "Reset Time View" is renamed
+    "Autoscale X" (same behaviour, including its own long-standing
+    "also autoscales Y" side effect — flagged as a possible future
+    tightening, not changed) and sits paired, adjacent, with Autoscale
+    Y in its own toolbar group. See
     [POWERWAVE_ICON_SYSTEM.md](POWERWAVE_ICON_SYSTEM.md).
   - **Active Y-axis target (DEC-142).** The explicit target
     (`wwErState.plot.activeAxisKey`, a stable display-axis key, never a

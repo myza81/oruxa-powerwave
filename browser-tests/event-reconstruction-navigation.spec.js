@@ -1,6 +1,7 @@
 // Event Reconstruction Slice 3D (DEC-129): navigation on the shared
-// reconstruction timeline -- X-only Box Zoom/Pan, staged Zoom In/Out,
-// Reset Time View (Fit All + autoscale Y, also on double-click), Autoscale
+// reconstruction timeline -- X-only Pan (DEC-144: Box Zoom retired),
+// staged Zoom In/Out, Autoscale X (Fit All + autoscale Y, also on
+// double-click; formerly "Reset Time View"), Autoscale
 // Y, viewport rebasing when the reference or a correction moves the
 // reconstruction zero, the Fit All span notice, and Waveform isolation.
 
@@ -45,33 +46,32 @@ function captureWaveformRequests(page) {
 
 const span = (range) => range[1] - range[0];
 
-test.describe("Event Reconstruction Slice 3D -- X-only Box Zoom and Pan", () => {
-  test("a box zoom or pan drag changes the shared X range only; every panel keeps its Y range", async ({ page }) => {
+test.describe("Event Reconstruction Slice 3D -- X-only Pan", () => {
+  test("a plot-area drag pans the shared X range only, preserving its span; every panel keeps its Y range", async ({ page }) => {
+    // DEC-144: Box Zoom is retired -- Pan is the only plot-area
+    // interaction mode, every panel's own dragmode is permanently "pan"
+    // (no toggle to click), so a plot-area drag always translates the
+    // viewport (same span, shifted) rather than resizing it. At Fit All
+    // itself there is no room to pan (the window already spans the full
+    // bounds), so zoomTo() first reaches a narrower window to pan within.
     const consoleErrors = collectConsoleErrors(page);
     await twoOverlapping(page);
+    await zoomTo(page, 1, 5, 0);
     const before = await plotState(page);
     // DEC-134: Y axes are draggable on their own scale (not fixedrange);
     // a drag in the plot area is still X-only.
     expect(before.panels.every((p) => p.yFixedRange === false)).toBe(true);
-    // Diagonal drag on the last panel: X follows, Y does not.
-    await dragOnPanel(page, 1, 0.25, 0.5, 60);
-    await expect.poll(async () => (await plotState(page)).atFitAll).toBe(false);
-    await waitForSharedAxis(page);
-    await waitForPlot(page, 3);
-    let state = await plotState(page);
-    expectSharedAxis(state);
-    expect(state.viewport.end - state.viewport.start).toBeLessThan(2);
-    state.panels.forEach((panel, i) => expect(panel.yRange).toEqual(before.panels[i].yRange));
+    expect(before.panels.every((p) => p.dragmode === "pan")).toBe(true);
+    const beforeSpan = before.viewport.end - before.viewport.start;
+    const startBefore = before.viewport.start;
 
-    await page.locator("#wwErDragModePanBtn").click();
-    await expect.poll(async () => (await plotState(page)).panels.every((p) => p.dragmode === "pan")).toBe(true);
-    const startBefore = state.viewport.start;
     await dragOnPanel(page, 1, 0.3, 0.5, -80);
     await expect.poll(async () => (await plotState(page)).viewport.start).toBeLessThan(startBefore - 0.05);
     await waitForSharedAxis(page);
     await waitForPlot(page, 3);
-    state = await plotState(page);
+    const state = await plotState(page);
     expectSharedAxis(state);
+    expect(state.viewport.end - state.viewport.start).toBeCloseTo(beforeSpan, 6); // Pan preserves span
     state.panels.forEach((panel, i) => expect(panel.yRange).toEqual(before.panels[i].yRange));
     expect(consoleErrors).toEqual([]);
   });
@@ -165,8 +165,8 @@ test.describe("Event Reconstruction Slice 3D -- staged zoom", () => {
     for (let k = 1; k < far.x.length; k++) {
       expect(Math.fround(far.x[k]) - Math.fround(far.x[k - 1])).toBeCloseTo(0.0002, 7);
     }
-    // Pan stays inside Fit All even from far out.
-    await page.locator("#wwErDragModePanBtn").click();
+    // Pan stays inside Fit All even from far out (DEC-144: Pan is the
+    // only plot-area interaction mode, no mode switch needed).
     await dragOnPanel(page, 1, 0.1, 0.9);
     await waitForSharedAxis(page);
     state = await plotState(page);
@@ -178,7 +178,7 @@ test.describe("Event Reconstruction Slice 3D -- staged zoom", () => {
   });
 });
 
-test.describe("Event Reconstruction Slice 3D -- Reset Time View and Autoscale Y", () => {
+test.describe("Event Reconstruction Slice 3D -- Autoscale X and Autoscale Y", () => {
   test("Y keeps its range through X navigation; Autoscale Y and Reset rescale every panel; an empty panel's stale range clears", async ({ page }) => {
     await page.goto("/index.html");
     await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", durationS: 4 });

@@ -180,8 +180,9 @@ test.describe("Event Reconstruction -- Slice 0 shell", () => {
     await expect(page.locator("#wwErPanels .ww-chart")).toHaveCount(0);
     await expect(page.locator("#pageEventReconstruction .ww-time-group-canvas")).toHaveCount(0);
 
-    await expect(page.locator("#wwErDragModeZoomBtn")).toHaveAttribute("aria-label", "Box Zoom");
-    await expect(page.locator("#wwErDragModePanBtn")).toHaveAttribute("aria-label", "Pan");
+    // DEC-144: Box Zoom is retired -- there is no drag-mode toggle at all;
+    // Pan is the only plot-area interaction mode.
+    await expect(page.locator("#wwErDragModeZoomBtn, #wwErDragModePanBtn, #wwErDragModeToggle")).toHaveCount(0);
     for (const id of ["#wwErZoomInBtn", "#wwErZoomOutBtn", "#wwErResetViewBtn"]) {
       await expect(page.locator(id)).toBeVisible();
       await expect(page.locator(id)).toBeDisabled();
@@ -199,16 +200,14 @@ test.describe("Event Reconstruction -- Slice 0 shell", () => {
     expect(consoleErrors).toEqual([]);
   });
 
-  test("drag mode is Event Reconstruction state only and never changes Waveform", async ({ page }) => {
+  test("drag mode is fixed Pan, Event Reconstruction state only, and never changes Waveform", async ({ page }) => {
+    // DEC-144: Box Zoom is retired on both pages -- there is no mode to
+    // switch; each page's own dragMode stays permanently "pan",
+    // independently of the other.
     await page.goto("/index.html");
     await openEventReconstruction(page);
-
-    await expect(page.locator("#wwErDragModeZoomBtn")).toHaveAttribute("aria-pressed", "true");
-    await page.locator("#wwErDragModePanBtn").click();
-    await expect(page.locator("#wwErDragModePanBtn")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator("#wwErDragModeZoomBtn")).toHaveAttribute("aria-pressed", "false");
-    await expect(page.locator("#dragModeZoomBtn")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator("#dragModePanBtn")).toHaveAttribute("aria-pressed", "false");
+    expect(await page.evaluate(() => wwErState.dragMode)).toBe("pan");
+    expect(await page.evaluate(() => ww.dragMode)).toBe("pan");
   });
 
   test("responsive Sources drawer opens the Event Reconstruction panel only", async ({ page }) => {

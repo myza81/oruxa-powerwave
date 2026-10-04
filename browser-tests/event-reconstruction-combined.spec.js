@@ -220,7 +220,9 @@ test.describe("Event Reconstruction Combined View -- axes and rendering", () => 
 });
 
 test.describe("Event Reconstruction Combined View -- navigation and Y", () => {
-  test("Box Zoom and Pan are X-only on every axis; Zoom In/Out and Fit All clamp; double-click resets", async ({ page }) => {
+  test("Pan is X-only on every axis; Zoom In/Out and Fit All clamp; double-click resets", async ({ page }) => {
+    // DEC-144: Box Zoom is retired -- Pan is the only plot-area
+    // interaction mode (no mode toggle to click).
     await page.goto("/index.html");
     await uploadRecord(page, { station: "STN_A", startClock: "10:00:00.000000", durationS: 4, channels: MIXED });
     await uploadRecord(page, { station: "STN_B", startClock: "10:00:01.000000", durationS: 4, channels: MIXED });
@@ -231,21 +233,17 @@ test.describe("Event Reconstruction Combined View -- navigation and Y", () => {
     await waitForPlot(page, 3);
     await waitForAxesScaled(page);
     let state = await plotState(page);
-    const ranges = state.groups[0].axes.map((a) => a.range);
     expect(state.fitAll.start).toBeCloseTo(0, 9);
     expect(state.fitAll.end).toBeCloseTo(5, 6);
 
-    // Box Zoom with a diagonal drag: X narrows, no Y axis moves.
-    await dragOnPanel(page, 0, 0.25, 0.5, 60);
-    await expect.poll(async () => (await plotState(page)).atFitAll).toBe(false);
-    await waitForPlot(page, 3);
+    // DEC-144: Box Zoom is retired -- at Fit All itself there is no room
+    // to pan (the window already spans the full bounds), so zoomTo()
+    // first reaches a narrower window to pan within.
+    await zoomTo(page, 1, 4, 0);
     state = await plotState(page);
-    expect(state.viewport.start).toBeGreaterThan(0.5);
-    expect(state.viewport.end).toBeLessThan(3);
-    expect(state.groups[0].axes.map((a) => a.range)).toEqual(ranges);
+    const ranges = state.groups[0].axes.map((a) => a.range);
 
-    // Pan: X moves, Y does not.
-    await page.locator("#wwErDragModePanBtn").click();
+    // Pan: X moves (preserving its span), Y does not.
     const before = state.viewport;
     await dragOnPanel(page, 0, 0.6, 0.4, 40);
     await expect.poll(async () => (await plotState(page)).viewport.start).toBeGreaterThan(before.start + 1e-6);
@@ -267,7 +265,7 @@ test.describe("Event Reconstruction Combined View -- navigation and Y", () => {
     await page.locator("#wwErZoomInBtn").click();
     await expect.poll(async () => (await plotState(page)).atFitAll).toBe(false);
 
-    // Double-click = Reset Time View (Fit All + every axis autoscaled).
+    // Double-click = Autoscale X (Fit All + every axis autoscaled).
     await page.locator("#wwErPanels .ww-er-panel").nth(0).locator(".nsewdrag").dblclick();
     await expect.poll(async () => (await plotState(page)).atFitAll).toBe(true);
     await waitForPlot(page, 3);
@@ -397,7 +395,6 @@ test.describe("Event Reconstruction Combined View -- cursors and mode switching"
     await selectAll(page, "STN_B", ["VA", "IA"]);
     await waitForPlot(page, 4);
     await zoomTo(page, 0.55, 0.95);
-    await page.locator("#wwErDragModePanBtn").click();
     await page.locator("#wwErCursorModeBtn").click();
     await page.evaluate(() => { wwErSetCursorTime("a", 0.6); wwErSetCursorTime("b", 0.85); });
     const snapshot = () => page.evaluate(() => ({
@@ -539,7 +536,6 @@ test.describe("Event Reconstruction Combined View -- failures, fetching and isol
     await page.locator("#wwErZoomInBtn").click();
     await page.locator("#wwErAutoscaleYBtn").click();
     await page.locator("#wwErCursorModeBtn").click();
-    await page.locator("#wwErDragModePanBtn").click();
     await page.evaluate(() => document.dispatchEvent(new CustomEvent("powerwave:theme-change")));
     await page.locator("#wwErResetViewBtn").click();
     await waitForPlot(page, 5);
