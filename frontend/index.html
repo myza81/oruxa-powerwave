@@ -9497,33 +9497,39 @@
                         </button>
                         <span class="ww-er-active-axis-readout" id="wwErActiveAxisReadout">Y: Select axis</span>
                         <span class="ww-toolbar-sep" aria-hidden="true"></span>
-                        <!-- DEC-141: Fit Selected Record -- a compact icon
-                             (Waveform's own canvas-toolbar text-button
-                             precedent; Waveform itself is unchanged, only
-                             Event Reconstruction's consolidated-into-the-
-                             header copy becomes an icon). -->
-                        <button type="button" class="ww-icon-btn ww-er-fit-record-btn" id="wwErFitRecordBtn" title="Fit selected record" aria-label="Fit selected record" disabled>
-                            <span class="ww-icon" data-ww-icon="FIT_SELECTED_RECORD"></span>
-                        </button>
-                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
-                        <!-- DEC-145 (owner correction): Autoscale X and
-                             Autoscale Y are a paired axis-scaling function
-                             and sit adjacent, in their own group -- never
+                        <!-- DEC-147 (owner correction, amends DEC-145):
+                             Autoscale X, Autoscale Y and Fit Selected
+                             Record are all "fit/scale view" functions and
+                             sit together in one group -- [Autoscale X]
+                             [Autoscale Y][Fit Selected Record], never
                              joined into one segmented control, each its
                              own individual button (same geometry as every
                              other tool group, DEC-144's own "individual
                              button" correction), with the standard 2px
-                             within-group gap. DEC-144: user-visible
-                             wording renamed "Reset Time View" ->
-                             "Autoscale X"; same id/handler/behaviour
-                             (Autoscale X also still autoscales every
-                             panel's Y as a side effect, DEC-129 -- see
-                             DEC-144's own "Open" item). -->
+                             within-group gap throughout (including between
+                             Autoscale Y and Fit Selected Record, which
+                             used to be separated by a sep -- DEC-145's own
+                             pairing of Autoscale X/Y is extended, not
+                             reversed). DEC-144: user-visible wording
+                             renamed "Reset Time View" -> "Autoscale X";
+                             same id/handler/behaviour (Autoscale X also
+                             still autoscales every panel's Y as a side
+                             effect, DEC-129 -- see DEC-144's own "Open"
+                             item). Fit Selected Record (DEC-141): a
+                             compact icon (Waveform's own canvas-toolbar
+                             text-button precedent; Waveform itself is
+                             unchanged, only Event Reconstruction's
+                             consolidated-into-the-header copy becomes an
+                             icon) -- same id/handler, only its toolbar
+                             position changed. -->
                         <button type="button" class="ww-icon-btn ww-tg-reset-view-btn" id="wwErResetViewBtn" title="Autoscale X" aria-label="Autoscale X" disabled>
                             <span class="ww-icon" data-ww-icon="AUTOSCALE_X"></span>
                         </button>
                         <button type="button" class="ww-icon-btn ww-tg-autoscale-btn" id="wwErAutoscaleYBtn" title="Autoscale Y" aria-label="Autoscale Y" disabled>
                             <span class="ww-icon" data-ww-icon="AUTOSCALE_Y"></span>
+                        </button>
+                        <button type="button" class="ww-icon-btn ww-er-fit-record-btn" id="wwErFitRecordBtn" title="Fit selected record" aria-label="Fit selected record" disabled>
+                            <span class="ww-icon" data-ww-icon="FIT_SELECTED_RECORD"></span>
                         </button>
                         <span class="ww-toolbar-sep" aria-hidden="true"></span>
                         <!-- DEC-141: Analysis -- A/B Time Cursors (moved here

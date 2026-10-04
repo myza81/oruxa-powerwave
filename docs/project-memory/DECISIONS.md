@@ -23003,6 +23003,50 @@ and dark theme, with zero console errors.
 
 ---
 
+## DEC-147 — Autoscale X, Autoscale Y and Fit Selected Record become one toolbar group (amends DEC-145)
+
+Date: 2026-10-04
+Status: Approved (owner, "OWNER TOOLBAR GROUPING UPDATE — AUTOSCALE +
+FIT SELECTED RECORD") -- implemented on `feat/event-reconstruction`;
+not merged.
+
+### Decision (owner)
+
+> Autoscale X, Autoscale Y and Fit Selected Record all belong to the
+> same "fit / scale view" family and must sit in one group:
+> `[Autoscale X][2px][Autoscale Y][2px][Fit Selected Record]`, each its
+> own independent compact button, never joined into a segmented
+> control. Behaviour, handlers, state and tooltips are unchanged; do
+> not move unrelated tools.
+
+### Implementation (`[FACT]`)
+
+Pure DOM reorder in the global header (`#wwErToolbar`): `wwErFitRecordBtn`
+moved from its former position (before the Y-axis Scale family's own
+separator, ahead of Autoscale X) to immediately after
+`wwErAutoscaleYBtn`, and the `.ww-toolbar-sep` that used to sit between
+Fit Selected Record and Autoscale X removed (they are the same group
+now). DEC-145's own Autoscale X/Y adjacency is extended, not reversed:
+`[Y-axis Scale family] sep [Autoscale X][Autoscale Y][Fit Selected
+Record] sep [Analysis...]`. No id, class, handler or behaviour changed
+on any of the three buttons; DEC-144's individual-button geometry and
+`.ww-toolbar`'s standing 2px gap apply automatically to the extended
+group, so no new CSS was needed.
+
+### Tests
+
+`test_autoscale_x_autoscale_y_and_fit_selected_record_are_one_group`
+(renamed/extended from DEC-145's
+`test_autoscale_x_and_y_are_paired_adjacent_individual_buttons`): proves
+nothing sits between Autoscale X and Autoscale Y, nothing sits between
+Autoscale Y and Fit Selected Record, and none of the three pairs is
+wrapped in a segmented `.theme-toggle`/`.ww-icon-group` container.
+`test_event_reconstruction_specific_tools_get_their_own_icon_same_
+compact_design`'s own order assertion updated to the new sequence
+(Autoscale X < Autoscale Y < Fit Selected Record).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

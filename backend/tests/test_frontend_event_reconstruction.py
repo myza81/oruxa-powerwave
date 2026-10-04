@@ -1630,26 +1630,38 @@ class TestEventReconstructionToolConsistency:
         canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
         assert 'class="ww-icon-btn ww-tg-fit-record-btn"' in canvas
         assert 'title="Fit selected record — unavailable in Waveform"' in canvas
-        # Within the header: Fit Selected Record precedes the paired
-        # Autoscale X/Y group (section 8's own order).
+        # DEC-147 (owner correction, amends DEC-145): Fit Selected Record
+        # now sits AFTER the paired Autoscale X/Y group, in the same
+        # "fit/scale view" toolbar group -- see
+        # test_autoscale_x_autoscale_y_and_fit_selected_record_are_one_group
+        # for the full adjacency proof.
         toolbar = _between(page, '<div class="ww-toolbar" id="wwErToolbar">', 'id="wwErAnnotationGuidance"')
-        assert toolbar.index('id="wwErFitRecordBtn"') < toolbar.index('id="wwErResetViewBtn"')
+        assert toolbar.index('id="wwErResetViewBtn"') < toolbar.index('id="wwErAutoscaleYBtn"') < toolbar.index('id="wwErFitRecordBtn"')
 
-    def test_autoscale_x_and_y_are_paired_adjacent_individual_buttons(self):
-        """DEC-145 (owner correction): Autoscale X and Autoscale Y are a
-        paired axis-scaling function and sit adjacent in their own group
-        -- [Autoscale X][Autoscale Y], nothing else between them, each
-        its own individual button (never a joined/segmented pair)."""
+    def test_autoscale_x_autoscale_y_and_fit_selected_record_are_one_group(self):
+        """DEC-147 (owner correction, amends DEC-145): Autoscale X,
+        Autoscale Y and Fit Selected Record are all "fit/scale view"
+        functions and sit together in one group -- [Autoscale X]
+        [Autoscale Y][Fit Selected Record], nothing else between any
+        pair of them, each its own individual button (never a joined/
+        segmented pair)."""
         page = _er_page(_source())
         x_btn = _element(page, "wwErResetViewBtn", "button")
         x_end = page.index(x_btn) + len(x_btn)
         y_start = page.index('<button type="button" class="ww-icon-btn ww-tg-autoscale-btn" id="wwErAutoscaleYBtn"')
-        gap = page[x_end:y_start]
-        assert "<button" not in gap  # no other control in between
-        assert "theme-toggle" not in gap and "ww-icon-group" not in gap  # not a segmented pair
+        gap_xy = page[x_end:y_start]
+        assert "<button" not in gap_xy  # no other control between Autoscale X and Y
+        assert "theme-toggle" not in gap_xy and "ww-icon-group" not in gap_xy  # not a segmented pair
         y_btn = _element(page, "wwErAutoscaleYBtn", "button")
+        y_end = page.index(y_btn) + len(y_btn)
+        fit_start = page.index('<button type="button" class="ww-icon-btn ww-er-fit-record-btn" id="wwErFitRecordBtn"')
+        gap_yfit = page[y_end:fit_start]
+        assert "<button" not in gap_yfit  # no other control between Autoscale Y and Fit Selected Record
+        assert "theme-toggle" not in gap_yfit and "ww-icon-group" not in gap_yfit
+        fit_btn = _element(page, "wwErFitRecordBtn", "button")
         assert 'title="Autoscale X"' in x_btn and 'title="Autoscale Y"' in y_btn
-        assert _icon_key(x_btn) == "AUTOSCALE_X" and _icon_key(y_btn) == "AUTOSCALE_Y"
+        assert 'aria-label="Fit selected record"' in fit_btn
+        assert _icon_key(x_btn) == "AUTOSCALE_X" and _icon_key(y_btn) == "AUTOSCALE_Y" and _icon_key(fit_btn) == "FIT_SELECTED_RECORD"
 
     def test_unit_mode_is_now_an_icon_family_like_every_other(self):
         """DEC-143 supersedes section 11/13's own DEC-140-era hedge: Unit
