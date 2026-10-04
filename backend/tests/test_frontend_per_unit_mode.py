@@ -312,10 +312,9 @@ def test_calculated_channel_preview_uses_the_same_global_unit_mode():
 
 def test_manage_per_unit_bases_toolbar_control_exists_in_html():
     source = _source()
-    assert 'id="wwUnitModeBtn"' in source
-    assert 'id="wwUnitModeMenu"' in source
-    assert 'data-unit-mode="engineering"' in source
-    assert 'data-unit-mode="per_unit"' in source
+    # Waveform toolbar migration: two direct icon buttons, no dropdown.
+    assert 'id="wwUnitEngineeringBtn"' in source
+    assert 'id="wwUnitPerUnitBtn"' in source
     # Slice 1 (Per-Unit Settings hierarchy): the toolbar now routes to a
     # single "Per-Unit Settings..." entry point rather than opening the
     # source-wide modal directly -- the modal itself, its own function,
@@ -335,7 +334,7 @@ def test_selecting_per_unit_never_auto_opens_any_configuration_surface():
     "Per-Unit Settings...", never a consequence of switching display
     mode, regardless of whether any source has a configured base."""
     source = _source()
-    start = source.index('.ww-split-menu-item[data-unit-mode="per_unit"]\').addEventListener("click"')
+    start = source.index('document.getElementById("wwUnitPerUnitBtn").addEventListener("click"')
     end = source.index("});", start) + 3
     body = source[start:end]
     assert "await wwApplyUnitMode(\"per_unit\");" in body

@@ -50,16 +50,20 @@ class TestModalAndDrawerMarkupExists:
         assert 'id="wwMgDrawerCancelBtn"' in source
 
     def test_toolbar_exposes_one_settings_entry_point_not_two_competing_ones(self):
-        """Slice 1 (Per-Unit Settings hierarchy): the toolbar menu no
-        longer exposes Measurement Groups and Source Default as two
-        directly-competing items -- both are reached through the new
-        parent #perUnitSettingsOverlay instead."""
+        """Slice 1 (Per-Unit Settings hierarchy): the toolbar's own Unit
+        Mode area no longer exposes Measurement Groups and Source
+        Default as two directly-competing items -- both are reached
+        through the new parent #perUnitSettingsOverlay instead. Waveform
+        toolbar migration: the former dropdown menu (#wwUnitModeMenu) is
+        gone -- Engineering Units/Per Unit are two direct icon buttons
+        and Per-Unit Settings is its own adjacent icon button."""
         source = _source()
+        assert 'id="wwUnitModeMenu"' not in source
         assert 'id="wwOpenPerUnitSettingsBtn"' in source
         assert "Per-Unit Settings" in source
-        menu_body = _function_body(source, 'id="wwUnitModeMenu"', "</div>\n                        </div>")
-        assert 'id="wwManageMeasurementGroupsBtn"' not in menu_body
-        assert 'id="wwManagePerUnitBasesBtn"' not in menu_body
+        unit_mode_region = _function_body(source, 'id="wwUnitModeToggle"', 'id="wwOpenPerUnitSettingsBtn"')
+        assert 'id="wwManageMeasurementGroupsBtn"' not in unit_mode_region
+        assert 'id="wwManagePerUnitBasesBtn"' not in unit_mode_region
 
 
 class TestDec049CoexistenceUnchanged:

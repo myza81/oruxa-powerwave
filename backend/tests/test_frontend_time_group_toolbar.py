@@ -402,7 +402,7 @@ class TestGlobalDuplicatesRemoved:
         for still_global_id in (
             "layoutModeGroupedBtn",
             "timeModeAbsoluteBtn",
-            "wwUnitModeBtn",
+            "wwUnitEngineeringBtn",
             "recordingsUploadBtn",
         ):
             assert f'id="{still_global_id}"' in source, f"expected still-global control id={still_global_id} to remain"

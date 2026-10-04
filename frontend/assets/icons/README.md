@@ -39,6 +39,9 @@ covers.
 - `navigation/` -- the main sidebar's per-page icons.
 - `waveform/` -- waveform display, time, units, layout, zoom, cursor
   and fit/reset icons (Waveform and Event Reconstruction alike).
+- `analysis/` -- the Analysis page's own analyzer-type nav icons
+  (Overcurrent, Impedance Locus, Distance Protection, Phasor, Sequence
+  Components).
 
 See `frontend/assets/branding/README.md` for logo/favicon assets,
 which are a separate, not-yet-supplied set.

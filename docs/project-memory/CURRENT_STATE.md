@@ -225,7 +225,19 @@ DEC-122 display timezone).
     narrower Autoscale X/Y-only pairing) — `[Autoscale X][Autoscale Y]
     [Fit Selected Record]`, each its own individual button.
     **`engineering_unit.svg`/`per_unit.svg` artwork was refreshed**
-    (DEC-148) — same filenames, same registry mapping, asset-only. See
+    (DEC-148) — same filenames, same registry mapping, asset-only.
+    **Waveform now shares this same tool language too** (DEC-150) —
+    its own Unit Mode is the identical icon-pair pattern (no more text
+    dropdown), its per-Time-Group canvas toolbar has the same 2px/
+    hairline-separator geometry Event Reconstruction's header already
+    had. **The Analysis page's own 5 analyzer-type icons** (Overcurrent/
+    Impedance Locus/Distance Protection/Phasor/Sequence Components,
+    DEC-152) are owner assets through this same registry now too.
+    **Panel-header tools that a page can never support are hidden, not
+    disabled** (DEC-154, reversing DEC-141's own opposite instruction
+    for the same controls — flagged in DEC-154's own "Open" item): a
+    tool the page genuinely supports but is temporarily unavailable at
+    runtime is unaffected, still rendered and disabled as before. See
     [POWERWAVE_ICON_SYSTEM.md](POWERWAVE_ICON_SYSTEM.md).
   - **Active Y-axis target (DEC-142).** The explicit target
     (`wwErState.plot.activeAxisKey`, a stable display-axis key, never a

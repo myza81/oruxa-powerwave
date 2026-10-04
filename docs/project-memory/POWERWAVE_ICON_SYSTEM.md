@@ -629,3 +629,52 @@ Full decision record: [DECISIONS.md — DEC-149](DECISIONS.md#dec-149--autoscale
   untouched, out of this ticket's scope" — is now confirmed to have
   zero live references anywhere and is deleted.
 - **Pan is untouched**, per the owner's own explicit instruction.
+
+---
+
+## 16. Waveform adopts the global tool language; Analysis icons; panel-header tool visibility (DEC-150/DEC-151/DEC-152/DEC-153/DEC-154)
+
+Full decision records: [DECISIONS.md — DEC-150](DECISIONS.md#dec-150--waveform-adopts-the-global-waveform-tool-language-unit-mode-icon-pair-time-group-toolbar-geometry)
+through [DEC-154](DECISIONS.md#dec-154--panel-header-tools-hide-when-a-page-cannot-support-them-instead-of-rendering-disabled).
+
+- **Waveform's own Unit Mode is now an icon pair** (`UNIT_ENGINEERING`/
+  `UNIT_PER_UNIT`, `#wwUnitEngineeringBtn`/`#wwUnitPerUnitBtn`), replacing
+  the former single "ENG"/"PU" text trigger + 3-item dropdown
+  (DEC-150) — byte-identical structure to Event Reconstruction's own
+  pair (DEC-143). Per-Unit Settings access is its own adjacent icon
+  button, never lost.
+- **The per-Time-Group canvas toolbar** (`.ww-tg-toolbar`) now shares
+  the exact 2px-within-family / hairline-between-families spacing and
+  30px/6px-radius icon-button sizing the global `.ww-toolbar` already
+  had (DEC-150) — it previously had neither (a flat uniform 6px gap,
+  no family separators, and a silent fallback to the smaller base
+  icon-button size).
+- **The Analysis page's 5 analyzer-type icons** (`ANALYSIS_OVERCURRENT`/
+  `_IMPEDANCE`/`_DISTANCE`/`_PHASOR`/`_SEQUENCE`, DEC-152) are owner
+  assets under `frontend/assets/icons/analysis/` through this same
+  registry, replacing hand-drawn inline `<svg>` — zero CSS change
+  needed, since `.ww-analysis-type-icon`'s own existing sizing already
+  matched.
+- **Panel-header tool visibility (DEC-154):** a tool a page can NEVER
+  support is now `hidden` outright, never shown disabled with an
+  explanatory tooltip — Waveform's Relative Time; Event
+  Reconstruction's Elapsed Time/Separate/Custom/Split; Waveform's
+  per-Time-Group Fit Selected Record stub. **This explicitly reverses
+  DEC-141's own "do not omit unsupported global slots" instruction**
+  for the View Mode family specifically — see DEC-154's own "Open"
+  item, flagged for the owner, not silently resolved. A tool the page
+  DOES support but is only temporarily unavailable at runtime (Zoom
+  Out at Fit All, Event Reconstruction's own Fit Record before a
+  record is selected, etc.) is unaffected — still rendered, still
+  disabled.
+- **A genuine CSS bug, found and fixed during this ticket's own live
+  validation:** `.theme-toggle.ww-icon-group button[hidden] { display:
+  none; }` was missing. Without it, the group's own unconditional
+  `display: inline-flex` on every `button` child beat the browser's
+  UA-stylesheet `[hidden] { display: none }` rule by CSS *origin*
+  alone (author styles always beat user-agent styles, regardless of
+  specificity) — the exact mechanism the pre-existing
+  `.ww-icon-btn[hidden] { display: none; }` override already exists to
+  fix, for a different button class. Every one of the five
+  `.theme-toggle.ww-icon-group`-member buttons above would have carried
+  `hidden` in the DOM while still rendering on screen.

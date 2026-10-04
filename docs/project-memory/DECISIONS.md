@@ -23161,6 +23161,272 @@ Event Reconstruction browser suites re-run clean.
 
 ---
 
+## DEC-150 — Waveform adopts the global waveform tool language (Unit Mode icon pair; Time Group toolbar geometry)
+
+Date: 2026-10-04
+Status: Approved (owner, "WAVEFORM TOOLBAR MIGRATION — ALIGN WITH
+GLOBAL WAVEFORM TOOL SYSTEM") -- implemented on `feat/event-
+reconstruction`; not merged.
+
+### Decision (owner)
+
+> Migrate Waveform to the same shared waveform tool system Event
+> Reconstruction already uses where practical -- same icon, tooltip,
+> button geometry, active/disabled styling, 2px within-group spacing --
+> while preserving Waveform-specific Time Group behaviour and state.
+> Do not force shared state between the two pages. Do not add a Pan
+> button or reintroduce Box Zoom. Do not add Fit Selected Record to
+> Waveform merely for symmetry (it already had a DEC-141 disabled stub;
+> this ticket repositions it, does not add it).
+
+### Audit (`[FACT]`) -- category A/B/C/D classification
+
+- **A. Shared global tool, already aligned before this ticket:** Time
+  Display (Elapsed/Relative/Absolute), View Mode (Grouped/Separate/
+  Custom/Split), Annotate/Annotations -- Waveform's own `#wwToolbar`
+  already used the same `WW_TOOL_ICONS` registry/icons as Event
+  Reconstruction's `#wwErToolbar`.
+- **A, migrated by this ticket:** Unit Mode. Was a single text-label
+  ("ENG"/"PU") trigger opening a 3-item dropdown (Engineering Units /
+  Per Unit / Per-Unit Settings...) -- now two individual icon buttons
+  (`UNIT_ENGINEERING`/`UNIT_PER_UNIT`, `#wwUnitEngineeringBtn`/
+  `#wwUnitPerUnitBtn`), byte-identical in structure to Event
+  Reconstruction's own pair (DEC-143). Per-Unit Settings access is
+  fully preserved via its own adjacent icon button
+  (`#wwOpenPerUnitSettingsBtn`, same handler,
+  `wwOpenPerUnitSettingsModal()`), never removed or hidden -- the owner's
+  own explicit requirement.
+- **C, Time-Group-local, correctly left alone:** Zoom X/Y, Autoscale
+  X/Y, A/B Cursors, t0, Synchronize Sources. Each Time Group has its
+  own independent X/Y viewport; there is no "active Time Group"
+  targeting contract, so per the ticket's own rule ("if no Time Group
+  can be unambiguously targeted, keep that control local rather than
+  guessing") these stay in `wwCreateTimeGroupCanvasDom()`'s own
+  per-canvas toolbar, unchanged in behaviour.
+- **Geometry fix (migrated by this ticket):** the per-canvas toolbar
+  (`.ww-tg-toolbar`) had a flat, undifferentiated 6px gap between every
+  button and no family separators, and its icon buttons silently fell
+  back to the base 28px size (not the global 30px/6px-radius language)
+  since the sizing rule was scoped to `.ww-toolbar .ww-icon-btn` only.
+  Fixed: `.ww-tg-toolbar`'s gap is now 2px; three `.ww-toolbar-sep`
+  hairlines mark family boundaries (`[Zoom In/Out] | [Autoscale X]
+  [Autoscale Y][Fit Selected Record] | [A/B Cursors] | [t0][Sync
+  Sources]`); the icon-button sizing/hover/focus/pressed/disabled rules
+  now also match `.ww-tg-toolbar .ww-icon-btn`. Fit Selected Record
+  repositioned beside Autoscale X/Y (mirroring DEC-147's own grouping)
+  -- same id/handler, only its position changed.
+- **D, obsolete, confirmed absent:** Box Zoom (DEC-144, already
+  retired). **Pan:** confirmed no button was added; cursor feedback
+  only, unchanged.
+
+### Tests
+
+7 backend static test files updated (`test_frontend_event_
+reconstruction.py`, `_measurement_groups.py`, `_per_unit_coverage.py`,
+`_per_unit_mode.py`, `_per_unit_settings.py`, `_per_unit_traceability.py`,
+`_time_group_toolbar.py`) wherever they asserted the old dropdown
+markup/wiring. Live-verified: both icons resolve to the correct file in
+both themes, ENG↔PU switching both directions, keyboard activation,
+Per-Unit Settings modal access (independent of mode switch), zero
+console errors. 302 relevant backend static tests + full backend suite
++ 47 Waveform-focused browser tests + 109/110 Event Reconstruction
+browser tests (1 pre-existing environment flake, unrelated) passing.
+
+---
+
+## DEC-151 — Unit Mode grouping: verified already satisfied by DEC-150
+
+Date: 2026-10-04
+Status: Verified, no additional code (owner, "OWNER TOOLBAR GROUPING
+CORRECTION — UNIT MODE").
+
+### Decision (owner)
+
+> Engineering Units and Per Unit must be adjacent, 2px apart,
+> independent individual buttons, mutually exclusive, with Per-Unit
+> Settings as a separate related action -- verify before changing
+> anything.
+
+### Verification (`[FACT]`)
+
+Audited against all 9 stated requirements; every one was already
+satisfied by DEC-150's own Unit Mode migration (two buttons inside one
+`.theme-toggle.ww-icon-group`, `aria-pressed` mutual exclusivity,
+Settings as its own sibling button outside the group, native
+`<button>` keyboard support, zero remaining dropdown references). **No
+production code was written for this ticket** -- see DEC-150 for the
+actual implementation.
+
+---
+
+## DEC-152 — Analysis page analyzer-type icons become owner-supplied assets
+
+Date: 2026-10-04
+Status: Approved (owner, "Analysis page icon replacement") --
+implemented on `feat/event-reconstruction`; not merged.
+
+### Decision (owner)
+
+> Replace the Analysis page's analyzer-type nav icons (Overcurrent,
+> Impedance Locus, Distance Protection, Phasor, Sequence Components)
+> with the new SVG files under `frontend/assets/icons/analysis/`, using
+> the existing icon architecture rather than a new one-off mechanism.
+
+### Implementation (`[FACT]`)
+
+Each of the 5 `.ww-analysis-type-item` buttons' hand-drawn inline
+`<svg>` is replaced by a `data-ww-icon` placeholder (`ANALYSIS_
+OVERCURRENT`/`_IMPEDANCE`/`_DISTANCE`/`_PHASOR`/`_SEQUENCE`), resolved
+through the existing `WW_TOOL_ICONS` registry + CSS `mask-image`
+mechanism every other owner asset already uses -- `wwApplyToolIcons()`
+(already called once at page load) picks these up with zero new JS.
+**No CSS change** -- `.ww-analysis-type-icon`'s existing 18x18 sizing
+already matches; `.ww-analysis-type-icon svg` is deliberately left
+untouched because Compliance's "Voltage" item and the Calculator's
+"Line/Phase Voltage" item still reuse it with their own, still-inline
+SVGs (out of this ticket's scope).
+
+### Tests
+
+New `test_analysis_page_nav_icons_use_owner_assets_not_inline_svg`;
+`test_asset_folder_structure_exists` extended to include the
+`analysis/` folder. Live-verified all 5 icons resolve to the correct
+file at the correct size in both themes; active-state click-switching
+confirmed; zero console errors. 147 ER static + 671 broader
+Analysis-related backend tests + full backend suite passing.
+
+---
+
+## DEC-153 — Event Reconstruction correction input adopts the app's standard input styling
+
+Date: 2026-10-04
+Status: Approved (owner, "OWNER UI REFINEMENT — EVENT RECONSTRUCTION
+CORRECTION INPUT") -- implemented on `feat/event-reconstruction`; not
+merged.
+
+### Decision (owner)
+
+> The correction-time input in each reconstruction member card looks
+> like a one-off, ad hoc field. Redesign it to match the app's own
+> standard input styling (height, padding, border, radius, font,
+> colour, focus ring) -- presentation/layout only, no behaviour change.
+
+### Implementation (`[FACT]`)
+
+`.ww-er-correction input[type="number"]`'s own compact one-off override
+(`width: 110px; padding: 3px 6px; font-size: 0.65rem`) is replaced with
+the app's own established standard input baseline -- the same
+`background`/`border`/`border-radius`/`padding`/`font-size`/focus-
+border-color rule `input[type="search"]` and `.ww-oc-settings-grid
+input[type="number"]` already use (that second rule's own comment
+calls it "the shared baseline" explicitly). A new `.ww-er-correction-
+field` wrapper keeps the input and its "ms" unit visually bonded (6px
+gap) while the outer row's own gap separates that field from Set/Reset,
+which already used the shared `.secondary` button class and are
+unchanged. Numeric entry, `data-er-correction-input`, Set/Reset
+handlers, correction units, stale/current member rules and all API
+wiring are untouched.
+
+### Tests
+
+New `test_correction_input_uses_the_app_standard_input_styling`. No
+browser-test changes needed -- every existing locator uses the stable
+`data-er-correction-input` attribute, unaffected by the new wrapper
+span. Live-verified: standard-looking input (white background, light
+border, 8px radius, 8px/10px padding), focus border-colour change,
+Set button still commits the value correctly, zero console errors.
+
+---
+
+## DEC-154 — Panel-header tools hide when a page cannot support them, instead of rendering disabled
+
+Date: 2026-10-04
+Status: Approved (owner, "Panel-header tool visibility") -- implemented
+on `feat/event-reconstruction`; not merged. **Explicitly reverses
+DEC-141's own "do not omit unsupported global slots" instruction** for
+the specific controls listed below -- see Open item.
+
+### Decision (owner)
+
+> A tool not relevant/supported on the current page must not render at
+> all -- never shown disabled merely to preserve a common toolbar
+> layout. A tool that IS relevant to the page but temporarily
+> unavailable at runtime must still render, disabled, as before. This
+> is page-capability driven, not a blanket removal of disabled states.
+
+### Implementation (`[FACT]`)
+
+Six controls, each a page-level (never runtime) capability mismatch,
+changed from a permanently-disabled placeholder with an explanatory
+"— unavailable in X" tooltip to a plain, `hidden` button (no tooltip
+suffix needed -- nobody sees it): Waveform's `#timeModeRelativeBtn`
+(no "relative to an event" concept on Waveform); Event Reconstruction's
+`#wwErTimeElapsedBtn` (no un-synchronized elapsed-only display);
+`#wwErViewSeparateBtn`/`#wwErViewCustomBtn`/`#wwErViewSplitBtn` (no
+per-channel panel, custom group, or table to split with); Waveform's
+per-Time-Group `.ww-tg-fit-record-btn` (no single "active record"
+concept across a Time Group's several independently-aligned sources).
+All six have zero other JS references anywhere in the file (confirmed
+by search before editing) -- purely static markup, so `hidden` alone,
+no script changes, is both correct and the smallest possible change.
+Markup/registry keys are kept, not deleted, so re-showing one later (if
+a future Waveform/ER concept ever makes it genuinely applicable) is a
+one-line change.
+
+**Genuine CSS bug found and fixed during live validation:** these six
+controls sit inside a `.theme-toggle.ww-icon-group`, whose own
+unconditional `display: inline-flex` on every `button` child beat the
+browser's UA-stylesheet `[hidden] { display: none }` rule by CSS
+*origin* alone (author styles always beat user-agent styles regardless
+of specificity) -- the exact same class of bug the pre-existing
+`.ww-icon-btn[hidden] { display: none; }` override (added during an
+earlier ticket's own UAT, see that rule's own comment) already exists
+to fix, just for a different button class. Without the matching
+`.theme-toggle.ww-icon-group button[hidden] { display: none; }`
+override added here, every one of the five group-member buttons would
+have carried `hidden` in the DOM while still rendering on screen --
+caught only because this ticket's own validation step actually loaded
+the page in a browser rather than trusting the markup diff alone.
+
+**Explicitly NOT touched:** Event Reconstruction's own `#wwErFitRecordBtn`
+(a different button -- ER genuinely has an "active record" concept;
+its disabled state is runtime, toggled by `wwErSyncToolbar()`, not a
+page mismatch) and every other runtime-disabled control (Zoom Out at
+Fit All, Zoom Y In/Out without an active axis target, etc.) -- all keep
+rendering, disabled, exactly as before.
+
+### Tests
+
+New `test_page_unsupported_tools_are_hidden_not_disabled` (proves
+`hidden` present, `disabled` absent, no leftover "unavailable in"
+tooltip text, and that the `.theme-toggle.ww-icon-group button[hidden]`
+CSS override itself exists). `test_capability_matrix`,
+`test_disabled_state_uses_the_shared_rule_no_er_specific_override`
+(the former assertion covering `wwErTimeElapsedBtn`/`timeModeRelativeBtn`
+removed/updated), and
+`test_er_hides_separate_custom_split_panel_header_tool_visibility`
+(renamed/rewritten from the DEC-141-era
+`test_er_shows_the_full_view_mode_family_separate_custom_split_disabled`)
+updated to match. Live-verified in both Waveform and Event
+Reconstruction: every targeted control is genuinely absent from layout
+(not just invisible-but-occupying-space -- the View Mode group's own
+rendered width shrank from 158px/5 slots to 62px/2 visible buttons, no
+stale gap), both themes, zero console errors.
+
+### Open (flagged, not silently resolved)
+
+This ticket's own hide policy is the **direct opposite** of DEC-141's
+explicit, UAT-informed "do not omit unsupported global slots"
+instruction for the same View Mode family. Implemented per this
+session's explicit, repeated owner authorization to do so ("do not
+infer the task is complete... implement the outstanding requested
+behaviour... I am explicitly authorizing the commit"), but the
+reversal itself is recorded here, not silently absorbed, in case the
+owner did not intend to overturn DEC-141's own specific UAT finding
+when writing this newer ticket.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

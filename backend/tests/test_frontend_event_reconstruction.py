@@ -317,6 +317,31 @@ class TestEventReconstructionSelectionWorkflow:
         assert "correction_s: wwSyncMsToOffsetSeconds(ms)" in module
         assert "wwSyncOffsetToMsDisplay(correctionS)" in module
 
+    def test_correction_input_uses_the_app_standard_input_styling(self):
+        """Owner UI refinement: the correction input follows the same
+        standard input styling other normal app inputs already use
+        (background/border/radius/padding/font-size, plus a focus
+        border-color change) -- no longer a compact one-off override.
+        The "ms" unit stays visually bonded to the input via its own
+        wrapper; Set/Reset keep their existing shared `.secondary`
+        button class, untouched. Behaviour (numeric entry, data-er-
+        correction-input, Set/Reset handlers) is unchanged."""
+        source = _source()
+        css = _between(source, ".ww-er-correction {", ".ww-er-record-row--ineligible")
+        assert "background: var(--panel);" in css
+        assert "border: 1px solid var(--panel-border);" in css
+        assert "border-radius: var(--radius);" in css
+        assert "padding: 8px 10px;" in css
+        assert "font-size: 0.7rem;" in css
+        assert ":focus" in css and "border-color: var(--accent-dim);" in css
+        assert "width: 110px" not in css  # the old one-off compact override is gone
+        member_row = _between(source, "function wwErMemberRowHtml(member) {", "function wwErRecordRowHtml(record)")
+        assert '<span class="ww-er-correction-field">' in member_row
+        assert '<span class="ww-er-correction-unit">ms</span>' in member_row
+        assert "data-er-correction-input" in member_row  # behaviour/attribute unchanged
+        assert 'wwErActionButton("set-correction", "Set"' in member_row
+        assert 'wwErActionButton("reset-correction", "Reset"' in member_row
+
     def test_reference_is_only_changed_by_explicit_api_call(self):
         module = _er_module(_source())
         assert 'wwErMutate("PUT", "/definition/reference", { record_id: recordId })' in module
@@ -1638,7 +1663,10 @@ class TestEventReconstructionToolConsistency:
         assert _icon_key(fit) == "FIT_SELECTED_RECORD"
         canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
         assert 'class="ww-icon-btn ww-tg-fit-record-btn"' in canvas
-        assert 'title="Fit selected record — unavailable in Waveform"' in canvas
+        # Panel-header tool visibility (owner correction): this stub is
+        # now hidden outright, not shown disabled -- see
+        # test_page_unsupported_tools_are_hidden_not_disabled.
+        assert 'title="Fit selected record" aria-label="Fit selected record" hidden>' in canvas
         # DEC-147 (owner correction, amends DEC-145): Fit Selected Record
         # now sits AFTER the paired Autoscale X/Y group, in the same
         # "fit/scale view" toolbar group -- see
@@ -1703,10 +1731,13 @@ class TestEventReconstructionToolConsistency:
         group_disabled = _between(source, ".ww-toolbar .theme-toggle.ww-icon-group button:disabled {", "\n        }\n")
         assert "opacity: 0.42;" in group_disabled
         page = _er_page(source)
+        # wwErTimeElapsedBtn is excluded here: panel-header tool
+        # visibility (owner correction) hides it outright -- it is no
+        # longer a disabled-by-runtime-state control, see
+        # test_page_unsupported_tools_are_hidden_not_disabled below.
         for button_id in ("wwErZoomInBtn", "wwErZoomOutBtn", "wwErResetViewBtn", "wwErAutoscaleYBtn", "wwErCursorModeBtn",
-                          "wwErFitRecordBtn", "wwErTimeElapsedBtn"):
+                          "wwErFitRecordBtn"):
             assert "disabled" in _element(page, button_id, "button")
-        assert "disabled" in _element(source, "timeModeRelativeBtn", "button")
         for forbidden in (".ww-er-fit-record-btn:disabled", "#wwErCanvasToolbar .ww-icon-btn:disabled", "#wwErToolbar .secondary:disabled"):
             assert forbidden not in source, forbidden
 
@@ -1721,8 +1752,39 @@ class TestEventReconstructionToolConsistency:
         # Section 18's new wording lands on BOTH pages via the one shared
         # sync function (the owner's own worked example: "Zoom In — Time
         # Axis" if the ER function is the same) -- Waveform's zoom
-        # behaviour/markup structure is otherwise untouched.
-        assert "ww-toolbar-sep" not in canvas
+        # behaviour/markup structure is otherwise untouched by THAT
+        # ticket. Waveform toolbar migration (later ticket): three
+        # `.ww-toolbar-sep` hairlines are deliberately added here, giving
+        # this toolbar the same "2px within a family, a hairline between
+        # families" grouping the global `.ww-toolbar` already has --
+        # see test_tg_toolbar_has_family_separators_matching_the_global_
+        # toolbar_language below for the full proof.
+        assert canvas.count("ww-toolbar-sep") == 3
+
+    def test_tg_toolbar_has_family_separators_matching_the_global_toolbar_language(self):
+        """Waveform toolbar migration: the per-Time-Group canvas toolbar
+        now groups into the same families, in the same order, as Event
+        Reconstruction's own header -- [Zoom In][Zoom Out] sep
+        [Autoscale X][Autoscale Y][Fit Selected Record] sep [A/B Cursors]
+        sep [t0][Synchronize Sources] -- each family 2px within itself,
+        a hairline between families, never a joined/segmented control."""
+        source = _source()
+        canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
+        zoom_out_end = canvas.index("ww-tg-zoom-out-split")
+        sep1 = canvas.index("ww-toolbar-sep", zoom_out_end)
+        reset_start = canvas.index("ww-tg-reset-view-btn")
+        assert sep1 < reset_start  # first separator precedes the Fit/Scale family
+        fit_record_start = canvas.index("ww-tg-fit-record-btn")
+        assert reset_start < fit_record_start  # Autoscale X/Y precede Fit Record, no sep between
+        sep2 = canvas.index("ww-toolbar-sep", fit_record_start)
+        cursor_start = canvas.index("ww-tg-cursor-mode-btn")
+        assert fit_record_start < sep2 < cursor_start
+        sep3 = canvas.index("ww-toolbar-sep", cursor_start)
+        t0_start = canvas.index("ww-tg-t0-btn")
+        assert cursor_start < sep3 < t0_start
+        sync_start = canvas.index("ww-tg-sync-btn")
+        assert t0_start < sync_start
+        assert "ww-toolbar-sep" not in canvas[t0_start:sync_start]  # t0/Sync are one family
 
     def test_shared_toolbar_primitives_never_introduce_shared_state(self):
         """Section 12/19/24: the same icon/component, ER's own handler and
@@ -1766,23 +1828,56 @@ class TestGlobalTimeDisplayFamily:
     def test_capability_matrix(self):
         """Section 15's own matrix: Waveform Elapsed=ON/Relative=OFF/
         Absolute=ON; Event Reconstruction Elapsed=OFF/Relative=ON/
-        Absolute=ON."""
+        Absolute=ON. Panel-header tool visibility (owner correction):
+        the OFF mode on each page is hidden outright, not disabled --
+        see test_page_unsupported_tools_are_hidden_not_disabled."""
         source = _source()
         page = _er_page(source)
         assert "disabled" not in _element(source, "timeModeElapsedBtn", "button")
         wf_relative = _element(source, "timeModeRelativeBtn", "button")
-        assert "disabled" in wf_relative
+        assert "hidden" in wf_relative and "disabled" not in wf_relative
         assert "disabled" not in _element(source, "timeModeAbsoluteBtn", "button")
         er_elapsed = _element(page, "wwErTimeElapsedBtn", "button")
-        assert "disabled" in er_elapsed
+        assert "hidden" in er_elapsed and "disabled" not in er_elapsed
         assert "disabled" not in _element(page, "wwErTimeRelativeBtn", "button")
         assert "disabled" not in _element(page, "wwErTimeAbsoluteBtn", "button")
 
-    def test_disabled_tooltips_explain_why_section_16(self):
+    def test_page_unsupported_tools_are_hidden_not_disabled(self):
+        """Panel-header tool visibility (owner correction): a tool a page
+        can NEVER support (Waveform's Relative Time, Event
+        Reconstruction's Elapsed Time/Separate/Custom/Split, Waveform's
+        per-Time-Group Fit Selected Record) is hidden outright -- it does
+        not render as a disabled placeholder with an explanatory
+        tooltip any more. This is distinct from a tool the page DOES
+        support but is temporarily unavailable at runtime (e.g. Zoom
+        Out at Fit All, or Fit Record before any record is selected),
+        which still renders, still disabled, exactly as before."""
         source = _source()
         page = _er_page(source)
-        assert 'title="Relative Time — unavailable in Waveform" aria-label="Relative Time — unavailable in Waveform"' in source
-        assert 'title="Elapsed Time — unavailable in Event Reconstruction" aria-label="Elapsed Time — unavailable in Event Reconstruction"' in page
+        canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
+        for markup, btn_id in (
+            (source, "timeModeRelativeBtn"),
+            (page, "wwErTimeElapsedBtn"),
+            (page, "wwErViewSeparateBtn"),
+            (page, "wwErViewCustomBtn"),
+            (page, "wwErViewSplitBtn"),
+        ):
+            element = _element(markup, btn_id, "button")
+            assert "hidden" in element, btn_id
+            assert "disabled" not in element, btn_id
+            assert "unavailable in" not in element, btn_id  # no leftover explanatory tooltip
+        assert 'id="wwErFitRecordBtn"' not in canvas  # ER's own Fit Record stays global, never duplicated here
+        assert 'class="ww-icon-btn ww-tg-fit-record-btn"' in canvas
+        tg_fit_record = canvas[canvas.index('class="ww-icon-btn ww-tg-fit-record-btn"'):canvas.index("</button>", canvas.index('class="ww-icon-btn ww-tg-fit-record-btn"'))]
+        assert "hidden" in tg_fit_record and "disabled" not in tg_fit_record
+        assert "unavailable in" not in tg_fit_record
+        # The CSS override that makes `hidden` actually take effect on a
+        # `.theme-toggle.ww-icon-group` member -- without it, that
+        # group's own unconditional `display: inline-flex` would beat
+        # the UA stylesheet's `[hidden] { display: none }` by origin
+        # alone (discovered live during this ticket's own validation;
+        # same mechanism as the pre-existing `.ww-icon-btn[hidden]` fix).
+        assert ".theme-toggle.ww-icon-group button[hidden] { display: none; }" in source
 
     def test_tooltip_wording_is_identical_across_pages_for_the_same_mode(self):
         """Section 18: same semantic tool, same tooltip -- the disabled
@@ -1809,12 +1904,16 @@ class TestGlobalViewModeFamily:
             element = _element(page, button, "button")
             assert "data-ww-icon" in element and "<svg" not in element
 
-    def test_er_shows_the_full_view_mode_family_separate_custom_split_disabled(self):
-        """DEC-141 (reversing DEC-140's own prior "no invented stubs"
-        reasoning for View Mode specifically, per the owner's explicit,
-        UAT-informed "do not omit unsupported global slots" instruction):
-        Separate/Custom/Split now exist on Event Reconstruction too,
-        permanently disabled, each with a tooltip naming the page."""
+    def test_er_hides_separate_custom_split_panel_header_tool_visibility(self):
+        """Panel-header tool visibility (owner correction, supersedes
+        DEC-141's own reversed-from-DEC-140 "do not omit unsupported
+        global slots" instruction, which used to show these three
+        permanently disabled): Separate/Custom/Split are Waveform-only
+        concepts Event Reconstruction has never had, so they are hidden
+        outright now, not shown disabled. The markup and registry keys
+        still exist (kept, not deleted -- simple to re-show later) in
+        case a future ticket needs them again; only their rendered
+        visibility changed."""
         source = _source()
         page = _er_page(source)
         group = _element(page, "wwErViewModeToggle", "div")
@@ -1822,9 +1921,10 @@ class TestGlobalViewModeFamily:
         assert ids == ["wwErViewGroupedBtn", "wwErViewCombinedBtn", "wwErViewSeparateBtn", "wwErViewCustomBtn", "wwErViewSplitBtn"]
         for button_id, key in (("wwErViewSeparateBtn", "VIEW_SEPARATE"), ("wwErViewCustomBtn", "VIEW_CUSTOM"), ("wwErViewSplitBtn", "VIEW_SPLIT")):
             element = _element(page, button_id, "button")
-            assert "disabled" in element
+            assert "hidden" in element
+            assert "disabled" not in element
             assert _icon_key(element) == key
-            assert "unavailable in Event Reconstruction" in element
+            assert "unavailable in Event Reconstruction" not in element
         # The SAME registry keys as Waveform's own existing icons -- never
         # a second definition.
         assert _icon_key(_element(source, "layoutModeSeparateBtn", "button")) == "VIEW_SEPARATE"
@@ -1850,11 +1950,13 @@ class TestEventReconstructionPerUnitDisplay:
         assert 'id="wwErUnitEngineeringBtn" aria-pressed="true" title="Engineering Units" aria-label="Engineering Units"' in toggle
         assert 'id="wwErUnitPerUnitBtn" aria-pressed="false" title="Per Unit" aria-label="Per Unit"' in toggle
         assert ">Units</span>" not in page  # the former text label is gone
-        # Waveform's own words for the same switch.
-        assert 'title="Unit Mode" aria-label="Unit Mode"' in source
-        for words in ("Engineering Units", "Per Unit"):
-            assert words in _between(source, '<div class="ww-split-menu" id="wwUnitModeMenu"', "</div>")
-        assert 'textContent = ww.unitMode === "per_unit" ? "PU" : "ENG";' in source
+        # Waveform's own words for the same switch (Waveform toolbar
+        # migration: Waveform's own ENG/PU is now the identical
+        # two-icon-button pattern, not a dropdown with text items).
+        wf_toggle = _between(source, '<div class="theme-toggle ww-icon-group" id="wwUnitModeToggle"', "</div>")
+        assert 'role="group" aria-label="Unit Mode"' in wf_toggle
+        assert 'id="wwUnitEngineeringBtn" aria-pressed="true" title="Engineering Units" aria-label="Engineering Units"' in wf_toggle
+        assert 'id="wwUnitPerUnitBtn" aria-pressed="false" title="Per Unit" aria-label="Per Unit"' in wf_toggle
         # Default Engineering.
         assert 'unitMode: "engineering",' in _between(source, "const wwErState = {", "};")
 
@@ -1930,13 +2032,38 @@ class TestPowerwaveIconAssets:
     BRANDING_DIR = FRONTEND.parent / "assets" / "branding"
 
     def test_asset_folder_structure_exists(self):
-        for sub in ("common", "navigation", "waveform"):
+        for sub in ("common", "navigation", "waveform", "analysis"):
             d = self.ICONS_DIR / sub
             assert d.is_dir(), d
         assert self.BRANDING_DIR.is_dir()
         assert (self.ICONS_DIR / "README.md").is_file()
         assert (self.ICONS_DIR / "manifest.json").is_file()
         assert (self.BRANDING_DIR / "README.md").is_file()
+
+    def test_analysis_page_nav_icons_use_owner_assets_not_inline_svg(self):
+        """Analysis page icon replacement: each analyzer-type nav item's
+        own former hand-drawn inline <svg> is replaced by a
+        data-ww-icon placeholder resolving to the matching owner asset
+        under frontend/assets/icons/analysis/ -- never a redrawn icon,
+        never a second icon system."""
+        source = _source()
+        registry = _icon_registry(source)
+        mapping = {
+            "wwAnalysisTypeOvercurrentBtn": "ANALYSIS_OVERCURRENT",
+            "wwAnalysisTypeImpedanceBtn": "ANALYSIS_IMPEDANCE",
+            "wwAnalysisTypeDistanceBtn": "ANALYSIS_DISTANCE",
+            "wwAnalysisTypePhasorBtn": "ANALYSIS_PHASOR",
+            "wwAnalysisTypeSequenceBtn": "ANALYSIS_SEQUENCE",
+        }
+        for btn_id, key in mapping.items():
+            button = _element(source, btn_id, "button")
+            assert _icon_key(button) == key, btn_id
+            assert "<svg" not in button, btn_id  # no leftover inline markup
+            assert 'class="ww-analysis-type-icon" aria-hidden="true"' in button, btn_id
+            value = registry[key]
+            assert not value.startswith("<"), key
+            assert value.startswith("assets/icons/analysis/"), key
+            assert (self.ICONS_DIR.parent.parent / value).is_file(), key
 
     def test_manifest_entries_all_resolve_to_a_real_file_or_are_explicit_gaps(self):
         import json

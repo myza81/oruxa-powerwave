@@ -4,10 +4,70 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-04** (Autoscale X is now strictly X only;
-orphaned reset_time_view.svg removed)
+Last updated: **2026-10-04** (Waveform toolbar migration; Analysis
+icons; correction-input redesign; panel-header tool visibility)
 
 ## What was most recently done
+
+**Waveform adopts the global waveform tool language; Analysis page
+icons become owner assets; the correction input adopts the app's
+standard input styling; page-unsupported panel-header tools hide
+instead of rendering disabled (DEC-150/151/152/153/154, 2026-10-04,
+app-wide).** Five more tickets on the same branch. See
+[DECISIONS.md — DEC-150](DECISIONS.md#dec-150--waveform-adopts-the-global-waveform-tool-language-unit-mode-icon-pair-time-group-toolbar-geometry)
+through
+[DEC-154](DECISIONS.md#dec-154--panel-header-tools-hide-when-a-page-cannot-support-them-instead-of-rendering-disabled)
+for the full record.
+
+- **Waveform toolbar migration (DEC-150).** Unit Mode: the old "ENG"/
+  "PU" text-label dropdown → two individual icon buttons
+  (`UNIT_ENGINEERING`/`UNIT_PER_UNIT`), byte-identical to Event
+  Reconstruction's own pair; Per-Unit Settings access preserved as its
+  own adjacent button. Per-canvas Time Group toolbar: flat 6px gap →
+  2px-within-family + 3 hairline separators, icon buttons now match the
+  global 30px/6px-radius language; Fit Selected Record repositioned
+  beside Autoscale X/Y. Zoom X/Y/Autoscale X/Y/Cursors/t0/Sync stay
+  correctly Time-Group-local (no unambiguous "active Time Group"
+  targeting contract exists).
+- **Unit Mode grouping (DEC-151) — verified, no new code.** All 9
+  stated requirements were already satisfied by DEC-150's own
+  migration.
+- **Analysis page icons (DEC-152).** The 5 analyzer-type nav icons
+  (Overcurrent/Impedance Locus/Distance Protection/Phasor/Sequence
+  Components) now resolve through the existing `WW_TOOL_ICONS`
+  registry instead of hand-drawn inline `<svg>`. Zero CSS change --
+  `.ww-analysis-type-icon svg` is left alone since Compliance's
+  "Voltage" and the Calculator's "Line/Phase Voltage" items still use
+  inline SVGs under the same class (out of scope).
+- **Correction-input redesign (DEC-153).** `.ww-er-correction
+  input[type="number"]`'s one-off compact override → the app's own
+  established standard input baseline (the same one `input[type=
+  "search"]`/`.ww-oc-settings-grid input[type="number"]` already use).
+  Behaviour, Set/Reset, API wiring all unchanged.
+- **Panel-header tool visibility (DEC-154).** Six page-level-only
+  (never runtime) unsupported controls now `hidden` instead of a
+  disabled placeholder with an explanatory tooltip: Waveform's Relative
+  Time, Event Reconstruction's Elapsed Time/Separate/Custom/Split,
+  Waveform's per-Time-Group Fit Selected Record stub. **Explicitly
+  reverses DEC-141's own "do not omit unsupported global slots"
+  instruction** for these controls -- flagged, not silently absorbed;
+  see DEC-154's own "Open" item. **Real CSS bug found and fixed during
+  live validation:** `.theme-toggle.ww-icon-group button[hidden] {
+  display: none; }` was missing, so `hidden` had no visible effect on
+  any of the five group-member buttons (the group's own unconditional
+  `display: inline-flex` beat the UA stylesheet by CSS origin) --
+  caught only because validation actually loaded the page in a browser.
+  ER's own `#wwErFitRecordBtn` (a genuine runtime disable, not a page
+  mismatch) and every other runtime-disabled control are untouched.
+- **Tests.** 7 backend test files updated for DEC-150; new tests added
+  for DEC-152/153/154. 148 ER static tests + 302 Waveform-migration-
+  related static tests + full backend suite + 47 Waveform browser tests
+  + 109-110/110 ER browser tests (the 1 failure being the known
+  pre-existing per-unit L-L/L-G flake under load) all passing.
+- **Next.** Owner UAT of the whole branch -- in particular, confirm the
+  DEC-141 reversal in DEC-154 was intended.
+
+## Earlier — Autoscale X is strictly X only; reset_time_view.svg removed (DEC-149)
 
 **Autoscale X's "also autoscales Y" side effect is removed -- an
 explicit owner decision closing DEC-144's own "Open" item; the orphaned
@@ -44,7 +104,6 @@ for the full record.
   (`-yaxis-zoom`, `-combined`, `-per-unit`, `-navigation`'s own larger
   test, `-fit-record`'s comment) updated wherever they asserted or
   described the old behaviour.
-- **Next.** Owner UAT of the whole branch.
 
 ## Earlier — Zoom X/Y icons, fit/scale-view toolbar group, Engineering/Per-Unit artwork refresh (DEC-146/147/148)
 

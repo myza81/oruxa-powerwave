@@ -4599,7 +4599,12 @@
             border-color: var(--accent-dim);
         }
         .ww-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; background: transparent; }
-        .ww-toolbar .ww-icon-btn {
+        /* Waveform toolbar migration: the per-Time-Group canvas toolbar
+           (`.ww-tg-toolbar`) shares this exact geometry too -- same
+           semantic tool, same icon-button size/radius/shadow language
+           as the global `.ww-toolbar`, never a second visual style. */
+        .ww-toolbar .ww-icon-btn,
+        .ww-tg-toolbar .ww-icon-btn {
             width: 30px;
             height: 30px;
             border-radius: 6px;
@@ -4607,22 +4612,26 @@
             box-shadow: 0 1px 2px var(--surface-tint), inset 0 1px 0 var(--surface-tint);
             transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
         }
-        .ww-toolbar .ww-icon-btn:hover {
+        .ww-toolbar .ww-icon-btn:hover,
+        .ww-tg-toolbar .ww-icon-btn:hover {
             color: var(--text);
             border-color: var(--accent-dim);
             background: var(--hover-tint);
         }
-        .ww-toolbar .ww-icon-btn:focus-visible {
+        .ww-toolbar .ww-icon-btn:focus-visible,
+        .ww-tg-toolbar .ww-icon-btn:focus-visible {
             outline: 2px solid var(--accent);
             outline-offset: 2px;
         }
-        .ww-toolbar .ww-icon-btn[aria-pressed="true"] {
+        .ww-toolbar .ww-icon-btn[aria-pressed="true"],
+        .ww-tg-toolbar .ww-icon-btn[aria-pressed="true"] {
             background: var(--accent-wash-soft);
             color: var(--accent);
             border-color: var(--accent-dim);
             box-shadow: 0 1px 2px var(--surface-tint), inset 0 0 0 1px var(--accent-dim);
         }
-        .ww-toolbar .ww-icon-btn:disabled {
+        .ww-toolbar .ww-icon-btn:disabled,
+        .ww-tg-toolbar .ww-icon-btn:disabled {
             opacity: 0.42;
             color: var(--text-dim);
             border-color: var(--panel-border);
@@ -4640,14 +4649,28 @@
            all despite the `hidden` attribute genuinely being present in
            the DOM -- discovered live during this task's own UAT. */
         .ww-icon-btn[hidden] { display: none; }
+        /* Panel-header tool visibility (owner correction): the exact
+           same author-vs-UA-stylesheet issue as `.ww-icon-btn[hidden]`
+           directly above -- `.theme-toggle.ww-icon-group button`'s own
+           unconditional `display: inline-flex` (below) would otherwise
+           beat the UA stylesheet's `[hidden] { display: none }` by
+           origin alone, keeping a hidden group member visible. Without
+           this, a page-unsupported mode inside Time Display/View Mode
+           (Waveform's Relative Time; Event Reconstruction's Elapsed
+           Time/Separate/Custom/Split) would have `hidden` in the DOM
+           but still render -- discovered live during this ticket's own
+           validation, the same way TG-E's own note above discovered it
+           for `.ww-icon-btn`. */
+        .theme-toggle.ww-icon-group button[hidden] { display: none; }
 
-        /* Phase 5C (DEC-049): the Unit Mode trigger carries a short text
-           label ("ENG"/"PU") instead of an icon -- everything else
-           (border/hover/focus/aria-pressed styling) is inherited from
-           .ww-icon-btn unchanged; only the fixed 28px square width is
-           overridden to fit the text. */
-        .ww-unit-mode-btn { width: auto; padding: 0 8px; gap: 4px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.02em; }
-        .ww-toolbar .ww-unit-mode-btn { width: auto; min-width: 42px; padding: 0 9px; }
+        /* Waveform toolbar migration: the Unit Mode trigger is now an
+           icon-pair (UNIT_ENGINEERING/UNIT_PER_UNIT) inside a
+           .theme-toggle.ww-icon-group, same as Event Reconstruction's
+           own pair and Waveform's own Time Display/View Mode groups --
+           .ww-unit-mode-btn (the old text-label trigger's own width/
+           padding/font override) is retired along with it; nothing else
+           uses that class. The warning glyph itself is unchanged, just
+           relocated onto the Per Unit button. */
         .ww-unit-mode-warning { color: var(--error); font-size: 0.85rem; line-height: 1; }
 
         /* Tool groups (Box Zoom/Pan, Absolute/Elapsed, Grouped/Separate/
@@ -4716,7 +4739,8 @@
             margin: 2px 2px;
             background: var(--panel-border);
         }
-        .ww-toolbar > .ww-toolbar-sep {
+        .ww-toolbar > .ww-toolbar-sep,
+        .ww-tg-toolbar > .ww-toolbar-sep {
             height: 22px;
             align-self: center;
             margin: 0 4px;
@@ -5646,9 +5670,35 @@
         .ww-er-row-body { padding: 8px 14px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 0.65rem; color: var(--text-dim); }
         .ww-er-row-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
         button.secondary.ww-er-action { padding: 3px 9px; font-size: 0.65rem; }
-        .ww-er-correction { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .ww-er-correction { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
         .ww-er-correction-value { color: var(--text); font-variant-numeric: tabular-nums; }
-        .ww-er-correction input[type="number"] { width: 110px; padding: 3px 6px; font-size: 0.65rem; font-variant-numeric: tabular-nums; }
+        /* Owner UI refinement: the correction input now follows the
+           app's own standard input styling (the same baseline
+           `input[type="search"]`/`.ww-oc-settings-grid input[type=
+           "number"]` already use -- background/border/radius/padding/
+           font-size/focus-border, see those rules' own comments) instead
+           of a one-off compact override. `.ww-er-correction-field` keeps
+           the input and its "ms" unit visually bonded (a tighter 6px gap)
+           while the outer row's own 8px gap separates that field from
+           Set/Reset, which were already the shared `.secondary` button
+           style and are unchanged. */
+        .ww-er-correction-field { display: inline-flex; align-items: center; gap: 6px; }
+        .ww-er-correction input[type="number"] {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 8px 10px;
+            font-size: 0.7rem;
+            color: var(--text);
+            width: 100px;
+            box-sizing: border-box;
+            font-variant-numeric: tabular-nums;
+        }
+        .ww-er-correction input[type="number"]:focus {
+            outline: none;
+            border-color: var(--accent-dim);
+        }
+        .ww-er-correction-unit { color: var(--text-dim); font-size: 0.7rem; }
         .ww-er-record-row--ineligible .source-recording-name { color: var(--text-dim); }
         .ww-er-ineligible-reason { color: var(--text-dim); font-style: italic; }
         .ww-er-subheading { margin: 4px 0 8px; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); }
@@ -5757,10 +5807,16 @@
            with a sibling, rather than falling to the left now that it is
            alone. */
         .ww-tg-toolbar-row > .ww-er-cursor-readout:only-child { margin-left: auto; }
+        /* Waveform toolbar migration: 2px within a functional family,
+           same as the global `.ww-toolbar`'s own strict spacing rule
+           (see that rule's own comment) -- a family boundary now reads
+           through a `.ww-toolbar-sep` hairline (inserted into this
+           toolbar's own markup, wwCreateTimeGroupCanvasDom()) instead of
+           the previous flat, undifferentiated 6px gap. */
         .ww-tg-toolbar {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 2px;
             padding: 6px 10px;
         }
         /* DEC-141: text-button padding for whichever of these still IS a
@@ -8897,15 +8953,23 @@
                              state sync. No longer duplicated here. -->
 
                         <!-- DEC-140: the global Time Display family (Elapsed /
-                             Relative / Absolute) -- the same three buttons on
-                             every waveform-capable page; each page enables only
-                             the modes it genuinely supports and disables (never
-                             hides) the rest, with a tooltip explaining why. -->
+                             Relative / Absolute) -- the same shared buttons on
+                             every waveform-capable page. Panel-header tool
+                             visibility (owner correction, supersedes this
+                             comment's own former "disables, never hides"
+                             policy): a mode this page can NEVER support is
+                             hidden outright, not shown disabled -- Relative
+                             Time has no concept of "relative to an event" on
+                             Waveform (that is Event Reconstruction's own
+                             idea), so it is not merely disabled here, it does
+                             not render at all. Elapsed/Absolute are both
+                             genuinely usable, so both render, each still
+                             getting its ordinary enable/disable state. -->
                         <div class="theme-toggle ww-icon-group" id="timeModeToggle" role="group" aria-label="Time axis mode">
                             <button type="button" id="timeModeElapsedBtn" aria-pressed="false" title="Elapsed Time" aria-label="Elapsed Time">
                                 <span class="ww-icon" data-ww-icon="TIME_ELAPSED"></span>
                             </button>
-                            <button type="button" id="timeModeRelativeBtn" aria-pressed="false" title="Relative Time — unavailable in Waveform" aria-label="Relative Time — unavailable in Waveform" disabled>
+                            <button type="button" id="timeModeRelativeBtn" aria-pressed="false" title="Relative Time" aria-label="Relative Time" hidden>
                                 <span class="ww-icon" data-ww-icon="TIME_RELATIVE"></span>
                             </button>
                             <button type="button" id="timeModeAbsoluteBtn" aria-pressed="true" title="Absolute Time" aria-label="Absolute Time">
@@ -8958,55 +9022,55 @@
 
                         <span class="ww-toolbar-sep" aria-hidden="true"></span>
 
-                        <!-- Phase 5C (DEC-049): Unit Mode control -- the
-                             SAME single-trigger .ww-split-menu mechanism
-                             Annotate already established (structurally
-                             cloned, not reinvented). "ENG"/"PU" is a
-                             compact text label on the trigger itself
-                             (section 5's own mockup) since this toggle,
-                             unlike Annotate, has no meaningful icon-only
-                             representation. A warning glyph is toggled on
-                             separately (see wwUpdateUnitModeWarningBadge())
-                             when Per Unit is active and >=1 displayed
-                             eligible channel is Base required. -->
-                        <div class="ww-split-btn" id="wwUnitModeSplit">
-                            <button type="button" class="ww-icon-btn ww-unit-mode-btn" id="wwUnitModeBtn" aria-haspopup="menu" aria-expanded="false" title="Unit Mode" aria-label="Unit Mode">
-                                <span class="ww-unit-mode-label" id="wwUnitModeLabel">ENG</span>
+                        <!-- Waveform toolbar migration: Engineering Units
+                             and Per Unit are now two individual icon
+                             buttons (UNIT_ENGINEERING/UNIT_PER_UNIT),
+                             matching Event Reconstruction's own pair
+                             (DEC-143) exactly -- same
+                             .theme-toggle.ww-icon-group pattern Waveform's
+                             own Time Display/View Mode groups already use,
+                             never a single text-label dropdown trigger any
+                             more (supersedes Phase 5C/DEC-049's own
+                             "ENG"/"PU" trigger). A warning glyph is toggled
+                             on the Per Unit button itself (see
+                             wwUpdateUnitModeWarningBadge()) when Per Unit
+                             is active and >=1 displayed eligible channel is
+                             Base required -- same condition, same function,
+                             just relocated from the old trigger onto its
+                             own button. Per-Unit Settings access (DEC-051's
+                             own hierarchy) is fully preserved via its own
+                             adjacent icon button immediately after --
+                             same handler (wwOpenPerUnitSettingsModal()),
+                             no longer reached through a dropdown menu
+                             item, but never removed or hidden. -->
+                        <div class="theme-toggle ww-icon-group" id="wwUnitModeToggle" role="group" aria-label="Unit Mode">
+                            <button type="button" id="wwUnitEngineeringBtn" aria-pressed="true" title="Engineering Units" aria-label="Engineering Units">
+                                <span class="ww-icon" data-ww-icon="UNIT_ENGINEERING"></span>
+                            </button>
+                            <button type="button" id="wwUnitPerUnitBtn" aria-pressed="false" title="Per Unit" aria-label="Per Unit">
+                                <span class="ww-icon" data-ww-icon="UNIT_PER_UNIT"></span>
                                 <span class="ww-unit-mode-warning" id="wwUnitModeWarning" hidden aria-hidden="true">&#9888;</span>
                             </button>
-                            <div class="ww-split-menu" id="wwUnitModeMenu" role="menu" aria-label="Unit Mode" hidden>
-                                <button type="button" class="ww-split-menu-item" role="menuitemradio" data-unit-mode="engineering" aria-checked="true">
-                                    Engineering Units
-                                </button>
-                                <button type="button" class="ww-split-menu-item" role="menuitemradio" data-unit-mode="per_unit" aria-checked="false">
-                                    Per Unit
-                                </button>
-                                <span class="ww-toolbar-sep" aria-hidden="true"></span>
-                                <!-- Slice 1 (Per-Unit Settings hierarchy,
-                                     UI formalization of DEC-051): a single
-                                     management entry replaces the two
-                                     previously separate, competing-looking
-                                     items (Measurement Groups / the old
-                                     source-wide "legacy" item). Both
-                                     existing modals -- Measurement Groups
-                                     (DEC-050, the specific/Recommended path
-                                     for a channel a group actually covers)
-                                     and Source Default (DEC-049, the
-                                     broad/Fallback path for channels
-                                     outside any group; internally still
-                                     #perUnitProfilesOverlay/
-                                     wwOpenPerUnitProfilesModal(), unchanged)
-                                     -- are now reached through the new
-                                     parent #perUnitSettingsOverlay below,
-                                     which explains the relationship before
-                                     routing into whichever the engineer
-                                     picks. Neither existing modal's own
-                                     markup/functionality/backend changes. -->
-                                <button type="button" class="ww-split-menu-item" id="wwOpenPerUnitSettingsBtn">
-                                    Per-Unit Settings&hellip;
-                                </button>
-                            </div>
                         </div>
+                        <!-- Slice 1 (Per-Unit Settings hierarchy, UI
+                             formalization of DEC-051): unchanged target --
+                             both existing modals -- Measurement Groups
+                             (DEC-050, the specific/Recommended path for a
+                             channel a group actually covers) and Source
+                             Default (DEC-049, the broad/Fallback path for
+                             channels outside any group; internally still
+                             #perUnitProfilesOverlay/
+                             wwOpenPerUnitProfilesModal(), unchanged) -- are
+                             still reached through the same
+                             #perUnitSettingsOverlay parent, which still
+                             explains the relationship before routing into
+                             whichever the engineer picks. Neither existing
+                             modal's own markup/functionality/backend
+                             changes; only this entry point's own presentation
+                             (icon button instead of a menu item) changed. -->
+                        <button type="button" class="ww-icon-btn" id="wwOpenPerUnitSettingsBtn" title="Per-Unit Settings&hellip;" aria-label="Per-Unit Settings&hellip;">
+                            <span class="ww-icon"><svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="3"/><path d="M9 2v2M9 14v2M2 9h2M14 9h2M4.4 4.4l1.4 1.4M12.2 12.2l1.4 1.4M4.4 13.6l1.4-1.4M12.2 5.8l1.4-1.4" stroke-width="1.3"/></svg></span>
+                        </button>
 
                         <span class="ww-toolbar-sep" aria-hidden="true"></span>
 
@@ -9388,21 +9452,28 @@
                         <!-- Event Reconstruction view mode: the Grouped Measurement
                              View (DEC-131, default) and the Combined Multi-Axis View
                              (DEC-132). Presentation only (wwErSetViewMode()). -->
-                        <!-- DEC-141 (amending DEC-140's own reasoning):
-                             the FULL global View Mode family -- Grouped/
-                             Combined/Separate/Custom/Split -- is now shown
-                             on every waveform-capable page, per the
-                             owner's own explicit UAT-informed "do not
-                             omit unsupported global slots" instruction.
-                             Grouped reuses Waveform's own icon verbatim
-                             (the same "channels sharing a panel" concept,
-                             page-appropriate grouping precision); Combined
-                             is DEC-140's own new composite. Separate/
-                             Custom/Split are Waveform's own existing
-                             icons, shown here disabled -- Event
-                             Reconstruction has never had a per-channel
-                             panel, a user-defined custom group, or a
-                             table to split with; the tooltip says so. -->
+                        <!-- Panel-header tool visibility (owner correction,
+                             supersedes DEC-141's own "do not omit
+                             unsupported global slots" instruction below):
+                             only Grouped and Combined are genuinely
+                             selectable Event Reconstruction view modes, so
+                             only those two render. Separate/Custom/Split
+                             (Waveform-only concepts -- a per-channel panel,
+                             a user-defined custom group, a table to split
+                             with -- Event Reconstruction has never had any
+                             of them) are hidden outright rather than shown
+                             disabled; see this toolbar's own change record
+                             (DECISIONS.md) for the explicit reversal this
+                             represents. Was: "the FULL global View Mode
+                             family... is now shown on every waveform-
+                             capable page, per the owner's own explicit
+                             UAT-informed 'do not omit unsupported global
+                             slots' instruction" (DEC-141, amending
+                             DEC-140). Grouped still reuses Waveform's own
+                             icon verbatim (the same "channels sharing a
+                             panel" concept, page-appropriate grouping
+                             precision); Combined is DEC-140's own
+                             composite, unchanged. -->
                         <div class="theme-toggle ww-icon-group" id="wwErViewModeToggle" role="group" aria-label="Event Reconstruction view">
                             <button type="button" id="wwErViewGroupedBtn" aria-pressed="true" title="Grouped Measurement View" aria-label="Grouped Measurement View">
                                 <span class="ww-icon" data-ww-icon="VIEW_GROUPED"></span>
@@ -9410,13 +9481,13 @@
                             <button type="button" id="wwErViewCombinedBtn" aria-pressed="false" title="Combined Multi-Axis View" aria-label="Combined Multi-Axis View">
                                 <span class="ww-icon" data-ww-icon="VIEW_COMBINED"></span>
                             </button>
-                            <button type="button" id="wwErViewSeparateBtn" aria-pressed="false" title="Separate Layout — unavailable in Event Reconstruction" aria-label="Separate Layout — unavailable in Event Reconstruction" disabled>
+                            <button type="button" id="wwErViewSeparateBtn" aria-pressed="false" title="Separate Layout" aria-label="Separate Layout" hidden>
                                 <span class="ww-icon" data-ww-icon="VIEW_SEPARATE"></span>
                             </button>
-                            <button type="button" id="wwErViewCustomBtn" aria-pressed="false" title="Custom Layout — unavailable in Event Reconstruction" aria-label="Custom Layout — unavailable in Event Reconstruction" disabled>
+                            <button type="button" id="wwErViewCustomBtn" aria-pressed="false" title="Custom Layout" aria-label="Custom Layout" hidden>
                                 <span class="ww-icon" data-ww-icon="VIEW_CUSTOM"></span>
                             </button>
-                            <button type="button" id="wwErViewSplitBtn" aria-pressed="false" title="Split View — unavailable in Event Reconstruction" aria-label="Split View — unavailable in Event Reconstruction" disabled>
+                            <button type="button" id="wwErViewSplitBtn" aria-pressed="false" title="Split View" aria-label="Split View" hidden>
                                 <span class="ww-icon" data-ww-icon="VIEW_SPLIT"></span>
                             </button>
                         </div>
@@ -9424,17 +9495,18 @@
                         <!-- DEC-135: X-axis time display. Labels only; the internal
                              coordinate stays reconstruction seconds (wwErSetTimeDisplay()). -->
                         <!-- DEC-140: the SAME global Time Display family as
-                             Waveform's #timeModeToggle -- same three icons,
-                             same canonical tooltip wording. Event
-                             Reconstruction enables Relative/Absolute and
-                             disables Elapsed (it has no un-synchronized
-                             elapsed-only display); Waveform enables
-                             Elapsed/Absolute and disables Relative (see
-                             #timeModeToggle). Internal coordinate/state are
+                             Waveform's #timeModeToggle -- same shared
+                             icons, same canonical tooltip wording. Event
+                             Reconstruction has no un-synchronized
+                             elapsed-only display, so Elapsed is hidden
+                             (panel-header tool visibility, see
+                             #timeModeToggle's own comment); Waveform's
+                             own Relative is likewise hidden there, not
+                             shown disabled. Internal coordinate/state are
                              unchanged -- display labels only
                              (wwErSetTimeDisplay()). -->
                         <div class="theme-toggle ww-icon-group" id="wwErTimeDisplayToggle" role="group" aria-label="Time axis mode">
-                            <button type="button" id="wwErTimeElapsedBtn" aria-pressed="false" title="Elapsed Time — unavailable in Event Reconstruction" aria-label="Elapsed Time — unavailable in Event Reconstruction" disabled>
+                            <button type="button" id="wwErTimeElapsedBtn" aria-pressed="false" title="Elapsed Time" aria-label="Elapsed Time" hidden>
                                 <span class="ww-icon" data-ww-icon="TIME_ELAPSED"></span>
                             </button>
                             <button type="button" id="wwErTimeRelativeBtn" aria-pressed="true" title="Relative Time" aria-label="Relative Time">
@@ -9821,23 +9893,23 @@
                     <nav class="ww-analysis-type-nav" aria-label="Analysis type">
                         <div class="ww-analysis-type-title">Analyzers</div>
                         <button type="button" class="ww-analysis-type-item" id="wwAnalysisTypeOvercurrentBtn" data-analysis-type="overcurrent" aria-current="false">
-                            <span class="ww-analysis-type-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M3 14.5h12"/><path d="M4 13c2.5-5.7 5.2-8 10-8"/><path d="M4 10.5h2.2M8 7.7h2.2M11.7 5.8h2.2"/></svg></span>
+                            <span class="ww-analysis-type-icon" aria-hidden="true" data-ww-icon="ANALYSIS_OVERCURRENT"></span>
                             <span class="ww-analysis-type-label">Overcurrent</span>
                         </button>
                         <button type="button" class="ww-analysis-type-item" id="wwAnalysisTypeImpedanceBtn" data-analysis-type="impedance" aria-current="false">
-                            <span class="ww-analysis-type-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M3 14.5h12"/><path d="M4 13.5 13.5 4"/><path d="M7.4 4h4.7M5.9 7.5h4.7"/></svg></span>
+                            <span class="ww-analysis-type-icon" aria-hidden="true" data-ww-icon="ANALYSIS_IMPEDANCE"></span>
                             <span class="ww-analysis-type-label">Impedance Locus</span>
                         </button>
                         <button type="button" class="ww-analysis-type-item" id="wwAnalysisTypeDistanceBtn" data-analysis-type="distance" aria-current="false">
-                            <span class="ww-analysis-type-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="6.4" fill="none"/><path d="M9 9 3.4 9"/><path d="M9 9 12.8 5.2"/></svg></span>
+                            <span class="ww-analysis-type-icon" aria-hidden="true" data-ww-icon="ANALYSIS_DISTANCE"></span>
                             <span class="ww-analysis-type-label">Distance Protection</span>
                         </button>
                         <button type="button" class="ww-analysis-type-item active" id="wwAnalysisTypePhasorBtn" data-analysis-type="phasor" aria-current="true">
-                            <span class="ww-analysis-type-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="6.2"/><path d="M9 9 13.2 5.4"/><path d="M9 3.7v10.6M3.7 9h10.6"/></svg></span>
+                            <span class="ww-analysis-type-icon" aria-hidden="true" data-ww-icon="ANALYSIS_PHASOR"></span>
                             <span class="ww-analysis-type-label">Phasor</span>
                         </button>
                         <button type="button" class="ww-analysis-type-item" id="wwAnalysisTypeSequenceBtn" data-analysis-type="sequence" aria-current="false">
-                            <span class="ww-analysis-type-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><circle cx="6" cy="5.5" r="2.1"/><circle cx="12" cy="5.5" r="2.1"/><circle cx="9" cy="12.5" r="2.1"/><path d="M7.8 6.9 8.6 10.4M10.2 6.9 9.4 10.4M7.9 12.5H6.6"/></svg></span>
+                            <span class="ww-analysis-type-icon" aria-hidden="true" data-ww-icon="ANALYSIS_SEQUENCE"></span>
                             <span class="ww-analysis-type-label">Sequence Components</span>
                         </button>
                     </nav>
@@ -13759,6 +13831,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             PAGE_ANALYSIS: "assets/icons/navigation/analysis_page.svg",
             PAGE_COMPLIANCE: "assets/icons/navigation/compliance_page.svg",
             PAGE_CALCULATOR: "assets/icons/navigation/calculator_page.svg",
+
+            // -- Analysis page's own analyzer-type nav (#pageAnalysis
+            // .ww-analysis-type-item, frontend/assets/icons/analysis/) --
+            // owner-supplied, replacing each item's former hand-drawn
+            // inline <svg>. Keys match each button's own
+            // data-analysis-type value.
+            ANALYSIS_OVERCURRENT: "assets/icons/analysis/overcurrent.svg",
+            ANALYSIS_IMPEDANCE: "assets/icons/analysis/impedance_locus.svg",
+            ANALYSIS_DISTANCE: "assets/icons/analysis/distance_protection.svg",
+            ANALYSIS_PHASOR: "assets/icons/analysis/phasor.svg",
+            ANALYSIS_SEQUENCE: "assets/icons/analysis/sequence_component.svg",
         };
 
         // DEC-143: renders one `[data-ww-icon]` placeholder from the
@@ -19142,10 +19225,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 body = "<span>Correction <span class=\"ww-er-correction-value\" title=\"" + escapeHtml(member.correction_s + " s") + '">' +
                         escapeHtml(wwErFormatCorrection(member.correction_s)) + "</span></span>" +
                     '<div class="ww-er-correction">' +
+                        '<span class="ww-er-correction-field">' +
                         '<input type="number" step="any" data-er-correction-input' + idAttr +
                         ' value="' + escapeHtml(String(Number((member.correction_s * 1000).toPrecision(15)))) + '" aria-label="Correction in milliseconds"' +
                         (wwErState.busy ? " disabled" : "") + ">" +
-                        "<span>ms</span>" +
+                        '<span class="ww-er-correction-unit">ms</span>' +
+                        "</span>" +
                         wwErActionButton("set-correction", "Set", idAttr) +
                         wwErActionButton("reset-correction", "Reset", idAttr, member.correction_s === 0 ? "The correction is already 0." : null) +
                     "</div>" +
@@ -28479,26 +28564,42 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                             '<button type="button" class="ww-split-menu-item" role="menuitemradio" data-axis="y" aria-checked="false">Vertical (Y)</button>' +
                         '</div>' +
                     '</div>' +
+                    // Waveform toolbar migration: a thin divider now
+                    // marks the boundary into the next functional family
+                    // (Fit/Scale view), matching the global waveform
+                    // tool language's own "2px within a family, a
+                    // hairline between families" rule (see the shared
+                    // separator class's own CSS comment) -- this
+                    // per-canvas toolbar previously had no family
+                    // boundaries at all, just one flat uniform gap.
+                    '<span class="ww-toolbar-sep" aria-hidden="true"></span>' +
                     '<button type="button" class="ww-icon-btn ww-tg-reset-view-btn" title="Autoscale X for this Time Group" aria-label="Autoscale X for this Time Group">' +
                         '<span class="ww-icon" data-ww-icon="AUTOSCALE_X"></span>' +
                     '</button>' +
                     '<button type="button" class="ww-icon-btn ww-tg-autoscale-btn" title="Autoscale Y for this Time Group" aria-label="Autoscale Y for this Time Group">' +
                         '<span class="ww-icon" data-ww-icon="AUTOSCALE_Y"></span>' +
                     '</button>' +
+                    // Panel-header tool visibility (owner correction,
+                    // supersedes this button's own former DEC-141
+                    // "permanently disabled, never hidden" stub):
+                    // Waveform has no single "active record" concept (a
+                    // Time Group may hold several independently-aligned
+                    // sources, never one record to fit to) -- Event
+                    // Reconstruction's own "Fit Selected Record" concept
+                    // genuinely does not apply here, so the slot is
+                    // hidden outright rather than shown disabled. Same
+                    // registry icon ER's own button uses; kept (not
+                    // deleted) so it is simple to re-show if a future
+                    // Waveform concept of "the active record" is ever
+                    // added.
+                    '<button type="button" class="ww-icon-btn ww-tg-fit-record-btn" title="Fit selected record" aria-label="Fit selected record" hidden>' +
+                        '<span class="ww-icon" data-ww-icon="FIT_SELECTED_RECORD"></span>' +
+                    '</button>' +
+                    '<span class="ww-toolbar-sep" aria-hidden="true"></span>' +
                     '<button type="button" class="ww-icon-btn ww-tg-cursor-mode-btn" aria-pressed="false" title="A/B Time Cursors for this Time Group" aria-label="A/B Time Cursors for this Time Group">' +
                         '<span class="ww-icon" data-ww-icon="CURSORS_AB"></span>' +
                     '</button>' +
-                    // DEC-141 (owner's own explicit capability-matrix
-                    // instruction): Waveform's own global-slot stub for
-                    // Event Reconstruction's "Fit Selected Record" --
-                    // permanently disabled, since Waveform has no single
-                    // "active record" concept (a Time Group may hold
-                    // several independently-aligned sources, never one
-                    // record to fit to). Same registry icon ER's own
-                    // button uses.
-                    '<button type="button" class="ww-icon-btn ww-tg-fit-record-btn" title="Fit selected record — unavailable in Waveform" aria-label="Fit selected record — unavailable in Waveform" disabled>' +
-                        '<span class="ww-icon" data-ww-icon="FIT_SELECTED_RECORD"></span>' +
-                    '</button>' +
+                    '<span class="ww-toolbar-sep" aria-hidden="true"></span>' +
                     // TG-E: this Time Group's own "Set Cursor A as t=0"/
                     // "Clear t=0" toggle -- same dual-purpose one-button
                     // pattern the cursor-mode button immediately above
@@ -31726,18 +31827,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwSyncUnitModeControls() {
-            const label = document.getElementById("wwUnitModeLabel");
-            if (label) label.textContent = ww.unitMode === "per_unit" ? "PU" : "ENG";
-            const btn = document.getElementById("wwUnitModeBtn");
-            if (btn) btn.setAttribute("aria-pressed", String(ww.unitMode === "per_unit"));
-            for (const item of document.querySelectorAll("#wwUnitModeMenu .ww-split-menu-item[data-unit-mode]")) {
-                item.setAttribute("aria-checked", String(item.dataset.unitMode === ww.unitMode));
-            }
+            const eng = document.getElementById("wwUnitEngineeringBtn");
+            const pu = document.getElementById("wwUnitPerUnitBtn");
+            if (eng) eng.setAttribute("aria-pressed", String(ww.unitMode !== "per_unit"));
+            if (pu) pu.setAttribute("aria-pressed", String(ww.unitMode === "per_unit"));
         }
 
-        // Section 66: a subtle warning glyph on the trigger when Per Unit
-        // is active and >=1 currently-displayed eligible channel is Base
-        // required -- scans the SAME ww.displayed channel objects
+        // Section 66: a subtle warning glyph on the Per Unit button when
+        // it is active and >=1 currently-displayed eligible channel is
+        // Base required -- scans the SAME ww.displayed channel objects
         // wwPanelGroupKeyFor() already reads `perUnitStatus` from, no
         // second eligibility computation.
         function wwUpdateUnitModeWarningBadge() {
@@ -31752,27 +31850,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (entry.channel.perUnitStatus === "base_required") baseRequiredCount += 1;
             }
             warning.hidden = baseRequiredCount === 0;
-            const btn = document.getElementById("wwUnitModeBtn");
+            const btn = document.getElementById("wwUnitPerUnitBtn");
             if (btn) {
                 btn.setAttribute(
                     "aria-label",
                     baseRequiredCount > 0
-                        ? "Unit Mode (" + baseRequiredCount + " channel(s) need a per-unit base)"
-                        : "Unit Mode"
+                        ? "Per Unit (" + baseRequiredCount + " channel(s) need a per-unit base)"
+                        : "Per Unit"
                 );
             }
-        }
-
-        function wwSetUnitModeMenuOpen(open) {
-            const menu = document.getElementById("wwUnitModeMenu");
-            const trigger = document.getElementById("wwUnitModeBtn");
-            if (menu) menu.hidden = !open;
-            if (trigger) trigger.setAttribute("aria-expanded", String(open));
-        }
-
-        function wwToggleUnitModeMenu() {
-            const menu = document.getElementById("wwUnitModeMenu");
-            wwSetUnitModeMenuOpen(!!(menu && menu.hidden));
         }
 
         // ------------------------------------------------------------------
@@ -54600,17 +54686,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (drawer && drawer.classList.contains("ww-annotation-drawer--open")) wwSetAnnotationDrawerOpen(false);
         });
 
-        // Phase 5C (DEC-049): Unit Mode dropdown -- same open/close/
-        // outside-click/Escape conventions as Annotate above.
-        document.getElementById("wwUnitModeBtn").addEventListener("click", (event) => {
-            event.stopPropagation();
-            wwToggleUnitModeMenu();
-        });
-        document.querySelector('#wwUnitModeMenu .ww-split-menu-item[data-unit-mode="engineering"]').addEventListener("click", () => {
-            wwSetUnitModeMenuOpen(false);
-            wwApplyUnitMode("engineering");
-        });
-        document.querySelector('#wwUnitModeMenu .ww-split-menu-item[data-unit-mode="per_unit"]').addEventListener("click", async () => {
+        // Waveform toolbar migration: Engineering Units / Per Unit are
+        // now two direct icon-button toggles (no dropdown any more,
+        // matching Event Reconstruction's own wwErSetUnitMode() wiring
+        // exactly) -- supersedes Phase 5C/DEC-049's own dropdown wiring.
+        document.getElementById("wwUnitEngineeringBtn").addEventListener("click", () => wwApplyUnitMode("engineering"));
+        document.getElementById("wwUnitPerUnitBtn").addEventListener("click", async () => {
             // Slice 1 UAT fix (Per-Unit Settings hierarchy): this
             // previously auto-opened the source-wide setup modal
             // whenever no source had a configured DEC-049 profile yet
@@ -54622,25 +54703,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // undermine the Recommended/Fallback hierarchy. Selecting
             // Per Unit now ONLY changes display mode; opening any
             // configuration surface is always a separate, explicit
-            // action via "Per-Unit Settings..." below.
-            wwSetUnitModeMenuOpen(false);
+            // action via the adjacent "Per-Unit Settings..." button.
             await wwApplyUnitMode("per_unit");
         });
         document.getElementById("wwOpenPerUnitSettingsBtn").addEventListener("click", () => {
-            wwSetUnitModeMenuOpen(false);
             wwOpenPerUnitSettingsModal();
-        });
-        document.addEventListener("click", (event) => {
-            const menu = document.getElementById("wwUnitModeMenu");
-            const split = document.getElementById("wwUnitModeSplit");
-            if (menu && !menu.hidden && split && !split.contains(event.target)) {
-                wwSetUnitModeMenuOpen(false);
-            }
-        });
-        document.addEventListener("keydown", (event) => {
-            if (event.key !== "Escape") return;
-            const menu = document.getElementById("wwUnitModeMenu");
-            if (menu && !menu.hidden) wwSetUnitModeMenuOpen(false);
         });
 
         // Slice 1 (Per-Unit Settings hierarchy): the new parent surface's
