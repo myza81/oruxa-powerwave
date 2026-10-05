@@ -267,7 +267,7 @@ class TestCursorMathAndStateUntouched:
     def test_readout_value_computation_lines_are_unchanged(self):
         source = _source()
         fn_idx = source.index("function wwUpdateCursorOverlayForGroup(groupId)")
-        fn_body = source[fn_idx : fn_idx + 4000]
+        fn_body = source[fn_idx : fn_idx + 4400]
         assert "const aShown = cursors.a.visible && Number.isFinite(cursors.a.time);" in fn_body
         assert "const bShown = cursors.b.visible && Number.isFinite(cursors.b.time);" in fn_body
         assert 'aEl.textContent = aShown ? wwFormatCursorPointTime(cursors.a.time, groupId) : "—";' in fn_body

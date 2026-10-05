@@ -13,6 +13,12 @@ python-multipart==0.0.20
 numpy==2.4.6
 pandas==3.0.2
 
+# IANA timezone database for zoneinfo (DEC-121 source timezone
+# interpretation, app/domain/source_timezone.py). Already installed as a
+# pandas/psycopg dependency; pinned here because the app now uses it
+# directly, and Windows/slim images have no system tz database.
+tzdata==2026.4
+
 # PostgreSQL driver. Powerwave's architecture includes PostgreSQL; schemas and
 # migrations are out of scope for Milestone 1, but the dependency is pinned now
 # so the runtime image does not change when the database is introduced.

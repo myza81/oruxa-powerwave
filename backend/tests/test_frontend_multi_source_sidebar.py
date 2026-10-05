@@ -249,23 +249,18 @@ def test_optional_synchronization_badge_reads_but_never_mutates_sync_state():
     assert "= sourceId" not in fn_body
 
 
-def test_sync_badge_refreshes_live_when_an_offset_changes():
-    """Found during live verification: an offset change (via the
-    Synchronize Sources modal) does not itself rebuild the sidebar tree,
-    so without a dedicated patch step the sidebar's own sync badge would
-    silently go stale until some unrelated event rebuilt the whole tree.
-    wwSyncApplyOffsetChangeSideEffectsForGroup() must call a targeted
-    patch, not a full wwRenderWorkspaceRecordings() rebuild (which would
-    also reset the engineer's own expand/collapse state and the search
-    box)."""
+def test_sync_badge_live_patch_removed_with_its_only_caller():
+    """wwRefreshSourceSyncBadges() (a targeted live patch so the
+    sidebar's own sync badge never went stale after an offset edit) and
+    wwSyncApplyOffsetChangeSideEffectsForGroup() (its only caller) were
+    both removed outright by a later owner ticket, alongside the
+    Synchronize Sources modal that was the only way to ever CHANGE an
+    offset live -- see test_frontend_time_group_sync.py's own removal
+    coverage. The badge itself (wwSourceSyncBadgeHtml(), still covered
+    by test_optional_synchronization_badge_reads_but_never_mutates_sync_state
+    above) is unaffected: it is still rendered at full-tree-render time,
+    it just no longer needs a separate live-patch path since there is no
+    more live editing to patch for."""
     source = _source()
-    assert "function wwRefreshSourceSyncBadges()" in source
-    effects_body = _function_body(
-        source, "async function wwSyncApplyOffsetChangeSideEffectsForGroup(groupId)", "function wwRefreshSourceSyncBadges"
-    )
-    assert "wwRefreshSourceSyncBadges();" in effects_body
-    assert "await wwRenderWorkspaceRecordings(" not in effects_body
-
-    badge_fn_body = _function_body(source, "function wwRefreshSourceSyncBadges()", "async function wwSyncPutOffset")
-    assert 'document.querySelectorAll("#channelGroups details.source-recording")' in badge_fn_body
-    assert "wwSourceSyncBadgeHtml(sourceId)" in badge_fn_body
+    assert "function wwRefreshSourceSyncBadges(" not in source
+    assert "async function wwSyncApplyOffsetChangeSideEffectsForGroup(" not in source

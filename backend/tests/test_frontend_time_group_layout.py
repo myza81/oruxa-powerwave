@@ -122,17 +122,17 @@ class TestBuildLayoutUsesItsOwnGroupsRange:
             assert "timeGroupViewports.set" not in fn_body
 
     def test_manual_sync_offset_changes_never_touch_the_range_source_directly(self):
-        """Case G: Synchronise Sources' own offset-change side effects
-        (TG-F) refetch/rebuild through the existing per-group helpers
-        (wwSyncTimeGroupRuler/wwRebuildDigitalChart/wwRefetchChannelsForGroup)
-        -- confirmed already audited and unchanged by DEC-063's own
-        record -- never assign wwBuildLayout()'s own range source
-        directly."""
+        """SUPERSEDED by a later Waveform toolbar refinement ticket:
+        Case G originally proved Synchronise Sources' own offset-change
+        side effects (TG-F) never assigned wwBuildLayout()'s own range
+        source directly. The modal that function existed for -- and the
+        function itself, wwSyncApplyOffsetChangeSideEffectsForGroup() --
+        was removed outright (UI-only, no other caller) by a later owner
+        ticket, so there is no longer a manual-sync-driven range mutation
+        risk to guard against; see test_frontend_time_group_sync.py's
+        own removal coverage for the full audit."""
         source = _source()
-        fn_idx = source.index("function wwSyncApplyOffsetChangeSideEffectsForGroup(groupId)")
-        fn_body = source[fn_idx : fn_idx + 2000]
-        assert "ww.viewport =" not in fn_body
-        assert "timeGroupViewports.set(" not in fn_body
+        assert "function wwSyncApplyOffsetChangeSideEffectsForGroup(" not in source
 
 
 # ==============================================================================
@@ -178,10 +178,15 @@ class TestCursorOverlayExcludesToolbarRegion:
         positions."""
         source = _source()
         fn_idx = source.index("function wwCursorTimeToPixelX(groupId, time)")
-        fn_body = source[fn_idx : fn_idx + 500]
-        assert "metrics.plotLeftPage + frac * metrics.plotWidth" in fn_body
-        assert "overlayEl" not in fn_body
-        assert ".offsetTop" not in fn_body
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        # Slice 3A (DEC-127): the arithmetic lives in the shared helper.
+        assert "return wwTimeToPageX(range, wwCursorPlotMetrics(groupId), time);" in fn_body
+        helper_idx = source.index("function wwTimeToPageX(range, metrics, time)")
+        helper = source[helper_idx : source.index("\n        }\n", helper_idx)]
+        assert "metrics.plotLeftPage + frac * metrics.plotWidth" in helper
+        for body in (fn_body, helper):
+            assert "overlayEl" not in body
+            assert ".offsetTop" not in body
 
     def test_label_layer_offset_from_the_sticky_toolbar_fix_is_unchanged(self):
         """Case M: the cursor A/B label pills lived in the SEPARATE
@@ -226,6 +231,16 @@ class TestCursorOverlayExcludesToolbarRegion:
 
 class TestLegacySingletonIdsRemainAbsent:
     def test_no_legacy_time_group_singleton_ids_are_referenced_as_real_dom_ids(self):
+        """`wwCursorModeBtn` is deliberately EXCLUDED from this list: the
+        Waveform top-toolbar migration (owner ticket, later than the
+        TG-D2 migration this test originally guarded) reintroduces it --
+        this time as a real, intentional, page-level global button
+        (targeting the active/first-valid Time Group via
+        wwActiveTimeGroupId(), not a fixed canvas) rather than the
+        pre-TG-D2 singleton this test was written to keep gone. See
+        test_frontend_time_group_cursors.py's own
+        TestPerGroupToolbarControl for the dedicated coverage of this
+        reintroduction."""
         source = _source()
         legacy_ids = [
             "wwPanels",
@@ -235,7 +250,6 @@ class TestLegacySingletonIdsRemainAbsent:
             "wwCursorReadout",
             "wwSetT0Btn",
             "wwSyncBtn",
-            "wwCursorModeBtn",
             "wwCursorLabelLayer",
         ]
         for legacy_id in legacy_ids:

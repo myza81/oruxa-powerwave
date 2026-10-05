@@ -1,0 +1,54 @@
+{
+  "ANNOTATIONS": { "file": "common/annotations.svg", "source": "owner-supplied" },
+  "ANNOTATE": { "file": "common/annotate.svg", "source": "owner-supplied" },
+  "SEARCH": { "file": "common/search.svg", "source": "owner-supplied" },
+
+  "PAGE_RECORDINGS": { "file": "navigation/recordings_page.svg", "source": "owner-supplied" },
+  "PAGE_WAVEFORM": { "file": "navigation/waveform_page.svg", "source": "owner-supplied" },
+  "PAGE_EVENT_RECONSTRUCTION": { "file": "navigation/event_reconstruction_page.svg", "source": "owner-supplied" },
+  "PAGE_TABLE": { "file": "navigation/table_page.svg", "source": "owner-supplied" },
+  "PAGE_CALCULATED_CHANNEL": { "file": "navigation/calculated_channel_page.svg", "source": "owner-supplied" },
+  "PAGE_ANALYSIS": { "file": "navigation/analysis_page.svg", "source": "owner-supplied" },
+  "PAGE_COMPLIANCE": { "file": "navigation/compliance_page.svg", "source": "owner-supplied" },
+  "PAGE_CALCULATOR": { "file": "navigation/calculator_page.svg", "source": "owner-supplied" },
+
+  "ANALYSIS_OVERCURRENT": { "file": "analysis/overcurrent.svg", "source": "owner-supplied", "note": "Analysis page's own analyzer-type nav item, replacing a hand-drawn inline <svg>; key matches data-analysis-type=\"overcurrent\"" },
+  "ANALYSIS_IMPEDANCE": { "file": "analysis/impedance_locus.svg", "source": "owner-supplied", "note": "see ANALYSIS_OVERCURRENT; data-analysis-type=\"impedance\"" },
+  "ANALYSIS_DISTANCE": { "file": "analysis/distance_protection.svg", "source": "owner-supplied", "note": "see ANALYSIS_OVERCURRENT; data-analysis-type=\"distance\"" },
+  "ANALYSIS_PHASOR": { "file": "analysis/phasor.svg", "source": "owner-supplied", "note": "see ANALYSIS_OVERCURRENT; data-analysis-type=\"phasor\"" },
+  "ANALYSIS_SEQUENCE": { "file": "analysis/sequence_component.svg", "source": "owner-supplied", "note": "see ANALYSIS_OVERCURRENT; data-analysis-type=\"sequence\"" },
+
+  "COMPLIANCE_VOLTAGE": { "file": "compliance/voltage.svg", "source": "owner-supplied", "note": "Compliance page's own function nav item, replacing a hand-drawn inline <svg>; key matches data-compliance-type=\"voltage\"" },
+
+  "CALCULATOR_LINE_PHASE_VOLTAGE": { "file": "calculator/delta_Y.svg", "source": "owner-supplied", "note": "Calculator page's own Line/Phase Voltage tool nav item, replacing a hand-drawn inline <svg>; no data-calculator-type attribute exists, so the key is named for the function itself" },
+  "CALCULATOR_POWER_CURRENT": { "file": "calculator/amparent_square.svg", "source": "owner-supplied", "note": "Calculator page's own Power & Current tool nav item (power-triangle pictogram); file name kept exactly as supplied" },
+
+  "PAN": { "file": "waveform/pan.svg", "source": "owner-supplied", "note": "no dedicated toggle button since DEC-144 (Box Zoom retired, Pan is the only plot-area mode -- communicated by cursor feedback instead); kept registered as a real, surviving concept" },
+  "ZOOM_X_IN": { "file": "waveform/zoom_in_x.svg", "source": "owner-supplied", "note": "DEC-146: dedicated per-axis icon, replacing the former zoom_in.svg alias" },
+  "ZOOM_X_OUT": { "file": "waveform/zoom_out_x.svg", "source": "owner-supplied", "note": "DEC-146: dedicated per-axis icon, replacing the former zoom_out.svg alias" },
+  "ZOOM_Y_IN": { "file": "waveform/zoom_in_y.svg", "source": "owner-supplied", "note": "DEC-146: dedicated per-axis icon, replacing the former zoom_in.svg alias" },
+  "ZOOM_Y_OUT": { "file": "waveform/zoom_out_y.svg", "source": "owner-supplied", "note": "DEC-146: dedicated per-axis icon, replacing the former zoom_out.svg alias" },
+
+  "TIME_ELAPSED": { "file": "waveform/elapsed_time.svg", "source": "owner-supplied" },
+  "TIME_RELATIVE": { "file": "waveform/relative_time.svg", "source": "owner-supplied" },
+  "TIME_ABSOLUTE": { "file": "waveform/absolute_time.svg", "source": "owner-supplied" },
+
+  "UNIT_ENGINEERING": { "file": "waveform/engineering_unit.svg", "source": "owner-supplied", "note": "wired to Event Reconstruction's own ENG/PU buttons (owner correction superseding DEC-140 section 13's text-only finding) -- the former 'Units' text label and ENG/PU text content are removed; artwork refreshed 2026-10-04 (DEC-148), same filename and semantics" },
+  "UNIT_PER_UNIT": { "file": "waveform/per_unit.svg", "source": "owner-supplied", "note": "see UNIT_ENGINEERING; artwork refreshed 2026-10-04 (DEC-148), same filename and semantics" },
+
+  "VIEW_SEPARATE": { "file": "waveform/separate_layout.svg", "source": "owner-supplied" },
+  "VIEW_CUSTOM": { "file": "waveform/custom_layout.svg", "source": "owner-supplied" },
+  "VIEW_COMBINED": { "file": "waveform/combine_view.svg", "source": "owner-supplied", "note": "owner's delivered filename is combine_view.svg, not combine_waveform.svg as the ticket text assumed -- used as-is per the 'do not rename owner files' rule" },
+  "VIEW_SPLIT": { "file": "waveform/split_view.svg", "source": "owner-supplied" },
+  "VIEW_GROUPED": { "file": "waveform/grouped_view.svg", "source": "owner-supplied", "note": "owner's delivered filename is grouped_measurement_view.svg (Downloads); placed in the project assets folder as grouped_view.svg, the name a follow-up owner instruction itself expected -- same artwork, byte-identical" },
+
+  "CURSORS_AB": { "file": "waveform/a_b_line_cursors.svg", "source": "owner-supplied" },
+  "AUTOSCALE_X": { "file": "waveform/autoscale_x.svg", "source": "owner-supplied", "note": "key renamed from RESET_TIME_VIEW (DEC-144); icon itself replaced from a reused waveform/reset_time_view.svg to this dedicated owner asset in a follow-up delivery -- reset_time_view.svg confirmed to have zero live references anywhere and was deleted (DEC-149). DEC-149 also made the runtime behaviour X-only, closing out the old Reset Time View's inherited Y side effect." },
+  "FIT_SELECTED_RECORD": { "file": "waveform/fit_selected_record.svg", "source": "owner-supplied", "note": "owner's delivered filename is fit_selected_record.svg, not fit_view.svg as the ticket text assumed -- used as-is per the 'do not rename owner files' rule" },
+  "AUTOSCALE_Y": { "file": "waveform/autoscale_y.svg", "source": "owner-supplied", "note": "gap resolved in a follow-up delivery -- previously inline (no owner asset)" },
+  "CARET_DOWN": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" },
+  "ANNOTATION_TEXT_NOTE": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" },
+  "ANNOTATION_CALLOUT": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" },
+  "ANNOTATION_PEAK_MAX": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" },
+  "ANNOTATION_PEAK_MIN": { "file": null, "source": "inline-fallback", "note": "no owner asset supplied for this function -- gap, reported, inline icon retained" }
+}

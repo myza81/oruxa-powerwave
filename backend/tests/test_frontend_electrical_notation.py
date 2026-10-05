@@ -79,7 +79,7 @@ def test_every_sub_comes_from_the_shared_formatter_shape():
         _function_body(source, "function wwElectricalSymbolHtml(quantity, subscript)"),
         _function_body(source, "function wwElectricalSymbolPlotly(quantity, subscript)"),
     ]
-    static_shape = re.compile(r'<span class="ww-electrical-symbol">[VI]<sub class="ww-electrical-sub">(?:AB|BC|CA|A|B|C|0|1|2)</sub></span>')
+    static_shape = re.compile(r'<span class="ww-electrical-symbol">[VI]<sub class="ww-electrical-sub">(?:AB|BC|CA|LL|A|B|C|0|1|2)</sub></span>')
     offenders = []
     for number, line in _code_lines(source):
         if "<sub" not in line:
@@ -140,7 +140,7 @@ def test_generalized_symbol_contract_and_role_map():
         assert helper in source, helper
     assert (
         'V: [...WW_VOLTAGE_PHASES, ...WW_LL_NOTATION_PAIRS, ...WW_SEQUENCE_SUBSCRIPTS, ...WW_PHASE_DISPLAY_SUBSCRIPTS, '
-        '...WW_PHASE_TO_NEUTRAL_SUBSCRIPTS],'
+        '...WW_PHASE_TO_NEUTRAL_SUBSCRIPTS, WW_GENERIC_LL_SUBSCRIPT],'
         in source
     )
     # Phase-to-neutral tokens come from the SAME phase display map (no second

@@ -221,6 +221,33 @@ class TestSharedAnalysisContextLifecycle:
         zero_branch = tail[tail.index("}\n\n"):]
         assert "wwAnalysisPublishContexts" not in zero_branch
 
+    def test_confirmed_zero_sources_publishes_an_empty_context_list_not_a_stale_one(self):
+        """UAT fix (owner-reported recording-state propagation bug):
+        removing the workspace's last source (e.g. "Remove recording")
+        used to leave every consumer's own wwXState.contexts holding
+        whatever non-empty list it last saw -- wwAnalysisHandleContextsFetched()'s
+        own "zero contexts -> don't publish, go to discovery" branch
+        (tested above) never runs again once at least one context was
+        ever fetched for THIS workspace, so the one place that actually
+        re-checks the real, current source list on every Analysis visit
+        is wwAnalysisDiscoverUncoveredSources() itself -- its own
+        confirmed "sources.length === 0" branch must publish `[]`, since
+        no Engineering Context can possibly survive with zero member
+        sources (the backend's own delete_source() cascade already
+        prunes a context to zero members, then removes it entirely).
+        `sources === null` (the fetch itself failed) is deliberately
+        excluded -- a transient network failure must never wipe an
+        otherwise-still-valid context list."""
+        source = _source()
+        body = _function_body(source, "async function wwAnalysisDiscoverUncoveredSources", "const coveredSourceIds")
+        assert "if (!sources || sources.length === 0) {" in body
+        assert "if (sources && sources.length === 0) wwAnalysisPublishContexts([]);" in body
+        # The confirmed-empty publish happens BEFORE the early return, and
+        # is scoped to this one branch -- never a document-wide/other
+        # branch side effect.
+        branch = body[body.index("if (!sources || sources.length === 0) {"):]
+        assert branch.index("wwAnalysisPublishContexts([]);") < branch.index("return;")
+
     def test_coverage_determined_from_member_source_id_never_name_or_count(self):
         """A source is covered if and only if at least one context
         contains a member whose channel_ref.source_id matches it --
@@ -303,6 +330,47 @@ class TestSharedAnalysisContextLifecycle:
         assert "if (contexts.length > 0 && !wwAnalysisContextState.everPublishedUsableContexts) {" in publish_body
         assert "wwAnalysisContextState.everPublishedUsableContexts = true;" in publish_body
         assert "wwAnalysisPublishFreshContextsDiscovered(contexts);" in publish_body
+
+    def test_has_any_recording_reads_the_same_badge_waveforms_own_empty_state_treats_as_authoritative(self):
+        """UAT fix (owner-reported): 'No recording loaded. Manual mode
+        is available.' was shown whenever an analyzer had zero
+        Engineering Contexts -- including after a genuinely successful
+        upload whose channel names did not match any detectable
+        three-phase bay pattern. Recording-mode's own availability gate
+        (contexts.length > 0) was never wrong -- a context-less source
+        truly has nothing Recording mode could compute (see
+        wwOvercurrentUpdateInputSourceAvailability()'s own comment) --
+        the bug was the HINT TEXT always claiming "no recording"
+        regardless of whether one actually existed. This resolver reuses
+        the SAME #wwRecordingsCountBadge text wwUpdateEmptyState()
+        already treats as the authoritative "any recording exists"
+        signal, never a second, independent computation."""
+        source = _source()
+        fn = _function_body(source, "function wwAnalysisHasAnyRecording()", "\n        }\n")
+        assert 'document.getElementById("wwRecordingsCountBadge")' in fn
+        assert 'badge.textContent !== "(0)"' in fn
+
+    def test_every_analyzers_hint_text_is_driven_by_has_any_recording_not_a_bare_constant(self):
+        """All five analyzers (Phasor/Overcurrent/Impedance/Sequence/
+        Distance) share the exact same fix: the hint's own text is
+        chosen live, every time availability is recomputed, rather than
+        being a single static string baked into the markup. The TRUE
+        "nothing uploaded at all" wording is preserved verbatim; a
+        recording that exists but yielded no Engineering Context gets
+        its own, accurate message instead."""
+        source = _source()
+        for fn_name in (
+            "wwPhasorUpdateInputSourceAvailability",
+            "wwOvercurrentUpdateInputSourceAvailability",
+            "wwImpedanceUpdateInputSourceAvailability",
+            "wwSequenceUpdateInputSourceAvailability",
+            "wwDistanceUpdateInputSourceAvailability",
+        ):
+            fn = _function_body(source, "function " + fn_name + "()", "\n        }\n")
+            assert "hint.hidden = available;" in fn, fn_name
+            assert "hint.textContent = wwAnalysisHasAnyRecording()" in fn, fn_name
+            assert '"No recording loaded. Manual mode is available."' in fn, fn_name
+            assert '"No Engineering Context could be detected in the loaded recording(s). Manual mode is available."' in fn, fn_name
 
         reset_body = _function_body(source, "function wwAnalysisResetContextState", "// The fixed six-role order")
         assert "wwAnalysisContextState.everPublishedUsableContexts = false;" in reset_body

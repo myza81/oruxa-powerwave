@@ -9,7 +9,464 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-30** — **Calculator phase-to-neutral
+Last meaningful update: **2026-10-05** — **engineering tools and workflow batch** (DEC-155 to DEC-165: Waveform/Event Reconstruction toolbar alignment, Analyser recording-state fix, playback speeds, Power & Current calculator, branding/icon migrations), on branch `feat/event-reconstruction`, not merged. Before that, on 2026-10-02: **Event Reconstruction Combined
+Multi-Axis View** (DEC-132), on top of the Grouped Measurement View
+(DEC-131), A/B cursors (Slice 3E, DEC-130),
+navigation (Slice 3D, DEC-129), the first plotted reconstruction (Slice
+3C), the record model (DEC-128) and Slices 0–3B (DEC-123 to DEC-127), on
+branch `feat/event-reconstruction`, not merged. The feature is **not**
+complete. Earlier, on 2026-10-01:
+**Native BEN import: owner UAT passed; merged to `main`** (DEC-119
+parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
+DEC-122 display timezone).
+
+
+**Engineering tools and workflow batch (DEC-155 to DEC-165), 2026-10-05.**
+
+- **Waveform/Event Reconstruction toolbars** (DEC-155 to DEC-161): page-level
+  Zoom X/Y, Autoscale X/Y, A/B Cursors and t0; Synchronize Sources removed;
+  Waveform empty state; ER drag-resizable panels.
+- **Analyser (DEC-162).** The "No recording loaded" hint reflects whether a
+  recording actually exists; a confirmed-empty workspace publishes an empty
+  Engineering Context list. Recording mode availability is still
+  `contexts.length > 0`.
+- **Playback (DEC-163).** Speeds 0.005x to 4x (nine values); Restart uses the
+  registry icon, hydrated by `wwWirePlaybackControls()`.
+- **Calculator (DEC-164).** Line / Phase Voltage plus **Power & Current**
+  (Current, P-Q-S, Power Factor), frontend-local, with a generic
+  V<sub>LL</sub> subscript added to the shared formatter.
+- **Branding (DEC-165).** Favicon, Compliance Voltage and Calculator icons
+  come from owner SVG assets through the registry.
+- **Test conventions worth knowing.** Static tests locate shared CSS rules
+  by selector text (wrap new selectors in `:is()`); never run two
+  Playwright invocations at once (shared ports 8000/8101).
+
+**Event Reconstruction (DEC-123 to DEC-132) — Slices 0–3E + Grouped and Combined Views.**
+
+- **Rule (DEC-128).** Waveform continues to use its existing Time Group
+  model. Event Reconstruction uses independent imported event/record
+  identities as its atomic members. Timestamp overlap alone never merges
+  Event Reconstruction members. One record = one imported source (a
+  COMTRADE CFG+DAT pair, a BEN file, a converted CSV/Excel file);
+  `record_id` is its `source_id`.
+- **Frontend (Slices 0, 2, 2A).** A main-menu entry immediately after
+  Waveform opens `#pageEventReconstruction`.
+  - Its left panel is the reconstruction-member workflow, driven only
+    by the Event Reconstruction API:
+    - **Records** listed chronologically, one row per imported record
+      (overlapping recordings are separate rows); ineligible ones show
+      the backend reason and have no Add;
+    - add/remove members, "Make reference", ms corrections (Set/Reset),
+      all per record;
+    - a member whose recording was removed is stale: its correction is
+      shown "kept, not applied" and it is resolved with "Remove stale
+      members" (no re-confirmation, nothing is transferred);
+    - large-gap warning notices between records, and Clear with a
+      confirmation.
+  - Each current member expands into the Waveform channel hierarchy
+    (DEC-126), **analog-only** (DEC-127): Recording → Analog Channels
+    (engineering type) / Calculated Channels (under their timing-parent
+    recording), using the same grouping helper and name/colour cells. No
+    digital channels.
+    Names and colours are inherited read-only from Waveform; there is no
+    rename/colour editing. Row/"Include all" selection is Event
+    Reconstruction's own local visibility (`wwErState.selectedChannels`,
+    keyed by record), never `ww.displayed`. Stale members show no tree.
+  - **Plotting (Slice 3C).** The "Reconstruction Timeline" canvas plots
+    every selected analog channel of the current records:
+    - **Grouped Measurement View (DEC-131)**: one panel per display axis
+      (engineering quantity + normalized unit, resolved by the backend's
+      `resolve_display_axis()` and exposed as `display_axis_*` on the
+      channel APIs). For example Voltage (kV), Active Power (MW),
+      Frequency (Hz).
+      - Compatible channels share a panel across records, native and
+        calculated alike; each trace keeps its own timing, fetch and
+        envelope.
+      - V vs kV and Active vs Reactive Power never share.
+      - Panels follow Waveform's engineering-type order; traces follow
+        the browser order.
+      - The one-panel-per-channel scaffold is retired;
+    - **Combined Multi-Axis View (DEC-132)**: the Grouped/Combined
+      toggle switches to one 420 px panel holding every selected
+      channel, with one Y axis per display axis.
+      - Axes and their traces are exactly the Grouped panels, in the
+        same order. Placement is left, right, then alternately
+        left/right, pushed outward by Plotly with automatic margins; no
+        maximum.
+      - Above 4 axes an advisory notice suggests the Grouped view.
+      - Autoscale Y and Reset scale each axis on its own. An axis with
+        no visible samples keeps its title and shows no tick values.
+      - The legend is per trace, grouped by axis. One A/B cursor overlay;
+        values stay in the tree.
+      - Switching modes keeps records, channels, definition, cursors,
+        the X viewport, Fit All and drag mode; Y is autoscaled on entry,
+        and valid fetched data is reused;
+    - engineering units only;
+    - one shared relative reconstruction-time X axis;
+    - Fit All as the initial view.
+
+    Data comes through the shared visible-range fetch, with the same
+    point budget and min/max envelope as Waveform, mapped by the
+    backend's `total_reconstruction_offset_s`. One local plotting origin
+    per canvas keeps Plotly's numbers small, so precision does not
+    depend on Plotly internals. Names and colours are re-resolved from
+    Waveform on every render.
+
+  - **Navigation (Slice 3D, DEC-129).**
+    - Box Zoom and Pan are X-only (no Y change on any panel), in Event
+      Reconstruction's own drag mode.
+    - **Individual Y-axis drag zoom (DEC-134).** Dragging one Y axis's
+      own scale changes that axis only: one Grouped panel, or one
+      Combined display axis. Plotly-native: the middle pans, an end
+      zooms, a double-click autoranges that axis.
+      - The dragged range is manual. It survives X navigation, Fit Record
+        and a channel joining its axis.
+      - Autoscale Y clears the current mode's manual ranges; Reset (Fit
+        All plus Y) clears both modes'.
+      - Y state is per view mode and keyed by display axis.
+    - Zoom In and Zoom Out use Waveform's shared step with the centre
+      kept. Zoom Out and Pan never leave Fit All, and Zoom Out is
+      disabled at Fit All.
+    - Reset Time View = Fit All, then Y autoscaled on every panel; a
+      double-click does the same.
+    - Autoscale Y works on every panel independently. Otherwise Y keeps
+      its range through X navigation, and an empty panel's stale range
+      clears.
+    - A reference or correction change rebases a zoomed window, so the
+      same physical segment stays in view (clamped to the new Fit All).
+    - A Fit All span notice names the record or group when one gap is
+      ≥ 3600 s and ≥ 90 % of Fit All. It is advisory only.
+
+  - **A/B cursors (Slice 3E, DEC-130).**
+    - Global cursors in reconstruction time, one each, drawn on every
+      panel; dragged on any panel; kept inside Fit All.
+    - The readout shows A, B and Δt with µs digits (relative time only).
+    - Each plotted channel's nearest real sample at A and B (no
+      interpolation) and Δ appear in the left channel tree's Cur A /
+      Cur B / Δ columns (Waveform's sidebar pattern). The panels show
+      only the lines. Outside a record's data it says "No sample"; a
+      recorded gap says "Unavailable".
+    - Calculated channels use their timing parent.
+    - Cursors rebase with the reconstruction zero (reference change,
+      reference correction), keeping the physical instant. A correction
+      on any other record leaves them in place.
+    - Zoom, pan, Reset, selection changes and record removal never move
+      them.
+
+  - **Fit Record (mixed-duration navigation, DEC-133).**
+    - Clicking a member's header makes it the **active navigation
+      record**. It is shown by a tinted header with an accent edge and
+      ring, and is distinct from the reference: e.g. reference BTGH,
+      active BAHS.
+    - Initially it is the reference record. Removing that record clears
+      it, and no other record is chosen automatically.
+    - "Fit Record" sets the common X viewport to the record's backend
+      extent (member `start_s`/`end_s`) in Grouped and Combined.
+    - It changes X only: Y and cursors stay, and time is never
+      compressed. Fit All and Reset are unchanged.
+    - It is disabled, with the reason in its tooltip, when there is no
+      usable target, including when none of the record's channels is
+      plotted.
+
+  - **Relative / Absolute time display (DEC-135).** A toolbar control,
+    "Time [Relative | Absolute]", labels only.
+    - Reconstruction seconds stay internal.
+    - Absolute = reference recorded start + reference correction + r
+      (backend `reconstruction_zero_time_utc`), shown in the display
+      timezone (DEC-122).
+    - Reference switches never change a sample's absolute time; a
+      correction shifts its record.
+    - Adaptive calendar ticks, with the date at the first tick and where
+      it changes; µs hover and cursor readouts. Nothing is refetched on a
+      switch.
+
+  - **Annotations (DEC-136, DEC-137).** Waveform's four tools — Text
+    Note, Callout, Maximum Peak, Minimum Peak — and its Annotations
+    manager, over Event Reconstruction's own backend-stored state (never
+    Waveform's, never Time Groups).
+    - Text Notes are reconstruction-level: rebased with a reference
+      switch or reference correction, fixed under a non-reference
+      correction.
+    - Callouts and Peaks are attached to one channel and follow their
+      record's corrections (the same physical sample); Peaks measure the
+      targeted channel over the visible range, live.
+    - Grouped and Combined draw them on the right trace and Y axis;
+      Relative/Absolute changes only their time text.
+    - The toolbar uses Waveform's Annotate split-menu and Annotations
+      button (identical icons and tooltips); Fit Record is an icon tool.
+      Standing principle (DEC-139, app-wide, not Event-Reconstruction-only):
+      common tools across Powerwave pages share iconography, tooltip
+      wording and compact button styling; page state and workflow stay
+      page-owned. Event Reconstruction's toolbar is now one single global
+      header (`#wwErToolbar`, DEC-141) — its Reconstruction Timeline
+      canvas has no toolbar of its own any more; see the global icon
+      system entry below.
+
+  - **Per-Unit Display (DEC-138).** "Units [ENG | PU]", Engineering by
+    default; display only. Waveform owns per-unit configuration; Event
+    Reconstruction consumes the backend's resolved basis (GET
+    …/per-unit-resolution) and the existing endpoints' pu values — never
+    a base, √3 or conversion of its own, never a settings write.
+    - Configured channels plot in pu on quantity-aware axes (Voltage (pu),
+      Current (pu), … in Grouped and Combined); Power / Frequency stay in
+      engineering units, as in Waveform.
+    - A channel without a basis stays selected and reads "PU unavailable"
+      (tree badge, notice, cursor cells "PU n/a"); it is not plotted.
+    - Y state is per unit mode; cursors, Callouts and Peaks keep their
+      samples and show the current unit's value.
+    - Settings changed in Waveform are read again on the next visit.
+
+  - **Global icon system (DEC-140, app-wide), toolbar composition
+    (DEC-141, app-wide), owner-approved SVG assets (DEC-143, app-wide),
+    Box Zoom retirement (DEC-144/145, app-wide) and dedicated zoom-axis
+    icons + fit/scale-view grouping (DEC-146/147, app-wide).** One
+    shared icon registry (`WW_TOOL_ICONS`); every common tool lives in
+    one global header (`#wwErToolbar`), ordered families — the
+    Reconstruction Timeline canvas has no toolbar of its own. Icons are
+    owner-supplied physical SVG files under `frontend/assets/icons/**`,
+    rendered via a CSS `mask-image` (themes correctly regardless of a
+    file's own internal colour). Every tool group (Pan, Time Display,
+    View Mode, Unit Mode, the fit/scale-view group) is a row of
+    individual compact buttons with a strict 2px gap within one family
+    — never a joined/segmented pill. Unit Mode (ENG/PU) is an icon pair
+    (`engineering_unit.svg`/`per_unit.svg`), the former "Units" text
+    label removed. **Box Zoom is retired** — Pan is the only plot-area
+    interaction mode (no toggle button; `grab`/`grabbing` cursor
+    feedback over the plot area instead). "Reset Time View" is renamed
+    "Autoscale X" and (DEC-149) is now strictly X only — the "also
+    autoscales every panel's Y" side effect it inherited from Reset
+    Time View is removed; Autoscale X and Autoscale Y are each
+    single-axis, matching their own names. **Zoom X/Y In/Out** (`ZOOM_X_IN`/`_OUT`,
+    `ZOOM_Y_IN`/`_OUT`) each now has its own dedicated owner icon
+    (DEC-146) instead of sharing a plain zoom-in/zoom-out pair — the
+    former plain `ZOOM_IN`/`ZOOM_OUT` and the unwired scope-only
+    `ZOOM_HORIZONTAL`/`ZOOM_VERTICAL` keys/files were removed as dead.
+    **Autoscale X, Autoscale Y and Fit Selected Record** sit together
+    in one "fit/scale view" toolbar group (DEC-147, amending DEC-145's
+    narrower Autoscale X/Y-only pairing) — `[Autoscale X][Autoscale Y]
+    [Fit Selected Record]`, each its own individual button.
+    **`engineering_unit.svg`/`per_unit.svg` artwork was refreshed**
+    (DEC-148) — same filenames, same registry mapping, asset-only.
+    **Waveform now shares this same tool language too** (DEC-150) —
+    its own Unit Mode is the identical icon-pair pattern (no more text
+    dropdown), its per-Time-Group canvas toolbar has the same 2px/
+    hairline-separator geometry Event Reconstruction's header already
+    had. **The Analysis page's own 5 analyzer-type icons** (Overcurrent/
+    Impedance Locus/Distance Protection/Phasor/Sequence Components,
+    DEC-152) are owner assets through this same registry now too.
+    **Panel-header tools that a page can never support are hidden, not
+    disabled** (DEC-154, reversing DEC-141's own opposite instruction
+    for the same controls — flagged in DEC-154's own "Open" item): a
+    tool the page genuinely supports but is temporarily unavailable at
+    runtime is unaffected, still rendered and disabled as before.
+    **Waveform's own top toolbar no longer hides when the workspace is
+    empty** (DEC-155, implemented and tested, owner-reviewed 2026-10-05 and committed) — matching Event Reconstruction's own `#wwErToolbar`,
+    which was never hidden either; a persistent panel-header shell
+    (`#wwEmptyWorkspaceHeader`, reusing Event Reconstruction's own
+    canvas-header classes verbatim) plus a state-aware empty-state
+    message ("No recordings loaded..." vs "Select channels...") take
+    over showing "nothing to look at yet". **Waveform gains its own
+    page-level Y Zoom In/Out pair** (DEC-156, implemented and tested,
+    owner-reviewed 2026-10-05 and committed) — `#wwZoomYInBtn`/
+    `#wwZoomYOutBtn`, targeting the pre-existing `wwActivePanel()`
+    resolver (Waveform has exactly one Y axis per panel, so "active
+    axis" and "active panel" are the same thing), reusing Event
+    Reconstruction's own step-zoom factors/semantics via a newly
+    extracted shared `wwStepZoomYPanel()` core. **Event Reconstruction's
+    top toolbar is now reorganized to match Waveform's own left/right
+    structure** (DEC-157, implemented, live-verified in the browser,
+    and tested; owner-reviewed 2026-10-05 and committed) — the SAME
+    `.toolbar-spacer{flex:1}` mechanism Waveform's own toolbar already
+    used pushes Event Reconstruction's View Mode group (Grouped/
+    Combined) flush to the right edge, mirroring Waveform's own
+    Grouped/Separate/Custom + Split View placement; every other
+    control keeps its left-aligned relative order. **Waveform's own
+    per-Time-Group local toolbar model is retired for Zoom X, Autoscale
+    X/Y and A/B Cursors** (DEC-158, implemented and tested, owner-reviewed 2026-10-05 and committed) — all four moved to the page-level
+    `#wwToolbar`, joining Zoom Y (DEC-156). Zoom X, Autoscale X and A/B
+    Cursors share ONE "active Time Group" concept
+    (`wwActiveTimeGroupId()`, derived from `wwActivePanel()`) so none
+    can silently disagree about which Time Group is targeted.
+    **Autoscale Y shares Zoom Y's own exact single-axis target instead**
+    (owner correction, same day) — `wwActivePanel()` directly, via the
+    new `wwAutoscaleYPanel(panel)`, restoring autorange for only the
+    selected axis, never every panel in the Time Group (the deleted
+    `wwAutoscaleYForGroup(groupId)`'s own former behaviour). Only t0 and
+    Synchronize Sources remain genuinely local. **A "Y: &lt;axis&gt;"
+    target readout** (`#wwYAxisReadout`, reusing Event Reconstruction's
+    own `.ww-er-active-axis-readout` class/wording verbatim) sits
+    beside Zoom Y, reading the SAME `yZoomPanel` variable Zoom Y and
+    Autoscale Y already resolve — one shared source of truth, no second
+    resolver. **Toolbar follow-up (DEC-159, implemented and tested, owner-reviewed 2026-10-05 and committed)**: a double-wide gap between
+    Time Display and Unit Mode (caused by two `.ww-toolbar-sep`
+    hairlines left adjacent around the hidden, feature-flagged
+    `#wwDetectEventBtn`) is fixed by toggling the trailing separator
+    together with the button; Per-Unit Settings now uses the
+    owner-supplied `pu_settings.svg`; "Clear Waveforms"
+    (`#clearWorkspaceBtn`, the feature the owner calls "Delete
+    Waveform" — confirmed never removed, just not repositioned during
+    the migration) moves from the right side to the left operational
+    group, now disabling instead of hiding when there is nothing to
+    clear, using the owner-supplied `clear_waveforms.svg`. See
+    [POWERWAVE_ICON_SYSTEM.md](POWERWAVE_ICON_SYSTEM.md). **Waveform
+    toolbar refinement (DEC-161, implemented and tested, owner-reviewed 2026-10-05 and committed): t0 is no longer among the
+    genuinely-local controls** — "Set Cursor A as t=0"/"Clear t=0"
+    moved to the page-level `#wwT0Btn`, beside `#wwCursorModeBtn`, using
+    the SAME `wwActiveTimeGroupId()` targeting model; its own existing
+    semantics (Cursor A of the resolved Time Group only) are unchanged.
+    **"Synchronize Sources" is removed from the Waveform UI outright**
+    (not merely hidden) — its modal had exactly one caller (the
+    per-Time-Group `.ww-tg-sync-btn`, itself removed in the same
+    change) and no other workflow reached it; the underlying automatic
+    synchronization-state fetch/apply/sidebar-badge mechanism this
+    modal only ever let an engineer EDIT is untouched. Nothing
+    genuinely local remains in `.ww-tg-toolbar` now except its
+    pre-existing hidden "Fit Selected Record" stub.
+  - **Active Y-axis target (DEC-142).** The explicit target
+    (`wwErState.plot.activeAxisKey`, a stable display-axis key, never a
+    Plotly axis number) the global Zoom Y In/Out buttons act on. Set by
+    clicking a Grouped panel's header or a Combined axis's legend
+    heading, or any direct interaction with a Y axis's own scale
+    (DEC-134's existing pan/end-zoom/double-click-autoscale drag,
+    unchanged). Exactly one axis auto-targets; several stay untargeted
+    until chosen. Carries over Grouped <-> Combined unchanged; re-maps
+    by physical quantity (or clears) across Engineering <-> Per Unit.
+    Toolbar Y Zoom In/Out step only the active axis, by Waveform's own
+    ±20%/25% factors. Autoscale Y, Reset, Fit Record, X navigation,
+    cursors and annotations are all unaffected.
+
+    **Panel height is now drag-resizable (DEC-160, implemented and
+    tested, owner-reviewed 2026-10-05 and committed)** — both Grouped and
+    Combined panels gained a resize handle, reusing Waveform's own
+    `.ww-resize-handle`/drag mechanics as a pattern (parallel
+    `wwEr*`-prefixed functions, not called by reference). 180 px/420 px
+    remain each mode's own DEFAULT height only, used for a genuinely
+    new panel key; a user-resized height is session-local
+    (`wwErState.plot.panelHeights`) and survives axis interaction, zoom,
+    cursor change, unit-mode switch and theme change — the unit-mode
+    case required deriving a separate, mode-invariant persistence key
+    (`wwErPanelHeightKey()`, off the backend's own mode-invariant
+    `*_display_axis_quantity`) rather than reusing `spec.key`, whose own
+    backend-provided `*_display_axis_key` genuinely differs between
+    Engineering and Per Unit for the same logical axis. Resize never
+    touches X/Y range, cursor, channel membership or annotation state.
+
+    Not yet built: an overview navigator (deferred until Fit Record
+    UAT); a dedicated end-zoom hit-region ergonomics enhancement (only
+    if UAT still finds direct drag insufficient after DEC-142).
+  - It never reads or writes the Waveform `ww` state, panels or
+    viewports.
+- **Backend.**
+  - Eligibility per record: `recorded_absolute` only in V1
+    (`time_of_day_not_supported`, `no_absolute_time_reference`).
+  - Placement from recorded start timestamps plus a per-record manual
+    correction stored independently of the reference, so a reference
+    switch never changes alignment or stored data.
+  - Waveform Synchronise Sources corrections are neither read nor
+    applied.
+  - Members are identified by `record_id`. A removed record reads as
+    stale and its correction is frozen. A removed reference withholds
+    every placement and is never re-picked automatically.
+  - Pairwise overlap/gap relationships between records, and an advisory
+    large-gap warning at `>=` 3600 s (central configuration; never a
+    rejection).
+  - API under `/api/v1/workspaces/{id}/event-reconstruction`: `records`,
+    `definition`, `definition/reference`,
+    `definition/records/{record_id}/correction`.
+  - State is in-memory and cleared with the workspace. A definition made
+    under the superseded Time Group model must be recreated; there is no
+    migration.
+- **Waveform Time Group, Synchronise Sources and placement behaviour is
+  unchanged.** Event Reconstruction does not use Time Groups or
+  Synchronise Sources at all; it shares only the pure timestamp helpers.
+- **Renderer: Option B approved (DEC-127).**
+  [EVENT_RECONSTRUCTION_RENDERER_DESIGN.md](EVENT_RECONSTRUCTION_RENDERER_DESIGN.md)
+  has the design.
+  - Slice 3A extracted the shared Waveform renderer helpers (fetch core,
+    offset arithmetic, trace/layout/panel markup, step-zoom/clamp/cursor
+    arithmetic); Waveform behaviour is identical.
+  - Slice 3B added per-source timing to the definition response
+    (`source_timings`: `within_record_offset_s`, which is 0 for every
+    current record; `reconstruction_record_offset_s`; the total; mapped
+    start/end; null for stale state). It also added the one frontend
+    mapping pair (`reconstruction_x = source_elapsed +
+    total_reconstruction_offset_s`).
+  - Slice 3C is the first plotted reconstruction. The WebGL float32
+    risk was checked: Plotly 3.7's scattergl keeps 0.2 ms spacing even
+    at +30 days (hi/lo position split), but its own auto tick labels
+    degrade at large offsets. Event Reconstruction plots against a local
+    origin with its own reconstruction-time ticks, so neither matters.
+- Still open:
+  - `[OPEN / UAT]` mixed-duration / mixed-sampling-rate navigation and
+    the initial viewport. Fit All keeps time physical, so a short fast
+    record can be a sliver, and one wrong-event record can make every
+    trace sub-pixel (named by the Fit All span notice).
+    - Fit Record (DEC-133) is the first remedy, still to be UAT'd in
+      real workflows.
+    - Whether an overview navigator is still needed is decided after
+      that UAT;
+  - colour collisions inside a grouped panel or on the combined panel,
+    including across its axes (Waveform's 6-colour palette; owner
+    decision needed for any disambiguation);
+  - legend crowding with very many traces (101 YGPN channels fill most
+    of the combined canvas);
+  - Plotly 3.7 renders only `{ text }` axis titles, so the shared panel
+    layout's X title and the Grouped panels' unit Y title are not shown
+    (pre-existing, Waveform included; reported in DEC-132, not changed);
+  - BEN unit code 63 is now validated as VAr (BEN32 `.prn` evidence).
+    `R.POWER` channels import as `Mvar` reactive power and share one
+    "Reactive Power (Mvar)" panel/axis. A still-unknown quantity's axis is
+    titled after its channel ("Unknown quantity — CHANNEL X");
+  - the final manual left/right synchronization UX (Slice 4);
+  - the final grouped and multi-axis visualization (Slices 6A/6B).
+
+```text
+Upload Recording -> format "BEN" -> native BenProvider -> Fast or Slow SubBen
+  -> DisturbanceRecord -> normal Powerwave workflow
+```
+
+- **Owner UAT passed (2026-10-01): "BEN integration is working as
+  expected and the feature is accepted for merge."** It covered:
+  - `.ben` upload through the normal Upload Recording flow;
+  - Fast SubBen and Slow SubBen loading;
+  - BEN and matching BEN32 COMTRADE timestamp alignment (one Time
+    Group, 0.0 s placement);
+  - consistent Malaysia-local display time;
+  - waveform plotting and the normal recording workflow;
+  - rejection of unsupported older BEN layouts.
+- **Scope of the UAT.** It applies to the validated BEN32 SubBen layout
+  family only (header `2a ff … / 06 ff`), not to every historical BEN
+  variant. Older layouts (BPHE/GPTH, header byte `28`) and any
+  unvalidated variant are rejected with `unsupported_ben_variant`.
+- **Behaviour.** Parsing is native: no BEN32 runtime and no temporary
+  COMTRADE. Sampling rate, channel counts and stride come from each
+  file. Analog, calculated (Hz/MW) and digital channels are scaled to
+  engineering units. Slow unavailable samples are `NaN`. Duplicate
+  analog/digital names keep their own identity.
+
+| Concern | Rule |
+|---|---|
+| Source timezone | Naive engineering timestamps are read as Asia/Kuala_Lumpur; a declared offset wins (DEC-121). |
+| Canonical | UTC. The API adds `start_time_utc`/`trigger_time_utc`; the stored `start_time` is unchanged. |
+| Display timezone | Asia/Kuala_Lumpur, applied in the frontend via `wwFormatEngineeringTimestamp()` and the Absolute anchor `wwRecordingDisplayStartTime()` (DEC-122). |
+
+Deferred follow-ups (`[OPEN]`, not blockers):
+- older BEN layouts (BPHE/GPTH);
+- a user- or project-selectable display timezone;
+- deployment wiring for `displayTimezone` (the container entrypoint does
+  not emit it; the default applies), and `DEFAULT_SOURCE_TIMEZONE` is a
+  constant, not a setting;
+- BEN bay/feeder and channel ids in the UI (kept in provenance only);
+- nominal frequency in the UI or configuration (BEN upload uses the
+  shared 50 Hz default; the API accepts `nominal_frequency_hz`);
+- FLOAT32/BINARY32 COMTRADE DAT;
+- any broader channel-metadata redesign;
+- the COMTRADE path still scales BEN32's legacy 99999 "unavailable"
+  value to 99.9995 Hz; the BEN path gives `NaN`.
+
+See [BEN_FORMAT.md](BEN_FORMAT.md).
+
+Earlier, on **2026-09-30** — **Calculator phase-to-neutral
 notation (DEC-117 Amendment 3).** Line / Phase Voltage shows
 V<sub>RN</sub> (plain `VRN`), never V<sub>R</sub>-N. That covers the
 inputs, formula, diagram and Balanced L-N label; angles stay
@@ -2576,8 +3033,12 @@ modules beyond the original COMTRADE port (`domain/source.py`,
 `measurement_group.py` / `measurement_group_detection.py` /
 `voltage_group_config.py` / `current_group_config.py` / `voltage_reference.py`
 / `per_unit.py` (the Per-Unit measurement model), `event_detection.py` /
-`rms_detector.py`. `providers/` still holds only `base.py` and
-`comtrade.py` — no CSV/Excel provider exists yet. No persistent storage of
+`rms_detector.py`, `event_reconstruction.py` (DEC-124; read-only
+consumer of Time Groups and source placement). `providers/` holds `base.py`, `comtrade.py` and (since
+2026-10-01, DEC-119) the native `ben/` package — no CSV/Excel provider
+exists (CSV/Excel converts through the Preparation services).
+`import_service.build_provider_manager()` registers `ComtradeProvider`
+and `BenProvider` for source upload (DEC-120). No persistent storage of
 uploaded event files (DEC-015, unchanged); the active workspace retains
 each source's full-resolution parsed record in memory only (DEC-019).
 
@@ -2658,12 +3119,49 @@ re-confirmed by the TG-FINAL audit):
 - **COMTRADE ingestion**: two-slot `.cfg`/`.dat` upload, parse, engineering-
   type channel classification (backend-computed), ephemeral per-request
   parsing (no event files ever persisted to disk/storage).
+  - DEC-121: a 2013 CFG's declared `time_code` gives timezone-aware
+    times; otherwise times stay naive and are interpreted as
+    Asia/Kuala_Lumpur when compared.
+  - Duplicate channel names bind each descriptor to its own `_1` column.
+  - FLOAT32/BINARY32 DAT remain unsupported.
+- **BEN import (DEC-120, 2026-10-01; owner UAT passed, merged to
+  `main`).**
+  - Upload Recording offers format "BEN" (`.ben`), posting `ben_file` to
+    the same `/sources` endpoint as COMTRADE.
+  - The provider registry routes the file to `BenProvider`; nothing is
+    converted to COMTRADE.
+  - Fast and Slow records land as ordinary sources: Recordings row,
+    Waveform, digital channels, post-upload preparation.
+  - Times are aware UTC and display in Asia/Kuala_Lumpur (DEC-122).
+  - `nominal_frequency_hz` is optional; otherwise the shared 50 Hz
+    default applies, recorded as assumed.
+  - Unavailable Slow samples are `NaN`.
+  - `[OPEN]` Bay/id not shown in the UI.
+- **Native BEN parsing (DEC-119, 2026-10-01).** `app.providers.ben` decodes BEN32 3.8.9.6 "Fast SubBen"
+  and "Slow SubBen" records natively into a lossless `BenRecord`.
+  - Everything is derived from the file itself: sample rate, counts,
+    stride, data offset and every channel's word/bit.
+  - `to_disturbance_record()` normalizes it into the unchanged
+    `DisturbanceRecord`:
+    - Hz/MW calculated channels map to `parameter_type`;
+    - an unavailable sample is `NaN`;
+    - binaries are active-high;
+    - times are UTC.
+  - An older BEN layout and any unvalidated variant are rejected
+    explicitly.
+  - Validated sample-for-sample against BEN32 COMTRADE exports (2 Fast +
+    2 Slow pairs).
+  - The format, evidence and remaining `[OPEN]` items are in
+    [BEN_FORMAT.md](BEN_FORMAT.md).
 - **Application shell**: full-viewport Global Header, collapsible Main
   Sidebar Menu, drag-resizable Workspace Sidebar (source-first hierarchy:
   Recording → Analog/Digital → Category → Channel), a dominant Main
   Workspace, and a Bottom Status Bar. **Recordings** and **Waveform** are
   separate top-level pages; Recordings has its own upload modal
   (`RECORDING_FORMATS`-driven) and per-recording detail/Open-Analyse flow.
+  Current main-menu order: Recordings, Waveform, **Event Reconstruction**
+  (DEC-123, Slice 0 shell), Table, Calculated Channels, Analysis,
+  Compliance, Calculator.
   Light/Dark theme is a single, app-wide, `localStorage`-persisted,
   cross-tab-synced preference.
 - **RECORDINGS sidebar recording-start timestamp**: each source card's
@@ -4068,6 +4566,10 @@ correctness defects:
 - Cross-Time-Group synchronization, cross-Time-Group cursor comparison,
   and a shared cross-Time-Group t0 — deliberately not built; each Time
   Group is an intentional isolation boundary, not merely an unfinished one.
+  Waveform keeps this boundary. Event Reconstruction (DEC-124) is the
+  one, separate place where Time Groups are deliberately combined, with
+  its own group-level correction layer that never touches Synchronise
+  Sources or Time Group membership.
 - Detect Event's UI entry point stays hidden (`WW_DETECT_EVENT_UI_ENABLED
   = false`) even though the underlying feature is fully implemented and
   group-aware.

@@ -9,8 +9,10 @@ Backend-level Time-Group derivation/composition is already fully covered by
 test_time_grouping_domain.py/test_time_grouping_service.py/
 test_time_groups_api.py -- this file only exercises the frontend's own
 consumption of that state: per-group state caches, group-aware panel
-splitting, group-scoped t0 quick actions, and the manual/timestamp-placement
-split in the Synchronize Sources modal.
+splitting, and group-scoped t0 quick actions. (The manual/timestamp-
+placement split this file once also covered lived in the Synchronize
+Sources modal, removed outright by a later owner ticket -- see
+test_frontend_time_group_sync.py's own removal coverage.)
 """
 
 from __future__ import annotations
@@ -214,66 +216,6 @@ class TestTimeGroupPanelLabeling:
         fn_idx = source.index("function wwPanelLabelFor(channel)")
         fn_body = source[fn_idx : source.index("function ", fn_idx + 20)]
         assert "wwTimeGroupLabelSuffix(channel)" in fn_body
-
-
-class TestSyncModalManualVsTimestampPlacementSplit:
-    """Task section 20/25: manual sync must keep working exactly as
-    before for the common single-group case, but the modal must now show
-    the derived timestamp placement as read-only provenance context, never
-    let it be edited directly, and compose the two only at read time."""
-
-    def test_row_renderer_takes_both_manual_and_timestamp_placement_separately(self):
-        source = _source()
-        assert (
-            "function wwRenderSyncSourceRow(source, manualOffsetSeconds, timestampPlacementSeconds, isReference)"
-            in source
-        )
-
-    def test_editable_field_binds_to_manual_offset_only(self):
-        source = _source()
-        fn_idx = source.index(
-            "function wwRenderSyncSourceRow(source, manualOffsetSeconds, timestampPlacementSeconds, isReference)"
-        )
-        fn_body = source[fn_idx : source.index("function wwRenderSyncBody", fn_idx)]
-        assert "wwSyncOffsetToMsDisplay(manualOffsetSeconds)" in fn_body
-        assert "wwSyncOffsetToMsDisplay(timestampPlacementSeconds)" in fn_body
-        # The read-only placement note is gated on a non-zero value --
-        # never shown (clutter) for the common zero-offset case.
-        assert "timestampPlacementSeconds !== 0" in fn_body
-
-    def test_render_body_supplies_manual_and_timestamp_placement_from_their_own_maps(self):
-        source = _source()
-        fn_idx = source.index("function wwRenderSyncBody(sources)")
-        fn_body = source[fn_idx : source.index("async function wwSyncReloadAndRenderForGroup", fn_idx)]
-        assert "ww.manualAlignmentOffsets.get(source.source_id) || 0" in fn_body
-        assert "wwTimestampPlacementOffsetForSource(source.source_id)" in fn_body
-        assert "ww.referenceSourceIds.has(source.source_id)" in fn_body
-
-    def test_step_offset_baseline_reads_manual_offset_only(self):
-        """Stepping (+/-1ms etc.) must adjust the MANUAL correction only
-        -- never silently also shift the derived timestamp placement."""
-        source = _source()
-        fn_idx = source.index("async function wwSyncStepOffset(sourceId, stepMs)")
-        fn_body = source[fn_idx : fn_idx + 800]
-        assert "ww.manualAlignmentOffsets.get(sourceId)" in fn_body
-
-
-class TestResetSemanticsAreManualOnly:
-    """Task section 21: "Reset source" / "Reset All" must return a source
-    to its TIMESTAMP-DERIVED position, never to absolute zero -- verified
-    via the relabeled buttons/tooltips that make this explicit."""
-
-    def test_reset_button_label_and_tooltip_clarify_manual_only_scope(self):
-        source = _source()
-        assert "Reset manual adjustment" in source
-        assert "the manual correction only" in source
-
-    def test_reset_all_button_label_and_tooltip_clarify_manual_only_scope(self):
-        source = _source()
-        assert "Reset All Manual Adjustments" in source
-        # TG-F: the tooltip also now makes the Time-Group scope explicit
-        # -- never a workspace-wide reset.
-        assert "every source's own manual correction in this Time Group only" in source
 
 
 class TestT0GroupScopedQuickActions:

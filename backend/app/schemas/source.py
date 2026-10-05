@@ -12,10 +12,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 
 from app.domain.channel_classification import UNDEFINED
+from app.domain.engineering_units import DisplayAxis, resolve_display_axis, resolve_per_unit_display_axis
 from app.domain.source import SourceMetadata
+from app.domain.source_timezone import canonical_utc
 
 
 class AnalogChannelOut(BaseModel):
@@ -49,6 +51,53 @@ class AnalogChannelOut(BaseModel):
     primary_ratio: float | None = None
     secondary_ratio: float | None = None
 
+    def _display_axis(self) -> DisplayAxis:
+        return resolve_display_axis(self.engineering_type, self.engineering_quantity, self.unit)
+
+    def _per_unit_display_axis(self) -> DisplayAxis:
+        return resolve_per_unit_display_axis(self.engineering_type, self.engineering_quantity)
+
+    # Event Reconstruction Grouped Measurement View (DEC-131): additive,
+    # computed by app.domain.engineering_units.resolve_display_axis() from
+    # this channel's own engineering_type/engineering_quantity/unit.
+    # Channels with the same non-null `display_axis_key` may share one Y
+    # axis; quantity/unit are the axis title parts. Every pre-existing
+    # field is unchanged.
+    @computed_field
+    @property
+    def display_axis_key(self) -> str | None:
+        return self._display_axis().key
+
+    @computed_field
+    @property
+    def display_axis_quantity(self) -> str:
+        return self._display_axis().quantity
+
+    @computed_field
+    @property
+    def display_axis_unit(self) -> str:
+        return self._display_axis().unit
+
+    # Event Reconstruction Per-Unit Display (DEC-138): additive -- the
+    # display axis this channel's values take once converted to per unit
+    # (app.domain.engineering_units.resolve_per_unit_display_axis()).
+    # Meaningful only when the channel's per-unit resolution is
+    # "configured"; whether it is converted is never decided here.
+    @computed_field
+    @property
+    def per_unit_display_axis_key(self) -> str | None:
+        return self._per_unit_display_axis().key
+
+    @computed_field
+    @property
+    def per_unit_display_axis_quantity(self) -> str:
+        return self._per_unit_display_axis().quantity
+
+    @computed_field
+    @property
+    def per_unit_display_axis_unit(self) -> str:
+        return self._per_unit_display_axis().unit
+
 
 class DigitalChannelOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -62,10 +111,22 @@ class DigitalChannelOut(BaseModel):
     classification: str
 
 
+#: DEC-122: the canonical instant of a stored recording timestamp, as
+#: timezone-aware UTC (serialized "...Z"). `start_time`/`trigger_time`
+#: stay exactly as stored (naive for COMTRADE without time_code, aware for
+#: BEN/declared offsets); these companions resolve the source timezone
+#: (DEC-121, app.domain.source_timezone) so a display layer can convert
+#: every source to ONE display timezone without re-implementing that policy.
+def _canonical(value: datetime | None) -> datetime | None:
+    return canonical_utc(value) if value is not None else None
+
+
 class TimebaseOut(BaseModel):
     timing_reference: str
     start_time: datetime | None
     trigger_time: datetime | None
+    start_time_utc: datetime | None = None
+    trigger_time_utc: datetime | None = None
     sample_count: int
     duration_seconds: float
     elapsed_start_seconds: float
@@ -131,6 +192,9 @@ class SourceSummaryOut(BaseModel):
     timing_reference: str
     start_time: datetime | None
     trigger_time: datetime | None
+    # DEC-122 canonical companions -- see `_canonical()` above.
+    start_time_utc: datetime | None = None
+    trigger_time_utc: datetime | None = None
     sampling_rates: list[float]
     # Time of Day (Recording Events metadata display fix): mirrors
     # `SourceMetadata.time_of_day_reference_seconds` verbatim, same as
@@ -179,6 +243,8 @@ class SourceSummaryOut(BaseModel):
             timing_reference=source.timing_reference,
             start_time=source.start_time,
             trigger_time=source.trigger_time,
+            start_time_utc=_canonical(source.start_time),
+            trigger_time_utc=_canonical(source.trigger_time),
             sampling_rates=list(source.sampling_rates),
             time_of_day_reference_seconds=source.time_of_day_reference_seconds,
             preparation_interpreter_id=(
@@ -204,6 +270,8 @@ class SourceChannelsOut(BaseModel):
                 timing_reference=source.timing_reference,
                 start_time=source.start_time,
                 trigger_time=source.trigger_time,
+                start_time_utc=_canonical(source.start_time),
+                trigger_time_utc=_canonical(source.trigger_time),
                 sample_count=source.sample_count,
                 duration_seconds=source.duration_seconds,
                 elapsed_start_seconds=source.elapsed_start_seconds,

@@ -583,7 +583,9 @@ class TestMixedTimezoneAwarenessCrossSourceAlignment:
 
     def test_naive_and_aware_same_true_instant_align_and_combine(self, registries):
         naive_start = datetime(2026, 1, 1, 10, 0, 0)  # no declared offset (e.g. COMTRADE)
-        aware_start = datetime(2026, 1, 1, 10, 0, 0, tzinfo=timezone.utc)  # same clock face, declared UTC
+        # DEC-121: a naive start is Asia/Kuala_Lumpur local time, so the
+        # same true instant is 10:00 declared +08:00 (= 02:00 UTC).
+        aware_start = datetime(2026, 1, 1, 10, 0, 0, tzinfo=timezone(timedelta(hours=8)))
         source_registry, calc_registry = registries
         _add_source(source_registry, _active_source(
             source_id="src1", time=np.array([0.0, 0.1]), channels={"A": np.array([1.0, 2.0])},

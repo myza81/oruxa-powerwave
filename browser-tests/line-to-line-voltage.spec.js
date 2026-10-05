@@ -160,8 +160,10 @@ test.describe("Line-to-Line Voltage", () => {
     await expect.poll(async () => (await lineToLineTraceColors(page)).VBC).toBe(colors.VBC);
     expect(await lineToLineTraceColors(page)).toEqual(colors);
 
-    // Zoom: identity preserved.
-    await page.locator(".ww-tg-zoom-in-btn").first().click();
+    // Zoom: identity preserved. (Zoom lives in the global Waveform toolbar;
+    // the per-canvas .ww-tg-zoom-in-btn was removed by the toolbar migration.)
+    await expect(page.locator("#wwZoomXInBtn")).toBeEnabled();
+    await page.locator("#wwZoomXInBtn").click();
     expect(await lineToLineTraceColors(page)).toEqual(colors);
 
     // Redraw via layout switch (Separate re-creates every panel/legend) and back.

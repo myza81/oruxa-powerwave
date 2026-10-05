@@ -241,7 +241,9 @@ test.describe("Playback Cursor is Analysis-owned -- never rendered on Waveform",
     await page.locator("#mainNavWaveformBtn").click();
     await expect(canvas).toBeVisible();
 
-    const cursorBtn = canvas.locator(".ww-tg-cursor-mode-btn");
+    // Waveform top-toolbar migration (owner ticket, DEC-158): the A/B
+    // Cursors mode toggle is page-level now (#wwCursorModeBtn).
+    const cursorBtn = page.locator("#wwCursorModeBtn");
     await cursorBtn.click();
     await expect(cursorBtn).toHaveAttribute("aria-pressed", "true");
     await expect(canvas.locator(".ww-tg-cursor-overlay")).toBeVisible();

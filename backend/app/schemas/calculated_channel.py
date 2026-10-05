@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Literal
 
 import numpy as np
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, computed_field, model_validator
 
 from app.services.calculated_channel_service import (
     CalculatedAnnotationAnchorResult,
@@ -19,6 +19,8 @@ from app.services.calculated_channel_service import (
     RmsEligibility,
 )
 from app.domain.calculated_channel import CalculatedChannel, ChannelRef
+from app.domain.channel_classification import UNDEFINED
+from app.domain.engineering_units import DisplayAxis, resolve_display_axis, resolve_per_unit_display_axis
 from app.schemas.phase_display import PhaseDisplayOut
 
 
@@ -192,6 +194,55 @@ class CalculatedChannelOut(BaseModel):
     voltage_representation: str | None = None
     phase_member: str | None = None
     creation_batch_id: str | None = None
+
+    def _display_axis(self) -> DisplayAxis:
+        # A calculated channel carries a broad engineering_type and a
+        # unit; it has no richer engineering_quantity of its own.
+        return resolve_display_axis(self.engineering_type, UNDEFINED, self.unit)
+
+    def _per_unit_display_axis(self) -> DisplayAxis:
+        return resolve_per_unit_display_axis(self.engineering_type, UNDEFINED)
+
+    # Event Reconstruction Grouped Measurement View (DEC-131): additive,
+    # computed by app.domain.engineering_units.resolve_display_axis() from
+    # this channel's own engineering_type/engineering_quantity/unit.
+    # Channels with the same non-null `display_axis_key` may share one Y
+    # axis; quantity/unit are the axis title parts. Every pre-existing
+    # field is unchanged.
+    @computed_field
+    @property
+    def display_axis_key(self) -> str | None:
+        return self._display_axis().key
+
+    @computed_field
+    @property
+    def display_axis_quantity(self) -> str:
+        return self._display_axis().quantity
+
+    @computed_field
+    @property
+    def display_axis_unit(self) -> str:
+        return self._display_axis().unit
+
+    # Event Reconstruction Per-Unit Display (DEC-138): additive -- the
+    # display axis this channel's values take once converted to per unit
+    # (app.domain.engineering_units.resolve_per_unit_display_axis()).
+    # Meaningful only when the channel's per-unit resolution is
+    # "configured"; whether it is converted is never decided here.
+    @computed_field
+    @property
+    def per_unit_display_axis_key(self) -> str | None:
+        return self._per_unit_display_axis().key
+
+    @computed_field
+    @property
+    def per_unit_display_axis_quantity(self) -> str:
+        return self._per_unit_display_axis().quantity
+
+    @computed_field
+    @property
+    def per_unit_display_axis_unit(self) -> str:
+        return self._per_unit_display_axis().unit
 
     @classmethod
     def from_domain(cls, channel: CalculatedChannel) -> "CalculatedChannelOut":

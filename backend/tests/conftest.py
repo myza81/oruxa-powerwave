@@ -30,3 +30,16 @@ def storage(tmp_path) -> LocalStorage:
 @pytest.fixture
 def comtrade_fixtures_dir() -> Path:
     return FIXTURES_DIR
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--ben-reference-dir",
+        default=None,
+        help=(
+            "Directory searched (recursively, by file name + SHA-256) for the real BEN "
+            "reference records listed in tests/fixtures/ben/reference_manifest.json. "
+            "Falls back to the POWERWAVE_BEN_REFERENCE_DIR environment variable. "
+            "Without either, the ben_reference tests are skipped."
+        ),
+    )

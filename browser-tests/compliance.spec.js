@@ -19,6 +19,7 @@ test.describe("Compliance & Capability -- Slice 1 workspace shell", () => {
     await expect(labels).toHaveText([
       "Recordings",
       "Waveform",
+      "Event Reconstruction",
       "Table",
       "Calculated Channels",
       "Analysis",

@@ -124,7 +124,11 @@ class SourceMetadata:
     # metadata model -- see that module's own docstring for the exact
     # keys it writes. Mirrors `waveform_form`'s own established
     # "additive, defaulted, no current provider sets it away from the
-    # default" precedent above.
+    # default" precedent above. BEN import (DEC-120) also populates it
+    # (`source_format == "BEN"`): record class, UTC time basis, nominal
+    # frequency and whether it was assumed, parser diagnostics, and each
+    # channel's BEN identity (id, byte-exact source name, bay) -- see
+    # app.providers.ben.provider. COMTRADE still leaves it `None`.
     preparation_provenance: dict[str, Any] | None = None
 
     # Time of Day (CSV/Excel ingestion, additive): mirrors

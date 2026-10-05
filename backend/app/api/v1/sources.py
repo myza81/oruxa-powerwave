@@ -1,4 +1,4 @@
-"""Phase 1/2A COMTRADE source/channel/waveform API.
+"""Phase 1/2A COMTRADE source/channel/waveform API (BEN upload: DEC-120).
 
 Domain-oriented, versioned, and deliberately small -- see
 docs/project-memory/MIGRATION_PLAN.md Sec 7 (API contract) and Sec 8
@@ -23,7 +23,8 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi.exceptions import RequestValidationError
 
 from app.config import Settings
 from app.domain.channel_classification import VOLTAGE
@@ -41,8 +42,15 @@ from app.services.calculated_channel_service import remove_calculated_channels_f
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
 from app.services.engineering_context_service import prune_engineering_contexts_for_source
-from app.services.errors import ChannelNotAnalogError, ChannelNotFoundError, ImportServiceError, InvalidTimeRangeError
-from app.services.import_service import import_comtrade_source
+from app.services.errors import (
+    AmbiguousSourceUploadError,
+    ChannelNotAnalogError,
+    ChannelNotFoundError,
+    ImportServiceError,
+    InvalidNominalFrequencyError,
+    InvalidTimeRangeError,
+)
+from app.services.import_service import import_ben_source, import_comtrade_source
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.measurement_group_service import remove_measurement_groups_for_source
 from app.services.per_unit_provenance_service import build_source_channel_provenance
@@ -74,6 +82,9 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "parse_error": status.HTTP_400_BAD_REQUEST,
     "missing_companion_file": status.HTTP_400_BAD_REQUEST,
     "unsupported_comtrade_variant": status.HTTP_400_BAD_REQUEST,
+    "unsupported_ben_variant": status.HTTP_400_BAD_REQUEST,
+    "ambiguous_source_upload": status.HTTP_400_BAD_REQUEST,
+    "invalid_nominal_frequency": status.HTTP_400_BAD_REQUEST,
     "upload_too_large": status.HTTP_413_CONTENT_TOO_LARGE,
     "invalid_workspace": status.HTTP_400_BAD_REQUEST,
     "source_not_found": status.HTTP_404_NOT_FOUND,
@@ -146,36 +157,77 @@ def _http_error(exc: ImportServiceError) -> HTTPException:
     return HTTPException(status_code=status_code, detail=ErrorOut(code=exc.code, message=exc.message).model_dump())
 
 
+def _missing_upload_parts(cfg_file: UploadFile | None, dat_file: UploadFile | None) -> RequestValidationError:
+    """The same 422 FastAPI raised when cfg_file/dat_file were required
+    parts -- a COMTRADE request missing one keeps its existing contract."""
+    missing = [name for name, part in (("cfg_file", cfg_file), ("dat_file", dat_file)) if part is None]
+    return RequestValidationError(
+        [{"type": "missing", "loc": ("body", name), "msg": "Field required", "input": None} for name in missing]
+    )
+
+
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=SourceSummaryOut)
 async def upload_comtrade_source(
     workspace_id: str,
-    cfg_file: UploadFile = File(..., description="COMTRADE .cfg configuration file"),
-    dat_file: UploadFile = File(..., description="COMTRADE .dat data file"),
+    cfg_file: UploadFile | None = File(None, description="COMTRADE .cfg configuration file (with dat_file)"),
+    dat_file: UploadFile | None = File(None, description="COMTRADE .dat data file (with cfg_file)"),
+    ben_file: UploadFile | None = File(None, description="BEN record (.ben), instead of cfg_file/dat_file"),
+    nominal_frequency_hz: float | None = Form(
+        None,
+        description="BEN only: system nominal frequency (Hz). BEN does not declare it; "
+        "omitted means Powerwave's default (50 Hz), recorded as assumed.",
+    ),
     settings: Settings = Depends(get_settings_dep),
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     engineering_context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     calculated_channel_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
 ) -> SourceSummaryOut:
+    """Import one recording: a COMTRADE ``cfg_file`` + ``dat_file`` pair,
+    or a single ``ben_file`` (DEC-120) -- never both. Both formats share
+    the import lifecycle, provider registry and post-upload preparation."""
     workspace_id = _validate_workspace_id(workspace_id)
 
-    try:
-        source = await import_comtrade_source(
-            workspace_id=workspace_id,
-            cfg_upload=cfg_file,
-            dat_upload=dat_file,
-            max_total_bytes=settings.max_event_upload_size_bytes,
-            registry=registry,
+    if ben_file is not None and (cfg_file is not None or dat_file is not None):
+        raise _http_error(
+            AmbiguousSourceUploadError("Upload either a COMTRADE .cfg/.dat pair or one BEN file, not both.")
         )
+    if ben_file is None and (cfg_file is None or dat_file is None):
+        raise _missing_upload_parts(cfg_file, dat_file)
+    if ben_file is None and nominal_frequency_hz is not None:
+        raise _http_error(
+            InvalidNominalFrequencyError(
+                "nominal_frequency_hz applies to BEN uploads only; COMTRADE declares its own."
+            )
+        )
+    source_format = "BEN" if ben_file is not None else "COMTRADE"
+
+    try:
+        if ben_file is not None:
+            source = await import_ben_source(
+                workspace_id=workspace_id,
+                ben_upload=ben_file,
+                max_total_bytes=settings.max_event_upload_size_bytes,
+                registry=registry,
+                nominal_frequency_hz=nominal_frequency_hz,
+            )
+        else:
+            source = await import_comtrade_source(
+                workspace_id=workspace_id,
+                cfg_upload=cfg_file,
+                dat_upload=dat_file,
+                max_total_bytes=settings.max_event_upload_size_bytes,
+                registry=registry,
+            )
     except ImportServiceError as exc:
         # exc.message is user-safe by construction (app.services.errors);
         # the original exception, with full detail, is logged here for
         # engineering/debugging -- never returned to the client. See
         # docs/project-memory/MIGRATION_PLAN.md Sec 9 and Sec 31.
-        logger.info("COMTRADE import rejected (%s): %s", exc.code, exc.message)
+        logger.info("%s import rejected (%s): %s", source_format, exc.code, exc.message)
         raise _http_error(exc) from exc
     except Exception:
-        logger.exception("Unexpected error importing COMTRADE source for workspace %s", workspace_id)
+        logger.exception("Unexpected error importing %s source for workspace %s", source_format, workspace_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorOut(code="internal_error", message="Import failed unexpectedly.").model_dump(),

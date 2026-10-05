@@ -58,6 +58,7 @@ test("Calculator is a first-class page accessible without an event recording", a
   expect(navOrder).toEqual([
     "mainNavRecordingsBtn",
     "mainNavWaveformBtn",
+    "mainNavEventReconstructionBtn",
     "mainNavTableBtn",
     "mainNavCalculatedChannelsBtn",
     "mainNavAnalysisBtn",

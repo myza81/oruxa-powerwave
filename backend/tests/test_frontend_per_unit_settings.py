@@ -35,12 +35,16 @@ class TestUnitModeMenuHasOneSettingsEntry:
     directly-competing management options."""
 
     def test_menu_contains_exactly_one_management_entry(self):
+        """Waveform toolbar migration: the former dropdown menu
+        (#wwUnitModeMenu) is gone -- Per-Unit Settings is now its own
+        adjacent icon button, immediately after the Unit Mode toggle."""
         source = _source()
-        menu_body = _function_body(source, 'id="wwUnitModeMenu"', "</div>\n                        </div>")
-        assert 'id="wwOpenPerUnitSettingsBtn"' in menu_body
-        assert "Per-Unit Settings" in menu_body
-        assert 'id="wwManageMeasurementGroupsBtn"' not in menu_body
-        assert 'id="wwManagePerUnitBasesBtn"' not in menu_body
+        assert 'id="wwUnitModeMenu"' not in source
+        region = _function_body(source, 'id="wwUnitModeToggle"', 'id="wwOpenPerUnitSettingsBtn"')
+        assert 'id="wwManageMeasurementGroupsBtn"' not in region
+        assert 'id="wwManagePerUnitBasesBtn"' not in region
+        settings_btn = _function_body(source, 'id="wwOpenPerUnitSettingsBtn"', "</button>")
+        assert "Per-Unit Settings" in settings_btn
 
     def test_settings_button_opens_the_new_parent_surface(self):
         source = _source()
@@ -162,16 +166,19 @@ class TestUnitModeControlsUnchanged:
     """Checklist item 8: Engineering Units / Per Unit display-mode
     switching is untouched by this slice."""
 
-    def test_unit_mode_radio_items_unchanged(self):
+    def test_unit_mode_buttons_unchanged(self):
+        """Waveform toolbar migration: the old data-unit-mode radio
+        items are gone -- Engineering Units/Per Unit are now two direct
+        icon buttons, same ids used everywhere else in this file."""
         source = _source()
-        assert 'data-unit-mode="engineering"' in source
-        assert 'data-unit-mode="per_unit"' in source
+        assert 'id="wwUnitEngineeringBtn"' in source
+        assert 'id="wwUnitPerUnitBtn"' in source
 
     def test_per_unit_selection_still_calls_apply_unit_mode(self):
         source = _source()
         wiring = _function_body(
             source,
-            'document.querySelector(\'#wwUnitModeMenu .ww-split-menu-item[data-unit-mode="per_unit"]\')',
+            'document.getElementById("wwUnitPerUnitBtn").addEventListener',
             'document.getElementById("wwOpenPerUnitSettingsBtn")',
         )
         assert 'await wwApplyUnitMode("per_unit");' in wiring
@@ -190,7 +197,7 @@ class TestUnitModeControlsUnchanged:
         source = _source()
         wiring = _function_body(
             source,
-            'document.querySelector(\'#wwUnitModeMenu .ww-split-menu-item[data-unit-mode="per_unit"]\')',
+            'document.getElementById("wwUnitPerUnitBtn").addEventListener',
             'document.getElementById("wwOpenPerUnitSettingsBtn")',
         )
         assert "wwOpenPerUnitProfilesModal" not in wiring

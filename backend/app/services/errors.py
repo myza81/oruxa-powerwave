@@ -53,6 +53,20 @@ class UnsupportedComtradeVariantError(ImportServiceError):
     code = "unsupported_comtrade_variant"
 
 
+class UnsupportedBenVariantError(ImportServiceError):
+    """A recognized BEN file whose layout/record class has not been
+    validated (DEC-119/DEC-120) -- e.g. the older BEN layout."""
+
+    code = "unsupported_ben_variant"
+
+
+class AmbiguousSourceUploadError(ImportServiceError):
+    """A source upload mixed the COMTRADE pair with a BEN file -- exactly
+    one recording format per request (DEC-120)."""
+
+    code = "ambiguous_source_upload"
+
+
 class UploadTooLargeError(ImportServiceError):
     code = "upload_too_large"
 
@@ -1139,3 +1153,80 @@ class LineToLineInputsUnavailableError(ImportServiceError):
     nothing."""
 
     code = "line_to_line_inputs_unavailable"
+
+
+# ---- Event Reconstruction (DEC-123/DEC-124): app.domain.
+# event_reconstruction, app.services.event_reconstruction_registry/
+# _service. ----
+
+
+class RecordNotEligibleError(ImportServiceError):
+    """A record cannot join an Event Reconstruction (V1: only
+    `recorded_absolute` records are eligible). The message names the
+    reason; the records listing carries the reason code. An unknown
+    record id is `SourceNotFoundError` (a record is a source)."""
+
+    code = "record_not_eligible"
+
+
+class InvalidReconstructionDefinitionError(ImportServiceError):
+    """A reconstruction definition request is structurally invalid, e.g.
+    it selects no record."""
+
+    code = "invalid_reconstruction_definition"
+
+
+class DuplicateReconstructionMemberError(ImportServiceError):
+    """The same record is selected more than once -- rejected rather
+    than silently de-duplicated."""
+
+    code = "duplicate_reconstruction_member"
+
+
+class ReconstructionReferenceNotMemberError(ImportServiceError):
+    """The requested reference record is not one of the selected
+    members."""
+
+    code = "reconstruction_reference_not_member"
+
+
+class ReconstructionNotDefinedError(ImportServiceError):
+    """The operation needs an Event Reconstruction definition, but this
+    workspace has none."""
+
+    code = "reconstruction_not_defined"
+
+
+class InvalidReconstructionAnnotationError(ImportServiceError):
+    """An Event Reconstruction annotation's time is not a finite number of
+    seconds, or its label is empty or too long (DEC-136)."""
+
+    code = "invalid_reconstruction_annotation"
+
+
+class ReconstructionAnnotationNotFoundError(ImportServiceError):
+    """No annotation with that id in this workspace's reconstruction."""
+
+    code = "reconstruction_annotation_not_found"
+
+
+class ReconstructionMemberNotFoundError(ImportServiceError):
+    """No member with this `record_id` exists in the workspace's
+    reconstruction."""
+
+    code = "reconstruction_member_not_found"
+
+
+class ReconstructionMemberStaleError(ImportServiceError):
+    """The member's record no longer exists in the workspace. Its state
+    stays frozen (never applied to another record) until the engineer
+    removes it from the reconstruction."""
+
+    code = "reconstruction_member_stale"
+
+
+class InvalidReconstructionCorrectionError(ImportServiceError):
+    """A submitted Event Reconstruction correction is missing/non-finite/
+    non-numeric (app.domain.event_reconstruction.correction_valid)."""
+
+    code = "invalid_reconstruction_correction"

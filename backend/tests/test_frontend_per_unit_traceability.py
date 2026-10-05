@@ -184,7 +184,7 @@ class TestUnitModeSwitchingUnchanged:
         source = _source()
         wiring = _function_body(
             source,
-            'document.querySelector(\'#wwUnitModeMenu .ww-split-menu-item[data-unit-mode="per_unit"]\')',
+            'document.getElementById("wwUnitPerUnitBtn").addEventListener',
             'document.getElementById("wwOpenPerUnitSettingsBtn")',
         )
         assert 'await wwApplyUnitMode("per_unit");' in wiring

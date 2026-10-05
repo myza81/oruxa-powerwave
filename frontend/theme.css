@@ -267,6 +267,20 @@
 #workspaceSidebar::-webkit-scrollbar-corner {
     background: var(--bg);
 }
+/* Event Reconstruction Slice 0: its left recording panel sits on the
+   same --bg surface as the Waveform Workspace Sidebar, so it blends its
+   scrollbar track the same way. */
+#wwErSidebar {
+    scrollbar-color: var(--scrollbar-thumb) var(--bg);
+}
+#wwErSidebar::-webkit-scrollbar-track,
+#wwErSidebar::-webkit-scrollbar-track-piece {
+    background: var(--bg);
+    border: 0;
+}
+#wwErSidebar::-webkit-scrollbar-corner {
+    background: var(--bg);
+}
 .group-editor-box,
 .group-body {
     scrollbar-color: var(--scrollbar-thumb) var(--panel);

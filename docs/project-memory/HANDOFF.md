@@ -4,9 +4,1694 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-30**
+Last updated: **2026-10-05** (UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
 ## What was most recently done
+
+**Final UAT batch committed (DEC-155 to DEC-165).** Everything in the
+working tree after owner UAT was committed together on
+`feat/event-reconstruction`: the toolbar migrations, icon/branding
+migrations (DEC-165), the Analyser recording-state fix (DEC-162),
+playback 0.005x/0.01x and the registry Restart icon (DEC-163), and the new
+Power & Current calculator (DEC-164). Final serial regression: full backend
+suite clean; browser suites clean after three corrections (a stale zoom
+selector in `line-to-line-voltage.spec.js`, and two request filters that
+matched a static icon URL -- the latter two failed identically on the
+previous HEAD).
+
+**Repository state to check first next session.** `feat/event-reconstruction`
+had **no upstream** when this was committed (the remote carried only `main`,
+`feat/calculator`, `feat/phase-current-display`,
+`fix/calculator-voltage-layout`), and it is ~42 commits ahead of
+`origin/main`. See the commit/push report for where it was pushed.
+`frontend/assets/icons/waveform/clear_display.svg` is intentionally still
+untracked (unreferenced, see DEC-159/DEC-165).
+
+
+**Two tickets, completed in sequence per the owner's own explicit
+"finish the current one first" instruction, reported together:**
+
+**1. Event Reconstruction waveform panels gain drag-to-resize** (both
+Grouped Measurement and Combined Multi-Channel mode), reusing
+Waveform's own already-proven resize mechanism as a pattern (new,
+ER-prefixed parallel functions, not called by reference, since ER's
+panel object shape differs). **Mid-implementation correction**: a
+Grouped panel's own `spec.key` (built from the backend's
+unit-mode-specific `*_display_axis_key`) made a unit-mode switch look
+like "a genuinely new panel" to the pre-existing panel-reuse logic,
+resetting a user-resized height every time -- directly violating the
+ticket's own explicit "unit mode change must not reset height
+unnecessarily" requirement. Fixed by deriving a SEPARATE,
+mode-invariant persistence key (`wwErPanelHeightKey()`, keyed off the
+backend's own mode-invariant `*_display_axis_quantity` for a shared
+axis) rather than reusing `spec.key` for this one purpose. See
+[DECISIONS.md — DEC-160](DECISIONS.md#dec-160--event-reconstruction-waveform-panels-gain-drag-to-resize-reusing-waveforms-own-mechanism)
+for the full record.
+
+**2. Waveform toolbar refinement, two parts:**
+- **Part 1**: "Synchronize Sources" removed from the Waveform UI
+  outright (not merely hidden) -- audited first and confirmed UI-only
+  (its modal had exactly one caller, the per-Time-Group
+  `.ww-tg-sync-btn`, itself removed in the same change); the underlying
+  AUTOMATIC synchronization-state fetch/apply/sidebar-badge mechanism
+  this modal only ever let an engineer EDIT is a separate, still-fully-
+  used system and was not touched. One exception found during the
+  audit and deliberately kept: the ms↔seconds conversion helpers are
+  also used by Event Reconstruction's own, unrelated per-record manual
+  correction feature.
+- **Part 2**: "Set Cursor A as t=0"/"Clear t=0" moved from each Time
+  Group Canvas's own local toolbar to a new page-level `#wwT0Btn`,
+  beside `#wwCursorModeBtn` -- the SAME `wwActiveTimeGroupId()`
+  targeting model (DEC-158) every other migrated control already uses.
+  t0's own existing semantics (Cursor A of the resolved Time Group
+  only) are completely unchanged; only the button's location and
+  target-resolution moved.
+- **Local toolbar cleanup**: with both controls gone, the per-canvas
+  `.ww-tg-toolbar` now holds only its pre-existing hidden "Fit Selected
+  Record" stub -- its own now-dangling trailing separator was removed
+  too. The toolbar shell itself is kept (the local A/B/Δt cursor
+  VALUES readout, explicitly out of scope, lives in the same row
+  outside it); the per-canvas wiring function is kept as an
+  established, now-empty hook for any future genuinely local control.
+
+See [DECISIONS.md — DEC-161](DECISIONS.md#dec-161--waveform-toolbar-refinement-synchronize-sources-removed-t0-moved-to-the-page-level-toolbar)
+for the full record. Both tickets implemented and tested; **not yet
+committed -- the owner asked to test the resize interaction in UAT, and
+to visually review the final toolbar cleanup, before the next commit.**
+
+- **Tests.** New `browser-tests/event-reconstruction-panel-resize.spec.js`
+  (19 tests) and `browser-tests/waveform-toolbar-t0-sync-refinement.spec.js`
+  (10 tests). New backend class `TestEventReconstructionPanelResize`
+  (16 tests) in `test_frontend_event_reconstruction.py`.
+  `test_frontend_time_group_sync.py` replaced wholesale with its own
+  removal-confirmation suite (mirroring that file's own prior
+  `TestOldGlobalControlRemoved` precedent for an earlier removal).
+  Updated in place (supersession docstrings, not deletions) across
+  `test_frontend_synchronization.py`, `test_frontend_time_groups.py`,
+  `test_frontend_multi_source_sidebar.py`, `test_frontend_playback.py`
+  (+ `browser-tests/playback.spec.js`), `test_frontend_time_group_toolbar.py`,
+  `test_frontend_detect_event.py`, `test_frontend_synchronization_t0.py`,
+  `test_frontend_time_group_cursors.py`, `test_frontend_time_group_t0.py`,
+  `test_frontend_event_reconstruction.py`, `test_frontend_time_group_layout.py`,
+  `test_frontend_time_range_slider.py`, and
+  `test_frontend_time_group_cursor_readout_placement.py`.
+  Full backend suite: **6565 passed, 49 skipped**. Full Event
+  Reconstruction browser suite: **129/129**, zero failures. Full
+  Waveform browser suite (including the two new spec files above):
+  **96/96**. Full `playback.spec.js`: **24/24**;
+  `playback_waveform_ownership.spec.js`: **8/8**; `smoke.spec.js`:
+  **2/2**. `git diff --check` clean. Two pre-existing timing flakes
+  surfaced across these runs, each confirmed clean on an isolated
+  rerun: `playback.spec.js`'s own documented DEC-099 "Clearing the
+  workspace while playing" race (a stray 404, already documented as
+  naturally timing-dependent), and a separate `ECONNRESET` on an
+  unrelated Phasor engineering-context POST (a previously-documented
+  class of flake under full-suite resource load) -- neither related to
+  either ticket's own changes.
+- **Next.** Owner UAT for the resize interaction; owner visual review
+  of the toolbar cleanup (both explicitly requested before committing).
+
+## Earlier — Three bundled follow-up fixes to the Waveform top-toolbar migration (DEC-159)
+
+Spacing fix, owner-supplied Per-Unit Settings icon, Clear Waveforms
+restored to the left operational group. See
+[DECISIONS.md — DEC-159](DECISIONS.md#dec-159--waveform-top-toolbar-follow-up-spacing-fix-owner-supplied-icons-clear-waveforms-restored-to-the-left-operational-group)
+for the full record. Full backend suite: 6581 passed, 49 skipped at
+the time.
+
+## Earlier — Waveform gains a Y-axis target readout beside Zoom Y, reusing Event Reconstruction's own implementation (DEC-158 Addendum)
+
+**A compact "Y: &lt;axis&gt;" readout now sits beside Waveform's
+page-level Zoom Y In/Out buttons, reusing Event Reconstruction's own
+`.ww-er-active-axis-readout` implementation verbatim.** ONE shared
+source of truth: the readout, Zoom Y and Autoscale Y all read the same
+`yZoomPanel` variable inside `wwSyncGlobalWaveformToolbar()`, so the
+displayed axis can never drift from what the buttons actually act on.
+Implemented and tested; not yet committed at the time of that ticket
+(now folded into the same pending review as DEC-159 above). See
+[DECISIONS.md — DEC-158 Addendum](DECISIONS.md#addendum--y-axis-target-readout-beside-zoom-y-same-day)
+for the full record.
+
+- **ER implementation reused**: the exact `.ww-er-active-axis-readout`
+  CSS class (no new rule) and ER's own `"Y: " + title` / `"Y: Select
+  axis"` wording. `panel.label` is the label source -- no new
+  derivation.
+- **Placement**: `#wwYAxisReadout`, immediately after Zoom Y In, before
+  the separator leading into Autoscale X/Y.
+- **No new resolver, no new trigger plumbing**: reads the SAME
+  `yZoomPanel` Zoom Y's and Autoscale Y's own logic already use, synced
+  from the same existing hook points.
+- **Tests.** New `TestWaveformYAxisTargetReadout` (6 backend static
+  tests). New "Y-axis target readout" describe block (8 browser tests).
+
+## Earlier — Owner correction: Autoscale Y shares Zoom Y's own single-axis target, not the whole Time Group (DEC-158)
+
+**Autoscale Y corrected to share Zoom Y's own exact single-axis target
+(`wwActivePanel()`) instead of resetting every panel in the active Time
+Group -- a same-day owner correction to DEC-158's own first
+implementation.** With Time Group 1 holding Voltage/Current/Frequency
+panels and Current selected, Autoscale Y now resets only Current;
+Voltage and Frequency are untouched. Implemented and tested; not yet
+committed at the time of that correction (now folded into the same
+pending review as the readout above). See
+[DECISIONS.md — DEC-158 "Correction"](DECISIONS.md#correction--autoscale-y-shares-zoom-ys-own-target-same-day)
+for the full record.
+
+- **Previous behaviour**: `wwAutoscaleYBtn` called
+  `wwAutoscaleYForGroup(wwActiveTimeGroupId())` (now deleted), looping
+  every panel in the active Time Group.
+- **Corrected behaviour**: `wwAutoscaleYBtn` now calls the new,
+  single-panel `wwAutoscaleYPanel(wwActivePanel())` -- the SAME target
+  Zoom Y resolves, never a loop over `ww.panels`.
+- **Mechanism reused, not reinvented**: Autoscale Y's disabled state/
+  tooltip moved into the SAME block of `wwSyncGlobalWaveformToolbar()`
+  Zoom Y already occupies, out of the group-scoped block Zoom
+  X/Autoscale X/Cursors still use. `wwAutoscaleYForGroup(groupId)` is
+  deleted outright (confirmed via full-file reference trace).
+- **Deliberate divergence from Event Reconstruction's own
+  `wwErAutoscaleY()`** (still group/workspace-wide, untouched) --
+  Waveform-specific, owner-directed.
+- **Tests.** New `TestAutoscaleYSharesZoomYsTarget` (5 backend static
+  tests); `TestAutoscaleIsGroupScopedOnly` updated in place. New
+  "Autoscale Y shares Zoom Y's own target" describe block (5 browser
+  tests) using a new three-panel-one-group fixture matching the
+  owner's own Voltage/Current/Frequency example.
+
+## Earlier — Waveform's top toolbar gains Zoom X, Autoscale X/Y and A/B Cursors, removed from the per-Time-Group local toolbar (DEC-158)
+
+**Waveform's top toolbar is now the single entry point for Zoom X/Y,
+Autoscale X/Y and A/B Cursors -- removed from each Time Group's own
+local toolbar entirely, not merely hidden (DEC-158, 2026-10-04,
+Waveform).** The per-Time-Group local toolbar model itself is retired
+for these controls; only t0 and Synchronize Sources remain genuinely
+local. Implemented and tested; not yet committed at the time of that
+ticket (now folded into the same pending review as the Autoscale Y
+correction above). See
+[DECISIONS.md — DEC-158](DECISIONS.md#dec-158--waveforms-top-toolbar-gains-zoom-x-autoscale-xy-and-ab-cursors-removed-from-the-per-time-group-local-toolbar)
+for the full record (its own "Correction" section documents the
+Autoscale Y change above in place, rather than as a separate decision).
+
+- **One shared "active Time Group" concept for every migrated
+  control.** New `wwActiveTimeGroupId()` = `wwPanelTimeGroupId(wwActivePanel())`
+  -- a plain projection of the EXISTING, self-healing `wwActivePanel()`
+  state DEC-156's Zoom Y already resolves through, never a second,
+  independently-tracked piece of state. Guarantees Zoom X, Autoscale X
+  and A/B Cursors can never silently disagree with Zoom Y about which
+  Time Group is targeted.
+- **Every action reuses an existing, unchanged core function** -- only
+  how its target argument is resolved is new:
+  `wwStepZoomX`/`wwResetOneTimeGroupView`/`wwToggleMeasurementCursors`
+  (called with `wwActiveTimeGroupId()`), `wwStepZoomYPanel`/
+  `wwAutoscaleYPanel` (called with `wwActivePanel()`, see the
+  correction above).
+- **Local controls removed, not merely hidden**: the per-Time-Group
+  Zoom In/Out split-buttons (main action + X/Y axis-choice dropdown),
+  Autoscale X, Autoscale Y and the A/B Cursors mode toggle are deleted
+  from both markup and wiring; their only-caller functions
+  `wwPerformZoomStep()`/`wwSetZoomStepAxis()` are deleted outright
+  (confirmed via full-file reference trace). A/B cursor VALUES stay
+  local (`.ww-tg-cursor-readout`) -- only the mode toggle moved,
+  mirroring Event Reconstruction's own identical split.
+- **t0 and Synchronize Sources stay local** -- inherently about ONE
+  specific Time Group's own internal state/alignment, not a
+  current-view operation a page-level "active target" button could
+  meaningfully represent.
+- **Tests.** New `TestWaveformTopToolbarMigration` backend static
+  tests; 5 TG-D1-era test classes across 4 backend files updated in
+  place (not deleted) to assert the new reality, including one
+  deliberate reversal of a TG-D2-era "this id is permanently gone"
+  finding (`wwCursorModeBtn` is intentionally back, as a page-level
+  control). New `browser-tests/waveform-top-toolbar-migration.spec.js`.
+  6 existing browser spec files updated for the removed local selectors
+  (`playback.spec.js`, `waveform-y-zoom.spec.js`,
+  `event-reconstruction-cursors.spec.js`,
+  `playback_waveform_ownership.spec.js`, `smoke.spec.js`).
+
+## Earlier — Event Reconstruction's top toolbar is reorganized to match Waveform's own left/right structure (DEC-157)
+
+**Event Reconstruction's top toolbar now has the same left-aligned
+operational/right-aligned view-layout structure as Waveform's own
+`#wwToolbar`: a `.toolbar-spacer` pushes the View Mode group
+(Grouped/Combined) flush to the right edge, matching Waveform's own
+Grouped/Separate/Custom + Split View placement (DEC-157, 2026-10-04,
+Event Reconstruction).** Implemented, live-verified in the browser
+(not just source), and tested; not yet committed at the time of that
+ticket (now folded into the same pending review as DEC-158 above). See
+[DECISIONS.md — DEC-157](DECISIONS.md#dec-157--event-reconstructions-top-toolbar-is-reorganized-to-match-waveforms-own-leftright-structure)
+for the full record.
+
+- **Root cause of the owner's live observation that the reorder
+  "still appears unchanged"**: it genuinely had not been implemented
+  yet -- DEC-155 only flagged the View-Mode-position difference for
+  owner review, it did not implement a fix. Not a stale build/cache
+  issue; confirmed by reading `#wwErToolbar`'s own source (no
+  `.toolbar-spacer` existed there at all) before making any change.
+- **Mechanism reused, not reinvented**: `#wwToolbar` and `#wwErToolbar`
+  already shared the `.ww-toolbar{display:flex}` class; added the same
+  `.toolbar-spacer{flex:1}` div Waveform's own toolbar already uses --
+  no new CSS, no absolute positioning, no hardcoded widths.
+- **What moved**: Event Reconstruction's View Mode group
+  (`#wwErViewModeToggle`: Grouped/Combined; Separate/Custom/Split stay
+  `hidden`, unchanged) moved from first/left to last/right -- its own
+  markup, ids and handlers are byte-identical, only its DOM position
+  changed.
+- **Live-verified in the browser** (Playwright `boundingBox()`
+  measurements + a screenshot, not source-only): left group ~10px from
+  the toolbar's left edge; View Mode flush (~10px) to the toolbar's
+  right edge; confirmed in both light and dark theme; Waveform's own
+  toolbar confirmed unchanged.
+- **Tests.** `test_frontend_event_reconstruction.py` +
+  `test_frontend_time_group_toolbar.py` +
+  `test_frontend_time_group_canvas_empty_state.py` (225 tests) re-run
+  clean. Full Event Reconstruction browser suite: 110/110 passed.
+
+## Earlier — Waveform gains a page-level Y Zoom In/Out pair (DEC-156)
+
+**Waveform's top toolbar gains a global Y Zoom In/Out pair
+(`#wwZoomYInBtn`/`#wwZoomYOutBtn`), targeting the active panel via the
+pre-existing `wwActivePanel()` resolver and reusing Event
+Reconstruction's own step-zoom factors/semantics through a newly
+extracted shared core (DEC-156, 2026-10-04, Waveform).** Implemented
+and tested; not yet committed at the time of that ticket (now folded
+into the same pending review as DEC-157 above). See
+[DECISIONS.md — DEC-156](DECISIONS.md#dec-156--waveform-gains-a-page-level-y-zoom-inout-pair-reusing-event-reconstructions-own-step-zoom-math-against-the-active-panel)
+for the full record.
+
+- **One Y axis per panel in Waveform** (unlike Event Reconstruction's
+  Combined view) means "active axis" === "active panel" -- reused
+  `wwActivePanel()` directly (the same self-healing resolver Autoscale
+  Y and the per-Time-Group Zoom In/Out dropdown already share) rather
+  than inventing a parallel axis-tracking concept.
+- **Zoom math extracted, not duplicated**: `wwStepZoomY(groupId,
+  direction)`'s own range-reading/computing/relayout body moved
+  verbatim into a new shared `wwStepZoomYPanel(panel, direction)`;
+  both the per-group dropdown and the new global pair call through it.
+  Event Reconstruction keeps its own separate, pre-existing
+  implementation (different data model: axis/layoutKey vs panel) --
+  not merged, by design.
+- **Placement**: between Unit Mode/Per-Unit-Settings and Annotate, in
+  `#wwToolbar` -- mirrors Event Reconstruction's own relative family
+  order. Never hidden, only disabled when there is truly no panel to
+  target (DEC-154's rule). Dynamic tooltip names the target panel's
+  own label, same pattern as Event Reconstruction's own.
+- **Autoscale Y needed no code change** -- it already applies Plotly's
+  native `yaxis.autorange` per Time Group with no separate "manual"
+  flag to clear, so it overrides a manual Y-zoom for free.
+- **Known, flagged limitation**: the cold-start fallback
+  (`wwActivePanel()` -> `ww.panels[0]`) is insertion-order, not
+  Time-Group-sorted-order -- same pre-existing nuance Autoscale Y and
+  the per-group step zoom already have; any real click makes every
+  later fallback correct. See DEC-156's own "Known limitation" section.
+- **Tests.** New `TestWaveformGlobalYAxisZoom` (7 backend static
+  tests) + new `browser-tests/waveform-y-zoom.spec.js` (10 tests).
+  Full backend suite (6554 passed, 49 skipped) re-run clean.
+
+## Earlier — Waveform's empty-state and top toolbar become consistent with Event Reconstruction (DEC-155)
+
+**Waveform's top toolbar no longer hides when the workspace is empty;
+a persistent panel-header shell + state-aware empty-state message
+mirror Event Reconstruction's own always-present canvas header
+(DEC-155, 2026-10-04, Waveform).** Implemented and tested; not yet
+committed at the time of that ticket (now folded into the same pending
+review as DEC-156 above). See
+[DECISIONS.md — DEC-155](DECISIONS.md#dec-155--waveforms-empty-state-and-top-toolbar-become-consistent-with-event-reconstruction)
+for the full record.
+
+- **`#wwToolbar` is never hidden any more** -- removed its static
+  `hidden` attribute and the line in `wwUpdateEmptyState()` that used
+  to hide the whole toolbar when the workspace was empty. Matches
+  Event Reconstruction's own `#wwErToolbar`, which was never hidden
+  either.
+- **`#wwEmptyWorkspaceHeader`** (new) reuses Event Reconstruction's own
+  `.ww-tg-sticky-top`/`.ww-tg-header` classes verbatim -- no new CSS --
+  mirroring `#wwErCanvas`'s own always-present header + empty-state
+  pattern. Shown only when zero Time Group canvases exist; each real
+  canvas's own header takes over once one exists.
+- **The empty-state message is now state-aware**: "No recordings
+  loaded..." when zero sources exist at all (read from the sidebar's
+  own pre-existing recordings-count badge, no new state), the
+  pre-existing "Select channels..." wording once a source exists.
+  Refreshed on Waveform nav entry and on every sidebar
+  recordings-list rebuild, so it is never stale.
+- **Time Group locality unchanged** -- Zoom/Autoscale/Cursors/t0/Sync
+  correctly stay per-canvas (DEC-150's own audit already established
+  why); this ticket only touched the page-level toolbar and empty
+  state.
+- **One flagged, not-silently-changed difference:** View Mode sits
+  first on Event Reconstruction but last (right-aligned) on Waveform --
+  left as-is, since that right-alignment is itself a separate,
+  deliberate, previously owner-approved layout decision; see DEC-155's
+  own toolbar-sequence comparison.
+- **Tests.** New `TestWaveformToolbarStaysVisibleWhenEmpty` (7 backend
+  static tests) + new `browser-tests/waveform-empty-state.spec.js` (6
+  tests, both themes, Event-Reconstruction-regression included). Full
+  backend suite + full ER browser suite + Waveform-focused browser
+  tests all re-run clean.
+
+## Earlier — Waveform toolbar migration; Analysis icons; correction-input redesign; panel-header tool visibility (DEC-150/151/152/153/154)
+
+**Waveform adopts the global waveform tool language; Analysis page
+icons become owner assets; the correction input adopts the app's
+standard input styling; page-unsupported panel-header tools hide
+instead of rendering disabled (DEC-150/151/152/153/154, 2026-10-04,
+app-wide).** Five more tickets on the same branch. See
+[DECISIONS.md — DEC-150](DECISIONS.md#dec-150--waveform-adopts-the-global-waveform-tool-language-unit-mode-icon-pair-time-group-toolbar-geometry)
+through
+[DEC-154](DECISIONS.md#dec-154--panel-header-tools-hide-when-a-page-cannot-support-them-instead-of-rendering-disabled)
+for the full record.
+
+- **Waveform toolbar migration (DEC-150).** Unit Mode: the old "ENG"/
+  "PU" text-label dropdown → two individual icon buttons
+  (`UNIT_ENGINEERING`/`UNIT_PER_UNIT`), byte-identical to Event
+  Reconstruction's own pair; Per-Unit Settings access preserved as its
+  own adjacent button. Per-canvas Time Group toolbar: flat 6px gap →
+  2px-within-family + 3 hairline separators, icon buttons now match the
+  global 30px/6px-radius language; Fit Selected Record repositioned
+  beside Autoscale X/Y. Zoom X/Y/Autoscale X/Y/Cursors/t0/Sync stay
+  correctly Time-Group-local (no unambiguous "active Time Group"
+  targeting contract exists).
+- **Unit Mode grouping (DEC-151) — verified, no new code.** All 9
+  stated requirements were already satisfied by DEC-150's own
+  migration.
+- **Analysis page icons (DEC-152).** The 5 analyzer-type nav icons
+  (Overcurrent/Impedance Locus/Distance Protection/Phasor/Sequence
+  Components) now resolve through the existing `WW_TOOL_ICONS`
+  registry instead of hand-drawn inline `<svg>`. Zero CSS change --
+  `.ww-analysis-type-icon svg` is left alone since Compliance's
+  "Voltage" and the Calculator's "Line/Phase Voltage" items still use
+  inline SVGs under the same class (out of scope).
+- **Correction-input redesign (DEC-153).** `.ww-er-correction
+  input[type="number"]`'s one-off compact override → the app's own
+  established standard input baseline (the same one `input[type=
+  "search"]`/`.ww-oc-settings-grid input[type="number"]` already use).
+  Behaviour, Set/Reset, API wiring all unchanged.
+- **Panel-header tool visibility (DEC-154).** Six page-level-only
+  (never runtime) unsupported controls now `hidden` instead of a
+  disabled placeholder with an explanatory tooltip: Waveform's Relative
+  Time, Event Reconstruction's Elapsed Time/Separate/Custom/Split,
+  Waveform's per-Time-Group Fit Selected Record stub. **Explicitly
+  reverses DEC-141's own "do not omit unsupported global slots"
+  instruction** for these controls -- flagged, not silently absorbed;
+  see DEC-154's own "Open" item. **Real CSS bug found and fixed during
+  live validation:** `.theme-toggle.ww-icon-group button[hidden] {
+  display: none; }` was missing, so `hidden` had no visible effect on
+  any of the five group-member buttons (the group's own unconditional
+  `display: inline-flex` beat the UA stylesheet by CSS origin) --
+  caught only because validation actually loaded the page in a browser.
+  ER's own `#wwErFitRecordBtn` (a genuine runtime disable, not a page
+  mismatch) and every other runtime-disabled control are untouched.
+- **Tests.** 7 backend test files updated for DEC-150; new tests added
+  for DEC-152/153/154. 148 ER static tests + 302 Waveform-migration-
+  related static tests + full backend suite + 47 Waveform browser tests
+  + 109-110/110 ER browser tests (the 1 failure being the known
+  pre-existing per-unit L-L/L-G flake under load) all passing.
+- **Next.** Owner UAT of the whole branch -- in particular, confirm the
+  DEC-141 reversal in DEC-154 was intended.
+
+## Earlier — Autoscale X is strictly X only; reset_time_view.svg removed (DEC-149)
+
+**Autoscale X's "also autoscales Y" side effect is removed -- an
+explicit owner decision closing DEC-144's own "Open" item; the orphaned
+reset_time_view.svg is deleted (DEC-149, 2026-10-04, Event
+Reconstruction).** See
+[DECISIONS.md — DEC-149](DECISIONS.md#dec-149--autoscale-x-is-strictly-x-only-reset_time_viewsvg-removed)
+for the full record.
+
+- **Autoscale X is X only.** `wwErResetView()` no longer sets
+  `axis.manual = false`/`axis.autoscaleYPending = true` on every panel,
+  and no longer clears the other view mode's axis store. It now does
+  exactly one thing: `plot.atFitAll = true; wwErApplyViewport(plot.
+  fitAll);`. A Y axis that is already pending from an earlier action
+  still scales once its data returns -- that is `wwErApplyViewport()`'s
+  own pre-existing "a pending axis scales when its data lands" rule
+  (DEC-134), shared by every X navigation, not something Autoscale X
+  itself does.
+- **The owner's own explicit decision:** the current Pan behaviour is
+  approved and untouched; this ticket and DEC-149 only touch Autoscale
+  X's Y side effect and the orphaned icon file below.
+- **`reset_time_view.svg` deleted.** Confirmed zero live references
+  anywhere (registry, manifest `file` fields, markup) -- only
+  historical prose in docs/comments and an unrelated Waveform function
+  name (`wwResetTimeView()`, a different, compliant, already-X-only
+  concept) mentioned the string.
+- **Tests.** Static: `test_reset_is_one_path_for_button_and_double_
+  click_and_is_x_only` and `test_autoscale_y_clears_manual_ranges_
+  reset_and_fit_record_are_x_only` replace the two tests that asserted
+  the old Y side effect. Browser: a new, minimal, focused test
+  (`event-reconstruction-navigation.spec.js`) proves the exact
+  before/after sequence the owner specified (narrow X, manual Y,
+  Autoscale X, X restored + Y unchanged, then the complementary
+  Autoscale-Y-only-touches-Y check); five other spec files
+  (`-yaxis-zoom`, `-combined`, `-per-unit`, `-navigation`'s own larger
+  test, `-fit-record`'s comment) updated wherever they asserted or
+  described the old behaviour.
+
+## Earlier — Zoom X/Y icons, fit/scale-view toolbar group, Engineering/Per-Unit artwork refresh (DEC-146/147/148)
+
+**Zoom X/Y get dedicated owner icons and dead icon files are cleaned up;
+Autoscale X/Y/Fit Selected Record become one toolbar group; Engineering
+Unit/Per Unit artwork is refreshed (DEC-146/147/148, 2026-10-04,
+app-wide).** Three more owner follow-up tickets on the same branch. See
+[DECISIONS.md — DEC-146](DECISIONS.md#dec-146--zoom-xy-get-dedicated-owner-icons-the-plainscope-only-zoom-icons-are-removed),
+[DEC-147](DECISIONS.md#dec-147--autoscale-x-autoscale-y-and-fit-selected-record-become-one-toolbar-group-amends-dec-145),
+[DEC-148](DECISIONS.md#dec-148--engineering-unit--per-unit-icon-artwork-refreshed-same-filenames-same-semantics)
+and [POWERWAVE_ICON_SYSTEM.md §14](POWERWAVE_ICON_SYSTEM.md#14-dedicated-zoom-axis-icons-the-fitscale-view-group-and-an-engineeringper-unit-artwork-refresh-dec-146dec-147dec-148)
+for the full record.
+
+- **Dedicated zoom-axis icons (DEC-146).** `ZOOM_X_IN`/`ZOOM_X_OUT`/
+  `ZOOM_Y_IN`/`ZOOM_Y_OUT` each now resolve to their own distinct owner
+  file (`zoom_in_x.svg`/`zoom_out_x.svg`/`zoom_in_y.svg`/`zoom_out_y.svg`)
+  instead of the former shared plain-zoom aliasing. No handler/
+  tooltip/behaviour change — `wwSyncTimeGroupZoomControls()`'s existing
+  dynamic key-building already read these exact key names.
+- **Cleanup.** `ZOOM_IN`/`ZOOM_OUT` (zero live references once the
+  aliasing stopped) and `ZOOM_HORIZONTAL`/`ZOOM_VERTICAL` (never wired;
+  their one stated purpose, a future composite icon, is now moot) are
+  removed — registry entries AND the on-disk `.svg` files. The
+  pre-existing `reset_time_view.svg` orphan (from DEC-144) is untouched
+  — a different ticket's scope.
+- **Fit/scale-view toolbar group (DEC-147, amends DEC-145).** Fit
+  Selected Record moved to join Autoscale X/Y in one group —
+  `[Autoscale X][Autoscale Y][Fit Selected Record]`, each its own
+  individual button. Pure DOM reorder, no id/class/handler/behaviour
+  change.
+- **Engineering Unit/Per Unit artwork refresh (DEC-148).** Owner
+  delivered new artwork for `engineering_unit.svg`/`per_unit.svg` at the
+  same filenames — asset-only, registry/manifest semantics unchanged
+  (manifest notes extended with a provenance mention only).
+- **Tests.** Static: `test_axis_specific_zoom_keys_each_have_their_own_
+  distinct_file` replaces the old aliasing-proof test; `migrated` tuple
+  updated; `test_autoscale_x_autoscale_y_and_fit_selected_record_are_
+  one_group` (renamed/extended from DEC-145's own pairing test) and the
+  Fit-Record-order assertion in
+  `test_event_reconstruction_specific_tools_get_their_own_icon_same_
+  compact_design` updated for the new sequence. 145 static tests
+  passing; full Event Reconstruction browser suite and full backend
+  suite re-run clean. Live verification (scratch script, not committed):
+  all six touched icons resolve to their correct, newly-served files in
+  both themes, zero console errors.
+- **Next.** Owner UAT of the whole branch (all tickets this session:
+  DEC-144 through DEC-148).
+
+## Earlier — Box Zoom retired; Pan cursor feedback; Autoscale X/Y renamed, re-iconed and paired (DEC-144/145)
+
+**Box Zoom is retired; Pan gets grab/grabbing cursor feedback; Reset Time
+View is renamed Autoscale X; Autoscale X/Y get owner icons and are paired
+adjacent in the toolbar (DEC-144/145, 2026-10-04, app-wide).** Five owner
+tickets implemented together as one coherent slice. See
+[DECISIONS.md — DEC-144](DECISIONS.md#dec-144--box-zoom-is-retired-pan-gets-cursor-feedback-grabgrabbing-reset-time-view-is-renamed-autoscale-x)
+and [DECISIONS.md — DEC-145](DECISIONS.md#dec-145--autoscale-x-and-autoscale-y-are-paired-adjacent-in-their-own-toolbar-group)
+and [POWERWAVE_ICON_SYSTEM.md §13](POWERWAVE_ICON_SYSTEM.md#13-box-zoom-retired-pan-cursor-feedback-autoscale-xy-renamed-re-iconed-and-paired-dec-144dec-145)
+for the full record.
+
+- **Box Zoom retired.** Pan is now the only plot-area interaction mode on
+  both pages — no mode toggle exists any more. `wwErState.dragMode`/
+  `ww.dragMode` are permanently `"pan"` from initialization (no setter
+  function exists); the field is kept only because `wwErPanelLayout()`/
+  `wwBuildLayout()` and Plotly's own `dragmode` layout property still need
+  a value to read. `wwErSetDragMode`/`wwErApplyDragMode`/`wwSetDragMode`
+  deleted (zero remaining callers). Both toggle-button DOM blocks
+  (`dragModeToggle`/`wwErDragModeToggle`) removed from the toolbars.
+- **Pan cursor feedback.** New shared `wwWirePlotAreaGrabCursor(event)`
+  toggles a `.ww-panning` class on the Plotly `.nsewdrag` draglayer region
+  on `pointerdown`, restored on a window-level `mouseup`/`touchend` (same
+  pattern as the pre-existing `wwErKeepPlotAreaDragXOnly()`). CSS:
+  `cursor: grab` normally, `cursor: grabbing` while `.ww-panning`. This
+  replaces the old ER-specific `ew-resize`/`w-resize`/`e-resize` cues
+  (DEC-129/134) that used to signal "this drag is X-only" against a
+  Box-Zoom-vs-Pan distinction that no longer exists.
+- **"Reset Time View" renamed "Autoscale X".** Pure rename (registry key,
+  button id/title/aria-label kept as internal names, tooltip, error-string
+  wording, Waveform per-canvas toolbar) — same function, same behaviour,
+  including its own pre-existing "also autoscales every panel's Y" side
+  effect (DEC-129). **Open:** this side effect contradicts the owner's own
+  "Autoscale X must NOT change Y" framing; not silently resolved either
+  way — flagged for explicit owner confirmation before any behaviour
+  change.
+- **Autoscale X/Y icons.** New owner SVGs `waveform/autoscale_x.svg` and
+  `waveform/autoscale_y.svg` wired into the registry
+  (`AUTOSCALE_X`/`AUTOSCALE_Y`), replacing the reused `reset_time_view.svg`
+  and the old inline fallback respectively. `manifest.json` updated;
+  `reset_time_view.svg` itself left in the folder, unreferenced.
+- **Autoscale X/Y paired (DEC-145, owner correction).** `wwErAutoscaleYBtn`
+  moved (pure DOM reposition, no handler/id/class change) to sit
+  immediately after `wwErResetViewBtn` (Autoscale X) — `[Autoscale X][2px]
+  [Autoscale Y]`, each its own individual button, not a segmented pair.
+  Fit Selected Record's position is unchanged. Zero new CSS needed —
+  relies entirely on `.ww-toolbar`'s existing 2px gap/separator rules.
+- **`PAN` registry entry kept** even though no button references it any
+  more — a real, legitimate owner-supplied concept, not Box-Zoom-only;
+  likely useful for future UI.
+- **Tests.** `backend/tests/test_frontend_event_reconstruction.py`: Box
+  Zoom assertions removed/replaced with "no drag-mode toggle exists"
+  checks; new `test_autoscale_x_and_y_are_paired_adjacent_individual_buttons`.
+  147 tests passing. Six `browser-tests/event-reconstruction*.spec.js`
+  files updated — several "box zoom then pan" two-phase drag tests
+  simplified to a single pan-drag check now that every plot-area drag is
+  pan-style (span-preserving, not narrowing).
+- **Next.** Owner confirmation on the Autoscale-X-also-autoscales-Y
+  tension; whether a lone Pan indicator belongs back in the toolbar; then
+  owner UAT of the whole branch.
+
+## Earlier — Powerwave icons become owner-approved local SVG assets (DEC-143)
+
+**Powerwave icons become owner-approved local SVG assets (DEC-143,
+2026-10-03, app-wide).** See
+[DECISIONS.md — DEC-143](DECISIONS.md#dec-143--powerwave-icons-become-owner-approved-local-svg-assets-individually-bordered-tool-buttons-and-unit-mode-joins-the-icon-system)
+and [POWERWAVE_ICON_SYSTEM.md §12](POWERWAVE_ICON_SYSTEM.md#12-owner-approved-local-svg-assets-dec-143)
+for the full record.
+
+- **Assets.** 28 owner-supplied SVG files (source: `C:\Users\fairizat\Downloads`,
+  never moved/deleted) copied into
+  `frontend/assets/icons/{common,navigation,waveform}/` and
+  `frontend/assets/branding/` (empty, reserved). `manifest.json` +
+  `README.md` record provenance and the "search here before adding
+  anything" rule. `frontend/Dockerfile` now `COPY`s `assets/` — it
+  wasn't covered by any existing line, so without this the icons would
+  have worked in local dev but been missing from the production image.
+- **Registry (`WW_TOOL_ICONS`).** A value is now an asset path or (for a
+  function with no owner file yet) the original inline `<svg>`,
+  unchanged — `wwSetToolIcon()` tells the two apart. Rendering is a CSS
+  `mask-image` (`.ww-icon-asset`), not `<img>`/fetch+inject: the
+  delivered files are not colour-uniform, so a mask (reads only the
+  silhouette, paints with the control's own `currentColor`) is the one
+  technique that themes every file correctly without touching artwork.
+  Verified live: light/dark/hover/active/disabled, zero console errors.
+- **Zoom In/Out/Horizontal/Vertical (owner's own "do not invent
+  compound icons" instruction).** The former axis-specific `ZOOM_X_IN`/
+  `_OUT`/`ZOOM_Y_IN`/`_OUT` composites now alias the plain owner
+  `ZOOM_IN`/`ZOOM_OUT` files; the axis distinction lives in
+  tooltip/aria-label text only. `ZOOM_HORIZONTAL`/`ZOOM_VERTICAL` are
+  registered, not yet composed into any control (deferred).
+- **Unit Mode (supersedes DEC-140 §13).** The owner's own follow-up
+  instruction reversed "no icon, keep text" now that
+  `engineering_unit.svg`/`per_unit.svg` exist. Event Reconstruction's
+  ENG/PU are now icon buttons, the "Units" text label removed.
+  Waveform's own Unit Mode control (a split-button + settings-menu, not
+  a simple toggle) was intentionally left unchanged — converting it
+  would need to either drop its Per-Unit Settings… entry or invent new
+  UI; reported as an open item, not forced.
+- **Individual-button geometry + 2px spacing (owner correction).** Every
+  tool group (Box Zoom/Pan, Time Display, View Mode, Unit Mode) is now a
+  row of individual compact buttons matching A/B Cursors'/Annotate's own
+  geometry — never a joined/segmented pill. `.ww-toolbar`'s own gap is
+  2px within a family; a family boundary reads through the existing
+  separator's own margin. `.ww-tg-toolbar` (Waveform's own per-canvas
+  toolbar, a separate surface) is untouched.
+- **Grouped View's icon gap (open since DEC-140) is resolved** —
+  `grouped_view.svg`, used verbatim; `VIEW_GROUPED`/`VIEW_COMBINED` are
+  now independent owner files (no shape relationship expected).
+- **Nav icons.** All 8 first-class pages migrated from inline `<svg>` to
+  `data-ww-icon="PAGE_*"`; Settings keeps its own inline icon (no owner
+  asset supplied for it).
+- **Gaps (no owner asset, inline icon retained, reported):** `BOX_ZOOM`,
+  `CARET_DOWN`, `AUTOSCALE_Y`, the four annotation TYPE icons.
+- **Tests.** New `TestPowerwaveIconAssets` (folder structure, manifest/
+  registry/filesystem consistency, no remote URLs, no inline+asset
+  double-definition, Dockerfile packaging, the mask technique itself).
+  Several DEC-140-era tests rewritten for the Unit Mode/View Mode
+  reversals; 3 browser-test files (`event-reconstruction-annotations`,
+  `event-reconstruction-per-unit`, and the new active-yaxis suite from
+  DEC-142) updated for the ENG/PU text → icon change.
+- **Next.** Owner decision on Waveform's own Unit Mode control; whether/
+  how `ZOOM_HORIZONTAL`/`ZOOM_VERTICAL` ever compose with `ZOOM_IN`/
+  `ZOOM_OUT`. Then owner UAT of the whole branch.
+
+## Earlier — Event Reconstruction's active Y-axis target (DEC-142)
+
+**Event Reconstruction's active Y-axis target (DEC-142, 2026-10-03,
+Event Reconstruction only).** See
+[DECISIONS.md — DEC-142](DECISIONS.md#dec-142--event-reconstructions-active-y-axis-target-completing-dec-134s-individual-y-axis-drag-zoom-so-the-global-y-zoom-toolbar-buttons-become-usable)
+for the full record. Completes DEC-134's own direct Y-axis drag zoom
+and activates the Y Zoom In/Out buttons DEC-141 placed in the header
+permanently disabled.
+
+- **State:** `wwErState.plot.activeAxisKey`, the stable display-axis
+  key (never a Plotly axis number), kept separate from the per-mode Y
+  range store.
+- **Set by:** a Grouped panel's header (Waveform's own tabindex/role
+  pattern reused), a Combined axis's own legend heading (new, equally
+  accessible), or any pointerdown on a Y axis's own drag region (pan,
+  either zoom end, or a double-click) — never a hover, never an X-axis
+  gesture.
+- **Default:** exactly one live axis and no target chosen auto-targets
+  it; several stay untargeted until chosen. Never guesses among several.
+- **Grouped <-> Combined:** carries over unchanged (same key, by
+  design). **Engineering <-> Per Unit:** re-mapped by physical quantity
+  when unambiguous, else cleared (their display-axis keys differ even
+  for the same quantity).
+- **Toolbar Y Zoom In/Out** (`wwErStepZoomY()`) step only the active
+  axis, by Waveform's own exact ±20%/25% factors
+  (`WW_ZOOM_STEP_IN_FACTOR`/`_OUT_FACTOR`) — parity, not a new factor.
+- **Root-cause finding:** Plotly's native end-zoom hit region measured
+  13.6 px (Grouped) / 37.6 px (Combined) tall — genuinely narrow,
+  backing the owner's own "not reliably working" UAT finding. Left
+  unmodified (DEC-134's own drag is already proven correct against it);
+  the toolbar + accessible per-axis controls are the robust path added
+  here, not a change to Plotly's rendering.
+- **Unaffected:** Autoscale Y (still every axis), Reset Time View, Fit
+  Selected Record, Box Zoom/Pan, Zoom In/Out (X), cursors, annotations.
+- **Tests.** New `event-reconstruction-active-yaxis.spec.js`: targeting/
+  switching in both view modes, toolbar step math, direct-interaction
+  activation, X-navigation independence, Grouped/Combined and
+  Engineering/Per-Unit carry-over or clear, channel-removal clearing,
+  and real `page.mouse` drags on the actual Y-axis regions proving
+  numeric span/centre math. The existing DEC-134 drag-zoom suite passes
+  unchanged (no regression to the direct-manipulation behaviour this
+  builds on).
+- **Next.** A dedicated end-zoom hit-region ergonomics enhancement, only
+  if owner UAT still finds direct drag insufficient on its own. Then
+  owner UAT of the whole branch.
+
+## Earlier — Global waveform toolbar composition (DEC-141)
+
+**Global waveform toolbar composition (DEC-141, 2026-10-03, app-wide —
+not Event-Reconstruction-only).** See
+[POWERWAVE_ICON_SYSTEM.md §11](POWERWAVE_ICON_SYSTEM.md#11-toolbar-composition-dec-141)
+for the full record. Builds on DEC-140 (below) and explicitly reverses
+two of its findings.
+
+- **Event Reconstruction's `#wwErToolbar`** now holds every common
+  waveform tool in one consolidated header, in seven ordered,
+  separator-divided families: View Mode → Time Display → Units → Time
+  Navigation → Y-axis Scale → Fit/Reset → Analysis. Its Reconstruction
+  Timeline canvas's own toolbar (`#wwErCanvasToolbar`) is **removed
+  entirely** — not hidden, not kept as a fallback. Every relocated
+  control kept its existing element id and handler; only DOM location,
+  CSS class (text button → compact `.ww-icon-btn`) and icon changed.
+- **View Mode reversed (supersedes DEC-140).** Separate/Custom/Split now
+  exist on Event Reconstruction too, reusing Waveform's own icons
+  verbatim, permanently disabled with explanatory tooltips — owner UAT
+  explicitly reversed DEC-140's "no invented stubs" reading: never omit
+  a global slot, show it disabled instead.
+- **Zoom In/Out now wired (supersedes DEC-140).** `ZOOM_X_IN`/`_OUT` back
+  Event Reconstruction's Time Navigation family (same ids/handler as
+  before); its own decorative, always-disabled, never-wired axis-chooser
+  dropdown is retired (confirmed zero functional loss). `ZOOM_Y_IN`/
+  `_OUT` back two new, permanently-disabled buttons in a new Y-axis
+  Scale family — placed in the header now per explicit owner
+  instruction, even though no "active Y-axis target" concept exists yet
+  to drive them (that's the next dedicated ticket).
+- **Waveform's own per-Time-Group canvas toolbar kept in place**
+  (reported architectural constraint, not silently applied): multiple
+  independent, simultaneous Time Groups each need their own Reset/
+  Autoscale/Zoom/Cursor state; globalizing them would need an "active
+  Time Group" targeting concept that doesn't exist. Only its icons
+  changed (text → registry composites, incl. a new permanently-disabled
+  `FIT_SELECTED_RECORD` stub); its split-button's main icon now also
+  swaps live between X/Y composites in sync with its existing, unchanged
+  axis-chooser dropdown.
+- **New registry composites:** `RESET_TIME_VIEW`, `AUTOSCALE_Y`,
+  `FIT_SELECTED_RECORD`.
+- **Units (ENG/PU) stays text** — a deliberate mock deviation (see the
+  doc's §11 for the reasoning). The mock's "Y target" readout was not
+  implemented here; it is now (DEC-142 above).
+- **Tests.** Rewrote 11 static tests in
+  `test_frontend_event_reconstruction.py` whose premises this ticket
+  reversed (old text-button markup, the old axis-chooser dropdown ids,
+  `#wwErCanvasToolbar`'s existence, "no invented View Mode stubs").
+- **Next.** Done — DEC-142 above is the dedicated Y-axis interaction
+  ticket this entry deferred.
+
+## Earlier — Global Powerwave Waveform Tool Icon System (DEC-140)
+
+**Global Powerwave Waveform Tool Icon System (DEC-140, 2026-10-03,
+app-wide — not Event-Reconstruction-only).** See
+[POWERWAVE_ICON_SYSTEM.md](POWERWAVE_ICON_SYSTEM.md) for the full
+registry/capability-matrix/tooltip record. Two of its findings (View
+Mode's "no invented stubs," Zoom In/Out "registered but not wired") were
+superseded by DEC-141 above; the rest (the registry itself, the geometry
+finding, the Time Display capability matrix, Unit Mode staying text)
+remain current.
+
+- **One shared icon registry** (`WW_TOOL_ICONS` + `data-ww-icon="KEY"`
+  placeholders + `wwApplyToolIcons()`) replaces duplicated inline `<svg>`
+  for every shared Waveform/Event Reconstruction control. "Same
+  function, same icon" is now a structural fact (one shared key), not
+  two separately-typed blocks that happen to match.
+- **Geometry finding.** Every icon already renders through one shared
+  18-unit/1.5-stroke-weight CSS rule, not Lucide's native 24-unit/
+  stroke-2 — a raw Lucide paste would visibly mismatch weight. Every new
+  icon is hand-adapted into the existing grammar; Lucide is a metaphor
+  source only.
+- **Time Display** is now a full Elapsed/Relative/Absolute family on
+  BOTH pages (Waveform gained a disabled Relative Time stub; Event
+  Reconstruction gained a disabled Elapsed Time stub), each with an
+  explanatory tooltip, never hidden.
+- **Unit Mode (ENG/PU)** stays a text toggle, not an icon — recorded
+  decision, no clear pictogram exists.
+- **Tests.** `TestPowerwaveIconSystem` (6), `TestGlobalTimeDisplayFamily`
+  (4), `TestGlobalViewModeFamily` (2); `TestEventReconstructionToolConsistency`
+  updated for the registry.
+
+## Earlier — Event Reconstruction large-gap time formatting
+
+**Event Reconstruction large-gap time formatting (2026-10-03, display
+only — no DEC, a UX refinement, not an architecture decision).** Both
+notices that show a record-to-record time gap now read in the smallest
+human-friendly unit for their size (seconds/minutes/hours/days/weeks/
+months/years, per fixed thresholds), instead of raw seconds once a gap
+reaches into the thousands.
+
+- `wwErFormatSpan(seconds)` (used by the "Fit All is dominated by one
+  time gap" advisory) now buckets by threshold (`WW_ER_SPAN_UNITS`,
+  built from unit constants, never a bare `3600`/`86400` literal) up to
+  years, with 1 decimal for seconds and 2 for every larger unit, trailing
+  zeros trimmed, correct singular/plural.
+- The backend's own "Large time gap" warning notice (`#wwErNotices`) is
+  now built client-side from the warning's own `gap_s`/`threshold_s`
+  numeric fields through the same formatter, rather than showing the
+  backend's pre-rendered raw-seconds `.message` string — the backend's
+  own threshold DECISION (whether a gap warns at all) is unchanged.
+- **Tests.** A new browser test proves the exact worked thresholds
+  against the real running formatter; the existing 87-day-gap and
+  large-gap-warning browser tests are updated for their new (now
+  correctly bucketed) expected text; a new static test proves the
+  warning notice no longer uses the backend's raw `.message`.
+- **Next.** Owner UAT of the whole Event Reconstruction branch.
+
+## Earlier — Event Reconstruction toolbar consistency (DEC-139)
+
+**Event Reconstruction toolbar consistency correction (DEC-139,
+2026-10-03).** The feature is not complete. This is an app-wide UI rule,
+not only an Event Reconstruction one: *common tools across Powerwave
+pages share iconography, tooltip wording, compact button styling and
+interaction language; page state and workflow stay independently owned.*
+Waveform is the reference implementation.
+
+- **Audit result.** Every shared Event Reconstruction toolbar control
+  already matched Waveform byte-for-byte or in exact wording, from the
+  two prior slices (DEC-137 annotations, DEC-138 per-unit) — confirmed,
+  not re-done, for Box Zoom/Pan, the Annotate/Annotations controls, the
+  Zoom In/Out split buttons, Reset Time View, Autoscale Y and A/B Time
+  Cursors (Waveform's own canvas toolbar uses TEXT buttons for the first
+  four, not icons — Event Reconstruction's text buttons already are the
+  correct parity, not a gap).
+- **One real gap, fixed.** Neither of Event Reconstruction's toolbars had
+  any grouping separator. Added two, reusing Waveform's own
+  `.ww-toolbar-sep` component (never a new style): one separating the
+  mode selectors from the annotation tools in the main toolbar, one
+  separating the Waveform-equivalent canvas tools from the
+  Event-Reconstruction-specific Fit Record.
+- **No behavior change.** Presentation only; zoom/pan/reset/autoscale/
+  cursor/annotation/view-mode/time-mode/unit-mode/membership/correction
+  behavior is unchanged, confirmed by the full existing Event
+  Reconstruction test suite passing unchanged.
+- **Tests.** `TestEventReconstructionToolConsistency` (9), each proving
+  genuine parity (byte-identical markup, exact class names, exact
+  tooltip strings) against the actual Waveform source, not merely "an
+  icon exists."
+- **Next.** Owner UAT of the whole Event Reconstruction branch.
+
+## Earlier — Event Reconstruction Per-Unit Display (DEC-138)
+
+**Event Reconstruction Per-Unit Display (DEC-138, 2026-10-03).** The
+feature is not complete.
+
+- **Ownership.** Waveform owns per-unit configuration; Event
+  Reconstruction only consumes the resolved result (per-channel GET
+  …/per-unit-resolution; pu values from the existing waveform / cursor /
+  peak / anchor endpoints with `unit_mode="per_unit"`). No settings UI,
+  no settings writes, no frontend base or √3.
+- **UI.** "Units [ENG | PU]" (Waveform's wording: Unit Mode, ENG/PU,
+  Engineering Units / Per Unit), Engineering by default, display only.
+- **Statuses.** configured → pu; base_required → stays selected, "PU
+  unavailable" (badge, notice, "PU n/a" cursor cells), not plotted;
+  not_applicable (Power, Frequency, ROCOF, angles) → engineering, as in
+  Waveform. Fit All still counts unavailable channels.
+- **Axes / Y.** Quantity-aware pu axes from the new additive backend
+  fields `per_unit_display_axis_*`; Y state per view mode and unit mode.
+- **Regression.** 275 kV L-L group base on an L-G channel → 158.77 kV
+  base (~1.0046 pu for 159.5 kV), never the conflicting legacy 132 kV
+  Source Default — backend and browser tests.
+- **Tests.** Backend per-unit (12), static (6 new), browser
+  `event-reconstruction-per-unit.spec.js` (8).
+- **Next (then).** Event Reconstruction toolbar consistency — done,
+  DEC-139 above.
+
+## Earlier — Event Reconstruction annotation parity (DEC-137)
+
+**Event Reconstruction annotation parity with Waveform (DEC-137,
+2026-10-03).** The feature is not complete. This corrects DEC-136's
+simplified event markers (below).
+
+- **Tools.** Waveform's Annotate split-menu (Text Note, Callout, Maximum
+  Peak, Minimum Peak), guidance ribbon and Annotations manager — identical
+  icons, labels and tooltips — over Event Reconstruction's own
+  backend-stored annotations. Shared presentation helpers and CSS; page
+  adapters in the `wwEr…Annotation…` module.
+- **Schema.** Typed per `type` (create bodies discriminated by `type`,
+  `extra="forbid"`). Text Note: `reconstruction_time_s`, `y_fraction`,
+  `axis_key`. Callout: `channel` + `anchor` (source sample). Peak:
+  `channel`. All: `box_offset`, `sequence`.
+- **Timing.** Text Notes rebase with the reference frame (DEC-136
+  rules); Callouts and Peaks follow their own record's corrections.
+  Peaks are measured live over the visible range (not stored).
+- **Toolbar consistency.** Annotate/Annotations reuse Waveform's
+  controls; Fit Record is an icon button with its own icon; Zoom Out,
+  zoom-axis triggers, Reset Time View and Autoscale Y use Waveform's base
+  tooltip wording; mode selectors stay labelled. Waveform unchanged.
+- **Tests.** Backend annotations (16); static annotations (8) + tool
+  consistency (5); browser `event-reconstruction-annotations.spec.js`
+  (6).
+- **Next (then).** Event Reconstruction Per-Unit Display — done, DEC-138
+  above.
+
+## Earlier — Event Reconstruction annotations (DEC-136)
+
+**Event Reconstruction annotations (DEC-136, 2026-10-02).** Superseded in
+its UX by DEC-137 above.
+
+- **Independent storylines.** Event Reconstruction event markers never
+  appear in Waveform, and Waveform annotations never appear in Event
+  Reconstruction. Only geometry helpers and overlay classes are shared;
+  Waveform code is unchanged.
+- **Storage.** The backend definition holds
+  `annotations[{annotation_id, reconstruction_time_s, text}]`, via
+  `POST/PUT/DELETE .../definition/annotations`. They survive page
+  reloads and are cleared with the reconstruction.
+- **Frame.** `reconstruction_frame_shift_s()` rebases them on a
+  reference switch or reference correction (same physical instant).
+  Non-reference corrections and membership changes leave them fixed.
+- **UI.** "Annotate" (one placement, Esc cancels), then click the
+  timeline and enter the label. Click a label or marker to edit or
+  delete; drag the strip on any panel to move.
+  - Dashed neutral lines on every panel; labels on the top panel,
+    staggered into rows.
+  - Relative/Absolute changes only the time text.
+- **Real-data UAT (YGPN).** Four markers (Fault inception / Protection
+  operated / Breaker opened / Voltage recovered) were readable in
+  Grouped and in Combined Absolute. Close labels drop to new rows (3 rows
+  for 3 markers within 70 ms), and labels at the top can cover a little
+  waveform.
+- **Tests.**
+  - Backend `test_event_reconstruction_annotations.py` (10).
+  - `event-reconstruction-annotations.spec.js` (6).
+  - Static `TestEventReconstructionAnnotations` (3).
+- **Next.** Event Reconstruction Per-Unit Display (Waveform owns
+  per-unit configuration; Event Reconstruction only consumes the
+  resolved settings). Then owner UAT of the whole branch.
+
+## Earlier — Event Reconstruction Relative / Absolute time display
+
+**Event Reconstruction Relative / Absolute time display (DEC-135,
+2026-10-02).** The feature is not complete.
+
+- **Labels only.** A toolbar control, "Time [Relative | Absolute]"
+  (default Relative). Reconstruction seconds stay the internal
+  coordinate, and nothing is refetched on a switch.
+- **Anchor.** The backend adds `reconstruction_zero_time_utc` =
+  reference recorded start + reference correction, so
+  `absolute(r) = zero + r` = record start + its correction + elapsed.
+  - Reference switches never change a sample's absolute time.
+  - Corrections shift their own record; tested with 3 records and every
+    reference choice.
+- **Display.** The display timezone (DEC-122), with no browser-local
+  zone and precision-safe integer seconds + fraction. Ticks are adaptive
+  (µs … dates), with the date at the first tick and where it changes.
+  Hover and cursor readouts carry µs; Δt stays a duration.
+- **Real data (YGPN).** Absolute ticks, cursors and hover were identical
+  before and after a BTGH→BAHS reference switch; the 87-day Fit All is
+  date-labelled.
+- **Tests.**
+  - `event-reconstruction-time-display.spec.js` (5).
+  - Backend `test_event_reconstruction_absolute_time.py` (5).
+  - Static `TestEventReconstructionTimeDisplay` (4).
+- **Next (then).** Owner UAT of the whole Event Reconstruction branch.
+
+## Earlier — Event Reconstruction individual Y-axis drag zoom
+
+**Event Reconstruction individual Y-axis drag zoom (DEC-134,
+2026-10-02).** The feature is not complete.
+
+- **Interaction.** Plotly's native drag on one Y axis's own scale, in
+  Grouped (one panel) and Combined (one display axis):
+  - the middle pans;
+  - an end zooms (away from the centre = in);
+  - a double-click autoranges that axis only.
+- **Plot area stays X-only.** Y axes are no longer `fixedrange`, because
+  Plotly would not wire their drags otherwise. A capture-phase
+  `pointerdown` guard marks them fixed for plot-area drags only. A test
+  proves it is needed.
+- **Manual ranges.**
+  - They are keyed by display-axis key, per view mode, and kept for the
+    session (amends DEC-132 decision 9).
+  - They survive Box Zoom, Pan, Zoom In/Out, Fit Record and a channel
+    joining their axis.
+  - Autoscale Y clears the current mode's manual ranges; Reset clears
+    both modes'.
+  - A removed axis drops its state.
+- **Real-data UAT (owner YGPN, local only).** Combined with 4 axes
+  (kV/kA/MW/Hz): drags on the inner left/right and outer left/right
+  axes each changed only that axis. The plot area and outer shifts did
+  not move.
+- **Tests.**
+  - `event-reconstruction-yaxis-zoom.spec.js` (7).
+  - Static `TestEventReconstructionYAxisDragZoom` (3).
+- **Next (then).** Owner UAT. Relative/Absolute time display followed in
+  DEC-135.
+
+## Earlier — Event Reconstruction Fit Record
+
+**Event Reconstruction Fit Record — mixed-duration navigation (DEC-133,
+2026-10-02).** The feature is not complete.
+
+- **Active navigation record.**
+  - Click (or Enter/Space) on a member's header. It is shown by a tinted
+    header with an accent edge and ring.
+  - It is a record identity, separate from the reference, membership and
+    channel selection.
+  - It starts as the reference record. Removal clears it, and it is
+    never replaced automatically.
+- **Fit Record** (toolbar, after Reset Time View) sets the common X
+  viewport to the backend member `start_s`/`end_s`, in Grouped and
+  Combined.
+  - X only: Y ranges and cursors stay (off-screen cursors are hidden),
+    and time is never compressed.
+  - It is disabled, with the reason in its tooltip, when there is no
+    reconstruction, no active record, the record is stale, its timing is
+    unavailable, or none of its channels is plotted.
+- **Real-data UAT (owner YGPN, local only).** From an 87-day Fit All
+  (AGJH outlier):
+  - Fit Record on BAHS gave its 7.52 s (a 5 kHz envelope at that
+    width; the existing zoom path resolves it to full samples);
+  - BTGH gave 0–70 s at full resolution;
+  - AGJH in Combined gave its own 6.18 s;
+  - the cursors did not move and there were no console errors.
+- **Tests.**
+  - `event-reconstruction-fit-record.spec.js` (6).
+  - Static `TestEventReconstructionFitRecord` (4).
+- **Next (then).** Owner UAT of Fit Record. Then decide on an overview
+  navigator. Y-axis drag zoom followed in DEC-134.
+
+## Earlier — Event Reconstruction Combined Multi-Axis View
+
+**Event Reconstruction Combined Multi-Axis View (DEC-132,
+2026-10-02).** The feature is not complete.
+
+- **View.** The Grouped/Combined toggle is live. Combined shows every
+  selected analog channel in one 420 px panel with one Y axis per
+  display axis (DEC-131's key, no unit conversion).
+  - Axes and traces are exactly the Grouped panels, in the same order.
+  - Axes go left, right, then alternately left/right with Plotly
+    `autoshift` + `automargin`, so there is no hard-coded spacing and
+    no maximum. An advisory notice appears above 4 axes.
+- **Y.**
+  - Autoscale Y and Reset work per axis. An axis without visible
+    samples keeps its title and legend group but shows no tick values.
+  - A channel joining or leaving an axis rescales only that axis.
+  - The autoscale waits until every needed load has started. This fixed
+    a latent race that also affected Grouped.
+- **Mode switch.** Presentation only: records, channels, definition,
+  cursors, X viewport, Fit All and drag mode are kept; Y is autoscaled
+  on entry. Traces move between panels with their data. Full-resolution
+  data, or an envelope with at least the new budget, is reused.
+- **Real-data UAT (owner YGPN files, local only).**
+  - 9 channels gave 4 axes: Voltage (kV) left, Current (kA) right,
+    Active Power (MW) outer left, Frequency (Hz) outer right.
+  - A 300 ms zoom on BAHS showed full-resolution phases with one
+    cursor pair.
+  - Grouped ↔ Combined kept the zoom.
+  - 101 channels settled in about 15 s and the legend crowds the canvas.
+- **Synthetic UAT.** 2/4/6/8 axes laid out cleanly. At 8 axes the plot
+  area is 818 of 1,190 px.
+- **UAT items (not changed).**
+  - Colour collisions, on one axis and across axes (6-colour palette).
+  - Legend crowding with many traces.
+  - Plotly 3.7 renders no string axis titles: the shared layout's X
+    title and the Grouped unit titles are not shown (pre-existing,
+    Waveform too).
+- **Tests.**
+  - New `event-reconstruction-combined.spec.js` (9).
+  - Static `TestEventReconstructionCombinedView` (8).
+  - Grouped/navigation guards updated to per-axis state.
+- **Axis-title fix (follow-up commit).**
+  - A Combined axis read "Undefined": BEN unit code 63 is unvalidated, so
+    the `R.POWER` channel was unitless and Undefined, and the backend
+    returned the sentinel as the title quantity.
+  - Such an axis is now titled "Unknown quantity" (backend
+    `UNKNOWN_QUANTITY_LABEL`); grouping is unchanged.
+  - New regression test: title ↔ Plotly axis ↔ scale ↔ traces.
+- **BEN unit code 63 (follow-up commit).**
+  - Validated as VAr (owner-approved): code 63 → `var` base symbol →
+    `Mvar` at multiplier 6 → Reactive Power.
+  - `unknown_unit_code` is gone for 63 only; decoded values are
+    unchanged.
+  - JMHE U1 matches its BEN32 `.prn` sample by sample (5 significant
+    digits).
+  - The JMHE U1/U2, SPG U1 and PCGP records are added to the opt-in
+    reference manifest.
+  - Unknown-quantity axes with one channel are now titled after it.
+- **Next.** Owner UAT of Combined. Mixed-duration navigation is still
+  `[OPEN / UAT]`.
+
+## Earlier — Event Reconstruction Grouped Measurement View
+
+**Event Reconstruction Grouped Measurement View (DEC-131,
+2026-10-02).** The feature is not complete.
+
+- **Panels.** There is one panel per display axis: engineering quantity
+  plus normalized unit, from the new backend
+  `resolve_display_axis()`, exposed additively as `display_axis_key` /
+  `_quantity` / `_unit` on the channel and calculated-channel APIs.
+  - Compatible channels from several records, native and calculated,
+    share a panel.
+  - V vs kV and Active vs Reactive Power stay apart.
+  - Each trace keeps its own fetch, envelope, timing and errors.
+- **Cursor values.** Per the owner's mid-task instruction these moved
+  from the panel headers to the left channel tree as Cur A / Cur B / Δ
+  columns (Waveform's pattern). Only the global A/B/Δt readout stays in
+  the sticky toolbar.
+- **View mode.** Grouped (default); Combined followed in DEC-132.
+- **Real-data smoke (owner YGPN files, local only).** 8 channels gave 3
+  panels:
+  - Voltage (kV): BAHS VR/VY/VB;
+  - Active Power (MW): three BTGH power channels and PMJY POWER BBTU;
+  - Frequency (Hz): BTGH.
+
+  The tree columns fit the default 320 px sidebar.
+- **UAT item.** Waveform's 6-colour palette can give two traces in one
+  grouped panel the same colour. ER inherits colours by rule, so any
+  disambiguation needs an owner decision.
+- **Tests.**
+  - New `event-reconstruction-grouped.spec.js` (7) and backend
+    `test_display_axis.py` (27).
+  - Static `TestEventReconstructionGroupedView` (6).
+  - Cursor/plot/navigation specs updated.
+  - Full backend: 6,322 passed, 40 skipped. Full browser: 420 of 420 passed.
+## Earlier — Event Reconstruction Slice 3E
+
+**Event Reconstruction Slice 3E — A/B cursors and values (DEC-130,
+2026-10-02).** The feature is not complete.
+
+- **Cursors.** Global A/B cursors in reconstruction time:
+  - the A/B button places them at 1/3 and 2/3 of the view the first
+    time;
+  - each panel draws the same time in its own overlay;
+  - dragging a line on any panel moves the global cursor (clamped to
+    Fit All);
+  - each cursor has a × in the readout;
+  - the readout shows A, B and Δt with µs digits.
+- **Values.** The nearest real sample, from the existing backend
+  endpoints (no new API), at native time = cursor − total offset:
+  - per record for native channels;
+  - per timing source for calculated channels.
+
+  Outside a record's data a panel says "No sample"; a recorded gap says
+  "Unavailable". The panel headers show A, B and Δ.
+- **Rebasing.** Cursors follow the reconstruction-zero shift (reference
+  change, reference correction) and keep the physical instant. A
+  correction on any other record leaves them fixed.
+- **Real-data smoke (owner YGPN same-day files, local only).** Cursors
+  at 19.85/19.90 s gave aligned lines on BTGH and three BAHS phases,
+  with values in MW and kV, and "No sample" for PMJY. The readout stays
+  in the sticky toolbar row while the panel stack scrolls.
+- **Tests.**
+  - New `event-reconstruction-cursors.spec.js` (7).
+  - Static `TestEventReconstructionCursors` (5); earlier guards were
+    updated for the cursor-values POST.
+  - Full backend: 6,289 passed, 40 skipped. Full browser: 412 of 413 passed; the one failure (sequence_components_analysis.spec.js:840, a phasor-plot render-timing check outside Event Reconstruction) passed 3 of 3 in isolation.
+- **Still `[OPEN / UAT]`:** mixed-duration navigation (a cursor inside
+  a sliver-wide fast record under Fit All is hard to place). Panel
+  height is fixed at 180 px.
+
+## Earlier — Event Reconstruction Slice 3D
+
+**Event Reconstruction Slice 3D — navigation controls (DEC-129,
+2026-10-02).** The feature is not complete.
+
+- **Controls.**
+  - Box Zoom and Pan are X-only.
+  - Zoom In and Zoom Out use the shared step, with the centre kept.
+    Zoom Out and Pan never leave Fit All, and Zoom Out is disabled at
+    Fit All.
+  - Reset Time View = Fit All + autoscale Y on every panel; a
+    double-click uses the same `wwErResetView()`.
+  - Autoscale Y applies to every panel. Y otherwise keeps its range
+    through X navigation, and an empty panel's stale range clears.
+- **Rebasing.** A reference or correction change while zoomed moves the
+  window by the change of the reconstruction zero:
+
+  ```text
+  F_new − F_old = old offset of the new reference + its correction change
+  ```
+
+  The same physical segment stays in view, clamped to the new Fit All.
+- **Fit All span notice.** Shown when one gap is ≥ the backend large-gap
+  threshold and ≥ 90 % of Fit All. It names the outlying record or
+  group. It is advisory: nothing is hidden or compressed.
+- **Real-data smoke (owner YGPN files, local only).**
+  - With `AGJH 221022.ben` added, the notice reads "Fit All spans
+    87 days because AGJH 500kV is 87 days away from the other plotted
+    records."
+  - Switching the reference to BAHS while zoomed on the same-day
+    cluster kept the BTGH/BAHS disturbance in view (window shifted by
+    BAHS's 18.425 s offset).
+- **Tests.**
+  - New `event-reconstruction-navigation.spec.js` (8).
+  - Shared helpers moved to `support/event_reconstruction_helpers.js`.
+  - Static `TestEventReconstructionTimelineNavigation` (7).
+  - Full backend: 6,284 passed, 40 skipped. Full browser: 404 of 406 passed; the 2 failures (impedance_analysis.spec.js:289 Play/Pause, a known flake; phasor_analysis.spec.js:909 a Recordings-row timeout) are outside Event Reconstruction and passed 3 of 3 in isolation.
+- **Still `[OPEN / UAT]`:** mixed-duration navigation. Panel height is
+  fixed at 180 px.
+- **Next:** A/B cursors and values (Slice 3E/3F).
+
+## Earlier — Event Reconstruction Slice 3C
+
+**Event Reconstruction Slice 3C — first plotted reconstruction (DEC-127
+update, 2026-10-02).** This is UAT 1. The feature is not complete.
+
+- **What it does.** The selected analog channels (native and calculated)
+  of the current records plot on one relative reconstruction timeline:
+  - one panel per channel, in the browser's order;
+  - engineering units;
+  - Fit All initially;
+  - Box Zoom/Pan shared by every panel, with Pan clamped to Fit All;
+  - double-click a panel for Fit All.
+
+  All of this is provisional and recorded in DEC-127's Slice 3C update.
+- **How.**
+  - Event Reconstruction's own `wwErState.plot` drives the Slice 3A
+    shared helpers.
+  - Time follows `r = native + total_reconstruction_offset_s`, through
+    the Slice 3B pair.
+  - Plotly x is `r − origin`, with one local origin per canvas.
+  - Each source fetches only its visible slice, with an open bound at
+    its own edges.
+- **Precision.** Plotly 3.7 scattergl does not lose the 0.2 ms spacing
+  even at +30 days; only its auto tick labels degrade. The local origin
+  and ER's own ticks make this irrelevant.
+- **Real-data UAT smoke (owner YGPN 275 kV files, local only, not
+  committed).**
+  - BAHS 5 kHz (envelope under Fit All, full resolution when zoomed),
+    BTGH 20 Hz and PMJY 20 Hz plot correctly on one timeline. The BTGH
+    power drop lines up with the BAHS disturbance.
+  - The file `BEN Files/AGJH/AGJH 221022.ben` in that folder is dated
+    22 Oct 2022. Adding it makes Fit All span 87 days, so every trace is
+    sub-pixel; the large-gap warning fires.
+- **Owner UAT scenario.**
+  1. Upload BAHS 275kV (fast), BTGH and PMJY (slow) from the YGPN
+     275 kV folder.
+  2. Add them as records and open each record's Channels.
+  3. Select one channel per record.
+  4. Check:
+     - Fit All;
+     - box zoom on any panel (all follow);
+     - Pan (clamped);
+     - double-click (Fit All);
+     - a correction on one record (only it moves);
+     - "Make reference" (the zero moves; the spacing doesn't).
+- **Tests.**
+  - New `event-reconstruction-plot.spec.js` (14), plus
+    `support/synthetic_comtrade.js`.
+  - Static `TestEventReconstructionPlotting` (9).
+  - Existing ER spec and static checks updated for the new
+    meta/empty-state text and the end of "no plotting yet".
+  - Full backend: 6,277 passed, 40 skipped. Full browser: 398 of 398 passed (the intermittent overcurrent_analysis.spec.js:1345 gridline test also passed this run).
+- **Next (Slice 3D).** Staged Zoom In/Out, Reset Time View (= Fit All)
+  and Autoscale Y. Open points to decide first are listed in the final
+  Slice 3C report and the design doc §10.
+
+## Earlier — Event Reconstruction record model
+
+**Event Reconstruction record model (DEC-128, 2026-10-02).** This is a
+UAT correction made before Slice 3C. Separately imported "BAHS 275kV"
+and "BTGH" had appeared as one member, because Event Reconstruction
+members were Waveform Time Groups, and overlapping records share a Time
+Group.
+
+- **Rule.** Waveform continues to use its existing Time Group model.
+  Event Reconstruction uses independent imported event/record
+  identities as its atomic members. Timestamp overlap alone never
+  merges Event Reconstruction members.
+- **Atomic member.** One record = one imported source (`record_id` =
+  `source_id`); there is no multi-source package entity. Eligibility,
+  reference, corrections, stale detection (record removed), gaps,
+  `source_timings` and the channel tree are all per record.
+- **Timing.** `total = within_record_offset_s (0) +
+  reconstruction_record_offset_s`. Absolute time enters once. Waveform
+  Synchronise Sources corrections are not applied by Event
+  Reconstruction.
+- **API.**
+  - `GET /records`;
+  - `PUT /definition {record_ids, reference_record_id}`;
+  - `PUT /definition/reference {record_id}`;
+  - `PUT|DELETE /definition/records/{record_id}/correction`;
+  - errors `record_not_eligible` and `source_not_found`.
+
+  The full before/after table is in DEC-128.
+- **Frontend.** A "Records" list. Re-confirmation is removed; stale
+  members are resolved with "Remove stale members". Selections are keyed
+  by `recordId`.
+- **No migration.** In-memory reconstructions made under the old model
+  must be cleared and recreated.
+- **Unchanged:** `time_grouping.py`, Waveform Time Groups, Synchronise
+  Sources, `ww` state, channel presentation, analog-only scope.
+- **Tests.**
+  - ER backend: domain 40, registry 5, service 49, source timing 15,
+    API 20.
+  - Static frontend: 52.
+  - ER browser: 16, including AGJH 500kV / BAHS 275kV / BTGH as three
+    records.
+  - Full backend: 6,268 passed, 40 skipped.
+  - Full browser: 383 of 384 passed. The one failure,
+    `overcurrent_analysis.spec.js:1345` ("major gridlines still
+    render"), is intermittent (2 of 3 isolated reruns pass), is
+    untouched by this change, and is reported separately, not fixed
+    here.
+- **Next.** Slice 3C (the first plotted UAT) on the record model; the
+  Slice 3C notes below still apply, with "member" meaning record.
+
+## Earlier — Event Reconstruction Slice 3B
+
+**Event Reconstruction Slice 3B — per-source reconstruction timing
+(DEC-127 update, 2026-10-01).** Backend plus frontend helpers; no
+plotting.
+
+- **API.** Each member gains `source_timings` (additive). See the DEC-127
+  Slice 3B table. It is null for stale members and while the reference
+  is stale. The total is composed once by
+  `domain.event_reconstruction.total_reconstruction_offset_s()`.
+- **Frontend.** `wwErSourceElapsedToReconstructionTime`/
+  `wwErReconstructionTimeToSourceElapsed` (pure) and
+  `wwErSourceTiming(displaySourceId)` (a calculated channel resolves
+  through `reference_source_id`; current members only).
+- **Tests.**
+  - `test_event_reconstruction_source_timing.py` (14);
+  - 3 static checks;
+  - 1 browser test;
+  - full backend and browser suites.
+- **Slice 3C notes.** Plot with `wwFetchWaveformRange` (native range from
+  the inverse helper, `timeOffsetS` = the total) and engineering units.
+  Use one panel per selected analog channel, with Fit All from the
+  plotted sources' `startS`/`endS`. Verify the float32 precision risk in
+  UAT with a short 5 kHz record about 2 h from the reference.
+
+## Earlier — Event Reconstruction Slice 3A
+
+**Event Reconstruction Slice 3A — shared renderer helpers (DEC-127
+update, 2026-10-01).** A frontend refactor only. Waveform behaviour is
+identical.
+
+- **What moved.** Pure helpers were extracted; the original Waveform
+  functions are now wrappers. See the table in DEC-127's Slice 3A update.
+- **Verified by:**
+  - an uncommitted side-by-side harness (16,021 checks);
+  - `test_frontend_shared_renderer_helpers.py` (30 checks);
+  - four existing static tests updated to assert the same semantics in
+    the helpers;
+  - full backend and browser suites.
+- **Next.** Slice 3B (per-source timing metadata + ER mapping helpers),
+  then Slice 3C, the first plotted UAT.
+
+## Earlier — Event Reconstruction analog-only correction
+
+**Event Reconstruction analog-only correction (DEC-127, 2026-10-01).**
+The owner approved Option B and made Event Reconstruction analog-only.
+
+- The channel tree no longer lists digital channels.
+- `wwErIsReconstructionChannelKind()` keeps any digital selection away
+  from plotting: it is rejected on selection, pruned on refresh, and
+  filtered from `wwErSelectedChannelsForPlotting()`.
+- The Waveform digital browser and state are unchanged; a browser test
+  covers this.
+- DEC-127 also fixes the first plotted UAT scope: one panel per selected
+  analog channel, engineering units, provisional Fit All, relative X.
+
+## Earlier — Event Reconstruction renderer design spike
+
+**Event Reconstruction Slice 3 renderer design spike (2026-10-01).**
+Documentation only, in
+[EVENT_RECONSTRUCTION_RENDERER_DESIGN.md](EVENT_RECONSTRUCTION_RENDERER_DESIGN.md).
+`[PROPOSAL]` — not approved.
+
+- **Audit.** Of 1,293 functions, 225 use `ww.` directly. The core
+  panel/canvas/viewport/digital/ruler functions share one ~312-function
+  web over 44 `ww` fields. `wwFetchChannelRange` already implements the
+  hybrid fetch.
+- **Recommendation.** Option B: extract pure primitives (fetch core,
+  digital intervals/figure, trace/layout base, range math, cursor math)
+  with Waveform wrappers. ER gets its own state/canvas/pipeline.
+- **Time mapping.** One mapping (`source_elapsed + total_offset_s`) with
+  offsets composed in the backend (additive per-source placements in the
+  definition response) and applied by one frontend helper. The fetch
+  strategy is the existing hybrid one.
+- **Proposed sub-slices:** 3A–3F with three UAT checkpoints.
+- **Owner decisions needed:** the option; the provisional panel
+  arrangement; ER unit mode; the backend field. There is also a
+  `scattergl` precision risk to verify in 3C.
+- **No production code changed.**
+
+## Earlier — Event Reconstruction Slice 2A
+
+**Event Reconstruction Slice 2A — channel browser (DEC-126,
+2026-10-01).** Committed on `feat/event-reconstruction` after
+`00a47a6`. Not pushed or merged; nothing is plotted yet.
+
+- **Frontend only** (`frontend/index.html`). Each current member
+  expands into the Waveform channel hierarchy (Recording → Analog /
+  Digital / Calculated Channels). The Waveform tree has no bay level,
+  so none was added. Names and colours are inherited read-only through
+  `analogChannelNameCellHtml()` → `wwChannelDisplayName()`/
+  `wwColorForChannel()`; there is no editing.
+- **Selection.** `wwErState.selectedChannels` is Event Reconstruction's
+  own visibility; Slice 3 reads `wwErSelectedChannelsForPlotting()`
+  (current members only). Stale members show no tree.
+- **Small Waveform refactor (identical output).** The grouping rules
+  were extracted into `wwGroupChannelsByEngineeringType()` and
+  `wwGroupDigitalChannelsByClassification()`, now used by
+  `renderAnalogGroup()`, `renderDigitalGroup()`,
+  `wwRenderCalculatedChannelsSidebarSection()` and Event Reconstruction.
+- **Tests.**
+  - `test_frontend_event_reconstruction.py`: 42 static checks.
+  - `event-reconstruction.spec.js`: 13 tests (3 new for Slice 2A).
+  - Full backend: 6213 passed, 40 skipped (`ben_reference`). Full
+    browser: 381/381 passed.
+- **Testing note.** The owner's `uvicorn --reload` on port 8000 restarts
+  (and wipes in-memory workspaces) whenever a file under `backend/`
+  changes, including tests. Editing a backend test during a browser run
+  once caused an `ECONNRESET`; don't edit `backend/` while a browser run
+  is in progress.
+- **Next.** Slice 3 needs the renderer-architecture comparison first.
+
+## Earlier — Event Reconstruction Slice 2
+
+**Event Reconstruction Slice 2 — selection workflow (DEC-125,
+2026-10-01).** Committed on `feat/event-reconstruction` after
+`4964713`. Not pushed or merged; the feature is not complete (no
+plotting).
+
+- **Frontend only** (`frontend/index.html`). The left panel is now the
+  reconstruction-member workflow over the Slice 1 API:
+  - chronological Time Groups with eligibility reasons;
+  - Add/Remove, Make reference, ms corrections (Set/Reset);
+  - stale members with "Re-confirm with current Time Groups" / "Remove
+    stale members";
+  - large-gap notices, and Clear with a confirmation.
+
+  Each action is one API call plus a full re-fetch. See DEC-125 for
+  the rules, notably that membership edits wait until stale members
+  are resolved, because a `PUT .../definition` would drop them.
+- **Hooks.** `wwErNotifyWorkspaceChanged()` is called from
+  `refreshAllSourceViews()` and from the Synchronise Sources side-effect
+  function. It is a no-op unless Event Reconstruction is the current
+  page.
+- **Tests.**
+  - `test_frontend_event_reconstruction.py`: 32 static checks.
+  - `browser-tests/event-reconstruction.spec.js`: 10 tests (4 Slice 0,
+    6 Slice 2). A Time-of-Day group is injected by intercepting
+    `/time-groups`, since COMTRADE cannot produce one.
+  - Full backend suite: 6203 passed, 40 skipped (`ben_reference`).
+    Full browser suite: 378/378 passed; the known Impedance Locus flake
+    did not occur this run.
+- **Next.** Slice 3 needs the renderer-architecture comparison first.
+  Open items are listed in DEC-125.
+
+## Earlier — Event Reconstruction Slice 1 follow-up
+
+**Event Reconstruction Slice 1 follow-up (DEC-124 update, 2026-10-01).**
+The large-gap threshold now comes from `app/config.py`
+(`Settings.event_reconstruction_large_gap_warning_s`, default 3600 s,
+not environment-read, not user-facing); the domain has no default and
+the API reports the effective value. The coordinate model is now
+documented explicitly (domain docstring, DEC-124 update table), and
+`TestCoordinateModel` proves there is no double counting of absolute
+time. No behaviour change.
+
+## Earlier — Event Reconstruction Slice 1
+
+**Event Reconstruction Slice 1 — domain model, eligibility, service and
+API (DEC-124, 2026-10-01).** Committed on `feat/event-reconstruction`
+after Slice 0 (`acad12b`). Not pushed or merged.
+
+- **Backend only.** New files:
+  - `app/domain/event_reconstruction.py`;
+  - `app/services/event_reconstruction_registry.py` and
+    `event_reconstruction_service.py`;
+  - `app/schemas/event_reconstruction.py`;
+  - `app/api/v1/event_reconstruction.py`.
+
+  It is wired into `app/main.py` and the workspace teardown in
+  `app/api/v1/workspaces.py`, with new error codes in
+  `app/services/errors.py`. No frontend change; the Slice 0 shell does
+  not call the API yet.
+- **Model.** See DEC-124. The key points for whoever picks up Slice 2:
+  - members are addressed by `member_id` (membership fingerprint),
+    never by `group_id`;
+  - corrections are per group and reference-independent;
+  - stale is derived on every read (`status`, `stale_reason`,
+    `candidate_group_ids`), and re-confirmation is a new
+    `PUT .../definition`;
+  - a stale reference sets `placements_available: false`.
+- **Isolation guards.** A write-forbidden `SynchronizationRegistry`
+  runs the full service flow; Time Groups, Synchronise Sources views,
+  sync offsets and source timestamps/arrays are compared before and
+  after; a structural check confirms the service has no
+  synchronization write path.
+- **Tests.** 106 new (`test_event_reconstruction_{domain,registry,
+  service,api}.py`). Full backend suite: 6180 passed, 40 skipped
+  (`ben_reference`, needs the owner directory), 0 failed. No frontend
+  file changed, so the browser suite was not re-run.
+- **Slice 2 notes (before wiring the left-panel selection):**
+  - `GET .../time-groups` is ordered by `group_id` (as
+    `list_time_groups()`); sort by `start_time_utc` for display.
+  - Re-fetch the definition after any upload/removal or Synchronise
+    Sources change: staleness and group extents are derived on read.
+  - On re-confirmation the stale member's old correction is not carried
+    over; the UI should show it so the engineer can re-enter it.
+  - Placements are per group; per-source reconstruction time is
+    `source_time + effective_alignment_offset_s (synchronization/sources)
+    + reconstruction_offset_s` — needed by Slice 3, not Slice 2.
+- **Still open:** `[OPEN / UAT]` mixed-duration / mixed-sampling-rate
+  navigation and initial viewport; the Slice 3 renderer comparison; the
+  Synchronise Sources migration (Slice 7).
+
+## Earlier — Event Reconstruction Slice 0
+
+**Event Reconstruction Slice 0 — frontend shell (DEC-123, 2026-10-01).**
+Committed on branch `feat/event-reconstruction` (from `main` at
+`a9d5af5`) as `feat: add event reconstruction workspace shell`. Not
+pushed and not merged; owner UAT decides the merge, as for BEN.
+
+- **What exists.** Main-menu entry immediately after Waveform →
+  `#pageEventReconstruction`:
+  - a left "Recordings (N)" panel of read-only source rows, refreshed on
+    page entry, resizable, with the responsive drawer;
+  - a `.ww-toolbar` with Box Zoom / Pan;
+  - an empty "Reconstruction Timeline" canvas shell with Zoom In /
+    Zoom Out / Reset Time View, which are disabled.
+- **What does not exist yet.** No reconstruction domain model, no
+  eligibility, no Time Group selection, no reference, no offsets, no
+  plotting, no cursors, no backend change.
+- **Boundaries.** It is its own page, not a view inside `#workspaceRow`.
+  It never touches `ww` or calls Waveform interaction functions. It has
+  no channel name/colour store. It does not use the
+  `.ww-time-group-canvas` class, which Waveform JS iterates
+  document-wide. Shared CSS rules list the ER selector *first*, so the
+  existing Waveform CSS guard tests (which match `#workspaceSidebar {`
+  etc.) keep their exact shape.
+- **Tests.**
+  - `test_frontend_event_reconstruction.py` (19 static checks);
+  - `browser-tests/event-reconstruction.spec.js` (5 tests);
+  - the nav-order lists in `calculator.spec.js`/`compliance.spec.js`
+    gained the new entry.
+- **Regression.**
+  - backend: 6074 passed, 40 skipped (`ben_reference`, needs the owner
+    directory);
+  - browser: 371 of 373 passed. Overcurrent "Minor X and Minor Y are OFF
+    by default…" then passed 5/5 alone.
+  - Impedance Locus "Play advances the marker…; Pause stops it" is a
+    **pre-existing flake**: it failed 6/10 on a clean `HEAD` export and
+    3/10 with this change. It stays `[OPEN]` and untouched. (Ports:
+    8000 was the owner's `uvicorn --reload`, reused.)
+- **Next.** Slice 1 (reconstruction domain/eligibility) needs owner
+  answers to the `[OPEN]` items in DEC-123 first: crossing the Time
+  Group isolation boundary, the offset model, derived group identity,
+  Time-of-Day eligibility, and the gap threshold. The Slice 3 renderer
+  architecture needs a design comparison.
+
+## Earlier — native BEN closeout
+
+**Native BEN import closeout (2026-10-01).** Owner UAT passed:
+*"BEN integration is working as expected and the feature is accepted for
+merge."* `feat/native-ben-parser` (DEC-119 to DEC-122) is merged into
+`main` with a merge commit; the feature branch is kept.
+
+- **UAT verified:**
+  - `.ben` upload through the normal Upload Recording flow;
+  - Fast SubBen and Slow SubBen loading;
+  - BEN and matching BEN32 COMTRADE timestamp alignment;
+  - consistent Malaysia-local display time;
+  - waveform plotting and the normal recording workflow;
+  - rejection of unsupported older BEN layouts.
+- **Scope.** The UAT covers the validated BEN32 SubBen layout family
+  only, not every historical BEN variant.
+- **Final regression (before merge):**
+  - backend: 6055 passed, 40 skipped (the `ben_reference` tests, which
+    need the owner directory), twice;
+  - `ben_reference` with the owner directory: 40 passed. One unnamed
+    failure occurred once in the first run and did not recur in 11
+    reruns, 6 of them under the same concurrent load. The directory is
+    on OneDrive, so a first-access file hydration is a possible cause,
+    but this is not proven;
+  - browser: 367 of 368 passed, including every `ben-import` and
+    `display-timezone` spec. The one failure was the already-known
+    Sequence Components flake, "hiding the dominant V1 does not change
+    V2/V0's own rendered scale/position" (see its earlier entry below).
+    It then passed 10/10 alone and 33/33 with its whole spec. It stays
+    `[OPEN]` and untouched.
+- **Deferred `[OPEN]` follow-ups (not blockers):**
+  - older BEN layouts (BPHE/GPTH);
+  - a user- or project-selectable display timezone;
+  - `displayTimezone` deployment wiring (the entrypoint does not emit
+    it), and `DEFAULT_SOURCE_TIMEZONE` as a setting;
+  - BEN bay/feeder and channel ids in the UI;
+  - nominal frequency in the UI or configuration;
+  - FLOAT32/BINARY32 COMTRADE;
+  - any broader channel-metadata redesign;
+  - the COMTRADE path's legacy 99999 → 99.9995 Hz value.
+- **Next.** The owner pushes `main` (this session did not push). Any
+  follow-up above needs its own owner task.
+
+## Earlier — DEC-122 display timezone
+
+**Engineering timestamp display timezone (DEC-122, 2026-10-01). Branch
+`feat/native-ben-parser`, fourth commit. Owner UAT passed; merged.**
+
+- **Backend.** `SourceSummaryOut`/`TimebaseOut` add
+  `start_time_utc`/`trigger_time_utc`: `canonical_utc()` of the stored
+  value. The stored `start_time` is unchanged.
+- **Frontend.**
+  - `wwDisplayTimezone()` defaults to Asia/Kuala_Lumpur, with an optional
+    `POWERWAVE_CONFIG.displayTimezone` override.
+  - `wwDisplayWallClockIso()`/`wwFormatEngineeringTimestamp()` use
+    `Intl` for the whole-second fields and copy the fraction verbatim.
+  - `wwRecordingDisplayStartTime()` is the Absolute anchor for the ruler,
+    header, ticks, cursors, hover and annotations.
+  - Converted: Recording Events Start Time (with a "Shown in …" tooltip),
+    sidebar identity, Trigger.
+- **Fixtures.** `tests/fixtures/ben/synthetic_fast_export.cfg/.dat` is a
+  BEN32-style COMTRADE export of `synthetic_fast.ben`, generated by
+  `make_fixtures.py` and drift-tested.
+- **Tests.**
+  - `test_canonical_timestamps_api.py`;
+  - `test_frontend_display_timezone.py`;
+  - `browser-tests/display-timezone.spec.js`;
+  - real pairs assert equal `start_time_utc`.
+- **Note.** During this session, ports 8000/8101 were held by an
+  owner-started `uvicorn --reload` and an `http.server` (not started by
+  the agent). Playwright reused them (`reuseExistingServer`). They serve
+  this checkout's current code, verified via openapi/index.
+- **`[OPEN]`.**
+  - No user/project timezone selection.
+  - The container entrypoint does not emit `displayTimezone`.
+
+## Earlier — DEC-121 hardening
+
+**Timestamp and channel-identity hardening (DEC-121, 2026-10-01).
+Branch `feat/native-ben-parser`, third commit. Owner UAT passed;
+merged.**
+
+- **Timestamps.**
+  - New `app.domain.source_timezone`: `DEFAULT_SOURCE_TIMEZONE =
+    "Asia/Kuala_Lumpur"`, `interpret_naive()`, `canonical_utc()`.
+  - `time_grouping.normalize_absolute_datetime()` now interprets naive
+    values in that zone instead of labelling them UTC. Declared offsets
+    are untouched, and stored values are unchanged.
+  - LGNG/PMJY/BAHS/BTGH BEN ↔ COMTRADE pairs now share one Time Group
+    with 0.0 s placement.
+- **COMTRADE provider.**
+  - A 2013 CFG's `time_code` (the line after `timemult`) gives aware
+    times.
+  - Duplicate-named channels' descriptors use the same `_1` names as
+    their columns.
+  - `load_with_provenance()` reports `channel_renames`.
+- **Tests.**
+  - Three Slice 11 tests that encoded "naive = UTC label" now assert
+    the DEC-121 instant (time_grouping ×2, calculated_channel ×1).
+  - New: `test_source_timezone.py` and `test_comtrade_duplicate_names.py`.
+  - The reference parity test now covers Time Group alignment and
+    digital states.
+- **Still `[OPEN]`.**
+  - Display timezone: resolved by DEC-122.
+  - `DEFAULT_SOURCE_TIMEZONE` is a constant, not a deployment setting.
+  - COMTRADE's legacy BEN32 99999 still scales to 99.9995 Hz on the
+    COMTRADE path; BEN gives NaN.
+
+## Earlier — BEN import integration
+
+**BEN import integration (DEC-120, 2026-10-01). Branch
+`feat/native-ben-parser`, second commit after `c2f7f2a`. Owner UAT
+passed; merged.**
+
+- **Endpoint.** `POST /sources` takes `cfg_file`+`dat_file` (unchanged)
+  or `ben_file` (+ optional `nominal_frequency_hz`).
+- **Registry.** `import_service.build_provider_manager()` is the central
+  provider registry.
+- **Provider hook.** `BaseProvider.load_with_provenance()` (default
+  `None`) lets `BenProvider` store provenance in
+  `SourceMetadata.preparation_provenance`: BEN ids, source names, bays,
+  UTC basis, nominal frequency and whether it was assumed, and
+  diagnostics.
+- **Nominal frequency.** The default is
+  `app.domain.metadata.DEFAULT_NOMINAL_FREQUENCY_HZ` (50 Hz), shared
+  with CSV/Excel conversion.
+- **Frontend.** The upload modal has a "BEN" format, sharing
+  `submitSourceUpload()` with COMTRADE, plus BEN error wording.
+- **Tests.**
+  - `test_ben_import_api.py`;
+  - `test_ben_fixtures.py`, with committed synthetic
+    `tests/fixtures/ben/*.ben` from `tests/ben/make_fixtures.py`;
+  - reference upload/parity tests;
+  - `browser-tests/ben-import.spec.js`.
+- **For owner UAT.** Upload the LGNG and PMJY `.ben` files via Upload
+  Recording → BEN.
+  - At the time this showed UTC (05:54:22 rather than 13:54:22);
+    DEC-122 later switched the display to local time.
+  - Expect frequency/power channels for PMJY.
+- **Found, then fixed by DEC-121.** The COMTRADE provider mis-read a
+  digital whose CFG name equals an analog's. BEN32 Slow exports do this
+  (`POWER BBTU` analog and digital). The digital's column was renamed
+  `_1` but its descriptor was not, so import classified it from the
+  analog column. The owner approved the fix, which is now in DEC-121.
+
+## Earlier — native BEN parser
+
+**Native BEN record parser (DEC-119, 2026-10-01). Backend, tests and docs
+only. Integrated later by DEC-120; owner UAT passed; merged.**
+
+- New package `backend/app/providers/ben/`:
+  - `layout`: every structural constant, named;
+  - `reader`: bounds-checked primitives;
+  - `parser`: `parse_ben()` / `parse_ben_file()` → `BenRecord`;
+  - `model`;
+  - `normalize`: `to_disturbance_record()`;
+  - `provider`: `BenProvider`, not registered;
+  - `errors`.
+- The format, evidence (proven / inferred / unknown) and open items are
+  in [BEN_FORMAT.md](BEN_FORMAT.md).
+- Tests:
+  - `test_ben_parser.py` (synthetic, always runs);
+  - `test_ben_reference_files.py` (marker `ben_reference`, needs
+    `--ben-reference-dir` pointing at the owner's "Tripping Event"
+    folder; files are matched by SHA-256 against
+    `tests/fixtures/ben/reference_manifest.json`; the files are not
+    committed).
+- Validated: LGNG and BAHS (Fast), and PMJY and BTGH (Slow), match their
+  BEN32 COMTRADE on every sample. AGJH and PMJY #2 pass structural
+  checks. BPHE and GPTH (older layout) are rejected explicitly.
+- **Next (needs owner go-ahead):** integrate `.ben` into
+  upload/normalization. First decide:
+  - `[OPEN]` the timezone policy: BEN is UTC, BEN32 COMTRADE is local
+    +08:00;
+  - `[OPEN]` where the nominal frequency comes from.
+- Note: there is no local `powerwave` clone on this Windows laptop, and
+  the GitHub repo is private to anonymous API. Per POWERWAVE_DISCOVERY
+  (`3156392`) powerwave ingests only COMTRADE/CSV/Excel, so it has no BEN
+  logic to reuse. This was not re-verified live.
+
+## Earlier — Calculator notation
 
 **Calculator phase-to-neutral notation (DEC-117 Amendment 3,
 2026-09-30).** Frontend, tests and docs; awaiting owner UAT.

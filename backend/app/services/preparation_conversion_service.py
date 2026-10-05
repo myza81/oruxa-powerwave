@@ -134,7 +134,7 @@ import pandas as pd
 from app.domain.channel_classification import UNDEFINED, canonical_engineering_quantity, classify_analog_channel
 from app.domain.channels import AnalogChannel
 from app.domain.disturbance_record import DisturbanceRecord
-from app.domain.metadata import RecordingMetadata
+from app.domain.metadata import DEFAULT_NOMINAL_FREQUENCY_HZ, RecordingMetadata
 from app.domain.preparation_issue import SEVERITY_BLOCKING
 from app.domain.preparation_session import PreparationSession
 from app.domain.source import ActiveSource, AnalogChannelSummary, SourceMetadata, utc_now
@@ -187,7 +187,7 @@ from app.services.workspace_registry import WorkspaceRegistry
 #: already consumes them as a real float -- widening those to Optional
 #: would be exactly the "existing waveform integration" redesign this
 #: slice must not perform.
-_DEFAULT_NOMINAL_FREQUENCY_HZ = 50.0
+_DEFAULT_NOMINAL_FREQUENCY_HZ = DEFAULT_NOMINAL_FREQUENCY_HZ  # shared with BEN import
 
 #: A transition is treated as "uniform" when every consecutive
 #: canonical-time delta stays within this RELATIVE tolerance of the

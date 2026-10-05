@@ -2,6 +2,7 @@ import pytest
 
 from app.config import (
     DEFAULT_CORS_ORIGINS,
+    DEFAULT_EVENT_RECONSTRUCTION_LARGE_GAP_WARNING_S,
     DEFAULT_MAX_EVENT_UPLOAD_SIZE_MB,
     ConfigurationError,
     load_settings,
@@ -135,3 +136,14 @@ def test_max_event_upload_size_mb_rejects_non_integer():
 def test_max_event_upload_size_mb_rejects_non_positive():
     with pytest.raises(ConfigurationError, match="MAX_EVENT_UPLOAD_SIZE_MB"):
         load_settings({**BASE_ENV, "MAX_EVENT_UPLOAD_SIZE_MB": "0"})
+
+
+def test_event_reconstruction_large_gap_warning_defaults_to_one_hour():
+    assert DEFAULT_EVENT_RECONSTRUCTION_LARGE_GAP_WARNING_S == 3600.0
+    assert load_settings(BASE_ENV).event_reconstruction_large_gap_warning_s == 3600.0
+
+
+def test_event_reconstruction_large_gap_warning_is_not_read_from_the_environment():
+    # Central default only, not user-facing yet (DEC-124 follow-up).
+    env = {**BASE_ENV, "EVENT_RECONSTRUCTION_LARGE_GAP_WARNING_S": "10"}
+    assert load_settings(env).event_reconstruction_large_gap_warning_s == 3600.0

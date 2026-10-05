@@ -14,6 +14,7 @@ from starlette.responses import JSONResponse
 from app.api.v1.calculated_channels import router as calculated_channels_v1_router
 from app.api.v1.compliance import router as compliance_v1_router
 from app.api.v1.engineering_contexts import router as engineering_contexts_v1_router
+from app.api.v1.event_reconstruction import router as event_reconstruction_v1_router
 from app.api.v1.measurement_groups import router as measurement_groups_v1_router
 from app.api.v1.per_unit import router as per_unit_v1_router
 from app.api.v1.preparation_sources import router as preparation_sources_v1_router
@@ -25,6 +26,7 @@ from app.config import Settings, load_settings
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.engineering_context_registry import EngineeringContextRegistry
+from app.services.event_reconstruction_registry import EventReconstructionRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.preparation_session_registry import PreparationSessionRegistry
@@ -112,6 +114,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # never had a source uploaded.
         app.state.reference_profile_registry = ReferenceProfileRegistry()
         app.state.reference_layer_registry = ReferenceLayerRegistry()
+        # Event Reconstruction (DEC-123/DEC-124): one reconstruction
+        # definition per workspace -- analysis state only, never source
+        # data and never Synchronise Sources state. See
+        # app.services.event_reconstruction_registry.
+        app.state.event_reconstruction_registry = EventReconstructionRegistry()
         yield
 
     app = FastAPI(title="Powerwave API", lifespan=lifespan)
@@ -183,6 +190,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(per_unit_v1_router)
     app.include_router(measurement_groups_v1_router)
     app.include_router(synchronization_v1_router)
+    app.include_router(event_reconstruction_v1_router)
     app.include_router(preparation_sources_v1_router)
     app.include_router(engineering_contexts_v1_router)
     app.include_router(compliance_v1_router)
