@@ -272,7 +272,11 @@ class TestPanelPurgeOnRemovalNeverRacesPlotlysOwnPendingAutoMarginCallback:
 class TestEmptyStateMessageUnchanged:
     """Do not redesign the empty-state UX -- the existing message and
     its existing, already-correct analog+digital gate must remain
-    exactly as they were."""
+    exactly as they were. (Later extended, not redesigned, by Waveform/
+    Event Reconstruction empty-state consistency -- see
+    TestWaveformToolbarStaysVisibleWhenEmpty below: a SECOND message is
+    added for the "no recording exists at all" case, this one kept
+    verbatim for "a recording exists but nothing is selected yet".)"""
 
     def test_empty_state_message_text_present(self):
         source = _source()
@@ -283,3 +287,94 @@ class TestEmptyStateMessageUnchanged:
         fn_idx = source.index("function wwUpdateEmptyState()")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
         assert "const empty = ww.panels.length === 0 && ww.digitalDisplayed.size === 0;" in fn_body
+
+
+class TestWaveformToolbarStaysVisibleWhenEmpty:
+    """Waveform/Event Reconstruction empty-state consistency (owner
+    ticket): Waveform's own #wwToolbar used to be hidden outright
+    whenever the workspace was empty (`document.getElementById(
+    "wwToolbar").hidden = empty;`) -- unlike Event Reconstruction's own
+    #wwErToolbar, which is NEVER hidden, individual tools disabling via
+    runtime state instead. Waveform now follows that same rule: the
+    toolbar itself is always visible (no `hidden` attribute in its
+    static markup, and wwUpdateEmptyState() no longer touches it); a
+    persistent panel-header shell (#wwEmptyWorkspaceHeader, reusing
+    Event Reconstruction's own .ww-tg-sticky-top/.ww-tg-header classes
+    verbatim) plus the existing #wwEmptyState message take over showing
+    "nothing to look at yet", mirroring Event Reconstruction's own
+    always-present #wwErCanvas header + #wwErEmptyState pattern."""
+
+    def test_wwtoolbar_has_no_static_hidden_attribute(self):
+        source = _source()
+        assert '<div class="ww-toolbar" id="wwToolbar" hidden>' not in source
+        assert '<div class="ww-toolbar" id="wwToolbar">' in source
+
+    def test_wwupdateemptystate_no_longer_hides_the_toolbar(self):
+        source = _source()
+        fn_idx = source.index("function wwUpdateEmptyState()")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert 'getElementById("wwToolbar")' not in fn_body
+
+    def test_empty_workspace_header_exists_and_reuses_er_canvas_header_classes(self):
+        source = _source()
+        assert '<div class="ww-tg-sticky-top" id="wwEmptyWorkspaceHeader">' in source
+        header = _function_body(source, '<div class="ww-tg-sticky-top" id="wwEmptyWorkspaceHeader">', "</div>\n                            </div>")
+        assert '<div class="ww-tg-header">' in header
+        assert 'class="ww-tg-header-title"' in header
+        assert 'class="ww-tg-header-meta"' in header
+
+    def test_empty_workspace_header_toggles_with_the_empty_state_message(self):
+        source = _source()
+        fn_idx = source.index("function wwUpdateEmptyState()")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert 'getElementById("wwEmptyWorkspaceHeader").hidden = !empty;' in fn_body
+        assert 'getElementById("wwEmptyState")' in fn_body
+
+    def test_empty_state_message_distinguishes_no_recording_from_no_selection(self):
+        """A dynamic message, read from the sidebar's own existing
+        recordings count badge (no new state) -- "No recordings loaded"
+        when zero sources exist at all, the pre-existing "Select
+        channels" wording once a source exists but nothing is picked
+        yet."""
+        source = _source()
+        fn_idx = source.index("function wwUpdateEmptyState()")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert '"No recordings loaded. Open or add a recording to begin waveform analysis."' in fn_body
+        assert '"Select channels from the sidebar to display waveforms."' in fn_body
+        assert 'getElementById("wwRecordingsCountBadge")' in fn_body
+
+    def test_empty_state_refreshed_on_waveform_nav_entry_and_on_recordings_render(self):
+        """Two refresh points, so the message is never stale: every time
+        the engineer navigates to Waveform (a first visit, before any
+        channel-toggle event has ever run this function for other
+        reasons), and every time the sidebar's own recordings list is
+        rebuilt (upload/removal/workspace-reset -- the badge this
+        message reads can change without ww.panels.length changing,
+        e.g. opening a new source, which no longer auto-displays any
+        channel)."""
+        source = _source()
+        nav_wiring = _function_body(
+            source,
+            'document.getElementById("mainNavWaveformBtn").addEventListener("click", () => {',
+            "});",
+        )
+        assert "wwUpdateEmptyState();" in nav_wiring
+        render_fn = _function_body(source, "async function wwRenderWorkspaceRecordings(sources) {", "\n        }\n")
+        assert 'badge.textContent = "(" + sources.length + ")";' in render_fn
+        assert "wwUpdateEmptyState();" in render_fn
+
+    def test_clear_workspace_button_now_disables_instead_of_hiding_when_empty(self):
+        """SUPERSEDED (owner ticket, "operational-actions placement"):
+        Clear Workspace's former hide-when-empty behaviour -- documented
+        here as "a deliberate, separate design choice predating this
+        ticket" at the time this test was first written -- is corrected
+        by a later, explicit owner instruction: it is a genuinely
+        supported Waveform action regardless of workspace state, so it
+        now disables rather than disappears, matching every other
+        control already migrated to this toolbar (panel-header tool
+        visibility rule)."""
+        source = _source()
+        fn_idx = source.index("function wwUpdateEmptyState()")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert 'getElementById("clearWorkspaceBtn").disabled = empty;' in fn_body
+        assert 'getElementById("clearWorkspaceBtn").hidden' not in fn_body

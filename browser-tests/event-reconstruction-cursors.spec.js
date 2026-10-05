@@ -412,7 +412,11 @@ test.describe("Event Reconstruction Slice 3E -- Waveform isolation", () => {
     const wfRow = page.locator('#channelGroups tr.channel-row--toggle[data-channel-kind="analog"]').first();
     if ((await wfRow.getAttribute("aria-pressed")) !== "true") await wfRow.click();
     await expect(wfRow).toHaveAttribute("aria-pressed", "true");
-    await page.locator("#wwTimeGroupCanvases .ww-tg-cursor-mode-btn").first().click();
+    // Waveform top-toolbar migration (owner ticket, DEC-158): the A/B
+    // Cursors mode toggle is page-level now (#wwCursorModeBtn), not a
+    // per-canvas local button -- targets the one Time Group displayed
+    // here via its own active/first-valid resolution.
+    await page.locator("#wwCursorModeBtn").click();
     await expect(page.locator("#wwTimeGroupCanvases .ww-tg-cursor-readout").first()).toBeVisible();
     await page.waitForTimeout(500);
     const waveform = () => page.evaluate(() => ({

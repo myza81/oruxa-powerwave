@@ -67,34 +67,57 @@ class TestPerGroupT0StateModel:
 
 
 class TestLocalT0ToolbarControl:
-    def test_t0_button_markup_lives_inside_the_canvas_template(self):
+    """SUPERSEDED by a later Waveform toolbar refinement ticket: TG-E's
+    own per-canvas `.ww-tg-t0-btn` moved to a page-level button
+    (#wwT0Btn) using the same wwActiveTimeGroupId() targeting model
+    Zoom X/Autoscale X/A-B Cursors already used -- see
+    test_frontend_time_group_toolbar.py's own TestWaveformTopToolbarMigration
+    ::test_t0_migrated_sync_removed for that migration's own coverage.
+    t0 itself still means exactly what Case A-M below originally proved
+    (one independent t0 per Time Group, gated on THAT group's own
+    Cursor A) -- only the control's location and target-resolution
+    moved, so these tests are updated in place rather than deleted."""
+
+    def test_t0_button_markup_no_longer_lives_inside_the_canvas_template(self):
         source = _source()
         fn_idx = source.index("function wwCreateTimeGroupCanvasDom(groupId)")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert fn_body.count("ww-tg-t0-btn") == 1
+        assert "ww-tg-t0-btn" not in fn_body
 
-    def test_button_is_wired_to_the_toggle_with_this_canvass_own_group_id(self):
+    def test_button_is_wired_globally_with_the_active_time_group_resolver(self):
         source = _source()
-        fn_idx = source.index("function wwWireTimeGroupToolbar(canvasEl, groupId)")
-        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert 'canvasEl.querySelector(".ww-tg-t0-btn")' in fn_body
-        assert "wwHandleSetOrClearT0ClickForGroup(groupId)" in fn_body
+        assert 'id="wwT0Btn"' in source
+        assert (
+            'document.getElementById("wwT0Btn").addEventListener("click", '
+            "() => wwHandleSetOrClearT0ClickForGroup(wwActiveTimeGroupId()));"
+        ) in source
 
     def test_old_global_t0_button_and_status_readout_are_fully_removed(self):
+        """The PRE-TG-E global button/readout stay removed -- #wwT0Btn
+        is a distinct, later id, never a reintroduction of #wwSetT0Btn."""
         source = _source()
         assert 'id="wwSetT0Btn"' not in source
         assert 'id="statusBarT0"' not in source
         assert 'id="statusBarT0Value"' not in source
 
     def test_case_f_group_2_set_t0_disabled_without_group_2s_own_cursor_a(self):
-        """Case F: a group's own button must gate on THAT group's own
-        Cursor A -- never a different group's."""
+        """Case F: the button must gate on the RESOLVED group's own
+        Cursor A -- never a different group's. wwSyncT0ControlsForGroup()
+        itself is gone (no per-canvas button left to refresh); the exact
+        same precondition now lives inline in
+        wwSyncGlobalWaveformToolbar(), against the SAME groupId =
+        wwActiveTimeGroupId() that function already resolved for every
+        other migrated control."""
         source = _source()
-        fn_idx = source.index("function wwSyncT0ControlsForGroup(groupId)")
+        fn_idx = source.index("function wwSyncGlobalWaveformToolbar()")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert "const cursors = wwTimeGroupCursorState(groupId);" in fn_body
-        assert "const cursorAReady = cursors.enabled && cursors.a.visible && Number.isFinite(cursors.a.time);" in fn_body
-        assert "btn.disabled = !hasT0 && !cursorAReady;" in fn_body
+        assert "const hasT0 = hasGroup && wwHasT0(groupId);" in fn_body
+        assert "const t0Cursors = wwTimeGroupCursorState(groupId);" in fn_body
+        assert (
+            "const cursorAReady = hasGroup && t0Cursors.enabled && t0Cursors.a.visible "
+            "&& Number.isFinite(t0Cursors.a.time);"
+        ) in fn_body
+        assert "t0Btn.disabled = !hasT0 && !cursorAReady;" in fn_body
         # Never a hidden fallback to any single "primary" group.
         assert "wwPrimaryTimeGroupId()" not in fn_body
 
@@ -114,7 +137,9 @@ class TestSetT0OnlyTouchesItsOwnGroup:
         assert "const sourceId = wwAnySourceIdForTimeGroup(groupId);" in fn_body
         assert "body: JSON.stringify({ source_id: sourceId, t0_workspace_time: cursors.a.time })" in fn_body
         assert "ww.timeGroupT0State.set(groupId, body.t0_workspace_time);" in fn_body
-        assert "wwSyncT0ControlsForGroup(groupId);" in fn_body
+        # Refreshes the page-level #wwT0Btn (and every other migrated
+        # control) rather than a per-canvas button that no longer exists.
+        assert "wwSyncGlobalWaveformToolbar();" in fn_body
         assert "wwApplyT0ToDisplayForGroup(groupId);" in fn_body
 
     def test_any_source_id_helper_only_considers_this_groups_own_members(self):
@@ -138,7 +163,7 @@ class TestClearT0OnlyTouchesItsOwnGroup:
         assert "const sourceId = wwAnySourceIdForTimeGroup(groupId);" in fn_body
         assert '"?source_id=" + encodeURIComponent(sourceId)' in fn_body
         assert "ww.timeGroupT0State.delete(groupId);" in fn_body
-        assert "wwSyncT0ControlsForGroup(groupId);" in fn_body
+        assert "wwSyncGlobalWaveformToolbar();" in fn_body
         assert "wwApplyT0ToDisplayForGroup(groupId);" in fn_body
 
     def test_toggle_handler_dispatches_by_this_groups_own_has_t0(self):
@@ -237,7 +262,7 @@ class TestCursorStabilityAcrossT0Changes:
     def test_apply_t0_to_display_never_assigns_a_cursor_time(self):
         source = _source()
         fn_idx = source.index("function wwApplyT0ToDisplayForGroup(groupId)")
-        fn_body = source[fn_idx : source.index("function wwSyncT0ControlsForGroup(groupId)", fn_idx)]
+        fn_body = source[fn_idx : source.index("async function wwSetT0FromCursorAForGroup(groupId)", fn_idx)]
         assert "cursors.a.time =" not in fn_body
         assert "cursors.b.time =" not in fn_body
         assert "timeGroupCursorState" not in fn_body

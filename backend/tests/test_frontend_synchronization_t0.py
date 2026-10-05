@@ -93,17 +93,21 @@ def test_set_t0_requires_cursor_a_to_be_placed():
     arbitrary time." -- both the guard clause inside the action itself
     AND the toolbar button's own disabled state must enforce this, using
     THIS group's own cursor state (wwTimeGroupCursorState(groupId)),
-    never another group's."""
+    never another group's. Waveform toolbar refinement (owner ticket):
+    the button-side gate moved from the now-deleted, per-canvas
+    wwSyncT0ControlsForGroup() into wwSyncGlobalWaveformToolbar()'s own
+    t0 section (see that test file's own coverage) -- the exact same
+    precondition, now against the page-level #wwT0Btn."""
     source = _source()
     set_idx = source.index("async function wwSetT0FromCursorAForGroup(groupId)")
     set_body = source[set_idx : source.index("async function wwClearT0ForGroup(groupId)", set_idx)]
     assert "const cursors = wwTimeGroupCursorState(groupId);" in set_body
     assert "if (!cursors.enabled || !cursors.a.visible || !Number.isFinite(cursors.a.time)) return;" in set_body
 
-    sync_idx = source.index("function wwSyncT0ControlsForGroup(groupId)")
-    sync_body = source[sync_idx : source.index("async function wwSetT0FromCursorAForGroup(groupId)", sync_idx)]
-    assert "const cursors = wwTimeGroupCursorState(groupId);" in sync_body
-    assert "btn.disabled = !hasT0 && !cursorAReady;" in sync_body
+    sync_idx = source.index("function wwSyncGlobalWaveformToolbar()")
+    sync_body = source[sync_idx : source.index("\n        }\n", sync_idx)]
+    assert "const t0Cursors = wwTimeGroupCursorState(groupId);" in sync_body
+    assert "t0Btn.disabled = !hasT0 && !cursorAReady;" in sync_body
 
 
 def test_apply_t0_to_display_never_refetches():
@@ -118,7 +122,7 @@ def test_apply_t0_to_display_never_refetches():
     group's rendering."""
     source = _source()
     fn_idx = source.index("function wwApplyT0ToDisplayForGroup(groupId)")
-    fn_body = source[fn_idx : source.index("function wwSyncT0ControlsForGroup(groupId)", fn_idx)]
+    fn_body = source[fn_idx : source.index("async function wwSetT0FromCursorAForGroup(groupId)", fn_idx)]
     assert "fetch(" not in fn_body
     assert "wwElapsedToPlotlyX(groupId, t)" in fn_body
     assert "wwSyncTimeGroupRuler(groupId);" in fn_body
@@ -128,16 +132,21 @@ def test_apply_t0_to_display_never_refetches():
 
 
 def test_local_toolbar_t0_control_exists_and_old_global_ones_are_gone():
-    """TG-E: "Set Cursor A as t=0"/"Clear t=0" moved into each Time Group
-    Canvas's own local toolbar -- the old global #wwSetT0Btn/#statusBarT0
-    are removed outright, not merely hidden, so there is exactly one
-    active way to set/clear a Time Group's own t0."""
+    """SUPERSEDED by a later Waveform toolbar refinement ticket: TG-E's
+    own per-canvas `.ww-tg-t0-btn` moved to the page-level #wwT0Btn (see
+    test_frontend_time_group_toolbar.py's own
+    TestWaveformTopToolbarMigration::test_t0_migrated_sync_removed) --
+    the PRE-TG-E global #wwSetT0Btn/#statusBarT0 this once superseded
+    stay removed, not reintroduced, so there is still exactly one active
+    way to set/clear a Time Group's own t0."""
     source = _source()
     fn_idx = source.index("function wwCreateTimeGroupCanvasDom(groupId)")
     fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-    assert fn_body.count("ww-tg-t0-btn") == 1
-    btn_idx = fn_body.index("ww-tg-t0-btn")
-    btn_tag = fn_body[max(0, btn_idx - 80) : fn_body.index(">", btn_idx)]
+    assert "ww-tg-t0-btn" not in fn_body
+
+    assert 'id="wwT0Btn"' in source
+    btn_idx = source.index('id="wwT0Btn"')
+    btn_tag = source[max(0, btn_idx - 80) : source.index(">", btn_idx)]
     assert "disabled" in btn_tag
 
     assert 'id="wwSetT0Btn"' not in source
@@ -152,22 +161,27 @@ def test_click_handler_wired_and_toggles_between_set_and_clear():
     assert "wwClearT0ForGroup(groupId);" in fn_body
     assert "wwSetT0FromCursorAForGroup(groupId);" in fn_body
 
-    wire_idx = source.index("function wwWireTimeGroupToolbar(canvasEl, groupId)")
-    wire_body = source[wire_idx : source.index("\n        }\n", wire_idx)]
-    assert 'canvasEl.querySelector(".ww-tg-t0-btn")' in wire_body
-    assert "wwHandleSetOrClearT0ClickForGroup(groupId)" in wire_body
+    # Waveform toolbar refinement (owner ticket): wired once, globally,
+    # against the page-level button -- not per-canvas any more.
+    assert (
+        'document.getElementById("wwT0Btn").addEventListener("click", '
+        "() => wwHandleSetOrClearT0ClickForGroup(wwActiveTimeGroupId()));"
+    ) in source
 
 
 def test_cursor_overlay_refreshes_t0_controls():
-    """Cursor A's own placement/removal must immediately update THAT
-    group's own button's enabled state -- wired from the same function
-    every other cursor-driven UI refresh already goes through, and now
-    unconditional (never gated on being the primary group -- the OLD
-    TG-D2-era limit this task's own predecessor slice left in place)."""
+    """Cursor A's own placement/removal must immediately update the
+    button's enabled state -- wired from the same function every other
+    cursor-driven UI refresh already goes through. Waveform toolbar
+    refinement (owner ticket): that refresh is now a full
+    wwSyncGlobalWaveformToolbar() resync (the button itself is
+    page-level, reflecting only the ACTIVE Time Group) rather than the
+    now-deleted, per-canvas wwSyncT0ControlsForGroup(groupId) -- still
+    unconditional, never gated on being any one "primary" group."""
     source = _source()
     fn_idx = source.index("function wwUpdateCursorOverlayForGroup(")
     fn_body = source[fn_idx : fn_idx + 1600]
-    assert "wwSyncT0ControlsForGroup(groupId);" in fn_body
+    assert "wwSyncGlobalWaveformToolbar();" in fn_body
 
 
 def test_event_time_axis_title_and_signed_cursor_formatting():

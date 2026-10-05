@@ -200,8 +200,12 @@ class TestEventReconstructionKeepsWaveformBoundaries:
             "channelsBySource", "calculatedChannels", "selectedChannels", "activeRecordId", "annotationUi", "loadSeq", "busy", "plot",
         ]
         plot_keys = re.findall(r"^ {16}(\w+):", state.split("plot: {", 1)[1], re.MULTILINE)
+        # "panelHeights" (drag-to-resize, owner ticket): session-local
+        # panel key -> user-resized height, the same renderer's-own-plot-
+        # state category as "panels"/"axisStates" immediately beside it --
+        # never persisted, never a channel-presentation override.
         assert plot_keys == [
-            "viewMode", "axisStates", "panels", "viewport", "fitAll", "atFitAll", "origin", "relayoutTimer",
+            "viewMode", "axisStates", "panelHeights", "panels", "viewport", "fitAll", "atFitAll", "origin", "relayoutTimer",
             "cursors", "cursorRequests", "cursorValuesTimer", "activeAxisKey", "activeAxisQuantity",
         ]
         for forbidden in ("PresentationOverrides", "channelColors", "ColorOverride", "DisplayName =", "localStorage"):
@@ -325,13 +329,20 @@ class TestEventReconstructionSelectionWorkflow:
         The "ms" unit stays visually bonded to the input via its own
         wrapper; Set/Reset keep their existing shared `.secondary`
         button class, untouched. Behaviour (numeric entry, data-er-
-        correction-input, Set/Reset handlers) is unchanged."""
+        correction-input, Set/Reset handlers) is unchanged.
+
+        Follow-up owner refinement: vertical padding reduced from 8px
+        to 3px (horizontal 10px unchanged) -- a deliberate, scoped
+        tweak to this one rule only, every other property (background/
+        border/border-radius/font-size/focus) stays exactly as DEC-153
+        first established."""
         source = _source()
         css = _between(source, ".ww-er-correction {", ".ww-er-record-row--ineligible")
         assert "background: var(--panel);" in css
         assert "border: 1px solid var(--panel-border);" in css
         assert "border-radius: var(--radius);" in css
-        assert "padding: 8px 10px;" in css
+        assert "padding: 3px 10px;" in css
+        assert "padding: 8px 10px;" not in css
         assert "font-size: 0.7rem;" in css
         assert ":focus" in css and "border-color: var(--accent-dim);" in css
         assert "width: 110px" not in css  # the old one-off compact override is gone
@@ -358,11 +369,15 @@ class TestEventReconstructionSelectionWorkflow:
         notify = _between(source, "function wwErNotifyWorkspaceChanged() {", "\n        }\n")
         assert 'if (shell.currentPage === "event-reconstruction") wwErRefresh();' in notify
         assert "wwErNotifyWorkspaceChanged();" in _between(source, "async function refreshAllSourceViews() {", "async function refreshSourceList()")
-        # Records never depend on Synchronise Sources (DEC-128), so a
-        # sync change is not an Event Reconstruction trigger.
-        assert "wwErNotifyWorkspaceChanged();" not in _between(
-            source, "async function wwSyncApplyOffsetChangeSideEffectsForGroup(groupId) {", "function wwRefreshSourceSyncBadges()"
-        )
+        # Records never depend on Synchronise Sources (DEC-128). That
+        # modal (and wwSyncApplyOffsetChangeSideEffectsForGroup(), its
+        # offset-change side-effect function this test used to check
+        # directly) was removed outright by a later owner ticket -- see
+        # test_frontend_time_group_sync.py's own removal coverage. A
+        # sync change can no longer be an Event Reconstruction trigger
+        # by construction: the function that could have called
+        # wwErNotifyWorkspaceChanged() does not exist any more.
+        assert "async function wwSyncApplyOffsetChangeSideEffectsForGroup(" not in source
 
     def test_large_gap_warning_comes_from_the_backend_response(self):
         notices = _between(_source(), "function wwErNoticesHtml() {", "function wwErMemberRowHtml(member)")
@@ -931,7 +946,18 @@ class TestEventReconstructionGroupedView:
         # the only place that builds a TITLE from one.
         active_target = _between(module, "function wwErLiveAxisEntries() {", "function wwErSyncActiveAxisVisual() {")
         assert active_target.count(".axis.quantity") == 3
-        assert module.count(".quantity") == title.count(".quantity") + active_target.count(".axis.quantity")
+        # Drag-to-resize (owner ticket): wwErPanelHeightKey() reads
+        # group.axis.quantity too -- a fourth legitimate reader, for the
+        # same underlying reason as the active-Y-axis-target remap above
+        # (the backend's quantity is the one thing that stays identical
+        # across an Engineering <-> Per Unit switch for the same logical
+        # axis; see TestEventReconstructionPanelResize for the full
+        # mode-invariance coverage). Still never a title string.
+        height_key = _between(source, "function wwErPanelHeightKey(spec) {", "\n        }\n")
+        assert height_key.count(".axis.quantity") == 1
+        assert module.count(".quantity") == (
+            title.count(".quantity") + active_target.count(".axis.quantity") + height_key.count(".axis.quantity")
+        )
         for use in ("text: panel.combined ? wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index))", "const title = wwErAxisTitle(panel.axes[0].axis, panel.traces);",
                     "const title = wwErAxisTitle(axis.axis, wwErAxisTraces(panel, index));"):
             assert use in module
@@ -1056,12 +1082,18 @@ class TestEventReconstructionCombinedView:
         assert not re.search(r'id="wwErViewCombinedBtn"[^>]*\bdisabled\b', page)
 
     def test_combined_panel_height_and_advisory_notice(self):
+        """Drag-to-resize (owner ticket) supersedes this test's own
+        original "still no resize grip" finding: WW_ER_COMBINED_PANEL_HEIGHT/
+        WW_ER_PANEL_HEIGHT remain each mode's own DEFAULT height (used
+        only for a genuinely new panel key, see
+        TestWaveformEventReconstructionPanelResize), and the handle is no
+        longer removed -- see that test class for the full coverage."""
         source = _source()
         assert "const WW_ER_COMBINED_PANEL_HEIGHT = 420;" in source
         assert "const WW_ER_COMBINED_AXIS_ADVISORY = 4;" in source
         create = _between(source, "function wwErCreatePanel(spec) {", "function wwErDestroyPanel(panel)")
-        assert 'panel.chartEl.style.height = (spec.combined ? WW_ER_COMBINED_PANEL_HEIGHT : WW_ER_PANEL_HEIGHT) + "px";' in create
-        assert ".ww-resize-handle\").remove();" in create  # still no resize grip
+        assert 'wwErHeightForPanelKey(heightKey, spec.combined ? WW_ER_COMBINED_PANEL_HEIGHT : WW_ER_PANEL_HEIGHT)' in create
+        assert ".ww-resize-handle\").remove();" not in create
         notice = _between(source, "function wwErSyncAxisNotice() {", "\n        }\n")
         assert "if (axes <= WW_ER_COMBINED_AXIS_ADVISORY) {" in notice
         assert 'id="wwErAxisNotice"' in _er_page(source)
@@ -1475,37 +1507,40 @@ class TestPowerwaveIconSystem:
         # Reconstruction's own Relative Time (enabled) also share one key.
         assert _icon_key(_element(source, "timeModeRelativeBtn", "button")) == "TIME_RELATIVE"
         assert _icon_key(_element(page, "wwErTimeRelativeBtn", "button")) == "TIME_RELATIVE"
-        # The A/B cursors icon used by every Time Group canvas and Event
-        # Reconstruction's own canvas.
+        # Waveform top-toolbar migration (owner ticket): Zoom X/Y,
+        # Autoscale X/Y and A/B Cursors are now page-level global buttons
+        # on Waveform too (wwZoomXInBtn/wwZoomXOutBtn/wwZoomYInBtn/
+        # wwZoomYOutBtn/wwAutoscaleXBtn/wwAutoscaleYBtn/wwCursorModeBtn,
+        # in #wwToolbar) -- compared directly against Event
+        # Reconstruction's own equivalent global buttons, not against
+        # wwCreateTimeGroupCanvasDom()'s own canvas (which no longer
+        # carries any of these; only the hidden Fit Selected Record stub
+        # remains there, checked separately below).
         canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
-        assert 'data-ww-icon="CURSORS_AB"' in canvas
-        assert _icon_key(_element(page, "wwErCursorModeBtn", "button")) == "CURSORS_AB"
-        # DEC-141: Autoscale X (DEC-144: renamed from Reset Time View) /
-        # Autoscale Y / Fit Selected Record all now reference the same
-        # registry key on both pages (Waveform's own Fit Selected Record
-        # is its new, permanently-disabled stub -- it has no "active
-        # record" concept of its own).
-        for key in ("AUTOSCALE_X", "AUTOSCALE_Y", "FIT_SELECTED_RECORD"):
-            assert canvas.count(f'data-ww-icon="{key}"') == 1, key
-            assert page.count(f'data-ww-icon="{key}"') == 1, key
-        # DEC-141: the Zoom In/Out MAIN action -- Waveform's own dynamic
-        # X/Y choice (ZOOM_X_IN/_OUT by default, swapped to ZOOM_Y_IN/_OUT
-        # by wwSyncTimeGroupZoomControls()) and Event Reconstruction's own
-        # static, always-X (it has no axis choice to make).
-        for key in ("ZOOM_X_IN", "ZOOM_X_OUT"):
-            assert f'data-ww-icon="{key}"' in canvas, key
-        assert _icon_key(_element(page, "wwErZoomInBtn", "button")) == "ZOOM_X_IN"
-        assert _icon_key(_element(page, "wwErZoomOutBtn", "button")) == "ZOOM_X_OUT"
-        # DEC-141: the Y-axis Scale family's own dedicated Zoom In/Out --
-        # Event Reconstruction's own (permanently disabled: no active-Y-
-        # axis-target concept) use the SAME ZOOM_Y_IN/_OUT composites
-        # Waveform's dynamic swap uses, never a separate definition.
-        assert _icon_key(_element(page, "wwErZoomYInBtn", "button")) == "ZOOM_Y_IN"
-        assert _icon_key(_element(page, "wwErZoomYOutBtn", "button")) == "ZOOM_Y_OUT"
-        # The zoom-axis caret: Waveform's dynamic template only now --
-        # Event Reconstruction retired its own (always-disabled, never
-        # wired) copy once it gained dedicated Y buttons (DEC-141).
-        assert canvas.count('data-ww-icon="CARET_DOWN"') == 2
+        assert "CURSORS_AB" not in canvas and "AUTOSCALE_X" not in canvas and "AUTOSCALE_Y" not in canvas
+        for wf_id, er_id, key in (
+            ("wwCursorModeBtn", "wwErCursorModeBtn", "CURSORS_AB"),
+            ("wwAutoscaleXBtn", "wwErResetViewBtn", "AUTOSCALE_X"),
+            ("wwAutoscaleYBtn", "wwErAutoscaleYBtn", "AUTOSCALE_Y"),
+            ("wwZoomXInBtn", "wwErZoomInBtn", "ZOOM_X_IN"),
+            ("wwZoomXOutBtn", "wwErZoomOutBtn", "ZOOM_X_OUT"),
+            ("wwZoomYInBtn", "wwErZoomYInBtn", "ZOOM_Y_IN"),
+            ("wwZoomYOutBtn", "wwErZoomYOutBtn", "ZOOM_Y_OUT"),
+        ):
+            assert _icon_key(_element(source, wf_id, "button")) == key, wf_id
+            assert _icon_key(_element(page, er_id, "button")) == key, er_id
+        # Fit Selected Record: Waveform's own disabled-and-hidden stub
+        # (no "active record" concept of its own) stays canvas-local,
+        # unaffected by this ticket -- genuinely unrelated to the
+        # page-level migration above.
+        assert canvas.count('data-ww-icon="FIT_SELECTED_RECORD"') == 1
+        assert page.count('data-ww-icon="FIT_SELECTED_RECORD"') == 1
+        # The zoom-axis caret/dropdown (CARET_DOWN) belonged ONLY to the
+        # per-Time-Group split-button's own X/Y axis chooser -- removed
+        # along with it (Zoom X and Zoom Y are now each their own
+        # dedicated global button, never a dropdown choice); Event
+        # Reconstruction never had this concept either.
+        assert "CARET_DOWN" not in canvas
         assert "wwErZoomInAxisBtn" not in page and "wwErZoomOutAxisBtn" not in page
         # The four annotation-type menu items, both menus.
         for kind, key in (("text_note", "ANNOTATION_TEXT_NOTE"), ("callout", "ANNOTATION_CALLOUT"),
@@ -1609,22 +1644,29 @@ class TestEventReconstructionToolConsistency:
         assert toolbar.index('id="wwErCursorModeBtn"') < toolbar.index('id="wwErAnnotateSplit"')
 
     def test_equivalent_canvas_tools_reuse_waveforms_classes_and_exact_tooltips(self):
-        """Section 1/9/18: not just the tooltip string -- the same compact
-        button CLASS every one of these controls carries (DEC-141: Event
-        Reconstruction's own copies are now `.ww-icon-btn`, consolidated
-        into the global header, since the owner's own explicit "do not
-        leave Reset/Autoscale/Zoom as a large text button" instruction for
-        THIS page -- Waveform's own canvas-toolbar precedent, DEC-139, is
-        unaffected), and the canonical "Time Axis"/"Selected Y Axis"
-        wording (DEC-140) in place of the old generic "X axis"/"Y axis"."""
+        """Section 1/9/18, updated by the Waveform top-toolbar migration
+        (owner ticket): these controls are no longer canvas-local on
+        Waveform -- both pages now carry them as page-level global
+        buttons sharing the identical class/wording, which is an even
+        tighter proof of reuse than the former "same class, different
+        scope" comparison this test originally made. `.ww-tg-reset-
+        view-btn`/`.ww-tg-autoscale-btn`/`.ww-tg-cursor-mode-btn` are
+        legacy-named (TG-D1/TG-D2 era) but still the correct, live,
+        shared classes for this family on both pages."""
         source = _source()
         page = _er_page(source)
         canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
         for shared_class in ("ww-tg-reset-view-btn", "ww-tg-autoscale-btn", "ww-tg-cursor-mode-btn"):
-            assert shared_class in canvas, shared_class
+            assert shared_class not in canvas, shared_class
+            assert shared_class in source, shared_class  # still present, just page-level now
             assert shared_class in page, shared_class
+        assert 'class="ww-icon-btn" id="wwZoomXInBtn"' in source
+        assert 'class="ww-icon-btn" id="wwZoomXOutBtn"' in source
         assert 'class="ww-icon-btn" id="wwErZoomInBtn"' in page
         assert 'class="ww-icon-btn" id="wwErZoomOutBtn"' in page
+        assert 'class="ww-icon-btn ww-tg-reset-view-btn" id="wwAutoscaleXBtn"' in source
+        assert 'class="ww-icon-btn ww-tg-autoscale-btn" id="wwAutoscaleYBtn"' in source
+        assert 'class="ww-icon-btn ww-tg-cursor-mode-btn" id="wwCursorModeBtn"' in source
         assert 'class="ww-icon-btn ww-tg-reset-view-btn" id="wwErResetViewBtn"' in page
         assert 'class="ww-icon-btn ww-tg-autoscale-btn" id="wwErAutoscaleYBtn"' in page
         assert 'class="ww-icon-btn ww-tg-cursor-mode-btn" id="wwErCursorModeBtn"' in page
@@ -1635,8 +1677,18 @@ class TestEventReconstructionToolConsistency:
             'id="wwErAutoscaleYBtn" title="Autoscale Y" aria-label="Autoscale Y" disabled>',
         ):
             assert markup in page, markup
-        for base in ("Zoom In — Time Axis", "Zoom Out — Time Axis", "Choose Zoom In axis", "Choose Zoom Out axis"):
-            assert base in canvas
+        for markup in (
+            'id="wwZoomXInBtn" title="Zoom In — Time Axis" aria-label="Zoom In — Time Axis" disabled>',
+            'id="wwZoomXOutBtn" title="Zoom Out — Time Axis" aria-label="Zoom Out — Time Axis" disabled>',
+            'id="wwAutoscaleXBtn" title="Autoscale X" aria-label="Autoscale X" disabled>',
+            'id="wwAutoscaleYBtn" title="Autoscale Y" aria-label="Autoscale Y" disabled>',
+        ):
+            assert markup in source, markup
+        # The former per-Time-Group X/Y axis-choice dropdown wording is
+        # gone along with the split-button it belonged to -- Zoom X and
+        # Zoom Y are each their own dedicated button now, same as Event
+        # Reconstruction's own pattern.
+        assert "Choose Zoom In axis" not in source and "Choose Zoom Out axis" not in source
         for old in ("never beyond Fit All", "Fit All and autoscale Y on every panel", "Autoscale Y on every panel",
                     "Event Reconstruction zooms the time axis only", "— X axis", "— Y axis"):
             assert old not in page, old
@@ -1645,10 +1697,14 @@ class TestEventReconstructionToolConsistency:
         source = _source()
         page = _er_page(source)
         canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
-        assert 'data-ww-icon="CURSORS_AB"' in canvas
+        assert "CURSORS_AB" not in canvas  # page-level only now, see wwCursorModeBtn
+        wf_cursor = _element(source, "wwCursorModeBtn", "button")
         er_cursor = _element(page, "wwErCursorModeBtn", "button")
+        assert _icon_key(wf_cursor) == "CURSORS_AB"
         assert _icon_key(er_cursor) == "CURSORS_AB"
+        assert 'class="ww-icon-btn ww-tg-cursor-mode-btn"' in wf_cursor
         assert 'class="ww-icon-btn ww-tg-cursor-mode-btn"' in er_cursor
+        assert 'title="A/B Time Cursors" aria-label="A/B Time Cursors"' in wf_cursor
         assert 'title="A/B Time Cursors" aria-label="A/B Time Cursors"' in er_cursor
 
     def test_event_reconstruction_specific_tools_get_their_own_icon_same_compact_design(self):
@@ -1741,50 +1797,36 @@ class TestEventReconstructionToolConsistency:
         for forbidden in (".ww-er-fit-record-btn:disabled", "#wwErCanvasToolbar .ww-icon-btn:disabled", "#wwErToolbar .secondary:disabled"):
             assert forbidden not in source, forbidden
 
-    def test_waveform_toolbar_is_unchanged(self):
+    def test_waveform_toolbar_global_annotate_controls_are_unchanged(self):
+        """Renamed from the original "toolbar is unchanged" (that framing
+        is no longer accurate -- the Waveform top-toolbar migration, owner
+        ticket, deliberately DOES change the toolbar, moving Zoom X/Y,
+        Autoscale X/Y and A/B Cursors to page level and removing their
+        local canvas duplicates; see DECISIONS.md for the tracked record
+        of that intentional change). What genuinely IS unchanged by that
+        ticket: the pre-existing global Annotate/Annotations controls."""
         source = _source()
         assert '<button type="button" class="ww-icon-btn" id="wwAnnotateBtn" aria-haspopup="menu" aria-expanded="false" aria-pressed="false" title="Annotate" aria-label="Annotate">' in source
         assert '<button class="ww-icon-btn" type="button" id="wwAnnotationListBtn" aria-pressed="false" aria-expanded="false" title="Annotations" aria-label="Annotations">' in source
-        canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
-        for wording in ("Autoscale X for this Time Group", "Autoscale Y for this Time Group",
-                        "Choose Zoom In axis", "A/B Time Cursors for this Time Group"):
-            assert wording in canvas, wording
-        # Section 18's new wording lands on BOTH pages via the one shared
-        # sync function (the owner's own worked example: "Zoom In — Time
-        # Axis" if the ER function is the same) -- Waveform's zoom
-        # behaviour/markup structure is otherwise untouched by THAT
-        # ticket. Waveform toolbar migration (later ticket): three
-        # `.ww-toolbar-sep` hairlines are deliberately added here, giving
-        # this toolbar the same "2px within a family, a hairline between
-        # families" grouping the global `.ww-toolbar` already has --
-        # see test_tg_toolbar_has_family_separators_matching_the_global_
-        # toolbar_language below for the full proof.
-        assert canvas.count("ww-toolbar-sep") == 3
 
-    def test_tg_toolbar_has_family_separators_matching_the_global_toolbar_language(self):
-        """Waveform toolbar migration: the per-Time-Group canvas toolbar
-        now groups into the same families, in the same order, as Event
-        Reconstruction's own header -- [Zoom In][Zoom Out] sep
-        [Autoscale X][Autoscale Y][Fit Selected Record] sep [A/B Cursors]
-        sep [t0][Synchronize Sources] -- each family 2px within itself,
-        a hairline between families, never a joined/segmented control."""
+    def test_tg_toolbar_is_now_local_controls_only(self):
+        """Waveform top-toolbar migration (owner ticket), superseding the
+        former "canvas toolbar mirrors the global family grouping" test:
+        Zoom In/Out, Autoscale X/Y and A/B Cursors no longer live in this
+        local canvas toolbar at all (moved to the page-level #wwToolbar,
+        see TestWaveformTopToolbarMigration below). A LATER Waveform
+        toolbar refinement ticket moved t0 out the same way and removed
+        Synchronize Sources outright (see test_frontend_time_group_sync.py's
+        own removal coverage) -- what remains now is just the hidden Fit
+        Selected Record stub, with no trailing separator (nothing left
+        to separate it from)."""
         source = _source()
         canvas = _between(source, "function wwCreateTimeGroupCanvasDom(", "\n        }\n")
-        zoom_out_end = canvas.index("ww-tg-zoom-out-split")
-        sep1 = canvas.index("ww-toolbar-sep", zoom_out_end)
-        reset_start = canvas.index("ww-tg-reset-view-btn")
-        assert sep1 < reset_start  # first separator precedes the Fit/Scale family
-        fit_record_start = canvas.index("ww-tg-fit-record-btn")
-        assert reset_start < fit_record_start  # Autoscale X/Y precede Fit Record, no sep between
-        sep2 = canvas.index("ww-toolbar-sep", fit_record_start)
-        cursor_start = canvas.index("ww-tg-cursor-mode-btn")
-        assert fit_record_start < sep2 < cursor_start
-        sep3 = canvas.index("ww-toolbar-sep", cursor_start)
-        t0_start = canvas.index("ww-tg-t0-btn")
-        assert cursor_start < sep3 < t0_start
-        sync_start = canvas.index("ww-tg-sync-btn")
-        assert t0_start < sync_start
-        assert "ww-toolbar-sep" not in canvas[t0_start:sync_start]  # t0/Sync are one family
+        for gone in ("ww-tg-zoom-in-split", "ww-tg-zoom-out-split", "ww-tg-reset-view-btn",
+                     "ww-tg-autoscale-btn", "ww-tg-cursor-mode-btn", "ww-tg-t0-btn", "ww-tg-sync-btn"):
+            assert gone not in canvas, gone
+        assert "ww-tg-fit-record-btn" in canvas
+        assert '<span class="ww-toolbar-sep"' not in canvas
 
     def test_shared_toolbar_primitives_never_introduce_shared_state(self):
         """Section 12/19/24: the same icon/component, ER's own handler and
@@ -2191,3 +2233,209 @@ class TestPowerwaveIconAssets:
         automatically; nothing else in it would either."""
         dockerfile = (FRONTEND.parent / "Dockerfile").read_text(encoding="utf-8")
         assert "COPY assets /usr/share/nginx/html/assets" in dockerfile
+
+    def test_favicon_declared_once_via_relative_asset_path(self):
+        """Branding ticket: the app previously declared no favicon at
+        all -- one `<link rel="icon">` is added in `<head>`, referencing
+        frontend/assets/branding/favicon.svg by the SAME relative-path
+        convention every other asset reference in this file already
+        uses (never an absolute/environment-specific URL, never a
+        base64-embedded duplicate), so it resolves correctly under the
+        existing Dockerfile's own `COPY assets ...` regardless of
+        mount path. Exactly one declaration -- no competing/obsolete
+        second favicon link anywhere."""
+        source = _source()
+        head = source[: source.index("</head>")]
+        assert head.count('rel="icon"') == 1
+        assert 'rel="shortcut icon"' not in source
+        assert 'apple-touch-icon' not in source
+        assert '<link rel="icon" type="image/svg+xml" href="assets/branding/favicon.svg">' in head
+        assert 'href="/assets/branding/favicon.svg"' not in head  # no leading slash -- same relative convention as every other asset reference
+        assert "data:image" not in head  # never a base64-embedded duplicate
+        asset_path = FRONTEND.parent / "assets" / "branding" / "favicon.svg"
+        assert asset_path.is_file()
+
+
+class TestEventReconstructionPanelResize:
+    """Drag-to-resize for Event Reconstruction waveform panels (owner
+    ticket), both Grouped and Combined. The shared `.ww-resize-handle`
+    markup/CSS (frontend/index.html's own `wwPanelMarkupHtml()`, already
+    proven by Waveform's own wwWireResizeHandle()) is kept instead of
+    removed at panel creation and wired through a NEW, parallel set of
+    functions (wwErSetPanelHeightImmediate/wwErResizePanelPlot/
+    wwErSetPanelHeight/wwErWireResizeHandle) that are an EXACT structural
+    mirror of Waveform's own -- same Pointer Capture mechanics, same
+    cheap-write-every-pointermove/expensive-rAF-coalesced-Plotly-resize
+    split, same authoritative final write on pointerup/pointercancel --
+    adapted only for this page's own panel.heightKey/
+    wwErState.plot.panelHeights identity instead of
+    panel.groupKey/ww.panelHeights. panel.heightKey (wwErPanelHeightKey())
+    is deliberately NOT the same string as panel.key/spec.key -- see
+    test_panel_height_key_is_mode_invariant_for_a_shared_axis for why.
+    Reuses Waveform's own min/max tokens
+    (WW_MIN_PANEL_HEIGHT/WW_MAX_PANEL_HEIGHT) and wwClampPanelHeight()
+    directly -- no second, ER-specific pair of constants."""
+
+    def test_resize_handle_is_kept_not_removed_at_creation(self):
+        source = _source()
+        create = _between(source, "function wwErCreatePanel(spec) {", "function wwErDestroyPanel(panel)")
+        assert ".ww-resize-handle\").remove();" not in create
+        assert 'panel.resizeHandleEl = container.querySelector(".ww-resize-handle");' in create
+        assert "wwErWireResizeHandle(panel);" in create
+
+    def test_grouped_and_combined_both_get_the_handle_no_special_casing(self):
+        """The handle is wired unconditionally -- unlike the header,
+        which strips its own interactive attributes for Combined (DEC-142:
+        Combined targets per-axis via the legend, not the header), the
+        resize handle has no Grouped/Combined branch at all."""
+        source = _source()
+        create = _between(source, "function wwErCreatePanel(spec) {", "function wwErDestroyPanel(panel)")
+        resize_section = create[create.index('panel.resizeHandleEl = container.querySelector(".ww-resize-handle");') :]
+        assert "if (spec.combined)" not in resize_section
+
+    def test_initial_height_resolves_from_stored_or_mode_default(self):
+        source = _source()
+        create = _between(source, "function wwErCreatePanel(spec) {", "function wwErDestroyPanel(panel)")
+        assert "const heightKey = wwErPanelHeightKey(spec);" in create
+        assert "height: wwErHeightForPanelKey(heightKey, spec.combined ? WW_ER_COMBINED_PANEL_HEIGHT : WW_ER_PANEL_HEIGHT)," in create
+        assert 'panel.chartEl.style.height = panel.height + "px";' in create
+
+    def test_panel_height_key_is_mode_invariant_for_a_shared_axis(self):
+        """The owner ticket requires a unit-mode switch to not reset a
+        resized panel's height. A Grouped panel's own spec.key is built
+        from the backend's *_display_axis_key, which genuinely differs
+        between Engineering and Per Unit for the SAME logical axis (DEC-138:
+        "Voltage|kV" vs "Voltage|raw:pu") -- so height persistence must
+        key off something else: the mode-invariant *_display_axis_quantity
+        ("Voltage" either way) for a shared axis, or the already mode-
+        invariant channel-selection-based group.key for a solo panel
+        (axis.key === null has no quantity to fall back on)."""
+        source = _source()
+        fn_idx = source.index("function wwErPanelHeightKey(spec)")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert 'if (spec.combined) return "combined";' in fn_body
+        assert "const group = spec.axes[0];" in fn_body
+        assert 'return group.axis.key !== null ? "quantity:" + group.axis.quantity : group.key;' in fn_body
+        assert fn_idx < source.index("function wwErHeightForPanelKey(key, defaultHeight)")
+
+    def test_height_for_panel_key_reads_the_session_local_map_falling_back_to_the_default(self):
+        source = _source()
+        fn_idx = source.index("function wwErHeightForPanelKey(key, defaultHeight)")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert "wwErState.plot.panelHeights.get(key)" in fn_body
+        assert "return stored !== undefined ? stored : defaultHeight;" in fn_body
+
+    def test_panel_heights_state_is_session_local_never_persisted(self):
+        source = _source()
+        assert "panelHeights: new Map()," in source
+        resize_fns = _between(
+            source, "function wwErHeightForPanelKey(key, defaultHeight)", "function wwErCreatePanel(spec)"
+        )
+        for forbidden in ("localStorage", "sessionStorage", "fetch(", "PUT", "POST"):
+            assert forbidden not in resize_fns, forbidden
+
+    def test_immediate_write_is_the_cheap_half_no_plotly_call(self):
+        """Safe to call on every raw pointermove -- clamps, stores, writes
+        the inline style only; never touches Plotly (the same contract
+        Waveform's own wwSetPanelHeightImmediate() documents)."""
+        source = _source()
+        fn_idx = source.index("function wwErSetPanelHeightImmediate(panel, height)")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert "wwClampPanelHeight(height)" in fn_body
+        assert 'panel.chartEl.style.height = clamped + "px";' in fn_body
+        assert "wwErState.plot.panelHeights.set(panel.heightKey, clamped);" in fn_body
+        assert "Plotly" not in fn_body
+
+    def test_resize_panel_plot_is_scoped_to_one_panel_only(self):
+        """Dragging one Grouped panel's handle must never resize another
+        Grouped panel's own Plotly instance -- the function takes exactly
+        one panel and calls Plotly.Plots.resize on exactly that panel's
+        own chartEl, never a loop over wwErState.plot.panels."""
+        source = _source()
+        fn_idx = source.index("function wwErResizePanelPlot(panel)")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert "Plotly.Plots.resize(panel.chartEl);" in fn_body
+        assert "for (const panel of" not in fn_body
+        assert "wwErDrawCursors();" in fn_body
+
+    def test_set_panel_height_commits_both_the_immediate_write_and_the_plotly_resize(self):
+        source = _source()
+        fn_idx = source.index("function wwErSetPanelHeight(panel, height)")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert "wwErSetPanelHeightImmediate(panel, height)" in fn_body
+        assert "wwErResizePanelPlot(panel);" in fn_body
+
+    def test_wire_resize_handle_uses_pointer_capture_and_rejects_non_primary_pointers(self):
+        source = _source()
+        fn_idx = source.index("function wwErWireResizeHandle(panel)")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert "handle.setPointerCapture(event.pointerId)" in fn_body
+        assert "handle.releasePointerCapture(event.pointerId)" in fn_body
+        assert 'if (event.button !== undefined && event.button !== 0) return;' in fn_body
+
+    def test_wire_resize_handle_splits_cheap_write_from_coalesced_plotly_resize(self):
+        """Every pointermove applies the immediate (cheap) write; the
+        expensive Plotly resize is scheduled at most once per animation
+        frame via requestAnimationFrame, not called directly from
+        pointermove -- the same perceived-responsiveness split Waveform's
+        own handle uses."""
+        source = _source()
+        fn_idx = source.index("function wwErWireResizeHandle(panel)")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        move_idx = fn_body.index("function onPointerMove(event)")
+        move_body = fn_body[move_idx : fn_body.index("\n            }\n", move_idx)]
+        assert "wwErSetPanelHeightImmediate(panel, dragStartHeight + delta);" in move_body
+        assert "requestAnimationFrame(flushPlotlyResize)" in move_body
+        assert "wwErResizePanelPlot" not in move_body  # never called directly from pointermove
+
+    def test_wire_resize_handle_final_write_on_pointerup_is_authoritative(self):
+        source = _source()
+        fn_idx = source.index("function wwErWireResizeHandle(panel)")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        end_idx = fn_body.index("function endDrag(event)")
+        end_body = fn_body[end_idx : fn_body.index("\n            }\n", end_idx)]
+        assert "wwErSetPanelHeight(panel, dragStartHeight + delta);" in end_body
+        assert "cancelAnimationFrame(rafId);" in end_body
+
+    def test_minimum_and_maximum_reuse_waveforms_own_tokens(self):
+        """No second, ER-specific height-clamp constant pair -- reuses
+        WW_MIN_PANEL_HEIGHT/WW_MAX_PANEL_HEIGHT and wwClampPanelHeight()
+        directly, the same minimum a collapsed-to-unusable panel is
+        already guarded against on the Waveform page."""
+        source = _source()
+        assert "const WW_MIN_PANEL_HEIGHT = 100;" in source
+        assert "const WW_MAX_PANEL_HEIGHT = 600;" in source
+        immediate = _between(source, "function wwErSetPanelHeightImmediate(panel, height)", "\n        }\n")
+        assert "wwClampPanelHeight(height)" in immediate
+        assert "WW_ER_MIN" not in source and "WW_ER_MAX" not in source
+
+    def test_resize_handle_accessible_label_tracks_the_panels_own_title(self):
+        """Mirrors the header's own rename-follows-live-title pattern
+        immediately above it -- "Resize <title> panel height" for a
+        Grouped axis, "Resize All selected channels · N Y axes panel
+        height" for Combined."""
+        source = _source()
+        fn_idx = source.index("function wwErRefreshPanelPresentation(panel)")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert 'panel.resizeHandleEl.setAttribute("aria-label", "Resize " + resizeLabel + " panel height");' in fn_body
+
+    def test_no_new_css_rule_added_the_shared_resize_handle_style_is_reused(self):
+        """The shared `.ww-resize-handle`/`.ww-resize-handle::after` rule
+        (grip mark, hover/active accent, ns-resize cursor, theme tokens)
+        is defined exactly once and now styles both Waveform's own panels
+        and Event Reconstruction's -- never a second, page-specific
+        copy."""
+        source = _source()
+        assert source.count(".ww-resize-handle {") == 1
+        rule = _between(source, ".ww-resize-handle {", "\n        }\n")
+        assert "cursor: ns-resize;" in rule
+        assert "touch-action: none;" in rule
+
+    def test_empty_state_never_creates_a_panel_so_never_creates_a_handle(self):
+        """wwErViewPanels() returns an empty array when there is nothing
+        to plot (no groups) -- no panel object, no DOM, no handle, by
+        construction -- never a separate empty-state guard needed."""
+        source = _source()
+        view_panels = _between(source, "function wwErViewPanels(groups, viewMode)", "\n        }\n")
+        assert "groups.length ? [{ key: \"combined\"" in view_panels
+        assert "return groups.map((group)" in view_panels

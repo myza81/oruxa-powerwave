@@ -9,7 +9,7 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-10-02** — **Event Reconstruction Combined
+Last meaningful update: **2026-10-05** — **engineering tools and workflow batch** (DEC-155 to DEC-165: Waveform/Event Reconstruction toolbar alignment, Analyser recording-state fix, playback speeds, Power & Current calculator, branding/icon migrations), on branch `feat/event-reconstruction`, not merged. Before that, on 2026-10-02: **Event Reconstruction Combined
 Multi-Axis View** (DEC-132), on top of the Grouped Measurement View
 (DEC-131), A/B cursors (Slice 3E, DEC-130),
 navigation (Slice 3D, DEC-129), the first plotted reconstruction (Slice
@@ -19,6 +19,27 @@ complete. Earlier, on 2026-10-01:
 **Native BEN import: owner UAT passed; merged to `main`** (DEC-119
 parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
 DEC-122 display timezone).
+
+
+**Engineering tools and workflow batch (DEC-155 to DEC-165), 2026-10-05.**
+
+- **Waveform/Event Reconstruction toolbars** (DEC-155 to DEC-161): page-level
+  Zoom X/Y, Autoscale X/Y, A/B Cursors and t0; Synchronize Sources removed;
+  Waveform empty state; ER drag-resizable panels.
+- **Analyser (DEC-162).** The "No recording loaded" hint reflects whether a
+  recording actually exists; a confirmed-empty workspace publishes an empty
+  Engineering Context list. Recording mode availability is still
+  `contexts.length > 0`.
+- **Playback (DEC-163).** Speeds 0.005x to 4x (nine values); Restart uses the
+  registry icon, hydrated by `wwWirePlaybackControls()`.
+- **Calculator (DEC-164).** Line / Phase Voltage plus **Power & Current**
+  (Current, P-Q-S, Power Factor), frontend-local, with a generic
+  V<sub>LL</sub> subscript added to the shared formatter.
+- **Branding (DEC-165).** Favicon, Compliance Voltage and Calculator icons
+  come from owner SVG assets through the registry.
+- **Test conventions worth knowing.** Static tests locate shared CSS rules
+  by selector text (wrap new selectors in `:is()`); never run two
+  Playwright invocations at once (shared ports 8000/8101).
 
 **Event Reconstruction (DEC-123 to DEC-132) — Slices 0–3E + Grouped and Combined Views.**
 
@@ -237,8 +258,70 @@ DEC-122 display timezone).
     disabled** (DEC-154, reversing DEC-141's own opposite instruction
     for the same controls — flagged in DEC-154's own "Open" item): a
     tool the page genuinely supports but is temporarily unavailable at
-    runtime is unaffected, still rendered and disabled as before. See
-    [POWERWAVE_ICON_SYSTEM.md](POWERWAVE_ICON_SYSTEM.md).
+    runtime is unaffected, still rendered and disabled as before.
+    **Waveform's own top toolbar no longer hides when the workspace is
+    empty** (DEC-155, implemented and tested, owner-reviewed 2026-10-05 and committed) — matching Event Reconstruction's own `#wwErToolbar`,
+    which was never hidden either; a persistent panel-header shell
+    (`#wwEmptyWorkspaceHeader`, reusing Event Reconstruction's own
+    canvas-header classes verbatim) plus a state-aware empty-state
+    message ("No recordings loaded..." vs "Select channels...") take
+    over showing "nothing to look at yet". **Waveform gains its own
+    page-level Y Zoom In/Out pair** (DEC-156, implemented and tested,
+    owner-reviewed 2026-10-05 and committed) — `#wwZoomYInBtn`/
+    `#wwZoomYOutBtn`, targeting the pre-existing `wwActivePanel()`
+    resolver (Waveform has exactly one Y axis per panel, so "active
+    axis" and "active panel" are the same thing), reusing Event
+    Reconstruction's own step-zoom factors/semantics via a newly
+    extracted shared `wwStepZoomYPanel()` core. **Event Reconstruction's
+    top toolbar is now reorganized to match Waveform's own left/right
+    structure** (DEC-157, implemented, live-verified in the browser,
+    and tested; owner-reviewed 2026-10-05 and committed) — the SAME
+    `.toolbar-spacer{flex:1}` mechanism Waveform's own toolbar already
+    used pushes Event Reconstruction's View Mode group (Grouped/
+    Combined) flush to the right edge, mirroring Waveform's own
+    Grouped/Separate/Custom + Split View placement; every other
+    control keeps its left-aligned relative order. **Waveform's own
+    per-Time-Group local toolbar model is retired for Zoom X, Autoscale
+    X/Y and A/B Cursors** (DEC-158, implemented and tested, owner-reviewed 2026-10-05 and committed) — all four moved to the page-level
+    `#wwToolbar`, joining Zoom Y (DEC-156). Zoom X, Autoscale X and A/B
+    Cursors share ONE "active Time Group" concept
+    (`wwActiveTimeGroupId()`, derived from `wwActivePanel()`) so none
+    can silently disagree about which Time Group is targeted.
+    **Autoscale Y shares Zoom Y's own exact single-axis target instead**
+    (owner correction, same day) — `wwActivePanel()` directly, via the
+    new `wwAutoscaleYPanel(panel)`, restoring autorange for only the
+    selected axis, never every panel in the Time Group (the deleted
+    `wwAutoscaleYForGroup(groupId)`'s own former behaviour). Only t0 and
+    Synchronize Sources remain genuinely local. **A "Y: &lt;axis&gt;"
+    target readout** (`#wwYAxisReadout`, reusing Event Reconstruction's
+    own `.ww-er-active-axis-readout` class/wording verbatim) sits
+    beside Zoom Y, reading the SAME `yZoomPanel` variable Zoom Y and
+    Autoscale Y already resolve — one shared source of truth, no second
+    resolver. **Toolbar follow-up (DEC-159, implemented and tested, owner-reviewed 2026-10-05 and committed)**: a double-wide gap between
+    Time Display and Unit Mode (caused by two `.ww-toolbar-sep`
+    hairlines left adjacent around the hidden, feature-flagged
+    `#wwDetectEventBtn`) is fixed by toggling the trailing separator
+    together with the button; Per-Unit Settings now uses the
+    owner-supplied `pu_settings.svg`; "Clear Waveforms"
+    (`#clearWorkspaceBtn`, the feature the owner calls "Delete
+    Waveform" — confirmed never removed, just not repositioned during
+    the migration) moves from the right side to the left operational
+    group, now disabling instead of hiding when there is nothing to
+    clear, using the owner-supplied `clear_waveforms.svg`. See
+    [POWERWAVE_ICON_SYSTEM.md](POWERWAVE_ICON_SYSTEM.md). **Waveform
+    toolbar refinement (DEC-161, implemented and tested, owner-reviewed 2026-10-05 and committed): t0 is no longer among the
+    genuinely-local controls** — "Set Cursor A as t=0"/"Clear t=0"
+    moved to the page-level `#wwT0Btn`, beside `#wwCursorModeBtn`, using
+    the SAME `wwActiveTimeGroupId()` targeting model; its own existing
+    semantics (Cursor A of the resolved Time Group only) are unchanged.
+    **"Synchronize Sources" is removed from the Waveform UI outright**
+    (not merely hidden) — its modal had exactly one caller (the
+    per-Time-Group `.ww-tg-sync-btn`, itself removed in the same
+    change) and no other workflow reached it; the underlying automatic
+    synchronization-state fetch/apply/sidebar-badge mechanism this
+    modal only ever let an engineer EDIT is untouched. Nothing
+    genuinely local remains in `.ww-tg-toolbar` now except its
+    pre-existing hidden "Fit Selected Record" stub.
   - **Active Y-axis target (DEC-142).** The explicit target
     (`wwErState.plot.activeAxisKey`, a stable display-axis key, never a
     Plotly axis number) the global Zoom Y In/Out buttons act on. Set by
@@ -252,10 +335,25 @@ DEC-122 display timezone).
     ±20%/25% factors. Autoscale Y, Reset, Fit Record, X navigation,
     cursors and annotations are all unaffected.
 
+    **Panel height is now drag-resizable (DEC-160, implemented and
+    tested, owner-reviewed 2026-10-05 and committed)** — both Grouped and
+    Combined panels gained a resize handle, reusing Waveform's own
+    `.ww-resize-handle`/drag mechanics as a pattern (parallel
+    `wwEr*`-prefixed functions, not called by reference). 180 px/420 px
+    remain each mode's own DEFAULT height only, used for a genuinely
+    new panel key; a user-resized height is session-local
+    (`wwErState.plot.panelHeights`) and survives axis interaction, zoom,
+    cursor change, unit-mode switch and theme change — the unit-mode
+    case required deriving a separate, mode-invariant persistence key
+    (`wwErPanelHeightKey()`, off the backend's own mode-invariant
+    `*_display_axis_quantity`) rather than reusing `spec.key`, whose own
+    backend-provided `*_display_axis_key` genuinely differs between
+    Engineering and Per Unit for the same logical axis. Resize never
+    touches X/Y range, cursor, channel membership or annotation state.
+
     Not yet built: an overview navigator (deferred until Fit Record
-    UAT); panel resizing (fixed 180 px per Grouped panel, 420 px
-    Combined); a dedicated end-zoom hit-region ergonomics enhancement
-    (only if UAT still finds direct drag insufficient after DEC-142).
+    UAT); a dedicated end-zoom hit-region ergonomics enhancement (only
+    if UAT still finds direct drag insufficient after DEC-142).
   - It never reads or writes the Waveform `ww` state, panels or
     viewports.
 - **Backend.**

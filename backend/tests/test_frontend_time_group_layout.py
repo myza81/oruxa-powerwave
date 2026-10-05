@@ -122,17 +122,17 @@ class TestBuildLayoutUsesItsOwnGroupsRange:
             assert "timeGroupViewports.set" not in fn_body
 
     def test_manual_sync_offset_changes_never_touch_the_range_source_directly(self):
-        """Case G: Synchronise Sources' own offset-change side effects
-        (TG-F) refetch/rebuild through the existing per-group helpers
-        (wwSyncTimeGroupRuler/wwRebuildDigitalChart/wwRefetchChannelsForGroup)
-        -- confirmed already audited and unchanged by DEC-063's own
-        record -- never assign wwBuildLayout()'s own range source
-        directly."""
+        """SUPERSEDED by a later Waveform toolbar refinement ticket:
+        Case G originally proved Synchronise Sources' own offset-change
+        side effects (TG-F) never assigned wwBuildLayout()'s own range
+        source directly. The modal that function existed for -- and the
+        function itself, wwSyncApplyOffsetChangeSideEffectsForGroup() --
+        was removed outright (UI-only, no other caller) by a later owner
+        ticket, so there is no longer a manual-sync-driven range mutation
+        risk to guard against; see test_frontend_time_group_sync.py's
+        own removal coverage for the full audit."""
         source = _source()
-        fn_idx = source.index("function wwSyncApplyOffsetChangeSideEffectsForGroup(groupId)")
-        fn_body = source[fn_idx : fn_idx + 2000]
-        assert "ww.viewport =" not in fn_body
-        assert "timeGroupViewports.set(" not in fn_body
+        assert "function wwSyncApplyOffsetChangeSideEffectsForGroup(" not in source
 
 
 # ==============================================================================
@@ -231,6 +231,16 @@ class TestCursorOverlayExcludesToolbarRegion:
 
 class TestLegacySingletonIdsRemainAbsent:
     def test_no_legacy_time_group_singleton_ids_are_referenced_as_real_dom_ids(self):
+        """`wwCursorModeBtn` is deliberately EXCLUDED from this list: the
+        Waveform top-toolbar migration (owner ticket, later than the
+        TG-D2 migration this test originally guarded) reintroduces it --
+        this time as a real, intentional, page-level global button
+        (targeting the active/first-valid Time Group via
+        wwActiveTimeGroupId(), not a fixed canvas) rather than the
+        pre-TG-D2 singleton this test was written to keep gone. See
+        test_frontend_time_group_cursors.py's own
+        TestPerGroupToolbarControl for the dedicated coverage of this
+        reintroduction."""
         source = _source()
         legacy_ids = [
             "wwPanels",
@@ -240,7 +250,6 @@ class TestLegacySingletonIdsRemainAbsent:
             "wwCursorReadout",
             "wwSetT0Btn",
             "wwSyncBtn",
-            "wwCursorModeBtn",
             "wwCursorLabelLayer",
         ]
         for legacy_id in legacy_ids:

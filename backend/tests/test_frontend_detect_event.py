@@ -203,7 +203,12 @@ def test_accept_reuses_the_existing_t0_put_endpoint_only():
     assert "t0_workspace_time: workspaceTime" in fn_body
     assert "const groupId = wwTimeGroupIdForDisplaySourceId(sourceId);" in fn_body
     assert "ww.timeGroupT0State.set(groupId, body.t0_workspace_time);" in fn_body
-    assert "wwSyncT0ControlsForGroup(groupId);" in fn_body
+    # Waveform toolbar refinement (owner ticket): refreshes the
+    # page-level #wwT0Btn (and every other migrated control) via the
+    # same consolidated resync every other t0 mutation now uses --
+    # wwSyncT0ControlsForGroup() itself (the per-canvas button it used
+    # to refresh) no longer exists.
+    assert "wwSyncGlobalWaveformToolbar();" in fn_body
     assert "wwApplyT0ToDisplayForGroup(groupId);" in fn_body
 
 

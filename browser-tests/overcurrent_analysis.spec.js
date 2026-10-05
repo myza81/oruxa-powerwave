@@ -1464,7 +1464,9 @@ test.describe("Overcurrent Analysis v1 -- Manual mode is a standalone engineerin
     let manualRequests = 0;
     page.on("request", (req) => {
       const url = req.url();
-      if (url.includes("/overcurrent?") || url.includes("/waveform")) {
+      // The static nav icon .../navigation/waveform_page.svg also contains
+      // "/waveform"; only API requests are recording-dependent.
+      if (url.includes("/overcurrent?") || (url.includes("/api/") && url.includes("/waveform"))) {
         recordingRequestUrls.push(url);
       }
       if (url.includes("/overcurrent-manual")) manualRequests++;

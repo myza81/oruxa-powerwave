@@ -190,7 +190,12 @@ test.describe("Event Playback Slice 1", () => {
     expect((await restartBtn.innerText()).trim()).toBe("");
     // The icon itself is still rendered.
     await expect(playBtn.locator(".ww-tg-playback-btn-icon svg")).toBeVisible();
-    await expect(restartBtn.locator(".ww-tg-playback-btn-icon svg")).toBeVisible();
+    // Restart's icon is the owner restart.svg through the icon registry
+    // (a CSS mask on the icon cell, not an inline <svg>).
+    const restartIcon = restartBtn.locator(".ww-tg-playback-btn-icon");
+    await expect(restartIcon).toBeVisible();
+    await expect(restartIcon).toHaveAttribute("data-ww-icon", "PLAYBACK_RESTART");
+    expect(await restartIcon.evaluate((el) => getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage)).toContain("analysis/restart.svg");
     // Accessible name survives via title/aria-label, independent of the
     // hidden visible-text span.
     await expect(playBtn).toHaveAttribute("aria-label", /Play|Pause/);
@@ -273,10 +278,19 @@ test.describe("Event Playback Slice 1", () => {
     // 2026-09-26).
     await expect(canvas.locator(".ww-tg-playback-cursor-overlay")).toHaveCount(1);
     await expect(canvas.locator(".ww-tg-playback-cursor-overlay")).toBeHidden();
-    // Everything else on the toolbar is unaffected.
-    await expect(canvas.locator(".ww-tg-reset-view-btn")).toBeVisible();
-    await expect(canvas.locator(".ww-tg-autoscale-btn")).toBeVisible();
-    await expect(canvas.locator(".ww-tg-cursor-mode-btn")).toBeVisible();
+    // Everything else on the toolbar is unaffected. Waveform top-toolbar
+    // migration (owner ticket, DEC-158, later than this slice): Zoom,
+    // Autoscale X/Y and A/B Cursors moved from this local canvas to the
+    // page-level #wwToolbar. A later Waveform toolbar refinement ticket
+    // moved t0 out the same way (#wwT0Btn) and removed Synchronize
+    // Sources outright -- checked there instead; nothing of either
+    // remains in this local canvas.
+    await expect(page.locator("#wwAutoscaleXBtn")).toBeVisible();
+    await expect(page.locator("#wwAutoscaleYBtn")).toBeVisible();
+    await expect(page.locator("#wwCursorModeBtn")).toBeVisible();
+    await expect(page.locator("#wwT0Btn")).toBeVisible();
+    await expect(canvas.locator(".ww-tg-t0-btn")).toHaveCount(0);
+    await expect(canvas.locator(".ww-tg-sync-btn")).toHaveCount(0);
   });
 
   // ---- Test 1: Play moves ----
@@ -565,6 +579,156 @@ test.describe("Event Playback Slice 2", () => {
     const currentTime = await page.evaluate(() => wwPlaybackState().currentTime);
     expect(currentTime).toBe(startTime);
     await expect(speedSelect).toHaveValue("0.1"); // Restart never resets speed
+  });
+
+  // Real clock rate over a window, from two (wall clock, playback time)
+  // samples taken in the page -- so the result is independent of the
+  // Playwright round-trip latency between them.
+  async function measurePlaybackRate(page, windowMs) {
+    const sample = () => page.evaluate(() => ({ t: performance.now(), ct: wwPlaybackState().currentTime }));
+    const a = await sample();
+    await page.waitForTimeout(windowMs);
+    const b = await sample();
+    return (b.ct - a.ct) / ((b.t - a.t) / 1000);
+  }
+
+  test("0.005x and 0.01x are offered in order, selectable, and genuinely drive the clock at that rate", async ({ page }) => {
+    const { mount } = await setupPhasorPlayback(page, "synth_playback", "Alpha");
+    const playBtn = mount.locator(".ww-tg-playback-play-btn");
+    const restartBtn = mount.locator(".ww-tg-playback-restart-btn");
+    const speedSelect = mount.locator(".ww-tg-playback-speed-select");
+
+    // One selector, the full list, slowest to fastest, existing speeds kept.
+    expect(await speedSelect.locator("option").evaluateAll((os) => os.map((o) => o.value)))
+      .toEqual(["0.005", "0.01", "0.05", "0.1", "0.25", "0.5", "1", "2", "4"]);
+    expect(await speedSelect.locator("option").evaluateAll((os) => os.map((o) => o.textContent)))
+      .toEqual(["0.005×", "0.01×", "0.05×", "0.10×", "0.25×", "0.5×", "1×", "2×", "4×"]);
+    await expect(mount.locator(".ww-tg-playback-speed-select")).toHaveCount(1);
+    await expect(speedSelect).toHaveValue("1");
+
+    for (const speed of ["0.005", "0.01"]) {
+      await speedSelect.selectOption(speed);
+      await expect(speedSelect).toHaveValue(speed);
+      // The controller holds the exact number, not a rounded/default one.
+      expect(await page.evaluate(() => wwPlaybackState().speed)).toBe(Number(speed));
+      await restartBtn.click();
+      await expect(speedSelect).toHaveValue(speed); // Restart never resets speed
+      await playBtn.click();
+      await expect(playBtn).toHaveText("Pause");
+      await page.waitForTimeout(200);
+      const rate = await measurePlaybackRate(page, 800);
+      // Real time is not exact; +/-50% still separates 0.005x from
+      // 0.01x from 0.05x, and would fail loudly if the speed were
+      // ignored or silently replaced by the 1x default.
+      expect(rate).toBeGreaterThan(Number(speed) * 0.5);
+      expect(rate).toBeLessThan(Number(speed) * 1.5);
+      await playBtn.click(); // pause
+      await expect(playBtn).toHaveText("Play");
+    }
+  });
+
+  test("switching between slow speeds while playing keeps playing without a time jump; Restart still resets", async ({ page }) => {
+    const { mount } = await setupPhasorPlayback(page, "synth_playback", "Alpha");
+    const playBtn = mount.locator(".ww-tg-playback-play-btn");
+    const restartBtn = mount.locator(".ww-tg-playback-restart-btn");
+    const speedSelect = mount.locator(".ww-tg-playback-speed-select");
+    const currentTime = () => page.evaluate(() => wwPlaybackState().currentTime);
+
+    await speedSelect.selectOption("0.005");
+    await restartBtn.click();
+    const startTime = await page.evaluate(() => wwPlaybackState().startTime);
+    await playBtn.click();
+    await expect(playBtn).toHaveText("Pause");
+
+    for (const next of ["0.01", "0.05", "0.005"]) {
+      await page.waitForTimeout(150);
+      const before = await currentTime();
+      await speedSelect.selectOption(next);
+      const after = await currentTime();
+      // The anchor is re-based on the change: at these speeds even a slow
+      // Playwright round trip moves the clock by well under 0.05 s, a jump
+      // (e.g. re-deriving from the old anchor) would be far larger.
+      expect(Math.abs(after - before)).toBeLessThan(0.05);
+      await expect(playBtn).toHaveText("Pause"); // still playing
+      await expect(speedSelect).toHaveValue(next);
+      const rate = await measurePlaybackRate(page, 600);
+      expect(rate).toBeGreaterThan(Number(next) * 0.5);
+      expect(rate).toBeLessThan(Number(next) * 1.5);
+    }
+
+    await playBtn.click(); // pause
+    expect(await currentTime()).toBeGreaterThan(startTime);
+    await restartBtn.click();
+    expect(await currentTime()).toBe(startTime);
+    await expect(speedSelect).toHaveValue("0.005"); // Restart never resets speed
+    await expect(playBtn).toHaveText("Play");
+  });
+
+  test("Restart renders the owner restart.svg through the icon registry, in both themes, with its behaviour unchanged", async ({ page }) => {
+    const { mount } = await setupPhasorPlayback(page, "synth_playback", "Alpha");
+    const restartBtn = mount.locator(".ww-tg-playback-restart-btn");
+    const icon = restartBtn.locator(".ww-tg-playback-btn-icon");
+
+    await expect(icon).toHaveAttribute("data-ww-icon", "PLAYBACK_RESTART");
+    await expect(restartBtn).toHaveAttribute("title", "Restart playback");
+    await expect(restartBtn).toHaveAttribute("aria-label", "Restart playback");
+    await expect(restartBtn).toBeEnabled();
+    const asset = await page.request.get(new URL("/assets/icons/analysis/restart.svg", page.url()).toString());
+    expect(asset.status()).toBe(200);
+
+    for (const theme of ["light", "dark"]) {
+      await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+      const info = await icon.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        const box = el.getBoundingClientRect();
+        const btn = el.closest("button").getBoundingClientRect();
+        const play = el.closest(".ww-analysis-playback-mount").querySelector(".ww-tg-playback-play-btn .ww-tg-playback-btn-icon").getBoundingClientRect();
+        const layers = [];
+        for (let node = el.closest("button"); node; node = node.parentElement) {
+          const m = (getComputedStyle(node).backgroundColor.match(/[\d.]+/g) || []).map(Number);
+          if (m.length >= 3 && (m.length < 4 || m[3] > 0)) layers.unshift({ rgb: m.slice(0, 3), a: m.length >= 4 ? m[3] : 1 });
+        }
+        let base = [255, 255, 255];
+        for (const layer of layers) base = base.map((c, i) => layer.rgb[i] * layer.a + c * (1 - layer.a));
+        return {
+          mask: cs.maskImage || cs.webkitMaskImage,
+          maskSize: cs.maskSize || cs.webkitMaskSize,
+          paint: cs.backgroundColor,
+          buttonBg: "rgb(" + base.map(Math.round).join(", ") + ")",
+          w: box.width, h: box.height,
+          playW: play.width, playH: play.height,
+          inside: box.left >= btn.left && box.right <= btn.right && box.top >= btn.top && box.bottom <= btn.bottom,
+        };
+      });
+      expect(info.mask, theme).toContain("analysis/restart.svg");
+      expect(info.maskSize, theme).toBe("contain");
+      // Same cell as the Play icon (no clipping, no distortion: a square
+      // box over a square viewBox with mask-size: contain), inside the button.
+      expect(info.w).toBeGreaterThan(8);
+      expect(info.w).toBeCloseTo(info.h, 1);
+      expect(info.w).toBeCloseTo(info.playW, 1);
+      expect(info.h).toBeCloseTo(info.playH, 1);
+      expect(info.inside, theme).toBe(true);
+      // The mask is painted with currentColor and must stay visible
+      // against the button in this theme.
+      const channels = (c) => (c.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+      const lum = (rgb) => {
+        const [r, g, b] = rgb.map((c) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const [hi, lo] = [lum(channels(info.paint)), lum(channels(info.buttonBg))].sort((x, y) => y - x);
+      expect((hi + 0.05) / (lo + 0.05), `${theme}: icon ${info.paint} on ${info.buttonBg}`).toBeGreaterThan(3);
+    }
+
+    // Behaviour unchanged: Restart still returns the clock to the start.
+    const playBtn = mount.locator(".ww-tg-playback-play-btn");
+    const startTime = await page.evaluate(() => wwPlaybackState().startTime);
+    await playBtn.click();
+    await page.waitForTimeout(400);
+    await playBtn.click();
+    expect(await page.evaluate(() => wwPlaybackState().currentTime)).toBeGreaterThan(startTime);
+    await restartBtn.click();
+    expect(await page.evaluate(() => wwPlaybackState().currentTime)).toBe(startTime);
   });
 
   test("Speed selection is shared across Analysis and Waveform re-visits (one controller-wide value)", async ({ page }) => {

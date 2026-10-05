@@ -1380,7 +1380,9 @@ test.describe("Phasor Analysis -- Manual Input / Calculator mode (Analysis Input
     const recordingRequestUrls = [];
     page.on("request", (req) => {
       const url = req.url();
-      if (url.includes("/phasor-diagram") || url.includes("/waveform") || url.includes("/phasor?")) recordingRequestUrls.push(url);
+      // The static nav icon .../navigation/waveform_page.svg also contains
+      // "/waveform"; only API requests are recording-dependent.
+      if (url.includes("/phasor-diagram") || (url.includes("/api/") && url.includes("/waveform")) || url.includes("/phasor?")) recordingRequestUrls.push(url);
     });
 
     await openEmptyWorkspacePhasor(page);

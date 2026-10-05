@@ -148,9 +148,12 @@ test.describe("Event Reconstruction Combined View -- axes and rendering", () => 
     }
     expect(await page.evaluate(() => wwErState.plot.panels[0].chartEl.data.every((d) => !d.line.dash))).toBe(true);
 
-    // The larger fixed combined height; still no resize grip.
+    // The larger combined DEFAULT height (a freshly-created panel, never
+    // yet resized). Drag-to-resize (owner ticket) supersedes this test's
+    // own original "still no resize grip" finding -- see
+    // event-reconstruction-panel-resize.spec.js for the full coverage.
     expect(panel.height).toBeCloseTo(420, 0);
-    await expect(page.locator("#wwErPanels .ww-resize-handle")).toHaveCount(0);
+    await expect(page.locator("#wwErPanels .ww-resize-handle")).toHaveCount(1);
     // Six axes: the advisory readability notice.
     await expect(page.locator("#wwErAxisNotice")).toBeVisible();
     await expect(page.locator("#wwErAxisNotice")).toContainText("6 Y axes in one panel");

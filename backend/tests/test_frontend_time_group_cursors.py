@@ -87,22 +87,39 @@ class TestPerGroupStateModel:
 
 
 class TestPerGroupToolbarControl:
-    def test_cursor_mode_button_markup_lives_inside_the_canvas_template(self):
+    """Waveform top-toolbar migration (owner ticket, later than TG-D2):
+    the A/B Cursors MODE TOGGLE moves again -- out of the per-canvas
+    local toolbar this class originally proved, to a page-level global
+    button (reusing the id `wwCursorModeBtn`, the exact same id TG-D2
+    had previously retired when it first moved this control local --
+    an intentional, tracked reversal, not a naming collision). It now
+    targets the active/first-valid Time Group (wwActiveTimeGroupId())
+    rather than always this one canvas's own fixed groupId, but still
+    calls the SAME unchanged, single-group-scoped
+    wwToggleMeasurementCursors(groupId) underneath -- "enabling Group 1
+    never enables Group 2" still holds, proven directly against that
+    function's own body in test_frontend_time_group_cursors.py's other
+    classes."""
+
+    def test_cursor_mode_button_markup_no_longer_lives_inside_the_canvas_template(self):
         source = _source()
         fn_idx = source.index("function wwCreateTimeGroupCanvasDom(groupId)")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert fn_body.count("ww-tg-cursor-mode-btn") == 1
+        assert "ww-tg-cursor-mode-btn" not in fn_body
 
-    def test_button_is_wired_to_toggle_with_this_canvass_own_group_id(self):
+    def test_button_is_now_global_wired_to_the_active_time_group(self):
         source = _source()
         fn_idx = source.index("function wwWireTimeGroupToolbar(canvasEl, groupId)")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert 'canvasEl.querySelector(".ww-tg-cursor-mode-btn")' in fn_body
-        assert "wwToggleMeasurementCursors(groupId)" in fn_body
+        assert "ww-tg-cursor-mode-btn" not in fn_body
+        assert 'document.getElementById("wwCursorModeBtn").addEventListener("click", () => wwToggleMeasurementCursors(wwActiveTimeGroupId()));' in source
 
-    def test_old_global_cursor_mode_button_id_is_fully_removed(self):
+    def test_global_cursor_mode_button_id_is_reintroduced_by_this_later_ticket(self):
+        """Supersedes the original TG-D2-era assertion that this exact id
+        was permanently removed -- it is deliberately back, as a
+        page-level control, per the Waveform top-toolbar migration."""
         source = _source()
-        assert 'id="wwCursorModeBtn"' not in source
+        assert 'id="wwCursorModeBtn"' in source
 
 
 # ==============================================================================
@@ -227,7 +244,7 @@ class TestOverlayUpdateIsPerGroupScoped:
     def test_update_function_takes_group_id_and_resolves_this_groups_own_canvas(self):
         source = _source()
         fn_idx = source.index("function wwUpdateCursorOverlayForGroup(groupId)")
-        fn_body = source[fn_idx : fn_idx + 1700]
+        fn_body = source[fn_idx : fn_idx + 2000]
         assert "wwTimeGroupCanvasEl(groupId)" in fn_body
         assert 'canvasEl.querySelector(".ww-tg-cursor-overlay")' in fn_body
         assert 'canvasEl.querySelector(".ww-tg-cursor-label-layer")' in fn_body
@@ -394,8 +411,14 @@ class TestT0BecameFullyPerGroupInTGE:
     file itself covers."""
 
     def test_sync_t0_controls_for_group_reads_that_groups_own_cursor_state(self):
+        """SUPERSEDED by a later Waveform toolbar refinement ticket:
+        wwSyncT0ControlsForGroup(groupId) itself was deleted once its
+        own per-canvas button was removed -- the exact same read now
+        lives inline in wwSyncGlobalWaveformToolbar(), against the same
+        groupId = wwActiveTimeGroupId() that function already resolves
+        for every other migrated control, never a "primary" group."""
         source = _source()
-        fn_idx = source.index("function wwSyncT0ControlsForGroup(groupId)")
+        fn_idx = source.index("function wwSyncGlobalWaveformToolbar()")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
         assert "wwTimeGroupCursorState(groupId)" in fn_body
         assert "wwPrimaryTimeGroupId()" not in fn_body

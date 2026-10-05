@@ -217,22 +217,25 @@ class TestWaveformNoLongerMountsPlaybackControls:
         assert "function wwPlaybackSetSpeed(newSpeed)" in source
         assert "const wwPlayback = {" in source
 
-    def test_cursor_ab_and_time_group_navigation_controls_still_render(self):
-        """Non-Playback Time Group toolbar controls (Zoom, Reset Time
-        View, Autoscale Y, Cursor A/B mode, t=0, Synchronize Sources) are
-        entirely unaffected by this removal."""
+    def test_cursor_overlay_still_renders(self):
+        """Non-Playback Time Group canvas DOM is entirely unaffected by
+        this removal. Waveform top-toolbar migration (owner ticket,
+        later): Zoom, Autoscale X/Y and A/B Cursors mode moved out of
+        this local canvas toolbar to page-level #wwToolbar, and a
+        further ticket moved t=0 out the same way and removed
+        Synchronize Sources outright (see
+        test_frontend_time_group_toolbar.py's own
+        TestWaveformTopToolbarMigration and
+        test_frontend_time_group_sync.py's own removal coverage) -- the
+        cursor OVERLAY (drag interaction, independent of any toolbar
+        button's own location) is unaffected by any of this."""
         source = _source()
         toolbar_fn = _function_body(
             source, "function wwCreateTimeGroupCanvasDom(groupId)", "function wwEnsureTimeGroupCanvasDom"
         )
-        assert "ww-tg-zoom-in-split" in toolbar_fn
-        assert "ww-tg-zoom-out-split" in toolbar_fn
-        assert "ww-tg-reset-view-btn" in toolbar_fn
-        assert "ww-tg-autoscale-btn" in toolbar_fn
-        assert "ww-tg-cursor-mode-btn" in toolbar_fn
-        assert "ww-tg-t0-btn" in toolbar_fn
-        assert "ww-tg-sync-btn" in toolbar_fn
         assert "ww-tg-cursor-overlay" in toolbar_fn
+        assert "ww-tg-t0-btn" not in toolbar_fn
+        assert "ww-tg-sync-btn" not in toolbar_fn
 
 
 class TestTimeGroupToolbarControls:
@@ -258,6 +261,28 @@ class TestTimeGroupToolbarControls:
         # Never free-entry speed -- a <select>, never a text/number input.
         assert '<select class="ww-tg-playback-speed-select"' in markup_fn
         assert 'type="number"' not in markup_fn
+
+    def test_restart_button_icon_uses_asset_registry_not_inline_svg(self):
+        """Owner-supplied restart.svg asset replaces the former inline
+        SVG (DEC-xxx). The restart button's own icon is now a registered
+        asset reference, not embedded markup."""
+        source = _source()
+        markup_fn = _function_body(source, "function wwCreatePlaybackControlsHtml()", "function wwPlaybackState")
+        restart_btn = _function_body(markup_fn, 'class="secondary ww-tg-playback-restart-btn"', "</button>")
+        assert 'data-ww-icon="PLAYBACK_RESTART"' in restart_btn
+        assert 'class="ww-tg-playback-btn-icon ww-icon-asset"' in restart_btn
+        # No inline <svg> -- the icon is now registry-driven.
+        assert "<svg" not in restart_btn
+        assert 'PLAYBACK_RESTART: "assets/icons/analysis/restart.svg",' in source
+
+    def test_every_playback_mount_hydrates_the_registry_icon(self):
+        """Each mount injects the controls via innerHTML after page load,
+        so the one shared wiring function every mount already calls must
+        hydrate the registry icon -- otherwise Restart paints as a solid
+        unmasked square on every Analysis page."""
+        source = _source()
+        wire_fn = _function_body(source, "function wwWirePlaybackControls(containerEl, groupId)", "const speedSelect")
+        assert "wwApplyToolIcons(containerEl);" in wire_fn
 
     def test_reusable_wiring_binds_every_control(self):
         source = _source()
@@ -659,9 +684,14 @@ class TestSpeedControl:
     entry. Extended below 0.25x (owner instruction, 2026-09-12) for slow
     engineering-event inspection (e.g. Phasor fault-transition UAT)."""
 
-    def test_supported_speed_set_is_exactly_the_required_seven_values(self):
+    def test_supported_speed_set_includes_the_required_slower_and_standard_rates(self):
+        """Owner instruction: two new slower rates (0.005x, 0.01x) extend
+        the existing slow-motion options (0.05x, 0.1x) for fine-grained
+        engineering event inspection. The full set is now [0.005, 0.01,
+        0.05, 0.1, 0.25, 0.5, 1, 2, 4] -- the constant list every
+        wwPlaybackSetSpeed() validates against."""
         source = _source()
-        assert "const WW_PLAYBACK_SPEEDS = [0.05, 0.1, 0.25, 0.5, 1, 2, 4];" in source
+        assert "const WW_PLAYBACK_SPEEDS = [0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 4];" in source
 
     def test_default_speed_constant_is_1x(self):
         source = _source()
@@ -676,6 +706,8 @@ class TestSpeedControl:
         markup_fn = _function_body(source, "function wwCreatePlaybackControlsHtml()", "function wwPlaybackState")
         select_html = _function_body(markup_fn, '<select class="ww-tg-playback-speed-select"', "</select>")
         for option in (
+            'value="0.005"',
+            'value="0.01"',
             'value="0.05"',
             'value="0.1"',
             'value="0.25"',

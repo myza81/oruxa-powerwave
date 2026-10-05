@@ -225,14 +225,17 @@ class TestDisplaySetChangeForcesViewportReset:
         assert "ww.timeGroupFullBoundsCache.delete(groupId);" in fn_body
 
     def test_offset_change_side_effect_still_passes_an_explicit_resetviewport_false(self):
-        """Confirms the ONE caller that must be immune to the new
-        bounds-changed auto-reset still opts out explicitly (unchanged
-        from before this fix -- see test_frontend_synchronization.py's own
-        broader coverage of this same call site)."""
+        """SUPERSEDED by a later Waveform toolbar refinement ticket:
+        this test originally confirmed the ONE caller that needed to be
+        immune to the new bounds-changed auto-reset (the Synchronize
+        Sources modal's own offset-change side effects) still opted out
+        explicitly. That caller, wwSyncApplyOffsetChangeSideEffectsForGroup(),
+        was removed outright along with the modal itself (UI-only, no
+        other caller) -- see test_frontend_time_group_sync.py's own
+        removal coverage. There is no longer a manual-sync-driven bounds
+        change to guard against."""
         source = _source()
-        fn_idx = source.index("async function wwSyncApplyOffsetChangeSideEffectsForGroup(groupId)")
-        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert "await wwRefreshWorkspaceBounds({ resetViewport: false });" in fn_body
+        assert "function wwSyncApplyOffsetChangeSideEffectsForGroup(" not in source
 
 
 class TestApplyAndFetchGroupViewportScoping:

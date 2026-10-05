@@ -74,8 +74,11 @@ test("Powerwave smoke: upload, display, Time Group, cursor, rename", async ({ pa
 
   // ---- Smoke E: cursor interaction ----
   await test.step("Smoke E - Cursor A/B mode toggles on for this Time Group", async () => {
+    // Waveform top-toolbar migration (owner ticket, DEC-158): the A/B
+    // Cursors mode toggle is page-level now (#wwCursorModeBtn), not a
+    // per-canvas local button; the readout it reveals stays local.
     const canvas = page.locator("#wwTimeGroupCanvases .ww-time-group-canvas").first();
-    const cursorBtn = canvas.locator(".ww-tg-cursor-mode-btn");
+    const cursorBtn = page.locator("#wwCursorModeBtn");
     await expect(cursorBtn).toBeVisible();
     await cursorBtn.click();
     await expect(cursorBtn).toHaveAttribute("aria-pressed", "true");

@@ -1,1 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hourglass preview-icon"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></svg>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 12 L15 9" />
+  <path d="M12 12 L9 15" />
+  <path d="M14.914 8.914 A2 2 0 0 0 15.5 7.5" />
+  <path d="M15 15 L12.086 12.086" />
+  <path d="M15.5 16.509 A2 2 0 0 0 15 15" />
+  <path d="M15.5 19 L15.5 16.328" />
+  <path d="M15.5 7.5 L15.5 5.5" />
+  <path d="M5 19.5 L19 19.5" />
+  <path d="M5 4.5 L19 4.5" />
+  <path d="M8.5 16.5 L8.5 19" />
+  <path d="M8.5 5.5 L8.5 7.672" />
+  <path d="M8.5 7.5 A2 2 0 0 0 9.086 8.914" />
+  <path d="M9 9 L12 12" />
+  <path d="M9.086 15.086 A2 2 0 0 0 8.5 16.5" />
+</svg>

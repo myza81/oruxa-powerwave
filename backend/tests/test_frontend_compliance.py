@@ -97,6 +97,29 @@ class TestCompliancePageStructure:
         assert 'class="ww-analysis-type-item active"' in nav
         assert 'aria-current="true"' in nav
 
+    def test_voltage_function_icon_uses_the_owner_asset_not_inline_svg(self):
+        """Branding update (owner ticket): the Voltage function nav
+        item's former hand-drawn inline <svg> is replaced by a
+        data-ww-icon placeholder resolving to the owner-supplied
+        frontend/assets/icons/compliance/voltage.svg, same mask-image
+        registry mechanism the Analysis page's own analyzer-type icons
+        already use (DEC-152) -- never a redrawn icon, never a second
+        icon system. Label, click handler, routing, tooltip,
+        accessibility and layout are all untouched by this change."""
+        source = _source()
+        page = _compliance_page(source)
+        btn = _function_body(page, 'id="wwComplianceTypeVoltageBtn"', "</button>")
+        assert '<svg' not in btn
+        assert 'data-ww-icon="COMPLIANCE_VOLTAGE"' in btn
+        assert 'class="ww-analysis-type-icon" aria-hidden="true"' in btn
+        assert '<span class="ww-analysis-type-label">Voltage</span>' in btn
+
+        registry_idx = source.index("const WW_TOOL_ICONS = {")
+        registry = source[registry_idx : source.index("};", registry_idx)]
+        assert 'COMPLIANCE_VOLTAGE: "assets/icons/compliance/voltage.svg",' in registry
+        asset_path = FRONTEND.parent / "assets" / "icons" / "compliance" / "voltage.svg"
+        assert asset_path.is_file()
+
     def test_voltage_panel_heading_is_provisional_wording(self):
         source = _source()
         page = _compliance_page(source)

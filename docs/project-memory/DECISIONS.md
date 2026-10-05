@@ -23427,6 +23427,1233 @@ when writing this newer ticket.
 
 ---
 
+## DEC-155 — Waveform's empty-state and top toolbar become consistent with Event Reconstruction
+
+Date: 2026-10-04
+Status: Approved (owner, "Waveform page empty-state/toolbar consistency
+with Event Reconstruction") -- implemented on `feat/event-
+reconstruction`; not merged; **owner-reviewed (UAT, 2026-10-05) and committed in the 2026-10-05 UAT commit.**
+
+### Decision (owner)
+
+> When Waveform has no recording loaded, the top toolbar must stay
+> visible (individual tools disable via runtime state, never the whole
+> toolbar disappearing -- the same panel-header tool visibility rule
+> DEC-154 already established); the Waveform panel/workspace shell must
+> still render, showing a clear empty-state notice inside it, rather
+> than the page going blank. Use Event Reconstruction as the primary UI
+> reference. Do not globalize genuinely Time-Group-scoped controls.
+
+### Implementation (`[FACT]`)
+
+- **`#wwToolbar` is never hidden any more.** Removed its static
+  `hidden` attribute (Event Reconstruction's own `#wwErToolbar` never
+  had one either) and the `document.getElementById("wwToolbar").hidden
+  = empty;` line inside `wwUpdateEmptyState()` that used to hide the
+  whole toolbar whenever `ww.panels.length === 0 && ww.
+  digitalDisplayed.size === 0`.
+- **A persistent panel-header shell** (`#wwEmptyWorkspaceHeader`) is
+  added above `#wwEmptyState`, reusing Event Reconstruction's own
+  `.ww-tg-sticky-top`/`.ww-tg-header`/`.ww-tg-header-title`/`.ww-tg-
+  header-meta` classes verbatim (no new CSS) -- mirrors
+  `#wwErCanvas`'s own always-present header + `#wwErEmptyState`
+  pattern exactly. Shown/hidden together with `#wwEmptyState` by the
+  same `empty` flag; once any Time Group canvas exists, that canvas's
+  own real header takes over and this placeholder stays hidden.
+- **The empty-state message is now state-aware**, distinguishing "no
+  recording exists at all" from "a recording exists but nothing is
+  selected yet" -- mirroring Event Reconstruction's own equivalent
+  records-selected-vs-not distinction. Read from the sidebar's own
+  pre-existing `#wwRecordingsCountBadge` text (no new state): `"(0)"` →
+  "No recordings loaded. Open or add a recording to begin waveform
+  analysis."; otherwise → the pre-existing, byte-identical "Select
+  channels from the sidebar to display waveforms." Refreshed from two
+  points so it is never stale: `#mainNavWaveformBtn`'s own click
+  handler (a first visit, before any channel-toggle event has ever run
+  `wwUpdateEmptyState()` for other reasons) and `wwRenderWorkspace
+  Recordings()` right after it updates the same badge (every upload/
+  removal/workspace-reset -- the badge can change without `ww.panels.
+  length` changing, since opening a source no longer auto-displays any
+  channel).
+- **`#clearWorkspaceBtn`'s own pre-existing hide-when-empty behaviour is
+  untouched** -- a deliberate, separate design choice (nothing to
+  clear) predating this ticket, not a page-mismatch case this ticket's
+  own rule governs.
+- **Time Group locality is unchanged.** Zoom X/Y, Autoscale X/Y, A/B
+  Cursors, t0, Synchronize Sources remain per-Time-Group-canvas
+  controls (DEC-150's own audit already established why -- no
+  unambiguous "active Time Group" targeting contract exists); this
+  ticket is explicitly scoped to the page-level top toolbar and the
+  no-recording empty state, not a redesign of per-Time-Group
+  targeting.
+
+### Toolbar sequence comparison
+
+Event Reconstruction: View Mode → Time Display → Unit Mode → Zoom X
+In/Out → Zoom Y Out/In → Autoscale X/Autoscale Y/Fit Selected Record →
+A/B Cursors/Annotate/Annotations. Waveform: Time Display → Detect Event
+Origin (Waveform-only) → Unit Mode → Annotate/Annotations → Grouped/
+Separate/Custom/Split View/Edit Channel Groups (right-aligned, via
+`.toolbar-spacer`) → Clear Workspace (Waveform-only). The shared
+Time Display → Unit Mode → Analysis relative order already matches
+between the two pages; Zoom/Autoscale/Cursors have no Waveform global
+equivalent (correctly Time-Group-local, see above). **One remaining,
+intentional difference:** View Mode sits first on Event Reconstruction
+but last (right-aligned) on Waveform. **Not moved** -- Waveform's
+right-alignment is itself a separate, deliberate, previously owner-
+approved layout decision ("Owner-approved cleanup: Split View moved
+here..."), and the ticket's own instruction is explicit: "Do not
+blindly force Waveform-specific controls into ER's exact layout if the
+semantics differ." Flagged here for the owner's own review rather than
+silently changed.
+
+### Tests
+
+New `TestWaveformToolbarStaysVisibleWhenEmpty` (backend static, 7
+tests) in `test_frontend_time_group_canvas_empty_state.py`. New
+`browser-tests/waveform-empty-state.spec.js` (6 tests): toolbar/shell
+visible with zero recordings, correct message per state, page-
+unsupported tools stay hidden, normal channel-selection workflow
+unaffected, no stale header after navigating away to Event
+Reconstruction and back, Event Reconstruction's own empty-state
+unchanged. Live-verified in both themes, zero console errors.
+
+---
+
+## DEC-156 — Waveform gains a page-level Y Zoom In/Out pair, reusing Event Reconstruction's own step-zoom math against the active panel
+
+Date: 2026-10-04
+Status: Approved (owner, "Y-axis Zoom In / Zoom Out for the Waveform
+page") -- implemented on `feat/event-reconstruction`; not merged; **not
+yet committed, pending owner review**.
+
+### Decision (owner)
+
+> Implement Y-axis Zoom In/Out for the Waveform page's top toolbar,
+> using Event Reconstruction's existing Y-axis zoom as the behavioral
+> reference. Target: an explicit active Time Group/Y-axis if one is
+> selected; otherwise the first Time Group with a valid Y-axis. Zoom
+> changes only the resolved target axis -- never X, never other Time
+> Groups, never unrelated Y-axes in the same Time Group. Reuse the
+> existing zoom helper rather than duplicating it; no large refactor
+> merely for code reuse.
+
+### Implementation (`[FACT]`)
+
+- **Waveform has exactly one Y axis per panel** (unlike Event
+  Reconstruction's Combined view, which can hold several Y axes in one
+  panel) -- so "the active/selected Y axis" and "the active panel" are
+  the same thing. This let the new global pair reuse Waveform's own
+  pre-existing `wwActivePanel()` resolver (self-healing: the explicit
+  active panel if it still exists, else `ww.panels[0]`, adopted as the
+  new active panel) directly, rather than inventing a parallel axis-
+  tracking concept. The same resolver already backs Autoscale Y's own
+  per-panel-click targeting and the per-Time-Group Zoom In/Out
+  dropdown's "Vertical (Y)" item.
+- **The zoom math itself was already shared with Event Reconstruction's
+  own implementation** (same `WW_ZOOM_STEP_IN_FACTOR`/
+  `WW_ZOOM_STEP_OUT_FACTOR`/`WW_MIN_Y_SPAN` constants, same centre-fixed
+  span calculation) via the pre-existing, per-Time-Group
+  `wwStepZoomY(groupId, direction)`. Extracted its range-reading/
+  computing/relayout body verbatim into a new shared
+  `wwStepZoomYPanel(panel, direction)`; `wwStepZoomY` itself is now a
+  one-line wrapper (`wwStepZoomYPanel(wwActivePanelForGroup(groupId),
+  direction)`), and the new global pair calls the same core function
+  against `wwActivePanel()`. (Event Reconstruction keeps its own
+  separate, pre-existing implementation against its own axis/layoutKey
+  data model -- not merged with Waveform's, since the data shapes
+  differ; both happen to share the same constants by design.)
+- **New markup**: `#wwZoomYOutBtn`/`#wwZoomYInBtn` in `#wwToolbar`,
+  between Unit Mode/Per-Unit-Settings and the Annotate/Annotations
+  family -- mirroring Event Reconstruction's own relative family order
+  (Unit Mode → Zoom Y → Analysis/Annotate). Same icons
+  (`ZOOM_Y_OUT`/`ZOOM_Y_IN`), same dynamic tooltip pattern as Event
+  Reconstruction's own (`"Zoom In/Out — " + <axis label>"`, falling back
+  to `"Selected Y Axis"` when nothing is targetable), same button order.
+  Never hidden -- genuinely relevant to Waveform, only disabled when
+  there is truly no panel to target (panel-header tool visibility rule,
+  DEC-154).
+- **`wwSyncGlobalZoomYControls()`** (new) sets both buttons'
+  `disabled`/`title`/`aria-label` from `wwActivePanel()`. Called from
+  `wwUpdateEmptyState()` (every channel add/remove/workspace change) and
+  from `wwSetActivePanel()` (the instant a different panel's header is
+  clicked) -- the click handlers themselves always re-resolve
+  `wwActivePanel()` fresh, so this is presentation-only.
+- **Autoscale Y required no additional code.** It already applies
+  Plotly's native `yaxis.autorange: true` per Time Group
+  (`wwAutoscaleYForGroup`), which overrides any manual Y-zoom with no
+  separate "manual" JS flag to clear (unlike Event Reconstruction's own
+  `axis.manual`) -- confirmed live: zoom a panel, click that Time
+  Group's own Autoscale Y, range correctly restored.
+
+### Known limitation (`[FACT]`, flagged transparently)
+
+`wwActivePanel()`'s own fallback is `ww.panels[0]` -- insertion/display
+order, **not** guaranteed to be `wwTimeGroupDisplayNumber()`'s
+sorted-first group. Verified live: two Time Groups uploaded in order
+A-then-B, cold start (nothing ever clicked), the fallback targeted
+"Time Group 2", not "Time Group 1". Deliberately left as-is: reusing
+the existing, already-proven resolver (shared with Autoscale Y and the
+per-group step zoom) over building a competing strict-sorted resolver
+matches the ticket's own "reuse existing, don't invent a new algorithm"
+and "smallest clean change" instructions. Only affects the rare "cold
+start, multiple Time Groups, nothing ever clicked" case; any real click
+(a panel header, a per-group zoom, Autoscale Y) immediately makes every
+later fallback correct and consistent across all three controls.
+
+### Tests
+
+New `TestWaveformGlobalYAxisZoom` (backend static, 7 tests) in
+`test_frontend_time_group_toolbar.py`: markup/icon/order, click-handler
+wiring against `wwActivePanel()` (not the per-group resolver), shared-
+core-not-duplicated, sync-function disable logic, sync called from both
+refresh points, never-hidden-only-disabled. Two pre-existing tests in
+the same file (`test_step_zoom_y_resolves_the_active_panel_scoped_to_
+this_group`, `test_step_zoom_y_preserves_exact_range_reading_and_floor_
+semantics`) updated for the `wwStepZoomY`/`wwStepZoomYPanel` split.
+
+New `browser-tests/waveform-y-zoom.spec.js` (10 tests): Zoom Y In/Out
+target only the active panel's axis; switching the active panel moves
+the target; other panels in the same Time Group unchanged; other Time
+Groups unchanged; X unchanged throughout; no-selection fallback to
+`ww.panels[0]` only; disabled with no recordings; disabled with a
+recording but no displayed channel; tooltip names the target's own
+label; Autoscale Y restores the correct range for the same target
+without disturbing the other panel in its group. Plus a minimal Event
+Reconstruction smoke check (full coverage already lives in
+`event-reconstruction-active-yaxis.spec.js`/
+`event-reconstruction-yaxis-zoom.spec.js`, confirmed unchanged by full
+suite regression).
+
+Full backend suite: 6554 passed, 49 skipped. Waveform/Event
+Reconstruction browser regression: see HANDOFF.md for the latest run
+record.
+
+---
+
+## DEC-157 — Event Reconstruction's top toolbar is reorganized to match Waveform's own left/right structure
+
+Date: 2026-10-04
+Status: Approved (owner, "update the Event Reconstruction page top
+toolbar so its structure follows the current Waveform page toolbar
+organization" -- explicit correction: "Waveform is the reference.
+Event Reconstruction should be aligned to Waveform, not the other way
+around.") -- implemented on `feat/event-reconstruction`; not merged;
+**owner-reviewed (UAT, 2026-10-05) and committed in the 2026-10-05 UAT commit.**
+
+### Decision (owner)
+
+> Left-aligned operational/analysis controls (Time Display, Unit Mode,
+> Zoom, Autoscale, annotation, axis-target, event/analysis actions) vs
+> right-aligned view/layout controls (view mode, table/list/grid,
+> layout editing, split view, panel arrangement). Inspect Waveform's
+> current top toolbar first and record its structure; reuse existing
+> classes/layout mechanism; preserve all Event Reconstruction
+> functionality -- toolbar structure/layout change only.
+
+### Correction of an earlier gap
+
+DEC-155 (2026-10-04, same day) already inspected both toolbars and
+flagged -- rather than silently changing -- that Event Reconstruction's
+View Mode sits first/left while Waveform's own equivalent
+(Grouped/Separate/Custom + Split View) sits last/right, deferring the
+decision to the owner. Live browser verification during THIS ticket
+(Playwright, bounding-box measurements, both themes, two workspace
+states) confirmed the owner's own live observation: no `.toolbar-
+spacer` or right-aligned group existed anywhere in `#wwErToolbar` --
+the reorder had not been implemented, only flagged. This was a
+genuinely unfinished ticket, not a stale build/cache issue.
+
+### Waveform reference structure (`[FACT]`, read from `#wwToolbar`)
+
+Left-aligned, in order: Time Display (`#timeModeToggle`) → Detect Event
+Origin → Unit Mode + Per-Unit-Settings (`#wwUnitModeToggle`) → Zoom Y
+In/Out (`#wwZoomYInBtn`/`#wwZoomYOutBtn`, DEC-156) → Annotate/
+Annotations. Then `<div class="toolbar-spacer"></div>`. Right-aligned:
+Grouped/Separate/Custom (`#layoutModeToggle`) → Split View
+(`#wwSplitViewBtn`) → Edit Channel Groups (hidden) → a separator →
+Clear Workspace. Mechanism: `.ww-toolbar { display: flex; align-items:
+center; }` + `.toolbar-spacer { flex: 1; }` -- one spacer absorbs all
+remaining width, pushing everything after it flush to the toolbar's
+right edge. Both `#wwToolbar` and `#wwErToolbar` already shared the
+`.ww-toolbar` class before this ticket, so the mechanism needed no new
+CSS -- only the spacer `div` and a reordered element sequence.
+
+### Previous Event Reconstruction structure (`[FACT]`)
+
+Everything left-aligned, no spacer: View Mode (Grouped/Combined,
+Separate/Custom/Split hidden) → Time Display → Unit Mode → Zoom X
+In/Out → Zoom Y In/Out + active-axis readout → Autoscale X/Autoscale
+Y/Fit Selected Record → A/B Cursors → Annotate/Annotations.
+
+### New Event Reconstruction structure (`[FACT]`)
+
+Left-aligned, in order: Time Display (`#wwErTimeDisplayToggle`) → Unit
+Mode (`#wwErUnitModeToggle`) → Zoom X In/Out → Zoom Y In/Out + active-
+axis readout → Autoscale X/Autoscale Y/Fit Selected Record → A/B
+Cursors → Annotate/Annotations. Then `<div
+class="toolbar-spacer"></div>`. Right-aligned: View Mode
+(`#wwErViewModeToggle`: Grouped/Combined; Separate/Custom/Split stay
+`hidden`, unchanged). Only View Mode is a genuine "view/layout"
+control on this page today -- Event Reconstruction has no table/
+list/grid or panel-arrangement equivalent yet, so the right-aligned
+group currently holds exactly that one control group, matching
+Waveform's own Grouped/Separate/Custom + Split View placement in kind,
+not in exact membership (semantics differ -- the ticket's own "do not
+force identical positions if semantics differ" instruction).
+
+### Shared layout mechanism reused (`[FACT]`)
+
+No new CSS, no absolute positioning, no hardcoded spacer widths, no
+fake empty buttons. Reused `.ww-toolbar`'s pre-existing `display:flex`
+(shared by both toolbars already) and the SAME `.toolbar-spacer {
+flex: 1; }` rule Waveform's own toolbar already used. The View Mode
+group's own markup (icons, ids, hidden Separate/Custom/Split buttons,
+handlers) is otherwise byte-identical to before -- only its position in
+the DOM moved, from immediately after `<div class="ww-toolbar"
+id="wwErToolbar">` to immediately before its closing `</div>`.
+
+### Live browser verification (`[FACT]`, Playwright, not static-only)
+
+Measured actual rendered `boundingBox()`s, not just DOM order:
+- Left group (`#wwErTimeDisplayToggle`) sits ~10px from the toolbar's
+  own left edge in every state checked.
+- Right group (`#wwErViewModeToggle`) sits flush to the toolbar's own
+  right edge (within ~10px, the toolbar's own padding) in every state
+  checked: no recording, a recording with a channel plotted, light
+  theme, dark theme.
+- A visible gap always separates the left group's last control
+  (Annotations) from the right group (View Mode) -- confirmed both via
+  bounding-box comparison and a screenshot.
+- Resizing the viewport (1280px -> 1100px) preserves the separation:
+  the right group's own width stays constant and it stays flush to the
+  (now narrower) toolbar's right edge -- no overlap, no collapse.
+- Hidden controls (`#wwErViewSeparateBtn`/`#wwErViewCustomBtn`/
+  `#wwErViewSplitBtn`, Elapsed Time) leave no gaps: the View Mode
+  group's own bounding box is pixel-identical between the empty-
+  workspace state and the recording-loaded state.
+- Waveform's own toolbar (`#wwToolbar`) is unchanged -- confirmed by
+  the full, unmodified Waveform/Playback browser suite (40/40) passing
+  against this same build.
+
+### Tests
+
+No backend static test asserted Event Reconstruction toolbar element
+*order* (only presence/wiring), so none needed updating; the full
+existing `test_frontend_event_reconstruction.py` +
+`test_frontend_time_group_toolbar.py` +
+`test_frontend_time_group_canvas_empty_state.py` (225 tests) re-run
+clean. Live Playwright verification (bounding boxes, both themes, two
+workspace states, a resize) performed via a temporary diagnostic spec,
+not committed (its findings are recorded here and in the owner report
+instead). Full Event Reconstruction browser suite and Waveform/
+Playback-focused browser suite re-run against this change -- see
+HANDOFF.md for the latest run record.
+
+---
+
+## DEC-158 — Waveform's top toolbar gains Zoom X, Autoscale X/Y and A/B Cursors, removed from the per-Time-Group local toolbar
+
+Date: 2026-10-04
+Status: Approved (owner, "complete the Waveform page top-toolbar
+migration so its structure is consistent with the current Event
+Reconstruction toolbar model") -- implemented on
+`feat/event-reconstruction`; not merged; **owner-reviewed (UAT, 2026-10-05) and committed in the 2026-10-05 UAT commit.**
+
+### Decision (owner)
+
+> Move Zoom X/Y, Autoscale X/Y and A/B Cursors into the page-level top
+> toolbar so they stay visible (disabled, never hidden, when no valid
+> target exists) even with no recordings loaded -- the per-Time-Group
+> local toolbar model is no longer the desired design. Reuse existing
+> per-group core functions and targeting state; remove the now-
+> duplicated local controls; keep genuinely local controls (t0,
+> Synchronize Sources) local and report why.
+
+### Implementation (`[FACT]`)
+
+- **One shared "active Time Group" concept for every migrated
+  control.** New `wwActiveTimeGroupId()` = `wwPanelTimeGroupId(wwActivePanel())`
+  (`null`-safe) -- a plain projection of the EXISTING, already self-
+  healing `wwActivePanel()` state DEC-156's Zoom Y already resolves
+  through, never a second, independently-tracked piece of state. This
+  guarantees Zoom X, Autoscale X, Autoscale Y and A/B Cursors can never
+  silently disagree with Zoom Y about which Time Group is targeted --
+  directly satisfying the ticket's own "no stale target from previously
+  active group" validation point by construction, not by a parallel
+  resolver that could drift.
+- **Every action reuses an existing, unchanged, group-scoped core
+  function** -- only how its `groupId` argument is resolved is new:
+  - Zoom X In/Out (`#wwZoomXInBtn`/`#wwZoomXOutBtn`, new) →
+    `wwStepZoomX(wwActiveTimeGroupId(), direction)` (DEC-043's own
+    function, already took a bare `groupId`).
+  - Autoscale X (`#wwAutoscaleXBtn`, new) →
+    `wwResetOneTimeGroupView(wwActiveTimeGroupId())` (unchanged).
+  - Autoscale Y (`#wwAutoscaleYBtn`, new) → originally
+    `wwAutoscaleYForGroup(wwActiveTimeGroupId())`; **corrected the same
+    day** to `wwAutoscaleYPanel(wwActivePanel())` -- see "Correction"
+    below.
+  - A/B Cursors (`#wwCursorModeBtn`, new) →
+    `wwToggleMeasurementCursors(wwActiveTimeGroupId())` (unchanged --
+    already scoped to exactly one group's own
+    `ww.timeGroupCursorState` entry; "do not silently apply cursors to
+    every Time Group" was already true of this function and remains
+    so).
+  - Zoom Y In/Out (`#wwZoomYInBtn`/`#wwZoomYOutBtn`, DEC-156, unchanged)
+    → `wwStepZoomYPanel(wwActivePanel(), direction)`.
+- **Autoscale Y's original scoping, and the owner's correction**: this
+  ticket's first implementation made Autoscale Y deliberately GROUP-
+  scoped (every panel in the active Time Group), reasoning that Event
+  Reconstruction's own global `wwErAutoscaleY()` and Waveform's own
+  pre-existing per-Time-Group Autoscale Y button both worked that way,
+  and flagged the choice for owner review rather than silently
+  guessing. The owner's explicit, same-day correction: Waveform's
+  Y-axis operations -- Zoom Y AND Autoscale Y alike -- must resolve the
+  exact same single-axis target. See "Correction" below for the full
+  record; this bullet is kept, not deleted, so the original reasoning
+  and the fact that it was superseded both stay visible.
+- **Zoom X Out preserves the exact "disabled at this group's own full
+  range" nuance** the now-removed local Zoom Out button had
+  (`wwSyncGlobalWaveformToolbar()`'s own `atFullRange` check, same
+  `wwTimeGroupVisibleRange`/`wwDeriveTimeGroupBounds`/`wwBoundsEqual`
+  reads the old `wwSyncTimeGroupZoomControls()` used) -- not silently
+  dropped by the migration.
+- **A disambiguating " (Time Group N)" tooltip suffix** (new
+  `wwActiveTimeGroupTooltipSuffix()`) appears on Zoom X/Autoscale X/
+  Cursors only once more than one Time Group exists (the common
+  single-group case stays as plain as Event Reconstruction's own static
+  wording); uses the same deterministic sorted-group-id numbering
+  (`wwTimeGroupDisplayNumber()`) every other "Time Group N" label
+  already shares. Zoom Y's own tooltip (DEC-156, naming the target
+  panel's own label, e.g. "Voltage (V)") is deliberately left in its
+  own, more specific format rather than merged into this suffix --
+  Autoscale Y now shares that SAME panel-label format too, per the
+  Correction below.
+- **One consolidated sync function**, `wwSyncGlobalWaveformToolbar()`
+  (renamed/broadened from DEC-156's `wwSyncGlobalZoomYControls()`),
+  mirroring Event Reconstruction's own single `wwErSyncToolbar()`
+  structure rather than scattering a sync function per control. Called
+  from `wwUpdateEmptyState()`, `wwSetActivePanel()`, and (new)
+  `wwToggleMeasurementCursors()` itself (the one place
+  `cursors.enabled` changes) so the A/B Cursors button's own
+  `aria-pressed` never goes stale when the active target switches.
+- **Local controls removed, not merely hidden**: the per-Time-Group
+  Zoom In/Out split-buttons (main action + X/Y axis-choice dropdown),
+  Autoscale X, Autoscale Y and the A/B Cursors mode toggle are deleted
+  from `wwCreateTimeGroupCanvasDom()`'s own markup and
+  `wwWireTimeGroupToolbar()`'s own wiring -- not left pointing at
+  nothing. Their only-remaining-caller functions
+  `wwPerformZoomStep()`/`wwSetZoomStepAxis()` (the split-button's own
+  dispatcher and axis-choice handler) are deleted outright (confirmed
+  via full-file reference trace: no other caller existed).
+  `wwZoomStepAxisForGroup()`/`ww.zoomStepAxisByGroup` themselves are
+  deliberately KEPT, now vestigial (always reading the unwritten "x"/"x"
+  default) -- `wwSyncTimeGroupZoomControls()` still reads through them
+  from two unrelated, still-live per-group viewport/bounds-sync call
+  sites (now a harmless no-op against the removed local markup);
+  deleting the Map/getter would mean also touching the shared
+  topology-pruning loop several OTHER per-group Maps share, outside
+  this ticket's own "reuse existing, avoid large refactors" scope.
+- **A/B cursor VALUES stay local** (`.ww-tg-cursor-readout`, each Time
+  Group's own independent A/B/Δt numeric readout) -- only the MODE
+  TOGGLE moved. This mirrors Event Reconstruction's own identical split
+  (a global `#wwErCursorModeBtn`, a local `.ww-tg-cursor-readout`
+  inside `#wwErCanvas`), not a new pattern.
+- **t0 and Synchronize Sources stay local** -- explicitly out of this
+  ticket's own scope and, per their own original TG-E/TG-F comments,
+  inherently about ONE specific Time Group's own internal state/
+  alignment (where its own t0 lands; which of ITS OWN sources align to
+  which), not a current-view operation a page-level "active target"
+  button could meaningfully represent without being ambiguous by
+  construction.
+
+### Toolbar order
+
+Left-aligned (unchanged lead-in, then the newly-sequenced family): Time
+Display → Detect Event Origin (Waveform-only, hidden by default) →
+Unit Mode + Per-Unit-Settings → **Zoom X In/Out (new)** → Zoom Y In/Out
+(DEC-156) → **Autoscale X (new)** → **Autoscale Y (new)** → **A/B
+Cursors (new)** → Annotate/Annotations. Then `.toolbar-spacer`.
+Right-aligned (untouched by this ticket): Grouped/Separate/Custom →
+Split View → Edit Channel Groups → Clear Workspace. Unaffected by the
+Correction below -- structure/placement/order are unchanged, only
+Autoscale Y's own internal targeting logic changed.
+
+### Correction — Autoscale Y shares Zoom Y's own target (same day)
+
+**Previous behaviour (`[FACT]`, as first implemented)**: Autoscale Y
+targeted `wwActiveTimeGroupId()` and called `wwAutoscaleYForGroup(groupId)`
+(now deleted), which looped every panel belonging to that Time Group
+and restored `yaxis.autorange` on each -- i.e. with Time Group 1
+holding Voltage/Current/Frequency panels, clicking Autoscale Y reset
+all three regardless of which one (if any) was the selected/active
+axis.
+
+**Corrected behaviour (`[FACT]`)**: Autoscale Y now targets
+`wwActivePanel()` directly -- the exact same target Zoom Y resolves --
+via the new, single-panel `wwAutoscaleYPanel(panel)` (`Plotly.relayout(
+panel.chartEl, { "yaxis.autorange": true })` for that one panel only,
+never a loop over `ww.panels`). With Current selected, Autoscale Y
+restores only Current's own automatic range; Voltage and Frequency are
+never touched. `wwAutoscaleYForGroup(groupId)` is deleted outright (its
+only caller was this one button, confirmed via full-file reference
+trace) rather than left as unreachable dead code.
+
+**Target-resolution mechanism reused (`[FACT]`)**: no new resolver was
+built. Autoscale Y's click handler, disabled state and tooltip were
+simply moved out of the group-scoped block in
+`wwSyncGlobalWaveformToolbar()` (keyed off `wwActiveTimeGroupId()`/
+`hasGroup`) into the SAME block Zoom Y already occupies (keyed off
+`wwActivePanel()`/`yZoomPanel`) -- `autoscaleY.disabled = !yZoomPanel;`
+and `autoscaleY.title = "Autoscale Y — " + ySuffix` (the identical
+`ySuffix` Zoom Y's own tooltip uses, e.g. "Voltage (V)"). This
+guarantees the contract's own 4-step rule (active Time Group + active
+Y-axis → first Time Group's first valid Y-axis → next Time Group with
+a valid Y-axis → disabled) holds for Autoscale Y automatically, because
+it is now, structurally, the exact same code path Zoom Y already
+satisfies that rule through -- not a parallel implementation that could
+drift. Zoom X, Autoscale X and A/B Cursors are explicitly UNCHANGED by
+this correction -- they keep targeting `wwActiveTimeGroupId()`, since
+the owner's correction was scoped to Y-axis operations only.
+
+**This is a deliberate, owner-directed divergence from Event
+Reconstruction's own `wwErAutoscaleY()`** (still group/workspace-wide,
+untouched) and from Waveform's own prior group-wide draft of this same
+button -- not a reversal of either's own separate, correct behaviour.
+
+### Tests
+
+Backend static: new `TestWaveformTopToolbarMigration` (11 tests, after
+the correction) in `test_frontend_time_group_toolbar.py` covering
+targeting-rule compliance, the consolidated sync function, the
+full-range Zoom-Out nuance, cursor isolation, and the never-hidden
+rule. New `TestAutoscaleYSharesZoomYsTarget` (5 tests): the group-
+scoped function no longer exists; the single-axis core restores
+autorange for exactly one panel, never loops `ww.panels`; the click
+handler resolves `wwActivePanel()` directly; the sync function places
+Autoscale Y's own disabled/title logic in the SAME code block as Zoom
+Y's (before the group-scoped `groupId` resolution, proven by string
+position), not the group-scoped one; never hidden, only disabled.
+`TestAutoscaleIsGroupScopedOnly` (same file, TG-D1-era) updated in
+place -- its docstring now explicitly states it was superseded by this
+correction, its one surviving test confirms the group-scoped function
+is gone, and a new test confirms the button's wiring points at the
+single-axis replacement. `TestLocalToolbarShellReusesExistingStructure`/
+`TestResetIsGroupScopedOnly`/`TestToolbarWiringResolvesControlsFromTheLaunchingCanvas`/
+`TestPerGroupZoomAxisPreferenceIsolated` (same file, TG-D1-era,
+unaffected by this specific correction) remain as updated by the
+migration itself. `test_frontend_event_reconstruction.py`'s
+`TestPowerwaveIconSystem`/`TestEventReconstructionToolConsistency`
+updated to compare Event Reconstruction's own global buttons against
+Waveform's NEW global buttons instead of its retired local canvas
+markup. `test_frontend_time_group_cursors.py`'s
+`TestPerGroupToolbarControl` updated -- including one assertion that
+now deliberately asserts the OPPOSITE of its original TG-D2-era
+finding (`id="wwCursorModeBtn"` is reintroduced, not permanently
+absent), with its own docstring explaining why. `test_frontend_playback.py`
+updated to stop asserting the now-removed local controls while keeping
+its own original intent (non-Playback controls are unaffected by
+Playback's own removal) intact against what remains (t0, Synchronize
+Sources, the cursor overlay).
+
+New `browser-tests/waveform-top-toolbar-migration.spec.js` (17 tests,
+after the correction): all five controls render and stay visible-but-
+disabled with zero recordings; enable together once a channel is
+displayed; the local canvas toolbar no longer shows any of them (only
+t0/Sync remain, no stale separator gap); Zoom X/Autoscale X target only
+the active Time Group and leave others untouched; A/B Cursors toggle
+exactly one group at a time with no stale `aria-pressed`. Dedicated
+"Autoscale Y shares Zoom Y's own target" describe block (5 tests, a
+new three-panel-one-group fixture -- Voltage/Current/Frequency,
+matching the owner's own example): Autoscale Y resets only the
+selected Y-axis, the other two panels in the same Time Group stay
+completely untouched; other Time Groups stay unaffected; the
+no-selection fallback resolves the exact same `ww.panels[0]` Zoom Y
+falls back to; Zoom Y's and Autoscale Y's own tooltips name the
+identical target after the active panel switches; disabled (not
+hidden) with no valid Y-axis, matching Zoom Y exactly. Both themes, a
+narrower viewport, no duplicated controls document-wide, zero console
+errors; an Event Reconstruction regression smoke check.
+`waveform-y-zoom.spec.js`'s own pre-existing Autoscale Y test updated
+(comment only -- its assertions already held under the corrected
+behaviour) to describe the stronger, now-true guarantee (the other
+panel is never touched at all, not merely coincidentally unchanged in
+value).
+
+Full backend suite, the Waveform/Playback-focused browser suite and the
+full Event Reconstruction browser suite all re-run against this
+correction -- see HANDOFF.md for the latest run record.
+
+### Addendum — Y-axis target readout beside Zoom Y (same day)
+
+**Decision (owner)**: add a compact "Y: &lt;axis&gt;" reference beside
+the page-level Zoom Y In/Out buttons, reusing Event Reconstruction's
+own implementation, with ONE shared source of truth so the displayed
+axis always equals Zoom Y's and Autoscale Y's own target.
+
+**A. ER implementation reused (`[FACT]`)**: Event Reconstruction's own
+`wwErSyncActiveAxisReadout(entry)` (`#wwErActiveAxisReadout`, class
+`.ww-er-active-axis-readout`) sets `textContent`/`title` to `"Y: " +
+<axis title>` or `"Y: Select axis"` when nothing is targeted. Reused
+verbatim: the SAME CSS class (`.ww-er-active-axis-readout` -- 0.68rem,
+`var(--text-dim)`, 130px max-width, ellipsis overflow -- defined once,
+styling both pages' own elements, no new rule added) and the identical
+empty-state wording.
+
+**B. Waveform Y-target resolver (`[FACT]`)**: no new resolver --
+the readout reads the EXACT SAME `yZoomPanel` variable
+`wwSyncGlobalWaveformToolbar()` already computes via `wwActivePanel()`
+for Zoom Y's and Autoscale Y's own disabled-state/tooltip logic (DEC-156/
+this ticket's own Correction above). `yAxisReadout.textContent = "Y: "
++ (yZoomPanel ? yZoomPanel.label : "Select axis")`.
+
+**C. Readout format (`[FACT]`)**: `panel.label` -- the SAME pre-existing
+string Zoom Y's own tooltip already uses (e.g. "Voltage (V)",
+"Current (A)") -- no new label derivation. `title` is cleared (`""`)
+when nothing is targeted, set to the full text otherwise, so a
+truncated (130px/ellipsis) label is still readable on hover, matching
+ER's own pattern exactly.
+
+**D. State-update triggers (`[FACT]`)**: no new trigger plumbing --
+the readout is set inside `wwSyncGlobalWaveformToolbar()`, called from
+the SAME existing hook points Zoom Y/Autoscale Y already rely on
+(`wwUpdateEmptyState()` -- every channel add/remove/workspace clear/
+nav entry; `wwSetActivePanel()` -- every active-panel/Time-Group
+change). Since the readout's own value is a pure function of the same
+`yZoomPanel` these controls already correctly track, no additional
+coverage was needed for "axis removed," "workspace cleared," or
+"Time Group switched" -- they are already exercised and were already
+correct for Zoom Y.
+
+**E. Confirmation that Zoom Y + Autoscale Y + readout share the exact
+same target (`[FACT]`)**: all three are set from ONE local variable
+(`yZoomPanel`) inside ONE function, in the SAME statement block --
+verified both statically (a backend test locates the readout's own
+assignment and confirms it reads `yZoomPanel`, never a second
+`wwActivePanel()` call) and live (Zoom Y zooms the exact axis the
+readout names; Autoscale Y restores the exact axis the readout names;
+switching the active panel moves all three in lockstep).
+
+**Tests**: new `TestWaveformYAxisTargetReadout` (6 backend static
+tests) in `test_frontend_time_group_toolbar.py`. New "Y-axis target
+readout" describe block (8 tests) in
+`browser-tests/waveform-top-toolbar-migration.spec.js`: empty state;
+first-valid-axis fallback; updates on active-panel switch; Zoom Y acts
+on exactly the shown axis; Autoscale Y acts on exactly the shown axis;
+removing the active axis selects the correct fallback with no stale
+label; clearing the workspace resets to the empty state; no stale
+label after switching the active Time Group. New "Event Reconstruction
+-- active axis readout no regression" describe block (1 test) confirms
+`#wwErActiveAxisReadout` is untouched. Full backend suite: **6574
+passed, 49 skipped**. Waveform-focused browser suite (36 tests across
+`waveform-top-toolbar-migration.spec.js`/`waveform-y-zoom.spec.js`,
+plus 32 more across `playback.spec.js`/`waveform-empty-state.spec.js`/
+`smoke.spec.js`) and the full Event Reconstruction browser suite
+(110/110) all re-run clean. `git diff --check` clean. Live-verified
+with a three-axis Time Group (Voltage/Current/Frequency): the readout
+reads "Y: Voltage" by default and updates to "Y: Current" the instant
+that panel's header is clicked.
+
+**F. Files changed**: `frontend/index.html` (markup + sync function);
+`backend/tests/test_frontend_time_group_toolbar.py`;
+`browser-tests/waveform-top-toolbar-migration.spec.js`.
+
+---
+
+## DEC-159 — Waveform top-toolbar follow-up: spacing fix, owner-supplied icons, Clear Waveforms restored to the left operational group
+
+Date: 2026-10-04
+Status: Approved (owner, three bundled follow-up tickets to the
+top-toolbar migration) -- implemented on `feat/event-reconstruction`;
+not merged; **owner-reviewed (UAT, 2026-10-05) and committed in the 2026-10-05 UAT commit.**
+
+### 1. Empty toolbar gap between Time Display and Unit Mode
+
+**Root cause (`[FACT]`)**: `#wwDetectEventBtn` ("Detect Event Origin")
+sits between two `.ww-toolbar-sep` hairlines, hidden by a feature flag
+(`WW_DETECT_EVENT_UI_ENABLED = false`, the current/default state --
+unrelated to this ticket, pre-existing). With the button genuinely
+`display:none`, the two separators became directly adjacent, with
+nothing rendered between them -- each one's own 4px side margin plus
+the toolbar's own 2px flex gap stacked into roughly double a normal
+single-separator gap. Not a hidden element still occupying space
+(`.ww-toolbar-sep` sets no `display` of its own, so native `[hidden]`
+already works correctly on it) -- the excess space came from two REAL,
+visible separators with nothing visible between them.
+
+**Fix (`[FACT]`)**: gave the second separator an id
+(`#wwDetectEventSep`) and toggle it together with the button itself, at
+the same assignment site (`wwDetectEventSep.hidden = !WW_DETECT_EVENT_UI_ENABLED`).
+Only one separator now renders between Time Display and Unit Mode while
+the button is hidden; if `WW_DETECT_EVENT_UI_ENABLED` is ever flipped
+back on, both separators (and the button's own three-family spacing)
+return automatically, with zero further changes needed.
+
+**Not changed**: button functionality, control ordering, any
+separator representing a real functional boundary, no negative
+margins/hardcoded offsets used.
+
+### 2. Per-Unit Settings icon
+
+**`#wwOpenPerUnitSettingsBtn`'s former hand-drawn inline gear `<svg>`**
+replaced with the owner-supplied `pu_settings.svg` (a Lucide "cog"
+pictogram, the newest file in `frontend/assets/icons/waveform/` at the
+time of this ticket), referenced through the existing
+`data-ww-icon="PU_SETTINGS"` registry mechanism (new `WW_TOOL_ICONS`
+entry) -- the same CSS mask-image technique every other owner-supplied
+icon already uses, never a duplicate `<img>`/inline-injection path.
+Handler, tooltip, accessibility attributes, enabled/disabled behaviour
+and toolbar position are byte-identical; only the `<span class="ww-icon">`
+child's own content changed, from inline markup to the registry
+placeholder.
+
+### 3. Clear Waveforms ("Delete Waveform") restored to the left operational group
+
+**Investigation finding (`[FACT]`)**: `#clearWorkspaceBtn` was never
+accidentally removed, never tied to the old per-Time-Group local
+toolbar, and never renamed -- it is, and has always been, the feature
+the owner refers to colloquially as "Delete Waveform" (tooltip "Clear
+displayed waveforms", `aria-label="Clear Waveforms"`, handler
+`wwClearWorkspace` unchanged). It simply was not repositioned when the
+rest of the toolbar was reorganized into the new left-operational/
+right-layout model (DEC-157/DEC-158) -- it remained in its pre-existing
+position on the right, beside Edit Channel Groups/Split View (a
+layout/view family it was never actually part of), which made it read
+as "missing" once everything else moved around it.
+
+**Fix (`[FACT]`)**: moved to the left side, after Annotate/Annotations,
+before the toolbar-spacer -- grouped with the other operational actions
+per the owner's own explicit instruction. Visibility rule corrected to
+match every other control already on this toolbar: previously hidden
+outright when the workspace was empty (`clearWorkspaceBtn.hidden =
+empty`, documented at the time as "a deliberate, separate design choice
+predating this ticket"); now disables instead
+(`clearWorkspaceBtn.disabled = empty`), per the owner's own explicit
+"should not disappear merely because no recording is loaded" -- a
+transparent, owner-directed correction of that earlier choice, not a
+silent reversal. Icon replaced with the owner-supplied
+`clear_waveforms.svg` (a cleaning-brush pictogram) through the same
+`data-ww-icon="CLEAR_WAVEFORMS"` registry mechanism as #2 above.
+
+**Semantics explicitly preserved, not redefined**: `wwClearWorkspace`
+itself is completely unchanged -- display-only, clears every currently
+displayed panel/channel, never touches the underlying source recording
+server-side (confirmed by reading the function's own pre-existing
+comment: "The toolbar action is display-only and keeps source bounds
+for the still-selected/imported source"). No confirmation dialog
+existed before this ticket and none was added (none found in the prior
+implementation to preserve). No targeting resolver was needed -- the
+action is workspace-wide by design, not scoped to an "active
+panel/Time Group," so DEC-158's `wwActiveTimeGroupId()`/
+`wwActivePanel()` concepts do not apply here and were not retrofitted
+onto it.
+
+**A fourth sub-ticket -- requesting a *different* icon asset
+(`clear_waveform.svg`, singular) for this same button -- was started
+(the literal filename did not exist; the newest candidate,
+`clear_display.svg`, was identified and wired in) and then explicitly
+abandoned by the owner mid-task before verification.** Reverted in
+full: the registry entry points at `clear_waveforms.svg` again (the
+asset referenced in the paragraph above), and `clear_display.svg`
+remains in the assets folder, unreferenced and untouched, exactly as
+delivered.
+
+### Tests
+
+New `TestWaveformToolbarSpacingAndIconsFollowup` (8 backend static
+tests) in `test_frontend_time_group_toolbar.py`: the button and its
+separator toggle together; a structural proof no two `.ww-toolbar-sep`
+hairlines in `#wwToolbar`'s own markup sit back-to-back; Per-Unit
+Settings and Clear Waveforms both resolve through the registry, never
+inline `<svg>`; Clear Waveforms' new left-side position (after
+Annotations, before the spacer, never inside the right-side group);
+exactly one instance of the button; its handler/semantics unchanged.
+`test_frontend_time_group_canvas_empty_state.py`'s own
+`test_clear_workspace_button_still_hides_when_empty_unchanged` updated
+in place (renamed, docstring explains the supersession) to assert
+`disabled`, not `hidden`.
+
+New describe blocks in `browser-tests/waveform-top-toolbar-migration.spec.js`:
+"spacing fix" (live-measures the pixel gap between Time Display and
+Unit Mode, confirms it is a single-separator gap, not double); "Per-Unit
+Settings icon" (renders, resolves to the real asset path via computed
+`mask-image`, both themes, still opens `#perUnitSettingsOverlay`);
+"Clear Waveforms restored to the left operational group" (visible-
+disabled with no recordings; correct DOM position relative to
+Annotations/the spacer/Split View; enables once a waveform is
+displayed and clears only the displayed panel while the source
+recording count in the Recordings table stays unchanged; exactly one
+instance document-wide); an Event Reconstruction regression check
+(none of these three controls leak into `#wwErToolbar`).
+
+Full backend suite: **6581 passed, 49 skipped**. Waveform-focused
+browser suite (76 tests across `waveform-top-toolbar-migration.spec.js`/
+`waveform-y-zoom.spec.js`/`playback.spec.js`/
+`waveform-empty-state.spec.js`/`smoke.spec.js`) and the full Event
+Reconstruction browser suite re-run against this change -- see
+HANDOFF.md for the latest run record. `git diff --check` clean.
+Live-verified with screenshots in both themes: no double gap between
+Time Display and Unit Mode; Per-Unit Settings renders the new gear
+icon; Clear Waveforms renders the new cleaning-brush icon, disabled
+(greyed) with nothing loaded, enabled once a channel is displayed,
+positioned immediately before the right-aligned view/layout group.
+
+---
+
+## DEC-160 — Event Reconstruction waveform panels gain drag-to-resize, reusing Waveform's own mechanism
+
+Date: 2026-10-05
+Status: Approved (owner ticket) -- implemented on `feat/event-reconstruction`;
+not merged; **owner-reviewed (UAT, 2026-10-05) and committed in the 2026-10-05 UAT commit.**
+
+### Decision
+
+Event Reconstruction's own panels (both Grouped Measurement and Combined
+Multi-Channel mode) gain a drag-to-resize handle for panel HEIGHT only
+-- never width, X-axis, Y-axis, channel membership, zoom, cursor, or
+annotation state. The handle, its CSS, and its drag mechanics are
+Waveform's own, already-proven `.ww-resize-handle`/`wwWireResizeHandle()`
+machinery (Pointer Capture; a cheap clamp-and-write on every raw
+`pointermove`; the expensive `Plotly.Plots.resize()` coalesced to once
+per animation frame via `requestAnimationFrame`; an authoritative final
+write on `pointerup`/`pointercancel`) -- reused as a PATTERN (new,
+parallel ER-prefixed functions: `wwErSetPanelHeightImmediate()`/
+`wwErResizePanelPlot()`/`wwErSetPanelHeight()`/`wwErWireResizeHandle()`),
+not called directly, since ER's own panel object shape differs
+(`panel.key`, not `panel.groupKey`) -- the same reuse-as-pattern,
+not-by-reference approach `wwAnalysisWireRelatedWaveformsResize()`
+already established for an unrelated page.
+
+### Why (`[FACT]`)
+
+`wwErCreatePanel(spec)` already used the SAME shared `wwPanelMarkupHtml("")`
+template Waveform uses (it includes `.ww-resize-handle` by default), but
+explicitly removed the handle at creation (`container.querySelector(".ww-resize-handle").remove();`,
+with its own comment: "Panel-height dragging is still not offered in
+either mode") -- a known, flagged, deliberate gap, not an oversight.
+Panel height was fixed via `WW_ER_PANEL_HEIGHT=180`/
+`WW_ER_COMBINED_PANEL_HEIGHT=420`, set once at creation and never
+changed afterward.
+
+### Implementation
+
+- `wwErState.plot.panelHeights` (new `Map`, session-local, same
+  "kept for the session, never explicitly pruned" lifecycle as the
+  adjacent `axisStates`) stores each panel's own resized height.
+- The handle is kept (not removed) at panel creation, unconditionally
+  for both Grouped and Combined -- no special-casing, unlike the panel
+  header, which strips its own interactive attributes for Combined
+  (DEC-142: Combined targets per-axis via the legend, not the header).
+- Min/max reuse Waveform's own `WW_MIN_PANEL_HEIGHT`/`WW_MAX_PANEL_HEIGHT`
+  (100/600) and its exact `wwClampPanelHeight()` directly -- no second,
+  ER-specific pair of constants.
+- An accessible label (`aria-label="Resize <panel's own title> panel height"`)
+  tracks the SAME `resizeLabel` `wwErRefreshPanelPresentation()` already
+  computes for the panel's own header/legend title, in both Grouped and
+  Combined mode -- never a second, independently-maintained title string.
+- `wwErResizePanelPlot(panel)` is scoped to exactly ONE panel
+  (`Plotly.Plots.resize(panel.chartEl)`) and calls `wwErDrawCursors()` --
+  the SAME minimal footprint ER's own established sidebar-drag reflow
+  (`wwErResizePlots()`) already uses for "something changed a panel's
+  available size," deliberately NOT extended to also re-render
+  annotations (that reflow doesn't either).
+
+### Correction during implementation: height must survive a unit-mode switch (`[FACT]`)
+
+The ticket's own explicit requirement -- a panel re-rendered because of
+axis interaction, zoom, cursor change, **unit mode change**, or theme
+change must not reset a user-resized height "unnecessarily" -- was
+initially violated by this architecture's own pre-existing panel-reuse
+rule: `wwErRenderPlot()` only reuses an existing panel object when
+`existingPanels.get(spec.key)` finds one, and a Grouped panel's own
+`spec.key` is built from the backend's own `*_display_axis_key`, which
+genuinely differs between Engineering and Per Unit for the SAME logical
+axis (DEC-138: `"Voltage|kV"` in Engineering vs. `"Voltage|raw:pu"` in
+Per Unit) -- so a unit-mode switch was, by this pre-existing key
+architecture's own design, indistinguishable from "a genuinely new
+axis," resetting height to default every time.
+
+**Fix**: a new `wwErPanelHeightKey(spec)` derives a SEPARATE,
+mode-invariant persistence key instead of reusing `spec.key` for this
+one purpose -- the backend's own `*_display_axis_quantity` stays
+identical across both unit modes ("Voltage" either way, confirmed in
+`test_event_reconstruction_per_unit.py`), so a shared axis's height
+persists under `"quantity:" + axis.quantity`. A solo panel (no safe
+shared axis; `axis.key === null`) keeps using its own `group.key`
+directly -- already mode-invariant by construction, since it is built
+from the channel SELECTION identity (record/source/channel name), which
+does not depend on display axis at all. The Combined panel's fixed
+`"combined"` key was already mode-invariant. `panel.heightKey` (not
+`panel.key`) is the field actually read/written by the resize
+functions, keeping this a narrowly-scoped, additive fix rather than a
+change to `spec.key`'s own, unrelated reuse-detection role.
+
+**Risk accepted, explicitly**: two DIFFERENT-unit axes of the same
+quantity displayed simultaneously in Grouped mode (e.g. a `Voltage|kV`
+axis and a separately-held `Voltage|V` axis, a narrow, uncommon
+configuration) would now share one height-persistence slot. This is a
+deliberate, minor trade-off for solving the ticket's own explicit,
+common-case requirement (the owner's own example: resizing Current must
+not affect Voltage/Frequency, and a unit-mode switch must not reset
+any of them) -- not flagged as a defect.
+
+### Not changed
+
+Resize never touches X-axis/Y-axis/zoom range, cursor state, channel
+membership, or annotation data -- `wwErResizePanelPlot()`'s own
+`Plotly.Plots.resize()` call is Plotly's own guarantee of this (same as
+Waveform's own `wwResizePanelPlot()` already relies on). Grouped mode's
+own per-quantity panel independence (Voltage/Current/Frequency each
+resize without affecting the others) is unaffected by the new
+`wwErPanelHeightKey()` -- it already followed `group.axis.key`'s own
+existing split by quantity+unit, now additionally keyed by quantity
+alone only for the height slot.
+
+### Validation
+
+New `browser-tests/event-reconstruction-panel-resize.spec.js` (19
+tests): handle presence/attributes (`ns-resize` cursor, `aria-label`,
+`role="separator"`, `aria-orientation="horizontal"`) in both modes;
+drag-down/up changes height; min-height enforced; a generous max is
+reachable but not overly restrictive; cross-panel isolation in Grouped
+mode; Plotly's own `_fullLayout.height` actually reflows; zoom/cursor/
+active-axis/channel-membership state survives a resize; **unit-mode
+switch preserves a resized height** (the corrected behaviour above);
+Combined-mode resize preserves every plotted channel/shared X/Y config/
+cursor/annotation state; Grouped↔Combined independence; Autoscale/Zoom/
+annotations still function post-resize; no handle when there is no
+panel (empty state); no console errors in either theme; Waveform's own
+`ww.panelHeights` is never touched by an ER resize. New backend class
+`TestEventReconstructionPanelResize` (16 tests, including the new
+`test_panel_height_key_is_mode_invariant_for_a_shared_axis`) in
+`test_frontend_event_reconstruction.py`; `test_combined_panel_height_and_advisory_notice`
+and `test_no_event_reconstruction_channel_presentation_store` updated
+in place (superseded assertions), not deleted; the ER combined spec's
+own pre-existing "still no resize grip" assertion updated to "handle
+now present, at its DEFAULT height" with a pointer to the new spec file
+for the full coverage.
+
+Full backend suite: **6565 passed, 49 skipped**. Full Event
+Reconstruction browser suite: **129/129** (including the new 19-test
+`event-reconstruction-panel-resize.spec.js`), zero failures. Full
+Waveform browser suite: **96/96**. `git diff --check` clean.
+
+---
+
+## DEC-161 — Waveform toolbar refinement: Synchronize Sources removed, t0 moved to the page-level toolbar
+
+Date: 2026-10-05
+Status: Approved (owner ticket, two parts) -- implemented on
+`feat/event-reconstruction`; not merged; **owner-reviewed (UAT, 2026-10-05) and committed in the 2026-10-05 UAT commit.**
+
+### Part 1 — "Synchronize Sources" removed outright
+
+**Audit (`[FACT]`)**: the per-Time-Group `.ww-tg-sync-btn` (TG-F) was
+the modal's (`#wwSyncOverlay`) ONLY entry point -- `wwOpenSyncModal(groupId)`
+had no other caller anywhere in the file. Every offset-EDITING function
+the modal drove (`wwRenderSyncSourceRow`/`wwRenderSyncBody`/
+`wwSyncReloadAndRenderForGroup`/`wwOpenSyncModal`/`wwCloseSyncModal`/
+`wwSyncShowError`/`wwSyncApplyOffsetChangeSideEffectsForGroup`/
+`wwRefreshSourceSyncBadges`/`wwSyncPutOffset`/`wwSyncSetOffsetMs`/
+`wwSyncStepOffset`/`wwSyncResetOffset`/`wwSyncResetAllForGroup`/
+`wwSourcesForTimeGroup`) was reachable ONLY from inside that modal's own
+wiring -- confirmed UI-only, genuinely dead once the button was removed.
+
+The AUTOMATIC synchronization-STATE mechanism this modal only ever let
+an engineer EDIT is a separate, still-fully-used system and was **not**
+touched: `wwFetchSynchronizationStateForWorkspace()` (called from every
+upload/source-select/source-removal path, unconditionally, regardless
+of whether the modal was ever opened) and `wwSourceSyncBadgeHtml()`
+(the sidebar's own per-source "Reference"/"+X ms" badge, rendered at
+every tree build) both survive, exactly as before.
+
+**One exception, found during the audit**: `wwSyncOffsetToMsDisplay()`/
+`wwSyncMsToOffsetSeconds()` (the ms↔seconds conversion pair, named for
+the modal but not owned by it) are ALSO used by Event Reconstruction's
+own, entirely unrelated per-record manual correction feature
+(`wwErFormatCorrection()`/`wwErSetCorrection()`) -- these two functions
+were kept, not removed, despite sharing the modal's own naming prefix.
+
+**Fix**: removed `#wwSyncOverlay`'s markup, the `.ww-tg-sync-btn`
+button, its wiring, the bottom-of-file modal-close/Escape/backdrop
+listeners, the `wwCloseSyncModal()` defensive call inside "Start New
+Workspace," and every function listed above except the two ms/seconds
+helpers.
+
+### Part 2 — t0 moves to the page-level toolbar
+
+"Set Cursor A as t=0"/"Clear t=0" moves from each Time Group Canvas's
+own local toolbar (`.ww-tg-t0-btn`, TG-E) to a new page-level `#wwT0Btn`,
+beside `#wwCursorModeBtn` in `#wwToolbar`'s left operational group --
+the SAME `wwActiveTimeGroupId()` targeting model (active Time Group,
+self-healing to the first valid one, else disabled) DEC-158 already
+established for Zoom X/Autoscale X/A-B Cursors. t0's own existing
+semantics are completely unchanged: `wwHandleSetOrClearT0ClickForGroup(groupId)`/
+`wwSetT0FromCursorAForGroup(groupId)`/`wwClearT0ForGroup(groupId)` are
+reused verbatim, operating on Cursor A of the resolved Time Group only
+-- only the control's own location and target-resolution moved. The
+button stays visible always (never hidden for "no recording loaded,"
+per the panel-header tool visibility rule every other migrated control
+already follows); it disables only when there is no valid Time Group,
+or the resolved group has neither an existing t0 to clear nor a placed
+Cursor A to promote -- the EXACT precondition the deleted, per-canvas
+`wwSyncT0ControlsForGroup(groupId)` used to check, now inlined into
+`wwSyncGlobalWaveformToolbar()`'s own t0 section, against the SAME
+`groupId`/`hasGroup` that function already resolves for every other
+control.
+
+`wwSyncT0ControlsForGroup(groupId)` itself is deleted outright (its
+one reason to exist, refreshing a now-nonexistent per-canvas button,
+is gone) -- every former caller (`wwSetT0FromCursorAForGroup`/
+`wwClearT0ForGroup`/the Detect-Event accept handler/the per-group
+cursor-overlay update) now calls `wwSyncGlobalWaveformToolbar()`
+directly, the same full, cheap resync every other migrated control's
+own mutation path already triggers.
+
+### Local toolbar cleanup
+
+With both t0 and Synchronize Sources gone, nothing actionable remains
+in `.ww-tg-toolbar` except the pre-existing, hidden "Fit Selected
+Record" stub -- its own trailing `.ww-toolbar-sep` was removed too (a
+dangling separator with nothing left to separate would itself have been
+the exact empty-spacing artifact this cleanup was meant to avoid). The
+shell itself (`.ww-tg-toolbar`) is kept, not removed outright: the
+numeric A/B/Δt cursor VALUES readout (`.ww-tg-cursor-readout`, genuinely
+local, explicitly out of scope -- DEC-158's own "mode toggle is global,
+values readout stays local" split) lives in the same toolbar ROW,
+outside this now-single-child toolbar div, and the wiring function
+(`wwWireTimeGroupToolbar(canvasEl, groupId)`) is kept as an established,
+now-empty per-canvas hook for any future genuinely local control,
+rather than removed along with its own call site.
+
+### Validation
+
+New `browser-tests/waveform-toolbar-t0-sync-refinement.spec.js` (10
+tests): no Synchronize Sources entry point anywhere, with or without
+recordings; the automatic sync-state badge still renders untouched;
+no t0 control remains in any local canvas toolbar, with no stray
+separator; `#wwT0Btn` renders once, visible with no recordings loaded
+(disabled); enables once Cursor A is placed; set/clear toggles the
+button and its label/title; targets the active Time Group only (Group
+A's own t0 never affects Group B's); Group B's own Cursor A never
+enables acting on Group A; no console errors across the full
+interaction in both themes. Updated in place (not deleted, per this
+session's established "stale assertion → supersession docstring"
+practice) across `test_frontend_synchronization.py`,
+`test_frontend_time_group_sync.py` (replaced wholesale with its own
+removal-confirmation suite, mirroring that file's own prior
+`TestOldGlobalControlRemoved` precedent for an earlier removal),
+`test_frontend_time_groups.py`, `test_frontend_multi_source_sidebar.py`,
+`test_frontend_playback.py` (both the static suite and
+`browser-tests/playback.spec.js`), `test_frontend_time_group_toolbar.py`,
+`test_frontend_detect_event.py`, `test_frontend_synchronization_t0.py`,
+`test_frontend_time_group_cursors.py`, `test_frontend_time_group_t0.py`,
+`test_frontend_event_reconstruction.py`, `test_frontend_time_group_layout.py`,
+`test_frontend_time_range_slider.py`, and
+`test_frontend_time_group_cursor_readout_placement.py`.
+
+Full backend suite: **6565 passed, 49 skipped**. Full Waveform browser
+suite: **96/96**. Full Event Reconstruction browser suite: **129/129**.
+Full Playback suite: **24/24** (`playback.spec.js`) +
+**8/8** (`playback_waveform_ownership.spec.js`). `git diff --check`
+clean. Two pre-existing timing flakes surfaced across these full-suite
+runs, each confirmed clean on an isolated rerun: `playback.spec.js`'s
+own documented DEC-099 "Clearing the workspace while playing" race
+(a stray 404, its own comment already documents this as naturally
+timing-dependent), and a separate `ECONNRESET` on an unrelated Phasor
+engineering-context POST (a previously-documented class of flake under
+full-suite resource load, not specific to this change). Neither is
+related to this ticket's own changes.
+
+---
+
+
+## DEC-162 — Analyser "No recording loaded" reflects the real recording state; a confirmed-empty workspace publishes an empty context list
+
+Date: 2026-10-05
+Status: Approved (owner UAT report) -- implemented on
+`feat/event-reconstruction`; owner-reviewed and committed in the
+2026-10-05 UAT commit.
+
+### Owner report
+
+A recording uploaded successfully, yet the Analyser still said
+"No recording loaded. Manual mode is available."
+
+### Audit (`[FACT]`)
+
+1. Recording mode's own availability gate
+   (`wwXState.contexts.length > 0`, per analyzer) is **deliberate and
+   unchanged**: a source with no resolvable Engineering Context has
+   nothing Recording mode could compute.
+2. The **hint text** was a static string claiming "no recording"
+   whenever there were zero contexts -- including after a genuine
+   upload whose channel names match no detectable bay pattern (for
+   example `CH1/CH2/CH3`). That wording, not the gate, was the
+   reported defect.
+3. A **separate stale-state bug** surfaced while writing the
+   regression tests: removing the workspace's last source never told
+   the consumers the context list was now empty
+   (`wwAnalysisDiscoverUncoveredSources()` returned on
+   `sources.length === 0` without publishing), so a stale non-empty
+   list kept Recording mode enabled against a context the backend had
+   already pruned.
+
+### Fix
+
+- `wwAnalysisHasAnyRecording()` reads `#wwRecordingsCountBadge`, the
+  same signal Waveform's `wwUpdateEmptyState()` already treats as
+  authoritative -- no second source-count computation.
+- All five analyzers' `ww*UpdateInputSourceAvailability()` now choose
+  the hint text live: "No recording loaded. Manual mode is available."
+  only when nothing is loaded, otherwise "No Engineering Context could
+  be detected in the loaded recording(s). Manual mode is available."
+- A **confirmed** zero-source result publishes `[]` through
+  `wwAnalysisPublishContexts()`. A failed sources fetch
+  (`sources === null`) deliberately does not: a transient network error
+  must never wipe a still-valid list.
+
+### Tests and test corrections
+
+- Backend static tests in `test_frontend_phasor_analysis.py`
+  (`TestSharedAnalysisContextLifecycle`) and new
+  `browser-tests/analyser-recording-detection.spec.js` (upload,
+  loaded-but-no-context, no recording, page switching, removal,
+  multiple recordings, console errors).
+- The hint is `hidden` in the static markup, so `toBeHidden()` alone is
+  vacuous; the spec waits for an auto-selected context first.
+- Removing a source while an analyzer's background computation is still
+  in flight can make that one request return 404 on arrival (the same
+  class as the DEC-099 Playback case, not stale state). The spec waits
+  for the API to go idle rather than using a fixed delay.
+- Two older specs were corrected: `line-to-line-voltage.spec.js` clicked
+  the per-canvas `.ww-tg-zoom-in-btn` that the DEC-158 toolbar migration
+  removed (now the global `#wwZoomXInBtn`), and the "zero
+  recording-dependent requests" tests in `phasor_analysis.spec.js` and
+  `overcurrent_analysis.spec.js` matched the static nav icon URL
+  `.../navigation/waveform_page.svg` through `"/waveform"` (confirmed
+  failing identically on a clean export of the previous HEAD; the
+  filter now requires `/api/`).
+
+## DEC-163 — Playback gains 0.005× and 0.01×; Restart uses the registry icon
+
+Date: 2026-10-05
+Status: Approved (owner ticket) -- implemented on
+`feat/event-reconstruction`; owner-reviewed and committed in the
+2026-10-05 UAT commit.
+
+### Decision
+
+- `WW_PLAYBACK_SPEEDS` is now `[0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2,
+  4]`, rendered by the one shared playback `<select>`
+  (`wwCreatePlaybackControlsHtml()`); no second selector.
+- **No timing change**: `wwPlaybackTick()` already computes
+  `recordingTimeAnchor + elapsedWallSeconds * speed` from the wall
+  clock, so any positive speed works, and `wwPlaybackSetSpeed()` re-bases
+  the anchor on a change (no time jump while playing). The only
+  whitelist was the speed array.
+- The Restart button's inline `<svg>` is replaced by the owner's
+  `frontend/assets/icons/analysis/restart.svg` through the icon
+  registry (`PLAYBACK_RESTART`). Handler, tooltip, aria-label, size and
+  placement are unchanged.
+- **Hydration**: every Analysis mount injects the controls through
+  `innerHTML` after page load, which `wwApplyToolIcons()` does not
+  cover, so `wwWirePlaybackControls()` now calls
+  `wwApplyToolIcons(containerEl)` (idempotent). Without it a registry
+  icon paints as a solid, unmasked square.
+
+### Tests
+
+Backend: speed list/options and a static guard for the hydration call.
+Browser (`playback.spec.js`): the option list and order, the measured
+clock rate for 0.005×, 0.01× and switches between slow speeds while
+playing (no jump, still playing), Restart reset, and the Restart icon
+mask/size/contrast in both themes. The "Compact ribbon" test now
+asserts the registry mask instead of an inline `<svg>`.
+
+## DEC-164 — Calculator gains Power & Current (Current / P-Q-S / Power Factor)
+
+Date: 2026-10-05
+Status: Approved (owner ticket) -- implemented on
+`feat/event-reconstruction`; owner-reviewed (UAT) and committed in the
+2026-10-05 UAT commit.
+
+### Decision
+
+A second Calculator tool, directly below Line / Phase Voltage, using
+the owner's `calculator/amparent_square.svg` through the icon registry
+(`CALCULATOR_POWER_CURRENT`; the file name is kept exactly as
+supplied). One page, three internal tabs
+(`wwPcTabCurrentBtn`/`wwPcTabPqsBtn`/`wwPcTabPfBtn`, arrow/Home/End
+keys). Frontend-local like Line / Phase Voltage: no recording, backend
+call or persistence; every field stays in the DOM, so values survive
+tab and tool switches for the session.
+
+- **Current**: single-phase `I = S / V`; 3-phase L-L
+  `I = S / (sqrt(3) x V_LL)`. Defaults reproduce the reference example
+  (100 MVA at 132 kV = 437.4 A).
+- **P-Q-S**: any two of P, Q, S give the third (`S = sqrt(P^2 + Q^2)`,
+  `|Q|` or `|P|` = `sqrt(S^2 - x^2)`), plus `PF = |P| / S`. A Q or P
+  calculated from S is a magnitude (its sign is not recoverable).
+- **Power Factor**: PF plus exactly one of P, Q, S (`P = S PF`,
+  `|Q| = S sqrt(1 - PF^2)`, `S = |P| / PF`,
+  `|Q| = |P| tan(arccos PF)`, `S = |Q| / sin(phi)`); lagging gives
+  positive Q, leading negative Q; PF = 1 gives Q = 0 explicitly.
+- **Units** are normalised to base units on read through one factor
+  table (V/kV, W/kW/MW, var/kvar/MVAr, VA/kVA/MVA) and converted back
+  only for display.
+- **Validation**: blank is a neutral hint; negative S, `|P| > S`,
+  `|Q| > S`, PF outside (0, 1], PF = 1 with Q != 0, three of P/Q/S
+  entered, more than one power quantity on the PF tab, and any
+  non-finite or out-of-range result show a clear message and never
+  NaN/Infinity. An entered Q whose sign contradicts the PF type is a
+  warning, not an error, and is never silently flipped.
+- **Calculated fields** are tagged "calculated" inside the input and
+  shown as a dashed placeholder; a typed value is never overwritten.
+  Messages are `error` (red) or `warn` (amber).
+- **Notation**: the generic line-to-line voltage V<sub>LL</sub> extends
+  the shared formatter (`WW_GENERIC_LL_SUBSCRIPT`, voltage only) rather
+  than adding page-local notation; the static-shape regex and pinned
+  list in `test_frontend_electrical_notation.py` were updated.
+- **CSS**: new toggle rules are wrapped in `:is()` because the static
+  Overcurrent tests find the shared `.ww-oc-axis-toggle-*` rules by
+  selector text.
+
+### Assumptions to revisit at owner discretion
+
+Result precision is one decimal from 100 up and four significant
+figures below; P/Q/S inputs span the full panel width as in the
+reference mock-up.
+
+### Tests
+
+`TestPowerCurrentCalculator` (static) in `test_frontend_calculator.py`
+and `browser-tests/calculator-power-current.spec.js` (34): every
+formula and unit conversion, each validation rule, tab/keyboard/state
+behaviour, true subscripts, both themes' contrast and message colours,
+no overflow at 1366/1024/390 px, phone-width row alignment, and no
+console errors.
+
+## DEC-165 — Branding and icon migrations: favicon, Compliance Voltage, Calculator Line / Phase Voltage
+
+Date: 2026-10-05
+Status: Approved (owner tickets) -- implemented on
+`feat/event-reconstruction`; owner-reviewed and committed in the
+2026-10-05 UAT commit.
+
+- **Favicon**: `<link rel="icon" type="image/svg+xml"
+  href="assets/branding/favicon.svg">` declared once in `<head>` by
+  relative path (no base64 embedding).
+- **Compliance Voltage** (`COMPLIANCE_VOLTAGE`) and **Calculator Line /
+  Phase Voltage** (`CALCULATOR_LINE_PHASE_VOLTAGE`) icons now come from
+  the owner's `compliance/voltage.svg` and `calculator/delta_Y.svg`
+  through the registry and `manifest.json`, replacing their inline
+  `<svg>`.
+- Event Reconstruction's correction `<input type="number">` padding is
+  `3px 10px`.
+- `waveform/clear_display.svg` remains **unreferenced** (see DEC-159) and
+  was deliberately left out of the commit.
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
