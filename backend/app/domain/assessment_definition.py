@@ -183,11 +183,12 @@ def validate_assessment_definition(definition: AssessmentDefinition) -> None:
     - `phase_treatment=single` with `representation` in
       (`line_line_rms`, `phase_ground_rms`) REQUIRES an explicit
       `member` -- "single" alone is ambiguous about WHICH one.
-    - `phase_treatment=each_phase` is not (yet) supported for
-      `representation=line_line_rms` (task section 14's own explicit
-      "likely invalid wording/combination unless explicitly modeled as
-      each line-pair" -- not modeled in v1; use `phase_ground_rms`, or a
-      specific `member` with `phase_treatment=single` per line-pair).
+    - `phase_treatment=each_phase` IS valid for `representation=
+      line_line_rms` (DEC-166, refining DEC-110): it means VAB, VBC and
+      VCA are each assessed independently against the boundary. This
+      combination was rejected by DEC-110 and is the normal behaviour of
+      the Operating Envelope workflow; as an aggregate treatment it still
+      never carries a `member`.
     - A `member`, if present, must belong to the representation's own
       member set (`A`/`B`/`C` for `phase_ground_rms`,
       `AB`/`BC`/`CA` for `line_line_rms`), and requires a specific
@@ -250,14 +251,6 @@ def validate_assessment_definition(definition: AssessmentDefinition) -> None:
         raise AssessmentDefinitionValidationError(
             f"phase_treatment='single' with representation={rep!r} requires an explicit member.",
             reason_code="member_required_for_single_treatment", field_name="member",
-        )
-
-    if treatment == PHASE_TREATMENT_EACH_PHASE and rep == REPRESENTATION_LINE_LINE_RMS:
-        raise AssessmentDefinitionValidationError(
-            "phase_treatment='each_phase' is not supported for representation='line_line_rms' in v1 "
-            "(each line-pair independently is not yet modeled) -- use representation='phase_ground_rms', "
-            "or a specific member with phase_treatment='single' for one named line-pair.",
-            reason_code="each_phase_not_supported_for_line_line", field_name="phase_treatment",
         )
 
     if member is not None:

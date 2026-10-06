@@ -93,6 +93,22 @@ async function addLayer(page, workspaceId, profileId, visible = true) {
   return response.json();
 }
 
+// Add Reference UX: the Reference Library is part of "+ Add Reference" -- there is no
+// separate Library button. Saved references are listed in the Add Reference
+// dialog; View / Edit / Duplicate / Export / Remove sit behind each row's
+// "more" (...) control.
+async function openAddReference(page) {
+  await expect(async () => {
+    if (!(await page.locator("#wwRefAddOverlay").isVisible())) await page.locator("#wwComplianceAddReferenceBtn").click();
+    await expect(page.locator("#wwRefAddOverlay")).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 15000 });
+}
+const addRow = (page, name) => page.locator("#wwRefAddList .ww-ref-picker-item", { hasText: name });
+async function rowAction(row, label) {
+  await row.locator(".ww-ref-row-menu summary").click();
+  await row.locator(`button:has-text('${label}')`).click();
+}
+
 async function chartPlotData(page) {
   return page.evaluate(() => {
     const el = document.getElementById("wwComplianceChartPlot");
@@ -110,7 +126,7 @@ test.describe("Compliance Slice 3 -- Reference Profiles/Layers work without any 
     expect(await sourcesResponse.json()).toEqual([]);
 
     await expect(page.locator("#wwComplianceAddReferenceBtn")).toBeEnabled();
-    await expect(page.locator("#wwComplianceReferenceLayersEmptyState")).toHaveText("No reference layers added");
+    await expect(page.locator("#wwComplianceReferenceLayersEmptyState")).toContainText("No reference added yet.");
   });
 
   test("create a custom lower-only profile via the table-first editor, add it as a layer, curve appears in the Comparison Chart", async ({ page }) => {
@@ -123,30 +139,22 @@ test.describe("Compliance Slice 3 -- Reference Profiles/Layers work without any 
 
     await page.locator("#wwRefEditorName").fill("UAT Lower Envelope");
     await page.locator("#wwRefEditorCategory").selectOption("custom_reference");
-    await page.locator("#wwRefEditorUnit").selectOption("pu");
-    await page.locator("#wwRefEditorDisplayStart").fill("-0.5");
-    await page.locator("#wwRefEditorDisplayEnd").fill("3.0");
 
-    // One default lower-boundary row already exists -- edit it directly
-    // rather than adding a second one (table-first numeric entry, task
-    // section 13 -- no freehand dragging anywhere on this page).
-    const lowerRow = page.locator("#wwRefEditorLowerBody tr").first();
-    await lowerRow.locator(".ww-ref-seg-start-time").fill("-0.5");
-    await lowerRow.locator(".ww-ref-seg-end-time").fill("3.0");
-    await lowerRow.locator(".ww-ref-seg-start-value").fill("0.85");
-    await lowerRow.locator(".ww-ref-seg-end-value").fill("0.85");
-    await lowerRow.locator(".ww-ref-seg-type").selectOption("constant");
+    // Point-list entry (DEC-166): two blank lower-boundary rows exist already.
+    // Unit/windows are NOT typed: pu, display = earliest/latest point.
+    const lowerRows = page.locator("#wwRefEditorLowerBody tr");
+    await lowerRows.nth(0).locator(".ww-ref-pt-time").fill("-0.5");
+    await lowerRows.nth(0).locator(".ww-ref-pt-value").fill("0.85");
+    await lowerRows.nth(1).locator(".ww-ref-pt-time").fill("3.0");
+    await lowerRows.nth(1).locator(".ww-ref-pt-value").fill("0.85");
     await expect(page.locator("#wwRefEditorUpperEnabled")).not.toBeChecked();
 
     await page.locator("#wwRefEditorSaveBtn").click();
     await expect(page.locator("#wwRefEditorOverlay")).toBeHidden();
 
-    // Back in the Add Reference dialog -- the new profile is listed and addable.
-    await expect(page.locator("#wwRefAddList")).toContainText("UAT Lower Envelope");
-    await page.locator("#wwRefAddList button:has-text('Add')").first().click();
-    await expect(page.locator("#wwRefAddList button:has-text('Added')").first()).toBeVisible();
-    await page.locator("#wwRefAddCloseFooterBtn").click();
-
+    // Add Reference UX: a profile created from "+ Create Custom Reference" becomes an
+    // ACTIVE layer straight away and the engineer is back in Compliance.
+    await expect(page.locator("#wwRefAddOverlay")).toBeHidden();
     await expect(page.locator("#wwRefLayerList")).toContainText("UAT Lower Envelope");
     await expect(page.locator("#wwComplianceChartPlot")).toBeVisible();
 
@@ -212,7 +220,7 @@ test.describe("Compliance Slice 3 -- multiple layers, toggling, and removal with
     // Re-add it via the Add Reference dialog.
     await page.locator("#wwComplianceAddReferenceBtn").click();
     await page.locator("#wwRefAddList .ww-ref-picker-item", { hasText: "Profile B" }).locator("button:has-text('Add')").click();
-    await page.locator("#wwRefAddCloseFooterBtn").click();
+    await expect(page.locator("#wwRefAddOverlay")).toBeHidden(); // Add returns to Compliance
     await expect(page.locator("#wwRefLayerList")).toContainText("Profile B");
     await expect.poll(async () => (await chartPlotData(page)).length).toBe(2);
   });
@@ -336,44 +344,43 @@ test.describe("Compliance Slice 3 -- uploading a recording never disturbs existi
 });
 
 test.describe("Compliance Slice 3 -- profile management (custom profiles)", () => {
-  test("Manage Profiles: duplicate, export, edit, and remove a custom profile", async ({ page }) => {
+  test("Add Reference (the library): duplicate, export, edit, and remove a custom profile", async ({ page }) => {
     await openCompliance(page);
     const workspaceId = await currentWorkspaceIdOf(page);
     await createProfile(page, workspaceId, { name: "Manageable Profile" });
     await page.reload();
     await page.locator("#mainNavComplianceBtn").click();
 
-    await page.locator("#wwRefManageProfilesBtn").click();
-    await expect(page.locator("#wwRefManageOverlay")).toBeVisible();
-    await expect(page.locator("#wwRefManageList")).toContainText("Manageable Profile");
+    await openAddReference(page);
+    await expect(page.locator("#wwRefAddList")).toContainText("Manageable Profile");
 
-    const rows = page.locator("#wwRefManageList .ww-ref-picker-item");
+    const rows = page.locator("#wwRefAddList .ww-ref-picker-item");
     const copyRow = () => rows.filter({ hasText: "(Copy)" });
     const originalRow = () => rows.filter({ hasNotText: "(Copy)" });
 
     // Duplicate (only one row exists at this point -- unambiguous).
-    await rows.first().locator("button:has-text('Duplicate')").click();
-    await expect(page.locator("#wwRefManageList")).toContainText("Manageable Profile (Copy)");
+    await rowAction(rows.first(), "Duplicate");
+    await expect(page.locator("#wwRefAddList")).toContainText("Manageable Profile (Copy)");
     await expect(copyRow()).toHaveCount(1);
 
     // Export triggers a real download.
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      copyRow().locator("button:has-text('Export')").click(),
+      rowAction(copyRow(), "Export"),
     ]);
     expect(download.suggestedFilename()).toMatch(/\.json$/);
 
     // Edit the original (the one WITHOUT "(Copy)" in its name).
-    await originalRow().locator("button:has-text('Edit')").click();
+    await rowAction(originalRow(), "Edit");
     await expect(page.locator("#wwRefEditorOverlay")).toBeVisible();
     await page.locator("#wwRefEditorName").fill("Renamed Profile");
     await page.locator("#wwRefEditorSaveBtn").click();
-    await expect(page.locator("#wwRefManageList")).toContainText("Renamed Profile");
+    await expect(page.locator("#wwRefAddList")).toContainText("Renamed Profile");
 
     // Remove the duplicate.
     page.once("dialog", (dialog) => dialog.accept());
-    await copyRow().locator("button:has-text('Remove')").click();
-    await expect(page.locator("#wwRefManageList")).not.toContainText("(Copy)");
+    await rowAction(copyRow(), "Remove");
+    await expect(page.locator("#wwRefAddList")).not.toContainText("(Copy)");
   });
 
   test("import/export round trip: export a profile, import it back as an independent copy", async ({ page }) => {
@@ -393,7 +400,15 @@ test.describe("Compliance Slice 3 -- profile management (custom profiles)", () =
 });
 
 test.describe("Compliance Slice 4 (DEC-110) -- Assessment Definition", () => {
-  test("create a profile via the editor with an explicit Voltage representation/phase treatment, verify it round-trips through the API", async ({ page }) => {
+  async function fillDefaultLowerPoints(page) {
+    const rows = page.locator("#wwRefEditorLowerBody tr");
+    await rows.nth(0).locator(".ww-ref-pt-time").fill("-0.5");
+    await rows.nth(0).locator(".ww-ref-pt-value").fill("0.85");
+    await rows.nth(1).locator(".ww-ref-pt-time").fill("3.0");
+    await rows.nth(1).locator(".ww-ref-pt-value").fill("0.85");
+  }
+
+  test("create a profile via the editor with Phase Evaluation = Minimum (Line-Line RMS by default), verify the summary", async ({ page }) => {
     await openCompliance(page);
 
     await page.locator("#wwComplianceAddReferenceBtn").click();
@@ -401,48 +416,34 @@ test.describe("Compliance Slice 4 (DEC-110) -- Assessment Definition", () => {
     await expect(page.locator("#wwRefEditorOverlay")).toBeVisible();
 
     await page.locator("#wwRefEditorName").fill("Minimum Line-Line Requirement");
-    await page.locator("#wwRefEditorRepresentation").selectOption("line_line_rms");
     await page.locator("#wwRefEditorPhaseTreatment").selectOption("minimum");
-    // Member field must be hidden for an aggregate treatment (minimum).
+    // The Voltage selector exists only for Single (DEC-166).
     await expect(page.locator("#wwRefEditorMemberField")).toBeHidden();
-    await page.locator("#wwRefEditorMeasurementLocation").selectOption("connection_point");
-
-    const lowerRow = page.locator("#wwRefEditorLowerBody tr").first();
-    await lowerRow.locator(".ww-ref-seg-start-time").fill("-0.5");
-    await lowerRow.locator(".ww-ref-seg-end-time").fill("3.0");
-    await lowerRow.locator(".ww-ref-seg-start-value").fill("0.85");
-    await lowerRow.locator(".ww-ref-seg-end-value").fill("0.85");
+    await fillDefaultLowerPoints(page);
 
     await page.locator("#wwRefEditorSaveBtn").click();
     await expect(page.locator("#wwRefEditorOverlay")).toBeHidden();
 
-    await expect(page.locator("#wwRefAddList")).toContainText("Assessment: Minimum Line-Line RMS at Connection Point");
-    await page.locator("#wwRefAddList .ww-ref-picker-item", { hasText: "Minimum Line-Line Requirement" }).locator("button:has-text('Add')").click();
-    await page.locator("#wwRefAddCloseFooterBtn").click();
-
-    await expect(page.locator(".ww-ref-layer-summary")).toContainText("Assessment: Minimum Line-Line RMS at Connection Point");
+    // Created from the Add dialog -> already an active layer.
+    await expect(page.locator(".ww-ref-layer-summary")).toContainText("Assessment: Minimum Line-Line RMS");
   });
 
-  test("create a profile with an explicit single line-line member (VAB), member field shows and is required", async ({ page }) => {
+  test("create a profile with Phase Evaluation = Single and a line-line voltage (VAB)", async ({ page }) => {
     await openCompliance(page);
     await page.locator("#wwComplianceAddReferenceBtn").click();
     await page.locator("#wwRefAddNewProfileBtn").click();
 
     await page.locator("#wwRefEditorName").fill("VAB Single Member Requirement");
-    await page.locator("#wwRefEditorRepresentation").selectOption("line_line_rms");
     await page.locator("#wwRefEditorPhaseTreatment").selectOption("single");
     await expect(page.locator("#wwRefEditorMemberField")).toBeVisible();
     await page.locator("#wwRefEditorMember").selectOption("AB");
-
-    const lowerRow = page.locator("#wwRefEditorLowerBody tr").first();
-    await lowerRow.locator(".ww-ref-seg-start-value").fill("0.85");
-    await lowerRow.locator(".ww-ref-seg-end-value").fill("0.85");
+    await fillDefaultLowerPoints(page);
     await page.locator("#wwRefEditorSaveBtn").click();
     await expect(page.locator("#wwRefEditorOverlay")).toBeHidden();
 
-    await expect(page.locator("#wwRefAddList")).toContainText("Line-Line RMS (VAB)");
+    await expect(page.locator("#wwRefLayerList")).toContainText("Line-Line RMS (VAB)");
     // DEC-117: the line-line member renders as V<sub>AB</sub> (text content stays "VAB").
-    await expect(page.locator("#wwRefAddList .ww-electrical-sub").first()).toHaveText("AB");
+    await expect(page.locator("#wwRefLayerList .ww-electrical-sub").first()).toHaveText("AB");
   });
 
   test("DEC-117: a single phase-ground member (A) renders as V<sub>A</sub>; the stored member stays plain", async ({ page }) => {
@@ -451,37 +452,34 @@ test.describe("Compliance Slice 4 (DEC-110) -- Assessment Definition", () => {
     await page.locator("#wwRefAddNewProfileBtn").click();
 
     await page.locator("#wwRefEditorName").fill("VA Single Member Requirement");
+    // Phase-Ground RMS is an Advanced Settings override of the Line-Line RMS default.
+    await page.locator("#wwRefEditorAdvanced summary").click();
     await page.locator("#wwRefEditorRepresentation").selectOption("phase_ground_rms");
     await page.locator("#wwRefEditorPhaseTreatment").selectOption("single");
     await page.locator("#wwRefEditorMember").selectOption("A"); // native <option>: plain
-    const lowerRow = page.locator("#wwRefEditorLowerBody tr").first();
-    await lowerRow.locator(".ww-ref-seg-start-value").fill("0.85");
-    await lowerRow.locator(".ww-ref-seg-end-value").fill("0.85");
+    await fillDefaultLowerPoints(page);
     await page.locator("#wwRefEditorSaveBtn").click();
     await expect(page.locator("#wwRefEditorOverlay")).toBeHidden();
 
-    const item = page.locator("#wwRefAddList .ww-ref-picker-item", { hasText: "VA Single Member Requirement" });
+    const item = page.locator("#wwRefLayerList");
     await expect(item).toContainText("Phase-Ground RMS (VA)");
     await expect(item.locator(".ww-electrical-sub")).toHaveText(["A"]);
     await expect(item).toContainText("VA Single Member Requirement"); // user-typed name verbatim
   });
 
-  test("an invalid combination (line-line + each-phase) is rejected inline with an actionable error, never saved", async ({ page }) => {
+  test("DEC-166: Line-Line RMS + Each Phase (rejected by DEC-110) is now the normal default and saves", async ({ page }) => {
     await openCompliance(page);
     await page.locator("#wwComplianceAddReferenceBtn").click();
     await page.locator("#wwRefAddNewProfileBtn").click();
 
-    await page.locator("#wwRefEditorName").fill("Invalid Combination Profile");
-    await page.locator("#wwRefEditorRepresentation").selectOption("line_line_rms");
-    await page.locator("#wwRefEditorPhaseTreatment").selectOption("each_phase");
-    const lowerRow = page.locator("#wwRefEditorLowerBody tr").first();
-    await lowerRow.locator(".ww-ref-seg-start-value").fill("0.85");
-    await lowerRow.locator(".ww-ref-seg-end-value").fill("0.85");
+    await page.locator("#wwRefEditorName").fill("Each Phase Line-Line Profile");
+    await expect(page.locator("#wwRefEditorRepresentation")).toHaveValue("line_line_rms");
+    await expect(page.locator("#wwRefEditorPhaseTreatment")).toHaveValue("each_phase");
+    await fillDefaultLowerPoints(page);
     await page.locator("#wwRefEditorSaveBtn").click();
 
-    await expect(page.locator("#wwRefEditorOverlay")).toBeVisible();
-    await expect(page.locator("#wwRefEditorError")).toBeVisible();
-    await expect(page.locator("#wwRefEditorError")).toContainText("each_phase");
+    await expect(page.locator("#wwRefEditorOverlay")).toBeHidden();
+    await expect(page.locator("#wwRefLayerList")).toContainText("Assessment: Each Phase Line-Line RMS");
   });
 
   test("a profile with a fully unspecified assessment definition still renders in the reference-only Comparison Chart", async ({ page }) => {
@@ -521,8 +519,8 @@ test.describe("Compliance Slice 4 (DEC-110) -- Assessment Definition", () => {
 
     await page.reload();
     await page.locator("#mainNavComplianceBtn").click();
-    await page.locator("#wwRefManageProfilesBtn").click();
-    await page.locator("#wwRefManageList .ww-ref-picker-item", { hasText: "Legacy Positive Sequence Profile" }).locator("button:has-text('Edit')").click();
+    await openAddReference(page);
+    await rowAction(addRow(page, "Legacy Positive Sequence Profile"), "Edit");
     await expect(page.locator("#wwRefEditorRepresentation")).toHaveValue("positive_sequence_rms");
     await expect(page.locator("#wwRefEditorLegacyHintNote")).toBeVisible();
     await expect(page.locator("#wwRefEditorLegacyHintNote")).toContainText("positive_sequence_rms");
@@ -539,13 +537,12 @@ test.describe("Compliance Slice 4/5 (DEC-111) -- portable JSON lifecycle, jurisd
     });
     await page.reload();
     await page.locator("#mainNavComplianceBtn").click();
-    await page.locator("#wwRefManageProfilesBtn").click();
-    await expect(page.locator("#wwRefManageOverlay")).toBeVisible();
+    await openAddReference(page);
 
     // Real download -- the browser actually writes a file to disk.
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      page.locator("#wwRefManageList .ww-ref-picker-item", { hasText: "Local File Round Trip Profile" }).locator("button:has-text('Export')").click(),
+      rowAction(addRow(page, "Local File Round Trip Profile"), "Export"),
     ]);
     const downloadedPath = path.join(os.tmpdir(), `ww-ref-download-${Date.now()}.json`);
     await download.saveAs(downloadedPath);
@@ -558,24 +555,24 @@ test.describe("Compliance Slice 4/5 (DEC-111) -- portable JSON lifecycle, jurisd
     // exact file just downloaded, exercising app.services.reference_
     // profile_service.import_profile() through the real UI file picker,
     // never page.request.post() directly.
-    await page.locator("#wwRefManageImportInput").setInputFiles(downloadedPath);
-    await expect(page.locator("#wwRefManageList")).toContainText("Local File Round Trip Profile");
+    await page.locator("#wwRefAddImportInput").setInputFiles(downloadedPath);
+    await expect(page.locator("#wwRefAddList")).toContainText("Local File Round Trip Profile");
     // The original custom profile + the freshly re-imported copy --
     // FileReader.onload/the import request/the re-render are all async,
     // so poll rather than reading .count() exactly once.
-    await expect(page.locator("#wwRefManageList .ww-ref-picker-item", { hasText: "Local File Round Trip Profile" })).toHaveCount(2);
+    await expect(addRow(page, "Local File Round Trip Profile")).toHaveCount(2);
 
     fs.unlinkSync(downloadedPath);
   });
 
   test("importing a malformed local JSON file is rejected inline, never silently coerced", async ({ page }) => {
     await openCompliance(page);
-    await page.locator("#wwRefManageProfilesBtn").click();
+    await openAddReference(page);
     const malformedPath = path.join(os.tmpdir(), `ww-ref-malformed-${Date.now()}.json`);
     fs.writeFileSync(malformedPath, "{ not valid json ");
-    await page.locator("#wwRefManageImportInput").setInputFiles(malformedPath);
-    await expect(page.locator("#wwRefManageError")).toBeVisible();
-    await expect(page.locator("#wwRefManageError")).toContainText("not valid JSON");
+    await page.locator("#wwRefAddImportInput").setInputFiles(malformedPath);
+    await expect(page.locator("#wwRefAddError")).toBeVisible();
+    await expect(page.locator("#wwRefAddError")).toContainText("not valid JSON");
     fs.unlinkSync(malformedPath);
   });
 
@@ -593,10 +590,10 @@ test.describe("Compliance Slice 4/5 (DEC-111) -- portable JSON lifecycle, jurisd
     };
     const v1Path = path.join(os.tmpdir(), `ww-ref-v1-${Date.now()}.json`);
     fs.writeFileSync(v1Path, JSON.stringify(v1Envelope));
-    await page.locator("#wwRefManageProfilesBtn").click();
-    await page.locator("#wwRefManageImportInput").setInputFiles(v1Path);
-    await expect(page.locator("#wwRefManageList")).toContainText("Locally Kept Legacy Profile");
-    await page.locator("#wwRefManageList .ww-ref-picker-item", { hasText: "Locally Kept Legacy Profile" }).locator("button:has-text('Edit')").click();
+    await openAddReference(page);
+    await page.locator("#wwRefAddImportInput").setInputFiles(v1Path);
+    await expect(page.locator("#wwRefAddList")).toContainText("Locally Kept Legacy Profile");
+    await rowAction(addRow(page, "Locally Kept Legacy Profile"), "Edit");
     await expect(page.locator("#wwRefEditorRepresentation")).toHaveValue("line_line_rms");
     await expect(page.locator("#wwRefEditorMember")).toHaveValue("AB");
     fs.unlinkSync(v1Path);
@@ -622,9 +619,135 @@ test.describe("Compliance Slice 4/5 (DEC-111) -- portable JSON lifecycle, jurisd
     expect(profileIds.has(revision2027.id)).toBe(true);
   });
 
-  test("empty Reference Library state reads as an intentional product state, never a loading failure", async ({ page }) => {
+  test("empty library state reads as an intentional product state, never a loading failure", async ({ page }) => {
     await openCompliance(page);
-    await page.locator("#wwRefManageProfilesBtn").click();
-    await expect(page.locator("#wwRefManageList")).toContainText("No reference profiles loaded");
+    await openAddReference(page);
+    await expect(page.locator("#wwRefAddList")).toContainText("No reference profiles loaded");
+  });
+});
+
+
+test.describe("Add Reference UX -- one top-level action: + Add Reference (the library lives inside it)", () => {
+  test("the Reference Layers card has only + Add Reference; no separate Reference Library button", async ({ page }) => {
+    await openCompliance(page);
+    const card = page.locator("#wwComplianceReferenceLayersCard");
+    await expect(card.locator("button", { hasText: "+ Add Reference" })).toHaveCount(1);
+    await expect(card.getByText("Reference Library")).toHaveCount(0);
+    await expect(page.locator("#wwRefManageProfilesBtn")).toHaveCount(0);
+    await expect(page.locator("#wwRefManageOverlay")).toHaveCount(0);
+    await expect(page.locator("#wwComplianceReferenceLayersEmptyState")).toContainText(
+      "Add a reference profile to define the operating envelope and measurement requirements for this assessment.");
+  });
+
+  test("Add Reference lists saved references, searchable, with Create / Import in the same dialog", async ({ page }) => {
+    await openCompliance(page);
+    const workspaceId = await currentWorkspaceIdOf(page);
+    await createProfile(page, workspaceId, { name: "Grid Code Interconnector", metadata: { authority: "TSO North" } });
+    await createProfile(page, workspaceId, { name: "OEM Capability PCS", category: "equipment_capability", metadata: { manufacturer: "Acme" } });
+    await page.reload();
+    await page.locator("#mainNavComplianceBtn").click();
+    await openAddReference(page);
+
+    await expect(page.locator("#wwRefAddOverlay")).toContainText("Saved References");
+    await expect(page.locator("#wwRefAddList .ww-ref-picker-item")).toHaveCount(2);
+    await expect(page.locator("#wwRefAddNewProfileBtn")).toHaveText("+ Create Custom Reference");
+    await expect(page.locator("#wwRefAddImportLabel")).toContainText("Import Reference");
+
+    await page.locator("#wwRefAddSearch").fill("interconnector");
+    await expect(page.locator("#wwRefAddList .ww-ref-picker-item")).toHaveCount(1);
+    await page.locator("#wwRefAddSearch").fill("acme"); // metadata is searched too
+    await expect(addRow(page, "OEM Capability PCS")).toHaveCount(1);
+    await page.locator("#wwRefAddSearch").fill("no-such-reference");
+    await expect(page.locator("#wwRefAddList")).toContainText("No saved references match");
+    await page.locator("#wwRefAddSearch").fill("");
+    await expect(page.locator("#wwRefAddList .ww-ref-picker-item")).toHaveCount(2);
+  });
+
+  test("selecting a saved reference makes it active and returns to Compliance; reopening shows it as already added", async ({ page }) => {
+    await openCompliance(page);
+    const workspaceId = await currentWorkspaceIdOf(page);
+    await createProfile(page, workspaceId, { name: "Pick Me" });
+    await createProfile(page, workspaceId, { name: "Leave Me" });
+    await page.reload();
+    await page.locator("#mainNavComplianceBtn").click();
+    await expect(page.locator("#wwRefLayerList")).toBeHidden(); // active references only: nothing yet
+
+    await openAddReference(page);
+    await addRow(page, "Pick Me").locator("button:has-text('Add')").click();
+    await expect(page.locator("#wwRefAddOverlay")).toBeHidden();
+    await expect(page.locator("#wwRefLayerList")).toContainText("Pick Me");
+    await expect(page.locator("#wwRefLayerList")).not.toContainText("Leave Me"); // saved != active
+
+    // Reopen: the active profile cannot be added a second time.
+    await openAddReference(page);
+    const picked = addRow(page, "Pick Me");
+    await expect(picked).toHaveAttribute("data-already-added", "true");
+    await expect(picked).toContainText("Already added");
+    await expect(picked.locator("button:has-text('Add')")).toHaveCount(0);
+    await expect(addRow(page, "Leave Me")).toHaveAttribute("data-already-added", "false");
+    const layers = await (await page.request.get(referenceLayersUrl(workspaceId))).json();
+    expect(layers.filter((l) => l.profile.name === "Pick Me")).toHaveLength(1);
+  });
+
+  test("the UI cannot create a duplicate layer even if Add is invoked for an active profile", async ({ page }) => {
+    await openCompliance(page);
+    const workspaceId = await currentWorkspaceIdOf(page);
+    const profile = await createProfile(page, workspaceId, { name: "Only Once" });
+    await addLayer(page, workspaceId, profile.id);
+    await page.reload();
+    await page.locator("#mainNavComplianceBtn").click();
+    await page.evaluate((id) => wwRefAddProfileAsLayer(id), profile.id);
+    const layers = await (await page.request.get(referenceLayersUrl(workspaceId))).json();
+    expect(layers).toHaveLength(1);
+  });
+
+  test("Create Custom Reference: save -> active -> back in Compliance, and Measurement readiness reflects it", async ({ page }) => {
+    await openCompliance(page);
+    await openAddReference(page);
+    await page.locator("#wwRefAddNewProfileBtn").click();
+    await expect(page.locator("#wwRefEditorOverlay")).toBeVisible();
+    await page.locator("#wwRefEditorName").fill("Brand New Reference");
+    const rows = page.locator("#wwRefEditorLowerBody tr");
+    await rows.nth(0).locator(".ww-ref-pt-time").fill("0");
+    await rows.nth(0).locator(".ww-ref-pt-value").fill("0.9");
+    await rows.nth(1).locator(".ww-ref-pt-time").fill("3");
+    await rows.nth(1).locator(".ww-ref-pt-value").fill("0.9");
+    await page.locator("#wwRefEditorSaveBtn").click();
+
+    await expect(page.locator("#wwRefEditorOverlay")).toBeHidden();
+    await expect(page.locator("#wwRefAddOverlay")).toBeHidden();
+    await expect(page.locator("#wwRefLayerList")).toContainText("Brand New Reference");
+    await expect(page.locator("#wwComplianceChartPlot")).toBeVisible();
+  });
+
+  test("adding a reference re-checks Measurement readiness (no parallel requirement mechanism)", async ({ page }) => {
+    await openCompliance(page);
+    const workspaceId = await currentWorkspaceIdOf(page);
+    await createProfile(page, workspaceId, { name: "Drives Readiness" });
+    await page.reload();
+    await page.locator("#mainNavComplianceBtn").click();
+    const calls = [];
+    await page.exposeFunction("recordReadiness", () => calls.push(1));
+    await page.evaluate(() => {
+      const original = wwComplianceRefreshReadiness;
+      window.wwComplianceRefreshReadiness = function () { window.recordReadiness(); return original.apply(this, arguments); };
+    });
+    await openAddReference(page);
+    await addRow(page, "Drives Readiness").locator("button:has-text('Add')").click();
+    await expect(page.locator("#wwRefLayerList")).toContainText("Drives Readiness");
+    // The refresh follows the layer reload asynchronously -- wait for it rather than sampling once.
+    await expect.poll(() => calls.length).toBeGreaterThan(0);
+  });
+
+  test("library actions stay reachable per row: View, Edit, Duplicate, Export, Remove (built-in/custom rules unchanged)", async ({ page }) => {
+    await openCompliance(page);
+    const workspaceId = await currentWorkspaceIdOf(page);
+    await createProfile(page, workspaceId, { name: "Menu Profile" });
+    await page.reload();
+    await page.locator("#mainNavComplianceBtn").click();
+    await openAddReference(page);
+    const row = addRow(page, "Menu Profile");
+    await row.locator(".ww-ref-row-menu summary").click();
+    await expect(row.locator(".ww-ref-row-menu-list button")).toHaveText(["View", "Edit", "Duplicate", "Export", "Remove"]);
   });
 });

@@ -43,6 +43,21 @@ class TestValidCombinations:
     def test_line_line_maximum_is_valid(self):
         validate_assessment_definition(AssessmentDefinition(representation=REPRESENTATION_LINE_LINE_RMS, phase_treatment=PHASE_TREATMENT_MAXIMUM))
 
+    def test_line_line_each_phase_is_valid(self):
+        """DEC-166 (supersedes DEC-110's rejection): VAB, VBC and VCA
+        assessed independently is the NORMAL operating-envelope
+        behaviour."""
+        validate_assessment_definition(AssessmentDefinition(
+            representation=REPRESENTATION_LINE_LINE_RMS, phase_treatment=PHASE_TREATMENT_EACH_PHASE,
+        ))
+
+    def test_line_line_each_phase_still_rejects_a_member(self):
+        with pytest.raises(AssessmentDefinitionValidationError) as exc:
+            validate_assessment_definition(AssessmentDefinition(
+                representation=REPRESENTATION_LINE_LINE_RMS, phase_treatment=PHASE_TREATMENT_EACH_PHASE, member="AB",
+            ))
+        assert exc.value.reason_code == "member_not_applicable_for_aggregate_treatment"
+
     def test_phase_ground_each_phase_is_valid(self):
         validate_assessment_definition(AssessmentDefinition(representation=REPRESENTATION_PHASE_GROUND_RMS, phase_treatment=PHASE_TREATMENT_EACH_PHASE))
 
@@ -68,11 +83,6 @@ class TestValidCombinations:
 
 class TestInvalidCombinations:
     """Task section 14's own worked invalid examples."""
-
-    def test_line_line_each_phase_is_invalid(self):
-        with pytest.raises(AssessmentDefinitionValidationError) as exc:
-            validate_assessment_definition(AssessmentDefinition(representation=REPRESENTATION_LINE_LINE_RMS, phase_treatment=PHASE_TREATMENT_EACH_PHASE))
-        assert exc.value.reason_code == "each_phase_not_supported_for_line_line"
 
     def test_single_with_no_member_for_line_line_is_invalid(self):
         with pytest.raises(AssessmentDefinitionValidationError) as exc:

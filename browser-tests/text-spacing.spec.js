@@ -407,16 +407,27 @@ test.describe("Composed labels keep their word spacing", () => {
     await expectSpaceBetween(distanceLabel, "A", "m");
     await expectNoFlexWhitespaceLoss(page, "#pageAnalysis");
 
-    // Compliance resolved measurement: "V<sub>R</sub> — KPDN1_VR".
+    // Compliance (DEC-167): the required voltages of the active Reference,
+    // "V<sub>R</sub> — fundamental RMS needs preparation".
+    const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
+    const base = `http://127.0.0.1:${process.env.PW_BACKEND_PORT || "8000"}/api/v1/workspaces/${encodeURIComponent(workspaceId)}`;
+    const profile = await page.request.post(`${base}/reference-profiles`, { data: {
+      name: "Spacing reference", category: "grid_requirement",
+      assessment_definition: { representation: "phase_ground_rms", phase_treatment: "each_phase" },
+      unit: "kV", display_start_time: 0, display_end_time: 3, evaluation_start_time: 0, evaluation_end_time: 3, tolerance: 0,
+      lower_boundary: { segments: [{ start_time: 0, end_time: 3, start_value: 0.9, end_value: 0.9, segment_type: "constant" }] },
+      upper_boundary: null, metadata: {},
+    } });
+    await page.request.post(`${base}/reference-layers`, { data: { profile_id: (await profile.json()).id, visible: true } });
+    await page.locator("#mainNavRecordingsBtn").click();
     await page.locator("#mainNavComplianceBtn").click();
     await expect(page.locator("#wwComplianceGroupField")).toBeVisible();
     const groupLabel = (await page.locator("#wwComplianceGroupSelect option").allTextContents()).find((t) => t.startsWith("KPDN1"));
     await page.locator("#wwComplianceGroupSelect").selectOption({ label: groupLabel });
-    await page.locator("#wwComplianceMeasurementSelect").selectOption({ label: "Line-Line AB Voltage" });
-    const input = page.locator("#wwComplianceMeasurementInput");
-    await expect(input).toHaveText("VR — KPDN1_VR, VY — KPDN1_VY");
-    await expectWordSpacingPreserved(input.locator(".ww-compliance-resolved-role > .ww-rich-label"), { count: 2 });
-    await expectWordSpacingPreserved(input, { count: 1 });
+    const members = page.locator(".ww-compliance-member-list li");
+    await expect(members).toHaveCount(3);
+    await expect(members.first()).toContainText("VR — ");
+    await expectWordSpacingPreserved(members.locator(".ww-rich-label"), { count: 3 });
     await expectNoFlexWhitespaceLoss(page, "#pageCompliance");
   });
 });

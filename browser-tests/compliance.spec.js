@@ -51,27 +51,29 @@ test.describe("Compliance & Capability -- Slice 1 workspace shell", () => {
     await expect(page.locator("#wwComplianceVoltagePanel .ww-compliance-heading")).toHaveText("Voltage Compliance & Capability");
   });
 
-  test("all five workflow sections exist, in the intended order, with neutral empty states", async ({ page }) => {
+  test("the workflow sections exist, Reference first, with neutral empty states", async ({ page }) => {
     await openCompliance(page);
     const panel = page.locator("#wwComplianceVoltagePanel");
     const headings = panel.locator("h2");
+    // DEC-167: Reference defines, Measurement satisfies; Event Alignment is
+    // no longer a sibling card but a subsection of Measurement.
     await expect(headings).toHaveText([
-      "Measurement",
       "Reference Layers",
-      "Event Alignment",
+      "Measurement",
       "Comparison Chart",
       "Results",
     ]);
+    await expect(panel.locator("#wwComplianceMeasurementCard #wwComplianceEventAlignmentSection")).toBeVisible();
 
     // 2026-09-20 UAT correction: on a fresh empty workspace there is no
     // Measurement Group yet, so this is now the FIRST empty state shown
     // -- selecting a quantity is a later step. Wording refined
     // 2026-09-23 (review-required groups get their own distinct
     // message; see compliance_measurement.spec.js for the full
-    // Bay/Measurement Group -> Assessment Quantity workflow coverage
+    // Bay/Measurement Group workflow coverage
     // and the bootstrap/discovery/review-required scenarios).
     await expect(page.locator("#wwComplianceMeasurementEmptyState")).toHaveText("No Voltage Measurement Group is available for this workspace.");
-    await expect(page.locator("#wwComplianceReferenceLayersEmptyState")).toHaveText("No reference layers added");
+    await expect(page.locator("#wwComplianceReferenceLayersEmptyState")).toContainText("No reference added yet.");
     // Compliance Slice 3 (DEC-109): Reference Layers is no longer a
     // Slice 1 disabled placeholder -- "+ Add Reference" is a real,
     // enabled entry point (see reference_profiles.spec.js for the full

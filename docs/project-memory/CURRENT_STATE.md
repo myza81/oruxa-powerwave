@@ -9,7 +9,7 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-10-05** — **engineering tools and workflow batch** (DEC-155 to DEC-165: Waveform/Event Reconstruction toolbar alignment, Analyser recording-state fix, playback speeds, Power & Current calculator, branding/icon migrations), on branch `feat/event-reconstruction`, not merged. Before that, on 2026-10-02: **Event Reconstruction Combined
+Last meaningful update: **2026-10-05** — **Reference-driven Compliance Measurement (DEC-167)** and the **Voltage Reference Profile Operating Envelope editor (DEC-166)**; earlier the same day, the **engineering tools and workflow batch** (DEC-155 to DEC-165: Waveform/Event Reconstruction toolbar alignment, Analyser recording-state fix, playback speeds, Power & Current calculator, branding/icon migrations), on branch `feat/event-reconstruction`, not merged. Before that, on 2026-10-02: **Event Reconstruction Combined
 Multi-Axis View** (DEC-132), on top of the Grouped Measurement View
 (DEC-131), A/B cursors (Slice 3E, DEC-130),
 navigation (Slice 3D, DEC-129), the first plotted reconstruction (Slice
@@ -20,6 +20,48 @@ complete. Earlier, on 2026-10-01:
 parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
 DEC-122 display timezone).
 
+
+**Compliance is a resizable two-column workspace with measured traces (DEC-169), 2026-10-06.**
+Configuration (Reference Layers, Measurement incl. Event Alignment) on the left, the
+Comparison Chart on the right, Results below; a drag handle (and arrow keys) resizes it
+(min 340 / 380 px, Plotly reflows, ratio kept for the page's lifetime), and narrow
+widths stack. A Reference is `ready` only when its measured trace(s) can actually be
+produced; those traces (Each Phase / Single / Minimum / Maximum, in the Reference's unit,
+on the workspace's event-relative time axis) are drawn on the SAME Plotly chart over the
+Reference envelope. Awaiting owner UAT; details in
+[COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md).
+
+**Reference Layers has one top-level action (2026-10-05).** The `Reference Library`
+button is gone; `+ Add Reference` lists saved references (search, Add / Already added,
+per-row View/Edit/Duplicate/Export/Remove, Import, `+ Create Custom Reference`). A newly
+created profile becomes an active layer at once. UX refinement only -- see
+[COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md).
+
+**Compliance Measurement is Reference-driven (DEC-167), 2026-10-05.** The cards
+read Reference Layers -> Measurement -> Comparison Chart -> Results; Event
+Alignment is a subsection of Measurement (still the Slice 1 placeholder). The
+active Reference fixes unit, representation and phase evaluation; Measurement
+shows them read-only and reports Ready / Action required / Cannot satisfy for the
+selected Measurement Group. RMS is needed only for an RMS representation and a
+per-unit base only for `pu`; "Prepare Measurement" creates missing RMS /
+line-to-line calculated channels through the shared Calculated Channel services
+(reuse by calculation identity, never by name), and "Configure Base" opens the
+existing Measurement Group editor -- Compliance owns no private RMS channel or
+per-unit configuration. The independent Assessment Quantity selector is retired.
+**Awaiting owner UAT.** Details: [COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md).
+
+**Voltage Reference Profile editor is an Operating Envelope workflow (DEC-166), 2026-10-05.**
+A boundary is entered as a connected, ordered point list (vertical edges via a
+duplicate timestamp); Compliance Region is derived from which boundaries exist;
+Phase Evaluation is Each Phase / Minimum / Maximum / Single (Voltage selector only
+for Single); new profiles default to `pu`, Line-Line RMS, Each Phase, evaluation
+from t = 0 to the automatic display end, tolerance 0. `Line-Line RMS + Each Phase`
+is now valid in the domain (supersedes the DEC-110 rejection), and an inverted
+envelope (`Lower > Upper`) is rejected. The segment model, API and JSON schema are
+unchanged; legacy profiles that cannot round-trip to points (gaps etc.) stay
+read-only on their boundaries and are saved back verbatim. **Awaiting owner UAT**;
+no further Compliance slice has been started. Details:
+[COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md).
 
 **Engineering tools and workflow batch (DEC-155 to DEC-165), 2026-10-05.**
 

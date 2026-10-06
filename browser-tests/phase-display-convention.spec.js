@@ -23,6 +23,25 @@ const STEM = "phase_convention_mixed";
 
 const subs = (locator) => locator.locator(".ww-electrical-sub");
 
+// DEC-167: Compliance Measurement no longer has an Assessment Quantity
+// selector; it lists the voltages the active Reference REQUIRES, spelled in
+// the selected bay's own phase convention. A Reference (phase-ground RMS,
+// Each Phase, kV -- every bare phase is required) is added through the real
+// API before the page is opened.
+async function addComplianceReference(page) {
+  const workspaceId = await page.evaluate(() => localStorage.getItem("powerwave.workspaceId"));
+  const base = `http://127.0.0.1:${process.env.PW_BACKEND_PORT || "8000"}/api/v1/workspaces/${encodeURIComponent(workspaceId)}`;
+  const profile = await page.request.post(`${base}/reference-profiles`, { data: {
+    name: "Phase-ground reference", category: "grid_requirement",
+    assessment_definition: { representation: "phase_ground_rms", phase_treatment: "each_phase" },
+    unit: "kV", display_start_time: 0, display_end_time: 3, evaluation_start_time: 0, evaluation_end_time: 3, tolerance: 0,
+    lower_boundary: { segments: [{ start_time: 0, end_time: 3, start_value: 0.9, end_value: 0.9, segment_type: "constant" }] },
+    upper_boundary: null, metadata: {},
+  } });
+  const layer = await page.request.post(`${base}/reference-layers`, { data: { profile_id: (await profile.json()).id, visible: true } });
+  if (!layer.ok()) throw new Error("could not add the Compliance reference layer");
+}
+
 async function uploadFixture(page) {
   await page.goto("/index.html");
   await page.locator("#recordingsUploadBtn, #recordingsEmptyUploadBtn").first().click();
@@ -280,33 +299,27 @@ test.describe("Phase display convention (DEC-118)", () => {
     await expect(page.locator(".ww-phasor-manual-role-row:has(#wwSequenceManualVaEnabled) .ww-electrical-sub")).toHaveText("A");
   });
 
-  test("Compliance: generic quantity wording, resolved measurement in the group's convention", async ({ page }) => {
+  test("Compliance: the required voltages are spelled in each bay's own convention", async ({ page }) => {
     await uploadFixture(page);
+    await addComplianceReference(page);
     await page.locator("#mainNavComplianceBtn").click();
     await expect(page.locator("#pageCompliance")).toBeVisible();
     await expect(page.locator("#wwComplianceGroupField")).toBeVisible();
-    const input = page.locator("#wwComplianceMeasurementInput");
+    const members = page.locator(".ww-compliance-member-list li");
 
     const groupLabel = async (prefix) => (await page.locator("#wwComplianceGroupSelect option").allTextContents())
       .find((t) => t.startsWith(prefix));
 
     await page.locator("#wwComplianceGroupSelect").selectOption({ label: await groupLabel("KPDN1") });
-    await page.locator("#wwComplianceMeasurementSelect").selectOption({ label: "Phase A Voltage" }); // generic, fixed
-    await expect(input).toHaveText("VR — KPDN1_VR");
-    await expect(input).toHaveAttribute("data-phase-convention", "RYB");
-    await expectTrueSubscripts(input.locator(".ww-electrical-symbol"), 1);
-    await page.locator("#wwComplianceMeasurementSelect").selectOption({ label: "Line-Line AB Voltage" });
-    await expect(input).toHaveText("VR — KPDN1_VR, VY — KPDN1_VY");
-    await page.locator("#wwComplianceMeasurementSelect").selectOption({ label: "Phase C Voltage" });
-    await expect(input).toHaveText("VB — KPDN1_VB"); // canonical C of an R/Y/B group
+    await expect(members).toHaveText([/^VR — /, /^VY — /, /^VB — /]); // R/Y/B bay: canonical A/B/C stay internal
+    await expect(page.locator("#wwComplianceReadinessRefs")).toHaveAttribute("data-phase-convention", "RYB");
+    await expectTrueSubscripts(page.locator(".ww-compliance-member-list .ww-electrical-symbol"), 3);
+    // The Reference's own wording is generic and fixed.
+    await expect(page.locator("#wwComplianceRequirementList li")).toContainText("Phase-Ground RMS • Each Phase • kV");
 
     await page.locator("#wwComplianceGroupSelect").selectOption({ label: await groupLabel("MCRS") });
-    await page.locator("#wwComplianceMeasurementSelect").selectOption({ label: "Phase A Voltage" });
-    await expect(input).toHaveText("VA — MCRS_VA");
-    await expect(input).toHaveAttribute("data-phase-convention", "ABC");
-    await page.locator("#wwComplianceMeasurementSelect").selectOption({ label: "Phase C Voltage" });
-    await expect(input).toHaveText("VC — MCRS_VC");
-    await expect(page.locator("#wwComplianceMeasurementSelect option:checked")).toHaveText("Phase C Voltage");
+    await expect(members).toHaveText([/^VA — /, /^VB — /, /^VC — /]);
+    await expect(page.locator("#wwComplianceReadinessRefs")).toHaveAttribute("data-phase-convention", "ABC");
   });
 });
 
@@ -436,23 +449,20 @@ test.describe("Phase display convention -- R/Y/B names with COMTRADE ph A/B/C (o
     await expect(page.locator("#wwImpedancePhaseSelect option").first()).toContainText("Phase A");
   });
 
-  test("Compliance: KPDN2 resolved measurement is spelled R/Y/B; generic quantity wording unchanged", async ({ page }) => {
+  test("Compliance: KPDN2 required voltages are spelled R/Y/B; the Reference wording stays generic", async ({ page }) => {
     await uploadStructuredPh(page);
+    await addComplianceReference(page);
     await page.locator("#mainNavComplianceBtn").click();
     await expect(page.locator("#wwComplianceGroupField")).toBeVisible();
     const groupLabel = async (prefix) => (await page.locator("#wwComplianceGroupSelect option").allTextContents()).find((t) => t.startsWith(prefix));
-    const input = page.locator("#wwComplianceMeasurementInput");
+    const members = page.locator(".ww-compliance-member-list li");
     await page.locator("#wwComplianceGroupSelect").selectOption({ label: await groupLabel("KPDN2") });
-    await page.locator("#wwComplianceMeasurementSelect").selectOption({ label: "Phase A Voltage" });
-    await expect(input).toHaveText("VR — KPDN2 VR");
-    await expect(input).toHaveAttribute("data-phase-convention", "RYB");
-    await expectTrueSubscripts(input.locator(".ww-electrical-symbol"), 1);
-    await page.locator("#wwComplianceMeasurementSelect").selectOption({ label: "Line-Line AB Voltage" });
-    await expect(input).toHaveText("VR — KPDN2 VR, VY — KPDN2 VY");
+    await expect(members).toHaveText([/^VR — /, /^VY — /, /^VB — /]);
+    await expect(page.locator("#wwComplianceReadinessRefs")).toHaveAttribute("data-phase-convention", "RYB");
+    await expectTrueSubscripts(page.locator(".ww-compliance-member-list .ww-electrical-symbol"), 3);
     await page.locator("#wwComplianceGroupSelect").selectOption({ label: await groupLabel("MCRS") });
-    await page.locator("#wwComplianceMeasurementSelect").selectOption({ label: "Phase A Voltage" });
-    await expect(input).toHaveText("VA — MCRS VA");
-    await expect(input).toHaveAttribute("data-phase-convention", "ABC");
+    await expect(members).toHaveText([/^VA — /, /^VB — /, /^VC — /]);
+    await expect(page.locator("#wwComplianceReadinessRefs")).toHaveAttribute("data-phase-convention", "ABC");
   });
 });
 

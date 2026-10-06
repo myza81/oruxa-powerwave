@@ -7,8 +7,9 @@ scoping) implemented 2026-09-20; a further owner-UAT correction (group
 discovery/bootstrap) implemented 2026-09-23; Slice 3 (Reference
 Profiles, Reference Layers, and static Comparison Chart rendering)
 implemented 2026-09-23; a same-week architecture refinement (Assessment
-Definition, DEC-110) implemented 2026-09-24 — see "Slice 3" and
-"Assessment Definition (DEC-110)" below.** Event alignment/t0, measured-
+Definition, DEC-110) implemented 2026-09-24; the Reference Profile editor was then rebuilt as an
+Operating Envelope workflow (DEC-166, 2026-10-05) — see "Slice 3",
+"Assessment Definition (DEC-110)" and "Operating Envelope editor (DEC-166)" below.** Event alignment/t0, measured-
 waveform overlay, automated event detection, a measurement resolver, and
 compliance evaluation/breach/margin/tolerance logic still do not exist —
 see "Slice 2" below for exactly what Measurement does, "Bay/Measurement
@@ -730,6 +731,12 @@ Every field defaults to `unspecified`/`None` — a fully-unspecified
 definition is always valid, representing "not yet confirmed", never an
 error and never silently resolved to a guess.
 
+> **Superseded in part by DEC-166 (2026-10-05):** the sentence below stating
+> that `phase_treatment=each_phase` is not supported for
+> `representation=line_line_rms` is **no longer true** -- that combination is
+> now valid and is the default of the Operating Envelope editor (see "Operating
+> Envelope editor (DEC-166)" below). Kept as the historical record.
+
 **Validated combinations carry real engineering meaning**
 (`app.domain.assessment_definition.validate_assessment_definition()`):
 an aggregate treatment (`minimum`/`maximum`/`each_phase`) never takes a
@@ -812,6 +819,193 @@ in this slice: `browser-tests/compliance.spec.js` still asserted Slice
 old "No voltage assessment configured" chart empty-state text, both
 superseded by DEC-109 the day before but never updated in this
 particular file (only in `test_frontend_compliance.py`) — corrected now.
+
+## Two-column workspace and measured traces (DEC-169, 2026-10-06)
+
+Full record: [DECISIONS.md — DEC-169](DECISIONS.md#dec-169--compliance-is-a-resizable-two-column-workspace-and-ready-means-the-measured-trace-can-actually-be-produced-and-plotted-refines-dec-167).
+**Supersedes the card layout described above** (Reference and Measurement side by
+side over a full-width chart); everything else in the DEC-167 section stands except
+the two corrections noted there.
+
+```text
+┌───────────────────────────────┬─────────────────────────────────────┐
+│ LEFT   Reference Layers       │ RIGHT  Comparison Chart              │
+│        Measurement            │        (Reference envelope           │
+│          (readiness,          │         + measured traces)           │
+│           Event Alignment)    │                                     │
+└─────────────── ↔ drag handle ──┴─────────────────────────────────────┘
+RESULTS
+```
+
+- Desktop: ~38 / 62, drag (or arrow keys) to resize, minimum 340 px / 380 px, Plotly
+  reflows, ratio kept for the page's lifetime. Below 1100 px everything stacks in the
+  same order and the handle disappears.
+- **Ready = the trace can be produced.** Needs a shared channel per required voltage,
+  convertible to the Reference unit, and (min/max) one proven time base. A pu base that
+  is saved but whose group is not yet confirmed is `action_required` (Configure Base,
+  Save confirms it); positive sequence is `incompatible` until a shared
+  positive-sequence series exists.
+- **Traces:** `Each Phase` -> one per voltage; `Single` -> the named one; `Minimum` /
+  `Maximum` -> one sample-by-sample aggregate. Unit = the Reference's (pu through the
+  shared per-unit resolvers; kV/V with exact V <-> kV scaling only). De-duplicated by
+  measurement product; each trace lists the layers it serves. Names follow the bay's
+  phase convention; identity is `meta`, never the legend text.
+- **Time axis:** `x = source_time + alignment_offset - t0` (the workspace's own t0, set
+  in Waveform); no t0 -> the recording's own axis, and the UI says so.
+- Endpoint: `GET .../compliance/voltage/measurement-traces?measurement_group_id=`
+  (read-only). Services: `compliance_series` (shared read + unit conversion),
+  `compliance_trace_service`.
+- Tests: `backend/tests/test_compliance_trace_api.py`,
+  `browser-tests/compliance_workspace.spec.js`.
+
+## Reference-driven Measurement (DEC-167, 2026-10-05)
+
+> Reference defines. Measurement satisfies. Compliance never owns a private RMS
+> channel or private per-unit configuration.
+
+Full record: [DECISIONS.md — DEC-167](DECISIONS.md#dec-167--compliance-measurement-is-reference-driven-reference-layers-come-first-measurement-reports-readiness-against-the-active-references-and-rms--per-unit-are-discoveredreused-or-prepared-through-the-shared-services-only-amends-dec-100101102).
+**This supersedes the "Slice 2 — Measurement Selection" Assessment Quantity workflow
+and the Bay/Measurement Group "Assessment Quantity" steps above** (kept as the
+historical record); the normalization math, role resolution, group scoping, group
+discovery and DEC-118 phase display they describe are unchanged.
+
+```text
+REFERENCE LAYERS            defines what must be assessed (unit, representation, phase evaluation)
+        |
+MEASUREMENT                 Bay / Measurement Group
+  Requirements from active references        (read-only, derived)
+  Measurement readiness                      Ready | Action required | Cannot satisfy
+  Event Alignment                            (subsection; still the Slice 1 placeholder)
+        |
+COMPARISON CHART  ->  RESULTS
+```
+
+| Reference says | Measurement requires |
+|---|---|
+| unit `pu` | a configured Voltage base on the selected Measurement Group (the shared group config) |
+| unit `kV` / `V` | nothing about a base (never a warning) |
+| `*_rms` representation | RMS: a source RMS channel used directly, an equivalent shared RMS calculated channel reused, or one prepared |
+| `Each Phase` / `Minimum` / `Maximum` | all three phases / pairs |
+| `Single` + member | only that voltage |
+| positive sequence | instantaneous A/B/C (derived at assessment) |
+
+**Readiness states.** `ready` -- everything can be produced; `action_required` -- the
+recording can satisfy it but a shared step is missing (RMS channel, line-to-line
+channel, per-unit base); `incompatible` -- missing phase, angle-less RMS where
+phasors are needed, ambiguous metadata, or a Reference that states too little.
+`incompatible` dominates `action_required` dominates `ready`; no active Reference
+is `no_reference`, never `ready`.
+
+**Preparation** creates only what is missing through the shared Calculated Channel
+services and reuses equivalents **by calculation identity** (operation + inputs +
+parameters + null policy), never by name; it never writes a per-unit base.
+**Configure Base** opens the existing Measurement Group editor on the selected
+group, so a base set in Compliance and a base set from Waveform are the same
+configuration. Compliance-only reductions (min/max across phases, each-phase
+pass/fail, breach detection) are not Calculated Channels.
+
+**Retired from the UI:** the Assessment Quantity select, Input / Input Type /
+Derived As / Base / Assessment Unit rows. `GET .../compliance/voltage/quantities`
+and `.../measurement` remain in the backend, unused by the UI.
+
+**Tests:** `test_compliance_requirement.py`, `test_compliance_readiness_api.py`,
+`test_frontend_compliance.py` (`TestComplianceMeasurementReadinessStructure`),
+`browser-tests/compliance_readiness.spec.js`; `compliance_measurement.spec.js`
+and four other specs were reworked for the new card.
+
+**Files:** `backend/app/domain/compliance_requirement.py`,
+`backend/app/services/compliance_readiness_service.py`,
+`backend/app/schemas/compliance.py`, `backend/app/api/v1/compliance.py`,
+`frontend/index.html`.
+
+## Add Reference: one top-level action (UX refinement, 2026-10-05)
+
+Not a new decision -- a navigation refinement of the DEC-109/DEC-111 Reference
+Layers behaviour. The Reference Layers card shows **active references only** and has
+ONE action, `+ Add Reference`; the separate `Reference Library...` button and its
+dialog are gone. The **Add Reference** dialog lists the **saved** references (search by
+name, category, jurisdiction, authority, document, manufacturer, equipment, project,
+plant), and holds everything the old library offered:
+
+| Need | Where |
+|---|---|
+| add a saved reference | row `Add` -> becomes an active layer and the dialog closes |
+| already active | row shows `Already added`, no Add button; the add path also re-checks the server's layer list, so a second layer for the same profile is never created from the UI |
+| create | `+ Create Custom Reference` (the DEC-166 editor). A profile **created** there is saved, added as an active layer and the engineer is back in Compliance |
+| import | `Import Reference...` (same dialog) |
+| view / edit / duplicate / export / remove | per-row `...` menu (built-in profiles: no Edit/Remove, as before) |
+
+Adding a layer goes through the existing layer refresh, which re-checks Measurement
+readiness (DEC-167) -- there is no second requirement-selection mechanism. The
+empty state reads "No reference added yet. Add a reference profile to define the
+operating envelope and measurement requirements for this assessment." The backend,
+storage, import/export and edit capabilities are unchanged. Server-side duplicate
+layer rejection does not exist (the API still accepts two layers for one profile);
+the guard is UI-only by design of this slice.
+
+## Operating Envelope editor (DEC-166, 2026-10-05)
+
+Replaces the segment-table editor with a workflow built on the engineering
+concept of an **Operating Envelope**; see
+[DECISIONS.md — DEC-166](DECISIONS.md#dec-166--voltage-reference-profile-editor-becomes-an-operating-envelope-workflow-a-connected-point-list-per-boundary-a-derived-compliance-region-visible-defaults-and-line-line-rms--each-phase-made-valid-refines-dec-110)
+for the full record. Summary of what is true now:
+
+```text
+Create / Edit Reference Profile
+  Name, Category (Grid Requirement | Equipment Capability | Project Requirement | Custom Reference)
+  OPERATING ENVELOPE
+    [x] Lower Boundary   [x] Upper Boundary          (at least one)
+    Compliance Region   (derived, read-only)
+    Phase Evaluation    Each Phase | Minimum | Maximum | Single   (Voltage VAB/VBC/VCA only for Single)
+    Assessment: <generated summary>
+    Lower / Upper Boundary point lists   Time (s) | Voltage (pu)   + Add Point
+    Live Operating Envelope Preview (Plotly; valid region shaded between two boundaries)
+  > Advanced Settings          (Unit, Voltage Representation, Evaluation Start/End, Tolerance, Display Start/End)
+  > Reference Source / Metadata
+```
+
+**Engineering semantics.**
+
+| Setting | Meaning |
+|---|---|
+| Lower only | `V >= Lower(t)` -- At or Above Lower Boundary |
+| Upper only | `V <= Upper(t)` -- At or Below Upper Boundary |
+| Lower + Upper | `Lower(t) <= V(t) <= Upper(t)` -- Inside Envelope; `Lower(t) <= Upper(t)` enforced |
+| Each Phase | VAB, VBC, VCA each assessed independently |
+| Minimum / Maximum | `min` / `max` of VAB, VBC, VCA compared against the boundary rule |
+| Single | one selected line-line voltage |
+
+**Point -> segment translation** (`app.domain.reference_envelope`): same
+voltage/increasing time -> `constant`; different voltage/increasing time ->
+`linear`; same time/different voltage -> a **connected vertical edge** (stored as
+the discontinuity between two time-adjacent segments). Decreasing time, identical
+consecutive points, >2 points at one instant, and a vertical edge as the very
+first/last pair are rejected; points are never re-sorted.
+
+**New-profile defaults:** `pu`, `Line-Line RMS`, `Each Phase`, evaluation start
+`0 s`, evaluation end = automatic display end, tolerance `0`, display start/end =
+earliest/latest boundary point. Measurement location, interpretation source,
+Specific Member and Constant/Linear are no longer in the normal workflow.
+
+**Compatibility.** Backend model/API/JSON schema (v2; v1 import) unchanged. Only
+a read-only projection (`lower_points`, `upper_points`, `point_editable`) was
+added. A stored boundary that cannot round-trip losslessly to points (gaps,
+explicit segment type different from the inferred one, out-of-order storage) is
+shown read-only and saved back verbatim -- never flattened. Existing
+`unspecified` values, `measurement_location` and `provenance` are preserved on
+save.
+
+**Domain validation changes:** `line_line_rms + each_phase` is valid;
+`validate_reference_profile()` rejects `Lower(t) > Upper(t)` anywhere both
+boundaries are defined (`boundary_crossing`).
+
+**Tests:** `backend/tests/test_reference_envelope.py` (+ shared golden vectors in
+`backend/tests/fixtures/reference_envelope_vectors.json`),
+`test_reference_profile_domain.py` (`TestBoundaryCrossingValidation`),
+`test_assessment_definition.py`, `test_reference_profile_api.py`
+(`TestOperatingEnvelopeHttp`), `test_frontend_compliance.py`
+(`TestOperatingEnvelopeEditorStructure`) and
+`browser-tests/reference_envelope_editor.spec.js` (32 scenarios).
 
 ## Jurisdiction-Neutral Architecture & Portable Persistence (DEC-111, 2026-09-24)
 
@@ -1056,6 +1250,8 @@ placeholders) all guard this boundary directly.
   the DEC-110 Assessment Definition scenarios) — inspects real Plotly
   trace data via `#wwComplianceChartPlot.data`, never screenshots/text
   only.
+- `backend/app/domain/reference_envelope.py` — DEC-166's deterministic point <->
+  segment translation, extent/default derivation, compliance region.
 - `backend/app/domain/assessment_definition.py` — DEC-110's own
   standalone AssessmentDefinition model, validation, legacy-quantity
   migration; `backend/tests/test_assessment_definition.py` — its

@@ -4,10 +4,115 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-05** (UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Last updated: **2026-10-05** (Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
 ## What was most recently done
+
+**Two-column Compliance workspace + measured traces (DEC-169), awaiting UAT.** Left:
+Reference Layers / Measurement / Event Alignment; right: Comparison Chart; Results below;
+drag/arrow-key resize. "Ready" now means the trace can be produced, and the measured
+traces are plotted over the Reference. UAT: (1) drag the handle, resize, try the limits,
+narrow the window; (2) Each Phase pu Reference on KPDN1 -> Prepare -> Configure Base ->
+three V<sub>RY</sub>/V<sub>YB</sub>/V<sub>BR</sub> traces in pu; (3) Single, (4) Minimum,
+(5) Maximum References; (6) a kV Reference (kV values); (7) pu without a base -> Action
+Required, no pu trace; (8) MCRS with a Line-Line Reference -> incompatible, no trace;
+(9) set t0 in Waveform -> the measured trace shifts with the Reference's event time.
+Known: positive sequence cannot be plotted yet; a pu base on a still-"suggested" group
+must be confirmed (the group editor's Save does it).
+
+Validation of the integrated Compliance slice (DEC-166/167/169 + Add Reference + point-input
+restyle, committed as one commit): backend suite 0 failures/errors (49 skipped, ~6,770 collected);
+focused Compliance backend files 322 passed; focused Compliance browser specs 125/125; the **fresh
+full Playwright run was NOT clean: 670 passed, 2 failed** --
+`event-reconstruction-per-unit.spec.js:155` (plot "settle" timeout / browser session closed) and
+`impedance_analysis.spec.js:289` (Play/Pause timing). Both were re-run against an untouched-HEAD
+worktree (HEAD frontend, the running backend on :8000) and fail the same way there (ER 3/3,
+Impedance 2/3, passing sometimes), so they are not caused by this slice; they are pre-existing /
+environment-timing sensitive and were left alone. Earlier full runs failed other timing-sensitive
+specs (`overcurrent_analysis.spec.js:1345`, which passed in the latest full run, and the ER viewport
+test) -- a pattern of load-sensitive Analysis / Event Reconstruction specs, to be handled separately.
+
+
+**Boundary point inputs restyled (UI consistency only).** The Lower/Upper Boundary Time/Voltage inputs now reuse the app's standard `.ww-cc-field input` control rule (cells carry `ww-cc-field`), invalid fields use `aria-invalid` with the `--error`/`--error-wash` tokens, and the table layout/alignment was tidied. No logic, domain or schema change. Native number spinners were left as everywhere else in the app.
+
+**Add Reference is the single Reference Layers action (UX refinement, awaiting UAT).**
+The separate Reference Library button/dialog were merged into the Add Reference dialog
+(saved list + search + Add / Already added + per-row menu + Import + Create Custom
+Reference; create -> active). No backend or domain change. UAT: with no reference, Add
+Reference -> pick a saved profile (becomes active) -> reopen: "Already added"; Create
+Custom Reference -> Save (active, back in Compliance); row `...` -> Edit/Export; Import
+Reference...; confirm no Reference Library button on the card.
+
+
+**Reference-driven Compliance Measurement (DEC-167), awaiting owner UAT.** Reference
+Layers now come first; Measurement reports readiness (Ready / Action required /
+Cannot satisfy) against the active Reference(s); Event Alignment is a subsection of
+Measurement. See DECISIONS.md DEC-167 and COMPLIANCE_CAPABILITY.md. **Next:** run the
+UAT checklist below; do not start a further Compliance slice (event alignment,
+overlay, PASS/FAIL) until the owner has reviewed it.
+
+Known issues carried forward (not caused by this slice): the Event Reconstruction
+Playwright test `event-reconstruction-per-unit.spec.js` "ENG <-> PU changes no
+timing..." times out in `zoomTo()` on an untouched HEAD too; the Operating Envelope
+editor cannot store a vertical edge as a boundary's first/last pair (a model
+limitation, `[OPEN]` in DEC-167).
+
+Owner UAT checklist (hands-on, fixture `line_to_line_multibay` has KPDN1 instantaneous,
+KPDN2 two phases, MCRS RMS):
+
+1. Compliance with a Reference of Line-Line RMS / Each Phase / pu and bay KPDN1: status
+   "Action required", a red "Base not configured" row, Prepare Measurement + Configure
+   Base ("2 actions required").
+2. Configure Base: the existing group editor opens on that group; save a nominal kV, close:
+   the red row turns into "N kV ... base configured" with no second setup. Open Waveform's
+   Per-Unit Settings: the same base is there (and vice versa).
+3. Prepare Measurement: line-to-line + RMS calculated channels appear in Calculated
+   Channels and the Waveform sidebar; press it again: nothing new is created.
+4. Make RMS channels yourself in Calculated Channels (any names), then open Compliance: they
+   are reused, no Prepare button.
+5. Change the Reference unit to kV (edit the Reference, not Measurement): the base row
+   becomes calm and Configure Base disappears.
+6. Bay MCRS (already-RMS phases) with Line-Line RMS: "Measurement cannot satisfy this
+   reference" (angle-less RMS, unsafe); with Phase-Ground RMS: Ready, nothing created.
+7. Event Alignment sits inside the Measurement card; Reference Layers is the first card.
+
+
+**Operating Envelope Reference Profile editor (DEC-166), awaiting owner UAT.**
+The Voltage Compliance editor now takes a Name, Category, a Lower and/or Upper
+boundary as a connected point list, and a Phase Evaluation; everything else has a
+visible default under Advanced Settings (see CURRENT_STATE.md and
+COMPLIANCE_CAPABILITY.md). Domain: `Line-Line RMS + Each Phase` is valid, and
+`Lower(t) > Upper(t)` is rejected (`boundary_crossing`). Backend model/API/JSON
+schema are unchanged; a read-only `lower_points`/`upper_points`/`point_editable`
+projection was added, and a legacy profile that cannot round-trip to points (a
+gap, an explicit segment type) keeps its boundaries read-only and is saved back
+verbatim. **Next:** run the UAT checklist below; do **not** start further
+Compliance slices (event alignment, overlay, evaluation) until the owner has
+reviewed this one.
+
+Owner UAT checklist (hands-on):
+
+1. Compliance > Add Reference > + Create Custom Reference. Confirm only Name,
+   Category, Operating Envelope, Phase Evaluation, preview are prominent;
+   Advanced Settings / Reference Source are collapsed.
+2. Enter lower points `0,0 / 0.15,0 / 0.15,0.9 / 3,0.9`: the preview draws a
+   connected vertical edge; Compliance Region reads "At or Above Lower Boundary".
+3. Tick Upper Boundary, enter `0,1.1 / 3,1.1`: region reads "Inside Envelope" and
+   the valid area is shaded. Raise the lower value to 1.2: an error names the
+   interval and Save is disabled.
+4. Try time `0.15` then `0.10`, a repeated point, and a point with only one cell
+   filled: each is rejected inline and nothing is re-sorted.
+5. Cycle Phase Evaluation (Each Phase / Minimum / Maximum / Single): the
+   Assessment sentence changes; the VAB/VBC/VCA selector appears only for Single.
+6. Open Advanced Settings: pu, Line-Line RMS, Evaluation Start 0, Evaluation End
+   "Auto", Tolerance 0, Display Start/End "Auto"; change a point's time and watch
+   the Auto values follow. Override one and save.
+7. Save, reopen via Reference Library > Edit: the same points return. Export and
+   re-Import the JSON: identical profile.
+8. Import an older profile (one with a gap between segments if you have one):
+   boundaries are shown read-only with a notice; renaming keeps its curve.
+
 
 **Final UAT batch committed (DEC-155 to DEC-165).** Everything in the
 working tree after owner UAT was committed together on

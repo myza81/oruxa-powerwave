@@ -360,6 +360,81 @@ def validate_reference_profile(profile: ReferenceProfile) -> None:
         _validate_boundary(profile.lower_boundary, boundary=BOUNDARY_LOWER)
     if profile.upper_boundary is not None:
         _validate_boundary(profile.upper_boundary, boundary=BOUNDARY_UPPER)
+    if profile.lower_boundary is not None and profile.upper_boundary is not None:
+        crossing = find_boundary_crossing(profile.lower_boundary, profile.upper_boundary)
+        if crossing is not None:
+            raise ReferenceProfileValidationError(
+                f"The lower boundary rises above the upper boundary between t = {crossing.time_start:g} s "
+                f"and t = {crossing.time_end:g} s (at t = {crossing.time:g} s: lower {crossing.lower_value:g} > "
+                f"upper {crossing.upper_value:g}); the operating envelope would be inverted.",
+                reason_code="boundary_crossing", field_name="lower_boundary",
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class BoundaryCrossing:
+    """First place a lower boundary exceeds the upper boundary
+    (`find_boundary_crossing()`). `time` is the instant the violation is
+    measured at; `time_start`/`time_end` bound the interval between two
+    adjacent breakpoints in which the inversion lies, so a UI can name
+    the offending interval rather than only an instant."""
+
+    time: float
+    time_start: float
+    time_end: float
+    lower_value: float
+    upper_value: float
+
+
+#: Float slack for the lower <= upper comparison -- two boundaries meeting
+#: exactly (a legitimate pinch point) must never be flagged by rounding.
+_CROSSING_EPSILON = 1e-12
+
+
+def _one_sided_value(ordered: list[BoundarySegment], t: float, *, side: str) -> float | None:
+    """Limit of a boundary at `t` from the `"left"` or `"right"`;
+    `None` where the boundary defines nothing on that side (outside its
+    extent, or inside a gap). Right-continuity (see module docstring)
+    means the right limit is the boundary's value AT `t`."""
+    for segment in ordered:
+        if side == "right":
+            inside = segment.start_time <= t < segment.end_time
+        else:
+            inside = segment.start_time < t <= segment.end_time
+        if inside:
+            span = segment.end_time - segment.start_time
+            return segment.start_value + (segment.end_value - segment.start_value) * (t - segment.start_time) / span
+    return None
+
+
+def find_boundary_crossing(lower: ReferenceBoundary, upper: ReferenceBoundary) -> BoundaryCrossing | None:
+    """Where both boundaries are defined, `Lower(t) <= Upper(t)` must
+    hold. Both are piecewise linear (with jumps), so their difference is
+    linear between breakpoints -- checking every breakpoint's left and
+    right limits is exhaustive. Compared only where BOTH boundaries
+    define a value: a requirement is never invented outside a
+    boundary's own extent. Returns the first violation, or `None`.
+    Assumes both boundaries already passed `_validate_boundary()`."""
+    lower_segments = sorted(lower.segments, key=lambda s: s.start_time)
+    upper_segments = sorted(upper.segments, key=lambda s: s.start_time)
+    times = sorted({
+        t for segment in (*lower_segments, *upper_segments) for t in (segment.start_time, segment.end_time)
+    })
+    for index, t in enumerate(times):
+        for side in ("right", "left"):
+            lower_value = _one_sided_value(lower_segments, t, side=side)
+            upper_value = _one_sided_value(upper_segments, t, side=side)
+            if lower_value is None or upper_value is None:
+                continue
+            if lower_value > upper_value + _CROSSING_EPSILON:
+                if side == "right":
+                    start, end = t, times[index + 1] if index + 1 < len(times) else t
+                else:
+                    start, end = times[index - 1] if index > 0 else t, t
+                return BoundaryCrossing(
+                    time=t, time_start=start, time_end=end, lower_value=lower_value, upper_value=upper_value,
+                )
+    return None
 
 
 @dataclass(frozen=True, slots=True)
