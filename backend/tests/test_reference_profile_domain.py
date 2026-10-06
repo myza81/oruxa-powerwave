@@ -175,11 +175,17 @@ class TestAssessmentDefinitionValidationPropagatesToProfileLevel:
     separate, mutually-independent domain modules."""
 
     def test_invalid_assessment_definition_is_rejected_at_profile_level(self):
-        definition = AssessmentDefinition(representation="line_line_rms", phase_treatment="each_phase")
+        definition = AssessmentDefinition(representation="line_line_rms", phase_treatment="single")  # member missing
         with pytest.raises(ReferenceProfileValidationError) as exc:
             validate_reference_profile(_profile(assessment_definition=definition))
-        assert exc.value.reason_code == "each_phase_not_supported_for_line_line"
-        assert exc.value.field_name == "assessment_definition.phase_treatment"
+        assert exc.value.reason_code == "member_required_for_single_treatment"
+        assert exc.value.field_name == "assessment_definition.member"
+
+    def test_line_line_each_phase_is_valid_at_profile_level(self):
+        """DEC-166: no longer rejected -- the domain model itself, not just
+        the frontend, accepts Line-Line RMS + Each Phase."""
+        definition = AssessmentDefinition(representation="line_line_rms", phase_treatment="each_phase")
+        validate_reference_profile(_profile(assessment_definition=definition))
 
     def test_fully_unspecified_assessment_definition_is_valid(self):
         validate_reference_profile(_profile(assessment_definition=AssessmentDefinition()))
@@ -398,3 +404,58 @@ class TestProvenanceMetadataDEC111:
         envelope_2027 = profile_to_json_dict(revision_2027)
         assert envelope_2025["profile"]["metadata"]["document_revision"] == "2025"
         assert envelope_2027["profile"]["metadata"]["document_revision"] == "2027"
+
+
+class TestBoundaryCrossingValidation:
+    """DEC-166: where both boundaries exist, Lower(t) <= Upper(t) must hold
+    -- an inverted envelope is rejected, never repaired or swapped."""
+
+    @staticmethod
+    def _both(lower, upper):
+        return _profile(lower_boundary=ReferenceBoundary(segments=tuple(lower)), upper_boundary=ReferenceBoundary(segments=tuple(upper)))
+
+    def test_lower_below_upper_is_valid(self):
+        validate_reference_profile(self._both(
+            [_segment(0, 3, 0.8, 0.8, "constant")], [_segment(0, 3, 1.1, 1.1, "constant")],
+        ))
+
+    def test_touching_boundaries_are_valid(self):
+        validate_reference_profile(self._both(
+            [_segment(0, 3, 1.0, 1.0, "constant")], [_segment(0, 3, 1.0, 1.0, "constant")],
+        ))
+
+    def test_constant_inversion_is_rejected_and_names_the_interval(self):
+        with pytest.raises(ReferenceProfileValidationError) as exc:
+            validate_reference_profile(self._both(
+                [_segment(0, 3, 1.2, 1.2, "constant")], [_segment(0, 3, 1.1, 1.1, "constant")],
+            ))
+        assert exc.value.reason_code == "boundary_crossing"
+        assert "between t = 0 s and t = 3 s" in exc.value.message
+
+    def test_linear_crossing_mid_segment_is_detected(self):
+        # lower ramps 0.5 -> 1.5 while upper stays 1.0: crosses at t = 1.5, exposed at the t = 3 breakpoint.
+        with pytest.raises(ReferenceProfileValidationError) as exc:
+            validate_reference_profile(self._both(
+                [_segment(0, 3, 0.5, 1.5, "linear")], [_segment(0, 3, 1.0, 1.0, "constant")],
+            ))
+        assert exc.value.reason_code == "boundary_crossing"
+
+    def test_vertical_edge_inversion_is_detected(self):
+        # lower jumps to 1.2 at t=1 (right-continuous) while upper is 1.0 throughout.
+        with pytest.raises(ReferenceProfileValidationError) as exc:
+            validate_reference_profile(self._both(
+                [_segment(0, 1, 0.5, 0.5, "constant"), _segment(1, 3, 1.2, 1.2, "constant")],
+                [_segment(0, 3, 1.0, 1.0, "constant")],
+            ))
+        assert exc.value.reason_code == "boundary_crossing"
+
+    def test_no_requirement_is_invented_outside_a_boundarys_own_extent(self):
+        # No time overlap at all, so nothing to compare.
+        validate_reference_profile(self._both(
+            [_segment(2, 3, 1.5, 1.5, "constant")], [_segment(0, 1, 1.0, 1.0, "constant")],
+        ))
+
+    def test_different_extents_are_compared_on_their_overlap_only(self):
+        validate_reference_profile(self._both(
+            [_segment(-1, 3, 0.8, 0.8, "constant")], [_segment(0, 2, 1.1, 1.1, "constant")],
+        ))

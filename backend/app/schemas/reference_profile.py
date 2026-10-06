@@ -14,6 +14,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.domain.assessment_definition import AssessmentDefinition
+from app.domain.reference_envelope import segments_to_points
 from app.domain.reference_layer import ReferenceLayer
 from app.domain.reference_profile import (
     BoundaryPoint,
@@ -224,7 +225,20 @@ class ReferenceProfileWriteRequest(BaseModel):
         )
 
 
+class EnvelopePointOut(BaseModel):
+    time: float
+    value: float
+
+
 class ReferenceProfileOut(BaseModel):
+    """`lower_points`/`upper_points`/`point_editable` (DEC-166) are a
+    READ-ONLY projection of the stored segments for the Operating
+    Envelope editor -- never written back. `point_editable` is true only
+    when every configured boundary converts to a connected point list
+    losslessly (`app.domain.reference_envelope.segments_to_points()`);
+    otherwise the profile keeps its legacy segment representation and the
+    editor shows its boundaries read-only rather than flattening them."""
+
     id: str
     source: str  # "built_in" | "custom"
     name: str
@@ -239,10 +253,18 @@ class ReferenceProfileOut(BaseModel):
     lower_boundary: ReferenceBoundaryOut | None = None
     upper_boundary: ReferenceBoundaryOut | None = None
     metadata: ReferenceProfileMetadataOut
+    lower_points: list[EnvelopePointOut] | None = None
+    upper_points: list[EnvelopePointOut] | None = None
+    point_editable: bool = True
 
     @classmethod
     def from_entry(cls, entry: ReferenceProfileEntry) -> "ReferenceProfileOut":
         profile = entry.profile
+        lower_points = segments_to_points(profile.lower_boundary) if profile.lower_boundary is not None else None
+        upper_points = segments_to_points(profile.upper_boundary) if profile.upper_boundary is not None else None
+        point_editable = (profile.lower_boundary is None or lower_points is not None) and (
+            profile.upper_boundary is None or upper_points is not None
+        )
         return cls(
             id=profile.id,
             source=entry.source,
@@ -258,6 +280,9 @@ class ReferenceProfileOut(BaseModel):
             lower_boundary=ReferenceBoundaryOut.from_domain(profile.lower_boundary) if profile.lower_boundary is not None else None,
             upper_boundary=ReferenceBoundaryOut.from_domain(profile.upper_boundary) if profile.upper_boundary is not None else None,
             metadata=ReferenceProfileMetadataOut.from_domain(profile.metadata),
+            lower_points=[EnvelopePointOut(time=p.time, value=p.value) for p in lower_points] if lower_points else None,
+            upper_points=[EnvelopePointOut(time=p.time, value=p.value) for p in upper_points] if upper_points else None,
+            point_editable=point_editable,
         )
 
 

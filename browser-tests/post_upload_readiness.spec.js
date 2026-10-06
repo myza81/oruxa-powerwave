@@ -61,9 +61,8 @@ test.describe("DEC-104: shared post-upload workspace preparation", () => {
     await expect(page.locator("#wwComplianceManageGroupsBtn")).toBeHidden();
 
     await page.locator("#wwComplianceGroupSelect").selectOption({ label: "KPDN1 VOLTAGE" });
-    await page.locator("#wwComplianceMeasurementSelect").selectOption({ label: "Phase A Voltage" });
-    await expect(page.locator("#wwComplianceMeasurementStatusRow")).toHaveText("Compatible");
-    await expect(page.locator("#wwComplianceMeasurementInput")).toHaveText("VR — KPDN1_VR"); // DEC-118: R/Y/B group
+    // DEC-167: no quantity to pick -- with no Reference yet the card says what is missing.
+    await expect(page.locator("#wwComplianceReadinessStatus")).toHaveText("Add a Reference Layer to define what must be assessed.");
   });
 
   test("upload -> directly to Analysis: Engineering Context is ready with no prior bootstrap dependency", async ({ page }) => {

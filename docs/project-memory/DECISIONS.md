@@ -17951,7 +17951,11 @@ suite and full Playwright suite pass.
 ## DEC-110 — Compliance Slice 3 refinement: ReferenceProfile is separated from HOW a measured quantity is derived — a new AssessmentDefinition model bridges the reference boundary/curve to Compliance Slice 2's canonical measurement quantities, with `unspecified` as a first-class state and no measurement resolver implemented yet
 
 Date: 2026-09-24
-Status: Approved — implemented.
+Status: Approved — implemented. **Amended by DEC-166 (2026-10-05):** the
+`each_phase` + `line_line_rms` rejection described below no longer applies --
+that combination is now valid (VAB/VBC/VCA each assessed independently).
+Everything else in this decision stands; the text below is kept as the
+historical record.
 Source: owner product review, after Compliance Slice 3 (DEC-109) UAT
 passed conceptually: *"Current `ReferenceProfile.evaluation_quantity` is
 too tightly coupled to one canonical measured quantity... For real
@@ -24653,6 +24657,387 @@ Status: Approved (owner tickets) -- implemented on
   `3px 10px`.
 - `waveform/clear_display.svg` remains **unreferenced** (see DEC-159) and
   was deliberately left out of the commit.
+
+## DEC-166 — Voltage Reference Profile editor becomes an Operating Envelope workflow: a connected point list per boundary, a derived Compliance Region, visible defaults, and `Line-Line RMS + Each Phase` made valid (refines DEC-110)
+
+Date: 2026-10-05
+Status: Approved (owner task) -- implemented on `feat/event-reconstruction`;
+awaiting owner UAT (see the UAT checklist in HANDOFF.md). Refines
+[DEC-110](#dec-110--compliance-slice-3-refinement-referenceprofile-is-separated-from-how-a-measured-quantity-is-derived--a-new-assessmentdefinition-model-bridges-the-reference-boundarycurve-to-compliance-slice-2s-canonical-measurement-quantities-with-unspecified-as-a-first-class-state-and-no-measurement-resolver-implemented-yet)
+and the editor described in DEC-109/DEC-111; nothing is deleted from them.
+
+**Decision.** For Voltage Compliance a Reference Profile is a *categorized
+operating envelope* (connected boundary points) plus the *assessment method*
+used against it. The editor exposes that concept, not the `ReferenceProfile`
+data structure: **simplify the interaction, not the engineering capability.**
+
+- **Normal form:** Name, Category (the four generic categories are unchanged),
+  an Operating Envelope (Lower Boundary / Upper Boundary toggles, at least one),
+  Compliance Region (read-only, derived), Phase Evaluation, a generated
+  assessment summary, one ordered **point list** (`Time (s)`, `Voltage (pu)`)
+  per boundary with `+ Add Point` / remove / Enter-to-append, and a live
+  Plotly preview. `Advanced Settings` and `Reference Source / Metadata` are
+  collapsed.
+- **Compliance Region is derived, never stored or `unspecified`:** lower only
+  -> *At or Above Lower Boundary* (`V >= Lower(t)`); upper only -> *At or Below
+  Upper Boundary*; both -> *Inside Envelope* (`Lower(t) <= V(t) <= Upper(t)`).
+  Strict forms (`>` / `<`) are not offered; they are a future Advanced option.
+- **Phase Evaluation** is `Each Phase` (default) / `Minimum` / `Maximum` /
+  `Single`; `Unspecified` is gone from the new-profile workflow. The Voltage
+  selector (VAB / VBC / VCA) appears **only** for `Single`. Positive-Sequence
+  RMS (Advanced) has no per-phase evaluation, so Phase Evaluation is hidden for it.
+- **Generated assessment summary** ("Assessment: Each V<sub>AB</sub>, V<sub>BC</sub>
+  and V<sub>CA</sub> must remain inside the operating envelope.") updates
+  immediately so the engineer can verify Powerwave's interpretation. Symbols use
+  the shared electrical formatter (DEC-117); Reference Profile members are
+  generic wording and keep canonical A/B/C (DEC-118).
+- **Defaults of a new profile (visible under Advanced Settings):** unit `pu`;
+  voltage representation `Line-Line RMS`; phase evaluation `Each Phase`;
+  evaluation start `0 s`; evaluation end = automatic display end; tolerance `0`;
+  display start/end = automatic (earliest / latest point of either boundary).
+  Negative-time points are allowed and drawn; evaluation still starts at `t = 0`.
+- **Removed from the normal workflow:** measurement location, interpretation
+  source, a generic Specific Member field, and per-row Constant/Linear. A
+  requirement that differs by physical location is represented as separate
+  profiles (e.g. "Grid Code — Generator Terminal"); traceability comes from
+  Category plus Reference Source / Metadata. No new location abstraction exists.
+- **Point connection rules (one deterministic translation, see
+  `app.domain.reference_envelope`):** every consecutive pair is connected.
+  Same voltage + increasing time -> `constant` segment; different voltage +
+  increasing time -> `linear` segment; **same time + different voltage -> a
+  connected vertical edge** (the stored model needs no zero-length segment: a
+  vertical edge is exactly the right-continuous discontinuity between two
+  time-adjacent segments, DEC-109). Decreasing time, identical consecutive
+  points, and more than two points at one instant are rejected; input is never
+  re-sorted because point order is meaningful.
+- **Boundary consistency:** where both boundaries exist, `Lower(t) <= Upper(t)`
+  must hold; a crossing is rejected (editor Save disabled with the offending
+  interval named, **and** domain `validate_reference_profile()` reason
+  `boundary_crossing`, so imports are covered too). Nothing is swapped or
+  repaired. The comparison is limited to the span where both boundaries are
+  defined: no requirement is invented outside a boundary's own extent.
+- **Different boundary extents are allowed.** The backend semantics already
+  made this safe (segments carry their own extents; a gap makes no claim), so no
+  backend behaviour changed for it. Display range is the union; the preview
+  shades only the shared span.
+- **Domain change (not a frontend bypass):** `phase_treatment = each_phase`
+  with `representation = line_line_rms` -- rejected by DEC-110 as
+  `each_phase_not_supported_for_line_line` -- is now **valid**: VAB, VBC and
+  VCA are each assessed independently against the envelope. The aggregate rule
+  that `each_phase` never carries a `member` is unchanged. The DEC-110 tests that
+  asserted the rejection were replaced by tests asserting acceptance.
+
+**Backward compatibility (least-risk approach chosen).** The generic backend
+model, JSON schema (still v2; v1 import unchanged) and API are unchanged:
+`simplified point UI -> deterministic translation -> existing segment model`.
+New is only a **read-only projection** on `ReferenceProfileOut`
+(`lower_points`, `upper_points`, `point_editable`) computed by
+`segments_to_points()`, which accepts a boundary **only if the round trip
+reproduces the stored segments exactly**. A profile that cannot be represented
+losslessly -- a gap between segments, an explicit segment type that differs from
+the inferred one, out-of-order storage -- is **never flattened**: the editor
+shows its boundaries read-only (legacy table + preview), keeps its stored
+windows, and saves the original boundary objects back verbatim while name,
+category, phase evaluation, advanced settings and metadata stay editable.
+Existing `unspecified` representation/treatment, `measurement_location` and
+`provenance` values are preserved on save (an explicit "(legacy)" option keeps
+`unspecified` selectable only while it is the stored value). A stored display
+window that differs from the derived extent is shown as an explicit manual
+override, not silently re-derived.
+
+**Known limits.** (The vertical-edge limit below is a **model limitation, not an approved product rule** -- recorded as an `[OPEN]` follow-up; see DEC-167.) A vertical edge is carried between
+two segments, so it cannot be the first or last pair of a boundary (it would be
+a hanging point); such input is rejected with a message rather than stored.
+Three or more points at one instant are rejected (one vertical edge per
+instant). The frontend mirrors the translation and the crossing check in
+JavaScript for immediate feedback; pytest and Playwright replay the **same
+golden vectors** (`backend/tests/fixtures/reference_envelope_vectors.json`) and
+the backend re-validates everything on Save.
+
+**Not in scope / unchanged.** Event alignment, measured-waveform overlay,
+automatic PASS/FAIL or any evaluation, database persistence, Reference Layers
+and the Comparison Chart, measurement resolver. The `AssessmentDefinition`
+fields `measurement_location` / `provenance` still exist in the model and API
+(imports, legacy profiles) -- retiring them is a later decision after UAT.
+
+**Alternatives considered.** (1) Redesign the domain around points -- rejected:
+breaks imports/gaps/discontinuities for no UAT evidence yet. (2) Server-side
+translation endpoint -- rejected: per-keystroke round trips and async Save gating
+for a pure, small function. (3) Allow a hanging leading/trailing vertical edge by
+adding zero-length segments -- rejected: invalidates a domain invariant
+(`end_time > start_time`) other code relies on.
+
+**Impact.** `frontend/index.html` (editor markup/CSS/JS), `app.domain.
+reference_envelope` (new), `app.domain.reference_profile` (crossing validation),
+`app.domain.assessment_definition` (each_phase rule), `app.schemas.
+reference_profile` (projection fields), tests (`test_reference_envelope.py`,
+`reference_envelope_editor.spec.js`, updated structural/domain/API/browser tests).
+
+## DEC-167 — Compliance Measurement is Reference-driven: Reference Layers come first, Measurement reports readiness against the active Reference(s), and RMS / per-unit are discovered, reused or prepared through the shared services only (amends DEC-100/101/102)
+
+Date: 2026-10-05
+Status: Approved (owner task) -- implemented on `feat/event-reconstruction`;
+awaiting owner UAT (checklist in HANDOFF.md). Amends
+[DEC-102](#dec-102--compliance-measurement-scopes-role-resolution-to-an-explicitly-selected-measurement-group-bay-reusing-the-existing-measurement-group-model-verbatim--never-a-second-bay-concept-never-engineering-context)
+(the Slice 2 Assessment Quantity workflow) and narrowly amends the DEC-100/DEC-101
+Engineering Context boundary (see "Amendment" below). Nothing is deleted from
+them.
+
+**Core rule.**
+
+> Reference Profiles define the required measurement representation and unit.
+> Measurement does not independently choose these settings. Compliance
+> discovers/reuses/prepares shared workspace resources needed to satisfy the
+> active Reference requirements.
+>
+> Compliance never owns a private RMS channel or private per-unit configuration.
+
+**Ownership (frozen).**
+
+| Owner | Owns |
+|---|---|
+| Reference Profile | requirement definition, operating envelope, required unit, required voltage representation, phase evaluation |
+| Measurement Group / Voltage Group config | the voltage base |
+| Calculated Channels | reusable derived signals (RMS, line-to-line voltage) |
+| Compliance | the active references, the selected Measurement Group, event alignment / assessment orchestration, comparison, results |
+
+**Workflow.** The cards read `Reference Layers -> Measurement -> Comparison Chart
+-> Results`. Event Alignment is no longer a sibling card: it is a subsection
+(divider, not a nested card) of Measurement, with its markup and (still
+placeholder) behaviour unchanged -- Event Alignment belongs to the measured
+disturbance, not to the Reference Profile. No event-alignment engine existed to
+"preserve"; the Slice 1 neutral empty state and disabled controls moved as-is.
+
+**Requirement resolution** (`app.domain.compliance_requirement.resolve_requirement`).
+A Reference's unit + Assessment Definition become a `MeasurementRequirement`:
+required members (`Each Phase`/`Minimum`/`Maximum` -> all three phases or pairs;
+`Single` -> only the named one; positive sequence -> one quantity), `requires_rms`
+(true only because the representation is an RMS representation -- no blanket
+default) and `requires_per_unit` (true **only** for `unit = pu`; `kV`/`V` never need
+a base). A Reference that states too little (unspecified representation or phase
+evaluation, `Single` without a member) is `incompatible` with a message sending
+the engineer to the Reference Profile -- never guessed. The UI shows the
+requirement read-only; there is **no** Measurement-side unit, representation or
+quantity selector.
+
+**Readiness** (`app.services.compliance_readiness_service`, `GET
+.../compliance/voltage/readiness`). Per active (visible) Reference and overall,
+exactly one of `ready` / `action_required` / `incompatible` (plus `no_reference`
+when nothing is required yet -- never reported ready). `incompatible` dominates
+`action_required` dominates `ready`, so one satisfiable Reference never hides
+an incompatible one. Per required member the state is `source_rms` (already RMS,
+used directly), `reused` (an equivalent shared calculated channel exists),
+`needs_rms`, `needs_line_to_line`, `derived_at_assessment` (positive sequence from
+instantaneous phases, by the shared phasor/sequence functions -- nothing to
+prepare), `blocked` (satisfiable but not preparable here, e.g. unknown nominal
+frequency) or `incompatible`. A missing per-unit base is `action_required` and is
+rendered as a loud critical row **only** when the Reference unit is `pu`.
+
+**Reuse is by calculation identity, never by name.** RMS: `operation = rms`, same
+input `ChannelRef`, same `nominal_frequency_hz`, same null policy. Line-to-line:
+`operation = line_to_line_voltage`, same pair, same two input refs, same null
+policy. Equivalent channels are reused whatever they are called; a source channel
+that is already RMS is never wrapped in another RMS. The nominal frequency is the
+recording's own metadata -- if unknown, Powerwave does not guess an RMS window.
+
+**Preparation** (`POST .../compliance/voltage/prepare`). Creates only what is
+missing, through `calculated_channel_service.create_calculated_channel(OP_RMS)` and
+the existing `line_to_line_voltage_service` -- ordinary Calculated Channels in the
+shared registry, so Calculated Channels / Waveform / Table / Analysis see them at
+once (the UI refreshes the shared frontend state). Idempotent; a second call creates
+nothing; steps are deduplicated across References. It **never writes a per-unit
+base and never guesses an engineering setting** (the base is reported, and
+"Configure Base" opens the existing Measurement Group editor on the selected
+group -- the one and only per-unit configuration path, shared with Waveform).
+Compliance-only reductions (minimum/maximum across VAB/VBC/VCA, each-phase
+pass/fail, breach detection) are deliberately **not** Calculated Channels.
+
+**Electrical safety is unchanged (DEC-101).** A measured VAB/VBC/VCA is used as-is;
+a line-line quantity is derived only from two **instantaneous** phases
+(time-domain subtraction in the shared L-L service, then RMS); angle-less RMS phase
+magnitudes are `incompatible` ("unsafe balanced-system assumption"), and
+`sqrt(3) * VLN` is never used.
+
+**The Assessment Quantity selector is retired** (the smallest coherent change):
+the Reference already states representation and phase evaluation, so a manual
+`Line-Line AB Voltage` pick either duplicates or contradicts it. `Each Phase` needs
+VAB, VBC and VCA -- Powerwave knows that; `Single` + `VAB` resolves to VAB. The
+Slice 2 endpoints `GET .../compliance/voltage/quantities` and `.../measurement`
+and `app.domain.compliance_measurement` remain in the backend (golden-tested
+normalization math a later assessment slice will consume) but the UI no longer
+calls them; retiring the endpoints is a later decision.
+
+**Amendment to DEC-100/DEC-101 (the one conflict found).** The shared line-to-line
+service is keyed by Engineering Context, while DEC-100/101 say Compliance never
+reads Engineering Context. Chosen resolution: a single, **server-side, read-only**
+lookup -- `EngineeringContextRegistry.context_for_channel()` -- used only when a
+line-to-line calculated channel has to be created, to find the context that owns
+both phase channels; the context's own readiness must resolve the SAME channels as
+the selected Measurement Group or the step is reported as not preparable. Compliance
+still registers as no Engineering Context consumer, creates/updates no context, and
+the frontend never sends an `engineering_context_id`. Without a matching context the
+step is `blocked` with an instruction to create it in Calculated Channels.
+
+**Multiple references.** Readiness is computed and shown per active Reference
+(requirement, status, members, unit), with shared steps deduplicated. Hidden
+layers impose no requirement. No hard limit on the number of references.
+
+**Known limitations / follow-ups (recorded, not decided).**
+- Per-unit assessment compares nothing against channel units: no unit conversion
+  exists (DEC-109), so a `kV` Reference over a `V` recording is not checked here.
+- Line-line derivation needs a single Engineering Context covering both phases;
+  otherwise it is reported as `blocked`.
+- [OPEN] The Operating Envelope editor (DEC-166) cannot yet store a vertical edge
+  as the very first or last pair of a boundary because the segment model has no
+  zero-length terminal segment. That is a **model limitation, not an approved
+  product rule**; revisit after UAT.
+- Event Alignment remains a placeholder; no automatic PASS/FAIL, overlay or
+  alignment logic was added.
+
+**Alternatives considered.** (1) Let Measurement keep its own quantity/unit
+selectors and flag mismatches -- rejected: two owners of one fact. (2) A
+Compliance-private RMS cache / base -- rejected outright by the core rule. (3)
+Deriving line-line from RMS magnitudes or `sqrt(3) * VLN` -- rejected (DEC-101).
+(4) A Compliance-specific line-to-line implementation to avoid the Engineering
+Context lookup -- rejected: a second derivation path.
+
+**Impact.** New: `app.domain.compliance_requirement`,
+`app.services.compliance_readiness_service`, two endpoints, readiness schemas,
+`source_id` on the Compliance group list. Frontend: card order, Event Alignment
+subsection, requirement/readiness UI, Prepare / Configure Base. Tests:
+`test_compliance_requirement.py`, `test_compliance_readiness_api.py`,
+`test_frontend_compliance.py`, `compliance_readiness.spec.js`; reworked
+`compliance_measurement.spec.js`, `compliance.spec.js`,
+`phase-display-convention.spec.js`, `post_upload_readiness.spec.js`,
+`text-spacing.spec.js`.
+
+## DEC-169 — Compliance is a resizable two-column workspace, and "Ready" means the measured trace can actually be produced and plotted (refines DEC-167)
+
+Date: 2026-10-06
+Status: Approved (owner UAT task) -- implemented on `feat/event-reconstruction`;
+awaiting owner UAT. Refines
+[DEC-167](#dec-167--compliance-measurement-is-reference-driven-reference-layers-come-first-measurement-reports-readiness-against-the-active-references-and-rms--per-unit-are-discoveredreused-or-prepared-through-the-shared-services-only-amends-dec-100101102);
+nothing is deleted from it.
+
+**Principle -- no parallel electrical-calculation path.** Compliance does not own,
+copy or re-implement any RMS, line-to-line, sequence or per-unit calculation. It
+*consumes* what the shared machinery already resolved: existing/prepared Calculated
+Channels (or an already-RMS source channel), the per-unit resolvers Waveform uses, and
+Waveform's peak-preserving display reduction. A measured trace exists only when the
+Compliance readiness evaluation supports it; an unconfirmed per-unit base is never
+treated as active; positive sequence stays unsupported for charting until a plottable
+time series exists; minimum/maximum refuse to evaluate without a proven common time
+base; V <-> kV scaling is exact and any other unit pairing is refused; event alignment
+shifts only the time axis. Trace identity lives in explicit Plotly `meta`, never in
+display/legend text.
+
+**Layout.** Compliance uses a resizable two-column desktop workspace:
+**configuration on the left, Comparison Chart on the right**, Results below.
+
+```text
+LEFT: Reference Layers / Measurement (incl. Event Alignment)  <-> drag handle <->  RIGHT: Comparison Chart
+BELOW: Results
+```
+
+The engineer configures the assessment and sees the chart react at once, so no
+tabs on desktop. The initial split is about 38 / 62 (the chart gets more width). A
+vertical `role="separator"` handle (cursor `col-resize`, pointer drag with pointer
+capture, no text selection while dragging, arrow keys +-24 px / Shift +-80 px,
+Home/End to the limits) resizes it; minimum widths are 340 px (configuration) and
+380 px (chart), so neither side collapses. Plotly is reflowed after every change to
+the chart's own box (a `ResizeObserver` on the chart area plus an explicit resize
+while dragging). The ratio is kept for the page's lifetime only -- runtime state, no
+persistence layer (the app deliberately has none for this). Below 1100 px the same
+order stacks vertically (Reference, Measurement, Event Alignment, Chart, Results) and
+the handle disappears; no tabs are introduced.
+
+**Ready means the product can be produced.** Metadata readiness alone is not Ready.
+A Reference is `ready` only when, in addition to DEC-167's checks, every required
+member has a shared channel to read (a source channel that is already RMS, or an
+existing Calculated Channel), that channel can be shown in the Reference's unit, and
+(`Minimum`/`Maximum`) the members share one proven time base. Consequences found and
+fixed while wiring the chart:
+
+- A pu Reference whose group has a base saved but is still only *suggested* is **not**
+  ready: the shared per-unit configuration deliberately does not apply to an
+  unconfirmed group. It is `action_required` ("Configure Base" -- saving in the group
+  editor confirms the group), never a silently unconverted trace.
+- **Positive sequence is never ready** for now: no shared positive-sequence voltage
+  time series exists, so it cannot be plotted. It is reported `incompatible` with that
+  reason (previously DEC-167 reported it ready as "derived at assessment"; that claim
+  was not backed by a plottable product).
+
+**Measurement traces on the chart.** `GET .../compliance/voltage/measurement-traces`
+(read-only, prepares nothing) returns the traces of every READY active Reference:
+`Each Phase` -> one trace per required voltage; `Single` -> only the named voltage;
+`Minimum`/`Maximum` -> ONE sample-by-sample min/max trace across the required voltages
+(Compliance-only assessment reduction, not a Calculated Channel). The data are the
+shared arrays behind the readiness members, put in the **Reference's unit**
+(`app.services.compliance_series`): `pu` through the same per-unit resolvers Waveform
+uses (a conversion that is not `configured` is refused), `kV`/`V` as the channel's own
+unit with the one exact V <-> kV scaling (any other unit pair is refused -- no unit
+conversion is invented). No RMS, line-to-line or per-unit logic exists in the chart
+layer, and the unsafe-line-line guardrails are unchanged (no `RMS(VA) - RMS(VB)`, no
+`sqrt(3) * VLN`). Traces are de-duplicated by measurement product (kind + members +
+channels + unit): two References needing the identical product share one set, each
+trace listing every layer it serves; genuinely different products are plotted
+separately.
+
+**Chart composition.** The ONE existing Plotly chart now carries the Reference
+envelope **and** the measured traces. Identity is explicit trace `meta`
+(`role: "reference" | "measurement"`, plus `layer_id`/`profile_id`/`boundary` or
+`trace_id`/`kind`/`members`/`layer_ids`/`unit`) -- never parsed from legend text.
+Measured traces are named in the bay's own phase convention (V<sub>RY</sub> in an
+R/Y/B bay; canonical members stay in `meta`). A measured trace is drawn only when a
+Reference layer it serves is itself plotted, so the existing "one axis unit" rule
+(DEC-109: the first visible layer sets the unit; a layer in another unit is listed as
+not plotted) governs it too. The x range is the union of the Reference display
+extents and the measured extent (valid data is never clipped by a shorter Reference
+window); `uirevision` keeps the engineer's zoom while data are re-sent.
+
+**Event alignment.** The plotted x is the workspace's own event time,
+`x = source_time + alignment_offset - t0` (`app.services.synchronization_service`:
+the source's effective Time Group placement and that group's t0, set in Waveform).
+No second alignment engine exists. The Event Alignment subsection reports the t0 in use;
+with no t0 it says the measurement is plotted on the recording's own time axis and how
+to set one. The Event Alignment controls themselves remain the Slice 1 disabled
+placeholders.
+
+**Chart empty states** now say exactly what is missing: no reference and no bay ->
+"No reference layers to display..."; a bay but no reference -> "Select or add a
+Reference Profile to compare this measurement."; a Reference but not-ready
+measurement -> "Reference envelope ready. Measurement requires configuration before it
+can be plotted." (or the specific reason); a Reference with no bay selected -> "Select
+a Bay / Measurement Group to plot a measurement against this Reference."
+
+**Measurement card density.** A READY reference is a compact summary (representation,
+unit, expandable "Details" with the channel-level lines); every blocker and every
+action-required reference stays fully visible without expanding.
+
+**Performance.** Nothing new is computed per UI render: the trace request is made only
+when a readiness result arrives; arrays are read from the existing Calculated Channel /
+source stores, converted once, and reduced with the Waveform pipeline's own
+peak-preserving reduction (`_clip_and_reduce`, 4000-point budget).
+
+**Not in scope / unchanged.** No PASS/FAIL, breach or margin logic (Results stays
+neutral); no Event Reconstruction change; no new persistence; no second chart engine,
+RMS engine or per-unit model.
+
+**Known limitations / follow-ups (recorded, not decided).**
+- Positive-sequence voltage cannot be plotted until a shared sequence-voltage time
+  series exists.
+- Mixed-unit References on one chart: only the first layer's unit is plotted (DEC-109).
+- A Measurement Group saved with a base but left "suggested" needs confirming before pu
+  applies (the group editor's Save does this).
+- Pre-existing, unchanged: the Operating Envelope editor cannot store a vertical edge
+  as a boundary's first/last pair (`[OPEN]`, DEC-167); the API still accepts duplicate
+  Reference Layers for one profile (UI-guarded only).
+
+**Impact.** New `app.services.compliance_series`, `app.services.compliance_trace_service`,
+the `measurement-traces` endpoint and schemas; readiness now carries each member's
+shared `channel_ref`; frontend layout/CSS, split handling, trace fetch and chart
+integration; tests `test_compliance_trace_api.py` (+ readiness updates),
+`compliance_workspace.spec.js`.
 
 ## How to add a decision
 

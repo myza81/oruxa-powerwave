@@ -125,12 +125,28 @@ class TestCompliancePageStructure:
         page = _compliance_page(source)
         assert "Voltage Compliance &amp; Capability" in page
 
-    def test_five_workflow_sections_exist_in_order(self):
+    def test_workflow_sections_exist_in_order_reference_first(self):
+        """DEC-167: Reference Layers come FIRST (Reference defines),
+        Measurement second (Measurement satisfies); Event Alignment is no
+        longer a sibling card but a subsection inside Measurement."""
         source = _source()
         page = _compliance_page(source)
-        labels = ["Measurement", "Reference Layers", "Event Alignment", "Comparison Chart", "Results"]
+        labels = ["Reference Layers", "Measurement", "Comparison Chart", "Results"]
         positions = [page.index(f"<h2>{label}</h2>") for label in labels]
         assert positions == sorted(positions)
+        assert "<h2>Event Alignment</h2>" not in page
+        assert 'id="wwComplianceEventAlignmentCard"' not in page
+
+    def test_event_alignment_is_a_subsection_of_the_measurement_card(self):
+        source = _source()
+        page = _compliance_page(source)
+        measurement = _function_body(page, 'id="wwComplianceMeasurementCard"', "</section>")
+        assert 'id="wwComplianceEventAlignmentSection"' in measurement
+        assert '<h3 class="ww-compliance-subheading">Event Alignment</h3>' in measurement
+        assert 'id="wwComplianceEventAlignmentEmptyState"' in measurement
+        assert 'id="wwComplianceAlignmentControls"' in measurement
+        # Readiness comes before Event Alignment inside the card.
+        assert measurement.index('id="wwComplianceReadiness"') < measurement.index('id="wwComplianceEventAlignmentSection"')
 
     def test_measurement_shows_neutral_empty_state(self):
         """Static default (2026-09-20 UAT correction, wording refined
@@ -143,9 +159,8 @@ class TestCompliancePageStructure:
         source = _source()
         page = _compliance_page(source)
         assert "No Voltage Measurement Group is available for this workspace." in page
-        # JS-set text (wwComplianceRenderMeasurementCardState()), not in
-        # the static markup slice any more -- check the whole file.
-        assert "No assessment quantity selected" in source
+        # DEC-167: there is no assessment-quantity step any more.
+        assert "No assessment quantity selected" not in source
 
     def test_reference_layers_shows_empty_state_and_active_add_button(self):
         """Compliance Slice 3: Reference Layers is no longer a Slice 1/2
@@ -154,7 +169,7 @@ class TestCompliancePageStructure:
         full Slice 3 structural surface)."""
         source = _source()
         page = _compliance_page(source)
-        assert "No reference layers added" in page
+        assert "No reference added yet." in page
         add_btn = _function_body(page, 'id="wwComplianceAddReferenceBtn"', "</button>")
         assert "disabled" not in add_btn
         assert "+ Add Reference" in add_btn
@@ -209,73 +224,120 @@ class TestComplianceOutOfScopeSlice1:
         assert "localStorage" not in _compliance_page(source)
 
 
-class TestComplianceMeasurementSlice2Structure:
-    """Slice 2 (Measurement Selection + Normalization Foundation) --
-    structural guards for the real Assessment Quantity workflow that
-    replaces Slice 1's disabled placeholder select."""
+class TestComplianceMeasurementReadinessStructure:
+    """DEC-167 -- Measurement is driven by the active Reference(s). The
+    Slice 2 Assessment Quantity workflow (independent quantity select,
+    Input/Input Type/Derived As/Base/Assessment Unit rows) is retired:
+    "Reference defines. Measurement satisfies." """
 
-    def test_measurement_select_is_no_longer_a_disabled_placeholder(self):
+    def test_independent_quantity_unit_and_representation_selectors_are_gone(self):
         source = _source()
         page = _compliance_page(source)
-        select = _function_body(page, 'id="wwComplianceMeasurementSelect"', "</select>")
-        assert "disabled" not in select
-        assert "aria-disabled" not in select
-        assert 'value="">Select a quantity' in select
-
-    def test_measurement_summary_rows_exist_and_start_hidden(self):
-        source = _source()
-        page = _compliance_page(source)
-        summary = _function_body(page, 'id="wwComplianceMeasurementSummary"', "</div>\n                                </section>")
-        assert 'id="wwComplianceMeasurementSummary" hidden' in page
-        for element_id in (
-            "wwComplianceMeasurementStatusRow", "wwComplianceMeasurementInput", "wwComplianceMeasurementInputType",
-            "wwComplianceMeasurementDerivedAs", "wwComplianceMeasurementBase", "wwComplianceMeasurementUnit",
+        measurement = _function_body(page, 'id="wwComplianceMeasurementCard"', "</section>")
+        for retired in (
+            "wwComplianceMeasurementSelect", "wwComplianceMeasurementField", "wwComplianceMeasurementSummary",
+            "Assessment quantity", "Assessment Unit", "Derived As",
         ):
-            assert f'id="{element_id}"' in summary
+            assert retired not in measurement, retired
+        # The only <select> left in the card is the Bay / Measurement Group picker.
+        assert measurement.count("<select") == 1
+        for retired_fn in (
+            "wwComplianceLoadQuantities", "wwComplianceRenderQuantityOptions", "wwComplianceOnQuantityChange",
+            "wwComplianceFetchMeasurement", "wwComplianceRenderMeasurement(",
+        ):
+            assert retired_fn not in source, retired_fn
+        assert "/compliance/voltage/quantities" not in source
 
-    def test_quantity_catalogue_is_never_hardcoded_in_markup(self):
-        """The dropdown starts with only the placeholder option -- every
-        real quantity option is populated from the backend catalogue at
-        runtime (wwComplianceRenderQuantityOptions()), never duplicated
-        as static HTML that could drift from app.domain.compliance_
-        measurement.VOLTAGE_QUANTITIES."""
+    def test_readiness_and_requirement_elements_exist_and_start_hidden(self):
         source = _source()
         page = _compliance_page(source)
-        select = _function_body(page, 'id="wwComplianceMeasurementSelect"', "</select>")
-        assert select.count("<option") == 1
+        card = _function_body(page, 'id="wwComplianceMeasurementCard"', "</section>")
+        assert 'id="wwComplianceRequirements" hidden' in card
+        assert 'id="wwComplianceReadiness" hidden' in card
+        for element_id in (
+            "wwComplianceRequirementList", "wwComplianceReadinessStatus", "wwComplianceReadinessRefs",
+            "wwCompliancePrepareBtn", "wwComplianceConfigureBaseBtn", "wwCompliancePrepareError",
+        ):
+            assert f'id="{element_id}"' in card
+        assert 'id="wwCompliancePrepareBtn" hidden' in card
+        assert 'id="wwComplianceConfigureBaseBtn" hidden' in card
+        assert "Requirements from active references" in card
+        assert "Measurement readiness" in card
 
-    def test_required_slice2_js_functions_exist(self):
+    def test_requirements_are_read_only_text_never_inputs(self):
+        source = _source()
+        page = _compliance_page(source)
+        requirements = _function_body(page, 'id="wwComplianceRequirements"', "</div>")
+        assert "<input" not in requirements and "<select" not in requirements
+
+    def test_readiness_status_vocabulary(self):
+        source = _source()
+        for message in (
+            "✓ Ready for assessment", "⚠ Action required", "✕ Measurement cannot satisfy this reference",
+        ):
+            assert message in source
+
+    def test_required_readiness_js_functions_exist(self):
         source = _source()
         for fn in (
-            "function wwComplianceLoadQuantities(",
-            "function wwComplianceRenderQuantityOptions(",
-            "function wwComplianceOnQuantityChange(",
-            "function wwComplianceFetchMeasurement(",
-            "function wwComplianceRenderMeasurement(",
+            "function wwComplianceRequirementHtml(",
+            "function wwComplianceRenderRequirements(",
+            "function wwComplianceRefreshReadiness(",
+            "function wwComplianceRenderReadiness(",
+            "async function wwCompliancePrepareMeasurement(",
+            "async function wwComplianceOpenConfigureBase(",
         ):
             assert fn in source
 
     def test_endpoints_are_workspace_scoped_never_engineering_context_scoped(self):
         """Compliance still does not register as an Engineering Context
-        consumer (DEC-100/DEC-101/DEC-102) -- none of the three endpoint
-        calls embed an engineering_context_id, unlike every Analysis-menu
-        analyzer's own `.../engineering-contexts/{id}/...` calls."""
+        consumer (DEC-100/DEC-101/DEC-102/DEC-167) -- none of its calls
+        embed an engineering_context_id; the backend's single read-only
+        context lookup (DEC-167) is server-side only."""
         source = _source()
-        assert "/compliance/voltage/quantities" in source
         assert "/compliance/voltage/measurement-groups" in source
-        assert "/compliance/voltage/measurement" in source
-        measurement_fetch = _function_body(source, "function wwComplianceFetchMeasurement(", "\n        }")
-        assert "engineering-contexts" not in measurement_fetch
-        assert "engineering_context_id" not in measurement_fetch
-        groups_fetch = _function_body(source, "function wwComplianceLoadGroups(", "\n        }")
-        assert "engineering-contexts" not in groups_fetch
-        assert "engineering_context_id" not in groups_fetch
+        assert "/compliance/voltage/readiness" in source
+        assert "/compliance/voltage/prepare" in source
+        for fn_start in (
+            "function wwComplianceRefreshReadiness(",
+            "async function wwCompliancePrepareMeasurement(",
+            "function wwComplianceLoadGroups(",
+        ):
+            body = _function_body(source, fn_start, "\n        }")
+            assert "engineering-contexts" not in body
+            assert "engineering_context_id" not in body
+
+    def test_prepare_goes_through_the_backend_and_refreshes_shared_calculated_channels(self):
+        source = _source()
+        prepare = _function_body(source, "async function wwCompliancePrepareMeasurement(", "\n        }")
+        assert "/compliance/voltage/prepare" in prepare
+        # Created channels are ordinary Calculated Channels: the shared frontend
+        # state is refreshed from the backend, never a Compliance-private store.
+        assert "wwFetchCalculatedChannels()" in prepare
+        assert "localStorage" not in prepare
+
+    def test_configure_base_reuses_the_existing_group_editor_never_a_new_one(self):
+        source = _source()
+        page = _compliance_page(source)
+        configure = _function_body(source, "async function wwComplianceOpenConfigureBase(", "\n        }")
+        assert "wwOpenMeasurementGroupsModal()" in configure
+        assert "wwOpenMgDrawer(" in configure
+        for forbidden in ("voltage-config", "nominal_voltage_ll_kv", "nominalKv"):
+            assert forbidden not in configure
+        assert "wwMgDrawer" not in page and "measurementGroupsOverlay" not in page
+
+    def test_group_editor_save_refreshes_compliance_readiness_when_active(self):
+        source = _source()
+        save = _function_body(source, "async function wwSaveMgDrawer() {", "\n        }")
+        assert 'shell.currentPage === "compliance"' in save
+        assert "wwComplianceRefreshReadiness()" in save
+
+    def test_layer_changes_recheck_readiness(self):
+        source = _source()
+        refresh = _function_body(source, "async function wwRefRefreshLayersAndChart() {", "\n        }")
+        assert "wwComplianceRefreshReadiness()" in refresh
 
     def test_render_compliance_page_still_never_touches_analyzer_state(self):
-        """Extends the existing Slice 1 guard: the Slice 2 additions to
-        wwRenderCompliancePage() (loading quantities, refreshing the
-        selected measurement) must never call any shared Analysis/
-        Playback/analyzer entry point."""
         source = _source()
         render_fn = _function_body(source, "function wwRenderCompliancePage() {", "\n        }")
         assert "wwAnalysisLoadContexts" not in render_fn
@@ -284,7 +346,6 @@ class TestComplianceMeasurementSlice2Structure:
         assert "wwPhasorState" not in render_fn
         assert "wwSequenceState" not in render_fn
         assert "wwDistanceState" not in render_fn
-        assert "wwComplianceLoadQuantities" in render_fn
         assert "wwComplianceLoadGroups" in render_fn
 
 
@@ -294,15 +355,14 @@ class TestComplianceMeasurementGroupSelectorStructure:
     selector was ambiguous once more than one bay/Measurement Group
     exists in the workspace."""
 
-    def test_group_select_exists_above_quantity_select_and_starts_hidden(self):
+    def test_group_select_exists_above_requirements_and_readiness_and_starts_hidden(self):
         source = _source()
         page = _compliance_page(source)
         card = _function_body(page, 'id="wwComplianceMeasurementCard"', "</section>")
         group_index = card.index('id="wwComplianceGroupField"')
-        quantity_index = card.index('id="wwComplianceMeasurementField"')
-        assert group_index < quantity_index, "Bay/Measurement Group field must be ABOVE Assessment Quantity"
+        assert group_index < card.index('id="wwComplianceRequirements"')
+        assert group_index < card.index('id="wwComplianceReadiness"')
         assert 'id="wwComplianceGroupField" hidden' in card
-        assert 'id="wwComplianceMeasurementField" hidden' in card
         group_select = _function_body(card, 'id="wwComplianceGroupSelect"', "</select>")
         assert "disabled" not in group_select
         assert 'value="">Select a Bay / Measurement Group' in group_select
@@ -324,10 +384,10 @@ class TestComplianceMeasurementGroupSelectorStructure:
         ):
             assert fn in source
 
-    def test_measurement_fetch_sends_measurement_group_id(self):
+    def test_readiness_fetch_sends_measurement_group_id(self):
         source = _source()
-        measurement_fetch = _function_body(source, "function wwComplianceFetchMeasurement(", "\n        }")
-        assert "measurement_group_id" in measurement_fetch
+        readiness_fetch = _function_body(source, "function wwComplianceRefreshReadiness(", "\n        }")
+        assert "measurement_group_id" in readiness_fetch
 
     def test_auto_select_only_when_exactly_one_usable_group(self):
         """task section 5: auto-select only when exactly one USABLE
@@ -346,7 +406,6 @@ class TestComplianceMeasurementGroupSelectorStructure:
             "No Voltage Measurement Group is available for this workspace.",
             "Voltage Measurement Groups were found, but they require review before use.",
             "Select a Bay / Measurement Group to continue.",
-            "No assessment quantity selected",
         ):
             assert message in source
 
@@ -505,26 +564,29 @@ class TestComplianceReferenceLayersStructure:
         source = _source()
         page = _compliance_page(source)
         assert 'id="wwComplianceAddReferenceBtn"' in page
-        assert 'id="wwRefManageProfilesBtn"' in page
+        # Add Reference UX: ONE top-level action; the library lives inside Add Reference.
+        assert 'id="wwRefManageProfilesBtn"' not in source
+        assert "Reference Library&hellip;" not in page
         assert 'id="wwRefLayerList"' in page
 
     def test_three_new_modals_exist(self):
         source = _source()
         assert 'id="wwRefAddOverlay"' in source
-        assert 'id="wwRefManageOverlay"' in source
+        assert 'id="wwRefManageOverlay"' not in source
         assert 'id="wwRefEditorOverlay"' in source
 
     def test_profile_editor_is_table_first_never_freehand_dragging(self):
-        """Task section 13: table-first numeric segment entry, no
-        freehand curve dragging."""
+        """Table-first numeric POINT entry (DEC-166), no freehand curve
+        dragging. The per-row segment fields (start/end time, start/end
+        value, Constant/Linear) are gone from the normal editor."""
         source = _source()
         assert 'id="wwRefEditorLowerTable"' in source
         assert 'id="wwRefEditorUpperTable"' in source
-        assert "ww-ref-seg-start-time" in source
-        assert "ww-ref-seg-end-time" in source
-        assert "ww-ref-seg-start-value" in source
-        assert "ww-ref-seg-end-value" in source
-        assert "ww-ref-seg-type" in source
+        assert "ww-ref-pt-time" in source
+        assert "ww-ref-pt-value" in source
+        for retired in ("ww-ref-seg-start-time", "ww-ref-seg-end-time", "ww-ref-seg-start-value",
+                        "ww-ref-seg-end-value", "ww-ref-seg-type"):
+            assert retired not in source, retired
         # No drag-based curve editing exists anywhere for this feature.
         for forbidden in ("wwRefDrag", "wwRefEditorDrag", "wwRefCurveDrag"):
             assert forbidden not in source
@@ -571,17 +633,19 @@ class TestAssessmentDefinitionEditorStructure:
 
     def test_assessment_definition_fields_exist(self):
         source = _source()
-        for field_id in (
-            "wwRefEditorRepresentation", "wwRefEditorPhaseTreatment", "wwRefEditorMember",
-            "wwRefEditorMeasurementLocation", "wwRefEditorProvenance",
-        ):
+        for field_id in ("wwRefEditorRepresentation", "wwRefEditorPhaseTreatment", "wwRefEditorMember"):
             assert f'id="{field_id}"' in source
+        # DEC-166: measurement location and interpretation source left the editor.
+        for retired in ("wwRefEditorMeasurementLocation", "wwRefEditorProvenance"):
+            assert f'id="{retired}"' not in source
 
     def test_member_field_visibility_is_computed_never_always_visible(self):
         source = _source()
         fn = _function_body(source, "function wwRefEditorUpdateMemberFieldVisibility() {", "\n        }")
         assert "fieldEl.hidden = true" in fn
         assert "fieldEl.hidden = false" in fn
+        # DEC-166: only Phase Evaluation = Single reveals the Voltage selector.
+        assert 'treatmentSelect.value === "single"' in fn
 
     def test_select_options_use_human_labels_not_raw_enum_names(self):
         """Task section 10: 'Do not expose raw internal enum names.'"""
@@ -589,7 +653,7 @@ class TestAssessmentDefinitionEditorStructure:
         representation_field = _function_body(source, 'id="wwRefEditorRepresentation"', "</select>")
         assert "Line-Line RMS" in representation_field
         assert "Phase-Ground RMS" in representation_field
-        assert "Positive Sequence RMS" in representation_field
+        assert "Positive-Sequence RMS" in representation_field
         phase_treatment_field = _function_body(source, 'id="wwRefEditorPhaseTreatment"', "</select>")
         assert "Each Phase" in phase_treatment_field
 
@@ -624,7 +688,7 @@ class TestReferenceLibraryTerminologyDEC111:
 
     def test_preferred_terminology_is_present(self):
         source = _source()
-        assert "Reference Library" in source
+        assert "Reference Library" not in _function_body(source, 'id="wwComplianceReferenceLayersCard"', "</section>")
         assert "Create Custom Reference" in source
         assert "Import Reference" in source
 
@@ -655,3 +719,137 @@ class TestJurisdictionNeutralUiDEC111:
         page = _compliance_page(source)
         for forbidden in ("Malaysia", "Huawei", "ENTSO-E", "AEMO"):
             assert forbidden not in page
+
+
+class TestOperatingEnvelopeEditorStructure:
+    """DEC-166 -- the simplified Operating Envelope editor's structure."""
+
+    def test_normal_fields_are_name_category_envelope_and_phase_evaluation(self):
+        source = _source()
+        for field_id in (
+            "wwRefEditorName", "wwRefEditorCategory", "wwRefEditorLowerEnabled", "wwRefEditorUpperEnabled",
+            "wwRefEditorComplianceRegion", "wwRefEditorPhaseTreatment", "wwRefEditorAssessmentSummary",
+            "wwRefEditorPreviewPlot", "wwRefEditorLowerAddRowBtn", "wwRefEditorUpperAddRowBtn",
+        ):
+            assert f'id="{field_id}"' in source, field_id
+        assert "+ Add Point" in source
+        assert "Save Reference" in source
+
+    def test_phase_evaluation_has_no_unspecified_option_for_new_profiles(self):
+        source = _source()
+        field = _function_body(source, 'id="wwRefEditorPhaseTreatment"', "</select>")
+        for label in ("Each Phase", "Minimum", "Maximum", "Single"):
+            assert label in field
+        assert "unspecified" not in field.lower()
+        representation = _function_body(source, 'id="wwRefEditorRepresentation"', "</select>")
+        assert "unspecified" not in representation.lower()
+
+    def test_a_legacy_unspecified_value_is_preserved_through_an_explicit_option(self):
+        source = _source()
+        fn = _function_body(source, "function wwRefEditorSetAssessmentControls(definition, hasLegacyUnspecified) {", "\n        }")
+        assert "Unspecified (legacy)" in fn
+        assert "Not specified (legacy)" in fn
+
+    def test_advanced_settings_and_metadata_are_collapsed_details(self):
+        source = _source()
+        for details_id in ("wwRefEditorAdvanced", "wwRefEditorMetadata"):
+            tag = _function_body(source, f'<details id="{details_id}"', ">")
+            assert " open" not in tag
+        assert "Advanced Settings" in source
+        assert "Reference Source / Metadata" in source
+
+    def test_advanced_defaults_are_visible_not_hidden(self):
+        source = _source()
+        advanced = _function_body(source, '<details id="wwRefEditorAdvanced"', "</details>")
+        assert 'value="pu" selected' in advanced
+        assert 'value="line_line_rms" selected' in advanced
+        assert 'id="wwRefEditorEvalStart" value="0"' in advanced
+        assert 'id="wwRefEditorTolerance" value="0"' in advanced
+        for auto_id in ("wwRefEditorEvalEndAuto", "wwRefEditorDisplayStartAuto", "wwRefEditorDisplayEndAuto"):
+            assert f'id="{auto_id}" checked' in advanced
+        assert "Auto &mdash; same as display end" in advanced
+
+    def test_retired_per_row_segment_type_and_location_controls_are_gone(self):
+        source = _source()
+        editor = _function_body(source, 'id="wwRefEditorOverlay"', "<!-- Waveform toolbar refinement")
+        for retired in ("Constant", "Linear", "Specific member", "Measurement location", "Interpretation source"):
+            # `Linear`/`Constant` survive only in the read-only legacy segment renderer (JS), never as editor markup.
+            assert retired not in editor, retired
+
+    def test_translation_helpers_mirror_the_backend_and_the_save_path_uses_them(self):
+        source = _source()
+        assert "function wwRefEnvPointsToSegments(points) {" in source
+        assert "function wwRefEnvFindCrossing(lowerSegments, upperSegments) {" in source
+        save = _function_body(source, "async function wwRefEditorSave() {", "\n        }")
+        assert "wwRefEditorEvaluate()" in save
+        assert "evaluation.errors.length" in save  # Save is blocked, never silently repaired
+        build = _function_body(source, "function wwRefEditorBuildRequestBody(evaluation) {", "\n        }")
+        assert "evaluation.segments[boundary]" in build
+        assert "original.measurement_location" in build  # an existing profile keeps what it stored
+
+    def test_legacy_boundaries_are_saved_back_verbatim(self):
+        source = _source()
+        build = _function_body(source, "function wwRefEditorBuildRequestBody(evaluation) {", "\n        }")
+        assert "evaluation.legacy" in build
+        assert "editor.original[boundary + \"_boundary\"]" in build
+
+    def test_preview_reuses_plotly_and_adds_no_second_charting_library(self):
+        source = _source()
+        fn = _function_body(source, "function wwRefEditorRenderPreview(evaluation) {", "\n        }")
+        assert "Plotly.react(" in fn
+        assert "fill: \"toself\"" in fn
+
+
+class TestAddReferenceUnifiedFlowStructure:
+    """Add Reference UX -- "+ Add Reference" is the single top-level action; the
+    Reference Library is one source within it."""
+
+    def test_card_has_only_the_add_reference_action(self):
+        source = _source()
+        card = _function_body(source, 'id="wwComplianceReferenceLayersCard"', "</section>")
+        assert card.count("<button") == 1
+        assert 'id="wwComplianceAddReferenceBtn"' in card
+
+    def test_add_dialog_has_search_list_create_and_import(self):
+        source = _source()
+        dialog = _function_body(source, 'id="wwRefAddOverlay"', 'id="wwRefEditorOverlay"')
+        for element_id in (
+            "wwRefAddSearch", "wwRefAddList", "wwRefAddNewProfileBtn", "wwRefAddImportInput", "wwRefAddError",
+        ):
+            assert f'id="{element_id}"' in dialog
+        assert "Saved References" in dialog
+        assert "Create New" in dialog
+
+    def test_no_separate_library_dialog_or_functions_remain(self):
+        source = _source()
+        for retired in (
+            "wwRefManageOverlay", "wwRefManageList", "wwRefOpenManageDialog", "wwRefCloseManageDialog",
+            "wwRefRenderManageDialogList", "wwRefManageImportFile", "wwRefManageProfilesBtn",
+        ):
+            assert retired not in source, retired
+
+    def test_row_actions_are_behind_one_lightweight_menu(self):
+        source = _source()
+        render = _function_body(source, "function wwRefRenderAddDialogList() {", "\n        }\n\n        async function wwRefOpenAddDialog")
+        assert "ww-ref-row-menu" in render
+        for button in ("wwRefMgViewBtn-", "wwRefMgEditBtn-", "wwRefMgDupBtn-", "wwRefMgExportBtn-", "wwRefMgRemoveBtn-"):
+            assert button in render
+        assert "Already added" in render
+
+    def test_a_profile_that_is_already_active_is_never_added_twice(self):
+        source = _source()
+        add = _function_body(source, "async function wwRefAddProfileAsLayer(", "\n        }")
+        assert "layer.profile_id === profileId" in add
+
+    def test_creating_a_profile_makes_it_active_and_returns_to_compliance(self):
+        source = _source()
+        save = _function_body(source, "async function wwRefEditorSave() {", "\n        }")
+        assert "wwRefAddProfileAsLayer(saved.id)" in save
+        assert "!isUpdate" in save
+
+    def test_adding_a_layer_goes_through_the_layer_refresh_that_rechecks_readiness(self):
+        source = _source()
+        add = _function_body(source, "async function wwRefAddProfileAsLayer(", "\n        }")
+        assert "wwRefRefreshLayersAndChart()" in add
+        refresh = _function_body(source, "async function wwRefRefreshLayersAndChart() {", "\n        }")
+        assert "wwComplianceRefreshReadiness()" in refresh

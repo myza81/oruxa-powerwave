@@ -25,6 +25,9 @@ class ComplianceMeasurementGroupOut(BaseModel):
     id: str
     display_name: str
     status: str
+    #: The Measurement Group's own source (DEC-167): lets the UI open the
+    #: EXISTING group editor ("Configure Base") on the right recording.
+    source_id: str | None = None
 
 
 class ComplianceResolvedRoleOut(BaseModel):
@@ -58,4 +61,108 @@ class ComplianceVoltageMeasurementOut(BaseModel):
     assessment_unit: str = "engineering_unit"
     missing: list[str] = []
     message: str | None = None
+    phase_display: PhaseDisplayOut
+
+
+class ComplianceRequirementOut(BaseModel):
+    """What one Reference imposes on the measurement (DEC-167) -- derived
+    from the Reference, read-only in the UI."""
+
+    representation: str
+    phase_treatment: str
+    member: str | None = None
+    unit: str
+    required_members: list[str]
+    requires_rms: bool
+    requires_per_unit: bool
+    unresolved_reason: str | None = None
+
+
+class CompliancePreparationStepOut(BaseModel):
+    kind: str  # "rms" | "line_to_line"
+    description: str
+    executable: bool
+    reason: str | None = None
+
+
+class ComplianceMemberReadinessOut(BaseModel):
+    member: str  # canonical A/B/C, AB/BC/CA, or "1" (positive sequence)
+    state: str
+    message: str | None = None
+    channel_name: str | None = None
+    calculated_channel_id: str | None = None
+
+
+class ComplianceReferenceReadinessOut(BaseModel):
+    layer_id: str
+    profile_id: str
+    profile_name: str
+    requirement: ComplianceRequirementOut
+    status: str  # "ready" | "action_required" | "incompatible"
+    message: str | None = None
+    members: list[ComplianceMemberReadinessOut]
+    unit_state: str  # "not_required" | "ready" | "action_required"
+    unit_message: str | None = None
+
+
+class ComplianceReadinessOut(BaseModel):
+    measurement_group_id: str
+    status: str  # "ready" | "action_required" | "incompatible" | "no_reference"
+    references: list[ComplianceReferenceReadinessOut]
+    steps: list[CompliancePreparationStepOut]
+    needs_base: bool
+    base: ComplianceBaseOut | None = None
+    phase_display: PhaseDisplayOut
+
+
+class CompliancePrepareRequest(BaseModel):
+    measurement_group_id: str
+
+
+class ComplianceCreatedChannelOut(BaseModel):
+    id: str
+    name: str
+    operation: str
+
+
+class CompliancePrepareOut(BaseModel):
+    created: list[ComplianceCreatedChannelOut]
+    readiness: ComplianceReadinessOut
+
+
+class ComplianceMeasurementTraceOut(BaseModel):
+    """One plottable measured trace. `kind`/`members`/`layer_ids` are the
+    stable identity the chart carries (never parsed from a legend name);
+    `members` are canonical (AB, A, ...) and spelled by the frontend in the
+    group's own phase convention."""
+
+    id: str
+    kind: str  # "member" | "minimum" | "maximum"
+    members: list[str]
+    unit: str
+    layer_ids: list[str]
+    x: list[float]
+    y: list[float | None]
+    representation: str
+    source_id: str
+
+
+class ComplianceEventAlignmentOut(BaseModel):
+    time_group_id: str | None = None
+    t0_workspace_time: float | None = None
+    aligned: bool
+
+
+class ComplianceSkippedReferenceOut(BaseModel):
+    layer_id: str
+    profile_name: str
+    reason: str
+
+
+class ComplianceMeasurementTracesOut(BaseModel):
+    measurement_group_id: str
+    readiness_status: str
+    traces: list[ComplianceMeasurementTraceOut]
+    skipped: list[ComplianceSkippedReferenceOut]
+    event: ComplianceEventAlignmentOut
     phase_display: PhaseDisplayOut

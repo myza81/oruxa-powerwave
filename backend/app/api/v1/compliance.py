@@ -38,7 +38,19 @@ from fastapi import APIRouter, HTTPException, Request, status
 
 from app.schemas.compliance import (
     ComplianceBaseOut,
+    ComplianceCreatedChannelOut,
+    ComplianceEventAlignmentOut,
+    ComplianceMeasurementTraceOut,
+    ComplianceMeasurementTracesOut,
+    ComplianceMemberReadinessOut,
+    ComplianceSkippedReferenceOut,
     ComplianceMeasurementGroupOut,
+    CompliancePreparationStepOut,
+    CompliancePrepareOut,
+    CompliancePrepareRequest,
+    ComplianceReadinessOut,
+    ComplianceReferenceReadinessOut,
+    ComplianceRequirementOut,
     ComplianceResolvedRoleOut,
     ComplianceVoltageMeasurementOut,
     ComplianceVoltageQuantityOut,
@@ -46,6 +58,14 @@ from app.schemas.compliance import (
 from app.schemas.calculated_channel import ChannelRefOut
 from app.schemas.phase_display import PhaseDisplayOut
 from app.schemas.source import ErrorOut
+from app.services.compliance_series import Registries
+from app.services.compliance_trace_service import build_measurement_traces
+from app.services.compliance_readiness_service import (
+    PreparationOutcome,
+    ReadinessResult,
+    evaluate_readiness,
+    prepare_measurement,
+)
 from app.services.compliance_measurement_service import (
     ComplianceVoltageMeasurementResult,
     ROLE_DISPLAY_NAME,
@@ -156,7 +176,7 @@ def list_compliance_voltage_measurement_groups(workspace_id: str, request: Reque
     groups = list_compliance_voltage_groups(
         workspace_id=workspace_id, group_registry=get_measurement_group_registry(request)
     )
-    return [ComplianceMeasurementGroupOut(id=g.id, display_name=g.display_name, status=g.status) for g in groups]
+    return [ComplianceMeasurementGroupOut(id=g.id, display_name=g.display_name, status=g.status, source_id=g.source_id) for g in groups]
 
 
 @router.get("/compliance/voltage/measurement", response_model=ComplianceVoltageMeasurementOut)
@@ -180,3 +200,137 @@ def get_compliance_voltage_measurement(
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
     return _result_to_out(result, measurement_group_id=measurement_group_id)
+
+
+def _readiness_to_out(result: ReadinessResult) -> ComplianceReadinessOut:
+    return ComplianceReadinessOut(
+        measurement_group_id=result.measurement_group_id,
+        status=result.status,
+        references=[
+            ComplianceReferenceReadinessOut(
+                layer_id=r.layer_id, profile_id=r.profile_id, profile_name=r.profile_name,
+                requirement=ComplianceRequirementOut(
+                    representation=r.requirement.representation, phase_treatment=r.requirement.phase_treatment,
+                    member=r.requirement.member, unit=r.requirement.unit,
+                    required_members=list(r.requirement.required_members), requires_rms=r.requirement.requires_rms,
+                    requires_per_unit=r.requirement.requires_per_unit, unresolved_reason=r.requirement.unresolved_reason,
+                ),
+                status=r.status, message=r.message,
+                members=[
+                    ComplianceMemberReadinessOut(
+                        member=m.member, state=m.state, message=m.message, channel_name=m.channel_name,
+                        calculated_channel_id=m.calculated_channel_id,
+                    )
+                    for m in r.members
+                ],
+                unit_state=r.unit_state, unit_message=r.unit_message,
+            )
+            for r in result.references
+        ],
+        steps=[
+            CompliancePreparationStepOut(kind=st.kind, description=st.description, executable=st.executable, reason=st.reason)
+            for st in result.steps
+        ],
+        needs_base=result.needs_base,
+        base=(
+            ComplianceBaseOut(
+                nominal_voltage_ll_kv=result.base.nominal_voltage_ll_kv,
+                effective_reference=result.base.effective_reference, assessment_unit=result.base.assessment_unit,
+            )
+            if result.base is not None else None
+        ),
+        phase_display=PhaseDisplayOut.from_domain(result.phase_display),
+    )
+
+
+def _readiness_deps(request: Request) -> dict:
+    state = request.app.state
+    return dict(
+        source_registry=state.workspace_registry, group_registry=state.measurement_group_registry,
+        voltage_config_registry=state.voltage_group_config_registry,
+        current_config_registry=state.current_group_config_registry, calc_registry=state.calculated_channel_registry,
+        context_registry=state.engineering_context_registry, layer_registry=state.reference_layer_registry,
+        profile_registry=state.reference_profile_registry, per_unit_registry=state.per_unit_registry,
+    )
+
+
+@router.get("/compliance/voltage/readiness", response_model=ComplianceReadinessOut)
+def get_compliance_voltage_readiness(workspace_id: str, measurement_group_id: str, request: Request) -> ComplianceReadinessOut:
+    """DEC-167: what the active Reference Layer(s) require of the selected
+    Measurement Group, and whether the recording can satisfy it. Read-only:
+    never creates a channel or a configuration."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = evaluate_readiness(
+            workspace_id=workspace_id, measurement_group_id=measurement_group_id, **_readiness_deps(request),
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return _readiness_to_out(result)
+
+
+@router.post("/compliance/voltage/prepare", response_model=CompliancePrepareOut)
+def prepare_compliance_voltage_measurement(
+    workspace_id: str, body: CompliancePrepareRequest, request: Request,
+) -> CompliancePrepareOut:
+    """DEC-167: creates ONLY the missing shared resources (RMS / line-line
+    calculated channels, through the shared Calculated Channel services),
+    reusing equivalents. Never writes a per-unit base."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        outcome: PreparationOutcome = prepare_measurement(
+            workspace_id=workspace_id, measurement_group_id=body.measurement_group_id, **_readiness_deps(request),
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return CompliancePrepareOut(
+        created=[ComplianceCreatedChannelOut(id=c.id, name=c.name, operation=c.operation) for c in outcome.created],
+        readiness=_readiness_to_out(outcome.result),
+    )
+
+
+@router.get("/compliance/voltage/measurement-traces", response_model=ComplianceMeasurementTracesOut)
+def get_compliance_voltage_measurement_traces(
+    workspace_id: str, measurement_group_id: str, request: Request,
+) -> ComplianceMeasurementTracesOut:
+    """DEC-169: the measured trace(s) the Comparison Chart plots for every
+    READY active Reference of the selected Measurement Group, in the
+    Reference's unit and on the workspace's event-relative time axis.
+    Read-only; it prepares nothing (readiness / prepare do that)."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    state = request.app.state
+    try:
+        readiness = evaluate_readiness(
+            workspace_id=workspace_id, measurement_group_id=measurement_group_id, **_readiness_deps(request),
+        )
+        result = build_measurement_traces(
+            workspace_id=workspace_id, measurement_group_id=measurement_group_id, readiness=readiness,
+            registries=Registries(
+                source=state.workspace_registry, calc=state.calculated_channel_registry,
+                per_unit=state.per_unit_registry, group=state.measurement_group_registry,
+                voltage_config=state.voltage_group_config_registry, current_config=state.current_group_config_registry,
+            ),
+            sync_registry=state.synchronization_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return ComplianceMeasurementTracesOut(
+        measurement_group_id=measurement_group_id,
+        readiness_status=result.readiness_status,
+        traces=[
+            ComplianceMeasurementTraceOut(
+                id=t.id, kind=t.kind, members=list(t.members), unit=t.unit, layer_ids=list(t.layer_ids),
+                x=t.x, y=t.y, representation=t.representation, source_id=t.source_id,
+            )
+            for t in result.traces
+        ],
+        skipped=[
+            ComplianceSkippedReferenceOut(layer_id=k.layer_id, profile_name=k.profile_name, reason=k.reason)
+            for k in result.skipped
+        ],
+        event=ComplianceEventAlignmentOut(
+            time_group_id=result.event.time_group_id, t0_workspace_time=result.event.t0_workspace_time,
+            aligned=result.event.aligned,
+        ),
+        phase_display=PhaseDisplayOut.from_domain(readiness.phase_display),
+    )

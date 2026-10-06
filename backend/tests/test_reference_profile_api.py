@@ -356,3 +356,61 @@ class TestProvenanceMetadataAndRevisionCoexistenceHttp:
         # Deleting one revision never affects the other.
         assert client.delete(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles/{revision_2025['id']}").status_code == 204
         assert client.get(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles/{revision_2027['id']}").status_code == 200
+
+
+class TestOperatingEnvelopeHttp:
+    """DEC-166: the simplified Operating Envelope workflow rides the
+    unchanged create/update API; only the projection (`lower_points`/
+    `upper_points`/`point_editable`) and the two domain-validation
+    changes are new."""
+
+    @staticmethod
+    def _segments(*rows):
+        return {"segments": [
+            {"start_time": s, "end_time": e, "start_value": sv, "end_value": ev, "segment_type": t}
+            for s, e, sv, ev, t in rows
+        ]}
+
+    def test_line_line_each_phase_is_accepted_over_http(self, client: TestClient):
+        body = _profile_body(assessment_definition={"representation": "line_line_rms", "phase_treatment": "each_phase"})
+        response = client.post(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles", json=body)
+        assert response.status_code == 201
+        assert response.json()["assessment_definition"]["phase_treatment"] == "each_phase"
+
+    def test_inverted_envelope_is_rejected_with_the_crossing_reason(self, client: TestClient):
+        body = _profile_body(
+            lower_boundary=self._segments((0.0, 3.0, 1.2, 1.2, "constant")),
+            upper_boundary=self._segments((0.0, 3.0, 1.1, 1.1, "constant")),
+        )
+        response = client.post(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles", json=body)
+        assert response.status_code == 400
+        assert response.json()["detail"]["reason_code"] == "boundary_crossing"
+
+    def test_vertical_edge_profile_projects_back_to_its_points(self, client: TestClient):
+        body = _profile_body(lower_boundary=self._segments(
+            (0.0, 0.15, 0.0, 0.0, "constant"), (0.15, 3.0, 0.9, 0.9, "constant"),
+        ))
+        created = client.post(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles", json=body).json()
+        assert created["point_editable"] is True
+        assert created["lower_points"] == [
+            {"time": 0.0, "value": 0.0}, {"time": 0.15, "value": 0.0},
+            {"time": 0.15, "value": 0.9}, {"time": 3.0, "value": 0.9},
+        ]
+        assert created["upper_points"] is None
+
+    def test_profile_with_a_gap_is_not_point_editable_and_keeps_its_segments(self, client: TestClient):
+        gap = self._segments((0.0, 1.0, 0.9, 0.9, "constant"), (2.0, 3.0, 0.9, 0.9, "constant"))
+        created = client.post(
+            f"/api/v1/workspaces/{WORKSPACE}/reference-profiles", json=_profile_body(lower_boundary=gap),
+        ).json()
+        assert created["point_editable"] is False
+        assert created["lower_points"] is None
+        assert created["lower_boundary"] == gap  # untouched
+
+    def test_exported_profile_keeps_its_original_segments(self, client: TestClient):
+        gap = self._segments((0.0, 1.0, 0.9, 0.9, "constant"), (2.0, 3.0, 0.9, 0.9, "constant"))
+        created = client.post(
+            f"/api/v1/workspaces/{WORKSPACE}/reference-profiles", json=_profile_body(lower_boundary=gap),
+        ).json()
+        exported = client.get(f"/api/v1/workspaces/{WORKSPACE}/reference-profiles/{created['id']}/export").json()
+        assert exported["profile"]["lower_boundary"] == gap
