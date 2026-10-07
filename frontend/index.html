@@ -7024,7 +7024,7 @@
             min-width: 0;
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 6px;
         }
         .ww-compliance-config-card .empty-state {
             padding: 2px 0 0;
@@ -7095,11 +7095,11 @@
             text-transform: uppercase;
             color: var(--text-dim);
         }
-        .ww-compliance-requirement-list { list-style: none; margin: 0; padding: 0; font-size: 0.75rem; }
+        .ww-compliance-requirement-list { list-style: none; margin: 0; padding: 0; font-size: 0.7rem; }
         .ww-compliance-requirement-list li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
         .ww-compliance-requirement-name { font-weight: 600; }
         .ww-compliance-requirement-text { color: var(--text-dim); }
-        .ww-compliance-readiness-status { margin: 0; font-size: 0.85rem; font-weight: 700; }
+        .ww-compliance-readiness-status { margin: 0; font-size: 0.7rem; font-weight: 700; }
         .ww-compliance-readiness-status--ready { color: #2f7a46; }
         .ww-compliance-readiness-status--action_required { color: #a86a00; }
         .ww-compliance-readiness-status--incompatible { color: #a33; }
@@ -7160,12 +7160,32 @@
         .ww-compliance-chart-wrap .empty-state {
             padding: 0;
         }
-        /* Step 5 (Results): compact, neutral -- never fabricated
-           Compliant/Boundary Breached/Within Capability verdicts in the
-           empty state. */
-        .ww-compliance-results-panel .empty-state {
-            padding: 6px 0 0;
-            text-align: left;
+        .ww-compliance-chart-wrap { position: relative; }
+        .ww-compliance-chart-wrap > #wwComplianceChartPlot { position: absolute; inset: 0; }
+
+        /* Desktop / two-column mode: a fixed-height workspace that fills what is left
+           of the app's own viewport-height page (the shell, header and status bar are
+           already fixed, so no viewport arithmetic is needed). The configuration column
+           scrolls on its own while the Comparison Chart stays in view. Narrow widths
+           (<= 1100 px) keep the stacked, normally scrolling layout above. */
+        @media (min-width: 1101px) {
+            #pageCompliance { padding: 14px 20px; gap: 10px; }
+            #pageCompliance > .ww-analysis-shell { flex: 1 1 auto; min-height: 0; }
+            #pageCompliance .ww-analysis-type-nav { min-height: 0; }
+            #pageCompliance .ww-analysis-content { display: flex; flex-direction: column; min-height: 0; }
+            #pageCompliance .ww-compliance-panel { flex: 1 1 auto; min-height: 0; gap: 8px; }
+            #pageCompliance .ww-compliance-heading { margin: 0; }
+            .ww-compliance-split { flex: 1 1 auto; min-height: 360px; }
+            .ww-compliance-config-column {
+                overflow-y: auto;
+                overflow-x: hidden;
+                min-height: 0;
+                padding: 2px 6px 2px 2px;
+                overscroll-behavior: contain;
+            }
+            .ww-compliance-chart-column { min-height: 0; }
+            .ww-compliance-chart-column .ww-compliance-chart-panel { min-height: 0; }
+            .ww-compliance-chart-wrap { flex: 1 1 0; min-height: 220px; }
         }
 
         /* Compliance Slice 3 -- Reference Layers card (task section 10):
@@ -7478,18 +7498,6 @@
         .ww-cc-field .ww-ref-auto-toggle { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 0.7rem; color: var(--text-dim); }
         .ww-cc-field .ww-ref-auto-toggle input { width: auto; margin: 0; }
 
-        /* Comparison Chart legend -- a compact stable-identity list
-           below the Plotly instance itself (task section 16: legend
-           text is never the source of truth, but a readable summary
-           still helps at a glance). */
-        .ww-compliance-chart-legend {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px 14px;
-            margin-top: 8px;
-            font-size: 0.72rem;
-            color: var(--text-dim);
-        }
         .ww-compliance-chart-note {
             font-size: 0.72rem;
             color: var(--text-dim);
@@ -11734,8 +11742,8 @@
                         <p class="ww-cc-subtitle">Voltage compliance and equipment-capability assessment against reference requirement layers.</p>
                     </div>
                 </div>
-                <div class="ww-analysis-shell">
-                    <nav class="ww-analysis-type-nav" aria-label="Compliance function">
+                <div class="ww-analysis-shell" id="wwComplianceShell">
+                    <nav class="ww-analysis-type-nav" id="wwComplianceTypeNav" aria-label="Compliance function">
                         <div class="ww-analysis-type-title">Functions</div>
                         <button type="button" class="ww-analysis-type-item active" id="wwComplianceTypeVoltageBtn" data-compliance-type="voltage" aria-current="true">
                             <span class="ww-analysis-type-icon" aria-hidden="true" data-ww-icon="COMPLIANCE_VOLTAGE"></span>
@@ -11880,21 +11888,10 @@
                                     <p class="empty-state" id="wwComplianceChartEmptyState">No reference layers to display -- use "+ Add Reference" to add one.</p>
                                     <div id="wwComplianceChartPlot" style="width:100%;height:100%;" hidden></div>
                                 </div>
-                                <div class="ww-compliance-chart-legend" id="wwComplianceChartLegend" hidden></div>
                                 <p class="ww-compliance-chart-note" id="wwComplianceChartNote" hidden></p>
-                                <p class="ww-compliance-chart-note" id="wwComplianceChartMeasurementNote" hidden></p>
                             </section>
                             </div>
                             </div>
-
-                            <!-- Step 5: neutral empty state only -- never a
-                                 fabricated Compliant/Boundary Breached/Within
-                                 Capability verdict (task section 5's own
-                                 explicit exclusion). -->
-                            <section class="panel ww-compliance-results-panel" id="wwComplianceResultsPanel">
-                                <h2>Results</h2>
-                                <p class="empty-state" id="wwComplianceResultsEmptyState">Results will appear after a measurement, reference layer and event alignment are configured.</p>
-                            </section>
                         </section>
                     </div>
                 </div>
@@ -50603,10 +50600,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return { cls: "action", text: "⚠ " + (blocked.message || "Fundamental RMS cannot be prepared here.") };
             }
             const notes = [];
-            if (states.includes("source_rms")) notes.push("source RMS channels used directly");
-            if (states.includes("reused")) notes.push("existing calculated channels reused");
-            if (states.includes("derived_at_assessment")) notes.push("derived from instantaneous phases at assessment");
-            return { cls: "ok", text: "✓ Fundamental RMS available" + (notes.length ? " — " + notes.join("; ") : "") };
+            if (states.includes("source_rms")) notes.push("Source RMS channels used directly");
+            if (states.includes("reused")) notes.push("Existing calculated channels reused");
+            if (states.includes("derived_at_assessment")) notes.push("Derived from instantaneous phases at assessment");
+            return { cls: "ok", text: "✓ " + (notes.length ? notes.join("; ") : "Fundamental RMS available") };
         }
 
         function wwComplianceUnitRowHtml(reference, base) {
@@ -50618,9 +50615,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             if (reference.unit_state === "ready") {
                 const refLabel = base && base.effective_reference === "line_to_line" ? "L-L" : "L-G";
-                const text = base ? ("✓ " + base.nominal_voltage_ll_kv + " kV " + refLabel + " base configured") : "✓ Per-unit base configured";
+                const text = base ? ("✓ " + base.nominal_voltage_ll_kv + " kV " + refLabel) : "✓ Per-unit base configured";
                 return '<div class="ww-compliance-readiness-row" data-row="unit" data-state="ready">' +
-                    '<span class="ww-compliance-readiness-label">Per Unit</span>' +
+                    '<span class="ww-compliance-readiness-label">Base</span>' +
                     '<span class="ww-compliance-readiness-value">' + escapeHtml(text) + '</span></div>';
             }
             return '<div class="ww-compliance-readiness-row" data-row="unit" data-state="not_required">' +
@@ -50650,7 +50647,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<span class="ww-compliance-readiness-label">Source channels</span>' +
                     '<span class="ww-compliance-readiness-value">✓ Required channels available</span></div>';
                 const representationRow = '<div class="ww-compliance-readiness-row" data-row="representation" data-state="' + representation.cls + '">' +
-                    '<span class="ww-compliance-readiness-label">Representation</span>' +
+                    '<span class="ww-compliance-readiness-label">RMS</span>' +
                     '<span class="ww-compliance-readiness-value">' + escapeHtml(representation.text) + '</span></div>';
                 const memberList = '<ul class="ww-compliance-member-list">' + members + '</ul>';
                 body = reference.status === "ready"
@@ -50658,11 +50655,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         '<details class="ww-compliance-details"><summary>Details</summary>' + sourceRow + memberList + '</details>'
                     : sourceRow + representationRow + memberList + unitRow;
             }
-            return '<div class="ww-compliance-reference-readiness" data-layer-id="' + escapeHtml(reference.layer_id) +
-                '" data-status="' + escapeHtml(reference.status) + '">' +
+            // A lone READY reference is already named in "Requirements" and reported by the
+            // overall status line, so its own name/chip header would only repeat them.
+            const head = (reference.status === "ready" && result.references.length === 1) ? "" :
                 '<div class="ww-compliance-reference-readiness-head"><span class="ww-compliance-requirement-name">' +
                 escapeHtml(reference.profile_name) + '</span><span class="ww-compliance-readiness-chip ww-compliance-readiness-chip--' +
-                escapeHtml(reference.status) + '">' + escapeHtml(label) + '</span></div>' + body + '</div>';
+                escapeHtml(reference.status) + '">' + escapeHtml(label) + '</span></div>';
+            return '<div class="ww-compliance-reference-readiness" data-layer-id="' + escapeHtml(reference.layer_id) +
+                '" data-status="' + escapeHtml(reference.status) + '">' + head + body + '</div>';
         }
 
         function wwComplianceRenderReadiness(result) {
@@ -55798,16 +55798,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // docstring for the axis-derivation/unit-mismatch rules this
         // mirrors on the frontend. ----
 
-        function wwRefRenderChartLegend(traces) {
-            const legendEl = document.getElementById("wwComplianceChartLegend");
-            if (!traces.length) { legendEl.hidden = true; legendEl.innerHTML = ""; return; }
-            legendEl.hidden = false;
-            legendEl.innerHTML = traces.map((t) =>
-                '<span>' + escapeHtml(t.profile_name) + ' (' + (t.boundary === "upper" ? "Upper" : "Lower") + ', ' +
-                    escapeHtml(WW_REF_CATEGORY_LABEL[t.category] || t.category) + ')</span>'
-            ).join("");
-        }
-
         function wwRefRenderChartNote(chart) {
             const noteEl = document.getElementById("wwComplianceChartNote");
             if (!chart) { noteEl.hidden = true; noteEl.textContent = ""; return; }
@@ -55848,33 +55838,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             };
         }
 
-        // What the chart says when it cannot (yet) show the measurement --
-        // never a generic message when the app knows exactly what is missing.
-        function wwComplianceChartMeasurementMessage(hasReferenceTraces, measured) {
-            const groupSelected = !!wwComplianceState.selectedGroupId;
-            const readiness = wwComplianceState.readiness;
-            const payload = wwComplianceState.traces;
-            if (!hasReferenceTraces || !groupSelected) {
-                return hasReferenceTraces && !groupSelected
-                    ? "Select a Bay / Measurement Group to plot a measurement against this Reference." : "";
-            }
-            if (measured.length) {
-                const aligned = !!(payload && payload.event && payload.event.aligned);
-                return aligned ? "" : "No event reference (t0) set: the measurement is plotted on the recording's own time axis.";
-            }
-            if (payload && payload.skipped && payload.skipped.length) {
-                return "Reference envelope ready. " + payload.skipped[0].reason;
-            }
-            if (readiness && readiness.status !== "no_reference") {
-                return "Reference envelope ready. Measurement requires configuration before it can be plotted.";
-            }
-            return "";
-        }
-
         function wwRefRenderChart() {
             const emptyState = document.getElementById("wwComplianceChartEmptyState");
             const plotEl = document.getElementById("wwComplianceChartPlot");
-            const measurementNote = document.getElementById("wwComplianceChartMeasurementNote");
             const chart = wwRefState.chart;
             const onAxisTraces = chart ? chart.traces.filter((t) => t.on_axis) : [];
             const measured = wwComplianceMeasuredTracesToPlot(onAxisTraces);
@@ -55890,10 +55856,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     try { Plotly.purge(plotEl); } catch (error) { /* ignore */ }
                     wwRefChartReady = false;
                 }
-                wwRefRenderChartLegend([]);
                 wwRefRenderChartNote(chart);
-                measurementNote.hidden = true;
-                measurementNote.textContent = "";
                 return;
             }
 
@@ -55967,11 +55930,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             Plotly.react(plotEl, referenceTraces.concat(measuredTraces), layout, { displayModeBar: false, responsive: true });
             wwRefChartReady = true;
 
-            wwRefRenderChartLegend(onAxisTraces);
             wwRefRenderChartNote(chart);
-            const message = wwComplianceChartMeasurementMessage(onAxisTraces.length > 0, measured);
-            measurementNote.hidden = !message;
-            measurementNote.textContent = message;
         }
 
 

@@ -61,7 +61,6 @@ test.describe("Compliance & Capability -- Slice 1 workspace shell", () => {
       "Reference Layers",
       "Measurement",
       "Comparison Chart",
-      "Results",
     ]);
     await expect(panel.locator("#wwComplianceMeasurementCard #wwComplianceEventAlignmentSection")).toBeVisible();
 
@@ -81,11 +80,14 @@ test.describe("Compliance & Capability -- Slice 1 workspace shell", () => {
     await expect(page.locator("#wwComplianceAddReferenceBtn")).toBeEnabled();
     await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("No event reference set");
     await expect(page.locator("#wwComplianceChartEmptyState")).toContainText("No reference layers to display");
-    await expect(page.locator("#wwComplianceResultsEmptyState")).toContainText("Results will appear after a measurement");
-    // Never a fabricated compliance verdict in the empty state.
-    await expect(page.locator("#wwComplianceResultsPanel")).not.toContainText("Compliant");
-    await expect(page.locator("#wwComplianceResultsPanel")).not.toContainText("Boundary Breached");
-    await expect(page.locator("#wwComplianceResultsPanel")).not.toContainText("Within Capability");
+    // The Results section is removed until evaluation semantics are defined: no card,
+    // no placeholder, and never a fabricated compliance verdict.
+    await expect(page.locator("#wwComplianceResultsPanel")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Results", exact: true })).toHaveCount(0);
+    await expect(page.locator("#pageCompliance")).not.toContainText("Results will appear");
+    for (const verdict of ["Compliant", "Boundary Breached", "Within Capability"]) {
+      await expect(page.locator("#pageCompliance")).not.toContainText(verdict);
+    }
   });
 
   test("Comparison Chart is present and visually dominant (largest section)", async ({ page }) => {
@@ -94,11 +96,9 @@ test.describe("Compliance & Capability -- Slice 1 workspace shell", () => {
     await expect(chartWrap).toBeVisible();
     const chartBox = await chartWrap.boundingBox();
     const measurementBox = await page.locator("#wwComplianceMeasurementCard").boundingBox();
-    const resultsBox = await page.locator("#wwComplianceResultsPanel").boundingBox();
     expect(chartBox.height).toBeGreaterThan(200);
     expect(chartBox.width).toBeGreaterThan(measurementBox.width);
     expect(chartBox.height).toBeGreaterThan(measurementBox.height);
-    expect(chartBox.height).toBeGreaterThan(resultsBox.height);
   });
 
   test("switching back to Analysis works, no stale Compliance panel remains visible", async ({ page }) => {

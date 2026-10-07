@@ -3,8 +3,7 @@
 //
 //   LEFT   Reference Layers / Measurement (incl. Event Alignment)
 //          <-> draggable divider <->
-//   RIGHT  Comparison Chart
-//   BELOW  Results
+//   RIGHT  Comparison Chart (owns the full right-panel height)
 //
 //   Reference defines. Measurement satisfies. Comparison visualizes the
 //   resolved measurement against the Reference.
@@ -93,7 +92,7 @@ const box = (page, selector) => page.locator(selector).boundingBox();
 test.describe("DEC-169 -- two-column workspace layout", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test("Reference + Measurement (+ Event Alignment) on the left, the chart on the right, Results below", async ({ page }) => {
+  test("Reference + Measurement (+ Event Alignment) on the left, the chart on the right, no Results card", async ({ page }) => {
     await page.goto("/index.html");
     await page.locator("#mainNavComplianceBtn").click();
     const left = page.locator("#wwComplianceConfigColumn");
@@ -102,15 +101,14 @@ test.describe("DEC-169 -- two-column workspace layout", () => {
     await expect(left.locator("#wwComplianceMeasurementCard")).toBeVisible();
     await expect(left.locator("#wwComplianceMeasurementCard #wwComplianceEventAlignmentSection")).toBeVisible();
     await expect(right.locator("#wwComplianceChartPanel")).toBeVisible();
-    await expect(page.locator("#wwComplianceSplit #wwComplianceResultsPanel")).toHaveCount(0); // Results are NOT inside the split
+    await expect(page.locator("#wwComplianceResultsPanel")).toHaveCount(0); // the Results section is removed entirely
+    await expect(page.locator("#pageCompliance")).not.toContainText("Results will appear");
 
     const split = await box(page, "#wwComplianceSplit");
     const l = await box(page, "#wwComplianceConfigColumn");
     const r = await box(page, "#wwComplianceChartColumn");
-    const results = await box(page, "#wwComplianceResultsPanel");
     expect(l.x).toBeLessThan(r.x);
     expect(Math.abs(l.y - r.y)).toBeLessThanOrEqual(1); // side by side
-    expect(results.y).toBeGreaterThanOrEqual(split.y + split.height - 1); // Results below the split
     expect(r.width).toBeGreaterThan(l.width); // the chart gets more width
     const ratio = l.width / split.width;
     expect(ratio).toBeGreaterThan(0.33);
@@ -241,10 +239,8 @@ test.describe("DEC-169 -- two-column workspace layout", () => {
     const reference = await box(page, "#wwComplianceReferenceLayersCard");
     const measurement = await box(page, "#wwComplianceMeasurementCard");
     const chart = await box(page, "#wwComplianceChartPanel");
-    const results = await box(page, "#wwComplianceResultsPanel");
     expect(reference.y).toBeLessThan(measurement.y);
     expect(measurement.y).toBeLessThan(chart.y);
-    expect(chart.y).toBeLessThan(results.y);
     expect(Math.abs(chart.x - measurement.x)).toBeLessThanOrEqual(2); // one column
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
@@ -259,7 +255,6 @@ test.describe("DEC-169 -- measurement traces on the Comparison Chart", () => {
     await openComplianceAndSelect(page, "KPDN1");
     await expect(page.locator("#wwComplianceChartPlot")).toBeVisible();
     expect((await chartTraces(page)).measurement).toHaveLength(0); // RMS not prepared yet -> nothing plotted, nothing guessed
-    await expect(page.locator("#wwComplianceChartMeasurementNote")).toContainText("Reference envelope ready. Measurement requires configuration before it can be plotted.");
 
     await prepareAndWaitReady(page);
     await waitForMeasurement(page, 3);
@@ -273,7 +268,6 @@ test.describe("DEC-169 -- measurement traces on the Comparison Chart", () => {
       expect(t.meta.kind).toBe("member");
       expect(finite(t.y).length).toBeGreaterThan(100);
     }
-    await expect(page.locator("#wwComplianceChartMeasurementNote")).toContainText("No event reference (t0) set");
   });
 
   test("a pu Reference: no base -> Action Required and NO pu trace; once the base is configured the traces appear in per-unit, matching Waveform's own per-unit values", async ({ page }) => {
@@ -385,7 +379,6 @@ test.describe("DEC-169 -- measurement traces on the Comparison Chart", () => {
     const traces = await chartTraces(page);
     expect(traces.reference).toHaveLength(1);
     expect(traces.measurement).toHaveLength(0);
-    await expect(page.locator("#wwComplianceChartMeasurementNote")).toContainText("Measurement requires configuration before it can be plotted.");
   });
 
   test("chart empty states say exactly what is missing", async ({ page }) => {
@@ -399,7 +392,6 @@ test.describe("DEC-169 -- measurement traces on the Comparison Chart", () => {
     await page.reload();
     await page.locator("#mainNavComplianceBtn").click();
     await expect(page.locator("#wwComplianceChartPlot")).toBeVisible();
-    await expect(page.locator("#wwComplianceChartMeasurementNote")).toContainText("Select a Bay / Measurement Group to plot a measurement against this Reference.");
   });
 });
 
@@ -457,5 +449,172 @@ test.describe("DEC-169 -- Measurement card density", () => {
     // An incompatible reference keeps its blocker visible with no expansion.
     await openComplianceAndSelect(page, "KPDN2");
     await expect(page.locator('.ww-compliance-readiness-row[data-row="incompatible"]')).toBeVisible();
+  });
+});
+
+// =============================================== fixed-height desktop workspace
+test.describe("UAT refinement -- fixed-height desktop workspace", () => {
+  test.use({ viewport: { width: 1440, height: 760 } });
+
+  const geometry = (page) => page.evaluate(() => {
+    const r = (id) => { const b = document.getElementById(id).getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, height: b.height, width: b.width }; };
+    const page_ = document.getElementById("pageCompliance");
+    const col = document.getElementById("wwComplianceConfigColumn");
+    return {
+      split: r("wwComplianceSplit"), left: r("wwComplianceConfigColumn"), right: r("wwComplianceChartColumn"),
+      nav: r("wwComplianceTypeNav"), shell: r("wwComplianceShell"), status: r("bottomStatusBar"), chart: r("wwComplianceChartPanel"),
+      pageScroll: page_.scrollHeight - page_.clientHeight,
+      docScroll: document.documentElement.scrollHeight - document.documentElement.clientHeight,
+      docScrollX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      leftOverflow: col.scrollHeight - col.clientHeight, leftOverflowY: getComputedStyle(col).overflowY, leftTop: col.scrollTop,
+    };
+  });
+
+  test("the workspace fits the viewport, never overlaps the status bar, and does not scroll as a page", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    for (const size of [{ width: 1440, height: 760 }, { width: 1280, height: 900 }, { width: 1600, height: 1000 }]) {
+      await page.setViewportSize(size);
+      await expect.poll(async () => { const g = await geometry(page); return g.split.bottom <= g.status.top + 1; }).toBe(true);
+      const g = await geometry(page);
+      expect(g.pageScroll).toBeLessThanOrEqual(1); // the page itself does not grow vertically
+      expect(g.docScroll).toBeLessThanOrEqual(1);
+      expect(g.docScrollX).toBeLessThanOrEqual(1); // no page-level horizontal scroll
+      expect(g.split.bottom).toBeLessThanOrEqual(g.status.top + 1);
+      expect(g.right.bottom).toBeLessThanOrEqual(g.status.top + 1);
+      expect(g.chart.height).toBeGreaterThan(250);
+      // The drawn Plotly chart fills its box and sits above the footer.
+      await expect.poll(() => page.evaluate(() => { const el = document.getElementById("wwComplianceChartPlot"); const b = el.getBoundingClientRect(); return Math.abs(el._fullLayout.width - b.width) <= 2 && Math.abs(el._fullLayout.height - b.height) <= 2; })).toBe(true);
+      const bottom = await page.evaluate(() => document.getElementById("wwComplianceChartPlot").getBoundingClientRect().bottom);
+      expect(bottom).toBeLessThanOrEqual(g.status.top + 1);
+      // The Functions/Voltage card shares the workspace's bottom edge.
+      expect(Math.abs(g.nav.bottom - g.left.bottom)).toBeLessThanOrEqual(1);
+      expect(Math.abs(g.nav.bottom - g.right.bottom)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("Functions/Voltage card shares the workspace bottom edge, and the chart owns the full panel height (no note strip)", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    const aligned = async () => {
+      const g = await geometry(page);
+      expect(Math.abs(g.nav.bottom - g.left.bottom)).toBeLessThanOrEqual(1);
+      expect(Math.abs(g.nav.bottom - g.right.bottom)).toBeLessThanOrEqual(1);
+      expect(Math.abs(g.nav.bottom - g.shell.bottom)).toBeLessThanOrEqual(1);
+      expect(g.nav.bottom).toBeLessThanOrEqual(g.status.top + 1);
+    };
+    // No notes/legend strip: the Plotly area runs to the panel's bottom padding.
+    const chartFill = () => page.evaluate(() => {
+      const panel = document.getElementById("wwComplianceChartPanel");
+      const wrap = document.getElementById("wwComplianceChartWrap").getBoundingClientRect();
+      const plot = document.getElementById("wwComplianceChartPlot");
+      const pb = parseFloat(getComputedStyle(panel).paddingBottom) || 0;
+      return {
+        gap: panel.getBoundingClientRect().bottom - pb - wrap.bottom,
+        sizeMatches: Math.abs(plot._fullLayout.height - plot.getBoundingClientRect().height) <= 2 && Math.abs(plot._fullLayout.width - plot.getBoundingClientRect().width) <= 2,
+        legendInside: !!plot.querySelector(".legend"), t0Label: [...plot.querySelectorAll(".annotation-text")].some((n) => n.textContent === "Reference t=0"),
+        noteStrips: ["wwComplianceChartLegend", "wwComplianceChartMeasurementNote"].filter((id) => document.getElementById(id)).length,
+        wrapH: wrap.height,
+      };
+    });
+    await expect(page.locator("#wwComplianceChartPanel")).not.toContainText("Measurement aligned");
+    await aligned();
+    let f = await chartFill();
+    expect(f.gap).toBeLessThanOrEqual(1);
+    expect(f.noteStrips).toBe(0);
+    expect(f.legendInside && f.t0Label).toBe(true);
+    // Window resize.
+    for (const size of [{ width: 1280, height: 900 }, { width: 1600, height: 1000 }, { width: 1440, height: 760 }]) {
+      await page.setViewportSize(size);
+      await expect.poll(async () => (await chartFill()).sizeMatches).toBe(true);
+      await aligned();
+      f = await chartFill();
+      expect(f.gap).toBeLessThanOrEqual(1);
+    }
+    // Splitter drag.
+    const h = await page.locator("#wwComplianceSplitHandle").boundingBox();
+    const y = h.y + h.height / 2;
+    await page.mouse.move(h.x + h.width / 2, y);
+    await page.mouse.down();
+    await page.mouse.move(h.x + h.width / 2 + 150, y, { steps: 6 });
+    await page.mouse.up();
+    await expect.poll(async () => (await chartFill()).sizeMatches).toBe(true);
+    await aligned();
+    expect((await chartFill()).gap).toBeLessThanOrEqual(1);
+  });
+
+  test("the left column scrolls on its own while the Comparison Chart stays put; the splitter still works", async ({ page }) => {
+    await uploadMultibay(page);
+    for (const n of ["Alpha", "Bravo", "Charlie", "Delta"]) await addReference(page, { name: `${n} grid requirement`, representation: "phase_ground_rms", unit: "kV" });
+    await openComplianceAndSelect(page, "KPDN1");
+    await expect(page.locator("#wwComplianceChartPlot")).toBeVisible();
+    const before = await geometry(page);
+    expect(before.leftOverflowY).toBe("auto");
+    expect(before.leftOverflow).toBeGreaterThan(20); // the configuration really is taller than the column
+    expect(before.pageScroll).toBeLessThanOrEqual(1);
+
+    await page.locator("#wwComplianceConfigColumn").hover();
+    await page.mouse.wheel(0, 400);
+    await expect.poll(async () => (await geometry(page)).leftTop).toBeGreaterThan(50);
+    const scrolled = await geometry(page);
+    expect(scrolled.pageScroll).toBeLessThanOrEqual(1);
+    expect(Math.abs(scrolled.chart.top - before.chart.top)).toBeLessThanOrEqual(1); // the chart did not move
+    expect(Math.abs(scrolled.chart.bottom - before.chart.bottom)).toBeLessThanOrEqual(1);
+    expect(scrolled.left.top).toBeCloseTo(before.left.top, 0);
+
+    // The handle is reachable while the left column is scrolled, and Plotly follows the drag.
+    const handle = page.locator("#wwComplianceSplitHandle");
+    const h = await handle.boundingBox();
+    const y = h.y + h.height / 2;
+    await page.mouse.move(h.x + h.width / 2, y);
+    await page.mouse.down();
+    await page.mouse.move(h.x + h.width / 2 + 120, y, { steps: 5 });
+    await page.mouse.up();
+    const dragged = await geometry(page);
+    expect(dragged.left.width).toBeGreaterThan(before.left.width + 80);
+    expect(dragged.leftTop).toBeGreaterThan(50); // still scrolled
+    await expect.poll(() => page.evaluate(() => { const el = document.getElementById("wwComplianceChartPlot"); return Math.abs(el._fullLayout.width - el.getBoundingClientRect().width); })).toBeLessThanOrEqual(2);
+    expect(dragged.right.bottom).toBeLessThanOrEqual(dragged.status.top + 1);
+  });
+
+  test("keyboard: focusing an off-screen control scrolls it into view inside the column", async ({ page }) => {
+    await uploadMultibay(page);
+    for (const n of ["Alpha", "Bravo", "Charlie", "Delta"]) await addReference(page, { name: `${n} grid requirement`, representation: "phase_ground_rms", unit: "kV" });
+    await openComplianceAndSelect(page, "KPDN1");
+    await prepareAndWaitReady(page);
+    await waitForMeasurement(page, 3);
+    await page.evaluate(() => { document.getElementById("wwComplianceConfigColumn").scrollTop = 0; });
+    await alignBtn(page, "Select").focus();
+    const inView = await page.evaluate(() => {
+      const col = document.getElementById("wwComplianceConfigColumn").getBoundingClientRect();
+      const b = document.getElementById("wwComplianceAlignSelectBtn").getBoundingClientRect();
+      return b.top >= col.top - 1 && b.bottom <= col.bottom + 1;
+    });
+    expect(inView).toBe(true);
+    expect((await geometry(page)).pageScroll).toBeLessThanOrEqual(1);
+  });
+});
+
+test.describe("UAT refinement -- small screens stack and scroll normally", () => {
+  test.use({ viewport: { width: 900, height: 800 } });
+
+  test("stacked: no resize handle, the left column does not scroll on its own, the page scrolls, the chart stays usable", async ({ page }) => {
+    await uploadMultibay(page);
+    await addReference(page, { representation: "phase_ground_rms", unit: "kV" });
+    await openComplianceAndSelect(page, "KPDN1");
+    await expect(page.locator("#wwComplianceSplitHandle")).toBeHidden();
+    const info = await page.evaluate(() => {
+      const col = document.getElementById("wwComplianceConfigColumn");
+      const p = document.getElementById("pageCompliance");
+      const chart = document.getElementById("wwComplianceChartWrap").getBoundingClientRect();
+      return { colOverflow: getComputedStyle(col).overflowY, pageOverflow: getComputedStyle(p).overflowY, pageScrolls: p.scrollHeight > p.clientHeight, chartHeight: chart.height, chartWidth: chart.width, scrollX: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+    });
+    expect(info.colOverflow).toBe("visible");
+    expect(info.pageOverflow).toBe("auto");
+    expect(info.pageScrolls).toBe(true); // normal page scrolling reaches the chart/results
+    expect(info.chartHeight).toBeGreaterThanOrEqual(400);
+    expect(info.chartWidth).toBeGreaterThan(400);
+    expect(info.scrollX).toBeLessThanOrEqual(1);
+    await prepareAndWaitReady(page);
+    await waitForMeasurement(page, 3);
+    await expectT0Inside(page);
   });
 });

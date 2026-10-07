@@ -1295,3 +1295,21 @@ placeholders) all guard this boundary directly.
   group-aware Per-Unit/Measurement Group model this feature's Bay
   picker and Base display both reuse verbatim.
 - [CURRENT_STATE.md](CURRENT_STATE.md), [HANDOFF.md](HANDOFF.md).
+
+## Fixed-height desktop workspace (UAT refinement of DEC-169, 2026-10-07)
+
+See [DECISIONS.md -- DEC-170 Amendment 1](DECISIONS.md). On desktop (> 1100 px) the two-column workspace
+fills the app's viewport-height page: the configuration column (Reference Layers / Measurement /
+Event Alignment) scrolls on its own, the Comparison Chart stays in view, the status bar
+is never overlapped and the page does not scroll. At <= 1100 px the order stacks (Reference, Measurement,
+Event Alignment, Chart), the handle disappears and the page scrolls normally. The READY
+Measurement state is compact (no repeated name/chip for a lone Reference; `RMS` / `Base` rows; channel
+detail under `Details`); blockers stay visible.
+
+## UI cleanup (DEC-170 Amendment 2, 2026-10-07)
+
+`Available References` replaces `Saved References` (profiles are session-scoped, not durable). The Results
+section is removed entirely (no placeholder) until PASS/FAIL semantics are approved -- the older Results
+rows/wording above are historical. The Functions/Voltage card stretches to the workspace's bottom edge. The
+Comparison Chart has no legend/note strip beneath it and fills the right panel's height (Plotly reflows on
+splitter and window resize). See [DECISIONS.md -- DEC-170 Amendment 2](DECISIONS.md).

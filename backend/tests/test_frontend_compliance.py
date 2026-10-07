@@ -131,7 +131,7 @@ class TestCompliancePageStructure:
         longer a sibling card but a subsection inside Measurement."""
         source = _source()
         page = _compliance_page(source)
-        labels = ["Reference Layers", "Measurement", "Comparison Chart", "Results"]
+        labels = ["Reference Layers", "Measurement", "Comparison Chart"]
         positions = [page.index(f"<h2>{label}</h2>") for label in labels]
         assert positions == sorted(positions)
         assert "<h2>Event Alignment</h2>" not in page
@@ -193,14 +193,36 @@ class TestCompliancePageStructure:
         assert 'id="wwComplianceChartPlot"' in page
         assert "No reference layers to display" in page
 
-    def test_results_shows_neutral_empty_state_no_fake_verdicts(self):
+    def test_results_section_is_removed_until_evaluation_semantics_are_defined(self):
+        """Owner decision (UAT cleanup): no Results card -- not even a
+        placeholder -- until PASS/FAIL semantics are explicitly approved."""
         source = _source()
         page = _compliance_page(source)
-        results = _function_body(page, 'id="wwComplianceResultsPanel"', "</section>")
-        assert "Results will appear after a measurement" in results
-        assert "Compliant" not in results
-        assert "Boundary Breached" not in results
-        assert "Within Capability" not in results
+        assert "<h2>Results</h2>" not in page
+        assert "wwComplianceResultsPanel" not in source
+        assert "wwComplianceResultsEmptyState" not in source
+        assert "ww-compliance-results-panel" not in source
+        assert "Results will appear after" not in source
+        for verdict in ("Compliant", "Boundary Breached", "Within Capability"):
+            assert verdict not in page
+
+    def test_chart_has_no_note_or_legend_strip_below_plotly(self):
+        """The Comparison Chart owns the full right-panel height: the HTML
+        legend list and the measurement/alignment note are gone (Plotly's own
+        legend and the 'Reference t=0' label carry that information)."""
+        source = _source()
+        page = _compliance_page(source)
+        assert 'id="wwComplianceChartLegend"' not in page
+        assert 'id="wwComplianceChartMeasurementNote"' not in page
+        assert "wwRefRenderChartLegend" not in source
+        assert "wwComplianceChartMeasurementMessage" not in source
+        assert "Measurement aligned: recording" not in source
+
+    def test_left_navigation_card_stretches_with_the_workspace(self):
+        """The Functions card shares the shell's height (flex stretch), with no
+        fixed pixel height of its own on desktop."""
+        source = _source()
+        assert "#pageCompliance .ww-analysis-type-nav { min-height: 0; }" in source
 
 
 class TestComplianceOutOfScopeSlice1:
@@ -524,10 +546,8 @@ class TestComplianceOutOfScopeSlice3:
             "wwComplianceDetectEvent", "wwComplianceAutoAlign",
         ):
             assert forbidden not in page
-        results_panel = _function_body(page, 'id="wwComplianceResultsPanel"', "</section>")
-        assert "Compliant" not in results_panel
-        assert "Boundary Breached" not in results_panel
-        assert "Within Capability" not in results_panel
+        for verdict in ("Compliant", "Boundary Breached", "Within Capability"):
+            assert verdict not in page
 
     def test_no_malaysia_grid_code_or_other_named_official_requirement(self):
         """Task section 9's own explicit constraint: no production
@@ -540,12 +560,11 @@ class TestComplianceOutOfScopeSlice3:
         for forbidden in ("Malaysia Grid Code", "MalaysianGridCode", "malaysian_grid_code"):
             assert forbidden not in source
 
-    def test_event_alignment_and_results_remain_placeholders(self):
+    def test_event_alignment_remains_and_results_are_absent(self):
         source = _source()
         page = _compliance_page(source)
         assert "No event reference set" in page
-        results_panel = _function_body(page, 'id="wwComplianceResultsPanel"', "</section>")
-        assert "Results will appear after a measurement" in results_panel
+        assert "wwComplianceResultsPanel" not in source
 
     def test_reference_layers_endpoint_exists_but_no_evaluation_endpoint(self):
         source = _source()
@@ -879,3 +898,17 @@ class TestReferenceLayerCardIdentityFirst:
         assert "text-overflow" not in name_rule and "nowrap" not in name_rule
         assert "overflow-wrap: anywhere" in name_rule
         assert ".ww-ref-layer-row .ww-ref-badge { font-size: 0.5rem;" in source
+
+
+class TestFixedHeightWorkspaceUatRefinement:
+    """UAT refinement of DEC-169: a fixed-height desktop workspace."""
+
+    def test_fixed_height_workspace_with_independent_left_scroll_on_desktop_only(self):
+        source = _source()
+        start = source.index("@media (min-width: 1101px) {\r\n            #pageCompliance { padding" if "\r\n" in source else "@media (min-width: 1101px) {\n            #pageCompliance { padding")
+        block = source[start:source.index("}\n        }" if "\r\n" not in source else "}\r\n        }", start) + 20]
+        assert "overflow-y: auto" in block and ".ww-compliance-config-column" in block
+        assert "min-height: 0" in block
+        # The stacked layout (<= 1100px) is untouched: normal page scrolling, no handle.
+        stacked = _function_body(source, "@media (max-width: 1100px) {\n            .ww-compliance-split" if "\r\n" not in source else "@media (max-width: 1100px) {\r\n            .ww-compliance-split", "}")
+        assert "flex-direction: column" in stacked
