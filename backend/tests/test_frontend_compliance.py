@@ -177,7 +177,10 @@ class TestCompliancePageStructure:
     def test_event_alignment_shows_empty_state_no_automatic_detection(self):
         source = _source()
         page = _compliance_page(source)
-        assert "No event reference set" in page
+        # DEC-170: Compliance-local alignment; starts "Not aligned", never automatic.
+        assert 'id="wwComplianceEventAlignmentEmptyState"' in page
+        assert "Not aligned" in page
+        assert "Select the disturbance event on the Comparison Chart and set it as Reference t=0." in page
         assert "wwComplianceDetectEvent" not in source
         assert "wwComplianceAutoAlign" not in source
 
@@ -504,29 +507,39 @@ class TestComplianceOutOfScopeSlice2:
     kept verbatim as the accurate historical record of what Slice 2
     still excluded, not retroactively rewritten."""
 
-    def test_event_alignment_still_a_disabled_placeholder(self):
+    def test_event_alignment_is_compliance_local_and_set_starts_disabled(self):
+        """Superseded Slice 2 placeholder check (DEC-170): the controls are
+        real; "Set as Reference t=0" stays disabled until a measured point is
+        selected, and no control is worded as Waveform t0."""
         source = _source()
         page = _compliance_page(source)
-        alignment_controls = _function_body(page, 'id="wwComplianceAlignmentControls"', "</div>")
-        # Each of the 3 buttons (Shift-left, t0, Shift-right) carries both
-        # `disabled` and `aria-disabled="true"` -- "disabled" is also a
-        # substring of "aria-disabled", so 3 buttons -> 6 occurrences.
-        assert alignment_controls.count("disabled") == 6
+        controls = _function_body(page, 'id="wwComplianceAlignmentControls"', "</div>")
+        # The explicit selection mode starts with "Select Event Point" (disabled until a
+        # measured trace is plotted); "Set as Reference t=0" only exists while selecting.
+        select_btn = _function_body(controls, 'id="wwComplianceAlignSelectBtn"', "</button>")
+        assert "disabled" in select_btn and "Select Event Point" in select_btn
+        set_btn = _function_body(controls, 'id="wwComplianceAlignSetBtn"', "</button>")
+        assert "hidden" in set_btn and "Set as Reference t=0" in set_btn
+        for label in ("Choose Again", "Change Alignment", "Cancel", "Clear Alignment"):
+            assert label in controls
+        fine = _function_body(page, 'id="wwComplianceAlignmentFineControls"', "</div>")
+        assert "Shift Earlier" in fine and "Shift Later" in fine
+        assert "Set t0 in Waveform" not in source
 
     def test_no_reference_profile_alignment_or_evaluation_logic_added(self):
         source = _source()
         page = _compliance_page(source)
         for forbidden in (
             "wwComplianceEvaluate", "wwComplianceBreach", "wwComplianceMargin",
-            "wwComplianceApplyShift", "wwComplianceSetT0", "wwComplianceDetectEvent", "wwComplianceAutoAlign",
+            "wwComplianceSetT0", "wwComplianceDetectEvent", "wwComplianceAutoAlign",
             "malaysian_grid_code", "MalaysianGridCode",
         ):
             assert forbidden not in page
 
-    def test_still_no_event_alignment_backend_endpoint(self):
+    def test_event_alignment_endpoint_is_compliance_scoped_never_waveform_t0(self):
         source = _source()
         assert "/api/v1/compliance" not in source
-        assert "event-alignment" not in source
+        assert "/compliance/voltage/event-alignment" in source
 
 
 class TestComplianceOutOfScopeSlice3:
@@ -542,7 +555,7 @@ class TestComplianceOutOfScopeSlice3:
         page = _compliance_page(source)
         for forbidden in (
             "wwComplianceEvaluate", "wwRefEvaluate", "wwRefBreach", "wwRefMargin", "wwRefTolerance",
-            "wwComplianceBreach", "wwComplianceMargin", "wwComplianceApplyShift", "wwComplianceSetT0",
+            "wwComplianceBreach", "wwComplianceMargin", "wwComplianceSetT0",
             "wwComplianceDetectEvent", "wwComplianceAutoAlign",
         ):
             assert forbidden not in page
@@ -563,7 +576,7 @@ class TestComplianceOutOfScopeSlice3:
     def test_event_alignment_remains_and_results_are_absent(self):
         source = _source()
         page = _compliance_page(source)
-        assert "No event reference set" in page
+        assert "Not aligned" in page
         assert "wwComplianceResultsPanel" not in source
 
     def test_reference_layers_endpoint_exists_but_no_evaluation_endpoint(self):
@@ -571,7 +584,7 @@ class TestComplianceOutOfScopeSlice3:
         assert "/reference-profiles" in source
         assert "/reference-layers" in source
         assert "/api/v1/compliance" not in source
-        assert "event-alignment" not in source
+        assert "/synchronization/t0" not in source[source.index("function wwComplianceAlignmentUrl"):source.index("function wwComplianceHasTraces")]  # DEC-170
 
 
 class TestComplianceReferenceLayersStructure:
@@ -900,8 +913,22 @@ class TestReferenceLayerCardIdentityFirst:
         assert ".ww-ref-layer-row .ww-ref-badge { font-size: 0.5rem;" in source
 
 
-class TestFixedHeightWorkspaceUatRefinement:
-    """UAT refinement of DEC-169: a fixed-height desktop workspace."""
+class TestAlignmentUxAndFixedWorkspaceUatRefinement:
+    """UAT refinement of DEC-169/DEC-170: guided selection mode, a visible
+    Reference t=0 label, a fixed-height desktop workspace."""
+
+    def test_chart_click_only_selects_in_the_explicit_selection_mode(self):
+        source = _source()
+        fn = _function_body(source, "function wwComplianceOnChartClick(", "// ---- Resizable two-column workspace")
+        assert fn.index("if (!wwComplianceState.aligning) return;") < fn.index("plotEl.data[point.curveNumber]")
+        assert 'plotted.meta.role !== "measurement"' in fn  # trace role, never legend text
+
+    def test_reference_t0_label_is_paper_anchored_inside_the_plot(self):
+        source = _source()
+        fn = _function_body(source, "function wwRefRenderChart() {", "// (Placed after the shared")
+        label = _function_body(fn, 'x: 0, y: 1, xref: "x", yref: "paper", text: "Reference t=0"', 'name: "reference-t0-label"')
+        assert 'yref: "paper"' in label and 'yanchor: "top"' in label and "yshift: -4" in label
+        assert 'yanchor: "bottom"' not in label  # the old, clipped placement
 
     def test_fixed_height_workspace_with_independent_left_scroll_on_desktop_only(self):
         source = _source()
@@ -912,3 +939,12 @@ class TestFixedHeightWorkspaceUatRefinement:
         # The stacked layout (<= 1100px) is untouched: normal page scrolling, no handle.
         stacked = _function_body(source, "@media (max-width: 1100px) {\n            .ww-compliance-split" if "\r\n" not in source else "@media (max-width: 1100px) {\r\n            .ww-compliance-split", "}")
         assert "flex-direction: column" in stacked
+
+    def test_guided_alignment_markup(self):
+        page = _compliance_page(_source())
+        assert 'id="wwComplianceAlignSelectBtn"' in page and "Select Event Point" in page
+        assert "Select the disturbance event on the Comparison Chart." in page
+        assert "Set that point as Reference t=0." in page
+        assert "<span>Reference t=0</span>" in page and "Reference position" not in page
+        assert 'id="wwComplianceChartSelectBanner"' in page
+        assert "Click a measured trace at the disturbance start" in page

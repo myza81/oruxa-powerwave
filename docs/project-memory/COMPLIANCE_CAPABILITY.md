@@ -850,8 +850,8 @@ RESULTS
   shared per-unit resolvers; kV/V with exact V <-> kV scaling only). De-duplicated by
   measurement product; each trace lists the layers it serves. Names follow the bay's
   phase convention; identity is `meta`, never the legend text.
-- **Time axis:** `x = source_time + alignment_offset - t0` (the workspace's own t0, set
-  in Waveform); no t0 -> the recording's own axis, and the UI says so.
+- **Time axis:** the endpoint returns the measurement's own recording time. *(DEC-169 originally
+  used the Waveform t0 here; superseded by DEC-170 -- see "Compliance Event Alignment" below.)*
 - Endpoint: `GET .../compliance/voltage/measurement-traces?measurement_group_id=`
   (read-only). Services: `compliance_series` (shared read + unit conversion),
   `compliance_trace_service`.
@@ -1295,6 +1295,35 @@ placeholders) all guard this boundary directly.
   group-aware Per-Unit/Measurement Group model this feature's Bay
   picker and Base display both reuse verbatim.
 - [CURRENT_STATE.md](CURRENT_STATE.md), [HANDOFF.md](HANDOFF.md).
+
+## Compliance Event Alignment (DEC-170, 2026-10-06)
+
+> Compliance Event Alignment is an assessment-local horizontal offset between the selected
+> measurement and the Reference Layers. It is independent from Waveform/Time Group t0.
+> Reference Layers remain fixed; only the measured trace(s) shift.
+
+- **Math:** `comparison_time = measurement_time - measurement_event_origin_s`; the offset is
+  `-origin`. The recording is never mutated; values are never recomputed.
+- **UI (Measurement card, Event Alignment) -- guided, explicit selection mode (UAT refinement,
+  2026-10-07):** `Not aligned` + the two steps + `Select Event Point` -> `Selecting event point...` (chart
+  banner "Click a measured trace at the disturbance start", crosshair, `Cancel`/Escape) -> click a measured
+  trace (nearest sample; Reference curves refused) -> marker + dotted guide + the exact time, with
+  `Set as Reference t=0` / `Choose Again` / `Cancel` (nothing commits on the first click) ->
+  `✓ Event aligned` with Measurement event / Reference t=0 0.000 s / Alignment offset. `Change Alignment`
+  re-enters the mode (the current alignment stays until a replacement is set; `Cancel` keeps it) /
+  `Clear Alignment`; `Shift Earlier` / `Shift Later` by 1 ms (Earlier = measurement moves left). The
+  chart notes say whether the measurement is on its original recording time axis or `aligned: recording
+  X s -> Reference t=0`. The dashed `Reference t=0` guide and its label are always drawn inside the plot.
+- **Scope:** one alignment per selected measurement (Each Phase / Min / Max traces shift together);
+  applies to every active Reference. Not a prerequisite for readiness.
+- **Lifecycle:** backend slot per workspace (`ComplianceAlignmentRegistry`); cleared on Bay /
+  Measurement Group change, source removal and workspace reset; kept across Reference changes; not
+  persisted in the browser.
+- **Independent of Waveform t0** (no shared state or imports); tested in both directions.
+- Endpoints: `GET/PUT/DELETE .../compliance/voltage/event-alignment`. Code:
+  `app/domain/compliance_alignment.py`, `services/compliance_alignment_{registry,service}.py`.
+- Tests: `backend/tests/test_compliance_alignment_api.py`, `browser-tests/compliance_workspace.spec.js`
+  (DEC-170 blocks, real Plotly x-data).
 
 ## Fixed-height desktop workspace (UAT refinement of DEC-169, 2026-10-07)
 

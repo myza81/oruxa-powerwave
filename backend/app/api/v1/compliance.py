@@ -40,6 +40,7 @@ from app.schemas.compliance import (
     ComplianceBaseOut,
     ComplianceCreatedChannelOut,
     ComplianceEventAlignmentOut,
+    ComplianceEventAlignmentSetRequest,
     ComplianceMeasurementTraceOut,
     ComplianceMeasurementTracesOut,
     ComplianceMemberReadinessOut,
@@ -58,6 +59,15 @@ from app.schemas.compliance import (
 from app.schemas.calculated_channel import ChannelRefOut
 from app.schemas.phase_display import PhaseDisplayOut
 from app.schemas.source import ErrorOut
+from app.domain.compliance_alignment import FINE_SHIFT_STEP_S
+from app.services.compliance_alignment_service import (
+    AlignmentView,
+    clear_alignment,
+    current_alignment,
+    get_alignment,
+    set_alignment,
+    view_of,
+)
 from app.services.compliance_series import Registries
 from app.services.compliance_trace_service import build_measurement_traces
 from app.services.compliance_readiness_service import (
@@ -84,6 +94,7 @@ router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["compliance
 _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "invalid_workspace": status.HTTP_400_BAD_REQUEST,
     "unknown_compliance_quantity": status.HTTP_400_BAD_REQUEST,
+    "invalid_compliance_alignment": status.HTTP_400_BAD_REQUEST,
     "measurement_group_not_found": status.HTTP_404_NOT_FOUND,
     "compliance_measurement_group_not_voltage_kind": status.HTTP_400_BAD_REQUEST,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -202,6 +213,14 @@ def get_compliance_voltage_measurement(
     return _result_to_out(result, measurement_group_id=measurement_group_id)
 
 
+def _alignment_out(view: AlignmentView) -> ComplianceEventAlignmentOut:
+    return ComplianceEventAlignmentOut(
+        measurement_group_id=view.measurement_group_id, aligned=view.aligned,
+        measurement_event_origin_s=view.measurement_event_origin_s, alignment_offset_s=view.alignment_offset_s,
+        fine_shift_step_s=FINE_SHIFT_STEP_S, source_id=view.source_id,
+    )
+
+
 def _readiness_to_out(result: ReadinessResult) -> ComplianceReadinessOut:
     return ComplianceReadinessOut(
         measurement_group_id=result.measurement_group_id,
@@ -303,6 +322,13 @@ def get_compliance_voltage_measurement_traces(
         readiness = evaluate_readiness(
             workspace_id=workspace_id, measurement_group_id=measurement_group_id, **_readiness_deps(request),
         )
+        alignment = view_of(
+            current_alignment(
+                workspace_id, measurement_group_id, registry=state.compliance_alignment_registry,
+                group_registry=state.measurement_group_registry, source_registry=state.workspace_registry,
+            ),
+            measurement_group_id,
+        )
         result = build_measurement_traces(
             workspace_id=workspace_id, measurement_group_id=measurement_group_id, readiness=readiness,
             registries=Registries(
@@ -310,7 +336,7 @@ def get_compliance_voltage_measurement_traces(
                 per_unit=state.per_unit_registry, group=state.measurement_group_registry,
                 voltage_config=state.voltage_group_config_registry, current_config=state.current_group_config_registry,
             ),
-            sync_registry=state.synchronization_registry,
+            alignment=alignment,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -328,9 +354,56 @@ def get_compliance_voltage_measurement_traces(
             ComplianceSkippedReferenceOut(layer_id=k.layer_id, profile_name=k.profile_name, reason=k.reason)
             for k in result.skipped
         ],
-        event=ComplianceEventAlignmentOut(
-            time_group_id=result.event.time_group_id, t0_workspace_time=result.event.t0_workspace_time,
-            aligned=result.event.aligned,
-        ),
+        alignment=_alignment_out(result.alignment),
         phase_display=PhaseDisplayOut.from_domain(readiness.phase_display),
     )
+
+
+@router.get("/compliance/voltage/event-alignment", response_model=ComplianceEventAlignmentOut)
+def get_compliance_event_alignment(workspace_id: str, measurement_group_id: str, request: Request) -> ComplianceEventAlignmentOut:
+    """DEC-170: the Compliance-local alignment of the selected measurement. Not
+    Waveform t0 -- this reads and writes no Waveform / Time Group state."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    state = request.app.state
+    try:
+        view = get_alignment(
+            workspace_id, measurement_group_id, registry=state.compliance_alignment_registry,
+            group_registry=state.measurement_group_registry, source_registry=state.workspace_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return _alignment_out(view)
+
+
+@router.put("/compliance/voltage/event-alignment", response_model=ComplianceEventAlignmentOut)
+def put_compliance_event_alignment(
+    workspace_id: str, body: ComplianceEventAlignmentSetRequest, request: Request,
+) -> ComplianceEventAlignmentOut:
+    """Sets the recording time of the disturbance as Reference t = 0 (snapped to
+    the nearest actual sample for a point selection; exact for a fine shift)."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    state = request.app.state
+    try:
+        view = set_alignment(
+            workspace_id, body.measurement_group_id, measurement_event_origin_s=body.measurement_event_origin_s,
+            snap=body.snap_to_sample, registry=state.compliance_alignment_registry,
+            group_registry=state.measurement_group_registry, source_registry=state.workspace_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return _alignment_out(view)
+
+
+@router.delete("/compliance/voltage/event-alignment", response_model=ComplianceEventAlignmentOut)
+def delete_compliance_event_alignment(workspace_id: str, measurement_group_id: str, request: Request) -> ComplianceEventAlignmentOut:
+    """Clears the alignment: back to the measurement's own recording time."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    state = request.app.state
+    try:
+        view = clear_alignment(
+            workspace_id, measurement_group_id, registry=state.compliance_alignment_registry,
+            group_registry=state.measurement_group_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return _alignment_out(view)

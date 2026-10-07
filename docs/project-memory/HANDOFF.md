@@ -14,6 +14,33 @@ Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 bottom; chart notes/legend strip removed so the Comparison Chart fills the right panel. Frontend/tests/docs
 only; validated with the full backend + Playwright suites on the exact committed tree.
 
+**Compliance alignment UX + fixed-height workspace (DEC-170 Amendment 1), owner UAT passed 2026-10-07, committed.**
+Frontend/tests/docs only. `Select Event Point` is an explicit mode (chart clicks do nothing otherwise);
+preview before `Set as Reference t=0`; `Change`/`Cancel`/`Choose Again`/Escape; `Reference t=0` label is
+paper-anchored inside the plot; desktop Compliance is a fixed-height workspace with an independently
+scrolling left column (stacked + page-scroll at <= 1100 px); the READY Measurement state is compact. UAT:
+(1) the `Reference t=0` label is visible; (2) click `Select Event Point`; (3) click a measured trace; (4) check
+the preview marker/time; (5) `Set as Reference t=0`; (6) `Change Alignment` then `Cancel`; (7) Shift
+Earlier/Later; (8) `Clear Alignment`; (9) scroll only the left column -- the chart stays; (10) drag the
+splitter; (11) shrink the window; (12) narrow screen stacks. Known: the selection-mode cursor is Plotly's
+own zoom crosshair at rest too (only the outline/banner differ visibly).
+
+**Compliance-local Event Alignment (DEC-170), owner UAT passed 2026-10-07, committed.** Independent of Waveform
+t0: `comparison_time = measurement_time - measurement_event_origin_s`; Reference fixed, only measured
+traces shift. UAT: (1) KPDN1 + Each Phase Reference, Prepare -> "Not aligned" with the original
+recording axis; (2) click a point on a measured trace -> marker, selected time shown, Set enabled;
+(3) Set as Reference t=0 -> traces shift, Reference unchanged, summary + chart note; (4) Shift
+Earlier/Later (1 ms) move left/right; (5) Change Alignment then Cancel; (6) Clear Alignment -> back
+to the original axis; (7) add/remove a Reference -> alignment kept; (8) change Bay -> cleared; (9)
+set/clear Waveform t0 -> Compliance chart unaffected, and vice versa; (10) resize the workspace.
+
+**Known open follow-ups after the Compliance UAT push (none started):** (1) the Operating Envelope editor cannot
+store a vertical edge as a boundary's first/last point pair -- a limitation of the existing segment model, not an
+approved product rule; (2) the backend does not yet reject a duplicate active Reference Layer (only the UI prevents
+it -- "Already added"); (3) there is no persistent Reference Library: custom Reference Profiles stay
+workspace/session scoped and in-memory (durable only through import/export); (4) PASS/FAIL / Results evaluation is
+intentionally deferred -- there is no Results section until evaluation semantics are approved.
+
 **Reference Layer card redesigned (UX refinement, owner UAT passed 2026-10-07, committed).** Full name leads and
 wraps; category pill 0.5rem; assessment beneath; the "Not yet applicable" pill is gone from the card
 (presentation-only; measurement status stays in the Measurement area). Frontend/tests/docs only.
@@ -26,7 +53,7 @@ narrow the window; (2) Each Phase pu Reference on KPDN1 -> Prepare -> Configure 
 three V<sub>RY</sub>/V<sub>YB</sub>/V<sub>BR</sub> traces in pu; (3) Single, (4) Minimum,
 (5) Maximum References; (6) a kV Reference (kV values); (7) pu without a base -> Action
 Required, no pu trace; (8) MCRS with a Line-Line Reference -> incompatible, no trace;
-(9) set t0 in Waveform -> the measured trace shifts with the Reference's event time.
+(9) *(superseded by DEC-170 -- Waveform t0 no longer affects Compliance; see below.)*
 Known: positive sequence cannot be plotted yet; a pu base on a still-"suggested" group
 must be confirmed (the group editor's Save does it).
 

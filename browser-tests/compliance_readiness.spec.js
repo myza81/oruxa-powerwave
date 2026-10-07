@@ -88,8 +88,8 @@ test.describe("DEC-167 -- workflow order and structure", () => {
     const alignment = page.locator("#wwComplianceMeasurementCard #wwComplianceEventAlignmentSection");
     await expect(alignment).toBeVisible();
     await expect(alignment).toContainText("Event Alignment");
-    await expect(alignment.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("No event reference set");
-    await expect(alignment.locator("#wwComplianceAlignmentControls button")).toHaveCount(3);
+    await expect(alignment.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("Not aligned");
+    await expect(alignment.locator("#wwComplianceAlignSetBtn")).toBeDisabled();
   });
 
   test("there is no independent Assessment Quantity, Unit or Representation selector in Measurement", async ({ page }) => {

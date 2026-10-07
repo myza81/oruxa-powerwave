@@ -29,11 +29,12 @@ channels + unit): two References that require the identical
 `Line-Line RMS / Each Phase / pu` product share ONE set of traces, each trace
 listing every layer it serves.
 
-**Event time.** `x = source_time + alignment_offset - t0`, the workspace's own
-formula (`app.services.synchronization_service`: the source's effective Time
-Group placement and that group's t0). When no t0 is set, `x` is the source's
-time with the placement only -- exactly the Waveform behaviour -- and the
-response says `aligned = false` so the UI can say so.
+**Time axis.** `x` is the measurement's OWN recording time (the grounding
+source's elapsed seconds), unshifted. The Compliance Event Alignment (DEC-170,
+`compliance_alignment_service`) is returned alongside as
+`comparison_time = x - measurement_event_origin_s` and is applied by the caller
+when it plots, so changing the alignment never recomputes or refetches a trace.
+Waveform t0 / Time Groups / source synchronization play no part here.
 
 **Display size.** The shared peak-preserving reduction (`_clip_and_reduce`,
 the Waveform pipeline) bounds every trace; arrays are only read, never
@@ -48,10 +49,9 @@ import numpy as np
 
 from app.domain.calculated_channel import ChannelRef
 from app.domain.compliance_requirement import READINESS_READY
+from app.services.compliance_alignment_service import AlignmentView
 from app.services.compliance_readiness_service import ReadinessResult, evaluate_readiness
 from app.services.compliance_series import Registries, load_series
-from app.services.synchronization_registry import SynchronizationRegistry
-from app.services.synchronization_service import get_source_alignment, get_t0
 from app.services.waveform_service import DEFAULT_POINT_BUDGET, _clip_and_reduce
 
 TRACE_KIND_MEMBER = "member"
@@ -73,13 +73,6 @@ class MeasurementTrace:
 
 
 @dataclass(slots=True)
-class EventAlignmentInfo:
-    time_group_id: str | None
-    t0_workspace_time: float | None
-    aligned: bool
-
-
-@dataclass(slots=True)
 class SkippedReference:
     layer_id: str
     profile_name: str
@@ -91,7 +84,7 @@ class TraceResult:
     measurement_group_id: str
     traces: list[MeasurementTrace] = field(default_factory=list)
     skipped: list[SkippedReference] = field(default_factory=list)
-    event: EventAlignmentInfo = field(default_factory=lambda: EventAlignmentInfo(None, None, False))
+    alignment: AlignmentView | None = None
     readiness_status: str = "no_reference"
 
 
@@ -106,26 +99,12 @@ def build_measurement_traces(
     measurement_group_id: str,
     readiness: ReadinessResult,
     registries: Registries,
-    sync_registry: SynchronizationRegistry,
+    alignment: AlignmentView,
 ) -> TraceResult:
     """Traces for every READY reference of an already-evaluated readiness."""
-    result = TraceResult(measurement_group_id=measurement_group_id, readiness_status=readiness.status)
+    result = TraceResult(measurement_group_id=measurement_group_id, readiness_status=readiness.status, alignment=alignment)
     cache: dict[tuple, tuple] = {}
     by_id: dict[str, MeasurementTrace] = {}
-    shifts: dict[str, tuple[float, float | None, str]] = {}
-
-    def event_shift(source_id: str) -> tuple[float, float | None, str]:
-        if source_id not in shifts:
-            alignment = get_source_alignment(
-                workspace_id=workspace_id, source_id=source_id, registry=sync_registry,
-                source_registry=registries.source,
-            )
-            t0 = get_t0(
-                workspace_id=workspace_id, source_id=source_id, registry=sync_registry,
-                source_registry=registries.source,
-            )
-            shifts[source_id] = (alignment.effective_alignment_offset_s, t0.t0_workspace_time, t0.time_group_id)
-        return shifts[source_id]
 
     def series_for(ref: ChannelRef, unit: str):
         key = (ref, unit)
@@ -175,10 +154,8 @@ def build_measurement_traces(
                 if reference.layer_id not in existing.layer_ids:
                     existing.layer_ids.append(reference.layer_id)
                 continue
-            offset, t0, group_id = event_shift(source_id)
-            event_time = np.asarray(time, dtype=float) + offset - (t0 if t0 is not None else 0.0)
             _, _, _, representation, out_time, out_values = _clip_and_reduce(
-                event_time, np.asarray(values, dtype=float), start_time=None, end_time=None,
+                np.asarray(time, dtype=float), np.asarray(values, dtype=float), start_time=None, end_time=None,
                 point_budget=DEFAULT_POINT_BUDGET,
             )
             trace = MeasurementTrace(
@@ -188,5 +165,4 @@ def build_measurement_traces(
             )
             by_id[trace_id] = trace
             result.traces.append(trace)
-            result.event = EventAlignmentInfo(group_id, t0, t0 is not None)
     return result

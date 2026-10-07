@@ -162,20 +162,18 @@ class TestNothingIsGuessed:
         assert _traces(client, "KPDN1")["traces"] == []  # RMS still needs preparing
 
 
-class TestEventAlignment:
-    def test_traces_are_on_the_workspace_event_time_axis(self, client):
+class TestTimeAxisIsTheMeasurementsOwn:
+    """DEC-170: traces carry the measurement's own recording time. The
+    Compliance Event Alignment (assessment-local, NOT Waveform t0) is returned
+    beside them -- see test_compliance_alignment_api.py for its lifecycle and
+    its independence from Waveform t0."""
+
+    def test_x_is_the_recording_time_and_the_alignment_is_reported_separately(self, client):
         _add_reference(client, representation="phase_ground_rms", unit="kV")
         _prepare(client, "KPDN1")
-        before = _traces(client, "KPDN1")
-        assert before["event"]["aligned"] is False and before["event"]["t0_workspace_time"] is None
-        group = _groups(client)["KPDN1"]
-        t0 = 0.5
-        response = client.put(
-            f"/api/v1/workspaces/{WS}/synchronization/t0", json={"source_id": group["source_id"], "t0_workspace_time": t0},
-        )
-        assert response.status_code == 200, response.text
-        after = _traces(client, "KPDN1")
-        assert after["event"]["aligned"] is True and after["event"]["t0_workspace_time"] == t0
-        for a, b in zip(sorted(before["traces"], key=lambda t: t["id"]), sorted(after["traces"], key=lambda t: t["id"])):
-            np.testing.assert_allclose(np.asarray(b["x"]), np.asarray(a["x"]) - t0)
-            assert a["y"] == b["y"]  # only the time axis moves
+        payload = _traces(client, "KPDN1")
+        assert payload["alignment"]["aligned"] is False and payload["alignment"]["measurement_event_origin_s"] is None
+        source = client.app.state.workspace_registry.get(WS, _groups(client)["KPDN1"]["source_id"])
+        times = source.record.waveform_data["time"].to_numpy()
+        assert payload["traces"][0]["x"][0] == float(times[0])
+        assert payload["traces"][0]["x"][-1] == float(times[-1])

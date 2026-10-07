@@ -7122,6 +7122,19 @@
         .ww-compliance-member-list { list-style: none; margin: 0 0 0 106px; padding: 0; font-size: 0.68rem; color: var(--text-dim); }
         .ww-compliance-critical { color: #a33; font-weight: 600; background: rgba(170, 51, 51, 0.08); border-left: 3px solid #a33; padding: 4px 8px; }
         .ww-compliance-critical .ww-compliance-readiness-label { color: #a33; }
+        /* Event Alignment (Compliance-local, DEC-170). */
+        .ww-compliance-alignment-status { margin: 0; font-size: 0.8rem; font-weight: 700; }
+        .ww-compliance-alignment-status[data-aligned="true"] { color: #2f7a46; }
+        .ww-compliance-alignment-selected,
+        .ww-compliance-measurement-row-like { display: flex; justify-content: space-between; gap: 10px; font-size: 0.72rem; color: var(--text-dim); }
+        .ww-compliance-alignment-selected strong,
+        .ww-compliance-measurement-row-like strong { color: var(--text); }
+        .ww-compliance-alignment-summary { display: flex; flex-direction: column; gap: 3px; }
+        .ww-compliance-alignment-summary[hidden],
+        .ww-compliance-alignment-selected[hidden],
+        .ww-compliance-alignment-controls[hidden],
+        .ww-compliance-alignment-controls button[hidden] { display: none; }
+        .ww-compliance-alignment-controls { align-items: center; }
         .ww-compliance-readiness-actions { display: flex; flex-wrap: wrap; gap: 6px; }
         /* A READY reference is a compact summary; channel-level traceability sits behind Details. */
         .ww-compliance-details > summary { cursor: pointer; font-size: 0.68rem; color: var(--text-dim); margin: 2px 0; user-select: none; }
@@ -7160,8 +7173,35 @@
         .ww-compliance-chart-wrap .empty-state {
             padding: 0;
         }
+        /* Guided Event Alignment: numbered steps while "Not aligned", an explicit
+           selection mode (crosshair + banner over the chart) while selecting. */
+        .ww-compliance-alignment-steps { margin: 0; padding-left: 18px; font-size: 0.72rem; color: var(--text-dim); }
+        .ww-compliance-alignment-steps[hidden] { display: none; }
+        .ww-compliance-chart-select-banner {
+            position: absolute;
+            top: 26px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 2;
+            margin: 0;
+            pointer-events: none;
+            white-space: nowrap;
+            max-width: 92%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding: 4px 10px;
+            border-radius: var(--radius);
+            background: var(--accent-wash-soft);
+            color: var(--accent);
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+        .ww-compliance-chart-select-banner[hidden] { display: none; }
         .ww-compliance-chart-wrap { position: relative; }
         .ww-compliance-chart-wrap > #wwComplianceChartPlot { position: absolute; inset: 0; }
+        .ww-compliance-chart-wrap.ww-compliance-selecting { outline: 2px solid var(--accent-dim); outline-offset: -2px; }
+        .ww-compliance-chart-wrap.ww-compliance-selecting .nsewdrag,
+        .ww-compliance-chart-wrap.ww-compliance-selecting .draglayer { cursor: crosshair !important; }
 
         /* Desktop / two-column mode: a fixed-height workspace that fills what is left
            of the app's own viewport-height page (the shell, header and status bar are
@@ -11846,18 +11886,43 @@
                                          selected measurement/disturbance, not of the
                                          Reference Profile, so it lives here as a
                                          subsection (a divider, not a nested card).
-                                         Markup and behaviour are exactly the former
-                                         standalone card's: still the Slice 1 neutral
-                                         empty state with disabled placeholders -- no
-                                         alignment logic exists yet. -->
+                                         Its behaviour (DEC-170) is Compliance-local
+                                         and independent of Waveform t0. -->
                                     <div class="ww-compliance-alignment-section" id="wwComplianceEventAlignmentSection">
                                         <h3 class="ww-compliance-subheading">Event Alignment</h3>
-                                        <p class="empty-state" id="wwComplianceEventAlignmentEmptyState">No event reference set</p>
-                                        <p class="hint" id="wwComplianceEventAlignmentHint" hidden></p>
+                                        <!-- DEC-170: Compliance-LOCAL alignment -- an assessment-local
+                                             horizontal offset between the selected measurement and the
+                                             Reference Layers. It is NOT Waveform t0 and shares no state
+                                             with it. The Reference never moves; only the measured
+                                             trace(s) shift. -->
+                                        <p class="ww-compliance-alignment-status" id="wwComplianceEventAlignmentEmptyState" role="status">Not aligned</p>
+                                        <!-- Guided flow: the hint (and the numbered steps) change with the
+                                             state -- Not aligned / Selecting / Point selected / Aligned. -->
+                                        <ol class="ww-compliance-alignment-steps" id="wwComplianceEventAlignmentSteps">
+                                            <li>Select the disturbance event on the Comparison Chart.</li>
+                                            <li>Set that point as Reference t=0.</li>
+                                        </ol>
+                                        <p class="hint" id="wwComplianceEventAlignmentHint">Select the disturbance event on the Comparison Chart and set it as Reference t=0.</p>
+                                        <div class="ww-compliance-alignment-selected" id="wwComplianceAlignmentSelected" hidden>
+                                            <span>Selected measurement time</span><strong id="wwComplianceAlignSelectedValue">—</strong>
+                                        </div>
+                                        <div class="ww-compliance-alignment-summary" id="wwComplianceAlignmentSummary" hidden>
+                                            <div class="ww-compliance-measurement-row-like"><span>Measurement event</span><strong id="wwComplianceAlignMeasurementEvent">—</strong></div>
+                                            <div class="ww-compliance-measurement-row-like"><span>Reference t=0</span><strong id="wwComplianceAlignReferencePosition">—</strong></div>
+                                            <div class="ww-compliance-measurement-row-like"><span>Alignment offset</span><strong id="wwComplianceAlignOffset">—</strong></div>
+                                        </div>
                                         <div class="ww-compliance-alignment-controls" id="wwComplianceAlignmentControls">
-                                            <button type="button" class="secondary" disabled aria-disabled="true" title="Not implemented yet -- Slice 2">◂ Shift</button>
-                                            <button type="button" class="secondary" disabled aria-disabled="true" title="Not implemented yet -- Slice 2">t0</button>
-                                            <button type="button" class="secondary" disabled aria-disabled="true" title="Not implemented yet -- Slice 2">Shift ▸</button>
+                                            <button type="button" id="wwComplianceAlignSelectBtn" disabled>Select Event Point</button>
+                                            <button type="button" id="wwComplianceAlignSetBtn" hidden>Set as Reference t=0</button>
+                                            <button type="button" class="secondary" id="wwComplianceAlignAgainBtn" hidden>Choose Again</button>
+                                            <button type="button" class="secondary" id="wwComplianceAlignChangeBtn" hidden>Change Alignment</button>
+                                            <button type="button" class="secondary" id="wwComplianceAlignCancelBtn" hidden>Cancel</button>
+                                            <button type="button" class="secondary" id="wwComplianceAlignClearBtn" hidden>Clear Alignment</button>
+                                        </div>
+                                        <div class="ww-compliance-alignment-controls" id="wwComplianceAlignmentFineControls" hidden>
+                                            <button type="button" class="secondary" id="wwComplianceAlignEarlierBtn" title="Move the measurement earlier (left) by 1 ms">◀ Shift Earlier</button>
+                                            <span class="hint" id="wwComplianceAlignStepLabel">1 ms</span>
+                                            <button type="button" class="secondary" id="wwComplianceAlignLaterBtn" title="Move the measurement later (right) by 1 ms">Shift Later ▶</button>
                                         </div>
                                     </div>
                                 </section>
@@ -11885,6 +11950,8 @@
                                      (mid-conversation product
                                      requirement). -->
                                 <div class="ww-compliance-chart-wrap" id="wwComplianceChartWrap">
+                                    <!-- Selection-mode guidance, overlaid on the chart (no layout shift). -->
+                                    <p class="ww-compliance-chart-select-banner" id="wwComplianceChartSelectBanner" role="status" hidden>Click a measured trace at the disturbance start</p>
                                     <p class="empty-state" id="wwComplianceChartEmptyState">No reference layers to display -- use "+ Add Reference" to add one.</p>
                                     <div id="wwComplianceChartPlot" style="width:100%;height:100%;" hidden></div>
                                 </div>
@@ -50246,6 +50313,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // (GET .../measurement-traces); null until a Reference is READY.
             traces: null,
             tracesSeq: 0,
+            // DEC-170: the Compliance-local Event Alignment of the selected
+            // measurement (backend-owned, NOT Waveform t0), the measured point the
+            // engineer has selected but not yet committed, and the explicit
+            // "Select Event Point" / "Change Alignment" selection mode (aligning).
+            alignment: null,
+            alignSelected: null,
+            aligning: false,
+            alignNotice: "",
             // The configuration / chart column split, kept for the page's
             // lifetime only (runtime state -- no persistence layer).
             splitRatio: 0.38,
@@ -50391,6 +50466,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwComplianceOnGroupChange(groupId) {
+            // A different recording context: the old alignment timestamp is never
+            // assumed to apply (see wwComplianceResetAlignmentForGroupChange()).
+            wwComplianceResetAlignmentForGroupChange(wwComplianceState.selectedGroupId);
             wwComplianceState.selectedGroupId = groupId || "";
             wwComplianceRenderMeasurementCardState();
             wwComplianceRefreshReadiness();
@@ -54433,6 +54511,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwComplianceOnGroupChange(event.target.value);
         });
         wwComplianceWireSplit();
+        document.getElementById("wwComplianceAlignSetBtn").addEventListener("click", () => wwComplianceSetSelectedAsReferenceZero());
+        document.getElementById("wwComplianceAlignClearBtn").addEventListener("click", () => wwComplianceCommitAlignment("DELETE"));
+        document.getElementById("wwComplianceAlignSelectBtn").addEventListener("click", () => wwComplianceSetSelecting(true, "wwComplianceAlignCancelBtn"));
+        document.getElementById("wwComplianceAlignChangeBtn").addEventListener("click", () => wwComplianceSetSelecting(true, "wwComplianceAlignCancelBtn"));
+        document.getElementById("wwComplianceAlignAgainBtn").addEventListener("click", () => wwComplianceSetSelecting(true, "wwComplianceAlignCancelBtn"));
+        document.getElementById("wwComplianceAlignCancelBtn").addEventListener("click", () => {
+            const aligned = !!(wwComplianceState.alignment && wwComplianceState.alignment.aligned);
+            wwComplianceSetSelecting(false, aligned ? "wwComplianceAlignChangeBtn" : "wwComplianceAlignSelectBtn");
+        });
+        // Escape leaves the selection mode (the committed alignment is untouched).
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape" || !wwComplianceState.aligning) return;
+            if (document.getElementById("pageCompliance").hidden) return;
+            const aligned = !!(wwComplianceState.alignment && wwComplianceState.alignment.aligned);
+            wwComplianceSetSelecting(false, aligned ? "wwComplianceAlignChangeBtn" : "wwComplianceAlignSelectBtn");
+        });
+        document.getElementById("wwComplianceAlignEarlierBtn").addEventListener("click", () => wwComplianceFineShift("earlier"));
+        document.getElementById("wwComplianceAlignLaterBtn").addEventListener("click", () => wwComplianceFineShift("later"));
         document.getElementById("wwCompliancePrepareBtn").addEventListener("click", () => wwCompliancePrepareMeasurement());
         document.getElementById("wwComplianceConfigureBaseBtn").addEventListener("click", () => wwComplianceOpenConfigureBase());
         document.getElementById("wwComplianceManageGroupsBtn").addEventListener("click", () => {
@@ -55881,8 +55977,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 category: t.category,
                 meta: { role: "reference", layer_id: t.layer_id, profile_id: t.profile_id, boundary: t.boundary },
             }));
+            // DEC-170: the measured traces are offset by the Compliance alignment;
+            // the Reference traces above are never moved.
+            const origin = wwComplianceAlignmentOrigin();
             const measuredTraces = measured.map((trace, index) => ({
-                x: trace.x,
+                x: origin === 0 ? trace.x : trace.x.map((v) => v - origin),
                 y: trace.y,
                 mode: "lines",
                 type: "scatter",
@@ -55902,13 +56001,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             let xMin = chart.x_min;
             let xMax = chart.x_max;
             for (const trace of measured) {
-                const finite = trace.x.filter((v) => Number.isFinite(v));
+                const finite = trace.x.filter((v) => Number.isFinite(v)).map((v) => v - origin);
                 if (!finite.length) continue;
                 xMin = xMin == null ? finite[0] : Math.min(xMin, finite[0]);
                 xMax = xMax == null ? finite[finite.length - 1] : Math.max(xMax, finite[finite.length - 1]);
             }
             const layout = {
-                margin: { l: 52, r: 16, t: 10, b: 40 },
+                margin: { l: 52, r: 16, t: 14, b: 40 },
                 paper_bgcolor: "transparent",
                 plot_bgcolor: "transparent",
                 font: { color: colors.text, size: 11 },
@@ -55926,9 +56025,43 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 hovermode: "closest",
                 // Keeps the engineer's own zoom/pan while the data are re-sent.
                 uirevision: "compliance-chart",
+                shapes: [],
+                annotations: [],
             };
-            Plotly.react(plotEl, referenceTraces.concat(measuredTraces), layout, { displayModeBar: false, responsive: true });
+            const extraTraces = [];
+            // Feedback for the alignment workflow: the selected point, and Reference t=0
+            // once aligned. Both are subtle and carry explicit roles (never legend text).
+            const selection = wwComplianceState.alignSelected;
+            const selectedTrace = selection && measured.find((t) => t.id === selection.traceId);
+            if (selectedTrace) {
+                const sx = selection.rawTime - origin;
+                extraTraces.push({
+                    x: [sx], y: [selection.y], mode: "markers", type: "scatter", showlegend: false, hoverinfo: "skip",
+                    marker: { size: 9, symbol: "diamond", color: "#d62728", line: { width: 1, color: "#fff" } },
+                    name: "Selected event point", meta: { role: "alignment-selection", measurement_time: selection.rawTime },
+                });
+                layout.shapes.push({ type: "line", xref: "x", yref: "paper", x0: sx, x1: sx, y0: 0, y1: 1, line: { color: "#d62728", width: 1, dash: "dot" } });
+            }
+            // Reference t=0 is always marked (aligned or not -- it is the Reference's own time
+            // zero). The label is anchored to the top of the PLOTTING AREA in paper
+            // coordinates (never to a data y value) and sits just inside it, so Plotly cannot
+            // clip it and it does not depend on the y-axis range, autoscale or the trace set.
+            // Near the right edge it flips to the left of the guide so it stays inside too.
+            const zeroInRange = xMin == null || xMax == null || (xMin <= 0 && xMax >= 0);
+            if (zeroInRange) {
+                const nearRight = xMin != null && xMax != null && xMax > xMin && (0 - xMin) / (xMax - xMin) > 0.8;
+                layout.shapes.push({ type: "line", xref: "x", yref: "paper", x0: 0, x1: 0, y0: 0, y1: 1, line: { color: colors.text, width: 1.5, dash: "dash" }, opacity: 0.6, name: "reference-t0" });
+                layout.annotations.push({
+                    x: 0, y: 1, xref: "x", yref: "paper", text: "Reference t=0", showarrow: false,
+                    xanchor: nearRight ? "right" : "left", xshift: nearRight ? -5 : 5,
+                    yanchor: "top", yshift: -4,
+                    font: { size: 10, color: colors.text }, name: "reference-t0-label",
+                });
+            }
+            Plotly.react(plotEl, referenceTraces.concat(measuredTraces, extraTraces), layout, { displayModeBar: false, responsive: true });
             wwRefChartReady = true;
+            if (plotEl.removeAllListeners) plotEl.removeAllListeners("plotly_click");
+            plotEl.on("plotly_click", wwComplianceOnChartClick);
 
             wwRefRenderChartNote(chart);
         }
@@ -55947,50 +56080,228 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const groupId = wwComplianceState.selectedGroupId;
             const anyReady = !!(readiness && groupId && readiness.references.some((r) => r.status === "ready"));
             const requestSeq = ++wwComplianceState.tracesSeq;
-            if (!anyReady) {
-                wwComplianceState.traces = null;
+            const apply = (payload) => {
+                wwComplianceState.traces = payload;
+                if (payload && payload.alignment) wwComplianceState.alignment = payload.alignment;
+                // A selected-but-uncommitted point only survives while its trace exists.
+                const sel = wwComplianceState.alignSelected;
+                if (sel && !(payload && payload.traces.some((t) => t.id === sel.traceId))) wwComplianceState.alignSelected = null;
                 wwRefRenderChart();
                 wwComplianceRenderEventAlignment();
-                return;
-            }
+            };
+            if (!anyReady) { apply(null); return; }
             wwComplianceFetchJson(
                 apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
                 "/compliance/voltage/measurement-traces?" + new URLSearchParams({ measurement_group_id: groupId }).toString()
             ).then(
-                (payload) => {
-                    if (requestSeq !== wwComplianceState.tracesSeq) return;
-                    wwComplianceState.traces = payload;
-                    wwRefRenderChart();
-                    wwComplianceRenderEventAlignment();
-                },
-                () => {
-                    if (requestSeq !== wwComplianceState.tracesSeq) return;
-                    wwComplianceState.traces = null;
-                    wwRefRenderChart();
-                    wwComplianceRenderEventAlignment();
-                }
+                (payload) => { if (requestSeq === wwComplianceState.tracesSeq) apply(payload); },
+                () => { if (requestSeq === wwComplianceState.tracesSeq) apply(null); }
             );
         }
 
-        // The Event Alignment subsection reports the event reference (t0) the
-        // plotted measurement uses -- the workspace's own t0 (set in Waveform),
-        // never a second alignment engine.
-        function wwComplianceRenderEventAlignment() {
-            const emptyState = document.getElementById("wwComplianceEventAlignmentEmptyState");
-            const hint = document.getElementById("wwComplianceEventAlignmentHint");
+        // ---- Compliance Event Alignment (DEC-170) -- LOCAL to Compliance.
+        //
+        // comparison_time = measurement_time - measurement_event_origin_s.
+        // The origin is the recording time of the disturbance the engineer marks
+        // as "Reference t=0"; the Reference never moves, only the measured traces
+        // shift. It is owned by the backend (ComplianceAlignmentRegistry) and has
+        // NOTHING to do with Waveform t0 / Time Groups / Cursor A: no function
+        // below reads or writes any of that. Changing it only re-offsets x
+        // coordinates already fetched -- no trace is recomputed or refetched.
+        function wwComplianceAlignmentUrl(groupId) {
+            return apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                "/compliance/voltage/event-alignment" + (groupId ? "?" + new URLSearchParams({ measurement_group_id: groupId }).toString() : "");
+        }
+
+        function wwComplianceAlignmentOrigin() {
+            const a = wwComplianceState.alignment;
+            return a && a.aligned ? a.measurement_event_origin_s : 0;
+        }
+
+        // Seconds to 3 decimals (more only where a fine shift made them necessary).
+        function wwComplianceFormatSeconds(value) {
+            let text = Number(value).toFixed(6).replace(/0+$/, "");
+            const decimals = text.length - text.indexOf(".") - 1;
+            if (decimals < 3) text += "0".repeat(3 - decimals);
+            return text + " s";
+        }
+        function wwComplianceFormatSignedSeconds(value) {
+            const text = wwComplianceFormatSeconds(Math.abs(value));
+            return (value < 0 ? "-" : (value > 0 ? "+" : "")) + text;
+        }
+
+        function wwComplianceHasTraces() {
             const traces = wwComplianceState.traces;
-            const aligned = !!(traces && traces.event && traces.event.aligned);
+            return !!(traces && traces.traces && traces.traces.length);
+        }
+
+        // Selection mode is EXPLICIT: chart clicks only pick an event point while it is
+        // on (state.aligning). It shows as a banner + crosshair + outline on the chart.
+        function wwComplianceSyncSelectionMode() {
+            const selecting = !!(wwComplianceState.aligning && wwComplianceHasTraces());
+            const wrap = document.getElementById("wwComplianceChartWrap");
+            wrap.classList.toggle("ww-compliance-selecting", selecting);
+            wrap.dataset.selecting = selecting ? "true" : "false";
+            document.getElementById("wwComplianceChartSelectBanner").hidden = !selecting;
+        }
+
+        function wwComplianceRenderEventAlignment() {
+            const status = document.getElementById("wwComplianceEventAlignmentEmptyState");
+            const steps = document.getElementById("wwComplianceEventAlignmentSteps");
+            const hint = document.getElementById("wwComplianceEventAlignmentHint");
+            const selected = document.getElementById("wwComplianceAlignmentSelected");
+            const summary = document.getElementById("wwComplianceAlignmentSummary");
+            const selectBtn = document.getElementById("wwComplianceAlignSelectBtn");
+            const setBtn = document.getElementById("wwComplianceAlignSetBtn");
+            const againBtn = document.getElementById("wwComplianceAlignAgainBtn");
+            const changeBtn = document.getElementById("wwComplianceAlignChangeBtn");
+            const cancelBtn = document.getElementById("wwComplianceAlignCancelBtn");
+            const clearBtn = document.getElementById("wwComplianceAlignClearBtn");
+            const fine = document.getElementById("wwComplianceAlignmentFineControls");
+            const state = wwComplianceState;
+            const hasTraces = wwComplianceHasTraces();
+            const aligned = !!(state.alignment && state.alignment.aligned) && hasTraces;
+            if (state.aligning && !hasTraces) state.aligning = false;
+            const selecting = !!state.aligning;
+            const picked = selecting && !!state.alignSelected;
+
+            status.dataset.aligned = aligned ? "true" : "false";
+            status.dataset.mode = selecting ? (picked ? "selected" : "selecting") : (aligned ? "aligned" : "idle");
+            status.textContent = selecting
+                ? (picked ? "Event point selected" : "Selecting event point...")
+                : (aligned ? "✓ Event aligned" : "Not aligned");
+
+            summary.hidden = !(aligned && !selecting);
             if (aligned) {
-                emptyState.textContent = "Event reference (t0) = " + wwRefEnvFmt(traces.event.t0_workspace_time) + " s, set in Waveform";
-                hint.hidden = true;
+                const a = state.alignment;
+                document.getElementById("wwComplianceAlignMeasurementEvent").textContent = wwComplianceFormatSeconds(a.measurement_event_origin_s);
+                document.getElementById("wwComplianceAlignReferencePosition").textContent = wwComplianceFormatSeconds(a.reference_position_s);
+                document.getElementById("wwComplianceAlignOffset").textContent = wwComplianceFormatSignedSeconds(a.alignment_offset_s);
+                document.getElementById("wwComplianceAlignStepLabel").textContent = Math.round(a.fine_shift_step_s * 1000) + " ms";
+            }
+
+            // The two numbered steps explain the idea while idle; the hint line carries
+            // the mode-specific instruction (or why alignment is not available yet).
+            steps.hidden = !(hasTraces && !aligned && !selecting);
+            let hintText = "";
+            if (!hasTraces) hintText = "Alignment becomes available once a Reference and a ready measurement are plotted on the Comparison Chart.";
+            else if (picked) hintText = "Check the selected point, then set it as Reference t=0.";
+            else if (selecting) hintText = state.alignNotice || "Click a measured trace where the disturbance starts.";
+            hint.hidden = !hintText;
+            hint.textContent = hintText;
+            selected.hidden = !picked;
+            if (picked) document.getElementById("wwComplianceAlignSelectedValue").textContent = wwComplianceFormatSeconds(state.alignSelected.rawTime);
+
+            selectBtn.hidden = selecting || aligned;
+            selectBtn.disabled = !hasTraces;
+            setBtn.hidden = !selecting;
+            setBtn.disabled = !picked;
+            againBtn.hidden = !picked;
+            changeBtn.hidden = !(aligned && !selecting);
+            cancelBtn.hidden = !selecting;
+            clearBtn.hidden = !aligned;
+            fine.hidden = !(aligned && !selecting);
+            wwComplianceSyncSelectionMode();
+        }
+
+        // Enter / leave the explicit selection mode. Leaving never touches a committed
+        // alignment, so Cancel keeps the previous one; the chart redraws without the preview.
+        function wwComplianceSetSelecting(on, focusId) {
+            wwComplianceState.aligning = !!on;
+            wwComplianceState.alignSelected = null;
+            wwComplianceState.alignNotice = "";
+            wwRefRenderChart();
+            wwComplianceRenderEventAlignment();
+            if (focusId) {
+                const target = document.getElementById(focusId);
+                if (target && !target.hidden && !target.disabled) target.focus();
+            }
+        }
+
+        async function wwComplianceCommitAlignment(method, body) {
+            const groupId = wwComplianceState.selectedGroupId;
+            if (!groupId) return;
+            try {
+                const view = method === "DELETE"
+                    ? await wwRefFetchJson(wwComplianceAlignmentUrl(groupId), { method: "DELETE" })
+                    : await wwRefFetchJson(wwComplianceAlignmentUrl(null), {
+                        method: "PUT", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ measurement_group_id: groupId, ...body }),
+                    });
+                wwComplianceState.alignment = view;
+            } catch (error) {
+                const hint = document.getElementById("wwComplianceEventAlignmentHint");
+                hint.hidden = false;
+                hint.textContent = error.message || "Could not update the alignment.";
                 return;
             }
-            emptyState.textContent = "No event reference set";
-            const hasTraces = !!(traces && traces.traces && traces.traces.length);
-            hint.hidden = !hasTraces;
-            hint.textContent = hasTraces
-                ? "The measurement is plotted on the recording's own time axis. Set t0 in Waveform (Cursor A as t=0) to align it with the Reference."
-                : "";
+            wwComplianceState.alignSelected = null;
+            wwComplianceState.aligning = false;
+            wwComplianceState.alignNotice = "";
+            wwRefRenderChart();
+            wwComplianceRenderEventAlignment();
+            const next = document.getElementById(wwComplianceState.alignment && wwComplianceState.alignment.aligned ? "wwComplianceAlignChangeBtn" : "wwComplianceAlignSelectBtn");
+            if (next && !next.hidden && !next.disabled) next.focus();
+        }
+
+        function wwComplianceSetSelectedAsReferenceZero() {
+            const sel = wwComplianceState.alignSelected;
+            if (!sel) return;
+            // The selected point IS a real sample of the measured trace; the backend
+            // additionally snaps to the nearest recorded sample (tie -> earlier).
+            wwComplianceCommitAlignment("PUT", { measurement_event_origin_s: sel.rawTime, snap_to_sample: true });
+        }
+
+        // Shift Earlier moves the measured event LEFT on the chart (x decreases) =
+        // the origin increases; Shift Later moves it right = the origin decreases.
+        function wwComplianceFineShift(direction) {
+            const a = wwComplianceState.alignment;
+            if (!a || !a.aligned) return;
+            const step = a.fine_shift_step_s;
+            const origin = a.measurement_event_origin_s + (direction === "earlier" ? step : -step);
+            wwComplianceCommitAlignment("PUT", { measurement_event_origin_s: origin, snap_to_sample: false });
+        }
+
+        // Changing the Bay / Measurement Group: never assume the old timestamp
+        // exists on the new recording -- clear it (best effort; the backend also
+        // treats another group's alignment as "not aligned").
+        function wwComplianceResetAlignmentForGroupChange(previousGroupId) {
+            wwComplianceState.alignment = null;
+            wwComplianceState.alignSelected = null;
+            wwComplianceState.aligning = false;
+            wwComplianceState.alignNotice = "";
+            if (previousGroupId) {
+                wwRefFetchJson(wwComplianceAlignmentUrl(previousGroupId), { method: "DELETE" }).catch(() => { /* nothing to clear */ });
+            }
+        }
+
+        // Clicking a MEASURED trace selects that sample as the event point. Only
+        // measurement traces count (never a Reference); the point resolved is the
+        // actual sample the click landed on, so the rule is deterministic.
+        function wwComplianceOnChartClick(eventData) {
+            // Ordinary chart clicks never pick an alignment point: only the explicit
+            // "Select Event Point" mode does.
+            if (!wwComplianceState.aligning) return;
+            const point = eventData && eventData.points && eventData.points[0];
+            if (!point) return;
+            const plotEl = document.getElementById("wwComplianceChartPlot");
+            const plotted = plotEl.data[point.curveNumber];
+            if (!plotted || !plotted.meta || plotted.meta.role !== "measurement") {
+                // A Reference curve (or the preview marker) is never a valid event point.
+                if (plotted && plotted.meta && plotted.meta.role === "reference") {
+                    wwComplianceState.alignNotice = "That is a Reference curve. Click a measured trace instead.";
+                    wwComplianceRenderEventAlignment();
+                }
+                return;
+            }
+            const trace = (wwComplianceState.traces && wwComplianceState.traces.traces || []).find((t) => t.id === plotted.meta.trace_id);
+            if (!trace) return;
+            const index = point.pointNumber;
+            if (!Number.isInteger(index) || index < 0 || index >= trace.x.length) return;
+            wwComplianceState.alignSelected = { traceId: trace.id, index, rawTime: trace.x[index], y: trace.y[index] };
+            wwComplianceState.alignNotice = "";
+            wwRefRenderChart();
+            wwComplianceRenderEventAlignment();
         }
 
         // ---- Resizable two-column workspace. Left: configuration; right:
