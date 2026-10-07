@@ -25052,3 +25052,23 @@ integration; tests `test_compliance_trace_api.py` (+ readiness updates),
    update [HANDOFF.md](HANDOFF.md).
 4. If a decision is later superseded, change its `Status` to `Superseded` and
    add a new entry — do not delete or silently rewrite the old one.
+
+### DEC-170 Amendment 2 -- Compliance UI cleanup (owner-approved, 2026-10-07)
+
+1. **`Saved References` is renamed `Available References`** in the Add Reference dialog. Custom Compliance
+   Reference Profiles are workspace/session scoped and in-memory (durable only through import/export), so
+   "Saved" was misleading. No behaviour or persistence change (search, Add, Already added, View/Edit/
+   Duplicate/Export/Remove, Create Custom Reference, Import Reference are unchanged).
+2. **The Results section is removed** from the Compliance UI (card and placeholder), until evaluation
+   criteria, breach/tolerance/margin semantics and verdict semantics are explicitly approved. No PASS/FAIL
+   was added; backend/domain concepts are untouched. Active workflow: Reference Layers -> Measurement ->
+   Event Alignment -> Comparison Chart.
+3. **The Functions/Voltage navigation card shares the Compliance workspace's bottom edge** (same flex-stretch
+   parent as the workspace; no separate pixel height), including after window/splitter resize.
+4. **The Comparison Chart owns the full right-panel height.** The HTML legend list and the measurement/
+   alignment note beneath Plotly are removed (identity is in Plotly's legend and the Reference Layers card;
+   alignment state/offset is in the Event Alignment section; `Reference t=0` is labelled in the chart).
+   The conditional "Not plotted (different unit ...)" warning is kept (hidden unless a layer is off-axis).
+
+Tests: `browser-tests/compliance_workspace.spec.js`, `compliance.spec.js`, `compliance_readiness.spec.js`,
+`reference_profiles.spec.js`, `backend/tests/test_frontend_compliance.py`.

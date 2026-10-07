@@ -9,6 +9,11 @@ Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
 ## What was most recently done
 
+**Compliance UI cleanup (DEC-170 Amendment 2), owner UAT passed 2026-10-07, committed.** `Saved References` ->
+`Available References`; Results section removed (no PASS/FAIL); Functions/Voltage card aligned to the workspace
+bottom; chart notes/legend strip removed so the Comparison Chart fills the right panel. Frontend/tests/docs
+only; validated with the full backend + Playwright suites on the exact committed tree.
+
 **Reference Layer card redesigned (UX refinement, owner UAT passed 2026-10-07, committed).** Full name leads and
 wraps; category pill 0.5rem; assessment beneath; the "Not yet applicable" pill is gone from the card
 (presentation-only; measurement status stays in the Measurement area). Frontend/tests/docs only.

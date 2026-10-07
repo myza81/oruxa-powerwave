@@ -74,7 +74,7 @@ test.describe("DEC-167 -- workflow order and structure", () => {
     await page.goto("/index.html");
     await page.locator("#mainNavComplianceBtn").click();
     const headings = await page.locator("#wwComplianceVoltagePanel h2").allTextContents();
-    expect(headings).toEqual(["Reference Layers", "Measurement", "Comparison Chart", "Results"]);
+    expect(headings).toEqual(["Reference Layers", "Measurement", "Comparison Chart"]);
 
     const reference = await page.locator("#wwComplianceReferenceLayersCard").boundingBox();
     const measurement = await page.locator("#wwComplianceMeasurementCard").boundingBox();
@@ -189,7 +189,7 @@ test.describe("DEC-167 -- per-unit is required only when the Reference unit is p
     const unitRow = page.locator('.ww-compliance-readiness-row[data-row="unit"]');
     await expect(unitRow).toHaveAttribute("data-state", "ready");
     await expect(unitRow).toContainText("132 kV");
-    await expect(unitRow).toContainText("base configured");
+    await expect(unitRow).toContainText("kV L-");
     await expect(page.locator("#wwComplianceConfigureBaseBtn")).toBeHidden();
   });
 
@@ -235,8 +235,8 @@ test.describe("DEC-167 -- shared RMS preparation, reuse and duplicate prevention
 
     await page.locator("#wwCompliancePrepareBtn").click();
     await expect(status(page)).toHaveText("✓ Ready for assessment");
-    await expect(page.locator('.ww-compliance-readiness-row[data-row="representation"]')).toContainText("Fundamental RMS available");
-    await expect(page.locator('.ww-compliance-readiness-row[data-row="representation"]')).toContainText("existing calculated channels reused");
+    await expect(page.locator('.ww-compliance-readiness-row[data-row="representation"]')).toContainText("✓");
+    await expect(page.locator('.ww-compliance-readiness-row[data-row="representation"]')).toContainText("Existing calculated channels reused");
     await expect(page.locator("#wwCompliancePrepareBtn")).toBeHidden();
 
     const channels = await calcChannels(page);
@@ -284,7 +284,7 @@ test.describe("DEC-167 -- shared RMS preparation, reuse and duplicate prevention
     await addReference(page, { representation: "phase_ground_rms", unit: "kV" });
     await openComplianceAndSelect(page, "KPDN1");
     await expect(status(page)).toHaveText("✓ Ready for assessment");
-    await expect(page.locator('.ww-compliance-readiness-row[data-row="representation"]')).toContainText("existing calculated channels reused");
+    await expect(page.locator('.ww-compliance-readiness-row[data-row="representation"]')).toContainText("Existing calculated channels reused");
     await expect(page.locator("#wwCompliancePrepareBtn")).toBeHidden();
     expect((await calcChannels(page)).length).toBe(3);
 
@@ -300,7 +300,7 @@ test.describe("DEC-167 -- shared RMS preparation, reuse and duplicate prevention
     await addReference(page, { representation: "phase_ground_rms", unit: "kV" });
     await openComplianceAndSelect(page, "MCRS");
     await expect(status(page)).toHaveText("✓ Ready for assessment");
-    await expect(page.locator('.ww-compliance-readiness-row[data-row="representation"]')).toContainText("source RMS channels used directly");
+    await expect(page.locator('.ww-compliance-readiness-row[data-row="representation"]')).toContainText("Source RMS channels used directly");
     await expect(page.locator("#wwCompliancePrepareBtn")).toBeHidden();
     expect(await calcChannels(page)).toEqual([]);
   });

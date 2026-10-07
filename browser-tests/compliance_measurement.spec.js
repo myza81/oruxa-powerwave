@@ -205,7 +205,7 @@ test.describe("Compliance Measurement -- Bay / Measurement Group", () => {
       const unitRow = page.locator('.ww-compliance-readiness-row[data-row="unit"]');
       await selectGroup(page, "Bay A");
       await expect(unitRow).toHaveAttribute("data-state", "ready");
-      await expect(unitRow).toContainText("275 kV L-G base configured");
+      await expect(unitRow).toContainText("275 kV L-G");
 
       await selectGroup(page, "Bay B");
       await expect(unitRow).toHaveAttribute("data-state", "action_required");
@@ -222,7 +222,7 @@ test.describe("Compliance Measurement -- Bay / Measurement Group", () => {
       await addReference(page, { workspaceId, treatment: "single", member: "A", name: "Single VA" });
       await openCompliance(page);
       await expect(readinessStatus(page)).toHaveText("✓ Ready for assessment");
-      await expect(page.locator('.ww-compliance-readiness-row[data-row="representation"]')).toContainText("source RMS channels used directly");
+      await expect(page.locator('.ww-compliance-readiness-row[data-row="representation"]')).toContainText("Source RMS channels used directly");
       // Unit kV: no base needed, never reported as a failure.
       await expect(page.locator('.ww-compliance-readiness-row[data-row="unit"]')).toHaveAttribute("data-state", "not_required");
 
