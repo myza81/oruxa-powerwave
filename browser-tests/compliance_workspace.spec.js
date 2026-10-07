@@ -396,32 +396,247 @@ test.describe("DEC-169 -- measurement traces on the Comparison Chart", () => {
 });
 
 // ============================================================ event alignment
-test.describe("DEC-169 -- event alignment of the plotted measurement", () => {
-  test("the measured trace follows the workspace t0, like the Reference's event-relative axis", async ({ page }) => {
-    await uploadMultibay(page);
-    await addReference(page, { representation: "phase_ground_rms", unit: "kV" });
-    await openComplianceAndSelect(page, "KPDN1");
-    await prepareAndWaitReady(page);
-    await waitForMeasurement(page, 3);
-    const raw = (await chartTraces(page)).measurement[0];
-    await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("No event reference set");
-    await expect(page.locator("#wwComplianceEventAlignmentHint")).toContainText("recording's own time axis");
+// DEC-170: Compliance-LOCAL alignment. comparison_time = measurement_time - origin.
+// It is not Waveform t0: no test below needs, or is affected by, a Waveform t0.
+const alignBtn = (page, id) => page.locator(`#wwComplianceAlign${id}Btn`);
 
-    const groups = await (await page.request.get(await wsUrl(page, "/compliance/voltage/measurement-groups"))).json();
-    const kpdn1 = groups.find((g) => g.display_name === "KPDN1 VOLTAGE");
-    const t0 = 0.5;
-    const put = await page.request.put(await wsUrl(page, "/synchronization/t0"), { data: { source_id: kpdn1.source_id, t0_workspace_time: t0 } });
-    expect(put.ok()).toBeTruthy();
+async function plotMeasuredAndReady(page, { treatment = "each_phase" } = {}) {
+  await uploadMultibay(page);
+  await addReference(page, { representation: "phase_ground_rms", unit: "kV", treatment });
+  await openComplianceAndSelect(page, "KPDN1");
+  await prepareAndWaitReady(page);
+  await waitForMeasurement(page, treatment === "each_phase" ? 3 : 1);
+}
+
+// Alignment is an explicit mode: "Select Event Point" (or "Change Alignment") turns it on.
+async function enterSelectionMode(page) {
+  const wrap = page.locator("#wwComplianceChartWrap");
+  if ((await wrap.getAttribute("data-selecting")) === "true") return;
+  await (await alignBtn(page, "Change").isVisible() ? alignBtn(page, "Change") : alignBtn(page, "Select")).click();
+  await expect(wrap).toHaveAttribute("data-selecting", "true");
+  // The chart is re-laid-out (outline, no size change) -- wait until Plotly's box matches the DOM.
+  await expect.poll(() => page.evaluate(() => {
+    const el = document.getElementById("wwComplianceChartPlot");
+    return Math.abs(el._fullLayout.width - el.getBoundingClientRect().width) <= 2 && Math.abs(el._fullLayout.height - el.getBoundingClientRect().height) <= 2;
+  })).toBe(true);
+}
+
+// A REAL mouse click on sample `index` of measured trace `traceIndex` (in selection mode).
+async function clickMeasuredSample(page, traceIndex, index) {
+  await enterSelectionMode(page);
+  const point = await page.evaluate(({ traceIndex, index }) => {
+    const el = document.getElementById("wwComplianceChartPlot");
+    const trace = el.data.filter((t) => t.meta && t.meta.role === "measurement")[traceIndex];
+    const full = el._fullLayout;
+    const x = full.xaxis._offset + full.xaxis.l2p(trace.x[index]);
+    const y = full.yaxis._offset + full.yaxis.l2p(trace.y[index]);
+    const r = el.getBoundingClientRect();
+    return { x: r.left + x, y: r.top + y, raw: index / 1000 };
+  }, { traceIndex, index });
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.click(point.x, point.y);
+  // A real click resolves to the nearest sample (a pixel is coarser than 1 ms): the selected
+  // marker is the truth for what was picked.
+  const marker = () => page.evaluate(() => {
+    const m = document.getElementById("wwComplianceChartPlot").data.find((t) => t.meta && t.meta.role === "alignment-selection");
+    return m ? m.meta.measurement_time : null;
+  });
+  await expect.poll(marker).not.toBeNull();
+  const picked = await marker();
+  expect(Math.abs(picked - point.raw)).toBeLessThan(0.01);
+  return picked;
+}
+const sec = (v) => `${v.toFixed(3)} s`;
+const idx = (v) => Math.round(v * 1000); // 1 kHz fixture: sample index == milliseconds
+
+const xs = async (page) => (await chartTraces(page)).measurement.map((t) => t.x);
+
+test.describe("DEC-170 -- Compliance Event Alignment", () => {
+  test("not aligned: traces on the original recording axis, Set disabled, no Waveform wording", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("Not aligned");
+    await expect(page.locator("#wwComplianceEventAlignmentSteps")).toContainText("Select the disturbance event on the Comparison Chart.");
+    await expect(page.locator("#wwComplianceEventAlignmentSteps")).toContainText("Set that point as Reference t=0.");
+    await expect(alignBtn(page, "Select")).toBeVisible();
+    await expect(alignBtn(page, "Select")).toBeEnabled();
+    await expect(alignBtn(page, "Set")).toBeHidden();
+    await expect(page.locator("#pageCompliance")).not.toContainText("t0 in Waveform");
+    const t = (await chartTraces(page)).measurement[0];
+    expect(t.x[0]).toBe(0);
+  });
+
+  test("selecting a measured point (real click) shows its recording time and a marker; Set aligns it to Reference t=0; the Reference never moves", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    const referenceBefore = (await chartTraces(page)).reference.map((t) => t.x);
+    const raw = await clickMeasuredSample(page, 0, 550);
+    await expect(page.locator("#wwComplianceAlignSelectedValue")).toHaveText(sec(raw));
+    await expect(alignBtn(page, "Set")).toBeEnabled();
+    const marker = await page.evaluate(() => document.getElementById("wwComplianceChartPlot").data.filter((t) => t.meta && t.meta.role === "alignment-selection"));
+    expect(marker.length).toBe(1);
+    expect(marker[0].x[0]).toBeCloseTo(raw, 9);
+    // Selecting alone changes nothing yet.
+    expect((await xs(page))[0][0]).toBe(0);
+
+    await alignBtn(page, "Set").click();
+    await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("✓ Event aligned");
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(raw));
+    await expect(page.locator("#wwComplianceAlignReferencePosition")).toHaveText("0.000 s");
+    await expect(page.locator("#wwComplianceAlignOffset")).toHaveText(`-${sec(raw)}`);
+    const after = await chartTraces(page);
+    // The picked sample now sits at comparison time 0.
+    expect(after.measurement[0].x[idx(raw)]).toBeCloseTo(0, 9);
+    expect(after.measurement[0].x[0]).toBeCloseTo(-raw, 9);
+    expect(after.reference.map((t) => t.x)).toEqual(referenceBefore); // Reference stays fixed
+    // No recalculation: y untouched.
+    expect(after.measurement[0].y.length).toBeGreaterThan(100);
+  });
+
+  test("Each Phase: every trace shifts by the same offset", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    const before = await xs(page);
+    const raw = await clickMeasuredSample(page, 0, 600); // clicking a phase trace aligns the measurement as a whole
+    await alignBtn(page, "Set").click();
+    await expect(page.locator("#wwComplianceAlignOffset")).toHaveText(`-${sec(raw)}`);
+    const after = await xs(page);
+    expect(after.length).toBe(3);
+    for (let i = 0; i < 3; i++) {
+      expect(after[i].length).toBe(before[i].length);
+      for (const k of [0, 100, after[i].length - 1]) expect(after[i][k]).toBeCloseTo(before[i][k] - raw, 9);
+    }
+  });
+
+  test("fine shift: Earlier moves the measurement left by 1 ms, Later right; origin and offset reported exactly", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    const raw = await clickMeasuredSample(page, 0, 550);
+    await alignBtn(page, "Set").click();
+    await expect(page.locator("#wwComplianceAlignmentFineControls")).toBeVisible();
+    await expect(page.locator("#wwComplianceAlignStepLabel")).toHaveText("1 ms");
+    const base = (await xs(page))[0].slice(0, 5);
+
+    await alignBtn(page, "Earlier").click();
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(raw + 0.001));
+    let now = (await xs(page))[0].slice(0, 5);
+    for (let i = 0; i < 5; i++) expect(now[i]).toBeCloseTo(base[i] - 0.001, 9); // visibly LEFT (smaller x)
+
+    await alignBtn(page, "Later").click();
+    await alignBtn(page, "Later").click();
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(raw - 0.001));
+    now = (await xs(page))[0].slice(0, 5);
+    for (let i = 0; i < 5; i++) expect(now[i]).toBeCloseTo(base[i] + 0.001, 9); // visibly RIGHT (larger x)
+    await expect(page.locator("#wwComplianceAlignOffset")).toHaveText(`-${sec(raw - 0.001)}`);
+  });
+
+  test("Change Alignment re-selects (Cancel keeps the old one); Clear returns to the original recording axis", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    const first = await clickMeasuredSample(page, 0, 550);
+    await alignBtn(page, "Set").click();
+    await alignBtn(page, "Change").click();
+    await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("Selecting event point...");
+    await expect(alignBtn(page, "Set")).toBeDisabled();
+    await alignBtn(page, "Cancel").click();
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(first));
+
+    await alignBtn(page, "Change").click();
+    const second = await clickMeasuredSample(page, 0, 800);
+    await alignBtn(page, "Set").click();
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(second));
+    expect((await xs(page))[0][idx(second)]).toBeCloseTo(0, 9);
+
+    await alignBtn(page, "Clear").click();
+    await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("Not aligned");
+    const cleared = (await xs(page))[0];
+    expect(cleared[0]).toBe(0);
+    expect(cleared[idx(second)]).toBeCloseTo(second, 9);
+  });
+
+  test("Minimum / Maximum: the single reduced trace shifts", async ({ page }) => {
+    await plotMeasuredAndReady(page, { treatment: "minimum" });
+    const picked = await clickMeasuredSample(page, 0, 600);
+    await alignBtn(page, "Set").click();
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(picked));
+    expect((await xs(page))[0][idx(picked)]).toBeCloseTo(0, 9);
+  });
+
+  test("a second Reference stays fixed and the same alignment applies against all of them; changing the Reference keeps it", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    const picked = await clickMeasuredSample(page, 0, 550);
+    await alignBtn(page, "Set").click();
+    const first = (await chartTraces(page)).reference.map((t) => t.x);
+    await addReference(page, { name: "Second", representation: "phase_ground_rms", unit: "kV" });
     await page.reload();
     await openComplianceAndSelect(page, "KPDN1");
     await waitForMeasurement(page, 3);
-    const aligned = (await chartTraces(page)).measurement[0];
-    expect(aligned.x[0]).toBeCloseTo(raw.x[0] - t0, 9);
-    expect(aligned.x[aligned.x.length - 1]).toBeCloseTo(raw.x[raw.x.length - 1] - t0, 9);
-    expect(aligned.y).toEqual(raw.y);
-    await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toContainText("Event reference (t0) = 0.5 s");
-    await expect(page.locator("#wwComplianceEventAlignmentHint")).toBeHidden();
-    await expect(page.locator("#wwComplianceChartMeasurementNote")).toBeHidden();
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(picked));
+    const traces = await chartTraces(page);
+    expect(traces.reference.length).toBeGreaterThan(first.length);
+    expect(traces.measurement[0].x[idx(picked)]).toBeCloseTo(0, 9);
+    for (const r of traces.reference) expect(r.x[0]).toBe(0);
+  });
+
+  test("changing the Bay / Measurement Group clears the alignment (documented)", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    await clickMeasuredSample(page, 0, 550);
+    await alignBtn(page, "Set").click();
+    await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("✓ Event aligned");
+    await page.locator("#wwComplianceGroupSelect").selectOption({ label: "MCRS VOLTAGE" });
+    await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("Not aligned");
+    await page.locator("#wwComplianceGroupSelect").selectOption({ label: "KPDN1 VOLTAGE" });
+    await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("Not aligned"); // never silently restored
+  });
+
+  test("alignment is not stored in the browser", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    await clickMeasuredSample(page, 0, 550);
+    await alignBtn(page, "Set").click();
+    const keys = await page.evaluate(() => Object.keys(localStorage).filter((k) => /align/i.test(k)));
+    expect(keys).toEqual([]);
+  });
+});
+
+test.describe("DEC-170 -- independent from Waveform t0", () => {
+  async function kpdn1Source(page) {
+    const groups = await (await page.request.get(await wsUrl(page, "/compliance/voltage/measurement-groups"))).json();
+    return groups.find((g) => g.display_name === "KPDN1 VOLTAGE").source_id;
+  }
+
+  test("setting, changing and clearing Waveform t0 never moves the Compliance alignment or traces", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    const source = await kpdn1Source(page);
+    const raw = (await xs(page))[0];
+    // Waveform t0 first: the measured traces do not move, no alignment appears.
+    expect((await page.request.put(await wsUrl(page, "/synchronization/t0"), { data: { source_id: source, t0_workspace_time: 0.5 } })).ok()).toBeTruthy();
+    await page.reload();
+    await openComplianceAndSelect(page, "KPDN1");
+    await waitForMeasurement(page, 3);
+    await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("Not aligned");
+    expect((await xs(page))[0]).toEqual(raw);
+
+    // Compliance alignment, then change Waveform t0 again, then clear it.
+    const picked = await clickMeasuredSample(page, 0, 700);
+    await alignBtn(page, "Set").click();
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(picked));
+    const aligned = (await xs(page))[0];
+    await page.request.put(await wsUrl(page, "/synchronization/t0"), { data: { source_id: source, t0_workspace_time: 0.2 } });
+    await page.request.delete(await wsUrl(page, "/synchronization/t0") + `?source_id=${source}`);
+    await page.reload();
+    await openComplianceAndSelect(page, "KPDN1");
+    await waitForMeasurement(page, 3);
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(picked));
+    expect((await xs(page))[0]).toEqual(aligned);
+  });
+
+  test("changing and clearing the Compliance alignment never touches the Waveform t0", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    const source = await kpdn1Source(page);
+    await page.request.put(await wsUrl(page, "/synchronization/t0"), { data: { source_id: source, t0_workspace_time: 0.5 } });
+    const t0 = async () => (await page.request.get(await wsUrl(page, "/synchronization/t0") + `?source_id=${source}`)).json();
+    const before = await t0();
+    await clickMeasuredSample(page, 0, 550);
+    await alignBtn(page, "Set").click();
+    await alignBtn(page, "Earlier").click();
+    expect(await t0()).toEqual(before);
+    await alignBtn(page, "Clear").click();
+    expect(await t0()).toEqual(before);
   });
 });
 
@@ -449,6 +664,184 @@ test.describe("DEC-169 -- Measurement card density", () => {
     // An incompatible reference keeps its blocker visible with no expansion.
     await openComplianceAndSelect(page, "KPDN2");
     await expect(page.locator('.ww-compliance-readiness-row[data-row="incompatible"]')).toBeVisible();
+  });
+});
+
+// ====================================================== UAT refinement (alignment UX)
+// Reference t=0 stays visible INSIDE the plot; Event Alignment is a guided, explicit
+// selection mode; the desktop workspace is fixed-height with an independently scrolling
+// configuration column. The alignment maths/lifecycle are DEC-170's and are untouched.
+async function t0Geometry(page) {
+  return page.evaluate(() => {
+    const el = document.getElementById("wwComplianceChartPlot");
+    const label = [...el.querySelectorAll(".annotation-text")].find((n) => n.textContent.includes("Reference t=0"));
+    const area = el.querySelector(".nsewdrag");
+    const a = label && label.getBoundingClientRect();
+    const p = area.getBoundingClientRect();
+    const guide = (el.layout.shapes || []).find((s) => s.name === "reference-t0");
+    return {
+      hasLabel: !!label,
+      label: a && { top: a.top, bottom: a.bottom, left: a.left, right: a.right },
+      area: { top: p.top, bottom: p.bottom, left: p.left, right: p.right },
+      guideX: guide ? guide.x0 : null,
+      anchor: (el.layout.annotations || []).find((n) => n.name === "reference-t0-label"),
+    };
+  });
+}
+async function expectT0Inside(page) {
+  await expect.poll(async () => {
+    const g = await t0Geometry(page);
+    if (!g.hasLabel) return "no label";
+    const { label, area } = g;
+    const inside = label.top >= area.top - 0.5 && label.bottom <= area.bottom + 0.5 && label.left >= area.left - 0.5 && label.right <= area.right + 0.5;
+    return inside && g.guideX === 0 ? "inside" : JSON.stringify(g);
+  }).toBe("inside");
+}
+
+test.describe("UAT refinement -- Reference t=0 label", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("the label sits inside the plotting area (paper-anchored), aligned or not, through resizes", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    const g = await t0Geometry(page);
+    expect(g.anchor.yref).toBe("paper"); // never tied to a y data value
+    expect(g.anchor.yanchor).toBe("top"); // hangs from the top of the plotting area, not above it
+    await expectT0Inside(page); // not aligned
+
+    // splitter resize
+    const handle = page.locator("#wwComplianceSplitHandle");
+    const h = await handle.boundingBox();
+    await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(h.x + h.width / 2 + 120, h.y + h.height / 2, { steps: 5 });
+    await page.mouse.up();
+    await expectT0Inside(page);
+    // window resize
+    await page.setViewportSize({ width: 1280, height: 780 });
+    await expectT0Inside(page);
+
+    // aligned (the measurement moves, the Reference t=0 label does not leave the plot)
+    await clickMeasuredSample(page, 0, 700);
+    await alignBtn(page, "Set").click();
+    await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("✓ Event aligned");
+    await expectT0Inside(page);
+    // autoscale: a y-range change must not matter
+    await page.evaluate(() => Plotly.relayout("wwComplianceChartPlot", { "yaxis.range": [-5000, 90000] }));
+    await expectT0Inside(page);
+    await page.evaluate(() => Plotly.relayout("wwComplianceChartPlot", { "yaxis.autorange": true }));
+    await expectT0Inside(page);
+  });
+});
+
+test.describe("UAT refinement -- guided Event Alignment", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+  const cursorOfDragLayer = (page) => page.evaluate(() => getComputedStyle(document.querySelector("#wwComplianceChartPlot .nsewdrag")).cursor);
+
+  test("Select Event Point -> selecting -> preview -> Set -> Change/Cancel -> Clear", async ({ page }) => {
+    await plotMeasuredAndReady(page);
+    const status = page.locator("#wwComplianceEventAlignmentEmptyState");
+    const wrap = page.locator("#wwComplianceChartWrap");
+    const banner = page.locator("#wwComplianceChartSelectBanner");
+
+    // 1. Discoverable idle state.
+    await expect(status).toHaveText("Not aligned");
+    await expect(page.locator("#wwComplianceEventAlignmentSteps li")).toHaveCount(2);
+    await expect(alignBtn(page, "Select")).toHaveText("Select Event Point");
+    await expect(banner).toBeHidden();
+    await expect(wrap).toHaveAttribute("data-selecting", "false");
+
+    // 2. A plain chart click is NOT a selection.
+    const probe = await page.evaluate(() => {
+      const el = document.getElementById("wwComplianceChartPlot");
+      const trace = el.data.filter((t) => t.meta && t.meta.role === "measurement")[0];
+      const full = el._fullLayout;
+      const r = el.getBoundingClientRect();
+      return { x: r.left + full.xaxis._offset + full.xaxis.l2p(trace.x[600]), y: r.top + full.yaxis._offset + full.yaxis.l2p(trace.y[600]) };
+    });
+    await page.mouse.click(probe.x, probe.y);
+    expect(await page.evaluate(() => document.getElementById("wwComplianceChartPlot").data.some((t) => t.meta && t.meta.role === "alignment-selection"))).toBe(false);
+    await expect(status).toHaveText("Not aligned");
+
+    // 3. Selection mode: instruction, banner on the chart, crosshair, Cancel.
+    await alignBtn(page, "Select").click();
+    await expect(status).toHaveText("Selecting event point...");
+    await expect(page.locator("#wwComplianceEventAlignmentHint")).toHaveText("Click a measured trace where the disturbance starts.");
+    await expect(banner).toBeVisible();
+    await expect(banner).toHaveText("Click a measured trace at the disturbance start");
+    await expect(wrap).toHaveAttribute("data-selecting", "true");
+    expect(await cursorOfDragLayer(page)).toBe("crosshair");
+    await expect(alignBtn(page, "Cancel")).toBeVisible();
+    await expect(alignBtn(page, "Set")).toBeDisabled();
+    await expect(alignBtn(page, "Cancel")).toBeFocused(); // keyboard continuity, no focus trap
+
+    // 4. A Reference curve can never be selected (explicit trace role, not legend text).
+    await page.evaluate(() => {
+      const el = document.getElementById("wwComplianceChartPlot");
+      const curveNumber = el.data.findIndex((t) => t.meta && t.meta.role === "reference");
+      window.wwComplianceOnChartClick({ points: [{ curveNumber, pointNumber: 0 }] });
+    });
+    expect(await page.evaluate(() => document.getElementById("wwComplianceChartPlot").data.some((t) => t.meta && t.meta.role === "alignment-selection"))).toBe(false);
+    await expect(page.locator("#wwComplianceEventAlignmentHint")).toContainText("Reference curve");
+    await expect(alignBtn(page, "Set")).toBeDisabled();
+
+    // 5. A measured trace click selects a real sample: marker, preview guide, selected time.
+    const raw = await clickMeasuredSample(page, 0, 650);
+    await expect(page.locator("#wwComplianceAlignSelectedValue")).toHaveText(sec(raw));
+    await expect(alignBtn(page, "Set")).toBeEnabled();
+    await expect(alignBtn(page, "Again")).toBeVisible();
+    await expect(alignBtn(page, "Cancel")).toBeVisible();
+    const preview = await page.evaluate(() => document.getElementById("wwComplianceChartPlot").layout.shapes.filter((s) => s.type === "line" && s.x0 === s.x1 && s.x0 !== 0));
+    expect(preview.length).toBe(1);
+    expect(preview[0].x0).toBeCloseTo(raw, 9);
+    expect((await xs(page))[0][0]).toBe(0); // nothing committed on the first click
+
+    // 6. Choose Again discards the preview but stays in selection mode.
+    await alignBtn(page, "Again").click();
+    await expect(wrap).toHaveAttribute("data-selecting", "true");
+    await expect(page.locator("#wwComplianceAlignmentSelected")).toBeHidden();
+    expect(await page.evaluate(() => document.getElementById("wwComplianceChartPlot").data.some((t) => t.meta && t.meta.role === "alignment-selection"))).toBe(false);
+    const second = await clickMeasuredSample(page, 0, 550);
+
+    // 7. Commit: the mode ends (no lingering crosshair) and the summary says "Reference t=0".
+    await alignBtn(page, "Set").click();
+    await expect(status).toHaveText("✓ Event aligned");
+    await expect(wrap).toHaveAttribute("data-selecting", "false");
+    await expect(banner).toBeHidden();
+    await expect(wrap).not.toHaveClass(/ww-compliance-selecting/); // the selection-mode cursor/outline is gone
+    await expect(page.locator("#wwComplianceAlignmentSummary")).toContainText("Reference t=0");
+    await expect(page.locator("#wwComplianceAlignmentSummary")).not.toContainText("Reference position");
+    await expect(page.locator("#wwComplianceAlignReferencePosition")).toHaveText("0.000 s");
+    await expect(page.locator("#wwComplianceAlignOffset")).toHaveText(`-${sec(second)}`);
+    expect((await xs(page))[0][idx(second)]).toBeCloseTo(0, 9);
+
+    // 8. Change keeps the active alignment until a replacement is confirmed; Cancel retains it.
+    const before = (await xs(page))[0];
+    await alignBtn(page, "Change").click();
+    await expect(status).toHaveText("Selecting event point...");
+    expect((await xs(page))[0]).toEqual(before); // still aligned while choosing
+    await clickMeasuredSample(page, 0, 900);
+    await alignBtn(page, "Cancel").click();
+    await expect(status).toHaveText("✓ Event aligned");
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(second));
+    expect((await xs(page))[0]).toEqual(before);
+    await expect(wrap).toHaveAttribute("data-selecting", "false");
+
+    // Escape leaves the mode too, and keeps the alignment.
+    await alignBtn(page, "Change").click();
+    await expect(wrap).toHaveAttribute("data-selecting", "true");
+    await page.keyboard.press("Escape");
+    await expect(wrap).toHaveAttribute("data-selecting", "false");
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(second));
+
+    // 9. Fine shift still works; Clear restores the original axis.
+    await alignBtn(page, "Earlier").click();
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(second + 0.001));
+    await alignBtn(page, "Later").click();
+    await expect(page.locator("#wwComplianceAlignMeasurementEvent")).toHaveText(sec(second));
+    await alignBtn(page, "Clear").click();
+    await expect(status).toHaveText("Not aligned");
+    expect((await xs(page))[0][idx(second)]).toBeCloseTo(second, 9);
+    await expect(alignBtn(page, "Select")).toBeVisible();
   });
 });
 

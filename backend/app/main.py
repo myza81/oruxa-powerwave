@@ -30,6 +30,7 @@ from app.services.event_reconstruction_registry import EventReconstructionRegist
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.preparation_session_registry import PreparationSessionRegistry
+from app.services.compliance_alignment_registry import ComplianceAlignmentRegistry
 from app.services.reference_layer_registry import ReferenceLayerRegistry
 from app.services.reference_profile_registry import ReferenceProfileRegistry
 from app.services.synchronization_registry import SynchronizationRegistry
@@ -114,6 +115,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # never had a source uploaded.
         app.state.reference_profile_registry = ReferenceProfileRegistry()
         app.state.reference_layer_registry = ReferenceLayerRegistry()
+        # Compliance Event Alignment (DEC-170): one assessment-local offset per
+        # workspace; shares no state with Waveform t0 / SynchronizationRegistry.
+        app.state.compliance_alignment_registry = ComplianceAlignmentRegistry()
         # Event Reconstruction (DEC-123/DEC-124): one reconstruction
         # definition per workspace -- analysis state only, never source
         # data and never Synchronise Sources state. See

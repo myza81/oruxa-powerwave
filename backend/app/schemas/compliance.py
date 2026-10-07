@@ -148,9 +148,25 @@ class ComplianceMeasurementTraceOut(BaseModel):
 
 
 class ComplianceEventAlignmentOut(BaseModel):
-    time_group_id: str | None = None
-    t0_workspace_time: float | None = None
+    """DEC-170: the Compliance-local alignment of the selected measurement --
+    NOT Waveform t0. `comparison_time = measurement_time - measurement_event_origin_s`;
+    `alignment_offset_s` (= -origin) is what is added to a measurement time."""
+
+    measurement_group_id: str
     aligned: bool
+    measurement_event_origin_s: float | None = None
+    alignment_offset_s: float | None = None
+    reference_position_s: float = 0.0
+    fine_shift_step_s: float
+    source_id: str | None = None
+
+
+class ComplianceEventAlignmentSetRequest(BaseModel):
+    measurement_group_id: str
+    measurement_event_origin_s: float
+    #: True: snap to the nearest actual sample (point selection); False: keep the
+    #: exact value (fine shift).
+    snap_to_sample: bool = True
 
 
 class ComplianceSkippedReferenceOut(BaseModel):
@@ -164,5 +180,5 @@ class ComplianceMeasurementTracesOut(BaseModel):
     readiness_status: str
     traces: list[ComplianceMeasurementTraceOut]
     skipped: list[ComplianceSkippedReferenceOut]
-    event: ComplianceEventAlignmentOut
+    alignment: ComplianceEventAlignmentOut
     phase_display: PhaseDisplayOut

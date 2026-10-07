@@ -78,7 +78,7 @@ test.describe("Compliance & Capability -- Slice 1 workspace shell", () => {
     // enabled entry point (see reference_profiles.spec.js for the full
     // Slice 3/4 workflow coverage).
     await expect(page.locator("#wwComplianceAddReferenceBtn")).toBeEnabled();
-    await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("No event reference set");
+    await expect(page.locator("#wwComplianceEventAlignmentEmptyState")).toHaveText("Not aligned");
     await expect(page.locator("#wwComplianceChartEmptyState")).toContainText("No reference layers to display");
     // The Results section is removed until evaluation semantics are defined: no card,
     // no placeholder, and never a fabricated compliance verdict.

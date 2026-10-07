@@ -27,8 +27,11 @@ Comparison Chart on the right, Results below; a drag handle (and arrow keys) res
 (min 340 / 380 px, Plotly reflows, ratio kept for the page's lifetime), and narrow
 widths stack. A Reference is `ready` only when its measured trace(s) can actually be
 produced; those traces (Each Phase / Single / Minimum / Maximum, in the Reference's unit,
-on the workspace's event-relative time axis) are drawn on the SAME Plotly chart over the
-Reference envelope. Awaiting owner UAT; details in
+on the measurement's own recording time axis) are drawn on the SAME Plotly chart over the
+Reference envelope. **Compliance UI cleanup (DEC-170 Amendment 2)**: `Available References` (was Saved), Results section removed pending PASS/FAIL semantics, Functions card aligned to the workspace bottom, chart fills the right panel (no note strip). **Compliance Event Alignment (DEC-170 + Amendment 1, awaiting UAT)** is Compliance-local, a guided `Select Event Point` mode with a visible in-plot `Reference t=0`, inside a fixed-height desktop workspace whose left column scrolls independently: the
+engineer selects the disturbance on a measured trace and sets it as Reference t=0; only the measured
+trace(s) shift, the Reference stays fixed, and Waveform t0 / Cursor A are not involved (supersedes
+DEC-169's t0-based axis). Awaiting owner UAT; details in
 [COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md).
 
 **Reference Layers has one top-level action (2026-10-05).** The `Reference Library`

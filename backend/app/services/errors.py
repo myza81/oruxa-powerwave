@@ -1230,3 +1230,10 @@ class InvalidReconstructionCorrectionError(ImportServiceError):
     non-numeric (app.domain.event_reconstruction.correction_valid)."""
 
     code = "invalid_reconstruction_correction"
+
+
+class InvalidComplianceAlignmentError(ImportServiceError):
+    """A Compliance Event Alignment request that cannot be applied -- a
+    non-finite origin, or a measurement with no samples to align to (DEC-170)."""
+
+    code = "invalid_compliance_alignment"

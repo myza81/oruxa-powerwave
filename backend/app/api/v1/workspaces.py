@@ -27,6 +27,7 @@ from app.services.event_reconstruction_service import remove_workspace_event_rec
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.preparation_session_registry import PreparationSessionRegistry
+from app.services.compliance_alignment_registry import ComplianceAlignmentRegistry
 from app.services.reference_layer_registry import ReferenceLayerRegistry
 from app.services.reference_profile_registry import ReferenceProfileRegistry
 from app.services.synchronization_registry import SynchronizationRegistry
@@ -85,6 +86,10 @@ def get_reference_layer_registry(request: Request) -> ReferenceLayerRegistry:
     return request.app.state.reference_layer_registry
 
 
+def get_compliance_alignment_registry(request: Request) -> ComplianceAlignmentRegistry:
+    return request.app.state.compliance_alignment_registry
+
+
 def _validate_workspace_id(workspace_id: str) -> str:
     # Same shape check as app.api.v1.sources -- never used as a filesystem
     # path, so this guards against a blank/whitespace-only id, not path
@@ -111,6 +116,7 @@ def delete_workspace(
     engineering_context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     reference_profile_registry: ReferenceProfileRegistry = Depends(get_reference_profile_registry),
     reference_layer_registry: ReferenceLayerRegistry = Depends(get_reference_layer_registry),
+    compliance_alignment_registry: ComplianceAlignmentRegistry = Depends(get_compliance_alignment_registry),
     event_reconstruction_registry: EventReconstructionRegistry = Depends(get_event_reconstruction_registry),
 ) -> None:
     """Release every source this workspace owns.
@@ -188,3 +194,4 @@ def delete_workspace(
     preparation_session_registry.remove_workspace(workspace_id)
     reference_layer_registry.remove_workspace(workspace_id)
     reference_profile_registry.remove_workspace(workspace_id)
+    compliance_alignment_registry.remove_workspace(workspace_id)  # DEC-170: assessment-local, cleared with the workspace

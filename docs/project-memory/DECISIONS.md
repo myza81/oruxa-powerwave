@@ -24928,7 +24928,9 @@ Compliance readiness evaluation supports it; an unconfirmed per-unit base is nev
 treated as active; positive sequence stays unsupported for charting until a plottable
 time series exists; minimum/maximum refuse to evaluate without a proven common time
 base; V <-> kV scaling is exact and any other unit pairing is refused; event alignment
-shifts only the time axis. Trace identity lives in explicit Plotly `meta`, never in
+shifts only the time axis (**the t0-based mechanism originally described here -- the workspace's
+Waveform t0 / Cursor A -- is SUPERSEDED by DEC-170: Compliance now has its own, independent
+Event Alignment**; kept as historical context). Trace identity lives in explicit Plotly `meta`, never in
 display/legend text.
 
 **Layout.** Compliance uses a resizable two-column desktop workspace:
@@ -25052,6 +25054,89 @@ integration; tests `test_compliance_trace_api.py` (+ readiness updates),
    update [HANDOFF.md](HANDOFF.md).
 4. If a decision is later superseded, change its `Status` to `Superseded` and
    add a new entry — do not delete or silently rewrite the old one.
+
+## DEC-170 — Compliance Event Alignment is Compliance-local and independent of Waveform t0 (supersedes the t0-based event alignment of DEC-169)
+
+Status: Approved (owner task) -- implemented on `feat/event-reconstruction`; owner UAT passed 2026-10-07.
+Date: 2026-10-06.
+
+**Decision.**
+
+> Compliance Event Alignment is an assessment-local horizontal offset between the selected
+> measurement and the Reference Layers. It is independent from Waveform/Time Group t0.
+
+> Reference Layers remain fixed; Compliance alignment shifts only the measured trace(s).
+
+**Why.** DEC-169 reused the workspace's Waveform t0 (Cursor A as t = 0) for the Comparison
+Chart. That coupled two unrelated workflows: setting t0 in Waveform silently moved the Compliance
+chart, and an engineer assessing a measurement against a Reference had to leave Compliance to
+align it. The two are different concepts: Waveform t0 is a Time-Group/synchronization reference;
+Compliance alignment says "this disturbance in the recording is the Reference's t = 0".
+
+**Model.** `comparison_time = measurement_time - measurement_event_origin_s`;
+`alignment_offset_s = -measurement_event_origin_s`. The underlying recording is never mutated;
+raw trace values are never recomputed (no RMS / per-unit work on a change). One alignment per
+selected measurement (every `Each Phase` trace -- and a Minimum/Maximum trace -- shifts together);
+the same alignment applies against all active Reference Layers. The fields are deliberately named
+`measurement_event_origin_s` (never `t0`).
+
+**Selection.** The engineer clicks a point on a measured trace on the Comparison Chart (only
+measurement traces are valid; Reference curves are ignored); the point is a real sample, and the
+backend additionally snaps to the nearest recorded sample (tie -> the earlier). "Set as Reference
+t=0" commits it. Fine shift is explicit: `Shift Earlier` / `Shift Later` by the visible step
+(1 ms); Earlier moves the measurement left on the chart (origin + step), Later right. `Change
+Alignment` re-selects (Cancel keeps the current one); `Clear Alignment` returns to the original
+recording-relative axis -- "not aligned" is distinct from an explicit origin of 0.
+
+**Lifecycle.** Backend-owned, in-memory, one slot per workspace
+(`ComplianceAlignmentRegistry`), endpoints `GET/PUT/DELETE
+/api/v1/workspaces/{ws}/compliance/voltage/event-alignment`. Not a prerequisite for Measurement
+readiness. Changing the Bay / Measurement Group clears it (a timestamp is never assumed to
+exist on another recording); changing, adding or removing a Reference keeps it; removing the
+source or starting a new workspace clears it. Nothing is stored in the browser.
+
+**Independence (tested both ways).** Compliance alignment code imports nothing from
+`synchronization_service` / `synchronization_registry`; setting, changing or clearing Waveform t0
+never changes the Compliance alignment or the measured traces, and Compliance alignment never
+touches Waveform t0, Time Groups, Cursor A or playback.
+
+**Supersedes** the "Time axis" statement of DEC-169 (`x = source_time + alignment_offset - t0`);
+the measurement trace endpoint now returns raw recording time and reports the alignment beside it.
+No PASS/FAIL, Reference Profile, readiness, Waveform or Event Reconstruction behaviour changed.
+
+### DEC-170 Amendment 1 -- guided alignment, a visible Reference t=0, and a fixed-height desktop workspace (owner UAT, 2026-10-07)
+
+Status: Approved (owner UAT task) -- implemented on `feat/event-reconstruction`; owner UAT passed 2026-10-07.
+A refinement of DEC-169 (layout) and DEC-170 (alignment UX); **no alignment mathematics, lifecycle,
+Reference semantics, readiness, Waveform t0, persistence or backend behaviour changed**, so no new DEC.
+
+1. **Reference t=0 is always visibly labelled inside the Comparison Chart.** The dashed guide and the
+   "Reference t=0" label are drawn whenever the x range contains 0 (aligned or not -- it is the
+   Reference's own time zero). The label is anchored to the top of the *plotting area* in paper
+   coordinates (`yref: "paper"`, `yanchor: "top"`, `yshift: -4`) -- never to a y data value and never
+   above the plot where Plotly clips it -- and flips to the left of the guide near the right edge.
+2. **Event Alignment uses an explicit `Select Event Point` mode** before `Set as Reference t=0`. Ordinary
+   chart clicks never pick a point. The idle state explains the two steps; selection mode shows
+   "Selecting event point...", a banner on the chart, a crosshair and an outline, and `Cancel` (Escape also
+   leaves it). Only `role: "measurement"` traces are valid (Reference curves are refused with a notice;
+   identity is trace `meta`, never legend text). A click shows the preview (marker, dotted guide, exact
+   time) and does **not** commit; `Set as Reference t=0`, `Choose Again` or `Cancel` follow. `Change
+   Alignment` re-enters the same mode while the current alignment stays active; `Cancel` retains it.
+   The summary row formerly "Reference position" is now "Reference t=0".
+3. **Desktop Compliance is a fixed-height workspace** that fills the app's own viewport-height page
+   (the shell, header and status bar are already fixed, so no viewport arithmetic): the split is a flex
+   child of `#pageCompliance` (`min-width: 1101px`), Results below, the status bar never overlapped, the
+   page itself does not scroll.
+4. **The left configuration column scrolls independently** (`overflow-y: auto`) while the Comparison Chart
+   stays in view; the splitter, minimum widths and Plotly reflow are unchanged. At <= 1100 px the same order
+   stacks, the handle disappears and the page scrolls normally (no fixed height, no independent scroll).
+5. **The READY Measurement state is compact**: a lone READY reference drops its repeated name/chip header
+   (Requirements already names it, the status line says Ready); rows read `RMS` / `Base`
+   ("Existing calculated channels reused", "275 kV L-G"); channel-level traceability stays under `Details`.
+   Action-required and incompatible references stay fully visible.
+
+Tests: `browser-tests/compliance_workspace.spec.js` ("UAT refinement" blocks), the readiness/measurement
+specs (row wording), `backend/tests/test_frontend_compliance.py`.
 
 ### DEC-170 Amendment 2 -- Compliance UI cleanup (owner-approved, 2026-10-07)
 
