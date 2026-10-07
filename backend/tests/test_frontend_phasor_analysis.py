@@ -94,7 +94,7 @@ class TestAnalysisTypeSubNav:
         assert 'class="ww-analysis-type-nav"' in source
         nav = _function_body(source, 'class="ww-analysis-type-nav"', '</nav>')
         assert "Analyzers" in nav
-        assert nav.count('class="ww-analysis-type-item') == 5
+        assert nav.count('class="ww-analysis-type-item') == 6
         labels = ["Overcurrent", "Impedance Locus", "Distance Protection", "Phasor", "Sequence Components"]
         positions = [nav.index(label) for label in labels]
         assert positions == sorted(positions)

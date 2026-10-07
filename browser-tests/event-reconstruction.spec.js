@@ -247,6 +247,47 @@ async function openMemberTree(page, station) {
   return row;
 }
 
+test.describe("Event Reconstruction -- shared signal catalogue (DEC-171)", () => {
+  test("calculated channels are read live from the catalogue: create, select, remove, navigate, no private copy", async ({ page }) => {
+    const consoleErrors = collectConsoleErrors(page);
+    await page.goto("/index.html");
+    await page.evaluate(() => { window.__sameLoad = true; });
+    await upload(page, "STN_A", "10:00:00");
+    const sourceA = await sourceIdFor(page, "STN_A");
+    await openEventReconstruction(page);
+    await addRecord(page, "STN_A");
+    const rowA = await openMemberTree(page, "STN_A");
+    const calcRows = rowA.locator('tr.ww-er-channel-row[data-er-kind="calculated"]');
+    await expect(calcRows).toHaveCount(0);
+
+    // No private inventory: the authoritative source is the catalogue.
+    expect(await page.evaluate(() => Object.prototype.hasOwnProperty.call(wwErState, "calculatedChannels"))).toBe(false);
+
+    // Created elsewhere while Event Reconstruction is open (the app's own sync path).
+    const calc = await createCalculatedChannel(page, sourceA);
+    await page.evaluate(() => wwFetchCalculatedChannels());
+    await expect(calcRows).toHaveCount(1);
+    expect(await page.evaluate((id) => wwErCalculatedChannels().map((c) => c.id).includes(id), calc.id)).toBe(true);
+
+    // Selectable as before; selection of a removed channel is dropped.
+    await calcRows.click();
+    await expect(calcRows).toHaveAttribute("aria-pressed", "true");
+    expect(await page.evaluate(() => Object.values(wwErState.selectedChannels).filter((s) => s.kind === "calculated").length)).toBe(1);
+
+    // Navigating away and back keeps working.
+    await page.locator("#mainNavWaveformBtn").click();
+    await openEventReconstruction(page);
+    await expect(calcRows).toHaveCount(1);
+
+    // Removed while open: row and selection both go, without reload.
+    await page.evaluate((id) => wwCcDeleteChannel(id), calc.id);
+    await expect(calcRows).toHaveCount(0);
+    expect(await page.evaluate(() => Object.values(wwErState.selectedChannels).filter((s) => s.kind === "calculated").length)).toBe(0);
+    expect(await page.evaluate(() => window.__sameLoad)).toBe(true);
+    expect(consoleErrors).toEqual([]);
+  });
+});
+
 test.describe("Event Reconstruction -- independent records (DEC-128)", () => {
   test("records with identical timestamps stay separate members while Waveform still groups them", async ({ page }) => {
     const consoleErrors = collectConsoleErrors(page);

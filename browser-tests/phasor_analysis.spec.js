@@ -392,6 +392,7 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
       "Distance Protection",
       "Phasor",
       "Sequence Components",
+      "Oscillation Analysis",
     ]);
     await expect(menu).not.toContainText("Differential");
 
@@ -422,6 +423,25 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
     await page.locator("#wwAnalysisTypeOvercurrentBtn").click();
     await expect(page.locator("#wwAnalysisTypeOvercurrentBtn")).toHaveClass(/active/);
     await expect(page.locator("#wwOvercurrentPanel")).toBeVisible();
+
+    // Oscillation Analysis -- navigation/page shell only (no processing).
+    await page.locator("#wwAnalysisTypeOscillationBtn").click();
+    await expect(page.locator("#wwAnalysisTypeOscillationBtn")).toHaveClass(/active/);
+    await expect(page.locator("#wwAnalysisTypeOscillationBtn")).toHaveAttribute("aria-current", "true");
+    await expect(page.locator("#wwAnalysisTypeOvercurrentBtn")).not.toHaveClass(/active/);
+    await expect(page.locator("#wwOscillationPanel")).toBeVisible();
+    await expect(page.locator("#wwOscillationPanel h3")).toHaveText("Oscillation Analysis");
+    await expect(page.locator("#wwOvercurrentPanel")).toBeHidden();
+    await expect(page.locator("#wwAnalysisTypeOscillationBtn .ww-analysis-type-icon")).toHaveClass(/ww-icon-asset/);
+
+    // Navigating away and back restores the shell and the active state.
+    await page.locator("#wwAnalysisTypePhasorBtn").click();
+    await expect(page.locator("#wwPhasorPanel")).toBeVisible();
+    await expect(page.locator("#wwOscillationPanel")).toBeHidden();
+    await expect(page.locator("#wwAnalysisTypeOscillationBtn")).not.toHaveClass(/active/);
+    await page.locator("#wwAnalysisTypeOscillationBtn").click();
+    await expect(page.locator("#wwOscillationPanel")).toBeVisible();
+    await expect(page.locator("#wwAnalysisTypeOscillationBtn")).toHaveClass(/active/);
   });
 
   test("partial bay (Voltage Phase A only) renders Va and marks the other five roles Missing, never a whole-page failure", async ({ page }) => {

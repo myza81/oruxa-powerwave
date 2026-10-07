@@ -21,6 +21,19 @@ parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
 DEC-122 display timezone).
 
 
+**Oscillation Analysis page shell exists (2026-10-07), awaiting owner UAT.** `Analysis -> Oscillation Analysis` is a navigation
+entry and empty page shell only; signal-processing functionality (spectrum, spectrogram, oscillation detection) is deferred
+and not implemented.
+
+**Shared live signal catalogue established (DEC-171, approved 2026-10-07).** Raw and calculated channels are read
+through `wwSignalCatalogueList(predicate)` (a derived view, not a new store) and observed through
+`wwSignalCatalogueSubscribe()`; producers publish added/updated/removed/reset events. The catalogue determines
+availability; each consumer determines eligibility. Two consumers are migrated: the Calculated Channels builder
+(`wwCcAvailableCandidates()`) and Event Reconstruction (no private calculated-channel copy). Waveform, Table/Split
+View, Compliance Prepare and the Engineering-Context Analysis tools were intentionally left on their own paths.
+Calculated channels stay immutable (recreate = new id), so `key` + `revision` is how a future result detects staleness.
+The Oscillation Analysis signal selector is **not** implemented; no oscillation processing exists.
+
 **Compliance is a resizable two-column workspace with measured traces (DEC-169), 2026-10-06.**
 Configuration (Reference Layers, Measurement incl. Event Alignment) on the left, the
 Comparison Chart on the right, Results below; a drag handle (and arrow keys) resizes it

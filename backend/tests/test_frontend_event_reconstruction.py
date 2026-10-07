@@ -197,7 +197,7 @@ class TestEventReconstructionKeepsWaveformBoundaries:
         # renderer's own plot state only.
         assert keys == [
             "dragMode", "timeDisplay", "unitMode", "perUnit", "sources", "records", "definition",
-            "channelsBySource", "calculatedChannels", "selectedChannels", "activeRecordId", "annotationUi", "loadSeq", "busy", "plot",
+            "channelsBySource", "selectedChannels", "activeRecordId", "annotationUi", "loadSeq", "busy", "plot",
         ]
         plot_keys = re.findall(r"^ {16}(\w+):", state.split("plot: {", 1)[1], re.MULTILINE)
         # "panelHeights" (drag-to-resize, owner ticket): session-local
@@ -431,7 +431,7 @@ class TestEventReconstructionChannelBrowser:
 
     def test_calculated_channels_sit_under_their_timing_parent(self):
         tree = _between(_source(), "function wwErSourceTreeHtml(member, sourceId, open) {", "function wwErMemberTreeHtml(member)")
-        assert "wwErState.calculatedChannels.filter((c) => c.reference_source_id === sourceId)" in tree
+        assert "wwErCalculatedChannels().filter((c) => c.reference_source_id === sourceId)" in tree
         assert 'wwErChannelRowAttrs(member.record_id, "calculated", c.id, c.name, c.reference_source_id)' in tree
 
     def test_presentation_is_read_only(self):

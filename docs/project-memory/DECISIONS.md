@@ -25157,3 +25157,69 @@ specs (row wording), `backend/tests/test_frontend_compliance.py`.
 
 Tests: `browser-tests/compliance_workspace.spec.js`, `compliance.spec.js`, `compliance_readiness.spec.js`,
 `reference_profiles.spec.js`, `backend/tests/test_frontend_compliance.py`.
+
+## DEC-171 — Signal-consuming features read one shared live workspace signal catalogue (architecture foundation)
+
+Status: **[APPROVED]** (owner, 2026-10-07; was `[PROPOSAL]`) — implemented on `feat/event-reconstruction`.
+Date: 2026-10-07.
+
+**Approved principle.**
+
+> Signal-consuming features should obtain available raw and calculated signals from the shared live workspace
+> signal catalogue. Producers update their authoritative stores and publish catalogue changes. Consumers apply
+> their own eligibility rules. Compatible signal changes must become visible during the active workspace without
+> requiring browser reload or application restart.
+
+> **The catalogue determines availability. The consumer determines eligibility.**
+
+Calculated channels remain immutable for now; no edit/revision model is introduced by this decision.
+
+**Audit (facts, 2026-10-07).**
+
+- Raw channels live in `ww.sourceChannelsData` (full `/channels` response per recording; fetched once per
+  source) with `ww.sourceChannelInventory` as a narrower analog-only slice. Calculated channels live in
+  `ww.calculatedChannels` (metadata mirror of the backend `CalculatedChannelRegistry`; arrays stay server-side).
+- Before this slice there was **no shared registry, event or revision**: each producer (create, line-to-line
+  create, delete, refetch, workspace reset) mutated the map and then called the specific renderers
+  (`wwRenderCalculatedChannelsPage/SidebarSection`) itself; consumers read the maps ad hoc and the
+  Calculated Channels builder hand-merged raw + calculated (`wwCcAvailableCandidates()`).
+- Calculated channels are **immutable** (no edit endpoint; delete is blocked while a dependent exists).
+  "Modifying" one is delete + create, which yields a new `calc-<uuid>` id. Identity (`id`) is stable for the
+  life of a channel; a recreated channel never reuses an id.
+- Event Reconstruction keeps its own `wwErState.calculatedChannels` copy, refreshed from the backend on each
+  page visit (`wwErRefresh()`); Table/Split View are per-source and read raw channels only; Analysis tools read
+  backend Engineering Contexts, re-fetched on every Analysis page visit.
+
+**Implemented (frontend only; no backend, API, schema or persistence change).**
+
+- `wwSignalCatalogue*` in `frontend/index.html`: `wwSignalCatalogueList(predicate)` (a derived view over the two
+  existing authorities — no third store, raw first then calculated), `wwSignalCatalogueGet(key)`,
+  `wwSignalCatalogueSubscribe(listener)` (returns an unsubscribe), `wwSignalCatalogueIsCurrent(key, revision)`
+  and a catalogue-wide `wwSignalCatalogue.revision` counter.
+- Producers publish `{type: added|updated|removed|reset, origin, keys, revision}` after mutating their own
+  authority, through `wwCalculatedChannelsUpsert/Remove/ReplaceAll()` and the raw source add/remove/reconcile
+  points. Listener errors are isolated. The catalogue names no consumer and holds no eligibility rule.
+- Each signal has a stable `key` (`raw:<analog|digital>:<sourceId>::<name>` / `calculated:<id>`) and a
+  `revision` token (`<id>@<created_at>` for calculated). A consumer that stores a result records
+  `key` + `revision` and treats it as stale unless `wwSignalCatalogueIsCurrent()` is true.
+
+**Consumers migrated (two representative ones).**
+
+- `wwCcAvailableCandidates()` (Calculated Channels builder) now builds its list from
+  `wwSignalCatalogueList(signal => signal.signalType === "analog")` instead of merging
+  `ww.sourceChannelInventory` and `ww.calculatedChannels` itself. Same entries, same order (raw in recording
+  order, then calculated), same fields; digital channels still excluded. No second cache.
+- Event Reconstruction no longer has `wwErState.calculatedChannels`. `wwErCalculatedChannels()` reads the
+  catalogue (same backend definitions, same order); its analog-only and timing-parent rules are unchanged.
+  `wwErObserveSignalCatalogue()` (subscribed once at startup) drops selections of calculated channels that no
+  longer exist and re-renders while Event Reconstruction is the current page. Page entry still re-syncs the
+  calculated-channel list from the backend, but into the shared mirror (it publishes only on a real difference),
+  as a safety net for changes made outside the app's own create/delete paths.
+
+**Not migrated (deliberately; different semantics, review separately if needed).** Waveform, Table/Split View,
+Compliance Prepare and the Engineering-Context-based Analysis tools keep their existing read paths. No
+result-invalidation exists yet: a future analysis result must retain the signal `key` + `revision` it was built
+from and check `wwSignalCatalogueIsCurrent()` before being presented as current.
+
+Tests: `backend/tests/test_frontend_signal_catalogue.py`, `browser-tests/signal_catalogue.spec.js` (catalogue +
+builder), `browser-tests/event-reconstruction.spec.js` (Event Reconstruction consumer).

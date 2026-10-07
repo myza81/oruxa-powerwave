@@ -10519,6 +10519,10 @@
                             <span class="ww-analysis-type-icon" aria-hidden="true" data-ww-icon="ANALYSIS_SEQUENCE"></span>
                             <span class="ww-analysis-type-label">Sequence Components</span>
                         </button>
+                        <button type="button" class="ww-analysis-type-item" id="wwAnalysisTypeOscillationBtn" data-analysis-type="oscillation" aria-current="false">
+                            <span class="ww-analysis-type-icon" aria-hidden="true" data-ww-icon="ANALYSIS_OSCILLATION"></span>
+                            <span class="ww-analysis-type-label">Oscillation Analysis</span>
+                        </button>
                     </nav>
                     <div class="ww-analysis-content">
                         <!-- Shared Analysis "Related Waveforms" panel -- lives
@@ -11755,6 +11759,18 @@
                                     <div class="ww-phasor-scale-note" id="wwDistanceScaleNote">Zone geometry shown is the configured element characteristic -- Operated/Not-Operated is a geometric statement only, not a relay trip output.</div>
                                 </section>
                             </div>
+                        </section>
+
+                        <!-- Oscillation Analysis -- navigation/page shell ONLY
+                             (UAT slice). No processing, no backend, no
+                             controls: frequency-spectrum/spectrogram analysis
+                             is deferred until this shell is approved. Reuses
+                             the shared Analysis panel shell/card styling. -->
+                        <section class="ww-phasor-panel" id="wwOscillationPanel" hidden>
+                            <section class="panel">
+                                <h3>Oscillation Analysis</h3>
+                                <p class="empty-state" id="wwOscillationEmptyState">Oscillation analysis tools will appear here.</p>
+                            </section>
                         </section>
                     </div>
                 </div>
@@ -14672,6 +14688,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             ANALYSIS_DISTANCE: "assets/icons/analysis/distance_protection.svg",
             ANALYSIS_PHASOR: "assets/icons/analysis/phasor.svg",
             ANALYSIS_SEQUENCE: "assets/icons/analysis/sequence_component.svg",
+            // Oscillation Analysis shell: no dedicated owner asset yet --
+            // reuses the existing owner-supplied waveform (sine) pictogram
+            // rather than a drawn/library icon. Swap when the owner supplies one.
+            ANALYSIS_OSCILLATION: "assets/icons/navigation/waveform_page.svg",
             PLAYBACK_RESTART: "assets/icons/analysis/restart.svg",
 
             // -- Compliance page's own function nav (#pageCompliance
@@ -15940,9 +15960,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // re-fetch (`records` is GET .../records).
         // Slice 2A: `channelsBySource` caches each member recording's
         // GET .../sources/{id}/channels metadata (immutable after upload;
-        // never Waveform's ww.sourceChannelsData), `calculatedChannels` is
-        // the last GET .../calculated-channels list, and
-        // `selectedChannels` is Event Reconstruction's OWN channel
+        // never Waveform's ww.sourceChannelsData); calculated channels are
+        // NOT stored here -- wwErCalculatedChannels() reads the shared
+        // signal catalogue (DEC-171); and `selectedChannels` is Event Reconstruction's OWN channel
         // visibility (selection key -> {recordId, kind ("analog" or
         // "calculated" -- analog-only, DEC-127), sourceId, channelName,
         // timingSourceId}) -- never ww.displayed, never a
@@ -15981,7 +16001,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             records: [],
             definition: null,
             channelsBySource: {},
-            calculatedChannels: [],
             selectedChannels: {},
             // The active navigation record (Fit Record's target): a record
             // IDENTITY (record_id), never a position, a time or the
@@ -16092,6 +16111,31 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             });
         }
 
+        // Calculated channels available to Event Reconstruction: the live
+        // shared signal catalogue (DEC-171), never a private copy. Same
+        // backend definitions and order Event Reconstruction always read;
+        // its own eligibility (analog-only, records' timing parents) is
+        // applied by the callers below.
+        function wwErCalculatedChannels() {
+            return wwSignalCatalogueList((signal) => signal.origin === "calculated").map((signal) => signal.definition);
+        }
+
+        // Observes catalogue changes (started once at startup, below). A
+        // selected calculated channel that no longer exists is dropped; the
+        // view is re-rendered at once only while Event Reconstruction is the
+        // current page -- on entry wwErRefresh() renders anyway. Raw
+        // recordings keep arriving through wwErNotifyWorkspaceChanged().
+        function wwErObserveSignalCatalogue() {
+            wwSignalCatalogueSubscribe((event) => {
+                if (event.origin === "raw") return;
+                const live = new Set(wwErCalculatedChannels().map((c) => c.id));
+                for (const [key, selection] of Object.entries(wwErState.selectedChannels)) {
+                    if (selection.kind === "calculated" && !live.has(selection.sourceId)) delete wwErState.selectedChannels[key];
+                }
+                if (shell.currentPage === "event-reconstruction") wwErRender();
+            });
+        }
+
         // A write: null on success, otherwise the backend's message.
         async function wwErSend(method, path, body) {
             try {
@@ -16114,9 +16158,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // older request is ignored.
         async function wwErRefresh() {
             const seq = ++wwErState.loadSeq;
-            const [sources, records, definition, calculatedChannels] = await Promise.all([
+            // The calculated-channel list is re-synced into the SHARED
+            // mirror (never a private copy): it publishes only if the
+            // backend list actually differs, so this is the safety net for
+            // changes made outside the app's own create/delete paths.
+            const [sources, records, definition] = await Promise.all([
                 fetchSourcesList(), wwErFetchJson("/records"), wwErFetchJson("/definition"),
-                wwErFetchWorkspaceJson("/calculated-channels"),
+                wwFetchCalculatedChannels(),
             ]);
             if (seq !== wwErState.loadSeq) return;
             if (sources !== null) wwErState.sources = sources;
@@ -16127,7 +16175,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwErState.definition = definition;
                 wwErSyncActiveRecord(wasDefined);
             }
-            if (calculatedChannels !== null) wwErState.calculatedChannels = calculatedChannels;
             await wwErEnsureMemberChannelsFetched();
             if (seq !== wwErState.loadSeq) return;
             // Selections of records no longer in the reconstruction, or of
@@ -16532,7 +16579,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                             ...wwErTreeCursorColumns((c) => wwErChannelSelectionKey(member.record_id, sourceId, c.name)),
                         ], null, (c) => wwErChannelRowAttrs(member.record_id, "analog", sourceId, c.name, sourceId)))).join("") + "</div>"
                     : '<p class="empty-state">No analog channels.</p>';
-                const calculated = wwErState.calculatedChannels.filter((c) => c.reference_source_id === sourceId);
+                const calculated = wwErCalculatedChannels().filter((c) => c.reference_source_id === sourceId);
                 const calculatedHtml = calculated.length
                     ? wwErChannelGroupHtml(base + ":calculated", "Calculated Channels", calculated.length,
                         '<div class="subgroup-list">' + wwGroupChannelsByEngineeringType(calculated).map(({ type, channels }) => {
@@ -16660,7 +16707,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // reference (no `source_timings` at all) yields null and can never
         // be plotted.
         function wwErSourceTiming(displaySourceId) {
-            const calculated = wwErState.calculatedChannels.find((c) => c.id === displaySourceId);
+            const calculated = wwErCalculatedChannels().find((c) => c.id === displaySourceId);
             const timingSourceId = calculated ? calculated.reference_source_id : displaySourceId;
             for (const member of wwErCurrentMembers()) {
                 for (const timing of member.source_timings || []) {
@@ -17193,7 +17240,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // read "pu".
         function wwErChannelAxis(item, perUnit = false) {
             const channel = item.kind === "calculated"
-                ? wwErState.calculatedChannels.find((c) => c.id === item.sourceId)
+                ? wwErCalculatedChannels().find((c) => c.id === item.sourceId)
                 : ((wwErState.channelsBySource[item.sourceId] || {}).analog_channels || []).find((c) => c.name === item.channelName);
             if (!channel) return { key: null, quantity: null, unknown: true, unit: "", engineeringType: "Undefined" };
             const prefix = perUnit ? "per_unit_display_axis_" : "display_axis_";
@@ -17234,7 +17281,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     for (const { channels } of wwGroupChannelsByEngineeringType((data && data.analog_channels) || [])) {
                         for (const channel of channels) take(member.record_id, sourceId, channel.name);
                     }
-                    const calculated = wwErState.calculatedChannels.filter((c) => c.reference_source_id === sourceId);
+                    const calculated = wwErCalculatedChannels().filter((c) => c.reference_source_id === sourceId);
                     for (const { channels } of wwGroupChannelsByEngineeringType(calculated)) {
                         for (const channel of channels.slice().sort((a, b) => (a.name < b.name ? -1 : 1))) {
                             take(member.record_id, channel.id, channel.name);
@@ -17286,7 +17333,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwErChannelKindOf(sourceId) {
-            return wwErState.calculatedChannels.some((c) => c.id === sourceId) ? "calculated" : "analog";
+            return wwErCalculatedChannels().some((c) => c.id === sourceId) ? "calculated" : "analog";
         }
 
         // How a channel is shown in `unitMode` (default: the current one):
@@ -19655,7 +19702,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwState_isCalculatedErSource(sourceId) {
-            return wwErState.calculatedChannels.some((c) => c.id === sourceId);
+            return wwErCalculatedChannels().some((c) => c.id === sourceId);
         }
 
         // -- editing (Waveform's in-place textarea) --
@@ -26397,6 +26444,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Phase 5A-UAT3 (section 12): this source is gone -- its
             // channels must disappear from the Calculated Channels
             // candidate inventory too, never linger as a stale option.
+            const removedRawKeys = wwSignalCatalogueRawKeysForSource(sourceId);
             ww.sourceChannelInventory.delete(sourceId);
             // Multi-source sidebar redesign: same cleanup, for the full
             // cached /channels response this source's own sidebar
@@ -26406,6 +26454,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // explicitly here keeps this call site symmetrical with the
             // two lines immediately around it.
             ww.sourceChannelsData.delete(sourceId);
+            if (removedRawKeys.length) wwSignalCataloguePublish({ type: "removed", origin: "raw", keys: removedRawKeys });
             ww.sourceTiming.delete(sourceId);
             // Slice 1 of waveform time synchronization: the backend
             // already released this source's own alignment offset via the
@@ -26639,6 +26688,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             });
             wwRememberSourceTimingFromChannelsData(data);
             wwRememberSourceBoundsFromChannelsData(data);
+            wwSignalCataloguePublish({ type: "added", origin: "raw", keys: wwSignalCatalogueRawKeysForSource(sourceId) });
             return true;
         }
 
@@ -26868,9 +26918,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // convention, generalized here since any removal path should
             // leave this reconciled, not only performRemoveSource()).
             const liveIds = new Set(sources.map((s) => s.source_id));
+            const reconciledRawKeys = [];
             for (const cachedId of Array.from(ww.sourceChannelsData.keys())) {
-                if (!liveIds.has(cachedId)) ww.sourceChannelsData.delete(cachedId);
+                if (!liveIds.has(cachedId)) {
+                    reconciledRawKeys.push(...wwSignalCatalogueRawKeysForSource(cachedId));
+                    ww.sourceChannelsData.delete(cachedId);
+                }
             }
+            if (reconciledRawKeys.length) wwSignalCataloguePublish({ type: "removed", origin: "raw", keys: reconciledRawKeys });
 
             if (badge) badge.textContent = "(" + sources.length + ")";
             // Waveform/Event Reconstruction empty-state consistency:
@@ -37852,32 +37907,33 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // are never valid calculation inputs at all, unrelated to this
         // fix).
         function wwCcAvailableCandidates() {
-            const candidates = [];
-            for (const inventory of ww.sourceChannelInventory.values()) {
-                for (const ch of inventory.analogChannels) {
+            // The live shared signal catalogue (DEC-171): analog signals
+            // only (digital channels are never valid inputs), raw first in
+            // recording order, then calculated -- the order this list
+            // always had. The builder's own eligibility is this predicate.
+            return wwSignalCatalogueList((signal) => signal.signalType === "analog").map((signal) => {
+                if (signal.origin === "raw") {
                     // Channel presentation override: shortLabel/pickerLabel
                     // are display text ONLY -- channelName below (the
                     // actual submitted ChannelRef.channel_name) stays the
                     // canonical name, unaffected by any alias.
-                    const displayName = wwChannelDisplayName(inventory.sourceId, ch.name);
-                    candidates.push({
-                        kind: "source", sourceId: inventory.sourceId, channelName: ch.name,
-                        calculatedChannelId: null, referenceSourceId: inventory.sourceId,
-                        shortLabel: displayName, shortLabelHtml: wwChannelDisplayNameHtml(inventory.sourceId, ch.name),
-                        pickerLabel: (inventory.sourceName ? inventory.sourceName + " — " : "") + displayName,
-                        unit: ch.unit || "", group: inventory.sourceName || inventory.sourceId,
-                    });
+                    const displayName = wwChannelDisplayName(signal.sourceId, signal.name);
+                    return {
+                        kind: "source", sourceId: signal.sourceId, channelName: signal.name,
+                        calculatedChannelId: null, referenceSourceId: signal.sourceId,
+                        shortLabel: displayName, shortLabelHtml: wwChannelDisplayNameHtml(signal.sourceId, signal.name),
+                        pickerLabel: (signal.sourceName ? signal.sourceName + " — " : "") + displayName,
+                        unit: signal.unit, group: signal.sourceName || signal.sourceId,
+                    };
                 }
-            }
-            for (const calc of ww.calculatedChannels.values()) {
-                candidates.push({
+                const calc = signal.definition;
+                return {
                     kind: "calculated", sourceId: null, channelName: null,
                     calculatedChannelId: calc.id, referenceSourceId: calc.reference_source_id,
                     shortLabel: calc.name, shortLabelHtml: wwCalculatedChannelNameHtml(calc), pickerLabel: calc.name,
                     unit: calc.unit || "", group: "Calculated Channels",
-                });
-            }
-            return candidates;
+                };
+            });
         }
 
         function wwCcInputDisplayName(inputRef) {
@@ -38296,7 +38352,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (createBtn) createBtn.disabled = !wwCcValidateBuilder().valid;
                 return;
             }
-            for (const channel of body.channels) ww.calculatedChannels.set(channel.id, channel);
+            wwCalculatedChannelsUpsert(body.channels);
             wwCcLastLineToLineResult = { channelIds: body.channels.map((c) => c.id) };
             wwCcSelectedCalculatedChannelId = body.channels[0].id;
             wwCcResetBuilder();
@@ -39703,6 +39759,166 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Network calls
         // ------------------------------------------------------------------
 
+        // ------------------------------------------------------------------
+        // Shared live workspace signal catalogue
+        // ------------------------------------------------------------------
+        // Raw (imported) and calculated channels are first-class workspace
+        // signals from a CONSUMER's point of view. This is NOT a third
+        // store: it is a read-only derived view over the two existing
+        // authorities -- ww.sourceChannelsData (every loaded recording's
+        // channels) and ww.calculatedChannels (the calculated-channel
+        // mirror) -- plus a revision counter and a subscriber list, so a
+        // consumer never hand-merges "raw + calculated" and never holds a
+        // private inventory that can go stale.
+        //
+        // Producers (source load/removal, calculated-channel create/delete/
+        // refetch, workspace reset) never know who consumes: they only
+        // mutate their own authority through the helpers below, which call
+        // wwSignalCataloguePublish(). A new consumer (an Analysis tool)
+        // needs NO producer change: call wwSignalCatalogueList(predicate)
+        // for the current set (apply its OWN eligibility there) and
+        // optionally wwSignalCatalogueSubscribe(listener) to be told when
+        // to re-read it. Nothing here is eligibility-aware.
+        //
+        // Signal entry (a fresh object per call; `definition` is the live
+        // authority object, never a copy):
+        //   key            catalogue-unique stable identity -- raw:
+        //                  "raw:<analog|digital>:<sourceId>::<name>",
+        //                  calculated: "calculated:<calc id>"
+        //   channelKey     the Waveform wwChannelKey() identity
+        //   origin         "raw" | "calculated"
+        //   signalType     "analog" | "digital"
+        //   sourceId       raw: the recording's source_id; calculated: its
+        //                  calc-* id (the existing pseudo-source convention)
+        //   referenceSourceId  the recording that owns its timing
+        //   name, unit, engineeringType, calculatedChannelId
+        //   revision       identity+content token. Raw channels are
+        //                  immutable after upload. A calculated channel is
+        //                  immutable too (no edit endpoint): "modifying"
+        //                  one is delete + create, which yields a NEW id
+        //                  and key. A result built from a signal stays
+        //                  current only while wwSignalCatalogueIsCurrent()
+        //                  holds for the key + revision it recorded.
+        // Change event passed to listeners:
+        //   { type: "added"|"updated"|"removed"|"reset", origin, keys,
+        //     revision }   (revision = the catalogue-wide counter)
+        const wwSignalCatalogue = { revision: 0, listeners: new Set() };
+
+        function wwSignalCatalogueSubscribe(listener) {
+            wwSignalCatalogue.listeners.add(listener);
+            return () => { wwSignalCatalogue.listeners.delete(listener); };
+        }
+
+        function wwSignalCataloguePublish(change) {
+            wwSignalCatalogue.revision += 1;
+            const event = Object.assign({}, change, { revision: wwSignalCatalogue.revision });
+            for (const listener of Array.from(wwSignalCatalogue.listeners)) {
+                try { listener(event); } catch (error) { console.error("Signal catalogue listener failed", error); }
+            }
+        }
+
+        function wwSignalFromCalculatedChannel(calc) {
+            return {
+                key: "calculated:" + calc.id,
+                channelKey: wwChannelKey(calc.id, calc.name),
+                origin: "calculated", signalType: "analog",
+                sourceId: calc.id, sourceName: "Calculated Channels",
+                referenceSourceId: calc.reference_source_id,
+                calculatedChannelId: calc.id,
+                name: calc.name, unit: calc.unit || "", engineeringType: calc.engineering_type,
+                revision: calc.id + "@" + calc.created_at,
+                definition: calc,
+            };
+        }
+
+        function wwSignalsFromRecording(data) {
+            const signals = [];
+            const sourceId = data.source.source_id;
+            const sourceName = data.source.station_name;
+            for (const [signalType, channels] of [["analog", data.analog_channels || []], ["digital", data.digital_channels || []]]) {
+                for (const channel of channels) {
+                    const key = "raw:" + signalType + ":" + wwChannelKey(sourceId, channel.name);
+                    signals.push({
+                        key: key,
+                        channelKey: wwChannelKey(sourceId, channel.name),
+                        origin: "raw", signalType: signalType,
+                        sourceId: sourceId, sourceName: sourceName,
+                        referenceSourceId: sourceId, calculatedChannelId: null,
+                        name: channel.name, unit: channel.unit || "",
+                        engineeringType: signalType === "analog" ? channel.engineering_type : "Digital",
+                        revision: key,
+                        definition: channel,
+                    });
+                }
+            }
+            return signals;
+        }
+
+        // The current signals, raw first then calculated. `predicate` is
+        // the CONSUMER's own eligibility filter (optional).
+        function wwSignalCatalogueList(predicate) {
+            const signals = [];
+            for (const data of ww.sourceChannelsData.values()) signals.push(...wwSignalsFromRecording(data));
+            for (const calc of ww.calculatedChannels.values()) signals.push(wwSignalFromCalculatedChannel(calc));
+            return typeof predicate === "function" ? signals.filter(predicate) : signals;
+        }
+
+        function wwSignalCatalogueGet(key) {
+            return wwSignalCatalogueList().find((signal) => signal.key === key) || null;
+        }
+
+        // True only while `key` still exists with exactly `revision`.
+        function wwSignalCatalogueIsCurrent(key, revision) {
+            const signal = wwSignalCatalogueGet(key);
+            return !!signal && signal.revision === revision;
+        }
+
+        function wwSignalCatalogueRawKeysForSource(sourceId) {
+            const data = ww.sourceChannelsData.get(sourceId);
+            return data ? wwSignalsFromRecording(data).map((signal) => signal.key) : [];
+        }
+
+        function wwPublishCalculatedChanges(added, updated, removed) {
+            if (added.length) wwSignalCataloguePublish({ type: "added", origin: "calculated", keys: added });
+            if (updated.length) wwSignalCataloguePublish({ type: "updated", origin: "calculated", keys: updated });
+            if (removed.length) wwSignalCataloguePublish({ type: "removed", origin: "calculated", keys: removed });
+        }
+
+        // Calculated-channel mirror mutations -- the only writers of
+        // ww.calculatedChannels apart from workspace reset.
+        function wwCalculatedChannelsUpsert(channels) {
+            const added = [];
+            const updated = [];
+            for (const channel of channels) {
+                const previous = ww.calculatedChannels.get(channel.id);
+                ww.calculatedChannels.set(channel.id, channel);
+                if (!previous) added.push("calculated:" + channel.id);
+                else if (JSON.stringify(previous) !== JSON.stringify(channel)) updated.push("calculated:" + channel.id);
+            }
+            wwPublishCalculatedChanges(added, updated, []);
+        }
+
+        function wwCalculatedChannelsRemove(calculatedChannelId) {
+            if (!ww.calculatedChannels.delete(calculatedChannelId)) return;
+            wwPublishCalculatedChanges([], [], ["calculated:" + calculatedChannelId]);
+        }
+
+        // Replace the whole mirror from an authoritative backend list.
+        function wwCalculatedChannelsReplaceAll(channels) {
+            const previous = new Map(ww.calculatedChannels);
+            ww.calculatedChannels.clear();
+            const added = [];
+            const updated = [];
+            for (const channel of channels) {
+                ww.calculatedChannels.set(channel.id, channel);
+                const before = previous.get(channel.id);
+                if (!before) added.push("calculated:" + channel.id);
+                else if (JSON.stringify(before) !== JSON.stringify(channel)) updated.push("calculated:" + channel.id);
+            }
+            const removed = Array.from(previous.keys()).filter((id) => !ww.calculatedChannels.has(id)).map((id) => "calculated:" + id);
+            wwPublishCalculatedChanges(added, updated, removed);
+        }
+
         async function wwFetchCalculatedChannels() {
             let response;
             try {
@@ -39716,8 +39932,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             let body = null;
             try { body = await response.json(); } catch (error) { return; }
             if (!Array.isArray(body)) return;
-            ww.calculatedChannels.clear();
-            for (const channel of body) ww.calculatedChannels.set(channel.id, channel);
+            wwCalculatedChannelsReplaceAll(body);
             wwRenderCalculatedChannelsSidebarSection();
             wwRenderCalculatedChannelsPage();
         }
@@ -39825,7 +40040,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return;
             }
 
-            ww.calculatedChannels.set(body.id, body);
+            wwCalculatedChannelsUpsert([body]);
             wwCcSelectedCalculatedChannelId = body.id; // preview the just-created channel immediately
             wwCcResetBuilder();
             wwSetCcDrawerOpen(false);
@@ -39850,7 +40065,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return;
             }
             if (response.status === 204) {
-                ww.calculatedChannels.delete(calculatedChannelId);
+                wwCalculatedChannelsRemove(calculatedChannelId);
                 wwCcListErrors.delete(calculatedChannelId);
                 wwRemoveCalculatedChannelDisplayIfShown(calculatedChannelId);
                 if (wwCcSelectedCalculatedChannelId === calculatedChannelId) wwCcSelectedCalculatedChannelId = null;
@@ -40324,6 +40539,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // 5A extension); this just keeps the frontend's own
                 // mirror/UI in sync with that.
                 ww.calculatedChannels.clear();
+                // Raw inventories were cleared earlier in this same branch.
+                wwSignalCataloguePublish({ type: "reset", origin: "all", keys: [] });
                 // UAT fix: the Signal Builder's own TRANSIENT form state
                 // (wwCcBuilder/wwCcRmsEligibility) is separate from the
                 // ww.calculatedChannels registry cleared immediately
@@ -54245,6 +54462,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // "Start New Workspace", never re-fetched on ordinary page
         // navigation (see shellSetCurrentPage()'s own "calculated-
         // channels" branch).
+        wwErObserveSignalCatalogue();
         wwFetchCalculatedChannels();
         shellSetMainSidebarExpanded(shellLoadMainSidebarExpanded());
         document.getElementById("mainSidebarToggleBtn").addEventListener("click", () => {
@@ -54414,6 +54632,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             impedance: "wwImpedancePanel",
             sequence: "wwSequencePanel",
             distance: "wwDistancePanel",
+            oscillation: "wwOscillationPanel",
         };
         function wwSetActiveAnalysisType(type) {
             for (const btn of document.querySelectorAll(".ww-analysis-type-item")) {
@@ -54496,6 +54715,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwAnalysisTypeImpedanceBtn").addEventListener("click", () => wwSetActiveAnalysisType("impedance"));
         document.getElementById("wwAnalysisTypeSequenceBtn").addEventListener("click", () => wwSetActiveAnalysisType("sequence"));
         document.getElementById("wwAnalysisTypeDistanceBtn").addEventListener("click", () => wwSetActiveAnalysisType("distance"));
+        document.getElementById("wwAnalysisTypeOscillationBtn").addEventListener("click", () => wwSetActiveAnalysisType("oscillation"));
         document.getElementById("wwPhasorContextSelect").addEventListener("change", (event) => {
             wwPhasorState.selectedContextId = event.target.value || null;
             wwPhasorRenderContextBadge();

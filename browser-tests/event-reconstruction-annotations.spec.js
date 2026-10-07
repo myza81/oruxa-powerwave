@@ -76,7 +76,7 @@ const drawn = (page) => page.evaluate(() => {
   const plot = wwErState.plot;
   const wrap = document.getElementById("wwErPanelsWrap").getBoundingClientRect();
   const offsetOf = (sourceId) => {
-    const calculated = wwErState.calculatedChannels.find((c) => c.id === sourceId);
+    const calculated = wwErCalculatedChannels().find((c) => c.id === sourceId);
     const timingId = calculated ? calculated.reference_source_id : sourceId;
     for (const m of wwErState.definition.members) for (const t of m.source_timings || []) if (t.source_id === timingId) return t.total_reconstruction_offset_s;
     return null;

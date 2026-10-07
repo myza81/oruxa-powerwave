@@ -9,6 +9,19 @@ Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
 ## What was most recently done
 
+**Shared live signal catalogue (DEC-171, approved 2026-10-07), committed with the Oscillation page shell.** Builder
+candidates and Event Reconstruction now read it; other consumers deliberately unchanged (see DEC-171). **Next (after
+owner review):** the Oscillation input selector, which should call
+`wwSignalCatalogueList(<its own eligibility predicate>)` and re-read on `wwSignalCatalogueSubscribe()` events, storing
+`key` + `revision` with any result it produces. Do not start FFT/PSD/spectrogram/detection before that review.
+
+**Oscillation Analysis navigation/page shell (2026-10-07), awaiting owner UAT.** `Analysis -> Oscillation Analysis` now exists as
+the sixth analyzer-type nav item, routed through the shared `wwSetActiveAnalysisType()` switcher to an empty
+`#wwOscillationPanel` (title + neutral placeholder). It reuses the existing owner-supplied waveform pictogram
+(`ANALYSIS_OSCILLATION` -> `navigation/waveform_page.svg`) until the owner supplies a dedicated asset. Frontend/tests only;
+**no signal processing, backend or persistence** -- FFT/PSD/spectrogram/oscillation detection remain deferred. UAT: menu
+position, name, icon, active state, switching away and back, narrow width.
+
 **Compliance UI cleanup (DEC-170 Amendment 2), owner UAT passed 2026-10-07, committed.** `Saved References` ->
 `Available References`; Results section removed (no PASS/FAIL); Functions/Voltage card aligned to the workspace
 bottom; chart notes/legend strip removed so the Comparison Chart fills the right panel. Frontend/tests/docs

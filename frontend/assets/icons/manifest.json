@@ -17,6 +17,7 @@
   "ANALYSIS_DISTANCE": { "file": "analysis/distance_protection.svg", "source": "owner-supplied", "note": "see ANALYSIS_OVERCURRENT; data-analysis-type=\"distance\"" },
   "ANALYSIS_PHASOR": { "file": "analysis/phasor.svg", "source": "owner-supplied", "note": "see ANALYSIS_OVERCURRENT; data-analysis-type=\"phasor\"" },
   "ANALYSIS_SEQUENCE": { "file": "analysis/sequence_component.svg", "source": "owner-supplied", "note": "see ANALYSIS_OVERCURRENT; data-analysis-type=\"sequence\"" },
+  "ANALYSIS_OSCILLATION": { "file": "navigation/waveform_page.svg", "source": "owner-supplied", "note": "Oscillation Analysis shell nav item; deliberately reuses the existing owner-supplied waveform pictogram (same file as PAGE_WAVEFORM) until a dedicated asset is supplied; data-analysis-type=\"oscillation\"" },
 
   "COMPLIANCE_VOLTAGE": { "file": "compliance/voltage.svg", "source": "owner-supplied", "note": "Compliance page's own function nav item, replacing a hand-drawn inline <svg>; key matches data-compliance-type=\"voltage\"" },
 
