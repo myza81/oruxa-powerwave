@@ -290,7 +290,7 @@ test.describe("Compliance Slice 3 -- reference-only Comparison Chart rendering s
 });
 
 test.describe("Compliance Slice 3 -- no Measurement selected is NEVER incompatible", () => {
-  test("a reference layer's compatibility badge reads 'Not yet applicable' with no Measurement selected, never 'Incompatible'", async ({ page }) => {
+  test("a reference layer shows NO compatibility/applicability pill (never 'Incompatible' either); the data still says not_yet_applicable", async ({ page }) => {
     await openCompliance(page);
     const workspaceId = await currentWorkspaceIdOf(page);
     const profile = await createProfile(page, workspaceId, { name: "Compatibility Probe Profile" });
@@ -298,10 +298,15 @@ test.describe("Compliance Slice 3 -- no Measurement selected is NEVER incompatib
     await page.reload();
     await page.locator("#mainNavComplianceBtn").click();
 
+    // The Reference Layer card answers "what reference is this?" -- measurement
+    // compatibility/readiness status is shown only in the Measurement area.
     const row = page.locator(".ww-ref-layer-row", { hasText: "Compatibility Probe Profile" });
-    await expect(row.locator(".ww-ref-badge--compat-not_yet_applicable")).toHaveText("Not yet applicable");
-    await expect(row.locator(".ww-ref-badge--compat-incompatible")).toHaveCount(0);
-    await expect(row.locator(".ww-ref-badge--compat-compatible")).toHaveCount(0);
+    await expect(row).toBeVisible();
+    await expect(row.locator("[class*='ww-ref-badge--compat']")).toHaveCount(0);
+    await expect(row).not.toContainText(/not yet applicable|incompatible|compatible|ready|waiting|action required/i);
+    // Presentation only: the layer data still carries the status.
+    const layers = await (await page.request.get(referenceLayersUrl(workspaceId))).json();
+    expect(layers[0].compatibility.status).toBe("not_yet_applicable");
   });
 
   test("DEC-110: compatibility stays 'Not yet applicable' even via the API's own quantity_id query param (no measurement resolver exists yet)", async ({ page, request }) => {
@@ -648,7 +653,8 @@ test.describe("Add Reference UX -- one top-level action: + Add Reference (the li
     await page.locator("#mainNavComplianceBtn").click();
     await openAddReference(page);
 
-    await expect(page.locator("#wwRefAddOverlay")).toContainText("Saved References");
+    await expect(page.locator("#wwRefAddOverlay")).toContainText("Available References");
+    await expect(page.locator("#wwRefAddOverlay")).not.toContainText("Saved References");
     await expect(page.locator("#wwRefAddList .ww-ref-picker-item")).toHaveCount(2);
     await expect(page.locator("#wwRefAddNewProfileBtn")).toHaveText("+ Create Custom Reference");
     await expect(page.locator("#wwRefAddImportLabel")).toContainText("Import Reference");
@@ -750,4 +756,132 @@ test.describe("Add Reference UX -- one top-level action: + Add Reference (the li
     await row.locator(".ww-ref-row-menu summary").click();
     await expect(row.locator(".ww-ref-row-menu-list button")).toHaveText(["View", "Edit", "Duplicate", "Export", "Remove"]);
   });
+});
+
+
+test.describe("Reference Layer card -- identity first (name, category, assessment)", () => {
+  const LONG_NAME = "Malaysia Grid Code 2025 -- Generator Terminal Low Voltage Ride-Through Requirement (Interconnector Revision B)";
+
+  async function openWithLayer(page, name = LONG_NAME, overrides = {}) {
+    await openCompliance(page);
+    const workspaceId = await currentWorkspaceIdOf(page);
+    const profile = await createProfile(page, workspaceId, {
+      name, category: "grid_requirement",
+      assessment_definition: { representation: "line_line_rms", phase_treatment: "each_phase" }, ...overrides,
+    });
+    const layer = await addLayer(page, workspaceId, profile.id);
+    await page.reload();
+    await page.locator("#mainNavComplianceBtn").click();
+    const row = page.locator(`.ww-ref-layer-row[data-layer-id="${layer.id}"]`);
+    await expect(row).toBeVisible();
+    return { row, layer, workspaceId };
+  }
+
+  test("the full reference name is shown (wrapped, never ellipsised) and leads the card", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const { row } = await openWithLayer(page);
+    const name = row.locator(".ww-ref-layer-name");
+    await expect(name).toHaveText(LONG_NAME);
+    const style = await name.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { overflow: cs.textOverflow, whiteSpace: cs.whiteSpace, weight: Number(cs.fontWeight), scrollW: el.scrollWidth, clientW: el.clientWidth };
+    });
+    expect(style.overflow).not.toBe("ellipsis");
+    expect(style.whiteSpace).not.toBe("nowrap");
+    expect(style.scrollW).toBeLessThanOrEqual(style.clientW + 1); // nothing is cut off
+    expect(style.weight).toBeGreaterThanOrEqual(600);
+    // Dominant: larger than the assessment line, which is larger than the category pill.
+    const sizes = await row.evaluate((el) => ({
+      name: parseFloat(getComputedStyle(el.querySelector(".ww-ref-layer-name")).fontSize),
+      badge: parseFloat(getComputedStyle(el.querySelector(".ww-ref-badge")).fontSize),
+      summary: parseFloat(getComputedStyle(el.querySelector(".ww-ref-layer-summary")).fontSize),
+    }));
+    expect(sizes.name).toBeGreaterThan(sizes.summary);
+    expect(sizes.summary).toBeGreaterThan(sizes.badge);
+    // The accessible names carry the full name too.
+    await expect(row.getByRole("checkbox")).toHaveAccessibleName(`Show ${LONG_NAME} on the Comparison Chart`);
+    await expect(row.getByRole("button")).toHaveAccessibleName(`Remove ${LONG_NAME}`);
+  });
+
+  test("the category badge stays, secondary, at 0.5rem; the old status pill is gone; the assessment remains", async ({ page }) => {
+    const { row } = await openWithLayer(page, "Short Reference");
+    const badge = row.locator(".ww-ref-badge--category-grid_requirement");
+    await expect(badge).toHaveText("Grid Requirement");
+    const ratio = await badge.evaluate((el) => parseFloat(getComputedStyle(el).fontSize) / parseFloat(getComputedStyle(document.documentElement).fontSize));
+    expect(ratio).toBeCloseTo(0.5, 5); // font-size: 0.5rem
+    await expect(row.locator(".ww-ref-badge")).toHaveCount(1); // the category only
+    await expect(row).not.toContainText(/not yet applicable/i);
+    await expect(row.locator(".ww-ref-layer-summary")).toContainText("Assessment: Each Phase Line-Line RMS");
+    // Order: name, then category, then assessment, top to bottom.
+    const y = async (selector) => (await row.locator(selector).boundingBox()).y;
+    expect(await y(".ww-ref-layer-name")).toBeLessThan(await y(".ww-ref-layer-category"));
+    expect(await y(".ww-ref-layer-category")).toBeLessThan(await y(".ww-ref-layer-summary"));
+  });
+
+  test("the category badge in the Add Reference dialog is unchanged (the 0.5rem rule is scoped to the card)", async ({ page }) => {
+    await openCompliance(page);
+    const workspaceId = await currentWorkspaceIdOf(page);
+    await createProfile(page, workspaceId, { name: "Dialog Badge Probe", category: "grid_requirement" });
+    await page.reload();
+    await page.locator("#mainNavComplianceBtn").click();
+    await page.locator("#wwComplianceAddReferenceBtn").click();
+    const badge = page.locator("#wwRefAddList .ww-ref-badge--category-grid_requirement").first();
+    const ratio = await badge.evaluate((el) => parseFloat(getComputedStyle(el).fontSize) / parseFloat(getComputedStyle(document.documentElement).fontSize));
+    expect(ratio).toBeGreaterThan(0.6);
+  });
+
+  test("the checkbox and the remove action keep working", async ({ page }) => {
+    const { row, workspaceId } = await openWithLayer(page, "Controls Probe");
+    const checkbox = row.getByRole("checkbox");
+    await expect(checkbox).toBeChecked();
+    await checkbox.uncheck();
+    await expect(row).toHaveAttribute("data-visible", "false");
+    await checkbox.check();
+    await expect(row).toHaveAttribute("data-visible", "true");
+    // Keyboard: the remove control is a real button, reachable by keyboard.
+    const remove = row.getByRole("button", { name: "Remove Controls Probe" });
+    await remove.focus();
+    await expect(remove).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".ww-ref-layer-row")).toHaveCount(0);
+    const profiles = await (await page.request.get(referenceProfilesUrl(workspaceId))).json();
+    expect(profiles.some((p) => p.name === "Controls Probe")).toBe(true); // layer removed, profile kept
+  });
+
+  for (const scenario of [
+    { label: "left column near its minimum", viewport: { width: 1440, height: 900 }, shrink: true },
+    { label: "stacked / narrow layout", viewport: { width: 900, height: 900 }, shrink: false },
+    { label: "small stacked width", viewport: { width: 640, height: 900 }, shrink: false },
+  ]) {
+    test(`no overlap or clipping: ${scenario.label}`, async ({ page }) => {
+      await page.setViewportSize(scenario.viewport);
+      const { row } = await openWithLayer(page);
+      if (scenario.shrink) {
+        await page.locator("#wwComplianceSplitHandle").focus();
+        await page.keyboard.press("Home"); // the configuration column at its minimum width
+      }
+      const boxes = {
+        row: await row.boundingBox(),
+        checkbox: await row.getByRole("checkbox").boundingBox(),
+        body: await row.locator(".ww-ref-layer-body").boundingBox(),
+        name: await row.locator(".ww-ref-layer-name").boundingBox(),
+        remove: await row.getByRole("button").boundingBox(),
+      };
+      const within = (inner, outer) => inner.x >= outer.x - 1 && inner.x + inner.width <= outer.x + outer.width + 1;
+      for (const key of ["checkbox", "body", "name", "remove"]) expect(within(boxes[key], boxes.row), key).toBe(true);
+      const disjoint = (a, b) => a.x + a.width <= b.x + 1 || b.x + b.width <= a.x + 1;
+      expect(disjoint(boxes.checkbox, boxes.body)).toBe(true);
+      expect(disjoint(boxes.body, boxes.remove)).toBe(true);
+      expect(disjoint(boxes.checkbox, boxes.remove)).toBe(true);
+      // The wrapped title grows the card downwards, not outwards.
+      expect(await row.locator(".ww-ref-layer-name").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+      for (const part of [".ww-ref-layer-category", ".ww-ref-layer-summary"]) {
+        const box = await row.locator(part).boundingBox();
+        expect(box.y).toBeGreaterThanOrEqual(boxes.name.y + boxes.name.height - 1);
+        expect(within(box, boxes.row), part).toBe(true);
+      }
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflow).toBeLessThanOrEqual(1);
+    });
+  }
 });
