@@ -7177,14 +7177,14 @@
         .ww-ref-layer-list {
             display: flex;
             flex-direction: column;
-            gap: 6px;
-            margin: 0 0 8px;
+            gap: 4px;
+            margin: 0 0 6px;
         }
         .ww-ref-layer-row {
             display: flex;
             flex-direction: column;
-            gap: 2px;
-            padding: 4px 6px;
+            gap: 1px;
+            padding: 4px 8px;
             border-radius: var(--radius);
             background: var(--surface-tint);
             font-size: 0.78rem;
@@ -7194,40 +7194,58 @@
         }
         .ww-ref-layer-row-main {
             display: flex;
-            align-items: center;
-            gap: 6px;
+            align-items: flex-start;
+            gap: 8px;
         }
-        .ww-ref-layer-name {
+        .ww-ref-layer-row-main > input[type="checkbox"] { flex: 0 0 auto; margin: 3px 0 0; }
+        /* The body takes all the width between the checkbox and the remove
+           control, so the title is never squeezed between badges. */
+        .ww-ref-layer-body {
             flex: 1 1 auto;
             min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 3px;
         }
+        /* The name is the dominant element and wraps rather than truncating. */
+        .ww-ref-layer-name {
+            max-width: 100%;
+            font-size: 0.75rem;
+            font-weight: 600;
+            line-height: 1.25;
+            color: var(--text);
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+        /* Secondary: the category pill is deliberately small. */
+        .ww-ref-layer-row .ww-ref-badge { font-size: 0.5rem; padding: 1px 6px; }
         /* DEC-110 task section 11: one compact, secondary summary line
            -- "Assessment: Minimum L-L RMS at Connection Point" /
            "Assessment convention not specified" -- never a second,
            verbose block. */
         .ww-ref-layer-summary {
-            padding-left: 22px;
+            max-width: 100%;
             font-size: 0.68rem;
             color: var(--text-dim);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            white-space: normal;
+            overflow-wrap: anywhere;
         }
         .ww-ref-layer-remove-btn {
+            flex: 0 0 auto;
             border: none;
+            border-radius: var(--radius);
             background: transparent;
             color: var(--text-dim);
             cursor: pointer;
-            font-size: 0.9rem;
+            font-size: 1rem;
             line-height: 1;
-            padding: 2px 4px;
+            padding: 2px 6px;
         }
         .ww-ref-layer-remove-btn:hover {
             color: var(--text);
         }
+        .ww-ref-layer-remove-btn:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--accent-dim); }
         .ww-ref-badge {
             display: inline-block;
             flex: 0 0 auto;
@@ -13832,7 +13850,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 <h3 id="wwRefAddTitle">Add Reference</h3>
                 <button type="button" class="group-editor-close" id="wwRefAddCloseBtn" aria-label="Close">&times;</button>
             </div>
-            <h4 class="ww-ref-dialog-heading">Saved References</h4>
+            <h4 class="ww-ref-dialog-heading">Available References</h4>
             <input type="search" class="ww-ref-add-search" id="wwRefAddSearch" placeholder="Search references&hellip;" aria-label="Search saved references" autocomplete="off">
             <div class="ww-ref-picker-list" id="wwRefAddList"></div>
             <p class="hint error" id="wwRefAddError" hidden role="alert"></p>
@@ -54639,13 +54657,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     '<div class="ww-ref-layer-row" data-layer-id="' + escapeHtml(layer.id) + '" data-visible="' + (layer.visible ? "true" : "false") + '">' +
                         '<div class="ww-ref-layer-row-main">' +
                             '<input type="checkbox" id="wwRefLayerVis-' + escapeHtml(layer.id) + '"' + (layer.visible ? " checked" : "") + ' aria-label="Show ' + escapeHtml(profile.name) + ' on the Comparison Chart">' +
-                            '<span class="ww-ref-layer-name" title="' + escapeHtml(profile.name) + '">' + escapeHtml(profile.name) + '</span>' +
-                            wwRefCategoryBadgeHtml(profile.category) +
-                            wwRefCompatBadgeHtml(layer.compatibility.status, layer.compatibility.reason) +
+                            // The card answers "what reference is this?": the full name leads,
+                            // the category and the assessment definition sit beneath it. It does
+                            // NOT carry measurement/compatibility status -- that belongs to the
+                            // Measurement readiness area (layer.compatibility is still on the data).
+                            '<div class="ww-ref-layer-body">' +
+                                '<span class="ww-ref-layer-name" title="' + escapeHtml(profile.name) + '">' + escapeHtml(profile.name) + '</span>' +
+                                '<div class="ww-ref-layer-category">' + wwRefCategoryBadgeHtml(profile.category) + '</div>' +
+                                '<div class="ww-ref-layer-summary" title="' + escapeHtml(summary) + '">' +
+                                    wwRefDescribeAssessmentDefinition(profile.assessment_definition, { html: true }) + '</div>' +
+                            '</div>' +
                             '<button type="button" class="ww-ref-layer-remove-btn" id="wwRefLayerRemove-' + escapeHtml(layer.id) + '" title="Remove from chart (does not delete the profile)" aria-label="Remove ' + escapeHtml(profile.name) + '">&times;</button>' +
                         '</div>' +
-                        '<div class="ww-ref-layer-summary" title="' + escapeHtml(summary) + '">' +
-                            wwRefDescribeAssessmentDefinition(profile.assessment_definition, { html: true }) + '</div>' +
                     '</div>'
                 );
             }).join("");

@@ -9,6 +9,10 @@ Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
 ## What was most recently done
 
+**Reference Layer card redesigned (UX refinement, owner UAT passed 2026-10-07, committed).** Full name leads and
+wraps; category pill 0.5rem; assessment beneath; the "Not yet applicable" pill is gone from the card
+(presentation-only; measurement status stays in the Measurement area). Frontend/tests/docs only.
+
 **Two-column Compliance workspace + measured traces (DEC-169), awaiting UAT.** Left:
 Reference Layers / Measurement / Event Alignment; right: Comparison Chart; Results below;
 drag/arrow-key resize. "Ready" now means the trace can be produced, and the measured

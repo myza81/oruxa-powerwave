@@ -918,6 +918,18 @@ and four other specs were reworked for the new card.
 `backend/app/schemas/compliance.py`, `backend/app/api/v1/compliance.py`,
 `frontend/index.html`.
 
+## Reference Layer card: identity first (UX refinement, 2026-10-06)
+
+Not a new decision. The card in the Reference Layers list answers "what reference is
+this?": the **full name** leads (larger, bold, wraps instead of truncating), then the
+**category** pill (deliberately small, `font-size: 0.5rem`, scoped to this card so the Add
+Reference dialog's badges are unchanged), then the **assessment definition**; the enable
+checkbox and the remove button keep their behaviour. The former "Not yet applicable"
+compatibility pill is **no longer shown** here: measurement compatibility/readiness is shown
+only in the Measurement area. That pill was presentation-only (the layer data still carries
+`compatibility`, the API is unchanged). Layout holds from the stacked/narrow width down to the
+left column's minimum width without overlap.
+
 ## Add Reference: one top-level action (UX refinement, 2026-10-05)
 
 Not a new decision -- a navigation refinement of the DEC-109/DEC-111 Reference

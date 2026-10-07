@@ -817,7 +817,8 @@ class TestAddReferenceUnifiedFlowStructure:
             "wwRefAddSearch", "wwRefAddList", "wwRefAddNewProfileBtn", "wwRefAddImportInput", "wwRefAddError",
         ):
             assert f'id="{element_id}"' in dialog
-        assert "Saved References" in dialog
+        assert "Available References" in dialog
+        assert "Saved References" not in dialog
         assert "Create New" in dialog
 
     def test_no_separate_library_dialog_or_functions_remain(self):
@@ -853,3 +854,28 @@ class TestAddReferenceUnifiedFlowStructure:
         assert "wwRefRefreshLayersAndChart()" in add
         refresh = _function_body(source, "async function wwRefRefreshLayersAndChart() {", "\n        }")
         assert "wwComplianceRefreshReadiness()" in refresh
+
+
+class TestReferenceLayerCardIdentityFirst:
+    """The Reference Layer card answers "what reference is this?": full name,
+    category, assessment definition -- and no measurement/compatibility status."""
+
+    def test_card_does_not_render_the_compatibility_pill(self):
+        source = _source()
+        fn = _function_body(source, "function wwRefRenderLayersCard() {", "\n        async function wwRefToggleLayerVisibility")
+        assert "wwRefCompatBadgeHtml(" not in fn
+        assert "layer.compatibility.status" not in fn and "layer.compatibility.reason" not in fn
+
+    def test_name_leads_with_category_and_assessment_beneath(self):
+        source = _source()
+        fn = _function_body(source, "function wwRefRenderLayersCard() {", "\n        async function wwRefToggleLayerVisibility")
+        assert fn.index("ww-ref-layer-name") < fn.index("ww-ref-layer-category") < fn.index("ww-ref-layer-summary")
+        assert "wwRefCategoryBadgeHtml(profile.category)" in fn
+        assert "ww-ref-layer-remove-btn" in fn and "wwRefLayerVis-" in fn
+
+    def test_name_wraps_instead_of_truncating_and_category_is_half_rem(self):
+        source = _source()
+        name_rule = _function_body(source, "        .ww-ref-layer-name {", "}")
+        assert "text-overflow" not in name_rule and "nowrap" not in name_rule
+        assert "overflow-wrap: anywhere" in name_rule
+        assert ".ww-ref-layer-row .ww-ref-badge { font-size: 0.5rem;" in source
