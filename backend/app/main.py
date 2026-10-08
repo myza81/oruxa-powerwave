@@ -16,6 +16,7 @@ from app.api.v1.compliance import router as compliance_v1_router
 from app.api.v1.engineering_contexts import router as engineering_contexts_v1_router
 from app.api.v1.event_reconstruction import router as event_reconstruction_v1_router
 from app.api.v1.measurement_groups import router as measurement_groups_v1_router
+from app.api.v1.oscillation import router as oscillation_v1_router
 from app.api.v1.per_unit import router as per_unit_v1_router
 from app.api.v1.preparation_sources import router as preparation_sources_v1_router
 from app.api.v1.reference_profiles import router as reference_profiles_v1_router
@@ -199,6 +200,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(engineering_contexts_v1_router)
     app.include_router(compliance_v1_router)
     app.include_router(reference_profiles_v1_router)
+    app.include_router(oscillation_v1_router)
 
     @app.get("/health")
     def health():

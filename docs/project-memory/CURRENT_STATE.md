@@ -21,9 +21,22 @@ parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
 DEC-122 display timezone).
 
 
-**Oscillation Analysis page shell exists (2026-10-07), awaiting owner UAT.** `Analysis -> Oscillation Analysis` is a navigation
-entry and empty page shell only; signal-processing functionality (spectrum, spectrogram, oscillation detection) is deferred
-and not implemented.
+**Oscillation Analysis setup/input workflow implemented (2026-10-07), owner UAT accepted 2026-10-08.** `Analysis -> Oscillation
+Analysis` is now a setup page: an eligible-signal selector fed by the shared live signal catalogue (compatible calculated
+channels appear/disappear without reload), Start/End time (in the signal's Time Group display basis, validated against its
+available range), Minimum/Maximum Frequency (Hz, validated against Nyquist), an Analysis Information block
+(fs, T, ~N, fs/2, 1/T) and a Data Adequacy status (Suitable / Warning / Invalid). The Analyze button only validates the
+setup -- **no FFT, Welch PSD, spectrum, spectrogram, peak detection or oscillation detection exists, and no result is
+produced.** Eligibility and adequacy rules are DEC-172 `[APPROVED]` (DECISIONS.md).
+
+**Raw V/I preprocessing for Oscillation Analysis (DEC-173 `[APPROVED]`, 2026-10-08), owner UAT accepted.** Raw (and
+instantaneous calculated) Voltage/Current signals are now selectable; the analysis uses an **analysis-internal RMS
+magnitude representation** derived on demand by the backend from the existing RMS engine (`evaluate_rms`, trailing
+one-cycle window, one value per source sample, nominal frequency from the recording). Nothing is persisted or added to
+the signal catalogue. Setup information separates source rate/duration/samples from the representation's usable
+range and shows its bandwidth (-3 dB at 0.443 x nominal frequency, null at nominal frequency -- not Nyquist). Endpoint:
+`POST /api/v1/workspaces/{ws}/oscillation-analysis/representation` (metadata only). **Still no FFT, Welch PSD,
+spectrum, spectrogram, peak detection or detection.**
 
 **Shared live signal catalogue established (DEC-171, approved 2026-10-07).** Raw and calculated channels are read
 through `wwSignalCatalogueList(predicate)` (a derived view, not a new store) and observed through
@@ -32,7 +45,7 @@ availability; each consumer determines eligibility. Two consumers are migrated: 
 (`wwCcAvailableCandidates()`) and Event Reconstruction (no private calculated-channel copy). Waveform, Table/Split
 View, Compliance Prepare and the Engineering-Context Analysis tools were intentionally left on their own paths.
 Calculated channels stay immutable (recreate = new id), so `key` + `revision` is how a future result detects staleness.
-The Oscillation Analysis signal selector is **not** implemented; no oscillation processing exists.
+The Oscillation Analysis signal selector is the third consumer (see above); no oscillation processing exists.
 
 **Compliance is a resizable two-column workspace with measured traces (DEC-169), 2026-10-06.**
 Configuration (Reference Layers, Measurement incl. Event Alignment) on the left, the

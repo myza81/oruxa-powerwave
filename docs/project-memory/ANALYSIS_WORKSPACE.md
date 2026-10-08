@@ -427,6 +427,19 @@ the equivalent context-lifecycle tests in
 bootstrap/renderer function exists, so a future analyzer that tries to
 add one is caught immediately.
 
+## Signal-based analyzers (Oscillation Analysis)
+
+Oscillation Analysis (2026-10-07, DEC-171 consumer, DEC-172 `[APPROVED]`) is the first analyzer that is **not** an
+Engineering Context consumer: it takes one signal chosen from the shared live signal catalogue
+(`wwSignalCatalogueList()` + `wwSignalCatalogueSubscribe()`), so it does not register as a context consumer, mounts no
+Playback and pushes no Related Waveforms roles. It is setup/input only (signal, time window, frequency range, metadata,
+data-adequacy); no spectral processing exists yet.
+
+Raw Voltage/Current are analysed through an analysis-internal **RMS magnitude representation** (DEC-173 `[APPROVED]`):
+the backend derives it on demand from the existing RMS engine and returns only its description (rate, usable range,
+bandwidth); it is never a calculated channel and never enters the signal catalogue. The page keeps the description in
+memory keyed by signal key + revision.
+
 ## Related documents
 
 - [PHASOR_ANALYSIS.md](PHASOR_ANALYSIS.md)

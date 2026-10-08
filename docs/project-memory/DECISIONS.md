@@ -25223,3 +25223,141 @@ from and check `wwSignalCatalogueIsCurrent()` before being presented as current.
 
 Tests: `backend/tests/test_frontend_signal_catalogue.py`, `browser-tests/signal_catalogue.spec.js` (catalogue +
 builder), `browser-tests/event-reconstruction.spec.js` (Event Reconstruction consumer).
+
+## DEC-172 — Oscillation Analysis setup rules: signal eligibility, time basis and data-adequacy checks
+
+Status: **[APPROVED]** (owner, 2026-10-08; was `[PROPOSAL]`) — implemented on `feat/event-reconstruction` (UAT accepted
+2026-10-08). Consumes DEC-171; changes nothing in it. The raw Voltage/Current part of its original eligibility wording is
+superseded by DEC-173 (see the note below).
+
+**Scope.** Setup/input workflow only. No FFT/Welch PSD/spectrum/spectrogram/peak detection/damping/oscillation
+detection exists and the Analyze button produces no result.
+
+**Eligibility (the catalogue decides availability; this feature decides eligibility).** An analog signal whose
+recording has exactly one sampling rate (> 0) and a time range in its metadata:
+Frequency, ROCOF, Power, Undefined (offered with a visible Warning), Voltage/Current angle quantities
+(`engineering_quantity` = Voltage Angle/Current Angle), and already-RMS Voltage/Current magnitudes (**when `waveform_form` is
+`rms` or `magnitude`**; never RMS'd twice), or raw/instantaneous Voltage/Current via the internal RMS representation of DEC-173. Digital and
+multi-rate signals are not offered (multi-rate records stay unsupported for this phase). `[FACT]` the backend exposes `waveform_form` for
+calculated channels only; raw (COMTRADE/CSV) channels carry no form. No name heuristics are used and the engineer is never asked to
+declare a channel's form. Raw V/I are **not permanently excluded**: they are eligible through DEC-173.
+
+> **Update 2026-10-08 -- superseded in part by DEC-173 `[APPROVED]`.** The original wording that raw Voltage/Current are
+> not offered (reported as "requires RMS/magnitude preprocessing") is replaced: raw Voltage/Current are offered through an
+> analysis-internal RMS magnitude representation derived on demand by the backend, and "requires preprocessing" is no
+> longer a reported state. The rest of DEC-172 (time basis, formulas, status strip, multi-recording presentation) is unchanged.
+
+**Time basis.** The window is stored in the signal's source time and displayed through the existing mappings
+(source → workspace via alignment offset → event time via the Time Group t0); a clock-time readout is added for
+Time-of-Day/Absolute groups. No Oscillation-specific coordinate system. Default window = the signal's full range.
+
+**Formulas** (metadata only; no sample array is read, no backend call): Nyquist = fs/2; T = end − start;
+N ≈ floor(T·fs) + 1; resolution ≈ 1/T (a basic window estimate, not a final Welch segment resolution). Invalid: end ≤
+start, window outside the available range (never clamped), N < 2, f_min < 0, f_max ≤ f_min, f_max > fs/2. Warning:
+f_min > 0 and f_min < 1/T; observed cycles T·f_min below `recommendedMinObservedCycles` (2, an application guideline
+in `WW_OSC_ADEQUACY_RULES`, **not** a standard); band width < 1/T. f_min = 0 is allowed (noted as including DC).
+
+**Eligibility status (compact strip beside the signal selector, details on request).** Suitable / Limited / Not suitable, derived from
+existing metadata only. *Not suitable*: no analog signals; no analog signal with usable timing (e.g. multi-rate); or the current setup is
+invalid (window outside range / < 2 samples / f_max > Nyquist / bad band). *Limited*: excluded signals,
+Undefined-type signals, or f_min below the 2-cycle guideline `2/T` ("slow oscillations below ≈ 2/T Hz may not be reliably assessed" — a
+guideline, not a physical boundary). Short or low-rate recordings are Limited, never globally invalid. *Suitable*: none of the above. With zero
+directly eligible signals the selector is disabled ("No directly eligible signals") and the strip explains why. Details disclosure: source, fs,
+duration, counts, reasons, per-recording and per-signal limits. Analysis Window offers Current visible range (snapshot of the Waveform
+Time Group viewport, clipped to the signal) / Full recording / Custom range; Start/End appear only for Custom. Multi-rate signals stay excluded.
+
+**Multi-recording presentation (owner UAT, 2026-10-07).** Status is computed **per recording** (a calculated channel belongs to its
+reference recording) with the rules above; a workspace-wide duration/preprocessing count is never shown because it is ambiguous across recordings.
+*No signal selected, several recordings:* the strip is a recording-level summary (`⚠ 4 recordings · 2 suitable · 2 limited · 1 not suitable`; empty
+categories omitted; icon is ✓ when all are suitable, ✕ when none is, otherwise ⚠) and View details lists one section per recording — CFG filename
+header with its status, fs, duration, eligible/preprocessing/timing-excluded counts, `2/T`, reasons and that recording's own capped signal limits
+("Showing 12 of N affected signals") — separated by a horizontal rule. *One recording, no selection:* the recording-specific strip. *Signal selected:*
+the strip describes that signal's recording and current setup only (`✓ Suitable · Event_A.cfg · 5000 Hz · Duration 10.0 s`); other signals'
+preprocessing needs no longer make the selected setup Limited (its own window/band/caveats do), and the details show that recording's section only.
+The selector groups options by recording filename (calculated channels under their reference recording) via native `<optgroup>`.
+
+Tests: `browser-tests/oscillation_setup.spec.js`, `backend/tests/test_frontend_oscillation_analysis_shell.py`.
+
+## DEC-173 -- Oscillation Analysis consumes an analysis-internal RMS magnitude representation of raw Voltage/Current
+
+Status: **[APPROVED]** (owner, 2026-10-08; was `[PROPOSAL]`) -- implemented on `feat/event-reconstruction` (UAT accepted
+2026-10-08). Builds on DEC-171 and DEC-172. It **supersedes only** the DEC-172 wording that raw Voltage/Current are not
+offered / require preprocessing (see the update note in DEC-172); changes nothing else in them. No FFT, Welch PSD,
+spectrum, spectrogram, peak detection, damping or oscillation detection exists.
+
+**Problem.** A raw disturbance record usually holds only instantaneous `i(t) = I(t) sin(2 pi f0 t + phi)`. Analysing it
+directly would put the 50/60 Hz carrier, not the oscillation, in the spectrum. The analysis input must be `I(t)`.
+
+**`[FACT]` Engine inspected (2026-10-08).** `app.domain.calculated_channel.evaluate_rms` (DEC-048) is the project's RMS:
+trailing one-cycle true RMS `sqrt(mean(x^2))` over the half-open window `(t - 1/f0, t]`; **one output per input sample**
+(never downsampled); NaN until a complete window has elapsed and for any window containing a non-finite sample; O(N)
+(cumulative sum on near-uniform spacing, two-pointer on irregular spacing); time-based, so non-integer
+samples-per-cycle and any f0 in 1-1000 Hz work (the uniform path rounds the window to whole samples; 60 Hz at 5 kHz,
+83.3 samples/cycle, leaves a measured residual of 0.2 %). Hard guards already exist: record longer than one window and
+>= 4 samples/cycle. Eligibility is the metadata-first hierarchy `check_rms_eligibility` (trusted `waveform_form`, else
+the DEC-108 detector). Nominal frequency is **recording metadata**: COMTRADE `lf`, BEN upload value, CSV/Excel
+preparation (an assumed default is flagged `nominal_frequency_assumed`). Other RMS-like code (`rms_detector`, phasor,
+overcurrent, event detection) either classifies or calls this same function.
+
+**Decision.**
+
+- *Reuse, no new maths.* `derive_rms_magnitude()` (`app.domain.oscillation_representation`) calls `evaluate_rms`
+  unchanged; a test proves the derived series is bit-identical to the RMS calculated channel. The only new engineering
+  statements are the validity range, time convention and bandwidth below.
+- *Backend, on demand, metadata-only wire.* `POST /api/v1/workspaces/{ws}/oscillation-analysis/representation`
+  (`app.api.v1.oscillation`, `app.services.oscillation_representation_service`). Request: a channel ref and
+  `representation` (`rms_magnitude`, the only implemented value; others are a 400). Response: status
+  `ready|unavailable` + reason, nominal frequency and its origin, source/derived sample counts and rates, valid range,
+  boundary loss, window, delay and bandwidth. **No sample arrays are returned**; the arrays exist in-process for the
+  future spectral stage. Expected non-derivable outcomes are `200 unavailable`: not Voltage/Current,
+  `already_magnitude` (an RMS/magnitude channel is never RMS'd twice), `form_unconfirmed` (detector uncertain -- never
+  guessed), `recording_too_short`, `sampling_too_sparse`, `invalid_nominal_frequency`.
+- *Analysis-internal.* Nothing is registered as a calculated channel, written to the catalogue or persisted; the
+  browser keeps only the returned description in memory (`wwOscState.derivations`, keyed by signal key@revision, pruned
+  on catalogue events). The user selects `IA`, not `RMS (IA)`. Lazy: one request when a derived signal is selected;
+  none on page open, for native signals, on window/band edits or on reselect (cached).
+- *Representation concept.* `WW_OSC_REPRESENTATIONS`: `native` ("Signal as recorded") and `rms_magnitude` ("RMS /
+  magnitude", source form "Instantaneous AC waveform"). Positive-sequence, phasor magnitude, envelope, P/Q and
+  derived-frequency are deliberately not declared or shown.
+- *Eligibility.* A Voltage/Current signal (engineering type from existing metadata, never names) whose form is not
+  already RMS/magnitude is selectable with the `rms_magnitude` representation; calculated V/I with an instantaneous
+  form (reverse polarity, L-L, ...) likewise; a calculated RMS channel stays native. The "requires preprocessing"
+  verdict, count, strip text and limit lines are removed. Details show "Via RMS magnitude: N".
+- *Time axis (documented, nothing new).* Output stays on the **source time stamps**, so source time, alignment offsets,
+  Time Groups, workspace t=0 and Time-of-Day mappings apply unchanged. The window is **trailing**: a value at `t`
+  summarises `(t - T, t]`, centred at `t - T/2`, so the magnitude **lags the signal by T/2** (10 ms at 50 Hz; 8.3 ms at
+  60 Hz) -- a pure delay, irrelevant to a spectrum but relevant to cursor-time comparison. Boundary loss: exactly the
+  **first T seconds** (first valid sample at `t0 + T`); none at the end. Derived sample count = source - `T*fs`
+  (e.g. 5001 -> 4981 at 1 kHz/50 Hz, 5000 -> 4900 per second at 5 kHz). Windows touching NaN input are NaN.
+- *Rates.* Representation rate = source rate (one output per sample): 5 kHz in, 5 kHz out, but heavily **oversampled
+  relative to its bandwidth**. The setup shows Source Sampling Rate, Representation Rate, Source/Usable Duration and
+  Source/Derived Samples separately; the analysis window must lie inside the **usable** range.
+- *Effective bandwidth `[FACT]`, mathematical.* The trailing window is a boxcar of length `T = 1/f0` on `x^2`; a small
+  envelope modulation at `fm` survives with amplitude `|sinc(fm/f0)| = |sin(pi fm/f0)/(pi fm/f0)|` (square root
+  linearises for small depth) and a constant delay `T/2`. The `2 f0` term sits on a null. Hence: -3 dB at
+  `0.4429 f0` (**22.1 Hz at 50 Hz, 26.6 Hz at 60 Hz**); 0.988 at 5 Hz, 0.939 at 10 Hz, 0.758 at 20 Hz, 0.504 at 30 Hz,
+  0.234 at 40 Hz (all verified against synthetic data to +/-0.01); **exact null at `f0`**, side lobes up to ~21 % beyond
+  it with sign inversion. So RMS magnitude is suitable for **low/moderate-frequency** oscillation (inter-area, local and
+  subsynchronous modes up to roughly 20-25 Hz, with a known, deterministic roll-off), and **not** for anything at or
+  above the nominal frequency; "up to Nyquist" is false for this representation. High-frequency converter/control
+  oscillations (tens to hundreds of Hz) need a different representation (e.g. demodulated/phasor envelope with a
+  properly designed low-pass) -- a separate future decision.
+- *Adequacy.* For a derived signal the band's upper limit is the representation's: `fMax >= f0` is **Invalid** ("reaches
+  the bandwidth limit ... modulation at or above the nominal frequency is not recoverable"), `fMax > 0.443 f0` is a
+  **Warning** (> 29 % amplitude loss, zero at f0); the derived-sample Nyquist is still shown but labelled
+  "Nyquist (derived samples)". The attenuation is not corrected in this slice. The frontend contains no RMS maths
+  (guard test).
+- *Assumed nominal frequency.* If an upstream stage had to assume the default, the check list shows a Warning.
+  COMTRADE with an unparseable `lf` also defaults to 50 Hz with a parser warning but is not flagged downstream -- an
+  existing limitation, reported not changed.
+
+**Open before Welch PSD.** (1) Whether the -3 dB / null limits are the right band policy, or whether the owner wants
+amplitude compensation by `1/|sinc|` (rejected here: it amplifies noise and is undefined at f0). (2) Whether a second,
+wider-band representation is needed for converter oscillations. (3) Raw channels already carrying RMS/PMU magnitude
+without metadata are refused (`already_magnitude`/`form_unconfirmed`) rather than analysed as recorded -- the owner may
+prefer a declaration path. (4) Segment length/overlap/window/detrending for Welch (unchanged from DEC-172). (5) The
+output is oversampled; Welch can use it as is, but decimating by a factor chosen from the bandwidth is a possible
+later optimisation, deliberately not done (no resampling in this slice).
+
+Tests: `backend/tests/test_oscillation_representation.py`, `backend/tests/test_frontend_oscillation_analysis_shell.py`,
+`browser-tests/oscillation_setup.spec.js`.

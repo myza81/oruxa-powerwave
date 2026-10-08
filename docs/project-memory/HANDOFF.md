@@ -9,6 +9,26 @@ Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
 ## What was most recently done
 
+**Raw V/I RMS magnitude representation for Oscillation Analysis (DEC-173 `[APPROVED]`, 2026-10-08), owner UAT accepted;
+DEC-172/173 approved and committed together with the setup workflow.** Backend: `app/domain/oscillation_representation.py` (calls `evaluate_rms` unchanged; validity,
+bandwidth model), `app/services/oscillation_representation_service.py`, `app/schemas/oscillation.py`,
+`app/api/v1/oscillation.py` (registered in `main.py`). Frontend (`wwOsc*` in `index.html`): raw V/I selectable;
+`wwOscRequestDerivation()` fetches the description lazily on selection; `wwOscEffectiveTiming()` makes the window and
+adequacy use the representation's rate/range/bandwidth; "requires preprocessing" removed. Tests:
+`backend/tests/test_oscillation_representation.py` (38), `test_frontend_oscillation_analysis_shell.py`,
+`browser-tests/oscillation_setup.spec.js` (59 with the catalogue spec). Full regression before commit: backend 6807 passed/49 skipped; Playwright 756 passed, 1 unrelated flake (passed on rerun). **Settle before Welch PSD:** see "Open" in DEC-173 (band policy,
+wider-band representation for converter oscillations, declaration path for PMU/RMS raw channels).
+
+**Oscillation Analysis setup/input workflow (2026-10-07), owner UAT accepted 2026-10-08; committed.** Selector reads
+`wwSignalCatalogueList(wwOscClassifySignal)` and re-reads on `wwSignalCatalogueSubscribe()` events (state: `wwOscState`;
+stores `signalKey` + `signalRevision` + `catalogueRevision`). Window stored in source time, shown in the Time Group
+display basis. Pure assessment in `wwOscAssess()`; adequacy constants centralized in `WW_OSC_ADEQUACY_RULES`. Eligibility
+and adequacy rules are DEC-172 `[APPROVED]`. Frontend/tests/docs only. Tests:
+`browser-tests/oscillation_setup.spec.js`, `backend/tests/test_frontend_oscillation_analysis_shell.py`. Raw V/I
+eligibility was settled by DEC-173 (internal RMS representation). **Before Welch PSD the owner must decide:** segment
+length/overlap/window and the detrending policy; and whether multi-rate records are resampled or stay ineligible. No FFT/PSD/spectrogram/detection
+code exists.
+
 **Shared live signal catalogue (DEC-171, approved 2026-10-07), committed with the Oscillation page shell.** Builder
 candidates and Event Reconstruction now read it; other consumers deliberately unchanged (see DEC-171). **Next (after
 owner review):** the Oscillation input selector, which should call

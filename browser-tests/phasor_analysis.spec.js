@@ -424,13 +424,13 @@ test.describe("Phasor Analysis -- bay-centric redesign", () => {
     await expect(page.locator("#wwAnalysisTypeOvercurrentBtn")).toHaveClass(/active/);
     await expect(page.locator("#wwOvercurrentPanel")).toBeVisible();
 
-    // Oscillation Analysis -- navigation/page shell only (no processing).
+    // Oscillation Analysis -- navigation + setup page (no processing; see oscillation_setup.spec.js).
     await page.locator("#wwAnalysisTypeOscillationBtn").click();
     await expect(page.locator("#wwAnalysisTypeOscillationBtn")).toHaveClass(/active/);
     await expect(page.locator("#wwAnalysisTypeOscillationBtn")).toHaveAttribute("aria-current", "true");
     await expect(page.locator("#wwAnalysisTypeOvercurrentBtn")).not.toHaveClass(/active/);
     await expect(page.locator("#wwOscillationPanel")).toBeVisible();
-    await expect(page.locator("#wwOscillationPanel h3")).toHaveText("Oscillation Analysis");
+    await expect(page.locator("#wwOscillationPanel h3").first()).toHaveText("Oscillation Analysis");
     await expect(page.locator("#wwOvercurrentPanel")).toBeHidden();
     await expect(page.locator("#wwAnalysisTypeOscillationBtn .ww-analysis-type-icon")).toHaveClass(/ww-icon-asset/);
 

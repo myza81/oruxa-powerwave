@@ -7626,6 +7626,59 @@
             padding: 5px 8px;
         }
 
+        /* Oscillation Analysis setup (DEC-171 consumer): compact form grid,
+           metadata list and data-adequacy status. Status colours reuse the
+           app's --ok/--warn/--error tokens. */
+        :is(.ww-osc-card) { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+        :is(.ww-osc-card) h3 { margin: 0; }
+        :is(.ww-osc-subhead) { font-size: 0.72rem; font-weight: 600; color: var(--text); }
+        :is(.ww-osc-grid) { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 14px; }
+        :is(.ww-osc-field) { display: flex; flex-direction: column; gap: 5px; margin: 0; font-size: 0.72rem; color: var(--text-dim); min-width: 0; }
+        :is(.ww-osc-field--wide) { grid-column: 1 / -1; }
+        :is(.ww-osc-field) :is(select, input[type="number"]) {
+            width: 100%; box-sizing: border-box; font-size: 0.7rem; padding: 5px 8px;
+            background: var(--panel); color: var(--text);
+            border: 1px solid var(--panel-border); border-radius: var(--radius);
+        }
+        :is(.ww-osc-field) :is(select, input[type="number"]):focus { outline: none; border-color: var(--accent-dim); }
+        :is(.ww-osc-field) input:disabled { opacity: 0.5; }
+        :is(.ww-osc-hint) { font-size: 0.65rem; color: var(--text-dim); }
+        :is(.ww-osc-hint)[hidden], :is(.ww-osc-notice)[hidden] { display: none; }
+        :is(.ww-osc-notice) { font-size: 0.7rem; color: var(--warn); }
+        :is(.ww-osc-actions) { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        :is(.ww-osc-info) { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 14px; }
+        :is(.ww-osc-info) dt { font-size: 0.65rem; color: var(--text-dim); }
+        :is(.ww-osc-info) dd { margin: 2px 0 0; font-size: 0.8rem; color: var(--text); font-variant-numeric: tabular-nums; }
+        /* Derived-representation rows join the same grid as direct children. */
+        :is(.ww-osc-info-derived):not([hidden]) { display: contents; }
+        :is(.ww-osc-field)[hidden], :is(.ww-osc-details)[hidden] { display: none; }
+        :is(.ww-osc-strip) { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 0.7rem; color: var(--text-dim); }
+        :is(.ww-osc-strip-label) { flex: 0 0 auto; font-weight: 700; color: var(--text-dim); }
+        :is(.ww-osc-strip)[data-status="suitable"] .ww-osc-strip-label { color: var(--ok); }
+        :is(.ww-osc-strip)[data-status="limited"] .ww-osc-strip-label { color: var(--warn); }
+        :is(.ww-osc-strip)[data-status="not_suitable"] .ww-osc-strip-label { color: var(--error); }
+        :is(.ww-osc-strip-text) { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        :is(.ww-osc-strip-toggle) { flex: 0 0 auto; background: none; border: none; padding: 0; font-size: 0.7rem; color: var(--accent); cursor: pointer; text-decoration: underline; }
+        :is(.ww-osc-details) { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border: 1px solid var(--panel-border); border-radius: var(--radius); }
+        :is(.ww-osc-checks):empty { display: none; }
+        :is(.ww-osc-rec-list) { display: flex; flex-direction: column; gap: 10px; }
+        :is(.ww-osc-rec) { display: flex; flex-direction: column; gap: 8px; }
+        :is(.ww-osc-rec-head) { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+        :is(.ww-osc-rec-name) { font-size: 0.78rem; font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+        :is(.ww-osc-rec-status) { flex: 0 0 auto; font-size: 0.7rem; font-weight: 700; color: var(--text-dim); }
+        :is(.ww-osc-rec)[data-status="suitable"] .ww-osc-rec-status { color: var(--ok); }
+        :is(.ww-osc-rec)[data-status="limited"] .ww-osc-rec-status { color: var(--warn); }
+        :is(.ww-osc-rec)[data-status="not_suitable"] .ww-osc-rec-status { color: var(--error); }
+        :is(.ww-osc-rec-divider) { width: 100%; height: 0; margin: 4px 0 0; border: 0; border-top: 1px solid var(--panel-border); }
+        :is(.ww-osc-status) { align-self: flex-start; font-size: 0.72rem; font-weight: 700; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--panel-border); color: var(--text-dim); }
+        :is(.ww-osc-status)[data-status="suitable"] { color: var(--ok); border-color: var(--ok); }
+        :is(.ww-osc-status)[data-status="warning"] { color: var(--warn); border-color: var(--warn); }
+        :is(.ww-osc-status)[data-status="invalid"] { color: var(--error); border-color: var(--error); }
+        :is(.ww-osc-checks) { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 0.7rem; color: var(--text); }
+        :is(.ww-osc-checks) li[data-status="warning"] { color: var(--warn); }
+        :is(.ww-osc-checks) li[data-status="invalid"] { color: var(--error); }
+        :is(.ww-osc-checks) li[data-status="info"] { color: var(--text-dim); }
+
         /* Shared Analysis Playback ribbon -- one compact card/row used
            by every Analysis analyzer that mounts wwCreatePlaybackControlsHtml()
            (Phasor and Overcurrent today, future analyzers automatically).
@@ -11761,15 +11814,105 @@
                             </div>
                         </section>
 
-                        <!-- Oscillation Analysis -- navigation/page shell ONLY
-                             (UAT slice). No processing, no backend, no
-                             controls: frequency-spectrum/spectrogram analysis
-                             is deferred until this shell is approved. Reuses
-                             the shared Analysis panel shell/card styling. -->
+                        <!-- Oscillation Analysis -- SETUP / INPUT workflow only.
+                             Signal + time window + frequency range, basic
+                             analysis metadata and a data-adequacy check. NO
+                             signal processing: no FFT/PSD/spectrum/
+                             spectrogram/peak detection exists yet, and the
+                             Analyze button produces no result. Signals come
+                             from the shared live signal catalogue (DEC-171).
+                             Reuses the shared Analysis panel/card styling. -->
                         <section class="ww-phasor-panel" id="wwOscillationPanel" hidden>
-                            <section class="panel">
+                            <section class="panel ww-osc-card">
                                 <h3>Oscillation Analysis</h3>
-                                <p class="empty-state" id="wwOscillationEmptyState">Oscillation analysis tools will appear here.</p>
+                                <div class="ww-osc-subhead">Analysis Setup</div>
+                                <label class="ww-osc-field">
+                                    <span class="ww-osc-field-label">Signal</span>
+                                    <select id="wwOscSignalSelect"><option value="">Select a signal…</option></select>
+                                </label>
+                                <!-- Compact recording/signal eligibility status. The
+                                     detail block is closed by default. -->
+                                <div class="ww-osc-strip" id="wwOscEligibility" data-status="not_suitable">
+                                    <span class="ww-osc-strip-label" id="wwOscEligibilityLabel"></span>
+                                    <span class="ww-osc-strip-text" id="wwOscEligibilityText"></span>
+                                    <button type="button" class="ww-osc-strip-toggle" id="wwOscEligibilityToggle"
+                                        aria-expanded="false" aria-controls="wwOscEligibilityDetails">View details</button>
+                                </div>
+                                <div class="ww-osc-details" id="wwOscEligibilityDetails" hidden>
+                                    <!-- One section per recording (workspace view) or the
+                                         selected signal's recording, built by
+                                         wwOscRenderEligibility(). -->
+                                    <div class="ww-osc-rec-list" id="wwOscEligibilityBody"></div>
+                                </div>
+                                <div class="ww-osc-subhead">Analysis Window</div>
+                                <div class="ww-osc-grid">
+                                    <label class="ww-osc-field">
+                                        <span class="ww-osc-field-label">Window</span>
+                                        <select id="wwOscWindowMode">
+                                            <option value="current">Current visible range</option>
+                                            <option value="full" selected>Full recording</option>
+                                            <option value="custom">Custom range</option>
+                                        </select>
+                                    </label>
+                                    <label class="ww-osc-field" id="wwOscStartField" hidden>
+                                        <span class="ww-osc-field-label">Start Time (s)</span>
+                                        <input type="number" step="any" id="wwOscStartInput" disabled>
+                                    </label>
+                                    <label class="ww-osc-field" id="wwOscEndField" hidden>
+                                        <span class="ww-osc-field-label">End Time (s)</span>
+                                        <input type="number" step="any" id="wwOscEndInput" disabled>
+                                    </label>
+                                </div>
+                                <div class="ww-osc-hint" id="wwOscWindowReadout"></div>
+                                <div class="ww-osc-hint" id="wwOscTimeBasis"></div>
+                                <div class="ww-osc-hint" id="wwOscClockReadout" hidden></div>
+                                <div class="ww-osc-subhead">Frequency Range</div>
+                                <div class="ww-osc-grid">
+                                    <label class="ww-osc-field">
+                                        <span class="ww-osc-field-label">Minimum Frequency (Hz)</span>
+                                        <input type="number" step="any" id="wwOscMinFreqInput">
+                                    </label>
+                                    <label class="ww-osc-field">
+                                        <span class="ww-osc-field-label">Maximum Frequency (Hz)</span>
+                                        <input type="number" step="any" id="wwOscMaxFreqInput">
+                                    </label>
+                                </div>
+                                <div class="ww-osc-notice" id="wwOscSelectionNotice" role="status" hidden></div>
+                                <div class="ww-osc-actions">
+                                    <button type="button" id="wwOscAnalyzeBtn" disabled>Analyze</button>
+                                    <span class="ww-osc-hint" id="wwOscAnalyzeNote">Spectrum and spectrogram analysis are not implemented yet.</span>
+                                </div>
+                            </section>
+                            <section class="panel ww-osc-card">
+                                <h3>Analysis Information</h3>
+                                <dl class="ww-osc-info" id="wwOscInfo">
+                                    <div><dt>Analysis Representation</dt><dd id="wwOscInfoRepresentation">—</dd></div>
+                                    <div><dt id="wwOscInfoSamplingRateLabel">Sampling Rate</dt><dd id="wwOscInfoSamplingRate">—</dd></div>
+                                    <div><dt>Window Duration</dt><dd id="wwOscInfoDuration">—</dd></div>
+                                    <div><dt>Sample Count</dt><dd id="wwOscInfoSampleCount">—</dd></div>
+                                    <div><dt id="wwOscInfoNyquistLabel">Nyquist Frequency</dt><dd id="wwOscInfoNyquist">—</dd></div>
+                                    <div><dt>Frequency Resolution (≈ 1/T)</dt><dd id="wwOscInfoResolution">—</dd></div>
+                                    <!-- Derived (RMS magnitude) signals only: the source waveform versus
+                                         what the analysis actually receives. Metadata from the backend;
+                                         no samples. -->
+                                    <div id="wwOscInfoDerivedRows" class="ww-osc-info-derived" hidden>
+                                        <div><dt>Source Form</dt><dd id="wwOscInfoSourceForm">—</dd></div>
+                                        <div><dt>Source Sampling Rate</dt><dd id="wwOscInfoSourceRate">—</dd></div>
+                                        <div><dt>Source Duration</dt><dd id="wwOscInfoSourceDuration">—</dd></div>
+                                        <div><dt>Usable Duration</dt><dd id="wwOscInfoUsableDuration">—</dd></div>
+                                        <div><dt>Source Samples</dt><dd id="wwOscInfoSourceCount">—</dd></div>
+                                        <div><dt>Derived Samples</dt><dd id="wwOscInfoDerivedCount">—</dd></div>
+                                        <div><dt>Nominal Frequency</dt><dd id="wwOscInfoNominal">—</dd></div>
+                                        <div><dt>Usable Oscillation Band</dt><dd id="wwOscInfoBandwidth">—</dd></div>
+                                        <div><dt>Time Alignment</dt><dd id="wwOscInfoTimeAlignment">—</dd></div>
+                                    </div>
+                                </dl>
+                                <div class="ww-osc-hint">Resolution is the basic window estimate 1/T, not a final spectral-estimation segment resolution.</div>
+                            </section>
+                            <section class="panel ww-osc-card">
+                                <h3>Data Adequacy</h3>
+                                <div class="ww-osc-status" id="wwOscAdequacyStatus" data-status="incomplete">Not assessed</div>
+                                <ul class="ww-osc-checks" id="wwOscAdequacyList"></ul>
                             </section>
                         </section>
                     </div>
@@ -49769,6 +49912,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwRenderAnalysisPage() {
             wwAnalysisLoadContexts();
             wwOvercurrentEnsureCharacteristicsLoaded();
+            wwOscRender();
         }
 
         // ==================================================================
@@ -54709,6 +54853,973 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             } else {
                 wwAnalysisSetRelatedWaveformRoles([], null, null);
             }
+            // Oscillation Analysis owns no Related Waveforms; it re-reads
+            // the live catalogue and time basis on becoming visible.
+            if (type === "oscillation") wwOscRender();
+        }
+
+        // ==================================================================
+        // Oscillation Analysis -- SETUP / INPUT workflow (no processing)
+        //
+        // The engineer selects an eligible signal, an analysis window and a
+        // requested frequency range, and sees basic metadata plus a
+        // data-adequacy check. There is NO FFT/PSD/spectrum/spectrogram/
+        // peak detection here and the Analyze button produces no result.
+        //
+        // Signals: the shared live catalogue (DEC-171) is the ONLY source.
+        // This page keeps no inventory: it calls wwSignalCatalogueList()
+        // with its own eligibility predicate on every render and re-reads
+        // on wwSignalCatalogueSubscribe() events (no polling, no reload).
+        // The catalogue decides availability; wwOscClassifySignal() decides
+        // eligibility.
+        //
+        // Selection identity: the stable catalogue `key` plus the signal's
+        // `revision` and the catalogue revision at selection time, so a
+        // future result can be validated with wwSignalCatalogueIsCurrent().
+        //
+        // Time: the window is STORED in the signal's own source time and is
+        // only converted to/from the display basis at the edges, through
+        // the existing source -> workspace (alignment offset) -> event (Time
+        // Group t0) mappings. No Oscillation-specific time coordinate.
+        // ==================================================================
+
+        // Default requested band -- a starting value only, never a limit.
+        const WW_OSC_DEFAULT_FREQUENCY_RANGE_HZ = Object.freeze({ min: 0.1, max: 2 });
+        // Adequacy rules, centralized. These are engineering-judgement
+        // defaults of this application, NOT an international standard.
+        const WW_OSC_ADEQUACY_RULES = Object.freeze({
+            // Fewest samples a window may hold for rate/duration metadata to mean anything.
+            minSamples: 2,
+            // Fewer observed periods of the lowest requested frequency than this raises a Warning.
+            recommendedMinObservedCycles: 2,
+        });
+        // Voltage/Current quantities: a signal already known to be RMS/magnitude
+        // is analysed as recorded; every other one is treated as a raw
+        // instantaneous AC waveform and analysed through its RMS magnitude
+        // representation (DEC-173 [APPROVED]), which the BACKEND derives on
+        // demand from the existing RMS engine and verifies (it refuses a
+        // channel that is already RMS/magnitude, or whose form it cannot
+        // confirm). No RMS mathematics lives in this file.
+        const WW_OSC_FORM_DEPENDENT_TYPES = Object.freeze(["Voltage", "Current"]);
+        const WW_OSC_ACCEPTED_WAVEFORM_FORMS = Object.freeze(["rms", "magnitude"]);
+        // Analysis representations. Only what is implemented is listed.
+        const WW_OSC_REPRESENTATIONS = Object.freeze({
+            native: Object.freeze({ id: "native", label: "Signal as recorded" }),
+            rms_magnitude: Object.freeze({ id: "rms_magnitude", label: "RMS / magnitude", sourceForm: "Instantaneous AC waveform" }),
+        });
+        const WW_OSC_ANGLE_QUANTITIES = Object.freeze(["Voltage Angle", "Current Angle"]);
+        const WW_OSC_STATUS_LABELS = Object.freeze({
+            suitable: "Suitable", warning: "Warning", invalid: "Invalid", incomplete: "Not assessed",
+        });
+
+        const wwOscState = {
+            signalKey: null, signalRevision: null, catalogueRevision: null,
+            startSource: null, endSource: null,
+            minText: String(WW_OSC_DEFAULT_FREQUENCY_RANGE_HZ.min),
+            maxText: String(WW_OSC_DEFAULT_FREQUENCY_RANGE_HZ.max),
+            // "current" (visible range at selection time) | "full" | "custom".
+            windowMode: "full", detailsOpen: false,
+            optionsSignature: null, notice: "", validatedSetup: null, unsubscribe: null,
+            // Analysis-internal representation descriptions requested from the
+            // backend, keyed by signal key@revision: { key, revision, state:
+            // "loading"|"ready"|"unavailable"|"error", info, message }. Memory
+            // only, metadata only (no samples), never a catalogue signal.
+            derivations: new Map(),
+        };
+
+        function wwOscFormat(value, digits) {
+            if (!Number.isFinite(value)) return "—";
+            return String(Number(value.toPrecision(digits || 6)));
+        }
+
+        // Uniform sampling + available source-time range, from the metadata
+        // already in the workspace (no sample array is read).
+        function wwOscTimingForSignal(signal) {
+            const timingSourceId = signal.referenceSourceId || signal.sourceId;
+            const data = ww.sourceChannelsData.get(timingSourceId);
+            if (!data || !data.timebase) return { ok: false, reason: "timing metadata unavailable" };
+            const rates = data.timebase.sampling_rates || [];
+            if (rates.length !== 1) return { ok: false, reason: rates.length > 1 ? "multi-rate recording" : "no sampling rate in metadata" };
+            const fs = rates[0];
+            if (!Number.isFinite(fs) || fs <= 0) return { ok: false, reason: "no valid sampling rate" };
+            const bounds = wwSourceBoundsFromTimebase(data.timebase);
+            if (!bounds) return { ok: false, reason: "no time range in metadata" };
+            return { ok: true, fs: fs, bounds: bounds, timingSourceId: timingSourceId };
+        }
+
+        // Oscillation Analysis eligibility: a continuous, uniformly sampled
+        // numeric analog series. A Voltage/Current signal whose form is not
+        // known to be RMS/magnitude is offered with the derived "RMS /
+        // magnitude" representation (`verdict.derived`); the backend confirms
+        // it when the representation is requested (see
+        // wwOscRequestDerivation). Classification uses measurement metadata
+        // (engineering type/quantity), never channel-name heuristics.
+        function wwOscClassifySignal(signal) {
+            if (signal.signalType !== "analog") return { eligible: false, reason: "digital" };
+            const timing = wwOscTimingForSignal(signal);
+            if (!timing.ok) return { eligible: false, reason: "timing", detail: timing.reason };
+            const definition = signal.definition || {};
+            if (WW_OSC_ANGLE_QUANTITIES.includes(definition.engineering_quantity)) {
+                return { eligible: true, timing: timing, caveats: ["angle"] };
+            }
+            const form = definition.waveform_form || "unknown";
+            if (WW_OSC_FORM_DEPENDENT_TYPES.includes(signal.engineeringType)
+                && !WW_OSC_ACCEPTED_WAVEFORM_FORMS.includes(form)) {
+                return {
+                    eligible: true, timing: timing, caveats: [], derived: true,
+                    representation: WW_OSC_REPRESENTATIONS.rms_magnitude,
+                };
+            }
+            return {
+                eligible: true, timing: timing, derived: false,
+                representation: WW_OSC_REPRESENTATIONS.native,
+                caveats: signal.engineeringType === "Undefined" ? ["undefined_type"] : [],
+            };
+        }
+
+        function wwOscDerivationId(signal) { return signal.key + "@" + signal.revision; }
+
+        // The cached backend description for a derived signal, or null.
+        function wwOscDerivationFor(signal, verdict) {
+            if (!verdict.derived) return null;
+            return wwOscState.derivations.get(wwOscDerivationId(signal)) || null;
+        }
+
+        // The timing the analysis actually runs on. Native: the recording's
+        // metadata timing. Derived: once the backend has prepared the
+        // representation, ITS rate and USABLE range (after the one-cycle
+        // boundary loss); until then the provisional metadata timing.
+        function wwOscEffectiveTiming(verdict, derivation) {
+            if (!verdict.derived || !derivation || derivation.state !== "ready") return verdict.timing;
+            const info = derivation.info;
+            return Object.assign({}, verdict.timing, {
+                fs: info.representation_sample_rate_hz || verdict.timing.fs,
+                bounds: { start: info.valid_start_s, end: info.valid_end_s },
+            });
+        }
+
+        // Requests (once per signal revision) the metadata of the derived
+        // representation. Lazy: only for the SELECTED derived signal.
+        async function wwOscRequestDerivation(signal) {
+            const id = wwOscDerivationId(signal);
+            const existing = wwOscState.derivations.get(id);
+            if (existing && existing.state !== "error") return;
+            const placeholder = { key: signal.key, revision: signal.revision, state: "loading" };
+            wwOscState.derivations.set(id, placeholder);
+            const input = signal.origin === "calculated"
+                ? { kind: "calculated", calculated_channel_id: signal.calculatedChannelId }
+                : { kind: "source", source_id: signal.sourceId, channel_name: signal.name };
+            let entry;
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/oscillation-analysis/representation",
+                    { method: "POST", headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ input: input, representation: "rms_magnitude" }) }
+                );
+                let body = null;
+                try { body = await response.json(); } catch (error) { /* handled below */ }
+                if (!response.ok || !body) {
+                    const detail = body && body.detail && body.detail.message;
+                    entry = { state: "error", message: detail || "The RMS magnitude representation could not be prepared." };
+                } else {
+                    entry = { state: body.status, info: body, message: body.message };
+                }
+            } catch (error) {
+                entry = { state: "error", message: "Could not reach the backend to prepare the RMS magnitude representation." };
+            }
+            // Dropped or replaced while in flight (signal removed/changed): discard.
+            if (wwOscState.derivations.get(id) !== placeholder) return;
+            wwOscState.derivations.set(id, Object.assign({ key: signal.key, revision: signal.revision }, entry));
+            wwOscOnDerivationArrived(signal);
+        }
+
+        function wwOscOnDerivationArrived(signal) {
+            const state = wwOscState;
+            if (state.signalKey !== signal.key || state.signalRevision !== signal.revision) return;
+            const selected = wwOscSelectedSignal();
+            if (!selected) return;
+            // The usable range may now differ from the provisional one: re-apply
+            // the chosen window mode (a Custom window is kept and validated).
+            if (state.windowMode !== "custom") wwOscApplyWindowMode(selected, state.windowMode);
+            wwOscRender(true);
+        }
+
+        // Recording label: the CFG filename the engineer loaded, else the
+        // station name. A calculated channel belongs to its reference
+        // recording (its timing source).
+        function wwOscRecordingLabel(sourceId) {
+            const source = (ww.sourceChannelsData.get(sourceId) || {}).source;
+            if (!source) return "Unknown recording";
+            const filename = Array.isArray(source.original_filenames) ? recordingCfgFilename(source) : null;
+            return filename || source.station_name || "Untitled recording";
+        }
+
+        // Every analog signal with its verdict, grouped by recording
+        // (`recordings`, in workspace order); `eligible` is the selectable
+        // subset (including raw V/I offered through their RMS magnitude).
+        function wwOscScanCatalogue() {
+            const recordings = new Map();
+            const recordingFor = (id) => {
+                if (!recordings.has(id)) {
+                    const source = (ww.sourceChannelsData.get(id) || {}).source;
+                    recordings.set(id, {
+                        id: id, label: wwOscRecordingLabel(id),
+                        stationName: source && source.station_name ? source.station_name : "", rows: [],
+                    });
+                }
+                return recordings.get(id);
+            };
+            for (const id of ww.sourceChannelsData.keys()) recordingFor(id);
+            const rows = [];
+            const eligible = [];
+            for (const signal of wwSignalCatalogueList((s) => s.signalType === "analog")) {
+                const verdict = wwOscClassifySignal(signal);
+                const row = { signal: signal, verdict: verdict, recordingId: signal.referenceSourceId || signal.sourceId };
+                rows.push(row);
+                recordingFor(row.recordingId).rows.push(row);
+                if (verdict.eligible) eligible.push(signal);
+            }
+            return { rows: rows, recordings: recordings, eligible: eligible };
+        }
+
+        // Slow-frequency guideline shared by recording and selected-setup
+        // summaries: a band minimum below 2/T is Limited, never invalid.
+        function wwOscSlowLimit(durationS, fMin) {
+            const recommendedMinHz = durationS > 0 ? WW_OSC_ADEQUACY_RULES.recommendedMinObservedCycles / durationS : null;
+            if (recommendedMinHz === null || fMin === null || !(fMin > 0) || !(fMin < recommendedMinHz)) return null;
+            return {
+                text: "Slow oscillations below approximately " + wwOscFormat(recommendedMinHz, 2)
+                    + " Hz may not be reliably assessed with this window.",
+                short: "Slow-frequency limitation",
+            };
+        }
+
+        // One recording's eligibility, metadata only. Status: suitable |
+        // limited | not_suitable. A recording is never called unsuitable only
+        // because it cannot cover the whole requested band: that is Limited.
+        function wwOscRecordingSummary(recording, fMin, fMax) {
+            const rows = recording.rows;
+            const eligibleRows = rows.filter((r) => r.verdict.eligible);
+            const derivedRows = eligibleRows.filter((r) => r.verdict.derived);
+            const timingRows = rows.filter((r) => r.verdict.reason === "timing");
+            const undefinedCount = eligibleRows.filter((r) => (r.verdict.caveats || []).includes("undefined_type")).length;
+            const timingRow = rows.find((r) => r.verdict.timing);
+            const timing = timingRow ? timingRow.verdict.timing : null;
+            const durationS = timing ? timing.bounds.end - timing.bounds.start : null;
+            const recommendedMinHz = durationS > 0 ? WW_OSC_ADEQUACY_RULES.recommendedMinObservedCycles / durationS : null;
+            const notSuitable = [];
+            const limited = [];
+            if (rows.length === 0) {
+                notSuitable.push({ text: "No analog signals are available.", short: "No analog signals" });
+            } else if (eligibleRows.length === 0) {
+                const detail = (timingRows[0] && timingRows[0].verdict.detail) || "timing metadata unavailable";
+                notSuitable.push({ text: timingRows.length + " analog signal(s) cannot be used: " + detail + ".", short: "No usable timing" });
+            }
+            if (timing && fMax !== null && fMax > timing.fs / 2) {
+                notSuitable.push({
+                    text: "Maximum frequency " + wwOscFormat(fMax) + " Hz exceeds the Nyquist frequency " + wwOscFormat(timing.fs / 2) + " Hz.",
+                    short: "Maximum frequency above Nyquist",
+                });
+            }
+            if (timingRows.length && eligibleRows.length > 0) {
+                limited.push({
+                    text: timingRows.length + " analog signal(s) excluded: " + (timingRows[0].verdict.detail || "timing metadata unavailable") + ".",
+                    short: "Signals excluded",
+                });
+            }
+            if (undefinedCount) {
+                limited.push({ text: undefinedCount + " Undefined-type signal(s) available with a warning.", short: "Undefined-type warning" });
+            }
+            const slow = wwOscSlowLimit(durationS, fMin);
+            if (slow && !notSuitable.length) limited.push(slow);
+            return {
+                id: recording.id, label: recording.label, stationName: recording.stationName, rows: rows,
+                status: notSuitable.length ? "not_suitable" : limited.length ? "limited" : "suitable",
+                notSuitable: notSuitable, limited: limited, timing: timing, durationS: durationS, recommendedMinHz: recommendedMinHz,
+                counts: { analog: rows.length, eligible: eligibleRows.length, derived: derivedRows.length, timing: timingRows.length },
+            };
+        }
+
+        // The selected signal's setup within its own recording: the
+        // recording-wide preprocessing/timing counts of OTHER signals do not
+        // make this setup Limited -- its own window, band and caveats do.
+        function wwOscSelectedSummary(recordingSummary, analysis, fMin) {
+            const notSuitable = analysis.assessment.checks
+                .filter((c) => c.status === "invalid").map((c) => ({ text: c.message, short: c.message }));
+            const limited = [];
+            if ((analysis.selected.verdict.caveats || []).includes("undefined_type")) {
+                limited.push({ text: "Undefined-type signal available with a warning.", short: "Undefined-type warning" });
+            }
+            if (analysis.assessment.checks.some((c) => c.area === "representation" && c.status === "incomplete")) {
+                limited.push({ text: "Preparing the RMS magnitude representation.", short: "Preparing representation" });
+            }
+            const info = analysis.assessment.info;
+            const durationS = info.durationS !== null ? info.durationS : recordingSummary.durationS;
+            const slow = wwOscSlowLimit(durationS, fMin);
+            if (slow && !notSuitable.length) limited.push(slow);
+            return {
+                status: notSuitable.length ? "not_suitable" : limited.length ? "limited" : "suitable",
+                notSuitable: notSuitable, limited: limited, durationS: durationS,
+                recommendedMinHz: durationS > 0 ? WW_OSC_ADEQUACY_RULES.recommendedMinObservedCycles / durationS : null,
+            };
+        }
+
+        // Display basis of a signal's Time Group: source -> workspace
+        // (alignment offset) -> event time (t0, when set).
+        function wwOscTimeBasis(signal) {
+            const groupId = wwTimeGroupIdForDisplaySourceId(signal.sourceId);
+            return {
+                groupId: groupId,
+                hasT0: wwHasT0(groupId),
+                toDisplay: (sourceTime) => wwWorkspaceTimeToEventTime(wwSourceTimeToWorkspaceTime(signal.sourceId, sourceTime), groupId),
+                toSource: (displayTime) => wwWorkspaceTimeToSourceTime(signal.sourceId, wwEventTimeToWorkspaceTime(displayTime, groupId)),
+                toWorkspace: (sourceTime) => wwSourceTimeToWorkspaceTime(signal.sourceId, sourceTime),
+            };
+        }
+
+        // Pure setup assessment. `p`: { fs, bounds, startSource, endSource,
+        // fMin, fMax, toDisplay, caveats, derived, derivation } (times in
+        // source seconds). For a derived signal `fs`/`bounds` are those of the
+        // derived representation (see wwOscEffectiveTiming), NOT the raw
+        // waveform's, and the band limit is the representation's bandwidth.
+        function wwOscAssess(p) {
+            const checks = [];
+            const add = (area, status, message) => checks.push({ area: area, status: status, message: message });
+            const nyquist = p.fs / 2;
+            const info = { samplingRateHz: p.fs, durationS: null, sampleCount: null, nyquistHz: nyquist, resolutionHz: null, derived: null };
+            const finish = () => {
+                let status = "suitable";
+                if (checks.some((c) => c.status === "warning")) status = "warning";
+                if (checks.some((c) => c.status === "incomplete")) status = "incomplete";
+                if (checks.some((c) => c.status === "invalid")) status = "invalid";
+                return { status: status, info: info, checks: checks };
+            };
+
+            // Analysis representation (derived signals only).
+            let bandwidth = null;
+            if (p.derived) {
+                const d = p.derivation;
+                if (!d || d.state === "loading") {
+                    add("representation", "incomplete", "Preparing the RMS magnitude representation…");
+                    return finish();
+                }
+                if (d.state !== "ready") {
+                    add("representation", "invalid", d.message || "The RMS magnitude representation is not available for this signal.");
+                    return finish();
+                }
+                info.derived = d.info;
+                bandwidth = d.info;
+                add("representation", "ok", "Analysis uses the RMS magnitude of the instantaneous waveform (one-cycle trailing window at "
+                    + wwOscFormat(d.info.nominal_frequency_hz) + " Hz, "
+                    + (d.info.nominal_frequency_origin === "assumed_default" ? "assumed default" : "from the recording") + "): "
+                    + d.info.derived_sample_count + " of " + d.info.source_sample_count + " samples are usable.");
+                if (d.info.nominal_frequency_origin === "assumed_default") {
+                    add("representation", "warning", "The nominal frequency was not declared by the source and a default was assumed.");
+                }
+            }
+
+            // Time window.
+            let windowOk = false;
+            if (p.startSource === null || p.endSource === null) {
+                add("window", "incomplete", "Enter a start and end time.");
+            } else if (!(p.endSource > p.startSource)) {
+                add("window", "invalid", "End time must be greater than start time.");
+            } else {
+                info.durationS = p.endSource - p.startSource;
+                info.resolutionHz = 1 / info.durationS;
+                const tolerance = 1e-9 * Math.max(1, Math.abs(p.bounds.start), Math.abs(p.bounds.end));
+                if (p.startSource < p.bounds.start - tolerance || p.endSource > p.bounds.end + tolerance) {
+                    add("window", "invalid", "Window must lie within the signal's available range ("
+                        + wwOscFormat(p.toDisplay(p.bounds.start)) + " to " + wwOscFormat(p.toDisplay(p.bounds.end)) + " s).");
+                } else {
+                    info.sampleCount = Math.floor(info.durationS * p.fs + 1e-6) + 1;
+                    if (info.sampleCount < WW_OSC_ADEQUACY_RULES.minSamples) {
+                        add("window", "invalid", "Window holds " + info.sampleCount + " sample(s); at least "
+                            + WW_OSC_ADEQUACY_RULES.minSamples + " are required.");
+                    } else {
+                        windowOk = true;
+                        add("window", "ok", "Window of " + wwOscFormat(info.durationS) + " s holds about "
+                            + info.sampleCount + " samples and lies within the available range.");
+                    }
+                }
+            }
+
+            // Frequency range.
+            let frequencyOk = false;
+            if (p.fMin === null || p.fMax === null) {
+                add("frequency", "incomplete", "Enter a minimum and maximum frequency.");
+            } else if (p.fMin < 0) {
+                add("frequency", "invalid", "Minimum frequency must not be negative.");
+            } else if (!(p.fMax > p.fMin)) {
+                add("frequency", "invalid", "Maximum frequency must be greater than minimum frequency.");
+            } else if (p.fMax > nyquist) {
+                add("frequency", "invalid", "Maximum frequency " + wwOscFormat(p.fMax) + " Hz exceeds the Nyquist frequency "
+                    + wwOscFormat(nyquist) + " Hz (sampling rate " + wwOscFormat(p.fs) + " Hz).");
+            } else if (bandwidth && p.fMax >= bandwidth.bandwidth_limit_hz) {
+                // The RMS window cannot represent modulation at or above the
+                // nominal frequency, whatever the sampling rate.
+                add("frequency", "invalid", "Maximum frequency " + wwOscFormat(p.fMax) + " Hz reaches the bandwidth limit of the RMS magnitude"
+                    + " representation (" + wwOscFormat(bandwidth.bandwidth_limit_hz) + " Hz, the nominal frequency). The derived signal is"
+                    + " sampled at " + wwOscFormat(p.fs) + " Hz, but modulation at or above the nominal frequency is not recoverable.");
+            } else {
+                frequencyOk = true;
+                if (bandwidth) {
+                    add("frequency", "ok", "Requested band " + wwOscFormat(p.fMin) + " to " + wwOscFormat(p.fMax)
+                        + " Hz is within the Nyquist frequency " + wwOscFormat(nyquist) + " Hz of the derived samples and below the RMS"
+                        + " bandwidth limit " + wwOscFormat(bandwidth.bandwidth_limit_hz) + " Hz.");
+                    if (p.fMax > bandwidth.bandwidth_half_power_hz) {
+                        add("frequency", "warning", "Maximum frequency " + wwOscFormat(p.fMax) + " Hz is above the −3 dB frequency "
+                            + wwOscFormat(bandwidth.bandwidth_half_power_hz, 4) + " Hz of the one-cycle RMS magnitude: oscillation"
+                            + " amplitude there is attenuated by more than 29 %, falling to zero at "
+                            + wwOscFormat(bandwidth.bandwidth_limit_hz) + " Hz.");
+                    }
+                } else {
+                    add("frequency", "ok", "Requested band " + wwOscFormat(p.fMin) + " to " + wwOscFormat(p.fMax)
+                        + " Hz is within the Nyquist frequency " + wwOscFormat(nyquist) + " Hz.");
+                }
+            }
+
+            // Window adequacy for the requested band (needs both of the above).
+            if (windowOk && frequencyOk) {
+                const resolution = info.resolutionHz;
+                if (p.fMin > 0) {
+                    const period = 1 / p.fMin;
+                    const cycles = info.durationS / period;
+                    const text = "Lowest requested frequency " + wwOscFormat(p.fMin) + " Hz has a period of " + wwOscFormat(period)
+                        + " s; the window covers " + wwOscFormat(cycles, 3) + " cycle(s) (resolution 1/T = "
+                        + wwOscFormat(resolution) + " Hz).";
+                    if (p.fMin < resolution) {
+                        add("adequacy", "warning", text + " The lowest requested frequency is below the window resolution.");
+                    } else if (cycles < WW_OSC_ADEQUACY_RULES.recommendedMinObservedCycles) {
+                        add("adequacy", "warning", text + " This is fewer than " + WW_OSC_ADEQUACY_RULES.recommendedMinObservedCycles
+                            + " observed cycles (application guideline, not a standard).");
+                    } else {
+                        add("adequacy", "ok", text);
+                    }
+                } else {
+                    add("adequacy", "info", "Minimum frequency 0 Hz includes DC; its period is undefined. Window resolution 1/T = "
+                        + wwOscFormat(resolution) + " Hz.");
+                }
+                if (p.fMax - p.fMin < resolution) {
+                    add("adequacy", "warning", "The requested band (" + wwOscFormat(p.fMax - p.fMin)
+                        + " Hz wide) is narrower than the window resolution 1/T = " + wwOscFormat(resolution) + " Hz.");
+                }
+            }
+            for (const caveat of p.caveats || []) {
+                if (caveat === "undefined_type") {
+                    add("signal", "warning", "Signal type is Undefined: confirm it is not an instantaneous AC waveform.");
+                } else if (caveat === "angle") {
+                    add("signal", "info", "Angle signals may contain wrap-around discontinuities.");
+                }
+            }
+
+            return finish();
+        }
+
+        function wwOscParseNumber(text) {
+            const trimmed = String(text === undefined || text === null ? "" : text).trim();
+            if (trimmed === "") return null;
+            const value = Number(trimmed);
+            return Number.isFinite(value) ? value : null;
+        }
+
+        // The current signal (live from the catalogue) with its verdict, or
+        // null when nothing valid is selected.
+        function wwOscSelectedSignal() {
+            if (!wwOscState.signalKey) return null;
+            const signal = wwSignalCatalogueGet(wwOscState.signalKey);
+            if (!signal) return null;
+            const verdict = wwOscClassifySignal(signal);
+            if (!verdict.eligible) return null;
+            const derivation = wwOscDerivationFor(signal, verdict);
+            return { signal: signal, verdict: verdict, derivation: derivation, timing: wwOscEffectiveTiming(verdict, derivation) };
+        }
+
+        function wwOscCurrentAssessment() {
+            const selected = wwOscSelectedSignal();
+            if (!selected) return null;
+            const basis = wwOscTimeBasis(selected.signal);
+            const assessment = wwOscAssess({
+                fs: selected.timing.fs, bounds: selected.timing.bounds,
+                startSource: wwOscState.startSource, endSource: wwOscState.endSource,
+                fMin: wwOscParseNumber(wwOscState.minText), fMax: wwOscParseNumber(wwOscState.maxText),
+                toDisplay: basis.toDisplay, caveats: selected.verdict.caveats,
+                derived: selected.verdict.derived, derivation: selected.derivation,
+            });
+            return { selected: selected, basis: basis, assessment: assessment };
+        }
+
+        function wwOscResetWindow(timing) {
+            const bounds = timing.bounds;
+            wwOscState.startSource = bounds.start;
+            wwOscState.endSource = bounds.end;
+            wwOscState.windowMode = "full";
+            wwOscState.validatedSetup = null;
+        }
+
+        // Snapshot of the Waveform page's visible range for this signal's
+        // Time Group (workspace time -> source time), clipped to the
+        // signal's own range. Null when there is no usable overlap.
+        function wwOscVisibleRangeInSource(signal, bounds) {
+            const groupId = wwTimeGroupIdForDisplaySourceId(signal.sourceId);
+            const visible = wwTimeGroupVisibleRange(groupId);
+            if (!visible || !Number.isFinite(visible.start) || !Number.isFinite(visible.end)) return null;
+            const start = Math.max(wwWorkspaceTimeToSourceTime(signal.sourceId, visible.start), bounds.start);
+            const end = Math.min(wwWorkspaceTimeToSourceTime(signal.sourceId, visible.end), bounds.end);
+            return end > start ? { start: start, end: end } : null;
+        }
+
+        function wwOscApplyWindowMode(selected, mode) {
+            const state = wwOscState;
+            if (mode === "full") {
+                wwOscResetWindow(selected.timing);
+            } else if (mode === "current") {
+                const range = wwOscVisibleRangeInSource(selected.signal, selected.timing.bounds);
+                if (range) {
+                    state.startSource = range.start; state.endSource = range.end; state.windowMode = "current";
+                } else {
+                    wwOscResetWindow(selected.timing);
+                    state.notice = "No visible Waveform range overlaps this signal; the full recording is used.";
+                }
+            } else {
+                state.windowMode = "custom";
+            }
+            state.validatedSetup = null;
+        }
+
+        function wwOscSetWindowMode(mode) {
+            const state = wwOscState;
+            const selected = wwOscSelectedSignal();
+            state.validatedSetup = null;
+            state.notice = "";
+            if (!selected) { wwOscRender(true); return; }
+            wwOscApplyWindowMode(selected, mode);
+            wwOscRender(true);
+        }
+
+        function wwOscSelectSignal(key) {
+            const state = wwOscState;
+            state.validatedSetup = null;
+            state.notice = "";
+            const signal = key ? wwSignalCatalogueGet(key) : null;
+            const verdict = signal ? wwOscClassifySignal(signal) : null;
+            if (!signal || !verdict.eligible) {
+                state.signalKey = null; state.signalRevision = null; state.catalogueRevision = null;
+                state.startSource = null; state.endSource = null;
+            } else {
+                state.signalKey = signal.key;
+                state.signalRevision = signal.revision;
+                state.catalogueRevision = wwSignalCatalogue.revision;
+                const derivation = wwOscDerivationFor(signal, verdict);
+                wwOscResetWindow(wwOscEffectiveTiming(verdict, derivation));
+                if (verdict.derived) wwOscRequestDerivation(signal);
+            }
+            wwOscRender(true);
+        }
+
+        function wwOscClearSelection(notice) {
+            const state = wwOscState;
+            state.signalKey = null; state.signalRevision = null; state.catalogueRevision = null;
+            state.startSource = null; state.endSource = null;
+            state.validatedSetup = null;
+            state.notice = notice;
+        }
+
+        // Catalogue events: only a change that affects the selected signal
+        // alters the selection; an unrelated add/remove just refreshes the
+        // option list.
+        function wwOscOnCatalogueEvent() {
+            const state = wwOscState;
+            for (const [id, entry] of Array.from(state.derivations)) {
+                if (!wwSignalCatalogueIsCurrent(entry.key, entry.revision)) state.derivations.delete(id);
+            }
+            if (state.signalKey) {
+                const selected = wwOscSelectedSignal();
+                if (!selected) {
+                    wwOscClearSelection("The selected signal was removed or is no longer eligible; selection cleared.");
+                } else if (!wwSignalCatalogueIsCurrent(state.signalKey, state.signalRevision)) {
+                    state.signalRevision = selected.signal.revision;
+                    state.catalogueRevision = wwSignalCatalogue.revision;
+                    wwOscResetWindow(selected.timing);
+                    if (selected.verdict.derived) wwOscRequestDerivation(selected.signal);
+                    state.notice = "The selected signal changed; the analysis window was reset.";
+                }
+            }
+            wwOscRender(true);
+        }
+
+        function wwOscRenderOptions(scan) {
+            const select = document.getElementById("wwOscSignalSelect");
+            const signature = scan.eligible.map((s) => s.key + "|" + s.revision + "|" + s.name + "|" + s.unit).join("\n")
+                + "\n#" + Array.from(scan.recordings.values()).map((r) => r.id + "|" + r.label).join("\n");
+            if (signature !== wwOscState.optionsSignature || select.value !== (wwOscState.signalKey || "")) {
+                const fragment = document.createDocumentFragment();
+                const placeholder = document.createElement("option");
+                placeholder.value = "";
+                placeholder.textContent = scan.eligible.length ? "Select a signal…" : "No directly eligible signals";
+                fragment.appendChild(placeholder);
+                // One group per recording (calculated channels sit under
+                // their reference recording), native <optgroup> only.
+                for (const recording of scan.recordings.values()) {
+                    const rows = recording.rows.filter((r) => r.verdict.eligible);
+                    if (!rows.length) continue;
+                    const group = document.createElement("optgroup");
+                    group.label = recording.label;
+                    for (const row of rows) {
+                        const option = document.createElement("option");
+                        option.value = row.signal.key;
+                        // Native <option> text cannot carry rich notation: plain channel name.
+                        option.textContent = row.signal.name + (row.signal.unit ? " [" + row.signal.unit + "]" : "");
+                        group.appendChild(option);
+                    }
+                    fragment.appendChild(group);
+                }
+                select.replaceChildren(fragment);
+                wwOscState.optionsSignature = signature;
+                select.value = wwOscState.signalKey || "";
+            }
+            select.disabled = scan.eligible.length === 0;
+        }
+
+        const WW_OSC_STRIP_LABELS = Object.freeze({
+            suitable: "✓ Suitable", limited: "⚠ Limited", not_suitable: "✕ Not suitable",
+        });
+        const WW_OSC_STRIP_ICONS = Object.freeze({ suitable: "✓", limited: "⚠", not_suitable: "✕" });
+        // Cap on per-recording signal-limit rows (UX/performance).
+        const WW_OSC_SIGNAL_LIMIT_ROWS = 12;
+
+        function wwOscMakeList(heading, items) {
+            if (!items.length) return null;
+            const list = document.createElement("ul");
+            list.className = "ww-osc-checks";
+            const head = document.createElement("li");
+            head.dataset.status = "info";
+            head.textContent = heading;
+            list.appendChild(head);
+            for (const text of items) {
+                const item = document.createElement("li");
+                item.textContent = text;
+                list.appendChild(item);
+            }
+            return list;
+        }
+
+        function wwOscSignalLimitLines(rows) {
+            const limits = rows.filter((r) => !r.verdict.eligible || (r.verdict.caveats || []).includes("undefined_type"));
+            const lines = limits.slice(0, WW_OSC_SIGNAL_LIMIT_ROWS).map((r) => {
+                const reason = r.verdict.reason === "timing" ? "Not supported: " + (r.verdict.detail || "timing metadata unavailable")
+                    : "Available with a warning (Undefined type)";
+                return r.signal.name + (r.signal.unit ? " [" + r.signal.unit + "]" : "") + " — " + reason;
+            });
+            if (limits.length > lines.length) lines.push("Showing " + lines.length + " of " + limits.length + " affected signals");
+            return lines;
+        }
+
+        // One recording's section: filename header with status, concise
+        // facts, reasons, then ITS OWN capped signal limits. `selected`
+        // (optional) re-frames it around the selected signal's setup.
+        function wwOscBuildRecordingSection(rec, selected) {
+            const section = document.createElement("section");
+            section.className = "ww-osc-rec";
+            section.dataset.recordingId = rec.id;
+            const status = selected ? selected.summary.status : rec.status;
+            section.dataset.status = status;
+            const head = document.createElement("div");
+            head.className = "ww-osc-rec-head";
+            const name = document.createElement("span");
+            name.className = "ww-osc-rec-name";
+            name.textContent = rec.label;
+            const statusEl = document.createElement("span");
+            statusEl.className = "ww-osc-rec-status";
+            statusEl.textContent = WW_OSC_STRIP_LABELS[status];
+            head.append(name, statusEl);
+            section.appendChild(head);
+
+            const facts = document.createElement("dl");
+            facts.className = "ww-osc-info";
+            const addFact = (label, value) => {
+                const wrap = document.createElement("div");
+                const dt = document.createElement("dt"); dt.textContent = label;
+                const dd = document.createElement("dd"); dd.textContent = value;
+                wrap.append(dt, dd);
+                facts.appendChild(wrap);
+            };
+            const durationS = selected ? selected.summary.durationS : rec.durationS;
+            const recommendedMinHz = selected ? selected.summary.recommendedMinHz : rec.recommendedMinHz;
+            if (selected) addFact("Signal", selected.signal.name + (selected.signal.unit ? " [" + selected.signal.unit + "]" : ""));
+            if (rec.stationName && rec.stationName !== rec.label) addFact("Station", rec.stationName);
+            addFact("Sampling rate", rec.timing ? wwOscFormat(rec.timing.fs) + " Hz" : "—");
+            // Three distinct durations for a derived signal: the source recording,
+            // the usable RMS span (after the first window), and the chosen window.
+            const derivedInfo = selected ? selected.analysis.assessment.info.derived : null;
+            if (derivedInfo) {
+                addFact("Source duration", wwOscFormat(derivedInfo.source_end_s - derivedInfo.source_start_s) + " s");
+                addFact("Usable RMS duration", wwOscFormat(derivedInfo.valid_end_s - derivedInfo.valid_start_s) + " s");
+            }
+            const windowModeLabel = { full: "Full recording", current: "Current visible range", custom: "Custom range" }[wwOscState.windowMode];
+            addFact(selected ? "Analysis window" : "Duration", durationS !== null
+                ? wwOscFormat(durationS) + " s" + (selected && windowModeLabel ? " (" + windowModeLabel + ")" : "") : "—");
+            addFact("Eligible signals", String(rec.counts.eligible));
+            if (rec.counts.derived) addFact("Eligible via RMS magnitude", String(rec.counts.derived));
+            if (selected) {
+                addFact("Analysis representation", selected.analysis.selected.verdict.representation.label);
+                if (derivedInfo) addFact("Representation rate", wwOscFormat(derivedInfo.representation_sample_rate_hz) + " Hz");
+            }
+            if (rec.counts.timing) addFact("Excluded (timing)", String(rec.counts.timing));
+            if (recommendedMinHz !== null) addFact("Recommended minimum", "≈ " + wwOscFormat(recommendedMinHz, 2) + " Hz (2-cycle guideline)");
+            section.appendChild(facts);
+
+            const reasons = selected
+                ? selected.summary.notSuitable.concat(selected.summary.limited)
+                : rec.notSuitable.concat(rec.limited);
+            const reasonList = wwOscMakeList("Reason", reasons.map((r) => r.text));
+            if (reasonList) section.appendChild(reasonList);
+            const limitList = wwOscMakeList("Signal limits", wwOscSignalLimitLines(rec.rows));
+            if (limitList) section.appendChild(limitList);
+            return section;
+        }
+
+        // Compact strip (always) + disclosure details (only when open).
+        // No signal selected: the strip summarizes the WORKSPACE per
+        // recording (several recordings) or the one recording. Signal
+        // selected: it describes that signal's recording and setup only.
+        function wwOscRenderEligibility(scan, analysis) {
+            const fMin = wwOscParseNumber(wwOscState.minText);
+            const fMax = wwOscParseNumber(wwOscState.maxText);
+            const recs = Array.from(scan.recordings.values()).map((r) => wwOscRecordingSummary(r, fMin, fMax));
+            const strip = document.getElementById("wwOscEligibility");
+            const labelEl = document.getElementById("wwOscEligibilityLabel");
+            const textEl = document.getElementById("wwOscEligibilityText");
+            let status, label, parts, selected = null, shown = recs;
+            if (analysis) {
+                const rec = recs.find((r) => r.id === analysis.selected.signal.referenceSourceId || r.id === analysis.selected.signal.sourceId);
+                selected = { signal: analysis.selected.signal, analysis: analysis, summary: wwOscSelectedSummary(rec, analysis, fMin) };
+                shown = [rec];
+                status = selected.summary.status;
+                label = WW_OSC_STRIP_LABELS[status];
+                parts = [rec.label];
+                if (rec.timing) parts.push(wwOscFormat(rec.timing.fs) + " Hz");
+                if (selected.summary.durationS !== null) parts.push("Window " + wwOscFormat(selected.summary.durationS) + " s");
+                if (analysis.assessment.info.derived) parts.push("RMS magnitude");
+                const why = selected.summary.notSuitable.length ? selected.summary.notSuitable : selected.summary.limited;
+                if (why.length) parts.push(why[0].short);
+            } else if (recs.length > 1) {
+                const count = (s) => recs.filter((r) => r.status === s).length;
+                const suitable = count("suitable"), limited = count("limited"), notSuitable = count("not_suitable");
+                status = suitable === recs.length ? "suitable" : notSuitable === recs.length ? "not_suitable" : "limited";
+                label = WW_OSC_STRIP_ICONS[status];
+                parts = [recs.length + " recordings"];
+                if (suitable) parts.push(suitable + " suitable");
+                if (limited) parts.push(limited + " limited");
+                if (notSuitable) parts.push(notSuitable + " not suitable");
+            } else if (recs.length === 1) {
+                const rec = recs[0];
+                status = rec.status;
+                label = WW_OSC_STRIP_LABELS[status];
+                parts = [];
+                if (rec.counts.eligible === 0) parts.push("No directly eligible signals");
+                if (status === "not_suitable") parts.push(rec.notSuitable[0].text);
+                else if (status === "limited") parts.push(rec.limited[0].text);
+                if (rec.durationS !== null) parts.push("Duration " + wwOscFormat(rec.durationS) + " s");
+            } else {
+                status = "not_suitable";
+                label = WW_OSC_STRIP_LABELS[status];
+                parts = ["No analog signals are available."];
+            }
+            strip.dataset.status = status;
+            labelEl.textContent = label;
+            textEl.textContent = parts.length ? "· " + parts.join(" · ") : "";
+            textEl.title = parts.join(" · ");
+            const toggle = document.getElementById("wwOscEligibilityToggle");
+            const open = wwOscState.detailsOpen;
+            toggle.textContent = open ? "Hide details" : "View details";
+            toggle.setAttribute("aria-expanded", open ? "true" : "false");
+            const details = document.getElementById("wwOscEligibilityDetails");
+            details.hidden = !open;
+            if (!open) return;
+
+            const body = document.getElementById("wwOscEligibilityBody");
+            body.replaceChildren();
+            if (!shown.length) {
+                body.appendChild(wwOscMakeList("Recording eligibility", ["No analog signals are available."]));
+                return;
+            }
+            shown.forEach((rec, index) => {
+                if (index > 0) {
+                    const divider = document.createElement("hr");
+                    divider.className = "ww-osc-rec-divider";
+                    body.appendChild(divider);
+                }
+                body.appendChild(wwOscBuildRecordingSection(rec, selected));
+            });
+        }
+
+        function wwOscSetInputValue(input, value, force) {
+            if (value === null) { input.value = ""; return; }
+            const current = Number(input.value);
+            if (!force && input.value !== "" && Math.abs(current - value) <= 1e-9 * Math.max(1, Math.abs(value))) return;
+            if (!force && document.activeElement === input) return;
+            input.value = String(Number(value.toFixed(9)));
+        }
+
+        // `force`: re-write the window inputs from the stored source times
+        // (selection change / catalogue change); otherwise only when the
+        // display basis moved them (t0 / alignment changed meanwhile).
+        function wwOscRender(force) {
+            const panel = document.getElementById("wwOscillationPanel");
+            if (!panel) return;
+            const state = wwOscState;
+            let analysis = state.signalKey ? wwOscCurrentAssessment() : null;
+            if (state.signalKey && !analysis) {
+                wwOscClearSelection("The selected signal was removed or is no longer eligible; selection cleared.");
+            }
+            const scan = wwOscScanCatalogue();
+            wwOscRenderOptions(scan);
+            const startInput = document.getElementById("wwOscStartInput");
+            const endInput = document.getElementById("wwOscEndInput");
+            const noticeEl = document.getElementById("wwOscSelectionNotice");
+            noticeEl.hidden = !state.notice;
+            noticeEl.textContent = state.notice;
+            startInput.disabled = endInput.disabled = !analysis;
+            const modeEl = document.getElementById("wwOscWindowMode");
+            modeEl.disabled = !analysis;
+            modeEl.value = state.windowMode;
+            document.getElementById("wwOscStartField").hidden = document.getElementById("wwOscEndField").hidden = state.windowMode !== "custom";
+            const readoutEl = document.getElementById("wwOscWindowReadout");
+            const basisEl = document.getElementById("wwOscTimeBasis");
+            const clockEl = document.getElementById("wwOscClockReadout");
+            if (analysis) {
+                const basis = analysis.basis;
+                wwOscSetInputValue(startInput, state.startSource === null ? null : basis.toDisplay(state.startSource), force);
+                wwOscSetInputValue(endInput, state.endSource === null ? null : basis.toDisplay(state.endSource), force);
+                readoutEl.hidden = state.windowMode === "custom" || state.startSource === null || state.endSource === null;
+                readoutEl.textContent = readoutEl.hidden ? "" : "Window: " + wwOscFormat(basis.toDisplay(state.startSource))
+                    + " to " + wwOscFormat(basis.toDisplay(state.endSource)) + " s";
+                basisEl.textContent = basis.hasT0
+                    ? "Times are event time: seconds relative to this Time Group's t=0."
+                    : "Times are workspace elapsed time in seconds (after source alignment offset).";
+                const clockMode = wwGroupUsesClockTimeDisplay(basis.groupId);
+                clockEl.hidden = !clockMode || state.startSource === null || state.endSource === null;
+                if (!clockEl.hidden) {
+                    clockEl.textContent = "Clock time: "
+                        + wwFormatWorkspaceClockTime(basis.toWorkspace(state.startSource), { groupId: basis.groupId, fractionDigits: 3 })
+                        + " to "
+                        + wwFormatWorkspaceClockTime(basis.toWorkspace(state.endSource), { groupId: basis.groupId, fractionDigits: 3 });
+                }
+            } else {
+                startInput.value = ""; endInput.value = "";
+                readoutEl.hidden = true; readoutEl.textContent = "";
+                basisEl.textContent = "Select a signal to set the analysis window.";
+                clockEl.hidden = true;
+            }
+            document.getElementById("wwOscMinFreqInput").value = state.minText;
+            document.getElementById("wwOscMaxFreqInput").value = state.maxText;
+            wwOscRenderResults(analysis);
+            wwOscRenderEligibility(scan, analysis);
+        }
+
+        // Recompute metadata + adequacy (cheap; touches no signal arrays).
+        function wwOscRenderResults(analysis) {
+            const info = analysis ? analysis.assessment.info : null;
+            const set = (id, text) => { document.getElementById(id).textContent = text; };
+            const derived = info ? info.derived : null;
+            const selectedVerdict = analysis ? analysis.selected.verdict : null;
+            // Derived signals: the figures below describe the ANALYSIS representation
+            // (what the spectral stage will receive); the source waveform is listed apart.
+            set("wwOscInfoSamplingRateLabel", derived ? "Representation Rate" : "Sampling Rate");
+            set("wwOscInfoNyquistLabel", derived ? "Nyquist (derived samples)" : "Nyquist Frequency");
+            set("wwOscInfoSamplingRate", info ? wwOscFormat(info.samplingRateHz) + " Hz" : "—");
+            set("wwOscInfoRepresentation", selectedVerdict ? selectedVerdict.representation.label : "—");
+            const derivedRows = document.getElementById("wwOscInfoDerivedRows");
+            derivedRows.hidden = !derived;
+            if (derived) {
+                set("wwOscInfoSourceForm", derived.source_form === "instantaneous" ? WW_OSC_REPRESENTATIONS.rms_magnitude.sourceForm : "—");
+                set("wwOscInfoSourceRate", wwOscFormat(derived.source_sample_rate_hz) + " Hz");
+                set("wwOscInfoSourceDuration", wwOscFormat(derived.source_end_s - derived.source_start_s) + " s");
+                set("wwOscInfoUsableDuration", wwOscFormat(derived.valid_end_s - derived.valid_start_s) + " s (first "
+                    + wwOscFormat(derived.boundary_loss_start_s) + " s lost to the RMS window)");
+                set("wwOscInfoSourceCount", String(derived.source_sample_count));
+                set("wwOscInfoDerivedCount", String(derived.derived_sample_count));
+                set("wwOscInfoBandwidth", "≈ 0 to " + wwOscFormat(derived.bandwidth_half_power_hz, 4) + " Hz (−3 dB); none at or above "
+                    + wwOscFormat(derived.bandwidth_limit_hz) + " Hz");
+                set("wwOscInfoTimeAlignment", "Source time; trailing " + wwOscFormat(derived.window_s * 1000, 4) + " ms window, magnitude lags by "
+                    + wwOscFormat(derived.group_delay_s * 1000, 4) + " ms");
+                set("wwOscInfoNominal", wwOscFormat(derived.nominal_frequency_hz) + " Hz ("
+                    + (derived.nominal_frequency_origin === "assumed_default" ? "assumed default" : "from the recording") + ")");
+            }
+            set("wwOscInfoDuration", info && info.durationS !== null ? wwOscFormat(info.durationS) + " s" : "—");
+            set("wwOscInfoSampleCount", info && info.sampleCount !== null ? "≈ " + info.sampleCount : "—");
+            set("wwOscInfoNyquist", info ? wwOscFormat(info.nyquistHz) + " Hz" : "—");
+            set("wwOscInfoResolution", info && info.resolutionHz !== null ? "≈ " + wwOscFormat(info.resolutionHz) + " Hz" : "—");
+            const status = analysis ? analysis.assessment.status : "incomplete";
+            const statusEl = document.getElementById("wwOscAdequacyStatus");
+            statusEl.dataset.status = status;
+            statusEl.textContent = analysis ? WW_OSC_STATUS_LABELS[status] : "Not assessed";
+            const list = document.getElementById("wwOscAdequacyList");
+            list.replaceChildren();
+            const lines = analysis ? analysis.assessment.checks : [{ status: "info", message: "Select a signal to assess the setup." }];
+            for (const check of lines) {
+                const item = document.createElement("li");
+                item.dataset.status = check.status;
+                const prefix = check.status === "warning" ? "Warning: " : check.status === "invalid" ? "Invalid: " : "";
+                item.textContent = prefix + check.message;
+                list.appendChild(item);
+            }
+            const analyzeBtn = document.getElementById("wwOscAnalyzeBtn");
+            analyzeBtn.disabled = !analysis || (status !== "suitable" && status !== "warning");
+            const noteEl = document.getElementById("wwOscAnalyzeNote");
+            noteEl.textContent = wwOscState.validatedSetup
+                ? "Setup validated. Spectrum and spectrogram analysis are not implemented yet; no result was produced."
+                : "Spectrum and spectrogram analysis are not implemented yet.";
+        }
+
+        function wwOscOnSetupEdited() {
+            wwOscState.validatedSetup = null;
+            wwOscState.notice = "";
+            const noticeEl = document.getElementById("wwOscSelectionNotice");
+            noticeEl.hidden = true;
+            const analysis = wwOscState.signalKey ? wwOscCurrentAssessment() : null;
+            wwOscRenderResults(analysis);
+            wwOscRenderEligibility(wwOscScanCatalogue(), analysis);
+        }
+
+        function wwOscOnTimeInput(which, text) {
+            const selected = wwOscSelectedSignal();
+            if (!selected) return;
+            const displayValue = wwOscParseNumber(text);
+            const basis = wwOscTimeBasis(selected.signal);
+            wwOscState[which] = displayValue === null ? null : basis.toSource(displayValue);
+            wwOscOnSetupEdited();
+        }
+
+        // Validation only: records what a future result would be tied to
+        // and produces nothing else.
+        function wwOscAnalyze() {
+            const analysis = wwOscCurrentAssessment();
+            if (!analysis || (analysis.assessment.status !== "suitable" && analysis.assessment.status !== "warning")) return;
+            const state = wwOscState;
+            state.validatedSetup = {
+                signalKey: state.signalKey, signalRevision: state.signalRevision, catalogueRevision: state.catalogueRevision,
+                startSource: state.startSource, endSource: state.endSource,
+                fMinHz: wwOscParseNumber(state.minText), fMaxHz: wwOscParseNumber(state.maxText),
+            };
+            wwOscRenderResults(analysis);
+        }
+
+        function wwOscInit() {
+            document.getElementById("wwOscWindowMode").addEventListener("change", (event) => wwOscSetWindowMode(event.target.value));
+            document.getElementById("wwOscEligibilityToggle").addEventListener("click", () => {
+                wwOscState.detailsOpen = !wwOscState.detailsOpen;
+                wwOscRenderEligibility(wwOscScanCatalogue(), wwOscState.signalKey ? wwOscCurrentAssessment() : null);
+            });
+            document.getElementById("wwOscSignalSelect").addEventListener("change", (event) => wwOscSelectSignal(event.target.value));
+            document.getElementById("wwOscStartInput").addEventListener("input", (event) => wwOscOnTimeInput("startSource", event.target.value));
+            document.getElementById("wwOscEndInput").addEventListener("input", (event) => wwOscOnTimeInput("endSource", event.target.value));
+            document.getElementById("wwOscMinFreqInput").addEventListener("input", (event) => { wwOscState.minText = event.target.value; wwOscOnSetupEdited(); });
+            document.getElementById("wwOscMaxFreqInput").addEventListener("input", (event) => { wwOscState.maxText = event.target.value; wwOscOnSetupEdited(); });
+            document.getElementById("wwOscAnalyzeBtn").addEventListener("click", wwOscAnalyze);
+            wwOscState.unsubscribe = wwSignalCatalogueSubscribe(wwOscOnCatalogueEvent);
+            wwOscRender(true);
         }
         document.getElementById("wwAnalysisTypePhasorBtn").addEventListener("click", () => wwSetActiveAnalysisType("phasor"));
         document.getElementById("wwAnalysisTypeOvercurrentBtn").addEventListener("click", () => wwSetActiveAnalysisType("overcurrent"));
@@ -54716,6 +55827,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         document.getElementById("wwAnalysisTypeSequenceBtn").addEventListener("click", () => wwSetActiveAnalysisType("sequence"));
         document.getElementById("wwAnalysisTypeDistanceBtn").addEventListener("click", () => wwSetActiveAnalysisType("distance"));
         document.getElementById("wwAnalysisTypeOscillationBtn").addEventListener("click", () => wwSetActiveAnalysisType("oscillation"));
+        wwOscInit();
         document.getElementById("wwPhasorContextSelect").addEventListener("change", (event) => {
             wwPhasorState.selectedContextId = event.target.value || null;
             wwPhasorRenderContextBadge();
