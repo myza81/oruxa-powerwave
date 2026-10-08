@@ -3,3 +3,8 @@
 
 pytest==9.1.1
 httpx==0.28.1
+
+# Independent reference for the Welch PSD parity tests only
+# (tests/test_oscillation_spectrum.py). NOT a runtime dependency -- the
+# production Welch estimator is NumPy-only (app/domain/spectral_estimation.py).
+scipy==1.18.1

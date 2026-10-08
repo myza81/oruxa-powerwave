@@ -21,13 +21,30 @@ parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
 DEC-122 display timezone).
 
 
+**Oscillation Analysis spectrum + candidate detection: implemented, owner UAT accepted, DEC-174 and DEC-175 `[APPROVED]` (2026-10-08).**
+`Analyze` runs a backend Welch PSD (`POST /api/v1/workspaces/{ws}/oscillation-analysis/spectrum`; NumPy `rfft` only, SciPy is
+dev/test reference; periodic Hann, constant detrend, 50 % overlap, mean, one-sided density, `nfft = nperseg`, segment about
+`2 / f_min`, or `window / 4.5` for `f_min = 0`) on the signal as recorded or its DEC-173 RMS magnitude. The `Frequency Spectrum
+(Welch PSD)` card offers Line (default) / Histogram and Linear / Logarithmic display, dynamic PSD units and visible 11 px axis
+titles. The same response carries a deterministic `detection` block (`app/domain/oscillation_peaks.py`, no second Welch run):
+local spectral peaks with topographic prominence (dB), `cycles_observed = f x T` (minimum 2), band-edge maxima rejected-and-
+reported, near-DC / below-2-cycle content explained rather than promoted, ranking by prominence, structured `reasons[]` /
+`warnings[]` behind a deterministic "Why" list. Thresholds (6 dB, 8-sigma, 2 cycles) are Phase-1 heuristics, not standards.
+**The capability stops at spectral evidence + candidate interpretation.** No AI, no Strong/Weak labels, no oscillation-type
+classification. Real-event UAT: near-DC disturbance energy not promoted; 4.95 Hz in frequency and independently in MW; a separate
+1.15 Hz MW candidate. **Next planned slice: Spectrogram / STFT (not started).** Later: damping / modal analysis (Prony / Matrix
+Pencil), multi-channel and cross-location evidence (coherence, mode shape), and oscillation-type classification (inter-area /
+local / SSO / forced / control interaction) with its own deterministic "Why"; AI, if ever added, only explains structured
+evidence. Details: DECISIONS.md DEC-174 / DEC-175. **Deferred `[OPEN]`:** other Plotly charts pass string axis titles
+(`xaxis: { title: "Time (s)" }`) which Plotly 3.7 does not render -- only the Oscillation chart uses `{ text }`; a separate,
+unscheduled compatibility fix.
+
 **Oscillation Analysis setup/input workflow implemented (2026-10-07), owner UAT accepted 2026-10-08.** `Analysis -> Oscillation
 Analysis` is now a setup page: an eligible-signal selector fed by the shared live signal catalogue (compatible calculated
 channels appear/disappear without reload), Start/End time (in the signal's Time Group display basis, validated against its
 available range), Minimum/Maximum Frequency (Hz, validated against Nyquist), an Analysis Information block
 (fs, T, ~N, fs/2, 1/T) and a Data Adequacy status (Suitable / Warning / Invalid). The Analyze button only validates the
-setup -- **no FFT, Welch PSD, spectrum, spectrogram, peak detection or oscillation detection exists, and no result is
-produced.** Eligibility and adequacy rules are DEC-172 `[APPROVED]` (DECISIONS.md).
+setup (the Welch spectrum and candidate detection were added afterwards -- see the first Oscillation paragraph). Eligibility and adequacy rules are DEC-172 `[APPROVED]` (DECISIONS.md).
 
 **Raw V/I preprocessing for Oscillation Analysis (DEC-173 `[APPROVED]`, 2026-10-08), owner UAT accepted.** Raw (and
 instantaneous calculated) Voltage/Current signals are now selectable; the analysis uses an **analysis-internal RMS
@@ -35,8 +52,7 @@ magnitude representation** derived on demand by the backend from the existing RM
 one-cycle window, one value per source sample, nominal frequency from the recording). Nothing is persisted or added to
 the signal catalogue. Setup information separates source rate/duration/samples from the representation's usable
 range and shows its bandwidth (-3 dB at 0.443 x nominal frequency, null at nominal frequency -- not Nyquist). Endpoint:
-`POST /api/v1/workspaces/{ws}/oscillation-analysis/representation` (metadata only). **Still no FFT, Welch PSD,
-spectrum, spectrogram, peak detection or detection.**
+`POST /api/v1/workspaces/{ws}/oscillation-analysis/representation` (metadata only). (Spectrum and candidate detection were added afterwards.)
 
 **Shared live signal catalogue established (DEC-171, approved 2026-10-07).** Raw and calculated channels are read
 through `wwSignalCatalogueList(predicate)` (a derived view, not a new store) and observed through
@@ -45,7 +61,7 @@ availability; each consumer determines eligibility. Two consumers are migrated: 
 (`wwCcAvailableCandidates()`) and Event Reconstruction (no private calculated-channel copy). Waveform, Table/Split
 View, Compliance Prepare and the Engineering-Context Analysis tools were intentionally left on their own paths.
 Calculated channels stay immutable (recreate = new id), so `key` + `revision` is how a future result detects staleness.
-The Oscillation Analysis signal selector is the third consumer (see above); no oscillation processing exists.
+The Oscillation Analysis signal selector is the third consumer (see above).
 
 **Compliance is a resizable two-column workspace with measured traces (DEC-169), 2026-10-06.**
 Configuration (Reference Layers, Measurement incl. Event Alignment) on the left, the

@@ -25361,3 +25361,208 @@ later optimisation, deliberately not done (no resampling in this slice).
 
 Tests: `backend/tests/test_oscillation_representation.py`, `backend/tests/test_frontend_oscillation_analysis_shell.py`,
 `browser-tests/oscillation_setup.spec.js`.
+
+## DEC-174 -- Oscillation Analysis Welch PSD: estimator, fixed Phase-1 parameters and the segment-length rule
+
+Status: **[APPROVED]** (owner, 2026-10-08; was `[PROPOSAL]`; UAT accepted incl. real-event UAT) -- implemented on
+`feat/event-reconstruction`. Builds on DEC-171/172/173 and changes nothing in them. Scope: the first Oscillation Analysis result,
+a one-sided **Welch PSD** shown as a **Frequency Spectrum** chart. **Not** part of DEC-174 (deliberately deferred): dominant-frequency
+summary, Strong/Moderate/Weak or present/absent classification, any **automatic oscillation classification**, Spectrogram/STFT,
+damping, coherence, Prony/modal analysis, RMS roll-off compensation, resampling/decimation. (Candidate peak detection was added
+afterwards by DEC-175, which does not alter this estimator.)
+
+**Approved design in one list.** NumPy-only production Welch estimator (SciPy is dev/test reference only); periodic Hann;
+constant detrend (mean removed per segment); 50 % overlap; mean averaging; one-sided PSD density scaling; `nfft = nperseg`, no
+zero-padding; fixed Phase-1 Welch settings (no user-selectable window/overlap); segment target about `2 / f_min`, subject to the
+minimum / clamping / single-segment fallback rules below; `f_min = 0` supported via the established `window / 4.5` fallback;
+whole-window `1/T` and Welch bin spacing `fs/nperseg` remain distinct concepts; Line is the default display; Histogram is the exact
+same returned Welch bins (no re-binning); Linear/Logarithmic is a frontend-only axis choice; the PSD unit is shown dynamically.
+
+**Estimator `[FACT]` and the one dependency decision.** SciPy is **not** a project dependency (`requirements.txt` pins
+NumPy/pandas only; `rms_detector.py` and a guard test record that no scipy dependency was introduced). Rather than add a
+~35 MB runtime dependency unilaterally, the estimator is the standard Welch recipe on `numpy.fft.rfft`
+(`app/domain/spectral_estimation.py`, ~60 lines of logic, no custom FFT), and **`scipy==1.18.1` is pinned in
+`requirements-dev.txt` only**, as an independent reference: `tests/test_oscillation_spectrum.py` proves bin-for-bin parity
+(rtol 1e-9) with `scipy.signal.welch` for five (fs, duration, f_min) cases including odd `nperseg` and `f_min = 0`.
+`[DECISION]` (2026-10-08, owner) production stays NumPy-only; SciPy remains a dev/test reference and is never imported by app code.
+
+**Fixed Phase-1 parameters (named constants, echoed in every response).** Window Hann (periodic, = `get_window("hann")`);
+detrend `constant` per segment (mean removed; no linear detrend); overlap 50 % (`noverlap = nperseg // 2`); averaging mean;
+scaling `density` (one-sided, all bins but DC/Nyquist doubled); `nfft = nperseg` -- **no zero-padding**, so bin spacing is the
+true Welch grid. Units `<unit>^2/Hz` (MW^2/Hz, Hz^2/Hz, kV^2/Hz ...); when the source unit is empty `psd_unit` is `null` and
+the UI says "(signal unit)^2/Hz" -- a unit is never invented. For a raw V/I the unit is that of the source (RMS keeps it).
+
+**Segment-length rule (one centralized, deterministic function: `choose_segmentation`).** Target segment duration
+`2 / f_min` seconds (two cycles of the lowest requested frequency); for `f_min = 0` (valid, includes DC) `window / 4.5`
+(about eight 50 %-overlapped segments). Rounded to whole samples, never below 8 samples, **clamped to the window**. Segments
+= `(N - noverlap) // (nperseg - noverlap)`; the unused tail is reported. A window that cannot hold the target yields **one
+segment**, reported as such with warnings (`insufficient_window_for_min_frequency`, `min_frequency_below_bin_spacing`,
+`single_segment`); 2-3 segments warn `few_segments`. No averaging is claimed when none occurred. The rule is a starting
+policy, not a standard.
+
+**Resolution concepts are reported separately.** `window.duration_s` and `window.basic_resolution_hz = 1/T` (the setup's
+existing figure, unchanged); `welch.segment_s`, `welch.nperseg` and `welch.bin_spacing_hz = fs/nperseg` (the grid the PSD is on);
+overlap, segments averaged and the requested vs returned frequency range. Bin spacing is *not* a claim of resolving power.
+
+**API.** `POST /api/v1/workspaces/{ws}/oscillation-analysis/spectrum` (`app.api.v1.oscillation`,
+`app.services.oscillation_spectrum_service`). Request: channel ref, `representation` (`native` | `rms_magnitude`),
+`signal_revision` (echoed), source-time `window_start_s/window_end_s`, `frequency_min_hz/frequency_max_hz`. The signal is resolved
+from workspace state; no samples are accepted. Response: `frequencies_hz` + `psd` (band-limited), and structured `signal`,
+`representation`, `window`, `welch`, `frequency`, `warnings` blocks. The backend re-validates everything (window end > start and
+inside the usable range, never clamped; f_min >= 0, f_max > f_min, f_max <= Nyquist; for RMS, f_max < nominal frequency) and
+returns structured errors with codes (`invalid_analysis_window`, `invalid_frequency_range` 400; `representation_unavailable`,
+`representation_mismatch` 409; `insufficient_samples`, `non_finite_samples`, `non_uniform_sampling`,
+`invalid_welch_configuration` 422; 404 for a missing source/channel). Non-finite samples and non-uniform sampling are
+refused, never interpolated or resampled. A raw V/I requested as `native` is refused (`representation_mismatch`) because the
+carrier would dominate. Nothing is stored or registered; only Analyze triggers a computation.
+
+**RMS-derived signals (DEC-173 rules retained, nothing compensated).** The existing `derive_analysis_representation` is
+reused; the window must lie in its usable range; `rms_rolloff` warns above `0.443 f0` (with the attenuation at f_max), f_max at
+or above `f0` is invalid; PSD amplitudes are **not** corrected for the roll-off. Validated: a 5 Hz, 10 % modulation of a 50 Hz
+carrier gives a PSD whose 5 Hz power equals `(depth * |sinc(5/50)| / sqrt 2)^2 / 2` within 5 %.
+
+**Frontend.** `Frequency Spectrum` card (hidden until Analyze): Plotly line chart (Frequency (Hz) vs PSD with units;
+linear default, optional logarithmic axis where non-positive bins are gaps), state line (Computing / error / stale), backend
+warnings, and an "Analysis details" list of the parameters actually used. The page has no spectral mathematics. **Stale
+handling:** the result stores signal key + revision + exact setup (representation, window, band). A different selection or a
+removed/recreated signal (`wwSignalCatalogueIsCurrent`) discards it; a changed window/band keeps it dimmed with "Analysis
+settings changed -- run Analyze again" (reverting the edit restores it); a late response for a superseded request is dropped.
+
+**Presentation refinement (owner UAT, 2026-10-08; rendering only, no backend/maths change).** Card title `Frequency Spectrum (Welch PSD)`;
+X axis `Frequency (Hz)`; Y axis `PSD (<unit>^2/Hz)` from the backend's `psd_unit` (plain `PSD` when the unit is absent --
+never invented), unchanged by the linear/log axis. `Display: Line | Histogram` (default Line) and `PSD axis: Linear | Logarithmic`
+are independent and redraw client-side from the stored result with no new request. Histogram = one bar per returned Welch
+bin (no re-binning, averaging or value change), bar width `0.9 x welch.bin_spacing_hz`; non-positive bins on a log axis are gaps.
+Hover shows frequency, PSD and unit. Axis titles are visible, dynamic and 11 px (`WW_OSC_AXIS_TITLE_PX`), the Plotly figure is
+responsive/full-width, and the Analysis-details list wraps long recording filenames (CSS scoped to the Oscillation spectrum
+details only). DEC-174 itself draws no peak markers; DEC-175 overlays candidate markers without touching the PSD trace.
+
+**Performance `[FACT]` (this machine).** 5 kHz x 600 s native, band 0.1-2 Hz: 0.43 s, 3 million samples read, **2.9 KiB** response;
+5 kHz x 120 s via RMS: 0.26 s. The Welch result is naturally compact when the band is narrow; a deliberately wide band
+(0-2000 Hz, 5 kHz x 60 s) returns 26 667 bins (1.1 MiB) -- no decimation was added.
+
+**Resolved by approval (2026-10-08).** SciPy stays dev-only (NumPy production); Hann / 50 % / constant and `2 / f_min` (with the
+`f_min = 0` fallback) are accepted as fixed Phase-1 settings; the PSD axis defaults to Linear with Logarithmic selectable; peak
+picking is DEC-175.
+
+**Still open (later slices).** (1) Whether Hann/50 %/constant should ever become user-selectable. (2) Whether very wide bands
+should be capped or decimated for transport. (3) Spectrogram window policy and whether the PSD and spectrogram share segment
+settings. (4) Whether multi-rate records are resampled (still ineligible).
+
+Tests: `backend/tests/test_oscillation_spectrum.py` (synthetic 5 Hz / 10 Hz / mixed / seeded noise / constant / short window /
+frequency filtering / RMS modulation / SciPy parity / API), `test_frontend_oscillation_analysis_shell.py`,
+`browser-tests/oscillation_setup.spec.js`.
+
+## DEC-175 -- Oscillation Analysis candidate detection: deterministic, evidence-based spectral peak candidates over the Welch PSD
+
+Status: **[APPROVED]** (owner, 2026-10-08; was `[PROPOSAL]`; UAT accepted incl. real-event UAT) -- implemented on
+`feat/event-reconstruction`, committed together with DEC-174. **All thresholds below are Phase-1 engineering heuristics -- not
+universal standards and not statistical confidence.** Builds on DEC-172/173/174 and changes none of them (the Welch mathematics, segmentation rule,
+RMS representation and bandwidth guidance are untouched). Scope: turn the Welch spectrum into a short ranked list of *candidate*
+oscillatory components, each with the measured reasons it was selected. **Not implemented (deliberately later):** oscillation-type
+classification (inter-area / local / SSO / converter / forced), Spectrogram/STFT, Prony / Matrix Pencil, damping, mode shape,
+coherence / phase comparison, multi-location logic, forced-oscillation source identification, automatic event-type recognition.
+
+**Principle.** The analysis engine establishes the evidence; the UI explains it. No AI/LLM, no opaque score, no probability or
+"confidence". The largest PSD bin is *not* the oscillation: a step, ramp, drift or slow recovery concentrates energy near 0 Hz, so a
+candidate must behave like a **spectral peak**.
+
+**Algorithm** (`app/domain/oscillation_peaks.py::detect_candidates`, NumPy only, O(N), consumed by
+`oscillation_spectrum_service.compute_spectrum` -- no second Welch run, no signal re-read; the full result is `detection` in the
+same response).
+
+1. *DC bin excluded.* Each Welch segment's mean is removed, so the 0 Hz bin is zero by construction; left in, the first non-zero
+   bin would look like a peak rising from a dip (observed on a pure ramp with `f_min = 0`).
+2. *Plateau-aware local maxima.* Consecutive bins with exactly equal PSD are one run; a run higher than both neighbouring runs is
+   one peak whose frequency is the run's centre (tied/adjacent bins never become two oscillations). First/last run are *band-edge*
+   maxima.
+3. *Prominence* (topographic; equals `scipy.signal.peak_prominences` on `10 log10 PSD`, which the tests use as the independent
+   dev-only reference): walk left and right until a strictly higher bin or the band end; the **left/right base** are the lowest PSD
+   values in those stretches; the reference level is the **higher** of the two; `prominence_db = 10 log10(peak_psd / reference_psd)`.
+   Unit independent. A ripple on the shoulder of a bigger peak or on a decaying skirt therefore gets the depth of its own dip, not
+   of the distant floor. Exposed per candidate with `base_psd`, `left_base_hz`, `right_base_hz`.
+4. *Cycles* `cycles_observed = frequency_hz x analysis_window_duration`; `period_s = 1 / frequency_hz`.
+5. *Acceptance* -- all of: local maximum; not a band-edge maximum; `cycles_observed >= 2`; `prominence_db >= required_db`.
+6. *Ranking*: prominence (descending), then PSD, then lower frequency -- never absolute PSD alone. The complete accepted list is
+   kept in the domain result; the wire carries the first 5 (`total_candidates`, `truncated`), plus up to 3 not-promoted entries.
+
+**Thresholds introduced (all named constants in `oscillation_peaks.py`, echoed in `detection.parameters`; Phase-1 engineering
+heuristics, not standards).**
+
+| Constant | Value | Why |
+|---|---|---|
+| `MIN_OBSERVED_CYCLES` | 2 | The **same** application guideline as the setup page's `recommendedMinObservedCycles` (DEC-172) and the Welch `2 / f_min` rule; one cut-off `f_cut = 2 / T`. A test asserts the frontend value equals this one. It is a guideline, not an international-standard claim. |
+| `MIN_PROMINENCE_DB` | 6 dB | Floor for "a distinct peak". |
+| `NOISE_ALLOWANCE_SIGMAS` | 8 | `required_db = max(6, 8 x 4.343 / sqrt(K))` for K averaged Welch segments. Averaging leaves a PSD's log scatter near `4.343 / sqrt K` dB; measured on seeded white noise (9 band/length cases, 150 runs each) the most prominent *noise* peak reached up to 9.6 x that scatter (median 3.4-6.5 x). With the fixed 6 dB alone, 100 % of 60 s white-noise records with 5 segments produced a "peak"; with this term the seeded noise records in the tests produce none. Reported as `noise_allowance_db` / `required_prominence_db`; a lightly averaged spectrum therefore needs a clearer peak (K=5: 15.5 dB, K=14: 9.3 dB, K=59: the 6 dB floor). |
+| `BOUNDARY_GUARD_BINS` | 2 | Accepted peaks within 2 bins of a band edge carry `near_band_edge`. |
+| `MIN_AVERAGED_SEGMENTS` | 4 | Fewer segments add `limited_averaging` to each candidate (the spectrum-level warnings are unchanged). |
+| `PSD_RELATIVE_FLOOR` | 1e-10 (-100 dB) | PSD below `max x 1e-10` is clamped: round-off in a bin-aligned 16-bit sinusoid's leakage floor (1e-37..1e-16) otherwise rippled into a 100+ dB "candidate" (found by the browser fixture). Bounds prominence at 100 dB. |
+| `MAX_REPORTED_CANDIDATES` / `_NOT_PROMOTED` | 5 / 3 | UI manageability. |
+
+**Below-2-cycles / near-DC content.** `f < 2 / T` is never promoted: such a maximum is reported in `not_promoted` as
+`assessment: insufficient_evidence`, `reason_code: below_min_cycles` ("only N cycles fit in the T s window"). When the band's largest PSD lies below `f_cut`, `low_frequency`
+carries `dominant: true`, the share of band power below `f_cut` and the text *"Strong spectral energy exists below ... the minimum
+frequency supported by the available observation window ... It is not automatically classified as an oscillation."* -- the claim is
+that the recording cannot establish it, **not** that it is a transient. Because a Welch bin spacing is always >= `1/T`, such maxima
+are in practice the first bin(s) and also band-edge maxima.
+
+**Boundary policy (chosen: reject, report).** A band-edge maximum is **not** accepted -- its shape and prominence cannot be observed
+(`band_edge`, with the advice to widen the band); it is listed under *Not promoted* and explains a no-candidate result. A peak
+within `BOUNDARY_GUARD_BINS` of an edge is kept with `near_band_edge`. A step/ramp/recovery therefore surfaces as "the largest
+maximum is at the lower band edge", never as an oscillation.
+
+**Assessment wording.** Accepted entries are `assessment: "candidate"`; rejected ones `insufficient_evidence`. **No** Strong / Weak
+labels, probability or confidence exist: the criteria for grading are not yet mature, so only measurable evidence is shown.
+
+**Structured evidence for the future report.** Per candidate: `rank, frequency_hz, period_s, psd, prominence_db, cycles_observed,
+base_psd, left_base_hz, right_base_hz, assessment, reasons[], warnings[]`; each reason/warning is `{code, message, values}`.
+Reason codes: `local_peak` (plateau width), `prominence` (dB, required dB, base PSD), `cycles_observed` (cycles, minimum),
+`outside_low_frequency_region` (f, f_cut), `away_from_band_edge` (only when the peak is further than the guard from an edge).
+Warning codes: `near_band_edge`, `limited_averaging`, `rms_representation_attenuation`. No-candidate reasons:
+`no_spectral_content` (constant signal / empty band), `band_below_min_cycles`, `low_frequency_dominant`, `peak_at_band_edge`,
+`no_prominent_peak` (with the most prominent value seen). Absence of a candidate is a **200** result, never an error.
+
+**RMS-derived signals (DEC-173 preserved).** A candidate above the -3 dB frequency `0.4429 f0` of the one-cycle RMS magnitude
+carries `rms_representation_attenuation` with the attenuation % at that frequency; the spectrum-level `rms_rolloff` warning stays.
+The PSD is not compensated (no inverse sinc), the RMS calculation, f_max < f0 rule and decimation (none) are unchanged.
+
+**Frontend.** Backend result drawn as returned; no detection code in the browser (guard test). Chart: one overlay marker trace
+(`meta.role = "oscillation-candidates"`; primary = filled triangle, others hollow, short `x.xx Hz` labels, hover with prominence and
+cycles) over the unchanged `welch-psd` trace -- identical for Line/Histogram x Linear/Logarithmic. `Detected Oscillation
+Components` section inside the Frequency Spectrum card: primary candidate (Frequency, Period, Prominence, Cycles observed), `Why`
+check-list from the reasons, candidate warnings, `Other candidates`, `Low-frequency / transient energy`, `Not promoted
+(insufficient evidence)`, a no-candidate statement with its reasons, and a one-line criteria note. It is tied to the spectrum
+result exactly as the spectrum is (signal key + revision, representation, window, band): another/removed signal discards it;
+changed settings dim it with the existing "run Analyze again" state; reverting restores it.
+
+**Validation `[FACT]` (this machine).** Prominence and peak indices match `scipy.signal.find_peaks/peak_prominences` (40 random
+300-bin spectra, rtol 1e-9). Synthetic (50 Hz sampling, 120 s): clean sinusoid, two simultaneous modes (0.8 / 2.6 Hz), sinusoid +
+unit noise (the one candidate), constant (`no_spectral_content`), pure noise x 8 seeds (no candidate), ramp, step and slow recovery
+(none, band-edge explanation, for `f_min` 0 and 0.1), 1.0-cycle sinusoid (`below_min_cycles`), 5 Hz tone on the band edge (not
+promoted; accepted once the band is widened), RMS-derived 25 Hz modulation (candidate + attenuation warning).
+**Disturbance + ringdown:** a 40x-larger near-DC recovery plus a decaying 0.7 Hz oscillation (`f_min` 0.1, 0.05 and 0): the largest
+PSD is at the low-frequency end, the detector reports 0.7 Hz (within one bin) as the only candidate, and the event energy appears as a
+`band_edge` not-promoted entry. Performance: 26 667-bin spectrum (5 kHz x 60 s, 0-2000 Hz): Welch 0.20 s, detection 0.07 s;
+200 / 1 000 / 5 000 bins take 0.8 / 3.3 / 22 ms.
+
+**Approved Phase-1 policy summary (2026-10-08).** Deterministic, no AI; a local spectral peak is required; topographic prominence
+reported in dB; minimum 2 observed cycles (below-2-cycle content is not promoted); explicit near-DC / low-frequency uncertainty
+treatment; band-edge maxima rejected-and-reported; near-edge warning (`near_band_edge`); multi-candidate support; ranking by
+prominence, then PSD, then lower frequency; prominence requirement = 6 dB floor with the segment-aware allowance (existing `8 sigma`
+rule); numerical-floor handling retained; no Strong/Weak confidence labels yet; no automatic nearby-peak merging yet; UI cap of 5
+returned candidates; structured `reasons[]` / `warnings[]` feed the deterministic "Why" report; no oscillation-type classification.
+The 6 dB / 8-sigma / 2-cycle values are starting heuristics to be revisited with more real-event evidence.
+
+**Real-event UAT `[FACT]` (owner, 2026-10-08).** On a real tripping event: the strong low-frequency (near-DC) disturbance energy was
+correctly **not** promoted to an oscillation; a **4.95 Hz** candidate appeared in the frequency signal; **4.95 Hz** also appeared
+independently in MW; and MW showed a separate **1.15 Hz** candidate.
+
+**Still open (later slices).** (1) Whether `Strong / Candidate / Weak` labels are wanted once more real events show how prominence
+behaves. (2) Whether more than 5 candidates / nearby-peak merging (resolution = about 4 Hann bins) is needed. (3) Further real-event
+review of the frequency-axis choice (`f_min`) now that it also sets what counts as the band edge. (4) Oscillation-type
+classification (inter-area / local / SSO / forced / control interaction) -- later, with its own deterministic "Why" section; AI, if
+ever added, may only explain structured evidence and must never create engineering evidence.
+
+Tests: `backend/tests/test_oscillation_candidates.py` (domain + synthetic signals + SciPy reference),
+`test_oscillation_spectrum.py` (API block), `test_frontend_oscillation_analysis_shell.py`, `browser-tests/oscillation_setup.spec.js`
+(new "candidate detection" describe).

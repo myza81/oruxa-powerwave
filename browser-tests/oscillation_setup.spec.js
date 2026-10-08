@@ -1,4 +1,4 @@
-// Oscillation Analysis -- SETUP / INPUT workflow (no spectral processing).
+// Oscillation Analysis -- SETUP / INPUT workflow and the Welch PSD Frequency Spectrum (DEC-174 [PROPOSAL]).
 //
 // Real backend + real frontend, no mocks. Fixture: one synthetic 1 kHz /
 // 5 s COMTRADE record with a Frequency (Hz), an Active Power (MW) and a raw
@@ -88,7 +88,7 @@ async function setBand(page, min, max) {
 test.describe("Oscillation Analysis setup -- navigation and empty state", () => {
   test("opens, shows the three sections, nothing is assessed and Analyze is disabled without a signal", async ({ page }) => {
     await openOscillation(page);
-    await expect(page.locator("#wwOscillationPanel h3")).toHaveText(["Oscillation Analysis", "Analysis Information", "Data Adequacy"]);
+    await expect(page.locator("#wwOscillationPanel h3")).toHaveText(["Oscillation Analysis", "Frequency Spectrum (Welch PSD)", "Analysis Information", "Data Adequacy"]);
     await expect(page.locator("#wwOscSignalSelect")).toHaveValue("");
     await expect(page.locator("#wwOscStartInput")).toBeDisabled();
     await expect(page.locator("#wwOscMinFreqInput")).toHaveValue("0.1");
@@ -96,7 +96,8 @@ test.describe("Oscillation Analysis setup -- navigation and empty state", () => 
     await expect(status(page)).toHaveText("Not assessed");
     await expect(page.locator("#wwOscAnalyzeBtn")).toBeDisabled();
     await expect(page.locator("#wwOscInfoSamplingRate")).toHaveText("—");
-    // No chart/placeholder surfaces and no result.
+    // No chart/placeholder surfaces and no result: the spectrum card stays hidden until Analyze.
+    await expect(page.locator("#wwOscSpectrumCard")).toBeHidden();
     await expect(page.locator("#wwOscillationPanel .js-plotly-plot, #wwOscillationPanel canvas, #wwOscillationPanel svg")).toHaveCount(0);
   });
 
@@ -498,13 +499,15 @@ test.describe("Oscillation Analysis setup -- information and adequacy", () => {
     }
   });
 
-  test("Analyze validates only: no result, no dominant frequency, states it is not implemented", async ({ page }) => {
+  test("Analyze records the validated setup it is tied to and editing the setup invalidates that record", async ({ page }) => {
+    await openOscillation(page);
+    await uploadSynthetic(page);
+    await selectFreq(page);
     await setBand(page, 0.5, 2);
-    await expect(page.locator("#wwOscAnalyzeNote")).toContainText("not implemented yet");
+    await expect(page.locator("#wwOscAnalyzeNote")).toContainText("Welch power spectral density");
     await page.locator("#wwOscAnalyzeBtn").click();
-    await expect(page.locator("#wwOscAnalyzeNote")).toContainText("no result was produced");
+    await expect(page.locator("#wwOscSpectrumPlot .js-plotly-plot, #wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
     await expect(page.locator("#wwOscillationPanel")).not.toContainText(/dominant/i);
-    await expect(page.locator("#wwOscillationPanel .js-plotly-plot, #wwOscillationPanel canvas, #wwOscillationPanel svg")).toHaveCount(0);
     const recorded = await page.evaluate(() => wwOscState.validatedSetup);
     expect(recorded.signalKey).toMatch(/^raw:analog:/);
     expect(recorded.catalogueRevision).toBeGreaterThan(0);
@@ -892,5 +895,540 @@ test.describe("Oscillation Analysis setup -- source vs usable RMS vs analysis wi
     await expect(fact("Source duration")).toHaveText("0.648 s");
     await expect(fact("Usable RMS duration")).toHaveText("0.628 s");
     await expect(fact("Analysis window")).toHaveText("0.4 s (Custom range)");
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Frequency Spectrum -- Welch PSD (DEC-174 [PROPOSAL]).
+// 20 s / 1 kHz record, FREQ = 0.05 sin(2 pi 0.5 t): with a 0.5-2 Hz band the
+// backend picks a 4 s Hann segment (2 / f_min), 50 % overlap, 9 segments,
+// 0.25 Hz bin spacing. The tests read the
+// returned/plotted arrays directly (candidate detection, DEC-175, is tested separately below).
+// ---------------------------------------------------------------------------
+const SPECTRUM_URL = "**/oscillation-analysis/spectrum";
+const plotData = (page) => page.evaluate(() => {
+  const el = document.getElementById("wwOscSpectrumPlot");
+  return { traces: el.data.length, x: Array.from(el.data[0].x), y: Array.from(el.data[0].y), layout: el.layout,
+           annotations: (el.layout.annotations || []).length, shapes: (el.layout.shapes || []).length };
+});
+const specDetail = (page, label) => page.locator("#wwOscSpectrumDetails > div", {
+  has: page.locator("dt", { hasText: new RegExp("^" + label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$") }),
+}).locator("dd");
+const axisTitle = (axis) => (typeof axis.title === "string" ? axis.title : axis.title.text);
+
+async function spectrumPage(page, options = {}) {
+  await openOscillation(page);
+  await uploadSynthetic(page, { durationS: 20, ...options });
+  await selectFreq(page);
+  await setBand(page, 0.5, 2);
+}
+
+test.describe("Oscillation Analysis -- Frequency Spectrum (Welch PSD)", () => {
+  test("nothing is computed or drawn until Analyze is pressed", async ({ page }) => {
+    const requests = [];
+    page.on("request", (r) => { if (r.url().includes("/oscillation-analysis/spectrum")) requests.push(r.url()); });
+    await spectrumPage(page);
+    await expect(page.locator("#wwOscSpectrumCard")).toBeHidden();
+    expect(requests).toHaveLength(0);
+  });
+
+  test("Analyze sends one reference-only request and draws the returned spectrum", async ({ page }) => {
+    const requests = [];
+    page.on("request", (r) => { if (r.url().includes("/oscillation-analysis/spectrum")) requests.push(r.postDataJSON()); });
+    await spectrumPage(page);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumCard")).toBeVisible();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    expect(requests).toHaveLength(1);
+    const body = requests[0];
+    expect(body.input).toMatchObject({ kind: "source", channel_name: "FREQ" });
+    expect(body).toMatchObject({ representation: "native", window_start_s: 0, window_end_s: 20, frequency_min_hz: 0.5, frequency_max_hz: 2 });
+    expect(Object.keys(body).sort()).toEqual(["frequency_max_hz", "frequency_min_hz", "input", "representation", "signal_revision", "window_end_s", "window_start_s"]);
+    const d = await plotData(page);
+    expect(d.traces).toBe(1);
+    expect(d.x[0]).toBeGreaterThanOrEqual(0.5 - 1e-9);
+    expect(d.x[d.x.length - 1]).toBeLessThanOrEqual(2 + 1e-9);
+    expect(d.x).toHaveLength(7); // 0.5 .. 2 Hz at 0.25 Hz spacing
+    const peak = d.x[d.y.indexOf(Math.max(...d.y))];
+    expect(Math.abs(peak - 0.5)).toBeLessThanOrEqual(0.25);
+    expect(axisTitle(d.layout.xaxis)).toBe("Frequency (Hz)");
+    expect(axisTitle(d.layout.yaxis)).toBe("PSD (Hz²/Hz)");
+    // The 0.5 Hz sine sits on the lower band edge: no candidate marker, no annotation, no strength or
+    // statistical wording (DEC-175 [PROPOSAL]: candidates are measured evidence, never a confidence).
+    expect(d.annotations).toBe(0);
+    expect(d.shapes).toBe(0);
+    const text = (await page.locator("#wwOscSpectrumCard").innerText()).toLowerCase();
+    for (const word of ["strong", "moderate", "weak", "oscillation present", "stable", "confidence:", "probability"]) expect(text).not.toContain(word);
+    await expect(page.locator("#wwOscSpectrumCard h3")).toHaveText("Frequency Spectrum (Welch PSD)");
+  });
+
+  test("shows a loading state while the backend computes", async ({ page }) => {
+    await spectrumPage(page);
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    await page.route(SPECTRUM_URL, async (route) => { await gate; await route.continue(); });
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumState")).toHaveText("Computing Welch PSD…");
+    await expect(page.locator("#wwOscAnalyzeBtn")).toBeDisabled();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(0);
+    release();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    await expect(page.locator("#wwOscSpectrumState")).toBeHidden();
+    await expect(page.locator("#wwOscAnalyzeBtn")).toBeEnabled();
+  });
+
+  test("a long recording filename wraps inside its own Analysis details cell", async ({ page }) => {
+    const longName = "PCGP Machines_251015_161233304.ben";
+    await page.route(SPECTRUM_URL, async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.signal.source_recording = longName.replace(/ /g, "_").repeat(3);
+      await route.fulfill({ response, json: body });
+    });
+    await spectrumPage(page);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    const cell = page.locator("#wwOscSpectrumDetails > div", { has: page.locator("dt", { hasText: /^Recording$/ }) });
+    const next = page.locator("#wwOscSpectrumDetails > div", { has: page.locator("dt", { hasText: /^Analysis representation$/ }) });
+    await expect(cell.locator("dd")).toHaveText(longName.replace(/ /g, "_").repeat(3));
+    const geo = await page.evaluate(() => {
+      const rect = (el) => el.getBoundingClientRect();
+      const cells = Array.from(document.querySelectorAll("#wwOscSpectrumDetails > div"));
+      const rec = cells.find((c) => c.querySelector("dt").textContent === "Recording");
+      const dd = rec.querySelector("dd");
+      const nextCell = cells[cells.indexOf(rec) + 1];
+      return { cell: rect(rec), dd: rect(dd), next: rect(nextCell), scrollW: dd.scrollWidth, clientW: dd.clientWidth };
+    });
+    expect(geo.dd.right).toBeLessThanOrEqual(geo.cell.right + 0.5);
+    expect(geo.scrollW).toBeLessThanOrEqual(geo.clientW + 1);
+    expect(geo.dd.height).toBeGreaterThan(20); // wrapped onto more than one line
+    const sameRow = Math.abs(geo.next.top - geo.cell.top) < 2;
+    if (sameRow) expect(geo.dd.right).toBeLessThanOrEqual(geo.next.left + 0.5);
+    await expect(next).toBeVisible();
+  });
+
+  test("states the exact parameters used and keeps the two resolution concepts apart", async ({ page }) => {
+    await spectrumPage(page);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    await expect(specDetail(page, "Analysis representation")).toHaveText("Signal as recorded");
+    await expect(specDetail(page, "Analysis window")).toHaveText("20 s (20001 samples)");
+    await expect(specDetail(page, "Basic window estimate (1/T)")).toHaveText("0.05 Hz");
+    await expect(specDetail(page, "Welch segment")).toHaveText("4 s (4000 samples)");
+    await expect(specDetail(page, "Welch bin spacing (fs/nperseg)")).toHaveText("0.25 Hz");
+    await expect(specDetail(page, "Overlap")).toHaveText("50 % (2000 samples)");
+    await expect(specDetail(page, "Segments averaged")).toHaveText("9");
+    await expect(specDetail(page, "Window")).toHaveText("Hann");
+    await expect(specDetail(page, "Detrend")).toHaveText("Mean removed (constant)");
+    await expect(specDetail(page, "Scaling")).toHaveText("Power spectral density (one-sided)");
+    await expect(specDetail(page, "Requested range")).toHaveText("0.5 to 2 Hz");
+    await expect(specDetail(page, "Returned range")).toHaveText("0.5 to 2 Hz (7 bins)");
+    // The setup's own figure is still the basic estimate, unchanged.
+    await expect(page.locator("#wwOscInfoResolution")).toHaveText("≈ 0.05 Hz");
+    await expect(page.locator("#wwOscSpectrumWarnings li")).toHaveCount(0);
+  });
+
+  test("a window too short for the lowest frequency reports a single segment honestly", async ({ page }) => {
+    await spectrumPage(page);
+    await setBand(page, 0.1, 2); // wants 20 s segments: only the 20 s window itself fits
+    await setWindow(page, 0, 5);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    await expect(specDetail(page, "Segments averaged")).toHaveText("1");
+    const warnings = await page.locator("#wwOscSpectrumWarnings li").evaluateAll((l) => l.map((x) => x.dataset.code));
+    expect(warnings).toContain("single_segment");
+    expect(warnings).toContain("insufficient_window_for_min_frequency");
+    await expect(page.locator("#wwOscSpectrumWarnings")).toContainText("no averaging took place");
+  });
+
+  test("the PSD axis can be switched to logarithmic without a new request", async ({ page }) => {
+    const requests = [];
+    page.on("request", (r) => { if (r.url().includes("/oscillation-analysis/spectrum")) requests.push(1); });
+    await spectrumPage(page);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    expect((await plotData(page)).layout.yaxis.type).toBe("linear");
+    await page.locator("#wwOscSpectrumScale").selectOption("log");
+    await expect.poll(async () => (await plotData(page)).layout.yaxis.type).toBe("log");
+    expect(requests).toHaveLength(1);
+  });
+
+  test("changing the settings after Analyze marks the spectrum as not current until re-run", async ({ page }) => {
+    await spectrumPage(page);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    await expect(page.locator("#wwOscSpectrumState")).toBeHidden();
+    await page.locator("#wwOscMaxFreqInput").fill("3");
+    await expect(page.locator("#wwOscSpectrumState")).toHaveText("Analysis settings changed — run Analyze again");
+    await expect(page.locator("#wwOscSpectrumPlot")).toHaveAttribute("data-stale", "true");
+    // Reverting the edit makes the shown spectrum current again; re-running replaces it.
+    await page.locator("#wwOscMaxFreqInput").fill("2");
+    await expect(page.locator("#wwOscSpectrumState")).toBeHidden();
+    await page.locator("#wwOscMaxFreqInput").fill("3");
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumState")).toBeHidden();
+    await expect(specDetail(page, "Requested range")).toHaveText("0.5 to 3 Hz");
+    // The window changing counts too.
+    await setWindow(page, 0, 10);
+    await expect(page.locator("#wwOscSpectrumState")).toHaveText("Analysis settings changed — run Analyze again");
+  });
+
+  test("selecting another signal discards the spectrum", async ({ page }) => {
+    await spectrumPage(page);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_MW"));
+    await expect(page.locator("#wwOscSpectrumCard")).toBeHidden();
+    expect(await page.evaluate(() => wwOscState.spectrum.result)).toBeNull();
+  });
+
+  test("removing the analysed signal invalidates the spectrum", async ({ page }) => {
+    await spectrumPage(page);
+    const made = await absOf(page, "ABS FREQ", "FREQ");
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "ABS FREQ"));
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    await page.evaluate((id) => wwCcDeleteChannel(id), made.id);
+    await expect(page.locator("#wwOscSpectrumCard")).toBeHidden();
+    await expect(page.locator("#wwOscSelectionNotice")).toContainText("selection cleared");
+    expect(await page.evaluate(() => wwOscState.spectrum.result)).toBeNull();
+  });
+
+  test("a response arriving after the signal was removed is discarded", async ({ page }) => {
+    await spectrumPage(page);
+    const made = await absOf(page, "ABS FREQ", "FREQ");
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "ABS FREQ"));
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    await page.route(SPECTRUM_URL, async (route) => { await gate; await route.continue(); });
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumState")).toHaveText("Computing Welch PSD…");
+    await page.evaluate((id) => wwCcDeleteChannel(id), made.id);
+    release();
+    await expect(page.locator("#wwOscSpectrumCard")).toBeHidden();
+    await page.waitForTimeout(300);
+    await expect(page.locator("#wwOscSpectrumCard")).toBeHidden();
+    expect(await page.evaluate(() => wwOscState.spectrum.phase)).toBe("idle");
+  });
+
+  test("a backend error is shown, with no chart and no empty spectrum", async ({ page }) => {
+    await spectrumPage(page);
+    await page.route(SPECTRUM_URL, (route) => route.fulfill({
+      status: 422, contentType: "application/json",
+      body: JSON.stringify({ detail: { code: "non_finite_samples", message: "The analysis window contains 3 non-finite sample(s)." } }),
+    }));
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumState")).toHaveText("The analysis window contains 3 non-finite sample(s).");
+    await expect(page.locator("#wwOscSpectrumState")).toHaveAttribute("data-kind", "error");
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(0);
+    await expect(page.locator("#wwOscSpectrumDetails > div")).toHaveCount(0);
+    await expect(page.locator("#wwOscAnalyzeBtn")).toBeEnabled();
+  });
+
+  test("an unreachable backend is reported, not left loading", async ({ page }) => {
+    await spectrumPage(page);
+    await page.route(SPECTRUM_URL, (route) => route.abort());
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumState")).toContainText("Could not reach the backend");
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(0);
+  });
+
+  test("raw V/I is analysed through its RMS magnitude and says so", async ({ page }) => {
+    await openOscillation(page);
+    await uploadSynthetic(page, { durationS: 10 });
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "VA"));
+    await expect(page.locator("#wwOscInfoDerivedCount")).not.toHaveText("—");
+    await setBand(page, 0.5, 2);
+    const requests = [];
+    page.on("request", (r) => { if (r.url().includes("/oscillation-analysis/spectrum")) requests.push(r.postDataJSON()); });
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    expect(requests[0].representation).toBe("rms_magnitude");
+    expect(requests[0].window_start_s).toBeCloseTo(0.02, 6); // the representation's usable range
+    await expect(specDetail(page, "Analysis representation")).toHaveText("RMS magnitude");
+    await expect(specDetail(page, "Nominal frequency")).toHaveText("50 Hz (from the recording)");
+    expect(axisTitle((await plotData(page)).layout.yaxis)).toBe("PSD (V²/Hz)");
+  });
+
+  test("a band reaching the RMS roll-off carries the backend warning", async ({ page }) => {
+    await openOscillation(page);
+    await uploadSynthetic(page, { durationS: 10 });
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "VA"));
+    await expect(page.locator("#wwOscInfoDerivedCount")).not.toHaveText("—");
+    await setBand(page, 0.5, 30);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    await expect(page.locator('#wwOscSpectrumWarnings li[data-code="rms_rolloff"]')).toContainText("not corrected");
+  });
+
+  test("the spectrum card survives leaving and returning to the page", async ({ page }) => {
+    await spectrumPage(page);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    await page.locator("#wwAnalysisTypePhasorBtn").click();
+    await expect(page.locator("#wwOscillationPanel")).toBeHidden();
+    await page.locator("#wwAnalysisTypeOscillationBtn").click();
+    await expect(page.locator("#wwOscSpectrumCard")).toBeVisible();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    const box = await page.locator("#wwOscSpectrumPlot").boundingBox();
+    expect(box.width).toBeGreaterThan(200);
+    expect(box.height).toBeGreaterThan(200);
+  });
+});
+
+
+// Presentation refinements (same Welch data; no backend change): title, axis labels/units, Line | Histogram.
+test.describe("Oscillation Analysis -- Frequency Spectrum presentation", () => {
+  const plotType = (page) => page.evaluate(() => document.getElementById("wwOscSpectrumPlot").data[0].type);
+  // What Plotly actually RENDERED (not the layout object): the axis-title SVG text nodes, their visibility and
+  // that they lie inside the drawn chart (a clipped or missing title fails here).
+  const renderedTitles = (page) => page.evaluate(() => {
+    const el = document.getElementById("wwOscSpectrumPlot");
+    const svg = el.querySelector("svg.main-svg").getBoundingClientRect();
+    const read = (selector) => {
+      const node = el.querySelector(selector);
+      if (!node) return null;
+      const box = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      return { text: node.textContent, fontSize: getComputedStyle(node).fontSize, visible: style.display !== "none" && style.visibility !== "hidden" && box.width > 0 && box.height > 0,
+               inside: box.left >= svg.left - 1 && box.right <= svg.right + 1 && box.top >= svg.top - 1 && box.bottom <= svg.bottom + 1 };
+    };
+    return { x: read(".xtitle"), y: read(".ytitle"), svgWidth: svg.width, containerWidth: el.getBoundingClientRect().width };
+  });
+  async function expectVisibleTitles(page, yText) {
+    await expect.poll(async () => (await renderedTitles(page)).x && (await renderedTitles(page)).y).toBeTruthy();
+    const t = await renderedTitles(page);
+    expect(t.x).toMatchObject({ text: "Frequency (Hz)", fontSize: "11px", visible: true, inside: true });
+    expect(t.y).toMatchObject({ text: yText, fontSize: "11px", visible: true, inside: true });
+    expect(Math.abs(t.svgWidth - t.containerWidth)).toBeLessThanOrEqual(2); // drawn at the container's real width
+  }
+  async function analysed(page, options = {}) {
+    await spectrumPage(page, options);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+  }
+
+  test("title, axis labels and units; Line is the default", async ({ page }) => {
+    await analysed(page);
+    await expect(page.locator("#wwOscSpectrumCard h3")).toHaveText("Frequency Spectrum (Welch PSD)");
+    await expect(page.locator("#wwOscSpectrumDisplay")).toHaveValue("line");
+    expect(await plotType(page)).toBe("scatter");
+    const d = await plotData(page);
+    expect(axisTitle(d.layout.xaxis)).toBe("Frequency (Hz)");
+    expect(axisTitle(d.layout.yaxis)).toBe("PSD (Hz²/Hz)");
+    await expectVisibleTitles(page, "PSD (Hz²/Hz)");
+  });
+
+  test("the Y title follows the backend unit (MW signal)", async ({ page }) => {
+    await openOscillation(page);
+    await uploadSynthetic(page, { durationS: 20 });
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_MW"));
+    await setBand(page, 0.5, 2);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    expect(axisTitle((await plotData(page)).layout.yaxis)).toBe("PSD (MW²/Hz)");
+    await expectVisibleTitles(page, "PSD (MW²/Hz)");
+  });
+
+  test("an unknown unit falls back to plain PSD", async ({ page }) => {
+    await spectrumPage(page);
+    await page.route(SPECTRUM_URL, async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.signal.unit = null; body.signal.psd_unit = null;
+      await route.fulfill({ response, json: body });
+    });
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    expect(axisTitle((await plotData(page)).layout.yaxis)).toBe("PSD");
+    await expectVisibleTitles(page, "PSD");
+  });
+
+  test("Histogram draws one bar per returned Welch bin, from the same result, with no new request", async ({ page }) => {
+    const requests = [];
+    page.on("request", (r) => { if (r.url().includes("/oscillation-analysis/spectrum")) requests.push(1); });
+    await analysed(page);
+    const line = await plotData(page);
+    const result = await page.evaluate(() => wwOscState.spectrum.result);
+    await page.locator("#wwOscSpectrumDisplay").selectOption("bars");
+    await expect.poll(() => plotType(page)).toBe("bar");
+    const bars = await plotData(page);
+    expect(bars.traces).toBe(1);
+    expect(bars.x).toEqual(result.frequencies_hz); // no re-binning
+    expect(bars.y).toEqual(result.psd); // values untouched
+    expect(bars.x).toHaveLength(result.frequency.bin_count);
+    const width = await page.evaluate(() => document.getElementById("wwOscSpectrumPlot").data[0].width);
+    expect(width).toBeCloseTo(0.9 * result.welch.bin_spacing_hz, 9);
+    expect(width).toBeLessThanOrEqual(result.welch.bin_spacing_hz);
+    expect(axisTitle(bars.layout.xaxis)).toBe("Frequency (Hz)");
+    expect(axisTitle(bars.layout.yaxis)).toBe("PSD (Hz²/Hz)");
+    // Back to Line: same arrays as before.
+    await page.locator("#wwOscSpectrumDisplay").selectOption("line");
+    await expect.poll(() => plotType(page)).toBe("scatter");
+    const again = await plotData(page);
+    expect(again.x).toEqual(line.x);
+    expect(again.y).toEqual(line.y);
+    expect(requests).toHaveLength(1);
+  });
+
+  test("all four Display x PSD-axis combinations draw, keep labels and unit, and never re-request", async ({ page }) => {
+    const requests = [];
+    page.on("request", (r) => { if (r.url().includes("/oscillation-analysis/spectrum")) requests.push(1); });
+    await analysed(page);
+    for (const display of ["line", "bars"]) {
+      for (const scale of ["linear", "log"]) {
+        await page.locator("#wwOscSpectrumDisplay").selectOption(display);
+        await page.locator("#wwOscSpectrumScale").selectOption(scale);
+        await expect.poll(async () => {
+          const d = await plotData(page);
+          return `${await plotType(page)}|${d.layout.yaxis.type}`;
+        }).toBe(`${display === "bars" ? "bar" : "scatter"}|${scale}`);
+        const d = await plotData(page);
+        expect(axisTitle(d.layout.xaxis)).toBe("Frequency (Hz)");
+        expect(axisTitle(d.layout.yaxis)).toBe("PSD (Hz²/Hz)");
+        await expectVisibleTitles(page, "PSD (Hz²/Hz)"); // rendered, visible and unclipped in every combination
+      }
+    }
+    expect(requests).toHaveLength(1);
+  });
+
+  test("on a log axis non-positive bins become gaps; the stored result is untouched", async ({ page }) => {
+    await spectrumPage(page);
+    await page.route(SPECTRUM_URL, async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.psd[1] = 0;
+      await route.fulfill({ response, json: body });
+    });
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    for (const display of ["line", "bars"]) {
+      await page.locator("#wwOscSpectrumDisplay").selectOption(display);
+      await page.locator("#wwOscSpectrumScale").selectOption("log");
+      await expect.poll(async () => (await plotData(page)).layout.yaxis.type).toBe("log");
+      expect((await plotData(page)).y[1]).toBeNull();
+    }
+    expect(await page.evaluate(() => wwOscState.spectrum.result.psd[1])).toBe(0);
+  });
+
+  test("hover shows frequency, PSD and unit in both modes", async ({ page }) => {
+    await analysed(page);
+    for (const display of ["line", "bars"]) {
+      await page.locator("#wwOscSpectrumDisplay").selectOption(display);
+      await expect.poll(() => page.evaluate(() => document.getElementById("wwOscSpectrumPlot").data[0].hovertemplate))
+        .toBe("Frequency: %{x:.4g} Hz<br>PSD: %{y:.4g} Hz²/Hz<extra></extra>");
+    }
+  });
+
+  test("stale-settings behaviour is unchanged in Histogram mode", async ({ page }) => {
+    await analysed(page);
+    await page.locator("#wwOscSpectrumDisplay").selectOption("bars");
+    await page.locator("#wwOscMaxFreqInput").fill("3");
+    await expect(page.locator("#wwOscSpectrumState")).toHaveText("Analysis settings changed — run Analyze again");
+    await expect(page.locator("#wwOscSpectrumPlot")).toHaveAttribute("data-stale", "true");
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_MW"));
+    await expect(page.locator("#wwOscSpectrumCard")).toBeHidden();
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Candidate detection -- "Detected Oscillation Components" (DEC-175 [PROPOSAL]).
+// A 1 Hz sine in a 0.25-3 Hz band (20 s window): an interior spectral peak.
+// ---------------------------------------------------------------------------
+const CANDIDATE_CHANNELS = [{ name: "FREQ", unit: "Hz", amplitude: 0.05, frequencyHz: 1.0 }];
+async function candidatePage(page) {
+  await openOscillation(page);
+  await uploadSynthetic(page, { durationS: 20, channels: CANDIDATE_CHANNELS });
+  await selectFreq(page);
+  await setBand(page, 0.25, 3);
+  await page.locator("#wwOscAnalyzeBtn").click();
+  await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+}
+const traces = (page) => page.evaluate(() => {
+  const el = document.getElementById("wwOscSpectrumPlot");
+  return el.data.map((t) => ({ role: t.meta && t.meta.role, type: t.type, x: Array.from(t.x), y: Array.from(t.y) }));
+});
+
+test.describe("Oscillation Analysis -- candidate detection", () => {
+  test("a spectral peak is reported with its evidence and marked on the chart", async ({ page }) => {
+    await candidatePage(page);
+    const det = page.locator("#wwOscDetection");
+    await expect(det).toBeVisible();
+    await expect(det.locator(".ww-osc-detect-title")).toHaveText("Detected Oscillation Components");
+    const result = await page.evaluate(() => wwOscState.spectrum.result);
+    const c = result.detection.candidates[0];
+    expect(result.detection.status).toBe("candidates_found");
+    expect(Math.abs(c.frequency_hz - 1.0)).toBeLessThanOrEqual(0.125);
+    expect(c.cycles_observed).toBeCloseTo(c.frequency_hz * 20, 1);
+    const primary = page.locator("#wwOscDetectionPrimary");
+    await expect(primary).toContainText("Frequency");
+    await expect(primary).toContainText("Period");
+    await expect(primary).toContainText("Prominence");
+    await expect(primary).toContainText("Cycles observed");
+    // "Why" is the backend's measured evidence, one line per condition.
+    const why = await det.locator('li[data-kind="why"]').allInnerTexts();
+    expect(why.length).toBeGreaterThanOrEqual(4);
+    expect(why.join(" ")).toMatch(/dB above the surrounding spectral level/);
+    expect(why.join(" ")).toMatch(/cycles observed/);
+    const text = (await det.innerText()).toLowerCase();
+    for (const word of ["confidence:", "probability", "strong candidate", "weak candidate", "inter-area", "forced"]) expect(text).not.toContain(word);
+    // The marker is an overlay trace; the PSD trace itself is the unchanged returned spectrum.
+    const t = await traces(page);
+    expect(t.map((x) => x.role)).toEqual(["welch-psd", "oscillation-candidates"]);
+    expect(t[0].y).toEqual(result.psd);
+    expect(t[1].x).toEqual(result.detection.candidates.map((x) => x.frequency_hz));
+    expect(t[1].y).toEqual(result.detection.candidates.map((x) => x.psd));
+  });
+
+  test("markers survive every Line/Histogram x Linear/Logarithmic combination without changing the PSD", async ({ page }) => {
+    await candidatePage(page);
+    const result = await page.evaluate(() => wwOscState.spectrum.result);
+    for (const display of ["line", "bars"]) {
+      for (const scale of ["linear", "log"]) {
+        await page.locator("#wwOscSpectrumDisplay").selectOption(display);
+        await page.locator("#wwOscSpectrumScale").selectOption(scale);
+        const t = await traces(page);
+        expect(t.map((x) => x.role), display + "/" + scale).toEqual(["welch-psd", "oscillation-candidates"]);
+        expect(t[0].type).toBe(display === "bars" ? "bar" : "scatter");
+        expect(t[0].y.filter((v) => v !== null)).toEqual(result.psd.filter((v) => scale === "linear" || v > 0));
+        expect(t[1].y).toEqual(result.detection.candidates.map((x) => x.psd));
+        await expect(page.locator("#wwOscDetection")).toBeVisible();
+      }
+    }
+    expect(await page.evaluate(() => document.getElementById("wwOscSpectrumPlot").layout.annotations || [])).toHaveLength(0);
+  });
+
+  test("no candidate is a result with an explanation, not an error", async ({ page }) => {
+    await spectrumPage(page); // the 0.5 Hz sine lies on the lower edge of the 0.5-2 Hz band
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    const det = page.locator("#wwOscDetection");
+    await expect(det.locator(".ww-osc-detect-none")).toHaveText("No significant oscillation candidate detected");
+    await expect(det).toContainText("edge");
+    await expect(page.locator("#wwOscSpectrumState")).toBeHidden();
+    const t = await traces(page);
+    expect(t.map((x) => x.role)).toEqual(["welch-psd"]);
+  });
+
+  test("candidates follow the spectrum's stale and discard behaviour", async ({ page }) => {
+    await candidatePage(page);
+    await expect(page.locator("#wwOscDetection")).toHaveAttribute("data-stale", "false");
+    await page.locator("#wwOscMaxFreqInput").fill("4");
+    await expect(page.locator("#wwOscDetection")).toHaveAttribute("data-stale", "true");
+    await expect(page.locator("#wwOscSpectrumPlot")).toHaveAttribute("data-stale", "true");
+    await page.locator("#wwOscMaxFreqInput").fill("3");
+    await expect(page.locator("#wwOscDetection")).toHaveAttribute("data-stale", "false");
+    await page.locator("#wwOscMaxFreqInput").fill("4");
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscDetection")).toHaveAttribute("data-stale", "false");
+    expect(await page.evaluate(() => wwOscState.spectrum.result.frequency.requested_max_hz)).toBe(4);
+    // A different signal discards the spectrum together with its candidates.
+    await page.locator("#wwOscSignalSelect").selectOption("");
+    await expect(page.locator("#wwOscSpectrumCard")).toBeHidden();
+    await expect(page.locator("#wwOscDetection")).toBeHidden();
+    await expect(page.locator("#wwOscDetection")).toBeEmpty();
   });
 });

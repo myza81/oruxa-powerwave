@@ -9,6 +9,18 @@ Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
 ## What was most recently done
 
+**Oscillation Analysis Welch spectrum + candidate detection (DEC-174 / DEC-175 `[APPROVED]`, 2026-10-08) -- owner UAT accepted; closed
+in one combined commit `feat: add oscillation spectrum and candidate detection` (not pushed).** Backend: `app/domain/spectral_estimation.py`
+(Welch + `choose_segmentation`), `app/domain/oscillation_peaks.py` (`detect_candidates`; thresholds are named constants),
+`app/services/oscillation_spectrum_service.py` (`compute_spectrum`, one Welch run, `detection` in the same response),
+`POST .../oscillation-analysis/spectrum` in `app/api/v1/oscillation.py`, schemas in `app/schemas/oscillation.py`; `scipy==1.18.1` is in
+`requirements-dev.txt` ONLY (use `backend/.venv/Scripts/python.exe`). Frontend (`wwOsc*` in `index.html`): `wwOscRunSpectrum()`,
+`wwOscRenderSpectrum()`, `wwOscCandidateTrace()`, `wwOscRenderDetection()`; no spectral or detection maths in the browser.
+Tests: `test_oscillation_spectrum.py`, `test_oscillation_candidates.py`, `test_frontend_oscillation_analysis_shell.py`,
+`browser-tests/oscillation_setup.spec.js`. Deferred: Plotly string axis titles in other charts are not rendered by Plotly 3.7
+(Oscillation uses `{ text }`). **Next planned slice: Spectrogram / STFT -- not started.** Later: damping/modal analysis,
+multi-channel/cross-location evidence, oscillation-type classification with a deterministic "Why" (AI only to explain structured evidence).
+
 **Raw V/I RMS magnitude representation for Oscillation Analysis (DEC-173 `[APPROVED]`, 2026-10-08), owner UAT accepted;
 DEC-172/173 approved and committed together with the setup workflow.** Backend: `app/domain/oscillation_representation.py` (calls `evaluate_rms` unchanged; validity,
 bandwidth model), `app/services/oscillation_representation_service.py`, `app/schemas/oscillation.py`,

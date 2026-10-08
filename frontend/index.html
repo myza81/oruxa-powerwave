@@ -7651,6 +7651,9 @@
         :is(.ww-osc-info) dd { margin: 2px 0 0; font-size: 0.8rem; color: var(--text); font-variant-numeric: tabular-nums; }
         /* Derived-representation rows join the same grid as direct children. */
         :is(.ww-osc-info-derived):not([hidden]) { display: contents; }
+        /* Analysis details: each cell keeps to its own grid column; long unbroken values (e.g. a recording filename) wrap inside it. */
+        #wwOscSpectrumDetails > div { min-width: 0; }
+        #wwOscSpectrumDetails dd { overflow-wrap: anywhere; }
         :is(.ww-osc-field)[hidden], :is(.ww-osc-details)[hidden] { display: none; }
         :is(.ww-osc-strip) { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 0.7rem; color: var(--text-dim); }
         :is(.ww-osc-strip-label) { flex: 0 0 auto; font-weight: 700; color: var(--text-dim); }
@@ -7674,6 +7677,27 @@
         :is(.ww-osc-status)[data-status="suitable"] { color: var(--ok); border-color: var(--ok); }
         :is(.ww-osc-status)[data-status="warning"] { color: var(--warn); border-color: var(--warn); }
         :is(.ww-osc-status)[data-status="invalid"] { color: var(--error); border-color: var(--error); }
+        :is(.ww-osc-card)[hidden] { display: none; }
+        :is(.ww-osc-spec-head) { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        :is(.ww-osc-spec-scale) { flex: 0 0 auto; min-width: 140px; }
+        :is(.ww-osc-spec-state) { font-size: 0.7rem; color: var(--text-dim); }
+        :is(.ww-osc-spec-state)[hidden], :is(.ww-osc-plot)[hidden] { display: none; }
+        :is(.ww-osc-spec-state)[data-kind="stale"] { color: var(--warn); }
+        :is(.ww-osc-spec-state)[data-kind="error"] { color: var(--error); }
+        :is(.ww-osc-plot) { width: 100%; height: 320px; }
+        :is(.ww-osc-plot)[data-stale="true"] { opacity: 0.4; }
+        :is(.ww-osc-detect) { display: flex; flex-direction: column; gap: 8px; font-size: 0.7rem; color: var(--text); }
+        :is(.ww-osc-detect)[hidden] { display: none; }
+        :is(.ww-osc-detect)[data-stale="true"] { opacity: 0.4; }
+        :is(.ww-osc-detect) ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+        :is(.ww-osc-detect) li[data-kind="why"]::before { content: "\2713\00a0"; color: var(--ok); }
+        :is(.ww-osc-detect) li[data-kind="warning"] { color: var(--warn); }
+        :is(.ww-osc-detect) li[data-kind="warning"]::before { content: "\26A0\00a0"; }
+        :is(.ww-osc-detect) li[data-kind="note"] { color: var(--text-dim); }
+        :is(.ww-osc-detect-title) { font-size: 0.78rem; font-weight: 700; color: var(--text); }
+        :is(.ww-osc-detect-label) { font-size: 0.65rem; font-weight: 600; color: var(--text-dim); }
+        :is(.ww-osc-detect-none) { font-weight: 600; color: var(--text); }
+        :is(.ww-osc-detect-note) { font-size: 0.65rem; color: var(--text-dim); }
         :is(.ww-osc-checks) { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 0.7rem; color: var(--text); }
         :is(.ww-osc-checks) li[data-status="warning"] { color: var(--warn); }
         :is(.ww-osc-checks) li[data-status="invalid"] { color: var(--error); }
@@ -11880,8 +11904,40 @@
                                 <div class="ww-osc-notice" id="wwOscSelectionNotice" role="status" hidden></div>
                                 <div class="ww-osc-actions">
                                     <button type="button" id="wwOscAnalyzeBtn" disabled>Analyze</button>
-                                    <span class="ww-osc-hint" id="wwOscAnalyzeNote">Spectrum and spectrogram analysis are not implemented yet.</span>
+                                    <span class="ww-osc-hint" id="wwOscAnalyzeNote">Runs a Welch power spectral density over the selected window and frequency range.</span>
                                 </div>
+                            </section>
+                            <!-- Frequency Spectrum (Welch PSD, DEC-174 [PROPOSAL]). Shown only
+                                 once Analyze has been requested. The PSD and the candidate
+                                 detection (DEC-175 [PROPOSAL]) are computed by the backend;
+                                 this card only draws the returned arrays/evidence and states
+                                 the exact parameters used. The browser interprets nothing. -->
+                            <section class="panel ww-osc-card" id="wwOscSpectrumCard" hidden>
+                                <h3>Frequency Spectrum (Welch PSD)</h3>
+                                <div class="ww-osc-spec-head">
+                                    <label class="ww-osc-field ww-osc-spec-scale">
+                                        <span class="ww-osc-field-label">Display</span>
+                                        <select id="wwOscSpectrumDisplay">
+                                            <option value="line" selected>Line</option>
+                                            <option value="bars">Histogram</option>
+                                        </select>
+                                    </label>
+                                    <label class="ww-osc-field ww-osc-spec-scale">
+                                        <span class="ww-osc-field-label">PSD axis</span>
+                                        <select id="wwOscSpectrumScale">
+                                            <option value="linear" selected>Linear</option>
+                                            <option value="log">Logarithmic</option>
+                                        </select>
+                                    </label>
+                                </div>
+                                <div class="ww-osc-spec-state" id="wwOscSpectrumState" role="status" hidden></div>
+                                <div class="ww-osc-plot" id="wwOscSpectrumPlot" hidden></div>
+                                <!-- Detected Oscillation Components (DEC-175 [PROPOSAL]): the backend's
+                                     deterministic candidate detection, drawn as returned. -->
+                                <div class="ww-osc-detect" id="wwOscDetection" hidden></div>
+                                <ul class="ww-osc-checks" id="wwOscSpectrumWarnings"></ul>
+                                <div class="ww-osc-subhead" id="wwOscSpectrumDetailsHead" hidden>Analysis details</div>
+                                <dl class="ww-osc-info" id="wwOscSpectrumDetails"></dl>
                             </section>
                             <section class="panel ww-osc-card">
                                 <h3>Analysis Information</h3>
@@ -54855,7 +54911,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             // Oscillation Analysis owns no Related Waveforms; it re-reads
             // the live catalogue and time basis on becoming visible.
-            if (type === "oscillation") wwOscRender();
+            if (type === "oscillation") {
+                wwOscRender();
+                // The plot cannot size itself while its panel is hidden.
+                const plotEl = document.getElementById("wwOscSpectrumPlot");
+                if (window.Plotly && plotEl && plotEl.classList.contains("js-plotly-plot")) Plotly.Plots.resize(plotEl);
+            }
         }
 
         // ==================================================================
@@ -54925,6 +54986,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // "loading"|"ready"|"unavailable"|"error", info, message }. Memory
             // only, metadata only (no samples), never a catalogue signal.
             derivations: new Map(),
+            // Frequency Spectrum (Welch PSD, DEC-174 [PROPOSAL]): phase
+            // idle|loading|ready|error; `request` is the exact setup (signal
+            // key + revision + window + band) the result belongs to; `seq`
+            // discards superseded or cleared in-flight responses.
+            spectrum: { phase: "idle", seq: 0, request: null, result: null, message: "", yScale: "linear", display: "line", drawn: null },
         };
 
         function wwOscFormat(value, digits) {
@@ -55669,6 +55735,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const panel = document.getElementById("wwOscillationPanel");
             if (!panel) return;
             const state = wwOscState;
+            wwOscSpectrumGuard();
             let analysis = state.signalKey ? wwOscCurrentAssessment() : null;
             if (state.signalKey && !analysis) {
                 wwOscClearSelection("The selected signal was removed or is no longer eligible; selection cleared.");
@@ -55716,6 +55783,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("wwOscMaxFreqInput").value = state.maxText;
             wwOscRenderResults(analysis);
             wwOscRenderEligibility(scan, analysis);
+            wwOscRenderSpectrum();
         }
 
         // Recompute metadata + adequacy (cheap; touches no signal arrays).
@@ -55768,9 +55836,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const analyzeBtn = document.getElementById("wwOscAnalyzeBtn");
             analyzeBtn.disabled = !analysis || (status !== "suitable" && status !== "warning");
             const noteEl = document.getElementById("wwOscAnalyzeNote");
-            noteEl.textContent = wwOscState.validatedSetup
-                ? "Setup validated. Spectrum and spectrogram analysis are not implemented yet; no result was produced."
-                : "Spectrum and spectrogram analysis are not implemented yet.";
+            const computing = wwOscState.spectrum.phase === "loading";
+            noteEl.textContent = computing
+                ? "Computing the Welch power spectral density…"
+                : "Runs a Welch power spectral density over the selected window and frequency range.";
+            if (computing) analyzeBtn.disabled = true;
         }
 
         function wwOscOnSetupEdited() {
@@ -55778,9 +55848,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOscState.notice = "";
             const noticeEl = document.getElementById("wwOscSelectionNotice");
             noticeEl.hidden = true;
+            wwOscSpectrumGuard();
             const analysis = wwOscState.signalKey ? wwOscCurrentAssessment() : null;
             wwOscRenderResults(analysis);
             wwOscRenderEligibility(wwOscScanCatalogue(), analysis);
+            wwOscRenderSpectrum();
         }
 
         function wwOscOnTimeInput(which, text) {
@@ -55792,8 +55864,94 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwOscOnSetupEdited();
         }
 
-        // Validation only: records what a future result would be tied to
-        // and produces nothing else.
+        // ------------------------------------------------------------------
+        // Frequency Spectrum -- Welch PSD (DEC-174 [PROPOSAL]). The BACKEND
+        // resolves the signal from workspace state, derives the analysis
+        // representation (native, or the DEC-173 RMS magnitude), selects the
+        // window and runs the Welch estimate; this page sends only the
+        // signal reference + window + band and draws the returned arrays.
+        // There is no spectral mathematics in the browser and no
+        // interpretation of the spectrum: candidate detection (DEC-175
+        // [PROPOSAL]) is the backend's deterministic result, drawn as returned.
+        // ------------------------------------------------------------------
+
+        function wwOscSpectrumClear() {
+            const sp = wwOscState.spectrum;
+            sp.seq += 1;
+            sp.phase = "idle"; sp.request = null; sp.result = null; sp.message = ""; sp.drawn = null;
+        }
+
+        function wwOscNearlyEqual(a, b) {
+            if (a === null || b === null) return a === b;
+            return Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+        }
+
+        // The result is tied to ONE signal revision: a different selection, or a
+        // signal that was removed or recreated, discards it (never shown as current).
+        function wwOscSpectrumGuard() {
+            const sp = wwOscState.spectrum;
+            if (!sp.request) return;
+            if (wwOscState.signalKey !== sp.request.signalKey
+                || !wwSignalCatalogueIsCurrent(sp.request.signalKey, sp.request.signalRevision)) {
+                wwOscSpectrumClear();
+            }
+        }
+
+        // Does the current setup still equal the one the spectrum was computed for?
+        function wwOscSpectrumSettingsMatch() {
+            const sp = wwOscState.spectrum, state = wwOscState;
+            if (!sp.request) return false;
+            const selected = wwOscSelectedSignal();
+            return !!selected
+                && selected.verdict.representation.id === sp.request.representation
+                && wwOscNearlyEqual(state.startSource, sp.request.startSource)
+                && wwOscNearlyEqual(state.endSource, sp.request.endSource)
+                && wwOscNearlyEqual(wwOscParseNumber(state.minText), sp.request.fMinHz)
+                && wwOscNearlyEqual(wwOscParseNumber(state.maxText), sp.request.fMaxHz);
+        }
+
+        async function wwOscRunSpectrum(analysis) {
+            const state = wwOscState, sp = state.spectrum;
+            const signal = analysis.selected.signal;
+            const request = {
+                signalKey: state.signalKey, signalRevision: state.signalRevision, catalogueRevision: state.catalogueRevision,
+                representation: analysis.selected.verdict.representation.id,
+                startSource: state.startSource, endSource: state.endSource,
+                fMinHz: wwOscParseNumber(state.minText), fMaxHz: wwOscParseNumber(state.maxText),
+            };
+            sp.seq += 1;
+            const seq = sp.seq;
+            sp.phase = "loading"; sp.request = request; sp.result = null; sp.message = ""; sp.drawn = null;
+            wwOscRenderResults(analysis);
+            wwOscRenderSpectrum();
+            const input = signal.origin === "calculated"
+                ? { kind: "calculated", calculated_channel_id: signal.calculatedChannelId }
+                : { kind: "source", source_id: signal.sourceId, channel_name: signal.name };
+            let outcome;
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/oscillation-analysis/spectrum",
+                    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+                        input: input, representation: request.representation, signal_revision: request.signalRevision,
+                        window_start_s: request.startSource, window_end_s: request.endSource,
+                        frequency_min_hz: request.fMinHz, frequency_max_hz: request.fMaxHz }) }
+                );
+                let body = null;
+                try { body = await response.json(); } catch (error) { /* handled below */ }
+                if (!response.ok || !body || body.status !== "ok") {
+                    const detail = body && body.detail && body.detail.message;
+                    outcome = { phase: "error", message: detail || "The frequency spectrum could not be computed." };
+                } else {
+                    outcome = { phase: "ready", result: body };
+                }
+            } catch (error) {
+                outcome = { phase: "error", message: "Could not reach the backend to compute the frequency spectrum." };
+            }
+            if (sp.seq !== seq) return; // superseded, or the signal changed / was removed meanwhile
+            sp.phase = outcome.phase; sp.result = outcome.result || null; sp.message = outcome.message || "";
+            wwOscRender(false);
+        }
+
         function wwOscAnalyze() {
             const analysis = wwOscCurrentAssessment();
             if (!analysis || (analysis.assessment.status !== "suitable" && analysis.assessment.status !== "warning")) return;
@@ -55803,7 +55961,233 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 startSource: state.startSource, endSource: state.endSource,
                 fMinHz: wwOscParseNumber(state.minText), fMaxHz: wwOscParseNumber(state.maxText),
             };
-            wwOscRenderResults(analysis);
+            wwOscRunSpectrum(analysis);
+        }
+
+        function wwOscSpectrumDetailRows(result) {
+            const w = result.welch, win = result.window, rep = result.representation, f = result.frequency;
+            const fmt = wwOscFormat;
+            const unit = result.signal.unit ? " [" + result.signal.unit + "]" : "";
+            const rows = [
+                ["Signal", (result.signal.name || "Calculated channel") + unit],
+                ["Analysis representation", rep.type === "rms_magnitude" ? "RMS magnitude" : "Signal as recorded"],
+                ["Source sampling rate", fmt(rep.source_sample_rate_hz) + " Hz"],
+                ["Analysed sampling rate", fmt(rep.analysis_sample_rate_hz) + " Hz"],
+                ["Analysis window", fmt(win.duration_s) + " s (" + win.sample_count + " samples)"],
+                ["Basic window estimate (1/T)", fmt(win.basic_resolution_hz) + " Hz"],
+                ["Welch segment", fmt(w.segment_s) + " s (" + w.nperseg + " samples)"],
+                ["Welch bin spacing (fs/nperseg)", fmt(w.bin_spacing_hz) + " Hz"],
+                ["Overlap", fmt(w.overlap_fraction * 100) + " % (" + w.overlap_samples + " samples)"],
+                ["Segments averaged", String(w.segment_count)],
+                ["Window", w.window === "hann" ? "Hann" : w.window],
+                ["Detrend", w.detrend === "constant" ? "Mean removed (constant)" : w.detrend],
+                ["Scaling", w.scaling === "density" ? "Power spectral density (one-sided)" : w.scaling],
+                ["Segment rule", w.segment_rule],
+                ["Requested range", fmt(f.requested_min_hz) + " to " + fmt(f.requested_max_hz) + " Hz"],
+                ["Returned range", fmt(f.returned_min_hz) + " to " + fmt(f.returned_max_hz) + " Hz (" + f.bin_count + " bins)"],
+            ];
+            if (result.signal.source_recording) rows.splice(1, 0, ["Recording", result.signal.source_recording]);
+            if (rep.type === "rms_magnitude") {
+                rows.splice(3, 0, ["Nominal frequency", fmt(rep.nominal_frequency_hz) + " Hz ("
+                    + (rep.nominal_frequency_origin === "assumed_default" ? "assumed default" : "from the recording") + ")"]);
+            }
+            return rows;
+        }
+
+        // Axis-title font size (px) of the spectrum chart; tick labels keep the chart font.
+        const WW_OSC_AXIS_TITLE_PX = 11;
+
+        // Y-axis title from the backend-supplied unit; an absent unit is never invented.
+        // Independent of the linear/log axis type.
+        function wwOscSpectrumYTitle(result) {
+            return result.signal.psd_unit ? "PSD (" + result.signal.psd_unit + ")" : "PSD";
+        }
+
+        function wwOscDrawSpectrum(plotEl, result) {
+            if (!window.Plotly) return;
+            const colors = wwThemeColors();
+            const logY = wwOscState.spectrum.yScale === "log";
+            // A logarithmic axis cannot show zero: non-positive bins are left as gaps, not altered.
+            const y = logY ? result.psd.map((v) => (v > 0 ? v : null)) : result.psd;
+            const unit = result.signal.psd_unit ? " " + result.signal.psd_unit : "";
+            const hover = "Frequency: %{x:.4g} Hz<br>PSD: %{y:.4g}" + unit + "<extra></extra>";
+            // Same returned Welch bins in both modes. "bars": one bar per bin, width derived from the
+            // Welch bin spacing (slightly narrower so adjacent bins stay distinct); no re-binning.
+            const trace = wwOscState.spectrum.display === "bars"
+                ? { x: result.frequencies_hz, y: y, type: "bar", width: 0.9 * result.welch.bin_spacing_hz,
+                    name: "Welch PSD", marker: { color: colors.accent }, hovertemplate: hover, meta: { role: "welch-psd" } }
+                : { x: result.frequencies_hz, y: y, type: "scatter", mode: "lines", connectgaps: false,
+                    name: "Welch PSD", line: { width: 1.5, color: colors.accent }, hovertemplate: hover, meta: { role: "welch-psd" } };
+            const traces = [trace];
+            const marks = wwOscCandidateTrace(result, colors);
+            if (marks) traces.push(marks);
+            const layout = {
+                margin: { l: 56, r: 16, t: 8, b: 40 },
+                paper_bgcolor: "transparent", plot_bgcolor: "transparent",
+                font: { color: colors.text, size: 11 },
+                // Plotly 3 ignores a bare-string `title`; the object form is required, and automargin
+                // reserves room for the title beside the tick labels. One layout for all four
+                // Line/Histogram x Linear/Log combinations.
+                xaxis: { title: { text: "Frequency (Hz)", font: { size: WW_OSC_AXIS_TITLE_PX } }, automargin: true, zeroline: false, gridcolor: colors.grid },
+                yaxis: { title: { text: wwOscSpectrumYTitle(result), font: { size: WW_OSC_AXIS_TITLE_PX } }, automargin: true, type: logY ? "log" : "linear",
+                         zeroline: false, gridcolor: colors.grid, exponentformat: "e" },
+                showlegend: false, hovermode: "closest",
+            };
+            Plotly.react(plotEl, traces, layout, { displayModeBar: false, responsive: true });
+        }
+
+        // Candidate markers (DEC-175 [PROPOSAL]) at the backend-reported (frequency, PSD) of each
+        // accepted candidate: the primary is filled, the others hollow. One lightweight overlay
+        // trace for all four Line/Histogram x Linear/Log combinations; the PSD trace is untouched.
+        function wwOscCandidateTrace(result, colors) {
+            const candidates = result.detection && result.detection.candidates;
+            if (!candidates || !candidates.length) return null;
+            const warn = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || colors.accent;
+            const unit = result.signal.psd_unit ? " " + result.signal.psd_unit : "";
+            return {
+                x: candidates.map((c) => c.frequency_hz), y: candidates.map((c) => c.psd),
+                type: "scatter", mode: "markers+text", cliponaxis: false,
+                text: candidates.map((c) => wwOscFormat(c.frequency_hz, 3) + " Hz"), textposition: "top center",
+                textfont: { size: 10, color: colors.text },
+                marker: {
+                    symbol: "triangle-down", size: candidates.map((c) => (c.rank === 1 ? 11 : 8)),
+                    color: candidates.map((c) => (c.rank === 1 ? warn : "rgba(0,0,0,0)")),
+                    line: { width: 1.5, color: warn },
+                },
+                customdata: candidates.map((c) => [c.rank, c.prominence_db, c.cycles_observed]),
+                hovertemplate: "Candidate %{customdata[0]}<br>Frequency: %{x:.4g} Hz<br>PSD: %{y:.4g}" + unit
+                    + "<br>Prominence: %{customdata[1]:.1f} dB<br>Cycles observed: %{customdata[2]:.1f}<extra></extra>",
+                name: "Candidates", showlegend: false, meta: { role: "oscillation-candidates" },
+            };
+        }
+
+        // "Detected Oscillation Components": structured evidence from the backend, shown as text.
+        // Nothing is computed or reworded here beyond number formatting; no strength label exists.
+        function wwOscRenderDetection(result, stale) {
+            const host = document.getElementById("wwOscDetection");
+            host.replaceChildren();
+            const det = result && result.detection;
+            if (!det) { host.hidden = true; return; }
+            host.hidden = false;
+            host.dataset.stale = stale ? "true" : "false";
+            host.dataset.status = det.status;
+            const fmt = wwOscFormat;
+            const el = (tag, className, text) => {
+                const node = document.createElement(tag);
+                if (className) node.className = className;
+                if (text !== undefined) node.textContent = text;
+                return node;
+            };
+            const list = (items, kind) => {
+                const ul = document.createElement("ul");
+                for (const item of items) { const li = el("li", "", item); li.dataset.kind = kind; ul.appendChild(li); }
+                return ul;
+            };
+            host.appendChild(el("div", "ww-osc-detect-title", "Detected Oscillation Components"));
+            if (det.status === "candidates_found" && det.candidates.length) {
+                const primary = det.candidates[0], others = det.candidates.slice(1);
+                host.appendChild(el("div", "ww-osc-detect-label", "Primary candidate"));
+                const dl = el("dl", "ww-osc-info");
+                dl.id = "wwOscDetectionPrimary";
+                const rows = [["Frequency", fmt(primary.frequency_hz, 4) + " Hz"],
+                    ["Period", primary.period_s === null ? "—" : fmt(primary.period_s, 4) + " s"],
+                    ["Prominence", fmt(primary.prominence_db, 3) + " dB"],
+                    ["Cycles observed", fmt(primary.cycles_observed, 3)]];
+                for (const row of rows) {
+                    const wrap = document.createElement("div");
+                    wrap.append(el("dt", "", row[0]), el("dd", "", row[1]));
+                    dl.appendChild(wrap);
+                }
+                host.appendChild(dl);
+                host.appendChild(el("div", "ww-osc-detect-label", "Why"));
+                host.appendChild(list(primary.reasons.map((r) => r.message), "why"));
+                if (primary.warnings.length) host.appendChild(list(primary.warnings.map((w) => w.message), "warning"));
+                if (others.length || det.truncated) {
+                    host.appendChild(el("div", "ww-osc-detect-label", "Other candidates"));
+                    const items = others.map((c) => fmt(c.frequency_hz, 4) + " Hz · " + fmt(c.prominence_db, 3) + " dB · "
+                        + fmt(c.cycles_observed, 3) + " cycles" + (c.warnings.length ? " · " + c.warnings.map((w) => w.code.replace(/_/g, " ")).join(", ") : ""));
+                    if (det.truncated) items.push("+ " + (det.total_candidates - det.candidates.length) + " more not shown");
+                    const ul = list(items, "note");
+                    ul.id = "wwOscDetectionOthers";
+                    host.appendChild(ul);
+                }
+            } else {
+                host.appendChild(el("div", "ww-osc-detect-none", "No significant oscillation candidate detected"));
+                host.appendChild(list(det.no_candidate_reasons.map((r) => r.message), "note"));
+            }
+            const lf = det.low_frequency;
+            if (lf && lf.dominant) {
+                host.appendChild(el("div", "ww-osc-detect-label", "Low-frequency / transient energy"));
+                host.appendChild(list([lf.message + " (" + fmt(lf.power_fraction * 100, 3) + " % of the returned band's power lies below "
+                    + fmt(lf.cutoff_hz, 3) + " Hz.)"], "note"));
+            }
+            if (det.not_promoted.length) {
+                host.appendChild(el("div", "ww-osc-detect-label", "Not promoted (insufficient evidence)"));
+                host.appendChild(list(det.not_promoted.map((n) => fmt(n.frequency_hz, 4) + " Hz, " + fmt(n.prominence_db, 3) + " dB: "
+                    + n.reasons.map((r) => r.message).join(" ")), "note"));
+            }
+            const p = det.parameters;
+            host.appendChild(el("div", "ww-osc-detect-note", "Deterministic Phase-1 criteria: a local PSD peak at least "
+                + fmt(p.required_prominence_db, 3) + " dB above its surroundings (" + fmt(p.minimum_prominence_db, 3)
+                + " dB floor, raised for lightly averaged spectra) with at least " + fmt(p.minimum_observed_cycles, 3)
+                + " cycles in the window (an application guideline, not a standard). Engineering heuristics, not a statistical confidence."));
+        }
+
+        function wwOscRenderSpectrum() {
+            const sp = wwOscState.spectrum;
+            const card = document.getElementById("wwOscSpectrumCard");
+            if (!card) return;
+            card.hidden = sp.phase === "idle";
+            const plotEl = document.getElementById("wwOscSpectrumPlot");
+            const stateEl = document.getElementById("wwOscSpectrumState");
+            const warningsEl = document.getElementById("wwOscSpectrumWarnings");
+            const detailsEl = document.getElementById("wwOscSpectrumDetails");
+            const detailsHead = document.getElementById("wwOscSpectrumDetailsHead");
+            const scaleEl = document.getElementById("wwOscSpectrumScale");
+            if (scaleEl.value !== sp.yScale) scaleEl.value = sp.yScale;
+            const displayEl = document.getElementById("wwOscSpectrumDisplay");
+            if (displayEl.value !== sp.display) displayEl.value = sp.display;
+            const showState = (kind, text) => { stateEl.hidden = !text; stateEl.dataset.kind = kind; stateEl.textContent = text; };
+            if (sp.phase !== "ready") {
+                if (window.Plotly && plotEl.classList.contains("js-plotly-plot")) Plotly.purge(plotEl);
+                plotEl.replaceChildren();
+                delete plotEl.dataset.drawKey;
+                plotEl.dataset.stale = "false";
+                plotEl.hidden = true;
+                warningsEl.replaceChildren(); detailsEl.replaceChildren(); detailsHead.hidden = true;
+                wwOscRenderDetection(null, false);
+                if (sp.phase === "loading") showState("loading", "Computing Welch PSD…");
+                else if (sp.phase === "error") showState("error", sp.message);
+                else showState("idle", "");
+                return;
+            }
+            const stale = !wwOscSpectrumSettingsMatch();
+            plotEl.dataset.stale = stale ? "true" : "false";
+            showState(stale ? "stale" : "current", stale ? "Analysis settings changed — run Analyze again" : "");
+            const drawKey = sp.display + "|" + sp.yScale;
+            // Visible BEFORE drawing: Plotly sizes itself from the container (a hidden one gives its 700 px default).
+            plotEl.hidden = false;
+            if (sp.drawn !== sp.result || plotEl.dataset.drawKey !== drawKey) {
+                wwOscDrawSpectrum(plotEl, sp.result);
+                sp.drawn = sp.result; plotEl.dataset.drawKey = drawKey;
+            }
+            wwOscRenderDetection(sp.result, stale);
+            warningsEl.replaceChildren();
+            for (const warning of sp.result.warnings) {
+                const item = document.createElement("li");
+                item.dataset.status = "warning"; item.dataset.code = warning.code;
+                item.textContent = "Warning: " + warning.message;
+                warningsEl.appendChild(item);
+            }
+            detailsEl.replaceChildren();
+            for (const row of wwOscSpectrumDetailRows(sp.result)) {
+                const wrap = document.createElement("div");
+                const dt = document.createElement("dt"); dt.textContent = row[0];
+                const dd = document.createElement("dd"); dd.textContent = row[1];
+                wrap.append(dt, dd);
+                detailsEl.appendChild(wrap);
+            }
+            detailsHead.hidden = false;
         }
 
         function wwOscInit() {
@@ -55818,6 +56202,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("wwOscMinFreqInput").addEventListener("input", (event) => { wwOscState.minText = event.target.value; wwOscOnSetupEdited(); });
             document.getElementById("wwOscMaxFreqInput").addEventListener("input", (event) => { wwOscState.maxText = event.target.value; wwOscOnSetupEdited(); });
             document.getElementById("wwOscAnalyzeBtn").addEventListener("click", wwOscAnalyze);
+            document.getElementById("wwOscSpectrumDisplay").addEventListener("change", (event) => {
+                wwOscState.spectrum.display = event.target.value === "bars" ? "bars" : "line";
+                wwOscRenderSpectrum();
+            });
+            document.getElementById("wwOscSpectrumScale").addEventListener("change", (event) => {
+                wwOscState.spectrum.yScale = event.target.value === "log" ? "log" : "linear";
+                wwOscRenderSpectrum();
+            });
             wwOscState.unsubscribe = wwSignalCatalogueSubscribe(wwOscOnCatalogueEvent);
             wwOscRender(true);
         }
