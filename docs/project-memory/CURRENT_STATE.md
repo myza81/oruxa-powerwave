@@ -21,6 +21,14 @@ parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
 DEC-122 display timezone).
 
 
+**Oscillation Analysis Cross-Signal Evidence: implemented, owner UAT accepted -- DEC-178 `[APPROVED]` (2026-10-09), committed `feat: add cross-signal oscillation evidence` (not pushed).** After `Analyze`, a
+`Compare signals` picker (live catalogue, calculated channels included, max 7 others) + `Compare` button sends the analysed signal and the ticked ones to
+`POST /api/v1/workspaces/{ws}/oscillation-analysis/cross-signal`; the backend re-validates each signal, runs the accepted spectrum / candidate / STFT /
+damping chain and groups candidates whose frequencies agree within 1x the coarser Welch bin spacing (representative = prominence-weighted mean, originals
+kept). Evidence: frequency agreement, signal types, recordings, workspace-time overlap of STFT activity, damping consistency, and provenance (a raw channel
+plus its calculated copy is ONE measurement; wording is "Observed in N signals across M recordings", never "independently confirmed"). Single-signal
+components are reported as such. **No oscillation-type classification, no AI.** Details and open questions: DECISIONS.md DEC-178.
+
 **Oscillation Analysis Damping / Ringdown: implemented, owner UAT accepted -- DEC-177 `[APPROVED]` (2026-10-09), committed `feat: add oscillation damping analysis` (not pushed).** For each
 accepted DEC-175 candidate (<= 5) a `Damping behaviour` section answers "when excited, is it decaying, approximately sustained or growing,
 how fast and how well does an exponential fit?" (`POST /api/v1/workspaces/{ws}/oscillation-analysis/damping`, same request identity as the

@@ -93,12 +93,14 @@ def compute_damping(
     candidate_frequencies_hz: list[float] | None,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
+    spectrum: dict | None = None,
 ) -> dict:
     if representation not in SPECTRUM_REPRESENTATIONS:
         raise UnsupportedRepresentationError(f"Analysis representation '{representation}' is not implemented.")
     _validate_request_numbers(window_start_s, window_end_s, f_min_hz, f_max_hz)
 
-    spectrum = compute_spectrum(
+    # `spectrum`: the SAME setup's already computed spectrum (cross-signal analysis), so it is not computed twice.
+    spectrum = spectrum or compute_spectrum(
         workspace_id=workspace_id, input_ref=input_ref, representation=representation,
         window_start_s=window_start_s, window_end_s=window_end_s, f_min_hz=f_min_hz, f_max_hz=f_max_hz,
         source_registry=source_registry, calc_registry=calc_registry,

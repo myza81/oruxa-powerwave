@@ -7704,6 +7704,14 @@
         :is(.ww-osc-damping) { padding-top: 10px; border-top: 1px solid var(--panel-border); }
         :is(.ww-osc-damping)[data-stale="true"] .ww-osc-info, :is(.ww-osc-damping)[data-stale="true"] ul { opacity: 0.4; }
         :is(.ww-osc-plot-short) { height: 240px; }
+        :is(.ww-osc-cross) { padding-top: 10px; border-top: 1px solid var(--panel-border); }
+        :is(.ww-osc-cross)[data-stale="true"] #wwOscCrossBody { opacity: 0.4; }
+        :is(.ww-osc-cross-pick) { display: flex; flex-direction: column; gap: 4px; }
+        :is(.ww-osc-cross-list) { display: flex; flex-direction: column; gap: 6px; padding: 6px 8px; max-height: 220px; overflow: auto; border: 1px solid var(--panel-border); border-radius: var(--radius); }
+        :is(.ww-osc-cross-group) { display: flex; flex-direction: column; gap: 3px; }
+        :is(.ww-osc-cross-item) { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; cursor: pointer; }
+        :is(.ww-osc-cross-component) { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border: 1px solid var(--panel-border); border-radius: var(--radius); }
+        :is(.ww-osc-cross-bar) { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         :is(.ww-osc-checks) { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 0.7rem; color: var(--text); }
         :is(.ww-osc-checks) li[data-status="warning"] { color: var(--warn); }
         :is(.ww-osc-checks) li[data-status="invalid"] { color: var(--error); }
@@ -11953,6 +11961,24 @@
                                     <div class="ww-osc-detect" id="wwOscDampingBody"></div>
                                     <div class="ww-osc-plot ww-osc-plot-short" id="wwOscDampingPlot" hidden></div>
                                     <div class="ww-osc-detect-note" id="wwOscDampingNote" hidden></div>
+                                </div>
+                                <!-- Cross-Signal Oscillation Evidence (DEC-178 [APPROVED]): the backend's grouping of matching candidates across
+                                     explicitly chosen signals, drawn as returned. -->
+                                <div class="ww-osc-detect ww-osc-cross" id="wwOscCross" hidden>
+                                    <div class="ww-osc-detect-title">Cross-Signal Oscillation Evidence</div>
+                                    <!-- Always visible (a collapsed <details> was not discoverable in owner UAT): the reference signal is the one
+                                         analysed above; tick the other signals to compare it with. -->
+                                    <div class="ww-osc-cross-pick" id="wwOscCrossPicker">
+                                        <div class="ww-osc-detect-label">Compare signals <span id="wwOscCrossCount"></span></div>
+                                        <div class="ww-osc-hint" id="wwOscCrossHint"></div>
+                                        <div class="ww-osc-cross-list" id="wwOscCrossList" role="group" aria-label="Signals to compare"></div>
+                                    </div>
+                                    <div class="ww-osc-cross-bar">
+                                        <button type="button" id="wwOscCrossBtn" disabled>Compare</button>
+                                    </div>
+                                    <div class="ww-osc-spec-state" id="wwOscCrossState" role="status" hidden></div>
+                                    <div class="ww-osc-detect" id="wwOscCrossBody"></div>
+                                    <div class="ww-osc-detect-note" id="wwOscCrossNote" hidden></div>
                                 </div>
                                 <ul class="ww-osc-checks" id="wwOscSpectrumWarnings"></ul>
                                 <div class="ww-osc-subhead" id="wwOscSpectrumDetailsHead" hidden>Analysis details</div>
@@ -55042,6 +55068,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Damping behaviour (DEC-177 [APPROVED]): requested once the spectrum is ready, with the SAME request object
             // (identity check in the renderer); `selectedRank` picks which candidate's fit is shown.
             damping: { phase: "idle", seq: 0, request: null, result: null, message: "", selectedRank: null, drawn: null },
+            // Cross-Signal Oscillation Evidence (DEC-178 [APPROVED]): requested only by the Compare button, for the primary
+            // (analysed) signal plus `chosen` (catalogue keys); `request` = { setup, entries } identifies exactly what was compared.
+            cross: { phase: "idle", seq: 0, request: null, result: null, message: "", chosen: new Set(), drawn: null },
         };
 
         function wwOscFormat(value, digits) {
@@ -55931,6 +55960,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             sp.seq += 1;
             sp.phase = "idle"; sp.request = null; sp.result = null; sp.message = ""; sp.drawn = null;
             wwOscDampingClear(); // a damping result belongs to one spectrum result and never outlives it
+            wwOscCrossClear(); // so does a comparison built on that spectrum's setup
         }
 
         function wwOscNearlyEqual(a, b) {
@@ -55950,6 +55980,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (sg.request && (wwOscState.signalKey !== sg.request.signalKey
                 || !wwSignalCatalogueIsCurrent(sg.request.signalKey, sg.request.signalRevision))) {
                 wwOscSpectrogramClear();
+            }
+            const cx = wwOscState.cross;
+            if (cx.request && (wwOscState.signalKey !== cx.request.setup.signalKey
+                || !wwSignalCatalogueIsCurrent(cx.request.setup.signalKey, cx.request.setup.signalRevision))) {
+                wwOscCrossClear();
             }
             const dm = wwOscState.damping;
             if (dm.request && (wwOscState.signalKey !== dm.request.signalKey
@@ -56213,6 +56248,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwOscRenderSpectrum() {
             wwOscRenderSpectrogram();
             wwOscRenderDamping();
+            wwOscRenderCross();
             const sp = wwOscState.spectrum;
             const card = document.getElementById("wwOscSpectrumCard");
             if (!card) return;
@@ -56521,6 +56557,232 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // ------------------------------------------------------------------
+        // Cross-Signal Oscillation Evidence (DEC-178 [APPROVED]). The BACKEND re-analyses an EXPLICITLY chosen set of
+        // signals (the primary one plus the "Compare signals" selection -- never a hidden whole-workspace batch) with the
+        // accepted spectrum / candidate / spectrogram / damping chain and groups matching candidates deterministically.
+        // The page draws the returned groups and per-signal evidence and groups nothing itself. Each request carries the
+        // primary setup's frequency range and the primary window mapped to every signal's own source time through the
+        // existing alignment (a display mapping; the backend re-validates every window). No classification of any kind.
+        // ------------------------------------------------------------------
+
+        const WW_OSC_CROSS_MAX_OTHERS = 7;
+
+        function wwOscCrossClear() {
+            const cx = wwOscState.cross;
+            cx.seq += 1;
+            cx.phase = "idle"; cx.request = null; cx.result = null; cx.message = ""; cx.drawn = null;
+        }
+
+        // The signals offered for comparison: every OTHER eligible catalogue signal (calculated channels included, live).
+        function wwOscCrossCandidates() {
+            const primary = wwOscState.signalKey;
+            return wwSignalCatalogueList((signal) => signal.key !== primary && wwOscClassifySignal(signal).eligible);
+        }
+
+        function wwOscCrossPrune() {
+            const cx = wwOscState.cross;
+            const live = new Set(wwOscCrossCandidates().map((signal) => signal.key));
+            for (const key of Array.from(cx.chosen)) if (!live.has(key)) cx.chosen.delete(key);
+        }
+
+        // One request entry per compared signal: representation from the existing eligibility verdict, the primary window mapped
+        // through workspace time into the signal's own source time and clipped to its recording.
+        function wwOscCrossEntry(signal, primaryRequest) {
+            const verdict = wwOscClassifySignal(signal);
+            const primarySignal = wwSignalCatalogueGet(primaryRequest.signalKey);
+            const toWorkspace = (time) => wwSourceTimeToWorkspaceTime(primarySignal.sourceId, time);
+            const bounds = verdict.timing.bounds;
+            const start = Math.max(bounds.start, wwWorkspaceTimeToSourceTime(signal.sourceId, toWorkspace(primaryRequest.startSource)));
+            const end = Math.min(bounds.end, wwWorkspaceTimeToSourceTime(signal.sourceId, toWorkspace(primaryRequest.endSource)));
+            return {
+                key: signal.key, revision: signal.revision, representation: verdict.representation.id, start: start, end: end,
+                offset: wwSourceTimeToWorkspaceTime(signal.sourceId, 0), label: signal.name,
+                input: signal.origin === "calculated"
+                    ? { kind: "calculated", calculated_channel_id: signal.calculatedChannelId }
+                    : { kind: "source", source_id: signal.sourceId, channel_name: signal.name },
+            };
+        }
+
+        async function wwOscRunCross() {
+            const state = wwOscState, cx = state.cross, sp = state.spectrum;
+            if (sp.phase !== "ready" || !sp.request || !cx.chosen.size) return;
+            const primary = wwSignalCatalogueGet(sp.request.signalKey);
+            const primaryVerdict = primary ? wwOscClassifySignal(primary) : null;
+            if (!primary || !primaryVerdict || !primaryVerdict.eligible) return;
+            wwOscCrossPrune();
+            const others = wwOscCrossCandidates().filter((signal) => cx.chosen.has(signal.key));
+            if (!others.length) return;
+            const primaryEntry = {
+                key: primary.key, revision: sp.request.signalRevision, representation: sp.request.representation,
+                start: sp.request.startSource, end: sp.request.endSource, offset: wwSourceTimeToWorkspaceTime(primary.sourceId, 0), label: primary.name,
+                input: primary.origin === "calculated"
+                    ? { kind: "calculated", calculated_channel_id: primary.calculatedChannelId }
+                    : { kind: "source", source_id: primary.sourceId, channel_name: primary.name },
+            };
+            const entries = [primaryEntry].concat(others.map((signal) => wwOscCrossEntry(signal, sp.request)));
+            cx.seq += 1;
+            const seq = cx.seq;
+            // `request` ties the result to the spectrum's exact setup AND the exact signals compared.
+            cx.phase = "loading"; cx.result = null; cx.message = ""; cx.drawn = null;
+            cx.request = { setup: sp.request, entries: entries.map((e) => ({ key: e.key, revision: e.revision })) };
+            wwOscRenderCross();
+            let outcome;
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/oscillation-analysis/cross-signal",
+                    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+                        frequency_min_hz: sp.request.fMinHz, frequency_max_hz: sp.request.fMaxHz,
+                        signals: entries.map((e) => ({ input: e.input, representation: e.representation, signal_revision: e.revision,
+                                                       window_start_s: e.start, window_end_s: e.end, offset_s: e.offset, label: e.label })) }) }
+                );
+                let body = null;
+                try { body = await response.json(); } catch (error) { /* handled below */ }
+                if (!response.ok || !body || (body.status !== "ok" && body.status !== "no_components")) {
+                    const detail = body && body.detail && body.detail.message;
+                    outcome = { phase: "error", message: detail || "The cross-signal evidence could not be computed." };
+                } else {
+                    outcome = { phase: "ready", result: body };
+                }
+            } catch (error) {
+                outcome = { phase: "error", message: "Could not reach the backend to compute the cross-signal evidence." };
+            }
+            if (cx.seq !== seq) return; // superseded, or the spectrum / a compared signal changed meanwhile
+            cx.phase = outcome.phase; cx.result = outcome.result || null; cx.message = outcome.message || "";
+            wwOscRenderCross();
+        }
+
+        // Does the stored comparison still describe the CURRENT setup and signals?
+        function wwOscCrossCurrent() {
+            const cx = wwOscState.cross;
+            if (!cx.request || !wwOscRequestMatchesSetup(cx.request.setup)) return false;
+            return cx.request.entries.every((entry) => wwSignalCatalogueIsCurrent(entry.key, entry.revision));
+        }
+
+        function wwOscCrossMemberLine(member, result) {
+            const fmt = wwOscFormat;
+            const row = result.signals[member.signal_index];
+            let text = row.signal_type + " — " + row.label + " — " + fmt(member.frequency_hz, 4) + " Hz · prominence " + fmt(member.prominence_db, 3)
+                + " dB · " + fmt(member.cycles_observed, 3) + " cycles";
+            const d = member.damping;
+            if (d && d.status === "available") {
+                text += d.behaviour === "decaying" ? " · decaying, ζ " + fmt(d.damping_ratio * 100, 3) + " %, α " + fmt(d.decay_rate_per_s, 3) + " s⁻¹"
+                    : d.behaviour === "growing" ? " · growing, rate " + fmt(-d.decay_rate_per_s, 3) + " s⁻¹"
+                    : " · approximately sustained";
+            } else {
+                text += " · damping unavailable";
+            }
+            if (row.origin === "calculated") text += " · calculated channel";
+            if (row.representation === "rms_magnitude") text += " · RMS magnitude";
+            return text;
+        }
+
+        function wwOscRenderCross() {
+            const host = document.getElementById("wwOscCross");
+            if (!host) return;
+            const state = wwOscState, cx = state.cross, sp = state.spectrum;
+            const stateEl = document.getElementById("wwOscCrossState");
+            const bodyEl = document.getElementById("wwOscCrossBody");
+            const noteEl = document.getElementById("wwOscCrossNote");
+            const listEl = document.getElementById("wwOscCrossList");
+            const btn = document.getElementById("wwOscCrossBtn");
+            const countEl = document.getElementById("wwOscCrossCount");
+            const showState = (kind, text) => { stateEl.hidden = !text; stateEl.dataset.kind = kind; stateEl.textContent = text; };
+            // Visible only for an analysed primary signal (the comparison reuses its exact setup).
+            if (sp.phase !== "ready" || !sp.request) {
+                host.hidden = true; bodyEl.replaceChildren(); noteEl.hidden = true; showState("idle", "");
+                if (cx.phase !== "idle") wwOscCrossClear();
+                return;
+            }
+            host.hidden = false;
+            wwOscCrossPrune();
+            // The picker: every other eligible signal, grouped by recording; calculated channels appear as they are created.
+            const candidates = wwOscCrossCandidates();
+            const signature = candidates.map((s) => s.key + "@" + s.revision).join("|") + "#" + Array.from(cx.chosen).sort().join(",");
+            if (listEl.dataset.signature !== signature) {
+                listEl.dataset.signature = signature;
+                listEl.replaceChildren();
+                const groups = new Map();
+                for (const signal of candidates) {
+                    const label = wwOscRecordingLabel(signal.referenceSourceId || signal.sourceId);
+                    if (!groups.has(label)) groups.set(label, []);
+                    groups.get(label).push(signal);
+                }
+                for (const [label, signals] of groups) {
+                    const group = document.createElement("div");
+                    group.className = "ww-osc-cross-group";
+                    const heading = document.createElement("div");
+                    heading.className = "ww-osc-detect-label";
+                    heading.textContent = label;
+                    group.appendChild(heading);
+                    for (const signal of signals) {
+                        const item = document.createElement("label");
+                        item.className = "ww-osc-cross-item";
+                        const box = document.createElement("input");
+                        box.type = "checkbox"; box.value = signal.key; box.checked = cx.chosen.has(signal.key);
+                        box.disabled = !box.checked && cx.chosen.size >= WW_OSC_CROSS_MAX_OTHERS;
+                        const text = document.createElement("span");
+                        text.textContent = signal.name + (signal.unit ? " [" + signal.unit + "]" : "") + " — " + signal.engineeringType
+                            + (signal.origin === "calculated" ? " (calculated)" : "");
+                        item.append(box, text);
+                        group.appendChild(item);
+                    }
+                    listEl.appendChild(group);
+                }
+                if (!candidates.length) listEl.textContent = "No other eligible signal in the workspace.";
+            }
+            countEl.textContent = cx.chosen.size ? "(" + cx.chosen.size + " selected)" : "";
+            const reference = wwSignalCatalogueGet(sp.request.signalKey);
+            document.getElementById("wwOscCrossHint").textContent = "Reference signal: " + (reference ? reference.name : "—")
+                + " (analysed above). Tick up to " + WW_OSC_CROSS_MAX_OTHERS + " other signals to compare it with, then press Compare.";
+            btn.disabled = !cx.chosen.size || cx.phase === "loading";
+            if (cx.phase === "idle") { bodyEl.replaceChildren(); noteEl.hidden = true; showState("idle", ""); return; }
+            if (cx.phase === "loading") { bodyEl.replaceChildren(); noteEl.hidden = true; showState("loading", "Comparing signals…"); return; }
+            if (cx.phase === "error") { bodyEl.replaceChildren(); noteEl.hidden = true; showState("error", cx.message); return; }
+            if (!cx.request || !cx.request.entries.every((entry) => wwSignalCatalogueIsCurrent(entry.key, entry.revision))) {
+                wwOscCrossClear(); bodyEl.replaceChildren(); noteEl.hidden = true; showState("idle", ""); return;
+            }
+            const stale = !wwOscCrossCurrent();
+            host.dataset.stale = stale ? "true" : "false";
+            const requested = cx.request.entries.slice(1).map((entry) => entry.key).sort().join(",");
+            const selectionChanged = requested !== Array.from(cx.chosen).sort().join(",");
+            showState(stale ? "stale" : (selectionChanged ? "stale" : "current"),
+                stale ? "Analysis settings changed — run Analyze and Compare again" : (selectionChanged ? "Signal selection changed — press Compare to update" : ""));
+            const result = cx.result;
+            const el = (tag, className, text) => {
+                const node = document.createElement(tag);
+                if (className) node.className = className;
+                if (text !== undefined) node.textContent = text;
+                return node;
+            };
+            const list = (items, kind) => {
+                const ul = document.createElement("ul");
+                for (const item of items) { const li = el("li", "", item); li.dataset.kind = kind; ul.appendChild(li); }
+                return ul;
+            };
+            bodyEl.replaceChildren();
+            const excluded = result.signals.filter((s) => s.status !== "ok");
+            if (!result.components.length) bodyEl.appendChild(el("div", "ww-osc-detect-none", result.message || "No oscillation candidate was found in the compared signals."));
+            for (const comp of result.components) {
+                const card = el("div", "ww-osc-cross-component");
+                card.dataset.signals = String(comp.signal_count);
+                card.appendChild(el("div", "ww-osc-detect-label", "Component around " + wwOscFormat(comp.representative_frequency_hz, 4) + " Hz"));
+                card.appendChild(list(comp.members.map((m) => wwOscCrossMemberLine(m, result)), comp.signal_count > 1 ? "why" : "note"));
+                card.appendChild(list(comp.reasons.map((r) => r.message), comp.signal_count > 1 ? "why" : "note"));
+                if (comp.warnings.length) card.appendChild(list(comp.warnings.map((w) => w.message), "warning"));
+                bodyEl.appendChild(card);
+            }
+            if (excluded.length) {
+                bodyEl.appendChild(el("div", "ww-osc-detect-label", "Not compared"));
+                bodyEl.appendChild(list(excluded.map((s) => s.label + ": " + s.message), "no"));
+            }
+            const p = result.parameters;
+            noteEl.hidden = false;
+            noteEl.textContent = "Deterministic Phase-1 grouping: candidates of different signals match within " + wwOscFormat(p.match_resolution_factor, 3)
+                + " × the coarser Welch bin spacing; the representative frequency is the " + p.representative_frequency
+                + ". \"Observed in N signals\" is not independent confirmation (signals derived from the same measurement are disclosed). No oscillation type is inferred.";
+        }
+
+        // ------------------------------------------------------------------
         // Time-Frequency Spectrogram (STFT, DEC-176 [APPROVED]). The BACKEND
         // computes the matrix (same signal / representation / window / band as
         // the spectrum) and returns LINEAR PSD (unit^2/Hz) on a slice-centre
@@ -56776,6 +57038,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwOscState.spectrum.yScale = event.target.value === "log" ? "log" : "linear";
                 wwOscRenderSpectrum();
             });
+            document.getElementById("wwOscCrossList").addEventListener("change", (event) => {
+                const box = event.target;
+                if (!box || box.type !== "checkbox") return;
+                if (box.checked) wwOscState.cross.chosen.add(box.value); else wwOscState.cross.chosen.delete(box.value);
+                wwOscRenderCross(); // the stored comparison (if any) is judged against the new selection when it is rendered
+            });
+            document.getElementById("wwOscCrossBtn").addEventListener("click", wwOscRunCross);
             document.getElementById("wwOscDampingPick").addEventListener("change", (event) => {
                 const rank = Number(event.target.value);
                 wwOscState.damping.selectedRank = Number.isFinite(rank) ? rank : null;

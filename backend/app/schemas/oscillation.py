@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.calculated_channel import ChannelRefIn
 
@@ -425,3 +425,86 @@ class OscillationDampingOut(BaseModel):
     parameters: dict[str, float | int | str | bool]
     results: list[CandidateDampingOut] = []
     warnings: list[SpectrumWarningOut] = []
+
+
+class CrossSignalEntryIn(BaseModel):
+    """One compared signal. The backend resolves it from workspace state and re-validates its window; `offset_s`
+    (workspace time = source time + offset, the page's existing alignment) is only used to compare time evidence."""
+
+    input: ChannelRefIn
+    representation: str = "native"
+    signal_revision: str | None = None
+    window_start_s: float
+    window_end_s: float
+    offset_s: float = 0.0
+    label: str | None = None
+
+
+class OscillationCrossSignalRequest(BaseModel):
+    signals: list[CrossSignalEntryIn] = Field(min_length=2, max_length=8)
+    frequency_min_hz: float
+    frequency_max_hz: float
+
+
+class CrossSignalRowOut(BaseModel):
+    index: int
+    label: str
+    #: `ok` | `excluded` (could not be analysed; `reason_code` / `message` say why).
+    status: Literal["ok", "excluded"]
+    reason_code: str | None = None
+    message: str | None = None
+    representation: str
+    signal_revision: str | None = None
+    #: `raw` | `calculated`
+    origin: str
+    signal_type: str
+    offset_s: float
+    window_start_s: float
+    window_end_s: float
+    source_id: str | None = None
+    recording: str | None = None
+    unit: str | None = None
+    bin_spacing_hz: float | None = None
+    candidate_count: int = 0
+    damping_available_count: int = 0
+    spectrogram_status: str | None = None
+
+
+class CrossSignalMemberOut(BaseModel):
+    signal_index: int
+    label: str
+    rank: int
+    frequency_hz: float
+    prominence_db: float
+    cycles_observed: float
+    bin_spacing_hz: float
+    damping: dict[str, Any] | None = None
+    temporal: dict[str, Any] | None = None
+
+
+class CrossSignalComponentOut(BaseModel):
+    id: int
+    representative_frequency_hz: float
+    representative_rule: str
+    frequency_spread_hz: float
+    match_tolerance_hz: float
+    signal_count: int
+    recording_count: int
+    distinct_measurement_count: int
+    signal_types: list[str]
+    recordings: list[str]
+    max_prominence_db: float
+    members: list[CrossSignalMemberOut]
+    reasons: list[DetectionEvidenceOut]
+    warnings: list[DetectionEvidenceOut]
+    evidence: dict[str, Any] = {}
+
+
+class OscillationCrossSignalOut(BaseModel):
+    #: `ok`, or `no_components` (nothing to group -- a valid, explained result).
+    status: Literal["ok", "no_components"]
+    message: str | None = None
+    setup: dict[str, float]
+    parameters: dict[str, float | int | str | bool]
+    signals: list[CrossSignalRowOut]
+    components: list[CrossSignalComponentOut] = []

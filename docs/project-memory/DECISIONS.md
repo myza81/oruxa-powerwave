@@ -25840,3 +25840,124 @@ sustained` with a tiny negative `alpha` should carry an engineering note. (7) Ad
 
 Tests: `backend/tests/test_oscillation_damping.py` (domain + service + API), `test_frontend_oscillation_analysis_shell.py` (updated guards + new
 backend-result guard), `browser-tests/oscillation_setup.spec.js` ("damping behaviour" describe; `synthetic_comtrade.js` gained `decayPerS` and `components`).
+
+
+## DEC-178 -- Oscillation Analysis cross-signal evidence: deterministic matching of candidates across explicitly chosen signals and recordings
+
+Status: **[APPROVED]** (owner, 2026-10-09; was `[PROPOSAL]`; real-event UAT accepted -- see below) -- implemented on `feat/event-reconstruction`. Builds on DEC-171..177 and
+changes none of them (the compared signals are analysed by the unchanged spectrum / DEC-175 / DEC-176 / DEC-177 code). Scope: the evidence layer
+**before** oscillation-type classification -- *is the same oscillatory component supported by more than one signal and / or recording?* so that
+Powerwave can say "4.95 Hz is observed in frequency and active power" instead of treating each signal in isolation. **Not implemented
+(deliberately later):** inter-area / local / SSO / converter / forced classification, mode shape, phase-angle clustering, coherence, source
+localisation, forced-oscillation source identification, Prony / Matrix Pencil, any AI. **No probability, confidence score or "confirmed" wording.
+Every tolerance below is a Phase-1 engineering heuristic, not a standard.**
+
+**Approved Phase-1 policy (2026-10-09).** Explicit user-selected comparison signals; at most **8 signals including the reference**; the live shared
+catalogue is the only source; raw and calculated channels are supported; the current reference signal is excluded from the comparison choices; there
+is **no hidden "compare everything" batch run**. Candidate frequencies match when `|df| <= 1 x max(bin_spacing_a, bin_spacing_b)` (with the established
+floating-point slack); the representative frequency is the prominence-weighted mean of the member frequencies and the original member frequencies are
+retained; temporal activity is derived from STFT candidate-frequency tracks (active = at least -10 dB / 10 % of the track maximum) and compared on
+physical / workspace time, never by column index; damping comparison never blocks grouping -- differing behaviour gives a warning and a decay-rate
+ratio above 2x gives a warning; provenance is preserved; a raw signal plus a directly derived / calculated copy is **not** presented as independent
+evidence; wording is `Observed in N signals across M recordings`; a single-signal component is valid evidence and is never called false; no AI; **no
+oscillation-type classification in DEC-178 itself** (that is DEC-179). **The 1x Welch-bin tolerance, the -10 dB activity threshold, the 2x decay-rate
+comparison and the 8-signal cap are Phase-1 engineering / product heuristics, not universal standards.**
+
+**Real-event UAT `[FACT]` (owner, 2026-10-09; recorded as acceptance evidence only -- no frequency is hard-coded in production logic).**
+*Negative grouping case:* candidates at about 0.4 / 1.15 / 4.95 Hz in signals that did not agree stayed separate single-signal components; Powerwave
+manufactured no match. *Positive grouping case:* two MW signals from two recordings both contained a ~0.4 Hz candidate and were grouped: frequency
+spread 0 Hz against a 0.05 Hz match tolerance; activity overlapped for 31 s = 100 % of the shorter active interval; both damping behaviours were
+decaying, the values differed but stayed within the 2x compatibility heuristic; the UI said `Observed in 2 signals across 2 recordings` and did not
+claim independent confirmation. The visible comparison picker also passed owner UAT.
+
+**Scale decision -- explicit, never hidden.** Cross-signal analysis is **not** part of `Analyze` and never touches the whole workspace. After an
+`Analyze`, a `Compare signals` control lists every *other* eligible signal of the live shared catalogue (grouped by recording; calculated channels
+appear the moment they are created, no restart) with checkboxes (at most 7 others; the backend cap is 8 signals); the `Compare` button -- disabled
+until something is ticked -- sends the analysed signal plus the ticked ones. Cost per compared signal is one spectrum + one spectrogram + the damping
+estimate (measured below); nothing runs for unticked signals. (Reusing browser-held results was rejected: they are display state, and the backend
+must re-validate every signal anyway.)
+
+**API / service (`POST /api/v1/workspaces/{ws}/oscillation-analysis/cross-signal`, `app/services/oscillation_cross_signal_service.py`,
+`app/domain/cross_signal_evidence.py`).** Request: 2-8 `signals` (`input`, `representation`, `signal_revision`, `window_start_s/end_s` in that
+signal's own source time, `offset_s` = the page's existing alignment, `label`) + one `frequency_min_hz/max_hz`. The page derives each other signal's
+window from the primary window through workspace time (display mapping only, clipped to the recording); **the backend re-resolves and re-validates
+every signal** from workspace state (the same validation as the spectrum) and **never trusts a browser grouping or candidate list**. A signal that
+cannot be analysed (window outside its usable range, not eligible, ...) is reported `excluded` with the backend's code / message and the rest still
+compare; a duplicate signal is refused. Per signal the service runs the SAME `compute_spectrum` (DEC-174/175 candidates and Welch bin spacing),
+`compute_spectrogram` (DEC-176) and `compute_damping` (DEC-177, given the spectrum already computed -- an optional `spectrum` argument, no
+behaviour change) -- **no second candidate detector, no second signal registry, no copy of channel state**. Response: `signals[]` (per-signal row:
+label, origin raw / calculated, signal type, representation, recording, bin spacing, candidate / damping counts, status), `components[]` and
+`parameters`.
+
+**Frequency-matching rule (resolution-based; no fixed Hz).** Candidates of two DIFFERENT signals match when
+`|f_a - f_b| <= MATCH_RESOLUTION_FACTOR x max(bin_spacing_a, bin_spacing_b)` with the factor **1.0**, where `bin_spacing = fs / nperseg` of each
+signal's own Welch grid (DEC-174). Reason: a candidate sits on its signal's bin grid, so the same physical component can land up to one bin of the
+*coarser* grid apart; a fixed +-0.1 Hz would be too tight for a coarse grid and too loose for a fine one. Boundary tests: exactly one bin apart
+matches (with 1e-9 slack); a hair beyond does not; the coarser grid of the pair sets the tolerance. A signal contributes at most one candidate to
+a group.
+
+**Grouping.** Candidates of all analysed signals are taken strongest first (prominence, then lower frequency, then signal index -- so the result does
+not depend on the order the signals were listed); each unassigned candidate seeds a group, and from every other signal the matching unassigned
+candidate nearest the seed joins. A candidate with no match is its own group: `Observed in one signal only` (a valid, never "false", detection).
+Because membership is relative to the seed, every member is within one tolerance of the seed.
+
+**Representative frequency.** The prominence-weighted mean of the members' frequencies (prominence in dB); every original frequency, the spread
+and the tolerance are kept in the result. (Chosen over the strongest candidate or a plain mean: it is the simplest rule that still uses the evidence
+strength; with agreement inside one bin it differs from either by less than one bin.)
+
+**Provenance and independence (no false confirmation).** Each signal carries its *lineage roots* -- the raw source channels it is ultimately
+computed from (a calculated channel follows its inputs recursively through the calculated-channel registry). Members whose roots intersect are
+**one measurement**. The result states `Observed in N signals across M recordings` and, when it differs, `(K distinct measurements)` plus a
+`derived_from_same_source` warning; the words "independently confirmed" are never used (guard tests). Origin (raw / calculated), signal type and
+representation (native / RMS magnitude) are preserved per signal. Signal types are the catalogue's engineering types (Frequency, Power, Voltage,
+Current, ROCOF, angle quantities, Undefined, ...); they are shown, never turned into a conclusion. A raw channel and its derived copy are counted as
+one measurement but still listed individually.
+
+**Temporal evidence (optional; grouping never requires it).** For each member the DEC-176 spectrogram is reduced to the **track** at its candidate
+frequency (maximum over the rows within one row spacing); a slice is *active* when the track is at least `ACTIVE_TRACK_FRACTION = 0.1` (-10 dB) of its
+maximum; the member's active interval spans the first to the last active slice, each slice taken as its window `[t - w/2, t + w/2]`. Intervals are
+compared on the **workspace time basis** (source time + `offset_s`), **never by column index**, so different STFT windows / hops and different
+recordings compare correctly. Result: `overlap_s`, `overlap_fraction_of_shortest` (reason `temporal_overlap`), or the warning `no_temporal_overlap`;
+`limited_temporal_evidence` when a member's spectrogram was unavailable. No score.
+
+**Damping comparison (optional; never blocks grouping).** Members with an `available` DEC-177 result are compared: different behaviours ->
+`damping_behaviour_differs`; two or more decaying members whose decay rates differ by more than a factor of `DECAY_RATE_RATIO_LIMIT = 2` ->
+`decay_rates_differ_materially` (rates below 1e-3 s^-1 floored); otherwise `damping_consistent`. Fewer than two available results ->
+`damping_not_compared`. Each member's own damping is always shown independently.
+
+**Structured Why.** `{code, message, values}`: `observed_in`, `frequency_match` (spread and tolerance), `multiple_signal_types`,
+`multiple_recordings`, `temporal_overlap`, `damping_consistent`, `damping_not_compared`, `single_signal_only`; warnings
+`derived_from_same_source`, `limited_temporal_evidence`, `no_temporal_overlap`, `damping_behaviour_differs`, `decay_rates_differ_materially`.
+
+**Frontend.** `Cross-Signal Oscillation Evidence` inside the Frequency Spectrum card, below `Damping behaviour`: `Compare signals` picker + `Compare`
+button; one block per component (`Component around f Hz`): one line per member (`signal type -- name -- frequency -- prominence -- cycles --
+damping behaviour, zeta, alpha -- calculated channel / RMS magnitude`), the Why list and warnings; single-signal groups are shown as such; excluded
+signals under `Not compared`. Tied to the spectrum's exact setup AND the compared signals (key + revision): changed settings dim it ("Analysis settings
+changed -- run Analyze and Compare again", reverting restores), a different / removed / recreated signal discards it, a changed tick set says
+"Signal selection changed -- press Compare to update", superseded responses are dropped. The page groups, matches and classifies nothing (guard test).
+
+**Validation `[FACT]` (this machine; `backend/tests/test_oscillation_cross_signal.py`, 35 tests; 7 browser tests).** Domain: tolerance is the coarser
+bin spacing; just inside / just outside the boundary (also through grouping); same mode in two signal types; across two recordings; two separate
+modes; single-signal mode with its explanation; nearest-candidate selection and one candidate per signal per group; input-order independence;
+prominence-weighted representative with originals kept; raw + derived copy = 1 measurement with a warning and no "independent" / "confirm" wording;
+3 signals / 2 measurements; damping agreement, behaviour disagreement, material rate difference, rate-ratio boundary (2.0 vs 2.0001), missing damping,
+none at all; STFT active interval; different STFT resolutions (4 s vs 20 s hop) with overlapping time; non-overlapping activity; alignment offset applied
+before comparing; missing temporal evidence. Service (real Welch + STFT + damping chain): **the owner's case** -- 4.95 Hz in frequency and MW grouped
+(`Frequency` + `Power`, overlapping activity, damping per signal), 1.15 Hz in MW remains its own group; same mode in two recordings; a raw channel plus
+its calculated sign-flipped copy disclosed as one measurement; a calculated channel created after a first comparison joins the next; an unanalysable
+signal excluded while the others compare; no candidates anywhere is an explained `no_components`; duplicate / over-cap refused; nothing classified.
+**Performance `[FACT]` (50 Hz x 160 s signals, this machine):** a full comparison (spectrum + spectrogram + damping per signal + grouping) takes 22 ms for 2
+signals, 46 ms for 5 and 105 ms for the 8-signal cap; the grouping itself is 0.04 ms / 0.13 ms / 0.81 ms for 2 / 5 / 20 candidate-bearing signals -- grouping
+is negligible, the cost is the per-signal analysis (about 13 ms each here; 5 kHz x 160 s signals are ~ 0.4 s each, see DEC-177).
+
+**Open engineering questions for the owner (not decided here).** (1) Is `1 x` the coarser bin spacing the right tolerance, or should a small multiple
+be allowed for harmonics-of-bin leakage on short windows? (2) The signal cap of 8 per comparison: raise it, or add "compare all in this recording"
+as an explicit action? (3) Independence is by shared raw source channel only; distinct channels of one recorder (e.g. P and Q of the same relay) or
+an angle and its frequency are still counted as separate measurements -- is a coarser notion (same recording / same bay) wanted? (4) The
+`ACTIVE_TRACK_FRACTION` of -10 dB and the decay-rate ratio of 2 are starting heuristics -- review with real events. (5) Different Welch windows per
+signal (each uses its own `2 / f_min` rule on its own window): should a comparison force one common window / resolution? (6) Components seen in
+only one of many signals are reported as such with no ranking against multi-signal components beyond the member count; whether a classification
+slice needs more (signal-type pairs, relative amplitude) is for that slice to define.
+
+Tests: `backend/tests/test_oscillation_cross_signal.py`, `test_frontend_oscillation_analysis_shell.py` (new `test_cross_signal_is_a_backend_grouping...`),
+`browser-tests/oscillation_setup.spec.js` ("cross-signal evidence" describe).

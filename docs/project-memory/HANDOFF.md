@@ -9,6 +9,13 @@ Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
 ## What was most recently done
 
+**Oscillation Analysis Cross-Signal Evidence (DEC-178 `[APPROVED]`, 2026-10-09) -- owner UAT accepted (0.4 Hz grouped across two recordings; unmatched 0.4 / 1.15 / 4.95 Hz components kept separate); committed `feat: add cross-signal oscillation evidence` (not pushed)** (on top of the damping
+commit `feat: add oscillation damping analysis`). Backend: `app/domain/cross_signal_evidence.py` (`group_components`, `frequencies_match`,
+`active_interval`), `app/services/oscillation_cross_signal_service.py` (`compute_cross_signal`), `POST .../oscillation-analysis/cross-signal`;
+`compute_damping` gained an optional `spectrum=` argument (no behaviour change). Frontend (`wwOsc*`): `wwOscRunCross()` (only from the Compare button),
+`wwOscRenderCross()`, state `wwOscState.cross`. Tests: `test_oscillation_cross_signal.py`, a new static guard, `oscillation_setup.spec.js` ("cross-signal
+evidence"). **Next:** oscillation-type classification (DEC-179 `[PROPOSAL]`); open questions at the end of DEC-178 remain for review with more real events.
+
 **Oscillation Analysis Damping / Ringdown (DEC-177 `[APPROVED]`, 2026-10-09) -- owner UAT accepted; committed `feat: add oscillation damping analysis` (not pushed).** The UAT interval mismatch (Why in source time vs row in display time) was fixed by moving times out of reason messages into `values`. Backend:
 `app/domain/damping_estimation.py` (`window_spectrum`, `band_baseband`, `estimate_damping`; all thresholds are named constants),
 `app/services/oscillation_damping_service.py` (`compute_damping`: re-runs `compute_spectrum` for the candidates, one `rfft` shared by all),

@@ -1973,3 +1973,281 @@ test.describe("Oscillation Analysis -- damping behaviour", () => {
     expect(m.scroll).toBeLessThanOrEqual(m.viewport + 1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Cross-Signal Oscillation Evidence (DEC-178 [APPROVED]). The owner's real-event pattern on a synthetic record: a 4.95 Hz
+// ringdown in BOTH the frequency and the MW signal, and a 1.15 Hz one in MW only. The comparison is requested only by the
+// Compare button, for the analysed signal plus the explicitly ticked ones; the page draws the backend's grouping.
+// ---------------------------------------------------------------------------
+const CROSS_URL = "**/oscillation-analysis/cross-signal";
+const CROSS_CHANNELS = [
+  { name: "FREQ", unit: "Hz", amplitude: 0.075, components: [{ amplitude: 0.05, frequencyHz: 4.95, onsetS: 10, decayPerS: 0.15 }, { amplitude: 0.025, frequencyHz: 7.3, onsetS: 10, decayPerS: 0.2 }] },
+  { name: "P_MW", unit: "MW", amplitude: 150, components: [{ amplitude: 100, frequencyHz: 4.95, onsetS: 10, decayPerS: 0.12 }, { amplitude: 50, frequencyHz: 1.15, onsetS: 10, decayPerS: 0.1 }] },
+];
+
+async function crossPage(page, options = {}) {
+  await openOscillation(page);
+  await uploadSynthetic(page, { durationS: 60, channels: CROSS_CHANNELS, ...options });
+  await selectFreq(page);
+  await setBand(page, 0.25, 8);
+  await page.locator("#wwOscAnalyzeBtn").click();
+  await expect(page.locator("#wwOscCross")).toBeVisible();
+}
+const tick = async (page, name) => {
+  await page.locator("#wwOscCrossList label", { hasText: name }).locator("input").check();
+};
+async function crossCompared(page, options = {}) {
+  await crossPage(page, options);
+  await tick(page, "P_MW");
+  await page.locator("#wwOscCrossBtn").click();
+  await expect(page.locator("#wwOscCrossBody .ww-osc-cross-component").first()).toBeVisible();
+}
+const crossComponents = (page) => page.evaluate(() => wwOscState.cross.result.components.map((c) => ({
+  f: c.representative_frequency_hz, n: c.signal_count, types: c.signal_types, codes: c.reasons.map((r) => r.code), warn: c.warnings.map((w) => w.code),
+  labels: c.members.map((m) => m.label) })));
+
+test.describe("Oscillation Analysis -- cross-signal evidence", () => {
+  test("hidden until Analyze; no request is made until Compare is pressed", async ({ page }) => {
+    const requests = [];
+    page.on("request", (r) => { if (r.url().endsWith("/oscillation-analysis/cross-signal")) requests.push(r.postDataJSON()); });
+    await openOscillation(page);
+    await uploadSynthetic(page, { durationS: 60, channels: CROSS_CHANNELS });
+    await selectFreq(page);
+    await setBand(page, 0.25, 8);
+    await expect(page.locator("#wwOscCross")).toBeHidden();
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscCross")).toBeVisible();
+    await expect(page.locator("#wwOscCross .ww-osc-detect-title")).toHaveText("Cross-Signal Oscillation Evidence");
+    await expect(page.locator("#wwOscCrossBtn")).toBeDisabled(); // nothing chosen: no silent whole-workspace analysis
+    await tick(page, "P_MW");
+    await expect(page.locator("#wwOscCrossBtn")).toBeEnabled();
+    expect(requests).toHaveLength(0);
+    await page.locator("#wwOscCrossBtn").click();
+    await expect(page.locator("#wwOscCrossBody .ww-osc-cross-component").first()).toBeVisible();
+    expect(requests).toHaveLength(1);
+    expect(requests[0].signals).toHaveLength(2); // the analysed signal plus the one ticked
+    expect(requests[0].frequency_max_hz).toBe(8);
+    expect(requests[0].signals.map((s) => s.input.channel_name)).toEqual(["FREQ", "P_MW"]);
+  });
+
+  test("the shared component is grouped across signal types; the separate one stays on its own", async ({ page }) => {
+    await crossCompared(page);
+    const comps = await crossComponents(page);
+    const shared = comps.find((c) => c.n === 2), single = comps.find((c) => c.n === 1 && Math.abs(c.f - 1.15) < 0.2);
+    expect(Math.abs(shared.f - 4.95)).toBeLessThan(0.3);
+    expect(shared.types).toEqual(["Frequency", "Power"]);
+    expect(shared.codes).toEqual(expect.arrayContaining(["observed_in", "frequency_match", "multiple_signal_types", "temporal_overlap"]));
+    expect(single.labels).toEqual(["P_MW"]);
+    expect(single.codes).toContain("single_signal_only");
+    const body = await page.locator("#wwOscCrossBody").innerText();
+    expect(body).toContain("Observed in 2 signals across 1 recording.");
+    expect(body).toContain("Observed in one signal only");
+    expect(body).toMatch(/Frequency — FREQ — \d+(\.\d+)? Hz/);
+    expect(body).toMatch(/Power — P_MW — \d+(\.\d+)? Hz/);
+    expect(body).toMatch(/decaying, ζ/); // per-signal damping is shown independently
+    const text = body.toLowerCase();
+    for (const word of ["inter-area", "local mode", "sso", "forced", "independently confirmed", "confidence", "well damped"]) expect(text).not.toContain(word);
+    await expect(page.locator("#wwOscCrossNote")).toContainText("No oscillation type is inferred");
+  });
+
+  test("a calculated channel created while the page is open appears in the picker and is disclosed as derived", async ({ page }) => {
+    await crossPage(page);
+    await expect(page.locator("#wwOscCrossList label", { hasText: "NEG_MW" })).toHaveCount(0);
+    await createCalculated(page, { name: "NEG_MW", operation: "reverse_polarity", inputs: [{ kind: "source", source_id: await sourceId(page), channel_name: "P_MW" }] }); // a sign-flipped copy: same measurement, same frequencies
+    await expect(page.locator("#wwOscCrossList label", { hasText: "NEG_MW" })).toHaveCount(1); // live: no reload, no restart
+    await expect(page.locator("#wwOscCrossList label", { hasText: "NEG_MW" })).toContainText("(calculated)");
+    await page.locator("#wwOscCrossList label", { hasText: "P_MW" }).first().locator("input").check();
+    await page.locator("#wwOscCrossList label", { hasText: "NEG_MW" }).locator("input").check();
+    await page.locator("#wwOscCrossBtn").click();
+    await expect(page.locator("#wwOscCrossBody .ww-osc-cross-component").first()).toBeVisible();
+    const comps = await crossComponents(page);
+    const shared = comps.find((c) => c.n === 3);
+    expect(shared.warn).toContain("derived_from_same_source");
+    expect(await page.locator("#wwOscCrossBody").innerText()).toContain("2 distinct measurements");
+    expect(await page.evaluate(() => wwOscState.cross.result.signals.find((s) => s.label === "NEG_MW").origin)).toBe("calculated");
+  });
+
+  test("changing the settings marks the comparison not current; reverting restores; another signal discards it", async ({ page }) => {
+    await crossCompared(page);
+    await expect(page.locator("#wwOscCross")).toHaveAttribute("data-stale", "false");
+    await page.locator("#wwOscMaxFreqInput").fill("7");
+    await expect(page.locator("#wwOscCross")).toHaveAttribute("data-stale", "true");
+    await expect(page.locator("#wwOscCrossState")).toContainText("Analysis settings changed");
+    await page.locator("#wwOscMaxFreqInput").fill("8");
+    await expect(page.locator("#wwOscCross")).toHaveAttribute("data-stale", "false");
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_MW"));
+    await expect(page.locator("#wwOscCross")).toBeHidden();
+    expect(await page.evaluate(() => wwOscState.cross.result)).toBeNull();
+  });
+
+  test("changing the ticked signals says so without discarding what was compared", async ({ page }) => {
+    await crossCompared(page);
+    await page.locator("#wwOscCrossList label", { hasText: "P_MW" }).locator("input").uncheck();
+    await expect(page.locator("#wwOscCrossState")).toHaveText("Signal selection changed — press Compare to update");
+    await expect(page.locator("#wwOscCrossBtn")).toBeDisabled();
+    await expect(page.locator("#wwOscCrossBody .ww-osc-cross-component").first()).toBeVisible();
+  });
+
+  test("a response arriving after the spectrum was cleared is discarded; an error is shown", async ({ page }) => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    await page.route(CROSS_URL, async (route) => { await gate; await route.continue(); });
+    await crossPage(page);
+    await tick(page, "P_MW");
+    await page.locator("#wwOscCrossBtn").click();
+    await expect(page.locator("#wwOscCrossState")).toHaveText("Comparing signals…");
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_MW"));
+    release();
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => wwOscState.cross.result)).toBeNull();
+    await page.unroute(CROSS_URL);
+    await page.route(CROSS_URL, (route) => route.fulfill({ status: 409, contentType: "application/json",
+      body: JSON.stringify({ detail: { code: "x", message: "Comparison refused." } }) }));
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscCross")).toBeVisible();
+    await tick(page, "FREQ");
+    await page.locator("#wwOscCrossBtn").click();
+    await expect(page.locator("#wwOscCrossState")).toHaveText("Comparison refused.");
+  });
+
+  test("renders at phone width without horizontal overflow", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await crossCompared(page);
+    const m = await page.evaluate(() => ({ right: document.getElementById("wwOscCross").getBoundingClientRect().right, viewport: window.innerWidth,
+                                           scroll: document.documentElement.scrollWidth }));
+    expect(m.right).toBeLessThanOrEqual(m.viewport + 1);
+    expect(m.scroll).toBeLessThanOrEqual(m.viewport + 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cross-signal comparison PICKER (owner UAT fix): the selector is always visible after Analyze, lists the OTHER eligible catalogue
+// signals grouped by recording, never auto-selects, and gates the Compare button.
+// ---------------------------------------------------------------------------
+const pickerBoxes = (page) => page.locator("#wwOscCrossList input[type=checkbox]");
+const pickerNames = (page) => page.locator("#wwOscCrossList label").evaluateAll((l) => l.map((x) => x.textContent.trim()));
+const pickerGroups = (page) => page.locator("#wwOscCrossList .ww-osc-cross-group").evaluateAll((g) => g.map((x) => ({
+  recording: x.querySelector(".ww-osc-detect-label").textContent.trim(), items: Array.from(x.querySelectorAll("label")).map((l) => l.textContent.trim()) })));
+
+async function secondRecording(page) {
+  await uploadSynthetic(page, { name: "second", station: "SECOND_STN", durationS: 60,
+    channels: [{ name: "P2", unit: "MW", amplitude: 100, frequencyHz: 4.95 }, { name: "F2", unit: "Hz", amplitude: 0.05, frequencyHz: 4.95 }] });
+}
+
+test.describe("Oscillation Analysis -- cross-signal picker", () => {
+  test("the selector is visible without any click, nothing is pre-selected and Compare is disabled", async ({ page }) => {
+    await crossPage(page);
+    await expect(page.locator("#wwOscCrossList")).toBeVisible();
+    await expect(page.locator("#wwOscCross .ww-osc-detect-label", { hasText: "Compare signals" }).first()).toBeVisible();
+    await expect(page.locator("#wwOscCrossHint")).toContainText("Reference signal: FREQ");
+    await expect(pickerBoxes(page)).toHaveCount(1);
+    await expect(pickerBoxes(page).first()).toBeVisible();
+    await expect(pickerBoxes(page).first()).not.toBeChecked(); // never silently auto-selected
+    await expect(page.locator("#wwOscCrossBtn")).toBeDisabled();
+    expect(await page.evaluate(() => wwOscState.cross.chosen.size)).toBe(0);
+  });
+
+  test("the analysed signal is the reference and is never offered; eligible signals are listed with their type", async ({ page }) => {
+    await crossPage(page);
+    const names = await pickerNames(page);
+    expect(names).toHaveLength(1);
+    expect(names[0]).toContain("P_MW");
+    expect(names[0]).toContain("Power");
+    expect(names.join(" ")).not.toContain("FREQ");
+    // the reference changes with the analysed signal
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_MW"));
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscCross")).toBeVisible();
+    expect((await pickerNames(page)).join(" ")).toContain("FREQ");
+    expect((await pickerNames(page)).join(" ")).not.toContain("P_MW");
+    await expect(page.locator("#wwOscCrossHint")).toContainText("Reference signal: P_MW");
+  });
+
+  test("choices are grouped by recording", async ({ page }) => {
+    await crossPage(page);
+    await secondRecording(page);
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "FREQ"));
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscCross")).toBeVisible();
+    const groups = await pickerGroups(page);
+    expect(groups).toHaveLength(2);
+    expect(groups[0].recording).toBe("osc.cfg");
+    expect(groups[0].items).toHaveLength(1);
+    expect(groups[0].items[0]).toContain("P_MW");
+    expect(groups[1].recording).toBe("second.cfg");
+    expect(groups[1].items).toHaveLength(2);
+    expect(groups[1].items.join(" ")).toContain("P2");
+    expect(groups[1].items.join(" ")).toContain("F2");
+  });
+
+  test("a calculated channel created later appears live under its recording and is marked calculated", async ({ page }) => {
+    await crossPage(page);
+    await expect(pickerBoxes(page)).toHaveCount(1);
+    await createCalculated(page, { name: "NEG_MW", operation: "reverse_polarity", inputs: [{ kind: "source", source_id: await sourceId(page), channel_name: "P_MW" }] });
+    await expect(pickerBoxes(page)).toHaveCount(2);
+    const groups = await pickerGroups(page);
+    expect(groups).toHaveLength(1); // a calculated channel sits under the recording that owns its timing
+    expect(groups[0].items.join(" ")).toContain("NEG_MW");
+    expect(groups[0].items.join(" ")).toContain("(calculated)");
+  });
+
+  test("Compare is enabled by the first selection and disabled again when everything is deselected or the signal disappears", async ({ page }) => {
+    await crossPage(page);
+    const created = await createCalculated(page, { name: "NEG_MW", operation: "reverse_polarity", inputs: [{ kind: "source", source_id: await sourceId(page), channel_name: "P_MW" }] });
+    await expect(pickerBoxes(page)).toHaveCount(2);
+    await page.locator("#wwOscCrossList label", { hasText: "P_MW" }).first().locator("input").check();
+    await expect(page.locator("#wwOscCrossBtn")).toBeEnabled();
+    await expect(page.locator("#wwOscCrossCount")).toHaveText("(1 selected)");
+    await page.locator("#wwOscCrossList label", { hasText: "P_MW" }).first().locator("input").uncheck();
+    await expect(page.locator("#wwOscCrossBtn")).toBeDisabled();
+    await expect(page.locator("#wwOscCrossCount")).toHaveText("");
+    // a selected comparison signal that is then removed drops out of the selection and Compare follows
+    await page.locator("#wwOscCrossList label", { hasText: "NEG_MW" }).locator("input").check();
+    await expect(page.locator("#wwOscCrossBtn")).toBeEnabled();
+    const del = await page.request.delete(await workspaceUrl(page, "/calculated-channels/" + created.id));
+    expect(del.ok(), await del.text()).toBeTruthy();
+    await page.evaluate(() => wwFetchCalculatedChannels());
+    await expect(pickerBoxes(page)).toHaveCount(1);
+    await expect(page.locator("#wwOscCrossBtn")).toBeDisabled();
+    expect(await page.evaluate(() => wwOscState.cross.chosen.size)).toBe(0);
+  });
+
+  test("no request before Compare; Compare sends exactly the reference plus the ticked identities, once each", async ({ page }) => {
+    const requests = [];
+    page.on("request", (r) => { if (r.url().endsWith("/oscillation-analysis/cross-signal")) requests.push(r.postDataJSON()); });
+    await crossPage(page);
+    await secondRecording(page);
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "FREQ"));
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscCross")).toBeVisible();
+    const calc = await createCalculated(page, { name: "NEG_MW", operation: "reverse_polarity", inputs: [{ kind: "source", source_id: await sourceId(page), channel_name: "P_MW" }] });
+    await page.locator("#wwOscCrossList label", { hasText: "P2" }).locator("input").check();
+    await page.locator("#wwOscCrossList label", { hasText: "NEG_MW" }).locator("input").check();
+    await page.waitForTimeout(400);
+    expect(requests).toHaveLength(0);
+    await page.locator("#wwOscCrossBtn").click();
+    await expect(page.locator("#wwOscCrossBody .ww-osc-cross-component").first()).toBeVisible();
+    expect(requests).toHaveLength(1);
+    const ids = requests[0].signals.map((s) => (s.input.kind === "calculated" ? "calc:" + s.input.calculated_channel_id : "src:" + s.input.channel_name));
+    expect(ids).toEqual(["src:FREQ", "src:P2", "calc:" + calc.id]);
+    expect(new Set(ids).size).toBe(ids.length); // no duplicates, and the reference is not repeated
+    expect(requests[0].signals.map((s) => s.signal_revision)).toEqual(await page.evaluate(() => wwOscState.cross.request.entries.map((e) => e.revision)));
+  });
+
+  test("the selection is capped so a comparison never exceeds the 8-signal service limit", async ({ page }) => {
+    const channels = Array.from({ length: 9 }, (_, i) => ({ name: "C" + i, unit: "MW", amplitude: 100, frequencyHz: 2.0 + 0.5 * i }));
+    await openOscillation(page);
+    await uploadSynthetic(page, { durationS: 60, channels });
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "C0"));
+    await setBand(page, 0.25, 8);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscCross")).toBeVisible();
+    await expect(pickerBoxes(page)).toHaveCount(8); // the 8 others; C0 (the reference) is not among them
+    for (let i = 0; i < 7; i += 1) await pickerBoxes(page).nth(i).check();
+    await expect(page.locator("#wwOscCrossCount")).toHaveText("(7 selected)");
+    await expect(pickerBoxes(page).nth(7)).toBeDisabled(); // an 8th other would make 9 signals in total
+    await expect(pickerBoxes(page).nth(0)).toBeEnabled();  // already-ticked ones can still be unticked
+    await pickerBoxes(page).nth(0).uncheck();
+    await expect(pickerBoxes(page).nth(7)).toBeEnabled();
+  });
+});

@@ -439,6 +439,8 @@ reasons) and, since DEC-176 `[APPROVED]` (2026-10-09), an STFT **Time-Frequency 
 component occurs; linear PSD from the backend, dB display in the browser, candidate guides reusing DEC-175) and, since DEC-177
 `[APPROVED]` (2026-10-09), a deterministic **Damping behaviour** estimate per candidate (decaying / approximately
 sustained / growing, decay rate `alpha` in s^-1, damping ratio for a decaying component, fit interval, fit quality and a structured Why).
+DEC-178 `[APPROVED]` (2026-10-09, owner UAT accepted) adds **Cross-Signal Oscillation Evidence**: an explicit `Compare signals` selection whose candidates are grouped
+deterministically across signals / recordings (frequency agreement within the Welch resolution, workspace-time overlap, damping consistency, provenance).
 There is no oscillation-type classification, adequacy threshold, Prony / Matrix Pencil or AI.
 
 Raw Voltage/Current are analysed through an analysis-internal **RMS magnitude representation** (DEC-173 `[APPROVED]`):

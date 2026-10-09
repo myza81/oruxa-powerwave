@@ -8,6 +8,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.schemas.oscillation import (
+    OscillationCrossSignalOut,
+    OscillationCrossSignalRequest,
     OscillationDampingOut,
     OscillationDampingRequest,
     OscillationRepresentationOut,
@@ -20,6 +22,7 @@ from app.schemas.oscillation import (
 from app.schemas.source import ErrorOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.errors import ImportServiceError
+from app.services.oscillation_cross_signal_service import compute_cross_signal
 from app.services.oscillation_damping_service import compute_damping
 from app.services.oscillation_representation_service import derive_analysis_representation, describe
 from app.services.oscillation_spectrogram_service import compute_spectrogram
@@ -175,3 +178,37 @@ def get_damping(
             detail=ErrorOut(code=exc.code, message=exc.message).model_dump(),
         ) from exc
     return OscillationDampingOut(**result)
+
+
+@router.post("/cross-signal", response_model=OscillationCrossSignalOut)
+def get_cross_signal(
+    workspace_id: str,
+    body: OscillationCrossSignalRequest,
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+) -> OscillationCrossSignalOut:
+    """Cross-signal evidence for an explicit set of signals (DEC-178 [APPROVED]): every signal is
+    re-resolved and re-validated from workspace state, analysed with the accepted spectrum / candidate /
+    spectrogram / damping chain and the candidates grouped deterministically. A signal that cannot be
+    analysed is reported `excluded`; nothing is stored and nothing is classified."""
+    if not workspace_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorOut(code="invalid_workspace", message="workspace_id must not be blank.").model_dump(),
+        )
+    entries = [
+        {"input_ref": s.input.to_domain(), "representation": s.representation, "signal_revision": s.signal_revision,
+         "window_start_s": s.window_start_s, "window_end_s": s.window_end_s, "offset_s": s.offset_s, "label": s.label}
+        for s in body.signals
+    ]
+    try:
+        result = compute_cross_signal(
+            workspace_id=workspace_id, entries=entries, f_min_hz=body.frequency_min_hz, f_max_hz=body.frequency_max_hz,
+            source_registry=source_registry, calc_registry=calc_registry,
+        )
+    except ImportServiceError as exc:
+        raise HTTPException(
+            status_code=_STATUS_BY_ERROR_CODE.get(exc.code, status.HTTP_400_BAD_REQUEST),
+            detail=ErrorOut(code=exc.code, message=exc.message).model_dump(),
+        ) from exc
+    return OscillationCrossSignalOut(**result)

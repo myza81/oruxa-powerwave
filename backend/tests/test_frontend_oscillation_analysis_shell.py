@@ -184,3 +184,24 @@ def test_damping_is_a_backend_result_tied_to_the_spectrum_request():
         assert forbidden not in section, forbidden
     # sign convention is stated to the engineer
     assert "α > 0 decays" in render and "s⁻¹" in script
+
+
+def test_cross_signal_is_a_backend_grouping_requested_only_by_compare():
+    """DEC-178 [APPROVED]: the page lists the other eligible catalogue signals, sends the explicitly ticked ones and draws the backend's
+    grouping. It never groups, matches frequencies or classifies, and nothing runs for the whole workspace."""
+    script = _osc_script()
+    assert script.count("/oscillation-analysis/cross-signal") == 1
+    code = chr(10).join(line for line in script.splitlines() if not line.strip().startswith("//"))
+    assert code.count("wwOscRunCross(") == 1  # the definition only: nothing calls it -- the Compare button passes it by reference
+    assert 'getElementById("wwOscCrossBtn").addEventListener("click", wwOscRunCross)' in script
+    run = _between("async function wwOscRunCross", "function wwOscCrossCurrent")
+    assert "cx.chosen" in run and "wwOscCrossCandidates()" in run and "cx.seq !== seq" in run
+    # live catalogue, current-ness and stale wiring
+    assert "wwSignalCatalogueList(" in _between("function wwOscCrossCandidates", "function wwOscCrossPrune")
+    render = _between("function wwOscRenderCross", "// Time-Frequency Spectrogram (STFT, DEC-176")
+    for needle in ("wwOscCrossCurrent()", "wwSignalCatalogueIsCurrent(entry.key, entry.revision)", "Analysis settings changed"):
+        assert needle in render, needle
+    section = chr(10).join(line for line in _between("function wwOscCrossClear", "// Time-Frequency Spectrogram (STFT, DEC-176").splitlines()
+                           if not line.strip().startswith("//"))
+    for forbidden in ("Math.abs(", "Math.exp", "Math.log", "Math.sqrt", "inter-area", "local mode", "sub-synchronous", "SSO", "forced"):
+        assert forbidden not in section, forbidden
