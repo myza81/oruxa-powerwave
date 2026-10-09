@@ -203,25 +203,35 @@ def _validate_request_numbers(start_s: float, end_s: float, f_min_hz: float, f_m
         raise InvalidFrequencyRangeError("The maximum frequency must be greater than the minimum frequency.")
 
 
-def compute_spectrum(
+@dataclass(frozen=True, slots=True)
+class PreparedWindow:
+    """The validated, finite, uniformly sampled analysis window shared by the
+    Welch spectrum and the STFT spectrogram (one preprocessing path)."""
+
+    series: _Series
+    active: object
+    t: np.ndarray
+    x: np.ndarray
+    fs: float
+    nyquist: float
+    window_duration: float
+    nominal: float | None
+
+
+def prepare_analysis_window(
     *,
     workspace_id: str,
     input_ref: ChannelRef,
     representation: str,
     window_start_s: float,
     window_end_s: float,
-    f_min_hz: float,
     f_max_hz: float,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
-) -> dict:
-    """The wire-ready spectrum + the exact parameters used. Raises a
-    structured `ImportServiceError` for every unusable request; never returns
-    an empty spectrum."""
-    if representation not in SPECTRUM_REPRESENTATIONS:
-        raise UnsupportedRepresentationError(f"Analysis representation '{representation}' is not implemented.")
-    _validate_request_numbers(window_start_s, window_end_s, f_min_hz, f_max_hz)
-
+) -> PreparedWindow:
+    """Resolve the signal, derive the representation and select/validate the
+    window and the upper band limit. Raises a structured `ImportServiceError`
+    for every unusable request."""
     series, active = _analysis_series(
         workspace_id=workspace_id, input_ref=input_ref, representation=representation,
         source_registry=source_registry, calc_registry=calc_registry,
@@ -271,6 +281,98 @@ def compute_spectrum(
             f"The maximum frequency {_fmt(f_max_hz)} Hz reaches the bandwidth limit of the RMS magnitude representation "
             f"({_fmt(rms_bandwidth_limit_hz(nominal))} Hz, the nominal frequency); modulation at or above it is not recoverable."
         )
+    return PreparedWindow(
+        series=series, active=active, t=t, x=x, fs=fs, nyquist=nyquist, window_duration=window_duration, nominal=nominal,
+    )
+
+
+def representation_warnings(series: _Series, nominal: float | None, f_max_hz: float) -> list[dict]:
+    """The RMS-representation warnings of DEC-173/174 (assumed nominal frequency,
+    roll-off), shared by the spectrum and the spectrogram."""
+    warnings: list[dict] = []
+    if nominal is not None:
+        if series.nominal_frequency_origin == NOMINAL_FREQUENCY_ASSUMED_DEFAULT:
+            warnings.append(_warning(
+                "nominal_frequency_assumed",
+                "The nominal frequency was not declared by the source and a default was assumed for the RMS window.",
+            ))
+        half_power = rms_half_power_frequency_hz(nominal)
+        if f_max_hz > half_power:
+            loss = 100.0 * (1.0 - rms_envelope_response(f_max_hz, nominal))
+            warnings.append(_warning(
+                "rms_rolloff",
+                f"The requested range extends above the −3 dB frequency {_fmt(half_power)} Hz of the one-cycle RMS magnitude; "
+                f"oscillation amplitude at {_fmt(f_max_hz)} Hz is attenuated by about {loss:.0f} % (zero at "
+                f"{_fmt(rms_bandwidth_limit_hz(nominal))} Hz). The PSD is not corrected for this.",
+            ))
+    return warnings
+
+
+def signal_block(series: _Series, active, input_ref: ChannelRef) -> dict:
+    metadata = active.metadata
+    filenames = list(metadata.original_filenames or ())
+    return {
+        "name": input_ref.channel_name if input_ref.kind == "source" else None,
+        "calculated_channel_id": input_ref.calculated_channel_id if input_ref.kind == "calculated" else None,
+        "source_id": metadata.source_id,
+        "source_recording": filenames[0] if filenames else (metadata.station_name or None),
+        "unit": series.unit or None,
+        "psd_unit": f"{series.unit}²/Hz" if series.unit else None,
+    }
+
+
+def representation_block(series: _Series, fs: float, nominal: float | None) -> dict:
+    return {
+        "type": series.representation,
+        "source_sample_rate_hz": series.source_sample_rate_hz,
+        "analysis_sample_rate_hz": fs,
+        "nominal_frequency_hz": nominal,
+        "nominal_frequency_origin": series.nominal_frequency_origin,
+        "rms_window_s": series.window_s,
+        "rms_group_delay_s": series.group_delay_s,
+        "bandwidth_half_power_hz": rms_half_power_frequency_hz(nominal) if nominal else None,
+        "bandwidth_limit_hz": rms_bandwidth_limit_hz(nominal) if nominal else None,
+    }
+
+
+def window_block(t: np.ndarray, x: np.ndarray, window_start_s: float, window_end_s: float, window_duration: float) -> dict:
+    return {
+        "requested_start_s": window_start_s,
+        "requested_end_s": window_end_s,
+        "start_s": float(t[0]),
+        "end_s": float(t[-1]),
+        "duration_s": window_duration,
+        "sample_count": int(x.size),
+        "basic_resolution_hz": 1.0 / window_duration,
+    }
+
+
+def compute_spectrum(
+    *,
+    workspace_id: str,
+    input_ref: ChannelRef,
+    representation: str,
+    window_start_s: float,
+    window_end_s: float,
+    f_min_hz: float,
+    f_max_hz: float,
+    source_registry: WorkspaceRegistry,
+    calc_registry: CalculatedChannelRegistry,
+) -> dict:
+    """The wire-ready spectrum + the exact parameters used. Raises a
+    structured `ImportServiceError` for every unusable request; never returns
+    an empty spectrum."""
+    if representation not in SPECTRUM_REPRESENTATIONS:
+        raise UnsupportedRepresentationError(f"Analysis representation '{representation}' is not implemented.")
+    _validate_request_numbers(window_start_s, window_end_s, f_min_hz, f_max_hz)
+
+    prepared = prepare_analysis_window(
+        workspace_id=workspace_id, input_ref=input_ref, representation=representation,
+        window_start_s=window_start_s, window_end_s=window_end_s, f_max_hz=f_max_hz,
+        source_registry=source_registry, calc_registry=calc_registry,
+    )
+    series, active, t, x = prepared.series, prepared.active, prepared.t, prepared.x
+    fs, nyquist, window_duration, nominal = prepared.fs, prepared.nyquist, prepared.window_duration, prepared.nominal
 
     try:
         seg = choose_segmentation(int(x.size), fs, f_min_hz)
@@ -315,21 +417,7 @@ def compute_spectrum(
             f"Only {seg.segment_count} Welch segments were averaged (fewer than {RECOMMENDED_MIN_SEGMENTS}); the estimate "
             "has limited variance reduction.",
         ))
-    if nominal is not None:
-        if series.nominal_frequency_origin == NOMINAL_FREQUENCY_ASSUMED_DEFAULT:
-            warnings.append(_warning(
-                "nominal_frequency_assumed",
-                "The nominal frequency was not declared by the source and a default was assumed for the RMS window.",
-            ))
-        half_power = rms_half_power_frequency_hz(nominal)
-        if f_max_hz > half_power:
-            loss = 100.0 * (1.0 - rms_envelope_response(f_max_hz, nominal))
-            warnings.append(_warning(
-                "rms_rolloff",
-                f"The requested range extends above the −3 dB frequency {_fmt(half_power)} Hz of the one-cycle RMS magnitude; "
-                f"oscillation amplitude at {_fmt(f_max_hz)} Hz is attenuated by about {loss:.0f} % (zero at "
-                f"{_fmt(rms_bandwidth_limit_hz(nominal))} Hz). The PSD is not corrected for this.",
-            ))
+    warnings.extend(representation_warnings(series, nominal, f_max_hz))
 
     peak_to_peak = float(np.ptp(x))
     detection = detect_candidates(
@@ -338,38 +426,11 @@ def compute_spectrum(
         signal_variation_negligible=peak_to_peak <= NEGLIGIBLE_VARIATION_RATIO * float(np.max(np.abs(x))),
     )
 
-    metadata = active.metadata
-    filenames = list(metadata.original_filenames or ())
     return {
         "status": "ok",
-        "signal": {
-            "name": input_ref.channel_name if input_ref.kind == "source" else None,
-            "calculated_channel_id": input_ref.calculated_channel_id if input_ref.kind == "calculated" else None,
-            "source_id": metadata.source_id,
-            "source_recording": filenames[0] if filenames else (metadata.station_name or None),
-            "unit": series.unit or None,
-            "psd_unit": f"{series.unit}²/Hz" if series.unit else None,
-        },
-        "representation": {
-            "type": series.representation,
-            "source_sample_rate_hz": series.source_sample_rate_hz,
-            "analysis_sample_rate_hz": fs,
-            "nominal_frequency_hz": nominal,
-            "nominal_frequency_origin": series.nominal_frequency_origin,
-            "rms_window_s": series.window_s,
-            "rms_group_delay_s": series.group_delay_s,
-            "bandwidth_half_power_hz": rms_half_power_frequency_hz(nominal) if nominal else None,
-            "bandwidth_limit_hz": rms_bandwidth_limit_hz(nominal) if nominal else None,
-        },
-        "window": {
-            "requested_start_s": window_start_s,
-            "requested_end_s": window_end_s,
-            "start_s": float(t[0]),
-            "end_s": float(t[-1]),
-            "duration_s": window_duration,
-            "sample_count": int(x.size),
-            "basic_resolution_hz": 1.0 / window_duration,
-        },
+        "signal": signal_block(series, active, input_ref),
+        "representation": representation_block(series, fs, nominal),
+        "window": window_block(t, x, window_start_s, window_end_s, window_duration),
         "welch": {
             "detrend": WELCH_DETREND,
             "window": WELCH_WINDOW,

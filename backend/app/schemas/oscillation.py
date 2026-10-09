@@ -202,3 +202,97 @@ class OscillationSpectrumOut(BaseModel):
     psd: list[float]
     warnings: list[SpectrumWarningOut]
     detection: DetectionOut
+
+
+class OscillationSpectrogramRequest(BaseModel):
+    """STFT spectrogram request (DEC-176 [APPROVED]). The same identity fields as
+    the spectrum: the signal is resolved from workspace state and the window and
+    band are re-validated by the backend; no samples are accepted."""
+
+    input: ChannelRefIn
+    #: `native` (signal as recorded) or `rms_magnitude` (DEC-173).
+    representation: str = "native"
+    #: Echoed back so the caller can bind the result to a catalogue revision.
+    signal_revision: str | None = None
+    #: Selected analysis window, in the signal's SOURCE time (seconds).
+    window_start_s: float
+    window_end_s: float
+    frequency_min_hz: float
+    frequency_max_hz: float
+
+
+class SpectrogramSetupOut(BaseModel):
+    """The exact setup the result belongs to (stale-result identity)."""
+
+    representation: str
+    signal_revision: str | None = None
+    window_start_s: float
+    window_end_s: float
+    frequency_min_hz: float
+    frequency_max_hz: float
+
+
+class SpectrogramStftOut(BaseModel):
+    window: str
+    detrend: str
+    scaling: str
+    zero_padding: bool
+    nfft: int
+    nperseg: int
+    window_s: float
+    target_window_s: float
+    overlap_samples: int
+    overlap_fraction: float
+    hop_samples: int
+    hop_s: float
+    slice_count: int
+    unused_tail_samples: int
+    #: fs / nperseg -- the frequency-row spacing of one slice.
+    bin_spacing_hz: float
+    #: `window_centre` -- each column is stamped at the centre of its slice.
+    time_stamp: str
+    window_rule: str
+    #: `none` | `time_resolution` | `minimum_samples` | `data_length`
+    limited_by: str
+
+
+class SpectrogramFrequencyOut(BaseModel):
+    requested_min_hz: float
+    requested_max_hz: float
+    returned_min_hz: float | None = None
+    returned_max_hz: float | None = None
+    row_count: int = 0
+    #: Rows inside the band before any transport reduction.
+    source_row_count: int = 0
+    #: 1 = none. Otherwise each returned row is the MAXIMUM of this many adjacent rows.
+    row_decimation_factor: int = 1
+    nyquist_hz: float
+
+
+class SpectrogramMatrixOut(BaseModel):
+    rows: int
+    columns: int
+    cells: int
+    max_cells: int
+    #: Linear PSD `<unit>²/Hz`, rounded to 6 significant digits for transport.
+    value_digits: int
+
+
+class OscillationSpectrogramOut(BaseModel):
+    #: `ok`, or `unavailable` -- a valid, explained "no spectrogram" result.
+    status: Literal["ok", "unavailable"]
+    reason_code: str | None = None
+    message: str | None = None
+    setup: SpectrogramSetupOut
+    signal: SpectrumSignalOut
+    representation: SpectrumRepresentationOut
+    window: SpectrumWindowOut
+    stft: SpectrogramStftOut | None = None
+    frequency: SpectrogramFrequencyOut | None = None
+    matrix: SpectrogramMatrixOut | None = None
+    #: Slice-centre times in the signal's SOURCE time (seconds), length = columns.
+    times_s: list[float] = []
+    frequencies_hz: list[float] = []
+    #: Linear PSD, `psd[row][column]` = `psd[frequency][time]`.
+    psd: list[list[float]] = []
+    warnings: list[SpectrumWarningOut] = []

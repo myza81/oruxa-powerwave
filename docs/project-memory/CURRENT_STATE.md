@@ -21,6 +21,18 @@ parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
 DEC-122 display timezone).
 
 
+**Oscillation Analysis Spectrogram / STFT: implemented, owner UAT accepted, DEC-176 `[APPROVED]` (2026-10-09).** Welch answers "what
+frequencies are present"; the `Time-Frequency Spectrogram (STFT)` card answers "when does that frequency content occur"
+(`POST /api/v1/workspaces/{ws}/oscillation-analysis/spectrogram`, same request identity as the spectrum; NumPy only, SciPy is a dev/test
+reference; shared `prepare_analysis_window`). Linear PSD from the backend, dB only in the browser (one global colour range, default
+60 dB, 40/60/80/100 dB display control); candidate guides reuse the DEC-175 result; a Time Group t0 adds a `t = 0` guide; > 120 000
+cells are reduced by disclosed peak-hold; short windows return an explained `unavailable` result and the Welch spectrum stays. **Phase 1 is
+visual evidence only -- no automatic ringdown / ambient / persistent classification.** Accepted trade-off: a low `f_min` forces a long
+window, so a ~70-80 s record at `f_min = 0.1 Hz` has only ~8 time slices (coarse event timing); raise `f_min` for better timing. Future work
+may add expert / custom STFT resolution controls if real use cases justify them. **Next (not started, roadmap unchanged):** damping /
+modal analysis (Prony / Matrix Pencil), multi-channel and cross-location evidence (coherence, mode shape), oscillation-type
+classification with a deterministic "Why" (AI only explains structured evidence). Details: DECISIONS.md DEC-176.
+
 **Oscillation Analysis spectrum + candidate detection: implemented, owner UAT accepted, DEC-174 and DEC-175 `[APPROVED]` (2026-10-08).**
 `Analyze` runs a backend Welch PSD (`POST /api/v1/workspaces/{ws}/oscillation-analysis/spectrum`; NumPy `rfft` only, SciPy is
 dev/test reference; periodic Hann, constant detrend, 50 % overlap, mean, one-sided density, `nfft = nperseg`, segment about
@@ -32,7 +44,7 @@ reported, near-DC / below-2-cycle content explained rather than promoted, rankin
 `warnings[]` behind a deterministic "Why" list. Thresholds (6 dB, 8-sigma, 2 cycles) are Phase-1 heuristics, not standards.
 **The capability stops at spectral evidence + candidate interpretation.** No AI, no Strong/Weak labels, no oscillation-type
 classification. Real-event UAT: near-DC disturbance energy not promoted; 4.95 Hz in frequency and independently in MW; a separate
-1.15 Hz MW candidate. **Next planned slice: Spectrogram / STFT (not started).** Later: damping / modal analysis (Prony / Matrix
+1.15 Hz MW candidate. **Spectrogram / STFT: see the next paragraph.** Later: damping / modal analysis (Prony / Matrix
 Pencil), multi-channel and cross-location evidence (coherence, mode shape), and oscillation-type classification (inter-area /
 local / SSO / forced / control interaction) with its own deterministic "Why"; AI, if ever added, only explains structured
 evidence. Details: DECISIONS.md DEC-174 / DEC-175. **Deferred `[OPEN]`:** other Plotly charts pass string axis titles

@@ -25566,3 +25566,101 @@ ever added, may only explain structured evidence and must never create engineeri
 Tests: `backend/tests/test_oscillation_candidates.py` (domain + synthetic signals + SciPy reference),
 `test_oscillation_spectrum.py` (API block), `test_frontend_oscillation_analysis_shell.py`, `browser-tests/oscillation_setup.spec.js`
 (new "candidate detection" describe).
+
+
+## DEC-176 -- Oscillation Analysis time-frequency spectrogram (STFT): estimator, window-length policy, time stamps, dB display and transport limits
+
+Status: **[APPROVED]** (owner, 2026-10-09; was `[PROPOSAL]`; UAT accepted for the basic STFT capability) -- implemented on
+`feat/event-reconstruction`. Builds on DEC-171/172/173/174/175 and changes none of them (the Welch mathematics, segmentation rule,
+candidate detection and RMS representation are untouched). Scope: add the **time** dimension to the Welch spectrum. **Welch answers
+"what frequencies are present"; the spectrogram answers "when does that frequency content occur"** (before / after a disturbance,
+decaying, persistent, intermittent, drifting). **Phase 1 is visual evidence only**: not implemented, deliberately -- damping, Prony /
+Matrix Pencil, oscillation-type classification, automatic ringdown vs persistent vs ambient labelling, forced-oscillation source
+identification, coherence, mode shape, AI.
+
+**Approved Phase-1 policy (2026-10-09).** NumPy-only production implementation (SciPy is a dev/test reference only); periodic Hann; per-slice
+mean removal; 50 % overlap; one-sided PSD density; `nfft = nperseg`, no zero-padding; only complete slices; window target `2 / f_min`
+(`T / 4.5` when `f_min = 0`), shortened where needed to keep at least 8 slices, never below 16 samples; a useful result needs >= 3 slices,
+>= 3 frequency rows inside the band and >= 1 cycle of `f_min` per window; slice time = centre of the STFT window; the backend returns
+**linear PSD** and the frontend alone converts to dB for display; one global colour range across the whole matrix (default 60 dB,
+visual 40/60/80/100 dB controls); candidate-frequency overlays reuse the DEC-175 result; the event `t = 0` guide reuses the existing Time
+Group state; payload cap 120 000 cells, excess frequency rows reduced by deterministic peak-hold and always disclosed; the time axis is
+never decimated; short-window / unavailable cases are HTTP 200 and never invalidate the Welch spectrum; no automatic classification.
+**The 2-cycle target, 8-slice target, 1-cycle minimum, 3-slice / 3-row minima, 16-sample floor, 60 dB default dynamic range and the
+120 000-cell cap are engineering / product heuristics, not universal standards.**
+
+**Accepted Phase-1 trade-off (owner UAT, 2026-10-09).** A lower `f_min` needs a longer STFT window; a longer window improves frequency
+resolution and reduces time resolution. On a ~70-80 s disturbance record with `f_min = 0.1 Hz` only about 8 time slices are available, so
+event timing is coarse. This is accepted and is **not** to be "fixed" by loosening the constraints or fabricating slices. For better time
+resolution the engineer raises `f_min` when lower-frequency components are not required; the `window_shortened_for_time_resolution`
+warning says so ("For better time resolution, raise the minimum analysis frequency when lower-frequency components are not required.").
+Possible future work, only if real use cases justify it: expert / custom STFT resolution controls.
+
+**Estimator `[FACT]`.** NumPy-only (`app/domain/spectrogram_estimation.py`, `numpy.fft.rfft`); SciPy stays a dev/test reference
+(`scipy.signal.spectrogram` parity, rtol 1e-9, five geometries incl. 5 kHz and odd lengths). Same conventions as the Welch PSD: periodic
+Hann, constant detrend per slice, 50 % overlap (`noverlap = nperseg // 2`), one-sided `density` scaling, `nfft = nperseg` (**no
+zero-padding**), only complete slices (unused tail reported). The **mean over all slices equals the Welch PSD of the same geometry**
+(tested), so the two views are quantitatively consistent. One preprocessing path: `prepare_analysis_window` (extracted from
+`compute_spectrum` with no behaviour change; the Welch/candidate tests pass unchanged) resolves the signal from workspace state,
+the native or DEC-173 RMS representation, the window and the band, with the same errors and RMS warnings (`rms_rolloff`,
+`nominal_frequency_assumed`).
+
+**Window-length rule (`choose_stft_geometry`, deterministic, Phase 1).** (1) target `2 / f_min` seconds (`T / 4.5` when `f_min = 0`); (2)
+shorten it to the longest window that still gives **8** slices at 50 % overlap (about `T / 4.5`); (3) never below 16 samples or above the
+data; (4) the spectrogram is **unavailable** unless it keeps >= 3 slices, >= 3 frequency rows inside the band, and the window holds >= 1
+cycle of `f_min`. Where step (2) shortens the window the result carries `window_shortened_for_time_resolution` (frequency rows coarser than
+the Welch spectrum's; components below `2 / window` Hz fit < 2 cycles per slice). `few_time_slices` and `min_frequency_below_bin_spacing` are
+reported likewise. The constants (2 cycles, 8 slices, 3 slices, 3 rows, 1 cycle, 16 samples) are Phase-1 engineering heuristics, not standards.
+
+**Time stamp.** Each column is stamped at the **centre of its slice**, `t_first + (start + nperseg / 2) / fs`, in the signal's **source
+time** (SciPy's convention). The browser maps it through the existing Time Group display basis (workspace elapsed time, or event time when
+a t0 exists); no Oscillation-specific time system. A t0 inside the shown range adds one vertical `t = 0` guide (shape `event-origin`).
+
+**Power and colour.** The backend returns **linear PSD** (`unit^2/Hz`), rounded to 6 significant digits for transport (<= 5e-7 relative).
+The browser draws `10 log10(PSD)` with **one global range for the whole matrix** (maximum = top; default 60 dB below it; a display-only
+40/60/80/100 dB control that redraws without a request; power below `max x 1e-10` is clamped to avoid `-inf`). Nothing is normalised per
+slice. Colour-bar title `PSD (dB re 1 <unit>²/Hz)` -- exact, because the plotted value is `10 log10(PSD / (1 unit²/Hz))`; an absent unit
+reads `(signal unit)²/Hz` and is never invented. A constant signal (no power) is stated, not drawn. Colour scale: Viridis (sequential,
+perceptually uniform, colour-vision-safe).
+
+**Short windows.** A window that cannot give a useful picture is a **200 `unavailable`** result (`window_too_short`,
+`frequency_resolution_too_coarse`, `too_many_time_slices`) with the message *"The selected window is too short to provide useful
+time-frequency resolution. Frequency Spectrum remains available."* plus the measured reason; the Welch spectrum and candidates are
+unaffected. Nothing is zero-padded to manufacture columns. Genuine request errors reuse the spectrum's codes (400/404/409/422).
+
+**Transport.** Matrix cap **120 000 cells**. Measured `[FACT]` (this machine): 50 Hz x 160 s, 0.1-25 Hz: 499 x 15, 102 KiB, <10 ms; 5 kHz x 120 s,
+0.1-2 Hz: 39 x 11, 7 KiB, 50 ms; 0.1-100 Hz: 1999 x 11, 275 KiB; full band 1-2500 Hz: 4 999 rows x 119 -> reduced 5x to 1000 x 119 (119 000 cells),
+1.3 MiB, 90 ms compute. Above the cap adjacent **frequency rows are peak-held (maximum, never averaged)** by a reported factor
+(`frequency_rows_reduced`); time is never reduced; if even one row per slice exceeds the cap the result is `unavailable`. Browser draw of
+119 000 cells: about 60 ms.
+
+**API.** `POST /api/v1/workspaces/{ws}/oscillation-analysis/spectrogram` -- same request fields as the spectrum. Response: `status`
+(`ok`|`unavailable`), `reason_code`, `message`, `setup` (the exact identity echo), `signal`/`representation`/`window` (as the spectrum), `stft`
+(window, hop, overlap, slice count, row spacing, rule, time stamp), `frequency` (requested/returned/row counts, reduction factor), `matrix`,
+`times_s`, `frequencies_hz`, `psd[row][column]`, `warnings`.
+
+**Frontend.** New card `Time-Frequency Spectrogram (STFT)` below the Welch card (order: setup, spectrum + detected components, spectrogram,
+Analysis Information); Plotly heatmap, `Time (s)` / `Frequency (Hz)`, 11 px axis titles. One Analyze press issues both requests with
+the identical request object. Stale behaviour is the spectrum's (signal key + revision via the catalogue; changed window/band dims it,
+reverting restores it, a different/removed signal discards it, superseded responses are dropped). **Candidate overlays reuse the
+spectrum's accepted candidates** (no second detector): a horizontal guide at each frequency, primary thicker/dashed, label `x.xx Hz`; drawn
+only while the spectrum belongs to the same Analyze press. Browser maths is limited to the display dB conversion (guard test).
+
+**Validation `[FACT]`.** Synthetic (50 Hz sampling, 160 s): stationary sinusoid (constant ridge), two stationary tones, first-half-only
+component (> 1000x contrast), component appearing at 60 s (onset located within one window), exponentially decaying ringdown (strictly
+fading), intermittent bursts (> 1e4 contrast), 1 -> 5 Hz chirp (ridge follows), constant (all-zero, finite), seeded noise (flat, no ridge),
+very short record (unavailable), RMS-derived 5 Hz modulation appearing at 30 s, requested-band filtering. **Real-event-like:** a 50-unit
+step/recovery plus a 0.3-amplitude 4.95 Hz and 0.1-amplitude 1.15 Hz ringdown after t = 30 s: the matrix maximum (event energy) is ~650x the strongest 4.95 Hz cell
+in absolute PSD yet both ridges are > 100x / > 10x above the noise floor after the event and < 0.1x before it, all inside an 80 dB range;
+a linear colour scale would hide them, which is why the display is logarithmic.
+
+**Not done / still open (later slices).** (1) Optional per-candidate temporal evidence (first/last time above a threshold, fraction of
+slices visible) was *not* added: any threshold is a new heuristic and the spectrogram is the evidence for now. (2) Whether `2 cycles`,
+`8 slices` and `1 cycle` are the right Phase-1 numbers -- note the default band `0.1-2 Hz` makes recordings shorter than about 45 s
+"unavailable" until `f_min` is raised (a 10 s event needs `f_min` >= ~0.5 Hz). (3) Whether the window should become user-selectable (expert STFT controls). (4)
+Peak-hold row reduction vs asking the engineer to narrow the band (peak-hold is approved; the reduction is always disclosed: "Display frequency rows
+reduced N× using peak-hold ..." in the warnings and a `Row reduction` details row). (5) Whether a drifting-frequency ridge needs a ridge-tracking overlay
+(not built). (6) Fixed Phase-1 STFT window means a ringdown shorter than the window is smeared in time.
+
+Tests: `backend/tests/test_oscillation_spectrogram.py`, `test_frontend_oscillation_analysis_shell.py`,
+`browser-tests/oscillation_setup.spec.js` ("Time-Frequency Spectrogram (STFT)" describe).

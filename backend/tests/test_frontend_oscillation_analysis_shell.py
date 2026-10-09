@@ -7,6 +7,7 @@ browser-tests/oscillation_setup.spec.js."""
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -44,11 +45,12 @@ def test_panel_has_setup_and_a_spectrum_card_but_no_interpretation_surface():
     panel = _between('id="wwOscillationPanel"', "<!-- Compliance & Capability, Slice 1")
     assert "Oscillation Analysis" in panel
     for heading in ("Analysis Setup", "Analysis Window", "Frequency Range", "Frequency Spectrum (Welch PSD)", "Display",
-                    "Analysis Information", "Data Adequacy"):
+                    "Time-Frequency Spectrogram (STFT)", "Analysis Information", "Data Adequacy"):
         assert heading in panel
-    # The spectrum card is hidden until Analyze; no static chart surface, no interpretation, no Spectrogram yet.
+    # The result cards are hidden until Analyze; no static chart surface and no interpretation.
     assert 'id="wwOscSpectrumCard" hidden' in panel
-    for forbidden in ("<canvas", "<svg", "spectrogram", "dominant", "peak"):
+    assert 'id="wwOscSpectrogramCard" hidden' in panel
+    for forbidden in ("<canvas", "<svg", "dominant", "peak", "ringdown", "persistent"):
         assert forbidden not in panel.lower()
 
 
@@ -87,12 +89,29 @@ def test_no_processing_algorithm_is_present_in_the_browser():
     )
     # Candidate detection (DEC-175 [PROPOSAL]) is the backend's deterministic result: the page only draws the
     # returned evidence, so no peak-finding / prominence / spectral-estimation code may exist in it.
-    for forbidden in ("fft", "spectrogram(", "stft", "prony", "damping", "float64array", "findpeaks", "find_peaks",
-                      "argmax", "prominence(", "math.log10", "math.log(", "sinc"):
+    for forbidden in ("fft", "prony", "damping", "float64array", "findpeaks", "find_peaks",
+                      "argmax", "prominence(", "math.log(", "sinc", "ringdown"):
         assert forbidden not in script
+    # The STFT (DEC-176 [PROPOSAL]) is the backend's too: no transform, window or slicing code in the page.
+    for pattern in (r"(?<![a-z])stft\(", r"(?<![a-z])spectrogram\(", r"sliding", r"rfft"):
+        assert not re.search(pattern, script), pattern
     assert "/oscillation-analysis/spectrum" in script
     # The candidate markers/list come only from the response's `detection` block.
     assert "result.detection" in script and "det.candidates" in script
+
+
+def test_the_only_browser_maths_on_the_spectrogram_is_the_display_db_conversion():
+    """DEC-176 [PROPOSAL]: the backend returns LINEAR PSD; the page converts to dB for display only, inside one
+    function, with one global range (never per time slice) and nothing else."""
+    script = chr(10).join(line for line in _osc_script().splitlines() if not line.strip().startswith("//"))
+    assert script.count("Math.log10") == 2
+    db = _between("function wwOscSpectrogramDb", "function wwOscSpectrogramDetailRows")
+    assert db.count("Math.log10") == 2
+    assert "/oscillation-analysis/spectrogram" in script and script.count("/oscillation-analysis/spectrogram") == 1
+    # tied to the signal revision / setup exactly like the spectrum; candidates come from the spectrum result only
+    for needle in ("wwOscRequestMatchesSetup(sg.request)", "wwSignalCatalogueIsCurrent(sg.request.signalKey, sg.request.signalRevision)",
+                   "sp.request !== sg.request", "sp.result.detection.candidates"):
+        assert needle in script, needle
 
 
 def test_raw_vi_math_lives_in_the_backend_not_the_browser():

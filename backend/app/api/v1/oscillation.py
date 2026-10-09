@@ -10,6 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.schemas.oscillation import (
     OscillationRepresentationOut,
     OscillationRepresentationRequest,
+    OscillationSpectrogramOut,
+    OscillationSpectrogramRequest,
     OscillationSpectrumOut,
     OscillationSpectrumRequest,
 )
@@ -17,6 +19,7 @@ from app.schemas.source import ErrorOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.errors import ImportServiceError
 from app.services.oscillation_representation_service import derive_analysis_representation, describe
+from app.services.oscillation_spectrogram_service import compute_spectrogram
 from app.services.oscillation_spectrum_service import compute_spectrum
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -36,6 +39,7 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "non_finite_samples": status.HTTP_422_UNPROCESSABLE_CONTENT,
     "non_uniform_sampling": status.HTTP_422_UNPROCESSABLE_CONTENT,
     "invalid_welch_configuration": status.HTTP_422_UNPROCESSABLE_CONTENT,
+    "invalid_spectrogram_configuration": status.HTTP_422_UNPROCESSABLE_CONTENT,
 }
 
 
@@ -104,3 +108,34 @@ def get_frequency_spectrum(
             detail=ErrorOut(code=exc.code, message=exc.message).model_dump(),
         ) from exc
     return OscillationSpectrumOut(**result)
+
+
+@router.post("/spectrogram", response_model=OscillationSpectrogramOut)
+def get_spectrogram(
+    workspace_id: str,
+    body: OscillationSpectrogramRequest,
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+) -> OscillationSpectrogramOut:
+    """STFT spectrogram of one signal over the selected window and frequency
+    range (DEC-176 [APPROVED]). Same request identity and validation as the
+    spectrum; a window too short for a useful picture is a 200 `unavailable`
+    result. Nothing is stored."""
+    if not workspace_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorOut(code="invalid_workspace", message="workspace_id must not be blank.").model_dump(),
+        )
+    try:
+        result = compute_spectrogram(
+            workspace_id=workspace_id, input_ref=body.input.to_domain(), representation=body.representation,
+            signal_revision=body.signal_revision, window_start_s=body.window_start_s, window_end_s=body.window_end_s,
+            f_min_hz=body.frequency_min_hz, f_max_hz=body.frequency_max_hz,
+            source_registry=source_registry, calc_registry=calc_registry,
+        )
+    except ImportServiceError as exc:
+        raise HTTPException(
+            status_code=_STATUS_BY_ERROR_CODE.get(exc.code, status.HTTP_400_BAD_REQUEST),
+            detail=ErrorOut(code=exc.code, message=exc.message).model_dump(),
+        ) from exc
+    return OscillationSpectrogramOut(**result)

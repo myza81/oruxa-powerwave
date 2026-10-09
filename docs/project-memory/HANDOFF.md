@@ -9,6 +9,19 @@ Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
 ## What was most recently done
 
+**Oscillation Analysis Spectrogram / STFT (DEC-176 `[APPROVED]`, 2026-10-09) -- owner UAT accepted; closed in one commit
+`feat: add oscillation spectrogram analysis` (not pushed).** Backend: `app/domain/spectrogram_estimation.py` (`choose_stft_geometry`,
+`stft_psd`, `peak_hold_rows`), `app/services/oscillation_spectrogram_service.py` (`compute_spectrogram`), `POST
+.../oscillation-analysis/spectrogram`; `compute_spectrum` now delegates its shared preprocessing to `prepare_analysis_window` (+
+`representation_warnings`, `signal_block`, `window_block`) with NO behaviour change (Welch / candidate tests untouched). Frontend
+(`wwOsc*` in `index.html`): `wwOscRunSpectrogram()`, `wwOscRenderSpectrogram()`, `wwOscDrawSpectrogram()`, `wwOscSpectrogramDb()` (the only
+browser maths: display dB), `wwOscRequestMatchesSetup()`; one Analyze press shares ONE request object between spectrum and spectrogram (the
+candidate guides require that identity). Tests: `test_oscillation_spectrogram.py` (SciPy parity, 12 synthetic scenarios, service, API),
+`test_frontend_oscillation_analysis_shell.py`, `browser-tests/oscillation_setup.spec.js` (STFT describe; `synthetic_comtrade.js` gained
+`onsetS`). Gotcha: a `--reload` uvicorn left on :8000 is silently reused by Playwright (`reuseExistingServer`). **Accepted limitation:**
+low `f_min` on a short record gives ~8 slices (coarse timing) -- do not loosen the constraints; raise `f_min`. **Next:** not started --
+damping / modal analysis, cross-channel evidence, classification with a deterministic "Why".
+
 **Oscillation Analysis Welch spectrum + candidate detection (DEC-174 / DEC-175 `[APPROVED]`, 2026-10-08) -- owner UAT accepted; closed
 in one combined commit `feat: add oscillation spectrum and candidate detection` (not pushed).** Backend: `app/domain/spectral_estimation.py`
 (Welch + `choose_segmentation`), `app/domain/oscillation_peaks.py` (`detect_candidates`; thresholds are named constants),
@@ -18,7 +31,7 @@ in one combined commit `feat: add oscillation spectrum and candidate detection` 
 `wwOscRenderSpectrum()`, `wwOscCandidateTrace()`, `wwOscRenderDetection()`; no spectral or detection maths in the browser.
 Tests: `test_oscillation_spectrum.py`, `test_oscillation_candidates.py`, `test_frontend_oscillation_analysis_shell.py`,
 `browser-tests/oscillation_setup.spec.js`. Deferred: Plotly string axis titles in other charts are not rendered by Plotly 3.7
-(Oscillation uses `{ text }`). **Next planned slice: Spectrogram / STFT -- not started.** Later: damping/modal analysis,
+(Oscillation uses `{ text }`). Later: damping/modal analysis,
 multi-channel/cross-location evidence, oscillation-type classification with a deterministic "Why" (AI only to explain structured evidence).
 
 **Raw V/I RMS magnitude representation for Oscillation Analysis (DEC-173 `[APPROVED]`, 2026-10-08), owner UAT accepted;

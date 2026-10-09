@@ -88,7 +88,7 @@ async function setBand(page, min, max) {
 test.describe("Oscillation Analysis setup -- navigation and empty state", () => {
   test("opens, shows the three sections, nothing is assessed and Analyze is disabled without a signal", async ({ page }) => {
     await openOscillation(page);
-    await expect(page.locator("#wwOscillationPanel h3")).toHaveText(["Oscillation Analysis", "Frequency Spectrum (Welch PSD)", "Analysis Information", "Data Adequacy"]);
+    await expect(page.locator("#wwOscillationPanel h3")).toHaveText(["Oscillation Analysis", "Frequency Spectrum (Welch PSD)", "Time-Frequency Spectrogram (STFT)", "Analysis Information", "Data Adequacy"]);
     await expect(page.locator("#wwOscSignalSelect")).toHaveValue("");
     await expect(page.locator("#wwOscStartInput")).toBeDisabled();
     await expect(page.locator("#wwOscMinFreqInput")).toHaveValue("0.1");
@@ -927,7 +927,7 @@ async function spectrumPage(page, options = {}) {
 test.describe("Oscillation Analysis -- Frequency Spectrum (Welch PSD)", () => {
   test("nothing is computed or drawn until Analyze is pressed", async ({ page }) => {
     const requests = [];
-    page.on("request", (r) => { if (r.url().includes("/oscillation-analysis/spectrum")) requests.push(r.url()); });
+    page.on("request", (r) => { if (r.url().endsWith("/oscillation-analysis/spectrum")) requests.push(r.url()); });
     await spectrumPage(page);
     await expect(page.locator("#wwOscSpectrumCard")).toBeHidden();
     expect(requests).toHaveLength(0);
@@ -935,7 +935,7 @@ test.describe("Oscillation Analysis -- Frequency Spectrum (Welch PSD)", () => {
 
   test("Analyze sends one reference-only request and draws the returned spectrum", async ({ page }) => {
     const requests = [];
-    page.on("request", (r) => { if (r.url().includes("/oscillation-analysis/spectrum")) requests.push(r.postDataJSON()); });
+    page.on("request", (r) => { if (r.url().endsWith("/oscillation-analysis/spectrum")) requests.push(r.postDataJSON()); });
     await spectrumPage(page);
     await page.locator("#wwOscAnalyzeBtn").click();
     await expect(page.locator("#wwOscSpectrumCard")).toBeVisible();
@@ -1045,7 +1045,7 @@ test.describe("Oscillation Analysis -- Frequency Spectrum (Welch PSD)", () => {
 
   test("the PSD axis can be switched to logarithmic without a new request", async ({ page }) => {
     const requests = [];
-    page.on("request", (r) => { if (r.url().includes("/oscillation-analysis/spectrum")) requests.push(1); });
+    page.on("request", (r) => { if (r.url().endsWith("/oscillation-analysis/spectrum")) requests.push(1); });
     await spectrumPage(page);
     await page.locator("#wwOscAnalyzeBtn").click();
     await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
@@ -1142,7 +1142,7 @@ test.describe("Oscillation Analysis -- Frequency Spectrum (Welch PSD)", () => {
     await expect(page.locator("#wwOscInfoDerivedCount")).not.toHaveText("—");
     await setBand(page, 0.5, 2);
     const requests = [];
-    page.on("request", (r) => { if (r.url().includes("/oscillation-analysis/spectrum")) requests.push(r.postDataJSON()); });
+    page.on("request", (r) => { if (r.url().endsWith("/oscillation-analysis/spectrum")) requests.push(r.postDataJSON()); });
     await page.locator("#wwOscAnalyzeBtn").click();
     await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
     expect(requests[0].representation).toBe("rms_magnitude");
@@ -1248,7 +1248,7 @@ test.describe("Oscillation Analysis -- Frequency Spectrum presentation", () => {
 
   test("Histogram draws one bar per returned Welch bin, from the same result, with no new request", async ({ page }) => {
     const requests = [];
-    page.on("request", (r) => { if (r.url().includes("/oscillation-analysis/spectrum")) requests.push(1); });
+    page.on("request", (r) => { if (r.url().endsWith("/oscillation-analysis/spectrum")) requests.push(1); });
     await analysed(page);
     const line = await plotData(page);
     const result = await page.evaluate(() => wwOscState.spectrum.result);
@@ -1275,7 +1275,7 @@ test.describe("Oscillation Analysis -- Frequency Spectrum presentation", () => {
 
   test("all four Display x PSD-axis combinations draw, keep labels and unit, and never re-request", async ({ page }) => {
     const requests = [];
-    page.on("request", (r) => { if (r.url().includes("/oscillation-analysis/spectrum")) requests.push(1); });
+    page.on("request", (r) => { if (r.url().endsWith("/oscillation-analysis/spectrum")) requests.push(1); });
     await analysed(page);
     for (const display of ["line", "bars"]) {
       for (const scale of ["linear", "log"]) {
@@ -1430,5 +1430,296 @@ test.describe("Oscillation Analysis -- candidate detection", () => {
     await expect(page.locator("#wwOscSpectrumCard")).toBeHidden();
     await expect(page.locator("#wwOscDetection")).toBeHidden();
     await expect(page.locator("#wwOscDetection")).toBeEmpty();
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Time-Frequency Spectrogram (STFT, DEC-176 [APPROVED]).
+// Same Analyze press as the spectrum. Fixture: 40 s / 1 kHz FREQ record with a 1 Hz
+// component that only appears after t = 20 s; band 0.25-3 Hz -> an 8 s Hann window,
+// 50 % overlap (4 s hop), 9 slices, 0.125 Hz row spacing. Tests read the plotted
+// matrix; Plotly internals beyond "a heatmap is rendered" are not asserted.
+// ---------------------------------------------------------------------------
+const SPECTROGRAM_URL = "**/oscillation-analysis/spectrogram";
+const ONSET_CHANNELS = [{ name: "FREQ", unit: "Hz", amplitude: 0.05, frequencyHz: 1.0, onsetS: 20 },
+  { name: "P_MW", unit: "MW", amplitude: 100, frequencyHz: 0.5 }];
+const gramPlot = "#wwOscSpectrogramPlot";
+const gramData = (page) => page.evaluate(() => {
+  const el = document.getElementById("wwOscSpectrogramPlot");
+  return { traces: el.data.map((t) => ({ role: t.meta && t.meta.role, type: t.type, x: Array.from(t.x), y: Array.from(t.y),
+                                          width: t.line && t.line.width, colorbar: t.colorbar && t.colorbar.title && t.colorbar.title.text })),
+           z: el.data[0].z.map((row) => Array.from(row)), zmin: el.data[0].zmin, zmax: el.data[0].zmax, layout: el.layout };
+});
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const gramDetail = (page, label) => page.locator("#wwOscSpectrogramDetails > div", {
+  has: page.locator("dt", { hasText: new RegExp("^" + escapeRegExp(label) + "$") }),
+}).locator("dd");
+
+async function spectrogramPage(page, options = {}) {
+  await openOscillation(page);
+  await uploadSynthetic(page, { durationS: 40, channels: ONSET_CHANNELS, ...options });
+  await selectFreq(page);
+  await setBand(page, 0.25, 3);
+}
+async function spectrogramAnalysed(page, options = {}) {
+  await spectrogramPage(page, options);
+  await page.locator("#wwOscAnalyzeBtn").click();
+  await expect(page.locator(gramPlot + ".js-plotly-plot")).toHaveCount(1);
+  await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+}
+
+test.describe("Oscillation Analysis -- Time-Frequency Spectrogram (STFT)", () => {
+  test("hidden until Analyze; then a heatmap card sits below the spectrum with labelled axes and colour bar", async ({ page }) => {
+    await spectrogramPage(page);
+    await expect(page.locator("#wwOscSpectrogramCard")).toBeHidden();
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrogramCard")).toBeVisible();
+    await expect(page.locator("#wwOscSpectrogramCard h3")).toHaveText("Time-Frequency Spectrogram (STFT)");
+    await expect(page.locator(gramPlot + ".js-plotly-plot")).toHaveCount(1);
+    // order: Welch spectrum card, then the spectrogram card, then Analysis Information
+    const order = await page.evaluate(() => Array.from(document.querySelectorAll("#wwOscillationPanel section.ww-osc-card h3")).map((h) => h.textContent));
+    expect(order.indexOf("Frequency Spectrum (Welch PSD)")).toBeLessThan(order.indexOf("Time-Frequency Spectrogram (STFT)"));
+    expect(order.indexOf("Time-Frequency Spectrogram (STFT)")).toBeLessThan(order.indexOf("Analysis Information"));
+    const d = await gramData(page);
+    expect(d.traces[0]).toMatchObject({ role: "stft-spectrogram", type: "heatmap" });
+    expect(d.traces[0].colorbar).toBe("PSD (dB re 1 Hz²/Hz)");
+    const title = (axis) => (typeof axis.title === "string" ? axis.title : axis.title.text);
+    expect(title(d.layout.xaxis)).toBe("Time (s)");
+    expect(title(d.layout.yaxis)).toBe("Frequency (Hz)");
+    // The heatmap is actually rendered and the axis titles/colour bar are visible, inside the figure.
+    const rendered = await page.evaluate(() => {
+      const el = document.getElementById("wwOscSpectrogramPlot");
+      const svg = el.querySelector("svg.main-svg").getBoundingClientRect();
+      const box = (sel) => {
+        const n = el.querySelector(sel);
+        if (!n) return null;
+        const b = n.getBoundingClientRect();
+        return { w: b.width, h: b.height, inside: b.left >= svg.left - 1 && b.right <= svg.right + 1 && b.top >= svg.top - 1 && b.bottom <= svg.bottom + 1,
+                 text: n.textContent, font: getComputedStyle(n).fontSize };
+      };
+      return { image: !!el.querySelector(".heatmaplayer image, .heatmaplayer canvas, .hm image"), x: box(".xtitle"), y: box(".ytitle"),
+               bar: box(".colorbar"), barTitle: box(".cbtitle") };
+    });
+    expect(rendered.image).toBe(true);
+    expect(rendered.x).toMatchObject({ text: "Time (s)", font: "11px", inside: true });
+    expect(rendered.y).toMatchObject({ text: "Frequency (Hz)", font: "11px", inside: true });
+    expect(rendered.bar.w).toBeGreaterThan(5);
+    expect(rendered.barTitle.text).toBe("PSD (dB re 1 Hz²/Hz)");
+  });
+
+  test("one reference-only request, same identity fields as the spectrum; the spectrum is still drawn", async ({ page }) => {
+    const gram = [], spec = [];
+    page.on("request", (r) => {
+      if (r.url().endsWith("/oscillation-analysis/spectrogram")) gram.push(r.postDataJSON());
+      if (r.url().endsWith("/oscillation-analysis/spectrum")) spec.push(r.postDataJSON());
+    });
+    await spectrogramAnalysed(page);
+    expect(gram).toHaveLength(1);
+    expect(spec).toHaveLength(1);
+    expect(gram[0]).toEqual(spec[0]);
+    expect(Object.keys(gram[0]).sort()).toEqual(["frequency_max_hz", "frequency_min_hz", "input", "representation", "signal_revision", "window_end_s", "window_start_s"]);
+  });
+
+  test("the matrix shows the component only after its onset, on one global dB range", async ({ page }) => {
+    await spectrogramAnalysed(page);
+    const d = await gramData(page);
+    const result = await page.evaluate(() => wwOscState.spectrogram.result);
+    expect(result.stft).toMatchObject({ slice_count: 9, time_stamp: "window_centre" });
+    // fs is derived from the record's microsecond time stamps, so the figures are exact only to ~1e-6.
+    expect(result.stft.window_s).toBeCloseTo(8, 4);
+    expect(result.stft.hop_s).toBeCloseTo(4, 4);
+    expect(result.stft.bin_spacing_hz).toBeCloseTo(0.125, 5);
+    expect(d.z).toHaveLength(result.matrix.rows);
+    expect(d.z[0]).toHaveLength(9);
+    const ys = d.traces[0].y;
+    const row = ys.reduce((best, f, i) => (Math.abs(f - 1.0) < Math.abs(ys[best] - 1.0) ? i : best), 0);
+    const x = d.traces[0].x;
+    const before = d.z[row].filter((_, i) => x[i] < 16), after = d.z[row].filter((_, i) => x[i] > 28);
+    expect(Math.min(...after) - Math.max(...before)).toBeGreaterThan(30); // dB
+    // global range: zmax is the matrix maximum, zmin is rangeDb below it (60 by default), no per-slice normalisation
+    expect(d.zmax).toBeCloseTo(Math.max(...d.z.flat()), 6);
+    expect(d.zmax - d.zmin).toBeCloseTo(60, 6);
+    // the backend value is linear PSD and is the thing converted: 10 log10
+    expect(d.zmax).toBeCloseTo(10 * Math.log10(Math.max(...result.psd.flat())), 6);
+  });
+
+  test("accepted spectrum candidates become guide lines, the primary more prominent", async ({ page }) => {
+    await spectrogramAnalysed(page, { channels: [{ name: "FREQ", unit: "Hz", amplitude: 0.05, frequencyHz: 1.0 }] });
+    const cands = await page.evaluate(() => wwOscState.spectrum.result.detection.candidates);
+    expect(cands.length).toBeGreaterThan(0);
+    const d = await gramData(page);
+    const guides = d.traces.filter((t) => t.role === "spectrogram-candidate");
+    expect(guides).toHaveLength(cands.length);
+    expect(guides.map((g) => g.y[0])).toEqual(cands.map((c) => c.frequency_hz));
+    if (guides.length > 1) expect(guides[0].width).toBeGreaterThan(guides[1].width);
+    // no second detector: the spectrogram result carries no detection block
+    expect(await page.evaluate(() => "detection" in wwOscState.spectrogram.result)).toBe(false);
+  });
+
+  test("a workspace t=0 adds one vertical guide inside the window and shifts the time axis", async ({ page }) => {
+    await spectrogramAnalysed(page);
+    expect((await gramData(page)).layout.shapes || []).toHaveLength(0);
+    const before = (await gramData(page)).traces[0].x[0];
+    const groupId = await page.evaluate(() => wwTimeGroupIdForDisplaySourceId(Array.from(ww.sourceChannelsData.keys())[0]));
+    await page.evaluate((id) => { ww.timeGroupT0State.set(id, 20); wwOscRender(); }, groupId);
+    await expect.poll(async () => ((await gramData(page)).layout.shapes || []).length).toBe(1);
+    const d = await gramData(page);
+    expect(d.layout.shapes[0]).toMatchObject({ name: "event-origin", x0: 0, x1: 0 });
+    expect(d.traces[0].x[0]).toBeCloseTo(before - 20, 9);
+    expect(await page.evaluate(() => wwOscState.spectrogram.request.startSource)).toBe(0); // the stored window is unchanged
+    await page.evaluate((id) => { ww.timeGroupT0State.delete(id); wwOscRender(); }, groupId);
+    await expect.poll(async () => ((await gramData(page)).layout.shapes || []).length).toBe(0);
+  });
+
+  test("details state the actual time-frequency resolution", async ({ page }) => {
+    await spectrogramAnalysed(page);
+    await expect(gramDetail(page, "STFT window")).toHaveText("8 s (8000 samples)");
+    await expect(gramDetail(page, "Time step (hop)")).toHaveText("4 s (4000 samples)");
+    await expect(gramDetail(page, "Overlap")).toHaveText("50 % (4000 samples)");
+    await expect(gramDetail(page, "Time slices")).toHaveText("9");
+    await expect(gramDetail(page, "Frequency-row spacing (fs/nperseg)")).toHaveText("0.125 Hz");
+    await expect(gramDetail(page, "Column time stamp")).toHaveText("Centre of each STFT window");
+    await expect(gramDetail(page, "Time axis")).toHaveText("Workspace elapsed time (seconds)");
+    await expect(gramDetail(page, "Requested range")).toHaveText("0.25 to 3 Hz");
+  });
+
+  test("the dynamic-range control redraws the stored result with no request", async ({ page }) => {
+    const gram = [];
+    page.on("request", (r) => { if (r.url().includes("/oscillation-analysis/spectrogram")) gram.push(1); });
+    await spectrogramAnalysed(page);
+    await page.locator("#wwOscSpectrogramRange").selectOption("100");
+    await expect.poll(async () => { const d = await gramData(page); return Math.round(d.zmax - d.zmin); }).toBe(100);
+    expect(gram).toHaveLength(1);
+  });
+
+  test("changing the settings marks the spectrogram not current until re-run; reverting restores it", async ({ page }) => {
+    await spectrogramAnalysed(page);
+    await expect(page.locator("#wwOscSpectrogramState")).toBeHidden();
+    await page.locator("#wwOscMaxFreqInput").fill("2.5");
+    await expect(page.locator("#wwOscSpectrogramState")).toHaveText("Analysis settings changed — run Analyze again");
+    await expect(page.locator(gramPlot)).toHaveAttribute("data-stale", "true");
+    await page.locator("#wwOscMaxFreqInput").fill("3");
+    await expect(page.locator("#wwOscSpectrogramState")).toBeHidden();
+    await expect(page.locator(gramPlot)).toHaveAttribute("data-stale", "false");
+    await setWindow(page, 0, 30);
+    await expect(page.locator("#wwOscSpectrogramState")).toHaveText("Analysis settings changed — run Analyze again");
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrogramState")).toBeHidden();
+    await expect(gramDetail(page, "Analysis window")).toHaveText("30 s (30001 samples)");
+  });
+
+  test("selecting another signal, or removing the analysed one, discards the spectrogram", async ({ page }) => {
+    await spectrogramAnalysed(page);
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_MW"));
+    await expect(page.locator("#wwOscSpectrogramCard")).toBeHidden();
+    expect(await page.evaluate(() => wwOscState.spectrogram.result)).toBeNull();
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "FREQ"));
+    const made = await absOf(page, "ABS FREQ", "FREQ");
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "ABS FREQ"));
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator(gramPlot + ".js-plotly-plot")).toHaveCount(1);
+    await page.evaluate((id) => wwCcDeleteChannel(id), made.id);
+    await expect(page.locator("#wwOscSpectrogramCard")).toBeHidden();
+    expect(await page.evaluate(() => wwOscState.spectrogram.result)).toBeNull();
+  });
+
+  test("a response arriving after the signal changed is discarded", async ({ page }) => {
+    await spectrogramPage(page);
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    await page.route(SPECTROGRAM_URL, async (route) => { await gate; await route.continue(); });
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrogramState")).toHaveText("Computing STFT spectrogram…");
+    await expect(page.locator("#wwOscAnalyzeBtn")).toBeDisabled();
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_MW"));
+    release();
+    await page.waitForTimeout(500);
+    await expect(page.locator("#wwOscSpectrogramCard")).toBeHidden();
+    expect(await page.evaluate(() => wwOscState.spectrogram.result)).toBeNull();
+  });
+
+  test("a window too short is an explained unavailable state; the spectrum and its card stay", async ({ page }) => {
+    await openOscillation(page);
+    await uploadSynthetic(page, { durationS: 3, channels: ONSET_CHANNELS });
+    await selectFreq(page);
+    await setBand(page, 0.5, 2);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    const state = page.locator("#wwOscSpectrogramState");
+    await expect(state).toContainText("too short to provide useful time-frequency resolution");
+    await expect(state).toContainText("Frequency Spectrum remains available");
+    await expect(state).toHaveAttribute("data-kind", "unavailable");
+    await expect(page.locator(gramPlot)).toBeHidden();
+    await expect(page.locator(gramPlot + ".js-plotly-plot")).toHaveCount(0);
+    expect(await page.evaluate(() => wwOscState.spectrogram.result.status)).toBe("unavailable");
+    await expect(page.locator("#wwOscSpectrumCard")).toBeVisible();
+  });
+
+  test("raw voltage is shown through its RMS magnitude and says so", async ({ page }) => {
+    await openOscillation(page);
+    await uploadSynthetic(page, { durationS: 40, channels: [{ name: "VA", unit: "V", phase: "A", amplitude: 100, frequencyHz: 50 }] });
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "VA"));
+    await setBand(page, 0.25, 3);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator(gramPlot + ".js-plotly-plot")).toHaveCount(1);
+    await expect(gramDetail(page, "Analysis representation")).toHaveText("RMS magnitude");
+    expect((await gramData(page)).traces[0].colorbar).toBe("PSD (dB re 1 V²/Hz)");
+    expect(await page.evaluate(() => wwOscState.spectrogram.request.representation)).toBe("rms_magnitude");
+  });
+
+  test("an unknown unit degrades gracefully in the colour-bar title", async ({ page }) => {
+    await spectrogramAnalysed(page, { channels: [{ name: "FREQ", unit: "", amplitude: 0.05, frequencyHz: 1.0, onsetS: 20 }] });
+    expect((await gramData(page)).traces[0].colorbar).toBe("PSD (dB re 1 (signal unit)²/Hz)");
+  });
+
+  test("a backend error is shown with no chart", async ({ page }) => {
+    await spectrogramPage(page);
+    await page.route(SPECTROGRAM_URL, (route) => route.fulfill({
+      status: 422, contentType: "application/json", body: JSON.stringify({ detail: { code: "non_finite_samples", message: "The window contains gaps." } }),
+    }));
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrogramState")).toHaveText("The window contains gaps.");
+    await expect(page.locator(gramPlot + ".js-plotly-plot")).toHaveCount(0);
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+  });
+
+  test("a shortened window states the trade-off and the hint to raise the minimum frequency", async ({ page }) => {
+    await spectrogramAnalysed(page, { durationS: 20, channels: [{ name: "FREQ", unit: "Hz", amplitude: 0.05, frequencyHz: 1.0, onsetS: 10 }] }); // wants 8 s (2 / 0.25 Hz); 8 slices need <= ~4.4 s
+    const warning = page.locator('#wwOscSpectrogramWarnings li[data-code="window_shortened_for_time_resolution"]');
+    await expect(warning).toContainText("shorter than the 8 s wanted");
+    await expect(warning).toContainText("For better time resolution, raise the minimum analysis frequency when lower-frequency components are not required.");
+  });
+
+  test("peak-hold row reduction under the payload cap is disclosed in the warnings and the details", async ({ page }) => {
+    // 4 kHz x 40 s, band 0.25-1999 Hz: 15 993 rows x 9 slices exceeds 120 000 cells -> reduced 2x.
+    await openOscillation(page);
+    await uploadSynthetic(page, { rateHz: 4000, durationS: 40, channels: [{ name: "FREQ", unit: "Hz", amplitude: 0.05, frequencyHz: 1.0, onsetS: 20 }] });
+    await selectFreq(page);
+    await setBand(page, 0.25, 1999);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator(gramPlot + ".js-plotly-plot")).toHaveCount(1);
+    const warning = page.locator('#wwOscSpectrogramWarnings li[data-code="frequency_rows_reduced"]');
+    await expect(warning).toContainText("Display frequency rows reduced 2× using peak-hold");
+    await expect(warning).toContainText("narrow the frequency band for full resolution");
+    await expect(gramDetail(page, "Row reduction")).toContainText("peak-hold of 2 adjacent rows");
+    const m = await page.evaluate(() => wwOscState.spectrogram.result.matrix);
+    expect(m.cells).toBeLessThanOrEqual(120000);
+    expect(m.columns).toBe(9); // the time axis is never reduced
+  });
+
+  test("renders at phone width without horizontal overflow", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await spectrogramAnalysed(page);
+    const m = await page.evaluate(() => {
+      const el = document.getElementById("wwOscSpectrogramPlot");
+      const card = document.getElementById("wwOscSpectrogramCard").getBoundingClientRect();
+      const svg = el.querySelector("svg.main-svg").getBoundingClientRect();
+      return { svg: svg.width, container: el.getBoundingClientRect().width, cardRight: card.right, viewport: window.innerWidth,
+               scroll: document.documentElement.scrollWidth };
+    });
+    expect(Math.abs(m.svg - m.container)).toBeLessThanOrEqual(2);
+    expect(m.cardRight).toBeLessThanOrEqual(m.viewport + 1);
+    expect(m.scroll).toBeLessThanOrEqual(m.viewport + 1);
   });
 });

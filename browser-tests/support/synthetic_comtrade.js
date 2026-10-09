@@ -42,8 +42,10 @@ function syntheticComtrade({ station, date = "06/03/2026", startClock, rateHz, d
   const datLines = [];
   for (let n = 0; n < sampleCount; n++) {
     const t = n / rateHz;
+    // `onsetS` (optional): the sine is zero before this instant -- a component that appears after an event.
     const raw = channels.map((c) =>
-      Math.round(Math.sin(2 * Math.PI * (c.frequencyHz || 50) * t + (c.phaseShiftRad || 0)) * 30000));
+      (c.onsetS !== undefined && t < c.onsetS ? 0
+        : Math.round(Math.sin(2 * Math.PI * (c.frequencyHz || 50) * t + (c.phaseShiftRad || 0)) * 30000)));
     datLines.push([n + 1, Math.round(t * 1e6), ...raw].join(","));
   }
   return {
