@@ -21,6 +21,17 @@ parser, DEC-120 import, DEC-121 timestamp/channel-identity hardening,
 DEC-122 display timezone).
 
 
+**Oscillation Analysis Damping / Ringdown: implemented, owner UAT accepted -- DEC-177 `[APPROVED]` (2026-10-09), committed `feat: add oscillation damping analysis` (not pushed).** For each
+accepted DEC-175 candidate (<= 5) a `Damping behaviour` section answers "when excited, is it decaying, approximately sustained or growing,
+how fast and how well does an exponential fit?" (`POST /api/v1/workspaces/{ws}/oscillation-analysis/damping`, same request identity as the
+spectrum; the backend re-derives the candidates, the browser only selects). NumPy only: zero-phase Gaussian band-pass (FFT) -> analytic envelope
+-> least-squares fit of `ln` envelope over a deterministic interval (envelope peak + filter guard to the noise floor). Convention:
+`alpha = -sigma` in s^-1 (`exp(-alpha t)`, `alpha > 0` decays); `zeta = alpha / sqrt(alpha^2 + omega^2)` for a decaying component only.
+Evidence rules (>= 4 cycles, >= 3x background, log-residual / R2 / monotonic gates, intermittent and neighbour-leakage refusals) are named
+Phase-1 heuristics; weak evidence is `insufficient_evidence` / `not_applicable` with reasons, never a manufactured ratio. Time Group `t = 0` is
+display context only. Evidence plot (envelope + fitted exponential + fit interval). **No oscillation-type classification, adequacy labels,
+Prony / Matrix Pencil or AI.** Details and open questions: DECISIONS.md DEC-177.
+
 **Oscillation Analysis Spectrogram / STFT: implemented, owner UAT accepted, DEC-176 `[APPROVED]` (2026-10-09).** Welch answers "what
 frequencies are present"; the `Time-Frequency Spectrogram (STFT)` card answers "when does that frequency content occur"
 (`POST /api/v1/workspaces/{ws}/oscillation-analysis/spectrogram`, same request identity as the spectrum; NumPy only, SciPy is a dev/test

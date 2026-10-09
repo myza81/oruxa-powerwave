@@ -43,9 +43,16 @@ function syntheticComtrade({ station, date = "06/03/2026", startClock, rateHz, d
   for (let n = 0; n < sampleCount; n++) {
     const t = n / rateHz;
     // `onsetS` (optional): the sine is zero before this instant -- a component that appears after an event.
+    // `decayPerS` (optional): exponential decay rate alpha [1/s] of the sine's amplitude after `onsetS` (a ringdown).
+    // `components` (optional): several such sines summed, each `{ amplitude, frequencyHz, onsetS, decayPerS }`; the channel's
+    // `amplitude` must then be the sum of theirs so the integers stay in range.
+    const sine = (f, onset, decay, phase) => (onset !== undefined && t < onset ? 0
+      : Math.sin(2 * Math.PI * f * t + (phase || 0)) * Math.exp(-(decay || 0) * Math.max(0, t - (onset || 0))));
     const raw = channels.map((c) =>
-      (c.onsetS !== undefined && t < c.onsetS ? 0
-        : Math.round(Math.sin(2 * Math.PI * (c.frequencyHz || 50) * t + (c.phaseShiftRad || 0)) * 30000)));
+      (c.components
+        ? Math.round(c.components.reduce((sum, k) => sum + (k.amplitude / c.amplitude) * sine(k.frequencyHz, k.onsetS, k.decayPerS), 0) * 30000)
+        : (c.onsetS !== undefined && t < c.onsetS ? 0
+          : Math.round(sine(c.frequencyHz || 50, c.onsetS, c.decayPerS, c.phaseShiftRad) * 30000))));
     datLines.push([n + 1, Math.round(t * 1e6), ...raw].join(","));
   }
   return {

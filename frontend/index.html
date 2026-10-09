@@ -7700,6 +7700,10 @@
         :is(.ww-osc-detect-label) { font-size: 0.65rem; font-weight: 600; color: var(--text-dim); }
         :is(.ww-osc-detect-none) { font-weight: 600; color: var(--text); }
         :is(.ww-osc-detect-note) { font-size: 0.65rem; color: var(--text-dim); }
+        :is(.ww-osc-detect) li[data-kind="no"]::before { content: "\2717\00a0"; color: var(--warn); }
+        :is(.ww-osc-damping) { padding-top: 10px; border-top: 1px solid var(--panel-border); }
+        :is(.ww-osc-damping)[data-stale="true"] .ww-osc-info, :is(.ww-osc-damping)[data-stale="true"] ul { opacity: 0.4; }
+        :is(.ww-osc-plot-short) { height: 240px; }
         :is(.ww-osc-checks) { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 0.7rem; color: var(--text); }
         :is(.ww-osc-checks) li[data-status="warning"] { color: var(--warn); }
         :is(.ww-osc-checks) li[data-status="invalid"] { color: var(--error); }
@@ -11937,6 +11941,19 @@
                                 <!-- Detected Oscillation Components (DEC-175 [PROPOSAL]): the backend's
                                      deterministic candidate detection, drawn as returned. -->
                                 <div class="ww-osc-detect" id="wwOscDetection" hidden></div>
+                                <!-- Damping behaviour (DEC-177 [APPROVED]): the backend's deterministic estimate for the
+                                     candidates above, drawn as returned. -->
+                                <div class="ww-osc-detect ww-osc-damping" id="wwOscDamping" hidden>
+                                    <div class="ww-osc-detect-title">Damping behaviour</div>
+                                    <label class="ww-osc-field ww-osc-spec-scale" id="wwOscDampingPickWrap" hidden>
+                                        <span class="ww-osc-field-label">Candidate</span>
+                                        <select id="wwOscDampingPick"></select>
+                                    </label>
+                                    <div class="ww-osc-spec-state" id="wwOscDampingState" role="status" hidden></div>
+                                    <div class="ww-osc-detect" id="wwOscDampingBody"></div>
+                                    <div class="ww-osc-plot ww-osc-plot-short" id="wwOscDampingPlot" hidden></div>
+                                    <div class="ww-osc-detect-note" id="wwOscDampingNote" hidden></div>
+                                </div>
                                 <ul class="ww-osc-checks" id="wwOscSpectrumWarnings"></ul>
                                 <div class="ww-osc-subhead" id="wwOscSpectrumDetailsHead" hidden>Analysis details</div>
                                 <dl class="ww-osc-info" id="wwOscSpectrumDetails"></dl>
@@ -55022,6 +55039,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // the SAME object as the spectrum's for one Analyze press (candidate overlays require that identity).
             // `rangeDb` is a display-only colour range (no request).
             spectrogram: { phase: "idle", seq: 0, request: null, result: null, message: "", rangeDb: 60, drawn: null },
+            // Damping behaviour (DEC-177 [APPROVED]): requested once the spectrum is ready, with the SAME request object
+            // (identity check in the renderer); `selectedRank` picks which candidate's fit is shown.
+            damping: { phase: "idle", seq: 0, request: null, result: null, message: "", selectedRank: null, drawn: null },
         };
 
         function wwOscFormat(value, digits) {
@@ -55910,6 +55930,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const sp = wwOscState.spectrum;
             sp.seq += 1;
             sp.phase = "idle"; sp.request = null; sp.result = null; sp.message = ""; sp.drawn = null;
+            wwOscDampingClear(); // a damping result belongs to one spectrum result and never outlives it
         }
 
         function wwOscNearlyEqual(a, b) {
@@ -55929,6 +55950,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (sg.request && (wwOscState.signalKey !== sg.request.signalKey
                 || !wwSignalCatalogueIsCurrent(sg.request.signalKey, sg.request.signalRevision))) {
                 wwOscSpectrogramClear();
+            }
+            const dm = wwOscState.damping;
+            if (dm.request && (wwOscState.signalKey !== dm.request.signalKey
+                || !wwSignalCatalogueIsCurrent(dm.request.signalKey, dm.request.signalRevision))) {
+                wwOscDampingClear();
             }
         }
 
@@ -55967,6 +55993,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             sp.seq += 1;
             const seq = sp.seq;
             sp.phase = "loading"; sp.request = request; sp.result = null; sp.message = ""; sp.drawn = null;
+            wwOscDampingClear();
             wwOscRenderResults(analysis);
             wwOscRenderSpectrum();
             const input = signal.origin === "calculated"
@@ -55994,6 +56021,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             if (sp.seq !== seq) return; // superseded, or the signal changed / was removed meanwhile
             sp.phase = outcome.phase; sp.result = outcome.result || null; sp.message = outcome.message || "";
+            // Damping is assessed for the spectrum's accepted candidates only (the same request identity).
+            const accepted = outcome.phase === "ready" ? outcome.result.detection.candidates : [];
+            if (accepted.length) wwOscRunDamping(signal, request, accepted);
             wwOscRender(false);
         }
 
@@ -56182,6 +56212,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         function wwOscRenderSpectrum() {
             wwOscRenderSpectrogram();
+            wwOscRenderDamping();
             const sp = wwOscState.spectrum;
             const card = document.getElementById("wwOscSpectrumCard");
             if (!card) return;
@@ -56236,6 +56267,257 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 detailsEl.appendChild(wrap);
             }
             detailsHead.hidden = false;
+        }
+
+        // ------------------------------------------------------------------
+        // Damping behaviour (DEC-177 [APPROVED]). The BACKEND estimates, for the spectrum's accepted candidates, whether
+        // each component decays, is approximately sustained or grows, and how fast (band-isolated envelope, exponential
+        // fit, deterministic evidence rules). The page requests it once the spectrum is ready -- with the SAME request
+        // object -- then draws the returned values / evidence, maps the fit times through the Time Group display basis
+        // and shows the returned envelope. It estimates and classifies nothing. Convention (stated in the UI):
+        // alpha in 1/s, amplitude proportional to exp(-alpha t), alpha > 0 decays.
+        // ------------------------------------------------------------------
+
+        const WW_OSC_DAMPING_LABELS = Object.freeze({ decaying: "Decaying", approximately_sustained: "Approximately sustained", growing: "Growing" });
+        const WW_OSC_DAMPING_UNAVAILABLE = "Damping estimate unavailable";
+
+        function wwOscDampingClear() {
+            const dm = wwOscState.damping;
+            dm.seq += 1;
+            dm.phase = "idle"; dm.request = null; dm.result = null; dm.message = ""; dm.selectedRank = null; dm.drawn = null;
+        }
+
+        async function wwOscRunDamping(signal, request, candidates) {
+            const dm = wwOscState.damping;
+            dm.seq += 1;
+            const seq = dm.seq;
+            dm.phase = "loading"; dm.request = request; dm.result = null; dm.message = ""; dm.drawn = null;
+            dm.selectedRank = candidates[0].rank;
+            wwOscRenderDamping();
+            const input = signal.origin === "calculated"
+                ? { kind: "calculated", calculated_channel_id: signal.calculatedChannelId }
+                : { kind: "source", source_id: signal.sourceId, channel_name: signal.name };
+            let outcome;
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/oscillation-analysis/damping",
+                    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+                        input: input, representation: request.representation, signal_revision: request.signalRevision,
+                        window_start_s: request.startSource, window_end_s: request.endSource,
+                        frequency_min_hz: request.fMinHz, frequency_max_hz: request.fMaxHz,
+                        candidate_frequencies_hz: candidates.map((c) => c.frequency_hz) }) }
+                );
+                let body = null;
+                try { body = await response.json(); } catch (error) { /* handled below */ }
+                if (!response.ok || !body || (body.status !== "ok" && body.status !== "no_candidates")) {
+                    const detail = body && body.detail && body.detail.message;
+                    outcome = { phase: "error", message: detail || "The damping behaviour could not be estimated." };
+                } else {
+                    outcome = { phase: "ready", result: body };
+                }
+            } catch (error) {
+                outcome = { phase: "error", message: "Could not reach the backend to estimate the damping behaviour." };
+            }
+            if (dm.seq !== seq) return; // superseded, or the spectrum / signal changed meanwhile
+            dm.phase = outcome.phase; dm.result = outcome.result || null; dm.message = outcome.message || "";
+            wwOscRenderDamping();
+        }
+
+        // One line per candidate: the measured behaviour, or why none is claimed.
+        function wwOscDampingSummary(r) {
+            const fmt = wwOscFormat;
+            if (r.status !== "available") return WW_OSC_DAMPING_UNAVAILABLE + " — " + r.message;
+            const label = WW_OSC_DAMPING_LABELS[r.behaviour];
+            if (r.behaviour === "decaying") return label + " · ζ " + fmt(r.damping_ratio * 100, 3) + " % · decay rate " + fmt(r.decay_rate_per_s, 3) + " s⁻¹";
+            if (r.behaviour === "growing") return label + " · growth rate " + fmt(-r.decay_rate_per_s, 3) + " s⁻¹";
+            return label + " · decay rate " + fmt(r.decay_rate_per_s, 3) + " s⁻¹ (≈ 0)";
+        }
+
+        // Reason text. Absolute times in a reason are SOURCE time (backend); the page shows the Time Group display basis, the same as the
+        // `Fit interval` row, so the two can never disagree (DEC-177): messages carry no times and are completed here from `values`.
+        function wwOscDampingReasonText(m, basis) {
+            const v = m.values || {}, fmt = wwOscFormat;
+            const span = (a, b) => fmt(basis.toDisplay(a), 4) + " to " + fmt(basis.toDisplay(b), 4) + " s";
+            if (m.code === "candidate_active" && v.start_s !== undefined) {
+                return m.message.replace(/ throughout the damping fit interval\.$/, " from " + span(v.start_s, v.end_s) + ".");
+            }
+            if (m.code === "fit_interval" && v.start_s !== undefined) return "Exponential damping fit used " + span(v.start_s, v.end_s) + " (" + fmt(v.duration_s, 3) + " s).";
+            if (m.code === "intermittent_component" && v.burst_start_s !== undefined) return m.message + " The other burst spans " + span(v.burst_start_s, v.burst_end_s) + ".";
+            return m.message;
+        }
+
+        function wwOscDampingRows(r, basis, unit) {
+            const fmt = wwOscFormat;
+            const rows = [["Damping behaviour", r.status === "available" ? WW_OSC_DAMPING_LABELS[r.behaviour] : WW_OSC_DAMPING_UNAVAILABLE]];
+            if (r.status !== "available") return rows;
+            if (r.behaviour === "decaying") rows.push(["Estimated damping ratio (ζ)", fmt(r.damping_ratio * 100, 3) + " %"]);
+            else rows.push(["Damping ratio", "Not reported (not a ringdown decay)"]);
+            const rateLabel = r.behaviour === "growing" ? "Growth rate" : "Decay rate (α)";
+            rows.push([rateLabel, fmt(r.behaviour === "growing" ? -r.decay_rate_per_s : r.decay_rate_per_s, 3) + " s⁻¹"]);
+            if (r.time_constant_s !== null) rows.push(["Time constant (1 / |α|)", fmt(r.time_constant_s, 3) + " s"]);
+            const f = r.frequency;
+            rows.push(["Spectral candidate", fmt(f.candidate_hz, 4) + " Hz"]);
+            if (f.fitted_hz !== null) rows.push(["Fitted frequency", fmt(f.fitted_hz, 4) + " Hz"]);
+            const start = basis.toDisplay(r.fit.start_s), end = basis.toDisplay(r.fit.end_s);
+            rows.push(["Fit interval", fmt(start, 4) + " – " + fmt(end, 4) + " s (" + fmt(r.fit.duration_s, 3) + " s)"]);
+            rows.push(["Cycles used", fmt(r.fit.cycles_used, 3)]);
+            const q = r.fit_quality;
+            rows.push(["Fit quality", (q.r_squared !== null && r.behaviour !== "approximately_sustained" ? "R² " + fmt(q.r_squared, 3) + " · " : "")
+                + "envelope scatter " + fmt(q.rms_log_residual, 2)]);
+            const c = r.envelope_change, u = unit ? " " + unit : "";
+            rows.push(["Envelope change", (c.change_percent > 0 ? "+" : "") + fmt(c.change_percent, 3) + " % (" + fmt(c.start_amplitude, 3) + " → " + fmt(c.end_amplitude, 3) + u + ")"]);
+            return rows;
+        }
+
+        function wwOscDrawDamping(plotEl, r, basis, unit) {
+            if (!window.Plotly) return;
+            const colors = wwThemeColors();
+            const warn = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || colors.accent;
+            const ev = r.evidence;
+            const x = ev.times_s.map((t) => basis.toDisplay(t));
+            const unitText = unit ? " " + unit : "";
+            const traces = [{
+                x: x, y: ev.envelope, type: "scatter", mode: "lines", name: "Measured envelope", line: { color: colors.accent, width: 1.5 },
+                hovertemplate: "Time: %{x:.4g} s<br>Envelope: %{y:.4g}" + unitText + "<extra></extra>", meta: { role: "damping-envelope" },
+            }];
+            if (ev.fitted_envelope) {
+                traces.push({
+                    x: x, y: ev.fitted_envelope, type: "scatter", mode: "lines", name: "Fitted exponential", connectgaps: false,
+                    line: { color: warn, width: 2, dash: "dash" },
+                    hovertemplate: "Time: %{x:.4g} s<br>Fit: %{y:.4g}" + unitText + "<extra></extra>", meta: { role: "damping-fit" },
+                });
+            }
+            const shapes = [];
+            if (ev.fit_start_s !== null && ev.fit_end_s !== null) {
+                shapes.push({ type: "rect", name: "fit-interval", xref: "x", yref: "paper", x0: basis.toDisplay(ev.fit_start_s),
+                              x1: basis.toDisplay(ev.fit_end_s), y0: 0, y1: 1, fillcolor: warn, opacity: 0.12, line: { width: 0 } });
+            }
+            const range = [basis.toDisplay(ev.valid_start_s), basis.toDisplay(ev.valid_end_s)];
+            if (basis.hasT0 && range[0] <= 0 && range[1] >= 0) {
+                shapes.push({ type: "line", name: "event-origin", xref: "x", yref: "paper", x0: 0, x1: 0, y0: 0, y1: 1,
+                              line: { color: colors.text, width: 1.5, dash: "dot" } });
+            }
+            const layout = {
+                margin: { l: 56, r: 16, t: 24, b: 40 },
+                paper_bgcolor: "transparent", plot_bgcolor: "transparent",
+                font: { color: colors.text, size: 11 },
+                xaxis: { title: { text: "Time (s)", font: { size: WW_OSC_AXIS_TITLE_PX } }, automargin: true, zeroline: false, range: range },
+                yaxis: { title: { text: "Envelope amplitude" + (unit ? " (" + unit + ")" : ""), font: { size: WW_OSC_AXIS_TITLE_PX } },
+                         type: "log", automargin: true, zeroline: false },
+                shapes: shapes, showlegend: true, legend: { orientation: "h", x: 0, y: 1.14, font: { size: 10 } }, hovermode: "closest",
+            };
+            Plotly.react(plotEl, traces, layout, { displayModeBar: false, responsive: true });
+        }
+
+        function wwOscRenderDamping() {
+            const host = document.getElementById("wwOscDamping");
+            if (!host) return;
+            const dm = wwOscState.damping, sp = wwOscState.spectrum;
+            const plotEl = document.getElementById("wwOscDampingPlot");
+            const stateEl = document.getElementById("wwOscDampingState");
+            const bodyEl = document.getElementById("wwOscDampingBody");
+            const noteEl = document.getElementById("wwOscDampingNote");
+            const pickEl = document.getElementById("wwOscDampingPick");
+            const pickWrap = document.getElementById("wwOscDampingPickWrap");
+            const showState = (kind, text) => { stateEl.hidden = !text; stateEl.dataset.kind = kind; stateEl.textContent = text; };
+            const clearPlot = () => {
+                if (window.Plotly && plotEl.classList.contains("js-plotly-plot")) Plotly.purge(plotEl);
+                plotEl.replaceChildren();
+                delete plotEl.dataset.drawKey;
+                plotEl.dataset.stale = "false";
+                plotEl.hidden = true;
+            };
+            const clearAll = () => { clearPlot(); bodyEl.replaceChildren(); noteEl.hidden = true; pickWrap.hidden = true; showState("idle", ""); };
+            // A damping result belongs to exactly the spectrum result of the same Analyze press.
+            const linked = sp.phase === "ready" && !!sp.result && !!dm.request && dm.request === sp.request;
+            if (dm.phase === "idle" || !linked) { clearAll(); host.hidden = true; return; }
+            host.hidden = false;
+            if (dm.phase === "loading") { clearAll(); showState("loading", "Estimating damping behaviour…"); return; }
+            if (dm.phase === "error") { clearAll(); showState("error", dm.message); return; }
+            const result = dm.result;
+            if (result.status === "no_candidates") { clearAll(); showState("unavailable", result.message || "There is no candidate to assess."); return; }
+            const spectrumCandidates = sp.result.detection.candidates;
+            const matches = result.results.every((r) => spectrumCandidates.some(
+                (c) => c.rank === r.rank && Math.abs(c.frequency_hz - r.candidate_frequency_hz) <= 1e-6 * Math.max(1, c.frequency_hz)));
+            const signal = wwSignalCatalogueGet(dm.request.signalKey);
+            const basis = signal ? wwOscTimeBasis(signal) : null;
+            if (!matches || !basis || !result.results.length) {
+                clearAll(); showState("stale", "The damping result no longer matches the detected components — run Analyze again"); return;
+            }
+            const stale = !wwOscRequestMatchesSetup(dm.request);
+            host.dataset.stale = stale ? "true" : "false";
+            showState(stale ? "stale" : "current", stale ? "Analysis settings changed — run Analyze again" : "");
+            if (!result.results.some((r) => r.rank === dm.selectedRank)) dm.selectedRank = result.results[0].rank;
+            const selected = result.results.find((r) => r.rank === dm.selectedRank);
+            pickWrap.hidden = result.results.length < 2;
+            pickEl.replaceChildren();
+            for (const r of result.results) {
+                const option = document.createElement("option");
+                option.value = String(r.rank);
+                option.textContent = wwOscFormat(r.candidate_frequency_hz, 4) + " Hz" + (r.rank === 1 ? " (primary)" : " (candidate " + r.rank + ")");
+                pickEl.appendChild(option);
+            }
+            pickEl.value = String(selected.rank);
+            const el = (tag, className, text) => {
+                const node = document.createElement(tag);
+                if (className) node.className = className;
+                if (text !== undefined) node.textContent = text;
+                return node;
+            };
+            const list = (items, kind) => {
+                const ul = document.createElement("ul");
+                for (const item of items) { const li = el("li", "", item); li.dataset.kind = kind; ul.appendChild(li); }
+                return ul;
+            };
+            const unit = result.signal.unit || "";
+            bodyEl.replaceChildren();
+            bodyEl.appendChild(el("div", "ww-osc-detect-label", (selected.rank === 1 ? "Primary candidate" : "Candidate " + selected.rank)
+                + " — " + wwOscFormat(selected.candidate_frequency_hz, 4) + " Hz"));
+            if (selected.status !== "available") {
+                bodyEl.appendChild(el("div", "ww-osc-detect-none", WW_OSC_DAMPING_UNAVAILABLE));
+                const first = selected.reasons[0];
+                bodyEl.appendChild(el("div", "", first && first.code === selected.reason_code && first.message === selected.message
+                    ? wwOscDampingReasonText(first, basis) : selected.message));
+            } else {
+                const dl = el("dl", "ww-osc-info");
+                dl.id = "wwOscDampingRows";
+                for (const row of wwOscDampingRows(selected, basis, unit)) {
+                    const wrap = document.createElement("div");
+                    wrap.append(el("dt", "", row[0]), el("dd", "", row[1]));
+                    dl.appendChild(wrap);
+                }
+                bodyEl.appendChild(dl);
+                bodyEl.appendChild(el("div", "ww-osc-detect-label", "Why"));
+                bodyEl.appendChild(list(selected.reasons.map((m) => wwOscDampingReasonText(m, basis)), "why"));
+            }
+            if (selected.status !== "available" && selected.reasons.length > 1) {
+                bodyEl.appendChild(list(selected.reasons.slice(1).map((m) => wwOscDampingReasonText(m, basis)), "no"));
+            }
+            if (selected.warnings.length) bodyEl.appendChild(list(selected.warnings.map((m) => m.message), "warning"));
+            if (result.results.length > 1) {
+                bodyEl.appendChild(el("div", "ww-osc-detect-label", "All candidates"));
+                const all = list(result.results.map((r) => wwOscFormat(r.candidate_frequency_hz, 4) + " Hz: " + wwOscDampingSummary(r)), "note");
+                all.id = "wwOscDampingAll";
+                bodyEl.appendChild(all);
+            }
+            if (selected.evidence) {
+                plotEl.hidden = false; // visible BEFORE drawing: Plotly sizes itself from the container
+                plotEl.dataset.stale = stale ? "true" : "false";
+                const drawKey = [selected.rank, basis.hasT0, basis.toDisplay(selected.evidence.times_s[0])].join("|");
+                if (dm.drawn !== selected || plotEl.dataset.drawKey !== drawKey) {
+                    wwOscDrawDamping(plotEl, selected, basis, unit);
+                    dm.drawn = selected; plotEl.dataset.drawKey = drawKey;
+                }
+            } else {
+                clearPlot();
+            }
+            const p = result.parameters;
+            noteEl.hidden = false;
+            noteEl.textContent = "Deterministic Phase-1 estimate: zero-phase Gaussian band-pass around the candidate, amplitude envelope fitted by an exponential "
+                + "(amplitude ∝ e^(−αt); α > 0 decays; ζ = α / √(α² + ω²), ω = 2πf, decaying components only). Time axis: "
+                + (basis.hasT0 ? "event time (relative to the Time Group's t=0)" : "workspace elapsed time")
+                + ". Needs at least " + wwOscFormat(p.min_fit_cycles, 3) + " cycles above " + wwOscFormat(p.min_amplitude_over_noise, 3)
+                + "× the local background; thresholds are engineering heuristics, not standards. No oscillation type is inferred.";
         }
 
         // ------------------------------------------------------------------
@@ -56493,6 +56775,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("wwOscSpectrumScale").addEventListener("change", (event) => {
                 wwOscState.spectrum.yScale = event.target.value === "log" ? "log" : "linear";
                 wwOscRenderSpectrum();
+            });
+            document.getElementById("wwOscDampingPick").addEventListener("change", (event) => {
+                const rank = Number(event.target.value);
+                wwOscState.damping.selectedRank = Number.isFinite(rank) ? rank : null;
+                wwOscRenderDamping(); // display only: another candidate of the stored result, no request
             });
             document.getElementById("wwOscSpectrogramRange").addEventListener("change", (event) => {
                 const range = Number(event.target.value);

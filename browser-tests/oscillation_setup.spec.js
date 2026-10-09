@@ -1723,3 +1723,253 @@ test.describe("Oscillation Analysis -- Time-Frequency Spectrogram (STFT)", () =>
     expect(m.scroll).toBeLessThanOrEqual(m.viewport + 1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Damping behaviour (DEC-177 [APPROVED]). The BACKEND estimates, for the spectrum's accepted candidates, whether each
+// component decays / is approximately sustained / grows (zero-phase band envelope, exponential fit). The page requests it
+// once the spectrum is ready and draws the returned values and evidence. Fixture: 60 s at 1 kHz, a 1 Hz ringdown starting at
+// 10 s with decay rate alpha = 0.15 1/s (zeta = alpha / sqrt(alpha^2 + (2 pi 1)^2) = 2.39 %).
+// ---------------------------------------------------------------------------
+const DAMPING_URL = "**/oscillation-analysis/damping";
+const ALPHA = 0.15;
+const ZETA = ALPHA / Math.hypot(ALPHA, 2 * Math.PI * 1.0);
+const RINGDOWN_CHANNELS = [{ name: "FREQ", unit: "Hz", amplitude: 0.05, frequencyHz: 1.0, onsetS: 10, decayPerS: ALPHA },
+  { name: "P_MW", unit: "MW", amplitude: 100, frequencyHz: 0.5 }];
+const dampPlot = "#wwOscDampingPlot";
+const dampRows = (page) => page.evaluate(() => Object.fromEntries(
+  Array.from(document.querySelectorAll("#wwOscDampingRows > div")).map((d) => [d.querySelector("dt").textContent, d.querySelector("dd").textContent])));
+const dampData = (page) => page.evaluate(() => {
+  const el = document.getElementById("wwOscDampingPlot");
+  return { traces: el.data.map((t) => ({ role: t.meta && t.meta.role, x: Array.from(t.x), y: Array.from(t.y) })), layout: el.layout };
+});
+
+async function dampingPage(page, options = {}) {
+  await openOscillation(page);
+  await uploadSynthetic(page, { durationS: 60, channels: RINGDOWN_CHANNELS, ...options });
+  await selectFreq(page);
+  await setBand(page, 0.25, 3);
+}
+async function dampingAnalysed(page, options = {}) {
+  await dampingPage(page, options);
+  await page.locator("#wwOscAnalyzeBtn").click();
+  await expect(page.locator("#wwOscDampingRows")).toBeVisible();
+}
+
+test.describe("Oscillation Analysis -- damping behaviour", () => {
+  test("hidden until Analyze; then the decaying component is reported with its evidence", async ({ page }) => {
+    await dampingPage(page);
+    await expect(page.locator("#wwOscDamping")).toBeHidden();
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscDampingRows")).toBeVisible();
+    await expect(page.locator("#wwOscDamping .ww-osc-detect-title")).toHaveText("Damping behaviour");
+    const rows = await dampRows(page);
+    expect(rows["Damping behaviour"]).toBe("Decaying");
+    await expect(page.locator("#wwOscDampingPickWrap")).toBeHidden(); // one candidate: nothing to pick
+    const zeta = parseFloat(rows["Estimated damping ratio (ζ)"]);
+    expect(rows["Estimated damping ratio (ζ)"]).toMatch(/ %$/);
+    expect(Math.abs(zeta / 100 - ZETA) / ZETA).toBeLessThan(0.1); // 10 % tolerance on the injected damping ratio
+    expect(rows["Decay rate (α)"]).toMatch(/ s⁻¹$/);
+    expect(Math.abs(parseFloat(rows["Decay rate (α)"]) - ALPHA) / ALPHA).toBeLessThan(0.1);
+    expect(rows["Fit interval"]).toMatch(/^\d+(\.\d+)? – \d+(\.\d+)? s \(/);
+    expect(parseFloat(rows["Cycles used"])).toBeGreaterThanOrEqual(4);
+    expect(rows["Fit quality"]).toMatch(/^R² (0\.\d+|1) · envelope scatter/);
+    expect(rows["Envelope change"]).toMatch(/^-\d+(\.\d+)? % \(/);
+    expect(rows["Spectral candidate"]).toMatch(/ Hz$/);
+    const why = await page.locator('#wwOscDamping li[data-kind="why"]').allInnerTexts();
+    expect(why.join(" ")).toMatch(/cycles of .* Hz were used/);
+    expect(why.join(" ")).toMatch(/Oscillation envelope decreased by \d+ % over/);
+    expect(why.join(" ")).toMatch(/Estimated decay rate = .* s⁻¹/);
+    // the stored figures are exactly what the backend returned (the page derives nothing)
+    const r = await page.evaluate(() => wwOscState.damping.result.results[0]);
+    expect(r.status).toBe("available");
+    expect(rows["Decay rate (α)"]).toBe(String(Number(r.decay_rate_per_s.toPrecision(3))) + " s⁻¹");
+    // no strength / adequacy / oscillation-type wording
+    const text = (await page.locator("#wwOscDamping").innerText()).toLowerCase();
+    for (const word of ["well damped", "poorly damped", "unstable", "inter-area", "sso", "forced", "confidence"]) expect(text).not.toContain(word);
+    await expect(page.locator("#wwOscDampingNote")).toContainText("α > 0 decays");
+  });
+
+  test("the Why interval and the Fit interval row are the same interval on the same time basis, with and without a Time Group t=0", async ({ page }) => {
+    // Regression (owner UAT): Why said 28.16-42.93 s while the row said 36.36-51.13 s (source time vs event time).
+    await dampingAnalysed(page);
+    const numbers = (text) => (text.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+    const check = async () => {
+      const row = numbers((await dampRows(page))["Fit interval"]).slice(0, 2);
+      const why = await page.locator('#wwOscDamping li[data-kind="why"]').allInnerTexts();
+      const active = why.find((w) => /above the background noise from/.test(w)), used = why.find((w) => /^Exponential damping fit used/.test(w));
+      expect(active, why.join(" | ")).toBeTruthy();
+      expect(used).toBeTruthy();
+      expect(numbers(active.split(" from ")[1]).slice(0, 2)).toEqual(row);
+      expect(numbers(used.replace("Exponential damping fit used", "")).slice(0, 2)).toEqual(row);
+      return row;
+    };
+    const plain = await check();
+    const groupId = await page.evaluate(() => wwTimeGroupIdForDisplaySourceId(Array.from(ww.sourceChannelsData.keys())[0]));
+    await page.evaluate((id) => { ww.timeGroupT0State.set(id, 8.2); wwOscRender(); }, groupId);
+    await expect.poll(async () => (await check())[0]).toBeCloseTo(plain[0] - 8.2, 1);
+    const shifted = await check();
+    expect(shifted[1]).toBeCloseTo(plain[1] - 8.2, 1);
+    // the numbers on the wire are source time and unchanged
+    const fit = await page.evaluate(() => wwOscState.damping.result.results[0].fit);
+    expect(fit.start_s).toBeCloseTo(plain[0], 1);
+  });
+
+  test("the evidence plot shows the envelope, the fitted exponential and the fit interval with labelled axes", async ({ page }) => {
+    await dampingAnalysed(page);
+    await expect(page.locator(dampPlot + ".js-plotly-plot")).toHaveCount(1);
+    const d = await dampData(page);
+    expect(d.traces.map((t) => t.role)).toEqual(["damping-envelope", "damping-fit"]);
+    const title = (axis) => (typeof axis.title === "string" ? axis.title : axis.title.text);
+    expect(title(d.layout.xaxis)).toBe("Time (s)");
+    expect(title(d.layout.yaxis)).toBe("Envelope amplitude (Hz)");
+    expect(d.layout.yaxis.type).toBe("log");
+    const fitted = d.traces[1].y.filter((v) => v !== null);
+    expect(fitted.length).toBeGreaterThan(5);
+    expect(fitted[0]).toBeGreaterThan(fitted[fitted.length - 1]); // decaying
+    const shape = d.layout.shapes.find((s) => s.name === "fit-interval");
+    expect(shape).toBeTruthy();
+    const fit = await page.evaluate(() => wwOscState.damping.result.results[0].fit);
+    expect(shape.x0).toBeCloseTo(fit.start_s, 6);
+    expect(shape.x1).toBeCloseTo(fit.end_s, 6);
+    expect(fit.start_s).toBeGreaterThan(10); // starts after the onset: not assumed to be t = 0 or the onset
+  });
+
+  test("one request, after the spectrum, with the spectrum's identity and its candidate frequencies", async ({ page }) => {
+    const damp = [], spec = [];
+    page.on("request", (r) => {
+      if (r.url().endsWith("/oscillation-analysis/damping")) damp.push(r.postDataJSON());
+      if (r.url().endsWith("/oscillation-analysis/spectrum")) spec.push(r.postDataJSON());
+    });
+    await dampingAnalysed(page);
+    expect(spec).toHaveLength(1);
+    expect(damp).toHaveLength(1);
+    const { candidate_frequencies_hz: freqs, ...identity } = damp[0];
+    expect(identity).toEqual(spec[0]);
+    const candidates = await page.evaluate(() => wwOscState.spectrum.result.detection.candidates.map((c) => c.frequency_hz));
+    expect(freqs).toEqual(candidates);
+  });
+
+  test("no candidate means no damping request and no damping section", async ({ page }) => {
+    let requests = 0;
+    page.on("request", (r) => { if (r.url().endsWith("/oscillation-analysis/damping")) requests += 1; });
+    await openOscillation(page);
+    await uploadSynthetic(page);
+    await selectFreq(page);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1);
+    await expect(page.locator("#wwOscDetection .ww-osc-detect-none")).toBeVisible();
+    await expect(page.locator("#wwOscDamping")).toBeHidden();
+    expect(requests).toBe(0);
+  });
+
+  test("a sustained component is reported as approximately sustained with no damping ratio", async ({ page }) => {
+    await dampingAnalysed(page, { channels: [{ name: "FREQ", unit: "Hz", amplitude: 0.05, frequencyHz: 1.0, onsetS: 10 },
+      { name: "P_MW", unit: "MW", amplitude: 100, frequencyHz: 0.5 }] });
+    const rows = await dampRows(page);
+    expect(rows["Damping behaviour"]).toBe("Approximately sustained");
+    expect(rows["Damping ratio"]).toBe("Not reported (not a ringdown decay)");
+    expect(rows["Estimated damping ratio (ζ)"]).toBeUndefined();
+    expect(Math.abs(parseFloat(rows["Decay rate (α)"]))).toBeLessThan(0.02);
+  });
+
+  test("a growing component is reported as growing with its growth rate", async ({ page }) => {
+    await dampingAnalysed(page, { channels: [{ name: "FREQ", unit: "Hz", amplitude: 0.05, frequencyHz: 1.0, onsetS: 5, decayPerS: -0.03 },
+      { name: "P_MW", unit: "MW", amplitude: 100, frequencyHz: 0.5 }] });
+    const rows = await dampRows(page);
+    expect(rows["Damping behaviour"]).toBe("Growing");
+    expect(Math.abs(parseFloat(rows["Growth rate"]) - 0.03) / 0.03).toBeLessThan(0.15);
+    expect(rows["Damping ratio"]).toBe("Not reported (not a ringdown decay)");
+  });
+
+  test("not enough ringdown in the window is an explained unavailable estimate; the candidate stays", async ({ page }) => {
+    await dampingPage(page);
+    await setWindow(page, 0, 20);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscDampingBody")).toContainText("Damping estimate unavailable");
+    await expect(page.locator("#wwOscDampingRows")).toHaveCount(0);
+    await expect(page.locator("#wwOscDampingBody")).toContainText("cycles");
+    await expect(page.locator("#wwOscDetectionPrimary")).toContainText("Frequency"); // the candidate itself is untouched
+    const r = await page.evaluate(() => wwOscState.damping.result.results[0]);
+    expect(r.status).toBe("insufficient_evidence");
+    expect(r.damping_ratio).toBeNull();
+    expect(r.reasons.length).toBeGreaterThan(0);
+  });
+
+  test("changing the settings marks the damping not current; reverting restores it", async ({ page }) => {
+    await dampingAnalysed(page);
+    await expect(page.locator("#wwOscDamping")).toHaveAttribute("data-stale", "false");
+    await page.locator("#wwOscMaxFreqInput").fill("2.5");
+    await expect(page.locator("#wwOscDamping")).toHaveAttribute("data-stale", "true");
+    await expect(page.locator("#wwOscDampingState")).toHaveText("Analysis settings changed — run Analyze again");
+    await page.locator("#wwOscMaxFreqInput").fill("3");
+    await expect(page.locator("#wwOscDamping")).toHaveAttribute("data-stale", "false");
+    await expect(page.locator("#wwOscDampingRows")).toBeVisible();
+  });
+
+  test("selecting another signal discards the damping result; it is never resurrected", async ({ page }) => {
+    await dampingAnalysed(page);
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_MW"));
+    await expect(page.locator("#wwOscDamping")).toBeHidden();
+    expect(await page.evaluate(() => wwOscState.damping.result)).toBeNull();
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "FREQ"));
+    await expect(page.locator("#wwOscDamping")).toBeHidden();
+  });
+
+  test("a response arriving after the spectrum was cleared is discarded", async ({ page }) => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    await page.route(DAMPING_URL, async (route) => { await gate; await route.continue(); });
+    await dampingPage(page);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscDampingState")).toHaveText("Estimating damping behaviour…");
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_MW"));
+    release();
+    await page.waitForTimeout(500);
+    await expect(page.locator("#wwOscDamping")).toBeHidden();
+    expect(await page.evaluate(() => wwOscState.damping.result)).toBeNull();
+  });
+
+  test("a backend error is shown with no figures", async ({ page }) => {
+    await page.route(DAMPING_URL, (route) => route.fulfill({ status: 409, contentType: "application/json",
+      body: JSON.stringify({ detail: { code: "candidate_mismatch", message: "A candidate no longer matches." } }) }));
+    await dampingPage(page);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscDampingState")).toHaveText("A candidate no longer matches.");
+    await expect(page.locator("#wwOscDampingRows")).toHaveCount(0);
+    await expect(page.locator("#wwOscSpectrumPlot.js-plotly-plot")).toHaveCount(1); // the spectrum is unaffected
+  });
+
+  test("two components get independent results and can be inspected one at a time", async ({ page }) => {
+    const components = [{ amplitude: 0.05, frequencyHz: 1.0, onsetS: 10, decayPerS: 0.15 },
+      { amplitude: 0.025, frequencyHz: 2.6, onsetS: 10, decayPerS: 0.08 }];
+    await dampingAnalysed(page, { channels: [{ name: "FREQ", unit: "Hz", amplitude: 0.075, components }, { name: "P_MW", unit: "MW", amplitude: 100, frequencyHz: 0.5 }] });
+    const result = await page.evaluate(() => wwOscState.damping.result.results.map((r) => ({
+      f: r.candidate_frequency_hz, status: r.status, alpha: r.decay_rate_per_s, fit: r.fit && r.fit.start_s })));
+    expect(result).toHaveLength(2);
+    expect(result.every((r) => r.status === "available")).toBe(true);
+    const low = result.find((r) => Math.abs(r.f - 1.0) < 0.15), high = result.find((r) => Math.abs(r.f - 2.6) < 0.2);
+    expect(Math.abs(low.alpha - 0.15) / 0.15).toBeLessThan(0.15);
+    expect(Math.abs(high.alpha - 0.08) / 0.08).toBeLessThan(0.2);
+    await expect(page.locator("#wwOscDampingAll li")).toHaveCount(2);
+    await expect(page.locator("#wwOscDampingPickWrap")).toBeVisible();
+    const before = (await dampData(page)).traces[0].y;
+    await page.locator("#wwOscDampingPick").selectOption({ index: 1 });
+    await expect(page.locator("#wwOscDampingBody .ww-osc-detect-label").first()).toContainText("Candidate 2");
+    expect((await dampData(page)).traces[0].y).not.toEqual(before);
+  });
+
+  test("renders at phone width without horizontal overflow", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await dampingAnalysed(page);
+    await expect(page.locator(dampPlot + ".js-plotly-plot")).toHaveCount(1);
+    const m = await page.evaluate(() => {
+      const el = document.getElementById("wwOscDampingPlot");
+      const svg = el.querySelector("svg.main-svg").getBoundingClientRect();
+      return { svg: svg.width, container: el.getBoundingClientRect().width, right: document.getElementById("wwOscDamping").getBoundingClientRect().right,
+               viewport: window.innerWidth, scroll: document.documentElement.scrollWidth };
+    });
+    expect(Math.abs(m.svg - m.container)).toBeLessThanOrEqual(2);
+    expect(m.right).toBeLessThanOrEqual(m.viewport + 1);
+    expect(m.scroll).toBeLessThanOrEqual(m.viewport + 1);
+  });
+});

@@ -436,8 +436,10 @@ Playback and pushes no Related Waveforms roles. It is setup/input only (signal, 
 data-adequacy) and, since DEC-174 `[APPROVED]` (2026-10-08), a Welch PSD **Frequency Spectrum** on `Analyze`, with, since DEC-175
 `[APPROVED]`, a deterministic list of **candidate oscillatory components** (spectral peaks with measured prominence, cycles and
 reasons) and, since DEC-176 `[APPROVED]` (2026-10-09), an STFT **Time-Frequency Spectrogram** (visual evidence of *when* a frequency
-component occurs; linear PSD from the backend, dB display in the browser, candidate guides reusing DEC-175). There is no
-oscillation-type classification, automatic ringdown / persistent / ambient labelling or damping yet.
+component occurs; linear PSD from the backend, dB display in the browser, candidate guides reusing DEC-175) and, since DEC-177
+`[APPROVED]` (2026-10-09), a deterministic **Damping behaviour** estimate per candidate (decaying / approximately
+sustained / growing, decay rate `alpha` in s^-1, damping ratio for a decaying component, fit interval, fit quality and a structured Why).
+There is no oscillation-type classification, adequacy threshold, Prony / Matrix Pencil or AI.
 
 Raw Voltage/Current are analysed through an analysis-internal **RMS magnitude representation** (DEC-173 `[APPROVED]`):
 the backend derives it on demand from the existing RMS engine and returns only its description (rate, usable range,

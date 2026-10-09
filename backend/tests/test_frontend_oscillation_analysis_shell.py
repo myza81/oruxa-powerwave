@@ -89,8 +89,9 @@ def test_no_processing_algorithm_is_present_in_the_browser():
     )
     # Candidate detection (DEC-175 [PROPOSAL]) is the backend's deterministic result: the page only draws the
     # returned evidence, so no peak-finding / prominence / spectral-estimation code may exist in it.
-    for forbidden in ("fft", "prony", "damping", "float64array", "findpeaks", "find_peaks",
-                      "argmax", "prominence(", "math.log(", "sinc", "ringdown"):
+    # Damping (DEC-177 [APPROVED]) is the backend's too: the page may NAME the result, never compute it.
+    for forbidden in ("fft", "prony", "float64array", "findpeaks", "find_peaks", "hilbert", "polyfit", "unwrap",
+                      "argmax", "prominence(", "math.log(", "math.exp(", "math.atan", "math.hypot", "sinc", "matrix pencil"):
         assert forbidden not in script
     # The STFT (DEC-176 [PROPOSAL]) is the backend's too: no transform, window or slicing code in the page.
     for pattern in (r"(?<![a-z])stft\(", r"(?<![a-z])spectrogram\(", r"sliding", r"rfft"):
@@ -155,3 +156,31 @@ def test_spectrum_is_computed_only_on_analyze():
     assert "/oscillation-analysis/spectrum" in run
     # Only the Analyze click path starts a run.
     assert script.count("wwOscRunSpectrum(") == 2  # definition + the single call from wwOscAnalyze
+
+
+def test_damping_is_a_backend_result_tied_to_the_spectrum_request():
+    """DEC-177 [APPROVED]: the page requests the damping behaviour once, for the spectrum's accepted candidates and with the
+    SAME request object, then draws the returned values. It computes, fits and classifies nothing."""
+    script = _osc_script()
+    assert script.count("/oscillation-analysis/damping") == 1
+    code = chr(10).join(line for line in script.splitlines() if not line.strip().startswith("//"))
+    run = _between("async function wwOscRunDamping", "function wwOscDampingSummary")
+    assert "candidate_frequencies_hz" in run and "dm.seq !== seq" in run
+    # started only from the spectrum run, with its request; cleared with it
+    spectrum_run = _between("async function wwOscRunSpectrum", "function wwOscAnalyze()")
+    assert "wwOscRunDamping(signal, request, accepted)" in spectrum_run and "wwOscDampingClear()" in spectrum_run
+    assert code.count("wwOscRunDamping(") == 2  # definition + the single call
+    render = _between("function wwOscRenderDamping", "// Time-Frequency Spectrogram (STFT, DEC-176")
+    for needle in ("dm.request === sp.request", "wwOscRequestMatchesSetup(dm.request)", "Analysis settings changed — run Analyze again",
+                   "spectrumCandidates.some"):
+        assert needle in render, needle
+    guard = _between("function wwOscSpectrumGuard", "function wwOscSpectrogramClear")
+    assert "wwSignalCatalogueIsCurrent(dm.request.signalKey, dm.request.signalRevision)" in guard
+    # the page never derives the damping figures from the envelope; no classification wording of its own
+    section = _between("async function wwOscRunDamping", "// Time-Frequency Spectrogram (STFT, DEC-176")
+    section = chr(10).join(line for line in section.splitlines() if not line.strip().startswith("//"))
+    for forbidden in ("Math.exp", "Math.log", "Math.sqrt", "Math.pow", "Well damped", "Poorly damped", "Unstable", "inter-area",
+                      "sub-synchronous", "SSO"):
+        assert forbidden not in section, forbidden
+    # sign convention is stated to the engineer
+    assert "α > 0 decays" in render and "s⁻¹" in script

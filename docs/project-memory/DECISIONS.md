@@ -25664,3 +25664,179 @@ reduced N× using peak-hold ..." in the warnings and a `Row reduction` details r
 
 Tests: `backend/tests/test_oscillation_spectrogram.py`, `test_frontend_oscillation_analysis_shell.py`,
 `browser-tests/oscillation_setup.spec.js` ("Time-Frequency Spectrogram (STFT)" describe).
+
+
+## DEC-177 -- Oscillation Analysis ringdown damping: damped-sinusoid model, band-envelope estimator, fit-interval selection, minimum-evidence rules and structured Why
+
+Status: **[APPROVED]** (owner, 2026-10-09; was `[PROPOSAL]`; real-event UAT accepted -- see below) -- implemented on `feat/event-reconstruction`. Builds on
+DEC-171..176 and changes none of them (Welch PSD, candidate detection, STFT, RMS representation and their tests are untouched).
+Scope: for each accepted DEC-175 candidate, answer **"when this component is excited, is it decaying, approximately sustained or
+growing, how fast, and how well does an exponential describe it?"** **Not implemented (deliberately later):** oscillation-type
+classification (inter-area / local / SSO / forced / converter), Prony, Matrix Pencil, mode shape, coherence / multi-channel,
+source localisation, forced-oscillation source identification, damping-adequacy thresholds ("acceptable > X %"), any AI. **All numeric
+thresholds below are Phase-1 engineering heuristics, not universal standards.**
+
+**Approved Phase-1 policy (2026-10-09).** NumPy-only production; zero-phase Gaussian candidate isolation; log-envelope least-squares damping
+fit; `alpha = -sigma` (`alpha > 0` decays, `alpha < 0` grows); damping ratio reported **only for a decaying component** and null for sustained
+and growing ones; the candidate frequency is retained and the fitted frequency reported separately; automatic fit-interval selection; a Time
+Group `t = 0` is display context only, never a forced fit start; minimum 4 cycles, 16 envelope samples and 3x the background; maximum RMS
+log-envelope scatter 0.20; minimum R2 0.80 for non-flat envelopes; at least 75 % cycle-to-cycle trend consistency; +-10 % sustained dead-band;
+separate comparable bursts are refused as intermittent; structured deterministic Why evidence; no AI; no oscillation-type classification yet.
+These thresholds are Phase-1 engineering heuristics, not universal standards, and are echoed in every response's `parameters`.
+
+**Real-event UAT `[FACT]` (owner, 2026-10-09).** A candidate near 0.4 Hz, fitted frequency about 0.375 Hz, decaying, zeta about 3.7 %, > 5 cycles
+used, R2 about 0.985; the measured envelope and the fitted exponential agreed visually, the disturbance / initial envelope peak was excluded and a
+later separate rise lay outside the fit.
+
+**UAT defect closed -- two time bases, one interval.** The page showed `Fit interval 36.36-51.13 s` while the first Why line said
+`28.16-42.93 s`. Investigated: both were the **same** interval. The backend wrote the fit interval into the Why *message* in the signal's
+SOURCE time, while the row (and the plot) go through the Time Group display basis (event time), here 8.2 s apart. Not two concepts and not an
+estimator fault (the 3x-background condition really does hold over the fit interval -- the fit ends where it stops holding). Fix (estimator
+unchanged): reasons carry absolute times **only in `values`** (source time, equal to `fit`), never inside `message`; the page composes the
+sentence on the display basis -- `Candidate at f Hz remained at least 3x above the background noise from A to B s.` and, as its own line,
+`Exponential damping fit used A to B s (D s).` (`candidate_active`, new `fit_interval`; an `intermittent_component` reason likewise carries its
+burst times in `values`). Regression tests: `test_why_interval_is_the_fit_interval_and_messages_carry_no_source_times` (backend) and the
+browser test that checks the Why numbers equal the `Fit interval` row with and without a Time Group `t = 0` (shifted by 8.2 s).
+
+**Principle.** Prefer **no estimate** over a mathematically weak one. A spectrally accepted candidate may legitimately have
+`damping unavailable`; the candidate itself is never removed. No AI, no opaque score, no "Well / Poorly damped" or "Unstable" label --
+the wording is the measured behaviour (`Decaying`, `Approximately sustained`, `Growing`).
+
+**Model, conventions and units.** `x(t) = offset/trend + A exp(sigma t) cos(2 pi f t + phi)`.
+*Decay-rate convention (one, used in names, API, UI):* `alpha = -sigma` in **s^-1**, amplitude proportional to `exp(-alpha t)`; `alpha > 0`
+decays, `alpha ~ 0` is sustained, `alpha < 0` grows (the field is `decay_rate_per_s`; the UI shows a growth rate as `-alpha`).
+*Frequency convention:* `f` is the **damped** oscillation frequency in Hz (what a spectrum shows); `omega = 2 pi f` rad/s.
+*Damping ratio:* `zeta = alpha / sqrt(alpha^2 + omega^2)` (exact for an under-damped mode with `omega` the damped frequency; x 100 for %),
+reported **only for a decaying component** -- a sustained or growing component is not a ringdown decay, so `damping_ratio` is `null` with an
+explicit reason (`damping_ratio_not_reported`), never a manufactured number. `time_constant_s = 1 / |alpha|`.
+
+**Estimator (smallest defensible Phase-1 method; `app/domain/damping_estimation.py`, NumPy only, no SciPy at runtime).** (1) The analysed window
+(the same validated, finite, uniformly sampled window as the spectrum: `prepare_analysis_window`, so native or DEC-173 RMS representation) is
+transformed **once** (`rfft`, mean removed). (2) Per candidate a **zero-phase Gaussian band-pass** (FFT-domain isolation applied to the positive
+frequencies, gain 1 at the centre, evaluated on a small decimated baseband grid, 4 samples per kept bin) gives the **analytic narrowband
+component**; its modulus is the amplitude envelope `a(t)` (signal units, peak amplitude -- not RMS) and its phase gives the instantaneous
+frequency. A complex exponential is an eigenfunction of an LTI filter, so the filter changes the **amplitude by a constant gain only, never the
+decay rate** (verified: injected rates recovered to < 1 % noise-free); offset, trend and the slow event recovery have no energy at the candidate
+frequency and are removed. (3) `ln a(t)` -- the envelope smoothed over one cycle, which keeps the slope exactly -- is fitted by ordinary
+least squares over the selected interval: `sigma` is the slope. Hilbert / FFT analytic signal rather than a time-domain fit was chosen because it
+needs no starting values (no nonlinear optimisation to diverge), costs one FFT per window and is auditable from the envelope plot.
+**No second peak detector**: the service runs the same `compute_spectrum` + DEC-175 detection for the request and analyses *its* accepted
+candidates (<= 5, the UI cap); the browser's `candidate_frequencies_hz` only **selects** among them and a candidate the backend does not have
+is `409 candidate_mismatch`. **STFT:** damping does not depend on the spectrogram being rendered; the STFT (8-slice) time resolution is too
+coarse for an envelope fit, so its *numerical* idea (energy in the candidate band over time) is re-derived from the data at full resolution
+instead of from the matrix; no pixel is read.
+
+**Candidate frequency.** The accepted candidate frequency is the filter centre and is always reported (`frequency.candidate_hz`). A
+**phase-slope refinement** over the fit interval (envelope-squared weighted) is reported **separately** as `fitted_hz` and used for `omega`
+only when reliable (weighted phase scatter <= 0.5 rad AND within half the filter bandwidth of the candidate); otherwise the candidate frequency
+is used with a `frequency_refinement_unreliable` warning. It matters: a Welch candidate is bin-quantised (4.95 Hz was reported as 5.0 Hz on a 0.5 Hz
+band) and `zeta` is proportional to `1/f`.
+
+**Band rule (candidate isolation).** FWHM `B = max(0.30 f, 0.15 Hz)`, then limited so the **nearest other candidate** lies >= 3.5 Gaussian
+sigmas from the centre and the upper skirt stays >= 3.5 sigmas below Nyquist (and the lower skirt above 0 Hz); never below 0.15 Hz.
+A candidate that cannot be isolated that way is `not_applicable` (`near_nyquist`, `near_zero_frequency`) -- the representation cannot support it;
+if a stronger neighbour is still too close, `component_not_isolated` (estimated leakage = `sqrt(PSD_neighbour / PSD_candidate) x exp(-d^2 / 2 s^2)`
+>= 25 % of amplitude; a `neighbouring_component_leakage` warning from 5 %). Zero-phase (non-causal), so no group delay and no artificial decay
+from a causal filter; a Gaussian has **no side lobes**, so a stronger mode 3.8 Hz away is negligible in a 1.15 Hz band (26 sigmas away).
+
+**Edge and disturbance guard.** The filter's own impulse response `exp(-2 pi^2 s^2 t^2)` is negligible after `EDGE_GUARD_SIGMAS = 4` time
+sigmas (`1 / (2 pi s)`, ~ 1.5 / B s). That guard is excluded at **both window ends** (circular-FFT wrap-around) and **after the envelope peak**:
+a step or fault excites the band like a short, fast-fading ringdown of the filter itself (a 50-unit step measured 5.2 at the step, 4e-3 four seconds later and 4e-6 six seconds later in a 0.345 Hz band) -- the fit starts clear of it. This is what lets a 0.3-unit ringdown be estimated beneath a
+50-unit step/recovery.
+
+**Fit-interval selection (deterministic).** Valid region = window minus the guard. *Rule `after_envelope_peak`* (decaying ringdowns, and anything with a
+disturbance): start = time of the maximum of the one-cycle-smoothed envelope + guard. If that leaves < 4 cycles (sustained or growing components,
+whose maximum is late), *rule `active_run_around_peak`*: the contiguous run around the maximum. End = the first time the smoothed envelope drops below
+`max(3 x background, 2 % of its start level)`, or the end of the valid region. **Background** = median envelope of the same filter centred two FWHMs
+either side (the lower of the two available sides; robust to a stronger neighbouring mode and to a localised step). The fit interval is
+reported in the signal's source time (`fit.start_s/end_s/duration_s/cycles_used/samples/rule/peak_s`); the page maps it through the Time Group
+display basis. **A workspace Time Group `t = 0` is display context only** -- it never reaches the estimator, so the fit does not start at `t = 0`
+(tested with onsets at 30 s and 90 s and a shifted time origin) and the analysis works with no `t = 0`.
+
+**Minimum-evidence rules (named constants, echoed in `parameters`).**
+
+| Constant | Value | Rule |
+|---|---|---|
+| `MIN_FIT_CYCLES` | 4 | cycles of the used frequency in the fit interval (`insufficient_cycles` / `ringdown_interval_too_short`) |
+| `MIN_FIT_SAMPLES` | 16 | envelope samples in the interval |
+| `MIN_AMPLITUDE_OVER_NOISE` | 3 | smoothed envelope >= 3 x background through the interval (`near_noise_floor`) |
+| `ENVELOPE_FLOOR_FRACTION` | 2 % | the fit stops at 2 % of its start level (dynamic range limit) |
+| `MAX_RMS_LOG_RESIDUAL` | 0.20 | RMS departure of `ln` envelope from the fitted line (`envelope_scatter_too_high`) -- the only quality gate for a flat envelope, where R2 is meaningless |
+| `MIN_R_SQUARED` | 0.80 | R2 of the log-envelope fit, judged only for a non-sustained envelope (`fit_quality_too_low`) |
+| `MIN_MONOTONIC_FRACTION` | 75 % | cycle-to-cycle envelope steps that follow the fitted trend (`envelope_not_monotonic`) |
+| `SUSTAINED_ENVELOPE_CHANGE` | 10 % | fitted envelope change over the interval within +-10 % = `Approximately sustained` (the only dead-band; centralised) |
+| `INTERMITTENT_*` | 2 cycles / 50 % | another active run >= 2 cycles with mean >= 50 % of the fit-start level, separated by a quiet gap = `intermittent_component` |
+| `BANDWIDTH_FRACTION` / `MIN_BANDWIDTH_HZ` / `ISOLATION_SIGMAS` | 0.30 / 0.15 Hz / 3.5 | band rule above |
+
+Also reported but not gated: `time_bandwidth_product` (duration x bandwidth ~ independent envelope values behind the fit). The honest
+statistical limit: a 6 s fit through a 0.35 Hz band holds only ~2 independent envelope values, so a noisy estimate carries several %
+sampling scatter (see validation); no confidence interval is claimed in Phase 1.
+
+**Result model (`POST /api/v1/workspaces/{ws}/oscillation-analysis/damping`, `app/schemas/oscillation.py`).** Request: the spectrum's identity
+(`input`, `representation`, `signal_revision`, `window_start_s/end_s`, `frequency_min_hz/max_hz`) + optional `candidate_frequencies_hz`
+(selection). The backend re-validates everything exactly as the spectrum does (400/404/409/422 codes reused; `candidate_mismatch` 409).
+Response: `status` (`ok` | `no_candidates`), `setup` (identity echo), `signal`, `representation`, `window`, `parameters` (the conventions and every
+threshold), `warnings` (RMS roll-off / assumed nominal frequency carried from the spectrum) and `results[]`, one per candidate:
+`rank, candidate_frequency_hz, status (available | insufficient_evidence | not_applicable), reason_code, message, behaviour, fit{start_s,
+end_s, duration_s, cycles_used, samples, rule, peak_s}, decay_rate_per_s, time_constant_s, damping_ratio, frequency{candidate_hz, fitted_hz,
+used_hz, source}, fit_quality{r_squared, rms_log_residual, monotonic_fraction, samples, time_bandwidth_product}, envelope_change{start_amplitude,
+end_amplitude, change_percent, log_change, unit}, filter{...}, background{...}, reasons[], warnings[], evidence{times_s, envelope, fitted_envelope,
+valid/fit bounds}` (<= 500 points; log-axis audit plot). Nulls are explained: `damping_ratio` is null with `damping_ratio_not_reported` for
+sustained / growing; every non-`available` result has `reason_code`, `message` and `reasons[]`.
+
+**Deterministic Why (structured `{code, message, values}`; values are the measured numbers).** Positive: `candidate_active` (>= 3x background
+through the fit interval; times composed by the page on the display basis), `fit_interval`, `cycles_used`, `envelope_change` ("Oscillation envelope decreased by 72 % over 16 s (from ... to ... MW)"),
+`exponential_fit` (R2, log scatter), `decay_rate`, `damping_ratio` (the formula and the number), `isolation` (bandwidth and guard). Negative:
+`insufficient_cycles`, `ringdown_interval_too_short`, `insufficient_samples`, `near_noise_floor`, `envelope_scatter_too_high`,
+`fit_quality_too_low`, `envelope_not_monotonic`, `intermittent_component`, `component_not_isolated`, `near_nyquist`, `near_zero_frequency`,
+`no_component_energy`. No AI text is generated.
+
+**Sustained, growing, intermittent.** A flat fitted envelope is reported as `Approximately sustained` with the fitted `alpha` (~ 0) and **no**
+damping ratio; a rising one as `Growing` with its growth rate and no damping ratio; bursts separated by quiet gaps, or constant amplitude for a
+limited interval then a drop, fail `intermittent_component` / the log-residual gate and return `insufficient_evidence` with reasons. A
+two-burst record is conservatively refused rather than fitted to its strongest burst (open question 3).
+
+**RMS-derived signals (DEC-173 preserved; nothing compensated).** The estimator runs on the same RMS-magnitude series; because the one-cycle
+RMS window is linear in a small modulation, the **decay rate is unchanged** (a constant sinc gain only scales the amplitude; a 3 Hz ringdown of
+a 50 Hz current is recovered within the 6 % test tolerance). `rms_rolloff`, `nominal_frequency_assumed` (result level) and `rms_representation_attenuation`
+(candidate level) warnings are carried forward; no inverse compensation, RMS maths unchanged.
+
+**Frontend.** `Damping behaviour` section inside the Frequency Spectrum card, below `Detected Oscillation Components`: candidate picker (only when
+> 1 candidate), behaviour, `Estimated damping ratio (zeta)` %, `Decay rate (alpha)` in s^-1 (or `Growth rate`), time constant, spectral candidate and
+fitted frequency, fit interval (Time Group display basis, with the basis named), cycles used, fit quality, envelope change, a `Why` list (or
+`Damping estimate unavailable` with the negative reasons), `All candidates` one-liners, a Plotly **evidence plot** (measured envelope, fitted
+exponential dashed, shaded fit interval, `t = 0` guide when a Time Group has one; log amplitude axis, `Time (s)`, `Envelope amplitude (unit)`),
+and a note stating the convention. It is requested only after the spectrum is ready and has candidates, with the **same request object**; it
+is shown only while linked to that spectrum result; changed settings dim it ("Analysis settings changed -- run Analyze again", reverting
+restores it); another / removed / recreated signal or a new Analyze discards it; superseded responses are dropped. The browser contains no
+estimation, fit, unwrap, filter or classification code (guard test).
+
+**Validation `[FACT]` (this machine; `backend/tests/test_oscillation_damping.py`, 52 tests).** Tolerances are stated in each test.
+*Clean known decay* (noise-free, 15 cases: f = 0.6 / 1.15 / 2.5 / 4.95 / 8 Hz x zeta = 2 / 5 / 10 %): decay rate and zeta within **2 %** (observed
+< 0.1 %), R2 > 0.999. *Sustained* (alpha ~ 0, no ratio), *sustained + noise*, *growing* (rate within 5 %, observed 0.00004). *Step / recovery*: a
+50-unit step with a 6 s recovery under a 0.3-unit, 1.15 Hz, zeta 6 % ringdown: 0.1 % error noise-free, 9-13 % with 0.005 white noise (about
+7 cycles of data; the sampling scatter noted above). Offset + ramp: < 3 %. Recovery alone: no estimate. *Two modes, different damping*: zeta 5 %
+(1.15 Hz, amplitude 1) and 2 % (4.95 Hz, amplitude 0.1) both within 4 %; a stronger inseparable neighbour is refused. *Noise*: moderate (amplitude / noise
+~ 50) zeta within 10 %; strong noise and a component at the noise floor give `insufficient_evidence` or a bounded estimate, never a wild ratio;
+pure noise -> `near_noise_floor`. *Short ringdown* late in the record, an 8 s record, intermittent bursts, a constant-amplitude burst:
+`insufficient_evidence` with reasons. 24.9 Hz at fs 50 Hz -> `not_applicable` (`near_nyquist`); 0.1 Hz -> `near_zero_frequency`; 0.3 Hz is
+estimated or explained without error. RMS representation: see above. **Real-event-like** (50-unit event response rising from 30 s, a
+1.15 Hz ringdown of amplitude 1.0 / zeta 2 % and a 4.95 Hz one of amplitude 0.4 / zeta 1 %, 0.01 noise, f_min 0.1 Hz; the detector reports 4.95 and 1.15 Hz):
+estimated vs injected **alpha 0.1393 vs 0.1445 (-3.6 %)** and **0.3038 vs 0.3110 (-2.3 %)**; **zeta 1.93 % vs 2 %** and **0.98 % vs 1 %** (the 4.95 Hz candidate is
+bin-quantised to 5.0 / 4.955 Hz and refined to the fitted frequency). The same signal on a 33 s window -> `ringdown_interval_too_short`, candidate kept.
+Focused run: 242 backend tests (damping + spectrum + candidates + spectrogram + representation + shell guards) and the whole 111-test `oscillation_setup.spec.js` pass. Browser: 13 damping tests (decaying evidence, plot, request identity, no-candidate, sustained, growing, unavailable, stale / revert, discard, late response, error,
+two components, phone width).
+
+**Performance `[FACT]` (this machine, best of 3; the damping estimators themselves cost 3 ms (1 candidate) and 20-22 ms (5 candidates) at 50 Hz x 160 s, 1 kHz x 160 s and 5 kHz x 160 s -- one `rfft` is shared (0.3 / 10 / 56 ms) and each candidate works on a small decimated baseband grid. A full damping *request* (it re-runs the Welch spectrum + DEC-175 detection, then the estimates) takes 8 ms / 25 ms (50 Hz, 1 / 5 candidates), 99 ms (1 kHz, 5) and 413 ms (5 kHz = 800 000 samples, 5), against a spectrum alone of 4 / 3 / 45 / 247 ms: the added cost is the estimators plus a second preprocessing pass, i.e. at most the spectrum's own cost again).**
+
+**Open engineering questions for the owner (not decided here).** (1) **Damping ratio for growing components:** `null` now (not a ringdown
+decay); engineers often quote a negative ratio -- wanted? (2) Is the 3x-background / 4-cycle / 10 % dead-band set right, once more real events are
+seen? Real UAT may want `MIN_FIT_CYCLES` 3 for short ringdowns. (3) **Multiple ringdowns in one record** (a re-excitation such as an auto-reclose) are
+refused as `intermittent_component`; fitting the strongest / last ringdown with a warning is possible. (4) The guard costs ~ 4-5 s after a disturbance at
+1 Hz (~ 1.5 / B s): a wider band for fast modes is allowed by the same rule, but a *narrower, longer* record is the only way to resolve close modes.
+(5) No confidence interval: independent-sample counts are small for slow modes; an approximate standard error is possible. (6) Whether `Approximately
+sustained` with a tiny negative `alpha` should carry an engineering note. (7) Adequacy labels ("acceptable damping > X %") remain a future policy.
+(8) Candidates beyond the UI cap of 5 are not analysed (`total_candidates` says so in the spectrum).
+
+Tests: `backend/tests/test_oscillation_damping.py` (domain + service + API), `test_frontend_oscillation_analysis_shell.py` (updated guards + new
+backend-result guard), `browser-tests/oscillation_setup.spec.js` ("damping behaviour" describe; `synthetic_comtrade.js` gained `decayPerS` and `components`).

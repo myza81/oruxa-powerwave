@@ -9,6 +9,18 @@ Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
 ## What was most recently done
 
+**Oscillation Analysis Damping / Ringdown (DEC-177 `[APPROVED]`, 2026-10-09) -- owner UAT accepted; committed `feat: add oscillation damping analysis` (not pushed).** The UAT interval mismatch (Why in source time vs row in display time) was fixed by moving times out of reason messages into `values`. Backend:
+`app/domain/damping_estimation.py` (`window_spectrum`, `band_baseband`, `estimate_damping`; all thresholds are named constants),
+`app/services/oscillation_damping_service.py` (`compute_damping`: re-runs `compute_spectrum` for the candidates, one `rfft` shared by all),
+`POST .../oscillation-analysis/damping` (+ `candidate_mismatch` 409, schemas in `app/schemas/oscillation.py`). Welch / candidate / STFT code is untouched.
+Frontend (`wwOsc*` in `index.html`): `wwOscRunDamping()` (started from `wwOscRunSpectrum` with the SAME request object), `wwOscRenderDamping()`,
+`wwOscDrawDamping()`; state `wwOscState.damping`. The static guard `test_no_processing_algorithm_is_present_in_the_browser` no longer forbids the
+words `damping` / `ringdown` (the feature now exists) but forbids fit / unwrap / hilbert / exp / log code; `test_damping_is_a_backend_result_...`
+pins the request identity and stale wiring. Tests: `test_oscillation_damping.py`, `oscillation_setup.spec.js` ("damping behaviour";
+`synthetic_comtrade.js` gained `decayPerS` and `components`). **Next:** owner UAT on real events (the 1.15 / 4.95 Hz MW and frequency signals); the
+open questions are listed at the end of DEC-177. Not started: oscillation-type classification,
+cross-channel evidence, adequacy policy.
+
 **Oscillation Analysis Spectrogram / STFT (DEC-176 `[APPROVED]`, 2026-10-09) -- owner UAT accepted; closed in one commit
 `feat: add oscillation spectrogram analysis` (not pushed).** Backend: `app/domain/spectrogram_estimation.py` (`choose_stft_geometry`,
 `stft_psd`, `peak_hold_rows`), `app/services/oscillation_spectrogram_service.py` (`compute_spectrogram`), `POST

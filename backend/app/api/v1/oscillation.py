@@ -8,6 +8,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.schemas.oscillation import (
+    OscillationDampingOut,
+    OscillationDampingRequest,
     OscillationRepresentationOut,
     OscillationRepresentationRequest,
     OscillationSpectrogramOut,
@@ -18,6 +20,7 @@ from app.schemas.oscillation import (
 from app.schemas.source import ErrorOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.errors import ImportServiceError
+from app.services.oscillation_damping_service import compute_damping
 from app.services.oscillation_representation_service import derive_analysis_representation, describe
 from app.services.oscillation_spectrogram_service import compute_spectrogram
 from app.services.oscillation_spectrum_service import compute_spectrum
@@ -40,6 +43,7 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "non_uniform_sampling": status.HTTP_422_UNPROCESSABLE_CONTENT,
     "invalid_welch_configuration": status.HTTP_422_UNPROCESSABLE_CONTENT,
     "invalid_spectrogram_configuration": status.HTTP_422_UNPROCESSABLE_CONTENT,
+    "candidate_mismatch": status.HTTP_409_CONFLICT,
 }
 
 
@@ -139,3 +143,35 @@ def get_spectrogram(
             detail=ErrorOut(code=exc.code, message=exc.message).model_dump(),
         ) from exc
     return OscillationSpectrogramOut(**result)
+
+
+@router.post("/damping", response_model=OscillationDampingOut)
+def get_damping(
+    workspace_id: str,
+    body: OscillationDampingRequest,
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+) -> OscillationDampingOut:
+    """Ringdown damping behaviour of the accepted spectral candidates of one setup
+    (DEC-177 [PROPOSAL]). The setup is re-validated and the candidates re-derived
+    by the backend; weak evidence is a 200 `insufficient_evidence` per candidate.
+    Nothing is stored."""
+    if not workspace_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorOut(code="invalid_workspace", message="workspace_id must not be blank.").model_dump(),
+        )
+    try:
+        result = compute_damping(
+            workspace_id=workspace_id, input_ref=body.input.to_domain(), representation=body.representation,
+            signal_revision=body.signal_revision, window_start_s=body.window_start_s, window_end_s=body.window_end_s,
+            f_min_hz=body.frequency_min_hz, f_max_hz=body.frequency_max_hz,
+            candidate_frequencies_hz=body.candidate_frequencies_hz,
+            source_registry=source_registry, calc_registry=calc_registry,
+        )
+    except ImportServiceError as exc:
+        raise HTTPException(
+            status_code=_STATUS_BY_ERROR_CODE.get(exc.code, status.HTTP_400_BAD_REQUEST),
+            detail=ErrorOut(code=exc.code, message=exc.message).model_dump(),
+        ) from exc
+    return OscillationDampingOut(**result)

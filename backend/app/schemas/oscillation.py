@@ -296,3 +296,132 @@ class OscillationSpectrogramOut(BaseModel):
     #: Linear PSD, `psd[row][column]` = `psd[frequency][time]`.
     psd: list[list[float]] = []
     warnings: list[SpectrumWarningOut] = []
+
+
+class OscillationDampingRequest(BaseModel):
+    """Ringdown damping request (DEC-177 [PROPOSAL]). The same identity as the spectrum
+    -- the backend re-runs the (cheap) Welch spectrum and the DEC-175 detection for that
+    exact setup and analyses ITS accepted candidates; nothing the browser says about
+    candidates is trusted. ``candidate_frequencies_hz`` only SELECTS among them (each must
+    match a backend candidate, else 409 ``candidate_mismatch``); omitted = all of them."""
+
+    input: ChannelRefIn
+    representation: str = "native"
+    signal_revision: str | None = None
+    window_start_s: float
+    window_end_s: float
+    frequency_min_hz: float
+    frequency_max_hz: float
+    candidate_frequencies_hz: list[float] | None = None
+
+
+class DampingFitOut(BaseModel):
+    #: Fit interval in the signal's SOURCE time.
+    start_s: float
+    end_s: float
+    duration_s: float
+    cycles_used: float
+    samples: int
+    #: `after_envelope_peak` | `active_run_around_peak`
+    rule: str
+    peak_s: float
+
+
+class DampingFrequencyOut(BaseModel):
+    #: The accepted DEC-175 spectral candidate frequency (never replaced).
+    candidate_hz: float
+    #: Phase-slope refinement over the fit interval; None when not reliable.
+    fitted_hz: float | None = None
+    used_hz: float
+    #: `candidate` | `fitted`
+    source: str
+
+
+class DampingFitQualityOut(BaseModel):
+    r_squared: float | None = None
+    rms_log_residual: float
+    monotonic_fraction: float | None = None
+    samples: int
+    time_bandwidth_product: float
+
+
+class DampingEnvelopeChangeOut(BaseModel):
+    start_amplitude: float
+    end_amplitude: float
+    log_change: float
+    change_percent: float
+    unit: str | None = None
+
+
+class DampingFilterOut(BaseModel):
+    type: str
+    zero_phase: bool
+    centre_hz: float
+    bandwidth_fwhm_hz: float
+    sigma_hz: float
+    edge_guard_s: float
+    nearest_other_candidate_hz: float | None = None
+    neighbour_leakage: float | None = None
+
+
+class DampingBackgroundOut(BaseModel):
+    level: float | None = None
+    sides: list[str] = []
+    min_amplitude_over_background: float
+    start_amplitude_over_background: float | None = None
+    end_amplitude_over_background: float | None = None
+
+
+class DampingEvidencePlotOut(BaseModel):
+    """Thinned (<= 500 points) envelope for the audit plot. Times are SOURCE time."""
+
+    times_s: list[float]
+    envelope: list[float]
+    #: Fitted exponential on the fit interval; None outside it.
+    fitted_envelope: list[float | None] | None = None
+    valid_start_s: float
+    valid_end_s: float
+    fit_start_s: float | None = None
+    fit_end_s: float | None = None
+    background_level: float | None = None
+    stride: int
+
+
+class CandidateDampingOut(BaseModel):
+    rank: int
+    candidate_frequency_hz: float
+    #: `available` | `insufficient_evidence` | `not_applicable`
+    status: Literal["available", "insufficient_evidence", "not_applicable"]
+    #: Machine code of the (first) negative evidence; None when available.
+    reason_code: str | None = None
+    #: Short statement: Decaying / Approximately sustained / Growing, or why none.
+    message: str
+    #: `decaying` | `approximately_sustained` | `growing` (available only).
+    behaviour: str | None = None
+    fit: DampingFitOut | None = None
+    #: alpha in s^-1, amplitude ~ exp(-alpha t): > 0 decays, ~0 sustained, < 0 grows.
+    decay_rate_per_s: float | None = None
+    time_constant_s: float | None = None
+    #: zeta = alpha / sqrt(alpha^2 + omega^2); only for a decaying component.
+    damping_ratio: float | None = None
+    frequency: DampingFrequencyOut | None = None
+    fit_quality: DampingFitQualityOut | None = None
+    envelope_change: DampingEnvelopeChangeOut | None = None
+    filter: DampingFilterOut | None = None
+    background: DampingBackgroundOut | None = None
+    reasons: list[DetectionEvidenceOut] = []
+    warnings: list[DetectionEvidenceOut] = []
+    evidence: DampingEvidencePlotOut | None = None
+
+
+class OscillationDampingOut(BaseModel):
+    #: `ok`, or `no_candidates` (a valid result: nothing to analyse).
+    status: Literal["ok", "no_candidates"]
+    message: str | None = None
+    setup: SpectrogramSetupOut
+    signal: SpectrumSignalOut
+    representation: SpectrumRepresentationOut
+    window: SpectrumWindowOut
+    parameters: dict[str, float | int | str | bool]
+    results: list[CandidateDampingOut] = []
+    warnings: list[SpectrumWarningOut] = []
