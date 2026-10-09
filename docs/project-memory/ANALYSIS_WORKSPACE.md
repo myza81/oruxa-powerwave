@@ -441,7 +441,7 @@ component occurs; linear PSD from the backend, dB display in the browser, candid
 sustained / growing, decay rate `alpha` in s^-1, damping ratio for a decaying component, fit interval, fit quality and a structured Why).
 DEC-178 `[APPROVED]` (2026-10-09, owner UAT accepted) adds **Cross-Signal Oscillation Evidence**: an explicit `Compare signals` selection whose candidates are grouped
 deterministically across signals / recordings (frequency agreement within the Welch resolution, workspace-time overlap, damping consistency, provenance).
-There is no oscillation-type classification, adequacy threshold, Prony / Matrix Pencil or AI.
+DEC-179 `[APPROVED]` adds an **Oscillation Interpretation**: a deterministic behaviour and probable type per component with structured Why / Limitations / alternatives (frequency is supporting evidence only; inter-area, local, control and SSO are never definitive; *unresolved* is a valid result). There is no adequacy threshold, Prony / Matrix Pencil, mode-shape / phase evidence or AI.
 
 Raw Voltage/Current are analysed through an analysis-internal **RMS magnitude representation** (DEC-173 `[APPROVED]`):
 the backend derives it on demand from the existing RMS engine and returns only its description (rate, usable range,

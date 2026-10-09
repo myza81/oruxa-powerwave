@@ -41,13 +41,13 @@ def test_icon_reuses_existing_owner_asset_and_is_in_manifest():
     assert (ROOT / "frontend" / "assets" / "icons" / "navigation" / "waveform_page.svg").is_file()
 
 
-def test_panel_has_setup_and_a_spectrum_card_but_no_interpretation_surface():
+def test_panel_has_setup_and_a_spectrum_card_but_no_static_result_surface():
     panel = _between('id="wwOscillationPanel"', "<!-- Compliance & Capability, Slice 1")
     assert "Oscillation Analysis" in panel
     for heading in ("Analysis Setup", "Analysis Window", "Frequency Range", "Frequency Spectrum (Welch PSD)", "Display",
                     "Time-Frequency Spectrogram (STFT)", "Analysis Information", "Data Adequacy"):
         assert heading in panel
-    # The result cards are hidden until Analyze; no static chart surface and no interpretation.
+    # The result cards are hidden until Analyze; no static chart surface.
     assert 'id="wwOscSpectrumCard" hidden' in panel
     assert 'id="wwOscSpectrogramCard" hidden' in panel
     for forbidden in ("<canvas", "<svg", "dominant", "peak", "ringdown", "persistent"):
@@ -190,12 +190,16 @@ def test_cross_signal_is_a_backend_grouping_requested_only_by_compare():
     """DEC-178 [APPROVED]: the page lists the other eligible catalogue signals, sends the explicitly ticked ones and draws the backend's
     grouping. It never groups, matches frequencies or classifies, and nothing runs for the whole workspace."""
     script = _osc_script()
-    assert script.count("/oscillation-analysis/cross-signal") == 1
+    # DEC-179: the comparison and the interpretation are ONE backend response (the interpretation endpoint is a superset of the evidence)
+    assert script.count("/oscillation-analysis/interpretation") == 1 and "/oscillation-analysis/cross-signal" not in script
     code = chr(10).join(line for line in script.splitlines() if not line.strip().startswith("//"))
-    assert code.count("wwOscRunCross(") == 1  # the definition only: nothing calls it -- the Compare button passes it by reference
-    assert 'getElementById("wwOscCrossBtn").addEventListener("click", wwOscRunCross)' in script
+    # the definition, the reference-only baseline after Analyze and the Compare button -- nothing else calls it
+    assert code.count("wwOscRunCross(") == 3 and code.count("wwOscRunCross(true)") == 1 and code.count("wwOscRunCross(false)") == 1
+    assert 'getElementById("wwOscCrossBtn").addEventListener("click", () => wwOscRunCross(false))' in script
+    assert "wwOscRunCross(true)" in _between("async function wwOscRunSpectrum", "function wwOscAnalyze()")
     run = _between("async function wwOscRunCross", "function wwOscCrossCurrent")
     assert "cx.chosen" in run and "wwOscCrossCandidates()" in run and "cx.seq !== seq" in run
+    assert "const others = baseline ? [] :" in run  # the baseline never adds a signal the engineer did not tick
     # live catalogue, current-ness and stale wiring
     assert "wwSignalCatalogueList(" in _between("function wwOscCrossCandidates", "function wwOscCrossPrune")
     render = _between("function wwOscRenderCross", "// Time-Frequency Spectrogram (STFT, DEC-176")
@@ -205,3 +209,24 @@ def test_cross_signal_is_a_backend_grouping_requested_only_by_compare():
                            if not line.strip().startswith("//"))
     for forbidden in ("Math.abs(", "Math.exp", "Math.log", "Math.sqrt", "inter-area", "local mode", "sub-synchronous", "SSO", "forced"):
         assert forbidden not in section, forbidden
+
+
+def test_interpretation_is_drawn_from_the_backend_response_and_decides_nothing():
+    """DEC-179 [APPROVED]: the page draws the behaviour, probable type, Why, limitations and alternatives exactly as returned. It contains
+    no classification vocabulary, no thresholds and no arithmetic of its own."""
+    script = _osc_script()
+    render = _between("function wwOscRenderInterpretation", "// Cross-Signal Oscillation Evidence (DEC-178")
+    code = chr(10).join(line for line in render.splitlines() if not line.strip().startswith("//"))
+    for needle in ("it.behaviour_classification.label", "it.probable_type.label", "it.supporting_evidence", "it.limiting_evidence",
+                   "it.alternatives", "wwOscCrossCurrent()", "wwSignalCatalogueIsCurrent(entry.key, entry.revision)",
+                   "Analysis settings changed — run Analyze again"):
+        assert needle in code, needle
+    for forbidden in ("Math.", "electromechanical", "inter-area", "sub-synchronous", "SSO", "converter", "forced", "ringdown", "probable ",
+                      "confidence", "probability", "classification_level ===", "behaviour_classification.code ==", "probable_type.code =="):
+        assert forbidden not in code, forbidden
+    # no second signal registry and no request of its own: it only reads the cross state
+    assert "fetch(" not in code and "wwSignalCatalogueList(" not in code
+    panel = _between('id="wwOscInterp"', 'id="wwOscInterpNote"')
+    assert "Oscillation Interpretation" in panel
+    for forbidden in ("electromechanical", "inter-area", "ringdown", "persistent", "peak", "dominant"):
+        assert forbidden not in panel.lower(), forbidden

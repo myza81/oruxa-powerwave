@@ -508,3 +508,88 @@ class OscillationCrossSignalOut(BaseModel):
     parameters: dict[str, float | int | str | bool]
     signals: list[CrossSignalRowOut]
     components: list[CrossSignalComponentOut] = []
+
+
+# ---------------------------------------------------------------- DEC-179 [APPROVED] oscillation interpretation
+
+
+class InterpretationRequest(BaseModel):
+    """The cross-signal request, but a single signal is a valid interpretation."""
+
+    signals: list[CrossSignalEntryIn] = Field(min_length=1, max_length=8)
+    frequency_min_hz: float
+    frequency_max_hz: float
+
+
+class BehaviourClassificationOut(BaseModel):
+    #: Stable code, e.g. `disturbance_excited_ringdown`, `sustained_oscillation`, `insufficient_temporal_evidence`.
+    code: str
+    label: str
+
+
+class TypeSubtypeOut(BaseModel):
+    code: str
+    label: str
+    #: Always `possible` in this slice: no phase / mode-shape evidence exists yet.
+    level: str
+
+
+class ProbableTypeOut(BaseModel):
+    #: `electromechanical` | `forced_or_sustained` | `control_converter_interaction` | `sub_synchronous_oscillation` | `unresolved`.
+    code: str
+    label: str
+    subtype: TypeSubtypeOut | None = None
+
+
+class InterpretationDescriptorOut(BaseModel):
+    code: str
+    label: str
+    message: str
+    values: dict[str, float | int | str | bool | None] = {}
+
+
+class InterpretationAlternativeOut(BaseModel):
+    code: str
+    label: str
+    level: str
+    #: `subtype_alternative` | `lower_level` | `refined_by_primary` | `refined_by_alternative` | `equally_plausible`
+    relation: str
+    #: `consistent` | `weaker`
+    consistency: str
+    reasons: list[DetectionEvidenceOut] = []
+    limitations: list[DetectionEvidenceOut] = []
+
+
+class ComponentInterpretationOut(BaseModel):
+    """Deterministic interpretation of one component: behaviour and probable type are separate dimensions; every statement is
+    backed by structured supporting / limiting evidence. No probability, no percentage, no AI."""
+
+    component_id: int
+    component_frequency_hz: float
+    behaviour_classification: BehaviourClassificationOut
+    probable_type: ProbableTypeOut
+    #: `probable` | `possible` | `unresolved` | `insufficient_evidence` (see `interpretation_parameters`).
+    classification_level: str
+    hierarchy: list[str]
+    descriptors: list[InterpretationDescriptorOut] = []
+    supporting_evidence: list[DetectionEvidenceOut]
+    limiting_evidence: list[DetectionEvidenceOut]
+    alternatives: list[InterpretationAlternativeOut] = []
+    warnings: list[DetectionEvidenceOut] = []
+    evidence_dimensions: dict[str, bool] = {}
+
+
+class InterpretedComponentOut(CrossSignalComponentOut):
+    interpretation: ComponentInterpretationOut
+
+
+class OscillationInterpretationOut(BaseModel):
+    status: Literal["ok", "no_components"]
+    message: str | None = None
+    setup: dict[str, float]
+    parameters: dict[str, float | int | str | bool]
+    interpretation_parameters: dict[str, float | int | str | bool]
+    #: Wall-clock milliseconds of each step; the classification step is reported on its own.
+    timings_ms: dict[str, float]
+    signals: list[CrossSignalRowOut]
+    components: list[InterpretedComponentOut] = []

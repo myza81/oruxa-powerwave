@@ -25961,3 +25961,128 @@ slice needs more (signal-type pairs, relative amplitude) is for that slice to de
 
 Tests: `backend/tests/test_oscillation_cross_signal.py`, `test_frontend_oscillation_analysis_shell.py` (new `test_cross_signal_is_a_backend_grouping...`),
 `browser-tests/oscillation_setup.spec.js` ("cross-signal evidence" describe).
+
+
+## DEC-179 -- Oscillation Analysis interpretation: deterministic behaviour and probable-type classification with supporting and limiting evidence
+
+Status: **[APPROVED]** (2026-10-10; owner UAT accepted with two wording refinements, below) -- implemented on `feat/event-reconstruction`, committed as `feat: add oscillation interpretation`. Builds on DEC-171..178 and
+changes none of them (Welch / DEC-175 candidates / DEC-176 STFT / DEC-177 damping / DEC-178 grouping mathematics are untouched). Scope: move from
+"these oscillatory components exist and are supported by this evidence" to **"this component is most consistent with this behaviour and probable
+type, and here is why -- and what stops us saying more"**. **Not implemented (deliberately later):** mode-shape estimation, phase-angle clustering,
+coherence, source localisation, forced-oscillation source identification, Prony / Matrix Pencil, universal damping-adequacy thresholds, **any AI**.
+**No probability, percentage or statistical confidence anywhere. Every threshold below is a Phase-1 engineering heuristic, not a standard.**
+
+**Two dimensions, never collapsed into one label.** *Behaviour* (temporal / dynamic) and *probable type* (family / mechanism) are reported
+separately: a component can be `Disturbance-excited decaying oscillation` while its type is `Possible electromechanical oscillation, subtype
+unresolved`. A broad family can be supported without its subtype.
+
+**Frequency alone never decides a type (hard rule).** A frequency band is one named evidence dimension (`frequency_in_electromechanical_range`,
+`frequency_below_nominal`, ...) among signal types, distinct measurements, recordings, temporal overlap, damping behaviour and onset. Every family
+needs several dimensions at once; a hypothesis whose band is satisfied but whose other dimensions are not is not raised (tests step the same
+frequency through different evidence, and a voltage-type signal at every electromechanical frequency with no dynamics stays unresolved). The
+bands overlap by design (inter-area 0.1-1.0 Hz, local 0.8-3.0 Hz, electromechanical 0.1-3.0 Hz, control 3-100 Hz, sub-synchronous frequency 3 Hz
+up to the nominal frequency) and are echoed in every response.
+
+**Levels carry explicit deterministic meaning (no numbers).** `probable` = every requirement of the family rule is met including cross-measurement
+and temporal agreement; `possible` = the minimum requirement is met, corroboration is missing or limited; `unresolved` = evidence exists but no family
+is met or several are equally plausible; `insufficient_evidence` = nothing beyond the frequency. `Oscillation detected -- type unresolved` is a
+first-class result. Inter-area, local, control and SSO are **never** `probable` / definitive in this slice (no phase / mode-shape / location evidence).
+
+**Behaviour rules (from STFT activity + DEC-177 damping; `oscillation_classification._behaviour`).** Damping behaviours of the members' *available*
+results: differing -> `inconsistent_across_signals` (reported, never averaged); all `growing` -> `growing_oscillation`; all `decaying` -> with a quiet
+lead-in (every member with STFT evidence starts its active interval >= 10 % of its analysed window after the window start) `disturbance_excited_ringdown`,
+otherwise `decaying_oscillation` ("onset not observed in the window"); all `approximately_sustained` -> `sustained_oscillation`. No available damping:
+a member refused as `intermittent_component` -> `intermittent_oscillation`; active over >= 80 % of the window in every member with STFT evidence ->
+`sustained_oscillation` (persistence; `damping_unavailable` is listed as a limitation); otherwise `insufficient_temporal_evidence`. No workspace `t = 0`
+is required (the lead-in is measured inside each signal's own window).
+
+**Probable-type rules (`classify_component`).**
+- *Electromechanical* (needs: frequency in 0.1-3.0 Hz AND a Power / Frequency / ROCOF / angle member AND a dynamic behaviour -- ringdown, decaying or growing).
+  `probable` additionally needs >= 2 distinct measurements, overlapping activity, no contradictory damping and a non-growing behaviour; else `possible`.
+  *Subtype:* **possible inter-area** only when the frequency is in 0.1-1.0 Hz AND >= 2 distinct measurements across >= 2 recordings AND overlapping
+  activity AND a relevant signal type AND no damping conflict; it always carries `phase_mode_shape_unavailable` ("Inter-area classification is
+  provisional because relative phase/mode-shape evidence is not yet available.") and `location_relationship_unknown` (recordings are **not** assumed to be
+  different grid areas; no station metadata is inferred from file names). A local mode would rest on the *absence* of the component elsewhere, which is not
+  proof of locality, so **it is never positively offered**: without inter-area evidence the result carries the neutral limitation `Electromechanical subtype unresolved -- local or
+  inter-area cannot be distinguished with the available evidence` (plus `local_not_confirmed`: absence from other compared signals is not proof of locality) and **no
+  local/inter-area alternatives**; beside a *possible inter-area* subtype a local mode is listed only as a not-excluded alternative (`alternative_not_excluded`).
+- *Forced / sustained*: sustained behaviour -> `possible forced/sustained oscillation`; always `Source of forcing is not identified.`; narrowness
+  (Welch base <= 6 bins) is reported as supporting evidence, or `component_not_narrow` as a limitation.
+- *Control / converter interaction*: frequency 3-100 Hz AND voltage / current / power involvement AND a sustained or growing behaviour AND >= 2 distinct
+  measurements AND overlapping activity -> `possible` only, always with `no_converter_metadata` (no plant / PCS / PPC association exists in the catalogue;
+  names are **never** parsed). A decaying several-Hz component is **not** control interaction.
+- *Sub-synchronous oscillation*: all of the control requirements AND frequency 3 Hz <= f < nominal AND present in >= 2 recordings -> `possible sub-synchronous
+  oscillation` (refines control / converter interaction, which stays an alternative). Otherwise a component in 3 Hz..nominal only receives the neutral **descriptor**
+  `Higher-frequency oscillatory component detected at <f> Hz` (frequency description, "does not identify a mechanism") and the limitation `frequency_alone_not_sso`
+  ("The component lies below the nominal 50 Hz fundamental, but frequency alone does not establish sub-synchronous oscillation."). **Frequency alone never produces
+  sub-synchronous wording**; `Possible sub-synchronous oscillation` appears only when the stronger rule above is met -- never "SSO confirmed". A nominal frequency
+  that was not declared is assumed 50 Hz and disclosed (`nominal_frequency_assumed`).
+- *Selection*: the highest level wins; a hypothesis that satisfies strictly more of the same dimensions refines another (SSO -> control -> forced/sustained,
+  the less specific stays listed); two equal hypotheses that do not refine each other give **unresolved** with both as `equally_plausible` alternatives
+  (`multiple_families_plausible`); no hypothesis gives `no_family_requirements_met`.
+
+**Result model (stable codes; `app/domain/oscillation_classification.py`, schemas in `app/schemas/oscillation.py`).** Per component:
+`component_frequency_hz`, `behaviour_classification {code,label}`, `probable_type {code,label,subtype}`, `classification_level`, `hierarchy`
+(`oscillatory_component > electromechanical > inter_area`), `descriptors[]`, `supporting_evidence[]` and `limiting_evidence[]` (`{code,message,values}`),
+`alternatives[] {code,label,level,relation,consistency,reasons,limitations}`, `warnings[]`, `evidence_dimensions{}`. Supporting codes: `observed_in`,
+`frequency_match`, `multiple_signal_types`, `multiple_recordings`, `temporal_overlap`, `damping_consistent`, `decaying_damping`, `growing_damping`,
+`sustained_damping`, `onset_observed`, `persistent_activity`, `intermittent_activity`, `frequency_in_electromechanical_range`, `relevant_signal_types`,
+`multiple_measurements`, `inter_area_compatible`, `local_compatible`, `narrow_component`, `electrical_signal_involvement`, `persistent_or_growing_behaviour`,
+`frequency_below_nominal`, `coherent_across_recordings`. Limiting codes: `single_signal_only`, `single_recording`, `derived_from_same_source`,
+`no_temporal_overlap`, `damping_behaviour_differs`, `decay_rates_differ_materially`, `damping_unavailable`, `limited_temporal_evidence`, `onset_not_observed`,
+`rms_representation`, `phase_mode_shape_unavailable`, `location_relationship_unknown`, `subtype_unresolved`, `alternative_not_excluded`, `local_not_confirmed`,
+`family_corroboration_limited`, `forcing_source_not_identified`, `component_not_narrow`, `no_converter_metadata`, `network_context_unavailable`,
+`nominal_frequency_assumed`, `frequency_outside_electromechanical_range`, `frequency_band_overlaps_mechanisms`, `no_family_requirements_met`,
+`multiple_families_plausible`. The browser draws these; it classifies nothing (guard test).
+
+**API / service.** `POST /api/v1/workspaces/{ws}/oscillation-analysis/interpretation` (1-8 signals, same request as DEC-178; `app/services/oscillation_interpretation_service.py`)
+returns the DEC-178 cross-signal result (signals, grouped components) **plus** `components[].interpretation`, `interpretation_parameters` and
+`timings_ms {signal_analysis, grouping, classification}`. It runs the SAME per-signal chain through `oscillation_cross_signal_service.analyse_signals` (a
+pure extraction of the loop `compute_cross_signal` already had -- no behaviour change) and `group_components`, then classifies from those structured
+results: no second FFT / STFT / damping pass **for classification**. The DEC-178 `/cross-signal` endpoint is unchanged and classifies nothing (test).
+The page now requests the interpretation endpoint for both the reference-only baseline that follows `Analyze` (one backend request for the analysed signal
+alone, so a single-signal component is interpreted without pressing Compare) and the `Compare` button; the comparison section is unchanged and shows nothing for
+the baseline.
+
+**Bug found and fixed on the way (DEC-178 code).** `cross_signal_evidence` indexed the analysed-signal list by the *request* index. A signal excluded
+*before* another (an excluded signal in the middle of the request) shifted the list and raised `IndexError` (HTTP 500). Analysed signals are now looked up by their
+request index (`signal_by_index`); regression test `test_an_excluded_signal_in_the_middle_does_not_shift_the_others`. No other DEC-178 behaviour changed.
+
+**Frontend.** `Oscillation Interpretation` section below `Cross-Signal Oscillation Evidence`: per component `Behaviour`, `Probable type`, `Possible subtype`,
+frequency descriptor, `Why` (check marks), `Limitations` (warning marks), `Alternative`; a note naming the analysed signals and the Phase-1 caveats; dimmed with
+"Analysis settings changed -- run Analyze again" when the setup changes, hidden / discarded with the spectrum, superseded responses dropped.
+
+**Validation `[FACT]` (this machine).** `backend/tests/test_oscillation_classification.py` (domain rules and boundaries, owner-style scenarios, real
+Welch + STFT + damping + grouping chain, API) and 5 browser tests ("oscillation interpretation") plus the updated cross-signal / picker tests.
+*Owner-style scenarios on the real chain:* **A** -- 0.4 Hz decaying in two MW signals of two recordings, 100 % overlap, compatible damping -> `Probable
+electromechanical oscillation`, `Possible inter-area electromechanical mode` (provisional) with `phase_mode_shape_unavailable` + `location_relationship_unknown`
+and a *weaker* local alternative; **B** -- 4.95 Hz in Frequency + MW -> a cross-signal physical component (observed in 2 signals, 2 signal types, overlap,
+decaying, onset observed) whose type stays **unresolved** (not forced into control interaction) with the neutral `Higher-frequency oscillatory component detected at 4.95 Hz` descriptor;
+**C** -- 1.15 Hz in MW only -> `Possible electromechanical oscillation`, subtype unresolved, `single_signal_only`, local reading offered only as an alternative.
+*Synthetic coverage:* low-frequency decaying mode in MW + frequency across recordings; same frequency, single recording; single signal; sustained narrow
+component; growing; intermittent; several-Hz sustained current + voltage (control, `possible` only); sub-synchronous frequency with insufficient mechanism
+evidence; possible SSO with full evidence; contradictory damping; raw + derived duplicate; missing STFT; missing damping; ambiguous families; explicit
+unresolved; order independence; tolerance boundaries (lead-in, persistence, inter-area edge). **Performance `[FACT]`:** classification takes 0.04 ms per
+component for 2-5 signals, 0.07 ms for 8, and 0.76 ms for 20 single-signal components; a 2-signal request spends ~26-44 ms in the per-signal analysis, ~0.25 ms
+grouping and ~0.2 ms classification (reported per request in `timings_ms`).
+
+**Approval record (2026-10-10).** Owner UAT accepted in principle on real events (evidence only -- **no frequency is hard-coded in any rule**):
+~0.4 Hz single-signal decaying case -> possible electromechanical, subtype unresolved; ~1.15 Hz MW case -> disturbance-excited decaying oscillation, possible
+electromechanical, subtype unresolved; ~4.95 Hz case -> intermittent oscillation, type unresolved, **not** labelled SSO from frequency alone. Two refinements were
+made before closure: (1) sub-synchronous wording (above); (2) local/inter-area wording (above). **Approved principles:** behaviour classification is separate from
+probable mechanism/type; frequency is supporting evidence only; rules are deterministic and evidence-based; `Probable / Possible / Unresolved / Insufficient
+evidence` are deterministic evidence levels, **not statistical confidence**; inter-area stays provisional without phase/mode-shape evidence; local is never inferred
+from absence elsewhere; control/converter stays provisional; sub-synchronous frequency alone does not imply SSO and stronger SSO wording needs multiple
+supporting evidence dimensions; forced/sustained classification does not identify the forcing source; unresolved is a valid result; supporting and limiting
+evidence are both shown and alternatives only where genuinely plausible; no AI; no mode-shape / coherence / source-localisation yet. **All frequency bands and
+temporal thresholds remain Phase-1 engineering heuristics, not universal standards.** The excluded-signal indexing bug fix (Part A, above) ships in the same commit.
+
+**Open engineering questions for the owner (not decided here).** (1) *Resolved by the approval refinement:* local is never promoted from absence elsewhere. (2) Are the band edges (inter-area 1.0 Hz, local 0.8-3.0 Hz, control from
+3 Hz) and the 10 % lead-in / 80 % persistence thresholds right once more real events are seen? (3) Angle quantities are only distinguished where the catalogue carries
+`Voltage Angle` / `Current Angle` as the engineering type; is a dedicated `angle` evidence dimension wanted? (4) SSO needs two recordings and control needs two distinct
+measurements -- should station / bay metadata (when it exists) replace "recordings" as the location evidence? (5) The baseline interpretation request after `Analyze`
+re-runs the per-signal chain for the analysed signal on the backend (the page does not send results back, so the backend stays authoritative); a short server-side
+cache keyed by the setup would remove that single extra pass. (6) Should `Probable` ever be available for control / SSO once plant / controller metadata exists?
+
+Tests: `backend/tests/test_oscillation_classification.py`, `test_oscillation_cross_signal.py` (regression), `test_frontend_oscillation_analysis_shell.py` (updated +
+`test_interpretation_is_drawn_from_the_backend_response_and_decides_nothing`), `browser-tests/oscillation_setup.spec.js` ("oscillation interpretation").

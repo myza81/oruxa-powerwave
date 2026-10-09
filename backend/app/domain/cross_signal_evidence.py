@@ -110,6 +110,15 @@ def active_interval(
     }
 
 
+def signal_by_index(signals: list[dict], index: int) -> dict:
+    """The analysed signal with this `index` (its position in the REQUEST). `signals` holds only the signals that
+    could be analysed, so a position in the list is not the index when an earlier signal was excluded."""
+    for signal in signals:
+        if signal["index"] == index:
+            return signal
+    raise KeyError(index)
+
+
 def _components_of_shared_roots(signals: list[dict], members: list[dict]) -> int:
     """Number of distinct measurements among the members: signals whose lineage roots intersect are one."""
     parent = list(range(len(members)))
@@ -122,7 +131,7 @@ def _components_of_shared_roots(signals: list[dict], members: list[dict]) -> int
 
     for i in range(len(members)):
         for j in range(i + 1, len(members)):
-            if set(signals[members[i]["signal_index"]]["lineage_roots"]) & set(signals[members[j]["signal_index"]]["lineage_roots"]):
+            if set(signal_by_index(signals, members[i]["signal_index"])["lineage_roots"]) & set(signal_by_index(signals, members[j]["signal_index"])["lineage_roots"]):
                 parent[find(i)] = find(j)
     return len({find(i) for i in range(len(members))})
 
@@ -188,7 +197,7 @@ def _temporal_comparison(members: list[dict], signals: list[dict]) -> tuple[list
     for m in members:
         t = m["temporal"]
         if t and t.get("status") == "ok":
-            offset = signals[m["signal_index"]]["offset_s"]
+            offset = signal_by_index(signals, m["signal_index"])["offset_s"]
             intervals.append((t["start_s"] + offset, t["end_s"] + offset, m))
     summary = {"members_with_evidence": len(intervals), "members": len(members)}
     if len(intervals) < len(members):
@@ -253,7 +262,7 @@ def _build_component(members: list[dict], signals: list[dict]) -> dict:
     weights = [max(m["prominence_db"], 1e-9) for m in members]
     representative = sum(f * w for f, w in zip(freqs, weights)) / sum(weights)
     spread = max(freqs) - min(freqs)
-    meta = [signals[m["signal_index"]] for m in members]
+    meta = [signal_by_index(signals, m["signal_index"]) for m in members]
     tolerance = max((match_tolerance_hz(a["bin_spacing_hz"], b["bin_spacing_hz"]) for a in meta for b in meta), default=0.0)
     types = sorted({s["signal_type"] for s in meta})
     recording_ids = {s["recording"] for s in meta}

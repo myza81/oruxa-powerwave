@@ -300,6 +300,15 @@ class TestService:
         assert out["signals"][1]["status"] == "excluded" and out["signals"][1]["reason_code"] == "invalid_analysis_window"
         assert out["components"] and out["components"][0]["signal_count"] == 1
 
+    def test_an_excluded_signal_in_the_middle_does_not_shift_the_others(self, registries):
+        """Regression (found while building DEC-179): analysed signals are looked up by their REQUEST index, not their list position."""
+        t, p = _event(7, [(3.2, 0.02, 0.8)])
+        registries[0].add(_active("src", t, {"P": p, "Q": p, "R": p}, types={"P": "Active Power", "Q": "Active Power", "R": "Active Power"}))
+        out = _run(registries, [_entry("src", "P"), _entry("src", "Q", start=-500.0, end=100.0), _entry("src", "R")])
+        assert [s["status"] for s in out["signals"]] == ["ok", "excluded", "ok"]
+        assert [c["signal_count"] for c in out["components"]] == [2]
+        assert sorted(m["label"] for m in out["components"][0]["members"]) == ["P", "R"]
+
     def test_no_candidates_anywhere_is_an_explained_success(self, registries):
         t = _t()
         rng = np.random.default_rng(9)

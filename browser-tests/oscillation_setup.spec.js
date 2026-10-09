@@ -1977,9 +1977,11 @@ test.describe("Oscillation Analysis -- damping behaviour", () => {
 // ---------------------------------------------------------------------------
 // Cross-Signal Oscillation Evidence (DEC-178 [APPROVED]). The owner's real-event pattern on a synthetic record: a 4.95 Hz
 // ringdown in BOTH the frequency and the MW signal, and a 1.15 Hz one in MW only. The comparison is requested only by the
-// Compare button, for the analysed signal plus the explicitly ticked ones; the page draws the backend's grouping.
+// Compare button, for the analysed signal plus the explicitly ticked ones; the page draws the backend's grouping. (Since DEC-179 the
+// grouping comes from the interpretation endpoint -- a superset of the evidence; Analyze also requests the analysed signal ALONE.)
 // ---------------------------------------------------------------------------
-const CROSS_URL = "**/oscillation-analysis/cross-signal";
+const CROSS_URL = "**/oscillation-analysis/interpretation";
+const isInterpretation = (r) => r.url().endsWith("/oscillation-analysis/interpretation");
 const CROSS_CHANNELS = [
   { name: "FREQ", unit: "Hz", amplitude: 0.075, components: [{ amplitude: 0.05, frequencyHz: 4.95, onsetS: 10, decayPerS: 0.15 }, { amplitude: 0.025, frequencyHz: 7.3, onsetS: 10, decayPerS: 0.2 }] },
   { name: "P_MW", unit: "MW", amplitude: 150, components: [{ amplitude: 100, frequencyHz: 4.95, onsetS: 10, decayPerS: 0.12 }, { amplitude: 50, frequencyHz: 1.15, onsetS: 10, decayPerS: 0.1 }] },
@@ -2007,9 +2009,9 @@ const crossComponents = (page) => page.evaluate(() => wwOscState.cross.result.co
   labels: c.members.map((m) => m.label) })));
 
 test.describe("Oscillation Analysis -- cross-signal evidence", () => {
-  test("hidden until Analyze; no request is made until Compare is pressed", async ({ page }) => {
+  test("hidden until Analyze; only the analysed signal is requested until Compare is pressed", async ({ page }) => {
     const requests = [];
-    page.on("request", (r) => { if (r.url().endsWith("/oscillation-analysis/cross-signal")) requests.push(r.postDataJSON()); });
+    page.on("request", (r) => { if (isInterpretation(r)) requests.push(r.postDataJSON()); });
     await openOscillation(page);
     await uploadSynthetic(page, { durationS: 60, channels: CROSS_CHANNELS });
     await selectFreq(page);
@@ -2019,15 +2021,19 @@ test.describe("Oscillation Analysis -- cross-signal evidence", () => {
     await expect(page.locator("#wwOscCross")).toBeVisible();
     await expect(page.locator("#wwOscCross .ww-osc-detect-title")).toHaveText("Cross-Signal Oscillation Evidence");
     await expect(page.locator("#wwOscCrossBtn")).toBeDisabled(); // nothing chosen: no silent whole-workspace analysis
+    await expect(page.locator("#wwOscInterp")).toBeVisible();
     await tick(page, "P_MW");
     await expect(page.locator("#wwOscCrossBtn")).toBeEnabled();
-    expect(requests).toHaveLength(0);
+    await expect(page.locator("#wwOscInterpBody .ww-osc-interp-component").first()).toBeVisible();
+    expect(requests).toHaveLength(1);                         // the reference-only baseline that feeds the interpretation
+    expect(requests[0].signals.map((s) => s.input.channel_name)).toEqual(["FREQ"]);
+    await expect(page.locator("#wwOscCrossBody .ww-osc-cross-component")).toHaveCount(0); // nothing is compared yet
     await page.locator("#wwOscCrossBtn").click();
     await expect(page.locator("#wwOscCrossBody .ww-osc-cross-component").first()).toBeVisible();
-    expect(requests).toHaveLength(1);
-    expect(requests[0].signals).toHaveLength(2); // the analysed signal plus the one ticked
-    expect(requests[0].frequency_max_hz).toBe(8);
-    expect(requests[0].signals.map((s) => s.input.channel_name)).toEqual(["FREQ", "P_MW"]);
+    expect(requests).toHaveLength(2);
+    expect(requests[1].signals).toHaveLength(2); // the analysed signal plus the one ticked
+    expect(requests[1].frequency_max_hz).toBe(8);
+    expect(requests[1].signals.map((s) => s.input.channel_name)).toEqual(["FREQ", "P_MW"]);
   });
 
   test("the shared component is grouped across signal types; the separate one stays on its own", async ({ page }) => {
@@ -2091,7 +2097,8 @@ test.describe("Oscillation Analysis -- cross-signal evidence", () => {
   test("a response arriving after the spectrum was cleared is discarded; an error is shown", async ({ page }) => {
     let release;
     const gate = new Promise((resolve) => { release = resolve; });
-    await page.route(CROSS_URL, async (route) => { await gate; await route.continue(); });
+    // only the COMPARISON is held back (the reference-only baseline that Analyze requests is not)
+    await page.route(CROSS_URL, async (route) => { if (route.request().postDataJSON().signals.length > 1) await gate; await route.continue(); });
     await crossPage(page);
     await tick(page, "P_MW");
     await page.locator("#wwOscCrossBtn").click();
@@ -2214,7 +2221,7 @@ test.describe("Oscillation Analysis -- cross-signal picker", () => {
 
   test("no request before Compare; Compare sends exactly the reference plus the ticked identities, once each", async ({ page }) => {
     const requests = [];
-    page.on("request", (r) => { if (r.url().endsWith("/oscillation-analysis/cross-signal")) requests.push(r.postDataJSON()); });
+    page.on("request", (r) => { if (isInterpretation(r)) requests.push(r.postDataJSON()); });
     await crossPage(page);
     await secondRecording(page);
     await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "FREQ"));
@@ -2224,14 +2231,16 @@ test.describe("Oscillation Analysis -- cross-signal picker", () => {
     await page.locator("#wwOscCrossList label", { hasText: "P2" }).locator("input").check();
     await page.locator("#wwOscCrossList label", { hasText: "NEG_MW" }).locator("input").check();
     await page.waitForTimeout(400);
-    expect(requests).toHaveLength(0);
+    expect(requests.filter((q) => q.signals.length > 1)).toHaveLength(0); // ticking never compares; only reference-alone baselines were sent
+    expect(requests.every((q) => q.signals.length === 1 && q.signals[0].input.channel_name === "FREQ")).toBe(true);
     await page.locator("#wwOscCrossBtn").click();
     await expect(page.locator("#wwOscCrossBody .ww-osc-cross-component").first()).toBeVisible();
-    expect(requests).toHaveLength(1);
-    const ids = requests[0].signals.map((s) => (s.input.kind === "calculated" ? "calc:" + s.input.calculated_channel_id : "src:" + s.input.channel_name));
+    const compared = requests.filter((q) => q.signals.length > 1);
+    expect(compared).toHaveLength(1);
+    const ids = compared[0].signals.map((s) => (s.input.kind === "calculated" ? "calc:" + s.input.calculated_channel_id : "src:" + s.input.channel_name));
     expect(ids).toEqual(["src:FREQ", "src:P2", "calc:" + calc.id]);
     expect(new Set(ids).size).toBe(ids.length); // no duplicates, and the reference is not repeated
-    expect(requests[0].signals.map((s) => s.signal_revision)).toEqual(await page.evaluate(() => wwOscState.cross.request.entries.map((e) => e.revision)));
+    expect(compared[0].signals.map((s) => s.signal_revision)).toEqual(await page.evaluate(() => wwOscState.cross.request.entries.map((e) => e.revision)));
   });
 
   test("the selection is capped so a comparison never exceeds the 8-signal service limit", async ({ page }) => {
@@ -2249,5 +2258,110 @@ test.describe("Oscillation Analysis -- cross-signal picker", () => {
     await expect(pickerBoxes(page).nth(0)).toBeEnabled();  // already-ticked ones can still be unticked
     await pickerBoxes(page).nth(0).uncheck();
     await expect(pickerBoxes(page).nth(7)).toBeEnabled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Oscillation Interpretation (DEC-179 [APPROVED]). The backend interprets every component (behaviour, probable type, Why,
+// limitations, alternatives) from the evidence it already measured; the page draws what comes back. Analyze requests the analysed
+// signal on its own; Compare adds the ticked signals. No probability, no AI.
+// ---------------------------------------------------------------------------
+const interpCard = (page, index = 0) => page.locator("#wwOscInterpBody .ww-osc-interp-component").nth(index);
+const interpCards = (page) => page.evaluate(() => wwOscState.cross.result.components.map((c) => ({
+  f: c.representative_frequency_hz, n: c.signal_count, type: c.interpretation.probable_type, level: c.interpretation.classification_level,
+  behaviour: c.interpretation.behaviour_classification.code, why: c.interpretation.supporting_evidence.map((e) => e.code),
+  limits: c.interpretation.limiting_evidence.map((e) => e.code), alts: c.interpretation.alternatives.map((a) => a.code),
+  descriptors: c.interpretation.descriptors.map((d) => d.code) })));
+
+test.describe("Oscillation Analysis -- oscillation interpretation", () => {
+  test("Analyze interprets the analysed signal on its own: behaviour, probable type, Why and limitations", async ({ page }) => {
+    await crossPage(page);
+    await expect(page.locator("#wwOscInterp")).toBeVisible();
+    await expect(page.locator("#wwOscInterp .ww-osc-detect-title")).toHaveText("Oscillation Interpretation");
+    await expect(interpCard(page)).toBeVisible();
+    await expect(interpCard(page).locator('[data-field="behaviour"]')).toContainText("Behaviour");
+    await expect(interpCard(page).locator('[data-field="type"]')).toContainText("Probable type");
+    await expect(interpCard(page).locator(".ww-osc-detect-label", { hasText: "Why" })).toBeVisible();
+    await expect(interpCard(page).locator(".ww-osc-detect-label", { hasText: "Limitations" })).toBeVisible();
+    const cards = await interpCards(page);
+    expect(cards.length).toBeGreaterThan(0);
+    // 4.95 / 7.3 Hz are above the conventional electromechanical range: a single signal never forces a family
+    for (const c of cards) {
+      expect(c.type.code).toBe("unresolved");
+      expect(c.limits).toContain("single_signal_only");
+    }
+    const text = (await page.locator("#wwOscInterpBody").innerText()).toLowerCase();
+    expect(text).toContain("oscillation detected — type unresolved");
+    expect(text).toContain("higher-frequency oscillatory component detected at"); // a frequency description, not a mechanism
+    expect(text).not.toContain("possible sub-synchronous");
+    expect(text).toContain("frequency alone does not establish sub-synchronous oscillation");
+    for (const word of ["confidence", "probability", "confirmed", "sso", "definitive"]) expect(text).not.toContain(word);
+    await expect(page.locator("#wwOscInterpNote")).toContainText("no phase, mode-shape, coherence or location evidence exists yet");
+  });
+
+  test("comparing adds the other signals: the shared component becomes a cross-signal result, the single one stays single", async ({ page }) => {
+    await crossCompared(page);
+    await expect(page.locator("#wwOscInterpBody .ww-osc-interp-component").first()).toBeVisible();
+    const cards = await interpCards(page);
+    const shared = cards.find((c) => c.n === 2), single = cards.find((c) => c.n === 1 && Math.abs(c.f - 1.15) < 0.2);
+    expect(shared.why).toEqual(expect.arrayContaining(["observed_in", "multiple_signal_types", "temporal_overlap"]));
+    expect(shared.type.code).toBe("unresolved");                         // 4.95 Hz is never forced into a control interaction
+    expect(shared.descriptors).toEqual(["higher_frequency_oscillatory_component"]);
+    expect(single.limits).toContain("single_signal_only");
+    expect(["electromechanical", "unresolved"]).toContain(single.type.code);
+    const text = await page.locator("#wwOscInterpBody").innerText();
+    expect(text).toContain("Observed in 2 signals across 1 recording.");
+    expect(text).toContain("Observed in one signal only");
+    await expect(page.locator("#wwOscInterpNote")).toContainText("Based on 2 analysed signals (FREQ, P_MW)");
+  });
+
+  test("the same component in two recordings: electromechanical family, provisional inter-area subtype, explicit limitations", async ({ page }) => {
+    const mw = (name) => ({ name, unit: "MW", amplitude: 150, components: [{ amplitude: 100, frequencyHz: 0.5, onsetS: 10, decayPerS: 0.08 }] });
+    await openOscillation(page);
+    await uploadSynthetic(page, { name: "recA", station: "STN_A", durationS: 60, channels: [mw("MW_A")] });
+    await uploadSynthetic(page, { name: "recB", station: "STN_B", durationS: 60, channels: [mw("MW_B")] });
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "MW_A"));
+    await setBand(page, 0.2, 3);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscCross")).toBeVisible();
+    await tick(page, "MW_B");
+    await page.locator("#wwOscCrossBtn").click();
+    await expect(page.locator("#wwOscCrossBody .ww-osc-cross-component").first()).toBeVisible();
+    const cards = await interpCards(page);
+    const c = cards.find((x) => x.n === 2);
+    expect(c.type.code).toBe("electromechanical");
+    expect(["probable", "possible"]).toContain(c.level);
+    if (c.type.subtype) {
+      expect(c.type.subtype.level).toBe("possible");                       // never definitive
+      expect(c.type.subtype.label).toBe("Possible inter-area electromechanical mode");
+      expect(c.limits).toEqual(expect.arrayContaining(["phase_mode_shape_unavailable", "location_relationship_unknown"]));
+      const text = await page.locator("#wwOscInterpBody").innerText();
+      expect(text).toContain("Inter-area classification is provisional because relative phase/mode-shape evidence is not yet available.");
+      expect(text).toContain("Possible subtype");
+    }
+    expect(c.why).toEqual(expect.arrayContaining(["observed_in", "multiple_recordings"]));
+  });
+
+  test("changing the settings marks the interpretation not current; reverting restores; another signal hides it", async ({ page }) => {
+    await crossPage(page);
+    await expect(interpCard(page)).toBeVisible();
+    await expect(page.locator("#wwOscInterp")).toHaveAttribute("data-stale", "false");
+    await page.locator("#wwOscMaxFreqInput").fill("7");
+    await expect(page.locator("#wwOscInterp")).toHaveAttribute("data-stale", "true");
+    await expect(page.locator("#wwOscInterpState")).toHaveText("Analysis settings changed — run Analyze again");
+    await page.locator("#wwOscMaxFreqInput").fill("8");
+    await expect(page.locator("#wwOscInterp")).toHaveAttribute("data-stale", "false");
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_MW"));
+    await expect(page.locator("#wwOscInterp")).toBeHidden();
+  });
+
+  test("renders at phone width without horizontal overflow", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await crossCompared(page);
+    await expect(interpCard(page)).toBeVisible();
+    const m = await page.evaluate(() => ({ right: document.getElementById("wwOscInterp").getBoundingClientRect().right, viewport: window.innerWidth,
+                                           scroll: document.documentElement.scrollWidth }));
+    expect(m.right).toBeLessThanOrEqual(m.viewport + 1);
+    expect(m.scroll).toBeLessThanOrEqual(m.viewport + 1);
   });
 });

@@ -7712,6 +7712,11 @@
         :is(.ww-osc-cross-item) { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; cursor: pointer; }
         :is(.ww-osc-cross-component) { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border: 1px solid var(--panel-border); border-radius: var(--radius); }
         :is(.ww-osc-cross-bar) { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        :is(.ww-osc-interp) { padding-top: 10px; border-top: 1px solid var(--panel-border); }
+        :is(.ww-osc-interp)[data-stale="true"] #wwOscInterpBody { opacity: 0.4; }
+        :is(.ww-osc-interp-component) { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border: 1px solid var(--panel-border); border-radius: var(--radius); }
+        :is(.ww-osc-interp-row) { display: flex; flex-direction: column; gap: 1px; }
+        :is(.ww-osc-interp-value) { font-size: 0.75rem; font-weight: 600; color: var(--text); }
         :is(.ww-osc-checks) { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 0.7rem; color: var(--text); }
         :is(.ww-osc-checks) li[data-status="warning"] { color: var(--warn); }
         :is(.ww-osc-checks) li[data-status="invalid"] { color: var(--error); }
@@ -11979,6 +11984,14 @@
                                     <div class="ww-osc-spec-state" id="wwOscCrossState" role="status" hidden></div>
                                     <div class="ww-osc-detect" id="wwOscCrossBody"></div>
                                     <div class="ww-osc-detect-note" id="wwOscCrossNote" hidden></div>
+                                </div>
+                                <!-- Oscillation Interpretation (DEC-179 [APPROVED]): the backend's deterministic behaviour / probable-type
+                                     interpretation of every component with its structured Why, limitations and alternatives, drawn as returned. -->
+                                <div class="ww-osc-detect ww-osc-interp" id="wwOscInterp" hidden>
+                                    <div class="ww-osc-detect-title">Oscillation Interpretation</div>
+                                    <div class="ww-osc-spec-state" id="wwOscInterpState" role="status" hidden></div>
+                                    <div class="ww-osc-detect" id="wwOscInterpBody"></div>
+                                    <div class="ww-osc-detect-note" id="wwOscInterpNote" hidden></div>
                                 </div>
                                 <ul class="ww-osc-checks" id="wwOscSpectrumWarnings"></ul>
                                 <div class="ww-osc-subhead" id="wwOscSpectrumDetailsHead" hidden>Analysis details</div>
@@ -56059,6 +56072,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Damping is assessed for the spectrum's accepted candidates only (the same request identity).
             const accepted = outcome.phase === "ready" ? outcome.result.detection.candidates : [];
             if (accepted.length) wwOscRunDamping(signal, request, accepted);
+            // The interpretation of the analysed signal on its own (no comparison signals) -- one backend request.
+            if (accepted.length) wwOscRunCross(true);
             wwOscRender(false);
         }
 
@@ -56557,6 +56572,84 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // ------------------------------------------------------------------
+        // Oscillation Interpretation (DEC-179 [APPROVED]). The BACKEND interprets every component from the structured evidence it
+        // already measured (candidate, spectrogram activity, damping, cross-signal grouping): a behaviour, a probable type with its
+        // level wording, supporting evidence (Why), limiting evidence, alternatives. The page only draws those returned fields --
+        // it decides, words and scores nothing itself. Drawn from the response of wwOscRunCross (state `wwOscState.cross`).
+        // ------------------------------------------------------------------
+
+        function wwOscRenderInterpretation() {
+            const host = document.getElementById("wwOscInterp");
+            if (!host) return;
+            const state = wwOscState, cx = state.cross, sp = state.spectrum;
+            const stateEl = document.getElementById("wwOscInterpState");
+            const bodyEl = document.getElementById("wwOscInterpBody");
+            const noteEl = document.getElementById("wwOscInterpNote");
+            const show = (kind, text) => { stateEl.hidden = !text; stateEl.dataset.kind = kind; stateEl.textContent = text; };
+            const reset = (kind, text) => { bodyEl.replaceChildren(); noteEl.hidden = true; show(kind, text); };
+            const hasComponents = sp.phase === "ready" && !!sp.request && !!sp.result && !!sp.result.detection
+                && sp.result.detection.candidates.length > 0;
+            if (!hasComponents) { host.hidden = true; reset("idle", ""); return; }
+            host.hidden = false;
+            if (cx.phase === "loading") { reset("loading", "Interpreting…"); return; }
+            if (cx.phase === "error") { reset("error", cx.message || "The interpretation could not be computed."); return; }
+            if (cx.phase !== "ready" || !cx.result || !cx.request
+                || !cx.request.entries.every((entry) => wwSignalCatalogueIsCurrent(entry.key, entry.revision))) { reset("idle", ""); return; }
+            const stale = !wwOscCrossCurrent();
+            host.dataset.stale = stale ? "true" : "false";
+            show(stale ? "stale" : "current", stale ? "Analysis settings changed — run Analyze again" : "");
+            const result = cx.result;
+            const el = (tag, className, text) => {
+                const node = document.createElement(tag);
+                if (className) node.className = className;
+                if (text !== undefined) node.textContent = text;
+                return node;
+            };
+            const list = (items, kind) => {
+                const ul = document.createElement("ul");
+                for (const item of items) { const li = el("li", "", item); li.dataset.kind = kind; ul.appendChild(li); }
+                return ul;
+            };
+            const row = (field, label, value) => {
+                const node = el("div", "ww-osc-interp-row");
+                node.dataset.field = field;
+                node.appendChild(el("div", "ww-osc-detect-label", label));
+                node.appendChild(el("div", "ww-osc-interp-value", value));
+                return node;
+            };
+            bodyEl.replaceChildren();
+            if (!result.components.length) {
+                bodyEl.appendChild(el("div", "ww-osc-detect-none", result.message || "No oscillatory component was found to interpret."));
+            }
+            for (const comp of result.components) {
+                const it = comp.interpretation;
+                const card = el("div", "ww-osc-interp-component");
+                card.dataset.level = it.classification_level;
+                card.dataset.type = it.probable_type.code;
+                card.appendChild(el("div", "ww-osc-detect-label", "Component around " + wwOscFormat(it.component_frequency_hz, 4) + " Hz"));
+                card.appendChild(row("behaviour", "Behaviour", it.behaviour_classification.label));
+                card.appendChild(row("type", "Probable type", it.probable_type.label));
+                if (it.probable_type.subtype) card.appendChild(row("subtype", "Possible subtype", it.probable_type.subtype.label));
+                if (it.descriptors.length) card.appendChild(list(it.descriptors.map((d) => d.label + " — " + d.message), "note"));
+                card.appendChild(el("div", "ww-osc-detect-label", "Why"));
+                card.appendChild(list(it.supporting_evidence.map((e) => e.message), "why"));
+                card.appendChild(el("div", "ww-osc-detect-label", "Limitations"));
+                card.appendChild(list(it.limiting_evidence.map((e) => e.message), "warning"));
+                if (it.alternatives.length) {
+                    card.appendChild(el("div", "ww-osc-detect-label", "Alternative"));
+                    card.appendChild(list(it.alternatives.map((a) => a.label + (a.consistency === "weaker" ? " (weaker reading)" : "")
+                        + (a.limitations.length ? " — " + a.limitations.map((e) => e.message).join(" ") : "")), "note"));
+                }
+                bodyEl.appendChild(card);
+            }
+            const analysed = result.signals.filter((s) => s.status === "ok").map((s) => s.label);
+            const p = result.interpretation_parameters;
+            noteEl.hidden = false;
+            noteEl.textContent = "Based on " + analysed.length + " analysed signal" + (analysed.length === 1 ? "" : "s") + " (" + analysed.join(", ") + "). "
+                + p.classification + ". " + p.heuristics + ".";
+        }
+
+        // ------------------------------------------------------------------
         // Cross-Signal Oscillation Evidence (DEC-178 [APPROVED]). The BACKEND re-analyses an EXPLICITLY chosen set of
         // signals (the primary one plus the "Compare signals" selection -- never a hidden whole-workspace batch) with the
         // accepted spectrum / candidate / spectrogram / damping chain and groups matching candidates deterministically.
@@ -56603,15 +56696,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             };
         }
 
-        async function wwOscRunCross() {
+        // `auto === true`: the reference-only baseline that feeds the Oscillation Interpretation (started after Analyze); otherwise the
+        // Compare button (the click event is passed as the argument, which is not `true`).
+        async function wwOscRunCross(auto) {
+            const baseline = auto === true;
             const state = wwOscState, cx = state.cross, sp = state.spectrum;
-            if (sp.phase !== "ready" || !sp.request || !cx.chosen.size) return;
+            if (sp.phase !== "ready" || !sp.request || (!baseline && !cx.chosen.size)) return;
             const primary = wwSignalCatalogueGet(sp.request.signalKey);
             const primaryVerdict = primary ? wwOscClassifySignal(primary) : null;
             if (!primary || !primaryVerdict || !primaryVerdict.eligible) return;
             wwOscCrossPrune();
-            const others = wwOscCrossCandidates().filter((signal) => cx.chosen.has(signal.key));
-            if (!others.length) return;
+            const others = baseline ? [] : wwOscCrossCandidates().filter((signal) => cx.chosen.has(signal.key));
+            if (!baseline && !others.length) return;
             const primaryEntry = {
                 key: primary.key, revision: sp.request.signalRevision, representation: sp.request.representation,
                 start: sp.request.startSource, end: sp.request.endSource, offset: wwSourceTimeToWorkspaceTime(primary.sourceId, 0), label: primary.name,
@@ -56629,7 +56725,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             let outcome;
             try {
                 const response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/oscillation-analysis/cross-signal",
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/oscillation-analysis/interpretation",
                     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
                         frequency_min_hz: sp.request.fMinHz, frequency_max_hz: sp.request.fMaxHz,
                         signals: entries.map((e) => ({ input: e.input, representation: e.representation, signal_revision: e.revision,
@@ -56679,6 +56775,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwOscRenderCross() {
             const host = document.getElementById("wwOscCross");
             if (!host) return;
+            wwOscRenderInterpretation(); // the interpretation is drawn from the same backend response
             const state = wwOscState, cx = state.cross, sp = state.spectrum;
             const stateEl = document.getElementById("wwOscCrossState");
             const bodyEl = document.getElementById("wwOscCrossBody");
@@ -56736,8 +56833,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 + " (analysed above). Tick up to " + WW_OSC_CROSS_MAX_OTHERS + " other signals to compare it with, then press Compare.";
             btn.disabled = !cx.chosen.size || cx.phase === "loading";
             if (cx.phase === "idle") { bodyEl.replaceChildren(); noteEl.hidden = true; showState("idle", ""); return; }
-            if (cx.phase === "loading") { bodyEl.replaceChildren(); noteEl.hidden = true; showState("loading", "Comparing signals…"); return; }
-            if (cx.phase === "error") { bodyEl.replaceChildren(); noteEl.hidden = true; showState("error", cx.message); return; }
+            // The reference-only baseline is not a comparison: its progress and errors are shown by the interpretation, not here.
+            const baselineOnly = !!cx.request && cx.request.entries.length < 2;
+            if (cx.phase === "loading") { bodyEl.replaceChildren(); noteEl.hidden = true; showState("loading", baselineOnly ? "" : "Comparing signals…"); return; }
+            if (cx.phase === "error") { bodyEl.replaceChildren(); noteEl.hidden = true; showState("error", baselineOnly ? "" : cx.message); return; }
             if (!cx.request || !cx.request.entries.every((entry) => wwSignalCatalogueIsCurrent(entry.key, entry.revision))) {
                 wwOscCrossClear(); bodyEl.replaceChildren(); noteEl.hidden = true; showState("idle", ""); return;
             }
@@ -56760,6 +56859,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return ul;
             };
             bodyEl.replaceChildren();
+            // The reference-only baseline is not a comparison: nothing to show here (it feeds the interpretation below).
+            if (cx.request.entries.length < 2) { noteEl.hidden = true; return; }
             const excluded = result.signals.filter((s) => s.status !== "ok");
             if (!result.components.length) bodyEl.appendChild(el("div", "ww-osc-detect-none", result.message || "No oscillation candidate was found in the compared signals."));
             for (const comp of result.components) {
@@ -57044,7 +57145,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (box.checked) wwOscState.cross.chosen.add(box.value); else wwOscState.cross.chosen.delete(box.value);
                 wwOscRenderCross(); // the stored comparison (if any) is judged against the new selection when it is rendered
             });
-            document.getElementById("wwOscCrossBtn").addEventListener("click", wwOscRunCross);
+            document.getElementById("wwOscCrossBtn").addEventListener("click", () => wwOscRunCross(false));
             document.getElementById("wwOscDampingPick").addEventListener("change", (event) => {
                 const rank = Number(event.target.value);
                 wwOscState.damping.selectedRank = Number.isFinite(rank) ? rank : null;

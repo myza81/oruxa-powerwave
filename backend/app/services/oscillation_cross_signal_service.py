@@ -71,16 +71,10 @@ def _parameters() -> dict:
     }
 
 
-def compute_cross_signal(
-    *,
-    workspace_id: str,
-    entries: list[dict],
-    f_min_hz: float,
-    f_max_hz: float,
-    source_registry: WorkspaceRegistry,
-    calc_registry: CalculatedChannelRegistry,
-) -> dict:
-    """`entries`: `{input_ref, representation, signal_revision, window_start_s, window_end_s, offset_s, label}`."""
+def validate_entries(entries: list[dict], f_min_hz: float, f_max_hz: float, *, minimum: int = 1) -> None:
+    """The request-level checks shared by the cross-signal evidence and the interpretation: cap, representation, duplicates, numbers."""
+    if len(entries) < minimum:
+        raise ImportServiceError(f"At least {minimum} signal{'s' if minimum != 1 else ''} must be given.")
     if len(entries) > MAX_SIGNALS:
         raise ImportServiceError(f"At most {MAX_SIGNALS} signals can be compared at once.")
     seen: set[tuple] = set()
@@ -94,6 +88,18 @@ def compute_cross_signal(
         seen.add(identity)
         _validate_request_numbers(entry["window_start_s"], entry["window_end_s"], f_min_hz, f_max_hz)
 
+
+def analyse_signals(
+    *,
+    workspace_id: str,
+    entries: list[dict],
+    f_min_hz: float,
+    f_max_hz: float,
+    source_registry: WorkspaceRegistry,
+    calc_registry: CalculatedChannelRegistry,
+) -> tuple[list[dict], list[dict]]:
+    """Run the accepted per-signal chain (spectrum + candidates, damping, spectrogram) for already validated `entries`.
+    Returns (`signal rows` for the response, `analysed` signal dicts for grouping / interpretation)."""
     lineage = _Lineage(workspace_id, source_registry, calc_registry)
     signal_rows: list[dict] = []
     analysed: list[dict] = []
@@ -141,8 +147,33 @@ def compute_cross_signal(
             "recording_label": row["recording"], "origin": row["origin"], "lineage_roots": sorted(lineage.roots(ref)),
             "offset_s": entry["offset_s"], "bin_spacing_hz": row["bin_spacing_hz"], "candidates": candidates,
             "damping": {rank: _damping_summary(r) for rank, r in by_rank_damping.items()}, "temporal": temporal,
+            # Additive context for the interpretation (DEC-179); grouping ignores it.
+            "window_start_s": spectrum["window"]["start_s"], "window_end_s": spectrum["window"]["end_s"],
+            "representation": entry["representation"],
+            "nominal_frequency_hz": spectrum["representation"].get("nominal_frequency_hz"),
+            "nominal_frequency_assumed": spectrum["representation"].get("nominal_frequency_origin") == "assumed_default",
         })
-    components = cs.group_components(analysed)
+    return signal_rows, analysed
+
+
+def compute_cross_signal(
+    *,
+    workspace_id: str,
+    entries: list[dict],
+    f_min_hz: float,
+    f_max_hz: float,
+    source_registry: WorkspaceRegistry,
+    calc_registry: CalculatedChannelRegistry,
+) -> dict:
+    """`entries`: `{input_ref, representation, signal_revision, window_start_s, window_end_s, offset_s, label}`."""
+    validate_entries(entries, f_min_hz, f_max_hz, minimum=1)
+    signal_rows, analysed = analyse_signals(
+        workspace_id=workspace_id, entries=entries, f_min_hz=f_min_hz, f_max_hz=f_max_hz,
+        source_registry=source_registry, calc_registry=calc_registry)
+    return build_result(signal_rows, analysed, f_min_hz, f_max_hz, cs.group_components(analysed))
+
+
+def build_result(signal_rows: list[dict], analysed: list[dict], f_min_hz: float, f_max_hz: float, components: list[dict]) -> dict:
     ok = sum(1 for r in signal_rows if r["status"] == "ok")
     return {
         "status": "ok" if components else "no_components",

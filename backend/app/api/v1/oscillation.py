@@ -10,7 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.schemas.oscillation import (
     OscillationCrossSignalOut,
     OscillationCrossSignalRequest,
+    InterpretationRequest,
     OscillationDampingOut,
+    OscillationInterpretationOut,
     OscillationDampingRequest,
     OscillationRepresentationOut,
     OscillationRepresentationRequest,
@@ -24,6 +26,7 @@ from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.errors import ImportServiceError
 from app.services.oscillation_cross_signal_service import compute_cross_signal
 from app.services.oscillation_damping_service import compute_damping
+from app.services.oscillation_interpretation_service import compute_interpretation
 from app.services.oscillation_representation_service import derive_analysis_representation, describe
 from app.services.oscillation_spectrogram_service import compute_spectrogram
 from app.services.oscillation_spectrum_service import compute_spectrum
@@ -212,3 +215,36 @@ def get_cross_signal(
             detail=ErrorOut(code=exc.code, message=exc.message).model_dump(),
         ) from exc
     return OscillationCrossSignalOut(**result)
+
+
+@router.post("/interpretation", response_model=OscillationInterpretationOut)
+def get_interpretation(
+    workspace_id: str,
+    body: InterpretationRequest,
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+) -> OscillationInterpretationOut:
+    """Oscillation interpretation (DEC-179 [APPROVED]): the cross-signal evidence of one signal or an explicit set, plus a deterministic
+    behaviour / probable-type interpretation of every component with structured supporting and limiting evidence. Every signal is
+    re-resolved and re-validated from workspace state; nothing is stored; no AI, no probability."""
+    if not workspace_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorOut(code="invalid_workspace", message="workspace_id must not be blank.").model_dump(),
+        )
+    entries = [
+        {"input_ref": s.input.to_domain(), "representation": s.representation, "signal_revision": s.signal_revision,
+         "window_start_s": s.window_start_s, "window_end_s": s.window_end_s, "offset_s": s.offset_s, "label": s.label}
+        for s in body.signals
+    ]
+    try:
+        result = compute_interpretation(
+            workspace_id=workspace_id, entries=entries, f_min_hz=body.frequency_min_hz, f_max_hz=body.frequency_max_hz,
+            source_registry=source_registry, calc_registry=calc_registry,
+        )
+    except ImportServiceError as exc:
+        raise HTTPException(
+            status_code=_STATUS_BY_ERROR_CODE.get(exc.code, status.HTTP_400_BAD_REQUEST),
+            detail=ErrorOut(code=exc.code, message=exc.message).model_dump(),
+        ) from exc
+    return OscillationInterpretationOut(**result)
