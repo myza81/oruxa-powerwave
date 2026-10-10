@@ -107,7 +107,8 @@ def manual_to_canonical(
                 direction=manual(_DIRECTION.get(z.direction, ZoneDirection.UNKNOWN), raw_value=z.direction),
                 phase_phase_enabled=manual(True),
                 phase_earth_enabled=manual(False),
-                phase_timer_s=manual(z.delay_s, raw_value=z.delay_s),
+                # A delay that was never entered stays unresolved (never defaulted).
+                phase_timer_s=_opt(z.delay_s),
                 characteristic=char_spec,
                 reach=reach,
                 resistive_reach=resistive,

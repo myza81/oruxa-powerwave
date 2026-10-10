@@ -500,6 +500,11 @@ reverse zone, etc., and no OEM naming is assumed.
   the slot's direction is fixed to reverse. `ZoneResultOut` gains `direction`
   (`"forward"` for zones 1-3) and the results gain an optional `zone4`
   (`ZoneResultOut`); the existing fields and values are unchanged.
+- **Reverse Zone delay is never defaulted.** It starts blank (`delay_s = None`;
+  `zone4_delay_s` omitted). An *enabled* Reverse Zone without a delay is incomplete:
+  it never operates, the result reports `delay_s: null` and the UI shows "delay not
+  configured". An entered delay (including 0) is preserved and reported. Zones 1-3
+  keep their numeric defaults; relay imports still require a delay (strict adapter).
 - **Manual → canonical → adapter → engine.** The four manual zones go through
   `manual_to_canonical()` (Z4 gets `ZoneDirection.REVERSE`) and
   `adapt_to_engine()`; the bridge is not bypassed.

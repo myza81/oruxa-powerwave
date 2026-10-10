@@ -27,7 +27,8 @@ class ZoneResultOut(BaseModel):
     zone_key: str
     enabled: bool
     state: ZoneState
-    delay_s: float
+    #: None only for a Reverse Zone whose delay was never configured.
+    delay_s: float | None
     #: The zone's own direction ("forward" | "reverse"). Independent of the
     #: zone identity and of a quadrilateral's reverse resistive reach.
     direction: str = "forward"

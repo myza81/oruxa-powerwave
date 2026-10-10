@@ -1128,7 +1128,7 @@ def get_sequence_components_manual(
 def _zone_settings(
     enabled: bool, reach_ohm: float | None, reactive_reach_ohm: float | None,
     resistive_reach_forward_ohm: float | None, resistive_reach_reverse_ohm: float | None,
-    characteristic_angle_deg: float, delay_s: float,
+    characteristic_angle_deg: float, delay_s: float | None,
     direction: str = "forward",
 ) -> ZoneSettings:
     return ZoneSettings(
@@ -1192,7 +1192,7 @@ def get_distance_protection_analysis(
     # clients that send only zones 1-3 get a disabled Zone 4.
     zone4_enabled: bool = False, zone4_reach_ohm: float | None = None, zone4_reactive_reach_ohm: float | None = None,
     zone4_resistive_reach_forward_ohm: float | None = None, zone4_resistive_reach_reverse_ohm: float | None = None,
-    zone4_characteristic_angle_deg: float = 90.0, zone4_delay_s: float = 0.0,
+    zone4_characteristic_angle_deg: float = 90.0, zone4_delay_s: float | None = None,
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
@@ -1259,7 +1259,7 @@ def get_distance_protection_locus(
     # clients that send only zones 1-3 get a disabled Zone 4.
     zone4_enabled: bool = False, zone4_reach_ohm: float | None = None, zone4_reactive_reach_ohm: float | None = None,
     zone4_resistive_reach_forward_ohm: float | None = None, zone4_resistive_reach_reverse_ohm: float | None = None,
-    zone4_characteristic_angle_deg: float = 90.0, zone4_delay_s: float = 0.0,
+    zone4_characteristic_angle_deg: float = 90.0, zone4_delay_s: float | None = None,
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
@@ -1353,7 +1353,7 @@ def get_distance_protection_manual(
     # clients that send only zones 1-3 get a disabled Zone 4.
     zone4_enabled: bool = False, zone4_reach_ohm: float | None = None, zone4_reactive_reach_ohm: float | None = None,
     zone4_resistive_reach_forward_ohm: float | None = None, zone4_resistive_reach_reverse_ohm: float | None = None,
-    zone4_characteristic_angle_deg: float = 90.0, zone4_delay_s: float = 0.0,
+    zone4_characteristic_angle_deg: float = 90.0, zone4_delay_s: float | None = None,
 ) -> ManualDistanceResultOut:
     """Manual Input / Calculator mode (Analysis Input Source = 'manual',
     see docs/project-memory/ANALYSIS_INPUT_SOURCE.md) -- Distance

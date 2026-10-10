@@ -11891,7 +11891,7 @@
                                                 <label class="ww-phasor-manual-role-enable"><input type="checkbox" id="wwDistanceZone4Enabled" aria-label="Enable Reverse Zone">Enabled</label>
                                             </div>
                                             <div class="ww-dist-zone-direction" id="wwDistanceZone4Direction">Direction: Reverse</div>
-                                            <label class="ww-dist-zone-field"><span>Configured delay (s)</span><input type="number" id="wwDistanceZone4DelayInput" min="0" step="0.01" value="1"></label>
+                                            <label class="ww-dist-zone-field"><span>Configured delay (s)</span><input type="number" id="wwDistanceZone4DelayInput" min="0" step="0.01" placeholder="not set"></label>
                                             <label class="ww-dist-zone-field"><span>Characteristic angle (°)</span><input type="number" id="wwDistanceZone4AngleInput" step="0.1" value="90"></label>
                                             <label class="ww-dist-zone-field" id="wwDistanceZone4ReachField"><span>Reach |Z| (Ω)</span><input type="number" id="wwDistanceZone4ReachInput" min="0" step="0.01"></label>
                                             <label class="ww-dist-zone-field" id="wwDistanceZone4ReactiveReachField" hidden><span>Reactive reach (Ω)</span><input type="number" id="wwDistanceZone4ReactiveReachInput" min="0" step="0.01"></label>
@@ -53804,7 +53804,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 zone1: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0 }),
                 zone2: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0.4 }),
                 zone3: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 1 }),
-                zone4: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 1, direction: "reverse" }),
+                zone4: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: null, direction: "reverse" }),
             },
             latestResult: null,
             requestGeneration: 0,
@@ -54111,7 +54111,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             for (const key of WW_DISTANCE_ZONE_KEYS) {
                 const z = wwDistanceState.zones[key];
                 params[key + "_enabled"] = String(z.enabled);
-                params[key + "_delay_s"] = String(Number.isFinite(z.delaySeconds) ? z.delaySeconds : 0);
+                // Reverse Zone delay is never fabricated: blank = not sent = not configured.
+                if (Number.isFinite(z.delaySeconds)) params[key + "_delay_s"] = String(z.delaySeconds);
+                else if (key !== "zone4") params[key + "_delay_s"] = "0";
                 params[key + "_characteristic_angle_deg"] = String(Number.isFinite(z.characteristicAngleDeg) ? z.characteristicAngleDeg : 90);
                 if (wwDistanceState.characteristic === "mho") {
                     if (Number.isFinite(z.reachOhm)) params[key + "_reach_ohm"] = String(z.reachOhm);
@@ -54257,12 +54259,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const operated = !!(z && z.state === "operated");
                 const enabled = !!(z && z.enabled);
                 const delaySeconds = z ? z.delay_s : wwDistanceState.zones[key].delaySeconds;
+                const delayNotSet = !Number.isFinite(delaySeconds);
                 rows.push(
                     '<div class="ww-oc-value-row"><span class="ww-oc-value-row-label">' + WW_DISTANCE_ZONE_LABELS[key] +
                     (enabled ? "" : " (disabled)") + '</span><span class="ww-oc-value-row-value">' +
                     '<span class="ww-dist-zone-state-badge ' + (operated ? "ww-dist-zone-state-badge--operated" : "ww-dist-zone-state-badge--not-operated") +
                     '" style="--zone-color: var(--ww-dist-' + key + ')">' + (operated ? "Operated" : "Not Operated") + '</span>' +
-                    ' <span class="ww-oc-field-unit">delay ' + (Number.isFinite(delaySeconds) ? delaySeconds.toFixed(2) : "0.00") + 's</span>' +
+                    ' <span class="ww-oc-field-unit">' + (delayNotSet ? (key === "zone4" && enabled ? "delay not configured" : "delay not set") : 'delay ' + delaySeconds.toFixed(2) + 's') + '</span>' +
                     '</span></div>'
                 );
             }
@@ -55037,7 +55040,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const z = wwDistanceState.zones[key];
                 const part = wwDistanceZoneIdPart(key);
                 setChecked("wwDistance" + part + "Enabled", z.enabled);
-                setVal("wwDistance" + part + "DelayInput", z.delaySeconds);
+                setVal("wwDistance" + part + "DelayInput", z.delaySeconds === null ? "" : z.delaySeconds);
                 setVal("wwDistance" + part + "AngleInput", z.characteristicAngleDeg);
                 if (z.reachOhm !== null) setVal("wwDistance" + part + "ReachInput", z.reachOhm);
                 if (z.reactiveReachOhm !== null) setVal("wwDistance" + part + "ReactiveReachInput", z.reactiveReachOhm);
@@ -55094,7 +55097,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 zone1: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0 }),
                 zone2: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0.4 }),
                 zone3: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 1 }),
-                zone4: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 1, direction: "reverse" }),
+                zone4: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: null, direction: "reverse" }),
             };
             wwDistanceState.latestResult = null;
             wwDistanceState.view = null;
@@ -60400,7 +60403,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             });
             document.getElementById("wwDistance" + part + "DelayInput").addEventListener("change", (event) => {
                 const value = parseFloat(event.target.value);
-                wwDistanceState.zones[wwDistanceZoneKey].delaySeconds = Number.isFinite(value) ? value : 0;
+                // Blank stays "not configured" (null) for the Reverse Zone; zones 1-3 keep their 0 default.
+                wwDistanceState.zones[wwDistanceZoneKey].delaySeconds = Number.isFinite(value) ? value : (wwDistanceZoneKey === "zone4" ? null : 0);
                 wwDistanceHandleZoneSettingChanged();
             });
             document.getElementById("wwDistance" + part + "AngleInput").addEventListener("change", (event) => {

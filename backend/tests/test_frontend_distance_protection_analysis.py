@@ -418,3 +418,14 @@ class TestReverseZoneSlot:
         theme = (Path(__file__).resolve().parents[2] / "frontend" / "theme.css").read_text(encoding="utf-8")
         assert theme.count("--ww-dist-zone4:") == 2
         assert ".ww-dist-zone-boundary--zone4" in _source()
+
+
+class TestReverseZoneDelayDefault:
+    def test_reverse_zone_delay_starts_blank_and_is_not_sent_when_blank(self):
+        source = _source()
+        card = _function_body(source, 'id="wwDistanceZone4DelayInput"', "</label>")
+        assert "value=" not in card and 'placeholder="not set"' in card
+        assert 'delaySeconds: null, direction: "reverse"' in source
+        params = _function_body(source, "function wwDistanceZoneParams()", "// The ONE place that dispatches")
+        assert 'else if (key !== "zone4")' in params
+        assert "delay not configured" in source

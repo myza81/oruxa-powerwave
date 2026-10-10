@@ -67,7 +67,7 @@ class TestDefaults:
         assert ZoneSettings(True, 6.0, None, None, None, 75.0, 0.0).direction == DIRECTION_FORWARD
 
     def test_fourth_slot_defaults_to_disabled_reverse(self):
-        assert DEFAULT_ZONE4 == ZoneSettings(enabled=False, direction=DIRECTION_REVERSE)
+        assert DEFAULT_ZONE4 == ZoneSettings(enabled=False, delay_s=None, direction=DIRECTION_REVERSE)
         assert ZONE_KEYS == ("zone1", "zone2", "zone3", "zone4")
 
     def test_forward_is_unchanged_by_the_new_parameter(self):
@@ -343,7 +343,7 @@ class TestHttp:
         body = client.get(URL, params=manual_query(zone2_enabled=True, zone2_reach_ohm=15, zone2_characteristic_angle_deg=20)).json()
         assert body["status"] == "computed"
         assert body["zone2"]["state"] == "operated" and body["zone2"]["direction"] == "forward"
-        assert body["zone4"] == {"zone_key": "zone4", "enabled": False, "state": "not_operated", "delay_s": 0.0, "direction": "reverse"}
+        assert body["zone4"] == {"zone_key": "zone4", "enabled": False, "state": "not_operated", "delay_s": None, "direction": "reverse"}
 
     def test_reverse_zone_operates_for_reverse_impedance_only(self, client):
         z4 = dict(zone4_enabled=True, zone4_reach_ohm=15, zone4_characteristic_angle_deg=20, zone4_delay_s=0.7)
@@ -356,7 +356,7 @@ class TestHttp:
     def test_quadrilateral_reverse_zone_over_http(self, client):
         z4 = dict(
             zone4_enabled=True, zone4_reactive_reach_ohm=15, zone4_resistive_reach_forward_ohm=12,
-            zone4_resistive_reach_reverse_ohm=12, zone4_characteristic_angle_deg=20,
+            zone4_resistive_reach_reverse_ohm=12, zone4_characteristic_angle_deg=20, zone4_delay_s=0.5,
         )
         q = manual_query(180, characteristic="quadrilateral", **z4)
         assert client.get(URL, params=q).json()["zone4"]["state"] == "operated"
@@ -375,3 +375,70 @@ class TestHttp:
         for name in ("zone4_enabled", "zone4_reach_ohm", "zone4_delay_s", "zone4_characteristic_angle_deg"):
             assert name in params and params[name]["required"] is False
         assert "zone4_direction" not in params  # the slot's direction is fixed, not a client setting
+
+
+class TestReverseZoneDelayIsNeverFabricated:
+    """The Reverse Zone is disabled by default and its delay is blank
+    (None) until the user enters one; an enabled zone without a delay is
+    incomplete and never operates."""
+
+    ENABLED_NO_DELAY = ZoneSettings(True, 15.0, None, None, None, 20.0, None, DIRECTION_REVERSE)
+
+    def test_disabled_by_default_with_no_delay(self):
+        assert DEFAULT_ZONE4.enabled is False and DEFAULT_ZONE4.delay_s is None
+        r = evaluate_manual_distance(
+            *manual_inputs(180.0), loop_label="AB", voltage_basis=SEC, vt_primary=None, vt_secondary=None,
+            current_basis=SEC, ct_primary=None, ct_secondary=None, impedance_basis=SEC,
+            characteristic=CHARACTERISTIC_MHO, zone1=OFF, zone2=OFF, zone3=OFF,
+        )
+        assert (r.zone4.enabled, r.zone4.delay_s, r.zone4.state) == (False, None, ZONE_STATE_NOT_OPERATED)
+
+    def test_other_zones_keep_their_numeric_zero_default(self):
+        assert ZoneSettings().delay_s == 0.0
+
+    def test_enabled_without_delay_never_operates_even_inside_the_characteristic(self):
+        p = pt(0.0, -5.0)
+        assert evaluate_zone_state(p, characteristic=CHARACTERISTIC_MHO, zone=replace(self.ENABLED_NO_DELAY, delay_s=0.0)) == ZONE_STATE_OPERATED
+        assert evaluate_zone_state(p, characteristic=CHARACTERISTIC_MHO, zone=self.ENABLED_NO_DELAY) == ZONE_STATE_NOT_OPERATED
+
+    def test_no_delay_is_not_turned_into_a_number_anywhere_on_the_manual_path(self):
+        zones = (OFF, OFF, OFF, self.ENABLED_NO_DELAY)
+        model = manual_to_canonical(characteristic=CHARACTERISTIC_MHO, impedance_basis=SEC, zones=zones)
+        assert not model.zones[3].phase_timer_s.is_resolved
+        assert model.zones[0].phase_timer_s.value == 0.0  # an entered 0.0 stays a real value
+        routed = engine_zones_from_manual(characteristic=CHARACTERISTIC_MHO, impedance_basis=SEC, zones=zones)
+        assert routed[3].delay_s is None and routed[3].enabled is True
+        r = run_manual(manual_inputs(180.0), zones=routed)
+        assert r.zone4.delay_s is None and r.zone4.state == ZONE_STATE_NOT_OPERATED
+
+    def test_explicit_delay_is_preserved_and_reported(self):
+        for delay in (0.0, 0.7, 2.5):
+            zone = replace(self.ENABLED_NO_DELAY, delay_s=delay)
+            routed = engine_zones_from_manual(characteristic=CHARACTERISTIC_MHO, impedance_basis=SEC, zones=(OFF, OFF, OFF, zone))
+            assert routed[3].delay_s == delay
+            r = run_manual(manual_inputs(180.0), zones=routed)
+            assert r.zone4.delay_s == delay and r.zone4.state == ZONE_STATE_OPERATED
+
+    def test_imports_still_require_a_delay(self):
+        from app.domain.relay_import.engine_adapter import adapt_to_engine as adapt
+
+        model = manual_to_canonical(characteristic=CHARACTERISTIC_MHO, impedance_basis=SEC, zones=(OFF, OFF, OFF, self.ENABLED_NO_DELAY))
+        assert not adapt(model, engine_basis=SEC).supported  # strict (import) mode: unresolved timer refused
+        assert adapt(model, engine_basis=SEC, allow_incomplete_zones=True).supported  # manual form only
+
+
+class TestReverseZoneDelayHttp:
+    Z4 = dict(zone4_enabled=True, zone4_reach_ohm=15, zone4_characteristic_angle_deg=20)
+
+    def test_enabled_without_delay_is_not_ready_and_reports_no_delay(self, client):
+        body = client.get(URL, params=manual_query(180, **self.Z4)).json()
+        assert body["zone4"]["enabled"] is True
+        assert body["zone4"]["state"] == "not_operated" and body["zone4"]["delay_s"] is None
+
+    def test_explicit_delay_operates_and_is_reported(self, client):
+        body = client.get(URL, params=manual_query(180, zone4_delay_s=0.35, **self.Z4)).json()
+        assert body["zone4"]["state"] == "operated" and body["zone4"]["delay_s"] == 0.35
+
+    def test_explicit_zero_delay_is_a_real_value(self, client):
+        body = client.get(URL, params=manual_query(180, zone4_delay_s=0, **self.Z4)).json()
+        assert body["zone4"]["state"] == "operated" and body["zone4"]["delay_s"] == 0

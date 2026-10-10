@@ -159,3 +159,17 @@ test("the Reverse Quadrilateral is the forward polygon rotated 180 degrees; resi
   await expect(page.locator("#wwDistanceZone4ResistiveReverseInput")).toBeVisible();
   await expect(page.locator("#wwDistanceZone4ResistiveReverseField")).toContainText("Resistive reach reverse");
 });
+
+test("an enabled Reverse Zone without a configured delay is not ready, and an entered delay is reported", async ({ page }) => {
+  await openDistance(page);
+  await expect(page.locator("#wwDistanceZone4DelayInput")).toHaveValue("");
+  await setZone(page, 4, { reach: 15, angle: 20 }); // no delay entered
+  await enterLoop(page, 180); // inside the reverse characteristic
+  await expect(zoneRow(page, "Reverse Zone")).toContainText("Not Operated");
+  await expect(zoneRow(page, "Reverse Zone")).toContainText("delay not configured");
+
+  await page.locator("#wwDistanceZone4DelayInput").fill("0.35");
+  await page.locator("#wwDistanceZone4DelayInput").dispatchEvent("change");
+  await expect(zoneRow(page, "Reverse Zone")).not.toContainText("Not Operated");
+  await expect(zoneRow(page, "Reverse Zone")).toContainText("delay 0.35s");
+});

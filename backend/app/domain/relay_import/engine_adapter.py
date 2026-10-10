@@ -218,7 +218,7 @@ def _adapt_zone(zone, ctype, allow_incomplete, fail, warn) -> ZoneSettings:
         fail(UnsupportedCode.ZONE_STATUS_UNRESOLVED, "Zone enabled/disabled status is unresolved.", zone)
         return ZoneSettings()
 
-    delay = _delay(zone, status, fail, warn)
+    delay = _delay(zone, status, fail, warn, allow_incomplete)
 
     if status is False:
         # No geometry is evaluated for a disabled/inactive zone; its
@@ -329,7 +329,7 @@ def _forward_resistive(zone: DistanceZone, fail):
     return None
 
 
-def _delay(zone: DistanceZone, status: bool, fail, warn) -> float:
+def _delay(zone: DistanceZone, status: bool, fail, warn, allow_incomplete: bool = False) -> float | None:
     """One delay: the common timer, else the phase timer (the engine is
     phase-phase, so that is the semantically matching one). Differing
     candidates are a conflict."""
@@ -339,6 +339,10 @@ def _delay(zone: DistanceZone, status: bool, fail, warn) -> float:
         return 0.0
     if candidates:
         return candidates[0]
+    if allow_incomplete:
+        # Manual form only: a delay that was never entered stays absent (None)
+        # and the engine treats an enabled zone without one as not ready.
+        return None
     if status is False:
         warn(f"{zone.zone_id}: no delay available for a disabled zone; reported as 0.0 s.")
     else:

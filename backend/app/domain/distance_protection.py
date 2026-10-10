@@ -280,7 +280,9 @@ class ZoneSettings:
     resistive_reach_forward_ohm: float | None = None
     resistive_reach_reverse_ohm: float | None = None
     characteristic_angle_deg: float = 90.0
-    delay_s: float = 0.0
+    #: None = not configured. Only the Reverse Zone slot defaults to None; an
+    #: ENABLED zone whose delay is None is incomplete and never operates.
+    delay_s: float | None = 0.0
     #: Last field with a default so every pre-existing (positional or
     #: keyword) construction keeps meaning "forward". See DIRECTION_*.
     direction: str = DIRECTION_FORWARD
@@ -420,6 +422,9 @@ def evaluate_zone_state(point: ImpedancePoint | None, *, characteristic: str, zo
     its own `direction` (forward by default)."""
     if point is None or not zone.enabled:
         return ZONE_STATE_NOT_OPERATED
+    if zone.delay_s is None:
+        # Enabled but the delay was never configured: incomplete, not ready.
+        return ZONE_STATE_NOT_OPERATED
     if characteristic == CHARACTERISTIC_MHO:
         if zone.reach_ohm is None:
             return ZONE_STATE_NOT_OPERATED
@@ -454,7 +459,7 @@ class ZoneResult:
     zone_key: str
     enabled: bool
     state: str
-    delay_s: float
+    delay_s: float | None  # None = delay not configured
     direction: str = DIRECTION_FORWARD
 
 
@@ -569,9 +574,9 @@ class ManualDistanceResult:
 
 
 #: The fourth manual slot when a caller (e.g. an older client) supplies no
-#: Zone 4: disabled, and facing reverse -- the only default direction that
+#: Zone 4: disabled, delay not configured, and facing reverse -- the only default direction that
 #: differs from the pre-existing zones.
-DEFAULT_ZONE4 = ZoneSettings(enabled=False, direction=DIRECTION_REVERSE)
+DEFAULT_ZONE4 = ZoneSettings(enabled=False, delay_s=None, direction=DIRECTION_REVERSE)
 
 
 def evaluate_manual_distance(
