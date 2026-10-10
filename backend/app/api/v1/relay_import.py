@@ -4,8 +4,9 @@ Accepts one file, validates and minimally inspects it, returns basic
 metadata plus generic-extraction counts, and retains nothing -- no database, no StorageBackend, no
 registry, no persistent directory. It deliberately takes no workspace id:
 nothing about the upload is workspace state. Generic text extraction
-(Slice 4) runs request-scoped and only counts are returned; relay
-identification and interpretation are later slices.
+(Slice 4) and relay identification (Slice 5) run request-scoped and only
+counts and the identification verdict are returned; interpretation is a
+later slice.
 """
 
 from __future__ import annotations
@@ -60,6 +61,7 @@ async def upload_relay_setting_file(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorOut(code="internal_error", message="The file could not be processed.").model_dump(),
         )
+    ident = result.extraction.identification
     return RelayImportUploadOut(
         filename=result.filename,
         source_format=result.source_format.value,
@@ -71,4 +73,11 @@ async def upload_relay_setting_file(
         raw_entry_count=result.extraction.raw_entry_count,
         section_count=result.extraction.section_count,
         extraction_warnings=list(result.extraction.warnings),
+        identification_status=ident.status if ident else None,
+        manufacturer=ident.manufacturer if ident else None,
+        relay_family=ident.relay_family if ident else None,
+        model=ident.model if ident else None,
+        profile_id=ident.profile_id if ident else None,
+        confidence=ident.confidence if ident else None,
+        identification_warnings=list(ident.warnings) if ident else [],
     )

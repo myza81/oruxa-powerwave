@@ -108,6 +108,43 @@ class TestPanelPolish:
         assert "#wwRelayImportBtn:focus-visible" in source
 
 
+class TestIdentificationDisplay:
+    """Slice 5: identity is named; nothing is interpreted or auto-filled."""
+
+    def test_identity_line_sits_between_filename_and_status(self):
+        card = _slice(_distance_panel(_source()), 'id="wwRelayImportFile"', 'id="wwRelayImportError"')
+        assert card.index("wwRelayImportFilename") < card.index("wwRelayImportIdentity") < card.index("wwRelayImportStatus")
+        assert ".ww-relay-import-identity:empty { display: none; }" in _source()
+
+    def test_messages_for_each_outcome(self):
+        js = _relay_import_js(_source())
+        assert "Relay identified. Settings have not been interpreted yet." in js
+        assert "Relay identification needs confirmation." in js
+        assert "Relay model not recognised. You can continue with manual entry." in js
+        assert 'filter(Boolean).join(" \u00b7 ")' in js  # "Siemens · 7SA613"
+
+    def test_unidentified_fallback_keeps_the_extraction_message(self):
+        assert "Text extracted. Relay settings have not been interpreted yet." in _relay_import_js(_source())
+
+    def test_only_the_verdict_fields_are_read_from_the_response(self):
+        js = _relay_import_js(_source())
+        for field in ("identification_status", "manufacturer", "model"):
+            assert f"body.{field}" in js
+        for forbidden in ("body.evidence", "body.candidates", "body.profile_id", "Validated", "validated"):
+            assert forbidden not in js
+
+    def test_identification_state_is_cleared_with_the_rest(self):
+        js = _relay_import_js(_source())
+        reset = js[js.index("function wwRelayImportReset"): js.index("function wwRelayImportRender")]
+        for field in ("identificationStatus", "manufacturer", "model"):
+            assert f"wwRelayImportState.{field} =" in reset
+
+    def test_identification_never_touches_the_distance_form(self):
+        js = _relay_import_js(_source())
+        for forbidden in ("wwDistanceZone", "wwDistanceState", "Input.value"):
+            assert forbidden not in js
+
+
 class TestEphemeralState:
     def test_state_is_a_plain_in_memory_object_starting_idle(self):
         js = _relay_import_js(_source())

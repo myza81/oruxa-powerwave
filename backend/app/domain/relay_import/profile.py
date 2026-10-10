@@ -21,6 +21,12 @@ from app.domain.relay_import.canonical_distance import (
     RelayMetadata,
     UnresolvedSetting,
 )
+from app.domain.relay_import.identification import (
+    ManufacturerAliases,
+    RelayIdentification,
+    RelayIdentificationDescriptor,
+    RelayIdentifier,
+)
 from app.domain.relay_import.raw_document import RawRelayDocument
 
 
@@ -75,16 +81,55 @@ class GenericFallbackProfile:
 
 
 class RelayProfileRegistry:
-    def __init__(self, profiles: tuple[RelayProfile, ...] = ()) -> None:
+    """Holds interpretation profiles and, separately, identification
+    descriptors. Identification (what relay is this?) and interpretation (what
+    do its settings mean?) are different steps: a descriptor can be registered
+    long before a profile exists, and ``identify()`` never calls a profile."""
+
+    def __init__(
+        self,
+        profiles: tuple[RelayProfile, ...] = (),
+        *,
+        identification_descriptors: tuple[RelayIdentificationDescriptor, ...] = (),
+        manufacturer_aliases: ManufacturerAliases | None = None,
+    ) -> None:
         self._profiles: list[RelayProfile] = []
+        self._descriptors: list[RelayIdentificationDescriptor] = []
+        self._aliases = manufacturer_aliases or ManufacturerAliases()
+        self._identifier: RelayIdentifier | None = None
         self._fallback = GenericFallbackProfile()
         for profile in profiles:
             self.register(profile)
+        for descriptor in identification_descriptors:
+            self.register_identification_descriptor(descriptor)
 
     def register(self, profile: RelayProfile) -> None:
         if any(p.profile_id == profile.profile_id for p in self._profiles):
             raise ValueError(f"profile {profile.profile_id!r} already registered")
         self._profiles.append(profile)
+        self._identifier = None
+
+    def register_identification_descriptor(self, descriptor: RelayIdentificationDescriptor) -> None:
+        if any(d.profile_id == descriptor.profile_id for d in self.identification_descriptors()):
+            raise ValueError(f"identification descriptor {descriptor.profile_id!r} already registered")
+        self._descriptors.append(descriptor)
+        self._identifier = None
+
+    def identification_descriptors(self) -> tuple[RelayIdentificationDescriptor, ...]:
+        """Standalone descriptors plus any a registered profile exposes through
+        an optional ``identification`` attribute, in registration order."""
+        from_profiles = tuple(
+            d for p in self._profiles if isinstance(d := getattr(p, "identification", None), RelayIdentificationDescriptor)
+        )
+        return (*self._descriptors, *from_profiles)
+
+    def identify(self, document: RawRelayDocument) -> RelayIdentification:
+        """Which registered relay does the document most likely belong to?
+        Pure identification: no profile ``match``/``interpret`` is called and
+        nothing is read as an engineering value."""
+        if self._identifier is None:
+            self._identifier = RelayIdentifier(self.identification_descriptors(), self._aliases)
+        return self._identifier.identify(document)
 
     def interpret(self, document: RawRelayDocument) -> CanonicalDistanceProtectionModel:
         """Interpret with the single profile that positively recognises the

@@ -25093,6 +25093,20 @@ sequential ids).
   reverse zones (non-directional/unknown/unresolved remain refused); the
   canonical model still holds any number of zones. See
   [DISTANCE_PROTECTION_ANALYSIS.md](DISTANCE_PROTECTION_ANALYSIS.md#reverse-zone--the-fourth-manual-zone-slot).
+- **Slice 5 addendum (2026-10-11)**: deterministic, OEM-neutral relay
+  *identification* (`RawRelayDocument -> RelayIdentifier -> RelayIdentification`):
+  weighted, capped evidence (scheme/model field 100/90, model mention 10,
+  family marker 25, parameter signature 20, manufacturer name 10); identified
+  at score >= 60 with a lead >= 30 (>= 60 when no explicit model field);
+  otherwise `ambiguous` (nothing selected) or `unknown` (a valid outcome).
+  Relay knowledge is data: descriptors and the manufacturer-alias table live in
+  `app/relay_profiles/identification_catalogue.py`, never in the identifier. The
+  upload response gains a concise verdict (status, manufacturer, family, model,
+  profile id, categorical confidence, warnings) -- no evidence or document text.
+  **Identification is not validated engineering support**: no setting is
+  interpreted, the canonical model and form are untouched, and `Validated` is
+  reserved for profiles that pass owner UAT with real files. Details in
+  [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-5--relay-identification-framework).
 - **Scope**: Slice 1 is contracts + tests only -- no extraction, parsing,
   upload UI, auto-population, rendering change or persistence.
 

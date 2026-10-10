@@ -1,6 +1,6 @@
-// Relay Import Slice 3/4 -- Import Relay Settings (ephemeral upload + generic
-// text extraction summary) -- real-browser coverage. No relay
-// identification, interpretation or auto-population. Runs against LOCAL code; no
+// Relay Import Slice 3/4/5 -- Import Relay Settings (ephemeral upload, generic
+// text extraction summary, relay identification verdict) -- real-browser
+// coverage. No relay interpretation or auto-population. Runs against LOCAL code; no
 // recording is needed (Distance Protection's Manual mode stands alone).
 //
 // frontend/config.js pins the API to :8000. When PW_BACKEND_PORT is set
@@ -36,6 +36,10 @@ function buildPdf(lines, { imageOnly = false } = {}) {
 }
 const PDF = buildPdf([[40, 780, "R1"], [230, 780, "1.84"], [40, 764, "Zone 2"], [230, 764, "Forward"], [340, 764, "2.4"]]);
 const SCANNED_PDF = buildPdf([], { imageOnly: true });
+// A setting sheet whose scheme field names a relay (identification evidence).
+const sheet = (scheme, ...more) =>
+  buildPdf([[40, 800, `Scheme: ${scheme}`], ...more.map((t, i) => [40, 780 - 16 * i, t])]);
+const SIEMENS_PDF = sheet("7SA6131_4AB02_3GA0", "R1 1.84");
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/config.js", (route) =>
@@ -73,7 +77,10 @@ test("a valid PDF shows filename and returned metadata, and Remove resets everyt
   await expect(page.locator("#wwRelayImportFilename")).toHaveText("P441 settings.pdf");
   await expect(page.locator("#wwRelayImportType")).toHaveText("PDF");
   await expect(page.locator("#wwRelayImportStatus")).toContainText("1 page · 2 raw entries");
-  await expect(page.locator("#wwRelayImportDetail")).toHaveText("Text extracted. Relay settings have not been interpreted yet.");
+  // The file is called "P441 settings" but its content names no relay: the
+  // file name is never evidence.
+  await expect(page.locator("#wwRelayImportIdentity")).toBeHidden();
+  await expect(page.locator("#wwRelayImportDetail")).toHaveText("Relay model not recognised. You can continue with manual entry.");
   await expect(page.locator("#wwRelayImportRemoveBtn")).toBeVisible();
   await expect(page.locator("#wwRelayImportError")).toBeHidden();
 
@@ -280,7 +287,45 @@ test("scanned/image-only and encrypted outcomes are reported without calling the
 test("extraction outcome never fills the Distance Protection form", async ({ page }) => {
   await openDistance(page);
   const before = await page.locator("#wwDistanceZone1ReachInput").inputValue();
-  await pick(page, "p441.pdf", PDF);
+  await pick(page, "p441.pdf", SIEMENS_PDF);
   await expect(page.locator("#wwRelayImportDetail")).toContainText("have not been interpreted");
   await expect(page.locator("#wwDistanceZone1ReachInput")).toHaveValue(before);
+});
+
+test("an identified relay is named, with an honest 'not interpreted' message", async ({ page }) => {
+  await openDistance(page);
+  await pick(page, "document.pdf", SIEMENS_PDF);
+  await expect(page.locator("#wwRelayImportIdentity")).toHaveText("Siemens · 7SA613");
+  await expect(page.locator("#wwRelayImportDetail")).toHaveText("Relay identified. Settings have not been interpreted yet.");
+  await expect(page.locator("#wwRelayImportStatus")).toContainText("raw entr");
+  await expect(page.locator("#wwRelayImportCard, #wwRelayImportFile")).not.toContainText(/validated|supported relay/i);
+  // Remove clears the identity as well.
+  await page.locator("#wwRelayImportRemoveBtn").click();
+  await expect(page.locator("#wwRelayImportIdentity")).toHaveText("");
+  await expect(page.locator("#wwRelayImportFile")).toBeHidden();
+});
+
+test("an unrecognised relay is not an error and manual entry stays available", async ({ page }) => {
+  await openDistance(page);
+  await pick(page, "other.pdf", sheet("XYZ9000_V1", "R1 1.84"));
+  await expect(page.locator("#wwRelayImportIdentity")).toBeHidden();
+  await expect(page.locator("#wwRelayImportDetail")).toHaveText("Relay model not recognised. You can continue with manual entry.");
+  await expect(page.locator("#wwRelayImportError")).toBeHidden();
+  await expect(page.locator("#wwRelayImportFile")).toHaveAttribute("data-state", "accepted");
+  await expect(page.locator("#wwDistanceZone1ReachInput")).toBeEditable();
+});
+
+test("an ambiguous document asks for confirmation and picks no relay", async ({ page }) => {
+  await openDistance(page);
+  await pick(page, "mixed.pdf", sheet("7SA511_V3.2_1A", "Relay Type: 7SA6131"));
+  await expect(page.locator("#wwRelayImportDetail")).toHaveText("Relay identification needs confirmation.");
+  await expect(page.locator("#wwRelayImportIdentity")).toHaveText("Siemens"); // both candidates agree on this only
+  await expect(page.locator("#wwRelayImportFile")).not.toContainText("7SA613");
+  await expect(page.locator("#wwRelayImportFile")).not.toContainText("7SA511");
+});
+
+test("a relay without a recorded manufacturer shows just its model", async ({ page }) => {
+  await openDistance(page);
+  await pick(page, "old.pdf", sheet("LFZP111_1A", "KZ1 1"));
+  await expect(page.locator("#wwRelayImportIdentity")).toHaveText("LFZP111");
 });

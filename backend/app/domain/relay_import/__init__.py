@@ -1,6 +1,7 @@
 """Relay-settings import foundation (Slice 1: contracts only).
 
     RawRelayDocument -> RelayProfile -> CanonicalDistanceProtectionModel
+    RawRelayDocument -> RelayIdentifier -> RelayIdentification   (Slice 5)
 
 No file reading, extraction, relay parsing, persistence or UI lives here.
 Raw documents and models are ephemeral in-memory values; nothing in this
@@ -24,6 +25,20 @@ from app.domain.relay_import.canonical_distance import (
     UnresolvedSetting,
     ZoneDirection,
     ZoneStatus,
+)
+from app.domain.relay_import.identification import (
+    DEFAULT_RULES,
+    EvidenceKind,
+    IdentificationCandidate,
+    IdentificationConfidence,
+    IdentificationEvidence,
+    IdentificationStatus,
+    ManufacturerAliases,
+    ParameterSignature,
+    RelayIdentification,
+    RelayIdentificationDescriptor,
+    RelayIdentifier,
+    ScoringRules,
 )
 from app.domain.relay_import.profile import (
     GenericFallbackProfile,

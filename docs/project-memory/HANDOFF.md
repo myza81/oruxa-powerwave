@@ -7,6 +7,17 @@ history already provides the detailed historical trail.
 Last updated: **2026-10-05** (Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
+## Relay import Slice 5 (2026-10-11, `feature/distance-relay-import`)
+
+Relay identification framework: `RawRelayDocument -> RelayIdentifier ->
+identified | ambiguous | unknown`, evidence-scored, data-driven catalogue of the
+12 sample relay lines, concise verdict in the upload response and card; see
+[RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-5--relay-identification-framework).
+**Stopped at the owner UAT gate -- do not start Slice 6 (P441 interpretation)
+until the owner has UAT'd and approved Slice 5.** Nothing is interpreted, no
+profile is `Validated`, the form is never auto-filled. Not merged; Oscillation
+branch not rebased. Run the real-sample suite with `RELAY_SAMPLE_PDF_DIR`.
+
 ## Distance Protection Reverse Zone (2026-10-10, `feature/distance-relay-import`)
 
 Fourth manual zone slot ("Reverse Zone", direction reverse). Separate focused
@@ -20,8 +31,7 @@ relay-import mapping of `Z4` / `3R` names exists yet (later slice).
 Generic PDF text extraction into `RawRelayDocument` (pypdf), summarised in the
 upload response; see
 [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-4--generic-pdf-text-extraction-into-rawrelaydocument).
-**Stopped at the owner UAT gate -- do not start Slice 5 (relay
-identification) until the owner has UAT'd and approved Slice 4.** Engineering
+Owner UAT passed (identification is Slice 5, above). Engineering
 interpretation is not implemented. Not merged; Oscillation branch not rebased.
 Real sample sheets are not in the repo: set `RELAY_SAMPLE_PDF_DIR` to run the
 real-file regression test.

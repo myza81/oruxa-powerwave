@@ -8596,6 +8596,8 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+        .ww-relay-import-identity { font-size: 0.7rem; font-weight: 600; }
+        .ww-relay-import-identity:empty { display: none; }
         .ww-relay-import-meta { font-size: 0.7rem; color: var(--text-dim); }
         .ww-relay-import-detail { font-size: 0.7rem; color: var(--text-dim); }
         .ww-relay-import-detail:empty { display: none; }
@@ -11767,6 +11769,7 @@
                                     <span class="ww-relay-import-type" id="wwRelayImportType"></span>
                                     <div class="ww-relay-import-info">
                                         <span class="ww-relay-import-filename" id="wwRelayImportFilename"></span>
+                                        <span class="ww-relay-import-identity" id="wwRelayImportIdentity"></span>
                                         <span class="ww-relay-import-meta" id="wwRelayImportStatus" role="status" aria-live="polite"></span>
                                         <span class="ww-relay-import-detail" id="wwRelayImportDetail"></span>
                                     </div>
@@ -54776,6 +54779,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             extractionStatus: "", // text_extracted | no_extractable_text | encrypted
             pageCount: 0,
             rawEntryCount: 0,
+            // Slice 5 identification verdict (identified != interpreted: no setting is read).
+            identificationStatus: "", // identified | ambiguous | unknown | "" (not attempted)
+            manufacturer: "",
+            model: "",
             error: "",
             controller: null,
         };
@@ -54788,6 +54795,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRelayImportState.extractionStatus = "";
             wwRelayImportState.pageCount = 0;
             wwRelayImportState.rawEntryCount = 0;
+            wwRelayImportState.identificationStatus = "";
+            wwRelayImportState.manufacturer = "";
+            wwRelayImportState.model = "";
             wwRelayImportState.error = "";
             wwRelayImportState.controller = null;
             const input = document.getElementById("wwRelayImportFileInput");
@@ -54808,6 +54818,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("wwRelayImportType").textContent = showFile ? (state.sourceFormat || "pdf").toUpperCase() : "";
             let text = "";
             let detail = "";
+            let identity = "";
             if (state.phase === "uploading") {
                 text = "Processing…";
             } else if (state.phase === "accepted") {
@@ -54815,7 +54826,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (state.pageCount > 0) parts.push(state.pageCount + (state.pageCount === 1 ? " page" : " pages"));
                 if (state.extractionStatus === "text_extracted") {
                     parts.push(state.rawEntryCount + (state.rawEntryCount === 1 ? " raw entry" : " raw entries"));
-                    detail = "Text extracted. Relay settings have not been interpreted yet.";
+                    if (state.identificationStatus === "identified") {
+                        identity = [state.manufacturer, state.model].filter(Boolean).join(" · ");
+                        detail = "Relay identified. Settings have not been interpreted yet.";
+                    } else if (state.identificationStatus === "ambiguous") {
+                        identity = state.manufacturer;
+                        detail = "Relay identification needs confirmation.";
+                    } else if (state.identificationStatus === "unknown") {
+                        detail = "Relay model not recognised. You can continue with manual entry.";
+                    } else {
+                        detail = "Text extracted. Relay settings have not been interpreted yet.";
+                    }
                 } else if (state.extractionStatus === "no_extractable_text") {
                     detail = "PDF accepted, but no extractable text was found. OCR is not supported yet.";
                 } else if (state.extractionStatus === "encrypted") {
@@ -54825,6 +54846,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
                 text = parts.join(" · ");
             }
+            document.getElementById("wwRelayImportIdentity").textContent = showFile ? identity : "";
             document.getElementById("wwRelayImportStatus").textContent = text;
             document.getElementById("wwRelayImportDetail").textContent = detail;
             const importBtn = document.getElementById("wwRelayImportBtn");
@@ -54845,6 +54867,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             state.filename = file.name;
             state.sourceFormat = "";
             state.sizeBytes = 0;
+            state.identificationStatus = "";
+            state.manufacturer = "";
+            state.model = "";
             state.error = "";
             if (!/\.pdf$/i.test(file.name)) {
                 state.phase = "error";
@@ -54884,6 +54909,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     state.extractionStatus = body.extraction_status;
                     state.pageCount = body.page_count;
                     state.rawEntryCount = body.raw_entry_count;
+                    state.identificationStatus = body.identification_status || "";
+                    state.manufacturer = body.manufacturer || "";
+                    state.model = body.model || "";
                 }
             } catch (networkError) {
                 if (state.controller !== controller) return;

@@ -169,8 +169,12 @@ The canonical model is unchanged and still allows arbitrary zone counts.
 **Slice 4:** the upload now runs generic, relay-neutral PDF text extraction
 (pypdf) into a request-scoped `RawRelayDocument` and returns only counts
 (pages, raw entries) and an extraction status (text / no extractable text /
-encrypted); extracted is not interpreted -- no relay identification, mapping
-or auto-population, manual entry unchanged. See
+encrypted); extracted is not interpreted -- no mapping or auto-population,
+manual entry unchanged. **Slice 5:** a deterministic, evidence-scored relay
+identifier (RawRelayDocument -> identified / ambiguous / unknown) with an
+identification-only catalogue of the 12 sample relay lines; the upload card
+names the relay (e.g. "Siemens · 7SA613") but no setting is interpreted and
+nothing is "Validated". See
 [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md).
 
 **Engineering tools and workflow batch (DEC-155 to DEC-165), 2026-10-05.**

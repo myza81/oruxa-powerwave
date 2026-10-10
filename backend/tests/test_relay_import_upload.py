@@ -36,6 +36,66 @@ def client(small_settings):
         yield c
 
 
+def _sheet(scheme: str | None, *extra: list[str]) -> bytes:
+    rows = [["Issued By:"]]
+    if scheme is not None:
+        rows.append(["LZOP: 132kV AAAA - BBBB", "Scheme: " + scheme])
+    rows.extend(extra or [["R1", "1.84", "0-655.35"]])
+    return simple_pdf(rows)
+
+
+class TestIdentification:
+    """Slice 5: the verdict is returned; evidence and document text are not."""
+
+    def test_identified_relay_is_reported_without_document_content(self, client):
+        data = _sheet("7SA6131_4AB02_3GA0", ["1313 X(Z2)", "3.6", "0.05-250 ohms"])
+        r = client.post(URL, files=_files(data, name="document.pdf"))
+        assert r.status_code == 200
+        body = r.json()
+        assert body["identification_status"] == "identified"
+        assert (body["manufacturer"], body["relay_family"], body["model"]) == ("Siemens", "SIPROTEC 4 7SA6", "7SA613")
+        assert (body["profile_id"], body["confidence"]) == ("siemens-7sa613", "high")
+        assert body["identification_warnings"] == []
+        for content in ("3.6", "X(Z2)", "7SA6131_4AB02", "evidence", "score"):
+            assert content not in r.text
+
+    def test_response_stays_concise(self, client):
+        body = client.post(URL, files=_files(_sheet("GRL200_TNB"))).json()
+        assert set(body) == {
+            "filename", "source_format", "size_bytes", "status", "extraction_status", "page_count",
+            "pages_with_text", "raw_entry_count", "section_count", "extraction_warnings",
+            "identification_status", "manufacturer", "relay_family", "model", "profile_id", "confidence",
+            "identification_warnings",
+        }
+
+    def test_unrecognised_relay_is_unknown_not_an_error(self, client):
+        r = client.post(URL, files=_files(_sheet("XYZ9000_V1")))
+        assert r.status_code == 200
+        body = r.json()
+        assert body["identification_status"] == "unknown"
+        assert body["profile_id"] is None and body["model"] is None
+        assert body["extraction_status"] == "text_extracted" and body["raw_entry_count"] >= 1
+
+    def test_file_name_is_not_evidence(self, client):
+        generic = client.post(URL, files=_files(_sheet(None), name="p441.pdf")).json()
+        assert generic["identification_status"] == "unknown"
+        renamed = client.post(URL, files=_files(_sheet("RELZ100_3.0"), name="p441.pdf")).json()
+        assert renamed["profile_id"] == "relz100"
+
+    def test_ambiguous_documents_select_nothing(self, client):
+        body = client.post(URL, files=_files(_sheet("7SA511_V3.2_1A", ["Relay Type:", "7SA6131"]))).json()
+        assert body["identification_status"] == "ambiguous"
+        assert body["profile_id"] is None and body["model"] is None
+        assert body["manufacturer"] == "Siemens" and body["confidence"] == "low"
+        assert body["identification_warnings"]
+
+    def test_unreadable_text_means_nothing_to_identify(self, client):
+        body = client.post(URL, files=_files(build_pdf(["image"]))).json()
+        assert body["identification_status"] is None
+        assert (body["manufacturer"], body["model"], body["confidence"]) == (None, None, None)
+        assert body["identification_warnings"] == []
+
+
 class TestAccepted:
     def test_valid_pdf_returns_safe_metadata_only(self, client):
         r = client.post(URL, files=_files())
@@ -51,6 +111,13 @@ class TestAccepted:
             "raw_entry_count": 2,
             "section_count": 0,
             "extraction_warnings": [],
+            "identification_status": "unknown",
+            "manufacturer": None,
+            "relay_family": None,
+            "model": None,
+            "profile_id": None,
+            "confidence": "none",
+            "identification_warnings": [],
         }
 
     def test_response_carries_counts_never_document_content(self, client):

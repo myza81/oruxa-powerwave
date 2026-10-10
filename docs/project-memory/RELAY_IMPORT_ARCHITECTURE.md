@@ -1,9 +1,9 @@
 # Relay Settings Import — Architecture (Slice 1: foundation)
 
-Status: **Slices 1-4** (domain contracts, manual entry + engine adapter,
-ephemeral upload, generic PDF extraction) implemented on
-`feature/distance-relay-import`. Relay identification, relay profiles,
-interpretation and auto-population are later slices. Approval record:
+Status: **Slices 1-5** (domain contracts, manual entry + engine adapter,
+ephemeral upload, generic PDF extraction, relay identification) implemented on
+`feature/distance-relay-import`. Relay profiles, engineering interpretation and
+auto-population are later slices. Approval record:
 [DECISIONS.md — DEC-RELAY-IMPORT-1](DECISIONS.md#dec-relay-import-1--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
 ## Purpose
@@ -20,6 +20,8 @@ Settings**, not "Import PDF".
 ```text
 RawRelayDocument            (what was found; no meaning decided)
       |
+RelayIdentifier             (Slice 5: which relay is it likely to be?)
+      |
 RelayProfile / Interpreter  (all relay-family knowledge lives here)
       |
 CanonicalDistanceProtectionModel   (OEM-neutral engineering model + provenance)
@@ -35,7 +37,8 @@ Code: [backend/app/domain/relay_import/](../../backend/app/domain/relay_import/)
 | `raw_document.py` | `RawRelayDocument`, `RawSetting` (section path, parameter id, name, raw + normalized value, unit, range, page/location, source text, notes, extraction provenance), `SourceFormat` |
 | `provenance.py` | `Sourced[T]` (value + `Provenance`), `MappingStatus` (mapped / inferred / unresolved), `SourceRef` |
 | `canonical_distance.py` | the canonical model |
-| `profile.py` | `RelayProfile` protocol, `GenericFallbackProfile`, `RelayProfileRegistry` |
+| `profile.py` | `RelayProfile` protocol, `GenericFallbackProfile`, `RelayProfileRegistry` (also holds identification descriptors; `identify()`) |
+| `identification.py` | Slice 5 relay-neutral identifier, result/evidence types, scoring rules, manufacturer aliases |
 
 ## Canonical model
 
@@ -339,6 +342,196 @@ auto-populated. Engineering interpretation is still not implemented.
   as text with page provenance, stable ids and deterministic output; the
   extractor contains no OEM-specific rule (guarded by a test).
 
+
+## Slice 5 — relay identification framework
+
+`RawRelayDocument -> RelayIdentifier -> RelayIdentification`. Slice 5 answers
+*"which relay family/model does this document most likely belong to?"* and
+nothing more. **Identified is not interpreted and not validated:** no setting
+is read as an engineering value, the canonical model is not populated, the
+Distance Protection form is never auto-filled, and no catalogue entry is
+`Validated` (that word is reserved for profiles that later pass owner UAT with
+real setting files). The catalogue means only *recognisable*.
+
+### Architecture
+
+```text
+PDF extractor            generic syntax                  (unchanged)
+RawRelayDocument         neutral extracted data          (unchanged)
+RelayIdentifier          likely relay / profile          NEW  domain/relay_import/identification.py
+RelayProfile             engineering interpretation      later slice
+CanonicalDistance...     OEM-neutral engineering model   unchanged
+Engine adapter           plotting capability             unchanged
+```
+
+| Module | Holds |
+|---|---|
+| `domain/relay_import/identification.py` | relay-neutral engine: `RelayIdentifier`, `RelayIdentification`, `IdentificationCandidate`, `IdentificationEvidence`, `RelayIdentificationDescriptor`, `ParameterSignature`, `ManufacturerAliases`, `ScoringRules`. Contains **no relay names** (a test and the Slice 1 guard enforce it). |
+| `domain/relay_import/profile.py` | `RelayProfileRegistry` now also holds identification descriptors and exposes `identify(document)`. `interpret()` is unchanged. |
+| `relay_profiles/identification_catalogue.py` | all relay-specific identification **data**: descriptors and the manufacturer-alias table. Outside the domain package; no engineering mapping, no engine or storage imports. |
+| `services/relay_import_upload_service.py` | calls `default_registry().identify(document)` request-scoped and reduces it to a verdict summary. |
+
+The identifier operates on `RawRelayDocument` only -- never on PDF bytes, a
+file name or parser internals -- so Excel/CSV/XML/OEM-export readers reuse the
+same layer (tested with a CSV-format document). Allowed inputs:
+`identification_hints`, each raw entry's name / parameter id / value / range /
+notes / source text, and section headings.
+
+**Registry integration.** A descriptor can be registered standalone
+(`register_identification_descriptor`) or exposed by a future `RelayProfile`
+through an optional `identification` attribute; `identification_descriptors()`
+returns both. `identify()` never calls `profile.match()` or
+`profile.interpret()` (tested with a profile that raises if called). Duplicate
+ids are rejected.
+
+### Descriptors (data-driven, no `if "MODEL" in text`)
+
+`RelayIdentificationDescriptor(profile_id, relay_family, manufacturer, model,
+model_patterns, family_markers, parameter_signatures)`:
+
+- `model_patterns` -- regex fragments for the model identifier; matched only as
+  a **whole alphanumeric run** (`(?<![A-Za-z0-9])...(?![A-Za-z0-9])`,
+  case-insensitive), so a model token never matches inside a longer
+  identifier. `_` `-` `?` `.` are separators, which is what lets a scheme
+  string such as `NAME_V3.2_1A` match.
+- `family_markers` -- brand/family text that is not the model itself.
+- `parameter_signatures` -- a distinctive parameter-naming family, searched in
+  entry `name` / `parameter_id` / `text`, counted only when at least
+  `min_matches` entries show it.
+- `manufacturer` -- the **normalised** identity, or `None` where the project
+  has not established it. It is never taken from, or guessed out of, the
+  document text.
+
+Generic protection vocabulary (Distance Protection, Zone 1, R1, X1, K0, CT,
+VT, reach, ...) appears in no descriptor and scores nothing.
+
+### Scoring (deterministic, inspectable, not a probability)
+
+Each descriptor is scored independently by summing evidence points; every kind
+is capped so repetition cannot masquerade as proof. Constants are in
+`ScoringRules` / `DEFAULT_RULES`.
+
+| Evidence kind | Points | Cap | Meaning |
+|---|---|---|---|
+| `scheme_model` | 100 | once | model token inside a scheme/template field |
+| `labelled_model` | 90 | once | model token inside a model/type/order-code field (`Type`, `Product Code`, `Relay Type`, ...) |
+| `model_mention` | 10 | 30 | model token anywhere else (at most 3 places count) |
+| `family_marker` | 25 | 25 | family/brand marker |
+| `parameter_signature` | 20 | 40 | distinctive parameter-naming family |
+| `manufacturer_name` | 10 | 10 | manufacturer or alias named in the text |
+
+Fields are found structurally (an entry named `Type` with value `7SL87`) or
+inline (`... Scheme: NAME_V3.2_1A` on a line with other text; the value ends at
+a 2+ space gap). A label never creates evidence by itself -- only a catalogued
+model token inside its value does.
+
+- **Identified** -- best score `>= 60` (`identify_threshold`) **and** a lead of
+  at least `30` (`ambiguity_margin`) over every other candidate; when the best
+  candidate has no explicit scheme/model field behind it, the required lead is
+  `60` (`indirect_ambiguity_margin`).
+- **Ambiguous** -- best `>= 60` but a rival inside the margin. Nothing is
+  selected (`profile_id`, `model` are `None`); manufacturer/family are reported
+  only if every tied candidate agrees. All tied candidates and their evidence
+  are preserved.
+- **Unknown** -- best `< 60`, or no evidence. A valid outcome, never an error.
+  Weak candidates (score > 0) are kept in `candidates` and a warning names them.
+- **Confidence** (categorical): `high` = identified with an explicit
+  scheme/model field; `medium` = identified from combined indirect evidence
+  only; `low` = ambiguous, or unknown with weak candidates; `none` = no
+  evidence. No percentages are shown because none is estimated.
+
+The indirect-margin rule exists because of a real finding: with its scheme line
+removed, the RED670 sample quotes `REL670` in six option cells and shares the
+Relion 670 parameter naming, so REL670 would outscore RED670 70-40 and be named
+with confidence. A 30-point lead is not enough from indirect evidence alone, so
+that case is `ambiguous` (guarded by the sample test
+`test_removing_the_scheme_line_never_misidentifies`).
+
+### Result
+
+`RelayIdentification`: `status`, `confidence`, `profile_id`, `manufacturer`
+(normalised), `manufacturer_source_name` (spelling found in the document, if
+any), `relay_family`, `model`, `version` + `version_source`, `scheme_name`,
+`score`, `evidence` (of the selected candidate: kind, points, matched text,
+explanation, setting id, page), `candidates` (all with score > 0, ranked by
+`(-score, profile_id)`), `alternatives`, `warnings`.
+
+- **Version** is reported only when explicit: a `V<n>` / `Ver<n>` marker inside
+  the scheme name, or a labelled firmware / software-version field (a labelled
+  field wins). `7SL87_8.81` therefore reports no version.
+- **Scheme name** is document metadata and is reported for every status.
+
+### Manufacturer aliases / normalisation
+
+`ManufacturerAliases` maps a canonical name to the names it has been published
+under; the canonical name is exposed, the source spelling is kept beside it,
+and the document text is never rewritten. Current table
+(`MANUFACTURER_ALIASES`): Schneider Electric (Schneider, Areva T&D, Areva,
+Alstom Grid, Alstom), Hitachi Energy (Hitachi ABB Power Grids, ABB Power Grids,
+ABB, Asea Brown Boveri), Siemens, Toshiba, NR Electric (NARI). Alias matching
+uses the same whole-run rule, so a station code such as `ABBA` is not the
+manufacturer `ABB` (tested against the real P441 sheet). A named manufacturer is
+weak evidence (10); the reported manufacturer always comes from the matched
+descriptor.
+
+### Identification catalogue (identification only)
+
+| Profile id | Normalised manufacturer | Family | Model |
+|---|---|---|---|
+| `schneider-micom-p441` | Schneider Electric | MiCOM P44x | P441 |
+| `siemens-7sa511` | Siemens | SIPROTEC 7SA5 | 7SA511 |
+| `siemens-7sa613` | Siemens | SIPROTEC 4 7SA6 | 7SA613 |
+| `siemens-siprotec5-7sl87` | Siemens | SIPROTEC 5 | 7SL87 |
+| `toshiba-grl200` | Toshiba | GR200 | GRL200 |
+| `toshiba-grz100` | Toshiba | GRZ100 | GRZ100 |
+| `nr-rcs941` | NR Electric | RCS-9xx | RCS-941 |
+| `hitachi-red670` | Hitachi Energy (formerly ABB) | Relion 670 | RED670 |
+| `hitachi-rel670` | Hitachi Energy (formerly ABB) | Relion 670 | REL670 |
+| `hitachi-rel511` | Hitachi Energy (formerly ABB) | REx5xx | REL511 |
+| `lfzp111` | *(not asserted)* | LFZP | LFZP111 |
+| `relz100` | *(not asserted)* | RELZ 100 | RELZ100 |
+
+The manufacturer of the two older lines is left unset on purpose: it is not
+recorded in the project and identification must not guess. Family names are
+informal display labels, not an OEM-published taxonomy -- confirm them before
+they are relied on. A relay not in the catalogue (including a sibling model of
+a catalogued family) is `unknown`.
+
+### Unknown relays and the raw document
+
+Unknown never fails an upload and never discards data: the `RawRelayDocument`
+is untouched (immutable), `registry.interpret()` still returns the generic
+fallback with every raw setting retained as unmapped, and the user continues
+with manual entry.
+
+### API and UI
+
+`POST /api/v1/relay-import/upload` additionally returns `identification_status`
+(`identified | ambiguous | unknown`, `null` when no text could be read),
+`manufacturer`, `relay_family`, `model`, `profile_id`, `confidence`
+(`high | medium | low | none`) and `identification_warnings` (fixed phrases and
+profile ids only). Evidence, scores, candidates and document text are **not**
+returned. The upload card shows, between file name and status,
+`Siemens · 7SA613` with `Relay identified. Settings have not been interpreted yet.`;
+unknown shows `Relay model not recognised. You can continue with manual entry.`;
+ambiguous shows `Relay identification needs confirmation.` (and the
+manufacturer only if all tied candidates agree). No candidate-selection UI, no
+auto-population.
+
+### Limits and assumptions
+
+- The owner's sample sheets all carry a `Scheme:` field in the project's
+  setting-sheet header; that field is the strongest evidence, and the label
+  vocabulary is configurable (`ScoringRules.scheme_labels` / `model_labels`).
+  Without it most sheets fall to `unknown` / `ambiguous` -- the intended
+  conservative behaviour.
+- Family-marker and parameter-signature patterns were derived from the sample
+  sheets and public naming conventions; they add only moderate evidence and are
+  exercised by tests that remove the scheme line and thin/reorder entries.
+- Sheets of a catalogued family with a different template may need extra
+  signatures; add them to the catalogue, not to the identifier.
+- Scanned or encrypted documents have no text to identify (status `null`).
+
 ## Intentionally unresolved in Slice 1
 
 - ~~Mapping onto the existing `ZoneSettings`~~ — done in Slice 2 (above).
@@ -348,4 +541,6 @@ auto-populated. Engineering interpretation is still not implemented.
 - Whether active setting groups need a multi-group model (currently one
   active group name).
 - ~~Extraction technology, upload API shape~~ -- decided in Slices 3-4 (above).
-- Relay identification heuristics (Slice 5+), OCR for scanned sheets.
+- ~~Relay identification heuristics~~ -- Slice 5 (above). Still open: OCR for scanned
+  sheets; engineering profiles / `Validated` status per family; a confirmation UI
+  for ambiguous documents.

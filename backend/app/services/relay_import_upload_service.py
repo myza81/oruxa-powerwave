@@ -3,10 +3,11 @@
 Relay Import Slice 3 + 4. This module owns the file lifecycle and
 validation: "is this a plausible relay-setting file of a supported format,
 how big is it?", then hands the bytes to the format's generic extractor
-(Slice 4, `relay_pdf_extractor`) and reduces the resulting
-RawRelayDocument to a small summary. It does NOT interpret settings or
-identify a relay -- those are later slices. The RawRelayDocument is
-request-scoped: it is built, counted and dropped here, never stored.
+(Slice 4, `relay_pdf_extractor`), asks the relay identifier (Slice 5) which
+relay the resulting RawRelayDocument most likely belongs to, and reduces both
+to a small summary. It does NOT interpret settings -- identification names
+the relay, nothing more. The RawRelayDocument is request-scoped: it is built,
+identified, counted and dropped here, never stored.
 
 Raw-file lifecycle: the upload is read into a bounded in-memory ``bytes``
 value, inspected, and dropped when this function returns; nothing is
@@ -24,7 +25,9 @@ from pathlib import PurePosixPath, PureWindowsPath
 from fastapi import UploadFile
 from starlette.concurrency import run_in_threadpool
 
+from app.domain.relay_import.identification import RelayIdentification
 from app.domain.relay_import.raw_document import SourceFormat
+from app.relay_profiles.identification_catalogue import default_registry
 from app.services.errors import EmptyFileError, InvalidFileError, UnsupportedFileTypeError
 from app.services.relay_pdf_extractor import PdfExtractionResult, PdfExtractionStatus, extract_pdf
 from app.services.upload_utils import read_bounded
@@ -44,6 +47,31 @@ _PDF_EOF_WINDOW = 2048
 
 
 @dataclass(frozen=True)
+class RelayIdentificationSummary:
+    """The identification verdict without its evidence or any document text."""
+
+    status: str
+    confidence: str
+    manufacturer: str | None
+    relay_family: str | None
+    model: str | None
+    profile_id: str | None
+    warnings: tuple[str, ...]
+
+
+def summarize_identification(result: RelayIdentification) -> RelayIdentificationSummary:
+    return RelayIdentificationSummary(
+        status=result.status.value,
+        confidence=result.confidence.value,
+        manufacturer=result.manufacturer,
+        relay_family=result.relay_family,
+        model=result.model,
+        profile_id=result.profile_id,
+        warnings=result.warnings,
+    )
+
+
+@dataclass(frozen=True)
 class RelayExtractionSummary:
     """Counts only -- never document content."""
 
@@ -53,6 +81,8 @@ class RelayExtractionSummary:
     raw_entry_count: int
     section_count: int
     warnings: tuple[str, ...]
+    #: ``None`` when no text could be read, so there was nothing to identify.
+    identification: RelayIdentificationSummary | None = None
 
 
 @dataclass(frozen=True)
@@ -93,6 +123,7 @@ def _summarize_pdf(data: bytes) -> RelayExtractionSummary:
         raw_entry_count=len(document.settings) if document else 0,
         section_count=result.heading_count,
         warnings=result.warnings,
+        identification=summarize_identification(default_registry().identify(document)) if document else None,
     )
 
 
