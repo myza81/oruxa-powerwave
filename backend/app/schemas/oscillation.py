@@ -699,3 +699,77 @@ class OscillationModeShapeOut(BaseModel):
     timings_ms: dict[str, float]
     signals: list[CrossSignalRowOut]
     components: list[ModeShapeComponentOut] = []
+
+
+# ---------------------------------------------------------------- coherence (DEC-181 [PROPOSAL])
+
+class CoherenceRequest(ModeShapeRequest):
+    """Same request as the mode shape: explicit signals, the setup band and an optional component frequency. No offset, no result."""
+
+
+class CoherencePairOut(BaseModel):
+    reference_signal: str
+    reference_index: int
+    member_signal: str
+    member_index: int
+    #: `same_variable` | `cross_variable` (different physical quantities: supporting evidence only).
+    relationship_type: Literal["same_variable", "cross_variable"]
+    signal_types: list[str]
+    status: Literal["ok", "insufficient_evidence", "unavailable"]
+    reason_code: str | None = None
+    message: str | None = None
+    #: The numbers behind a refusal, machine-readable and separate from the presentation text in `message`.
+    reason_values: dict[str, Any] = {}
+    component_frequency_hz: float
+    #: Magnitude-squared coherence in [0, 1] of the bin nearest the component frequency (not a probability).
+    coherence: float | None = None
+    coherence_frequency_hz: float | None = None
+    target_offset_hz: float | None = None
+    bin_spacing_hz: float | None = None
+    local_peak_coherence: float | None = None
+    local_peak_frequency_hz: float | None = None
+    local_peak_offset_hz: float | None = None
+    local_median_coherence: float | None = None
+    local_band_bins: int | None = None
+    #: Coherence unrelated noise would exceed with probability alpha for this many averages (shown separately from the measurement).
+    chance_level: float | None = None
+    exceeds_chance_level: bool | None = None
+    local_peak_exceeds_chance_level: bool | None = None
+    segment_count: int | None = None
+    independent_segment_count: int | None = None
+    segment_s: float | None = None
+    nperseg: int | None = None
+    samples: int | None = None
+    sample_rate_hz: float | None = None
+    common_interval: dict[str, Any] | None = None
+    cycles_used: float | None = None
+    #: Mode Shape relative phase (degrees) of the member against the reference, when one exists (context for the low-coherence warning only).
+    relative_phase_deg: float | None = None
+    reasons: list[DetectionEvidenceOut] = []
+    warnings: list[DetectionEvidenceOut] = []
+
+
+class CoherenceComponentOut(BaseModel):
+    component_id: int
+    component_frequency_hz: float
+    signal_count: int
+    reference: dict[str, Any] | None = None
+    #: `mode_shape_reference` | `highest_candidate_prominence`
+    reference_rule: str | None = None
+    excluded_members: list[dict[str, Any]] = []
+    #: The reference against every other member (what the page shows).
+    pairs: list[CoherencePairOut] = []
+    #: Every other pair, kept for completeness.
+    other_pairs: list[CoherencePairOut] = []
+    limitations: list[DetectionEvidenceOut] = []
+    cross_variable: dict[str, Any] | None = None
+
+
+class OscillationCoherenceOut(BaseModel):
+    status: Literal["ok", "no_components"]
+    message: str | None = None
+    setup: dict[str, float]
+    parameters: dict[str, float | int | str | bool]
+    timings_ms: dict[str, float]
+    signals: list[CrossSignalRowOut]
+    components: list[CoherenceComponentOut] = []

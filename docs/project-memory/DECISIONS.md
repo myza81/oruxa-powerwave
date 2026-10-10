@@ -26173,3 +26173,82 @@ approved, which classification refinements (inter-area promotion with phase evid
 
 Tests: `backend/tests/test_oscillation_mode_shape.py` (domain accuracy with stated tolerances, conventions, interval, stability, provenance, service,
 time-alignment regression, API), `test_frontend_oscillation_analysis_shell.py` (static guard), `browser-tests/oscillation_setup.spec.js` ("mode shape").
+
+
+## DEC-181 -- Oscillation Analysis coherence evidence: Welch magnitude-squared coherence between the members of a cross-signal component
+
+Status: **[APPROVED]** (owner, 2026-10-10; was `[PROPOSAL]`; real-event UAT below) -- implemented on `feat/event-reconstruction`, committed as `feat: add oscillation coherence analysis`. Builds on DEC-171..180 and changes none of them (Welch /
+DEC-175 candidates / DEC-176 STFT / DEC-177 damping / DEC-178 grouping / DEC-179 classification / DEC-180 mode shape are untouched; the mode-shape service only had its
+shared front half factored into `derive_components` / `select_components` / `build_component_members`, behaviour unchanged). Scope: the **evidence layer** answering *how
+consistently are two signals linearly related at the oscillation frequency?* **Not implemented (deliberately later):** any change to the DEC-179 classification
+(the interpretation still lists coherence evidence as unavailable), source localisation, causality / directionality, transfer-function estimation, forced-source
+identification, Prony / Matrix Pencil, **any AI**. **Coherence is not a probability or a confidence, and nothing here says inter-area / local / forced.** Every threshold is
+a Phase-1 engineering heuristic, not a standard.
+
+**Definition.** `Cxy(f) = |Sxy(f)|^2 / (Sxx(f) Syy(f))`, `0 <= Cxy <= 1`, with Welch-averaged auto and cross spectra. The estimator is NumPy only (`app/domain/coherence.py`) and uses the
+accepted DEC-174 conventions unchanged: periodic Hann, constant detrend per segment, 50 % overlap, one-sided, `nfft = nperseg` (no zero-padding), ONE segmentation shared by
+the pair, and the DEC-174 `f_min = 0` rule `choose_segmentation` (a segment of window / 4.5, about eight overlapped segments). SciPy stays dev-only: the tests prove bin-for-bin
+parity with `scipy.signal.coherence` (max difference below 1e-9 on three signal geometries).
+
+**One segment is not coherence.** With one averaged segment `Cxy` is identically 1 for any pair of signals. The estimate is therefore **refused** (no number is returned) unless at
+least **7 overlapped segments (4 independent)** are averaged, each at least **1.5 cycles** of the component frequency, with at least **8 samples per cycle** on the common grid
+and 8 samples per segment; the refusal says `Coherence unavailable — insufficient independent segments` (or the cycle / sample / sampling reason). Tests refuse one segment,
+two segments, three segments, too few cycles, too few samples and a short window, and show that unrelated one-segment signals would have scored a perfect 1.
+
+**Time basis (hard rule, same as DEC-180).** Alignment comes from the synchronization model (Time Group + timestamp placement + manual offset), never from the browser (the
+request has no offset and no result field). A pair is estimated only inside one Time Group; otherwise it has no number and the reason
+`coherence unavailable — recordings do not share a compatible aligned time basis`.
+
+**Common interval, per pair.** The intersection of the two members' restricted activity episodes (the DEC-180 rule: STFT activity, then a one-cycle complex-demodulation
+envelope), the longest contiguous episode only -- separated bursts are never averaged (a warning names the number found). Start, end, duration and cycles are returned in
+workspace time. (Per pair, not per component, so a weak third member does not shorten every pair.)
+
+**Common grid / resampling.** Signals may have different sample rates and are never compared by index. Each signal is placed on workspace time and interpolated onto one grid
+`T0 + k/R` with `R = min(the pair's source rates, 100 Hz)` -- **never above either signal's own rate, so nothing is up-sampled to create false detail**. A signal faster than 1.5 x R is
+first averaged by a boxcar of `source rate / R` samples (anti-alias, zero phase), then linearly interpolated; the series are cached per rate, so each is resampled once.
+
+**Target-frequency and local-band reporting.** The value is read at the bin **nearest** the component (representative) frequency -- no interpolation, no claim of an exact bin --
+and the result carries the component frequency, the bin frequency, their offset and the bin spacing. A transparent local band (+-1 bin, DC excluded) adds the peak coherence,
+its frequency and offset, and the median; there is no composite score.
+
+**Chance level (shown separately from the measurement).** For unrelated Gaussian noise averaged over `m` independent segments `P(C > c) = (1 - c)^(m-1)`, so the level exceeded
+with probability alpha (0.05) is `1 - alpha^(1/(m-1))`; `m` is the number of NON-overlapped segments `(K+1)//2` (conservative for 50 % overlap). It assumes a stationary signal (a
+ringdown is not, so it is stated as approximate) and is **not** the probability that an oscillation is real. No categorical strong / moderate / weak labels are used in
+Phase 1; `exceeds_chance_level` is a plain comparison.
+
+**Reference member.** The pairs are the reference against every other member (what the page shows); every other pair is kept in `other_pairs` (cheap). The reference is the
+**Mode Shape reference** of the best mode-shape group (most members with a phase) when one exists, otherwise the member with the highest candidate prominence (a raw signal before
+a calculated one, then the lowest index); the rule used is returned.
+
+**Same-variable vs cross-variable.** Unlike the mode shape, coherence is computed across physical quantities (MW with frequency, voltage with current, ...), but each pair says
+`same_variable` (same engineering type and unit: spatial / modal corroboration) or `cross_variable` (supporting dynamic evidence only, not equivalent to same-variable mode-shape
+evidence), with a warning and a standing limitation.
+
+**Relationship to phase and damping.** When a Mode Shape relative phase exists for a pair and the coherence is not above the chance level, the pair warns `Relative phase is
+available, but cross-spectral coherence at the component frequency is low; interpret phase cautiously.` The mode-shape numbers are not changed. Differing damping never blocks
+coherence (it is preserved separately by DEC-177 / DEC-178).
+
+**Provenance.** A pair sharing a lineage root (a raw signal and a calculated copy) warns `shared_measurement_provenance`: its coherence is trivially high and not independent evidence.
+
+**Deterministic Why / Limitations.** Why: the shared component, the overlap interval, the coherence and its bin, the averaging (segments, independent segments, bin spacing), the
+local peak, the chance level. Limitations: coherence measures linear association and not causality or direction; high coherence does not prove an inter-area mode; the
+stationarity assumption; the cross-variable scope. No AI text.
+
+**API / UI.** `POST /api/v1/workspaces/{ws}/oscillation-analysis/coherence` (2-8 signals, optional `component_frequency_hz`; the backend re-derives everything). The page section **Coherence
+Evidence** (after Mode Shape) is requested after a Compare for the same entries and draws the reference, a table (signal, relationship, coherence, bin frequency, local peak, chance
+level, segments and bin spacing, common interval), Why, limitations and the convention note. No coherence plot in this slice (the numbers are authoritative).
+
+**Real-event UAT outcome (recorded at approval).** Real-event UAT verified: the matched ~0.4 Hz component was correctly wired into Coherence; the deterministic reference selection worked; the common interval was correctly restricted to the longest contiguous shared active episode; separated activity bursts were not averaged together; Coherence correctly refused to produce a number when the shared interval was too short for reliable Welch resolution; no misleading one-segment / high-coherence result was produced. A successful real-world coherence estimate remains desirable when a longer common oscillatory event becomes available. The short-event refusal wording was made engineer-facing at approval (the same evidence and thresholds; the numbers in the message are dynamic and the machine-readable `reason_code` / `reason_values` are kept apart from the text): "Coherence unavailable — the shared <T> s interval is too short to resolve a <f> Hz component reliably. Each Welch segment contains only <c> cycles; at least <n> cycles are required."
+
+**Real-event expectation (owner UAT, before the run).** The earlier real 0.4 Hz pair had a short common interval (the mode shape refused at 2.8 cycles). Coherence needs about 7 cycles or more
+(7 overlapped segments of at least 1.5 cycles), so it will refuse on such an event; a fast ringdown (decay 0.075 /s) is refused in the tests for the same reason, while a slowly
+decaying or sustained oscillation passes. A conservative refusal is the intended behaviour.
+
+**Open engineering questions for the owner (not decided here).** (1) Are the minimum evidence rules (7 segments, 1.5 cycles per segment) right, given that they exclude short
+ringdowns -- should a short-time alternative (e.g. a sliding cross-spectrum over a ringdown, or a ringdown-specific measure) be offered for transients? (2) Should the chance level be
+the headline next to the value, or hidden behind it? (3) Should the Mode Shape and Coherence sections eventually be merged per pair? (4) Should the reference be the page's analysed
+signal rather than the Mode Shape reference? (5) Is a coherence-vs-frequency plot around the candidate wanted? (6) Which classification refinements (inter-area / local) should use
+mode shape + phase + coherence + location, and with what wording?
+
+Tests: `backend/tests/test_oscillation_coherence.py` (SciPy parity, synthetic relationships, refusals, grid, component, provenance, service, time-alignment regression, API),
+`test_frontend_oscillation_analysis_shell.py` (static guard), `browser-tests/oscillation_setup.spec.js` ("coherence evidence").

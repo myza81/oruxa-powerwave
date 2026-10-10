@@ -2462,3 +2462,85 @@ test.describe("Oscillation Analysis -- mode shape / relative phase", () => {
     expect(m.scroll).toBeLessThanOrEqual(m.viewport + 1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Coherence Evidence (DEC-181 [PROPOSAL]). Two MW signals of one recording carry the same decaying 1.15 Hz component. The backend returns the
+// reference, the magnitude-squared coherence at the bin nearest the component frequency, the local band, the chance level, the averaging, the
+// common interval, the Why and the limitations, and the page draws them. No offset or result is ever sent by the browser; nothing is classified.
+// ---------------------------------------------------------------------------
+const isCoherence = (r) => r.url().endsWith("/oscillation-analysis/coherence");
+
+test.describe("Oscillation Analysis -- coherence evidence", () => {
+  test("hidden until a comparison; then draws the reference, coherence, bin, chance level, Why and limitations", async ({ page }) => {
+    const requests = [];
+    page.on("request", (r) => { if (isCoherence(r)) requests.push(r.postDataJSON()); });
+    await openOscillation(page);
+    await uploadSynthetic(page, { durationS: 90, channels: MODE_CHANNELS });
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_A"));
+    await setBand(page, 0.25, 8);
+    await expect(page.locator("#wwOscCoh")).toBeHidden();
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscCross")).toBeVisible();
+    await expect(page.locator("#wwOscInterpBody .ww-osc-interp-component").first()).toBeVisible();
+    await expect(page.locator("#wwOscCoh")).toBeHidden();             // the reference-only baseline is not a comparison
+    expect(requests).toHaveLength(0);
+    await tick(page, "P_B");
+    await page.locator("#wwOscCrossBtn").click();
+    await expect(page.locator("#wwOscCohBody .ww-osc-interp-component").first()).toBeVisible();
+    expect(requests).toHaveLength(1);
+    expect(requests[0].signals.map((s) => s.input.channel_name)).toEqual(["P_A", "P_B"]);
+    for (const s of requests[0].signals) expect(Object.keys(s)).not.toContain("offset_s");
+    expect(JSON.stringify(requests[0])).not.toContain("coherence");
+    await expect(page.locator("#wwOscCoh .ww-osc-detect-title")).toHaveText("Coherence Evidence");
+    const card = page.locator("#wwOscCohBody .ww-osc-interp-component").first();
+    await expect(card).toContainText("Reference: P_A (the Mode Shape reference)");
+    await expect(card.locator("table th")).toHaveText(["Signal", "Relationship", "Coherence", "At frequency", "Local peak", "Chance level", "Segments", "Common interval"]);
+    const row = card.locator('tr[data-signal="P_B"]');
+    await expect(row).toHaveAttribute("data-relationship", "same_variable");
+    await expect(row.locator("td").nth(1)).toHaveText("same variable");
+    const value = parseFloat(await row.locator("td").nth(2).innerText());
+    expect(value).toBeGreaterThan(0.9);
+    expect(value).toBeLessThanOrEqual(1);
+    await expect(row.locator("td").nth(3)).toHaveText(/^\d+(\.\d+)? Hz$/);
+    await expect(row.locator("td").nth(5)).toHaveText(/^0\.\d+$/);       // the chance level is shown separately from the measurement
+    await expect(row.locator("td").nth(6)).toHaveText(/^\d+ \(bin \d+(\.\d+)? Hz\)$/);
+    await expect(card.locator(".ww-osc-detect-label", { hasText: "Why — P_B" })).toBeVisible();
+    await expect(card.locator(".ww-osc-detect-label", { hasText: "Limitations" })).toBeVisible();
+    const text = await page.locator("#wwOscCohBody").innerText();
+    expect(text).toMatch(/P_A and P_B contain the same ~1\.1\d* Hz component/);
+    expect(text).toContain("chance level, not the probability that the oscillation is real");
+    expect(text).toContain("does not identify causality or direction");
+    expect(text).toContain("does not prove an inter-area mode");
+    const lower = text.toLowerCase();
+    for (const word of ["confidence", "local mode", "strong coherence", "weak coherence"]) expect(lower).not.toContain(word);
+    await expect(page.locator("#wwOscCohNote")).toContainText("not a probability or a confidence");
+    await expect(page.locator("#wwOscCohNote")).toContainText("no oscillation type, cause or direction is inferred");
+  });
+
+  test("the mode shape and the interpretation are unchanged by the coherence evidence", async ({ page }) => {
+    await modeShapeCompared(page);
+    await expect(page.locator("#wwOscCohBody .ww-osc-interp-component").first()).toBeVisible();
+    await expect(page.locator("#wwOscModeBody .ww-osc-mode-group tr[data-signal='P_B'] td").nth(3)).toHaveText(/^[+-]?\d+(\.\d+)?°$|^0°$/);
+    await expect(page.locator("#wwOscInterpNote")).toContainText("no phase, mode-shape, coherence or location evidence exists yet");
+  });
+
+  test("changing the settings marks the coherence not current", async ({ page }) => {
+    await modeShapeCompared(page);
+    await expect(page.locator("#wwOscCoh")).toHaveAttribute("data-stale", "false");
+    await setBand(page, 0.3, 8);
+    await expect(page.locator("#wwOscCoh")).toHaveAttribute("data-stale", "true");
+    await expect(page.locator("#wwOscCohState")).toHaveText("Analysis settings changed — run Analyze and Compare again");
+    await setBand(page, 0.25, 8);
+    await expect(page.locator("#wwOscCoh")).toHaveAttribute("data-stale", "false");
+  });
+
+  test("fits a narrow viewport without horizontal page overflow", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await modeShapeCompared(page);
+    await expect(page.locator("#wwOscCohBody .ww-osc-interp-component").first()).toBeVisible();
+    const m = await page.evaluate(() => ({ right: document.getElementById("wwOscCoh").getBoundingClientRect().right, viewport: window.innerWidth,
+      scroll: document.documentElement.scrollWidth }));
+    expect(m.right).toBeLessThanOrEqual(m.viewport + 1);
+    expect(m.scroll).toBeLessThanOrEqual(m.viewport + 1);
+  });
+});

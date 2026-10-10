@@ -10,8 +10,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.schemas.oscillation import (
     OscillationCrossSignalOut,
     OscillationCrossSignalRequest,
+    CoherenceRequest,
     InterpretationRequest,
     ModeShapeRequest,
+    OscillationCoherenceOut,
     OscillationModeShapeOut,
     OscillationDampingOut,
     OscillationInterpretationOut,
@@ -26,6 +28,7 @@ from app.schemas.oscillation import (
 from app.schemas.source import ErrorOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.errors import ImportServiceError
+from app.services.oscillation_coherence_service import compute_coherence
 from app.services.oscillation_cross_signal_service import compute_cross_signal
 from app.services.oscillation_damping_service import compute_damping
 from app.services.oscillation_interpretation_service import compute_interpretation
@@ -291,3 +294,38 @@ def get_mode_shape(
             detail=ErrorOut(code=exc.code, message=exc.message).model_dump(),
         ) from exc
     return OscillationModeShapeOut(**result)
+
+
+@router.post("/coherence", response_model=OscillationCoherenceOut)
+def get_coherence(
+    workspace_id: str,
+    body: CoherenceRequest,
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    sync_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
+) -> OscillationCoherenceOut:
+    """Magnitude-squared coherence between a reference and the other members of each cross-signal component (DEC-181 [PROPOSAL]): the
+    components are re-derived by the backend from workspace state, the alignment comes from the synchronization model (no client offset or
+    result is accepted), and an estimate with too few averaged segments is refused rather than returned. Nothing is stored or classified."""
+    if not workspace_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorOut(code="invalid_workspace", message="workspace_id must not be blank.").model_dump(),
+        )
+    entries = [
+        {"input_ref": s.input.to_domain(), "representation": s.representation, "signal_revision": s.signal_revision,
+         "window_start_s": s.window_start_s, "window_end_s": s.window_end_s, "label": s.label}
+        for s in body.signals
+    ]
+    try:
+        result = compute_coherence(
+            workspace_id=workspace_id, entries=entries, f_min_hz=body.frequency_min_hz, f_max_hz=body.frequency_max_hz,
+            component_frequency_hz=body.component_frequency_hz,
+            source_registry=source_registry, calc_registry=calc_registry, sync_registry=sync_registry,
+        )
+    except ImportServiceError as exc:
+        raise HTTPException(
+            status_code=_STATUS_BY_ERROR_CODE.get(exc.code, status.HTTP_400_BAD_REQUEST),
+            detail=ErrorOut(code=exc.code, message=exc.message).model_dump(),
+        ) from exc
+    return OscillationCoherenceOut(**result)

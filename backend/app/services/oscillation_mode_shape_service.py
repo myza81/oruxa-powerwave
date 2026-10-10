@@ -41,19 +41,19 @@ def _source_id_of(ref: ChannelRef, workspace_id: str, calc_registry: CalculatedC
     return calc.reference_source_id if calc else None
 
 
-def compute_mode_shape(
+def derive_components(
     *,
     workspace_id: str,
     entries: list[dict],
     f_min_hz: float,
     f_max_hz: float,
-    component_frequency_hz: float | None = None,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
     sync_registry: SynchronizationRegistry,
 ) -> dict:
-    """`entries`: `{input_ref, representation, signal_revision, window_start_s, window_end_s, label}` (2-8 signals). Any `offset_s`
-    is ignored: the effective alignment offset comes from the synchronization model."""
+    """The shared front half of the mode-shape and coherence evidence: validate, take the alignment from the synchronization model (the
+    browser's offset is ignored), run the accepted per-signal chain (no damping) and group the DEC-178 components. `window_of(index)`
+    lazily prepares a signal's analysis window (cached)."""
     validate_entries([{**e, "offset_s": 0.0} for e in entries], f_min_hz, f_max_hz, minimum=2)
     started = _time.perf_counter()
     alignments = {v.source_id: v for v in list_source_alignments(
@@ -80,20 +80,46 @@ def compute_mode_shape(
                 source_registry=source_registry, calc_registry=calc_registry)
         return windows[index]
 
-    wanted = None
-    if component_frequency_hz is not None:
-        multi = [c for c in components if c["signal_count"] >= 2]
-        if multi:
-            nearest = min(multi, key=lambda c: abs(c["representative_frequency_hz"] - component_frequency_hz))
-            if abs(nearest["representative_frequency_hz"] - component_frequency_hz) <= nearest["match_tolerance_hz"] * (1 + 1e-9) + 1e-9:
-                wanted = nearest["id"]
+    return {"signal_rows": signal_rows, "components": components, "alignments": alignments, "analysed_by_index": analysed_by_index,
+            "window_of": window_of, "started": started, "analysed_at": analysed_at, "grouped_at": grouped_at}
+
+
+def select_components(components: list[dict], component_frequency_hz: float | None) -> list[dict]:
+    """The components observed in two or more signals, optionally only the one whose representative frequency matches."""
+    multi = [c for c in components if c["signal_count"] >= 2]
+    if component_frequency_hz is None:
+        return multi
+    if not multi:
+        return []
+    nearest = min(multi, key=lambda c: abs(c["representative_frequency_hz"] - component_frequency_hz))
+    close = abs(nearest["representative_frequency_hz"] - component_frequency_hz) <= nearest["match_tolerance_hz"] * (1 + 1e-9) + 1e-9
+    return [nearest] if close else []
+
+
+def compute_mode_shape(
+    *,
+    workspace_id: str,
+    entries: list[dict],
+    f_min_hz: float,
+    f_max_hz: float,
+    component_frequency_hz: float | None = None,
+    source_registry: WorkspaceRegistry,
+    calc_registry: CalculatedChannelRegistry,
+    sync_registry: SynchronizationRegistry,
+) -> dict:
+    """`entries`: `{input_ref, representation, signal_revision, window_start_s, window_end_s, label}` (2-8 signals). Any `offset_s`
+    is ignored: the effective alignment offset comes from the synchronization model."""
+    ctx = derive_components(
+        workspace_id=workspace_id, entries=entries, f_min_hz=f_min_hz, f_max_hz=f_max_hz, source_registry=source_registry,
+        calc_registry=calc_registry, sync_registry=sync_registry)
+    signal_rows, components, alignments, analysed_by_index, window_of = (
+        ctx["signal_rows"], ctx["components"], ctx["alignments"], ctx["analysed_by_index"], ctx["window_of"])
     out_components = []
-    for comp in components:
-        if comp["signal_count"] < 2 or (component_frequency_hz is not None and comp["id"] != wanted):
-            continue
+    for comp in select_components(components, component_frequency_hz):
         neighbours = [c["representative_frequency_hz"] for c in components if c is not comp]
         out_components.append(_component(comp, analysed_by_index, window_of, alignments, neighbours))
     finished = _time.perf_counter()
+    started, analysed_at, grouped_at = ctx["started"], ctx["analysed_at"], ctx["grouped_at"]
     return {
         "status": "ok" if out_components else "no_components",
         "message": None if out_components else (
@@ -157,6 +183,23 @@ def _component(comp: dict, analysed_by_index: dict, window_of, alignments: dict,
         "frequency_spread_hz": comp["frequency_spread_hz"], "match_tolerance_hz": comp["match_tolerance_hz"],
         "signal_count": comp["signal_count"], "groups": groups, "cross_variable": cross,
     }
+
+
+def build_component_members(comp: dict, analysed_by_index: dict, window_of, alignments: dict) -> list[dict]:
+    """Every member of a DEC-178 component with its workspace-time samples, restricted activity episodes, Time Group and lineage (the
+    coherence evidence reuses exactly what the mode shape uses). A member whose window cannot be prepared has `reason_code` and no `t`."""
+    out = []
+    for member in comp["members"]:
+        signal = analysed_by_index[member["signal_index"]]
+        view = alignments.get(signal["recording"])
+        raw = {
+            "signal_index": member["signal_index"], "label": member["label"], "recording": signal.get("recording_label", signal["recording"]),
+            "origin": signal["origin"], "signal_type": signal["signal_type"], "unit": signal.get("unit") or None,
+            "time_group_id": view.time_group_id if view else None, "roots": frozenset(signal["lineage_roots"]),
+            "candidate_frequency_hz": member["frequency_hz"], "prominence_db": member["prominence_db"], "rank": member["rank"],
+        }
+        out.append(_build_member(raw, signal, window_of, comp["representative_frequency_hz"]))
+    return out
 
 
 def _build_member(raw: dict, signal: dict, window_of, frequency_hz: float) -> dict:

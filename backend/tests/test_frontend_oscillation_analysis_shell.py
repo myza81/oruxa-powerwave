@@ -240,7 +240,7 @@ def test_mode_shape_is_drawn_from_the_backend_and_sends_no_offset_or_phase():
     code = chr(10).join(line for line in script.splitlines() if not line.strip().startswith("//"))
     # the definition + the single call after a successful comparison; a new run / clear invalidates the result
     assert code.count("wwOscRunModeShape(") == 2
-    assert 'if (outcome.phase === "ready" && entries.length > 1) wwOscRunModeShape(entries, sp.request);' in script
+    assert 'if (outcome.phase === "ready" && entries.length > 1) {' in script and "wwOscRunModeShape(entries, sp.request);" in script
     assert "wwOscModeShapeClear();" in _between("function wwOscCrossClear", "// Time-Frequency Spectrogram (STFT, DEC-176")
     run = _between("async function wwOscRunModeShape", "function wwOscModePhaseText")
     assert "m.seq !== seq" in run
@@ -257,4 +257,30 @@ def test_mode_shape_is_drawn_from_the_backend_and_sends_no_offset_or_phase():
     panel = _between('id="wwOscMode"', 'id="wwOscModeNote"')
     assert "Mode Shape / Relative Phase" in panel
     for forbidden in ("inter-area", "local mode", "electromechanical"):
+        assert forbidden not in panel.lower(), forbidden
+
+
+def test_coherence_is_drawn_from_the_backend_and_sends_no_offset_or_result():
+    """DEC-181 [PROPOSAL]: the page asks the backend for the coherence of the SAME entries a Compare sent -- with no alignment offset and no
+    result -- and draws the returned reference, value, bin, local band, chance level, segments, interval, Why and limitations. It estimates nothing."""
+    script = _osc_script()
+    assert script.count("/oscillation-analysis/coherence") == 1
+    code = chr(10).join(line for line in script.splitlines() if not line.strip().startswith("//"))
+    assert code.count("wwOscRunCoherence(") == 2
+    assert 'if (outcome.phase === "ready" && entries.length > 1) {' in script and "wwOscRunCoherence(entries, sp.request);" in script and "wwOscCoherenceClear();" in _between("function wwOscCrossClear", "// Time-Frequency Spectrogram (STFT, DEC-176")
+    run = _between("async function wwOscRunCoherence", "const WW_OSC_COHERENCE_RULES")
+    assert "c.seq !== seq" in run
+    for forbidden in ("offset", "coherence_frequency_hz", "chance_level"):
+        assert forbidden not in run, forbidden
+    render = _between("function wwOscRenderCoherence", "// Mode Shape / Relative Phase (DEC-180")
+    render = chr(10).join(line for line in render.splitlines() if not line.strip().startswith("//"))
+    for needle in ("pair.coherence", "pair.coherence_frequency_hz", "pair.local_peak_coherence", "pair.chance_level", "pair.segment_count", "pair.common_interval",
+                   "pair.reasons", "pair.warnings", "comp.limitations", "comp.reference", "wwOscCrossCurrent()", "wwSignalCatalogueIsCurrent(entry.key, entry.revision)"):
+        assert needle in render, needle
+    for forbidden in ("Math.", "inter-area", "local mode", "sub-synchronous", "SSO", "forced", "confirmed", "confidence", "probability", "causes",
+                      "fetch(", "wwSignalCatalogueList(", "strong coherence", "weak coherence", "moderate coherence"):
+        assert forbidden not in render, forbidden
+    panel = _between('id="wwOscCoh"', 'id="wwOscCohNote"')
+    assert "Coherence Evidence" in panel
+    for forbidden in ("inter-area", "local mode", "electromechanical", "causal"):
         assert forbidden not in panel.lower(), forbidden
