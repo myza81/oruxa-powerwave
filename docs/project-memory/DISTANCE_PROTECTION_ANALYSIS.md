@@ -361,6 +361,24 @@ extent (`wwDistanceZoneReachExtent()`) alongside the plotted points, so
 the active zone characteristics are never clipped out of view. R =
 horizontal, X = vertical, all four quadrants (never clamped to one).
 
+### R-X viewport controls (Fit Zones / Zoom / Reset)
+
+Viewport-only (frontend; no engine, `ZoneSettings`, adapter or API change).
+`wwDistanceState.view` is `null` (default = the pre-existing wide overview
+from `wwDistanceDefaultView()`, which also backs **Reset**) or a manual
+`{centerR, centerX, half}`. The window is always a **square** of `2*half`
+ohm on both axes, so one `pxPerOhm = RADIUS / half` serves R and X (1:1;
+the SVG viewBox is square with `meet`, so container aspect never stretches
+an axis). **Fit Zones** (`wwDistanceFitView`) unions the exact R/X bounding
+boxes of every enabled, drawable zone (rotated quadrilateral corners /
+full Mho circle), centres it, takes the larger axis x1.2; with no drawable
+zone it returns to the default view. **Zoom +/-** scales `half` by 1.5
+about the current centre, clamped to 0.1 ... 100000 ohm. Settings, source
+and Quadrilateral/Mho changes never overwrite a manual view. Zoomed views
+use nice-step gridlines/ticks clipped to the plot square; the pure helpers
+are tested under node in `backend/tests/test_distance_rx_viewport.py`.
+Mouse-wheel zoom was deliberately not added.
+
 Mho zones draw as a true SVG `<circle>` (mathematically guarantees
 circularity — never an ellipse via independent axis scaling); Quadrilateral
 zones draw as a 4-point SVG `<polygon>` built by mapping the rotated

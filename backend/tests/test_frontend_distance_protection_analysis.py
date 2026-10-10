@@ -276,7 +276,9 @@ class TestDistanceRXPlotReusesImpedanceScale:
     def test_render_plot_reuses_impedance_radius_and_nice_limit(self):
         source = _source()
         fn = _function_body(source, "function wwDistanceRenderPlot", "function wwDistanceCtVtFieldsNeeded")
-        assert "wwImpedanceNiceLimit(maxAbs)" in fn
+        default_view = _function_body(source, "function wwDistanceDefaultView", "function wwDistanceFitZonesView")
+        assert "wwImpedanceNiceLimit(maxAbs)" in default_view
+        assert "wwDistanceDefaultView()" in fn
         assert "WW_IMPEDANCE_PLOT_RADIUS" in fn
         # Never re-declares its own independent px-per-ohm/limit math.
         assert "function wwDistanceNiceLimit" not in source
@@ -334,3 +336,38 @@ class TestDistanceResetStateWiring:
         assert 'wwDistanceState.loop = "AB";' in fn
         assert 'wwDistanceState.characteristic = "mho";' in fn
         assert "wwDistanceState.zones = {" in fn
+
+
+class TestDistanceRXViewportControls:
+    """Fit Zones / Zoom / Reset are viewport-only (see
+    test_distance_rx_viewport.py for the behavioural tests)."""
+
+    def test_controls_present_and_wired(self):
+        source = _source()
+        for btn in ("wwDistanceFitZonesBtn", "wwDistanceZoomInBtn", "wwDistanceZoomOutBtn", "wwDistanceResetViewBtn"):
+            assert f'id="{btn}"' in source
+            assert f'getElementById("{btn}").addEventListener("click"' in source
+
+    def test_viewport_is_separate_from_engineering_settings(self):
+        source = _source()
+        # Settings handlers re-render the plot but never overwrite the view.
+        for fn_name, nxt in (
+            ("function wwDistanceHandleSettingsChanged", "function wwDistanceHandleLoopChanged"),
+            ("function wwDistanceHandleCharacteristicChanged", "// A zone SETTING change"),
+            ("function wwDistanceHandleZoneSettingChanged", "function wwDistanceSetInputSource"),
+        ):
+            assert "wwDistanceState.view" not in _function_body(source, fn_name, nxt)
+
+    def test_viewport_code_never_touches_zone_settings_or_results(self):
+        source = _source()
+        block = _function_body(source, "// WW_DISTANCE_VIEWPORT_PURE_BEGIN", "// WW_DISTANCE_VIEWPORT_PURE_END")
+        assert "wwDistanceState" not in block and "document." not in block
+        view_fns = _function_body(source, "function wwDistanceFitZonesView", "function wwDistanceViewGridSvg")
+        assert "zones[" not in view_fns.replace("wwDistanceState.zones, wwDistanceState.characteristic", "")
+        assert "= wwDistanceState.zones" not in view_fns
+
+    def test_single_shared_px_per_ohm_for_both_axes(self):
+        source = _source()
+        fn = _function_body(source, "function wwDistanceRenderPlot", "function wwDistanceCtVtFieldsNeeded")
+        assert "const toSvg = (r, x) => [(r - view.centerR) * pxPerOhm, -(x - view.centerX) * pxPerOhm];" in fn
+        assert 'preserveAspectRatio="xMidYMid meet"' in _function_body(source, 'id="wwDistanceSvg"', "</svg>")

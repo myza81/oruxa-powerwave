@@ -8698,6 +8698,13 @@
             stroke-width: 1.3;
             opacity: 0.85;
         }
+        .ww-dist-view-controls {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 4px;
+            margin: -4px 0 4px;
+        }
         .ww-dist-zone-boundary--zone1 { stroke: var(--ww-dist-zone1); }
         .ww-dist-zone-boundary--zone2 { stroke: var(--ww-dist-zone2); }
         .ww-dist-zone-boundary--zone3 { stroke: var(--ww-dist-zone3); }
@@ -11887,6 +11894,12 @@
                                 </section>
                                 <section class="panel ww-phasor-diagram-panel">
                                     <h3>R-X Plane <span class="ww-phasor-updating-indicator" id="wwDistanceUpdatingIndicator" hidden>Updating…</span></h3>
+                                    <div class="ww-dist-view-controls" id="wwDistanceViewControls">
+                                        <button type="button" id="wwDistanceFitZonesBtn" class="ww-oc-zoom-btn" aria-label="Fit zones" title="Fit the view to all enabled zones">Fit Zones</button>
+                                        <button type="button" id="wwDistanceZoomOutBtn" class="ww-oc-zoom-btn" aria-label="Zoom out" title="Zoom out">−</button>
+                                        <button type="button" id="wwDistanceZoomInBtn" class="ww-oc-zoom-btn" aria-label="Zoom in" title="Zoom in">+</button>
+                                        <button type="button" id="wwDistanceResetViewBtn" class="ww-oc-zoom-btn ww-oc-reset-btn" aria-label="Reset view" title="Reset to the default overview">Reset</button>
+                                    </div>
                                     <div class="ww-phasor-diagram-wrap">
                                         <svg id="wwDistanceSvg" viewBox="-130 -130 260 260" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Distance protection R-X plane"></svg>
                                     </div>
@@ -53658,6 +53671,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             },
             latestResult: null,
             requestGeneration: 0,
+            // R-X viewport -- visualization only, never an engineering
+            // setting. null = default (auto) view; otherwise a manual
+            // {centerR, centerX, half} set by Fit Zones / Zoom, left
+            // untouched by settings / source / characteristic changes.
+            view: null,
             // Static locus/trajectory -- fetched ONLY on a context/loop/
             // settings/time-range change, never on every Playback tick
             // (identical caching discipline to wwImpedanceState.locusPoints).
@@ -54256,29 +54274,176 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             });
             return '<polygon class="ww-dist-zone-boundary ww-dist-zone-boundary--' + zoneKey + '" points="' + pts.join(" ") + '"></polygon>';
         }
-        function wwDistanceRenderPlot() {
-            const svg = document.getElementById("wwDistanceSvg");
-            if (!svg) return;
+        // ---- R-X viewport (pure, DOM-free; unit-tested under node by
+        // test_distance_rx_viewport.py -- keep this block free of DOM and
+        // state access). A view is {centerR, centerX, half}: the visible
+        // window is a SQUARE, 2*half ohm on BOTH axes, so R and X always
+        // share one px-per-ohm factor (1:1). Viewport-only: nothing here
+        // touches zone settings or any engine/decision logic. ----
+        // WW_DISTANCE_VIEWPORT_PURE_BEGIN
+        const WW_DISTANCE_VIEW_MIN_HALF = 0.1;     // ohm -- smallest half-span
+        const WW_DISTANCE_VIEW_MAX_HALF = 100000;  // ohm -- largest half-span
+        const WW_DISTANCE_VIEW_ZOOM_FACTOR = 1.5;
+        const WW_DISTANCE_VIEW_FIT_MARGIN = 1.2;   // fitted extent * 1.2
+        function wwDistanceClampHalf(half) {
+            return Math.min(WW_DISTANCE_VIEW_MAX_HALF, Math.max(WW_DISTANCE_VIEW_MIN_HALF, half));
+        }
+        // Exact R/X bounding box of one zone's drawn characteristic, or
+        // null when the zone is disabled / not drawable (same conditions
+        // the Mho / Quadrilateral renderers use -- a zone that is not
+        // drawn never affects Fit Zones).
+        function wwDistanceZoneBounds(z, characteristic) {
+            if (!z || !z.enabled) return null;
+            const theta = (z.characteristicAngleDeg * Math.PI) / 180;
+            if (!Number.isFinite(theta)) return null;
+            if (characteristic === "mho") {
+                if (!Number.isFinite(z.reachOhm) || z.reachOhm <= 0) return null;
+                const rad = z.reachOhm / 2;
+                const cR = rad * Math.cos(theta), cX = rad * Math.sin(theta);
+                return { rMin: cR - rad, rMax: cR + rad, xMin: cX - rad, xMax: cX + rad };
+            }
+            if (!Number.isFinite(z.reactiveReachOhm) || z.reactiveReachOhm <= 0 ||
+                !Number.isFinite(z.resistiveForwardOhm) || z.resistiveForwardOhm <= 0 ||
+                !Number.isFinite(z.resistiveReverseOhm) || z.resistiveReverseOhm <= 0) return null;
+            const cosT = Math.cos(theta), sinT = Math.sin(theta);
+            const corners = [
+                [0, -z.resistiveReverseOhm], [0, z.resistiveForwardOhm],
+                [z.reactiveReachOhm, z.resistiveForwardOhm], [z.reactiveReachOhm, -z.resistiveReverseOhm],
+            ];
+            const b = { rMin: Infinity, rMax: -Infinity, xMin: Infinity, xMax: -Infinity };
+            for (const [xp, rp] of corners) {
+                const r = xp * cosT + rp * sinT, x = xp * sinT - rp * cosT;
+                b.rMin = Math.min(b.rMin, r); b.rMax = Math.max(b.rMax, r);
+                b.xMin = Math.min(b.xMin, x); b.xMax = Math.max(b.xMax, x);
+            }
+            return b;
+        }
+        // Fit Zones -- union of every enabled, drawable zone's bounds,
+        // centred, squared (larger axis wins), plus a margin. null when no
+        // zone is drawable (caller falls back to the default view).
+        function wwDistanceFitView(zones, characteristic) {
+            let u = null;
+            for (const key of ["zone1", "zone2", "zone3"]) {
+                const b = wwDistanceZoneBounds(zones[key], characteristic);
+                if (!b) continue;
+                u = u ? {
+                    rMin: Math.min(u.rMin, b.rMin), rMax: Math.max(u.rMax, b.rMax),
+                    xMin: Math.min(u.xMin, b.xMin), xMax: Math.max(u.xMax, b.xMax),
+                } : b;
+            }
+            if (!u) return null;
+            const span = Math.max(u.rMax - u.rMin, u.xMax - u.xMin);
+            return {
+                centerR: (u.rMin + u.rMax) / 2,
+                centerX: (u.xMin + u.xMax) / 2,
+                half: wwDistanceClampHalf((span / 2) * WW_DISTANCE_VIEW_FIT_MARGIN),
+            };
+        }
+        // Zoom about the current viewport centre; factor > 1 zooms in.
+        function wwDistanceZoomView(view, factor) {
+            return { centerR: view.centerR, centerX: view.centerX, half: wwDistanceClampHalf(view.half / factor) };
+        }
+        // Grid step (1/2/5 x 10^n) giving roughly 5-10 divisions across the
+        // full window.
+        function wwDistanceNiceStep(span) {
+            const raw = span / 8;
+            const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+            for (const m of [1, 2, 5, 10]) if (m * mag >= raw - 1e-12) return m * mag;
+            return 10 * mag;
+        }
+        // Multiples of `step` lying within [lo, hi].
+        function wwDistanceTickValues(lo, hi, step) {
+            const out = [];
+            const first = Math.ceil(lo / step - 1e-9);
+            const last = Math.floor(hi / step + 1e-9);
+            for (let i = first; i <= last && out.length < 40; i++) out.push(i === 0 ? 0 : i * step);
+            return out;
+        }
+        // Shared formatter for >= 1 ohm steps; fine steps get just enough
+        // decimals to distinguish neighbouring ticks.
+        function wwDistanceFormatTick(value, step) {
+            if (step >= 1) return wwImpedanceFormatTick(value);
+            const decimals = Math.min(4, Math.max(0, -Math.floor(Math.log10(step) + 1e-9)));
+            return value.toFixed(decimals);
+        }
+        // WW_DISTANCE_VIEWPORT_PURE_END
+
+        // Legacy/default (Reset) view: origin-centred, sized to the plotted
+        // points + zone reach extents -- the pre-existing wide overview.
+        function wwDistanceDefaultView() {
             const points = wwDistanceCollectRelevantPoints();
             let maxAbs = points.reduce((m, p) => Math.max(m, Math.abs(p.r), Math.abs(p.x)), 0);
             for (const key of ["zone1", "zone2", "zone3"]) {
                 maxAbs = Math.max(maxAbs, wwDistanceZoneReachExtent(wwDistanceState.zones[key]));
             }
-            const limit = wwImpedanceNiceLimit(maxAbs);
+            return { centerR: 0, centerX: 0, half: wwImpedanceNiceLimit(maxAbs) };
+        }
+        function wwDistanceFitZonesView() {
+            // Explicit user action only. No drawable zone -> default view.
+            wwDistanceState.view = wwDistanceFitView(wwDistanceState.zones, wwDistanceState.characteristic);
+            wwDistanceRenderPlot();
+        }
+        function wwDistanceZoomBy(factor) {
+            // Zooming from the default view first freezes it as a manual
+            // view, so later data changes no longer move it.
+            const base = wwDistanceState.view || wwDistanceDefaultView();
+            wwDistanceState.view = wwDistanceZoomView(base, factor);
+            wwDistanceRenderPlot();
+        }
+        function wwDistanceResetView() {
+            wwDistanceState.view = null;
+            wwDistanceRenderPlot();
+        }
+        // Zoomed/fitted grid: nice-step lines across the window, axes only
+        // where R=0 / X=0 are inside it, tick labels along the left/bottom
+        // edges. Coordinates are the same shared px-per-ohm transform.
+        function wwDistanceViewGridSvg(view, toSvg, pxPerOhm) {
+            const R = WW_IMPEDANCE_PLOT_RADIUS;
+            const step = wwDistanceNiceStep(2 * view.half);
+            const rLo = view.centerR - view.half, rHi = view.centerR + view.half;
+            const xLo = view.centerX - view.half, xHi = view.centerX + view.half;
+            const parts = [];
+            for (const r of wwDistanceTickValues(rLo, rHi, step)) {
+                const px = toSvg(r, 0)[0];
+                parts.push('<line class="' + (r === 0 ? "ww-imp-axis" : "ww-imp-grid-line") + '" x1="' + px.toFixed(2) + '" y1="' + (-R) + '" x2="' + px.toFixed(2) + '" y2="' + R + '"></line>');
+                parts.push('<text class="ww-imp-tick-label" x="' + (px + 2).toFixed(2) + '" y="' + (R - 2) + '" text-anchor="start">' + wwDistanceFormatTick(r, step) + '</text>');
+            }
+            for (const x of wwDistanceTickValues(xLo, xHi, step)) {
+                const py = toSvg(0, x)[1];
+                parts.push('<line class="' + (x === 0 ? "ww-imp-axis" : "ww-imp-grid-line") + '" x1="' + (-R) + '" y1="' + py.toFixed(2) + '" x2="' + R + '" y2="' + py.toFixed(2) + '"></line>');
+                parts.push('<text class="ww-imp-tick-label" x="' + (-R + 2) + '" y="' + (py - 2).toFixed(2) + '" text-anchor="start">' + wwDistanceFormatTick(x, step) + '</text>');
+            }
+            parts.push('<rect class="ww-imp-grid-line" x="' + (-R) + '" y="' + (-R) + '" width="' + (2 * R) + '" height="' + (2 * R) + '" fill="none"></rect>');
+            return parts.join("");
+        }
+        function wwDistanceRenderPlot() {
+            const svg = document.getElementById("wwDistanceSvg");
+            if (!svg) return;
+            const manualView = wwDistanceState.view;
+            const view = manualView || wwDistanceDefaultView();
+            const limit = view.half;
             const pxPerOhm = WW_IMPEDANCE_PLOT_RADIUS / limit;
-            const toSvg = (r, x) => [r * pxPerOhm, -x * pxPerOhm];
+            // ONE shared px-per-ohm for both axes (equal R/X scale); the
+            // default view has centre (0, 0), reproducing the legacy map.
+            const toSvg = (r, x) => [(r - view.centerR) * pxPerOhm, -(x - view.centerX) * pxPerOhm];
 
             const parts = [];
-            for (const frac of [0.5, 1.0]) {
-                const d = WW_IMPEDANCE_PLOT_RADIUS * frac;
-                parts.push('<rect class="ww-imp-grid-line" x="' + (-d) + '" y="' + (-d) + '" width="' + (2 * d) + '" height="' + (2 * d) + '" fill="none"></rect>');
+            if (manualView) {
+                parts.push('<defs><clipPath id="wwDistanceClip"><rect x="' + (-WW_IMPEDANCE_PLOT_RADIUS) + '" y="' + (-WW_IMPEDANCE_PLOT_RADIUS) + '" width="' + (2 * WW_IMPEDANCE_PLOT_RADIUS) + '" height="' + (2 * WW_IMPEDANCE_PLOT_RADIUS) + '"></rect></clipPath></defs>');
+                parts.push(wwDistanceViewGridSvg(view, toSvg, pxPerOhm));
+                parts.push('<g clip-path="url(#wwDistanceClip)">');
+            } else {
+                for (const frac of [0.5, 1.0]) {
+                    const d = WW_IMPEDANCE_PLOT_RADIUS * frac;
+                    parts.push('<rect class="ww-imp-grid-line" x="' + (-d) + '" y="' + (-d) + '" width="' + (2 * d) + '" height="' + (2 * d) + '" fill="none"></rect>');
+                }
+                parts.push('<line class="ww-imp-axis" x1="' + (-WW_IMPEDANCE_PLOT_RADIUS - 8) + '" y1="0" x2="' + (WW_IMPEDANCE_PLOT_RADIUS + 8) + '" y2="0"></line>');
+                parts.push('<line class="ww-imp-axis" x1="0" y1="' + (-WW_IMPEDANCE_PLOT_RADIUS - 8) + '" x2="0" y2="' + (WW_IMPEDANCE_PLOT_RADIUS + 8) + '"></line>');
+                parts.push('<text class="ww-imp-tick-label" x="' + (WW_IMPEDANCE_PLOT_RADIUS - 2) + '" y="10" text-anchor="end">' + wwImpedanceFormatTick(limit) + '</text>');
+                parts.push('<text class="ww-imp-tick-label" x="' + (-WW_IMPEDANCE_PLOT_RADIUS + 2) + '" y="10" text-anchor="start">' + wwImpedanceFormatTick(-limit) + '</text>');
+                parts.push('<text class="ww-imp-tick-label" x="4" y="' + (-WW_IMPEDANCE_PLOT_RADIUS + 4) + '" text-anchor="start">' + wwImpedanceFormatTick(limit) + '</text>');
+                parts.push('<text class="ww-imp-tick-label" x="4" y="' + (WW_IMPEDANCE_PLOT_RADIUS - 1) + '" text-anchor="start">' + wwImpedanceFormatTick(-limit) + '</text>');
             }
-            parts.push('<line class="ww-imp-axis" x1="' + (-WW_IMPEDANCE_PLOT_RADIUS - 8) + '" y1="0" x2="' + (WW_IMPEDANCE_PLOT_RADIUS + 8) + '" y2="0"></line>');
-            parts.push('<line class="ww-imp-axis" x1="0" y1="' + (-WW_IMPEDANCE_PLOT_RADIUS - 8) + '" x2="0" y2="' + (WW_IMPEDANCE_PLOT_RADIUS + 8) + '"></line>');
-            parts.push('<text class="ww-imp-tick-label" x="' + (WW_IMPEDANCE_PLOT_RADIUS - 2) + '" y="10" text-anchor="end">' + wwImpedanceFormatTick(limit) + '</text>');
-            parts.push('<text class="ww-imp-tick-label" x="' + (-WW_IMPEDANCE_PLOT_RADIUS + 2) + '" y="10" text-anchor="start">' + wwImpedanceFormatTick(-limit) + '</text>');
-            parts.push('<text class="ww-imp-tick-label" x="4" y="' + (-WW_IMPEDANCE_PLOT_RADIUS + 4) + '" text-anchor="start">' + wwImpedanceFormatTick(limit) + '</text>');
-            parts.push('<text class="ww-imp-tick-label" x="4" y="' + (WW_IMPEDANCE_PLOT_RADIUS - 1) + '" text-anchor="start">' + wwImpedanceFormatTick(-limit) + '</text>');
 
             // Zone geometry -- static, drawn BEFORE the locus/point so the
             // trajectory/marker always paint on top (Zone 1 last = most
@@ -54329,7 +54494,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
             }
 
-            parts.push('<text class="ww-imp-axis-title" x="' + (WW_IMPEDANCE_PLOT_RADIUS + 10) + '" y="-6" text-anchor="end">R (Ω)</text>');
+            if (manualView) parts.push('</g>');
+            // Zoomed views place the axis titles at the plot corners (the
+            // origin may be off-screen); the default view keeps them on
+            // the axes.
+            const rTitleY = manualView ? WW_IMPEDANCE_PLOT_RADIUS + 12 : -6;
+            parts.push('<text class="ww-imp-axis-title" x="' + (WW_IMPEDANCE_PLOT_RADIUS + 10) + '" y="' + rTitleY + '" text-anchor="end">R (Ω)</text>');
             parts.push('<text class="ww-imp-axis-title" x="4" y="' + (-WW_IMPEDANCE_PLOT_RADIUS - 12) + '" text-anchor="start">X (Ω)</text>');
 
             svg.innerHTML = parts.join("");
@@ -54647,6 +54817,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 zone3: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 1 }),
             };
             wwDistanceState.latestResult = null;
+            wwDistanceState.view = null;
             wwDistanceState.requestGeneration += 1;
             wwDistanceInvalidateLocus();
             wwDistanceState.locusRequestGeneration += 1;
@@ -59912,6 +60083,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwDistanceState.loop = event.target.value;
             wwDistanceHandleLoopChanged();
         });
+        document.getElementById("wwDistanceFitZonesBtn").addEventListener("click", wwDistanceFitZonesView);
+        document.getElementById("wwDistanceZoomInBtn").addEventListener("click", () => wwDistanceZoomBy(WW_DISTANCE_VIEW_ZOOM_FACTOR));
+        document.getElementById("wwDistanceZoomOutBtn").addEventListener("click", () => wwDistanceZoomBy(1 / WW_DISTANCE_VIEW_ZOOM_FACTOR));
+        document.getElementById("wwDistanceResetViewBtn").addEventListener("click", wwDistanceResetView);
         document.getElementById("wwDistanceCharacteristicSelect").addEventListener("change", (event) => {
             wwDistanceState.characteristic = event.target.value;
             wwDistanceHandleCharacteristicChanged();
