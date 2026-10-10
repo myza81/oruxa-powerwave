@@ -2280,7 +2280,7 @@ test.describe("Oscillation Analysis -- oscillation interpretation", () => {
     await expect(page.locator("#wwOscInterp .ww-osc-detect-title")).toHaveText("Oscillation Interpretation");
     await expect(interpCard(page)).toBeVisible();
     await expect(interpCard(page).locator('[data-field="behaviour"]')).toContainText("Behaviour");
-    await expect(interpCard(page).locator('[data-field="type"]')).toContainText("Probable type");
+    await expect(interpCard(page).locator('[data-field="type"]')).toContainText("Oscillation type");
     await expect(interpCard(page).locator(".ww-osc-detect-label", { hasText: "Why" })).toBeVisible();
     await expect(interpCard(page).locator(".ww-osc-detect-label", { hasText: "Limitations" })).toBeVisible();
     const cards = await interpCards(page);
@@ -2296,7 +2296,7 @@ test.describe("Oscillation Analysis -- oscillation interpretation", () => {
     expect(text).not.toContain("possible sub-synchronous");
     expect(text).toContain("frequency alone does not establish sub-synchronous oscillation");
     for (const word of ["confidence", "probability", "confirmed", "sso", "definitive"]) expect(text).not.toContain(word);
-    await expect(page.locator("#wwOscInterpNote")).toContainText("no phase, mode-shape, coherence or location evidence exists yet");
+    await expect(page.locator("#wwOscInterpNote")).toContainText("mode-shape and coherence evidence is used where it exists");
   });
 
   test("comparing adds the other signals: the shared component becomes a cross-signal result, the single one stays single", async ({ page }) => {
@@ -2333,11 +2333,12 @@ test.describe("Oscillation Analysis -- oscillation interpretation", () => {
     expect(["probable", "possible"]).toContain(c.level);
     if (c.type.subtype) {
       expect(c.type.subtype.level).toBe("possible");                       // never definitive
-      expect(c.type.subtype.label).toBe("Possible inter-area electromechanical mode");
-      expect(c.limits).toEqual(expect.arrayContaining(["phase_mode_shape_unavailable", "location_relationship_unknown"]));
+      expect(["Possible inter-area electromechanical mode", "Provisional inter-area electromechanical mode"]).toContain(c.type.subtype.label);
+      expect(c.limits).toContain("location_relationship_unknown");        // station names never prove separate grid areas
+      expect(c.limits).not.toContain("phase_mode_shape_unavailable");     // the mode shape / coherence were integrated, not blanket-unavailable
       const text = await page.locator("#wwOscInterpBody").innerText();
-      expect(text).toContain("Inter-area classification is provisional because relative phase/mode-shape evidence is not yet available.");
-      expect(text).toContain("Possible subtype");
+      expect(text).toContain("Interpretation strength");
+      expect(text).toContain("Subtype");
     }
     expect(c.why).toEqual(expect.arrayContaining(["observed_in", "multiple_recordings"]));
   });
@@ -2392,8 +2393,8 @@ async function modeShapeCompared(page) {
 
 test.describe("Oscillation Analysis -- mode shape / relative phase", () => {
   test("hidden until a comparison; then draws the reference, participation, phase, Why and limitations", async ({ page }) => {
-    const requests = [];
-    page.on("request", (r) => { if (isModeShape(r)) requests.push(r.postDataJSON()); });
+    const dedicated = [];
+    page.on("request", (r) => { if (isModeShape(r) || isCoherence(r)) dedicated.push(r.url()); });
     await openOscillation(page);
     await uploadSynthetic(page, { durationS: 90, channels: MODE_CHANNELS });
     await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_A"));
@@ -2403,14 +2404,10 @@ test.describe("Oscillation Analysis -- mode shape / relative phase", () => {
     await expect(page.locator("#wwOscCross")).toBeVisible();
     await expect(page.locator("#wwOscInterpBody .ww-osc-interp-component").first()).toBeVisible();
     await expect(page.locator("#wwOscMode")).toBeHidden();            // the reference-only baseline is not a comparison
-    expect(requests).toHaveLength(0);
     await tick(page, "P_B");
     await page.locator("#wwOscCrossBtn").click();
     await expect(page.locator("#wwOscModeBody .ww-osc-interp-component").first()).toBeVisible();
-    expect(requests).toHaveLength(1);
-    expect(requests[0].signals.map((s) => s.input.channel_name)).toEqual(["P_A", "P_B"]);
-    for (const s of requests[0].signals) expect(Object.keys(s)).not.toContain("offset_s");   // alignment comes from the backend
-    expect(JSON.stringify(requests[0])).not.toContain("phase");
+    expect(dedicated).toHaveLength(0);                                // DEC-182: it comes with the interpretation response, no request of its own
     await expect(page.locator("#wwOscMode .ww-osc-detect-title")).toHaveText("Mode Shape / Relative Phase");
     const group = page.locator('#wwOscModeBody .ww-osc-mode-group[data-quantity="Power"]');
     await expect(group).toBeVisible();
@@ -2436,11 +2433,20 @@ test.describe("Oscillation Analysis -- mode shape / relative phase", () => {
     await expect(page.locator("#wwOscModeNote")).toContainText("no oscillation type is inferred");
   });
 
-  test("the interpretation still says that relative phase / mode-shape evidence is unavailable (DEC-179 is unchanged)", async ({ page }) => {
+  test("the interpretation now consumes the mode shape and the coherence (DEC-182) and no longer says they are blanket-unavailable", async ({ page }) => {
     await modeShapeCompared(page);
-    await expect(page.locator("#wwOscInterpNote")).toContainText("no phase, mode-shape, coherence or location evidence exists yet");
-    const types = await page.evaluate(() => wwOscState.cross.result.components.map((c) => c.interpretation.probable_type.code));
-    expect(types.length).toBeGreaterThan(0);
+    await expect(page.locator("#wwOscInterpNote")).toContainText("mode-shape and coherence evidence is used where it exists");
+    const cards = await page.evaluate(() => wwOscState.cross.result.components.filter((c) => c.signal_count > 1).map((c) => ({
+      type: c.interpretation.probable_type.code, strength: c.interpretation.interpretation_strength.code,
+      limits: c.interpretation.limiting_evidence.map((e) => e.code), spatial: c.interpretation.spatial_evidence })));
+    expect(cards.length).toBeGreaterThan(0);
+    for (const c of cards) {
+      expect(c.limits).not.toContain("phase_mode_shape_unavailable");
+      expect(Object.keys(c.spatial).length).toBeGreaterThan(0);
+    }
+    const text = await page.locator("#wwOscInterpBody").innerText();
+    expect(text).toContain("Interpretation strength");
+    expect(text.toLowerCase()).not.toContain("not yet available");
   });
 
   test("changing the settings marks the relative phase not current; restoring them restores it", async ({ page }) => {
@@ -2473,7 +2479,7 @@ const isCoherence = (r) => r.url().endsWith("/oscillation-analysis/coherence");
 test.describe("Oscillation Analysis -- coherence evidence", () => {
   test("hidden until a comparison; then draws the reference, coherence, bin, chance level, Why and limitations", async ({ page }) => {
     const requests = [];
-    page.on("request", (r) => { if (isCoherence(r)) requests.push(r.postDataJSON()); });
+    page.on("request", (r) => { if (isCoherence(r) || isModeShape(r)) requests.push(r.url()); });
     await openOscillation(page);
     await uploadSynthetic(page, { durationS: 90, channels: MODE_CHANNELS });
     await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_A"));
@@ -2483,14 +2489,10 @@ test.describe("Oscillation Analysis -- coherence evidence", () => {
     await expect(page.locator("#wwOscCross")).toBeVisible();
     await expect(page.locator("#wwOscInterpBody .ww-osc-interp-component").first()).toBeVisible();
     await expect(page.locator("#wwOscCoh")).toBeHidden();             // the reference-only baseline is not a comparison
-    expect(requests).toHaveLength(0);
     await tick(page, "P_B");
     await page.locator("#wwOscCrossBtn").click();
     await expect(page.locator("#wwOscCohBody .ww-osc-interp-component").first()).toBeVisible();
-    expect(requests).toHaveLength(1);
-    expect(requests[0].signals.map((s) => s.input.channel_name)).toEqual(["P_A", "P_B"]);
-    for (const s of requests[0].signals) expect(Object.keys(s)).not.toContain("offset_s");
-    expect(JSON.stringify(requests[0])).not.toContain("coherence");
+    expect(requests).toHaveLength(0);                                 // DEC-182: drawn from the interpretation response, no request of its own
     await expect(page.locator("#wwOscCoh .ww-osc-detect-title")).toHaveText("Coherence Evidence");
     const card = page.locator("#wwOscCohBody .ww-osc-interp-component").first();
     await expect(card).toContainText("Reference: P_A (the Mode Shape reference)");
@@ -2521,7 +2523,7 @@ test.describe("Oscillation Analysis -- coherence evidence", () => {
     await modeShapeCompared(page);
     await expect(page.locator("#wwOscCohBody .ww-osc-interp-component").first()).toBeVisible();
     await expect(page.locator("#wwOscModeBody .ww-osc-mode-group tr[data-signal='P_B'] td").nth(3)).toHaveText(/^[+-]?\d+(\.\d+)?°$|^0°$/);
-    await expect(page.locator("#wwOscInterpNote")).toContainText("no phase, mode-shape, coherence or location evidence exists yet");
+    await expect(page.locator("#wwOscInterpNote")).toContainText("mode-shape and coherence evidence is used where it exists");
   });
 
   test("changing the settings marks the coherence not current", async ({ page }) => {
@@ -2542,5 +2544,117 @@ test.describe("Oscillation Analysis -- coherence evidence", () => {
       scroll: document.documentElement.scrollWidth }));
     expect(m.right).toBeLessThanOrEqual(m.viewport + 1);
     expect(m.scroll).toBeLessThanOrEqual(m.viewport + 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DEC-182 UAT regression. The owner's real state: a ~0.4 Hz decaying component matched in two MW signals of two recordings, whose shared
+// active interval is too short for BOTH advanced methods (Mode Shape: fewer than 3 cycles; Coherence: a Welch segment of fewer than 1.5
+// cycles). The Cross-Signal Evidence, the Mode Shape, the Coherence and the Oscillation Interpretation are drawn from ONE response and must
+// all see the SAME matched component and the SAME member set; the interpretation must report two distinct measurements plus both dynamic
+// refusal reasons, keep the oscillation valid, and never say "observed in one signal only" about it.
+// ---------------------------------------------------------------------------
+const UNIT_1 = "POWER UNIT NO.1", UNIT_2 = "POWER UNIT UNIT NO.2", UNIT_3 = "POWER UNIT NO.3";
+
+async function twoMwShortEvent(page, { withThird = false } = {}) {
+  const ring = { amplitude: 100, frequencyHz: 0.4, onsetS: 10, decayPerS: 0.16 };
+  await openOscillation(page);
+  await uploadSynthetic(page, { name: "unit1", station: "STN_ONE", durationS: 90, rateHz: 50, channels: [{ name: UNIT_1, unit: "MW", amplitude: 150, components: [ring] }] });
+  await uploadSynthetic(page, { name: "unit2", station: "STN_TWO", durationS: 90, rateHz: 50, channels: [{ name: UNIT_2, unit: "MW", amplitude: 150, components: [ring] }] });
+  if (withThird) {
+    await uploadSynthetic(page, { name: "unit3", station: "STN_THREE", durationS: 90, rateHz: 50,
+      channels: [{ name: UNIT_3, unit: "MW", amplitude: 150, components: [{ amplitude: 100, frequencyHz: 2.0, onsetS: 10, decayPerS: 0.05 }] }] });
+  }
+  await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, UNIT_1));
+  await setBand(page, 0.2, 3);
+  await page.locator("#wwOscAnalyzeBtn").click();
+  await expect(page.locator("#wwOscCross")).toBeVisible();
+  await tick(page, UNIT_2);
+  if (withThird) await tick(page, UNIT_3);
+  await page.locator("#wwOscCrossBtn").click();
+  await expect(page.locator("#wwOscCrossBody .ww-osc-cross-component").first()).toBeVisible();
+  await expect(page.locator("#wwOscModeBody .ww-osc-interp-component").first()).toBeVisible();
+  await expect(page.locator("#wwOscCohBody .ww-osc-interp-component").first()).toBeVisible();
+}
+
+// The matched (two-signal) component as every consumer sees it, straight from the one response the page drew.
+const consumers = (page) => page.evaluate(() => {
+  const r = wwOscState.cross.result;
+  const matched = r.components.find((c) => c.signal_count === 2);
+  const shape = r.mode_shape.components.find((c) => c.component_id === matched.id);
+  const coh = r.coherence.components.find((c) => c.component_id === matched.id);
+  return {
+    id: matched.id, frequency: matched.representative_frequency_hz, members: matched.members.map((m) => m.label).sort(), distinct: matched.distinct_measurement_count,
+    shapeMembers: Array.from(new Set(shape.groups.flatMap((g) => g.members.map((m) => m.label)))).sort(), shapeStatus: shape.groups.map((g) => g.status), shapeMessage: shape.groups[0].message,
+    cohMembers: Array.from(new Set(coh.pairs.flatMap((p) => [p.reference_signal, p.member_signal]))).sort(), cohStatus: coh.pairs.map((p) => p.status), cohMessage: coh.pairs[0].message,
+    it: { type: matched.interpretation.probable_type, strength: matched.interpretation.interpretation_strength.code, behaviour: matched.interpretation.behaviour_classification.code,
+      supporting: matched.interpretation.supporting_evidence.map((e) => e.code), limiting: matched.interpretation.limiting_evidence.map((e) => e.code),
+      unavailable: matched.interpretation.unavailable_evidence.map((e) => [e.code, e.message]) },
+  };
+});
+
+test.describe("Oscillation Analysis -- one comparison, one matched component for every consumer (DEC-182 UAT)", () => {
+  test("two matched MW signals -> Mode Shape refused -> Coherence refused -> the interpretation still reports 2 distinct measurements and both refusals", async ({ page }) => {
+    await twoMwShortEvent(page);
+    const c = await consumers(page);
+    // the preconditions of the owner's state
+    expect(c.members).toEqual([UNIT_1, UNIT_2].sort());
+    expect(c.shapeStatus).not.toContain("ok");
+    expect(c.cohStatus).not.toContain("ok");
+    // every consumer sees the same component and the same member set
+    expect(c.shapeMembers).toEqual(c.members);
+    expect(c.cohMembers).toEqual(c.members);
+    expect(c.distinct).toBe(2);
+    // the interpretation card of that component
+    const card = page.locator("#wwOscInterpBody .ww-osc-interp-component", { hasText: UNIT_1 + ", " + UNIT_2 }).first();
+    await expect(card).toBeVisible();
+    await expect(card.locator('[data-field="signals"]')).toContainText("2 signals, 2 distinct measurements");
+    await expect(card.locator('[data-field="behaviour"]')).toContainText("Decaying oscillation (onset not observed in the window)");
+    await expect(card.locator('[data-field="type"]')).toContainText("Oscillation type");          // not confused with the interpretation strength
+    await expect(card.locator('[data-field="type"]')).not.toContainText("Probable type");
+    await expect(card.locator('[data-field="type"]')).toContainText("electromechanical oscillation");
+    await expect(card.locator('[data-field="strength"]')).toContainText("Possible");
+    const text = await card.innerText();
+    expect(text).toContain("Observed in 2 signals across 2 recordings.");
+    expect(text).toContain("Detected in 2 distinct measurements.");
+    expect(text).not.toContain("Observed in one signal only");
+    expect(text).not.toContain("no cross-signal corroboration");
+    expect(text).not.toContain("relative phase/mode-shape evidence is not available");
+    expect(text).toContain("Electromechanical subtype unresolved");
+    expect((text.match(/local or inter-area/g) || []).length).toBe(1);                          // one concise statement, not two
+    expect(c.it.type.subtype).toBeNull();
+    // both structured refusals are surfaced, verbatim and dynamic
+    await expect(card.locator(".ww-osc-detect-label", { hasText: "Not available for this event" })).toBeVisible();
+    expect(text).toContain(c.shapeMessage);
+    expect(text).toContain(c.cohMessage);
+    expect(c.shapeMessage).toMatch(/holds [\d.]+ cycles at 0\.4 Hz; at least 3 are needed/);
+    expect(c.cohMessage).toMatch(/is too short to resolve a 0\.4 Hz component reliably\. Each Welch segment contains only [\d.]+ cycles; at least 1\.5 cycles are required/);
+    expect(c.it.unavailable.map((u) => u[0])).toEqual(expect.arrayContaining(["mode_shape_unavailable", "coherence_unavailable"]));
+    // the oscillation itself is not downgraded because the advanced methods refused
+    expect(c.it.supporting).toEqual(expect.arrayContaining(["observed_in", "frequency_match", "temporal_overlap", "decaying_damping"]));
+    expect(c.it.limiting).not.toContain("single_signal_only");
+    // and the Mode Shape / Coherence sections show the same two signals and the same refusals
+    await expect(page.locator("#wwOscModeBody")).toContainText(c.shapeMessage);
+    await expect(page.locator("#wwOscCohBody")).toContainText(c.cohMessage);
+  });
+
+  test("a component seen in only one signal of the same comparison says so explicitly and without the blanket 'not available' wording", async ({ page }) => {
+    await twoMwShortEvent(page, { withThird: true });
+    const cards = page.locator("#wwOscInterpBody .ww-osc-interp-component");
+    const matched = cards.filter({ hasText: UNIT_1 + ", " + UNIT_2 }).first();
+    await expect(matched).toBeVisible();
+    await expect(matched.locator('[data-field="signals"]')).toContainText("2 signals, 2 distinct measurements");
+    const single = cards.filter({ hasText: "1 signal, 1 distinct measurement" }).first();
+    await expect(single).toBeVisible();
+    await expect(single.locator('[data-field="signals"]')).toContainText(UNIT_3);
+    await expect(single.locator('[data-field="signals"]')).not.toContainText(UNIT_1);
+    const singleText = await single.innerText();
+    expect(singleText).toContain("Observed in one signal only");                          // true for THIS component
+    expect(singleText).toContain("Mode shape and coherence need the component in two or more signals");
+    expect(singleText).not.toContain("relative phase/mode-shape evidence is not available");
+    expect(await matched.innerText()).not.toContain("Observed in one signal only");         // and never about the matched one
+    const c = await consumers(page);
+    expect(c.shapeMembers).toEqual(c.members);
+    expect(c.cohMembers).toEqual(c.members);
   });
 });

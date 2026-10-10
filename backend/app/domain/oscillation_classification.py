@@ -21,6 +21,10 @@ Levels carry explicit deterministic meaning (see ``LEVEL_DEFINITIONS``); there i
 ``probable`` / ``possible`` / ``unresolved`` / ``insufficient_evidence`` are used only where the requirement
 listed in the family's rule is met. Inter-area / local / SSO / control are never "definitive" in this slice.
 
+DEC-182 [PROPOSAL] adds an OPTIONAL ``evidence`` argument (the structured mode shape and coherence of the component, see
+``app.domain.oscillation_integration``). Without it the result is the DEC-179 result; with it the spatial / cross-spectral evidence refines the
+STRENGTH of the electromechanical subtype, adds contradictory and unavailable evidence, and never lowers a family or a level.
+
 Pure Python, no dependencies. Cheap: the cost is a handful of comparisons per component.
 """
 
@@ -28,6 +32,7 @@ from __future__ import annotations
 
 from app.domain import channel_classification as cc
 from app.domain import cross_signal_evidence as cs
+from app.domain import oscillation_integration as oi
 
 # ---------------------------------------------------------------- Phase-1 heuristics (not standards)
 #: Conventional electromechanical range (inter-area + local + intra-plant); a supporting dimension only.
@@ -87,6 +92,9 @@ TYPE_UNRESOLVED = "unresolved"
 
 SUBTYPE_INTER_AREA = "inter_area"
 SUBTYPE_LOCAL = "local"
+
+#: Warnings of the cross-signal evidence that are also shown as contradictory evidence.
+_CONTRADICTORY_CODES = frozenset({"damping_behaviour_differs", "decay_rates_differ_materially", "no_temporal_overlap"})
 
 DESCRIPTOR_HIGHER_FREQUENCY = "higher_frequency_oscillatory_component"
 
@@ -149,7 +157,9 @@ def parameters() -> dict:
         "onset_lead_fraction": ONSET_LEAD_FRACTION,
         "narrow_base_bins": NARROW_BASE_BINS,
         "heuristics": "Phase-1 engineering heuristics, not standards; bands overlap and never decide a type on their own; "
-                      "no phase, mode-shape, coherence or location evidence exists yet",
+                      "mode-shape and coherence evidence is used where it exists and is reported as unavailable where it does not; "
+                      "station / area metadata is not used",
+        **oi.parameters(),
     }
 
 
@@ -229,7 +239,7 @@ def _behaviour(members: list[dict], temporal: dict) -> tuple[str, list[dict], li
 
 
 # ---------------------------------------------------------------- the classifier
-def classify_component(component: dict, signals: list[dict]) -> dict:
+def classify_component(component: dict, signals: list[dict], evidence: dict | None = None) -> dict:
     """Interpret ONE cross-signal component. `component` is a `group_components` result; `signals` the analysed
     signal dicts it was grouped from (each with `window_start_s` / `window_end_s`, `candidates`, `representation`
     and optional `nominal_frequency_hz` / `nominal_frequency_assumed`). Nothing is recomputed from samples."""
@@ -395,15 +405,29 @@ def classify_component(component: dict, signals: list[dict]) -> dict:
             frequency_hz=frequency, nominal_frequency_hz=nominal_hz))
 
     subtype = None
+    contradictory = [w for w in component["warnings"] if w["code"] in _CONTRADICTORY_CODES]
+    unavailable: list[dict] = []
+    spatial = None
+    em_primary = primary is not None and primary["code"] == TYPE_ELECTROMECHANICAL
+    if evidence is not None and component["signal_count"] > 1:
+        inter_area_ok = in_inter_area and distinct >= 2 and recordings >= 2 and overlap and bool(em_types) and not damping_conflict
+        spatial = oi.integrate(evidence, em_primary=em_primary, inter_area_ok=inter_area_ok, in_local=in_local, frequency_hz=frequency, distinct=distinct)
+    elif evidence is not None:
+        spatial = oi.not_applicable(em_primary=em_primary)
     if primary is not None:
         supporting += primary["supporting"]
         limiting += primary["limiting"]
-        if primary["code"] == TYPE_ELECTROMECHANICAL:
+        if em_primary and spatial is None:
             subtype, sub_support, sub_limit, sub_alt = _em_subtype(
                 frequency, in_inter_area, in_local, distinct, recordings, overlap, damping_conflict, bool(em_types), behaviour, compared_without)
             supporting += sub_support
             limiting += sub_limit
             alternatives += sub_alt
+        elif em_primary:
+            subtype = spatial["subtype"]
+            alternatives += spatial["alternatives"]
+            if subtype is None and compared_without:
+                limiting.append(_ev("local_not_confirmed", f"Absence from the {compared_without} other compared signal(s) is not proof of locality.", compared_without=compared_without))
         level = primary["level"]
         probable_type = {"code": primary["code"], "label": _type_label(primary["code"], level), "subtype": subtype}
         hierarchy = ["oscillatory_component", primary["code"]] + ([subtype["code"]] if subtype else [])
@@ -426,6 +450,19 @@ def classify_component(component: dict, signals: list[dict]) -> dict:
                 "frequency_band_overlaps_mechanisms",
                 "The frequency band overlaps several possible mechanisms and does not identify one by itself.", frequency_hz=frequency))
 
+    spatial_summary: dict = {}
+    if spatial is not None:
+        supporting += spatial["supporting"]
+        limiting += spatial["limiting"]
+        contradictory += spatial["contradictory"]
+        unavailable += spatial["unavailable"]
+        spatial_summary = spatial["summary"]
+    if spatial is not None and em_primary:
+        strength = spatial["strength"]
+    elif primary is not None:
+        strength = oi.STRENGTH_POSSIBLE
+    else:
+        strength = oi.STRENGTH_DETECTED if level == LEVEL_INSUFFICIENT else oi.STRENGTH_UNRESOLVED
     limiting = _unique(limiting)
     return {
         "component_id": component["id"],
@@ -440,6 +477,10 @@ def classify_component(component: dict, signals: list[dict]) -> dict:
         "alternatives": alternatives,
         "warnings": warnings,
         "evidence_dimensions": dims,
+        "interpretation_strength": {"code": strength, "label": oi.STRENGTH_LABELS[strength]},
+        "contradictory_evidence": _unique(contradictory),
+        "unavailable_evidence": _unique(unavailable),
+        "spatial_evidence": spatial_summary,
     }
 
 

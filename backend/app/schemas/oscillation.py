@@ -530,8 +530,10 @@ class BehaviourClassificationOut(BaseModel):
 class TypeSubtypeOut(BaseModel):
     code: str
     label: str
-    #: Always `possible` in this slice: no phase / mode-shape evidence exists yet.
+    #: Always `possible`: a subtype is never definitive (DEC-179); DEC-182 adds `strength`.
     level: str
+    #: `consistent_with` | `supported_provisional` where mode-shape / coherence evidence was integrated (DEC-182); otherwise null.
+    strength: str | None = None
 
 
 class ProbableTypeOut(BaseModel):
@@ -560,6 +562,11 @@ class InterpretationAlternativeOut(BaseModel):
     limitations: list[DetectionEvidenceOut] = []
 
 
+class InterpretationStrengthOut(BaseModel):
+    code: str
+    label: str
+
+
 class ComponentInterpretationOut(BaseModel):
     """Deterministic interpretation of one component: behaviour and probable type are separate dimensions; every statement is
     backed by structured supporting / limiting evidence. No probability, no percentage, no AI."""
@@ -577,6 +584,14 @@ class ComponentInterpretationOut(BaseModel):
     alternatives: list[InterpretationAlternativeOut] = []
     warnings: list[DetectionEvidenceOut] = []
     evidence_dimensions: dict[str, bool] = {}
+    #: DEC-182: `detected` | `possible` | `consistent_with` | `supported_provisional` | `unresolved` (qualitative, never a score).
+    interpretation_strength: InterpretationStrengthOut | None = None
+    #: Evidence that pulls against the reading (weak coherence beside a phase, unstable phase, differing damping, no overlap).
+    contradictory_evidence: list[DetectionEvidenceOut] = []
+    #: Evidence that was refused or not computed (a short event); never penalised.
+    unavailable_evidence: list[DetectionEvidenceOut] = []
+    #: Machine-readable summary of the mode-shape / coherence facts used (empty when none were integrated).
+    spatial_evidence: dict[str, Any] = {}
 
 
 class InterpretedComponentOut(CrossSignalComponentOut):
@@ -593,6 +608,9 @@ class OscillationInterpretationOut(BaseModel):
     timings_ms: dict[str, float]
     signals: list[CrossSignalRowOut]
     components: list[InterpretedComponentOut] = []
+    #: DEC-182: the mode shape and coherence of the components seen in two or more signals (same shapes as their own endpoints).
+    mode_shape: InterpretationModeShapeOut | None = None
+    coherence: InterpretationCoherenceOut | None = None
 
 
 # ---------------------------------------------------------------- mode shape / relative phase (DEC-180 [PROPOSAL])
@@ -772,4 +790,14 @@ class OscillationCoherenceOut(BaseModel):
     parameters: dict[str, float | int | str | bool]
     timings_ms: dict[str, float]
     signals: list[CrossSignalRowOut]
+    components: list[CoherenceComponentOut] = []
+
+
+class InterpretationModeShapeOut(BaseModel):
+    parameters: dict[str, float | int | str | bool]
+    components: list[ModeShapeComponentOut] = []
+
+
+class InterpretationCoherenceOut(BaseModel):
+    parameters: dict[str, float | int | str | bool]
     components: list[CoherenceComponentOut] = []

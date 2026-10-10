@@ -26252,3 +26252,66 @@ mode shape + phase + coherence + location, and with what wording?
 
 Tests: `backend/tests/test_oscillation_coherence.py` (SciPy parity, synthetic relationships, refusals, grid, component, provenance, service, time-alignment regression, API),
 `test_frontend_oscillation_analysis_shell.py` (static guard), `browser-tests/oscillation_setup.spec.js` ("coherence evidence").
+
+
+## DEC-182 -- Integrated oscillation interpretation: the deterministic interpretation consumes the Mode Shape (DEC-180) and Coherence (DEC-181) evidence
+
+Status: **[APPROVED]** (owner, 2026-10-10; was `[PROPOSAL]`; real-event UAT passed -- see below) -- implemented on `feat/event-reconstruction`, committed as `feat: integrate oscillation modal evidence into interpretation`. Builds on DEC-171..181. It is **evidence integration, not a new
+signal-processing algorithm**: no spectrum, phase or coherence is computed here; the structured results of DEC-178 / 177 / 180 / 181 are read. The DEC-179 family rules, frequency
+bands (electromechanical 0.1-3 Hz, inter-area 0.1-1.0 Hz, local 0.8-3.0 Hz), behaviour classification, levels (`probable` / `possible` / `unresolved` / `insufficient_evidence`) and the
+higher-frequency / control / sub-synchronous rules are **unchanged**. **Not implemented:** source localisation, area clustering from station names, causality, transfer functions,
+forced-source identification, Prony, Matrix Pencil, wavelet coherence, **any AI**. **No opaque combined confidence score, no probability, no percentage, nothing "confirmed".**
+
+**Evidence layers stay separate** (each is its own entry set, never folded into a number): frequency (Welch / DEC-175), temporal (STFT activity), dynamic (damping), spatial / modal
+(mode shape: same-variable group, distinct measurements, stable relative phase, separation, participation, refused / unavailable, shared provenance), cross-spectral (coherence:
+same- vs cross-variable, value against its chance level, segments, valid / refused). Frequency alone still never decides a subtype.
+
+**Rules.**
+
+* *Subtype only from positive spatial evidence.* A provisional inter-area subtype needs: the DEC-179 conditions (inter-area band, >= 2 distinct measurements in >= 2 recordings,
+  overlapping activity, a relevant signal type, no damping conflict) **and** a valid same-variable mode shape of >= 2 distinct measurements with a stable (not unstable) relative phase
+  and a meaningful separation (beyond 30 degrees: anti-phase, intermediate or mixed). **This replaces the DEC-179 behaviour in which frequency + recordings alone offered "Possible
+  inter-area" with the limitation "phase / mode-shape evidence not yet available"**: when the component is interpreted together with its mode shape and coherence and no spatial
+  evidence is valid, the subtype is `Electromechanical subtype unresolved — local or inter-area cannot be distinguished with the available evidence.` (The DEC-179 path is kept
+  verbatim for a single signal and when no synchronization registry is given.) This is the one intentional change of an accepted behaviour; it is flagged for the owner below.
+* *Strength hierarchy* (qualitative, `interpretation_strength`): `detected` / `possible` / `consistent_with` / `supported_provisional` / `unresolved`.
+  A -- no valid spatial evidence: `possible`, subtype unresolved. B -- stable phase separation across distinct measurements, coherence unavailable / marginal / below: `consistent_with`, subtype
+  `Possible inter-area electromechanical mode`. C -- B plus **every** same-variable pair of the phase group clearly above its chance level: `supported_provisional`, subtype
+  `Provisional inter-area electromechanical mode`. Not-C wording: "The evidence is consistent with a spatial electromechanical mode and supports a provisional inter-area interpretation. The
+  available metadata does not independently prove that the measurements represent separate grid areas."
+* *Coherence adjusts the strength of the phase interpretation* using a transparent, centralised margin: **below** the chance level, **marginally above** it, or **clearly above** it
+  (at least `COHERENCE_CLEAR_HEADROOM_FRACTION = 0.5` of the way from the chance level to 1; 0.816 for a 0.632 chance level). Weak or marginal coherence beside a valid phase adds the
+  contradictory entry "Relative phase is available, but cross-spectral coherence at the component frequency is weak or marginal; interpret the phase relationship cautiously." and the
+  subtype is not strengthened; the phase result itself is kept. Coherence unavailable (a short event) does **not** invalidate the phase.
+* *Anti-phase does not by itself prove inter-area; near-in-phase does not prove local.* Near-in-phase distinct measurements leave the subtype unresolved (`in_phase_response`:
+  "Absence of opposing phase is not proof of a local mode"); a local mode is never offered from absence of evidence (only as a "not excluded" alternative beside a possible inter-area subtype).
+  Station names are never area evidence; `location_relationship_unknown` accompanies every inter-area subtype.
+* *Coherence only* (same-variable, no valid mode shape) supports a shared oscillatory relationship and nothing directional. *Cross-variable coherence* (for example MW with
+  frequency) supports "a common dynamic relationship" but "does not establish a conventional mode-shape relationship" and never upgrades a subtype.
+* *Shared provenance cannot create spatial evidence.* Phase or coherence between signals sharing one source measurement is excluded (`spatial_evidence_shared_provenance`).
+* *Unavailable advanced evidence never lowers anything.* A refused mode shape or coherence (the short real 0.4 Hz event: 2.8 cycles; a shared 7 s interval) is reported in a separate
+  `unavailable_evidence` list carrying the backend's own dynamic refusal text; the family, level, behaviour and cross-signal evidence are exactly those of the baseline.
+* *Contradictions are shown*, not hidden behind a label: unstable phase, weak coherence beside a phase, differing damping, no temporal overlap (`contradictory_evidence`).
+* Damping is not overridden: a damping conflict still blocks the inter-area subtype, and sustained / growing behaviour is kept. Sustained coherent components stay
+  "forcing source not identified". A higher-frequency component is not turned into sub-synchronous oscillation by phase or coherence.
+
+**Result model** (extends DEC-179, nothing replaced): `interpretation_strength {code,label}`, `contradictory_evidence[]`, `unavailable_evidence[]`, `spatial_evidence` (machine-readable
+summary), the existing `supporting_evidence` / `limiting_evidence` / `alternatives`, and the subtype now carries `strength`.
+
+**Orchestration (no duplicate processing).** With two or more signals the interpretation endpoint builds on the SHARED front half of the mode shape (`derive_components`: authoritative Time Group
+alignment, **one** analysis pass per signal -- spectrum, spectrogram and damping are not repeated), computes each component's mode shape once and its coherence from that shape, hands both to
+the classifier and returns them beside the components (`mode_shape`, `coherence`, same shapes as their own endpoints). **The page no longer calls `/mode-shape` and `/coherence`**: after a Compare it
+makes the single interpretation request and draws all three sections from it. The dedicated endpoints remain for API consumers and are unchanged. Without a synchronization registry, or for one signal,
+the response is the DEC-179 response.
+
+**Owner UAT outcome (recorded at approval).** Real-event owner UAT: PASS. It verified the ~0.4 Hz component across two distinct MW measurements and confirmed that cross-signal evidence is preserved in the Interpretation; that the Mode Shape and Coherence structured refusal reasons are propagated correctly; that unavailable advanced evidence does not invalidate otherwise valid oscillation evidence; that local / inter-area remains unresolved when spatial evidence is insufficient; and that no false inter-area promotion occurs. Two UX refinements were made at approval, with no change to classification logic or thresholds: the interpretation heading *Probable type* was renamed *Oscillation type* (so it is not confused with *Interpretation strength*), and the duplicated local / inter-area limitation was collapsed into one concise statement.
+
+**UAT amendment (2026-10-10, made before approval).** Owner UAT reported that, for the real ~0.4 Hz two-MW comparison, the Interpretation card said "Observed in one signal only ... no cross-signal corroboration" and "relative phase/mode-shape evidence is not available" while Cross-Signal, Mode Shape and Coherence showed the two matched signals and their refusals. Investigation: the interpretation, cross-signal grouping, mode shape and coherence of one comparison are drawn from ONE response and are built from the same `components` objects, and the exact state (two matched MW signals, Mode Shape refused at 2.57 cycles < 3, Coherence refused at 0.568 cycles/segment < 1.5) was reproduced in the browser with the real backend: the matched component's card was correct (2 signals / 2 distinct measurements, decaying, electromechanical, strength Possible, subtype unresolved, both dynamic refusals). The two quoted sentences are, word for word, what the card of a component observed in ONE signal showed in an integrated comparison: such a component received no evidence and fell back to the blanket DEC-179 wording. **Fixed:** in an integrated comparison a single-signal component now gets an explicit `spatial_evidence_not_applicable` ("Mode shape and coherence need the component in two or more signals ...") instead of the blanket "not available"; and **every interpretation card now names the signals it is for** ("Observed in <signals> (N signals, M distinct measurements)") so a card can never be mistaken for another component's. Regression tests assert that the interpretation, mode shape and coherence of a comparison carry the same component id and the same member set, and that both dynamic refusals reach the card verbatim. No thresholds or classification rules changed.
+
+**Open owner decisions.** (1) The intentional change above: DEC-179 offered "Possible inter-area" from frequency + recordings alone; DEC-182 withholds the subtype until spatial phase evidence
+exists. Confirm, or keep the DEC-179 subtype as a weaker "frequency/recordings-compatible" statement. (2) Are the 30 degree separation and the 0.5 headroom margin right on real events? (3) Should
+a stable phase with marginal coherence stay at `consistent_with`, or should marginal coherence remove the subtype entirely? (4) Is "Supported (provisional)" the right strongest label? (5) A dedicated
+higher-frequency (SSO / converter) integration slice, and location / station metadata as real area evidence, remain future decisions.
+
+Tests: `backend/tests/test_oscillation_integration.py` (hierarchy, in-phase, weak / marginal / unavailable coherence, coherence-only, cross-variable, shared provenance, unstable phase, the
+short-event regression, scope guards, service, one-pass-per-signal, API), `test_frontend_oscillation_analysis_shell.py` (static guards), `browser-tests/oscillation_setup.spec.js`.

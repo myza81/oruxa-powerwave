@@ -55108,11 +55108,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Cross-Signal Oscillation Evidence (DEC-178 [APPROVED]): requested only by the Compare button, for the primary
             // (analysed) signal plus `chosen` (catalogue keys); `request` = { setup, entries } identifies exactly what was compared.
             cross: { phase: "idle", seq: 0, request: null, result: null, message: "", chosen: new Set(), drawn: null },
-            // Mode Shape / Relative Phase (DEC-180 [PROPOSAL]): requested from the backend for the SAME entries a Compare sent; the browser
-            // never sends an alignment offset or a phase.
-            modeShape: { phase: "idle", seq: 0, request: null, result: null, message: "" },
-            // Coherence Evidence (DEC-181 [PROPOSAL]): requested for the SAME entries as the mode shape; the browser sends no offset and no result.
-            coherence: { phase: "idle", seq: 0, request: null, result: null, message: "" },
         };
 
         function wwOscFormat(value, digits) {
@@ -56656,12 +56651,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 card.dataset.level = it.classification_level;
                 card.dataset.type = it.probable_type.code;
                 card.appendChild(el("div", "ww-osc-detect-label", "Component around " + wwOscFormat(it.component_frequency_hz, 4) + " Hz"));
+                card.appendChild(row("signals", "Observed in", comp.members.map((m) => m.label).join(", ")
+                    + " (" + comp.signal_count + " signal" + (comp.signal_count === 1 ? "" : "s") + ", " + comp.distinct_measurement_count + " distinct measurement"
+                    + (comp.distinct_measurement_count === 1 ? "" : "s") + ")"));
                 card.appendChild(row("behaviour", "Behaviour", it.behaviour_classification.label));
-                card.appendChild(row("type", "Probable type", it.probable_type.label));
-                if (it.probable_type.subtype) card.appendChild(row("subtype", "Possible subtype", it.probable_type.subtype.label));
+                card.appendChild(row("type", "Oscillation type", it.probable_type.label));
+                if (it.probable_type.subtype) card.appendChild(row("subtype", "Subtype", it.probable_type.subtype.label));
+                if (it.interpretation_strength) card.appendChild(row("strength", "Interpretation strength", it.interpretation_strength.label));
                 if (it.descriptors.length) card.appendChild(list(it.descriptors.map((d) => d.label + " — " + d.message), "note"));
                 card.appendChild(el("div", "ww-osc-detect-label", "Why"));
                 card.appendChild(list(it.supporting_evidence.map((e) => e.message), "why"));
+                if (it.contradictory_evidence && it.contradictory_evidence.length) {
+                    card.appendChild(el("div", "ww-osc-detect-label", "Contradictory evidence"));
+                    card.appendChild(list(it.contradictory_evidence.map((e) => e.message), "warning"));
+                }
+                if (it.unavailable_evidence && it.unavailable_evidence.length) {
+                    card.appendChild(el("div", "ww-osc-detect-label", "Not available for this event"));
+                    card.appendChild(list(it.unavailable_evidence.map((e) => e.message), "note"));
+                }
                 card.appendChild(el("div", "ww-osc-detect-label", "Limitations"));
                 card.appendChild(list(it.limiting_evidence.map((e) => e.message), "warning"));
                 if (it.alternatives.length) {
@@ -56693,8 +56700,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const cx = wwOscState.cross;
             cx.seq += 1;
             cx.phase = "idle"; cx.request = null; cx.result = null; cx.message = ""; cx.drawn = null;
-            wwOscModeShapeClear();
-            wwOscCoherenceClear();
         }
 
         // The signals offered for comparison: every OTHER eligible catalogue signal (calculated channels included, live).
@@ -56748,8 +56753,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             };
             const entries = [primaryEntry].concat(others.map((signal) => wwOscCrossEntry(signal, sp.request)));
             cx.seq += 1;
-            wwOscModeShapeClear(); // a new run invalidates the relative-phase evidence of the previous one
-            wwOscCoherenceClear();
             const seq = cx.seq;
             // `request` ties the result to the spectrum's exact setup AND the exact signals compared.
             cx.phase = "loading"; cx.result = null; cx.message = ""; cx.drawn = null;
@@ -56778,10 +56781,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (cx.seq !== seq) return; // superseded, or the spectrum / a compared signal changed meanwhile
             cx.phase = outcome.phase; cx.result = outcome.result || null; cx.message = outcome.message || "";
             wwOscRenderCross();
-            if (outcome.phase === "ready" && entries.length > 1) {
-                wwOscRunModeShape(entries, sp.request);
-                wwOscRunCoherence(entries, sp.request);
-            }
         }
 
         // Does the stored comparison still describe the CURRENT setup and signals?
@@ -56923,87 +56922,57 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // ------------------------------------------------------------------
-        // Coherence Evidence (DEC-181 [PROPOSAL]). For the components seen in two or more of the compared signals the BACKEND re-derives the
-        // components from workspace state, takes the time alignment from the synchronization model (the request carries no offset and no
-        // result) and returns the magnitude-squared coherence between a reference member and each other member: the value at the bin
-        // nearest the component frequency, the local band, the chance level, the averaging, the common interval, the Why and the
-        // limitations. The page draws those fields; it estimates, compares and describes nothing itself. Evidence only.
+        // Coherence Evidence (DEC-181) and Mode Shape / Relative Phase (DEC-180), drawn from the interpretation response (DEC-182). The ONE
+        // interpretation request returns the mode shape and the coherence of every component seen in two or more compared signals, computed by the
+        // BACKEND from the same analysis pass (workspace state, the synchronization model's Time Group alignment, no offset and no result from
+        // the browser) and already consumed by the interpretation. The page draws those fields; it estimates, compares and describes nothing
+        // itself. Evidence only.
         // ------------------------------------------------------------------
 
-        function wwOscCoherenceClear() {
-            const c = wwOscState.coherence;
-            c.seq += 1;
-            c.phase = "idle"; c.request = null; c.result = null; c.message = "";
-        }
-
-        async function wwOscRunCoherence(entries, setup) {
-            const c = wwOscState.coherence;
-            c.seq += 1;
-            const seq = c.seq;
-            c.phase = "loading"; c.result = null; c.message = "";
-            c.request = { setup: setup, entries: entries.map((e) => ({ key: e.key, revision: e.revision })) };
-            wwOscRenderCoherence();
-            let outcome;
-            try {
-                const response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/oscillation-analysis/coherence",
-                    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-                        frequency_min_hz: setup.fMinHz, frequency_max_hz: setup.fMaxHz,
-                        signals: entries.map((e) => ({ input: e.input, representation: e.representation, signal_revision: e.revision,
-                                                       window_start_s: e.start, window_end_s: e.end, label: e.label })) }) }
-                );
-                let body = null;
-                try { body = await response.json(); } catch (error) { /* handled below */ }
-                if (!response.ok || !body || (body.status !== "ok" && body.status !== "no_components")) {
-                    const detail = body && body.detail && body.detail.message;
-                    outcome = { phase: "error", message: detail || "The coherence could not be computed." };
-                } else {
-                    outcome = { phase: "ready", result: body };
-                }
-            } catch (error) {
-                outcome = { phase: "error", message: "Could not reach the backend to compute the coherence." };
-            }
-            if (c.seq !== seq) return; // superseded, or the comparison changed meanwhile
-            c.phase = outcome.phase; c.result = outcome.result || null; c.message = outcome.message || "";
-            wwOscRenderCoherence();
+        // The mode shape / coherence block of the current comparison, or null when there is none (no comparison yet, or no longer current).
+        function wwOscSpatialResult(kind) {
+            const cx = wwOscState.cross;
+            if (cx.phase !== "ready" || !cx.result || !cx.request || cx.request.entries.length < 2) return null;
+            if (!cx.request.entries.every((entry) => wwSignalCatalogueIsCurrent(entry.key, entry.revision))) return null;
+            return cx.result[kind] || null;
         }
 
         const WW_OSC_COHERENCE_RULES = { mode_shape_reference: "the Mode Shape reference", highest_candidate_prominence: "the member with the highest candidate prominence" };
         const WW_OSC_COHERENCE_KINDS = { same_variable: "same variable", cross_variable: "cross-variable" };
 
-        function wwOscRenderCoherence() {
-            const host = document.getElementById("wwOscCoh");
-            if (!host) return;
-            const c = wwOscState.coherence, cx = wwOscState.cross;
-            const stateEl = document.getElementById("wwOscCohState");
-            const bodyEl = document.getElementById("wwOscCohBody");
-            const noteEl = document.getElementById("wwOscCohNote");
-            const show = (kind, text) => { stateEl.hidden = !text; stateEl.dataset.kind = kind; stateEl.textContent = text; };
-            const reset = (kind, text) => { bodyEl.replaceChildren(); noteEl.hidden = true; show(kind, text); };
-            if (c.phase === "idle" || !c.request) { host.hidden = true; reset("idle", ""); return; }
+        function wwOscSpatialShell(hostId, stateId, bodyId, noteId, kind) {
+            const host = document.getElementById(hostId);
+            if (!host) return null;
+            const stateEl = document.getElementById(stateId), bodyEl = document.getElementById(bodyId), noteEl = document.getElementById(noteId);
+            const show = (state, text) => { stateEl.hidden = !text; stateEl.dataset.kind = state; stateEl.textContent = text; };
+            const result = wwOscSpatialResult(kind);
+            if (!result) { host.hidden = true; bodyEl.replaceChildren(); noteEl.hidden = true; show("idle", ""); return null; }
             host.hidden = false;
-            if (c.phase === "loading") { reset("loading", "Estimating coherence…"); return; }
-            if (c.phase === "error") { reset("error", c.message || "The coherence could not be computed."); return; }
-            if (!c.result || !c.request.entries.every((entry) => wwSignalCatalogueIsCurrent(entry.key, entry.revision))) { reset("idle", ""); return; }
-            const stale = cx.phase !== "ready" || !wwOscCrossCurrent();
+            const stale = !wwOscCrossCurrent();
             host.dataset.stale = stale ? "true" : "false";
             show(stale ? "stale" : "current", stale ? "Analysis settings changed — run Analyze and Compare again" : "");
-            const result = c.result;
+            bodyEl.replaceChildren();
             const el = (tag, className, text) => {
                 const node = document.createElement(tag);
                 if (className) node.className = className;
                 if (text !== undefined) node.textContent = text;
                 return node;
             };
-            const list = (items, kind) => {
+            const list = (items, listKind) => {
                 const ul = document.createElement("ul");
-                for (const item of items) { const li = el("li", "", item); li.dataset.kind = kind; ul.appendChild(li); }
+                for (const item of items) { const li = el("li", "", item); li.dataset.kind = listKind; ul.appendChild(li); }
                 return ul;
             };
+            return { result: result, bodyEl: bodyEl, noteEl: noteEl, el: el, list: list };
+        }
+
+        function wwOscRenderCoherence() {
+            const shell = wwOscSpatialShell("wwOscCoh", "wwOscCohState", "wwOscCohBody", "wwOscCohNote", "coherence");
+            if (!shell) return;
+            const { result, bodyEl, noteEl, el, list } = shell;
             const fmt = wwOscFormat;
-            bodyEl.replaceChildren();
             if (!result.components.length) {
-                bodyEl.appendChild(el("div", "ww-osc-detect-none", result.message || "No component is observed in two or more of the compared signals."));
+                bodyEl.appendChild(el("div", "ww-osc-detect-none", "No component is observed in two or more of the compared signals."));
             }
             for (const comp of result.components) {
                 const card = el("div", "ww-osc-interp-component");
@@ -57066,50 +57035,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // ------------------------------------------------------------------
-        // Mode Shape / Relative Phase (DEC-180 [PROPOSAL]). For the components seen in two or more of the compared signals the BACKEND
-        // re-derives the components from workspace state, takes the time alignment from the synchronization model (the request carries
-        // no offset and no phase) and returns, per comparable quantity group, the reference, each member's participation and relative
-        // phase, the stability, the Why and the limitations. The page draws those fields; it estimates, normalises, wraps and
-        // describes nothing itself. Evidence only: nothing here is a classification.
+        // Mode Shape / Relative Phase (DEC-180 [APPROVED]); see the note above for where the data comes from.
         // ------------------------------------------------------------------
-
-        function wwOscModeShapeClear() {
-            const m = wwOscState.modeShape;
-            m.seq += 1;
-            m.phase = "idle"; m.request = null; m.result = null; m.message = "";
-        }
-
-        async function wwOscRunModeShape(entries, setup) {
-            const m = wwOscState.modeShape;
-            m.seq += 1;
-            const seq = m.seq;
-            m.phase = "loading"; m.result = null; m.message = "";
-            m.request = { setup: setup, entries: entries.map((e) => ({ key: e.key, revision: e.revision })) };
-            wwOscRenderModeShape();
-            let outcome;
-            try {
-                const response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/oscillation-analysis/mode-shape",
-                    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-                        frequency_min_hz: setup.fMinHz, frequency_max_hz: setup.fMaxHz,
-                        signals: entries.map((e) => ({ input: e.input, representation: e.representation, signal_revision: e.revision,
-                                                       window_start_s: e.start, window_end_s: e.end, label: e.label })) }) }
-                );
-                let body = null;
-                try { body = await response.json(); } catch (error) { /* handled below */ }
-                if (!response.ok || !body || (body.status !== "ok" && body.status !== "no_components")) {
-                    const detail = body && body.detail && body.detail.message;
-                    outcome = { phase: "error", message: detail || "The relative phase could not be computed." };
-                } else {
-                    outcome = { phase: "ready", result: body };
-                }
-            } catch (error) {
-                outcome = { phase: "error", message: "Could not reach the backend to compute the relative phase." };
-            }
-            if (m.seq !== seq) return; // superseded, or the comparison changed meanwhile
-            m.phase = outcome.phase; m.result = outcome.result || null; m.message = outcome.message || "";
-            wwOscRenderModeShape();
-        }
 
         function wwOscModePhaseText(value) {
             if (value === null || value === undefined) return "—";
@@ -57124,37 +57051,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwOscRenderModeShape() {
-            const host = document.getElementById("wwOscMode");
-            if (!host) return;
-            const m = wwOscState.modeShape, cx = wwOscState.cross;
-            const stateEl = document.getElementById("wwOscModeState");
-            const bodyEl = document.getElementById("wwOscModeBody");
-            const noteEl = document.getElementById("wwOscModeNote");
-            const show = (kind, text) => { stateEl.hidden = !text; stateEl.dataset.kind = kind; stateEl.textContent = text; };
-            const reset = (kind, text) => { bodyEl.replaceChildren(); noteEl.hidden = true; show(kind, text); };
-            if (m.phase === "idle" || !m.request) { host.hidden = true; reset("idle", ""); return; }
-            host.hidden = false;
-            if (m.phase === "loading") { reset("loading", "Estimating relative phase…"); return; }
-            if (m.phase === "error") { reset("error", m.message || "The relative phase could not be computed."); return; }
-            if (!m.result || !m.request.entries.every((entry) => wwSignalCatalogueIsCurrent(entry.key, entry.revision))) { reset("idle", ""); return; }
-            const stale = cx.phase !== "ready" || !wwOscCrossCurrent();
-            host.dataset.stale = stale ? "true" : "false";
-            show(stale ? "stale" : "current", stale ? "Analysis settings changed — run Analyze and Compare again" : "");
-            const result = m.result;
-            const el = (tag, className, text) => {
-                const node = document.createElement(tag);
-                if (className) node.className = className;
-                if (text !== undefined) node.textContent = text;
-                return node;
-            };
-            const list = (items, kind) => {
-                const ul = document.createElement("ul");
-                for (const item of items) { const li = el("li", "", item); li.dataset.kind = kind; ul.appendChild(li); }
-                return ul;
-            };
-            bodyEl.replaceChildren();
+            const shell = wwOscSpatialShell("wwOscMode", "wwOscModeState", "wwOscModeBody", "wwOscModeNote", "mode_shape");
+            if (!shell) return;
+            const { result, bodyEl, noteEl, el, list } = shell;
             if (!result.components.length) {
-                bodyEl.appendChild(el("div", "ww-osc-detect-none", result.message || "No component is observed in two or more of the compared signals."));
+                bodyEl.appendChild(el("div", "ww-osc-detect-none", "No component is observed in two or more of the compared signals."));
             }
             for (const comp of result.components) {
                 const card = el("div", "ww-osc-interp-component");

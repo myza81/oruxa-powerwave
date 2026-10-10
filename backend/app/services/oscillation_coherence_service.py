@@ -46,6 +46,29 @@ def _reference(shape: dict, usable: list[dict]) -> tuple[int, str, dict[int, flo
     return strongest["signal_index"], REFERENCE_RULE_PROMINENCE, {}
 
 
+def coherence_component(comp: dict, shape: dict, analysed_by_index: dict, window_of, alignments: dict) -> dict:
+    """The coherence evidence of ONE component. `shape` is that component's mode shape (computed once by the caller): its reference is the
+    coherence reference and its phases give the low-coherence warning; the mode-shape numbers are not changed."""
+    members = build_component_members(comp, analysed_by_index, window_of, alignments)
+    usable = [m for m in members if "t" in m]
+    excluded = [{"signal_index": m["signal_index"], "label": m["label"], "reason_code": m["reason_code"], "message": m["message"]}
+                for m in members if "t" not in m]
+    item = {"component_id": comp["id"], "component_frequency_hz": comp["representative_frequency_hz"], "signal_count": comp["signal_count"],
+            "excluded_members": excluded, "reference": None, "reference_rule": None, "pairs": [], "other_pairs": [], "limitations": [],
+            "cross_variable": None}
+    if len(usable) >= 2:
+        reference_index, rule, phases = _reference(shape, usable)
+        result = co.analyse_component(
+            members=usable, reference_index=reference_index, frequency_hz=comp["representative_frequency_hz"], phase_by_member=phases)
+        item.update(reference=result["reference"], reference_rule=rule, pairs=result["pairs"], other_pairs=result["other_pairs"],
+                    limitations=result["limitations"])
+        kinds = {p["relationship_type"] for p in result["pairs"]}
+        if len(kinds) > 1:
+            item["cross_variable"] = {"message": "Same-variable pairs corroborate the spatial / modal evidence; cross-variable pairs (different physical quantities) "
+                                                 "are supporting dynamic evidence only and are not equivalent to a mode shape."}
+    return item
+
+
 def compute_coherence(
     *,
     workspace_id: str,
@@ -66,24 +89,7 @@ def compute_coherence(
     for comp in select_components(components, component_frequency_hz):
         neighbours = [c["representative_frequency_hz"] for c in components if c is not comp]
         shape = mode_shape_component(comp, analysed_by_index, window_of, alignments, neighbours)
-        members = build_component_members(comp, analysed_by_index, window_of, alignments)
-        usable = [m for m in members if "t" in m]
-        excluded = [{"signal_index": m["signal_index"], "label": m["label"], "reason_code": m["reason_code"], "message": m["message"]}
-                    for m in members if "t" not in m]
-        item = {"component_id": comp["id"], "component_frequency_hz": comp["representative_frequency_hz"], "signal_count": comp["signal_count"],
-                "excluded_members": excluded, "reference": None, "reference_rule": None, "pairs": [], "other_pairs": [], "limitations": [],
-                "cross_variable": None}
-        if len(usable) >= 2:
-            reference_index, rule, phases = _reference(shape, usable)
-            result = co.analyse_component(
-                members=usable, reference_index=reference_index, frequency_hz=comp["representative_frequency_hz"], phase_by_member=phases)
-            item.update(reference=result["reference"], reference_rule=rule, pairs=result["pairs"], other_pairs=result["other_pairs"],
-                        limitations=result["limitations"])
-            kinds = {p["relationship_type"] for p in result["pairs"]}
-            if len(kinds) > 1:
-                item["cross_variable"] = {"message": "Same-variable pairs corroborate the spatial / modal evidence; cross-variable pairs (different physical quantities) "
-                                                     "are supporting dynamic evidence only and are not equivalent to a mode shape."}
-        out_components.append(item)
+        out_components.append(coherence_component(comp, shape, analysed_by_index, window_of, alignments))
     finished = _time.perf_counter()
     return {
         "status": "ok" if out_components else "no_components",

@@ -234,10 +234,12 @@ def get_interpretation(
     body: InterpretationRequest,
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    sync_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
 ) -> OscillationInterpretationOut:
     """Oscillation interpretation (DEC-179 [APPROVED]): the cross-signal evidence of one signal or an explicit set, plus a deterministic
     behaviour / probable-type interpretation of every component with structured supporting and limiting evidence. Every signal is
-    re-resolved and re-validated from workspace state; nothing is stored; no AI, no probability."""
+    re-resolved and re-validated from workspace state; nothing is stored; no AI, no probability. DEC-182: with two or more signals the mode shape and
+    coherence are computed once from the same analysis pass, integrated into the interpretation and returned beside the components."""
     if not workspace_id.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -251,7 +253,7 @@ def get_interpretation(
     try:
         result = compute_interpretation(
             workspace_id=workspace_id, entries=entries, f_min_hz=body.frequency_min_hz, f_max_hz=body.frequency_max_hz,
-            source_registry=source_registry, calc_registry=calc_registry,
+            source_registry=source_registry, calc_registry=calc_registry, sync_registry=sync_registry,
         )
     except ImportServiceError as exc:
         raise HTTPException(

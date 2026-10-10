@@ -50,11 +50,13 @@ def derive_components(
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
     sync_registry: SynchronizationRegistry,
+    include_damping: bool = False,
+    minimum: int = 2,
 ) -> dict:
     """The shared front half of the mode-shape and coherence evidence: validate, take the alignment from the synchronization model (the
     browser's offset is ignored), run the accepted per-signal chain (no damping) and group the DEC-178 components. `window_of(index)`
     lazily prepares a signal's analysis window (cached)."""
-    validate_entries([{**e, "offset_s": 0.0} for e in entries], f_min_hz, f_max_hz, minimum=2)
+    validate_entries([{**e, "offset_s": 0.0} for e in entries], f_min_hz, f_max_hz, minimum=minimum)
     started = _time.perf_counter()
     alignments = {v.source_id: v for v in list_source_alignments(
         workspace_id=workspace_id, registry=sync_registry, source_registry=source_registry)}
@@ -64,7 +66,7 @@ def derive_components(
         prepared_entries.append({**entry, "offset_s": view.effective_alignment_offset_s if view else 0.0})
     signal_rows, analysed = analyse_signals(
         workspace_id=workspace_id, entries=prepared_entries, f_min_hz=f_min_hz, f_max_hz=f_max_hz,
-        source_registry=source_registry, calc_registry=calc_registry, include_damping=False, keep_activity=True)
+        source_registry=source_registry, calc_registry=calc_registry, include_damping=include_damping, keep_activity=True)
     analysed_at = _time.perf_counter()
     components = cs.group_components(analysed)
     grouped_at = _time.perf_counter()
@@ -80,7 +82,7 @@ def derive_components(
                 source_registry=source_registry, calc_registry=calc_registry)
         return windows[index]
 
-    return {"signal_rows": signal_rows, "components": components, "alignments": alignments, "analysed_by_index": analysed_by_index,
+    return {"signal_rows": signal_rows, "analysed": analysed, "components": components, "alignments": alignments, "analysed_by_index": analysed_by_index,
             "window_of": window_of, "started": started, "analysed_at": analysed_at, "grouped_at": grouped_at}
 
 
@@ -229,3 +231,7 @@ def _build_member(raw: dict, signal: dict, window_of, frequency_hz: float) -> di
     # The STFT episode is long-windowed (tens of seconds at low frequency); restrict it to where the component is actually active.
     episodes = [run for episode in episodes for run in ms.refine_episode(t_ws, x, frequency_hz, episode)]
     return {**raw, "t": t_ws, "x": x, "episodes": episodes, "warnings": warnings}
+
+
+#: Public name of the per-component mode shape (used by the coherence and the interpretation services).
+component_mode_shape = _component
