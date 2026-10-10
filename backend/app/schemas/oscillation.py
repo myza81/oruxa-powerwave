@@ -593,3 +593,109 @@ class OscillationInterpretationOut(BaseModel):
     timings_ms: dict[str, float]
     signals: list[CrossSignalRowOut]
     components: list[InterpretedComponentOut] = []
+
+
+# ---------------------------------------------------------------- mode shape / relative phase (DEC-180 [PROPOSAL])
+
+class ModeShapeEntryIn(BaseModel):
+    """One compared signal. The alignment offset is NOT accepted: the backend takes it from the synchronization model."""
+
+    input: ChannelRefIn
+    representation: str = "native"
+    signal_revision: str | None = None
+    window_start_s: float
+    window_end_s: float
+    label: str | None = None
+
+
+class ModeShapeRequest(BaseModel):
+    signals: list[ModeShapeEntryIn] = Field(min_length=2, max_length=8)
+    frequency_min_hz: float
+    frequency_max_hz: float
+    #: Restrict the result to the component whose representative frequency matches this (optional; default: every component seen in 2+ signals).
+    component_frequency_hz: float | None = None
+
+
+class ModeShapeStabilityOut(BaseModel):
+    #: `stable` | `unstable` | `unavailable`
+    status: str
+    valid_subwindows: int
+    subwindows: int
+    circular_mean_deg: float | None = None
+    circular_spread_deg: float | None = None
+    max_deviation_deg: float | None = None
+    subwindow_phase_deg: list[float] = []
+    message: str
+
+
+class ModeShapeMemberOut(BaseModel):
+    signal_index: int
+    label: str
+    recording: str | None = None
+    #: `raw` | `calculated`
+    origin: str
+    signal_type: str
+    unit: str | None = None
+    time_group_id: str | None = None
+    candidate_frequency_hz: float
+    prominence_db: float
+    #: `ok` | `insufficient_evidence` | `unavailable`
+    status: Literal["ok", "insufficient_evidence", "unavailable"]
+    reason_code: str | None = None
+    message: str | None = None
+    #: Fitted oscillation amplitude in the signal's own unit, at the start of the common interval (null when no fit was made).
+    amplitude: float | None = None
+    #: A / max(A) within the comparable quantity group only.
+    relative_amplitude: float | None = None
+    #: Degrees in [-180, +180); positive = leads the reference; the reference is 0. Null when no number may be given.
+    phase_deg: float | None = None
+    #: White-noise approximation of the phase standard deviation of the fit, degrees (informational).
+    phase_uncertainty_deg: float | None = None
+    fit_power_ratio: float | None = None
+    #: Exponential envelope rate used in the fit, 1/s (positive = decaying); amplitude is referred to the start of the common interval.
+    envelope_rate_per_s: float | None = None
+    samples_used: int | None = None
+    is_reference: bool = False
+    phase_stability: ModeShapeStabilityOut | None = None
+    reasons: list[DetectionEvidenceOut] = []
+    warnings: list[DetectionEvidenceOut] = []
+
+
+class ModeShapeGroupOut(BaseModel):
+    quantity_type: str
+    unit: str | None = None
+    #: False when the quantity is not classified: nothing is compared.
+    comparable: bool
+    status: Literal["ok", "insufficient_evidence", "unavailable"]
+    reason_code: str | None = None
+    message: str | None = None
+    projection_frequency_hz: float | None = None
+    frequency_refinement: dict[str, Any] | None = None
+    common_interval: dict[str, Any] | None = None
+    cycles_used: float | None = None
+    reference: dict[str, Any] | None = None
+    distinct_measurement_count: int
+    members: list[ModeShapeMemberOut]
+    phase_pattern: dict[str, Any]
+    reasons: list[DetectionEvidenceOut]
+    limitations: list[DetectionEvidenceOut]
+
+
+class ModeShapeComponentOut(BaseModel):
+    component_id: int
+    component_frequency_hz: float
+    frequency_spread_hz: float
+    match_tolerance_hz: float
+    signal_count: int
+    groups: list[ModeShapeGroupOut]
+    cross_variable: dict[str, Any] | None = None
+
+
+class OscillationModeShapeOut(BaseModel):
+    status: Literal["ok", "no_components"]
+    message: str | None = None
+    setup: dict[str, float]
+    parameters: dict[str, float | int | str | bool]
+    timings_ms: dict[str, float]
+    signals: list[CrossSignalRowOut]
+    components: list[ModeShapeComponentOut] = []

@@ -230,3 +230,31 @@ def test_interpretation_is_drawn_from_the_backend_response_and_decides_nothing()
     assert "Oscillation Interpretation" in panel
     for forbidden in ("electromechanical", "inter-area", "ringdown", "persistent", "peak", "dominant"):
         assert forbidden not in panel.lower(), forbidden
+
+
+def test_mode_shape_is_drawn_from_the_backend_and_sends_no_offset_or_phase():
+    """DEC-180 [PROPOSAL]: the page asks the backend for the relative phase of the SAME entries a Compare sent -- with no alignment offset
+    and no phase -- and draws the returned reference, participation, phase, stability, Why and limitations. It estimates nothing."""
+    script = _osc_script()
+    assert script.count("/oscillation-analysis/mode-shape") == 1
+    code = chr(10).join(line for line in script.splitlines() if not line.strip().startswith("//"))
+    # the definition + the single call after a successful comparison; a new run / clear invalidates the result
+    assert code.count("wwOscRunModeShape(") == 2
+    assert 'if (outcome.phase === "ready" && entries.length > 1) wwOscRunModeShape(entries, sp.request);' in script
+    assert "wwOscModeShapeClear();" in _between("function wwOscCrossClear", "// Time-Frequency Spectrogram (STFT, DEC-176")
+    run = _between("async function wwOscRunModeShape", "function wwOscModePhaseText")
+    assert "m.seq !== seq" in run
+    for forbidden in ("offset", "phase_deg", "relative_amplitude"):
+        assert forbidden not in run, forbidden
+    render = _between("function wwOscRenderModeShape", "// Time-Frequency Spectrogram (STFT, DEC-176")
+    render = chr(10).join(line for line in render.splitlines() if not line.strip().startswith("//"))
+    for needle in ("group.reference.label", "member.relative_amplitude", "member.phase_deg", "group.phase_pattern.label", "group.reasons",
+                   "group.limitations", "comp.cross_variable", "wwOscCrossCurrent()", "wwSignalCatalogueIsCurrent(entry.key, entry.revision)"):
+        assert needle in render, needle
+    for forbidden in ("Math.", "inter-area", "local mode", "sub-synchronous", "SSO", "forced", "confirmed", "confidence", "probability",
+                      "fetch(", "wwSignalCatalogueList("):
+        assert forbidden not in render, forbidden
+    panel = _between('id="wwOscMode"', 'id="wwOscModeNote"')
+    assert "Mode Shape / Relative Phase" in panel
+    for forbidden in ("inter-area", "local mode", "electromechanical"):
+        assert forbidden not in panel.lower(), forbidden

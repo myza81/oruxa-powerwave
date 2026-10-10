@@ -11,6 +11,8 @@ from app.schemas.oscillation import (
     OscillationCrossSignalOut,
     OscillationCrossSignalRequest,
     InterpretationRequest,
+    ModeShapeRequest,
+    OscillationModeShapeOut,
     OscillationDampingOut,
     OscillationInterpretationOut,
     OscillationDampingRequest,
@@ -27,9 +29,11 @@ from app.services.errors import ImportServiceError
 from app.services.oscillation_cross_signal_service import compute_cross_signal
 from app.services.oscillation_damping_service import compute_damping
 from app.services.oscillation_interpretation_service import compute_interpretation
+from app.services.oscillation_mode_shape_service import compute_mode_shape
 from app.services.oscillation_representation_service import derive_analysis_representation, describe
 from app.services.oscillation_spectrogram_service import compute_spectrogram
 from app.services.oscillation_spectrum_service import compute_spectrum
+from app.services.synchronization_registry import SynchronizationRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/oscillation-analysis", tags=["oscillation-analysis"])
@@ -59,6 +63,10 @@ def get_workspace_registry(request: Request) -> WorkspaceRegistry:
 
 def get_calculated_channel_registry(request: Request) -> CalculatedChannelRegistry:
     return request.app.state.calculated_channel_registry
+
+
+def get_synchronization_registry(request: Request) -> SynchronizationRegistry:
+    return request.app.state.synchronization_registry
 
 
 @router.post("/representation", response_model=OscillationRepresentationOut)
@@ -248,3 +256,38 @@ def get_interpretation(
             detail=ErrorOut(code=exc.code, message=exc.message).model_dump(),
         ) from exc
     return OscillationInterpretationOut(**result)
+
+
+@router.post("/mode-shape", response_model=OscillationModeShapeOut)
+def get_mode_shape(
+    workspace_id: str,
+    body: ModeShapeRequest,
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    sync_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
+) -> OscillationModeShapeOut:
+    """Mode shape / relative phase of the cross-signal components (DEC-180 [PROPOSAL]): the components are re-derived by the backend from
+    workspace state, the alignment comes from the synchronization model (no client offset or phase is accepted) and every comparable
+    quantity group is projected onto one common frequency over one common interval. Nothing is stored and nothing is classified."""
+    if not workspace_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorOut(code="invalid_workspace", message="workspace_id must not be blank.").model_dump(),
+        )
+    entries = [
+        {"input_ref": s.input.to_domain(), "representation": s.representation, "signal_revision": s.signal_revision,
+         "window_start_s": s.window_start_s, "window_end_s": s.window_end_s, "label": s.label}
+        for s in body.signals
+    ]
+    try:
+        result = compute_mode_shape(
+            workspace_id=workspace_id, entries=entries, f_min_hz=body.frequency_min_hz, f_max_hz=body.frequency_max_hz,
+            component_frequency_hz=body.component_frequency_hz,
+            source_registry=source_registry, calc_registry=calc_registry, sync_registry=sync_registry,
+        )
+    except ImportServiceError as exc:
+        raise HTTPException(
+            status_code=_STATUS_BY_ERROR_CODE.get(exc.code, status.HTTP_400_BAD_REQUEST),
+            detail=ErrorOut(code=exc.code, message=exc.message).model_dump(),
+        ) from exc
+    return OscillationModeShapeOut(**result)

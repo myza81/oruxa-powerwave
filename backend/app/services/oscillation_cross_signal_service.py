@@ -14,6 +14,7 @@ from __future__ import annotations
 from app.domain import cross_signal_evidence as cs
 from app.domain.calculated_channel import ChannelRef
 from app.domain.channel_classification import UNDEFINED
+from app.domain.mode_shape import track_activity
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.errors import ImportServiceError
 from app.services.oscillation_damping_service import compute_damping
@@ -97,9 +98,13 @@ def analyse_signals(
     f_max_hz: float,
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
+    include_damping: bool = True,
+    keep_activity: bool = False,
 ) -> tuple[list[dict], list[dict]]:
     """Run the accepted per-signal chain (spectrum + candidates, damping, spectrogram) for already validated `entries`.
-    Returns (`signal rows` for the response, `analysed` signal dicts for grouping / interpretation)."""
+    Returns (`signal rows` for the response, `analysed` signal dicts for grouping / interpretation).
+    `include_damping=False` skips the DEC-177 estimate (the mode-shape evidence does not use it); `keep_activity=True` keeps each
+    candidate's per-slice STFT activity (`activity`, rank -> track) for the mode-shape common interval. Defaults change nothing."""
     lineage = _Lineage(workspace_id, source_registry, calc_registry)
     signal_rows: list[dict] = []
     analysed: list[dict] = []
@@ -123,7 +128,8 @@ def analyse_signals(
         )
         try:
             spectrum = compute_spectrum(**common)
-            damping = compute_damping(signal_revision=entry.get("signal_revision"), candidate_frequencies_hz=None, spectrum=spectrum, **common)
+            damping = (compute_damping(signal_revision=entry.get("signal_revision"), candidate_frequencies_hz=None, spectrum=spectrum, **common)
+                       if include_damping else {"results": []})
             gram = compute_spectrogram(signal_revision=entry.get("signal_revision"), **common)
         except ImportServiceError as exc:
             row.update(status="excluded", reason_code=exc.code, message=exc.message)
@@ -138,15 +144,19 @@ def analyse_signals(
         by_rank_damping = {r["rank"]: r for r in damping["results"]}
         row["damping_available_count"] = sum(1 for r in damping["results"] if r["status"] == "available")
         temporal: dict[int, dict] = {}
+        activity: dict[int, dict | None] = {}
         if gram["status"] == "ok":
             for c in candidates:
                 temporal[c["rank"]] = cs.active_interval(
                     gram["times_s"], gram["frequencies_hz"], gram["psd"], c["frequency_hz"], gram["stft"]["window_s"])
+                if keep_activity:
+                    activity[c["rank"]] = track_activity(gram["times_s"], gram["frequencies_hz"], gram["psd"], c["frequency_hz"])
         analysed.append({
             "index": index, "label": label, "signal_type": row["signal_type"], "recording": sig["source_id"],
             "recording_label": row["recording"], "origin": row["origin"], "lineage_roots": sorted(lineage.roots(ref)),
             "offset_s": entry["offset_s"], "bin_spacing_hz": row["bin_spacing_hz"], "candidates": candidates,
             "damping": {rank: _damping_summary(r) for rank, r in by_rank_damping.items()}, "temporal": temporal,
+            "activity": activity, "unit": sig.get("unit"),
             # Additive context for the interpretation (DEC-179); grouping ignores it.
             "window_start_s": spectrum["window"]["start_s"], "window_end_s": spectrum["window"]["end_s"],
             "representation": entry["representation"],

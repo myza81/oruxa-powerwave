@@ -2365,3 +2365,100 @@ test.describe("Oscillation Analysis -- oscillation interpretation", () => {
     expect(m.scroll).toBeLessThanOrEqual(m.viewport + 1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Mode Shape / Relative Phase (DEC-180 [PROPOSAL]). Two MW signals of one recording carry the same decaying 1.15 Hz component; the
+// backend returns the reference, each member's participation and relative phase, the stability, the Why and the limitations, and the
+// page draws them. No alignment offset or phase is ever sent by the browser, and nothing is classified.
+// ---------------------------------------------------------------------------
+const MODE_CHANNELS = [
+  { name: "FREQ", unit: "Hz", amplitude: 0.075, components: [{ amplitude: 0.05, frequencyHz: 4.95, onsetS: 10, decayPerS: 0.15 }] },
+  { name: "P_A", unit: "MW", amplitude: 150, components: [{ amplitude: 100, frequencyHz: 1.15, onsetS: 10, decayPerS: 0.06 }] },
+  { name: "P_B", unit: "MW", amplitude: 90, components: [{ amplitude: 60, frequencyHz: 1.15, onsetS: 10, decayPerS: 0.06 }] },
+];
+const isModeShape = (r) => r.url().endsWith("/oscillation-analysis/mode-shape");
+
+async function modeShapeCompared(page) {
+  await openOscillation(page);
+  await uploadSynthetic(page, { durationS: 90, channels: MODE_CHANNELS });
+  await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_A"));
+  await setBand(page, 0.25, 8);
+  await page.locator("#wwOscAnalyzeBtn").click();
+  await expect(page.locator("#wwOscCross")).toBeVisible();
+  await tick(page, "P_B");
+  await page.locator("#wwOscCrossBtn").click();
+  await expect(page.locator("#wwOscModeBody .ww-osc-interp-component").first()).toBeVisible();
+}
+
+test.describe("Oscillation Analysis -- mode shape / relative phase", () => {
+  test("hidden until a comparison; then draws the reference, participation, phase, Why and limitations", async ({ page }) => {
+    const requests = [];
+    page.on("request", (r) => { if (isModeShape(r)) requests.push(r.postDataJSON()); });
+    await openOscillation(page);
+    await uploadSynthetic(page, { durationS: 90, channels: MODE_CHANNELS });
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_A"));
+    await setBand(page, 0.25, 8);
+    await expect(page.locator("#wwOscMode")).toBeHidden();
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscCross")).toBeVisible();
+    await expect(page.locator("#wwOscInterpBody .ww-osc-interp-component").first()).toBeVisible();
+    await expect(page.locator("#wwOscMode")).toBeHidden();            // the reference-only baseline is not a comparison
+    expect(requests).toHaveLength(0);
+    await tick(page, "P_B");
+    await page.locator("#wwOscCrossBtn").click();
+    await expect(page.locator("#wwOscModeBody .ww-osc-interp-component").first()).toBeVisible();
+    expect(requests).toHaveLength(1);
+    expect(requests[0].signals.map((s) => s.input.channel_name)).toEqual(["P_A", "P_B"]);
+    for (const s of requests[0].signals) expect(Object.keys(s)).not.toContain("offset_s");   // alignment comes from the backend
+    expect(JSON.stringify(requests[0])).not.toContain("phase");
+    await expect(page.locator("#wwOscMode .ww-osc-detect-title")).toHaveText("Mode Shape / Relative Phase");
+    const group = page.locator('#wwOscModeBody .ww-osc-mode-group[data-quantity="Power"]');
+    await expect(group).toBeVisible();
+    await expect(group).toContainText("Reference: P_A");
+    await expect(group.locator("table th")).toHaveText(["Signal", "Recording", "Participation", "Relative phase", "Amplitude", "Phase stability"]);
+    await expect(group.locator('tr[data-signal="P_A"]')).toContainText("(reference)");
+    await expect(group.locator('tr[data-signal="P_A"] td').nth(2)).toHaveText("100 %");
+    await expect(group.locator('tr[data-signal="P_A"] td').nth(3)).toHaveText("0°");
+    const other = group.locator('tr[data-signal="P_B"] td');
+    await expect(other.nth(2)).toHaveText(/^[1-9]\d(\.\d+)? %$/);       // a participation below the reference
+    const phase = await other.nth(3).innerText();
+    expect(Math.abs(parseFloat(phase))).toBeLessThan(15);                // built with the same phase: in phase
+    await expect(group.locator("[data-pattern]")).toHaveText("Approximately in phase");
+    await expect(group.locator(".ww-osc-detect-label", { hasText: "Why" })).toBeVisible();
+    await expect(group.locator(".ww-osc-detect-label", { hasText: "Limitations" })).toBeVisible();
+    const text = await page.locator("#wwOscModeBody").innerText();
+    expect(text).toContain("P_A is the phase reference (0°)");
+    expect(text).toContain("do not establish that the signals represent different grid areas");
+    expect(text).toContain("does not confirm an inter-area mode");
+    const lower = text.toLowerCase();
+    for (const word of ["probability", "confidence", "local mode", "sso"]) expect(lower).not.toContain(word);
+    await expect(page.locator("#wwOscModeNote")).toContainText("positive = the member leads the reference");
+    await expect(page.locator("#wwOscModeNote")).toContainText("no oscillation type is inferred");
+  });
+
+  test("the interpretation still says that relative phase / mode-shape evidence is unavailable (DEC-179 is unchanged)", async ({ page }) => {
+    await modeShapeCompared(page);
+    await expect(page.locator("#wwOscInterpNote")).toContainText("no phase, mode-shape, coherence or location evidence exists yet");
+    const types = await page.evaluate(() => wwOscState.cross.result.components.map((c) => c.interpretation.probable_type.code));
+    expect(types.length).toBeGreaterThan(0);
+  });
+
+  test("changing the settings marks the relative phase not current; restoring them restores it", async ({ page }) => {
+    await modeShapeCompared(page);
+    await expect(page.locator("#wwOscMode")).toHaveAttribute("data-stale", "false");
+    await setBand(page, 0.3, 8);
+    await expect(page.locator("#wwOscMode")).toHaveAttribute("data-stale", "true");
+    await expect(page.locator("#wwOscModeState")).toHaveText("Analysis settings changed — run Analyze and Compare again");
+    await setBand(page, 0.25, 8);
+    await expect(page.locator("#wwOscMode")).toHaveAttribute("data-stale", "false");
+  });
+
+  test("fits a narrow viewport without horizontal page overflow", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await modeShapeCompared(page);
+    const m = await page.evaluate(() => ({ right: document.getElementById("wwOscMode").getBoundingClientRect().right, viewport: window.innerWidth,
+      scroll: document.documentElement.scrollWidth }));
+    expect(m.right).toBeLessThanOrEqual(m.viewport + 1);
+    expect(m.scroll).toBeLessThanOrEqual(m.viewport + 1);
+  });
+});

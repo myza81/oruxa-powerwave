@@ -26086,3 +26086,90 @@ cache keyed by the setup would remove that single extra pass. (6) Should `Probab
 
 Tests: `backend/tests/test_oscillation_classification.py`, `test_oscillation_cross_signal.py` (regression), `test_frontend_oscillation_analysis_shell.py` (updated +
 `test_interpretation_is_drawn_from_the_backend_response_and_decides_nothing`), `browser-tests/oscillation_setup.spec.js` ("oscillation interpretation").
+
+
+## DEC-180 -- Oscillation Analysis mode shape / relative phase: comparable-quantity projection of a cross-signal component onto one common frequency and interval
+
+Status: **[APPROVED]** (owner, 2026-10-10; was `[PROPOSAL]`; real-event UAT caveat below) -- implemented on `feat/event-reconstruction`, committed as `feat: add oscillation mode-shape analysis`. Builds on DEC-171..179 and changes none of them
+(Welch / DEC-175 candidates / DEC-176 STFT / DEC-177 damping / DEC-178 grouping / DEC-179 classification are untouched; `analyse_signals` gained two optional,
+default-preserving switches, `include_damping` and `keep_activity`). Scope: the **evidence layer** behind statements such as "possible inter-area
+electromechanical mode" -- *how do the signals of one matched component oscillate relative to one another in amplitude and phase?* **Not implemented
+(deliberately later):** any change to the DEC-179 classification (the interpretation still lists "relative phase / mode-shape evidence unavailable"),
+coherence, source localisation, forced-oscillation source identification, Prony / Matrix Pencil, automatic electrical-area clustering, **any AI**. **No
+probability, confidence score or "confirmed" wording. Every threshold is a Phase-1 engineering heuristic, not a standard.**
+
+**Comparable-quantity grouping (hard rule).** A relative phase is only formed between members of the same engineering type **and** unit (MW with MW,
+frequency with frequency, ...). Each such *quantity group* of a component is its own mode shape, with its own reference and its own normalisation. MW
+and Frequency (or MW and Voltage) are never merged into one vector; the cross-variable phase is **not computed in Phase 1** and the response says so
+(`cross_variable`). A signal type of `Undefined` is not established as any quantity and gets no comparison.
+
+**Time alignment (hard rule).** Alignment comes from the authoritative synchronization model
+(`synchronization_service.list_source_alignments`: Time Group + timestamp placement + manual offset), **never from the browser** -- the request has no offset
+and no phase field. Workspace time = source time + `effective_alignment_offset_s`. Phases are compared only inside one Time Group; the group holding most
+members (then the strongest candidate) defines the basis, and every member of another Time Group gets **no number**, only
+`phase comparison unavailable — recordings do not share a compatible aligned time basis`. A raw RMS-magnitude series is shifted back by its one-cycle
+RMS group delay so signals of different nominal frequency stay on one time basis.
+
+**Estimator (sinusoidal least-squares projection, NumPy only).** Over one common interval, at one common frequency `f`, each member is fitted by
+`x(t) = e^(-alpha tau) [a cos(w tau) + b sin(w tau)] + c0 + c1 (tau - D/2)/D`, `tau = t - t_start`, `w = 2 pi f`. `A = sqrt(a^2 + b^2)` (amplitude
+**at the start of the common interval**, the same instant for every member), `phi = atan2(-b, a)` (the oscillation is `A cos(w tau + phi)`). The same offset
+and linear trend are removed for every member; no band-pass is used, so no filter-induced relative phase exists. The envelope rate `alpha` (one per
+member, found by a one-dimensional search whose every trial is a linear least-squares problem, |alpha| <= 8 / interval) keeps a ringdown from biasing the
+phase and the participation toward the early large cycles; the rate used is reported. The first design (constant amplitude) failed on a noiseless
+decaying signal, which is why the envelope is part of the model.
+
+**Common frequency.** The DEC-178 representative frequency, refined **jointly** (one frequency for all members of the quantity group: +-1 match tolerance,
+13-point coarse then 9-point fine grid maximising the sum of the members' normalised fitted power, searched on a sub-sample of at most 600 samples and at
+least 8 per cycle). Every member's own candidate frequency, the representative frequency, the spread and the search range are returned. A refined
+frequency at the edge of its range is flagged.
+
+**Common interval.** Per member, the DEC-178 STFT activity episodes (centres padded by half a hop) intersected with its analysis window and data range,
+then **restricted in time** by a one-cycle complex-demodulation envelope (the STFT windows are tens of seconds long at low frequency, so its active span
+reaches well before an onset; contiguous runs at >= sqrt(10 %) of the episode maximum -- the same -10 dB power rule as an amplitude -- trimmed half a period
+inward at interior edges). The members' episodes are intersected; **only the longest contiguous episode is used and episodes are never averaged** (a
+limitation names the number found). Start, end, duration and cycles are returned (workspace time).
+
+**Reference and normalisation.** Within each quantity group the valid member with the highest candidate prominence is the reference (0 degrees;
+a raw signal before a calculated one on a tie, then the lowest index) and is named in the result and in the Why. `relative_amplitude = A / max(A)` inside
+the quantity group only; the absolute amplitude is returned in the signal's own unit. A member on another time basis can never be the reference.
+
+**Phase convention.** `relative phase = wrap(phi_member - phi_reference)` in `[-180, +180)` degrees, **positive = the member leads the reference** (its
+cosine peaks earlier). Differences are always circular (`wrap`), never ordinary subtraction (+179 / -179 is -2, not 358). Proven by synthetic tests
+(+30, -60, 180, +/-179, a pure time shift of `tau` seconds = `+360 f tau` degrees).
+
+**Minimum evidence (heuristics).** At least 3 cycles in the common interval; at least 24 samples and 4 samples per cycle per member; the fitted
+oscillation power at least 2 x the residual power (3 dB; the residual holds noise, other modes and the unmodelled envelope). A group that fails is
+`insufficient_evidence` with the reason and **no number**. A component closer than 1 / interval to another component raises a
+`neighbouring_component` limitation. A white-noise estimate of each phase's standard deviation is returned as `phase_uncertainty_deg` (informational, not
+a probability).
+
+**Phase stability.** The common interval is split into up to 4 equal sub-windows (each >= 1.5 cycles); the relative phase is re-estimated in each with the
+member's own envelope. Returned: valid sub-windows, circular mean, circular spread (`sqrt(-2 ln R)`), largest deviation. `stable` = no valid sub-window
+deviates more than 30 degrees from the circular mean; otherwise `unstable` (the pattern then reads "not stable across the interval" instead of a band).
+
+**Descriptive pattern (not a classification).** Independent members against the reference: within +-30 degrees of 0 = `approximately in phase`; within
++-30 degrees of 180 = `approximately anti-phase`; otherwise `intermediate phase separation`; different bands = `mixed`; unstable or no independent
+member = `phase evidence unavailable`. Anti-phase is never called inter-area.
+
+**Provenance.** Lineage roots are reused from DEC-178. A raw signal and a calculated copy of it (or two calculated channels sharing a root) get a
+`shared_measurement_provenance` warning on every member involved and a group limitation; the group reports `distinct_measurement_count`; such a pair is
+**not** counted as spatial evidence (a group of only one distinct measurement has no pattern). Station / recording names are not used to infer grid
+areas, and a standing limitation says so.
+
+**API / UI.** `POST /api/v1/workspaces/{ws}/oscillation-analysis/mode-shape` (2-8 signals; optional `component_frequency_hz`); the backend re-derives the
+components and recomputes everything -- nothing computed by the frontend is accepted. The page section **Mode Shape / Relative Phase** (after the
+interpretation) is requested after a Compare for the same entries and draws, per quantity group: the reference, a table (signal, recording, participation,
+relative phase, amplitude, stability), the pattern label, Why, limitations and the convention note. It estimates nothing. No polar plot in this slice
+(the numerical table is authoritative; a graphic may be added later).
+
+**Real-event UAT caveat (recorded at approval).** The grouped-component wiring was verified on the real event. The real data correctly **refused** a phase estimate because the common active interval contained only **2.8 cycles**, below the 3-cycle Phase-1 minimum -- a conservative refusal, not a defect. A successful real-world relative-phase estimate remains desirable when a longer suitable event becomes available; the 3-cycle minimum is unchanged.
+
+**Open engineering questions for the owner (not decided here).** (1) Are the evidence thresholds (3 cycles, 2 x power ratio, +-30 degree bands, 30 degree
+stability limit) right on real events? (2) Should the cross-variable phase (e.g. MW vs frequency) be computed as supplementary evidence? (3) The
+reference is the most prominent member; should the analysed (reference) signal of the page be preferred instead? (4) Participation is the fitted
+amplitude at the start of the common interval; is that, or the interval-mean amplitude, preferred? (5) Angle / voltage-magnitude quantities are grouped
+by the catalogue's engineering type -- is a finer grouping (phase-to-neutral vs line-to-line, bus vs rotor angle) wanted? (6) When this evidence is
+approved, which classification refinements (inter-area promotion with phase evidence) should the next slice make?
+
+Tests: `backend/tests/test_oscillation_mode_shape.py` (domain accuracy with stated tolerances, conventions, interval, stability, provenance, service,
+time-alignment regression, API), `test_frontend_oscillation_analysis_shell.py` (static guard), `browser-tests/oscillation_setup.spec.js` ("mode shape").
