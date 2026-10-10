@@ -1,14 +1,17 @@
 """Manual Distance Protection form -> canonical model -> engine input.
 
-The manual form (and its API query parameters) is a set of three
-`ZoneSettings`, one characteristic and one impedance basis. This module maps
+The manual form (and its API query parameters) is a set of four
+`ZoneSettings` (three forward zones and the Reverse Zone slot), one
+characteristic and one impedance basis. The canonical model itself is not
+limited to four zones; four is only the manual presentation. This module maps
 that shape into the OEM-neutral canonical model with `manual_entry`
 provenance -- no document references, no relay profile -- so manual input
 and relay-file import share one model and one engine adapter.
 
 Manual semantics preserved exactly (they are the engine's own):
 - the zone ohms are in the selected impedance basis (primary/secondary);
-- zones are forward, phase-phase only; the mho reach `|Z|` and the
+- zones are phase-phase only and carry their own direction (forward, or
+  reverse for the fourth slot); the mho reach `|Z|` and the
   quadrilateral reactive reach are both distances along the zone's
   characteristic angle, so each is the polar reach `magnitude ∠ angle`;
 - forward/reverse resistive reach map to phase-phase / reverse resistive;
@@ -25,6 +28,8 @@ from __future__ import annotations
 from app.domain.distance_protection import (
     CHARACTERISTIC_MHO,
     CHARACTERISTIC_QUADRILATERAL,
+    DIRECTION_FORWARD,
+    DIRECTION_REVERSE,
     ZoneSettings,
 )
 from app.domain.impedance import IMPEDANCE_BASIS_PRIMARY, IMPEDANCE_BASIS_SECONDARY
@@ -46,6 +51,8 @@ from app.domain.relay_import.provenance import manual, manual_unresolved
 from app.domain.relay_import.raw_document import SourceFormat
 
 _BASIS = {IMPEDANCE_BASIS_PRIMARY: SettingBasis.PRIMARY, IMPEDANCE_BASIS_SECONDARY: SettingBasis.SECONDARY}
+#: Unrecognised direction text becomes UNKNOWN so the adapter refuses it.
+_DIRECTION = {DIRECTION_FORWARD: ZoneDirection.FORWARD, DIRECTION_REVERSE: ZoneDirection.REVERSE}
 _TYPE = {
     CHARACTERISTIC_MHO: CharacteristicType.MHO,
     CHARACTERISTIC_QUADRILATERAL: CharacteristicType.QUADRILATERAL,
@@ -97,7 +104,7 @@ def manual_to_canonical(
                 zone_id=f"Z{index}",
                 name=f"Zone {index}",
                 status=manual(ZoneStatus.ENABLED if z.enabled else ZoneStatus.DISABLED, raw_value=z.enabled),
-                direction=manual(ZoneDirection.FORWARD),
+                direction=manual(_DIRECTION.get(z.direction, ZoneDirection.UNKNOWN), raw_value=z.direction),
                 phase_phase_enabled=manual(True),
                 phase_earth_enabled=manual(False),
                 phase_timer_s=manual(z.delay_s, raw_value=z.delay_s),
@@ -115,18 +122,19 @@ def manual_to_canonical(
 
 
 def engine_zones_from_manual(
-    *, characteristic: str, impedance_basis: str, zones: tuple[ZoneSettings, ZoneSettings, ZoneSettings]
-) -> tuple[ZoneSettings, ZoneSettings, ZoneSettings]:
+    *, characteristic: str, impedance_basis: str, zones: tuple[ZoneSettings, ...]
+) -> tuple[ZoneSettings, ...]:
     """Route the manual zone settings through the canonical model and the
-    engine adapter, returning the settings the engine should evaluate.
+    engine adapter, returning the settings the engine should evaluate (same
+    number of zones as supplied, so a three-zone caller gets three back).
 
     Blank fields stay absent (lenient adaptation). If the form carries a
-    characteristic or basis the model cannot represent (an unrecognised
-    string), the original settings are passed through untouched -- exactly
-    what happened before the canonical model existed -- so the downstream
-    engine/service keeps reporting "not operated" / "needs configuration"
-    as it always did.
+    characteristic, basis or direction the model cannot represent (an
+    unrecognised string), the original settings are passed through untouched
+    -- exactly what happened before the canonical model existed -- so the
+    downstream engine/service keeps reporting "not operated" / "needs
+    configuration" as it always did.
     """
     model = manual_to_canonical(characteristic=characteristic, impedance_basis=impedance_basis, zones=zones)
     adaptation: EngineAdaptation = adapt_to_engine(model, engine_basis=impedance_basis, allow_incomplete_zones=True)
-    return adaptation.zones if adaptation.supported else zones
+    return adaptation.zones[: len(zones)] if adaptation.supported else zones

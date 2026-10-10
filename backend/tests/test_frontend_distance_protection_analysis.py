@@ -173,7 +173,7 @@ class TestDistanceZoneSettingsGrid:
         never suppress Zone 2/3 because Zone 1 operates."""
         source = _source()
         fn = _function_body(source, "function wwDistanceRenderZoneStateList", "function wwDistanceRenderResult")
-        assert "for (const key of [\"zone1\", \"zone2\", \"zone3\"])" in fn
+        assert "for (const key of WW_DISTANCE_ZONE_KEYS)" in fn
         assert "break" not in fn
         assert "return" not in fn.split("for (const key")[1].split("}")[0]
 
@@ -371,3 +371,50 @@ class TestDistanceRXViewportControls:
         fn = _function_body(source, "function wwDistanceRenderPlot", "function wwDistanceCtVtFieldsNeeded")
         assert "const toSvg = (r, x) => [(r - view.centerR) * pxPerOhm, -(x - view.centerX) * pxPerOhm];" in fn
         assert 'preserveAspectRatio="xMidYMid meet"' in _function_body(source, 'id="wwDistanceSvg"', "</svg>")
+
+
+class TestReverseZoneSlot:
+    """The fourth manual slot: a Reverse Zone (direction fixed to reverse)."""
+
+    def test_zone_keys_list_has_four_slots_in_order(self):
+        assert 'const WW_DISTANCE_ZONE_KEYS = ["zone1", "zone2", "zone3", "zone4"];' in _source()
+
+    def test_reverse_zone_card_has_the_same_settings_and_a_visible_direction_label(self):
+        source = _source()
+        card = _function_body(source, 'id="wwDistanceZone4Enabled"', '<div class="ww-oc-manual-input-section')
+        assert ">Reverse Zone</span>" in source
+        assert 'id="wwDistanceZone4Direction">Direction: Reverse<' in source
+        for field in ("Delay", "Angle", "Reach", "ReactiveReach", "ResistiveForward", "ResistiveReverse"):
+            assert f'id="wwDistanceZone4{field}Input"' in card
+        assert 'aria-label="Enable Reverse Zone"' in source
+
+    def test_reverse_zone_is_a_fixed_direction_slot_not_a_dropdown(self):
+        source = _source()
+        assert 'id="wwDistanceZone4DirectionSelect"' not in source
+        assert 'direction: "reverse"' in _function_body(source, "const wwDistanceState = {", "latestResult: null")
+        # direction is never sent as a request parameter
+        params = _function_body(source, "function wwDistanceZoneParams()", "// The ONE place that dispatches")
+        assert "direction" not in params
+
+    def test_zone_params_cover_zone4_through_the_shared_key_list(self):
+        params = _function_body(_source(), "function wwDistanceZoneParams()", "// The ONE place that dispatches")
+        assert "for (const key of WW_DISTANCE_ZONE_KEYS)" in params
+
+    def test_zone_state_list_and_result_wiring_include_zone4(self):
+        source = _source()
+        assert 'zone4: "Reverse Zone"' in source
+        assert source.count("zone4: result.zone4") == 4
+        assert 'for (const key of ["zone4", "zone3", "zone2", "zone1"])' in source  # draw order
+
+    def test_geometry_is_rotated_180_not_mirrored(self):
+        source = _source()
+        assert 'function wwDistanceZoneSign(z) { return z && z.direction === "reverse" ? -1 : 1; }' in source
+        mho = _function_body(source, "function wwDistanceMhoCircleSvg", "// Quadrilateral geometry")
+        assert "sg * halfReach * Math.cos(angleRad)" in mho and "sg * halfReach * Math.sin(angleRad)" in mho
+        quad = _function_body(source, "function wwDistanceQuadrilateralSvg", "// ---- R-X viewport")
+        assert "sg * (xPrime * cosT + rPrime * sinT)" in quad and "sg * (xPrime * sinT - rPrime * cosT)" in quad
+
+    def test_zone4_has_a_theme_token_in_both_themes_and_a_boundary_style(self):
+        theme = (Path(__file__).resolve().parents[2] / "frontend" / "theme.css").read_text(encoding="utf-8")
+        assert theme.count("--ww-dist-zone4:") == 2
+        assert ".ww-dist-zone-boundary--zone4" in _source()

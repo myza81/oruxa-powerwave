@@ -12,7 +12,8 @@ distance relay would see for a selected phase-phase loop --
 
 -- via full complex phasor subtraction and division (never derived from
 scalar RMS magnitudes alone), then evaluates that loop impedance against
-up to three independently-configured protection zones, each using
+up to four independently-configured protection zones (three forward, plus
+one explicit reverse-direction zone), each using
 either a Mho (circular) or a Quadrilateral (polygonal) characteristic.
 This is calculation + visualization only -- explicitly NOT full relay
 logic. See module footer for the complete non-scope boundary.
@@ -238,7 +239,22 @@ ZONE_BOUNDARY_TOLERANCE_OHM = 1e-6
 ZONE_KEY_1 = "zone1"
 ZONE_KEY_2 = "zone2"
 ZONE_KEY_3 = "zone3"
-ZONE_KEYS = (ZONE_KEY_1, ZONE_KEY_2, ZONE_KEY_3)
+ZONE_KEY_4 = "zone4"
+ZONE_KEYS = (ZONE_KEY_1, ZONE_KEY_2, ZONE_KEY_3, ZONE_KEY_4)
+
+#: Zone DIRECTION -- the whole characteristic faces forward (the default,
+#: all pre-existing zones) or reverse. This is a different concept from a
+#: quadrilateral's `resistive_reach_reverse_ohm`, which only sets the
+#: negative-R side of a FORWARD-facing quadrilateral. A reverse-direction
+#: zone is the same characteristic (same reach magnitude, same angle, same
+#: resistive boundaries) rotated 180 degrees about the origin: a point Z
+#: is inside the reverse zone exactly when -Z is inside the forward one.
+#: Zone identity (`zone_key`) and direction are independent: the fourth
+#: manual slot is "zone4" with direction "reverse", but any slot can carry
+#: either direction.
+DIRECTION_FORWARD = "forward"
+DIRECTION_REVERSE = "reverse"
+KNOWN_DIRECTIONS = (DIRECTION_FORWARD, DIRECTION_REVERSE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,9 +281,27 @@ class ZoneSettings:
     resistive_reach_reverse_ohm: float | None = None
     characteristic_angle_deg: float = 90.0
     delay_s: float = 0.0
+    #: Last field with a default so every pre-existing (positional or
+    #: keyword) construction keeps meaning "forward". See DIRECTION_*.
+    direction: str = DIRECTION_FORWARD
 
 
-def mho_zone_operated(point: ImpedancePoint, *, reach_ohm: float, characteristic_angle_deg: float) -> bool:
+def _orient(point: ImpedancePoint, direction: str) -> tuple[float, float] | None:
+    """The point's (R, X) as seen by a zone of the given direction.
+    Forward: unchanged. Reverse: the zone is its forward characteristic
+    rotated 180 degrees about the origin, which is evaluated equivalently
+    by rotating the POINT by 180 degrees (R, X) -> (-R, -X). Any other
+    direction is not evaluable (None -> Not Operated, never a guess)."""
+    if direction == DIRECTION_FORWARD:
+        return point.resistance_ohm, point.reactance_ohm
+    if direction == DIRECTION_REVERSE:
+        return -point.resistance_ohm, -point.reactance_ohm
+    return None
+
+
+def mho_zone_operated(
+    point: ImpedancePoint, *, reach_ohm: float, characteristic_angle_deg: float, direction: str = DIRECTION_FORWARD,
+) -> bool:
     """Standard forward mho (self-polarized) characteristic: a circle
     whose diameter runs from the origin (R=0, X=0 -- zero impedance, a
     fault at the relay's own location) to the reach vector `Z_reach =
@@ -286,22 +320,31 @@ def mho_zone_operated(point: ImpedancePoint, *, reach_ohm: float, characteristic
     characteristic. All four R-X quadrants are reachable by this test;
     a point diametrically opposite the reach vector (the "reverse-side"
     of the origin) is mathematically excluded by construction, never
-    clamped after the fact."""
+    clamped after the fact.
+
+    `direction="reverse"` rotates the whole circle 180 degrees about the
+    origin (center -> -center, same radius): the diameter then runs from the
+    origin to `-Z_reach`, i.e. the circle sits opposite the forward reach
+    direction. Reach magnitude and circle geometry are unchanged."""
     if not (math.isfinite(reach_ohm) and reach_ohm > 0.0):
         return False
+    oriented = _orient(point, direction)
+    if oriented is None:
+        return False
+    r, x = oriented
     angle_rad = math.radians(characteristic_angle_deg)
     half_reach = reach_ohm / 2.0
     center_r = half_reach * math.cos(angle_rad)
     center_x = half_reach * math.sin(angle_rad)
     radius = half_reach
-    distance = math.hypot(point.resistance_ohm - center_r, point.reactance_ohm - center_x)
+    distance = math.hypot(r - center_r, x - center_x)
     return distance <= radius + ZONE_BOUNDARY_TOLERANCE_OHM
 
 
 def quadrilateral_zone_operated(
     point: ImpedancePoint, *,
     reactive_reach_ohm: float, resistive_reach_forward_ohm: float, resistive_reach_reverse_ohm: float,
-    characteristic_angle_deg: float,
+    characteristic_angle_deg: float, direction: str = DIRECTION_FORWARD,
 ) -> bool:
     """A generic, non-vendor-specific quadrilateral zone -- this
     module's own coherent, documented parameterization (task's own
@@ -334,15 +377,26 @@ def quadrilateral_zone_operated(
     other angles the whole rectangle rotates rigidly around the origin,
     tilting the reach direction to match `characteristic_angle_deg` --
     the same coherent angle concept `mho_zone_operated()` uses,
-    deliberately never a second, differently-defined angle parameter."""
+    deliberately never a second, differently-defined angle parameter.
+
+    `direction="reverse"` rotates the entire quadrilateral 180 degrees about
+    the origin (a point-reflection, NOT a mirror of one R coordinate):
+    reach, angle and both resistive boundaries keep their size and their
+    place in the zone's own frame, so the zone's "forward resistive" side
+    ends up on the negative-R side. `resistive_reach_reverse_ohm` is still
+    only the quadrilateral's own second resistive boundary and is
+    independent of this direction."""
     if not (
         math.isfinite(reactive_reach_ohm) and reactive_reach_ohm > 0.0
         and math.isfinite(resistive_reach_forward_ohm) and resistive_reach_forward_ohm > 0.0
         and math.isfinite(resistive_reach_reverse_ohm) and resistive_reach_reverse_ohm > 0.0
     ):
         return False
+    oriented = _orient(point, direction)
+    if oriented is None:
+        return False
     theta = math.radians(characteristic_angle_deg)
-    r, x = point.resistance_ohm, point.reactance_ohm
+    r, x = oriented
     x_prime = r * math.cos(theta) + x * math.sin(theta)
     r_prime = r * math.sin(theta) - x * math.cos(theta)
     tol = ZONE_BOUNDARY_TOLERANCE_OHM
@@ -362,13 +416,16 @@ def evaluate_zone_state(point: ImpedancePoint | None, *, characteristic: str, zo
     INDEPENDENTLY (task's own section 15: "do not force only one zone
     to operate" -- Zone 1/2/3 can legitimately all be `Operated`
     simultaneously for a nested characteristic set; this function has
-    no knowledge of the other two zones at all)."""
+    no knowledge of the other zones at all). Each zone is evaluated in
+    its own `direction` (forward by default)."""
     if point is None or not zone.enabled:
         return ZONE_STATE_NOT_OPERATED
     if characteristic == CHARACTERISTIC_MHO:
         if zone.reach_ohm is None:
             return ZONE_STATE_NOT_OPERATED
-        operated = mho_zone_operated(point, reach_ohm=zone.reach_ohm, characteristic_angle_deg=zone.characteristic_angle_deg)
+        operated = mho_zone_operated(
+            point, reach_ohm=zone.reach_ohm, characteristic_angle_deg=zone.characteristic_angle_deg, direction=zone.direction,
+        )
     elif characteristic == CHARACTERISTIC_QUADRILATERAL:
         if zone.reactive_reach_ohm is None or zone.resistive_reach_forward_ohm is None or zone.resistive_reach_reverse_ohm is None:
             return ZONE_STATE_NOT_OPERATED
@@ -376,7 +433,7 @@ def evaluate_zone_state(point: ImpedancePoint | None, *, characteristic: str, zo
             point, reactive_reach_ohm=zone.reactive_reach_ohm,
             resistive_reach_forward_ohm=zone.resistive_reach_forward_ohm,
             resistive_reach_reverse_ohm=zone.resistive_reach_reverse_ohm,
-            characteristic_angle_deg=zone.characteristic_angle_deg,
+            characteristic_angle_deg=zone.characteristic_angle_deg, direction=zone.direction,
         )
     else:
         return ZONE_STATE_NOT_OPERATED
@@ -398,6 +455,7 @@ class ZoneResult:
     enabled: bool
     state: str
     delay_s: float
+    direction: str = DIRECTION_FORWARD
 
 
 # ---------------------------------------------------------------------------
@@ -447,6 +505,7 @@ class DistanceAnalysisResult:
     zone1: ZoneResult | None = None
     zone2: ZoneResult | None = None
     zone3: ZoneResult | None = None
+    zone4: ZoneResult | None = None
     warnings: list[str] = field(default_factory=list)
     reason_code: str | None = None
     message: str = ""
@@ -504,8 +563,15 @@ class ManualDistanceResult:
     zone1: ZoneResult | None = None
     zone2: ZoneResult | None = None
     zone3: ZoneResult | None = None
+    zone4: ZoneResult | None = None
     reason_code: str | None = None
     message: str = ""
+
+
+#: The fourth manual slot when a caller (e.g. an older client) supplies no
+#: Zone 4: disabled, and facing reverse -- the only default direction that
+#: differs from the pre-existing zones.
+DEFAULT_ZONE4 = ZoneSettings(enabled=False, direction=DIRECTION_REVERSE)
 
 
 def evaluate_manual_distance(
@@ -524,6 +590,7 @@ def evaluate_manual_distance(
     zone1: ZoneSettings,
     zone2: ZoneSettings,
     zone3: ZoneSettings,
+    zone4: ZoneSettings = DEFAULT_ZONE4,
 ) -> ManualDistanceResult:
     """Normalizes both Voltage legs and both Current legs to Secondary-
     canonical (reusing `convert_manual_magnitude_to_secondary()`
@@ -539,13 +606,17 @@ def evaluate_manual_distance(
     legs here."""
 
     def _zone_out(key: str, settings: ZoneSettings, point: ImpedancePoint | None) -> ZoneResult:
-        return ZoneResult(zone_key=key, enabled=settings.enabled, state=evaluate_zone_state(point, characteristic=characteristic, zone=settings), delay_s=settings.delay_s)
+        return ZoneResult(
+            zone_key=key, enabled=settings.enabled, state=evaluate_zone_state(point, characteristic=characteristic, zone=settings),
+            delay_s=settings.delay_s, direction=settings.direction,
+        )
 
     def _missing_with_zones(status: str, reason_code: str | None = None, message: str = "") -> ManualDistanceResult:
         return ManualDistanceResult(
             status=status, loop_label=loop_label, reason_code=reason_code, message=message,
             characteristic=characteristic,
             zone1=_zone_out(ZONE_KEY_1, zone1, None), zone2=_zone_out(ZONE_KEY_2, zone2, None), zone3=_zone_out(ZONE_KEY_3, zone3, None),
+            zone4=_zone_out(ZONE_KEY_4, zone4, None),
         )
 
     if not (v1_input.enabled and v1_input.magnitude is not None and v2_input.enabled and v2_input.magnitude is not None
@@ -599,6 +670,7 @@ def evaluate_manual_distance(
         magnitude_ohm=point_out.magnitude_ohm, angle_deg=point_out.angle_deg,
         characteristic=characteristic,
         zone1=_zone_out(ZONE_KEY_1, zone1, point_out), zone2=_zone_out(ZONE_KEY_2, zone2, point_out), zone3=_zone_out(ZONE_KEY_3, zone3, point_out),
+        zone4=_zone_out(ZONE_KEY_4, zone4, point_out),
         message="Manual loop impedance evaluated.",
     )
 

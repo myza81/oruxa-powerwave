@@ -162,7 +162,11 @@ Protection panel uploads one PDF to an ephemeral endpoint that validates it
 (type, empty, 20 MB configurable limit, PDF header/trailer) and returns
 filename/format/size only; the raw file is discarded immediately, nothing is
 persisted (no DB, storage or browser storage) and the UI state clears on
-refresh. **Slice 4:** the upload now runs generic, relay-neutral PDF text extraction
+refresh. **Reverse Zone:** Distance Protection now has four zone slots - Zones 1-3
+(forward) and a fourth Reverse Zone (direction reverse = the characteristic
+rotated 180° about the origin; not the quadrilateral's reverse resistive reach).
+The canonical model is unchanged and still allows arbitrary zone counts.
+**Slice 4:** the upload now runs generic, relay-neutral PDF text extraction
 (pypdf) into a request-scoped `RawRelayDocument` and returns only counts
 (pages, raw entries) and an extraction status (text / no extractable text /
 encrypted); extracted is not interpreted -- no relay identification, mapping

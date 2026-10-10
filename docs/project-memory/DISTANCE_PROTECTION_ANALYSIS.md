@@ -5,7 +5,7 @@
 > extraction or auto-population yet). Manual entry is unchanged. See
 > [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-3--ephemeral-import-relay-settings-upload).
 
-Status: **v1 implemented** (2026-09-18). Activates a new `Distance
+Status: **v1 implemented** (2026-09-18); a fourth **Reverse Zone** slot was added later (see [Reverse Zone](#reverse-zone--the-fourth-manual-zone-slot)). Activates a new `Distance
 Protection` navigation entry as the **FIFTH** Analysis-menu analyzer
 (order preserved: Phasor, Overcurrent, Impedance Locus, Sequence
 Components, Distance Protection). See
@@ -463,6 +463,55 @@ the locus crosses a zone boundary, `Not-Operated -> Operated` (and back)
 updates at the CURRENT Playback point immediately — v1 has no
 relay-latching logic at all (a later, separate enhancement).
 
+## Reverse Zone — the fourth manual zone slot
+
+The manual Distance Protection UI, the API and the engine present **four zone
+slots**: Zone 1-3 (forward, unchanged) and a fourth **Reverse Zone** slot
+(`zone4`, label "Reverse Zone", "Direction: Reverse"). The label is
+deliberately not "Zone 4": relays call this zone 4, 3R, Z3R, a dedicated
+reverse zone, etc., and no OEM naming is assumed.
+
+- **Zone identity and direction are separate.** `zone_key` / canonical
+  `zone_id` (`zone4` / `Z4`) says *which slot*; `ZoneSettings.direction`
+  (`"forward"` default, `"reverse"`) says *which way the whole characteristic
+  faces*. Direction is never encoded in the name. Any engine slot can carry
+  either direction; the manual UI fixes slot 4 to reverse (no dropdown) and
+  slots 1-3 to forward.
+- **Reverse zone != "Resistive reach reverse".** `resistive_reach_reverse_ohm`
+  is the quadrilateral's own second resistive boundary (the negative-R side of a
+  *forward*-facing zone). A reverse-direction zone is the entire characteristic
+  — reach, angle and both resistive boundaries — facing the opposite way. The
+  Reverse Zone card therefore has its own "Resistive reach reverse" input too.
+- **Geometry = rotation by 180° about the origin** (a point reflection, not a
+  mirror of one coordinate): a point `Z` is inside a reverse zone exactly when
+  `-Z` is inside the same forward zone. Mho: centre `-(reach/2)∠angle`, same
+  radius, so the diameter runs from the origin to `-Z_reach`. Quadrilateral:
+  every corner of the rotated rectangle is negated, so its "forward resistive"
+  side lies on the negative-R side. Reach magnitude, angle and resistive sizes
+  are the configured values. (A reverse fault with fault resistance appears in
+  the third quadrant, which is why rotation — not an R-axis mirror — is used.)
+  An unrecognised direction string never operates.
+- **API (backward compatible).** `…/distance-protection`,
+  `…/distance-protection-locus` and `…/distance-protection-manual` accept
+  optional `zone4_enabled`, `zone4_reach_ohm`, `zone4_reactive_reach_ohm`,
+  `zone4_resistive_reach_forward_ohm`, `zone4_resistive_reach_reverse_ohm`,
+  `zone4_characteristic_angle_deg`, `zone4_delay_s`. Clients that send only
+  zones 1-3 get a **disabled** Zone 4. There is no `zone4_direction` parameter:
+  the slot's direction is fixed to reverse. `ZoneResultOut` gains `direction`
+  (`"forward"` for zones 1-3) and the results gain an optional `zone4`
+  (`ZoneResultOut`); the existing fields and values are unchanged.
+- **Manual → canonical → adapter → engine.** The four manual zones go through
+  `manual_to_canonical()` (Z4 gets `ZoneDirection.REVERSE`) and
+  `adapt_to_engine()`; the bridge is not bypassed.
+- **Canonical model is not limited to four zones.** Four is the engine/manual
+  presentation only; `CanonicalDistanceProtectionModel.zones` stays arbitrary.
+- **Outputs / viewport.** Zone 4 reports Enabled, Operated / Not Operated and
+  the configured delay like the other zones, is drawn dashed in its own colour,
+  and is included in Fit Zones (its negative-R/negative-X extent) and the
+  default view, with the R/X scale still 1:1.
+- **Not in scope:** non-directional zones, polygon/lenticular geometry,
+  phase-earth, OEM-specific logic or mapping from relay `Z4` / `3R` names.
+
 ## API
 
 ```text
@@ -513,8 +562,9 @@ DistanceAnalysisResultOut / ManualDistanceResultOut
 ├── voltage_unit, current_unit
 ├── resistance_ohm / reactance_ohm / magnitude_ohm / angle_deg   (nullable)
 ├── characteristic              "mho" | "quadrilateral"
-├── zone1 / zone2 / zone3: ZoneResultOut
-│     ├── zone_key              "zone1" | "zone2" | "zone3"
+├── zone1 / zone2 / zone3 / zone4: ZoneResultOut      (zone4 = Reverse Zone; optional)
+│     ├── zone_key              "zone1" | "zone2" | "zone3" | "zone4"
+│     ├── direction             "forward" (zones 1-3) | "reverse" (zone4)
 │     ├── enabled
 │     ├── state                 "operated" | "not_operated"
 │     └── delay_s

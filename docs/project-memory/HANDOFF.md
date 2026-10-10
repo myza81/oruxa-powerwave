@@ -7,6 +7,14 @@ history already provides the detailed historical trail.
 Last updated: **2026-10-05** (Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
+## Distance Protection Reverse Zone (2026-10-10, `feature/distance-relay-import`)
+
+Fourth manual zone slot ("Reverse Zone", direction reverse). Separate focused
+commit; see
+[DISTANCE_PROTECTION_ANALYSIS.md](DISTANCE_PROTECTION_ANALYSIS.md#reverse-zone--the-fourth-manual-zone-slot).
+**Stopped at owner UAT - do not start Slice 5 until it is approved.** No
+relay-import mapping of `Z4` / `3R` names exists yet (later slice).
+
 ## Relay import Slice 4 (2026-10-10, `feature/distance-relay-import`)
 
 Generic PDF text extraction into `RawRelayDocument` (pypdf), summarised in the

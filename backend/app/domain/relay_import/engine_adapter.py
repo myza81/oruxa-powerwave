@@ -9,9 +9,13 @@ engine's capability. It contains no relay-family knowledge (that lives in
 relay profiles) and the engine knows nothing about this module.
 
 Current engine capability (see DISTANCE_PROTECTION_ANALYSIS.md):
-- exactly three zones, in order (zone1..zone3);
+- exactly four zone slots, in order (zone1..zone4); each slot carries an
+  explicit direction, so any slot can be forward or reverse (the manual UI
+  presents slots 1-3 as forward and slot 4 as the Reverse Zone, but the
+  engine does not tie a slot to a direction);
 - ONE characteristic for the whole analysis (mho or quadrilateral);
-- phase-phase loops only; forward geometry only (no direction concept);
+- phase-phase loops only; forward and reverse directional geometry only --
+  non-directional, unknown or unresolved directions are refused;
 - one delay per zone; one shared characteristic angle per zone;
 - zone ohms are compared directly against the impedance in the chosen
   basis, so the settings' primary/secondary basis must already match it.
@@ -29,6 +33,9 @@ from enum import StrEnum
 from app.domain.distance_protection import (
     CHARACTERISTIC_MHO,
     CHARACTERISTIC_QUADRILATERAL,
+    DEFAULT_ZONE4,
+    DIRECTION_FORWARD,
+    DIRECTION_REVERSE,
     ZoneSettings,
 )
 from app.domain.relay_import.canonical_distance import (
@@ -41,7 +48,7 @@ from app.domain.relay_import.canonical_distance import (
 )
 
 #: The engine evaluates exactly this many zones.
-ENGINE_ZONE_COUNT = 3
+ENGINE_ZONE_COUNT = 4
 
 _ENGINE_CHARACTERISTIC = {
     CharacteristicType.MHO: CHARACTERISTIC_MHO,
@@ -83,7 +90,7 @@ class EngineAdaptation:
 
     supported: bool
     characteristic: str | None = None
-    zones: tuple[ZoneSettings, ZoneSettings, ZoneSettings] | None = None
+    zones: tuple[ZoneSettings, ZoneSettings, ZoneSettings, ZoneSettings] | None = None
     #: Canonical zone_id feeding each engine slot (None = unused slot).
     zone_ids: tuple[str | None, ...] = ()
     reasons: tuple[UnsupportedReason, ...] = ()
@@ -171,12 +178,14 @@ def adapt_to_engine(
         return EngineAdaptation(False, reasons=tuple(reasons), warnings=tuple(warnings))
 
     while len(built) < ENGINE_ZONE_COUNT:
-        built.append(ZoneSettings())  # engine's own disabled default slot
+        # The engine's own disabled default slot (the fourth slot defaults
+        # to its disabled, reverse-facing manual default).
+        built.append(DEFAULT_ZONE4 if len(built) == ENGINE_ZONE_COUNT - 1 else ZoneSettings())
     zone_ids = tuple(z.zone_id for z in slots) + (None,) * (ENGINE_ZONE_COUNT - len(slots))
     return EngineAdaptation(
         True,
         characteristic=_ENGINE_CHARACTERISTIC[characteristic_type],
-        zones=(built[0], built[1], built[2]),
+        zones=(built[0], built[1], built[2], built[3]),
         zone_ids=zone_ids,
         warnings=tuple(warnings),
     )
@@ -194,6 +203,15 @@ def _status(zone: DistanceZone) -> bool | None:
     return None
 
 
+def _known_direction(zone: DistanceZone) -> str | None:
+    d = zone.direction
+    if d.is_resolved and d.value is ZoneDirection.FORWARD:
+        return DIRECTION_FORWARD
+    if d.is_resolved and d.value is ZoneDirection.REVERSE:
+        return DIRECTION_REVERSE
+    return None
+
+
 def _adapt_zone(zone, ctype, allow_incomplete, fail, warn) -> ZoneSettings:
     status = _status(zone)
     if status is None:
@@ -203,18 +221,23 @@ def _adapt_zone(zone, ctype, allow_incomplete, fail, warn) -> ZoneSettings:
     delay = _delay(zone, status, fail, warn)
 
     if status is False:
-        # No geometry is evaluated for a disabled/inactive zone.
-        return ZoneSettings(enabled=False, delay_s=delay)
+        # No geometry is evaluated for a disabled/inactive zone; its
+        # direction is carried only when it is a direction the engine knows.
+        return ZoneSettings(enabled=False, delay_s=delay, direction=_known_direction(zone) or DIRECTION_FORWARD)
 
-    # direction: the engine has only forward geometry.
-    d = zone.direction
-    if not d.is_resolved or d.value is not ZoneDirection.FORWARD:
+    # direction: the engine models forward and reverse directional geometry.
+    # Non-directional, unknown and unresolved directions are refused, never
+    # guessed.
+    direction = _known_direction(zone)
+    if direction is None:
+        d = zone.direction
         shown = d.value.value if d.is_resolved else "unresolved"
         fail(
             UnsupportedCode.DIRECTION_UNSUPPORTED,
-            f"Zone direction '{shown}' is not supported; the engine models forward zones only.",
+            f"Zone direction '{shown}' is not supported; the engine models forward and reverse directional zones only.",
             zone,
         )
+        direction = DIRECTION_FORWARD  # placeholder only; the adaptation fails
     # loop type: the engine evaluates phase-phase loops only.
     if not (zone.phase_phase_enabled.is_resolved and zone.phase_phase_enabled.value is True):
         fail(
@@ -253,7 +276,7 @@ def _adapt_zone(zone, ctype, allow_incomplete, fail, warn) -> ZoneSettings:
 
     angle_kw = {} if angle is None else {"characteristic_angle_deg": angle}  # absent only for blank manual reach
     if ctype is CharacteristicType.MHO:
-        return ZoneSettings(enabled=True, reach_ohm=reach_ohm, delay_s=delay, **angle_kw)
+        return ZoneSettings(enabled=True, reach_ohm=reach_ohm, delay_s=delay, direction=direction, **angle_kw)
 
     forward = _forward_resistive(zone, fail)
     if forward is _CONFLICT:
@@ -271,6 +294,7 @@ def _adapt_zone(zone, ctype, allow_incomplete, fail, warn) -> ZoneSettings:
         resistive_reach_forward_ohm=forward,
         resistive_reach_reverse_ohm=rr.reverse.value if rr.reverse.is_resolved else None,
         delay_s=delay,
+        direction=direction,
         **angle_kw,
     )
 

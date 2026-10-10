@@ -130,6 +130,7 @@
     --ww-dist-zone1: #334155;
     --ww-dist-zone2: #64748b;
     --ww-dist-zone3: #94a3b8;
+    --ww-dist-zone4: #0f766e;  /* Reverse Zone: a distinct hue, not another slate step */
 }
 
 :root[data-theme="dark"] {
@@ -204,6 +205,7 @@
     --ww-dist-zone1: #cbd5e1;
     --ww-dist-zone2: #94a3b8;
     --ww-dist-zone3: #64748b;
+    --ww-dist-zone4: #5eead4;
 }
 
 /* Phase 3B-UAT9: slim, borderless scrollbars -- one shared rule set for

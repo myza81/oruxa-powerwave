@@ -161,16 +161,21 @@ Manual form (flat API params -> ZoneSettings)      [transitional boundary]
   picks a value to make conversion succeed, and reports *all* problems.
   `allow_incomplete_zones=True` (manual form only) passes a blank reach as
   absent (`None`), which the engine already treats as Not Operated.
-- **Engine capability** (unchanged): exactly three zones in order; one
-  characteristic (mho or quadrilateral) for all zones; phase-phase loops
-  only; forward geometry only; one delay and one shared angle per zone; zone
-  ohms compared in the selected impedance basis.
+- **Engine capability** (updated with the Reverse Zone enhancement): exactly four
+  zone slots in order, each with an explicit direction (forward or reverse);
+  one characteristic (mho or quadrilateral) for all zones; phase-phase loops
+  only; forward and reverse directional geometry only (non-directional,
+  unknown or unresolved directions are still refused); one delay and one shared
+  angle per zone; zone ohms compared in the selected impedance basis. A reverse
+  zone is the characteristic rotated 180° about the origin; it is unrelated to a
+  quadrilateral's reverse *resistive* reach. The canonical model itself still
+  allows any number of zones - four is only what the engine evaluates.
 - **Supported canonical fields:** zone status (enabled / disabled / inactive),
-  forward direction, phase-phase operation, polar reach (→ mho `reach_ohm` or
+  forward or reverse direction, phase-phase operation, polar reach (→ mho `reach_ohm` or
   quadrilateral `reactive_reach_ohm`, angle → shared characteristic angle),
   phase-phase (else common) and reverse resistive reach, common (else phase)
   timer, setting basis equal to the engine basis. Disabled/inactive zones
-  beyond the third are dropped only if disabled.
+  beyond the fourth are dropped only if disabled.
 - **Preserved but reported, not used:** phase-earth operation, earth timer,
   residual compensation, zero-sequence reach, line data.
 - **Refused as unsupported (explicit reason, never guessed):** lenticular,

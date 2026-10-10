@@ -68,7 +68,7 @@ from app.schemas.engineering_context import (
 )
 from app.domain.analysis_input_resolution import AnalysisInputResolution
 from app.domain.analysis_requirements import get_requirement
-from app.domain.distance_protection import ZoneSettings
+from app.domain.distance_protection import DIRECTION_REVERSE, ZoneSettings
 from app.domain.relay_import.manual_entry import engine_zones_from_manual
 from app.domain.phasor import ManualPhasorRoleInput, PhasorAnalysisResult, PhasorDiagramResult
 from app.schemas.analysis_input_resolution import AnalysisInputReadinessOut, AnalysisInputResolutionOut, RoleSpecOut
@@ -1129,16 +1129,17 @@ def _zone_settings(
     enabled: bool, reach_ohm: float | None, reactive_reach_ohm: float | None,
     resistive_reach_forward_ohm: float | None, resistive_reach_reverse_ohm: float | None,
     characteristic_angle_deg: float, delay_s: float,
+    direction: str = "forward",
 ) -> ZoneSettings:
     return ZoneSettings(
         enabled=enabled, reach_ohm=reach_ohm, reactive_reach_ohm=reactive_reach_ohm,
         resistive_reach_forward_ohm=resistive_reach_forward_ohm, resistive_reach_reverse_ohm=resistive_reach_reverse_ohm,
-        characteristic_angle_deg=characteristic_angle_deg, delay_s=delay_s,
+        characteristic_angle_deg=characteristic_angle_deg, delay_s=delay_s, direction=direction,
     )
 
 
 def _zone_result_to_out(result) -> ZoneResultOut:
-    return ZoneResultOut(zone_key=result.zone_key, enabled=result.enabled, state=result.state, delay_s=result.delay_s)
+    return ZoneResultOut(zone_key=result.zone_key, enabled=result.enabled, state=result.state, delay_s=result.delay_s, direction=result.direction)
 
 
 def _distance_result_to_out(result) -> DistanceAnalysisResultOut:
@@ -1159,6 +1160,7 @@ def _distance_result_to_out(result) -> DistanceAnalysisResultOut:
         zone1=_zone_result_to_out(result.zone1) if result.zone1 is not None else None,
         zone2=_zone_result_to_out(result.zone2) if result.zone2 is not None else None,
         zone3=_zone_result_to_out(result.zone3) if result.zone3 is not None else None,
+        zone4=_zone_result_to_out(result.zone4) if result.zone4 is not None else None,
         warnings=result.warnings, reason_code=result.reason_code, message=result.message,
     )
 
@@ -1186,6 +1188,11 @@ def get_distance_protection_analysis(
     zone3_enabled: bool = False, zone3_reach_ohm: float | None = None, zone3_reactive_reach_ohm: float | None = None,
     zone3_resistive_reach_forward_ohm: float | None = None, zone3_resistive_reach_reverse_ohm: float | None = None,
     zone3_characteristic_angle_deg: float = 90.0, zone3_delay_s: float = 0.0,
+    # Zone 4 -- the Reverse Zone slot (direction is fixed to reverse for this slot). Optional:
+    # clients that send only zones 1-3 get a disabled Zone 4.
+    zone4_enabled: bool = False, zone4_reach_ohm: float | None = None, zone4_reactive_reach_ohm: float | None = None,
+    zone4_resistive_reach_forward_ohm: float | None = None, zone4_resistive_reach_reverse_ohm: float | None = None,
+    zone4_characteristic_angle_deg: float = 90.0, zone4_delay_s: float = 0.0,
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
@@ -1207,14 +1214,15 @@ def get_distance_protection_analysis(
     zone1 = _zone_settings(zone1_enabled, zone1_reach_ohm, zone1_reactive_reach_ohm, zone1_resistive_reach_forward_ohm, zone1_resistive_reach_reverse_ohm, zone1_characteristic_angle_deg, zone1_delay_s)
     zone2 = _zone_settings(zone2_enabled, zone2_reach_ohm, zone2_reactive_reach_ohm, zone2_resistive_reach_forward_ohm, zone2_resistive_reach_reverse_ohm, zone2_characteristic_angle_deg, zone2_delay_s)
     zone3 = _zone_settings(zone3_enabled, zone3_reach_ohm, zone3_reactive_reach_ohm, zone3_resistive_reach_forward_ohm, zone3_resistive_reach_reverse_ohm, zone3_characteristic_angle_deg, zone3_delay_s)
-    zone1, zone2, zone3 = engine_zones_from_manual(characteristic=characteristic, impedance_basis=impedance_basis, zones=(zone1, zone2, zone3))
+    zone4 = _zone_settings(zone4_enabled, zone4_reach_ohm, zone4_reactive_reach_ohm, zone4_resistive_reach_forward_ohm, zone4_resistive_reach_reverse_ohm, zone4_characteristic_angle_deg, zone4_delay_s, DIRECTION_REVERSE)
+    zone1, zone2, zone3, zone4 = engine_zones_from_manual(characteristic=characteristic, impedance_basis=impedance_basis, zones=(zone1, zone2, zone3, zone4))
     try:
         result = compute_distance_analysis(
             workspace_id=workspace_id, engineering_context_id=engineering_context_id, loop=loop, analysis_time=analysis_time,
             reference_frequency_hz_override=reference_frequency_hz,
             recording_basis=recording_basis, impedance_basis=impedance_basis,
             vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
-            characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3,
+            characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3, zone4=zone4,
             context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
         )
     except ImportServiceError as exc:
@@ -1247,6 +1255,11 @@ def get_distance_protection_locus(
     zone3_enabled: bool = False, zone3_reach_ohm: float | None = None, zone3_reactive_reach_ohm: float | None = None,
     zone3_resistive_reach_forward_ohm: float | None = None, zone3_resistive_reach_reverse_ohm: float | None = None,
     zone3_characteristic_angle_deg: float = 90.0, zone3_delay_s: float = 0.0,
+    # Zone 4 -- the Reverse Zone slot (direction is fixed to reverse for this slot). Optional:
+    # clients that send only zones 1-3 get a disabled Zone 4.
+    zone4_enabled: bool = False, zone4_reach_ohm: float | None = None, zone4_reactive_reach_ohm: float | None = None,
+    zone4_resistive_reach_forward_ohm: float | None = None, zone4_resistive_reach_reverse_ohm: float | None = None,
+    zone4_characteristic_angle_deg: float = 90.0, zone4_delay_s: float = 0.0,
     context_registry: EngineeringContextRegistry = Depends(get_engineering_context_registry),
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
@@ -1268,7 +1281,8 @@ def get_distance_protection_locus(
     zone1 = _zone_settings(zone1_enabled, zone1_reach_ohm, zone1_reactive_reach_ohm, zone1_resistive_reach_forward_ohm, zone1_resistive_reach_reverse_ohm, zone1_characteristic_angle_deg, zone1_delay_s)
     zone2 = _zone_settings(zone2_enabled, zone2_reach_ohm, zone2_reactive_reach_ohm, zone2_resistive_reach_forward_ohm, zone2_resistive_reach_reverse_ohm, zone2_characteristic_angle_deg, zone2_delay_s)
     zone3 = _zone_settings(zone3_enabled, zone3_reach_ohm, zone3_reactive_reach_ohm, zone3_resistive_reach_forward_ohm, zone3_resistive_reach_reverse_ohm, zone3_characteristic_angle_deg, zone3_delay_s)
-    zone1, zone2, zone3 = engine_zones_from_manual(characteristic=characteristic, impedance_basis=impedance_basis, zones=(zone1, zone2, zone3))
+    zone4 = _zone_settings(zone4_enabled, zone4_reach_ohm, zone4_reactive_reach_ohm, zone4_resistive_reach_forward_ohm, zone4_resistive_reach_reverse_ohm, zone4_characteristic_angle_deg, zone4_delay_s, DIRECTION_REVERSE)
+    zone1, zone2, zone3, zone4 = engine_zones_from_manual(characteristic=characteristic, impedance_basis=impedance_basis, zones=(zone1, zone2, zone3, zone4))
     try:
         points = compute_distance_locus(
             workspace_id=workspace_id, engineering_context_id=engineering_context_id, loop=loop,
@@ -1276,7 +1290,7 @@ def get_distance_protection_locus(
             reference_frequency_hz_override=reference_frequency_hz,
             recording_basis=recording_basis, impedance_basis=impedance_basis,
             vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
-            characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3,
+            characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3, zone4=zone4,
             context_registry=context_registry, source_registry=source_registry, calculated_channel_registry=calc_registry,
         )
     except ImportServiceError as exc:
@@ -1305,6 +1319,7 @@ def _distance_manual_result_to_out(result) -> ManualDistanceResultOut:
         zone1=_zone_result_to_out(result.zone1) if result.zone1 is not None else None,
         zone2=_zone_result_to_out(result.zone2) if result.zone2 is not None else None,
         zone3=_zone_result_to_out(result.zone3) if result.zone3 is not None else None,
+        zone4=_zone_result_to_out(result.zone4) if result.zone4 is not None else None,
         reason_code=result.reason_code, message=result.message,
     )
 
@@ -1334,6 +1349,11 @@ def get_distance_protection_manual(
     zone3_enabled: bool = False, zone3_reach_ohm: float | None = None, zone3_reactive_reach_ohm: float | None = None,
     zone3_resistive_reach_forward_ohm: float | None = None, zone3_resistive_reach_reverse_ohm: float | None = None,
     zone3_characteristic_angle_deg: float = 90.0, zone3_delay_s: float = 0.0,
+    # Zone 4 -- the Reverse Zone slot (direction is fixed to reverse for this slot). Optional:
+    # clients that send only zones 1-3 get a disabled Zone 4.
+    zone4_enabled: bool = False, zone4_reach_ohm: float | None = None, zone4_reactive_reach_ohm: float | None = None,
+    zone4_resistive_reach_forward_ohm: float | None = None, zone4_resistive_reach_reverse_ohm: float | None = None,
+    zone4_characteristic_angle_deg: float = 90.0, zone4_delay_s: float = 0.0,
 ) -> ManualDistanceResultOut:
     """Manual Input / Calculator mode (Analysis Input Source = 'manual',
     see docs/project-memory/ANALYSIS_INPUT_SOURCE.md) -- Distance
@@ -1354,11 +1374,12 @@ def get_distance_protection_manual(
     zone1 = _zone_settings(zone1_enabled, zone1_reach_ohm, zone1_reactive_reach_ohm, zone1_resistive_reach_forward_ohm, zone1_resistive_reach_reverse_ohm, zone1_characteristic_angle_deg, zone1_delay_s)
     zone2 = _zone_settings(zone2_enabled, zone2_reach_ohm, zone2_reactive_reach_ohm, zone2_resistive_reach_forward_ohm, zone2_resistive_reach_reverse_ohm, zone2_characteristic_angle_deg, zone2_delay_s)
     zone3 = _zone_settings(zone3_enabled, zone3_reach_ohm, zone3_reactive_reach_ohm, zone3_resistive_reach_forward_ohm, zone3_resistive_reach_reverse_ohm, zone3_characteristic_angle_deg, zone3_delay_s)
-    zone1, zone2, zone3 = engine_zones_from_manual(characteristic=characteristic, impedance_basis=impedance_basis, zones=(zone1, zone2, zone3))
+    zone4 = _zone_settings(zone4_enabled, zone4_reach_ohm, zone4_reactive_reach_ohm, zone4_resistive_reach_forward_ohm, zone4_resistive_reach_reverse_ohm, zone4_characteristic_angle_deg, zone4_delay_s, DIRECTION_REVERSE)
+    zone1, zone2, zone3, zone4 = engine_zones_from_manual(characteristic=characteristic, impedance_basis=impedance_basis, zones=(zone1, zone2, zone3, zone4))
     result = compute_distance_manual(
         loop_label=loop_label, voltage_basis=voltage_basis, vt_primary=vt_primary, vt_secondary=vt_secondary,
         current_basis=current_basis, ct_primary=ct_primary, ct_secondary=ct_secondary, impedance_basis=impedance_basis,
-        characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3,
+        characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3, zone4=zone4,
         v1_input=v1_input, v2_input=v2_input, i1_input=i1_input, i2_input=i2_input,
     )
     return _distance_manual_result_to_out(result)

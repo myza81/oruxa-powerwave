@@ -8793,6 +8793,13 @@
         .ww-dist-zone-boundary--zone1 { stroke: var(--ww-dist-zone1); }
         .ww-dist-zone-boundary--zone2 { stroke: var(--ww-dist-zone2); }
         .ww-dist-zone-boundary--zone3 { stroke: var(--ww-dist-zone3); }
+        /* Reverse Zone: dashed so it reads as the opposite-facing zone. */
+        .ww-dist-zone-boundary--zone4 { stroke: var(--ww-dist-zone4); stroke-dasharray: 5 3; }
+        .ww-dist-zone-direction {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            margin-top: -2px;
+        }
         .ww-dist-locus-path {
             fill: none;
             stroke: var(--ww-phase-a);
@@ -11877,6 +11884,19 @@
                                             <label class="ww-dist-zone-field" id="wwDistanceZone3ReactiveReachField" hidden><span>Reactive reach (Ω)</span><input type="number" id="wwDistanceZone3ReactiveReachInput" min="0" step="0.01"></label>
                                             <label class="ww-dist-zone-field" id="wwDistanceZone3ResistiveForwardField" hidden><span>Resistive reach forward (Ω)</span><input type="number" id="wwDistanceZone3ResistiveForwardInput" min="0" step="0.01"></label>
                                             <label class="ww-dist-zone-field" id="wwDistanceZone3ResistiveReverseField" hidden><span>Resistive reach reverse (Ω)</span><input type="number" id="wwDistanceZone3ResistiveReverseInput" min="0" step="0.01"></label>
+                                        </div>
+                                        <div class="ww-dist-zone-card" style="--zone-color: var(--ww-dist-zone4)">
+                                            <div class="ww-dist-zone-card-header">
+                                                <span class="ww-dist-zone-card-title">Reverse Zone</span>
+                                                <label class="ww-phasor-manual-role-enable"><input type="checkbox" id="wwDistanceZone4Enabled" aria-label="Enable Reverse Zone">Enabled</label>
+                                            </div>
+                                            <div class="ww-dist-zone-direction" id="wwDistanceZone4Direction">Direction: Reverse</div>
+                                            <label class="ww-dist-zone-field"><span>Configured delay (s)</span><input type="number" id="wwDistanceZone4DelayInput" min="0" step="0.01" value="1"></label>
+                                            <label class="ww-dist-zone-field"><span>Characteristic angle (°)</span><input type="number" id="wwDistanceZone4AngleInput" step="0.1" value="90"></label>
+                                            <label class="ww-dist-zone-field" id="wwDistanceZone4ReachField"><span>Reach |Z| (Ω)</span><input type="number" id="wwDistanceZone4ReachInput" min="0" step="0.01"></label>
+                                            <label class="ww-dist-zone-field" id="wwDistanceZone4ReactiveReachField" hidden><span>Reactive reach (Ω)</span><input type="number" id="wwDistanceZone4ReactiveReachInput" min="0" step="0.01"></label>
+                                            <label class="ww-dist-zone-field" id="wwDistanceZone4ResistiveForwardField" hidden><span>Resistive reach forward (Ω)</span><input type="number" id="wwDistanceZone4ResistiveForwardInput" min="0" step="0.01"></label>
+                                            <label class="ww-dist-zone-field" id="wwDistanceZone4ResistiveReverseField" hidden><span>Resistive reach reverse (Ω)</span><input type="number" id="wwDistanceZone4ResistiveReverseInput" min="0" step="0.01"></label>
                                         </div>
                                     </div>
 
@@ -53753,9 +53773,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return kind + "_phase_" + roleKey[1].toLowerCase();
         }
 
+        // Every zone slot, in order. Slots 1-3 are forward; slot 4 is the
+        // Reverse Zone (its direction is fixed to reverse in this UI).
+        const WW_DISTANCE_ZONE_KEYS = ["zone1", "zone2", "zone3", "zone4"];
         function wwDistanceDefaultZoneSettings() {
             return {
-                enabled: false, delaySeconds: 0, characteristicAngleDeg: 90,
+                enabled: false, delaySeconds: 0, characteristicAngleDeg: 90, direction: "forward",
                 reachOhm: null, reactiveReachOhm: null, resistiveForwardOhm: null, resistiveReverseOhm: null,
             };
         }
@@ -53781,6 +53804,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 zone1: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0 }),
                 zone2: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0.4 }),
                 zone3: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 1 }),
+                zone4: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 1, direction: "reverse" }),
             },
             latestResult: null,
             requestGeneration: 0,
@@ -54084,7 +54108,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // silently evaluate against different zone settings.
         function wwDistanceZoneParams() {
             const params = {};
-            for (const key of ["zone1", "zone2", "zone3"]) {
+            for (const key of WW_DISTANCE_ZONE_KEYS) {
                 const z = wwDistanceState.zones[key];
                 params[key + "_enabled"] = String(z.enabled);
                 params[key + "_delay_s"] = String(Number.isFinite(z.delaySeconds) ? z.delaySeconds : 0);
@@ -54217,7 +54241,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         const WW_DISTANCE_STATUS_LABELS = {
             missing: "Missing", needs_configuration: "Needs configuration", ambiguous: "Ambiguous", not_eligible: "Not eligible",
         };
-        const WW_DISTANCE_ZONE_LABELS = { zone1: "Zone 1", zone2: "Zone 2", zone3: "Zone 3" };
+        const WW_DISTANCE_ZONE_LABELS = { zone1: "Zone 1", zone2: "Zone 2", zone3: "Zone 3", zone4: "Reverse Zone" };
 
         // Zone State rows -- deliberately separate from the Loop/Basis/R/
         // X/|Z|/Angle rows above (never mixing geometric state and a
@@ -54228,7 +54252,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const list = document.getElementById("wwDistanceZoneStateList");
             if (!list) return;
             const rows = [];
-            for (const key of ["zone1", "zone2", "zone3"]) {
+            for (const key of WW_DISTANCE_ZONE_KEYS) {
                 const z = zones && zones[key];
                 const operated = !!(z && z.state === "operated");
                 const enabled = !!(z && z.enabled);
@@ -54259,7 +54283,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 statusRow.className = "ww-phasor-status-row" +
                     (result && result.status !== "computed" ? " ww-phasor-status--needs-configuration" : "");
                 valuesList.innerHTML = "";
-                wwDistanceRenderZoneStateList(result ? { zone1: result.zone1, zone2: result.zone2, zone3: result.zone3 } : null);
+                wwDistanceRenderZoneStateList(result ? { zone1: result.zone1, zone2: result.zone2, zone3: result.zone3, zone4: result.zone4 } : null);
                 wwDistancePushRelatedWaveformRoles();
                 wwDistanceRenderPlot();
                 return;
@@ -54273,7 +54297,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             rows.push(wwDistanceValueRow("|Z|", wwDistanceFormatOhm(result.magnitude_ohm)));
             rows.push(wwDistanceValueRow("Angle", (result.angle_deg >= 0 ? "+" : "") + result.angle_deg.toFixed(2) + "°"));
             valuesList.innerHTML = rows.join("");
-            wwDistanceRenderZoneStateList({ zone1: result.zone1, zone2: result.zone2, zone3: result.zone3 });
+            wwDistanceRenderZoneStateList({ zone1: result.zone1, zone2: result.zone2, zone3: result.zone3, zone4: result.zone4 });
             wwDistancePushRelatedWaveformRoles();
             wwDistanceRenderPlot();
         }
@@ -54352,13 +54376,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
         // Mho circle geometry -- mirrors app.domain.distance_protection.
         // mho_zone_operated() exactly: diameter from the origin to
-        // Z_reach = reach_ohm /_ characteristic_angle_deg.
+        // Z_reach = reach_ohm /_ characteristic_angle_deg (to -Z_reach for a
+        // reverse-direction zone).
         function wwDistanceMhoCircleSvg(zoneKey, z, toSvg, pxPerOhm) {
             if (!z.enabled || !Number.isFinite(z.reachOhm) || z.reachOhm <= 0) return "";
             const angleRad = (z.characteristicAngleDeg * Math.PI) / 180;
             const halfReach = z.reachOhm / 2;
-            const centerR = halfReach * Math.cos(angleRad);
-            const centerX = halfReach * Math.sin(angleRad);
+            const sg = wwDistanceZoneSign(z);
+            const centerR = sg * halfReach * Math.cos(angleRad);
+            const centerX = sg * halfReach * Math.sin(angleRad);
             const [cx, cy] = toSvg(centerR, centerX);
             const radiusPx = halfReach * pxPerOhm;
             return '<circle class="ww-dist-zone-boundary ww-dist-zone-boundary--' + zoneKey + '" cx="' + cx.toFixed(2) + '" cy="' + cy.toFixed(2) + '" r="' + radiusPx.toFixed(2) + '"></circle>';
@@ -54379,9 +54405,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 [0, -z.resistiveReverseOhm], [0, z.resistiveForwardOhm],
                 [z.reactiveReachOhm, z.resistiveForwardOhm], [z.reactiveReachOhm, -z.resistiveReverseOhm],
             ];
+            const sg = wwDistanceZoneSign(z);
             const pts = corners.map(([xPrime, rPrime]) => {
-                const r = xPrime * cosT + rPrime * sinT;
-                const x = xPrime * sinT - rPrime * cosT;
+                const r = sg * (xPrime * cosT + rPrime * sinT);
+                const x = sg * (xPrime * sinT - rPrime * cosT);
                 const [px, py] = toSvg(r, x);
                 return px.toFixed(2) + "," + py.toFixed(2);
             });
@@ -54394,6 +54421,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // share one px-per-ohm factor (1:1). Viewport-only: nothing here
         // touches zone settings or any engine/decision logic. ----
         // WW_DISTANCE_VIEWPORT_PURE_BEGIN
+        // A reverse-direction zone is its forward characteristic rotated 180
+        // degrees about the origin: every drawn/bounded (R, X) is multiplied
+        // by this sign. (Not the quadrilateral's own 'resistive reach reverse'.)
+        function wwDistanceZoneSign(z) { return z && z.direction === "reverse" ? -1 : 1; }
         const WW_DISTANCE_VIEW_MIN_HALF = 0.1;     // ohm -- smallest half-span
         const WW_DISTANCE_VIEW_MAX_HALF = 100000;  // ohm -- largest half-span
         const WW_DISTANCE_VIEW_ZOOM_FACTOR = 1.5;
@@ -54412,7 +54443,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (characteristic === "mho") {
                 if (!Number.isFinite(z.reachOhm) || z.reachOhm <= 0) return null;
                 const rad = z.reachOhm / 2;
-                const cR = rad * Math.cos(theta), cX = rad * Math.sin(theta);
+                const sg = wwDistanceZoneSign(z);
+                const cR = sg * rad * Math.cos(theta), cX = sg * rad * Math.sin(theta);
                 return { rMin: cR - rad, rMax: cR + rad, xMin: cX - rad, xMax: cX + rad };
             }
             if (!Number.isFinite(z.reactiveReachOhm) || z.reactiveReachOhm <= 0 ||
@@ -54424,8 +54456,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 [z.reactiveReachOhm, z.resistiveForwardOhm], [z.reactiveReachOhm, -z.resistiveReverseOhm],
             ];
             const b = { rMin: Infinity, rMax: -Infinity, xMin: Infinity, xMax: -Infinity };
+            const sgn = wwDistanceZoneSign(z);
             for (const [xp, rp] of corners) {
-                const r = xp * cosT + rp * sinT, x = xp * sinT - rp * cosT;
+                const r = sgn * (xp * cosT + rp * sinT), x = sgn * (xp * sinT - rp * cosT);
                 b.rMin = Math.min(b.rMin, r); b.rMax = Math.max(b.rMax, r);
                 b.xMin = Math.min(b.xMin, x); b.xMax = Math.max(b.xMax, x);
             }
@@ -54436,7 +54469,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // zone is drawable (caller falls back to the default view).
         function wwDistanceFitView(zones, characteristic) {
             let u = null;
-            for (const key of ["zone1", "zone2", "zone3"]) {
+            for (const key of ["zone1", "zone2", "zone3", "zone4"]) {
                 const b = wwDistanceZoneBounds(zones[key], characteristic);
                 if (!b) continue;
                 u = u ? {
@@ -54486,7 +54519,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwDistanceDefaultView() {
             const points = wwDistanceCollectRelevantPoints();
             let maxAbs = points.reduce((m, p) => Math.max(m, Math.abs(p.r), Math.abs(p.x)), 0);
-            for (const key of ["zone1", "zone2", "zone3"]) {
+            for (const key of WW_DISTANCE_ZONE_KEYS) {
                 maxAbs = Math.max(maxAbs, wwDistanceZoneReachExtent(wwDistanceState.zones[key]));
             }
             return { centerR: 0, centerX: 0, half: wwImpedanceNiceLimit(maxAbs) };
@@ -54561,7 +54594,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Zone geometry -- static, drawn BEFORE the locus/point so the
             // trajectory/marker always paint on top (Zone 1 last = most
             // prominent, matching its own "strongest" visual identity).
-            for (const key of ["zone3", "zone2", "zone1"]) {
+            for (const key of ["zone4", "zone3", "zone2", "zone1"]) {
                 const z = wwDistanceState.zones[key];
                 parts.push(wwDistanceState.characteristic === "mho" ? wwDistanceMhoCircleSvg(key, z, toSvg, pxPerOhm) : wwDistanceQuadrilateralSvg(key, z, toSvg));
             }
@@ -54596,7 +54629,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             } else {
                 const current = wwDistanceState.latestResult;
                 if (current && current.status === "computed") {
-                    const anyOperated = ["zone1", "zone2", "zone3"].some((k) => current[k] && current[k].state === "operated");
+                    const anyOperated = WW_DISTANCE_ZONE_KEYS.some((k) => current[k] && current[k].state === "operated");
                     const [x, y] = toSvg(current.resistance_ohm, current.reactance_ohm);
                     parts.push(
                         '<circle class="ww-dist-point' + (anyOperated ? " ww-dist-point--operated" : "") + '" cx="' + x.toFixed(2) + '" cy="' + y.toFixed(2) + '" r="3">' +
@@ -54648,7 +54681,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // requirement: "preserve relevant shared settings where sensible").
         function wwDistanceUpdateCharacteristicFieldsVisibility() {
             const isMho = wwDistanceState.characteristic === "mho";
-            for (const key of ["zone1", "zone2", "zone3"]) {
+            for (const key of WW_DISTANCE_ZONE_KEYS) {
                 const reach = document.getElementById("wwDistance" + wwDistanceZoneIdPart(key) + "ReachField");
                 const reactive = document.getElementById("wwDistance" + wwDistanceZoneIdPart(key) + "ReactiveReachField");
                 const forward = document.getElementById("wwDistance" + wwDistanceZoneIdPart(key) + "ResistiveForwardField");
@@ -54980,7 +55013,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     (result && WW_DISTANCE_STATUS_LABELS[result.status]) || "Enter valid Voltage/Current values to calculate.";
                 statusRow.className = "ww-phasor-status-row" + (result && result.status !== "computed" ? " ww-phasor-status--needs-configuration" : "");
                 valuesList.innerHTML = "";
-                wwDistanceRenderZoneStateList(result ? { zone1: result.zone1, zone2: result.zone2, zone3: result.zone3 } : null);
+                wwDistanceRenderZoneStateList(result ? { zone1: result.zone1, zone2: result.zone2, zone3: result.zone3, zone4: result.zone4 } : null);
                 wwDistanceRenderPlot();
                 return;
             }
@@ -54993,14 +55026,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             rows.push(wwDistanceValueRow("|Z|", wwDistanceFormatOhm(result.magnitude_ohm)));
             rows.push(wwDistanceValueRow("Angle", (result.angle_deg >= 0 ? "+" : "") + result.angle_deg.toFixed(2) + "°"));
             valuesList.innerHTML = rows.join("");
-            wwDistanceRenderZoneStateList({ zone1: result.zone1, zone2: result.zone2, zone3: result.zone3 });
+            wwDistanceRenderZoneStateList({ zone1: result.zone1, zone2: result.zone2, zone3: result.zone3, zone4: result.zone4 });
             wwDistanceRenderPlot();
         }
 
         function wwDistanceSyncZoneFields() {
             const setVal = (id, value) => { const el = document.getElementById(id); if (el) el.value = String(value); };
             const setChecked = (id, value) => { const el = document.getElementById(id); if (el) el.checked = !!value; };
-            for (const key of ["zone1", "zone2", "zone3"]) {
+            for (const key of WW_DISTANCE_ZONE_KEYS) {
                 const z = wwDistanceState.zones[key];
                 const part = wwDistanceZoneIdPart(key);
                 setChecked("wwDistance" + part + "Enabled", z.enabled);
@@ -55061,6 +55094,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 zone1: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0 }),
                 zone2: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0.4 }),
                 zone3: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 1 }),
+                zone4: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 1, direction: "reverse" }),
             };
             wwDistanceState.latestResult = null;
             wwDistanceState.view = null;
@@ -60356,9 +60390,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             });
         });
         // Zone settings -- one enabled-checkbox/delay/angle/reach group
-        // per zone, looped over the same three zone keys rather than
-        // hand-writing near-identical listeners 3x.
-        for (const wwDistanceZoneKey of ["zone1", "zone2", "zone3"]) {
+        // per zone, looped over the same zone keys rather than
+        // hand-writing near-identical listeners per zone.
+        for (const wwDistanceZoneKey of WW_DISTANCE_ZONE_KEYS) {
             const part = wwDistanceZoneIdPart(wwDistanceZoneKey);
             document.getElementById("wwDistance" + part + "Enabled").addEventListener("change", (event) => {
                 wwDistanceState.zones[wwDistanceZoneKey].enabled = event.target.checked;

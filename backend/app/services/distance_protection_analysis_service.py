@@ -32,6 +32,8 @@ from app.domain.distance_protection import (
     ZONE_KEY_1,
     ZONE_KEY_2,
     ZONE_KEY_3,
+    ZONE_KEY_4,
+    DEFAULT_ZONE4,
     DistanceAnalysisResult,
     DistanceLocusPoint,
     ManualDistanceResult,
@@ -67,14 +69,20 @@ def _worst_role_status(roles) -> tuple[str, str | None]:
 
 
 def _zone_result(key: str, settings: ZoneSettings, characteristic: str, point) -> ZoneResult:
-    return ZoneResult(zone_key=key, enabled=settings.enabled, state=evaluate_zone_state(point, characteristic=characteristic, zone=settings), delay_s=settings.delay_s)
+    return ZoneResult(
+        zone_key=key, enabled=settings.enabled, state=evaluate_zone_state(point, characteristic=characteristic, zone=settings),
+        delay_s=settings.delay_s, direction=settings.direction,
+    )
 
 
-def _zone_results(characteristic: str, zone1: ZoneSettings, zone2: ZoneSettings, zone3: ZoneSettings, point) -> tuple[ZoneResult, ZoneResult, ZoneResult]:
+def _zone_results(
+    characteristic: str, zone1: ZoneSettings, zone2: ZoneSettings, zone3: ZoneSettings, zone4: ZoneSettings, point,
+) -> tuple[ZoneResult, ZoneResult, ZoneResult, ZoneResult]:
     return (
         _zone_result(ZONE_KEY_1, zone1, characteristic, point),
         _zone_result(ZONE_KEY_2, zone2, characteristic, point),
         _zone_result(ZONE_KEY_3, zone3, characteristic, point),
+        _zone_result(ZONE_KEY_4, zone4, characteristic, point),
     )
 
 
@@ -95,6 +103,7 @@ def compute_distance_analysis(
     zone1: ZoneSettings,
     zone2: ZoneSettings,
     zone3: ZoneSettings,
+    zone4: ZoneSettings = DEFAULT_ZONE4,
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
@@ -115,7 +124,7 @@ def compute_distance_analysis(
         diagram, engineering_context_id=engineering_context_id, loop=loop, analysis_time=analysis_time,
         recording_basis=recording_basis, impedance_basis=impedance_basis,
         vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
-        characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3,
+        characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3, zone4=zone4,
     )
 
 
@@ -135,6 +144,7 @@ def _distance_analysis_from_diagram(
     zone1: ZoneSettings,
     zone2: ZoneSettings,
     zone3: ZoneSettings,
+    zone4: ZoneSettings = DEFAULT_ZONE4,
 ) -> DistanceAnalysisResult:
     """DEC-114: the `diagram`-consuming remainder of
     `compute_distance_analysis()`'s own work, factored out so a locus
@@ -151,11 +161,11 @@ def _distance_analysis_from_diagram(
     placement."""
 
     def _short_circuit(status: str, *, reason_code: str | None, message: str, point=None) -> DistanceAnalysisResult:
-        z1, z2, z3 = _zone_results(characteristic, zone1, zone2, zone3, point)
+        z1, z2, z3, z4 = _zone_results(characteristic, zone1, zone2, zone3, zone4, point)
         return DistanceAnalysisResult(
             status=status, engineering_context_id=engineering_context_id, loop=loop, analysis_time=analysis_time,
             recording_basis=recording_basis, impedance_basis=impedance_basis,
-            characteristic=characteristic, zone1=z1, zone2=z2, zone3=z3,
+            characteristic=characteristic, zone1=z1, zone2=z2, zone3=z3, zone4=z4,
             reason_code=reason_code, message=message,
         )
 
@@ -175,12 +185,12 @@ def _distance_analysis_from_diagram(
     v1_ref, v2_ref, i1_ref, i2_ref = v1_role.channel_ref, v2_role.channel_ref, i1_role.channel_ref, i2_role.channel_ref
     if any(r.status != ROLE_STATUS_AVAILABLE for r in roles):
         status, reason = _worst_role_status(roles)
-        z1, z2, z3 = _zone_results(characteristic, zone1, zone2, zone3, None)
+        z1, z2, z3, z4 = _zone_results(characteristic, zone1, zone2, zone3, zone4, None)
         return DistanceAnalysisResult(
             status=status, engineering_context_id=engineering_context_id, loop=loop, analysis_time=analysis_time,
             recording_basis=recording_basis, impedance_basis=impedance_basis,
             v1_channel_ref=v1_ref, v2_channel_ref=v2_ref, i1_channel_ref=i1_ref, i2_channel_ref=i2_ref,
-            characteristic=characteristic, zone1=z1, zone2=z2, zone3=z3,
+            characteristic=characteristic, zone1=z1, zone2=z2, zone3=z3, zone4=z4,
             reason_code=reason, message="One or more required phasors are not available for this fault loop.",
         )
 
@@ -199,7 +209,7 @@ def _distance_analysis_from_diagram(
         i1_role.magnitude_rms, i1_role.angle_deg_absolute, i2_role.magnitude_rms, i2_role.angle_deg_absolute,
     )
     if point is None:
-        z1, z2, z3 = _zone_results(characteristic, zone1, zone2, zone3, None)
+        z1, z2, z3, z4 = _zone_results(characteristic, zone1, zone2, zone3, zone4, None)
         return DistanceAnalysisResult(
             status=DISTANCE_STATUS_NEEDS_CONFIGURATION, engineering_context_id=engineering_context_id, loop=loop,
             analysis_time=analysis_time, recording_basis=recording_basis, impedance_basis=impedance_basis,
@@ -207,7 +217,7 @@ def _distance_analysis_from_diagram(
             reference_frequency_hz=diagram.reference_frequency_hz, window_seconds=diagram.window_seconds,
             v1_channel_ref=v1_ref, v2_channel_ref=v2_ref, i1_channel_ref=i1_ref, i2_channel_ref=i2_ref,
             voltage_unit=v1_role.unit, current_unit=i1_role.unit,
-            characteristic=characteristic, zone1=z1, zone2=z2, zone3=z3,
+            characteristic=characteristic, zone1=z1, zone2=z2, zone3=z3, zone4=z4,
             reason_code=REASON_LOOP_CURRENT_TOO_SMALL, message="Loop current too small for reliable impedance calculation.",
         )
 
@@ -215,7 +225,7 @@ def _distance_analysis_from_diagram(
         point, from_basis=recording_basis, to_basis=impedance_basis,
         vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
     )
-    z1, z2, z3 = _zone_results(characteristic, zone1, zone2, zone3, point_out)
+    z1, z2, z3, z4 = _zone_results(characteristic, zone1, zone2, zone3, zone4, point_out)
 
     return DistanceAnalysisResult(
         status=DISTANCE_STATUS_COMPUTED, engineering_context_id=engineering_context_id, loop=loop,
@@ -226,7 +236,7 @@ def _distance_analysis_from_diagram(
         voltage_unit=v1_role.unit, current_unit=i1_role.unit,
         resistance_ohm=point_out.resistance_ohm, reactance_ohm=point_out.reactance_ohm,
         magnitude_ohm=point_out.magnitude_ohm, angle_deg=point_out.angle_deg,
-        characteristic=characteristic, zone1=z1, zone2=z2, zone3=z3,
+        characteristic=characteristic, zone1=z1, zone2=z2, zone3=z3, zone4=z4,
         message="Distance protection loop impedance computed.",
     )
 
@@ -256,6 +266,7 @@ def compute_distance_locus(
     zone1: ZoneSettings,
     zone2: ZoneSettings,
     zone3: ZoneSettings,
+    zone4: ZoneSettings = DEFAULT_ZONE4,
     context_registry: EngineeringContextRegistry,
     source_registry: WorkspaceRegistry,
     calculated_channel_registry: CalculatedChannelRegistry,
@@ -300,7 +311,7 @@ def compute_distance_locus(
             diagram, engineering_context_id=engineering_context_id, loop=loop, analysis_time=t,
             recording_basis=recording_basis, impedance_basis=impedance_basis,
             vt_primary=vt_primary, vt_secondary=vt_secondary, ct_primary=ct_primary, ct_secondary=ct_secondary,
-            characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3,
+            characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3, zone4=zone4,
         )
         points.append(DistanceLocusPoint(
             analysis_time=t, status=result.status,
@@ -333,6 +344,7 @@ def compute_distance_manual(
     zone1: ZoneSettings,
     zone2: ZoneSettings,
     zone3: ZoneSettings,
+    zone4: ZoneSettings = DEFAULT_ZONE4,
     v1_input: ManualPhasorRoleInput,
     v2_input: ManualPhasorRoleInput,
     i1_input: ManualPhasorRoleInput,
@@ -342,5 +354,5 @@ def compute_distance_manual(
         v1_input, v2_input, i1_input, i2_input, loop_label=loop_label,
         voltage_basis=voltage_basis, vt_primary=vt_primary, vt_secondary=vt_secondary,
         current_basis=current_basis, ct_primary=ct_primary, ct_secondary=ct_secondary,
-        impedance_basis=impedance_basis, characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3,
+        impedance_basis=impedance_basis, characteristic=characteristic, zone1=zone1, zone2=zone2, zone3=zone3, zone4=zone4,
     )

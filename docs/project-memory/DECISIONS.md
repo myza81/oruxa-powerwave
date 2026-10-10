@@ -25085,6 +25085,14 @@ sequential ids).
   detection only -- no relay identification, interpretation, canonical mapping
   or auto-population; no persistence. Details in
   [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-4--generic-pdf-text-extraction-into-rawrelaydocument).
+- **Reverse Zone addendum (2026-10-10)**: the manual Distance Protection form,
+  API and engine now have a fourth, reverse-direction zone slot ("Reverse
+  Zone"). Zone identity and `direction` are separate fields; a reverse zone is
+  the whole characteristic rotated 180° about the origin and is distinct from a
+  quadrilateral's reverse resistive reach. The adapter now supports forward and
+  reverse zones (non-directional/unknown/unresolved remain refused); the
+  canonical model still holds any number of zones. See
+  [DISTANCE_PROTECTION_ANALYSIS.md](DISTANCE_PROTECTION_ANALYSIS.md#reverse-zone--the-fourth-manual-zone-slot).
 - **Scope**: Slice 1 is contracts + tests only -- no extraction, parsing,
   upload UI, auto-population, rendering change or persistence.
 

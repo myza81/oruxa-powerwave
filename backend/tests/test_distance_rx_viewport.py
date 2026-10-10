@@ -156,3 +156,58 @@ def test_degenerate_input_stays_finite():
     v = fit(_zones(_zone(reachOhm=1e-9)), "mho")
     assert all(isinstance(v[k], (int, float)) for k in v)
     assert v["half"] >= 0.1
+
+
+# --- Reverse Zone (zone4: direction "reverse" = the characteristic rotated 180 degrees) ---
+
+
+def _rev(z):
+    return dict(z, direction="reverse")
+
+
+def test_reverse_mho_fit_is_mirrored_through_the_origin():
+    fwd = fit(_zones(_zone(reachOhm=10, characteristicAngleDeg=60)), "mho")
+    rev = fit({"zone1": _zone(enabled=False), "zone2": _zone(enabled=False), "zone3": _zone(enabled=False),
+               "zone4": _rev(_zone(reachOhm=10, characteristicAngleDeg=60))}, "mho")
+    assert rev["centerR"] == pytest.approx(-fwd["centerR"])
+    assert rev["centerX"] == pytest.approx(-fwd["centerX"])
+    assert rev["half"] == pytest.approx(fwd["half"])
+
+
+def test_reverse_quadrilateral_bounds_are_the_negated_forward_bounds():
+    z = _quad(10, 4, 2, characteristicAngleDeg=75)
+    fwd = _run(f"wwDistanceZoneBounds({json.dumps(z)}, 'quadrilateral')")
+    rev = _run(f"wwDistanceZoneBounds({json.dumps(_rev(z))}, 'quadrilateral')")
+    assert rev["rMin"] == pytest.approx(-fwd["rMax"]) and rev["rMax"] == pytest.approx(-fwd["rMin"])
+    assert rev["xMin"] == pytest.approx(-fwd["xMax"]) and rev["xMax"] == pytest.approx(-fwd["xMin"])
+
+
+def test_fit_zones_includes_the_reverse_zone_negative_extent():
+    off = _zone(enabled=False)
+    fwd_only = fit({"zone1": _quad(10, 4, 2), "zone2": off, "zone3": off, "zone4": off}, "quadrilateral")
+    both = fit({"zone1": _quad(10, 4, 2), "zone2": off, "zone3": off, "zone4": _rev(_quad(10, 4, 2))}, "quadrilateral")
+    # forward X in [0, 10], reverse X in [-10, 0] -> union spans [-10, 10]
+    assert both["centerX"] == pytest.approx(0.0)
+    assert both["half"] > fwd_only["half"]
+    assert both["half"] == pytest.approx(10 * 1.2)  # span 20 (larger axis) / 2 * 1.2 margin
+
+
+def test_disabled_reverse_zone_does_not_affect_fit_and_missing_zone4_is_ignored():
+    off = _zone(enabled=False)
+    base = fit({"zone1": _quad(10, 4, 2), "zone2": off, "zone3": off}, "quadrilateral")  # no zone4 key at all
+    with_off = fit({"zone1": _quad(10, 4, 2), "zone2": off, "zone3": off, "zone4": _rev(_zone(enabled=False))}, "quadrilateral")
+    assert base == with_off
+
+
+def test_forward_zone_bounds_are_unchanged_by_the_direction_field():
+    z = _quad(10, 4, 2, characteristicAngleDeg=75)
+    assert _run(f"wwDistanceZoneBounds({json.dumps(z)}, 'quadrilateral')") == _run(
+        f"wwDistanceZoneBounds({json.dumps(dict(z, direction='forward'))}, 'quadrilateral')"
+    )
+
+
+def test_fit_view_stays_square_with_a_reverse_zone():
+    # 1:1 R/X scaling is a property of the view being a square window.
+    v = fit({"zone1": _quad(10, 4, 2), "zone2": _zone(enabled=False), "zone3": _zone(enabled=False),
+             "zone4": _rev(_quad(6, 3, 3))}, "quadrilateral")
+    assert set(v) == {"centerR", "centerX", "half"}

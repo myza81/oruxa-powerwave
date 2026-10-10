@@ -28,6 +28,9 @@ class ZoneResultOut(BaseModel):
     enabled: bool
     state: ZoneState
     delay_s: float
+    #: The zone's own direction ("forward" | "reverse"). Independent of the
+    #: zone identity and of a quadrilateral's reverse resistive reach.
+    direction: str = "forward"
 
 
 class DistanceAnalysisResultOut(BaseModel):
@@ -64,6 +67,9 @@ class DistanceAnalysisResultOut(BaseModel):
     zone1: ZoneResultOut | None
     zone2: ZoneResultOut | None
     zone3: ZoneResultOut | None
+    #: Added with the fourth (reverse-direction) manual slot; optional so
+    #: older consumers that ignore it keep working.
+    zone4: ZoneResultOut | None = None
     warnings: list[str]
     reason_code: str | None
     message: str
@@ -106,5 +112,8 @@ class ManualDistanceResultOut(BaseModel):
     zone1: ZoneResultOut | None
     zone2: ZoneResultOut | None
     zone3: ZoneResultOut | None
+    #: Added with the fourth (reverse-direction) manual slot; optional so
+    #: older consumers that ignore it keep working.
+    zone4: ZoneResultOut | None = None
     reason_code: str | None
     message: str

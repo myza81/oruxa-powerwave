@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from app.domain.distance_protection import (
+    DEFAULT_ZONE4,
     CHARACTERISTIC_MHO,
     CHARACTERISTIC_QUADRILATERAL,
     ZoneSettings,
@@ -210,7 +211,8 @@ class TestSupportedImport:
         assert a.supported and a.characteristic == CHARACTERISTIC_QUADRILATERAL
         assert a.zones[0] == ZoneSettings(True, None, 6.0, 4.0, 2.0, 80.0, 0.15)
         assert a.zones[2] == ZoneSettings()  # unused slot
-        assert a.zone_ids == ("Z1", "Z2", None)
+        assert a.zones[3] == DEFAULT_ZONE4  # unused fourth slot: disabled, reverse-facing
+        assert a.zone_ids == ("Z1", "Z2", None, None)
 
     def test_supported_mho_import(self):
         z = import_zone(char=CharacteristicType.MHO)
@@ -219,10 +221,10 @@ class TestSupportedImport:
         assert a.zones[0].reach_ohm == 6.0 and a.zones[0].characteristic_angle_deg == 80.0
 
     def test_extra_disabled_zones_are_allowed_and_enabled_extras_refused(self):
-        zs = [import_zone(f"Z{i}") for i in range(1, 4)]
-        off = import_zone("Z4", status=m(ZoneStatus.INACTIVE), direction=m(ZoneDirection.INACTIVE))
+        zs = [import_zone(f"Z{i}") for i in range(1, 5)]
+        off = import_zone("Z5", status=m(ZoneStatus.INACTIVE), direction=m(ZoneDirection.INACTIVE))
         assert adapt_to_engine(model_of(*zs, off), engine_basis=SEC).supported
-        a = adapt_to_engine(model_of(*zs, import_zone("Z4")), engine_basis=SEC)
+        a = adapt_to_engine(model_of(*zs, import_zone("Z5")), engine_basis=SEC)
         assert not a.supported and UnsupportedCode.TOO_MANY_ZONES in codes(a)
 
     def test_earth_only_data_is_preserved_and_reported_not_used(self):
@@ -266,8 +268,8 @@ class TestUnsupportedFailsSafe:
         a = adapt_to_engine(model_of(import_zone(phase_phase_enabled=unresolved())), engine_basis=SEC)
         assert UnsupportedCode.LOOP_TYPE_UNSUPPORTED in codes(a)
 
-    @pytest.mark.parametrize("direction", [ZoneDirection.REVERSE, ZoneDirection.NON_DIRECTIONAL, ZoneDirection.UNKNOWN])
-    def test_non_forward_direction(self, direction):
+    @pytest.mark.parametrize("direction", [ZoneDirection.NON_DIRECTIONAL, ZoneDirection.UNKNOWN])
+    def test_non_directional_or_unknown_direction(self, direction):
         a = adapt_to_engine(model_of(import_zone(direction=m(direction))), engine_basis=SEC)
         assert not a.supported and UnsupportedCode.DIRECTION_UNSUPPORTED in codes(a)
 
@@ -314,11 +316,11 @@ class TestUnsupportedFailsSafe:
         assert not a.supported and UnsupportedCode.BASIS_MISMATCH in codes(a)
 
     def test_all_problems_are_reported_together(self):
-        z = import_zone(direction=m(ZoneDirection.REVERSE), reach=unresolved(), phase_timer_s=unresolved())
+        z = import_zone(direction=m(ZoneDirection.NON_DIRECTIONAL), reach=unresolved(), phase_timer_s=unresolved())
         assert len(adapt_to_engine(model_of(z), engine_basis=SEC).reasons) >= 3
 
     def test_reasons_name_the_zone(self):
-        a = adapt_to_engine(model_of(import_zone("Z2", direction=m(ZoneDirection.REVERSE))), engine_basis=SEC)
+        a = adapt_to_engine(model_of(import_zone("Z2", direction=m(ZoneDirection.NON_DIRECTIONAL))), engine_basis=SEC)
         assert a.reasons[0].zone_id == "Z2"
 
     def test_incomplete_allowed_only_when_requested(self):
@@ -343,7 +345,7 @@ class TestUnsupportedFailsSafe:
             model_of(import_zone("A", phase_timer_s=m(0.1)), import_zone("B", phase_timer_s=m(0.2)), import_zone("C", phase_timer_s=m(0.3))),
             engine_basis=SEC,
         )
-        assert [z.delay_s for z in a.zones] == [0.1, 0.2, 0.3] and a.zone_ids == ("A", "B", "C")
+        assert [z.delay_s for z in a.zones[:3]] == [0.1, 0.2, 0.3] and a.zone_ids == ("A", "B", "C", None)
 
 
 # --- architecture guards ----------------------------------------------------
