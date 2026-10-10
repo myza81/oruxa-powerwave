@@ -48,7 +48,7 @@ class TestEntryPoint:
     def test_privacy_wording_present_and_accurate(self):
         panel = _distance_panel(_source())
         assert "Files are processed temporarily and are not permanently stored." in panel
-        assert "cleared when you refresh or close it" in panel
+        assert "cleared when you refresh or close this tab" in panel
 
     def test_file_input_accepts_pdf_only_and_is_a_single_file(self):
         panel = _distance_panel(_source())
@@ -61,6 +61,49 @@ class TestEntryPoint:
         for element_id in ("wwRelayImportRemoveBtn", "wwRelayImportFilename", "wwRelayImportStatus", "wwRelayImportError"):
             assert f'id="{element_id}"' in panel
         assert 'role="alert"' in _slice(panel, 'id="wwRelayImportError"', ">")
+
+
+class TestPanelPolish:
+    def test_import_control_is_a_standard_button_not_a_segmented_toggle(self):
+        panel = _distance_panel(_source())
+        tag = re.search(r'<button[^>]*id="wwRelayImportBtn"[^>]*>', panel).group(0)
+        assert 'type="button"' in tag
+        assert "ww-oc-axis-toggle-btn" not in tag  # default (primary) app button
+
+    def test_remove_uses_the_secondary_button_style(self):
+        panel = _distance_panel(_source())
+        tag = re.search(r'<button[^>]*id="wwRelayImportRemoveBtn"[^>]*>', panel).group(0)
+        assert 'class="secondary"' in tag
+
+    def test_heading_hint_and_privacy_are_separate_elements(self):
+        panel = _slice(_distance_panel(_source()), 'id="wwRelayImportPanel"', "</section>")
+        assert ">Relay Settings</h3>" in panel
+        assert "PDF supported for now. Manual entry remains available below." in panel
+        assert 'class="ww-relay-import-privacy"' in panel
+        assert panel.index("wwRelayImportFile\"") < panel.index("wwRelayImportPrivacy")
+
+    def test_file_card_groups_type_name_status_and_remove(self):
+        card = _slice(_distance_panel(_source()), 'id="wwRelayImportFile"', 'id="wwRelayImportError"')
+        for element_id in ("wwRelayImportType", "wwRelayImportFilename", "wwRelayImportStatus", "wwRelayImportDetail", "wwRelayImportRemoveBtn"):
+            assert f'id="{element_id}"' in card
+
+    def test_filename_truncates_safely_and_exposes_full_name(self):
+        source = _source()
+        css = _slice(source, ".ww-relay-import-filename {", "}")
+        assert "text-overflow: ellipsis" in css and "overflow: hidden" in css and "white-space: nowrap" in css
+        assert "min-width: 0" in _slice(source, ".ww-relay-import-info {", "}")
+        assert "nameEl.title = " in _relay_import_js(source)
+
+    def test_accepted_state_says_settings_not_read_and_import_disables_while_processing(self):
+        js = _relay_import_js(_source())
+        assert "File accepted" in js
+        assert "Settings have not been read yet." in js
+        assert "importBtn.disabled = state.phase === \"uploading\"" in js
+
+    def test_button_states_defined(self):
+        source = _source()
+        assert "#wwRelayImportBtn:hover" in source
+        assert "#wwRelayImportBtn:focus-visible" in source
 
 
 class TestEphemeralState:
@@ -91,7 +134,8 @@ class TestEphemeralState:
 
     def test_filename_is_rendered_as_text_not_html(self):
         js = _relay_import_js(_source())
-        assert "wwRelayImportFilename\").textContent" in js
+        assert "nameEl.textContent = " in js
+        assert 'getElementById("wwRelayImportFilename")' in js
         assert "innerHTML" not in js
 
     def test_event_wiring_present(self):

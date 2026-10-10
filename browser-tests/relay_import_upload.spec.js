@@ -46,8 +46,10 @@ test("a valid PDF shows filename and returned metadata, and Remove resets everyt
   await openDistance(page);
   await pick(page, "P441 settings.pdf", PDF);
   await expect(page.locator("#wwRelayImportFilename")).toHaveText("P441 settings.pdf");
-  await expect(page.locator("#wwRelayImportStatus")).toContainText("PDF");
+  await expect(page.locator("#wwRelayImportType")).toHaveText("PDF");
   await expect(page.locator("#wwRelayImportStatus")).toContainText("File accepted");
+  await expect(page.locator("#wwRelayImportDetail")).toHaveText("Settings have not been read yet.");
+  await expect(page.locator("#wwRelayImportRemoveBtn")).toBeVisible();
   await expect(page.locator("#wwRelayImportError")).toBeHidden();
 
   await page.locator("#wwRelayImportRemoveBtn").click();
@@ -149,4 +151,75 @@ test("removing while a request is in flight discards its late result", async ({ 
   await page.waitForTimeout(1200);
   await expect(page.locator("#wwRelayImportFile")).toBeHidden();
   await expect(page.locator("#wwRelayImportError")).toBeHidden();
+});
+
+test("import and remove look like buttons; file card is bordered; empty state is compact", async ({ page }) => {
+  await openDistance(page);
+  const style = (sel) =>
+    page.locator(sel).evaluate((el) => {
+      const c = getComputedStyle(el);
+      return { bg: c.backgroundColor, border: c.borderTopWidth, cursor: c.cursor, tag: el.tagName };
+    });
+  const imp = await style("#wwRelayImportBtn");
+  expect(imp.tag).toBe("BUTTON");
+  expect(imp.bg).not.toBe("rgba(0, 0, 0, 0)"); // filled, not plain text
+  expect(imp.cursor).toBe("pointer");
+  // Empty state: no card is rendered at all.
+  await expect(page.locator("#wwRelayImportFile")).toBeHidden();
+
+  await pick(page, "p441.pdf", PDF);
+  await expect(page.locator("#wwRelayImportStatus")).toContainText("File accepted");
+  const card = await page.locator("#wwRelayImportFile").evaluate((el) => {
+    const c = getComputedStyle(el);
+    return { border: c.borderTopWidth, radius: c.borderTopLeftRadius };
+  });
+  expect(card.border).toBe("1px");
+  expect(card.radius).not.toBe("0px");
+  const rm = await style("#wwRelayImportRemoveBtn");
+  expect(rm.border).toBe("1px");
+  expect(rm.cursor).toBe("pointer");
+
+  await page.locator("#wwRelayImportBtn").focus();
+  await page.keyboard.press("Shift"); // keyboard modality so :focus-visible applies
+  const outline = await page.locator("#wwRelayImportBtn").evaluate((el) => getComputedStyle(el).outlineStyle);
+  expect(outline).not.toBe("none");
+});
+
+test("very long filenames truncate with a tooltip and never cause horizontal scrolling", async ({ page }) => {
+  const longName = "P441_Feeder_Protection_Setting_Sheet_" + "very-long-segment-".repeat(9) + "final.pdf";
+  for (const width of [1280, 360]) {
+    await page.setViewportSize({ width, height: 800 });
+    await openDistance(page);
+    const manualBefore = await page.locator("#wwDistanceZone1ReachInput").inputValue();
+    await pick(page, longName, PDF);
+    await expect(page.locator("#wwRelayImportStatus")).toContainText("File accepted");
+    const name = page.locator("#wwRelayImportFilename");
+    await expect(name).toHaveAttribute("title", longName);
+    const m = await page.evaluate(() => {
+      const n = document.getElementById("wwRelayImportFilename");
+      const card = document.getElementById("wwRelayImportFile");
+      const rm = document.getElementById("wwRelayImportRemoveBtn").getBoundingClientRect();
+      return {
+        truncated: n.scrollWidth > n.clientWidth,
+        cardFits: n.getBoundingClientRect().right <= card.getBoundingClientRect().right,
+        removeInView: rm.right <= window.innerWidth && rm.left >= 0,
+        pageOverflow: document.documentElement.scrollWidth > window.innerWidth,
+      };
+    });
+    expect(m.truncated).toBe(true);
+    expect(m.cardFits).toBe(true);
+    expect(m.removeInView).toBe(true);
+    expect(m.pageOverflow).toBe(false);
+    await expect(page.locator("#wwDistanceZone1ReachInput")).toHaveValue(manualBefore);
+  }
+});
+
+test("error state is a distinct bordered message and Import is usable again", async ({ page }) => {
+  await openDistance(page);
+  await pick(page, "broken.pdf", Buffer.from("this is not a pdf"));
+  const err = page.locator("#wwRelayImportError");
+  await expect(err).toBeVisible();
+  const border = await err.evaluate((el) => getComputedStyle(el).borderTopWidth);
+  expect(border).toBe("1px");
+  await expect(page.locator("#wwRelayImportBtn")).toBeEnabled();
 });

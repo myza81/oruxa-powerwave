@@ -8531,38 +8531,89 @@
             flex-wrap: wrap;
         }
         /* Relay Import Slice 3 -- "Import Relay Settings" entry point on the
-           Distance Protection panel. Additive; reuses the segmented-control
-           button look and the existing text tokens only. */
-        .ww-relay-import-row {
+           Distance Protection panel. Additive. The action is the app's
+           standard primary `button`, Remove is `button.secondary`, the file
+           row is a bordered card using the shared panel tokens. */
+        .ww-relay-import-head {
             display: flex;
             align-items: center;
-            gap: 8px;
+            justify-content: space-between;
+            gap: 8px 16px;
             flex-wrap: wrap;
         }
-        .ww-relay-import-note {
-            margin: 6px 0 0;
+        .ww-relay-import-titles { min-width: 0; }
+        .ww-relay-import-title {
+            margin: 0;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .ww-relay-import-hint {
+            margin: 2px 0 0;
             font-size: 0.7rem;
             color: var(--text-dim);
         }
+        #wwRelayImportBtn:hover:not(:disabled),
+        #wwRelayImportRemoveBtn:hover { filter: brightness(1.08); }
+        #wwRelayImportRemoveBtn:hover { border-color: var(--text-dim); color: var(--text); filter: none; }
+        #wwRelayImportBtn:focus-visible,
+        #wwRelayImportRemoveBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        #wwRelayImportBtn,
+        #wwRelayImportRemoveBtn { flex: none; white-space: nowrap; }
         .ww-relay-import-file {
             display: flex;
             align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-top: 8px;
-            font-size: 0.8rem;
+            gap: 10px;
+            margin-top: 10px;
+            padding: 8px 10px;
+            border: 1px solid var(--panel-border);
+            border-left: 3px solid var(--accent);
+            border-radius: var(--radius);
+            background: var(--surface-tint);
         }
+        .ww-relay-import-file[data-state="accepted"] { border-left-color: var(--ok); }
         .ww-relay-import-file[hidden],
         .ww-relay-import-error[hidden] { display: none; }
-        .ww-relay-import-filename {
+        .ww-relay-import-type {
+            flex: none;
+            padding: 2px 6px;
+            border: 1px solid var(--panel-border);
+            border-radius: 4px;
+            font-size: 0.65rem;
             font-weight: 600;
+            color: var(--text-dim);
+        }
+        .ww-relay-import-info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+        }
+        .ww-relay-import-filename {
+            font-size: 0.85rem;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .ww-relay-import-meta { font-size: 0.72rem; color: var(--text-dim); }
+        .ww-relay-import-detail { font-size: 0.7rem; color: var(--text-dim); }
+        .ww-relay-import-detail:empty { display: none; }
+        .ww-relay-import-error {
+            margin-top: 10px;
+            padding: 8px 10px;
+            border: 1px solid var(--error);
+            border-radius: var(--radius);
+            background: var(--error-wash);
+            font-size: 0.78rem;
+            color: var(--error);
             overflow-wrap: anywhere;
         }
-        .ww-relay-import-meta { color: var(--text-dim); }
-        .ww-relay-import-error {
-            margin-top: 8px;
-            font-size: 0.8rem;
-            color: var(--error);
+        .ww-relay-import-privacy {
+            margin: 10px 0 0;
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            opacity: 0.85;
         }
         .ww-oc-input-source-hint {
             font-size: 0.7rem;
@@ -11697,19 +11748,25 @@
                                  untouched. In-memory UI state only
                                  (wwRelayImportState) -- never browser storage. -->
                             <section class="panel ww-relay-import-panel" id="wwRelayImportPanel" aria-label="Import Relay Settings">
-                                <div class="ww-relay-import-row">
-                                    <span class="ww-oc-view-controls-label">Relay Settings</span>
-                                    <button type="button" id="wwRelayImportBtn" class="ww-oc-axis-toggle-btn">Import Relay Settings</button>
+                                <div class="ww-relay-import-head">
+                                    <div class="ww-relay-import-titles">
+                                        <h3 class="ww-relay-import-title">Relay Settings</h3>
+                                        <p class="ww-relay-import-hint">PDF supported for now. Manual entry remains available below.</p>
+                                    </div>
+                                    <button type="button" id="wwRelayImportBtn">Import Relay Settings</button>
                                     <input type="file" id="wwRelayImportFileInput" accept=".pdf,application/pdf" hidden>
-                                    <span class="ww-oc-input-source-hint">PDF · optional — manual entry below stays fully available.</span>
                                 </div>
-                                <p class="ww-relay-import-note" id="wwRelayImportPrivacy">Files are processed temporarily and are not permanently stored. Import details are kept in this browser tab only and are cleared when you refresh or close it.</p>
-                                <div class="ww-relay-import-file" id="wwRelayImportFile" hidden>
-                                    <span class="ww-relay-import-filename" id="wwRelayImportFilename"></span>
-                                    <span class="ww-relay-import-meta" id="wwRelayImportStatus" role="status" aria-live="polite"></span>
-                                    <button type="button" id="wwRelayImportRemoveBtn" class="ww-oc-axis-toggle-btn">Remove</button>
+                                <div class="ww-relay-import-file" id="wwRelayImportFile" data-state="uploading" hidden>
+                                    <span class="ww-relay-import-type" id="wwRelayImportType"></span>
+                                    <div class="ww-relay-import-info">
+                                        <span class="ww-relay-import-filename" id="wwRelayImportFilename"></span>
+                                        <span class="ww-relay-import-meta" id="wwRelayImportStatus" role="status" aria-live="polite"></span>
+                                        <span class="ww-relay-import-detail" id="wwRelayImportDetail"></span>
+                                    </div>
+                                    <button type="button" class="secondary" id="wwRelayImportRemoveBtn">Remove</button>
                                 </div>
                                 <div class="ww-relay-import-error" id="wwRelayImportError" role="alert" hidden></div>
+                                <p class="ww-relay-import-privacy" id="wwRelayImportPrivacy">Files are processed temporarily and are not permanently stored. Import details are cleared when you refresh or close this tab.</p>
                             </section>
 
                             <!-- ALWAYS visible once the Distance Protection
@@ -54700,15 +54757,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!fileRow || !error) return;
             const showFile = state.phase === "uploading" || state.phase === "accepted";
             fileRow.hidden = !showFile;
-            document.getElementById("wwRelayImportFilename").textContent = showFile ? state.filename : "";
+            const nameEl = document.getElementById("wwRelayImportFilename");
+            nameEl.textContent = showFile ? state.filename : "";
+            nameEl.title = showFile ? state.filename : ""; // full name when truncated
+            fileRow.dataset.state = state.phase;
+            document.getElementById("wwRelayImportType").textContent = showFile ? (state.sourceFormat || "pdf").toUpperCase() : "";
             let text = "";
+            let detail = "";
             if (state.phase === "uploading") {
                 text = "Processing…";
             } else if (state.phase === "accepted") {
-                text = state.sourceFormat.toUpperCase() + " · " + formatFileSize(state.sizeBytes)
-                    + " · File accepted. Settings are not read in this version.";
+                text = formatFileSize(state.sizeBytes) + " · File accepted";
+                detail = "Settings have not been read yet.";
             }
             document.getElementById("wwRelayImportStatus").textContent = text;
+            document.getElementById("wwRelayImportDetail").textContent = detail;
+            const importBtn = document.getElementById("wwRelayImportBtn");
+            if (importBtn) importBtn.disabled = state.phase === "uploading";
             error.hidden = state.phase !== "error";
             error.textContent = state.phase === "error" ? state.error : "";
         }
