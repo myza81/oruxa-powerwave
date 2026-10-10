@@ -7,6 +7,15 @@ history already provides the detailed historical trail.
 Last updated: **2026-10-05** (Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
+## Relay import Slice 3 (2026-10-10, `feature/distance-relay-import`)
+
+Ephemeral Import Relay Settings upload (PDF only, validate-and-discard) plus
+the Distance Protection UI entry point; see
+[RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-3--ephemeral-import-relay-settings-upload).
+**Stopped at the owner UAT gate -- do not start Slice 4 (extraction /
+`RawRelayDocument` generation) until the owner has UAT'd and approved
+Slice 3.** Not merged; Oscillation branch not rebased.
+
 ## Relay import Slice 1 (2026-10-10, `feature/distance-relay-import`)
 
 Slice 1 foundation plus Slice 2 (manual entry -> canonical -> engine adapter);

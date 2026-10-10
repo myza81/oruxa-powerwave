@@ -156,7 +156,13 @@ Protection model, relay-profile protocol with a generic fail-safe fallback)
 plus modelling tests. **Slice 2:** manual Distance Protection input is mapped
 into the canonical model and reaches the unchanged engine through a
 canonical-to-engine adapter that refuses unsupported data. No extraction,
-parsing, UI, persistence or change to existing Distance Protection behaviour. See
+parsing, persistence or change to existing Distance Protection behaviour.
+**Slice 3:** a visible **Import Relay Settings** control on the Distance
+Protection panel uploads one PDF to an ephemeral endpoint that validates it
+(type, empty, 20 MB configurable limit, PDF header/trailer) and returns
+filename/format/size only; the raw file is discarded immediately, nothing is
+persisted (no DB, storage or browser storage) and the UI state clears on
+refresh. No settings are extracted or applied yet; manual entry is unchanged. See
 [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md).
 
 **Engineering tools and workflow batch (DEC-155 to DEC-165), 2026-10-05.**

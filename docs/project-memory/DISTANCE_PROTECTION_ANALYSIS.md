@@ -1,5 +1,10 @@
 # Distance Protection Analysis
 
+> **Relay Import (Slice 3):** the panel has an additive *Import Relay
+> Settings* control (PDF upload, validated and discarded server-side; no
+> extraction or auto-population yet). Manual entry is unchanged. See
+> [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-3--ephemeral-import-relay-settings-upload).
+
 Status: **v1 implemented** (2026-09-18). Activates a new `Distance
 Protection` navigation entry as the **FIFTH** Analysis-menu analyzer
 (order preserved: Phasor, Overcurrent, Impedance Locus, Sequence

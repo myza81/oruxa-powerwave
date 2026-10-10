@@ -25069,6 +25069,14 @@ sequential ids).
   cannot represent instead of guessing. No behaviour, UI, persistence or
   API-shape change. Details in
   [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-2--manual-entry-and-the-engine-adapter).
+- **Slice 3 addendum (2026-10-10)**: first UI -- an Import Relay Settings
+  control on Distance Protection (PDF only) backed by an ephemeral
+  validate-and-discard upload endpoint (`POST /api/v1/relay-import/upload`,
+  configurable limit `MAX_RELAY_IMPORT_UPLOAD_SIZE_MB`, default 20 MB). Raw
+  files are never persisted (no DB, storage, cache, logs); UI state is
+  in-tab memory only. No extraction, relay identification or
+  auto-population. Details in
+  [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-3--ephemeral-import-relay-settings-upload).
 - **Scope**: Slice 1 is contracts + tests only -- no extraction, parsing,
   upload UI, auto-population, rendering change or persistence.
 

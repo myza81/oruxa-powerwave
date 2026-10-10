@@ -8530,6 +8530,40 @@
             gap: 8px;
             flex-wrap: wrap;
         }
+        /* Relay Import Slice 3 -- "Import Relay Settings" entry point on the
+           Distance Protection panel. Additive; reuses the segmented-control
+           button look and the existing text tokens only. */
+        .ww-relay-import-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .ww-relay-import-note {
+            margin: 6px 0 0;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+        }
+        .ww-relay-import-file {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+            font-size: 0.8rem;
+        }
+        .ww-relay-import-file[hidden],
+        .ww-relay-import-error[hidden] { display: none; }
+        .ww-relay-import-filename {
+            font-weight: 600;
+            overflow-wrap: anywhere;
+        }
+        .ww-relay-import-meta { color: var(--text-dim); }
+        .ww-relay-import-error {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            color: var(--error);
+        }
         .ww-oc-input-source-hint {
             font-size: 0.7rem;
             color: var(--text-dim);
@@ -11655,6 +11689,28 @@
                                 <div class="ww-phasor-status-row" id="wwDistanceStatusRow" hidden></div>
                                 <p class="empty-state" id="wwDistanceEmptyState">No recording loaded. Upload a recording to use Recording mode.</p>
                             </div>
+
+                            <!-- Relay Import Slice 3 -- Import Relay Settings entry
+                                 point. Upload + minimal backend validation only:
+                                 no extraction, relay identification or
+                                 auto-population yet. Manual entry below is
+                                 untouched. In-memory UI state only
+                                 (wwRelayImportState) -- never browser storage. -->
+                            <section class="panel ww-relay-import-panel" id="wwRelayImportPanel" aria-label="Import Relay Settings">
+                                <div class="ww-relay-import-row">
+                                    <span class="ww-oc-view-controls-label">Relay Settings</span>
+                                    <button type="button" id="wwRelayImportBtn" class="ww-oc-axis-toggle-btn">Import Relay Settings</button>
+                                    <input type="file" id="wwRelayImportFileInput" accept=".pdf,application/pdf" hidden>
+                                    <span class="ww-oc-input-source-hint">PDF · optional — manual entry below stays fully available.</span>
+                                </div>
+                                <p class="ww-relay-import-note" id="wwRelayImportPrivacy">Files are processed temporarily and are not permanently stored. Import details are kept in this browser tab only and are cleared when you refresh or close it.</p>
+                                <div class="ww-relay-import-file" id="wwRelayImportFile" hidden>
+                                    <span class="ww-relay-import-filename" id="wwRelayImportFilename"></span>
+                                    <span class="ww-relay-import-meta" id="wwRelayImportStatus" role="status" aria-live="polite"></span>
+                                    <button type="button" id="wwRelayImportRemoveBtn" class="ww-oc-axis-toggle-btn">Remove</button>
+                                </div>
+                                <div class="ww-relay-import-error" id="wwRelayImportError" role="alert" hidden></div>
+                            </section>
 
                             <!-- ALWAYS visible once the Distance Protection
                                  tab is open -- Loop/Characteristic/Basis/
@@ -54612,6 +54668,109 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwDistanceRenderPlot();
         }
 
+        // Relay Import Slice 3 -- Import Relay Settings: ephemeral upload.
+        // In-memory UI state ONLY (no localStorage/sessionStorage/IndexedDB,
+        // no backend session): a hard refresh starts clean. The backend only
+        // validates the file and returns basic metadata; nothing is read
+        // into Distance Protection settings in this slice.
+        const wwRelayImportState = {
+            phase: "idle", // idle | uploading | accepted | error
+            filename: "",
+            sourceFormat: "",
+            sizeBytes: 0,
+            error: "",
+            controller: null,
+        };
+        function wwRelayImportReset() {
+            if (wwRelayImportState.controller) wwRelayImportState.controller.abort();
+            wwRelayImportState.phase = "idle";
+            wwRelayImportState.filename = "";
+            wwRelayImportState.sourceFormat = "";
+            wwRelayImportState.sizeBytes = 0;
+            wwRelayImportState.error = "";
+            wwRelayImportState.controller = null;
+            const input = document.getElementById("wwRelayImportFileInput");
+            if (input) input.value = "";
+            wwRelayImportRender();
+        }
+        function wwRelayImportRender() {
+            const state = wwRelayImportState;
+            const fileRow = document.getElementById("wwRelayImportFile");
+            const error = document.getElementById("wwRelayImportError");
+            if (!fileRow || !error) return;
+            const showFile = state.phase === "uploading" || state.phase === "accepted";
+            fileRow.hidden = !showFile;
+            document.getElementById("wwRelayImportFilename").textContent = showFile ? state.filename : "";
+            let text = "";
+            if (state.phase === "uploading") {
+                text = "Processing…";
+            } else if (state.phase === "accepted") {
+                text = state.sourceFormat.toUpperCase() + " · " + formatFileSize(state.sizeBytes)
+                    + " · File accepted. Settings are not read in this version.";
+            }
+            document.getElementById("wwRelayImportStatus").textContent = text;
+            error.hidden = state.phase !== "error";
+            error.textContent = state.phase === "error" ? state.error : "";
+        }
+        function wwRelayImportErrorMessage(status, body) {
+            const detail = body && body.detail;
+            if (detail && typeof detail.message === "string" && detail.message) return detail.message;
+            if (status === 413) return "The file is too large.";
+            return "The file could not be processed. Manual entry is still available.";
+        }
+        async function wwRelayImportHandleFile(file) {
+            if (!file) return;
+            if (wwRelayImportState.controller) wwRelayImportState.controller.abort();
+            const state = wwRelayImportState;
+            state.filename = file.name;
+            state.sourceFormat = "";
+            state.sizeBytes = 0;
+            state.error = "";
+            if (!/\.pdf$/i.test(file.name)) {
+                state.phase = "error";
+                state.controller = null;
+                state.error = "Unsupported file type. Only PDF relay setting files are supported at present.";
+                wwRelayImportRender();
+                return;
+            }
+            if (file.size === 0) {
+                state.phase = "error";
+                state.controller = null;
+                state.error = "The file is empty.";
+                wwRelayImportRender();
+                return;
+            }
+            const controller = new AbortController();
+            state.controller = controller;
+            state.phase = "uploading";
+            wwRelayImportRender();
+            const form = new FormData();
+            form.append("file", file, file.name);
+            try {
+                const response = await fetch(apiBaseUrl() + "/api/v1/relay-import/upload", {
+                    method: "POST", body: form, signal: controller.signal,
+                });
+                let body = null;
+                try { body = await response.json(); } catch (parseError) { /* non-JSON error body */ }
+                if (state.controller !== controller) return; // removed/replaced meanwhile
+                if (!response.ok) {
+                    state.phase = "error";
+                    state.error = wwRelayImportErrorMessage(response.status, body);
+                } else {
+                    state.phase = "accepted";
+                    state.filename = body.filename;
+                    state.sourceFormat = body.source_format;
+                    state.sizeBytes = body.size_bytes;
+                }
+            } catch (networkError) {
+                if (state.controller !== controller) return;
+                state.phase = "error";
+                state.error = "Could not reach the server. Manual entry is still available.";
+            }
+            state.controller = null;
+            wwRelayImportRender();
+        }
+
         function wwDistanceSetInputSource(mode, isAutomatic) {
             if (mode !== WW_ANALYSIS_INPUT_SOURCE_RECORDING && mode !== WW_ANALYSIS_INPUT_SOURCE_MANUAL) return;
             if (mode === WW_ANALYSIS_INPUT_SOURCE_RECORDING && !wwDistanceState.recordingAvailable) return;
@@ -60149,6 +60308,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwDistanceHandleZoneSettingChanged();
             });
         }
+        // Relay Import Slice 3: Import Relay Settings (upload only).
+        document.getElementById("wwRelayImportBtn").addEventListener("click", () => document.getElementById("wwRelayImportFileInput").click());
+        document.getElementById("wwRelayImportFileInput").addEventListener("change", (event) => {
+            const file = event.target.files && event.target.files[0];
+            event.target.value = "";
+            wwRelayImportHandleFile(file);
+        });
+        document.getElementById("wwRelayImportRemoveBtn").addEventListener("click", wwRelayImportReset);
         // Analysis Input Source segmented control -- Recording/Manual.
         document.getElementById("wwDistanceInputSourceRecordingBtn").addEventListener("click", () => wwDistanceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_RECORDING));
         document.getElementById("wwDistanceInputSourceManualBtn").addEventListener("click", () => wwDistanceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_MANUAL));

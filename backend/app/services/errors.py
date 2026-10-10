@@ -41,6 +41,10 @@ class InvalidFileError(ImportServiceError):
     code = "invalid_file"
 
 
+class EmptyFileError(ImportServiceError):
+    code = "empty_file"
+
+
 class ParseError(ImportServiceError):
     code = "parse_error"
 

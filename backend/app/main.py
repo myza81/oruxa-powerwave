@@ -20,6 +20,7 @@ from app.api.v1.oscillation import router as oscillation_v1_router
 from app.api.v1.per_unit import router as per_unit_v1_router
 from app.api.v1.preparation_sources import router as preparation_sources_v1_router
 from app.api.v1.reference_profiles import router as reference_profiles_v1_router
+from app.api.v1.relay_import import RELAY_IMPORT_UPLOAD_PATH, router as relay_import_v1_router
 from app.api.v1.sources import router as sources_v1_router
 from app.api.v1.synchronization import router as synchronization_v1_router
 from app.api.v1.workspaces import router as workspaces_v1_router
@@ -161,7 +162,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         phase's final report for the full investigation of what Starlette
         itself does with multipart uploads before either check runs.
         """
-        if request.url.path.startswith("/api/v1/workspaces/") and request.method == "POST":
+        is_workspace_upload = request.url.path.startswith("/api/v1/workspaces/")
+        is_relay_import_upload = request.url.path == RELAY_IMPORT_UPLOAD_PATH
+        if (is_workspace_upload or is_relay_import_upload) and request.method == "POST":
             content_length = request.headers.get("content-length")
             if content_length is not None:
                 try:
@@ -169,7 +172,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 except ValueError:
                     declared_size = None
                 if declared_size is not None:
-                    limit = settings.max_event_upload_size_bytes + _MULTIPART_OVERHEAD_BYTES
+                    # Relay setting files have their own (much smaller)
+                    # limit -- Relay Import Slice 3.
+                    if is_relay_import_upload:
+                        limit_mb = settings.max_relay_import_upload_size_mb
+                        limit = settings.max_relay_import_upload_size_bytes + _MULTIPART_OVERHEAD_BYTES
+                    else:
+                        limit_mb = settings.max_event_upload_size_mb
+                        limit = settings.max_event_upload_size_bytes + _MULTIPART_OVERHEAD_BYTES
                     if declared_size > limit:
                         # Same {"detail": {"code", "message"}} shape FastAPI's
                         # HTTPException produces (app/api/v1/sources.py), so
@@ -182,7 +192,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                     "code": "upload_too_large",
                                     "message": (
                                         "Declared upload size exceeds the "
-                                        f"{settings.max_event_upload_size_mb} MB limit."
+                                        f"{limit_mb} MB limit."
                                     ),
                                 }
                             },
@@ -201,6 +211,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(compliance_v1_router)
     app.include_router(reference_profiles_v1_router)
     app.include_router(oscillation_v1_router)
+    app.include_router(relay_import_v1_router)
 
     @app.get("/health")
     def health():

@@ -17,6 +17,12 @@ DEFAULT_CORS_ORIGINS = ("http://localhost:8101", "http://127.0.0.1:8101")
 # values belong in configuration, not hard-coded business logic.
 DEFAULT_MAX_EVENT_UPLOAD_SIZE_MB = 100
 
+# Relay Import Slice 3: relay setting sheets (text/table PDFs, even scanned
+# ones) are orders of magnitude smaller than COMTRADE/BEN recordings, so the
+# recording limit above is deliberately NOT reused. Configurable via
+# MAX_RELAY_IMPORT_UPLOAD_SIZE_MB.
+DEFAULT_MAX_RELAY_IMPORT_UPLOAD_SIZE_MB = 20
+
 # Event Reconstruction (DEC-124): a gap of at least this many seconds in a
 # reconstruction timeline produces an advisory warning, never a rejection.
 # Central default only -- deliberately not read from the environment and
@@ -47,6 +53,7 @@ class Settings:
     git_sha: str
     version: str
     event_reconstruction_large_gap_warning_s: float = DEFAULT_EVENT_RECONSTRUCTION_LARGE_GAP_WARNING_S
+    max_relay_import_upload_size_mb: int = DEFAULT_MAX_RELAY_IMPORT_UPLOAD_SIZE_MB
 
     @property
     def is_production(self) -> bool:
@@ -55,6 +62,10 @@ class Settings:
     @property
     def max_event_upload_size_bytes(self) -> int:
         return self.max_event_upload_size_mb * 1024 * 1024
+
+    @property
+    def max_relay_import_upload_size_bytes(self) -> int:
+        return self.max_relay_import_upload_size_mb * 1024 * 1024
 
 
 def _split_origins(raw: str) -> tuple[str, ...]:
@@ -106,6 +117,19 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     else:
         max_event_upload_size_mb = DEFAULT_MAX_EVENT_UPLOAD_SIZE_MB
 
+    raw_relay_max = env.get("MAX_RELAY_IMPORT_UPLOAD_SIZE_MB", "").strip()
+    if raw_relay_max:
+        try:
+            max_relay_import_upload_size_mb = int(raw_relay_max)
+        except ValueError as exc:
+            raise ConfigurationError(
+                f"MAX_RELAY_IMPORT_UPLOAD_SIZE_MB must be an integer, got {raw_relay_max!r}"
+            ) from exc
+        if max_relay_import_upload_size_mb <= 0:
+            raise ConfigurationError("MAX_RELAY_IMPORT_UPLOAD_SIZE_MB must be a positive integer")
+    else:
+        max_relay_import_upload_size_mb = DEFAULT_MAX_RELAY_IMPORT_UPLOAD_SIZE_MB
+
     # Phase 4A-UAT3: APP_VERSION is the full deployed Git commit SHA
     # (deploy.yml sets it to `github.sha`; compose.yaml passes it through
     # unchanged) -- read verbatim, never derived by running `git` here.
@@ -123,6 +147,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         cors_origins=cors_origins,
         database_url=database_url,
         max_event_upload_size_mb=max_event_upload_size_mb,
+        max_relay_import_upload_size_mb=max_relay_import_upload_size_mb,
         git_sha=git_sha,
         version=version,
     )

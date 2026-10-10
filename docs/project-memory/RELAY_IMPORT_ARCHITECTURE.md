@@ -188,6 +188,60 @@ Manual form (flat API params -> ZoneSettings)      [transitional boundary]
   timer is treated as the matching delay and an extra earth timer is
   reported, not treated as a conflict.
 
+## Slice 3 — ephemeral Import Relay Settings upload
+
+First visible workflow: an **Import Relay Settings** control on the
+Distance Protection panel (always shown, both input-source modes). It
+uploads one file, the backend validates it and returns basic metadata, and
+the raw file is discarded. **Nothing is extracted, identified or
+auto-populated**; manual entry is untouched and fully available.
+
+```text
+Import Relay Settings -> pick file -> POST /api/v1/relay-import/upload
+   -> bounded in-memory read -> minimal inspection -> metadata response
+   -> raw bytes dropped, upload handle closed (finally) -> in-tab UI state only
+```
+
+- **Endpoint:** `POST /api/v1/relay-import/upload` (multipart field `file`),
+  no workspace id (nothing is workspace state). Response:
+  `{filename, source_format, size_bytes, status: "accepted"}` -- no
+  manufacturer/model/engineering values. Errors use the project's
+  `{detail: {code, message}}` shape: `unsupported_file_type` (400),
+  `empty_file` (400), `invalid_file` (400, malformed PDF),
+  `upload_too_large` (413), `internal_error` (500, generic text).
+- **Format:** PDF only. `SUPPORTED_EXTENSIONS` / `_INSPECTORS` in
+  `services/relay_import_upload_service.py` are the extension points for
+  Excel/CSV/XML/OEM exports. Extension decides the format; the client
+  Content-Type is not trusted.
+- **Inspection (stdlib only, no new dependency):** `%PDF-` header within the
+  first 1024 bytes and `%%EOF` within the last 2048 bytes. No OCR, parsing,
+  page count (a page count without a PDF library would be a heuristic that can
+  be wrong, so none is reported), external service or LLM.
+- **Size limit:** `MAX_RELAY_IMPORT_UPLOAD_SIZE_MB`, default **20 MB**
+  (`Settings.max_relay_import_upload_size_mb`). Setting sheets are small
+  documents, so the 100 MB recording limit is deliberately not reused; 20 MB
+  leaves room for scanned multi-page sheets. Enforced twice: a
+  Content-Length fast-path in the existing upload middleware (extended to this
+  path with its own limit) and the authoritative bytes-read check
+  (`read_bounded`).
+- **Raw-file lifecycle:** read into a bounded in-memory `bytes`, inspected,
+  dropped on return; the `UploadFile` is closed in a `finally` for success and
+  failure. The framework's multipart spool (an OS-managed temp file only past
+  ~1 MiB) is closed by Starlette at request end. No code in the upload path
+  writes any file, directory, database row, `StorageBackend` object, registry
+  entry or cache; the filename is never logged (rejections log the error code
+  only). Guarded by tests (temp dir empty after success/failure/oversize;
+  storage root and cwd unchanged; no persistence imports in the upload modules).
+- **Browser state:** `wwRelayImportState` (idle / uploading / accepted /
+  error, filename, format, size, error text) in page memory only -- no
+  localStorage, sessionStorage, IndexedDB or cookies. Hard refresh, reopening
+  or leaving the page starts clean. **Remove** aborts any in-flight request
+  and resets all of it; a late response after Remove/replace is discarded.
+  A failed upload never touches the manual form.
+- **Privacy wording (accurate to the above):** "Files are processed
+  temporarily and are not permanently stored. Import details are kept in this
+  browser tab only and are cleared when you refresh or close it."
+
 ## Intentionally unresolved in Slice 1
 
 - ~~Mapping onto the existing `ZoneSettings`~~ — done in Slice 2 (above).
