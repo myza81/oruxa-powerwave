@@ -35,9 +35,12 @@ from app.domain.relay_import.profile import (
 from app.domain.relay_import.provenance import (
     MappingStatus,
     Provenance,
+    ProvenanceOrigin,
     Sourced,
     SourceRef,
     inferred,
+    manual,
+    manual_unresolved,
     mapped,
     unresolved,
 )

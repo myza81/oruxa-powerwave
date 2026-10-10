@@ -69,6 +69,7 @@ from app.schemas.engineering_context import (
 from app.domain.analysis_input_resolution import AnalysisInputResolution
 from app.domain.analysis_requirements import get_requirement
 from app.domain.distance_protection import ZoneSettings
+from app.domain.relay_import.manual_entry import engine_zones_from_manual
 from app.domain.phasor import ManualPhasorRoleInput, PhasorAnalysisResult, PhasorDiagramResult
 from app.schemas.analysis_input_resolution import AnalysisInputReadinessOut, AnalysisInputResolutionOut, RoleSpecOut
 from app.schemas.distance_protection_analysis import (
@@ -1206,6 +1207,7 @@ def get_distance_protection_analysis(
     zone1 = _zone_settings(zone1_enabled, zone1_reach_ohm, zone1_reactive_reach_ohm, zone1_resistive_reach_forward_ohm, zone1_resistive_reach_reverse_ohm, zone1_characteristic_angle_deg, zone1_delay_s)
     zone2 = _zone_settings(zone2_enabled, zone2_reach_ohm, zone2_reactive_reach_ohm, zone2_resistive_reach_forward_ohm, zone2_resistive_reach_reverse_ohm, zone2_characteristic_angle_deg, zone2_delay_s)
     zone3 = _zone_settings(zone3_enabled, zone3_reach_ohm, zone3_reactive_reach_ohm, zone3_resistive_reach_forward_ohm, zone3_resistive_reach_reverse_ohm, zone3_characteristic_angle_deg, zone3_delay_s)
+    zone1, zone2, zone3 = engine_zones_from_manual(characteristic=characteristic, impedance_basis=impedance_basis, zones=(zone1, zone2, zone3))
     try:
         result = compute_distance_analysis(
             workspace_id=workspace_id, engineering_context_id=engineering_context_id, loop=loop, analysis_time=analysis_time,
@@ -1266,6 +1268,7 @@ def get_distance_protection_locus(
     zone1 = _zone_settings(zone1_enabled, zone1_reach_ohm, zone1_reactive_reach_ohm, zone1_resistive_reach_forward_ohm, zone1_resistive_reach_reverse_ohm, zone1_characteristic_angle_deg, zone1_delay_s)
     zone2 = _zone_settings(zone2_enabled, zone2_reach_ohm, zone2_reactive_reach_ohm, zone2_resistive_reach_forward_ohm, zone2_resistive_reach_reverse_ohm, zone2_characteristic_angle_deg, zone2_delay_s)
     zone3 = _zone_settings(zone3_enabled, zone3_reach_ohm, zone3_reactive_reach_ohm, zone3_resistive_reach_forward_ohm, zone3_resistive_reach_reverse_ohm, zone3_characteristic_angle_deg, zone3_delay_s)
+    zone1, zone2, zone3 = engine_zones_from_manual(characteristic=characteristic, impedance_basis=impedance_basis, zones=(zone1, zone2, zone3))
     try:
         points = compute_distance_locus(
             workspace_id=workspace_id, engineering_context_id=engineering_context_id, loop=loop,
@@ -1351,6 +1354,7 @@ def get_distance_protection_manual(
     zone1 = _zone_settings(zone1_enabled, zone1_reach_ohm, zone1_reactive_reach_ohm, zone1_resistive_reach_forward_ohm, zone1_resistive_reach_reverse_ohm, zone1_characteristic_angle_deg, zone1_delay_s)
     zone2 = _zone_settings(zone2_enabled, zone2_reach_ohm, zone2_reactive_reach_ohm, zone2_resistive_reach_forward_ohm, zone2_resistive_reach_reverse_ohm, zone2_characteristic_angle_deg, zone2_delay_s)
     zone3 = _zone_settings(zone3_enabled, zone3_reach_ohm, zone3_reactive_reach_ohm, zone3_resistive_reach_forward_ohm, zone3_resistive_reach_reverse_ohm, zone3_characteristic_angle_deg, zone3_delay_s)
+    zone1, zone2, zone3 = engine_zones_from_manual(characteristic=characteristic, impedance_basis=impedance_basis, zones=(zone1, zone2, zone3))
     result = compute_distance_manual(
         loop_label=loop_label, voltage_basis=voltage_basis, vt_primary=vt_primary, vt_secondary=vt_secondary,
         current_basis=current_basis, ct_primary=ct_primary, ct_secondary=ct_secondary, impedance_basis=impedance_basis,

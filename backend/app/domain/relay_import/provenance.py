@@ -20,6 +20,14 @@ from typing import Generic, TypeVar
 T = TypeVar("T")
 
 
+class ProvenanceOrigin(StrEnum):
+    #: Interpreted from an imported relay setting document.
+    RELAY_DOCUMENT = "relay_document"
+    #: Typed by the user in the manual Distance Protection form. Carries no
+    #: document references or relay-profile metadata.
+    MANUAL_ENTRY = "manual_entry"
+
+
 class MappingStatus(StrEnum):
     #: A profile mapped the source deterministically; no confirmation needed.
     MAPPED = "mapped"
@@ -52,9 +60,11 @@ class Provenance:
     #: The value exactly as extracted, before any interpretation.
     raw_value: str | float | None = None
     notes: tuple[str, ...] = ()
+    origin: ProvenanceOrigin = ProvenanceOrigin.RELAY_DOCUMENT
 
     def __post_init__(self) -> None:
-        if self.status is not MappingStatus.UNRESOLVED and not self.sources:
+        needs_source = self.origin is ProvenanceOrigin.RELAY_DOCUMENT
+        if needs_source and self.status is not MappingStatus.UNRESOLVED and not self.sources:
             raise ValueError(f"a {self.status.value} value must cite at least one source setting")
 
 
@@ -97,3 +107,17 @@ def mapped(value: T, *, sources: tuple[SourceRef, ...], profile_id: str, profile
 def inferred(value: T, *, sources: tuple[SourceRef, ...], profile_id: str, profile_version: str,
              raw_value: str | float | None = None, notes: tuple[str, ...] = ()) -> Sourced[T]:
     return Sourced(value, Provenance(MappingStatus.INFERRED, sources, profile_id, profile_version, raw_value, notes))
+
+
+def manual(value: T, *, raw_value: str | float | None = None) -> Sourced[T]:
+    """A value the user entered by hand: status mapped, origin manual_entry,
+    no document references and no profile (none exist for manual input)."""
+    return Sourced(value, Provenance(MappingStatus.MAPPED, raw_value=raw_value, origin=ProvenanceOrigin.MANUAL_ENTRY))
+
+
+def manual_unresolved(raw_value: str | float | None = None, *, notes: tuple[str, ...] = ()) -> Sourced:
+    """A manual-form field left blank / not usable: absent, never defaulted."""
+    return Sourced(
+        None,
+        Provenance(MappingStatus.UNRESOLVED, raw_value=raw_value, notes=notes, origin=ProvenanceOrigin.MANUAL_ENTRY),
+    )

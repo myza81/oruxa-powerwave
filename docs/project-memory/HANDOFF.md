@@ -9,8 +9,8 @@ Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
 ## Relay import Slice 1 (2026-10-10, `feature/distance-relay-import`)
 
-Foundation only; stopped at the owner review gate. Do **not** start Slice 2
-(manual-entry <-> canonical-model integration) until the owner has reviewed
+Slice 1 foundation plus Slice 2 (manual entry -> canonical -> engine adapter);
+stopped at the owner review gate after Slice 2. Do **not** start Slice 3 until the owner has reviewed
 [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md) and the model.
 Worked in the separate worktree `oruxa-powerwave-distance-import`, branched
 from `origin/main`. Expect small merge conflicts in DECISIONS/CURRENT_STATE/

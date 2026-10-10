@@ -568,8 +568,9 @@ Manual state isolation" suite for the end-to-end proof.
 ## Related documents
 
 - [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md) — planned Import Relay
-  Settings pipeline and the OEM-neutral canonical model (foundation only; this
-  analyzer is unchanged).
+  Settings pipeline and the OEM-neutral canonical model (this analyzer is
+  unchanged; since Slice 2 its manual zone settings are routed through the
+  canonical model and an engine adapter with identical results).
 - [ANALYSIS_INPUT_SOURCE.md](ANALYSIS_INPUT_SOURCE.md) — the shared
   Recording/Manual shell this reuses.
 - [ANALYSIS_WORKSPACE.md](ANALYSIS_WORKSPACE.md) — the shared

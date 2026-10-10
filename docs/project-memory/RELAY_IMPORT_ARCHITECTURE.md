@@ -1,8 +1,8 @@
 # Relay Settings Import — Architecture (Slice 1: foundation)
 
-Status: **Slice 1 implemented** on `feature/distance-relay-import` (domain
-contracts + tests only). Extraction, relay profiles, auto-population and any
-UI are later slices. Approval record:
+Status: **Slice 1** (domain contracts) and **Slice 2** (manual entry + engine
+adapter) implemented on `feature/distance-relay-import`. Extraction, relay
+profiles, auto-population and any UI are later slices. Approval record:
 [DECISIONS.md — DEC-RELAY-IMPORT-1](DECISIONS.md#dec-relay-import-1--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
 ## Purpose
@@ -130,11 +130,67 @@ timers; reverse, non-directional, inactive and 8-zone cases; unknown
 characteristic). These are modelling tests, not parser tests, and do not
 depend on any sample PDF.
 
+## Slice 2 — manual entry and the engine adapter
+
+```text
+Manual form (flat API params -> ZoneSettings)      [transitional boundary]
+        -> manual_to_canonical()      relay_import/manual_entry.py
+        -> CanonicalDistanceProtectionModel
+        -> adapt_to_engine()          relay_import/engine_adapter.py
+        -> existing ZoneSettings / distance engine (unchanged)
+```
+
+- **Transitional boundary.** The frontend and the three API endpoints
+  (selected-time, locus, manual) still receive flat per-zone parameters; no
+  request/response or UI change. Right after `_zone_settings()` builds the
+  three `ZoneSettings`, `engine_zones_from_manual()` routes them through the
+  canonical model and adapter. Only fields the selected characteristic reads
+  are carried, so engine results are identical (tested over fixed cases and
+  400 randomised forms, including blank and garbage values). A characteristic
+  or basis string the model cannot represent passes the original settings
+  through untouched, exactly as before, so the service keeps reporting
+  "not operated" / "needs configuration".
+- **Manual provenance.** `ProvenanceOrigin.MANUAL_ENTRY`, status mapped, no
+  document references, no profile. A blank field is *unresolved*, never
+  defaulted. Manual zones are forward, phase-phase only; mho `|Z|` and the
+  quadrilateral reactive reach are each the polar reach `magnitude ∠ angle`.
+- **Adapter** (`adapt_to_engine(model, engine_basis=..., allow_incomplete_zones=False)`)
+  is a read-only view returning `EngineAdaptation(supported, characteristic,
+  zones, zone_ids, reasons, warnings)`. It never mutates the model, never
+  picks a value to make conversion succeed, and reports *all* problems.
+  `allow_incomplete_zones=True` (manual form only) passes a blank reach as
+  absent (`None`), which the engine already treats as Not Operated.
+- **Engine capability** (unchanged): exactly three zones in order; one
+  characteristic (mho or quadrilateral) for all zones; phase-phase loops
+  only; forward geometry only; one delay and one shared angle per zone; zone
+  ohms compared in the selected impedance basis.
+- **Supported canonical fields:** zone status (enabled / disabled / inactive),
+  forward direction, phase-phase operation, polar reach (→ mho `reach_ohm` or
+  quadrilateral `reactive_reach_ohm`, angle → shared characteristic angle),
+  phase-phase (else common) and reverse resistive reach, common (else phase)
+  timer, setting basis equal to the engine basis. Disabled/inactive zones
+  beyond the third are dropped only if disabled.
+- **Preserved but reported, not used:** phase-earth operation, earth timer,
+  residual compensation, zero-sequence reach, line data.
+- **Refused as unsupported (explicit reason, never guessed):** lenticular,
+  polygon/custom, unknown or unresolved characteristic; mixed characteristics;
+  reverse, non-directional or unknown direction on an enabled zone;
+  phase-phase operation not established; phase-earth-only resistive reach;
+  R/X-form reach; unresolved reach, resistive reach or timer; conflicting
+  common/phase values; a separate tilt; an enabled zone beyond the third;
+  unknown or mismatching primary/secondary basis (no CT/VT conversion is
+  performed or inferred).
+- **Deferred:** phase-earth plotting, lenticular/polygon/OEM geometry,
+  per-zone characteristic, reverse/non-directional zones, per-loop timers.
+- **Unchanged policies:** nothing is persisted; no LLM; manual entry remains
+  fully supported.
+- **Judgement call to confirm:** the engine is phase-phase, so the *phase*
+  timer is treated as the matching delay and an extra earth timer is
+  reported, not treated as a conflict.
+
 ## Intentionally unresolved in Slice 1
 
-- How a `CanonicalDistanceProtectionModel` maps onto the existing
-  `ZoneSettings` (single reach/resistance, Mho/Quadrilateral only, phase-phase
-  loops only) — Slice 2.
+- ~~Mapping onto the existing `ZoneSettings`~~ — done in Slice 2 (above).
 - Geometry for lenticular, polygon and unknown characteristics, and
   per-loop (phase-earth) evaluation — need engine work and owner decisions.
 - Setting-basis (primary/secondary) handling when the source does not say.

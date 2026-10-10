@@ -25063,6 +25063,12 @@ sequential ids).
 - **Manual entry remains supported.** Uploaded setting files and derived
   data are ephemeral (never persisted to the database). **No LLM/external-AI
   dependency** in the baseline. Relay support is validated per family/model.
+- **Slice 2 addendum (2026-10-10)**: manual Distance Protection input now
+  maps into the canonical model (`manual_entry` provenance) and reaches the
+  unchanged engine through `adapt_to_engine()`, which refuses what the engine
+  cannot represent instead of guessing. No behaviour, UI, persistence or
+  API-shape change. Details in
+  [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-2--manual-entry-and-the-engine-adapter).
 - **Scope**: Slice 1 is contracts + tests only -- no extraction, parsing,
   upload UI, auto-population, rendering change or persistence.
 

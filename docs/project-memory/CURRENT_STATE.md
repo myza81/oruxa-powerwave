@@ -153,8 +153,10 @@ no further Compliance slice has been started. Details:
 `feature/distance-relay-import`, not merged).** Domain contracts only:
 `app/domain/relay_import/` (raw document, provenance, canonical Distance
 Protection model, relay-profile protocol with a generic fail-safe fallback)
-plus modelling tests. No extraction, parsing, UI, persistence or change to the
-existing Distance Protection behaviour. See
+plus modelling tests. **Slice 2:** manual Distance Protection input is mapped
+into the canonical model and reaches the unchanged engine through a
+canonical-to-engine adapter that refuses unsupported data. No extraction,
+parsing, UI, persistence or change to existing Distance Protection behaviour. See
 [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md).
 
 **Engineering tools and workflow batch (DEC-155 to DEC-165), 2026-10-05.**
