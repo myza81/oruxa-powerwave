@@ -7,6 +7,15 @@ history already provides the detailed historical trail.
 Last updated: **2026-10-05** (Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
+## Relay import Slice 1 (2026-10-10, `feature/distance-relay-import`)
+
+Foundation only; stopped at the owner review gate. Do **not** start Slice 2
+(manual-entry <-> canonical-model integration) until the owner has reviewed
+[RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md) and the model.
+Worked in the separate worktree `oruxa-powerwave-distance-import`, branched
+from `origin/main`. Expect small merge conflicts in DECISIONS/CURRENT_STATE/
+HANDOFF with the Oscillation branch (all append/insert-near-top edits).
+
 ## What was most recently done
 
 **Oscillation Analysis Phase 1 is complete -- Summary / Report UX (DEC-183 `[APPROVED]`, 2026-10-11), COMMITTED `feat: complete oscillation analysis phase 1` (not pushed)** (on top of `feat: integrate oscillation modal evidence into interpretation`). Owner UAT passed on the real ~0.4 Hz two-MW event (2 signals / 2 distinct measurements / 2 recordings; Spectrum, Time-frequency, Damping, Cross-signal Available; Mode Shape and Coherence neutrally Unavailable for this event with their dynamic refusal reasons preserved; multi-member damping range; 31 s overlap; local / inter-area correctly unresolved without downgrading the oscillation). Backend: `app/domain/oscillation_summary.py` (`build_component_summary`), called by `oscillation_interpretation_service.compute_interpretation`; `ComponentSummaryOut` schemas; `oscillation_integration.mode_shape_facts` / `coherence_facts` / `LEVEL_ORDER` public. Frontend: `#wwOscSummaryCard`, `wwOscRenderSummary()`. Approval wording polish: single-signal possible-electromechanical lead, and *95% null threshold* replacing *chance level* in the UI (calculation unchanged). **Next:** Phase 2 / future items (see DEC-183); optional PDF / Word export of the summary. The Event Reconstruction per-unit browser failure is a known pre-existing issue, unrelated.

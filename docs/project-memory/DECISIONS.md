@@ -25041,6 +25041,35 @@ shared `channel_ref`; frontend layout/CSS, split handling, trace fetch and chart
 integration; tests `test_compliance_trace_api.py` (+ readiness updates),
 `compliance_workspace.spec.js`.
 
+## DEC-RELAY-IMPORT-1 — Relay settings import: OEM-neutral Raw → Profile → Canonical architecture
+
+Date: 2026-10-10
+Status: Approved (owner ticket, Slice 1) -- implemented on
+`feature/distance-relay-import`, not merged. The numeric DEC id is to be
+assigned at merge (the parallel Oscillation Analysis branch is allocating
+sequential ids).
+
+- **Pipeline**: `RawRelayDocument` -> `RelayProfile` -> `CanonicalDistanceProtectionModel`
+  -> existing distance characteristic engine. Full design:
+  [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md).
+- **Canonical model** is OEM-neutral: arbitrary zone collection, split
+  PP/PE operation and timers, polar-or-rectangular impedance, per-kind
+  residual compensation (K0, Kr/Kx, RE/RL-XE/XL, OEM-specific) with no
+  silent conversion, characteristic types beyond today's drawing support.
+- **Relay knowledge lives only in profiles**, never in the generic engine.
+  Unknown or ambiguous relays fall back to a generic profile that
+  interprets nothing; the user completes settings manually.
+- **Provenance** on every value; statuses mapped / inferred / unresolved.
+- **Manual entry remains supported.** Uploaded setting files and derived
+  data are ephemeral (never persisted to the database). **No LLM/external-AI
+  dependency** in the baseline. Relay support is validated per family/model.
+- **Scope**: Slice 1 is contracts + tests only -- no extraction, parsing,
+  upload UI, auto-population, rendering change or persistence.
+
+Alternatives considered: a P441-specific fixed-zone model (rejected: cannot
+carry the other sampled families); one flat settings dictionary (rejected:
+loses provenance and invites invented meaning).
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

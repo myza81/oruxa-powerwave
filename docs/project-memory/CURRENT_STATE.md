@@ -149,6 +149,14 @@ read-only on their boundaries and are saved back verbatim. **Awaiting owner UAT*
 no further Compliance slice has been started. Details:
 [COMPLIANCE_CAPABILITY.md](COMPLIANCE_CAPABILITY.md).
 
+**Relay settings import -- Slice 1 foundation (2026-10-10, branch
+`feature/distance-relay-import`, not merged).** Domain contracts only:
+`app/domain/relay_import/` (raw document, provenance, canonical Distance
+Protection model, relay-profile protocol with a generic fail-safe fallback)
+plus modelling tests. No extraction, parsing, UI, persistence or change to the
+existing Distance Protection behaviour. See
+[RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md).
+
 **Engineering tools and workflow batch (DEC-155 to DEC-165), 2026-10-05.**
 
 - **Waveform/Event Reconstruction toolbars** (DEC-155 to DEC-161): page-level
