@@ -1,9 +1,12 @@
 """Relay-setting file upload: bounded, in-memory, minimal inspection only.
 
-Relay Import Slice 3. This module only answers "is this a plausible
-relay-setting file of a supported format, and how big is it?". It does
-NOT extract settings, identify a relay, or build a RawRelayDocument --
-those are later slices.
+Relay Import Slice 3 + 4. This module owns the file lifecycle and
+validation: "is this a plausible relay-setting file of a supported format,
+how big is it?", then hands the bytes to the format's generic extractor
+(Slice 4, `relay_pdf_extractor`) and reduces the resulting
+RawRelayDocument to a small summary. It does NOT interpret settings or
+identify a relay -- those are later slices. The RawRelayDocument is
+request-scoped: it is built, counted and dropped here, never stored.
 
 Raw-file lifecycle: the upload is read into a bounded in-memory ``bytes``
 value, inspected, and dropped when this function returns; nothing is
@@ -19,9 +22,11 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath, PureWindowsPath
 
 from fastapi import UploadFile
+from starlette.concurrency import run_in_threadpool
 
 from app.domain.relay_import.raw_document import SourceFormat
 from app.services.errors import EmptyFileError, InvalidFileError, UnsupportedFileTypeError
+from app.services.relay_pdf_extractor import PdfExtractionResult, PdfExtractionStatus, extract_pdf
 from app.services.upload_utils import read_bounded
 
 #: Accepted extensions -> format. Adding Excel/CSV/XML/OEM later means a new
@@ -39,10 +44,23 @@ _PDF_EOF_WINDOW = 2048
 
 
 @dataclass(frozen=True)
+class RelayExtractionSummary:
+    """Counts only -- never document content."""
+
+    status: str
+    page_count: int
+    pages_with_text: int
+    raw_entry_count: int
+    section_count: int
+    warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class RelayUploadInspection:
     filename: str
     source_format: SourceFormat
     size_bytes: int
+    extraction: RelayExtractionSummary
 
 
 def safe_display_filename(raw: str | None) -> str:
@@ -63,6 +81,25 @@ def _inspect_pdf(data: bytes) -> None:
 _INSPECTORS = {SourceFormat.PDF: _inspect_pdf}
 
 
+def _summarize_pdf(data: bytes) -> RelayExtractionSummary:
+    result: PdfExtractionResult = extract_pdf(data)
+    if result.status is PdfExtractionStatus.UNREADABLE:
+        raise InvalidFileError("The file is not a readable PDF.")
+    document = result.document
+    return RelayExtractionSummary(
+        status=result.status.value,
+        page_count=result.page_count,
+        pages_with_text=result.pages_with_text,
+        raw_entry_count=len(document.settings) if document else 0,
+        section_count=result.heading_count,
+        warnings=result.warnings,
+    )
+
+
+#: Extension point beside _INSPECTORS: one generic extractor per source format.
+_EXTRACTORS = {SourceFormat.PDF: _summarize_pdf}
+
+
 async def inspect_relay_setting_upload(upload: UploadFile, *, max_bytes: int) -> RelayUploadInspection:
     filename = safe_display_filename(upload.filename)
     try:
@@ -78,6 +115,10 @@ async def inspect_relay_setting_upload(upload: UploadFile, *, max_bytes: int) ->
         if not data:
             raise EmptyFileError("The file is empty.")
         _INSPECTORS[source_format](data)
-        return RelayUploadInspection(filename=filename, source_format=source_format, size_bytes=len(data))
+        # CPU-bound parse: keep it off the event loop. `data` is dropped on return.
+        extraction = await run_in_threadpool(_EXTRACTORS[source_format], data)
+        return RelayUploadInspection(
+            filename=filename, source_format=source_format, size_bytes=len(data), extraction=extraction
+        )
     finally:
         await upload.close()

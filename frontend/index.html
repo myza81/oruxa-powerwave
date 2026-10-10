@@ -54725,16 +54725,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwDistanceRenderPlot();
         }
 
-        // Relay Import Slice 3 -- Import Relay Settings: ephemeral upload.
+        // Relay Import Slice 3/4 -- Import Relay Settings: ephemeral upload.
         // In-memory UI state ONLY (no localStorage/sessionStorage/IndexedDB,
-        // no backend session): a hard refresh starts clean. The backend only
-        // validates the file and returns basic metadata; nothing is read
-        // into Distance Protection settings in this slice.
+        // no backend session): a hard refresh starts clean. The backend
+        // validates the file, runs generic text extraction and returns counts
+        // only; nothing is interpreted or read into Distance Protection
+        // settings in this slice.
         const wwRelayImportState = {
             phase: "idle", // idle | uploading | accepted | error
             filename: "",
             sourceFormat: "",
             sizeBytes: 0,
+            // Slice 4 generic extraction summary (counts only; extracted != interpreted).
+            extractionStatus: "", // text_extracted | no_extractable_text | encrypted
+            pageCount: 0,
+            rawEntryCount: 0,
             error: "",
             controller: null,
         };
@@ -54744,6 +54749,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRelayImportState.filename = "";
             wwRelayImportState.sourceFormat = "";
             wwRelayImportState.sizeBytes = 0;
+            wwRelayImportState.extractionStatus = "";
+            wwRelayImportState.pageCount = 0;
+            wwRelayImportState.rawEntryCount = 0;
             wwRelayImportState.error = "";
             wwRelayImportState.controller = null;
             const input = document.getElementById("wwRelayImportFileInput");
@@ -54767,8 +54775,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (state.phase === "uploading") {
                 text = "Processing…";
             } else if (state.phase === "accepted") {
-                text = formatFileSize(state.sizeBytes) + " · File accepted";
-                detail = "Settings have not been read yet.";
+                const parts = [formatFileSize(state.sizeBytes)];
+                if (state.pageCount > 0) parts.push(state.pageCount + (state.pageCount === 1 ? " page" : " pages"));
+                if (state.extractionStatus === "text_extracted") {
+                    parts.push(state.rawEntryCount + (state.rawEntryCount === 1 ? " raw entry" : " raw entries"));
+                    detail = "Text extracted. Relay settings have not been interpreted yet.";
+                } else if (state.extractionStatus === "no_extractable_text") {
+                    detail = "PDF accepted, but no extractable text was found. OCR is not supported yet.";
+                } else if (state.extractionStatus === "encrypted") {
+                    detail = "PDF is encrypted and cannot be read.";
+                } else {
+                    detail = "Relay settings have not been read yet.";
+                }
+                text = parts.join(" · ");
             }
             document.getElementById("wwRelayImportStatus").textContent = text;
             document.getElementById("wwRelayImportDetail").textContent = detail;
@@ -54826,6 +54845,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     state.filename = body.filename;
                     state.sourceFormat = body.source_format;
                     state.sizeBytes = body.size_bytes;
+                    state.extractionStatus = body.extraction_status;
+                    state.pageCount = body.page_count;
+                    state.rawEntryCount = body.raw_entry_count;
                 }
             } catch (networkError) {
                 if (state.controller !== controller) return;

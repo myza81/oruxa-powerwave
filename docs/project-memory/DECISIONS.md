@@ -25077,6 +25077,14 @@ sequential ids).
   in-tab memory only. No extraction, relay identification or
   auto-population. Details in
   [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-3--ephemeral-import-relay-settings-upload).
+- **Slice 4 addendum (2026-10-10)**: generic, relay-neutral PDF text
+  extraction (pypdf 6.20.0) into the existing `RawRelayDocument`, built
+  request-scoped inside the upload call and reduced to counts in the response
+  (`extraction_status`, page/entry counts, warnings). Distinguishes text /
+  no-extractable-text (scanned, no OCR) / encrypted / unreadable. Syntactic
+  detection only -- no relay identification, interpretation, canonical mapping
+  or auto-population; no persistence. Details in
+  [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-4--generic-pdf-text-extraction-into-rawrelaydocument).
 - **Scope**: Slice 1 is contracts + tests only -- no extraction, parsing,
   upload UI, auto-population, rendering change or persistence.
 

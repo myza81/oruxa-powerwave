@@ -12,11 +12,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from tests.relay_pdf_fixtures import build_pdf, simple_pdf
 
 URL = "/api/v1/relay-import/upload"
 BACKEND_APP = Path(__file__).resolve().parents[1] / "app"
 
-PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"
+PDF_BYTES = simple_pdf([["R1", "1.84", "0-655.35"], ["Zone 2", "Forward", "2.4"]])
 MIB = 1024 * 1024
 
 
@@ -44,7 +45,39 @@ class TestAccepted:
             "source_format": "pdf",
             "size_bytes": len(PDF_BYTES),
             "status": "accepted",
+            "extraction_status": "text_extracted",
+            "page_count": 1,
+            "pages_with_text": 1,
+            "raw_entry_count": 2,
+            "section_count": 0,
+            "extraction_warnings": [],
         }
+
+    def test_response_carries_counts_never_document_content(self, client):
+        body = client.post(URL, files=_files()).text
+        for content in ("1.84", "Zone 2", "Forward"):
+            assert content not in body
+
+    def test_scanned_like_pdf_is_accepted_with_a_clear_status(self, client):
+        r = client.post(URL, files=_files(content=build_pdf(["image"])))
+        assert r.status_code == 200
+        body = r.json()
+        assert body["extraction_status"] == "no_extractable_text"
+        assert (body["page_count"], body["pages_with_text"], body["raw_entry_count"]) == (1, 0, 0)
+
+    def test_encrypted_pdf_is_accepted_but_reported(self, client):
+        from pypdf import PdfReader, PdfWriter
+
+        writer = PdfWriter(clone_from=PdfReader(io.BytesIO(PDF_BYTES)))
+        writer.encrypt("secret", algorithm="RC4-128")
+        buf = io.BytesIO()
+        writer.write(buf)
+        r = client.post(URL, files=_files(content=buf.getvalue()))
+        assert r.status_code == 200
+        assert r.json()["extraction_status"] == "encrypted"
+
+    def test_extraction_is_repeatable_through_the_api(self, client):
+        assert client.post(URL, files=_files()).json() == client.post(URL, files=_files()).json()
 
     def test_extension_is_case_insensitive(self, client):
         assert client.post(URL, files=_files(name="SETTINGS.PDF")).status_code == 200
@@ -78,7 +111,13 @@ class TestRejected:
 
     @pytest.mark.parametrize(
         "content",
-        [b"not a pdf at all", b"%PDF-1.4\n1 0 obj\n<< >>\nendobj\n" + b"x" * 5000, b"PK\x03\x04zip" + b"%%EOF"],
+        [
+            b"not a pdf at all",
+            b"%PDF-1.4\n1 0 obj\n<< >>\nendobj\n" + b"x" * 5000,
+            b"PK\x03\x04zip" + b"%%EOF",
+            # passes the cheap header/EOF check but is not parseable
+            b"%PDF-1.4\n1 0 obj\n<< >>\nendobj\n" + b"x" * 500 + b"\n%%EOF\n",
+        ],
     )
     def test_malformed_pdf(self, client, content):
         r = client.post(URL, files=_files(content=content))
@@ -90,6 +129,7 @@ class TestRejected:
             client.post(URL, files=_files(name="C:\\secret\\dir\\a.txt")).text,
             client.post(URL, files=_files(content=b"")).text,
             client.post(URL, files=_files(content=b"garbage")).text,
+            client.post(URL, files=_files(content=b"%PDF-1.4\n" + b"x" * 500 + b"\n%%EOF\n")).text,
         ]
         for text in bodies:
             assert "secret" not in text
@@ -128,7 +168,7 @@ class TestNoPersistence:
         scratch.mkdir()
         monkeypatch.setattr(tempfile, "tempdir", str(scratch))
         settings = replace(small_settings, max_relay_import_upload_size_mb=5)
-        ok = PDF_BYTES[:-6] + b"0" * (2 * MIB) + b"\n%%EOF\n"
+        ok = simple_pdf(pad=2 * MIB)
         bad = b"garbage" + b"0" * (2 * MIB)
         with TestClient(create_app(settings)) as c:
             assert c.post(URL, files=_files(content=ok)).status_code == 200
@@ -147,7 +187,7 @@ class TestNoPersistence:
         from app.services.relay_import_upload_service import inspect_relay_setting_upload
 
         ok = UploadFile(file=io.BytesIO(PDF_BYTES), filename="a.pdf")
-        asyncio.run(inspect_relay_setting_upload(ok, max_bytes=1024))
+        asyncio.run(inspect_relay_setting_upload(ok, max_bytes=len(PDF_BYTES) + 1))
         assert ok.file.closed
 
         bad = UploadFile(file=io.BytesIO(b"junk"), filename="a.pdf")
@@ -175,6 +215,7 @@ class TestNoPersistence:
         for path in (
             BACKEND_APP / "api" / "v1" / "relay_import.py",
             BACKEND_APP / "services" / "relay_import_upload_service.py",
+            BACKEND_APP / "services" / "relay_pdf_extractor.py",
             BACKEND_APP / "schemas" / "relay_import.py",
         ):
             text = path.read_text(encoding="utf-8")

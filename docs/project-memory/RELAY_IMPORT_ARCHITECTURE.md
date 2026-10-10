@@ -1,8 +1,9 @@
 # Relay Settings Import — Architecture (Slice 1: foundation)
 
-Status: **Slice 1** (domain contracts) and **Slice 2** (manual entry + engine
-adapter) implemented on `feature/distance-relay-import`. Extraction, relay
-profiles, auto-population and any UI are later slices. Approval record:
+Status: **Slices 1-4** (domain contracts, manual entry + engine adapter,
+ephemeral upload, generic PDF extraction) implemented on
+`feature/distance-relay-import`. Relay identification, relay profiles,
+interpretation and auto-population are later slices. Approval record:
 [DECISIONS.md — DEC-RELAY-IMPORT-1](DECISIONS.md#dec-relay-import-1--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
 ## Purpose
@@ -242,6 +243,97 @@ Import Relay Settings -> pick file -> POST /api/v1/relay-import/upload
   temporarily and are not permanently stored. Import details are kept in this
   browser tab only and are cleared when you refresh or close it."
 
+## Slice 4 — generic PDF text extraction into `RawRelayDocument`
+
+`PDF upload -> generic extractor -> RawRelayDocument (request-scoped) -> counts`.
+The relay-neutral extractor (`backend/app/services/relay_pdf_extractor.py`)
+fills the Slice 1 `RawRelayDocument` as far as the PDF's text layer safely
+supports. **Extracted is not interpreted:** no manufacturer/model is
+identified, no parameter is given an engineering meaning, nothing is mapped
+into the canonical model and the Distance Protection form is never
+auto-populated. Engineering interpretation is still not implemented.
+
+- **Layers kept apart:** `relay_import_upload_service` = file lifecycle and
+  validation (and reducing the document to a summary); `relay_pdf_extractor` =
+  generic extraction; `RawRelayDocument` = neutral result. Relay
+  identification, relay profiles and the canonical model remain later slices.
+- **Library: pypdf 6.20.0** (pure Python, BSD, maintained, one pinned
+  dependency, no rendering/OCR stack). Layout extraction mode
+  (`extract_text(extraction_mode="layout")`) preserves horizontal gaps, which
+  is what lets a settings table row be split into cells without guessing.
+  *Limitations:* reading order is geometric, so multi-column pages or
+  rotated text may interleave; no table-structure recovery beyond column
+  gaps; no OCR; pure Python so large documents are slower than MuPDF-class
+  libraries (the 31-page sample takes < 1 s). AES-encrypted files need the
+  optional `cryptography` package, deliberately **not** added -- they are
+  reported as `encrypted`.
+- **Statuses** (`PdfExtractionStatus`):
+  - `text_extracted` -- text found; `RawRelayDocument` built.
+  - `no_extractable_text` -- valid PDF, empty text layer (scanned/image-only).
+    No OCR. The extractor also notes pages that contain image XObjects but no
+    text (a heuristic, advisory only). Not treated as corrupt.
+  - `encrypted` -- `is_encrypted` and an empty password does not open it (or
+    the decryption backend is unavailable). A PDF with only an owner password
+    and an empty user password is read, with a warning.
+  - `unreadable` -- parser failure -> API `400 invalid_file` ("The file is not
+    a readable PDF."), same shape as the Slice 3 malformed-file error.
+- **How `RawSetting` is populated** (one per non-heading, non-furniture text
+  line): `setting_id` `p<page>-e<n>` (deterministic, unique); `name`;
+  `parameter_id` (only a leading code-like token: starts with a digit, 3-8
+  alphanumeric chars, not a decimal number, followed by text); `raw_value`
+  (original text, never altered); `normalized_value` (float, only for a plain
+  decimal number without code-like leading zeros, so `0000` stays raw-only);
+  `unit` (only a unit symbol from a closed lexical table written directly
+  after a number, never converted); `setting_range` (a trailing `a-b` /
+  enumeration cell, text kept verbatim); `location` (page + line);
+  `source_text` (the original line, trimmed); `notes` (the cells of a
+  multi-column row); `extraction` (`generic_pdf_text`, version, and the
+  syntactic rule that fired: `row:key_value`, `row:key_value_range`,
+  `row:table`, `row:separator`, `row:label`).
+- **Rules (all syntactic):** split a line into cells on 2+ spaces/tabs.
+  `name  value [range]` -> key/value; `name  v1  v2 ...` -> table row (first
+  cell value in `raw_value`, every cell in `notes`, columns are not guessed);
+  `name = value` / `name: value` (name starts with a letter) -> separator row;
+  otherwise a label-only entry. **Headings** are conservative: a lone line
+  that is numbered (`21 Distance protection zones`, dotted numbers nest by
+  depth) or a short ALL-CAPS line that is followed by another line. A heading
+  sets `section_path` for the entries after it; hierarchy is never invented
+  (a `2.1` heading with no `2` is just `("2.1 ...",)`). No heading -> flat.
+  Lines repeated at a page's edges on at least half the pages (headers/footers,
+  only page counters such as `2/5` are masked) are treated as page furniture:
+  kept as `identification_hints`, not entries.
+- **Provenance:** every entry keeps page, line, original text, the code/label
+  and value text found, and the rule used.
+- **Determinism:** same bytes -> equal result (tested on synthetic and real
+  documents).
+- **Safety:** all parser/decryption exceptions are caught (class name logged
+  only, never content or paths); `MAX_PAGES` 400, `MAX_ENTRIES` 50 000 and a
+  2 000-char line cap, each reported as a warning; per-page extraction
+  failures are isolated; control characters are stripped; pypdf's own
+  decompression limits apply. Extraction runs in the thread pool so the event
+  loop is not blocked. Bytes are never written anywhere and Slice 3's
+  ephemeral guarantees (no storage/DB/browser storage, handle closed in
+  `finally`) are unchanged and still tested.
+- **API:** `POST /api/v1/relay-import/upload` now also returns
+  `extraction_status` (`text_extracted | no_extractable_text | encrypted`),
+  `page_count`, `pages_with_text`, `raw_entry_count`, `section_count` and
+  `extraction_warnings` (counts and fixed messages only -- no document content,
+  so the payload stays small). The full `RawRelayDocument` is built and
+  dropped inside the request.
+- **UI:** the file card shows `PDF` / `17.2 KB · 4 pages · 126 raw entries`
+  with `Text extracted. Relay settings have not been interpreted yet.`, or the
+  scanned / encrypted messages. Nothing touches the Distance Protection form.
+- **Known limitations:** no OCR; no multi-column reordering; repeated
+  identical rows at page edges can be mistaken for page furniture (they are
+  retained in `identification_hints`); a code-like leading token heuristic can
+  split a row such as `2024 Foo`; ALL-CAPS label-only rows can be taken as
+  headings when followed by another line; unit table is lexical, so
+  unlisted units stay in `raw_value`.
+- **Regression:** the owner's relay sample sheets (kept outside the repo; set
+  `RELAY_SAMPLE_PDF_DIR` to run `test_real_sample_regression`) all extract
+  as text with page provenance, stable ids and deterministic output; the
+  extractor contains no OEM-specific rule (guarded by a test).
+
 ## Intentionally unresolved in Slice 1
 
 - ~~Mapping onto the existing `ZoneSettings`~~ — done in Slice 2 (above).
@@ -250,4 +342,5 @@ Import Relay Settings -> pick file -> POST /api/v1/relay-import/upload
 - Setting-basis (primary/secondary) handling when the source does not say.
 - Whether active setting groups need a multi-group model (currently one
   active group name).
-- Extraction technology, relay identification heuristics, upload API shape.
+- ~~Extraction technology, upload API shape~~ -- decided in Slices 3-4 (above).
+- Relay identification heuristics (Slice 5+), OCR for scanned sheets.

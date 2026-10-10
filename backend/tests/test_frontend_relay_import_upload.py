@@ -94,10 +94,12 @@ class TestPanelPolish:
         assert "min-width: 0" in _slice(source, ".ww-relay-import-info {", "}")
         assert "nameEl.title = " in _relay_import_js(source)
 
-    def test_accepted_state_says_settings_not_read_and_import_disables_while_processing(self):
+    def test_accepted_state_reports_extraction_not_interpretation_and_import_disables_while_processing(self):
         js = _relay_import_js(_source())
-        assert "File accepted" in js
-        assert "Settings have not been read yet." in js
+        assert "Text extracted. Relay settings have not been interpreted yet." in js
+        assert "PDF accepted, but no extractable text was found. OCR is not supported yet." in js
+        assert "PDF is encrypted and cannot be read." in js
+        assert "raw entr" in js and '" pages"' in js
         assert "importBtn.disabled = state.phase === \"uploading\"" in js
 
     def test_button_states_defined(self):
@@ -143,3 +145,21 @@ class TestEphemeralState:
         assert 'getElementById("wwRelayImportBtn").addEventListener("click"' in source
         assert 'getElementById("wwRelayImportFileInput").addEventListener("change"' in source
         assert 'getElementById("wwRelayImportRemoveBtn").addEventListener("click", wwRelayImportReset)' in source
+
+
+class TestExtractionSummary:
+    def test_summary_fields_are_taken_from_the_response_only(self):
+        js = _relay_import_js(_source())
+        for field in ("body.extraction_status", "body.page_count", "body.raw_entry_count"):
+            assert field in js
+
+    def test_reset_clears_extraction_state(self):
+        js = _slice(_relay_import_js(_source()), "function wwRelayImportReset", "function wwRelayImportRender")
+        for needle in ('extractionStatus = ""', "pageCount = 0", "rawEntryCount = 0"):
+            assert needle in js
+
+    def test_card_font_sizes(self):
+        source = _source()
+        assert "font-size: 0.7rem" in _slice(source, ".ww-relay-import-filename {", "}")
+        assert "font-size: 0.7rem" in _slice(source, ".ww-relay-import-meta {", "}")
+        assert "font-size: 0.6rem" in _slice(source, ".ww-relay-import-privacy {", "}")

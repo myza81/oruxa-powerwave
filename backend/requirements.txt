@@ -35,3 +35,11 @@ psycopg[binary]==3.3.4
 # dropped .xlsx support entirely and only reads legacy .xls) that is
 # not currently justified; see CSV_EXCEL_INGESTION_ARCHITECTURE.md.
 openpyxl==3.1.5
+
+# Relay Import Slice 4: generic PDF text extraction (app/services/
+# relay_pdf_extractor.py). Pure-Python, BSD, no rendering/OCR stack. Layout
+# extraction mode preserves column gaps; encrypted PDFs are detected via
+# is_encrypted. AES-encrypted files need the optional `cryptography`
+# package, which is deliberately NOT added: they are reported as
+# "encrypted" instead.
+pypdf==6.20.0

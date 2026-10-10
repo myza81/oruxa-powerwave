@@ -1,6 +1,6 @@
-// Relay Import Slice 3 -- Import Relay Settings (ephemeral upload) -- real-
-// browser coverage. Upload + minimal validation only: no extraction, no
-// relay identification, no auto-population. Runs against LOCAL code; no
+// Relay Import Slice 3/4 -- Import Relay Settings (ephemeral upload + generic
+// text extraction summary) -- real-browser coverage. No relay
+// identification, interpretation or auto-population. Runs against LOCAL code; no
 // recording is needed (Distance Protection's Manual mode stands alone).
 //
 // frontend/config.js pins the API to :8000. When PW_BACKEND_PORT is set
@@ -10,7 +10,32 @@
 const { test, expect } = require("@playwright/test");
 
 const BACKEND_PORT = process.env.PW_BACKEND_PORT || "8000";
-const PDF = Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n");
+// A real, tiny one-page text PDF (the backend now parses uploads).
+function buildPdf(lines, { imageOnly = false } = {}) {
+  const content = imageOnly
+    ? "q 100 0 0 100 50 600 cm /Im1 Do Q"
+    : "BT /F1 10 Tf\n" + lines.map(([x, y, t]) => `1 0 0 1 ${x} ${y} Tm (${t}) Tj`).join("\n") + "\nET";
+  const objs = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Count 1 /Kids [5 0 R] >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    "<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Length 1 >>\nstream\n\u0080\nendstream",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 3 0 R >> /XObject << /Im1 4 0 R >> >> /Contents 6 0 R >>",
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+  ];
+  let out = "%PDF-1.4\n";
+  const offsets = [];
+  objs.forEach((o, i) => {
+    offsets.push(out.length);
+    out += `${i + 1} 0 obj\n${o}\nendobj\n`;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("");
+  out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, "latin1");
+}
+const PDF = buildPdf([[40, 780, "R1"], [230, 780, "1.84"], [40, 764, "Zone 2"], [230, 764, "Forward"], [340, 764, "2.4"]]);
+const SCANNED_PDF = buildPdf([], { imageOnly: true });
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/config.js", (route) =>
@@ -47,8 +72,8 @@ test("a valid PDF shows filename and returned metadata, and Remove resets everyt
   await pick(page, "P441 settings.pdf", PDF);
   await expect(page.locator("#wwRelayImportFilename")).toHaveText("P441 settings.pdf");
   await expect(page.locator("#wwRelayImportType")).toHaveText("PDF");
-  await expect(page.locator("#wwRelayImportStatus")).toContainText("File accepted");
-  await expect(page.locator("#wwRelayImportDetail")).toHaveText("Settings have not been read yet.");
+  await expect(page.locator("#wwRelayImportStatus")).toContainText("1 page · 2 raw entries");
+  await expect(page.locator("#wwRelayImportDetail")).toHaveText("Text extracted. Relay settings have not been interpreted yet.");
   await expect(page.locator("#wwRelayImportRemoveBtn")).toBeVisible();
   await expect(page.locator("#wwRelayImportError")).toBeHidden();
 
@@ -61,7 +86,7 @@ test("a valid PDF shows filename and returned metadata, and Remove resets everyt
 
   // The same file can be chosen again after Remove.
   await pick(page, "P441 settings.pdf", PDF);
-  await expect(page.locator("#wwRelayImportStatus")).toContainText("File accepted");
+  await expect(page.locator("#wwRelayImportStatus")).toContainText("1 page · 2 raw entries");
 });
 
 test("upload errors are shown clearly and never disturb manual form state", async ({ page }) => {
@@ -99,7 +124,7 @@ test("upload errors are shown clearly and never disturb manual form state", asyn
 
   // Recovery: a valid file after errors clears the error.
   await pick(page, "ok.pdf", PDF);
-  await expect(page.locator("#wwRelayImportStatus")).toContainText("File accepted");
+  await expect(page.locator("#wwRelayImportStatus")).toContainText("1 page · 2 raw entries");
   await expect(page.locator("#wwRelayImportError")).toBeHidden();
   await expect(page.locator("#wwDistanceZone1ReachInput")).toHaveValue("12.5");
 });
@@ -124,7 +149,7 @@ test("import state uses no browser storage and a hard refresh starts clean", asy
     }));
   const before = await snapshot();
   await pick(page, "P441 settings.pdf", PDF);
-  await expect(page.locator("#wwRelayImportStatus")).toContainText("File accepted");
+  await expect(page.locator("#wwRelayImportStatus")).toContainText("1 page · 2 raw entries");
   const after = await snapshot();
   expect(after).toEqual(before);
   expect(JSON.stringify(after)).not.toContain("P441");
@@ -168,7 +193,7 @@ test("import and remove look like buttons; file card is bordered; empty state is
   await expect(page.locator("#wwRelayImportFile")).toBeHidden();
 
   await pick(page, "p441.pdf", PDF);
-  await expect(page.locator("#wwRelayImportStatus")).toContainText("File accepted");
+  await expect(page.locator("#wwRelayImportStatus")).toContainText("1 page · 2 raw entries");
   const card = await page.locator("#wwRelayImportFile").evaluate((el) => {
     const c = getComputedStyle(el);
     return { border: c.borderTopWidth, radius: c.borderTopLeftRadius };
@@ -192,7 +217,7 @@ test("very long filenames truncate with a tooltip and never cause horizontal scr
     await openDistance(page);
     const manualBefore = await page.locator("#wwDistanceZone1ReachInput").inputValue();
     await pick(page, longName, PDF);
-    await expect(page.locator("#wwRelayImportStatus")).toContainText("File accepted");
+    await expect(page.locator("#wwRelayImportStatus")).toContainText("1 page · 2 raw entries");
     const name = page.locator("#wwRelayImportFilename");
     await expect(name).toHaveAttribute("title", longName);
     const m = await page.evaluate(() => {
@@ -222,4 +247,40 @@ test("error state is a distinct bordered message and Import is usable again", as
   const border = await err.evaluate((el) => getComputedStyle(el).borderTopWidth);
   expect(border).toBe("1px");
   await expect(page.locator("#wwRelayImportBtn")).toBeEnabled();
+});
+
+test("scanned/image-only and encrypted outcomes are reported without calling the file corrupt", async ({ page }) => {
+  await openDistance(page);
+  await pick(page, "scan.pdf", SCANNED_PDF);
+  await expect(page.locator("#wwRelayImportStatus")).toContainText("1 page");
+  await expect(page.locator("#wwRelayImportStatus")).not.toContainText("raw entr");
+  await expect(page.locator("#wwRelayImportDetail")).toHaveText(
+    "PDF accepted, but no extractable text was found. OCR is not supported yet.",
+  );
+  await expect(page.locator("#wwRelayImportError")).toBeHidden();
+
+  // Encrypted: the backend's exact response shape (real encrypted-file
+  // handling is covered by the backend suite).
+  await page.route("**/api/v1/relay-import/upload", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        filename: "locked.pdf", source_format: "pdf", size_bytes: 900, status: "accepted",
+        extraction_status: "encrypted", page_count: 0, pages_with_text: 0, raw_entry_count: 0,
+        section_count: 0, extraction_warnings: [],
+      }),
+    }),
+  );
+  await pick(page, "locked.pdf", PDF);
+  await expect(page.locator("#wwRelayImportDetail")).toHaveText("PDF is encrypted and cannot be read.");
+  await page.unroute("**/api/v1/relay-import/upload");
+});
+
+test("extraction outcome never fills the Distance Protection form", async ({ page }) => {
+  await openDistance(page);
+  const before = await page.locator("#wwDistanceZone1ReachInput").inputValue();
+  await pick(page, "p441.pdf", PDF);
+  await expect(page.locator("#wwRelayImportDetail")).toContainText("have not been interpreted");
+  await expect(page.locator("#wwDistanceZone1ReachInput")).toHaveValue(before);
 });

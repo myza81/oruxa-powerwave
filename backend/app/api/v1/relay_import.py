@@ -1,9 +1,10 @@
 """Relay Import Slice 3: ephemeral relay-setting file upload.
 
 Accepts one file, validates and minimally inspects it, returns basic
-metadata, and retains nothing -- no database, no StorageBackend, no
+metadata plus generic-extraction counts, and retains nothing -- no database, no StorageBackend, no
 registry, no persistent directory. It deliberately takes no workspace id:
-nothing about the upload is workspace state. Extraction, relay
+nothing about the upload is workspace state. Generic text extraction
+(Slice 4) runs request-scoped and only counts are returned; relay
 identification and interpretation are later slices.
 """
 
@@ -64,4 +65,10 @@ async def upload_relay_setting_file(
         source_format=result.source_format.value,
         size_bytes=result.size_bytes,
         status="accepted",
+        extraction_status=result.extraction.status,
+        page_count=result.extraction.page_count,
+        pages_with_text=result.extraction.pages_with_text,
+        raw_entry_count=result.extraction.raw_entry_count,
+        section_count=result.extraction.section_count,
+        extraction_warnings=list(result.extraction.warnings),
     )
