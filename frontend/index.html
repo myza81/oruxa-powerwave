@@ -8617,6 +8617,149 @@
             color: var(--text-dim);
             opacity: 0.85;
         }
+        /* Relay Import Slice 7 -- read-only Extraction Review. Additive; reuses
+           the shared panel/status tokens so light and dark both work. Status is
+           restrained: mapped is a quiet dot, to-confirm amber, unresolved red
+           text on a dashed chip -- never an alarm screen. */
+        :is(.ww-rr-panel) {
+            margin-top: 10px;
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            background: var(--panel);
+            max-height: 70vh;
+            overflow: auto;
+        }
+        :is(.ww-rr-panel)[hidden] { display: none; }
+        :is(.ww-rr-head) {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px 16px;
+            flex-wrap: wrap;
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--panel-border);
+            background: var(--panel);
+        }
+        :is(.ww-rr-title) { margin: 0; font-size: 0.85rem; font-weight: 600; }
+        :is(.ww-rr-readonly) { margin: 2px 0 0; font-size: 0.7rem; color: var(--text-dim); }
+        :is(.ww-rr-body) { display: flex; flex-direction: column; gap: 8px; padding: 10px; }
+        :is(.ww-rr-summary, .ww-rr-compat) {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            padding: 8px 10px;
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            background: var(--surface-tint);
+            font-size: 0.72rem;
+        }
+        :is(.ww-rr-compat)[data-engine="not_ready"] { border-left: 3px solid var(--warn); }
+        :is(.ww-rr-compat)[data-engine="ready"] { border-left: 3px solid var(--ok); }
+        :is(.ww-rr-identity) { font-size: 0.8rem; font-weight: 600; }
+        :is(.ww-rr-dim) { color: var(--text-dim); }
+        :is(.ww-rr-counts) { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+        :is(.ww-rr-reasons) { margin: 2px 0 0; padding-left: 18px; color: var(--text-dim); }
+        :is(.ww-rr-group) {
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            background: var(--panel);
+        }
+        :is(.ww-rr-group) > summary {
+            cursor: pointer;
+            padding: 6px 10px;
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+        :is(.ww-rr-group) > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+        :is(.ww-rr-state)[data-status="unresolved"] { color: var(--error); }
+        :is(.ww-rr-state)[data-status="inferred"] { color: var(--warn); }
+        :is(.ww-rr-items) { list-style: none; margin: 0; padding: 0 10px 6px; }
+        :is(.ww-rr-item) { border-top: 1px solid var(--panel-border); }
+        :is(.ww-rr-row) {
+            display: grid;
+            grid-template-columns: minmax(8rem, 1.2fr) minmax(6rem, 1fr) auto auto;
+            align-items: center;
+            gap: 4px 10px;
+            padding: 4px 0;
+            font-size: 0.74rem;
+        }
+        :is(.ww-rr-label) { color: var(--text-dim); }
+        :is(.ww-rr-value) { font-weight: 600; overflow-wrap: anywhere; }
+        :is(.ww-rr-value)[data-empty] { font-weight: 400; font-style: italic; color: var(--text-dim); }
+        :is(.ww-rr-status) {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 1px 7px;
+            border: 1px solid var(--panel-border);
+            border-radius: 999px;
+            font-size: 0.65rem;
+            white-space: nowrap;
+        }
+        :is(.ww-rr-status)::before {
+            content: "";
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--ok);
+        }
+        :is(.ww-rr-status)[data-status="inferred"] {
+            color: var(--warn);
+            border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+            background: color-mix(in srgb, var(--warn) 10%, transparent);
+        }
+        :is(.ww-rr-status)[data-status="inferred"]::before { background: var(--warn); }
+        :is(.ww-rr-status)[data-status="unresolved"] {
+            color: var(--error);
+            border-style: dashed;
+            border-color: color-mix(in srgb, var(--error) 45%, transparent);
+        }
+        :is(.ww-rr-status)[data-status="unresolved"]::before { background: var(--error); }
+        :is(.ww-rr-link) {
+            padding: 0 4px;
+            border: 0;
+            background: none;
+            color: var(--accent);
+            font-size: 0.68rem;
+            cursor: pointer;
+        }
+        :is(.ww-rr-link):hover { text-decoration: underline; }
+        :is(.ww-rr-link):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        :is(.ww-rr-prov) {
+            margin: 0 0 6px;
+            padding: 6px 10px;
+            border-left: 3px solid var(--panel-border);
+            background: var(--surface-tint);
+            font-size: 0.7rem;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        :is(.ww-rr-prov)[hidden] { display: none; }
+        :is(.ww-rr-prov-src) { display: flex; flex-direction: column; gap: 1px; }
+        :is(.ww-rr-prov) code {
+            font-size: 0.66rem;
+            color: var(--text-dim);
+            overflow-wrap: anywhere;
+        }
+        :is(.ww-rr-other-list) { list-style: none; margin: 0; padding: 0 10px 6px; }
+        :is(.ww-rr-other-row) {
+            display: grid;
+            grid-template-columns: minmax(10rem, 2fr) minmax(5rem, 1fr) minmax(6rem, auto);
+            gap: 2px 10px;
+            padding: 3px 0;
+            border-top: 1px solid var(--panel-border);
+            font-size: 0.7rem;
+        }
+        :is(.ww-rr-other-sub) { margin: 6px 10px 2px; font-size: 0.7rem; font-weight: 600; }
+        :is(.ww-rr-more) { margin: 2px 10px 8px; }
+        @media (max-width: 640px) {
+            :is(.ww-rr-row) { grid-template-columns: 1fr auto; }
+            :is(.ww-rr-other-row) { grid-template-columns: 1fr; }
+        }
         .ww-oc-input-source-hint {
             font-size: 0.7rem;
             color: var(--text-dim);
@@ -11774,9 +11917,23 @@
                                         <span class="ww-relay-import-detail" id="wwRelayImportDetail"></span>
                                         <span class="ww-relay-import-detail" id="wwRelayImportSummary"></span>
                                     </div>
+                                    <button type="button" id="wwRelayReviewBtn" aria-expanded="false" aria-controls="wwRelayReviewPanel" hidden>Review Extracted Settings</button>
                                     <button type="button" class="secondary" id="wwRelayImportRemoveBtn">Remove</button>
                                 </div>
                                 <div class="ww-relay-import-error" id="wwRelayImportError" role="alert" hidden></div>
+                                <!-- Relay Import Slice 7 -- read-only Extraction Review of the
+                                     interpreted settings. No Apply/Accept/Populate controls:
+                                     nothing here writes to the Distance Protection form. -->
+                                <div class="ww-rr-panel" id="wwRelayReviewPanel" role="region" aria-label="Extraction Review" hidden>
+                                    <div class="ww-rr-head">
+                                        <div>
+                                            <h4 class="ww-rr-title">Extraction Review</h4>
+                                            <p class="ww-rr-readonly">Read-only. Nothing has been applied to the Distance Protection form.</p>
+                                        </div>
+                                        <button type="button" class="secondary" id="wwRelayReviewCloseBtn">Close review</button>
+                                    </div>
+                                    <div class="ww-rr-body" id="wwRelayReviewBody"></div>
+                                </div>
                                 <p class="ww-relay-import-privacy" id="wwRelayImportPrivacy">Files are processed temporarily and are not permanently stored. Import details are cleared when you refresh or close this tab.</p>
                             </section>
 
@@ -54795,10 +54952,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             mappedCount: 0,
             inferredCount: 0,
             unresolvedCount: 0,
+            // Slice 7 Extraction Review payload: tab memory only, never stored.
+            review: null,
+            reviewOpen: false,
             error: "",
             controller: null,
         };
         function wwRelayImportClearInterpretation(state) {
+            state.review = null;
+            state.reviewOpen = false;
             state.interpretationStatus = "";
             state.zoneCount = 0;
             state.mappedCount = 0;
@@ -54813,6 +54975,217 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (state.inferredCount > 0) parts.push(state.inferredCount + " to confirm");
             if (state.unresolvedCount > 0) parts.push(state.unresolvedCount + " unresolved");
             return parts.join(" · ");
+        }
+        // Relay Import Slice 7 -- Extraction Review (read-only). Renders the
+        // review payload the upload response carried; built with textContent
+        // only (document text is never parsed as HTML). It has no Apply /
+        // Accept / Populate action and never reads or writes the manual form.
+        const WW_RR_STATUS_LABELS = { mapped: "Mapped", inferred: "To confirm", unresolved: "Unresolved" };
+        const WW_RR_PAGE_SIZE = 25;
+        let wwRelayReviewUid = 0;
+        function wwRrEl(tag, className, text) {
+            const el = document.createElement(tag);
+            if (className) el.className = className;
+            if (text !== undefined && text !== null) el.textContent = text;
+            return el;
+        }
+        function wwRrStatusChip(status) {
+            const chip = wwRrEl("span", "ww-rr-status", WW_RR_STATUS_LABELS[status] || status);
+            chip.dataset.status = status;
+            return chip;
+        }
+        function wwRrLocation(page, line) {
+            const parts = [];
+            if (page) parts.push("Page " + page);
+            if (line) parts.push("line " + line);
+            return parts.join(" · ");
+        }
+        function wwRrProvenance(item) {
+            const box = wwRrEl("div", "ww-rr-prov");
+            const heading = item.full_label + " — " + (item.value_text || "Unresolved") + " — " + WW_RR_STATUS_LABELS[item.status];
+            box.appendChild(wwRrEl("strong", "", heading));
+            const noteLabel = item.status === "inferred" ? "Assumption" : item.status === "unresolved" ? "Why unresolved" : "Note";
+            item.notes.forEach((note) => {
+                const line = wwRrEl("div", "");
+                line.appendChild(wwRrEl("span", "ww-rr-dim", noteLabel + ": "));
+                line.appendChild(document.createTextNode(note));
+                box.appendChild(line);
+            });
+            if (!item.sources.length) {
+                box.appendChild(wwRrEl("div", "ww-rr-dim", "No source setting is cited."));
+                if (item.raw_value !== null && item.raw_value !== undefined) box.appendChild(wwRrEl("div", "", "Raw: " + item.raw_value));
+            }
+            item.sources.forEach((src) => {
+                const block = wwRrEl("div", "ww-rr-prov-src");
+                block.appendChild(wwRrEl("div", "", [src.code, src.name].filter(Boolean).join(" · ") || "Source"));
+                const where = wwRrLocation(src.page, src.line);
+                if (where) block.appendChild(wwRrEl("div", "ww-rr-dim", where));
+                if (src.raw_value !== null && src.raw_value !== undefined) block.appendChild(wwRrEl("div", "", "Raw: " + src.raw_value));
+                if (src.source_text) block.appendChild(wwRrEl("code", "", src.source_text));
+                box.appendChild(block);
+            });
+            if (item.profile_version) box.appendChild(wwRrEl("div", "ww-rr-dim", "Profile: " + item.profile_version));
+            return box;
+        }
+        function wwRrItem(item) {
+            const li = wwRrEl("li", "ww-rr-item");
+            li.dataset.status = item.status;
+            li.dataset.key = item.key;
+            const row = wwRrEl("div", "ww-rr-row");
+            row.appendChild(wwRrEl("span", "ww-rr-label", item.label));
+            const value = wwRrEl("span", "ww-rr-value", item.value_text === null ? "Unresolved" : item.value_text);
+            if (item.value_text === null) value.dataset.empty = "true";
+            row.appendChild(value);
+            row.appendChild(wwRrStatusChip(item.status));
+            const prov = wwRrProvenance(item);
+            prov.hidden = true;
+            prov.id = "wwRrProv" + (++wwRelayReviewUid);
+            const toggle = wwRrEl("button", "ww-rr-link", "Source");
+            toggle.type = "button";
+            toggle.setAttribute("aria-expanded", "false");
+            toggle.setAttribute("aria-controls", prov.id);
+            toggle.setAttribute("aria-label", "Source of " + item.full_label);
+            toggle.addEventListener("click", () => {
+                prov.hidden = !prov.hidden;
+                toggle.setAttribute("aria-expanded", String(!prov.hidden));
+            });
+            row.appendChild(toggle);
+            li.appendChild(row);
+            li.appendChild(prov);
+            return li;
+        }
+        function wwRrGroup(group) {
+            const details = wwRrEl("details", "ww-rr-group");
+            details.open = true;
+            details.dataset.group = group.id;
+            const summary = wwRrEl("summary", "");
+            summary.appendChild(document.createTextNode(group.title));
+            if (group.state_label) {
+                const state = wwRrEl("span", "ww-rr-state", " — " + group.state_label);
+                state.dataset.status = group.state_status || "";
+                summary.appendChild(state);
+            }
+            details.appendChild(summary);
+            const list = wwRrEl("ul", "ww-rr-items");
+            group.items.forEach((item) => list.appendChild(wwRrItem(item)));
+            details.appendChild(list);
+            return details;
+        }
+        function wwRrRawList(title, rows, id) {
+            const wrap = wwRrEl("div", "");
+            wrap.dataset.list = id;
+            wrap.appendChild(wwRrEl("div", "ww-rr-other-sub", title + " (" + rows.length + ")"));
+            if (!rows.length) {
+                wrap.appendChild(wwRrEl("div", "ww-rr-dim ww-rr-more", "None."));
+                return wrap;
+            }
+            const list = wwRrEl("ul", "ww-rr-other-list");
+            const more = wwRrEl("button", "ww-rr-link ww-rr-more", "");
+            more.type = "button";
+            let shown = 0;
+            const showMore = () => {
+                rows.slice(shown, shown + WW_RR_PAGE_SIZE).forEach((r) => {
+                    const li = wwRrEl("li", "ww-rr-other-row");
+                    li.appendChild(wwRrEl("span", "", [r.code, r.name].filter(Boolean).join(" · ") || "(unnamed)"));
+                    li.appendChild(wwRrEl("span", "ww-rr-value", r.raw_value === null ? "—" : r.raw_value));
+                    li.appendChild(wwRrEl("span", "ww-rr-dim", wwRrLocation(r.page, r.line)));
+                    list.appendChild(li);
+                });
+                shown = Math.min(rows.length, shown + WW_RR_PAGE_SIZE);
+                more.hidden = shown >= rows.length;
+                more.textContent = "Show more (" + (rows.length - shown) + " remaining)";
+            };
+            more.addEventListener("click", showMore);
+            showMore();
+            wrap.appendChild(list);
+            wrap.appendChild(more);
+            return wrap;
+        }
+        function wwRrPlural(n, one, many) { return n + " " + (n === 1 ? one : many); }
+        function wwRrSummary(review) {
+            const box = wwRrEl("div", "ww-rr-summary");
+            box.id = "wwRelayReviewSummary";
+            const identity = [review.manufacturer, review.relay_family, review.model].filter(Boolean).join(" · ");
+            box.appendChild(wwRrEl("div", "ww-rr-identity", identity || "Relay"));
+            box.appendChild(wwRrEl("div", "ww-rr-dim",
+                "Profile " + (review.profile_version || review.profile_id || "—") + " · " + wwRrPlural(review.zone_count, "zone", "zones")));
+            const counts = wwRrEl("div", "ww-rr-counts");
+            [["mapped", review.mapped_count + " mapped"], ["inferred", review.to_confirm_count + " to confirm"],
+             ["unresolved", review.unresolved_count + " unresolved"]].forEach(([status, text]) => {
+                const chip = wwRrEl("span", "ww-rr-status", text);
+                chip.dataset.status = status;
+                counts.appendChild(chip);
+            });
+            counts.appendChild(wwRrEl("span", "ww-rr-dim", review.not_interpreted_count + " not interpreted"));
+            box.appendChild(counts);
+            box.appendChild(wwRrEl("div", "ww-rr-dim", "Counts are interpreted settings, not display rows: a reach and its angle are one setting."));
+            return box;
+        }
+        function wwRrCompat(review) {
+            const box = wwRrEl("div", "ww-rr-compat");
+            box.id = "wwRelayReviewEngine";
+            box.dataset.engine = review.engine.status;
+            const ready = review.engine.status === "ready";
+            const interp = wwRrEl("div", "");
+            interp.appendChild(wwRrEl("strong", "", "Interpretation: "));
+            interp.appendChild(document.createTextNode(review.interpretation === "reviewable" ? "Complete enough for review" : "Incomplete"));
+            box.appendChild(interp);
+            const compat = wwRrEl("div", "");
+            compat.appendChild(wwRrEl("strong", "", "Current engine compatibility: "));
+            compat.appendChild(document.createTextNode(ready ? "Compatible with the current engine" : "Not ready to apply"));
+            box.appendChild(compat);
+            if (!ready) {
+                box.appendChild(wwRrEl("div", "",
+                    "Interpretation succeeded, but the current Distance Protection engine cannot fully apply this scheme yet."));
+                const reasons = wwRrEl("ul", "ww-rr-reasons");
+                review.engine.reasons.forEach((reason) => {
+                    const where = reason.zone_ids.length ? " (" + reason.zone_ids.join(", ") + ")" : "";
+                    reasons.appendChild(wwRrEl("li", "", reason.message + where));
+                });
+                box.appendChild(reasons);
+            }
+            if (review.engine.warnings.length) {
+                box.appendChild(wwRrEl("div", "ww-rr-dim", "Kept in the review but not used by the current engine:"));
+                const warns = wwRrEl("ul", "ww-rr-reasons");
+                review.engine.warnings.forEach((w) => warns.appendChild(wwRrEl("li", "", w)));
+                box.appendChild(warns);
+            }
+            return box;
+        }
+        function wwRelayReviewRender() {
+            const state = wwRelayImportState;
+            const panel = document.getElementById("wwRelayReviewPanel");
+            const button = document.getElementById("wwRelayReviewBtn");
+            if (!panel || !button) return;
+            const available = state.phase === "accepted" && state.interpretationStatus === "interpreted" && !!state.review;
+            button.hidden = !available;
+            const open = available && state.reviewOpen;
+            button.setAttribute("aria-expanded", String(open));
+            const body = document.getElementById("wwRelayReviewBody");
+            if (!open) {
+                panel.hidden = true;
+                body.replaceChildren();
+                return;
+            }
+            const review = state.review;
+            const fragment = document.createDocumentFragment();
+            fragment.appendChild(wwRrSummary(review));
+            fragment.appendChild(wwRrCompat(review));
+            review.groups.forEach((group) => fragment.appendChild(wwRrGroup(group)));
+            const other = wwRrEl("details", "ww-rr-group");
+            other.id = "wwRelayReviewOther";
+            other.appendChild(wwRrEl("summary", "",
+                "Other extracted settings (" + (review.not_interpreted.length + review.out_of_scope.length) + ")"));
+            // Built on first open: a collapsed section puts no rows in the DOM.
+            other.addEventListener("toggle", () => {
+                if (!other.open || other.dataset.built) return;
+                other.dataset.built = "true";
+                other.appendChild(wwRrRawList("Not interpreted — distance-related", review.not_interpreted, "not_interpreted"));
+                other.appendChild(wwRrRawList("Outside Distance Protection", review.out_of_scope, "out_of_scope"));
+            });
+            fragment.appendChild(other);
+            body.replaceChildren(fragment);
+            panel.hidden = false;
         }
         function wwRelayImportReset() {
             if (wwRelayImportState.controller) wwRelayImportState.controller.abort();
@@ -54891,6 +55264,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("wwRelayImportSummary").textContent = showFile ? summary : "";
             const importBtn = document.getElementById("wwRelayImportBtn");
             if (importBtn) importBtn.disabled = state.phase === "uploading";
+            wwRelayReviewRender();
             error.hidden = state.phase !== "error";
             error.textContent = state.phase === "error" ? state.error : "";
         }
@@ -54958,6 +55332,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     state.mappedCount = body.mapped_setting_count || 0;
                     state.inferredCount = body.inferred_setting_count || 0;
                     state.unresolvedCount = body.unresolved_setting_count || 0;
+                    state.review = body.review || null;
+                    state.reviewOpen = false;
                 }
             } catch (networkError) {
                 if (state.controller !== controller) return;
@@ -60515,6 +60891,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRelayImportHandleFile(file);
         });
         document.getElementById("wwRelayImportRemoveBtn").addEventListener("click", wwRelayImportReset);
+        document.getElementById("wwRelayReviewBtn").addEventListener("click", () => {
+            wwRelayImportState.reviewOpen = !wwRelayImportState.reviewOpen;
+            wwRelayReviewRender();
+        });
+        document.getElementById("wwRelayReviewCloseBtn").addEventListener("click", () => {
+            wwRelayImportState.reviewOpen = false;
+            wwRelayReviewRender();
+            document.getElementById("wwRelayReviewBtn").focus();
+        });
         // Analysis Input Source segmented control -- Recording/Manual.
         document.getElementById("wwDistanceInputSourceRecordingBtn").addEventListener("click", () => wwDistanceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_RECORDING));
         document.getElementById("wwDistanceInputSourceManualBtn").addEventListener("click", () => wwDistanceSetInputSource(WW_ANALYSIS_INPUT_SOURCE_MANUAL));

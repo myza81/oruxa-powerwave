@@ -13,11 +13,12 @@ Distance Protection form.
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
 from app.config import Settings
-from app.schemas.relay_import import RelayImportUploadOut
+from app.schemas.relay_import import ExtractionReviewOut, RelayImportUploadOut
 from app.schemas.source import ErrorOut
 from app.services.errors import ImportServiceError
 from app.services.relay_import_upload_service import inspect_relay_setting_upload
@@ -90,4 +91,5 @@ async def upload_relay_setting_file(
         not_interpreted_setting_count=interp.not_interpreted_setting_count if interp else 0,
         zone_count=interp.zone_count if interp else 0,
         interpretation_warnings=list(interp.warnings) if interp else [],
+        review=ExtractionReviewOut(**asdict(interp.review)) if interp and interp.review else None,
     )

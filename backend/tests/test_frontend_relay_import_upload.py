@@ -247,3 +247,62 @@ class TestExtractionSummary:
         assert "font-size: 0.7rem" in _slice(source, ".ww-relay-import-filename {", "}")
         assert "font-size: 0.7rem" in _slice(source, ".ww-relay-import-meta {", "}")
         assert "font-size: 0.6rem" in _slice(source, ".ww-relay-import-privacy {", "}")
+
+
+def _review_js(source: str) -> str:
+    return _slice(source, "const WW_RR_STATUS_LABELS", "function wwRelayImportReset")
+
+
+class TestExtractionReview:
+    """Slice 7: read-only Extraction Review. Behaviour is covered in
+    browser-tests/relay_import_upload.spec.js; these guard the structure."""
+
+    def test_review_entry_is_hidden_until_the_relay_is_interpreted(self):
+        panel = _distance_panel(_source())
+        assert re.search(r'<button type="button" id="wwRelayReviewBtn"[^>]*\bhidden\b[^>]*>Review Extracted Settings</button>', panel)
+        js = _review_js(_source())
+        assert 'state.interpretationStatus === "interpreted"' in js and "!!state.review" in js
+
+    def test_review_panel_is_inside_the_import_panel_and_starts_hidden(self):
+        panel = _slice(_distance_panel(_source()), 'id="wwRelayImportPanel"', 'id="wwDistanceBody"')
+        assert re.search(r'id="wwRelayReviewPanel"[^>]*\bhidden\b', panel)
+        assert 'id="wwRelayReviewCloseBtn"' in panel and 'id="wwRelayReviewBody"' in panel
+
+    def test_there_is_no_apply_accept_or_populate_control_or_handler(self):
+        source = _source()
+        panel = _slice(_distance_panel(source), 'id="wwRelayImportPanel"', 'id="wwDistanceBody"')
+        labels = re.findall(r"<button[^>]*>([^<]*)</button>", panel)
+        assert labels, "the import panel has buttons"
+        for label in labels:
+            assert not re.search(r"apply|accept|populate|generate|auto-?fill", label, re.I), label
+        js = _review_js(source)
+        for forbidden in ("wwDistanceState", "wwDistanceZone", "wwDistanceHandleZoneSettingChanged", "wwDistanceRenderPlot", ".value ="):
+            assert forbidden not in js, forbidden
+
+    def test_review_is_rendered_as_text_never_as_html(self):
+        js = _review_js(_source())
+        for forbidden in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write"):
+            assert forbidden not in js
+
+    def test_review_payload_is_held_in_tab_memory_and_cleared_with_everything_else(self):
+        source = _source()
+        assert "review: null" in _slice(source, "const wwRelayImportState", "function wwRelayImportClearInterpretation")
+        clear = _slice(source, "function wwRelayImportClearInterpretation", "// \"5 zones found")
+        assert "state.review = null" in clear and "state.reviewOpen = false" in clear
+        assert "state.review = body.review || null" in source
+
+    def test_status_labels_match_the_interpretation_vocabulary(self):
+        js = _review_js(_source())
+        assert 'mapped: "Mapped", inferred: "To confirm", unresolved: "Unresolved"' in js
+
+    def test_provenance_toggle_is_an_accessible_disclosure(self):
+        js = _review_js(_source())
+        for needle in ('setAttribute("aria-expanded"', 'setAttribute("aria-controls"', "prov.hidden = true"):
+            assert needle in js
+
+    def test_review_css_uses_shared_theme_tokens_only(self):
+        source = _source()
+        css = _slice(source, ":is(.ww-rr-panel) {", ".ww-oc-input-source-hint {")
+        assert not re.search(r"#[0-9a-fA-F]{3,8}\b", css)
+        assert "animation" not in css and "transition" not in css
+        assert "@media (max-width: 640px)" in css

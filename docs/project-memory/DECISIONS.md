@@ -25127,6 +25127,22 @@ sequential ids).
   Extraction Review yet. The temporary id `DEC-RELAY-IMPORT-1` is kept until
   integration. Details in
   [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-6--micom-p441-engineering-interpretation-micom-p441-v1).
+- **Slice 7 addendum (2026-10-11)**: **Extraction Review is read-only.** An
+  interpreted relay can be inspected before anything is applied: canonical values
+  grouped by CT/VT, line, one section per model zone (never assuming four) and
+  compensation; every value shows Mapped / To confirm / Unresolved and an
+  in-place provenance disclosure (source code and name, page/line, raw value,
+  source text, profile version, the profile's assumption or reason); unmapped
+  settings sit in a collapsed, paginated "Other extracted settings" section.
+  **Engine compatibility is presented separately from interpretation quality** --
+  a profile can be correctly interpreted while the current plotting engine cannot
+  represent it (P441 sample: "Not ready to apply"; a review note, not an error).
+  The review is delivered inside the upload response and held in tab memory only:
+  the platform keeps no state between requests, so no review endpoint, database,
+  saved import or browser storage was added. There is **no Apply, Accept, Populate
+  or edit** control; the manual form is untouched. Apply Settings / form
+  population remain a later slice needing owner approval after UAT. Details in
+  [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-7--extraction-review-read-only).
 - **Scope**: Slice 1 is contracts + tests only -- no extraction, parsing,
   upload UI, auto-population, rendering change or persistence.
 

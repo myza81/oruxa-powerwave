@@ -178,9 +178,17 @@ nothing is "Validated". **Slice 6:** the first interpretation profile, MiCOM
 P441 (`micom-p441-v1`, *Implemented / Awaiting Validation*), maps the sheet into
 the canonical model with per-value provenance and shows a summary on the upload
 card ("5 zones found - 33 settings mapped - 36 to confirm - 6 unresolved");
-interpreted is **not applied** (no form population, no Apply / Review UI yet),
+interpreted is **not applied** (no form population, no Apply),
 Zone 4 is reported defeated with its numbers kept, and every other family stays
-identification-only. See
+identification-only. **Slice 7:** a read-only **Extraction Review** ("Review
+Extracted Settings" on the card, interpreted relays only) shows the interpreted
+canonical values grouped by CT/VT, line, one section per zone and compensation,
+each with a Mapped / To confirm / Unresolved status and an in-place provenance
+disclosure (source code, page/line, raw value, profile version, assumption),
+plus the unmapped settings in a collapsed, paginated section; engine
+compatibility ("Not ready to apply" for the P441 sample) is shown separately
+from interpretation quality. Ephemeral: the payload rides in the upload response
+and lives in tab memory only. Awaiting owner UAT. See
 [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md).
 
 **Engineering tools and workflow batch (DEC-155 to DEC-165), 2026-10-05.**

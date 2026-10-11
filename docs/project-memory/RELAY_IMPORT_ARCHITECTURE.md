@@ -1,10 +1,11 @@
 # Relay Settings Import — Architecture (Slice 1: foundation)
 
-Status: **Slices 1-6** (domain contracts, manual entry + engine adapter,
+Status: **Slices 1-7** (domain contracts, manual entry + engine adapter,
 ephemeral upload, generic PDF extraction, relay identification, MiCOM P441
-interpretation profile) implemented on `feature/distance-relay-import`.
-Slice 6 is **Implemented / Awaiting Validation** (owner UAT pending). Every
-other relay is identification-only; auto-population / Apply are later slices. Approval record:
+interpretation profile, read-only Extraction Review) implemented on
+`feature/distance-relay-import`. Slice 6 is **Implemented / Awaiting
+Validation**; Slice 7 is **Implemented / Awaiting owner UAT**. Every other relay
+is identification-only; auto-population / Apply are later slices. Approval record:
 [DECISIONS.md — DEC-RELAY-IMPORT-1](DECISIONS.md#dec-relay-import-1--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
 ## Purpose
@@ -672,6 +673,110 @@ P441 left-hand resistive reach rule, whether `R<n>Ph` is a loop or per-phase
 value, and the K0-style reading of `kZn` all need confirmation against the P44x
 technical manual or the owner before Slice 7 (Extraction Review / Apply).
 
+## Slice 7 — Extraction Review (read-only)
+
+Status: **Implemented / Awaiting owner UAT.** Pipeline:
+`Upload -> Extract -> Identify -> Interpret -> Review`. The slice stops at
+**Review**: there is no Apply, Accept, Populate, Generate Characteristic or
+auto-fill, no owner editing and no per-mapping accept/reject. The manual
+Distance Protection form is neither read nor written by the review.
+
+```text
+CanonicalDistanceProtectionModel + RawRelayDocument + EngineAdaptation
+        -> build_extraction_review()   services/relay_extraction_review.py
+        -> ExtractionReview (dataclasses) -> ExtractionReviewOut (Pydantic)
+        -> upload response `review` field -> tab memory -> Review panel
+```
+
+| Piece | Where |
+|---|---|
+| review builder (relay-neutral; walks the canonical model; a test forbids relay names) | `services/relay_extraction_review.py` |
+| wiring: built once beside the summary, only for an `interpreted` relay; a builder failure leaves `review = null` (logged by class only) and never fails the upload | `services/relay_interpretation_summary.py` (`RelayInterpretationSummary.review`, `engine_adaptation()`) |
+| stable API schema (`ExtractionReviewOut` and friends; internal dataclasses are not exposed) | `schemas/relay_import.py` |
+| UI | `frontend/index.html` -- `#wwRelayReviewBtn`, `#wwRelayReviewPanel`, `wwRelayReviewRender()` |
+
+**Delivery, and why it is not a second endpoint.** The platform deliberately
+keeps nothing between requests (Slice 3). A "fetch review by id" endpoint would
+need server-side state, which is forbidden. The review therefore rides in the
+`POST /api/v1/relay-import/upload` response as a nested `review` object
+(`null` unless the relay was interpreted) and lives only in
+`wwRelayImportState.review`. The existing summary fields are unchanged and are
+still counts and fixed phrases; **engineering values appear only inside
+`review`**. A hard refresh, Remove or a new upload drops it. The payload for the
+P441 sample is about 40 KB.
+
+**Review DTO.** `relay identity + profile id/version + zone_count + counts +
+interpretation quality + engine compatibility + notes + groups[] +
+not_interpreted[] + out_of_scope[]`. Groups, in order: Relay / source
+information, CT / VT, Protected line, **one group per zone** (generated from
+`model.zones`; titles come from the zone, the count is whatever the profile
+produced), Residual compensation (per zone, shown for the compensation kind the
+model carries). Each item: `key`, short `label`, `full_label` (e.g. "Zone 1
+Earth Resistive Reach", used in the provenance heading), formatted `value_text`
+with unit (`null` when unresolved), `status` (mapped / inferred / unresolved),
+the profile's `notes`, `raw_value`, profile id/version and `sources[]`.
+A source is `code`, `name`, `raw_value`, `page`, `line`, `source_text`, resolved
+from the raw document by `setting_id`; no file path or file name is ever in it.
+
+**Presentation rules (no new engineering meaning).**
+
+* A reach is shown as two rows, the magnitude and its angle, sharing one
+  provenance (rectangular R/X likewise). Counts are of canonical settings, so
+  the review says they are not display rows.
+* Required items are always listed even when unresolved (zone status,
+  direction, characteristic, reach, phase-phase / earth / **reverse** resistive
+  reach for a quadrilateral, a delay, firmware version, voltage and current
+  base, positive-sequence impedance). A placeholder for something the relay
+  simply does not have (earth reach, zero-sequence reach, an unused timer, tilt,
+  common resistive reach) is hidden unless the profile touched it. An unresolved
+  item the profile left no reason for reads "No value is stated in the document."
+* Zone-level raw settings the profile declined (the P441 tilt angles) appear in
+  that zone as unresolved items with the profile's reason.
+* Inferred items show the profile's reason as "Assumption"; unresolved items as
+  "Why unresolved". Inferred values are never styled as deterministic.
+* Zone 4 reads "Zone 4 — Disabled / Defeated" and keeps its reach, resistive
+  reach and delay; Zone P reads "Zone P — Status unresolved" with its numbers.
+
+**Engine compatibility is separate from interpretation quality.** The review
+carries `interpretation` (`reviewable` / `incomplete`) and `engine`
+(`ready` / `not_ready`, the existing adapter's reasons with identical messages
+merged across zones, and its preserved-but-unused warnings). For the P441 sample
+the panel states "Interpretation: Complete enough for review" and "Current
+engine compatibility: Not ready to apply", with "Interpretation succeeded, but
+the current Distance Protection engine cannot fully apply this scheme yet."
+and the adapter's reasons (Zone P cannot be represented; the reverse resistive
+reach is unresolved). These are review notes, never upload errors. The adapter
+and engine were not changed; the basis logic was only extracted into
+`engine_adaptation()` so the summary and the review share one run.
+
+**Other extracted settings.** A collapsed section, secondary to the canonical
+review: distance-related settings the profile retained but did not interpret,
+and settings outside Distance Protection. Each row shows code / name, raw value
+and page / line; lists show 25 rows and grow by "Show more", so the initial view
+never dumps the ~300 retained lines.
+
+**UI.** A "Review Extracted Settings" button on the relay-import card, visible
+only for `interpretation_status = interpreted` with a review payload (never for
+an identified-but-unsupported relay such as 7SA511). It opens a contained panel
+(max 70vh, internal scroll, sticky header) inside the relay-import card:
+summary, compatibility, collapsible `<details>` groups, and rows
+`label | value | status chip | Source`. "Source" is an accessible disclosure
+(`aria-expanded` / `aria-controls`) that expands the provenance in place: code ·
+name, page · line, raw value, source text, profile version and the note. Status
+styling is restrained: Mapped a quiet dot, To confirm amber, Unresolved red text
+on a dashed chip; shared theme tokens only, so light and dark both work; no
+animation. All document text is inserted with `textContent` (no `innerHTML`).
+Electrical V/I notation is not displayed here, so the formatter is not needed.
+
+**Ephemeral lifecycle (unchanged policy).** No database table, no saved import,
+no server session, no browser storage, no filesystem write. The review object is
+built inside the request and dropped; the browser holds it only in the page's
+memory. A static test and a browser test guard this.
+
+**Out of scope (unchanged for Slice 8+).** Apply Settings, form population,
+editing or accepting individual mappings, P44x-manual-based fixes for Zone P /
+reverse reach, further profiles, persistence/history, OCR, AI/LLM.
+
 ## Intentionally unresolved in Slice 1
 
 - ~~Mapping onto the existing `ZoneSettings`~~ — done in Slice 2 (above).
@@ -684,5 +789,6 @@ technical manual or the owner before Slice 7 (Extraction Review / Apply).
 - ~~Relay identification heuristics~~ -- Slice 5 (above). Still open: OCR for scanned
   sheets; a confirmation UI for ambiguous documents.
 - ~~First engineering profile~~ -- Slice 6 (P441, above), awaiting owner UAT before it
-  may be called `Validated`. Still open: profiles for every other family; the
-  Extraction Review / Apply workflow.
+  may be called `Validated`. ~~Extraction Review~~ -- Slice 7 (above), read-only,
+  awaiting owner UAT. Still open: profiles for every other family; the Apply
+  workflow (Slice 8).

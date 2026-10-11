@@ -1,0 +1,471 @@
+"""Extraction Review (Slice 7): a read-only, presentation-shaped view of an
+interpreted relay.
+
+Built request-scoped from the canonical model plus the RawRelayDocument (the
+raw document is what lets each value cite its source line, text and raw value),
+returned inside the upload response and then dropped -- nothing is stored and
+the Distance Protection form is never touched. The review is relay-neutral: it
+walks the canonical model, so the number of zones, the compensation kind and the
+characteristic are whatever the profile produced.
+
+It adds no engineering meaning. Wording that explains *why* something is
+inferred or unresolved is the profile's own note carried through; the only
+fixed phrases here are presentation labels and the generic "not stated" text
+for an expected value the profile never touched.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from app.domain.relay_import.canonical_distance import (
+    CanonicalDistanceProtectionModel,
+    CharacteristicType,
+    CompensationKind,
+    DistanceZone,
+    ExtraQuantity,
+    ImpedanceValue,
+    UnresolvedSetting,
+    ZoneStatus,
+)
+from app.domain.relay_import.engine_adapter import EngineAdaptation
+from app.domain.relay_import.provenance import MappingStatus, Sourced, SourceRef
+from app.domain.relay_import.raw_document import RawRelayDocument, RawSetting
+
+NOT_STATED = "No value is stated in the document."
+
+
+@dataclass(frozen=True)
+class ReviewSource:
+    """Where one interpreted value came from. Never a file path."""
+
+    code: str | None
+    name: str | None
+    raw_value: str | None
+    page: int | None
+    line: int | None
+    source_text: str | None
+
+
+@dataclass(frozen=True)
+class ReviewItem:
+    key: str
+    label: str
+    #: Label including its group (e.g. "Zone 1 Reach"), for the provenance heading.
+    full_label: str
+    #: Formatted engineering value with its unit; ``None`` when unresolved.
+    value_text: str | None
+    status: str  # mapped | inferred | unresolved
+    #: Profile wording: why it is inferred, or why it is unresolved.
+    notes: tuple[str, ...] = ()
+    raw_value: str | None = None
+    profile_id: str | None = None
+    profile_version: str | None = None
+    sources: tuple[ReviewSource, ...] = ()
+
+
+@dataclass(frozen=True)
+class ReviewGroup:
+    id: str
+    kind: str  # relay | transformers | line | zone | compensation
+    title: str
+    #: Zone state (e.g. "Disabled / Defeated"); ``None`` for non-zone groups.
+    state_label: str | None = None
+    state_status: str | None = None
+    items: tuple[ReviewItem, ...] = ()
+
+
+@dataclass(frozen=True)
+class ReviewRawSetting:
+    code: str | None
+    name: str | None
+    raw_value: str | None
+    page: int | None
+    line: int | None
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class ReviewEngineReason:
+    #: Zones the same adapter message applies to (empty = the whole model).
+    zone_ids: tuple[str, ...]
+    message: str
+
+
+@dataclass(frozen=True)
+class ReviewEngine:
+    status: str  # ready | not_ready
+    reasons: tuple[ReviewEngineReason, ...] = ()
+    #: Canonical information preserved in the model but unused by the engine.
+    warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ExtractionReview:
+    manufacturer: str | None
+    relay_family: str | None
+    model: str | None
+    profile_id: str | None
+    profile_version: str | None
+    zone_count: int
+    mapped_count: int
+    to_confirm_count: int
+    unresolved_count: int
+    not_interpreted_count: int
+    #: reviewable | incomplete (interpretation quality, apart from the engine).
+    interpretation: str
+    engine: ReviewEngine
+    notes: tuple[str, ...] = ()
+    groups: tuple[ReviewGroup, ...] = ()
+    #: Distance-related settings the profile retained but did not interpret.
+    not_interpreted: tuple[ReviewRawSetting, ...] = ()
+    #: Settings outside Distance Protection, retained so nothing is discarded.
+    out_of_scope: tuple[ReviewRawSetting, ...] = ()
+
+
+# ---------------------------------------------------------------------------
+# Formatting
+# ---------------------------------------------------------------------------
+
+_UNIT_SYMBOLS = {"ohm": "Ω", "deg": "°", "s": "s", "A": "A", "V": "V", "km": "km", "mile": "mile", "mi": "mile"}
+_NO_SPACE_UNITS = {"°"}
+
+_STATUS_LABELS = {
+    ZoneStatus.ENABLED.value: "Enabled",
+    ZoneStatus.DISABLED.value: "Disabled / Defeated",
+    ZoneStatus.INACTIVE.value: "Inactive",
+    ZoneStatus.UNKNOWN.value: "Unknown",
+}
+_CHARACTERISTIC_LABELS = {
+    CharacteristicType.QUADRILATERAL.value: "Quadrilateral",
+    CharacteristicType.MHO.value: "Mho",
+    CharacteristicType.LENTICULAR.value: "Lenticular",
+    CharacteristicType.POLYGON_CUSTOM.value: "Polygon / custom",
+    CharacteristicType.UNKNOWN.value: "Unknown",
+}
+_COMPENSATION_COMPONENTS = {
+    CompensationKind.K0_MAGNITUDE_ANGLE: (
+        ("k0_magnitude", "K0 Magnitude", ""),
+        ("k0_angle_deg", "K0 Angle", "°"),
+    ),
+    CompensationKind.KR_KX: (("kr", "Kr", ""), ("kx", "Kx", "")),
+    CompensationKind.RE_RL_XE_XL: (("re_rl", "RE/RL", ""), ("xe_xl", "XE/XL", "")),
+}
+
+
+def _number(value: float) -> str:
+    if value == int(value) and abs(value) < 1e15:
+        return str(int(value))
+    return f"{value:.10g}"
+
+
+def _with_unit(text: str, unit: str | None) -> str:
+    symbol = _UNIT_SYMBOLS.get(unit or "", unit or "")
+    if not symbol:
+        return text
+    return f"{text}{symbol}" if symbol in _NO_SPACE_UNITS else f"{text} {symbol}"
+
+
+def _humanize(name: str) -> str:
+    return name.replace("_", " ").strip().title()
+
+
+def _enum_str(value: object) -> object:
+    return getattr(value, "value", value)
+
+
+def _value_text(value: object, unit: str | None = None) -> str:
+    if isinstance(value, bool):
+        return "Enabled" if value else "Disabled"
+    if isinstance(value, (int, float)):
+        return _with_unit(_number(float(value)), unit)
+    text = str(_enum_str(value))
+    return text.replace("_", " ").capitalize() if text.islower() else text
+
+
+# ---------------------------------------------------------------------------
+# Item construction
+# ---------------------------------------------------------------------------
+
+
+class _Builder:
+    def __init__(self, document: RawRelayDocument) -> None:
+        self._raw: dict[str, RawSetting] = {s.setting_id: s for s in document.settings}
+
+    def source(self, ref) -> ReviewSource:
+        raw = self._raw.get(ref.setting_id)
+        return ReviewSource(
+            code=(raw.parameter_id if raw else None) or ref.parameter_id,
+            name=(raw.name if raw else None) or ref.parameter_name,
+            raw_value=None if raw is None or raw.raw_value is None else str(raw.raw_value),
+            page=(raw.location.page if raw else None) or ref.page,
+            line=raw.location.line if raw else None,
+            source_text=raw.source_text if raw else None,
+        )
+
+    def item(
+        self,
+        key: str,
+        label: str,
+        group_label: str,
+        sourced: Sourced,
+        *,
+        text: str | None = None,
+        unit: str | None = None,
+        extra_sources: tuple = (),
+        extra_notes: tuple[str, ...] = (),
+    ) -> ReviewItem:
+        prov = sourced.provenance
+        refs = (*prov.sources, *(r for r in extra_sources if r not in prov.sources))
+        notes = (*prov.notes, *(n for n in extra_notes if n not in prov.notes))
+        if not sourced.is_resolved:
+            value_text = None
+            if not notes:
+                notes = (NOT_STATED,)
+        else:
+            value_text = text if text is not None else _value_text(sourced.value, unit)
+        return ReviewItem(
+            key=key,
+            label=label,
+            full_label=f"{group_label} {label}".strip() if group_label else label,
+            value_text=value_text,
+            status=prov.status.value,
+            notes=notes,
+            raw_value=None if prov.raw_value is None else str(prov.raw_value),
+            profile_id=prov.profile_id,
+            profile_version=prov.profile_version,
+            sources=tuple(self.source(r) for r in refs),
+        )
+
+    def impedance(self, key: str, label: str, group_label: str, sourced: Sourced) -> list[ReviewItem]:
+        value = sourced.value
+        if isinstance(value, ImpedanceValue):
+            if value.is_polar:
+                parts = [
+                    (f"{key}", label, _with_unit(_number(value.magnitude_ohm), "ohm")),
+                    (f"{key}.angle", f"{label} Angle", _with_unit(_number(value.angle_deg), "deg")),
+                ]
+            else:
+                parts = [
+                    (f"{key}.r", f"{label} R", _with_unit(_number(value.r_ohm), "ohm")),
+                    (f"{key}.x", f"{label} X", _with_unit(_number(value.x_ohm), "ohm")),
+                ]
+            return [self.item(k, lab, group_label, sourced, text=t) for k, lab, t in parts]
+        return [self.item(key, label, group_label, sourced)]
+
+    def extras(self, key: str, group_label: str, extras: tuple[ExtraQuantity, ...]) -> list[ReviewItem]:
+        return [
+            self.item(f"{key}.{e.name}", _humanize(e.name), group_label, e.value, unit=e.unit) for e in extras
+        ]
+
+    def unresolved_setting(self, key: str, group_label: str, setting: UnresolvedSetting) -> ReviewItem:
+        raw = self._raw.get(setting.setting_id)
+        sources = (self.source_from_setting(setting.setting_id),) if raw else ()
+        return ReviewItem(
+            key=key,
+            label=setting.name or setting.setting_id,
+            full_label=f"{group_label} {setting.name or setting.setting_id}".strip(),
+            value_text=None,
+            status=MappingStatus.UNRESOLVED.value,
+            notes=(setting.reason,) if setting.reason else (NOT_STATED,),
+            raw_value=None if setting.raw_value is None else str(setting.raw_value),
+            sources=sources,
+        )
+
+    def source_from_setting(self, setting_id: str) -> ReviewSource:
+        return self.source(SourceRef(setting_id))
+
+    def raw_row(self, setting: UnresolvedSetting) -> ReviewRawSetting:
+        raw = self._raw.get(setting.setting_id)
+        return ReviewRawSetting(
+            code=raw.parameter_id if raw else None,
+            name=setting.name or (raw.name if raw else None),
+            raw_value=None if setting.raw_value is None else _with_unit(str(setting.raw_value), setting.unit),
+            page=raw.location.page if raw else None,
+            line=raw.location.line if raw else None,
+            reason=setting.reason,
+        )
+
+
+def _touched(sourced: Sourced) -> bool:
+    p = sourced.provenance
+    return bool(sourced.is_resolved or p.sources or p.raw_value is not None or p.notes)
+
+
+# ---------------------------------------------------------------------------
+# Groups
+# ---------------------------------------------------------------------------
+
+
+def _relay_group(b: _Builder, model: CanonicalDistanceProtectionModel) -> ReviewGroup:
+    m = model.metadata
+    items = [
+        b.item("relay.manufacturer", "Manufacturer", "", m.manufacturer),
+        b.item("relay.family", "Relay Family", "", m.family),
+        b.item("relay.model", "Model", "", m.model),
+        b.item("relay.scheme", "Scheme / Template", "", m.scheme_name),
+        b.item("relay.version", "Firmware Version", "", m.version),
+        b.item("relay.setting_group", "Active Setting Group", "", m.active_setting_group),
+    ]
+    return ReviewGroup("relay", "relay", "Relay / source information", items=tuple(items))
+
+
+def _transformer_group(b: _Builder, model: CanonicalDistanceProtectionModel) -> ReviewGroup:
+    t = model.transformers
+    items = [
+        b.item("ct.primary", "CT Primary", "", t.ct_primary_a, unit="A"),
+        b.item("ct.secondary", "CT Secondary", "", t.ct_secondary_a, unit="A"),
+        b.item("vt.primary", "VT Primary", "", t.vt_primary_v, unit="V"),
+        b.item("vt.secondary", "VT Secondary", "", t.vt_secondary_v, unit="V"),
+        b.item("basis", "Setting Values Basis", "", t.setting_basis),
+        b.item("base.voltage", "Voltage Base", "", t.voltage_base_v, unit="V"),
+        b.item("base.current", "Current Base", "", t.current_base_a, unit="A"),
+    ]
+    return ReviewGroup("ct_vt", "transformers", "CT / VT", items=tuple(items))
+
+
+def _line_group(b: _Builder, model: CanonicalDistanceProtectionModel) -> ReviewGroup:
+    line = model.line
+    unit_value = line.length_unit.value if line.length_unit.is_resolved else None
+    length_text = _value_text(line.length.value, str(unit_value) if unit_value else None) if line.length.is_resolved else None
+    items = [
+        b.item(
+            "line.length", "Line Length", "", line.length, text=length_text,
+            extra_sources=line.length_unit.provenance.sources if unit_value else (),
+        ),
+        b.item("line.angle", "Line Angle", "", line.line_angle_deg, unit="deg"),
+        *b.impedance("line.z1", "Positive-Sequence Impedance", "", line.positive_sequence_impedance),
+    ]
+    if _touched(line.zero_sequence_impedance):
+        items += b.impedance("line.z0", "Zero-Sequence Impedance", "", line.zero_sequence_impedance)
+    items += b.extras("line", "", line.extras)
+    return ReviewGroup("line", "line", "Protected line", items=tuple(items))
+
+
+def _zone_state(zone: DistanceZone) -> tuple[str, str]:
+    status = zone.status
+    if not status.is_resolved:
+        return "Status unresolved", MappingStatus.UNRESOLVED.value
+    return _STATUS_LABELS.get(str(_enum_str(status.value)), "Unknown"), status.provenance.status.value
+
+
+def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
+    name = zone.name or f"Zone {zone.zone_id}"
+    pre = f"zone.{zone.zone_id}"
+    items: list[ReviewItem] = []
+
+    state_text = None if not zone.status.is_resolved else _zone_state(zone)[0]
+    items.append(b.item(f"{pre}.status", "Status", name, zone.status, text=state_text))
+    items.append(b.item(f"{pre}.direction", "Direction", name, zone.direction))
+    ctype = zone.characteristic.type
+    ctype_text = _CHARACTERISTIC_LABELS.get(str(_enum_str(ctype.value))) if ctype.is_resolved else None
+    items.append(b.item(f"{pre}.characteristic", "Characteristic", name, ctype, text=ctype_text))
+    items += b.impedance(f"{pre}.reach", "Reach", name, zone.reach)
+    if _touched(zone.earth_reach):
+        items += b.impedance(f"{pre}.earth_reach", "Earth Reach", name, zone.earth_reach)
+    if _touched(zone.zero_sequence_reach):
+        items += b.impedance(f"{pre}.zero_reach", "Zero-Sequence Reach", name, zone.zero_sequence_reach)
+
+    rr = zone.resistive_reach
+    if _touched(rr.common):
+        items.append(b.item(f"{pre}.rr.common", "Resistive Reach", name, rr.common, unit="ohm"))
+    items.append(b.item(f"{pre}.rr.pp", "Phase-Phase Resistive Reach", name, rr.phase_phase, unit="ohm"))
+    items.append(b.item(f"{pre}.rr.pe", "Earth Resistive Reach", name, rr.phase_earth, unit="ohm"))
+    quadrilateral = ctype.is_resolved and ctype.value == CharacteristicType.QUADRILATERAL
+    if quadrilateral or _touched(rr.reverse):
+        items.append(b.item(f"{pre}.rr.reverse", "Reverse Resistive Reach", name, rr.reverse, unit="ohm"))
+    items += b.extras(f"{pre}.rr", name, rr.extras)
+
+    timers = [
+        (f"{pre}.timer", "Time Delay", zone.common_timer_s),
+        (f"{pre}.timer.pp", "Phase Time Delay", zone.phase_timer_s),
+        (f"{pre}.timer.pe", "Earth Time Delay", zone.earth_timer_s),
+    ]
+    shown = [t for t in timers if _touched(t[2])]
+    for key, label, timer in shown or timers[:1]:
+        items.append(b.item(key, label, name, timer, unit="s"))
+
+    items.append(b.item(f"{pre}.pp_enabled", "Phase-Phase Faults", name, zone.phase_phase_enabled))
+    items.append(b.item(f"{pre}.pe_enabled", "Earth Faults", name, zone.phase_earth_enabled))
+    if _touched(zone.tilt_deg):
+        items.append(b.item(f"{pre}.tilt", "Tilt Angle", name, zone.tilt_deg, unit="deg"))
+    items += b.extras(f"{pre}.char", name, zone.characteristic.parameters)
+    for u in zone.unresolved_settings:
+        if not u.out_of_scope:
+            items.append(b.unresolved_setting(f"{pre}.raw.{u.setting_id}", name, u))
+
+    state_label, state_status = _zone_state(zone)
+    return ReviewGroup(f"zone-{zone.zone_id}", "zone", name, state_label, state_status, tuple(items))
+
+
+def _compensation_group(b: _Builder, model: CanonicalDistanceProtectionModel) -> ReviewGroup | None:
+    items: list[ReviewItem] = []
+    for zone in model.zones:
+        comp = zone.compensation
+        if comp is None:
+            continue
+        name = zone.name or f"Zone {zone.zone_id}"
+        if comp.kind is CompensationKind.OEM_SPECIFIC:
+            items += b.extras(f"comp.{zone.zone_id}", name, comp.oem_values)
+            continue
+        for attr, label, unit in _COMPENSATION_COMPONENTS[comp.kind]:
+            items.append(
+                b.item(f"comp.{zone.zone_id}.{attr}", f"{name} {label}", "", getattr(comp, attr), unit=unit or None)
+            )
+    return ReviewGroup("compensation", "compensation", "Residual compensation", items=tuple(items)) if items else None
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
+def _engine_reasons(adaptation: EngineAdaptation) -> tuple[ReviewEngineReason, ...]:
+    """Adapter reasons, with one identical message across several zones merged."""
+    by_message: dict[str, list[str]] = {}
+    for reason in adaptation.reasons:
+        zones = by_message.setdefault(reason.message, [])
+        if reason.zone_id and reason.zone_id not in zones:
+            zones.append(reason.zone_id)
+    return tuple(ReviewEngineReason(tuple(zones), message) for message, zones in by_message.items())
+
+
+def build_extraction_review(
+    model: CanonicalDistanceProtectionModel,
+    document: RawRelayDocument,
+    adaptation: EngineAdaptation,
+    *,
+    mapped: int,
+    inferred: int,
+    unresolved: int,
+    not_interpreted: int,
+) -> ExtractionReview:
+    b = _Builder(document)
+    groups = [_relay_group(b, model), _transformer_group(b, model), _line_group(b, model)]
+    groups += [_zone_group(b, z) for z in model.zones]
+    comp = _compensation_group(b, model)
+    if comp:
+        groups.append(comp)
+    meta = model.metadata
+    return ExtractionReview(
+        manufacturer=meta.manufacturer.value,
+        relay_family=meta.family.value,
+        model=meta.model.value,
+        profile_id=meta.profile_id,
+        profile_version=meta.profile_version,
+        zone_count=len(model.zones),
+        mapped_count=mapped,
+        to_confirm_count=inferred,
+        unresolved_count=unresolved,
+        not_interpreted_count=not_interpreted,
+        interpretation="reviewable" if model.zones else "incomplete",
+        engine=ReviewEngine(
+            status="ready" if adaptation.supported else "not_ready",
+            reasons=_engine_reasons(adaptation),
+            warnings=adaptation.warnings,
+        ),
+        notes=model.interpretation_notes,
+        groups=tuple(groups),
+        not_interpreted=tuple(b.raw_row(u) for u in model.unmapped_settings if not u.out_of_scope),
+        out_of_scope=tuple(b.raw_row(u) for u in model.unmapped_settings if u.out_of_scope),
+    )

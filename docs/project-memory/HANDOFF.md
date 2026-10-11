@@ -7,6 +7,22 @@ history already provides the detailed historical trail.
 Last updated: **2026-10-05** (Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
+## Relay import Slice 7 (2026-10-11, `feature/distance-relay-import`)
+
+Read-only **Extraction Review** of an interpreted relay (P441 only so far):
+"Review Extracted Settings" on the relay-import card opens a contained panel with
+the canonical values by group and zone, status chips, in-place provenance and a
+collapsed "Other extracted settings" list; engine compatibility is shown apart
+from interpretation quality. The review travels in the upload response (no
+server state exists to fetch it from) and lives in tab memory only. Details:
+[RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-7--extraction-review-read-only).
+**Stopped at the owner UAT gate -- do not start Slice 8 (Apply Settings / form
+population) until the owner has UAT'd and approved Slice 7.** No Apply, no form
+write, no editing, no persistence. Not merged; Oscillation branch not rebased.
+Still open from Slice 6 (they now show as Unresolved / not-ready in the review):
+the `3007 Zone Status` bit layout (Zone P), the P441 left-hand resistive reach
+rule, `R<n>Ph` loop-vs-phase meaning, the K0-style reading of `kZn`.
+
 ## Relay import Slice 6 (2026-10-11, `feature/distance-relay-import`)
 
 First engineering interpretation profile: **MiCOM P441, `micom-p441-v1`**

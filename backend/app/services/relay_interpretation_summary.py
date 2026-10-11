@@ -21,11 +21,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from app.domain.relay_import.canonical_distance import CanonicalDistanceProtectionModel, SettingBasis
-from app.domain.relay_import.engine_adapter import adapt_to_engine
+from app.domain.relay_import.engine_adapter import EngineAdaptation, adapt_to_engine
 from app.domain.relay_import.identification import RelayIdentification
 from app.domain.relay_import.profile import RelayProfileRegistry
 from app.domain.relay_import.provenance import MappingStatus
 from app.domain.relay_import.raw_document import RawRelayDocument
+from app.services.relay_extraction_review import ExtractionReview, build_extraction_review
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,8 @@ class RelayInterpretationSummary:
     not_interpreted_setting_count: int = 0
     zone_count: int = 0
     warnings: tuple[str, ...] = ()
+    #: Slice 7. Read-only review view; present only for an ``interpreted`` relay.
+    review: ExtractionReview | None = None
 
 
 def count_model(model: CanonicalDistanceProtectionModel) -> tuple[int, int, int, int]:
@@ -80,12 +83,16 @@ def count_model(model: CanonicalDistanceProtectionModel) -> tuple[int, int, int,
     return mapped, inferred, touched + len(declined), not_interpreted
 
 
-def _engine_warnings(model: CanonicalDistanceProtectionModel) -> tuple[str, ...]:
-    """Why the existing engine could not draw this model today (fixed adapter
-    wording, zone ids only). A read-only check against the model's own basis."""
+def engine_adaptation(model: CanonicalDistanceProtectionModel) -> EngineAdaptation:
+    """The existing engine adapter run read-only against the model's own basis."""
     basis = model.transformers.setting_basis
     engine_basis = basis.value.value if basis.is_resolved and basis.value is not SettingBasis.UNKNOWN else "secondary"
-    adaptation = adapt_to_engine(model, engine_basis=engine_basis)
+    return adapt_to_engine(model, engine_basis=engine_basis)
+
+
+def _engine_warnings(adaptation: EngineAdaptation) -> tuple[str, ...]:
+    """Why the existing engine could not draw this model today (fixed adapter
+    wording, zone ids only)."""
     if adaptation.supported:
         return ()
     return tuple(
@@ -102,7 +109,8 @@ def summarize_interpretation(
     try:
         model = profile.interpret(document)
         mapped, inferred, unresolved, not_interpreted = count_model(model)
-        warnings = (*model.interpretation_notes, *_engine_warnings(model))
+        adaptation = engine_adaptation(model)
+        warnings = (*model.interpretation_notes, *_engine_warnings(adaptation))
     except Exception as exc:  # a profile bug must never fail the upload
         logger.warning("Relay interpretation failed (%s)", type(exc).__name__)  # class only: never content
         return RelayInterpretationSummary(
@@ -111,6 +119,15 @@ def summarize_interpretation(
             profile_version=profile.version,
             warnings=("Settings could not be interpreted. Manual entry is still available.",),
         )
+    review = None
+    if model.zones:
+        try:
+            review = build_extraction_review(
+                model, document, adaptation,
+                mapped=mapped, inferred=inferred, unresolved=unresolved, not_interpreted=not_interpreted,
+            )
+        except Exception as exc:  # the review is optional: never fail the upload for it
+            logger.warning("Extraction review could not be built (%s)", type(exc).__name__)
     return RelayInterpretationSummary(
         status=InterpretationStatus.INTERPRETED if model.zones else InterpretationStatus.INCOMPLETE,
         profile_id=profile.profile_id,
@@ -121,4 +138,5 @@ def summarize_interpretation(
         not_interpreted_setting_count=not_interpreted,
         zone_count=len(model.zones),
         warnings=warnings,
+        review=review,
     )

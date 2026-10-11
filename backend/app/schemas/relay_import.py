@@ -12,6 +12,84 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class ReviewSourceOut(BaseModel):
+    """Where one interpreted value came from (never a file path)."""
+
+    code: str | None = None
+    name: str | None = None
+    raw_value: str | None = None
+    page: int | None = None
+    line: int | None = None
+    source_text: str | None = None
+
+
+class ReviewItemOut(BaseModel):
+    key: str
+    label: str
+    full_label: str
+    #: Formatted engineering value with unit; ``None`` when unresolved.
+    value_text: str | None = None
+    status: Literal["mapped", "inferred", "unresolved"]
+    notes: list[str] = []
+    raw_value: str | None = None
+    profile_id: str | None = None
+    profile_version: str | None = None
+    sources: list[ReviewSourceOut] = []
+
+
+class ReviewGroupOut(BaseModel):
+    id: str
+    kind: Literal["relay", "transformers", "line", "zone", "compensation"]
+    title: str
+    state_label: str | None = None
+    state_status: Literal["mapped", "inferred", "unresolved"] | None = None
+    items: list[ReviewItemOut] = []
+
+
+class ReviewRawSettingOut(BaseModel):
+    code: str | None = None
+    name: str | None = None
+    raw_value: str | None = None
+    page: int | None = None
+    line: int | None = None
+    reason: str = ""
+
+
+class ReviewEngineReasonOut(BaseModel):
+    zone_ids: list[str] = []
+    message: str
+
+
+class ReviewEngineOut(BaseModel):
+    status: Literal["ready", "not_ready"]
+    reasons: list[ReviewEngineReasonOut] = []
+    warnings: list[str] = []
+
+
+class ExtractionReviewOut(BaseModel):
+    """Slice 7: read-only Extraction Review. Request-scoped and ephemeral: it
+    rides in the upload response and is kept only in the browser tab's memory.
+    Nothing here is applied to the Distance Protection form."""
+
+    manufacturer: str | None = None
+    relay_family: str | None = None
+    model: str | None = None
+    profile_id: str | None = None
+    profile_version: str | None = None
+    zone_count: int
+    mapped_count: int
+    to_confirm_count: int
+    unresolved_count: int
+    not_interpreted_count: int
+    #: Interpretation quality, separate from engine compatibility.
+    interpretation: Literal["reviewable", "incomplete"]
+    engine: ReviewEngineOut
+    notes: list[str] = []
+    groups: list[ReviewGroupOut] = []
+    not_interpreted: list[ReviewRawSettingOut] = []
+    out_of_scope: list[ReviewRawSettingOut] = []
+
+
 class RelayImportUploadOut(BaseModel):
     filename: str
     source_format: str
@@ -48,3 +126,5 @@ class RelayImportUploadOut(BaseModel):
     not_interpreted_setting_count: int = 0
     zone_count: int = 0
     interpretation_warnings: list[str] = []
+    #: Slice 7. Present only for an ``interpreted`` relay; ``None`` otherwise.
+    review: ExtractionReviewOut | None = None

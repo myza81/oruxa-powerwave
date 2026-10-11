@@ -368,7 +368,7 @@ const P441_ROWS = [
   ["3103", "Fault Type", "Both Enabled", "44x Fault Type"],
 ];
 const P441_X = [40, 230, 340, 450];
-function p441Pdf(notes = ["Zone 4 Defeated"]) {
+function p441Pdf(notes = ["Zone 4 Defeated"], extraRows = []) {
   let y = 800;
   const lines = [[40, y, "LZOP: 132kV AAAA - BBBB"], [230, y, "Scheme: SE_P441?A1???038?JE"]];
   for (const row of P441_ROWS) {
@@ -378,6 +378,10 @@ function p441Pdf(notes = ["Zone 4 Defeated"]) {
   for (const note of notes) {
     y -= 12;
     lines.push([40, y, note]);
+  }
+  for (const row of extraRows) {
+    y -= 10;
+    row.forEach((cell, i) => lines.push([P441_X[i], y, cell]));
   }
   return buildPdf(lines);
 }
@@ -472,4 +476,247 @@ test("the interpretation summary never causes horizontal scrolling on a narrow s
   await expect(page.locator("#wwRelayImportSummary")).toHaveText(P441_SUMMARY);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(overflow).toBe(false);
+});
+
+// ---------------------------------------------------------------------------
+// Slice 7 -- Extraction Review (read-only). Reviewed, never applied.
+// ---------------------------------------------------------------------------
+
+const ZP_AND_TILT_ROWS = [
+  ["301D", "ZoneP - Direct", "Directional Fwd", "Directional FWD/REV"],
+  ["3020", "Zp", "0.001", "0.001-500 /I1"],
+  ["3023", "tZp", "10", "0-10.0 s"],
+  ["3026", "Z1m Tilt Angle", "0", "-45 to 45 deg."],
+];
+// Enough non-distance settings to need pagination in "Other extracted settings".
+const OTHER_ROWS = Array.from({ length: 40 }, (_, i) => [`5${String(i).padStart(3, "0")}`, `Recorder Channel ${i + 1}`, "Enabled", "Enabled/Disabled"]);
+
+async function reviewP441(page, { extra = [...ZP_AND_TILT_ROWS, ...OTHER_ROWS] } = {}) {
+  await openDistance(page);
+  await pick(page, "document.pdf", p441Pdf(["Zone 4 Defeated"], extra));
+  await expect(page.locator("#wwRelayImportSummary")).toHaveText(P441_SUMMARY);
+  await page.locator("#wwRelayReviewBtn").click();
+  await expect(page.locator("#wwRelayReviewPanel")).toBeVisible();
+}
+const group = (page, id) => page.locator(`#wwRelayReviewPanel details[data-group="${id}"]`);
+const item = (page, key) => page.locator(`#wwRelayReviewPanel li[data-key="${key}"]`);
+
+test("Review button shows only for an interpreted relay", async ({ page }) => {
+  await openDistance(page);
+  await expect(page.locator("#wwRelayReviewBtn")).toBeHidden();
+  await pick(page, "unknown.pdf", PDF);
+  await expect(page.locator("#wwRelayImportStatus")).toContainText("raw entries");
+  await expect(page.locator("#wwRelayReviewBtn")).toBeHidden();
+  await pick(page, "siemens.pdf", SIEMENS_PDF); // identified, but not interpreted
+  await expect(page.locator("#wwRelayImportDetail")).toHaveText("Relay identified. Settings have not been interpreted yet.");
+  await expect(page.locator("#wwRelayReviewBtn")).toBeHidden();
+  await pick(page, "p441.pdf", p441Pdf());
+  await expect(page.locator("#wwRelayReviewBtn")).toBeVisible();
+  await expect(page.locator("#wwRelayReviewBtn")).toHaveText("Review Extracted Settings");
+  await expect(page.locator("#wwRelayReviewPanel")).toBeHidden(); // closed until asked for
+});
+
+test("review opens and closes, and a new upload or Remove discards it", async ({ page }) => {
+  await reviewP441(page);
+  await expect(page.locator("#wwRelayReviewBtn")).toHaveAttribute("aria-expanded", "true");
+  await page.locator("#wwRelayReviewCloseBtn").click();
+  await expect(page.locator("#wwRelayReviewPanel")).toBeHidden();
+  await expect(page.locator("#wwRelayReviewBtn")).toHaveAttribute("aria-expanded", "false");
+  await page.locator("#wwRelayReviewBtn").click();
+  await expect(page.locator("#wwRelayReviewPanel")).toBeVisible();
+  await page.locator("#wwRelayReviewBtn").click(); // the entry button toggles too
+  await expect(page.locator("#wwRelayReviewPanel")).toBeHidden();
+  await page.locator("#wwRelayReviewBtn").click();
+  await page.locator("#wwRelayImportRemoveBtn").click();
+  await expect(page.locator("#wwRelayReviewPanel")).toBeHidden();
+  await expect(page.locator("#wwRelayReviewBtn")).toBeHidden();
+  await expect(page.locator("#wwRelayReviewBody")).toBeEmpty();
+});
+
+test("review summary names the relay, profile, zones and counts", async ({ page }) => {
+  await reviewP441(page);
+  const summary = page.locator("#wwRelayReviewSummary");
+  await expect(summary).toContainText("Schneider Electric · MiCOM P44x · P441");
+  await expect(summary).toContainText("Profile micom-p441-v1 · 5 zones");
+  await expect(summary).toContainText(/\d+ mapped/);
+  await expect(summary).toContainText(/\d+ to confirm/);
+  await expect(summary).toContainText(/\d+ unresolved/);
+  await expect(summary).toContainText(/\d+ not interpreted/);
+});
+
+test("engine compatibility is separate from interpretation quality and explains the blockers", async ({ page }) => {
+  await reviewP441(page);
+  const engine = page.locator("#wwRelayReviewEngine");
+  await expect(engine).toContainText("Interpretation: Complete enough for review");
+  await expect(engine).toContainText("Current engine compatibility: Not ready to apply");
+  await expect(engine).toContainText("Interpretation succeeded, but the current Distance Protection engine cannot fully apply this scheme yet.");
+  await expect(engine).toContainText(/ZP cannot be represented/);
+  await expect(engine).toContainText(/reverse resistive reach is unresolved/);
+  // It is a note in the review, never an upload error.
+  await expect(page.locator("#wwRelayImportError")).toBeHidden();
+});
+
+test("P441 review shows CT/VT, line data and a section per zone", async ({ page }) => {
+  await reviewP441(page);
+  await expect(item(page, "ct.primary")).toContainText("1200 A");
+  await expect(item(page, "ct.secondary")).toContainText("1 A");
+  await expect(item(page, "vt.primary")).toContainText("132000 V");
+  await expect(item(page, "vt.secondary")).toContainText("110 V");
+  await expect(item(page, "basis")).toContainText("Secondary");
+  await expect(item(page, "line.length")).toContainText("7.03 km");
+  await expect(item(page, "line.angle")).toContainText("80°");
+  await expect(item(page, "line.line_impedance_magnitude")).toContainText("2 Ω");
+  const titles = await page.locator("#wwRelayReviewPanel details.ww-rr-group > summary").allInnerTexts();
+  for (const t of ["Relay / source information", "CT / VT", "Protected line", "Residual compensation", "Other extracted settings"]) {
+    expect(titles.some((x) => x.startsWith(t)), t).toBeTruthy();
+  }
+  for (const id of ["Z1", "Z2", "Z3", "Z4", "ZP"]) await expect(group(page, `zone-${id}`)).toBeVisible();
+  await expect(item(page, "zone.Z1.reach")).toContainText("1.43 Ω");
+  await expect(item(page, "zone.Z1.rr.pe")).toContainText("7.02 Ω");
+  await expect(item(page, "zone.Z1.rr.pp")).toContainText("2.11 Ω");
+  await expect(item(page, "zone.Z2.timer")).toContainText("0.3 s");
+  await expect(item(page, "zone.Z3.reach")).toContainText("4.48 Ω");
+  await expect(item(page, "comp.Z1.k0_magnitude")).toContainText("0.718");
+});
+
+test("mapped, to-confirm and unresolved states are all visible", async ({ page }) => {
+  await reviewP441(page);
+  await expect(item(page, "ct.primary")).toContainText("Mapped");
+  await expect(item(page, "zone.Z1.reach")).toContainText("To confirm");
+  await expect(item(page, "zone.Z1.reach.angle")).toContainText("To confirm");
+  await expect(item(page, "zone.Z1.rr.reverse")).toContainText("Unresolved");
+  await expect(item(page, "zone.Z1.rr.reverse")).toHaveAttribute("data-status", "unresolved");
+  await expect(item(page, "ct.primary")).toHaveAttribute("data-status", "mapped");
+  await expect(item(page, "zone.Z1.reach")).toHaveAttribute("data-status", "inferred");
+});
+
+test("Zone 4 shows disabled / defeated while keeping its numbers; Zone P is unresolved", async ({ page }) => {
+  await reviewP441(page);
+  await expect(group(page, "zone-Z4").locator("summary")).toHaveText("Zone 4 — Disabled / Defeated");
+  await expect(item(page, "zone.Z4.status")).toContainText("Disabled / Defeated");
+  await expect(item(page, "zone.Z4.reach")).toContainText("0.36 Ω");
+  await expect(item(page, "zone.Z4.timer")).toContainText("3 s");
+  await expect(item(page, "zone.Z4.rr.pe")).toContainText("17.19 Ω");
+  await expect(group(page, "zone-ZP").locator("summary")).toHaveText("Zone P — Status unresolved");
+  await expect(item(page, "zone.ZP.status")).toContainText("Unresolved");
+  await expect(item(page, "zone.ZP.status")).toHaveAttribute("data-status", "unresolved");
+  await expect(item(page, "zone.ZP.reach")).toContainText("0.001 Ω");
+  await expect(item(page, "zone.ZP.timer")).toContainText("10 s");
+});
+
+test("provenance is collapsed by default and opens in place", async ({ page }) => {
+  await reviewP441(page);
+  const row = item(page, "zone.Z1.rr.pe");
+  const toggle = row.getByRole("button", { name: "Source of Zone 1 Earth Resistive Reach" });
+  const prov = row.locator(".ww-rr-prov");
+  await expect(prov).toBeHidden();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(prov).toBeVisible();
+  await expect(prov).toContainText("Zone 1 Earth Resistive Reach — 7.02 Ω — Mapped");
+  await expect(prov).toContainText("300C · R1G");
+  await expect(prov).toContainText(/Page \d+ · line \d+/);
+  await expect(prov).toContainText("Raw: 7.02");
+  await expect(prov).toContainText("Profile: micom-p441-v1");
+  await expect(prov).not.toContainText(/[A-Za-z]:\\|\/tmp\//);
+  await toggle.click();
+  await expect(prov).toBeHidden();
+  // The page did not navigate and the review is still open.
+  await expect(page.locator("#wwRelayReviewPanel")).toBeVisible();
+});
+
+test("inferred and unresolved items explain themselves in their provenance", async ({ page }) => {
+  await reviewP441(page);
+  const inferred = item(page, "zone.Z1.reach");
+  await inferred.getByRole("button", { name: /Source of/ }).click();
+  await expect(inferred.locator(".ww-rr-prov")).toContainText(/Assumption: .*line angle/);
+  await expect(inferred.locator(".ww-rr-prov")).toContainText("300A · Z1");
+  await expect(inferred.locator(".ww-rr-prov")).toContainText("3005 · Line Angle");
+  const zp = item(page, "zone.ZP.status");
+  await zp.getByRole("button", { name: /Source of/ }).click();
+  await expect(zp.locator(".ww-rr-prov")).toContainText(/Why unresolved: .*not decoded/);
+  await expect(zp.locator(".ww-rr-prov")).toContainText("Raw: 01010");
+  const reverse = item(page, "zone.Z1.rr.reverse");
+  await reverse.getByRole("button", { name: /Source of/ }).click();
+  await expect(reverse.locator(".ww-rr-prov")).toContainText("No value is stated in the document.");
+});
+
+test("tilt settings are preserved as unresolved, and other settings stay secondary and paginated", async ({ page }) => {
+  await reviewP441(page);
+  await expect(group(page, "zone-Z1").locator("li", { hasText: "Z1m Tilt Angle" })).toContainText("Unresolved");
+  const other = page.locator("#wwRelayReviewOther");
+  await expect(other).not.toHaveAttribute("open", "");
+  await expect(other.locator(".ww-rr-other-row")).toHaveCount(0); // closed: nothing dumped into view
+  await other.locator("summary").click();
+  const outside = other.locator('[data-list="out_of_scope"]');
+  await expect(outside.locator(".ww-rr-other-row")).toHaveCount(25);
+  const first = outside.locator(".ww-rr-other-row").first();
+  await expect(first).toContainText(/\d{4}/);
+  await expect(first).toContainText(/Page \d+ · line \d+/);
+  await outside.getByRole("button", { name: /Show more/ }).click();
+  expect(await outside.locator(".ww-rr-other-row").count()).toBeGreaterThan(25);
+  await expect(outside.locator(".ww-rr-other-row", { hasText: "Recorder Channel 1" }).first()).toBeVisible();
+});
+
+test("the review is read-only: no Apply, Accept or Populate, and the manual form is untouched", async ({ page }) => {
+  await openDistance(page);
+  const inputs = ["#wwDistanceZone1ReachInput", "#wwDistanceZone2ReachInput", "#wwDistanceZone2DelayInput"];
+  const before = [];
+  for (const sel of inputs) before.push(await page.locator(sel).inputValue());
+  await pick(page, "document.pdf", p441Pdf(["Zone 4 Defeated"], ZP_AND_TILT_ROWS));
+  await page.locator("#wwRelayReviewBtn").click();
+  await expect(page.locator("#wwRelayReviewPanel")).toBeVisible();
+  await page.locator("#wwRelayReviewPanel").getByRole("button", { name: "Source of Zone 1 Reach", exact: true }).click();
+  const buttons = await page.locator("#wwRelayImportPanel button").allInnerTexts();
+  for (const text of buttons) expect(text).not.toMatch(/apply|accept|populate|generate|auto-?fill|use these/i);
+  await expect(page.locator("#wwRelayReviewPanel input, #wwRelayReviewPanel select, #wwRelayReviewPanel textarea")).toHaveCount(0);
+  for (let i = 0; i < inputs.length; i++) await expect(page.locator(inputs[i])).toHaveValue(before[i]);
+  // The review content is plain text, never parsed as HTML.
+  expect(await page.locator("#wwRelayReviewBody script, #wwRelayReviewBody img").count()).toBe(0);
+});
+
+test("review state is in tab memory only and disappears on refresh", async ({ page }) => {
+  await reviewP441(page);
+  const snapshot = () =>
+    page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage }, cookies: document.cookie }));
+  const stored = await snapshot();
+  for (const value of ["1200", "7.02", "132000", "R1G", "micom"]) expect(stored).not.toContain(value);
+  await page.reload();
+  await page.locator("#mainNavAnalysisBtn").click();
+  await page.locator("#wwAnalysisTypeDistanceBtn").click();
+  await expect(page.locator("#wwDistancePanel")).toBeVisible();
+  await expect(page.locator("#wwRelayReviewBtn")).toBeHidden();
+  await expect(page.locator("#wwRelayReviewPanel")).toBeHidden();
+  await expect(page.locator("#wwRelayReviewBody")).toBeEmpty();
+});
+
+test("review layout is contained, readable and has no horizontal overflow at narrow width", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await reviewP441(page);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  const box = await page.locator("#wwRelayReviewPanel").boundingBox();
+  expect(box.width).toBeLessThanOrEqual(390);
+  const panelOverflow = await page.locator("#wwRelayReviewPanel").evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(panelOverflow).toBeLessThanOrEqual(1);
+});
+
+test("review is legible in light and dark themes", async ({ page }) => {
+  await reviewP441(page);
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+    const contrast = await page.locator("#wwRelayReviewPanel").evaluate((panel) => {
+      const parse = (c) => (c.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+      const lum = ([r, g, b]) => {
+        const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+      };
+      const label = panel.querySelector(".ww-rr-value");
+      const fg = lum(parse(getComputedStyle(label).color));
+      const bg = lum(parse(getComputedStyle(panel).backgroundColor));
+      return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
+    });
+    expect(contrast, theme).toBeGreaterThan(4.5);
+  }
 });

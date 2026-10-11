@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 import tempfile
 from dataclasses import replace
@@ -69,6 +70,7 @@ class TestIdentification:
             "identification_warnings",
             "interpretation_status", "profile_version", "mapped_setting_count", "inferred_setting_count",
             "unresolved_setting_count", "not_interpreted_setting_count", "zone_count", "interpretation_warnings",
+            "review",
         }
 
     def test_unrecognised_relay_is_unknown_not_an_error(self, client):
@@ -140,8 +142,12 @@ class TestInterpretation:
         )
         assert body["interpretation_warnings"] == list(expected.warnings)
 
-    def test_response_never_carries_settings_or_document_text(self, client):
-        text = client.post(URL, files=_files(_p441_pdf())).text
+    def test_summary_fields_never_carry_settings_or_document_text(self, client):
+        # Slice 7: the engineering values travel only inside the dedicated
+        # ``review`` payload; every summary field stays counts and fixed phrases.
+        body = client.post(URL, files=_files(_p441_pdf())).json()
+        body.pop("review")
+        text = json.dumps(body)
         for content in ("1.43", "7.02", "17.19", "132000", "Defeated", "Directional", "R1Ph", "300A", "Kilometres"):
             assert content not in text
 
@@ -223,6 +229,7 @@ class TestAccepted:
             "not_interpreted_setting_count": 0,
             "zone_count": 0,
             "interpretation_warnings": [],
+            "review": None,
         }
 
     def test_response_carries_counts_never_document_content(self, client):
