@@ -420,7 +420,7 @@ class TestService:
         # 1.15 Hz in MW only: a broad family at most, a valid single-signal detection
         assert one["probable_type"]["code"] in (oc.TYPE_ELECTROMECHANICAL, oc.TYPE_UNRESOLVED) and one["probable_type"]["subtype"] is None
         assert "single_signal_only" in {i["code"] for i in one["limiting_evidence"]}
-        assert set(out["timings_ms"]) == {"signal_analysis", "grouping", "classification"}
+        assert set(out["timings_ms"]) == {"signal_analysis", "grouping", "classification", "summary"}
 
     def test_a_single_signal_is_a_valid_interpretation(self, registries):  # noqa: F811
         t, mw = _event(2, [(1.15, 0.02, 1.0)])
@@ -484,7 +484,7 @@ class TestApi:
         body = r.json()
         assert body["status"] == "no_components" and [s["status"] for s in body["signals"]] == ["excluded"]
         assert body["interpretation_parameters"]["classification"].startswith("Deterministic")
-        assert set(body["timings_ms"]) == {"signal_analysis", "grouping", "classification"}
+        assert set(body["timings_ms"]) == {"signal_analysis", "grouping", "classification", "summary"}
 
     def test_empty_and_oversized_requests_are_refused(self, client):
         base = self.BASE.format(ws="w1")

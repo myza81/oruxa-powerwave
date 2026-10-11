@@ -594,8 +594,41 @@ class ComponentInterpretationOut(BaseModel):
     spatial_evidence: dict[str, Any] = {}
 
 
+class SummaryFieldOut(BaseModel):
+    code: str
+    label: str
+    value: str
+
+
+class SummaryEvidenceOut(BaseModel):
+    """One evidence layer of the summary strip. `unavailable` / `not_applicable` are valid results, never failures."""
+
+    code: str
+    label: str
+    #: `available` | `unavailable` | `not_applicable` | `caution`
+    status: Literal["available", "unavailable", "not_applicable", "caution"]
+    status_label: str
+    detail: str
+    #: Whether the page prints the detail line under the strip (the others appear as a tooltip only).
+    show_detail: bool = True
+
+
+class ComponentSummaryOut(BaseModel):
+    """DEC-183 [APPROVED]: engineer-facing summary of one component, arranged from the structured evidence of the same response."""
+
+    component_id: int
+    title: str
+    frequency_hz: float
+    growing: bool = False
+    fields: list[SummaryFieldOut]
+    evidence: list[SummaryEvidenceOut]
+    conclusion: str
+    caution: str | None = None
+
+
 class InterpretedComponentOut(CrossSignalComponentOut):
     interpretation: ComponentInterpretationOut
+    summary: ComponentSummaryOut | None = None
 
 
 class OscillationInterpretationOut(BaseModel):

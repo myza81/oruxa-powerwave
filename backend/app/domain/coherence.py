@@ -281,7 +281,7 @@ def analyse_component(*, members: list[dict], reference_index: int, frequency_hz
         if result["chance_level"] is not None:
             out["reasons"].append(_evidence(
                 "chance_level", f"Unrelated noise would reach a coherence of {_fmt(result['chance_level'], 3)} in {_fmt(CHANCE_ALPHA * 100, 2)} % of cases with this many averages "
-                "(a chance level, not the probability that the oscillation is real); the measured value is "
+                "(a 95% null threshold, not the probability that the oscillation is real); the measured value is "
                 + ("above" if result["exceeds_chance_level"] else "not above") + " it.", chance_level=result["chance_level"]))
         if kind == CROSS_VARIABLE:
             out["warnings"].append(_evidence(
@@ -293,7 +293,7 @@ def analyse_component(*, members: list[dict], reference_index: int, frequency_hz
         phase = out["relative_phase_deg"]
         if phase is not None and not result["exceeds_chance_level"]:
             out["warnings"].append(_evidence(
-                "phase_with_low_coherence", "Relative phase is available, but cross-spectral coherence at the component frequency is low (not above the chance level); "
+                "phase_with_low_coherence", "Relative phase is available, but cross-spectral coherence at the component frequency is low (not above the 95% null threshold); "
                 "interpret phase cautiously.", phase_deg=phase, coherence=result["coherence"]))
         return done(STATUS_OK)
 
@@ -303,7 +303,7 @@ def analyse_component(*, members: list[dict], reference_index: int, frequency_hz
     limitations = [
         _evidence("no_causality", "Coherence measures linear association at a frequency; it does not identify causality or direction."),
         _evidence("not_inter_area_proof", "High coherence does not prove an inter-area mode."),
-        _evidence("stationarity", "The Welch average and its chance level assume a stationary signal; a decaying ringdown is not stationary, so coherence is indicative."),
+        _evidence("stationarity", "The Welch average and its 95% null threshold assume a stationary signal; a decaying ringdown is not stationary, so coherence is indicative."),
     ]
     if any(p["relationship_type"] == CROSS_VARIABLE for p in pairs + other_pairs):
         limitations.append(_evidence("cross_variable_scope", "Cross-variable coherence (for example MW with frequency) is supporting dynamic evidence and is not the same as same-variable mode-shape evidence."))

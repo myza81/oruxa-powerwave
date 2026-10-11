@@ -26315,3 +26315,94 @@ higher-frequency (SSO / converter) integration slice, and location / station met
 
 Tests: `backend/tests/test_oscillation_integration.py` (hierarchy, in-phase, weak / marginal / unavailable coherence, coherence-only, cross-variable, shared provenance, unstable phase, the
 short-event regression, scope guards, service, one-pass-per-signal, API), `test_frontend_oscillation_analysis_shell.py` (static guards), `browser-tests/oscillation_setup.spec.js`.
+
+
+## DEC-183 -- Oscillation Analysis Phase-1 Summary / Report UX: an engineer-facing summary derived from the existing structured evidence
+
+Status: **[APPROVED]** (owner, 2026-10-11; was `[PROPOSAL]`; real-event UAT passed -- see the approval record below) -- implemented on `feat/event-reconstruction`, committed as `feat: complete oscillation analysis phase 1`. Builds on DEC-171..182 and changes none of them. It is the final
+Phase-1 productisation slice of Oscillation Analysis: a concise **Oscillation Analysis Summary** above the detailed sections that answers *what oscillation was found, how it behaves, how broadly
+it is observed, what evidence supports the interpretation, what evidence is unavailable, and what the current engineering conclusion is.* **Not implemented (deliberately):** any new analysis
+(no FFT / STFT / damping / mode-shape / coherence is re-run), a second classifier, any AI or generated narrative, severity or risk scoring, PDF / Word export, Prony, Matrix Pencil, wavelet coherence,
+source or forced-source localisation, area clustering, causality, continuous monitoring.
+
+**Principle: a presentation layer.** `app/domain/oscillation_summary.py::build_component_summary` only *reads* the structured results that already exist for a component -- the DEC-178 grouping
+(signals, recordings, distinct measurements, overlap), the DEC-177 damping of its members, the DEC-179 / 182 interpretation (behaviour, type, strength, contradictory and unavailable evidence) and, for a
+component seen in two or more signals, its DEC-180 mode shape and DEC-181 coherence -- and arranges them. The interpretation endpoint calls it once per component after the classification and returns
+`components[].summary` in the **same response**: no new endpoint, no extra request, no extra signal-processing pass (a regression test counts one spectrum / spectrogram / damping pass per signal). The
+browser draws `comp.summary` as returned and decides, words and computes nothing (static guard `test_summary_is_drawn_from_the_interpretation_response_and_decides_nothing`). The wording lives in the
+backend with the rest of the interpretation text so it is unit-tested; the two helpers `mode_shape_facts` / `coherence_facts` / `LEVEL_ORDER` of `oscillation_integration` were made public (rename only,
+no behaviour change) so the summary reads the facts the integration already derives instead of re-deriving them.
+
+**One summary card per component, in the interpretation's own order.** Never merged: each unrelated frequency has its own card (title `Component around 0.4 Hz`). With more than one card the page says
+the order is *not a ranking of system importance*. The words "dominant" and "primary" are not used.
+
+**Card content (compact).** Title; key fields -- *Behaviour*, *Oscillation type*, *Subtype* (only when one exists), *Interpretation strength*, *Observed in* (`N signals . M distinct measurements . R recordings`);
+a six-item **evidence-status strip** (Spectrum, Time-frequency, Damping, Cross-signal, Mode shape, Coherence); one deterministic **conclusion** paragraph; four one-line details (Damping, Cross-signal,
+Mode shape, Coherence); an optional single caution line (the first contradictory or shared-provenance statement). A growing component carries a `Growing oscillation` flag and a warning-coloured border;
+nothing else is flagged.
+
+**Evidence-status semantics (explicit, never colour alone).** `available` (check mark) -- usable evidence; `unavailable` (dash, "Unavailable for this event") -- the layer was refused or not computed for this
+event; `not_applicable` (dash, "Not applicable") -- the method does not apply (a component observed in one signal); `caution` (warning mark) -- evidence exists but carries a contradiction or a weak
+reading (differing damping, unstable phase, weak / marginal coherence beside a phase, signals that share one measurement, no temporal overlap). **Unavailable and not-applicable are never worded or drawn as
+failure or error** and never use the error colour; they never lower the family, level or behaviour (DEC-182). Every chip carries its status as text, a `title` and an `aria-label` with the detail; clicking a
+chip scrolls to the detailed section (a section that is hidden is left alone).
+
+**Detail rules.** *Damping*: a single valid member `3.7% (alpha = 0.087 s^-1, tau = 11.5 s)`; several members `2 members decaying; alpha = 0.087-0.147 s^-1; damping ratio 3.7-6.1%`; one valid member among several is
+named (`Decaying in <signal> only ... 1 of 2 members had a valid estimate`), never presented as the component; differing behaviours are a caution (`reported, not averaged`); sustained / growing report no
+damping ratio (`no damping ratio is reported`; growth is a positive growth rate), exactly as DEC-177 suppresses it; unavailable reuses the backend reason. *Mode shape*: the stable phase separation from the reference
+across N distinct measurements with the DEC-180 pattern label (never "inter-area"), `Approximately in phase (...)` for near-in-phase, a caution for an unstable phase, the backend refusal verbatim when unavailable,
+and an explicit shared-provenance statement. *Coherence*: value at the nearest bin against its chance level (below / only marginally above / clearly above, the DEC-182 transparent margin), same-variable scope,
+`weakest of N` pairs; cross-variable coherence is labelled as a common dynamic relationship, not a mode shape; the backend refusal verbatim when unavailable (the leading "Coherence unavailable --" label is
+dropped because the strip already says it). The page's existing term *chance level* is kept (no second vocabulary). *Cross-signal*: signals, recordings, distinct-measurement count (raw + calculated copies of
+one measurement are one), activity overlap; `Observed in one signal only; cross-signal modal evidence is not applicable.` for a single signal.
+
+**Conclusion generation rule (deterministic, no AI).** Fixed phrases assembled from structured fields, in a fixed order: (1) *lead* -- frequency (rounded to 0.01 Hz), behaviour adjective (decaying / sustained /
+growing / intermittent), type (`electromechanical oscillation` for a probable level, `oscillation, possibly electromechanical,` for a possible level; `oscillatory component` for every other type), and where it
+is observed (`2 distinct MW measurements`, `one MW measurement`, `2 signals that derive from only 1 distinct MW measurement`); a growing component adds `Its amplitude is increasing over the fitted interval.`;
+(2) *corroboration* (two or more signals) -- recordings and overlap, or that shared sources are not independent corroboration; (3) *mechanism / subtype* -- by the DEC-182 strength: Supported (provisional) ->
+`Stable spatial phase separation and clear same-variable coherence support a provisional inter-area interpretation; the available metadata does not independently prove ... separate grid areas`; Consistent with
+(subtype offered) -> `... consistent with an inter-area interpretation, which remains provisional because coherence is unavailable / weak or marginal`; near-in-phase -> `a coherent response that does not distinguish
+between local and inter-area behaviour; the subtype remains unresolved`; unstable phase; no spatial evidence -> `Local versus inter-area behaviour remains unresolved because <reason>` where the reason is
+`the shared active interval is too short for reliable <relative-phase and coherence> estimation` when the backend refusal codes are interval-length codes, `<layer> evidence is unavailable for this event`
+otherwise, `the signals share one source measurement ...` for shared provenance, or `the spatial evidence was not computed for this comparison`; a single signal -> `Cross-signal modal evidence is not available,
+so the local/inter-area subtype cannot be determined`; sustained / forced -> `Sustained oscillatory behaviour is present; the forcing source is not identified.`; control / converter -> a possible interaction
+that cannot be identified without plant or controller metadata; sub-synchronous -> possible, not confirmed; unresolved higher-frequency component -> the DEC-179 neutral lead `Higher-frequency oscillatory component
+detected at ~4.95 Hz` and `Available evidence is insufficient to identify a control, converter or sub-synchronous mechanism.` (frequency alone never yields SSO wording). The words *severe, dangerous, critical,
+unstable system, dominant, failed, error, confirmed, probability, confidence* never appear (tests assert it over every scenario). One intentional wording choice: a *possible* (not probable) electromechanical
+family is hedged in the lead (`oscillation, possibly electromechanical,`) to stay consistent with DEC-179 levels; the spec's single-signal example showed it unhedged.
+
+**No-result and states.** An analysis with no accepted candidate shows `No oscillation component meeting the current detection criteria was identified in the selected analysis window.` (it does not claim the
+recording is free of oscillatory activity). Loading shows `Preparing summary...`; an error shows the existing message. Stale handling is exactly the interpretation's: dimmed with `Analysis settings changed -- run
+Analyze again` when the setup or a signal revision changes, hidden with the spectrum, superseded responses dropped, and a different analysed signal never shows the previous summary.
+
+**Placement and design.** A new card `Oscillation Analysis Summary` between the setup and the detailed sections (Frequency Spectrum with candidates / damping / cross-signal / interpretation / mode shape /
+coherence, then Spectrogram). Same visual language (tokens, `ww-osc-*` classes in `:is()`); wraps instead of overflowing at desktop (1366), laptop (1024) and phone (390) widths, with long names and long refusal text.
+No disclosure control was added: the card is already compact and the detailed sections are the expansion.
+
+**API / data model.** `components[].summary` (`ComponentSummaryOut`: `component_id, title, frequency_hz, growing, fields[], evidence[], conclusion, caution`) and `timings_ms.summary`. No new endpoint, request
+or backend analysis domain.
+
+**Validation `[FACT]` (this machine).** `backend/tests/test_oscillation_summary.py` (26 tests: the real short ~0.4 Hz state -- 2 MW, 2 distinct measurements, 31 s overlap, decaying, Mode Shape refused at 2.78
+cycles of 3, Coherence refused at 0.62 cycles per segment of 1.5, subtype unresolved --; provisional inter-area; weak / marginal coherence; unstable phase; near-in-phase; growing; sustained; conflicting and partial
+damping; single signal in both request forms; ~4.95 Hz; shared provenance; multiple components; vocabulary guards; service and API, one analysis pass per signal), the browser describe "summary / report UX"
+(11 tests, real backend), the full `oscillation_setup.spec.js` (152 passed) and the static guards. **Performance `[FACT]`:** summary generation 0.2-0.3 ms per request (2 signals, 1 component; the request
+spends ~35-60 ms in signal analysis and ~50-100 ms in mode shape + coherence); **no additional request, no additional signal-processing pass, nothing recomputed.**
+
+**Oscillation Analysis Phase 1 is complete.** (Activated 2026-10-11 on owner approval of DEC-183.) Phase 1 includes: signal setup / preprocessing (DEC-171..173); Welch PSD (DEC-174); candidate detection (DEC-175);
+STFT / spectrogram (DEC-176); damping / ringdown (DEC-177); cross-signal grouping (DEC-178); deterministic interpretation (DEC-179); Mode Shape / Relative Phase (DEC-180); Coherence (DEC-181); integrated evidence
+interpretation (DEC-182); and the engineer-facing Summary / Report UX (DEC-183). Advanced techniques (Prony, Matrix Pencil, wavelet coherence, source / forced-source localisation, automated grid-area clustering,
+causality, severity scoring, AI narrative, continuous PMU monitoring) remain Phase 2 / future roadmap.
+
+**Approval record (2026-10-11).** Owner UAT on the real ~0.4 Hz two-MW event: PASS. Verified: the correct 2-signal / 2-distinct-measurement / 2-recording summary; Available status for Spectrum, Time-frequency,
+Damping and Cross-signal evidence; the neutral *Unavailable for this event* status for Mode Shape and Coherence; the correct multi-member damping summary; the correct 31 s cross-signal overlap; preservation of the
+dynamic Mode Shape and Coherence refusal reasons; and the correct unresolved local / inter-area conclusion without downgrading the valid oscillation. Two low-risk wording refinements were applied at approval
+(no change to analysis logic, thresholds, UI structure or evidence semantics): (1) a *single-signal* possible-electromechanical conclusion now reads "A ~0.4 Hz decaying oscillation is detected in one MW measurement.
+Available evidence is consistent with an electromechanical oscillation. Cross-signal modal evidence is not available, so the local/inter-area subtype cannot be determined." (a multi-signal *possible* family keeps
+the hedged lead); (2) the user-facing term for the coherence chance level is now **95% null threshold** (summary, Coherence table column and note, coherence Why / warning / limitation text); the calculation, the
+`chance_level` field name and the DEC-182 margin are unchanged. This resolves open decisions (1) and (2) below; export remains a follow-up.
+
+**Open owner decisions.** (1)-(2) *Resolved at approval* (wording refinements above). (3) Export: no generic report / export facility exists, so the on-page summary is the deliverable; PDF / Word export is a follow-up -- confirm priority. (4) Whether the four detail lines
+should be collapsible. (5) Known unrelated test issue, recorded only: the Event Reconstruction per-unit browser failure is pre-existing and reproducible on the older baseline; this slice neither touches nor
+investigates Event Reconstruction.
+
+Tests: `backend/tests/test_oscillation_summary.py`, `test_frontend_oscillation_analysis_shell.py` (new guard), `test_oscillation_classification.py` (timings key), `browser-tests/oscillation_setup.spec.js`.

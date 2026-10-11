@@ -7717,6 +7717,36 @@
         :is(.ww-osc-interp-component) { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border: 1px solid var(--panel-border); border-radius: var(--radius); }
         :is(.ww-osc-interp-row) { display: flex; flex-direction: column; gap: 1px; }
         :is(.ww-osc-interp-value) { font-size: 0.75rem; font-weight: 600; color: var(--text); }
+        /* Oscillation Analysis Summary (DEC-183): status is carried by text + symbol, colour only reinforces it; an unavailable or
+           not-applicable layer is neutral (never the error colour). */
+        :is(.ww-osc-summary)[data-stale="true"] #wwOscSummaryBody { opacity: 0.4; }
+        :is(.ww-osc-summary-card) { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border: 1px solid var(--panel-border); border-radius: var(--radius); min-width: 0; }
+        :is(.ww-osc-summary-card)[data-growing="true"] { border-color: var(--warn); }
+        :is(.ww-osc-summary-head) { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+        :is(.ww-osc-summary-title) { font-size: 0.85rem; font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+        :is(.ww-osc-summary-flag) { font-size: 0.65rem; font-weight: 700; color: var(--warn); border: 1px solid var(--warn); border-radius: 999px; padding: 1px 8px; }
+        :is(.ww-osc-summary-fields) { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 6px 14px; }
+        :is(.ww-osc-summary-fields) > div { min-width: 0; }
+        :is(.ww-osc-summary-fields) dt { font-size: 0.65rem; color: var(--text-dim); }
+        :is(.ww-osc-summary-fields) dd { margin: 1px 0 0; font-size: 0.75rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+        :is(.ww-osc-summary-strip) { display: flex; flex-wrap: wrap; gap: 6px; }
+        :is(.ww-osc-summary-chip) { display: inline-flex; align-items: baseline; gap: 5px; padding: 2px 9px; font: inherit; font-size: 0.7rem; color: var(--text-dim); background: none;
+            border: 1px solid var(--panel-border); border-radius: 999px; cursor: pointer; max-width: 100%; }
+        :is(.ww-osc-summary-chip):hover:not(:disabled) { border-color: var(--accent-dim); }
+        :is(.ww-osc-summary-chip):disabled { cursor: default; }
+        :is(.ww-osc-summary-chip-name) { font-weight: 700; color: var(--text); }
+        :is(.ww-osc-summary-chip)[data-status="available"] .ww-osc-summary-chip-mark { color: var(--ok); }
+        :is(.ww-osc-summary-chip)[data-status="caution"] { border-color: var(--warn); }
+        :is(.ww-osc-summary-chip)[data-status="caution"] .ww-osc-summary-chip-mark, :is(.ww-osc-summary-chip)[data-status="caution"] .ww-osc-summary-chip-word { color: var(--warn); }
+        :is(.ww-osc-summary-chip-mark) { font-weight: 700; }
+        :is(.ww-osc-summary-lines) { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; font-size: 0.7rem; color: var(--text); }
+        :is(.ww-osc-summary-lines) li { overflow-wrap: anywhere; }
+        :is(.ww-osc-summary-lines) li[data-status="caution"] { color: var(--warn); }
+        :is(.ww-osc-summary-lines) li[data-status="unavailable"], :is(.ww-osc-summary-lines) li[data-status="not_applicable"] { color: var(--text-dim); }
+        :is(.ww-osc-summary-lines) b { font-weight: 700; color: var(--text); }
+        :is(.ww-osc-summary-conclusion) { margin: 0; font-size: 0.78rem; line-height: 1.45; color: var(--text); overflow-wrap: anywhere; }
+        :is(.ww-osc-summary-caution) { margin: 0; font-size: 0.7rem; color: var(--warn); overflow-wrap: anywhere; }
+        :is(.ww-osc-summary-caution)::before { content: "\26A0\00a0"; }
         :is(.ww-osc-mode) { padding-top: 10px; border-top: 1px solid var(--panel-border); }
         :is(.ww-osc-mode)[data-stale="true"] #wwOscModeBody, :is(.ww-osc-coh)[data-stale="true"] #wwOscCohBody { opacity: 0.4; }
         :is(.ww-osc-mode-group) { display: flex; flex-direction: column; gap: 4px; }
@@ -11933,6 +11963,15 @@
                                     <button type="button" id="wwOscAnalyzeBtn" disabled>Analyze</button>
                                     <span class="ww-osc-hint" id="wwOscAnalyzeNote">Runs a Welch power spectral density over the selected window and frequency range.</span>
                                 </div>
+                            </section>
+                            <!-- Oscillation Analysis Summary (DEC-183 [APPROVED]): one compact card per interpreted component -- key fields, an
+                                 evidence-status strip and ONE conclusion, all arranged by the backend from the structured evidence of the same
+                                 interpretation response and drawn here as returned. The detailed sections below stay the authoritative record. -->
+                            <section class="panel ww-osc-card ww-osc-summary" id="wwOscSummaryCard" hidden>
+                                <h3>Oscillation Analysis Summary</h3>
+                                <div class="ww-osc-spec-state" id="wwOscSummaryState" role="status" hidden></div>
+                                <div class="ww-osc-detect" id="wwOscSummaryBody"></div>
+                                <div class="ww-osc-detect-note" id="wwOscSummaryNote" hidden></div>
                             </section>
                             <!-- Frequency Spectrum (Welch PSD, DEC-174 [PROPOSAL]). Shown only
                                  once Analyze has been requested. The PSD and the candidate
@@ -56596,6 +56635,125 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         // ------------------------------------------------------------------
+        // Oscillation Analysis Summary (DEC-183 [APPROVED]). A PRESENTATION layer: the backend arranges, per interpreted component, a few key
+        // fields, an evidence-status strip and one deterministic conclusion from the structured results of the SAME interpretation response
+        // (cross-signal grouping, damping, interpretation, mode shape, coherence). The page draws `comp.summary` as returned: no request of its
+        // own, no analysis, no wording. Unavailable and not-applicable evidence is drawn neutrally, never as a failure.
+        // ------------------------------------------------------------------
+
+        const WW_OSC_SUMMARY_NO_RESULT = "No oscillation component meeting the current detection criteria was identified in the selected analysis window.";
+        // Strip chip -> the detailed section that holds the full evidence.
+        const WW_OSC_SUMMARY_TARGETS = {
+            spectrum: "wwOscDetection", time_frequency: "wwOscSpectrogramCard", damping: "wwOscDamping",
+            cross_signal: "wwOscCross", mode_shape: "wwOscMode", coherence: "wwOscCoh",
+        };
+        const WW_OSC_SUMMARY_MARKS = { available: "✓", unavailable: "—", not_applicable: "—", caution: "⚠" };
+
+        function wwOscSummaryOpenSection(id) {
+            const target = document.getElementById(id);
+            if (!target || target.hidden) return;
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+
+        function wwOscRenderSummary() {
+            const card = document.getElementById("wwOscSummaryCard");
+            if (!card) return;
+            const state = wwOscState, cx = state.cross, sp = state.spectrum;
+            const stateEl = document.getElementById("wwOscSummaryState");
+            const bodyEl = document.getElementById("wwOscSummaryBody");
+            const noteEl = document.getElementById("wwOscSummaryNote");
+            const show = (kind, text) => { stateEl.hidden = !text; stateEl.dataset.kind = kind; stateEl.textContent = text; };
+            const reset = (kind, text) => { bodyEl.replaceChildren(); noteEl.hidden = true; show(kind, text); };
+            const el = (tag, className, text) => {
+                const node = document.createElement(tag);
+                if (className) node.className = className;
+                if (text !== undefined) node.textContent = text;
+                return node;
+            };
+            card.dataset.stale = "false";
+            if (sp.phase !== "ready" || !sp.request || !sp.result || !sp.result.detection) { card.hidden = true; reset("idle", ""); return; }
+            card.hidden = false;
+            if (!sp.result.detection.candidates.length) {
+                const stale = !wwOscSpectrumSettingsMatch();
+                card.dataset.stale = stale ? "true" : "false";
+                reset(stale ? "stale" : "idle", stale ? "Analysis settings changed — run Analyze again" : "");
+                bodyEl.appendChild(el("div", "ww-osc-detect-none", WW_OSC_SUMMARY_NO_RESULT));
+                return;
+            }
+            if (cx.phase === "loading") { reset("loading", "Preparing summary…"); return; }
+            if (cx.phase === "error") { reset("error", cx.message || "The summary could not be prepared."); return; }
+            if (cx.phase !== "ready" || !cx.result || !cx.request
+                || !cx.request.entries.every((entry) => wwSignalCatalogueIsCurrent(entry.key, entry.revision))) { reset("idle", ""); return; }
+            const stale = !wwOscCrossCurrent();
+            card.dataset.stale = stale ? "true" : "false";
+            show(stale ? "stale" : "current", stale ? "Analysis settings changed — run Analyze again" : "");
+            const result = cx.result;
+            bodyEl.replaceChildren();
+            noteEl.hidden = true;
+            const summaries = result.components.map((comp) => comp.summary).filter(Boolean);
+            if (!summaries.length) {
+                bodyEl.appendChild(el("div", "ww-osc-detect-none", WW_OSC_SUMMARY_NO_RESULT));
+                return;
+            }
+            for (const summary of summaries) {
+                const box = el("article", "ww-osc-summary-card");
+                box.dataset.componentId = String(summary.component_id);
+                box.dataset.growing = summary.growing ? "true" : "false";
+                const head = el("div", "ww-osc-summary-head");
+                head.appendChild(el("div", "ww-osc-summary-title", summary.title));
+                if (summary.growing) head.appendChild(el("span", "ww-osc-summary-flag", "Growing oscillation"));
+                box.appendChild(head);
+                const fields = el("dl", "ww-osc-summary-fields");
+                for (const field of summary.fields) {
+                    const cell = el("div");
+                    cell.dataset.field = field.code;
+                    cell.appendChild(el("dt", "", field.label));
+                    cell.appendChild(el("dd", "", field.value));
+                    fields.appendChild(cell);
+                }
+                box.appendChild(fields);
+                const strip = el("div", "ww-osc-summary-strip");
+                strip.setAttribute("role", "list");
+                strip.setAttribute("aria-label", "Evidence status");
+                for (const layer of summary.evidence) {
+                    const chip = el("button", "ww-osc-summary-chip");
+                    chip.type = "button";
+                    chip.setAttribute("role", "listitem");
+                    chip.dataset.layer = layer.code;
+                    chip.dataset.status = layer.status;
+                    chip.title = layer.label + " — " + layer.status_label + ": " + layer.detail;
+                    chip.setAttribute("aria-label", layer.label + ": " + layer.status_label + ". " + layer.detail);
+                    chip.appendChild(el("span", "ww-osc-summary-chip-name", layer.label));
+                    chip.appendChild(el("span", "ww-osc-summary-chip-mark", WW_OSC_SUMMARY_MARKS[layer.status] || ""));
+                    chip.appendChild(el("span", "ww-osc-summary-chip-word", layer.status_label));
+                    const targetId = WW_OSC_SUMMARY_TARGETS[layer.code];
+                    if (targetId) chip.addEventListener("click", () => wwOscSummaryOpenSection(targetId));
+                    else chip.disabled = true;
+                    strip.appendChild(chip);
+                }
+                box.appendChild(strip);
+                box.appendChild(el("p", "ww-osc-summary-conclusion", summary.conclusion));
+                const lines = el("ul", "ww-osc-summary-lines");
+                for (const layer of summary.evidence) {
+                    if (!layer.show_detail) continue;
+                    const item = el("li");
+                    item.dataset.layer = layer.code;
+                    item.dataset.status = layer.status;
+                    item.appendChild(el("b", "", layer.label + ": "));
+                    item.appendChild(document.createTextNode(layer.detail));
+                    lines.appendChild(item);
+                }
+                box.appendChild(lines);
+                if (summary.caution) box.appendChild(el("p", "ww-osc-summary-caution", summary.caution));
+                bodyEl.appendChild(box);
+            }
+            noteEl.hidden = false;
+            noteEl.textContent = (summaries.length > 1 ? "Components are listed in the order used by the detailed sections below; the order is not a ranking of system importance. " : "")
+                + "✓ Available · — Unavailable for this event or Not applicable · ⚠ Caution. Unavailable evidence is not a failure and does not lower the interpretation. "
+                + "The detailed sections below remain the authoritative record.";
+        }
+
+        // ------------------------------------------------------------------
         // Oscillation Interpretation (DEC-179 [APPROVED]). The BACKEND interprets every component from the structured evidence it
         // already measured (candidate, spectrogram activity, damping, cross-signal grouping): a behaviour, a probable type with its
         // level wording, supporting evidence (Why), limiting evidence, alternatives. The page only draws those returned fields --
@@ -56812,6 +56970,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const host = document.getElementById("wwOscCross");
             if (!host) return;
             wwOscRenderInterpretation(); // the interpretation is drawn from the same backend response
+            wwOscRenderSummary(); // so is the summary (DEC-183)
             wwOscRenderModeShape();
             wwOscRenderCoherence();
             const state = wwOscState, cx = state.cross, sp = state.spectrum;
@@ -56984,7 +57143,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const scroll = el("div", "ww-osc-mode-scroll");
                 const table = el("table", "ww-osc-mode-table");
                 const head = el("tr");
-                for (const name of ["Signal", "Relationship", "Coherence", "At frequency", "Local peak", "Chance level", "Segments", "Common interval"]) head.appendChild(el("th", "", name));
+                for (const name of ["Signal", "Relationship", "Coherence", "At frequency", "Local peak", "95% null threshold", "Segments", "Common interval"]) head.appendChild(el("th", "", name));
                 table.appendChild(head);
                 for (const pair of comp.pairs) {
                     const row = el("tr");
@@ -57030,7 +57189,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const p = result.parameters;
             noteEl.hidden = false;
             noteEl.textContent = "Deterministic Phase-1 estimate. " + p.definition + ". Welch: " + p.estimator + ". Time basis: " + p.time_basis + ". Needs at least "
-                + p.min_segments + " averaged segments of at least " + p.min_segment_cycles + " cycles; otherwise the estimate is refused. The chance level is "
+                + p.min_segments + " averaged segments of at least " + p.min_segment_cycles + " cycles; otherwise the estimate is refused. The 95% null threshold is "
                 + p.chance_level + ". Thresholds are engineering heuristics, not standards. Coherence is evidence only; no oscillation type, cause or direction is inferred.";
         }
 

@@ -311,7 +311,7 @@ class TestComponent:
         out = co.analyse_component(members=self._three(t)[:2], reference_index=0, frequency_hz=F)
         text = " ".join(r["message"] for r in out["pairs"][0]["reasons"])
         for needle in ("S0 and S1 contain the same ~0.4 Hz component", "Signals overlap from", "Coherence at", "Welch segments", "local coherence peak",
-                       "chance level, not the probability that the oscillation is real"):
+                       "95% null threshold, not the probability that the oscillation is real"):
             assert needle in text, needle
         limits = " ".join(e["message"] for e in out["limitations"])
         assert "does not identify causality or direction" in limits and "does not prove an inter-area mode" in limits

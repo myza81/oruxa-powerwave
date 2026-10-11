@@ -100,7 +100,7 @@ def coherence_level(pair: dict) -> dict:
     return {"level": level, "coherence": value, "chance_level": chance, "clear_threshold": clear}
 
 
-_LEVEL_ORDER = {COHERENCE_UNKNOWN: 0, COHERENCE_BELOW: 1, COHERENCE_MARGINAL: 2, COHERENCE_CLEAR: 3}
+LEVEL_ORDER = {COHERENCE_UNKNOWN: 0, COHERENCE_BELOW: 1, COHERENCE_MARGINAL: 2, COHERENCE_CLEAR: 3}
 
 
 def _codes(items: list[dict]) -> set[str]:
@@ -108,7 +108,7 @@ def _codes(items: list[dict]) -> set[str]:
 
 
 # ---------------------------------------------------------------- facts
-def _mode_shape_facts(mode_shape: dict | None) -> dict:
+def mode_shape_facts(mode_shape: dict | None) -> dict:
     """The best usable same-variable group of the mode shape and why the others are not."""
     if mode_shape is None:
         return {"computed": False, "chosen": None, "unavailable": [], "provenance_only": False}
@@ -135,7 +135,7 @@ def _mode_shape_facts(mode_shape: dict | None) -> dict:
     return {"computed": True, "chosen": chosen, "unavailable": unavailable, "provenance_only": provenance_only}
 
 
-def _coherence_facts(coherence: dict | None, chosen: dict | None) -> dict:
+def coherence_facts(coherence: dict | None, chosen: dict | None) -> dict:
     if coherence is None:
         return {"computed": False, "same": [], "cross": [], "refused": []}
     pairs = list(coherence.get("pairs", [])) + list(coherence.get("other_pairs", []))
@@ -160,9 +160,9 @@ def integrate(evidence: dict | None, *, em_primary: bool, inter_area_ok: bool, i
     contradictory: list[dict] = []
     unavailable: list[dict] = []
     alternatives: list[dict] = []
-    ms = _mode_shape_facts(evidence.get("mode_shape"))
+    ms = mode_shape_facts(evidence.get("mode_shape"))
     chosen = ms["chosen"]
-    co = _coherence_facts(evidence.get("coherence"), chosen)
+    co = coherence_facts(evidence.get("coherence"), chosen)
     subtype = None
     strength = STRENGTH_POSSIBLE
 
@@ -189,7 +189,7 @@ def integrate(evidence: dict | None, *, em_primary: bool, inter_area_ok: bool, i
 
     # ---- coherence of the chosen phase group ---------------------------------------------------------------------
     levels = [coherence_level(p) for p in co["same"]]
-    weakest = min(levels, key=lambda lv: _LEVEL_ORDER[lv["level"]]) if levels else None
+    weakest = min(levels, key=lambda lv: LEVEL_ORDER[lv["level"]]) if levels else None
     for pair, lv in zip(co["same"], levels):
         if lv["level"] == COHERENCE_UNKNOWN:
             continue
@@ -197,7 +197,7 @@ def integrate(evidence: dict | None, *, em_primary: bool, inter_area_ok: bool, i
         supporting.append(_ev(
             "same_variable_coherence",
             f"Same-variable coherence between {pair['reference_signal']} and {pair['member_signal']} at {_fmt(pair['coherence_frequency_hz'], 4)} Hz is "
-            f"{_fmt(pair['coherence'], 3)}, {text} the {_fmt(lv['chance_level'], 3)} chance level.",
+            f"{_fmt(pair['coherence'], 3)}, {text} the {_fmt(lv['chance_level'], 3)} 95% null threshold.",
             coherence=pair["coherence"], chance_level=lv["chance_level"], level=lv["level"], member=pair["member_signal"]))
     if co["cross"]:
         best = max(co["cross"], key=lambda p: p["coherence"])

@@ -88,7 +88,7 @@ async function setBand(page, min, max) {
 test.describe("Oscillation Analysis setup -- navigation and empty state", () => {
   test("opens, shows the three sections, nothing is assessed and Analyze is disabled without a signal", async ({ page }) => {
     await openOscillation(page);
-    await expect(page.locator("#wwOscillationPanel h3")).toHaveText(["Oscillation Analysis", "Frequency Spectrum (Welch PSD)", "Time-Frequency Spectrogram (STFT)", "Analysis Information", "Data Adequacy"]);
+    await expect(page.locator("#wwOscillationPanel h3")).toHaveText(["Oscillation Analysis", "Oscillation Analysis Summary", "Frequency Spectrum (Welch PSD)", "Time-Frequency Spectrogram (STFT)", "Analysis Information", "Data Adequacy"]);
     await expect(page.locator("#wwOscSignalSelect")).toHaveValue("");
     await expect(page.locator("#wwOscStartInput")).toBeDisabled();
     await expect(page.locator("#wwOscMinFreqInput")).toHaveValue("0.1");
@@ -2477,7 +2477,7 @@ test.describe("Oscillation Analysis -- mode shape / relative phase", () => {
 const isCoherence = (r) => r.url().endsWith("/oscillation-analysis/coherence");
 
 test.describe("Oscillation Analysis -- coherence evidence", () => {
-  test("hidden until a comparison; then draws the reference, coherence, bin, chance level, Why and limitations", async ({ page }) => {
+  test("hidden until a comparison; then draws the reference, coherence, bin, 95% null threshold, Why and limitations", async ({ page }) => {
     const requests = [];
     page.on("request", (r) => { if (isCoherence(r) || isModeShape(r)) requests.push(r.url()); });
     await openOscillation(page);
@@ -2496,7 +2496,7 @@ test.describe("Oscillation Analysis -- coherence evidence", () => {
     await expect(page.locator("#wwOscCoh .ww-osc-detect-title")).toHaveText("Coherence Evidence");
     const card = page.locator("#wwOscCohBody .ww-osc-interp-component").first();
     await expect(card).toContainText("Reference: P_A (the Mode Shape reference)");
-    await expect(card.locator("table th")).toHaveText(["Signal", "Relationship", "Coherence", "At frequency", "Local peak", "Chance level", "Segments", "Common interval"]);
+    await expect(card.locator("table th")).toHaveText(["Signal", "Relationship", "Coherence", "At frequency", "Local peak", "95% null threshold", "Segments", "Common interval"]);
     const row = card.locator('tr[data-signal="P_B"]');
     await expect(row).toHaveAttribute("data-relationship", "same_variable");
     await expect(row.locator("td").nth(1)).toHaveText("same variable");
@@ -2510,7 +2510,7 @@ test.describe("Oscillation Analysis -- coherence evidence", () => {
     await expect(card.locator(".ww-osc-detect-label", { hasText: "Limitations" })).toBeVisible();
     const text = await page.locator("#wwOscCohBody").innerText();
     expect(text).toMatch(/P_A and P_B contain the same ~1\.1\d* Hz component/);
-    expect(text).toContain("chance level, not the probability that the oscillation is real");
+    expect(text).toContain("95% null threshold, not the probability that the oscillation is real");
     expect(text).toContain("does not identify causality or direction");
     expect(text).toContain("does not prove an inter-area mode");
     const lower = text.toLowerCase();
@@ -2656,5 +2656,165 @@ test.describe("Oscillation Analysis -- one comparison, one matched component for
     const c = await consumers(page);
     expect(c.shapeMembers).toEqual(c.members);
     expect(c.cohMembers).toEqual(c.members);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Oscillation Analysis Summary (DEC-183 [APPROVED]). A presentation layer over the ONE interpretation response: one card per component,
+// key fields, an evidence-status strip and a deterministic conclusion. It makes no request of its own; unavailable is never drawn as a failure.
+// ---------------------------------------------------------------------------
+const summaryCards = (page) => page.locator("#wwOscSummaryBody .ww-osc-summary-card");
+const chip = (card, layer) => card.locator(`.ww-osc-summary-chip[data-layer="${layer}"]`);
+const chipStatuses = (card) => card.locator(".ww-osc-summary-chip").evaluateAll((nodes) => Object.fromEntries(nodes.map((n) => [n.dataset.layer, n.dataset.status])));
+const noOverflow = (page, id) => page.evaluate((element) => ({
+  right: document.getElementById(element).getBoundingClientRect().right, viewport: window.innerWidth, scroll: document.documentElement.scrollWidth }), id);
+
+test.describe("Oscillation Analysis -- summary / report UX (DEC-183)", () => {
+  test("the real short ~0.4 Hz event: one card above the detailed sections, a conclusion, and unavailable (not failed) modal evidence", async ({ page }) => {
+    const posts = [];
+    page.on("request", (r) => { if (r.method() === "POST" && r.url().includes("/oscillation-analysis/")) posts.push(r.url().split("/oscillation-analysis/")[1]); });
+    await twoMwShortEvent(page);
+    const card = summaryCards(page).first();
+    await expect(page.locator("#wwOscSummaryCard h3")).toHaveText("Oscillation Analysis Summary");
+    await expect(summaryCards(page)).toHaveCount(1);
+    // placement: after the setup, before every detailed section
+    const order = await page.evaluate(() => {
+      const idx = (id) => Array.from(document.getElementById("wwOscSummaryCard").parentElement.children).indexOf(document.getElementById(id));
+      return { summary: idx("wwOscSummaryCard"), spectrum: idx("wwOscSpectrumCard"), spectrogram: idx("wwOscSpectrogramCard") };
+    });
+    expect(order.summary).toBeGreaterThan(-1);
+    expect(order.summary).toBeLessThan(order.spectrum);
+    expect(order.summary).toBeLessThan(order.spectrogram);
+    await expect(card.locator(".ww-osc-summary-title")).toContainText(/^Component around 0\.4\d? Hz$/);
+    await expect(card.locator('[data-field="behaviour"]')).toContainText("Decaying oscillation");
+    await expect(card.locator('[data-field="type"]')).toContainText("electromechanical oscillation");
+    await expect(card.locator('[data-field="strength"]')).toContainText("Possible");
+    await expect(card.locator('[data-field="observed"]')).toContainText("2 signals · 2 distinct measurements · 2 recordings");
+    await expect(card.locator('[data-field="subtype"]')).toHaveCount(0);
+    const conclusion = await card.locator(".ww-osc-summary-conclusion").innerText();
+    expect(conclusion).toMatch(/^A ~0\.4\d? Hz decaying electromechanical oscillation is observed in 2 distinct MW measurements\./);
+    expect(conclusion).toContain("corroborated across two recordings with overlapping activity");
+    expect(conclusion).toContain("Local versus inter-area behaviour remains unresolved because the shared active interval is too short for reliable relative-phase and coherence estimation.");
+    // evidence strip: the two advanced methods are unavailable, never failed
+    expect(await chipStatuses(card)).toEqual({ spectrum: "available", time_frequency: "available", damping: "available", cross_signal: "available",
+      mode_shape: "unavailable", coherence: "unavailable" });
+    await expect(chip(card, "mode_shape")).toContainText("Unavailable for this event");
+    await expect(chip(card, "damping")).toContainText("Available");
+    const text = (await page.locator("#wwOscSummaryCard").innerText()).toLowerCase();
+    for (const word of ["failed", "error", "severe", "critical", "dangerous", "dominant", "confirmed"]) expect(text).not.toContain(word);
+    // the backend's own refusal numbers (dynamic) are shown in the summary
+    const c = await consumers(page);
+    await expect(card.locator('li[data-layer="mode_shape"]')).toContainText(c.shapeMessage);
+    await expect(card.locator('li[data-layer="coherence"]')).toContainText("Each Welch segment contains only");
+    await expect(card.locator('li[data-layer="damping"]')).toContainText(/α = [\d.]+(–[\d.]+)? s⁻¹/);
+    // accessible: every chip names its status in text and in its label
+    await expect(chip(card, "coherence")).toHaveAttribute("aria-label", /^Coherence: Unavailable for this event\. /);
+    // no extra request: only the baseline and the Compare interpretation requests were made, and nothing asks for a summary
+    expect(posts.filter((p) => p === "interpretation")).toHaveLength(2);
+    expect(posts.filter((p) => /summary/.test(p))).toHaveLength(0);
+  });
+
+  test("the analysed signal alone: single-signal wording, cross-signal / mode shape / coherence are not applicable", async ({ page }) => {
+    await crossPage(page);
+    const card = summaryCards(page).first();
+    await expect(card).toBeVisible();
+    const statuses = await chipStatuses(card);
+    expect(statuses).toMatchObject({ cross_signal: "not_applicable", mode_shape: "not_applicable", coherence: "not_applicable", spectrum: "available" });
+    await expect(card.locator('li[data-layer="cross_signal"]')).toContainText("Observed in one signal only; cross-signal modal evidence is not applicable.");
+    await expect(chip(card, "mode_shape")).toContainText("Not applicable");
+    await expect(card.locator('[data-field="observed"]')).toContainText("1 signal · 1 distinct measurement · 1 recording");
+    expect(await card.locator(".ww-osc-summary-conclusion").innerText()).toContain("Higher-frequency oscillatory component detected at ~");
+  });
+
+  test("several components: one independent card each, never one mixed statement", async ({ page }) => {
+    await twoMwShortEvent(page, { withThird: true });
+    const cards = summaryCards(page);
+    await expect(cards).toHaveCount(2);
+    const titles = await cards.locator(".ww-osc-summary-title").allInnerTexts();
+    expect(new Set(titles).size).toBe(2);
+    const matched = cards.filter({ hasText: "2 signals · 2 distinct measurements" }).first();
+    const single = cards.filter({ hasText: "1 signal · 1 distinct measurement" }).first();
+    await expect(matched).toBeVisible();
+    await expect(single).toBeVisible();
+    const singleText = await single.locator(".ww-osc-summary-conclusion").innerText();
+    expect(singleText).toContain("Cross-signal modal evidence is not available");
+    expect(singleText).not.toContain("0.4");
+    expect(await chipStatuses(single)).toMatchObject({ cross_signal: "not_applicable", mode_shape: "not_applicable" });
+    await expect(page.locator("#wwOscSummaryNote")).toContainText("not a ranking of system importance");
+    // the card order follows the interpretation order below
+    const interp = await page.locator("#wwOscInterpBody .ww-osc-interp-component > .ww-osc-detect-label:first-child").allInnerTexts();
+    expect(titles).toEqual(interp);
+  });
+
+  test("no candidate: a calm, concise statement and no component card", async ({ page }) => {
+    await openOscillation(page);
+    await uploadSynthetic(page);
+    await selectFreq(page);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(page.locator("#wwOscDetection .ww-osc-detect-none")).toBeVisible();
+    await expect(page.locator("#wwOscSummaryCard")).toBeVisible();
+    await expect(page.locator("#wwOscSummaryBody")).toHaveText("No oscillation component meeting the current detection criteria was identified in the selected analysis window.");
+    await expect(summaryCards(page)).toHaveCount(0);
+  });
+
+  test("hidden until Analyze; a settings change dims it until re-run; reverting restores; another signal hides it", async ({ page }) => {
+    await openOscillation(page);
+    await uploadSynthetic(page, { durationS: 60, channels: CROSS_CHANNELS });
+    await expect(page.locator("#wwOscSummaryCard")).toBeHidden();
+    await selectFreq(page);
+    await setBand(page, 0.25, 8);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(summaryCards(page).first()).toBeVisible();
+    await expect(page.locator("#wwOscSummaryCard")).toHaveAttribute("data-stale", "false");
+    await page.locator("#wwOscMaxFreqInput").fill("7");
+    await expect(page.locator("#wwOscSummaryCard")).toHaveAttribute("data-stale", "true");
+    await expect(page.locator("#wwOscSummaryState")).toHaveText("Analysis settings changed — run Analyze again");
+    await page.locator("#wwOscMaxFreqInput").fill("8");
+    await expect(page.locator("#wwOscSummaryCard")).toHaveAttribute("data-stale", "false");
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_MW"));
+    await expect(page.locator("#wwOscSummaryCard")).toBeHidden();
+  });
+
+  test("Compare updates the summary from the single-signal baseline; a different analysed signal never shows the previous summary", async ({ page }) => {
+    await crossPage(page);
+    expect(await chipStatuses(summaryCards(page).first())).toMatchObject({ cross_signal: "not_applicable" });
+    await tick(page, "P_MW");
+    await page.locator("#wwOscCrossBtn").click();
+    await expect(summaryCards(page).filter({ hasText: "2 signals" }).first()).toBeVisible();
+    await page.locator("#wwOscSignalSelect").selectOption(await optionValue(page, "P_MW"));
+    await expect(page.locator("#wwOscSummaryCard")).toBeHidden();
+    await expect(summaryCards(page)).toHaveCount(0);
+    await page.locator("#wwOscAnalyzeBtn").click();
+    await expect(summaryCards(page).first()).toBeVisible();
+    await expect(summaryCards(page).filter({ hasText: "2 signals" })).toHaveCount(0);
+  });
+
+  test("a strip item opens the detailed section that holds the evidence", async ({ page }) => {
+    await twoMwShortEvent(page);
+    const card = summaryCards(page).first();
+    await chip(card, "damping").click();
+    await expect.poll(() => page.evaluate(() => { const r = document.getElementById("wwOscDamping").getBoundingClientRect(); return r.top >= -2 && r.top < window.innerHeight; })).toBe(true);
+    await chip(card, "coherence").click();
+    await expect.poll(() => page.evaluate(() => { const r = document.getElementById("wwOscCoh").getBoundingClientRect(); return r.top >= -2 && r.top < window.innerHeight; })).toBe(true);
+  });
+
+  for (const [name, width] of [["desktop", 1366], ["laptop", 1024], ["phone", 390]]) {
+    test(`fits ${name} width without horizontal overflow, with long signal names and multiple components`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await twoMwShortEvent(page, { withThird: true });
+      await expect(summaryCards(page)).toHaveCount(2);
+      const m = await noOverflow(page, "wwOscSummaryCard");
+      expect(m.right).toBeLessThanOrEqual(m.viewport + 1);
+      expect(m.scroll).toBeLessThanOrEqual(m.viewport + 1);
+      const wide = await page.evaluate(() => Array.from(document.querySelectorAll("#wwOscSummaryCard .ww-osc-summary-card")).some((n) => n.scrollWidth > n.clientWidth + 1));
+      expect(wide).toBe(false);
+    });
+  }
+
+  test("a long refusal text wraps inside the card", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await twoMwShortEvent(page);
+    const line = await page.locator('li[data-layer="coherence"]').evaluate((n) => ({ scroll: n.scrollWidth, client: n.clientWidth }));
+    expect(line.scroll).toBeLessThanOrEqual(line.client + 1);
   });
 });

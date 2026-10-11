@@ -271,3 +271,29 @@ def test_interpretation_card_shows_strength_contradictory_and_unavailable_eviden
         assert needle in code, needle
     for forbidden in ("Math.", "strength ===", "strength.code ==", "supported_provisional", "consistent_with"):
         assert forbidden not in code, forbidden
+
+
+def test_summary_is_drawn_from_the_interpretation_response_and_decides_nothing():
+    """DEC-183 [APPROVED]: the Oscillation Analysis Summary is a presentation layer. The backend arranges `comp.summary` from the structured
+    evidence of the ONE interpretation response; the page draws it as returned -- no request, no arithmetic, no classification or severity
+    vocabulary, and an unavailable layer is never painted with the error colour."""
+    script = _osc_script()
+    render = _between("const WW_OSC_SUMMARY_NO_RESULT", "// Oscillation Interpretation (DEC-179 [APPROVED])")
+    code = chr(10).join(line for line in render.splitlines() if not line.strip().startswith("//"))
+    for needle in ("comp.summary", "summary.conclusion", "summary.evidence", "layer.status_label", "layer.detail", "summary.fields", "summary.caution",
+                   "wwOscCrossCurrent()", "wwOscSpectrumSettingsMatch()", "wwSignalCatalogueIsCurrent(entry.key, entry.revision)",
+                   "Analysis settings changed — run Analyze again"):
+        assert needle in code, needle
+    for forbidden in ("Math.", "fetch(", "electromechanical", "inter-area", "sub-synchronous", "SSO", "converter", "forced", "ringdown", "severe",
+                      "critical", "dangerous", "dominant", "failed", "confirmed", "probability", "confidence", "classification_level", "supported_provisional",
+                      "behaviour_classification", "probable_type"):
+        assert forbidden not in code, forbidden
+    # no endpoint of its own: the single interpretation request still serves every section
+    assert script.count("/oscillation-analysis/interpretation") == 1 and "/oscillation-analysis/summary" not in script
+    # placed above the detailed sections, hidden until there is something to say
+    panel = _between('id="wwOscillationPanel"', "<!-- Compliance & Capability, Slice 1")
+    assert 'id="wwOscSummaryCard" hidden' in panel
+    assert panel.index('id="wwOscSummaryCard"') < panel.index('id="wwOscSpectrumCard"') < panel.index('id="wwOscSpectrogramCard"')
+    # status is never the error colour: unavailable / not applicable are neutral, caution uses the warning colour
+    css = chr(10).join(line for line in SOURCE.splitlines() if "ww-osc-summary" in line)
+    assert "var(--error)" not in css and "var(--warn)" in css

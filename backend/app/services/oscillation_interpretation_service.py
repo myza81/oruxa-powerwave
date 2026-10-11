@@ -1,4 +1,4 @@
-"""Oscillation Analysis -- oscillation interpretation service (DEC-179 [APPROVED], DEC-182 [PROPOSAL]; building on DEC-171..181).
+"""Oscillation Analysis -- oscillation interpretation service (DEC-179 [APPROVED], DEC-182 [APPROVED], DEC-183 [APPROVED]; building on DEC-171..181).
 
 For the reference signal alone, or the reference plus explicitly chosen signals, it runs the SAME accepted per-signal chain as the
 cross-signal evidence (`analyse_signals`: spectrum + DEC-175 candidates, DEC-177 damping, DEC-176 spectrogram -- no second peak
@@ -21,6 +21,7 @@ from app.domain import cross_signal_evidence as cs
 from app.domain import coherence as co
 from app.domain import mode_shape as ms
 from app.domain import oscillation_classification as oc
+from app.domain import oscillation_summary as osum
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.oscillation_coherence_service import coherence_component
 from app.services.oscillation_cross_signal_service import analyse_signals, build_result, validate_entries
@@ -60,6 +61,7 @@ def compute_interpretation(
         grouped_at = time.perf_counter()
     spatial_ms = 0.0
     classify_ms = 0.0
+    spatial_by_id: dict[int, dict] = {}
     for component in components:
         evidence = {"mode_shape": None, "coherence": None} if integrated else None
         if integrated and component["signal_count"] >= 2:
@@ -70,10 +72,19 @@ def compute_interpretation(
             shape_components.append(shape)
             coherence_components.append(coherent)
             evidence = {"mode_shape": shape, "coherence": coherent}
+            spatial_by_id[component["id"]] = evidence
             spatial_ms += (time.perf_counter() - tick) * 1000.0
         tick = time.perf_counter()
         component["interpretation"] = oc.classify_component(component, analysed, evidence)
         classify_ms += (time.perf_counter() - tick) * 1000.0
+    # DEC-183: the engineer-facing summary is arranged from the structured results above -- no further signal processing.
+    tick = time.perf_counter()
+    units_by_index = {row["index"]: row.get("unit") for row in signal_rows}
+    for component in components:
+        spatial = spatial_by_id.get(component["id"]) or {}
+        component["summary"] = osum.build_component_summary(
+            component, units_by_index=units_by_index, integrated=integrated, mode_shape=spatial.get("mode_shape"), coherence=spatial.get("coherence"))
+    summary_ms = (time.perf_counter() - tick) * 1000.0
     finished = time.perf_counter()
     result = build_result(signal_rows, analysed, f_min_hz, f_max_hz, components)
     result["interpretation_parameters"] = oc.parameters()
@@ -81,6 +92,7 @@ def compute_interpretation(
         "signal_analysis": (analysed_at - started) * 1000.0,
         "grouping": (grouped_at - analysed_at) * 1000.0,
         "classification": classify_ms,
+        "summary": summary_ms,
     }
     if integrated:
         result["timings_ms"].update(mode_shape_and_coherence=spatial_ms, total=(finished - started) * 1000.0)
