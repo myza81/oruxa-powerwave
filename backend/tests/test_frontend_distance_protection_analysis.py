@@ -451,3 +451,14 @@ class TestDistanceZoneDefaults:
             assert "value=" not in _function_body(source, f'id="wwDistanceZone4{field}Input"', "</label>")
         params = _function_body(source, "function wwDistanceZoneParams()", "// The ONE place that dispatches")
         assert 'else if (key !== "zone4") params[key + "_characteristic_angle_deg"] = "90"' in params
+
+
+class TestDistanceSettingLabels:
+    def test_loop_and_impedance_value_labels(self):
+        source = _source()
+        loop = _function_body(source, 'Fault Type / Loop</span>', "</label>")
+        assert 'id="wwDistanceLoopSelect"' in loop
+        values = _function_body(source, 'Impedance Values</span>', "</label>")
+        assert 'id="wwDistanceOutputBasisSelect"' in values
+        panel = _function_body(source, 'id="wwDistancePanel"', 'id="wwDistanceManualInputSection"')
+        assert "Fault loop" not in panel and "Impedance basis" not in panel
