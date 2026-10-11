@@ -55623,6 +55623,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             return result;
         }
+        // First open: ask the backend for the review's own state (empty decisions) so the
+        // initial readiness and blocking issues are authoritative, never inferred from the
+        // upload payload. Shows "Re-evaluating…" meanwhile; a later decision supersedes it
+        // through the same version mechanism.
+        async function wwRrInitialValidate() {
+            const state = wwRelayImportState;
+            const version = ++state.reviewVersion;
+            const result = await wwRrValidate(version);
+            if (result.stale) return;
+            wwRelayImportRender();
+        }
         function wwRelayReviewRender() {
             const state = wwRelayImportState;
             const panel = document.getElementById("wwRelayReviewPanel");
@@ -55646,6 +55657,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return;
             }
             const review = state.review;
+            // A result already held (reopening) is kept; only a review never checked is sent for checking.
+            const needInitial = !state.reviewLive && !state.reviewBusy;
+            if (needInitial) state.reviewBusy = true;
             wwRrUi.rows = [];
             wwRrUi.groups = [];
             wwRrUi.items = new Map();
@@ -55678,6 +55692,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             body.replaceChildren(fragment);
             state.reviewBuilt = true;
             panel.hidden = false;
+            if (needInitial) wwRrInitialValidate();
         }
         function wwRelayImportReset() {
             if (wwRelayImportState.controller) wwRelayImportState.controller.abort();

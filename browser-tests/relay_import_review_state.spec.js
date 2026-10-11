@@ -31,7 +31,10 @@ const button = (page, label) => page.locator(`#wwRelayReviewPanel button[aria-la
 const chip = (page, key) => row(page, key).locator(".ww-rr-status").first();
 const readiness = (page) => page.locator("#wwRelayReviewReadiness");
 
-async function reviewP441(page, { mutateUpload } = {}) {
+async function reviewP441(page, { mutateUpload, failValidate = false } = {}) {
+  if (failValidate) {
+    await page.route(VALIDATE, (route) => route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ detail: { code: "internal_error", message: "The review could not be checked." } }) }));
+  }
   if (mutateUpload) {
     await page.route(UPLOAD, async (route) => {
       const res = await route.fetch();
@@ -45,6 +48,8 @@ async function reviewP441(page, { mutateUpload } = {}) {
   await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
   await page.locator("#wwRelayReviewBtn").click();
   await expect(panel(page)).toBeVisible();
+  // the first open validates the review; wait for that (a healthy one ends in a real result)
+  await expect(readiness(page)).not.toContainText("Re-evaluating");
 }
 
 async function expectNoBrokenText(page) {
@@ -52,8 +57,8 @@ async function expectNoBrokenText(page) {
   expect(text).not.toMatch(/undefined|NaN|null/);
 }
 
-test("a review payload without readiness renders safely as Not evaluated (the UAT crash)", async ({ page }) => {
-  await reviewP441(page, { mutateUpload: (b) => { delete b.review.readiness; } });
+test("a review payload without readiness renders safely as Not evaluated when validation also fails (the UAT crash)", async ({ page }) => {
+  await reviewP441(page, { mutateUpload: (b) => { delete b.review.readiness; }, failValidate: true });
   await expect(readiness(page)).toContainText("Readiness: Not evaluated");
   await expect(readiness(page)).not.toContainText("Ready to apply");
   await expectNoBrokenText(page);
@@ -234,4 +239,97 @@ test("no Apply control exists in any state, and the manual Distance Protection f
   const after = [];
   for (const sel of inputs) after.push(await page.locator(sel).inputValue());
   expect(after).toEqual(before);
+});
+
+// ---------------------------------------------------------------------------
+// Initial review validation: a review is checked by the backend when it first
+// opens, so "Not evaluated" is an abnormal state, never the ordinary start.
+// ---------------------------------------------------------------------------
+
+test("a healthy first open shows the backend's initial result, never 'Not evaluated'", async ({ page }) => {
+  await openDistance(page);
+  const inputs = ["#wwDistanceZone1ReachInput", "#wwDistanceZone2ReachInput", "#wwDistanceZone2DelayInput"];
+  const before = [];
+  for (const sel of inputs) before.push(await page.locator(sel).inputValue());
+  await pick(page, "document.pdf", p441Pdf());
+  await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
+  await page.evaluate(() => {
+    window.__readinessTexts = [];
+    new MutationObserver(() => {
+      const el = document.getElementById("wwRelayReviewReadiness");
+      if (el) window.__readinessTexts.push(el.innerText);
+    }).observe(document.body, { subtree: true, childList: true, characterData: true });
+  });
+  await page.locator("#wwRelayReviewBtn").click();
+  await expect(readiness(page)).toContainText("Readiness: Not ready");
+  await expect(readiness(page)).toContainText("4 blocking items are unresolved.");
+  await expect(page.locator("#wwRelayReviewBlocking")).toContainText("reverse resistive reach is unresolved");
+  await expect(page.locator("#wwRelayReviewBlocking")).toContainText("ZP cannot be represented");
+  const seen = await page.evaluate(() => window.__readinessTexts);
+  expect(seen.length).toBeGreaterThan(0);
+  expect(seen.join("|")).not.toContain("Not evaluated");
+  expect(seen.join("|")).not.toContain("Ready to apply");
+  for (const label of await page.locator("#wwRelayImportPanel button").allTextContents()) {
+    expect(label).not.toMatch(/apply|populate|generate|plot|auto-?fill|use these/i);
+  }
+  const after = [];
+  for (const sel of inputs) after.push(await page.locator(sel).inputValue());
+  expect(after).toEqual(before);
+});
+
+test("while the initial validation is pending the readiness says Re-evaluating…", async ({ page }) => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  await page.route(VALIDATE, async (route) => { await gate; await route.continue(); });
+  await openDistance(page);
+  await pick(page, "document.pdf", p441Pdf());
+  await expect(page.locator("#wwRelayImportSummary")).toContainText("zones found");
+  await page.locator("#wwRelayReviewBtn").click();
+  await expect(readiness(page)).toContainText("Re-evaluating…");
+  await expect(readiness(page)).not.toContainText("Not ready");
+  release();
+  await expect(readiness(page)).toContainText("Readiness: Not ready");
+  await expect(readiness(page)).not.toContainText("Re-evaluating");
+});
+
+test("a failed initial validation is Not evaluated, and reopening retries it", async ({ page }) => {
+  await reviewP441(page, { failValidate: true });
+  await expect(readiness(page)).toContainText("Readiness: Not evaluated");
+  await expect(page.locator("#wwRelayReviewNotice")).not.toBeEmpty();
+  await page.unroute(VALIDATE);
+  await page.locator("#wwRelayReviewCloseBtn").click();
+  await page.locator("#wwRelayReviewBtn").click();
+  await expect(readiness(page)).toContainText("Readiness: Not ready");
+  await expect(page.locator("#wwRelayReviewNotice")).toBeEmpty();
+});
+
+test("closing and reopening keeps a valid live result without validating again", async ({ page }) => {
+  let calls = 0;
+  await page.route(VALIDATE, (route) => { calls += 1; return route.continue(); });
+  await reviewP441(page);
+  await expect(readiness(page)).toContainText("Readiness: Not ready");
+  expect(calls).toBe(1);
+  await page.locator("#wwRelayReviewCloseBtn").click();
+  await page.locator("#wwRelayReviewBtn").click();
+  await expect(readiness(page)).toContainText("Readiness: Not ready");
+  await expect(readiness(page)).not.toContainText("Re-evaluating");
+  expect(calls).toBe(1);
+});
+
+test("a decision made while the initial validation is pending is honoured", async ({ page }) => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  let first = true;
+  await page.route(VALIDATE, async (route) => {
+    if (first) { first = false; await gate; }
+    await route.continue().catch(() => {});
+  });
+  await openDistance(page);
+  await pick(page, "document.pdf", p441Pdf());
+  await page.locator("#wwRelayReviewBtn").click();
+  await expect(readiness(page)).toContainText("Re-evaluating…");
+  await button(page, "Confirm Zone 1 Reach").click(); // queued under the request-version mechanism
+  release();
+  await expect(chip(page, "zone.Z1.reach")).toHaveText("Confirmed");
+  await expect(readiness(page)).toContainText("Readiness: Not ready");
 });
