@@ -12,7 +12,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from tests.relay_pdf_fixtures import build_pdf, simple_pdf
+from tests.relay_pdf_fixtures import build_pdf, rows_page, simple_pdf
+from tests.relay_p441_fixtures import BASE, NOTES, SCHEME_ROW
 
 URL = "/api/v1/relay-import/upload"
 BACKEND_APP = Path(__file__).resolve().parents[1] / "app"
@@ -66,6 +67,8 @@ class TestIdentification:
             "pages_with_text", "raw_entry_count", "section_count", "extraction_warnings",
             "identification_status", "manufacturer", "relay_family", "model", "profile_id", "confidence",
             "identification_warnings",
+            "interpretation_status", "profile_version", "mapped_setting_count", "inferred_setting_count",
+            "unresolved_setting_count", "not_interpreted_setting_count", "zone_count", "interpretation_warnings",
         }
 
     def test_unrecognised_relay_is_unknown_not_an_error(self, client):
@@ -96,6 +99,100 @@ class TestIdentification:
         assert body["identification_warnings"] == []
 
 
+def _p441_pdf(*, notes=NOTES, overrides=None) -> bytes:
+    """A P441-shaped setting sheet built through the real PDF extractor path:
+    code / name / value / printed range in four columns, notes as one cell."""
+    rows = dict(BASE)
+    rows.update(overrides or {})
+    lines = [list(SCHEME_ROW)] + [[code, *cells] for code, cells in ((c, (n, v, r or "")) for c, (n, v, r) in rows.items())]
+    lines += [[n] for n in notes]
+    pages = [rows_page(lines[i : i + 40]) for i in range(0, len(lines), 40)]
+    return build_pdf(pages)
+
+
+class TestInterpretation:
+    """Slice 6: upload -> extraction -> identification -> interpretation. A summary
+    only (counts and fixed phrases); nothing is applied to the form."""
+
+    def test_p441_is_interpreted_and_summarised(self, client):
+        r = client.post(URL, files=_files(_p441_pdf(), name="document.pdf"))
+        assert r.status_code == 200
+        body = r.json()
+        assert body["identification_status"] == "identified" and body["profile_id"] == "schneider-micom-p441"
+        assert body["interpretation_status"] == "interpreted"
+        assert body["profile_version"] == "micom-p441-v1"
+        assert body["zone_count"] == 5
+        assert body["mapped_setting_count"] >= 25 and body["inferred_setting_count"] > 0 and body["unresolved_setting_count"] > 0
+        assert body["interpretation_warnings"]
+
+    def test_the_api_summary_matches_the_profile_run_on_the_same_extraction(self, client):
+        from app.relay_profiles.identification_catalogue import default_registry
+        from app.services.relay_interpretation_summary import summarize_interpretation
+        from app.services.relay_pdf_extractor import extract_pdf
+
+        data = _p441_pdf()
+        body = client.post(URL, files=_files(data)).json()
+        doc = extract_pdf(data).document
+        reg = default_registry()
+        expected = summarize_interpretation(reg, doc, reg.identify(doc))
+        assert (body["mapped_setting_count"], body["inferred_setting_count"], body["unresolved_setting_count"], body["zone_count"]) == (
+            expected.mapped_setting_count, expected.inferred_setting_count, expected.unresolved_setting_count, expected.zone_count,
+        )
+        assert body["interpretation_warnings"] == list(expected.warnings)
+
+    def test_response_never_carries_settings_or_document_text(self, client):
+        text = client.post(URL, files=_files(_p441_pdf())).text
+        for content in ("1.43", "7.02", "17.19", "132000", "Defeated", "Directional", "R1Ph", "300A", "Kilometres"):
+            assert content not in text
+
+    def test_engine_limits_are_reported_as_warnings_not_errors(self, client):
+        warnings = client.post(URL, files=_files(_p441_pdf())).json()["interpretation_warnings"]
+        assert any(w.startswith("Engine: ") for w in warnings)
+
+    def test_zone_4_defeat_survives_the_pdf_round_trip(self, client):
+        defeated = client.post(URL, files=_files(_p441_pdf())).json()
+        undeclared = client.post(URL, files=_files(_p441_pdf(notes=NOTES[:2]))).json()
+        # Without the defeat statement Zone 4's status is unresolved, so one more item is open.
+        assert undeclared["unresolved_setting_count"] > defeated["unresolved_setting_count"]
+        assert undeclared["inferred_setting_count"] < defeated["inferred_setting_count"]
+
+    @pytest.mark.parametrize("scheme", ["7SA6131_4AB02_3GA0", "GRL200_TNB", "RELZ100_3.0", "XYZ9000_V1"])
+    def test_every_other_relay_stays_identification_only(self, client, scheme):
+        body = client.post(URL, files=_files(_sheet(scheme))).json()
+        assert body["interpretation_status"] == "not_supported"
+        assert body["profile_version"] is None and body["zone_count"] == 0
+        assert (body["mapped_setting_count"], body["inferred_setting_count"], body["unresolved_setting_count"]) == (0, 0, 0)
+        assert body["interpretation_warnings"] == []
+
+    def test_p441_settings_under_another_relays_scheme_are_not_interpreted(self, client):
+        data = _p441_pdf().replace(b"SE_P441?A1???038?JE", b"7SA6131_4AB02_3GA0")
+        body = client.post(URL, files=_files(data)).json()
+        assert body["profile_id"] != "schneider-micom-p441" and body["interpretation_status"] == "not_supported"
+
+    def test_nothing_to_interpret_without_text(self, client):
+        body = client.post(URL, files=_files(build_pdf(["image"]))).json()
+        assert body["interpretation_status"] is None and body["zone_count"] == 0
+
+    def test_a_profile_failure_does_not_fail_the_upload(self, client, monkeypatch):
+        from app.relay_profiles.micom_p441 import MicomP441Profile
+
+        def boom(self, document):
+            raise RuntimeError("1.43 is not acceptable")
+
+        monkeypatch.setattr(MicomP441Profile, "interpret", boom)
+        r = client.post(URL, files=_files(_p441_pdf()))
+        assert r.status_code == 200
+        body = r.json()
+        assert body["identification_status"] == "identified" and body["interpretation_status"] == "failed"
+        assert "1.43" not in r.text and body["zone_count"] == 0
+
+    def test_interpretation_keeps_the_upload_ephemeral(self, client, small_settings, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        before = sorted(p.name for p in tmp_path.iterdir())
+        client.post(URL, files=_files(_p441_pdf()))
+        assert sorted(p.name for p in tmp_path.iterdir()) == before
+
+
 class TestAccepted:
     def test_valid_pdf_returns_safe_metadata_only(self, client):
         r = client.post(URL, files=_files())
@@ -118,6 +215,14 @@ class TestAccepted:
             "profile_id": None,
             "confidence": "none",
             "identification_warnings": [],
+            "interpretation_status": "not_supported",
+            "profile_version": None,
+            "mapped_setting_count": 0,
+            "inferred_setting_count": 0,
+            "unresolved_setting_count": 0,
+            "not_interpreted_setting_count": 0,
+            "zone_count": 0,
+            "interpretation_warnings": [],
         }
 
     def test_response_carries_counts_never_document_content(self, client):

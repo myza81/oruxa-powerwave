@@ -132,6 +132,10 @@ class UnresolvedSetting:
     raw_value: str | float | None
     unit: str | None = None
     reason: str = ""
+    #: True when the setting is outside Distance Protection altogether
+    #: (recorders, communications, labels...). It is still retained so no
+    #: source setting is silently discarded, but it is not an open question.
+    out_of_scope: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +155,8 @@ class RelayMetadata:
     #: fallback, which interprets nothing.
     profile_id: str | None = None
     profile_version: str | None = None
+    #: The scheme / template name the document states, as written.
+    scheme_name: Sourced = _unresolved_field()
 
 
 @dataclass(frozen=True)
@@ -309,6 +315,18 @@ class CanonicalDistanceProtectionModel:
         """Every `Sourced` value in the model with a dotted path, for review
         and confirmation workflows."""
         yield from _walk("", self)
+
+    def referenced_setting_ids(self) -> frozenset[str]:
+        """Every raw `setting_id` the model accounts for: cited by any value's
+        provenance, or carried as an `UnresolvedSetting`. A raw setting in
+        neither set was silently discarded by the profile."""
+        ids: set[str] = set()
+        for _, sourced in self.iter_sourced():
+            ids.update(ref.setting_id for ref in sourced.provenance.sources)
+        ids.update(u.setting_id for u in self.unmapped_settings)
+        for zone in self.zones:
+            ids.update(u.setting_id for u in zone.unresolved_settings)
+        return frozenset(ids)
 
     def items_needing_confirmation(self) -> tuple[str, ...]:
         return tuple(path for path, s in self.iter_sourced() if s.needs_confirmation)

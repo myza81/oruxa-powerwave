@@ -31,6 +31,7 @@ from app.domain.relay_import.identification import (
     RelayIdentificationDescriptor,
 )
 from app.domain.relay_import.profile import RelayProfileRegistry
+from app.relay_profiles.micom_p441 import MicomP441Profile
 
 SCHNEIDER = "Schneider Electric"
 SIEMENS = "Siemens"
@@ -172,8 +173,11 @@ IDENTIFICATION_DESCRIPTORS: tuple[RelayIdentificationDescriptor, ...] = (
 
 
 def build_registry() -> RelayProfileRegistry:
-    """A fresh registry carrying the identification catalogue (no profiles)."""
+    """A fresh registry: the identification catalogue plus the interpretation
+    profiles that exist. Only the MiCOM P441 has one (Slice 6, awaiting
+    validation); every other catalogued relay is identification-only."""
     return RelayProfileRegistry(
+        profiles=(MicomP441Profile(),),
         identification_descriptors=IDENTIFICATION_DESCRIPTORS,
         manufacturer_aliases=MANUFACTURER_ALIASES,
     )
@@ -181,6 +185,7 @@ def build_registry() -> RelayProfileRegistry:
 
 @lru_cache(maxsize=1)
 def default_registry() -> RelayProfileRegistry:
-    """Shared read-only registry used by the upload service. Identification is
-    stateless, so one instance is safe across requests; do not register into it."""
+    """Shared read-only registry used by the upload service. Identification and
+    interpretation are stateless, so one instance is safe across requests; do not
+    register into it."""
     return build_registry()

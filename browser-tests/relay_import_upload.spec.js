@@ -1,6 +1,7 @@
-// Relay Import Slice 3/4/5 -- Import Relay Settings (ephemeral upload, generic
-// text extraction summary, relay identification verdict) -- real-browser
-// coverage. No relay interpretation or auto-population. Runs against LOCAL code; no
+// Relay Import Slice 3/4/5/6 -- Import Relay Settings (ephemeral upload, generic
+// text extraction summary, relay identification verdict, P441 interpretation
+// SUMMARY) -- real-browser coverage. Interpreted is never applied: nothing here
+// auto-populates the form. Runs against LOCAL code; no
 // recording is needed (Distance Protection's Manual mode stands alone).
 //
 // frontend/config.js pins the API to :8000. When PW_BACKEND_PORT is set
@@ -328,4 +329,147 @@ test("a relay without a recorded manufacturer shows just its model", async ({ pa
   await openDistance(page);
   await pick(page, "old.pdf", sheet("LFZP111_1A", "KZ1 1"));
   await expect(page.locator("#wwRelayImportIdentity")).toHaveText("LFZP111");
+});
+
+// ---------------------------------------------------------------------------
+// Slice 6 -- P441 interpretation summary (interpreted, never applied)
+// ---------------------------------------------------------------------------
+
+// A P441-shaped setting sheet: code | name | value | printed range in four columns.
+const P441_ROWS = [
+  ["0903", "Active Settings", "Group 1", "Grp 1/2/3/4"],
+  ["090D", "Dist. Protection", "Enabled", "Enabled/Disabled"],
+  ["092E", "Setting Values", "Secondary", "Sec'y/Primary"],
+  ["0A01", "Main VT Primary", "132000", "100-1000000V"],
+  ["0A02", "Main VT Sec'y", "110", "80-140V"],
+  ["0A07", "Phase CT Primary", "1200", "1-30000A"],
+  ["0A08", "Phase CT Sec'y", "1", "1A/5A"],
+  ["0D07", "Distance Unit", "Kilometres", "Miles/km"],
+  ["3002", "Line Length", "7.03", "0.3-1000"],
+  ["3004", "Line Impedance", "2", "0.001-500 /I1"],
+  ["3005", "Line Angle", "80", "-90 to +90 deg."],
+  ["3007", "Zone Status", "01010", "P441 Zone Status"],
+  ["3008", "kZ1 Res Comp", "0.718", "0-7"],
+  ["3009", "kZ1 Angle", "-11.5", "-180 to +180 deg."],
+  ["300A", "Z1", "1.43", "0.001-500 /I1"],
+  ["300C", "R1G", "7.02", "0-400 /I1"],
+  ["300D", "R1Ph", "2.11", "0-400 /I1"],
+  ["300E", "tZ1", "0", "0-10.0 s"],
+  ["3011", "Z2", "2.13", "0.001-500 /I1"],
+  ["3012", "R2G", "10.47", "0-400 /I1"],
+  ["3013", "R2Ph", "3.14", "0-400 /I1"],
+  ["3014", "tZ2", "0.3", "0-10.0 s"],
+  ["3017", "Z3", "4.48", "0.001-500 /I1"],
+  ["3018", "R3G-R4G", "17.19", "0-400 /I1"],
+  ["3019", "R3Ph-R4Ph", "6.34", "0-400 /I1"],
+  ["301A", "tZ3", "3", "0-10.0 s"],
+  ["301B", "Z4", "0.36", "0.001-500 /I1"],
+  ["301C", "tZ4", "3", "0-10.0 s"],
+  ["3103", "Fault Type", "Both Enabled", "44x Fault Type"],
+];
+const P441_X = [40, 230, 340, 450];
+function p441Pdf(notes = ["Zone 4 Defeated"]) {
+  let y = 800;
+  const lines = [[40, y, "LZOP: 132kV AAAA - BBBB"], [230, y, "Scheme: SE_P441?A1???038?JE"]];
+  for (const row of P441_ROWS) {
+    y -= 12;
+    row.forEach((cell, i) => lines.push([P441_X[i], y, cell]));
+  }
+  for (const note of notes) {
+    y -= 12;
+    lines.push([40, y, note]);
+  }
+  return buildPdf(lines);
+}
+const P441_SUMMARY = /^\d+ zones found · \d+ settings mapped · \d+ to confirm · \d+ unresolved$/;
+
+test("a P441 is interpreted, summarised, and NOTHING is applied to the form", async ({ page }) => {
+  await openDistance(page);
+  const inputs = ["#wwDistanceZone1ReachInput", "#wwDistanceZone2ReachInput", "#wwDistanceZone2DelayInput"];
+  const before = [];
+  for (const sel of inputs) before.push(await page.locator(sel).inputValue());
+  await pick(page, "document.pdf", p441Pdf());
+  await expect(page.locator("#wwRelayImportIdentity")).toHaveText("Schneider Electric · P441");
+  await expect(page.locator("#wwRelayImportDetail")).toHaveText(
+    "Relay identified and settings interpreted. Review is required before applying. Nothing has been applied to the form.",
+  );
+  await expect(page.locator("#wwRelayImportSummary")).toHaveText(P441_SUMMARY);
+  await expect(page.locator("#wwRelayImportSummary")).toContainText("5 zones found");
+  // Interpreted, but never applied: the manual form is exactly as it was.
+  for (let i = 0; i < inputs.length; i++) await expect(page.locator(inputs[i])).toHaveValue(before[i]);
+  await expect(page.locator("#wwRelayImportFile")).not.toContainText(/validated/i);
+  await expect(page.locator("#wwRelayImportPanel").getByRole("button", { name: /apply/i })).toHaveCount(0);
+  // No settings value leaks into the card.
+  const card = await page.locator("#wwRelayImportFile").innerText();
+  for (const value of ["1.43", "7.02", "17.19", "132000"]) expect(card).not.toContain(value);
+
+  await page.locator("#wwRelayImportRemoveBtn").click();
+  await expect(page.locator("#wwRelayImportSummary")).toHaveText("");
+  await expect(page.locator("#wwRelayImportFile")).toBeHidden();
+});
+
+test("a second upload replaces the P441 summary and a non-P441 relay shows none", async ({ page }) => {
+  await openDistance(page);
+  await pick(page, "p441.pdf", p441Pdf());
+  await expect(page.locator("#wwRelayImportSummary")).toHaveText(P441_SUMMARY);
+  await pick(page, "siemens.pdf", SIEMENS_PDF);
+  await expect(page.locator("#wwRelayImportIdentity")).toHaveText("Siemens · 7SA613");
+  await expect(page.locator("#wwRelayImportDetail")).toHaveText("Relay identified. Settings have not been interpreted yet.");
+  await expect(page.locator("#wwRelayImportSummary")).toHaveText("");
+  await expect(page.locator("#wwRelayImportSummary")).toBeHidden();
+});
+
+test("summary wording for each interpretation outcome (backend response shapes)", async ({ page }) => {
+  const reply = (extra) => (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        filename: "p441.pdf", source_format: "pdf", size_bytes: 900, status: "accepted",
+        extraction_status: "text_extracted", page_count: 5, pages_with_text: 5, raw_entry_count: 361,
+        section_count: 3, extraction_warnings: [], identification_status: "identified",
+        manufacturer: "Schneider Electric", relay_family: "MiCOM P44x", model: "P441",
+        profile_id: "schneider-micom-p441", confidence: "high", identification_warnings: [],
+        interpretation_warnings: [], ...extra,
+      }),
+    });
+  const respondWith = async (extra) => {
+    await page.unroute("**/api/v1/relay-import/upload").catch(() => {});
+    await page.route("**/api/v1/relay-import/upload", reply(extra));
+    await pick(page, "p441.pdf", p441Pdf());
+  };
+  await openDistance(page);
+  await respondWith({
+    interpretation_status: "interpreted", profile_version: "micom-p441-v1", zone_count: 1,
+    mapped_setting_count: 1, inferred_setting_count: 0, unresolved_setting_count: 0,
+  });
+  await expect(page.locator("#wwRelayImportSummary")).toHaveText("1 zone found · 1 setting mapped");
+
+  await respondWith({
+    interpretation_status: "interpreted", profile_version: "micom-p441-v1", zone_count: 4,
+    mapped_setting_count: 32, inferred_setting_count: 7, unresolved_setting_count: 3,
+  });
+  await expect(page.locator("#wwRelayImportSummary")).toHaveText("4 zones found · 32 settings mapped · 7 to confirm · 3 unresolved");
+
+  await respondWith({ interpretation_status: "incomplete", profile_version: "micom-p441-v1", zone_count: 0 });
+  await expect(page.locator("#wwRelayImportDetail")).toHaveText(
+    "Relay identified, but no distance zones could be interpreted. You can continue with manual entry.",
+  );
+  await expect(page.locator("#wwRelayImportSummary")).toHaveText("");
+
+  await respondWith({ interpretation_status: "failed", profile_version: "micom-p441-v1" });
+  await expect(page.locator("#wwRelayImportDetail")).toHaveText(
+    "Relay identified, but its settings could not be interpreted. You can continue with manual entry.",
+  );
+  await expect(page.locator("#wwRelayImportError")).toBeHidden();
+  await page.unroute("**/api/v1/relay-import/upload");
+});
+
+test("the interpretation summary never causes horizontal scrolling on a narrow screen", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await openDistance(page);
+  await pick(page, "p441.pdf", p441Pdf());
+  await expect(page.locator("#wwRelayImportSummary")).toHaveText(P441_SUMMARY);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  expect(overflow).toBe(false);
 });

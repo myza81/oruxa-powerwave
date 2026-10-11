@@ -145,6 +145,53 @@ class TestIdentificationDisplay:
             assert forbidden not in js
 
 
+class TestInterpretationDisplay:
+    """Slice 6: an interpretation SUMMARY is shown; nothing is applied."""
+
+    def test_summary_line_sits_after_the_detail_line(self):
+        card = _slice(_distance_panel(_source()), 'id="wwRelayImportFile"', 'id="wwRelayImportError"')
+        assert card.index("wwRelayImportDetail") < card.index("wwRelayImportSummary") < card.index("wwRelayImportRemoveBtn")
+        assert '.ww-relay-import-detail:empty { display: none; }' in _source()
+
+    def test_messages_make_clear_it_was_interpreted_but_not_applied(self):
+        js = _relay_import_js(_source())
+        assert (
+            "Relay identified and settings interpreted. Review is required before applying. "
+            "Nothing has been applied to the form."
+        ) in js
+        assert "Relay identified, but no distance zones could be interpreted." in js
+        assert "Relay identified, but its settings could not be interpreted." in js
+        # Identification-only relays keep their Slice 5 wording.
+        assert "Relay identified. Settings have not been interpreted yet." in js
+
+    def test_summary_text_is_zones_mapped_to_confirm_and_unresolved(self):
+        js = _relay_import_js(_source())
+        for needle in ('"zone found"', '"zones found"', '"setting mapped"', '"settings mapped"', '" to confirm"', '" unresolved"'):
+            assert needle in js
+
+    def test_only_summary_counts_are_read_from_the_response(self):
+        js = _relay_import_js(_source())
+        for field in ("interpretation_status", "zone_count", "mapped_setting_count", "inferred_setting_count", "unresolved_setting_count"):
+            assert f"body.{field}" in js
+        for forbidden in ("interpretation_warnings", "body.profile_version", "Validated", "validated"):
+            assert forbidden not in js
+
+    def test_interpretation_state_is_cleared_with_the_rest(self):
+        js = _relay_import_js(_source())
+        clear = _slice(js, "function wwRelayImportClearInterpretation", "function wwRelayImportSummaryText")
+        for needle in ('interpretationStatus = ""', "zoneCount = 0", "mappedCount = 0", "inferredCount = 0", "unresolvedCount = 0"):
+            assert needle in clear
+        reset = _slice(js, "function wwRelayImportReset", "function wwRelayImportRender")
+        assert "wwRelayImportClearInterpretation(wwRelayImportState)" in reset
+        handle = js[js.index("async function wwRelayImportHandleFile"):]
+        assert "wwRelayImportClearInterpretation(state)" in handle
+
+    def test_summary_is_rendered_as_text(self):
+        js = _relay_import_js(_source())
+        assert 'getElementById("wwRelayImportSummary").textContent = ' in js
+        assert "innerHTML" not in js
+
+
 class TestEphemeralState:
     def test_state_is_a_plain_in_memory_object_starting_idle(self):
         js = _relay_import_js(_source())

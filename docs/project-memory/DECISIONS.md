@@ -25107,6 +25107,26 @@ sequential ids).
   interpreted, the canonical model and form are untouched, and `Validated` is
   reserved for profiles that pass owner UAT with real files. Details in
   [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-5--relay-identification-framework).
+- **Slice 6 addendum (2026-10-11)**: the first engineering interpretation
+  profile, **MiCOM P441, `micom-p441-v1`**, status **Implemented / Awaiting
+  Validation** (`Validated` only after owner UAT against the real setting
+  file). `RawRelayDocument -> MicomP441Profile -> CanonicalDistanceProtectionModel`
+  -> the existing engine adapter as a read-only check. All P441 knowledge lives
+  in `app/relay_profiles/micom_p441.py` (enforced by a tree-wide test); routing
+  is by an `identified` verdict whose profile id matches exactly, so every other
+  family stays identification-only (`not_supported`). Settings are read only when
+  parameter code **and** name match; units come from the printed range and are
+  never scaled; nothing is defaulted, no CT/VT or K0/Kr-Kx conversion is made.
+  Values the sheet does not state are `inferred` (confirmation recommended).
+  Zone 4 carries numbers but is reported **defeated** from the scheme notes, with
+  its numbers kept. The `3007 Zone Status` bit string is **not decoded** (Zone P's
+  state stays unresolved) and no left-hand resistive reach is invented, so the
+  engine adapter reports the sample unsupported -- the engine was not changed. The
+  upload response gains an interpretation summary (counts and fixed phrases, no
+  document values); **nothing is applied to the form** and there is no Apply /
+  Extraction Review yet. The temporary id `DEC-RELAY-IMPORT-1` is kept until
+  integration. Details in
+  [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-6--micom-p441-engineering-interpretation-micom-p441-v1).
 - **Scope**: Slice 1 is contracts + tests only -- no extraction, parsing,
   upload UI, auto-population, rendering change or persistence.
 

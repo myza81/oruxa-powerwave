@@ -7,6 +7,23 @@ history already provides the detailed historical trail.
 Last updated: **2026-10-05** (Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
+## Relay import Slice 6 (2026-10-11, `feature/distance-relay-import`)
+
+First engineering interpretation profile: **MiCOM P441, `micom-p441-v1`**
+(`app/relay_profiles/micom_p441.py`), *Implemented / Awaiting Validation* -- not
+`Validated` until owner UAT against the real setting file. The upload response
+and card gain an interpretation **summary** only; nothing is applied to the form
+and there is no Apply / Extraction Review UI. Other families remain
+identification-only. Details, exact mapped semantics and limits:
+[RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-6--micom-p441-engineering-interpretation-micom-p441-v1).
+**Stopped at the owner UAT gate -- do not start Slice 7 (Extraction Review /
+Apply) until the owner has UAT'd and approved Slice 6.** Open points for the
+owner / P44x manual: bit layout of `3007 Zone Status` (Zone P is unresolved
+without it); the P441 left-hand resistive reach rule (the engine adapter needs a
+reverse resistive reach, so the sample is reported unsupported); whether
+`R<n>Ph` is a loop or per-phase value; the K0-style reading of `kZn`. Not merged;
+Oscillation branch not rebased. Real-sample suite: `RELAY_SAMPLE_PDF_DIR`.
+
 ## Relay import Slice 5 (2026-10-11, `feature/distance-relay-import`)
 
 Relay identification framework: `RawRelayDocument -> RelayIdentifier ->

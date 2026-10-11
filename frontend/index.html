@@ -11772,6 +11772,7 @@
                                         <span class="ww-relay-import-identity" id="wwRelayImportIdentity"></span>
                                         <span class="ww-relay-import-meta" id="wwRelayImportStatus" role="status" aria-live="polite"></span>
                                         <span class="ww-relay-import-detail" id="wwRelayImportDetail"></span>
+                                        <span class="ww-relay-import-detail" id="wwRelayImportSummary"></span>
                                     </div>
                                     <button type="button" class="secondary" id="wwRelayImportRemoveBtn">Remove</button>
                                 </div>
@@ -54772,7 +54773,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // no backend session): a hard refresh starts clean. The backend
         // validates the file, runs generic text extraction and returns counts
         // only; nothing is interpreted or read into Distance Protection
-        // settings in this slice.
+        // settings in this slice. Slice 6 adds an interpretation SUMMARY (counts
+        // only) for a relay that has a profile -- interpreted is not applied:
+        // nothing here ever writes to the Distance Protection form.
         const wwRelayImportState = {
             phase: "idle", // idle | uploading | accepted | error
             filename: "",
@@ -54786,9 +54789,31 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             identificationStatus: "", // identified | ambiguous | unknown | "" (not attempted)
             manufacturer: "",
             model: "",
+            // Slice 6 interpretation summary (counts only; interpreted != applied).
+            interpretationStatus: "", // interpreted | incomplete | not_supported | failed | "" (not attempted)
+            zoneCount: 0,
+            mappedCount: 0,
+            inferredCount: 0,
+            unresolvedCount: 0,
             error: "",
             controller: null,
         };
+        function wwRelayImportClearInterpretation(state) {
+            state.interpretationStatus = "";
+            state.zoneCount = 0;
+            state.mappedCount = 0;
+            state.inferredCount = 0;
+            state.unresolvedCount = 0;
+        }
+        // "5 zones found · 33 settings mapped · 36 to confirm · 6 unresolved"
+        function wwRelayImportSummaryText(state) {
+            const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
+            const parts = [plural(state.zoneCount, "zone found", "zones found"),
+                plural(state.mappedCount, "setting mapped", "settings mapped")];
+            if (state.inferredCount > 0) parts.push(state.inferredCount + " to confirm");
+            if (state.unresolvedCount > 0) parts.push(state.unresolvedCount + " unresolved");
+            return parts.join(" · ");
+        }
         function wwRelayImportReset() {
             if (wwRelayImportState.controller) wwRelayImportState.controller.abort();
             wwRelayImportState.phase = "idle";
@@ -54801,6 +54826,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwRelayImportState.identificationStatus = "";
             wwRelayImportState.manufacturer = "";
             wwRelayImportState.model = "";
+            wwRelayImportClearInterpretation(wwRelayImportState);
             wwRelayImportState.error = "";
             wwRelayImportState.controller = null;
             const input = document.getElementById("wwRelayImportFileInput");
@@ -54822,6 +54848,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             let text = "";
             let detail = "";
             let identity = "";
+            let summary = "";
             if (state.phase === "uploading") {
                 text = "Processing…";
             } else if (state.phase === "accepted") {
@@ -54831,7 +54858,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     parts.push(state.rawEntryCount + (state.rawEntryCount === 1 ? " raw entry" : " raw entries"));
                     if (state.identificationStatus === "identified") {
                         identity = [state.manufacturer, state.model].filter(Boolean).join(" · ");
-                        detail = "Relay identified. Settings have not been interpreted yet.";
+                        if (state.interpretationStatus === "interpreted") {
+                            detail = "Relay identified and settings interpreted. Review is required before applying. Nothing has been applied to the form.";
+                            summary = wwRelayImportSummaryText(state);
+                        } else if (state.interpretationStatus === "incomplete") {
+                            detail = "Relay identified, but no distance zones could be interpreted. You can continue with manual entry.";
+                        } else if (state.interpretationStatus === "failed") {
+                            detail = "Relay identified, but its settings could not be interpreted. You can continue with manual entry.";
+                        } else {
+                            detail = "Relay identified. Settings have not been interpreted yet.";
+                        }
                     } else if (state.identificationStatus === "ambiguous") {
                         identity = state.manufacturer;
                         detail = "Relay identification needs confirmation.";
@@ -54852,6 +54888,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("wwRelayImportIdentity").textContent = showFile ? identity : "";
             document.getElementById("wwRelayImportStatus").textContent = text;
             document.getElementById("wwRelayImportDetail").textContent = detail;
+            document.getElementById("wwRelayImportSummary").textContent = showFile ? summary : "";
             const importBtn = document.getElementById("wwRelayImportBtn");
             if (importBtn) importBtn.disabled = state.phase === "uploading";
             error.hidden = state.phase !== "error";
@@ -54873,6 +54910,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             state.identificationStatus = "";
             state.manufacturer = "";
             state.model = "";
+            wwRelayImportClearInterpretation(state);
             state.error = "";
             if (!/\.pdf$/i.test(file.name)) {
                 state.phase = "error";
@@ -54915,6 +54953,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     state.identificationStatus = body.identification_status || "";
                     state.manufacturer = body.manufacturer || "";
                     state.model = body.model || "";
+                    state.interpretationStatus = body.interpretation_status || "";
+                    state.zoneCount = body.zone_count || 0;
+                    state.mappedCount = body.mapped_setting_count || 0;
+                    state.inferredCount = body.inferred_setting_count || 0;
+                    state.unresolvedCount = body.unresolved_setting_count || 0;
                 }
             } catch (networkError) {
                 if (state.controller !== controller) return;

@@ -4,10 +4,13 @@ Relay Import Slice 3 + 4. This module owns the file lifecycle and
 validation: "is this a plausible relay-setting file of a supported format,
 how big is it?", then hands the bytes to the format's generic extractor
 (Slice 4, `relay_pdf_extractor`), asks the relay identifier (Slice 5) which
-relay the resulting RawRelayDocument most likely belongs to, and reduces both
-to a small summary. It does NOT interpret settings -- identification names
-the relay, nothing more. The RawRelayDocument is request-scoped: it is built,
-identified, counted and dropped here, never stored.
+relay the resulting RawRelayDocument most likely belongs to and, for a relay that
+has an interpretation profile (Slice 6: one relay so far), interprets it
+(``relay_interpretation_summary``); all of it is reduced to a small summary.
+Identification names the relay, interpretation reads its settings -- neither
+applies anything to the Distance Protection form. The RawRelayDocument and
+canonical model are request-scoped: built, summarised and dropped here, never
+stored.
 
 Raw-file lifecycle: the upload is read into a bounded in-memory ``bytes``
 value, inspected, and dropped when this function returns; nothing is
@@ -29,6 +32,7 @@ from app.domain.relay_import.identification import RelayIdentification
 from app.domain.relay_import.raw_document import SourceFormat
 from app.relay_profiles.identification_catalogue import default_registry
 from app.services.errors import EmptyFileError, InvalidFileError, UnsupportedFileTypeError
+from app.services.relay_interpretation_summary import RelayInterpretationSummary, summarize_interpretation
 from app.services.relay_pdf_extractor import PdfExtractionResult, PdfExtractionStatus, extract_pdf
 from app.services.upload_utils import read_bounded
 
@@ -83,6 +87,8 @@ class RelayExtractionSummary:
     warnings: tuple[str, ...]
     #: ``None`` when no text could be read, so there was nothing to identify.
     identification: RelayIdentificationSummary | None = None
+    #: Slice 6. ``None`` when no text could be read.
+    interpretation: RelayInterpretationSummary | None = None
 
 
 @dataclass(frozen=True)
@@ -116,6 +122,8 @@ def _summarize_pdf(data: bytes) -> RelayExtractionSummary:
     if result.status is PdfExtractionStatus.UNREADABLE:
         raise InvalidFileError("The file is not a readable PDF.")
     document = result.document
+    registry = default_registry()
+    identification = registry.identify(document) if document else None
     return RelayExtractionSummary(
         status=result.status.value,
         page_count=result.page_count,
@@ -123,7 +131,8 @@ def _summarize_pdf(data: bytes) -> RelayExtractionSummary:
         raw_entry_count=len(document.settings) if document else 0,
         section_count=result.heading_count,
         warnings=result.warnings,
-        identification=summarize_identification(default_registry().identify(document)) if document else None,
+        identification=summarize_identification(identification) if identification else None,
+        interpretation=summarize_interpretation(registry, document, identification) if identification else None,
     )
 
 

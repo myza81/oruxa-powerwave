@@ -1,9 +1,10 @@
 # Relay Settings Import — Architecture (Slice 1: foundation)
 
-Status: **Slices 1-5** (domain contracts, manual entry + engine adapter,
-ephemeral upload, generic PDF extraction, relay identification) implemented on
-`feature/distance-relay-import`. Relay profiles, engineering interpretation and
-auto-population are later slices. Approval record:
+Status: **Slices 1-6** (domain contracts, manual entry + engine adapter,
+ephemeral upload, generic PDF extraction, relay identification, MiCOM P441
+interpretation profile) implemented on `feature/distance-relay-import`.
+Slice 6 is **Implemented / Awaiting Validation** (owner UAT pending). Every
+other relay is identification-only; auto-population / Apply are later slices. Approval record:
 [DECISIONS.md — DEC-RELAY-IMPORT-1](DECISIONS.md#dec-relay-import-1--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
 ## Purpose
@@ -532,6 +533,145 @@ auto-population.
   signatures; add them to the catalogue, not to the identifier.
 - Scanned or encrypted documents have no text to identify (status `null`).
 
+## Slice 6 — MiCOM P441 engineering interpretation (`micom-p441-v1`)
+
+Status: **Implemented / Awaiting Validation.** It becomes `Validated` only after
+owner UAT against the real P441 setting file; until then no UI, API field or
+document calls it validated. **Interpreted is not applied:** nothing is written
+to the Distance Protection form, there is no Apply button, no Extraction Review
+UI, no persistence, no plotting from imported settings and no AI/LLM step.
+
+```text
+RawRelayDocument -> RelayIdentifier -> (identified P441 only) MicomP441Profile
+     -> CanonicalDistanceProtectionModel -> existing adapt_to_engine() (read-only check)
+     -> interpretation SUMMARY in the upload response
+```
+
+| Module | Holds |
+|---|---|
+| `relay_profiles/micom_p441.py` | **all P441 knowledge**: parameter codes and expected names, unit/basis rules, shared Zone 3/4 settings, scheme-note wording; `MicomP441Profile` (`profile_id` `schneider-micom-p441`, `version` `micom-p441-v1`) |
+| `relay_profiles/identification_catalogue.py` | registers the profile beside the identification descriptors (the only registered profile) |
+| `domain/relay_import/profile.py` | `RelayProfileRegistry.profile_for(identification)`: a profile is returned only for an `identified` verdict whose `profile_id` matches exactly; ambiguous / unknown / any other family returns `None` |
+| `services/relay_interpretation_summary.py` | runs the profile, counts, runs the engine adapter as a read-only check, reduces to counts + fixed phrases; a profile exception becomes `failed`, never a 500 |
+
+Generic domain changes (relay-neutral): `UnresolvedSetting.out_of_scope`,
+`RelayMetadata.scheme_name`, `CanonicalDistanceProtectionModel.referenced_setting_ids()`.
+The generic extractor, the identifier, the canonical model, the adapter and the
+distance engine contain no P441 name (a test scans the whole `app/` tree: only
+`micom_p441.py` and the catalogue may mention it).
+
+### How a setting is read
+
+A setting is trusted only when its parameter **code and name** both match this
+version's table (a known code under another name is unresolved). Then:
+
+* **duplicates** — identical duplicates map with a note; conflicting duplicates
+  are unresolved and cite every entry (nothing chosen);
+* **numbers** — plain decimals only (`1,43`, `1e3`, `NaN`, `1.43 ohm` are
+  unresolved, raw text kept) and inside the printed range;
+* **units** — taken from the printed range/unit cell, never assumed, never
+  scaled: `A`, `V` (so `kV` is unresolved, no x1000), `s` (so `ms` is
+  unresolved), `deg`, dimensionless factors; impedances are secondary ohms only
+  for the printed `/I1` marker **with a 1 A CT secondary** (or an explicit
+  ohm unit);
+* **missing** — unresolved with a note; never defaulted.
+
+Statuses: **mapped** = stated by the sheet; **inferred** = rests on P441 family
+knowledge the sheet does not repeat (each carries a note saying why, and is
+counted as "to confirm"); **unresolved** = kept raw, no engineering value.
+
+### Exact semantics (v1)
+
+| Canonical | Source | Status |
+|---|---|---|
+| model, scheme name | `Scheme:` field (`SE_P441?A1???038?JE`) | mapped; source wording kept in `raw_value` |
+| manufacturer, family | normalised from the catalogue (the sheet does not name them) | mapped, with a note |
+| firmware version | only a free-text `Minor Ver.` marker exists | **unresolved**, marker kept raw |
+| active setting group | `0903 Active Settings` | mapped |
+| CT primary/secondary, VT primary/secondary | `0A07`, `0A08`, `0A01`, `0A02` | mapped |
+| setting basis | `092E Setting Values` (Secondary / Primary) | mapped; the `Measure't Setup` display selections are **not** the settings basis |
+| voltage / current base | not a P441 setting | unresolved (nothing invented) |
+| line length + unit | `3002` with `0D07 Distance Unit` (km / mile, not converted) | mapped (unit unresolved without `0D07`) |
+| line angle | `3005` | mapped |
+| line impedance magnitude | `3004`, kept as an extra, **not** combined with the angle | mapped; positive-sequence impedance left unresolved (the sheet names no sequence) |
+| zone reach | `Z1/Z2/Z3/Z4/Zp` as polar magnitude at the **line angle** | inferred (angle per zone is not restated) |
+| resistive reach | `R<n>Ph` -> phase-phase, `R<n>G` -> phase-earth, always separate | mapped; `common` and **reverse** stay unresolved |
+| zone delay | `tZ1/tZ2/tZ3/tZ4/tZp` -> common timer | mapped |
+| characteristic | quadrilateral (P441 family; sheet does not name it) | inferred |
+| PP / PE loop enable | `3103 Fault Type = Both Enabled` | inferred |
+| residual compensation | `kZn Res Comp` + `kZn Angle` as a K0-style magnitude/angle pair, **never converted** | inferred |
+| Zones 1-3 status | `090D Dist. Protection = Enabled` + the zone's own settings | inferred |
+| Zones 2-3 direction | scheme notes "Zone 2/3 Forward direction..." | mapped |
+| Zone 1 direction, Zone 4 direction (reverse) | P441 family design (Zone 4 also agrees with the `DIST REV OP` output label) | inferred |
+| Zone P direction | `301D ZoneP - Direct` | mapped |
+| Zone 1 extension reach | `300B Z1X`, kept as a Zone 1 parameter (not a zone) | mapped |
+| Zone 3/4 shared settings | `kZ3/4`, `R3G-R4G`, `R3Ph-R4Ph` cited by **both** zones | as above |
+
+Zones found on the sample: **Z1, Z2, Z3, Z4, ZP** (5). The canonical model is
+not limited to four.
+
+### Zone 4 / defeated logic
+
+Zone 4 carries real numbers (`Z4 0.36`, `tZ4 3`, shared resistive reaches) but
+the sheet's scheme notes say **"Zone 4 Defeated"** (and "To defeat Zone 4 ...",
+and a `3007 Zone Status 11010 -> 01010` revision). The profile reports
+`status = disabled` (inferred, citing the statements and `3007`) and **keeps
+every number**. No statement -> status **unresolved** (never "enabled by
+default"); contradictory statements -> unresolved with a note; negated or
+look-alike wording ("Not Defeated", "Zone 40 Defeated") does not defeat the
+zone; `Dist. Protection = Disabled` disables every zone.
+
+### Deliberately not decoded
+
+* **`3007 Zone Status`** is a bit string (`01010`). Its bit-to-zone layout is not
+  stated by the sheet and is **not decoded** in v1, so it never decides a zone's
+  state; the raw string is preserved. Consequently **Zone P's in-service state
+  is unresolved**.
+* **Tilt angles** (`3026`-`3028`) apply per fault-loop type / zone group and are
+  kept raw in the zones' `unresolved_settings`; no single `tilt_deg` is claimed.
+* **Left-hand (reverse) resistive reach** — the sheet states none, so none is
+  invented (see the adapter result below).
+* Scheme logic, power swing, SOTF, unblocking, etc. are retained raw as
+  distance-related "not interpreted" settings; non-distance settings (recorders,
+  comms, labels, opto/relay mapping) are retained raw and flagged `out_of_scope`.
+  Every raw setting is either cited by a value or carried as an
+  `UnresolvedSetting` (tested on the sample: none is discarded).
+
+### Engine-adapter result (read-only check, nothing changed)
+
+On the owner sample `adapt_to_engine()` reports **unsupported**, for two reasons
+the sheet cannot answer: (1) **Zone P** has no established in-service state, so
+it is treated as a possible fifth zone; (2) the quadrilateral needs a
+**reverse resistive reach** and the sheet states none. The engine and adapter
+were deliberately not changed. Phase-earth operation and residual compensation
+are warned as preserved-but-unused. When a reverse reach and Zone P's state are
+supplied, the model reaches the engine with the **phase-phase** resistive reach
+(2.11 Ω for Zone 1, not the phase-earth 7.02 Ω), reach 1.43 Ω at 80° and delay 0 s
+(tested).
+
+### API and UI
+
+`POST /api/v1/relay-import/upload` adds `interpretation_status`
+(`interpreted | incomplete | not_supported | failed`, `null` when no text),
+`profile_version`, `mapped_setting_count`, `inferred_setting_count`,
+`unresolved_setting_count`, `not_interpreted_setting_count`, `zone_count`,
+`interpretation_warnings`. Counts are canonical values (not raw lines); an
+untouched placeholder for something the relay does not have is not counted as
+unresolved. Warnings are fixed phrases (profile notes and `Engine: ...` adapter
+reasons) with **no document values** (tested). The upload card shows, for an
+interpreted P441, `Schneider Electric · P441`, "Relay identified and settings
+interpreted. Review is required before applying. Nothing has been applied to the
+form." and e.g. `5 zones found · 33 settings mapped · 36 to confirm · 6 unresolved`.
+Every other identified family keeps "Relay identified. Settings have not been
+interpreted yet." and `interpretation_status = not_supported`.
+
+### Limits and open points
+
+See the Slice 6 report in [HANDOFF.md](HANDOFF.md): the `3007` bit layout, the
+P441 left-hand resistive reach rule, whether `R<n>Ph` is a loop or per-phase
+value, and the K0-style reading of `kZn` all need confirmation against the P44x
+technical manual or the owner before Slice 7 (Extraction Review / Apply).
+
 ## Intentionally unresolved in Slice 1
 
 - ~~Mapping onto the existing `ZoneSettings`~~ — done in Slice 2 (above).
@@ -542,5 +682,7 @@ auto-population.
   active group name).
 - ~~Extraction technology, upload API shape~~ -- decided in Slices 3-4 (above).
 - ~~Relay identification heuristics~~ -- Slice 5 (above). Still open: OCR for scanned
-  sheets; engineering profiles / `Validated` status per family; a confirmation UI
-  for ambiguous documents.
+  sheets; a confirmation UI for ambiguous documents.
+- ~~First engineering profile~~ -- Slice 6 (P441, above), awaiting owner UAT before it
+  may be called `Validated`. Still open: profiles for every other family; the
+  Extraction Review / Apply workflow.

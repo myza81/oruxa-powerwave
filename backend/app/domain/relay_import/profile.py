@@ -22,6 +22,7 @@ from app.domain.relay_import.canonical_distance import (
     UnresolvedSetting,
 )
 from app.domain.relay_import.identification import (
+    IdentificationStatus,
     ManufacturerAliases,
     RelayIdentification,
     RelayIdentificationDescriptor,
@@ -130,6 +131,15 @@ class RelayProfileRegistry:
         if self._identifier is None:
             self._identifier = RelayIdentifier(self.identification_descriptors(), self._aliases)
         return self._identifier.identify(document)
+
+    def profile_for(self, identification: RelayIdentification) -> RelayProfile | None:
+        """The registered interpretation profile for an *identified* relay, or
+        None. Only an `identified` verdict routes to a profile -- an ambiguous
+        or unknown document never does -- and the profile id must match
+        exactly, so one relay family can never be read by another's profile."""
+        if identification.status is not IdentificationStatus.IDENTIFIED or not identification.profile_id:
+            return None
+        return next((p for p in self._profiles if p.profile_id == identification.profile_id), None)
 
     def interpret(self, document: RawRelayDocument) -> CanonicalDistanceProtectionModel:
         """Interpret with the single profile that positively recognises the

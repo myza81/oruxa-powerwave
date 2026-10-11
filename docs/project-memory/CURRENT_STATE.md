@@ -174,7 +174,13 @@ manual entry unchanged. **Slice 5:** a deterministic, evidence-scored relay
 identifier (RawRelayDocument -> identified / ambiguous / unknown) with an
 identification-only catalogue of the 12 sample relay lines; the upload card
 names the relay (e.g. "Siemens · 7SA613") but no setting is interpreted and
-nothing is "Validated". See
+nothing is "Validated". **Slice 6:** the first interpretation profile, MiCOM
+P441 (`micom-p441-v1`, *Implemented / Awaiting Validation*), maps the sheet into
+the canonical model with per-value provenance and shows a summary on the upload
+card ("5 zones found - 33 settings mapped - 36 to confirm - 6 unresolved");
+interpreted is **not applied** (no form population, no Apply / Review UI yet),
+Zone 4 is reported defeated with its numbers kept, and every other family stays
+identification-only. See
 [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md).
 
 **Engineering tools and workflow batch (DEC-155 to DEC-165), 2026-10-05.**

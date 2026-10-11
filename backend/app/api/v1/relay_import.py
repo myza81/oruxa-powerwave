@@ -4,9 +4,10 @@ Accepts one file, validates and minimally inspects it, returns basic
 metadata plus generic-extraction counts, and retains nothing -- no database, no StorageBackend, no
 registry, no persistent directory. It deliberately takes no workspace id:
 nothing about the upload is workspace state. Generic text extraction
-(Slice 4) and relay identification (Slice 5) run request-scoped and only
-counts and the identification verdict are returned; interpretation is a
-later slice.
+(Slice 4), relay identification (Slice 5) and, for a relay with a profile,
+interpretation (Slice 6) run request-scoped; only counts, the identification
+verdict and an interpretation summary are returned. Nothing is applied to the
+Distance Protection form.
 """
 
 from __future__ import annotations
@@ -62,6 +63,7 @@ async def upload_relay_setting_file(
             detail=ErrorOut(code="internal_error", message="The file could not be processed.").model_dump(),
         )
     ident = result.extraction.identification
+    interp = result.extraction.interpretation
     return RelayImportUploadOut(
         filename=result.filename,
         source_format=result.source_format.value,
@@ -80,4 +82,12 @@ async def upload_relay_setting_file(
         profile_id=ident.profile_id if ident else None,
         confidence=ident.confidence if ident else None,
         identification_warnings=list(ident.warnings) if ident else [],
+        interpretation_status=interp.status.value if interp else None,
+        profile_version=interp.profile_version if interp else None,
+        mapped_setting_count=interp.mapped_setting_count if interp else 0,
+        inferred_setting_count=interp.inferred_setting_count if interp else 0,
+        unresolved_setting_count=interp.unresolved_setting_count if interp else 0,
+        not_interpreted_setting_count=interp.not_interpreted_setting_count if interp else 0,
+        zone_count=interp.zone_count if interp else 0,
+        interpretation_warnings=list(interp.warnings) if interp else [],
     )
