@@ -332,6 +332,31 @@ class TestEndpoint:
         for key in ("mapped_count", "to_confirm_count", "unresolved_count", "blocking_count", "readiness"):
             assert state[key] == review[key], key
 
+    def test_readiness_is_required_in_every_response_contract(self):
+        from app.schemas.relay_import import ExtractionReviewOut, ReviewStateOut
+
+        for schema in (ReviewStateOut, ExtractionReviewOut):
+            assert schema.model_fields["readiness"].is_required()
+            assert schema.model_fields["engine"].is_required()
+            assert schema.model_fields["blocking_issues"].default == []
+
+    def test_every_successful_validation_returns_a_valid_readiness(self, client):
+        ctx = self._context(client)["validation_context"]
+        bodies = [
+            {},
+            {"confirmed": ["zones[Z1].reach"]},
+            {"manual": [{"item_id": REVERSE.format("Z1"), "value": 0}]},
+            {"left_unresolved": [REVERSE.format("Z1")]},
+            {"manual": [{"item_id": ZP_STATUS, "value": "enabled"}]},
+        ]
+        for extra in bodies:
+            r = client.post(VALIDATE, json={"validation_context": ctx, **extra})
+            assert r.status_code == 200, extra
+            readiness = r.json()["readiness"]
+            assert readiness["status"] in ("not_ready", "ready_after_confirmation", "ready")
+            assert isinstance(readiness["pending_confirmations"], int) and isinstance(readiness["blocking_unresolved"], int)
+            assert r.json()["engine"]["status"] in ("ready", "not_ready")
+
     @pytest.mark.parametrize(
         "mutate",
         [

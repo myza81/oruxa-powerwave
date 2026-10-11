@@ -337,7 +337,18 @@ class TestReviewConfirmation:
 
     def test_a_refused_decision_is_rolled_back(self):
         js = _review_js(_source())
-        assert "state.decisions = before" in js
+        assert "state.decisions = wwRrCloneDecisions(state.reviewGood)" in js
+
+    def test_a_stale_answer_is_discarded_by_version(self):
+        js = _review_js(_source())
+        assert "state.reviewVersion !== version" in js and "const version = ++state.reviewVersion" in js
+        assert "state.reviewController.abort()" in js
+
+    def test_readiness_is_never_read_through_a_possibly_missing_object(self):
+        js = _review_js(_source())
+        assert "live.readiness.status" not in js
+        for needle in ("Re-evaluating…", "Not evaluated", "wwRrUsableState"):
+            assert needle in js, needle
 
     def test_only_inferred_and_resolvable_items_get_decision_controls(self):
         js = _review_js(_source())

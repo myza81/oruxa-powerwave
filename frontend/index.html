@@ -8761,7 +8761,9 @@
         :is(.ww-rr-notice) { font-size: 0.7rem; color: var(--error); }
         :is(.ww-rr-notice):empty { display: none; }
         :is(.ww-rr-sub) { margin-top: 4px; font-weight: 600; }
-        :is(.ww-rr-readiness)[data-readiness="not_ready"] { border-left: 3px solid var(--warn); }
+        :is(.ww-rr-readiness)[data-readiness="not_ready"],
+        :is(.ww-rr-readiness)[data-readiness="unknown"] { border-left: 3px solid var(--warn); }
+        :is(.ww-rr-readiness)[data-readiness="pending"] { border-left: 3px solid var(--panel-border); }
         :is(.ww-rr-readiness)[data-readiness="ready_after_confirmation"] { border-left: 3px solid var(--accent); }
         :is(.ww-rr-readiness)[data-readiness="ready"] { border-left: 3px solid var(--ok); }
         :is(.ww-rr-link) {
@@ -55006,6 +55008,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // `reviewLive` is the backend's reviewed state for those decisions.
             decisions: { confirmed: new Set(), manual: new Map(), left: new Set() },
             reviewLive: null,
+            // Validation lifecycle: `reviewVersion` numbers every decision change; only the
+            // answer to the newest one is applied. `reviewGood` is the last decisions set the
+            // backend accepted; `reviewStale` is true after a failed check (readiness is then
+            // "Not evaluated" until the next successful one).
+            reviewVersion: 0,
+            reviewGood: { confirmed: new Set(), manual: new Map(), left: new Set() },
+            reviewStale: false,
             reviewBusy: false,
             reviewBuilt: false,
             reviewError: "",
@@ -55020,6 +55029,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             state.reviewOpen = false;
             state.decisions = { confirmed: new Set(), manual: new Map(), left: new Set() };
             state.reviewLive = null;
+            state.reviewVersion += 1; // any answer still in flight is now stale
+            state.reviewGood = { confirmed: new Set(), manual: new Map(), left: new Set() };
+            state.reviewStale = false;
             state.reviewBusy = false;
             state.reviewBuilt = false;
             state.reviewError = "";
@@ -55035,7 +55047,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // parts are dropped.
         function wwRelayImportSummaryText(state) {
             const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
-            const live = state.reviewLive || state.review || {
+            const live = state.review ? wwRrLive() : {
                 mapped_count: state.mappedCount, to_confirm_count: state.inferredCount, confirmed_count: 0,
                 resolved_manually_count: 0, unresolved_count: state.unresolvedCount, blocking_count: 0,
             };
@@ -55361,9 +55373,30 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return wrap;
         }
         function wwRrPlural(n, one, many) { return n + " " + (n === 1 ? one : many); }
-        // Live review fields: the backend's reviewed state once there is one.
+        // The decision-dependent review fields, always well-formed: the backend's reviewed
+        // state once there is one, else the upload's. Anything missing or malformed becomes
+        // a safe value (`readiness: null` means "not evaluated"); nothing is ever invented as
+        // ready.
         function wwRrLive() {
-            return wwRelayImportState.reviewLive || wwRelayImportState.review;
+            const state = wwRelayImportState;
+            const src = state.reviewLive || state.review || {};
+            const num = (v) => (Number.isFinite(v) ? v : 0);
+            const r = src.readiness;
+            const readiness = r && typeof r === "object" && Object.prototype.hasOwnProperty.call(WW_RR_READINESS_LABELS, r.status)
+                ? { status: r.status, pending_confirmations: num(r.pending_confirmations), blocking_unresolved: num(r.blocking_unresolved) }
+                : null;
+            const e = src.engine;
+            const engine = e && typeof e === "object"
+                ? { status: e.status === "ready" ? "ready" : "not_ready", warnings: Array.isArray(e.warnings) ? e.warnings : [] }
+                : { status: "not_ready", warnings: [] };
+            const issues = (Array.isArray(src.blocking_issues) ? src.blocking_issues : []).filter((i) => i && typeof i.message === "string")
+                .map((i) => ({ message: i.message, zone_ids: Array.isArray(i.zone_ids) ? i.zone_ids : [], item_ids: Array.isArray(i.item_ids) ? i.item_ids : [] }));
+            return {
+                mapped_count: num(src.mapped_count), to_confirm_count: num(src.to_confirm_count),
+                confirmed_count: num(src.confirmed_count), resolved_manually_count: num(src.resolved_manually_count),
+                unresolved_count: num(src.unresolved_count), blocking_count: num(src.blocking_count),
+                readiness, engine, blocking_issues: issues,
+            };
         }
         function wwRrPendingIds() {
             const ids = [];
@@ -55416,27 +55449,37 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (bulk.childElementCount) box.appendChild(bulk);
             return box;
         }
+        // Never reads through a possibly-missing object: while a check is in flight it says so
+        // (never a stale "Ready to apply"), and with no usable result it says "Not evaluated".
         function wwRrReadiness() {
+            const state = wwRelayImportState;
             const live = wwRrLive();
             const box = wwRrEl("div", "ww-rr-compat ww-rr-readiness");
             box.id = "wwRelayReviewReadiness";
-            box.dataset.readiness = live.readiness.status;
+            const r = live.readiness;
+            const mode = state.reviewBusy ? "pending" : (!r || state.reviewStale ? "unknown" : r.status);
+            box.dataset.readiness = mode;
             const head = wwRrEl("div", "");
             head.appendChild(wwRrEl("strong", "", "Readiness: "));
-            head.appendChild(document.createTextNode(WW_RR_READINESS_LABELS[live.readiness.status]));
+            head.appendChild(document.createTextNode(
+                mode === "pending" ? "Re-evaluating…" : mode === "unknown" ? "Not evaluated" : WW_RR_READINESS_LABELS[mode]));
             box.appendChild(head);
-            const r = live.readiness;
+            if (mode === "pending") return box;
+            if (mode === "unknown") {
+                box.appendChild(wwRrEl("div", "", "Not ready: the review could not be checked, so nothing here can be relied on yet."));
+                return box;
+            }
             if (r.blocking_unresolved > 0) {
                 box.appendChild(wwRrEl("div", "", wwRrPlural(r.blocking_unresolved, "blocking item is", "blocking items are") + " unresolved."));
             }
-            if (live.readiness.status === "not_ready" && r.blocking_unresolved === 0) {
+            if (r.status === "not_ready" && r.blocking_unresolved === 0) {
                 box.appendChild(wwRrEl("div", "", "The current Distance Protection engine cannot take these settings yet."));
             }
             if (r.pending_confirmations > 0) {
                 box.appendChild(wwRrEl("div", "",
                     wwRrPlural(r.pending_confirmations, "inferred value still needs", "inferred values still need") + " confirmation."));
             }
-            if (live.readiness.status === "ready") {
+            if (r.status === "ready") {
                 box.appendChild(wwRrEl("div", "",
                     "Every value is mapped, confirmed or resolved, and the current engine accepts them."));
                 box.appendChild(wwRrEl("div", "ww-rr-dim", "Nothing has been applied. Applying settings is not available yet."));
@@ -55506,15 +55549,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             });
             if (wwRrUi.notice) wwRrUi.notice.textContent = state.reviewError;
         }
-        // Asks the backend to re-evaluate the decisions (stateless: the original
-        // interpretation travels with the request). Resolves {ok, message}.
-        async function wwRrValidate() {
+        // True only for a reviewed state the page can rely on (the backend always sends
+        // readiness on success; a body without it is treated as a failed check).
+        function wwRrUsableState(body) {
+            return !!body && Array.isArray(body.items) && !!body.readiness && typeof body.readiness === "object"
+                && Object.prototype.hasOwnProperty.call(WW_RR_READINESS_LABELS, body.readiness.status);
+        }
+        // Asks the backend to re-evaluate the current decisions (stateless: the original
+        // interpretation travels with the request). `version` is this decision change's
+        // number; the answer is applied only if it is still the newest. Resolves {ok, message}
+        // or {stale: true}.
+        async function wwRrValidate(version) {
             const state = wwRelayImportState;
             const review = state.review;
             const controller = new AbortController();
             state.reviewController = controller;
-            state.reviewBusy = true;
-            wwRrRefreshAll();
             const d = state.decisions;
             const payload = {
                 validation_context: review.validation_context,
@@ -55522,7 +55571,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 manual: [...d.manual].map(([item_id, value]) => ({ item_id, value })),
                 left_unresolved: [...d.left],
             };
-            let result = { ok: false, message: "The review could not be checked. Nothing was changed." };
+            const stale = () => state.review !== review || state.reviewVersion !== version;
+            let result = { ok: false, message: "The review could not be checked. Your latest change was not kept." };
             try {
                 const response = await fetch(apiBaseUrl() + "/api/v1/relay-import/review/validate", {
                     method: "POST", headers: { "Content-Type": "application/json" },
@@ -55530,34 +55580,41 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 });
                 let body = null;
                 try { body = await response.json(); } catch (parseError) { /* non-JSON error body */ }
-                if (state.review !== review || state.reviewController !== controller) return { ok: false, stale: true };
-                if (response.ok) {
+                if (stale()) return { ok: false, stale: true };
+                if (response.ok && wwRrUsableState(body)) {
                     body.itemsById = new Map(body.items.map((item) => [item.item_id, item]));
                     state.reviewLive = body;
+                    state.reviewGood = wwRrCloneDecisions(d);
                     result = { ok: true, message: "" };
-                } else {
+                } else if (!response.ok) {
                     const detail = body && body.detail;
-                    result = { ok: false, message: (detail && typeof detail.message === "string" && detail.message)
-                        || "The review could not be checked. Nothing was changed." };
+                    if (detail && typeof detail.message === "string" && detail.message) result.message = detail.message;
                 }
             } catch (networkError) {
-                if (state.review !== review || state.reviewController !== controller) return { ok: false, stale: true };
-                result = { ok: false, message: "Could not reach the server. Nothing was changed." };
+                if (stale()) return { ok: false, stale: true };
+                result = { ok: false, message: "Could not reach the server. Your latest change was not kept." };
             }
             state.reviewController = null;
             state.reviewBusy = false;
+            state.reviewStale = !result.ok;
             state.reviewError = result.ok ? "" : result.message;
             return result;
         }
-        // Applies one decision change, validates it, and rolls it back if the backend refuses.
+        // Applies a decision change at once, then asks the backend. A newer change supersedes
+        // an older one still in flight (its answer is discarded); if the newest check fails the
+        // decisions go back to the last set the backend accepted and readiness reads "Not
+        // evaluated" until a check succeeds.
         async function wwRrCommit(mutate, editor) {
             const state = wwRelayImportState;
-            if (!state.review || state.reviewBusy) return { ok: false };
-            const before = wwRrCloneDecisions(state.decisions);
+            if (!state.review) return { ok: false };
+            if (state.reviewController) state.reviewController.abort();
             mutate(state.decisions);
-            const result = await wwRrValidate();
+            const version = ++state.reviewVersion;
+            state.reviewBusy = true;
+            wwRrRefreshAll();
+            const result = await wwRrValidate(version);
             if (result.stale) return result;
-            if (!result.ok) state.decisions = before;
+            if (!result.ok) state.decisions = wwRrCloneDecisions(state.reviewGood);
             wwRelayImportRender(); // card summary, and an in-place refresh of the open review
             if (editor) {
                 const error = editor.querySelector(".ww-rr-resolve-error");
