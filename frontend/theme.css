@@ -131,6 +131,15 @@
     --ww-dist-zone2: #64748b;
     --ww-dist-zone3: #94a3b8;
     --ww-dist-zone4: #0f766e;  /* Reverse Zone: a distinct hue, not another slate step */
+
+    /* Distance Protection zone-CARD accent only (the R-X boundaries keep
+       --ww-dist-zone1..4 above): one muted blue-slate family, strongest to
+       softest. The Reverse Zone is the softest -- it is disabled by
+       default -- and the identity never changes with enabled/disabled. */
+    --ww-dist-card-zone1: #4f6b95;
+    --ww-dist-card-zone2: #7185a6;
+    --ww-dist-card-zone3: #94a3b8;
+    --ww-dist-card-zone4: #c7cdd6;
 }
 
 :root[data-theme="dark"] {
@@ -206,6 +215,13 @@
     --ww-dist-zone2: #94a3b8;
     --ww-dist-zone3: #64748b;
     --ww-dist-zone4: #5eead4;
+
+    /* Zone-card accent, dark surface: same hierarchy, derived by dimming
+       toward the panel so the Reverse Zone stays the softest. */
+    --ww-dist-card-zone1: #8fa6cc;
+    --ww-dist-card-zone2: #7189ae;
+    --ww-dist-card-zone3: #566a88;
+    --ww-dist-card-zone4: #46546b;
 }
 
 /* Phase 3B-UAT9: slim, borderless scrollbars -- one shared rule set for

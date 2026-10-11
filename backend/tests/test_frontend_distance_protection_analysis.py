@@ -159,7 +159,7 @@ class TestDistanceZoneSettingsGrid:
     def test_each_zone_has_enabled_delay_angle_and_characteristic_specific_reach_fields(self):
         source = _source()
         for n in (1, 2, 3):
-            card = _function_body(source, f'id="wwDistanceZone{n}Enabled"', f'ww-dist-zone-card" style="--zone-color: var(--ww-dist-zone{n + 1})' if n < 3 else '<div class="ww-oc-manual-input-section')
+            card = _function_body(source, f'id="wwDistanceZone{n}Enabled"', f'ww-dist-zone-card" style="--zone-color: var(--ww-dist-card-zone{n + 1})' if n < 3 else '<div class="ww-oc-manual-input-section')
             assert f'id="wwDistanceZone{n}DelayInput"' in card
             assert f'id="wwDistanceZone{n}AngleInput"' in card
             assert f'id="wwDistanceZone{n}ReachInput"' in card
@@ -462,3 +462,29 @@ class TestDistanceSettingLabels:
         assert 'id="wwDistanceOutputBasisSelect"' in values
         panel = _function_body(source, 'id="wwDistancePanel"', 'id="wwDistanceManualInputSection"')
         assert "Fault loop" not in panel and "Impedance basis" not in panel
+
+
+class TestDistanceZoneCardColors:
+    THEME = FRONTEND.parent / "theme.css"
+
+    def test_cards_use_card_tokens_and_boundaries_keep_theirs(self):
+        source = _source()
+        for n in (1, 2, 3, 4):
+            assert f"--zone-color: var(--ww-dist-card-zone{n})" in source
+        assert "stroke: var(--ww-dist-zone4)" in source  # R-X boundary unchanged
+
+    def test_light_palette_and_softest_reverse_zone(self):
+        css = self.THEME.read_text(encoding="utf-8")
+        for n, hexv in ((1, "#4f6b95"), (2, "#7185a6"), (3, "#94a3b8"), (4, "#c7cdd6")):
+            assert f"--ww-dist-card-zone{n}: {hexv};" in css
+        assert css.count("--ww-dist-card-zone4:") == 2  # light + dark
+
+    def test_dark_theme_keeps_the_hierarchy(self):
+        css = self.THEME.read_text(encoding="utf-8")
+
+        def lum(h):
+            r, g, b = (int(h[i:i + 2], 16) for i in (1, 3, 5))
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+        vals = [css.rsplit(f"--ww-dist-card-zone{n}: ", 1)[1][:7] for n in (1, 2, 3, 4)]
+        assert [lum(v) for v in vals] == sorted((lum(v) for v in vals), reverse=True)

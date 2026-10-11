@@ -8863,7 +8863,7 @@
         .ww-dist-zone-card-title {
             font-size: 0.7rem;
             font-weight: 700;
-            color: var(--zone-color, var(--text));
+            color: var(--zone-title-color, var(--zone-color, var(--text)));
         }
         .ww-dist-zone-field {
             display: flex;
@@ -11852,7 +11852,7 @@
                                          wwDistanceUpdateCharacteristicFieldsVisibility(). -->
                                     <div class="ww-phasor-family-heading">Zone settings</div>
                                     <div class="ww-dist-zone-grid">
-                                        <div class="ww-dist-zone-card" style="--zone-color: var(--ww-dist-zone1)">
+                                        <div class="ww-dist-zone-card" style="--zone-color: var(--ww-dist-card-zone1)">
                                             <div class="ww-dist-zone-card-header">
                                                 <span class="ww-dist-zone-card-title">Zone 1</span>
                                                 <label class="ww-phasor-manual-role-enable"><input type="checkbox" id="wwDistanceZone1Enabled" aria-label="Enable Zone 1">Enabled</label>
@@ -11864,7 +11864,7 @@
                                             <label class="ww-dist-zone-field" id="wwDistanceZone1ResistiveForwardField" hidden><span>Resistive reach forward (Ω)</span><input type="number" id="wwDistanceZone1ResistiveForwardInput" min="0" step="0.01"></label>
                                             <label class="ww-dist-zone-field" id="wwDistanceZone1ResistiveReverseField" hidden><span>Resistive reach reverse (Ω)</span><input type="number" id="wwDistanceZone1ResistiveReverseInput" min="0" step="0.01"></label>
                                         </div>
-                                        <div class="ww-dist-zone-card" style="--zone-color: var(--ww-dist-zone2)">
+                                        <div class="ww-dist-zone-card" style="--zone-color: var(--ww-dist-card-zone2)">
                                             <div class="ww-dist-zone-card-header">
                                                 <span class="ww-dist-zone-card-title">Zone 2</span>
                                                 <label class="ww-phasor-manual-role-enable"><input type="checkbox" id="wwDistanceZone2Enabled" aria-label="Enable Zone 2">Enabled</label>
@@ -11876,7 +11876,7 @@
                                             <label class="ww-dist-zone-field" id="wwDistanceZone2ResistiveForwardField" hidden><span>Resistive reach forward (Ω)</span><input type="number" id="wwDistanceZone2ResistiveForwardInput" min="0" step="0.01"></label>
                                             <label class="ww-dist-zone-field" id="wwDistanceZone2ResistiveReverseField" hidden><span>Resistive reach reverse (Ω)</span><input type="number" id="wwDistanceZone2ResistiveReverseInput" min="0" step="0.01"></label>
                                         </div>
-                                        <div class="ww-dist-zone-card" style="--zone-color: var(--ww-dist-zone3)">
+                                        <div class="ww-dist-zone-card" style="--zone-color: var(--ww-dist-card-zone3)">
                                             <div class="ww-dist-zone-card-header">
                                                 <span class="ww-dist-zone-card-title">Zone 3</span>
                                                 <label class="ww-phasor-manual-role-enable"><input type="checkbox" id="wwDistanceZone3Enabled" aria-label="Enable Zone 3">Enabled</label>
@@ -11888,7 +11888,7 @@
                                             <label class="ww-dist-zone-field" id="wwDistanceZone3ResistiveForwardField" hidden><span>Resistive reach forward (Ω)</span><input type="number" id="wwDistanceZone3ResistiveForwardInput" min="0" step="0.01"></label>
                                             <label class="ww-dist-zone-field" id="wwDistanceZone3ResistiveReverseField" hidden><span>Resistive reach reverse (Ω)</span><input type="number" id="wwDistanceZone3ResistiveReverseInput" min="0" step="0.01"></label>
                                         </div>
-                                        <div class="ww-dist-zone-card" style="--zone-color: var(--ww-dist-zone4)">
+                                        <div class="ww-dist-zone-card" style="--zone-color: var(--ww-dist-card-zone4); --zone-title-color: var(--text)">
                                             <div class="ww-dist-zone-card-header">
                                                 <span class="ww-dist-zone-card-title">Reverse Zone</span>
                                                 <label class="ww-phasor-manual-role-enable"><input type="checkbox" id="wwDistanceZone4Enabled" aria-label="Enable Reverse Zone">Enabled</label>
