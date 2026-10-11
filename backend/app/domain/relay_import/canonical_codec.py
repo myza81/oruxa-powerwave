@@ -50,6 +50,7 @@ from app.domain.relay_import.provenance import (
     ReviewStatus,
     Sourced,
     SourceRef,
+    UnresolvedCause,
 )
 from app.domain.relay_import.raw_document import SourceFormat
 
@@ -65,7 +66,7 @@ _ENUMS = {
     cls.__name__: cls
     for cls in (
         ZoneStatus, ZoneDirection, CharacteristicType, SettingBasis, CompensationKind, SourceFormat,
-        MappingStatus, ProvenanceOrigin, ReviewStatus,
+        MappingStatus, ProvenanceOrigin, ReviewStatus, UnresolvedCause,
     )
 }
 

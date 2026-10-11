@@ -1,6 +1,6 @@
 # Relay Settings Import — Architecture (Slice 1: foundation)
 
-Status: **Slices 1-8** (domain contracts, manual entry + engine adapter,
+Status: **Slices 1-8 + 8A (review status taxonomy, below)** (domain contracts, manual entry + engine adapter,
 ephemeral upload, generic PDF extraction, relay identification, MiCOM P441
 interpretation profile, read-only Extraction Review, review confirmation / resolution) implemented on
 `feature/distance-relay-import`. Slice 6 is **Implemented / Awaiting
@@ -901,6 +901,66 @@ ready. Confirming everything alone stays *Not ready*. Reverse reach for Z1-Z3 +
 Zone P *disabled* -> *Ready after confirmation*; plus confirming all -> *Ready to
 apply*. Zone P *enabled* -> still *Not ready* (fifth zone); Zone P is never
 removed from the model.
+
+## Slice 8A — review uncertainty taxonomy
+
+Status: **Implemented / Awaiting owner UAT** (with Slice 8). Presentation and
+classification only: no engineering value, mapping rule, engine or readiness rule
+changed. This section supersedes the visible "To confirm" / "Unresolved" wording
+used in the Slice 6-8 text above (those names survive only as internal fields).
+
+The user may not be a protection engineer, so the review explains *why* a value is
+uncertain instead of asking everything to be confirmed. Six compact categories
+(`ReviewItem.category`):
+
+| Category | Meaning | User action |
+|---|---|---|
+| **Mapped** | read, and the mapping is deterministic | none (read-only) |
+| **Assumption** | the source value **was read**, but Oruxa made an engineering assumption to interpret it (direction from family convention, characteristic from the setting family, reach angle = line angle) | expert may Confirm / Undo; bulk "Confirm all assumptions (N)" |
+| **Missing** | a value the workflow needs is not in the source | manual value only where the canonical type/unit is known |
+| **Conflict** | source values/statements disagree, or contradict the printed range/unit; none is chosen | none (the competing choices are not offered) |
+| **Unsupported** | Oruxa understands it, but the current engine/model cannot represent or use it (Zone P as a fifth zone, a lenticular characteristic, a per-loop tilt) | none -- a limit of the software, never confirmed away |
+| **Unreadable** | the text could not be read reliably (empty cell, not a plain number) | clearer source, or manual value where offered |
+
+Not every uncertainty is a question for the user; only an Assumption is confirmable.
+
+**Three facts stay separate** and the category is derived from them, never stored:
+(1) *interpretation status* -- `MappingStatus` mapped / inferred / unresolved,
+unchanged (`inferred` is presented as Assumption); (2) *source / extraction cause*
+of an unresolved value -- new `Provenance.cause` (`UnresolvedCause`: missing /
+conflict / unreadable / unsupported; unset means Missing), set by the profile where
+it knows why (P441: absent code → missing; duplicates, wrong name, outside range,
+wrong unit → conflict; empty or non-numeric cell → unreadable; unrecognised choice
+→ unsupported); (3) *engine capability* -- `review_state.engine_limits()` reads the
+adapter's reasons: a **resolved** value named by a capability reason is Unsupported,
+by a conflict reason is Conflict (`ReviewItem.engine_reason` carries the message).
+Zone settings the profile keeps raw (P441 tilts) are Unsupported. A confirmation or
+manual resolution never rewrites the category (a confirmed assumption is still an
+Assumption; the Source shows "Classified as" and "Originally an assumption because"),
+except that an engine limit always shows as Unsupported/Conflict.
+
+**Enforcement.** The UI offers Confirm only for Assumption rows and the bulk action
+selects only those; the validate endpoint also refuses (`400 invalid_review`) a
+confirmation of a value that is currently Unsupported or Conflict.
+
+**Counts.** Review fields `assumption_count`, `missing_count`, `conflict_count`,
+`unsupported_count`, `unreadable_count` (legacy `to_confirm_count` /
+`unresolved_count` remain, readiness still uses them). Card line:
+`5 zones found · 32 settings mapped · 36 assumptions · 10 missing · 4 unsupported · 4 blocking settings`
+(zero parts dropped; Conflict/Unreadable only appear when present). **Blocking
+settings** (`blocking_count`: values the engine needs and that are still open) and
+**blocking reasons** (`blocking_issues`: the adapter's messages) are different
+numbers and are worded apart.
+
+**P441 sample (fixture):** 32 mapped; 36 Assumption (zone status 1-4, direction of
+Z1/Z4, characteristic, reach angle, PP/PE fault type, residual compensation);
+10 Missing (reverse resistive reach ×5, Zone P state, firmware version, voltage and
+current base, positive-sequence impedance); 4 Unsupported (tilt settings kept raw);
+no Conflict/Unreadable. Zone P's state is *Missing* while unknown (disabling it is a
+valid answer) and becomes *Unsupported* if the user says it is enabled. Readiness is
+identical to Slice 8 (4 blocking settings, 2 reasons). Open judgement: tilt settings
+are classed Unsupported because neither the canonical model nor the engine has a
+per-loop tilt; the owner may prefer another label.
 
 ## Intentionally unresolved in Slice 1
 

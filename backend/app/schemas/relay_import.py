@@ -16,6 +16,12 @@ from pydantic import BaseModel, Field, StrictFloat, StrictInt, StrictStr
 ReviewStatusName = Literal["mapped", "to_confirm", "confirmed", "unresolved", "resolved_manually"]
 
 
+#: Slice 8A presentation category: how an item's uncertainty is explained, kept apart
+#: from the interpretation ``status`` (a profile's mapped / inferred / unresolved).
+#: Assumption = the source was read but an engineering assumption was needed.
+CategoryName = Literal["mapped", "assumption", "missing", "conflict", "unsupported", "unreadable"]
+
+
 class ReviewSourceOut(BaseModel):
     """Where one interpreted value came from (never a file path)."""
 
@@ -61,6 +67,9 @@ class ReviewItemOut(BaseModel):
     left_unresolved: bool = False
     user_value_text: str | None = None
     resolution: ReviewResolutionOut | None = None
+    category: CategoryName = "mapped"
+    #: The engine adapter's message when it refuses or cannot use this value.
+    engine_reason: str | None = None
 
 
 class ReviewGroupOut(BaseModel):
@@ -118,7 +127,14 @@ class ReviewStateFieldsOut(BaseModel):
     #: Unresolved values, blocking or not, including those left unresolved.
     unresolved_count: int
     #: Unresolved values the current engine adapter needs (a subset of the above).
+    #: Blocking *settings*; `blocking_issues` are the adapter's *reasons*.
     blocking_count: int
+    #: Slice 8A presentation counts (see `CategoryName`).
+    assumption_count: int
+    missing_count: int
+    conflict_count: int
+    unsupported_count: int
+    unreadable_count: int
     readiness: ReviewReadinessOut
     blocking_issues: list[ReviewBlockingIssueOut] = []
     engine: ReviewEngineOut
@@ -173,6 +189,8 @@ class ReviewItemStateOut(BaseModel):
     blocking: bool = False
     left_unresolved: bool = False
     user_value_text: str | None = None
+    category: CategoryName = "mapped"
+    engine_reason: str | None = None
 
 
 class ReviewStateOut(ReviewStateFieldsOut):

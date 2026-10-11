@@ -89,7 +89,7 @@ test("every decision type keeps the readiness defined: confirm, undo, confirm al
   await button(page, "Confirm Zone 1 Reach").click();
   await expect(chip(page, "zone.Z1.reach")).toHaveText("Confirmed");
   await button(page, "Undo confirmation of Zone 1 Reach").click();
-  await expect(chip(page, "zone.Z1.reach")).toHaveText("To confirm");
+  await expect(chip(page, "zone.Z1.reach")).toHaveText("Assumption");
   await page.locator("#wwRelayReviewConfirmAll").click();
   await expect(page.locator("#wwRelayReviewConfirmAll")).toHaveCount(0);
   await button(page, "Resolve Zone 1 Reverse Resistive Reach").click();
@@ -98,7 +98,7 @@ test("every decision type keeps the readiness defined: confirm, undo, confirm al
   await form.getByRole("button", { name: "Set value" }).click();
   await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Resolved manually");
   await button(page, "Clear the value of Zone 1 Reverse Resistive Reach").click();
-  await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Unresolved");
+  await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Missing");
   await button(page, "Resolve Zone 1 Reverse Resistive Reach").click();
   await button(page, "Leave Zone 1 Reverse Resistive Reach unresolved").click();
   await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Left unresolved");
@@ -186,7 +186,7 @@ test("rapid successive decisions all land, in order, and readiness reflects the 
     q("Undo confirmation of Zone 1 Reach").click();
   });
   await expect(chip(page, "zone.Z4.reach")).toHaveText("Confirmed");
-  await expect(chip(page, "zone.Z1.reach")).toHaveText("To confirm");
+  await expect(chip(page, "zone.Z1.reach")).toHaveText("Assumption");
   await expect(chip(page, "zone.Z2.reach")).toHaveText("Confirmed");
 });
 
@@ -203,7 +203,7 @@ for (const [name, fulfil] of [
     await button(page, "Confirm Zone 1 Reach").click();
     await expect(readiness(page)).toContainText("Readiness: Not evaluated");
     await expect(page.locator("#wwRelayReviewNotice")).not.toBeEmpty();
-    await expect(chip(page, "zone.Z1.reach")).toHaveText("To confirm"); // the refused change is not kept
+    await expect(chip(page, "zone.Z1.reach")).toHaveText("Assumption"); // the refused change is not kept
     await expect(chip(page, "zone.Z2.reach")).toHaveText("Confirmed"); // earlier accepted decision survives
     await expectNoBrokenText(page);
     // the panel still works once the backend answers again
@@ -262,7 +262,7 @@ test("a healthy first open shows the backend's initial result, never 'Not evalua
   });
   await page.locator("#wwRelayReviewBtn").click();
   await expect(readiness(page)).toContainText("Readiness: Not ready");
-  await expect(readiness(page)).toContainText("4 blocking items are unresolved.");
+  await expect(readiness(page)).toContainText("Blocking settings: 4");
   await expect(page.locator("#wwRelayReviewBlocking")).toContainText("reverse resistive reach is unresolved");
   await expect(page.locator("#wwRelayReviewBlocking")).toContainText("ZP cannot be represented");
   const seen = await page.evaluate(() => window.__readinessTexts);

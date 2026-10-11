@@ -22,6 +22,13 @@ readiness are all computed here from the items, so what the panel counts is
 exactly what it lists. Counting convention: one count per canonical value (a
 reach and its angle are one), over the values the review lists, plus the zone
 settings the profile declined (always unresolved, never resolvable).
+
+Slice 8A: every item also carries a presentation ``category`` (Mapped /
+Assumption / Missing / Conflict / Unsupported / Unreadable). It is derived from
+three facts kept separate -- the profile's interpretation status, the recorded
+cause of an unresolved value (source / extraction) and the engine adapter's
+verdict (capability) -- and it never replaces them: ``status`` stays the profile's
+own mapped / inferred / unresolved, and a confirmation leaves the category alone.
 """
 
 from __future__ import annotations
@@ -47,6 +54,7 @@ from app.domain.relay_import.review_state import (
     blocking_issues,
     blocking_paths,
     compute_readiness,
+    engine_limits,
     resolution_spec,
 )
 from app.domain.relay_import.raw_document import RawRelayDocument, RawSetting
@@ -110,6 +118,15 @@ class ReviewItem:
     user_value_text: str | None = None
     #: Present while the user may supply or change the value.
     resolution: ReviewResolution | None = None
+    #: Slice 8A. How the uncertainty is *presented*: mapped | assumption | missing |
+    #: conflict | unsupported | unreadable. Derived, never stored: the profile's
+    #: interpretation status, the unresolved cause and the engine adapter stay
+    #: separate (see `_category`). A confirmation never changes it -- a confirmed
+    #: assumption is still an assumption.
+    category: str = "mapped"
+    #: The adapter's own message when the current engine refuses (or cannot use) this
+    #: value; ``None`` otherwise. Describes the engine, not the document.
+    engine_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -190,7 +207,16 @@ class ExtractionReview:
     #: Unresolved values the user supplied this session.
     resolved_manually_count: int
     #: Unresolved values the current engine adapter needs (a subset of the unresolved).
+    #: These are *settings*; `blocking_issues` are the adapter's *reasons*.
     blocking_count: int
+    #: Slice 8A presentation counts, per canonical value. Assumptions still awaiting
+    #: confirmation; open Missing / Unreadable values; every Conflict and Unsupported
+    #: value (an engine limit is not cleared by a decision about the value).
+    assumption_count: int
+    missing_count: int
+    conflict_count: int
+    unsupported_count: int
+    unreadable_count: int
     readiness: ReviewReadiness
     blocking_issues: tuple[ReviewBlockingIssue, ...]
     #: reviewable | incomplete (interpretation quality, apart from the engine).
@@ -300,8 +326,35 @@ def _review_status(sourced: Sourced) -> str:
     return "unresolved"
 
 
-def _resolution(path: str | None, sourced: Sourced) -> ReviewResolution | None:
+def _category(sourced: Sourced, limit: tuple[str, str] | None) -> str:
+    """The presentation category of one value. Three independent facts feed it and
+    none is collapsed into another:
+
+    * engine capability -- a *resolved* value the adapter cannot represent is
+      Unsupported, and one that disagrees with another resolved value is a Conflict;
+    * interpretation -- mapped stays Mapped; inferred is an Assumption (the source
+      was read, an engineering assumption was needed);
+    * source / extraction -- an unresolved value is Missing, Conflict, Unreadable
+      or Unsupported according to its recorded cause (unclassified means Missing).
+    """
+    if limit is not None and sourced.is_resolved:
+        return limit[0]
+    original = _interpretation_status(sourced)
+    if original == MappingStatus.MAPPED.value:
+        return "mapped"
+    if original == MappingStatus.INFERRED.value:
+        return "assumption"
+    cause = sourced.provenance.cause
+    return cause.value if cause else "missing"
+
+
+def _resolution(path: str | None, sourced: Sourced, category: str) -> ReviewResolution | None:
     if path is None or _review_status(sourced) not in ("unresolved", "resolved_manually"):
+        return None
+    # Typing a value is offered only where the source simply lacks it (or could not be
+    # read) and the canonical type is known; a conflict, or a limit of the engine, is
+    # not something a typed value resolves.
+    if category not in ("missing", "unreadable") and _review_status(sourced) != "resolved_manually":
         return None
     spec: ResolutionSpec | None = resolution_spec(path)
     if spec is None:
@@ -312,9 +365,15 @@ def _resolution(path: str | None, sourced: Sourced) -> ReviewResolution | None:
 
 
 class _Builder:
-    def __init__(self, document: RawRelayDocument, blocking: frozenset[str] = frozenset()) -> None:
+    def __init__(
+        self,
+        document: RawRelayDocument,
+        blocking: frozenset[str] = frozenset(),
+        limits: dict[str, tuple[str, str]] | None = None,
+    ) -> None:
         self._raw: dict[str, RawSetting] = {s.setting_id: s for s in document.settings}
         self._blocking = blocking
+        self._limits = limits or {}
 
     def source(self, ref) -> ReviewSource:
         raw = self._raw.get(ref.setting_id)
@@ -352,6 +411,8 @@ class _Builder:
             value_text = text if text is not None else _value_text(sourced.value, unit)
         record = prov.review
         review_status = _review_status(sourced)
+        limit = self._limits.get(path) if path else None
+        category = _category(sourced, limit)
         return ReviewItem(
             key=key,
             label=label,
@@ -369,7 +430,9 @@ class _Builder:
             blocking=path is not None and not sourced.is_resolved and path in self._blocking,
             left_unresolved=record is not None and record.status is ReviewStatus.LEFT_UNRESOLVED,
             user_value_text=record.user_value_text if record else None,
-            resolution=_resolution(path, sourced),
+            resolution=_resolution(path, sourced, category),
+            category=category,
+            engine_reason=limit[1] if limit else None,
         )
 
     def impedance(
@@ -417,6 +480,10 @@ class _Builder:
             raw_value=None if setting.raw_value is None else str(setting.raw_value),
             sources=sources,
             review_status="unresolved",
+            # Retained raw because this profile version has no canonical meaning for it
+            # (e.g. a per-loop tilt): Oruxa cannot represent or use it, and nothing the
+            # user does with it changes that.
+            category="unsupported",
         )
 
     def source_from_setting(self, setting_id: str) -> ReviewSource:
@@ -625,7 +692,7 @@ def build_extraction_review(
     *,
     not_interpreted: int,
 ) -> ExtractionReview:
-    b = _Builder(document, blocking_paths(adaptation))
+    b = _Builder(document, blocking_paths(adaptation), engine_limits(adaptation))
     groups = [_relay_group(b, model), _transformer_group(b, model), _line_group(b, model)]
     groups += [_zone_group(b, z) for z in model.zones]
     comp = _compensation_group(b, model)
@@ -636,6 +703,12 @@ def build_extraction_review(
 
     def count(status: str) -> int:
         return sum(1 for item in counted if item.review_status == status)
+
+    def in_category(category: str, *review_statuses: str) -> int:
+        return sum(
+            1 for item in counted
+            if item.category == category and (not review_statuses or item.review_status in review_statuses)
+        )
 
     blocking_unresolved = sum(1 for item in counted if item.blocking)
     pending = count("to_confirm")
@@ -649,8 +722,13 @@ def build_extraction_review(
         profile_id=meta.profile_id,
         profile_version=meta.profile_version,
         zone_count=len(model.zones),
-        mapped_count=count("mapped"),
+        mapped_count=sum(1 for item in counted if item.review_status == "mapped" and item.category == "mapped"),
         to_confirm_count=pending,
+        assumption_count=in_category("assumption", "to_confirm"),
+        missing_count=in_category("missing", "unresolved"),
+        conflict_count=in_category("conflict"),
+        unsupported_count=in_category("unsupported"),
+        unreadable_count=in_category("unreadable", "unresolved"),
         unresolved_count=count("unresolved"),
         not_interpreted_count=not_interpreted,
         confirmed_count=count("confirmed"),

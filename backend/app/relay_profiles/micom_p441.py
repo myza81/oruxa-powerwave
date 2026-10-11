@@ -57,7 +57,7 @@ from app.domain.relay_import.canonical_distance import (
     ZoneStatus,
 )
 from app.domain.relay_import.profile import MatchLevel, ProfileMatch
-from app.domain.relay_import.provenance import Sourced, SourceRef, inferred, mapped, unresolved
+from app.domain.relay_import.provenance import Sourced, SourceRef, UnresolvedCause, inferred, mapped, unresolved
 from app.domain.relay_import.raw_document import RawRelayDocument, RawSetting
 
 PROFILE_ID = "schneider-micom-p441"
@@ -191,7 +191,13 @@ class _Read:
     entries: tuple[RawSetting, ...] = ()
     raw: str | None = None
     problem: str | None = None
+    #: Why the read failed, when it did (see `UnresolvedCause`); set with ``problem``.
+    cause: UnresolvedCause | None = None
     notes: tuple[str, ...] = ()
+
+    def fail(self, problem: str, cause: UnresolvedCause) -> None:
+        self.problem = problem
+        self.cause = cause
 
     @property
     def label(self) -> str:
@@ -283,8 +289,15 @@ class _Interpreter:
             notes=notes,
         )
 
-    def bad(self, *reads: _Read, reason: str | None = None) -> Sourced:
-        """An unresolved value that keeps the raw text and its sources."""
+    def bad(self, *reads: _Read, reason: str | None = None, cause: UnresolvedCause | None = None) -> Sourced:
+        """An unresolved value that keeps the raw text and its sources. Its cause is
+        the strongest one among the failed reads (conflict, then unreadable, then
+        unsupported); an absent code or a bare ``reason`` is missing."""
+        causes = {r.cause for r in reads if r.problem and r.cause} | ({cause} if cause else set())
+        cause = next(
+            (c for c in (UnresolvedCause.CONFLICT, UnresolvedCause.UNREADABLE, UnresolvedCause.UNSUPPORTED) if c in causes),
+            UnresolvedCause.MISSING,
+        )
         problems = [reason] if reason else []
         problems += [f"{r.label}: {r.problem}" for r in reads if r.problem]
         problems += [f"{r.label}: not present in the document" for r in reads if not r.found and not r.problem]
@@ -292,7 +305,7 @@ class _Interpreter:
             self.note(p)
         entries = tuple(e for r in reads for e in r.entries)
         raw = " | ".join(r.raw for r in reads if r.raw is not None) or None
-        return unresolved(raw, sources=self.refs(*entries), notes=tuple(problems))
+        return unresolved(raw, sources=self.refs(*entries), notes=tuple(problems), cause=cause)
 
     # --- lookups --------------------------------------------------------------
 
@@ -305,19 +318,20 @@ class _Interpreter:
             return r
         wrong = [e for e in found if _norm_name(e.name) != _norm_name(expected)]
         if wrong:
-            r.problem = (
-                f"the document names this code differently from what profile {PROFILE_VERSION} expects ({expected!r}); not trusted"
+            r.fail(
+                f"the document names this code differently from what profile {PROFILE_VERSION} expects ({expected!r}); not trusted",
+                UnresolvedCause.CONFLICT,
             )
             r.raw = _clean(found[0].raw_value) or None
             return r
         values = {_clean(e.raw_value) for e in found}
         if len(values) > 1:
-            r.problem = "conflicting duplicate entries; which applies is not guessed"
+            r.fail("conflicting duplicate entries; which applies is not guessed", UnresolvedCause.CONFLICT)
             r.raw = " / ".join(sorted(values))
             return r
         r.raw = _clean(found[0].raw_value)
         if not r.raw:
-            r.problem = "no value found"
+            r.fail("no value found", UnresolvedCause.UNREADABLE)
             r.raw = None
         elif len(found) > 1:
             r.notes = (f"{len(found)} identical duplicate entries in the document",)
@@ -332,13 +346,13 @@ class _Interpreter:
             return r, None
         value = _parse_number(r.raw)
         if value is None:
-            r.problem = "the value is not a plain number"
+            r.fail("the value is not a plain number", UnresolvedCause.UNREADABLE)
             return r, None
         rng = _unit_of_range(_range_text(r.entries[0]))
         if rng is not None:
             lo, hi, printed = rng
             if not (lo <= value <= hi):
-                r.problem = "the value is outside the setting range printed beside it"
+                r.fail("the value is outside the setting range printed beside it", UnresolvedCause.CONFLICT)
                 return r, None
         else:
             printed = _range_text(r.entries[0])
@@ -347,17 +361,18 @@ class _Interpreter:
         if unit == "ohm":
             ok = (printed == "/I1" and ct_secondary_a == 1.0) or (printed or "").casefold() in {"ohm", "ohms", "ω"}  # "Ω".casefold() is "ω"
             if not ok:
-                r.problem = (
+                r.fail(
                     "the impedance unit could not be established as secondary ohms "
-                    "(this version accepts '/I1' with a 1 A CT secondary, or an explicit ohm unit)"
+                    "(this version accepts '/I1' with a 1 A CT secondary, or an explicit ohm unit)",
+                    UnresolvedCause.CONFLICT if printed else UnresolvedCause.MISSING,
                 )
                 return r, None
         elif unit == "factor":
             if printed:
-                r.problem = "expected a dimensionless setting but a unit is printed"
+                r.fail("expected a dimensionless setting but a unit is printed", UnresolvedCause.CONFLICT)
                 return r, None
         elif printed != unit:
-            r.problem = f"the printed unit is not the expected {unit!r}; no unit conversion is applied"
+            r.fail(f"the printed unit is not the expected {unit!r}; no unit conversion is applied", UnresolvedCause.CONFLICT)
             return r, None
         return r, value
 
@@ -367,7 +382,7 @@ class _Interpreter:
             return r, None
         key = _norm_name(r.raw)
         if key not in options:
-            r.problem = f"the value is not recognised by profile {PROFILE_VERSION}"
+            r.fail(f"the value is not recognised by profile {PROFILE_VERSION}", UnresolvedCause.UNSUPPORTED)
             return r, None
         return r, options[key]
 
@@ -400,7 +415,7 @@ class _Interpreter:
             "", "Scheme", tuple(dict.fromkeys(schemes.values())), raw=" / ".join(f"Scheme: {t}" for t in schemes) or None
         )
         if len(schemes) > 1:
-            scheme_read.problem = "more than one scheme/template was stated; none selected"
+            scheme_read.fail("more than one scheme/template was stated; none selected", UnresolvedCause.CONFLICT)
         if scheme_read.found and scheme_read.problem is None:
             token = next(iter(schemes))
             scheme = self.good(token, (scheme_read,))
@@ -412,7 +427,7 @@ class _Interpreter:
                 )
                 family = self.good(FAMILY, (scheme_read,), why="family label from the identification catalogue")
             else:
-                model = manufacturer = family = self.bad(scheme_read, reason="the scheme does not name a P441")
+                model = manufacturer = family = self.bad(scheme_read, reason="the scheme does not name a P441", cause=UnresolvedCause.CONFLICT)
         else:
             scheme = model = manufacturer = family = self.bad(scheme_read)
 
@@ -423,9 +438,10 @@ class _Interpreter:
                 m.group(0),
                 sources=self.refs(s),
                 notes=("a 'Minor Ver.' marker appears in a free-text note; it is not a labelled firmware field, so it is kept raw",),
+                cause=UnresolvedCause.MISSING,
             )
         else:
-            version = unresolved()
+            version = unresolved(cause=UnresolvedCause.MISSING)
 
         group_read, group = self.choice(_ACTIVE_GROUP, {f"group {n}": f"Group {n}" for n in (1, 2, 3, 4)})
         active = self.good(group, (group_read,)) if group else self.bad(group_read)
@@ -451,7 +467,7 @@ class _Interpreter:
             if re.fullmatch(r"1\s*A\s*/\s*5\s*A", rng, re.IGNORECASE) and value in (1.0, 5.0):
                 ct_s_v = value
             else:
-                ct_s.problem = "the value and printed range do not establish a 1 A / 5 A secondary"
+                ct_s.fail("the value and printed range do not establish a 1 A / 5 A secondary", UnresolvedCause.CONFLICT)
         vt_p, vt_p_v = self.number(_VT_PRIMARY, unit="V")
         vt_s, vt_s_v = self.number(_VT_SECONDARY, unit="V")
 
@@ -512,6 +528,7 @@ class _Interpreter:
         positive = unresolved(
             sources=(),
             notes=("the sheet gives a line impedance magnitude and a line angle without naming a sequence; they are kept separately, not combined",),
+            cause=UnresolvedCause.MISSING,
         )
         self.note("Line impedance magnitude and line angle are kept as separate values; no sequence impedance is claimed or derived.")
         line = ProtectedLine(
@@ -612,7 +629,9 @@ class _Interpreter:
                 ),
             )
         else:
-            ctype = unresolved(notes=("no usable reach or resistive reach to establish the characteristic",))
+            ctype = unresolved(
+                notes=("no usable reach or resistive reach to establish the characteristic",), cause=UnresolvedCause.MISSING
+            )
         parameters: tuple[ExtraQuantity, ...] = ()
         if t.zone_id == "Z1":
             z1x_s = self.good(ctx.z1x, (ctx.z1x_read,)) if ctx.z1x is not None else self.bad(ctx.z1x_read)
@@ -704,7 +723,9 @@ class _Interpreter:
             if kind == "conflict":
                 self.note("Zone 4 status: the document states both 'defeated' and 'enabled'; left unresolved.")
                 return unresolved(
-                    sources=self.refs(*evidence), notes=("the document both defeats and enables Zone 4; none selected",)
+                    sources=self.refs(*evidence),
+                    notes=("the document both defeats and enables Zone 4; none selected",),
+                    cause=UnresolvedCause.CONFLICT,
                 )
             return self.bad(
                 self.read(_ZONE_STATUS),

@@ -385,10 +385,10 @@ function p441Pdf(notes = ["Zone 4 Defeated"], extraRows = []) {
   }
   return buildPdf(lines);
 }
-// Slice 8: the line is the live review count, so confirmed / resolved / blocking parts appear
-// as they become non-zero and zero parts are dropped.
+// Slice 8/8A: the line is the live review count by category, so confirmed / resolved / blocking
+// parts appear as they become non-zero and zero parts are dropped.
 const P441_SUMMARY =
-  /^\d+ zones found · \d+ settings mapped( · \d+ to confirm)?( · \d+ confirmed)?( · \d+ resolved manually)?( · \d+ unresolved)?( · \d+ blocking)?$/;
+  /^\d+ zones found · \d+ settings mapped( · \d+ assumptions?)?( · \d+ confirmed)?( · \d+ resolved manually)?( · \d+ missing)?( · \d+ conflicts?)?( · \d+ unsupported)?( · \d+ unreadable)?( · \d+ blocking settings?)?$/;
 
 test("a P441 is interpreted, summarised, and NOTHING is applied to the form", async ({ page }) => {
   await openDistance(page);
@@ -456,7 +456,7 @@ test("summary wording for each interpretation outcome (backend response shapes)"
     interpretation_status: "interpreted", profile_version: "micom-p441-v1", zone_count: 4,
     mapped_setting_count: 32, inferred_setting_count: 7, unresolved_setting_count: 3,
   });
-  await expect(page.locator("#wwRelayImportSummary")).toHaveText("4 zones found · 32 settings mapped · 7 to confirm · 3 unresolved");
+  await expect(page.locator("#wwRelayImportSummary")).toHaveText("4 zones found · 32 settings mapped · 7 assumptions · 3 unresolved");
 
   await respondWith({ interpretation_status: "incomplete", profile_version: "micom-p441-v1", zone_count: 0 });
   await expect(page.locator("#wwRelayImportDetail")).toHaveText(
@@ -542,8 +542,9 @@ test("review summary names the relay, profile, zones and counts", async ({ page 
   await expect(summary).toContainText("Schneider Electric · MiCOM P44x · P441");
   await expect(summary).toContainText("Profile micom-p441-v1 · 5 zones");
   await expect(summary).toContainText(/\d+ mapped/);
-  await expect(summary).toContainText(/\d+ to confirm/);
-  await expect(summary).toContainText(/\d+ unresolved/);
+  await expect(summary).toContainText(/\d+ assumptions/);
+  await expect(summary).toContainText(/\d+ missing/);
+  await expect(summary).toContainText(/\d+ unsupported/);
   await expect(summary).toContainText(/\d+ not interpreted/);
 });
 
@@ -582,26 +583,26 @@ test("P441 review shows CT/VT, line data and a section per zone", async ({ page 
   await expect(item(page, "comp.Z1.k0_magnitude")).toContainText("0.718");
 });
 
-test("mapped, to-confirm and unresolved states are all visible", async ({ page }) => {
+test("mapped, assumption and missing states are all visible", async ({ page }) => {
   await reviewP441(page);
   await expect(item(page, "ct.primary")).toContainText("Mapped");
-  await expect(item(page, "zone.Z1.reach")).toContainText("To confirm");
-  await expect(item(page, "zone.Z1.reach.angle")).toContainText("To confirm");
-  await expect(item(page, "zone.Z1.rr.reverse")).toContainText("Unresolved");
+  await expect(item(page, "zone.Z1.reach")).toContainText("Assumption");
+  await expect(item(page, "zone.Z1.reach.angle")).toContainText("Assumption");
+  await expect(item(page, "zone.Z1.rr.reverse")).toContainText("Missing");
   await expect(item(page, "zone.Z1.rr.reverse")).toHaveAttribute("data-status", "unresolved");
   await expect(item(page, "ct.primary")).toHaveAttribute("data-status", "mapped");
   await expect(item(page, "zone.Z1.reach")).toHaveAttribute("data-status", "inferred");
 });
 
-test("Zone 4 shows disabled / defeated while keeping its numbers; Zone P is unresolved", async ({ page }) => {
+test("Zone 4 shows disabled / defeated while keeping its numbers; Zone P's state is missing", async ({ page }) => {
   await reviewP441(page);
   await expect(group(page, "zone-Z4").locator("summary")).toHaveText("Zone 4 — Disabled / Defeated");
   await expect(item(page, "zone.Z4.status")).toContainText("Disabled / Defeated");
   await expect(item(page, "zone.Z4.reach")).toContainText("0.36 Ω");
   await expect(item(page, "zone.Z4.timer")).toContainText("3 s");
   await expect(item(page, "zone.Z4.rr.pe")).toContainText("17.19 Ω");
-  await expect(group(page, "zone-ZP").locator("summary")).toHaveText("Zone P — Status unresolved");
-  await expect(item(page, "zone.ZP.status")).toContainText("Unresolved");
+  await expect(group(page, "zone-ZP").locator("summary")).toHaveText("Zone P — Status missing");
+  await expect(item(page, "zone.ZP.status")).toContainText("Missing");
   await expect(item(page, "zone.ZP.status")).toHaveAttribute("data-status", "unresolved");
   await expect(item(page, "zone.ZP.reach")).toContainText("0.001 Ω");
   await expect(item(page, "zone.ZP.timer")).toContainText("10 s");
@@ -638,16 +639,16 @@ test("inferred and unresolved items explain themselves in their provenance", asy
   await expect(inferred.locator(".ww-rr-prov")).toContainText("3005 · Line Angle");
   const zp = item(page, "zone.ZP.status");
   await zp.getByRole("button", { name: /Source of/ }).click();
-  await expect(zp.locator(".ww-rr-prov")).toContainText(/Why unresolved: .*not decoded/);
+  await expect(zp.locator(".ww-rr-prov")).toContainText(/Why missing: .*not decoded/);
   await expect(zp.locator(".ww-rr-prov")).toContainText("Raw: 01010");
   const reverse = item(page, "zone.Z1.rr.reverse");
   await reverse.getByRole("button", { name: /Source of/ }).click();
   await expect(reverse.locator(".ww-rr-prov")).toContainText("No value is stated in the document.");
 });
 
-test("tilt settings are preserved as unresolved, and other settings stay secondary and paginated", async ({ page }) => {
+test("tilt settings are preserved as unsupported, and other settings stay secondary and paginated", async ({ page }) => {
   await reviewP441(page);
-  await expect(group(page, "zone-Z1").locator("li", { hasText: "Z1m Tilt Angle" })).toContainText("Unresolved");
+  await expect(group(page, "zone-Z1").locator("li", { hasText: "Z1m Tilt Angle" })).toContainText("Unsupported");
   const other = page.locator("#wwRelayReviewOther");
   await expect(other).not.toHaveAttribute("open", "");
   await expect(other.locator(".ww-rr-other-row")).toHaveCount(0); // closed: nothing dumped into view

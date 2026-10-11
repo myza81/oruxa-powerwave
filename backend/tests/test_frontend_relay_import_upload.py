@@ -164,10 +164,15 @@ class TestInterpretationDisplay:
         # Identification-only relays keep their Slice 5 wording.
         assert "Relay identified. Settings have not been interpreted yet." in js
 
-    def test_summary_text_is_zones_mapped_to_confirm_and_unresolved(self):
+    def test_summary_text_is_zones_mapped_and_the_uncertainty_categories(self):
         js = _relay_import_js(_source())
-        for needle in ('"zone found"', '"zones found"', '"setting mapped"', '"settings mapped"', '" to confirm"', '" unresolved"'):
-            assert needle in js
+        for needle in (
+            '"zone found"', '"zones found"', '"setting mapped"', '"settings mapped"', '"assumption"', '"assumptions"',
+            '" missing"', '"conflict"', '"conflicts"', '" unsupported"', '" unreadable"', '" unresolved"',
+        ):
+            assert needle in js, needle
+        # the old catch-all wording is gone from the visible summary
+        assert '" to confirm"' not in js
 
     def test_only_summary_counts_are_read_from_the_response(self):
         js = _relay_import_js(_source())
@@ -250,7 +255,7 @@ class TestExtractionSummary:
 
 
 def _review_js(source: str) -> str:
-    return _slice(source, "const WW_RR_STATUS_LABELS", "function wwRelayImportReset")
+    return _slice(source, "const WW_RR_CATEGORY_LABELS", "function wwRelayImportReset")
 
 
 class TestExtractionReview:
@@ -295,8 +300,10 @@ class TestExtractionReview:
 
     def test_status_labels_match_the_interpretation_vocabulary(self):
         js = _review_js(_source())
-        assert 'mapped: "Mapped", to_confirm: "To confirm", confirmed: "Confirmed"' in js
-        assert 'unresolved: "Unresolved", resolved_manually: "Resolved manually"' in js
+        assert 'mapped: "Mapped", assumption: "Assumption", missing: "Missing"' in js
+        assert 'conflict: "Conflict", unsupported: "Unsupported", unreadable: "Unreadable"' in js
+        assert 'confirmed: "Confirmed", resolved_manually: "Resolved manually"' in js
+        assert "To confirm" not in js
 
     def test_provenance_toggle_is_an_accessible_disclosure(self):
         js = _review_js(_source())
@@ -350,9 +357,12 @@ class TestReviewConfirmation:
         for needle in ("Re-evaluating…", "Not evaluated", "wwRrUsableState"):
             assert needle in js, needle
 
-    def test_only_inferred_and_resolvable_items_get_decision_controls(self):
+    def test_only_assumptions_and_resolvable_items_get_decision_controls(self):
         js = _review_js(_source())
-        assert 'view.review_status === "to_confirm"' in js and "item.resolution" in js
+        # Confirm needs the Assumption category, not merely an unconfirmed interpretation
+        assert 'view.review_status === "to_confirm" && view.category === "assumption"' in js
+        assert "if (wwRrConfirmable(view))" in js and "item.resolution" in js
+        assert "Confirm all assumptions (" in js and "Confirm all inferred" not in js
         assert "const decidable = !!item.item_id && item.primary" in js
 
     def test_a_blank_entry_is_not_a_value(self):

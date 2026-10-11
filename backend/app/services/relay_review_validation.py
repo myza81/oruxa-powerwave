@@ -41,4 +41,21 @@ def validate_review(context: dict, decisions: ReviewDecisions) -> ExtractionRevi
         effective = apply_review(original, decisions)
     except (SnapshotError, ReviewDecisionError) as exc:
         raise InvalidReviewError(str(exc)) from exc
-    return build_extraction_review(effective, _NO_DOCUMENT, engine_adaptation(effective), not_interpreted=0)
+    review = build_extraction_review(effective, _NO_DOCUMENT, engine_adaptation(effective), not_interpreted=0)
+    _refuse_confirming_engine_limits(review, decisions)
+    return review
+
+
+def _refuse_confirming_engine_limits(review: ExtractionReview, decisions: ReviewDecisions) -> None:
+    """Only an Assumption is confirmable. A value the current engine cannot use
+    (Unsupported) or that disagrees with another (Conflict) is not an engineering
+    assumption the user can accept, so a confirmation of one is refused rather than
+    silently counted."""
+    refused = [
+        item.item_id
+        for group in review.groups
+        for item in group.items
+        if item.item_id in decisions.confirmed and item.category in ("unsupported", "conflict")
+    ]
+    if refused:
+        raise InvalidReviewError("Only an assumption can be confirmed; this value is a limit of the current engine.")

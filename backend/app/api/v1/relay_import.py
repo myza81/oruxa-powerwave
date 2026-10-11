@@ -122,6 +122,8 @@ def _review_state_out(review: ExtractionReview) -> ReviewStateOut:
             blocking=item.blocking,
             left_unresolved=item.left_unresolved,
             user_value_text=item.user_value_text,
+            category=item.category,
+            engine_reason=item.engine_reason,
         )
         for group in full.groups
         for item in group.items

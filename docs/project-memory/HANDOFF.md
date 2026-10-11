@@ -7,6 +7,17 @@ history already provides the detailed historical trail.
 Last updated: **2026-10-05** (Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
+## Relay import Slice 8A (2026-10-11, `feature/distance-relay-import`)
+
+**Review status semantics**: the broad "To confirm" / "Unresolved" presentation is
+replaced by six categories -- Mapped, Assumption, Missing, Conflict, Unsupported,
+Unreadable -- with the full reason in each row's Source disclosure. Only an
+Assumption is confirmable; "Confirm all assumptions (N)"; "blocking settings"
+(values) are worded apart from "blocking reasons" (engine messages). Internal
+provenance (`inferred` etc.) and readiness are unchanged. Taxonomy and rules:
+[RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-8a--review-uncertainty-taxonomy).
+Still at the Slice 8 owner UAT gate; **do not start Slice 9**.
+
 ## Relay import Slice 8 (2026-10-11, `feature/distance-relay-import`)
 
 **Review Confirmation / Resolution**: confirm inferred values, resolve or leave

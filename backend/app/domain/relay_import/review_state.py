@@ -35,7 +35,7 @@ from app.domain.relay_import.canonical_distance import (
     ZoneStatus,
     item_label,
 )
-from app.domain.relay_import.engine_adapter import EngineAdaptation
+from app.domain.relay_import.engine_adapter import EngineAdaptation, UnsupportedCode
 from app.domain.relay_import.provenance import (
     MappingStatus,
     Provenance,
@@ -194,6 +194,7 @@ def _resolved_manually(sourced: Sourced, value: object, text: str) -> Sourced:
             notes=p.notes,
             origin=ProvenanceOrigin.SESSION_REVIEW,
             review=ReviewRecord(ReviewStatus.RESOLVED_MANUALLY, p.status, user_value_text=text),
+            cause=p.cause,
         ),
     )
 
@@ -281,6 +282,39 @@ def blocking_issues(adaptation: EngineAdaptation) -> tuple[BlockingIssue, ...]:
 
 def blocking_paths(adaptation: EngineAdaptation) -> frozenset[str]:
     return frozenset(path for reason in adaptation.reasons for path in reason.paths)
+
+
+#: Adapter reasons that say the engine cannot represent / use a value it understands.
+_CAPABILITY_CODES = frozenset({
+    UnsupportedCode.TOO_MANY_ZONES,
+    UnsupportedCode.BASIS_MISMATCH,
+    UnsupportedCode.CHARACTERISTIC_UNSUPPORTED,
+    UnsupportedCode.CHARACTERISTIC_MIXED,
+    UnsupportedCode.DIRECTION_UNSUPPORTED,
+    UnsupportedCode.LOOP_TYPE_UNSUPPORTED,
+    UnsupportedCode.REACH_REPRESENTATION,
+    UnsupportedCode.TILT_UNSUPPORTED,
+})
+#: Adapter reasons that say two resolved values disagree.
+_CONFLICT_CODES = frozenset({UnsupportedCode.RESISTIVE_REACH_CONFLICT, UnsupportedCode.TIMER_CONFLICT})
+
+
+def engine_limits(adaptation: EngineAdaptation) -> dict[str, tuple[str, str]]:
+    """``path -> (kind, message)`` for every canonical value the adapter refuses
+    for a reason other than "it is not known yet": ``unsupported`` (the engine
+    cannot represent or use it) or ``conflict`` (resolved values disagree). An
+    engine limit is kept apart from source and interpretation certainty: it
+    describes the engine, not the document. ``unsupported`` wins over ``conflict``
+    when a value is named by both."""
+    out: dict[str, tuple[str, str]] = {}
+    for reason in adaptation.reasons:
+        kind = "unsupported" if reason.code in _CAPABILITY_CODES else "conflict" if reason.code in _CONFLICT_CODES else None
+        if kind is None:
+            continue
+        for path in reason.paths:
+            if path not in out or (kind == "unsupported" and out[path][0] == "conflict"):
+                out[path] = (kind, reason.message)
+    return out
 
 
 def compute_readiness(*, engine_supported: bool, pending_confirmations: int, blocking_unresolved: int) -> Readiness:

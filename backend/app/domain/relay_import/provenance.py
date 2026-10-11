@@ -44,6 +44,22 @@ class MappingStatus(StrEnum):
     RESOLVED_MANUALLY = "resolved_manually"
 
 
+class UnresolvedCause(StrEnum):
+    """Why an unresolved value is unresolved: the *source / extraction* side of the
+    uncertainty, kept apart from the interpretation status (`MappingStatus`) and
+    from engine capability (decided later by the engine adapter). The review
+    presents these as Missing / Conflict / Unreadable / Unsupported."""
+
+    #: The source does not state the value (absent, or not established).
+    MISSING = "missing"
+    #: Source values or statements disagree, or contradict the printed range/unit.
+    CONFLICT = "conflict"
+    #: The text was found but could not be read reliably (empty cell, not a number).
+    UNREADABLE = "unreadable"
+    #: The value was read but the profile has no meaning for it.
+    UNSUPPORTED = "unsupported"
+
+
 class ReviewStatus(StrEnum):
     """What the user did with an item during review (Slice 8). Separate from
     `MappingStatus`: an inferred value that was confirmed is still inferred."""
@@ -93,6 +109,9 @@ class Provenance:
     origin: ProvenanceOrigin = ProvenanceOrigin.RELAY_DOCUMENT
     #: Slice 8 session-review annotation; ``None`` until the user acts.
     review: ReviewRecord | None = None
+    #: Why an unresolved value is unresolved; ``None`` for a resolved value and for
+    #: an unresolved one nobody classified (presented as missing).
+    cause: UnresolvedCause | None = None
 
     def __post_init__(self) -> None:
         needs_source = self.origin is ProvenanceOrigin.RELAY_DOCUMENT
@@ -129,9 +148,12 @@ def unresolved(
     *,
     sources: tuple[SourceRef, ...] = (),
     notes: tuple[str, ...] = (),
+    cause: UnresolvedCause | None = None,
 ) -> Sourced:
     """A value the importer saw (or expected) but could not interpret."""
-    return Sourced(None, Provenance(MappingStatus.UNRESOLVED, sources=sources, raw_value=raw_value, notes=notes))
+    return Sourced(
+        None, Provenance(MappingStatus.UNRESOLVED, sources=sources, raw_value=raw_value, notes=notes, cause=cause)
+    )
 
 
 def mapped(value: T, *, sources: tuple[SourceRef, ...], profile_id: str, profile_version: str,

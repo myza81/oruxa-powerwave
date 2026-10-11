@@ -67,10 +67,13 @@ const P441_ROWS = [
 ];
 const P441_X = [40, 230, 340, 450];
 
-function p441Pdf() {
+// `overrides` maps a parameter code to a replacement value (e.g. { "300A": "1,43" } for
+// an unreadable reach); `extraRows` appends further rows (e.g. a conflicting duplicate).
+function p441Pdf({ overrides = {}, extraRows = [] } = {}) {
   let y = 800;
   const lines = [[40, y, "LZOP: 132kV AAAA - BBBB"], [230, y, "Scheme: SE_P441?A1???038?JE"]];
-  for (const row of P441_ROWS) {
+  const rows = P441_ROWS.map((row) => (overrides[row[0]] === undefined ? row : [row[0], row[1], overrides[row[0]], row[3]]));
+  for (const row of [...rows, ...extraRows]) {
     y -= 12;
     row.forEach((cell, i) => lines.push([P441_X[i], y, cell]));
   }

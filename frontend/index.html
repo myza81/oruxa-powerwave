@@ -8677,6 +8677,9 @@
         :is(.ww-rr-state)[data-status="unresolved"] { color: var(--error); }
         :is(.ww-rr-state)[data-status="inferred"] { color: var(--warn); }
         :is(.ww-rr-state)[data-status="resolved"] { color: var(--accent); }
+        :is(.ww-rr-state)[data-status="conflict"] { color: var(--error); }
+        :is(.ww-rr-state)[data-status="unsupported"] { color: var(--text-dim); }
+        :is(.ww-rr-state)[data-status="unreadable"] { color: var(--warn); }
         :is(.ww-rr-items) { list-style: none; margin: 0; padding: 0 10px 6px; }
         :is(.ww-rr-item) { border-top: 1px solid var(--panel-border); }
         :is(.ww-rr-row) {
@@ -8719,6 +8722,25 @@
             border-color: color-mix(in srgb, var(--error) 45%, transparent);
         }
         :is(.ww-rr-status)[data-status="unresolved"]::before { background: var(--error); }
+        /* Slice 8A: Conflict is a solid red outline (a real disagreement); Unsupported is a
+           muted dashed chip (a limit of the software, not an open question); Unreadable is a
+           warm dashed chip (an extraction problem). */
+        :is(.ww-rr-status)[data-status="conflict"] {
+            color: var(--error);
+            border-color: var(--error);
+        }
+        :is(.ww-rr-status)[data-status="conflict"]::before { background: var(--error); }
+        :is(.ww-rr-status)[data-status="unsupported"] {
+            color: var(--text-dim);
+            border-style: dashed;
+        }
+        :is(.ww-rr-status)[data-status="unsupported"]::before { background: var(--text-dim); }
+        :is(.ww-rr-status)[data-status="unreadable"] {
+            color: var(--warn);
+            border-style: dashed;
+            border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+        }
+        :is(.ww-rr-status)[data-status="unreadable"]::before { background: var(--warn); }
         :is(.ww-rr-status)[data-status="confirmed"],
         :is(.ww-rr-status)[data-status="resolved"] {
             border-color: color-mix(in srgb, var(--accent) 45%, transparent);
@@ -55041,42 +55063,72 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             state.inferredCount = 0;
             state.unresolvedCount = 0;
         }
-        // "5 zones found · 32 settings mapped · 36 to confirm · 14 unresolved · 4 blocking"
-        // Counts are the live review counts once a review exists (Slice 8): they
-        // move from "to confirm" to "confirmed" as the user reviews, and zero
-        // parts are dropped.
+        // "5 zones found · 32 settings mapped · 36 assumptions · 10 missing · 4 unsupported · 4 blocking settings"
+        // Counts are the live review counts once a review exists (Slice 8/8A): assumptions
+        // move to "confirmed" as the user reviews, and zero parts are dropped (conflict and
+        // unreadable only ever appear when there are some).
         function wwRelayImportSummaryText(state) {
             const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
             const live = state.review ? wwRrLive() : {
-                mapped_count: state.mappedCount, to_confirm_count: state.inferredCount, confirmed_count: 0,
-                resolved_manually_count: 0, unresolved_count: state.unresolvedCount, blocking_count: 0,
+                mapped_count: state.mappedCount, assumption_count: state.inferredCount, confirmed_count: 0,
+                resolved_manually_count: 0, missing_count: 0, conflict_count: 0,
+                unsupported_count: 0, unreadable_count: 0, blocking_count: 0,
             };
+            // Without a review the upload's profile-level count cannot be split into categories.
+            const uncategorised = state.review ? 0 : state.unresolvedCount;
             const parts = [plural(state.zoneCount, "zone found", "zones found"),
                 plural(live.mapped_count, "setting mapped", "settings mapped")];
-            if (live.to_confirm_count > 0) parts.push(live.to_confirm_count + " to confirm");
+            if (live.assumption_count > 0) parts.push(plural(live.assumption_count, "assumption", "assumptions"));
             if (live.confirmed_count > 0) parts.push(live.confirmed_count + " confirmed");
             if (live.resolved_manually_count > 0) parts.push(live.resolved_manually_count + " resolved manually");
-            if (live.unresolved_count > 0) parts.push(live.unresolved_count + " unresolved");
-            if (live.blocking_count > 0) parts.push(live.blocking_count + " blocking");
+            if (uncategorised > 0) parts.push(uncategorised + " unresolved");
+            if (live.missing_count > 0) parts.push(live.missing_count + " missing");
+            if (live.conflict_count > 0) parts.push(plural(live.conflict_count, "conflict", "conflicts"));
+            if (live.unsupported_count > 0) parts.push(live.unsupported_count + " unsupported");
+            if (live.unreadable_count > 0) parts.push(live.unreadable_count + " unreadable");
+            if (live.blocking_count > 0) parts.push(wwRrBlockingSettingsText(live.blocking_count));
             return parts.join(" · ");
         }
         // Relay Import Slice 7/8 -- Extraction Review and Review Confirmation /
         // Resolution. Renders the review payload the upload response carried and
-        // collects the user's SESSION decisions (confirm an inferred value, supply
+        // collects the user's SESSION decisions (confirm an assumption, supply
         // or leave an unresolved one). The decisions live in tab memory only and
         // are sent, with the original interpretation (`validation_context`), to the
         // stateless validate endpoint: the backend, not this page, decides counts,
         // blocking issues and readiness. Built with textContent only (document text
         // is never parsed as HTML). There is no Apply / Populate action here and the
         // manual Distance Protection form is never read or written.
-        const WW_RR_STATUS_LABELS = {
-            mapped: "Mapped", to_confirm: "To confirm", confirmed: "Confirmed",
-            unresolved: "Unresolved", resolved_manually: "Resolved manually",
+        // Slice 8A. What the user is told about an uncertain value is a *category*, apart from
+        // the interpretation status and from the user's own review decision:
+        //   Mapped      read and deterministic; no question to answer.
+        //   Assumption  the source was read, but Oruxa made an engineering assumption (confirmable).
+        //   Missing     the source does not state a value the workflow needs.
+        //   Conflict    values or statements disagree; Oruxa did not choose.
+        //   Unsupported Oruxa understands it, but the current engine cannot represent / use it.
+        //   Unreadable  the source text could not be read reliably.
+        // Not every uncertainty is a question for the user: only an Assumption is confirmable.
+        const WW_RR_CATEGORY_LABELS = {
+            mapped: "Mapped", assumption: "Assumption", missing: "Missing",
+            conflict: "Conflict", unsupported: "Unsupported", unreadable: "Unreadable",
         };
-        // Chip / header styling hooks (the pre-Slice-8 values stay for the three original states).
-        const WW_RR_STATUS_STYLE = {
-            mapped: "mapped", to_confirm: "inferred", confirmed: "confirmed",
-            unresolved: "unresolved", resolved_manually: "resolved",
+        // Chip / header styling hooks (assumption keeps the amber "inferred" look, missing the
+        // dashed red "unresolved" look).
+        const WW_RR_CATEGORY_STYLE = {
+            mapped: "mapped", assumption: "inferred", missing: "unresolved",
+            conflict: "conflict", unsupported: "unsupported", unreadable: "unreadable",
+        };
+        // The user's own decision, shown in place of the category once they have made one.
+        const WW_RR_DECISION_LABELS = { confirmed: "Confirmed", resolved_manually: "Resolved manually" };
+        const WW_RR_DECISION_STYLE = { confirmed: "confirmed", resolved_manually: "resolved" };
+        // Why-lines in the Source disclosure, by category (and for a confirmed assumption).
+        const WW_RR_WHY_LABELS = {
+            assumption: "Assumption", missing: "Why missing", conflict: "Why conflicting",
+            unsupported: "Why unsupported", unreadable: "Why unreadable", mapped: "Note",
+        };
+        const WW_RR_CATEGORY_HELP = {
+            conflict: "Oruxa did not choose between the conflicting source values.",
+            unsupported: "This is a limit of the current software, not something to confirm.",
+            unreadable: "Provide a clearer source document, or enter the value manually where that is offered.",
         };
         const WW_RR_READINESS_LABELS = {
             not_ready: "Not ready", ready_after_confirmation: "Ready after confirmation", ready: "Ready to apply",
@@ -55097,9 +55149,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (text !== undefined && text !== null) el.textContent = text;
             return el;
         }
-        function wwRrStatusChip(reviewStatus) {
-            const chip = wwRrEl("span", "ww-rr-status", WW_RR_STATUS_LABELS[reviewStatus] || reviewStatus);
-            chip.dataset.status = WW_RR_STATUS_STYLE[reviewStatus] || reviewStatus;
+        // The compact chip: an engine limit (Unsupported / Conflict) always shows as such, since no
+        // decision clears it; otherwise the user's decision (Confirmed / Resolved manually) replaces
+        // the category, which the Source disclosure still states.
+        function wwRrChipKind(view) {
+            const category = Object.prototype.hasOwnProperty.call(WW_RR_CATEGORY_LABELS, view.category) ? view.category : "missing";
+            if (category === "unsupported" || category === "conflict") return { label: WW_RR_CATEGORY_LABELS[category], style: WW_RR_CATEGORY_STYLE[category], category };
+            if (WW_RR_DECISION_LABELS[view.review_status]) {
+                return { label: WW_RR_DECISION_LABELS[view.review_status], style: WW_RR_DECISION_STYLE[view.review_status], category };
+            }
+            return { label: WW_RR_CATEGORY_LABELS[category], style: WW_RR_CATEGORY_STYLE[category], category };
+        }
+        function wwRrStatusChip(view) {
+            const kind = wwRrChipKind(view);
+            const chip = wwRrEl("span", "ww-rr-status", kind.label);
+            chip.dataset.status = kind.style;
+            chip.dataset.category = kind.category;
             return chip;
         }
         function wwRrLocation(page, line) {
@@ -55119,11 +55184,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 blocking: s ? s.blocking : item.blocking,
                 left_unresolved: s ? s.left_unresolved : item.left_unresolved,
                 user_value_text: s ? s.user_value_text : item.user_value_text,
+                category: s && s.category ? s.category : (item.category || "mapped"),
+                engine_reason: s ? s.engine_reason : item.engine_reason,
             };
+        }
+        // Only an Assumption can be confirmed (never a missing, conflicting, unsupported or
+        // unreadable value, whatever its interpretation status).
+        function wwRrConfirmable(view) {
+            return view.review_status === "to_confirm" && view.category === "assumption";
         }
         function wwRrProvenance(item, view) {
             const box = wwRrEl("div", "ww-rr-prov");
-            const heading = item.full_label + " — " + (view.value_text || "Unresolved") + " — " + WW_RR_STATUS_LABELS[view.review_status];
+            const kind = wwRrChipKind(view);
+            const heading = item.full_label + " — " + (view.value_text || "Not available") + " — " + kind.label;
             box.appendChild(wwRrEl("strong", "", heading));
             const labelled = (label, text) => {
                 const line = wwRrEl("div", "");
@@ -55140,12 +55213,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             } else if (view.left_unresolved) {
                 labelled("Left unresolved", "by you, for this import session");
             }
+            // A decision replaces the chip's wording; the original classification stays traceable.
+            if (kind.label !== WW_RR_CATEGORY_LABELS[kind.category]) labelled("Classified as", WW_RR_CATEGORY_LABELS[kind.category]);
             // The profile's own reasoning is always kept: confirming never hides the assumption.
-            const noteLabel = item.status === "inferred"
-                ? (view.review_status === "confirmed" ? "Originally inferred because" : "Assumption")
-                : item.status === "unresolved" ? "Why unresolved" : "Note";
+            const noteLabel = kind.category === "assumption" && view.review_status === "confirmed"
+                ? "Originally an assumption because"
+                : WW_RR_WHY_LABELS[kind.category] || "Note";
             item.notes.forEach((note) => labelled(noteLabel, note));
-            if (view.review_status === "unresolved" && item.item_id && !item.resolution) {
+            if (view.engine_reason) {
+                labelled(kind.category === "unsupported" || kind.category === "conflict" ? WW_RR_WHY_LABELS[kind.category] : "Current engine",
+                    view.engine_reason);
+            }
+            if (WW_RR_CATEGORY_HELP[kind.category]) box.appendChild(wwRrEl("div", "ww-rr-dim", WW_RR_CATEGORY_HELP[kind.category]));
+            if (view.review_status === "unresolved" && item.item_id && !item.resolution && kind.category === "missing") {
                 box.appendChild(wwRrEl("div", "ww-rr-dim",
                     "This value cannot be entered here: what it means is not established for this import."));
             }
@@ -55241,6 +55321,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwRrItem(item) {
             const li = wwRrEl("li", "ww-rr-item");
             li.dataset.status = item.status;
+            li.dataset.category = item.category || "mapped";
             li.dataset.key = item.key;
             if (item.item_id) li.dataset.itemId = item.item_id;
             const row = wwRrEl("div", "ww-rr-row");
@@ -55272,17 +55353,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const refresh = () => {
                 const view = wwRrView(item);
                 li.dataset.review = view.review_status;
+                li.dataset.category = view.category;
                 li.dataset.blocking = view.blocking ? "true" : "false";
-                value.textContent = view.value_text === null ? "Unresolved" : view.value_text;
+                value.textContent = view.value_text === null ? "Not available" : view.value_text;
                 if (view.value_text === null) value.dataset.empty = "true"; else delete value.dataset.empty;
-                chips.replaceChildren(wwRrStatusChip(view.review_status));
+                chips.replaceChildren(wwRrStatusChip(view));
                 if (view.blocking) chips.appendChild(wwRrEl("span", "ww-rr-blocking", "Blocking"));
                 if (view.left_unresolved) chips.appendChild(wwRrEl("span", "ww-rr-dim", "Left unresolved"));
                 const hadFocus = actions.contains(document.activeElement);
                 actions.replaceChildren();
                 if (decidable) {
                     const id = item.item_id;
-                    if (view.review_status === "to_confirm") {
+                    if (wwRrConfirmable(view)) {
                         actions.appendChild(wwRrAction("Confirm", "Confirm " + item.full_label,
                             () => wwRrCommit((d) => { d.confirmed.add(id); })));
                     } else if (view.review_status === "confirmed") {
@@ -55331,8 +55413,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const statusItem = group.items[0];
                 wwRrUi.groups.push(() => {
                     const view = wwRrView(statusItem);
-                    state.textContent = " — " + (view.value_text === null ? "Status unresolved" : view.value_text);
-                    state.dataset.status = WW_RR_STATUS_STYLE[view.review_status] || "";
+                    state.textContent = " — " + (view.value_text === null
+                        ? "Status " + wwRrChipKind(view).label.toLowerCase() : view.value_text);
+                    state.dataset.status = wwRrChipKind(view).style;
                 });
                 wwRrUi.groups[wwRrUi.groups.length - 1]();
             }
@@ -55395,14 +55478,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 mapped_count: num(src.mapped_count), to_confirm_count: num(src.to_confirm_count),
                 confirmed_count: num(src.confirmed_count), resolved_manually_count: num(src.resolved_manually_count),
                 unresolved_count: num(src.unresolved_count), blocking_count: num(src.blocking_count),
+                assumption_count: num(src.assumption_count), missing_count: num(src.missing_count),
+                conflict_count: num(src.conflict_count), unsupported_count: num(src.unsupported_count),
+                unreadable_count: num(src.unreadable_count),
                 readiness, engine, blocking_issues: issues,
             };
         }
+        // Only Assumptions: a missing, conflicting, unsupported or unreadable value is never
+        // swept into a bulk confirmation.
         function wwRrPendingIds() {
             const ids = [];
-            wwRrUi.items.forEach((item, id) => { if (wwRrView(item).review_status === "to_confirm") ids.push(id); });
+            wwRrUi.items.forEach((item, id) => { if (wwRrConfirmable(wwRrView(item))) ids.push(id); });
             return ids;
         }
+        // "Blocking settings" are the values the engine needs (a count of settings); "blocking
+        // reasons" are the engine's own explanations (a count of messages). They are different
+        // things and are never worded as one.
+        function wwRrBlockingSettingsText(n) { return n + (n === 1 ? " blocking setting" : " blocking settings"); }
         function wwRrSummary(review) {
             const live = wwRrLive();
             const box = wwRrEl("div", "ww-rr-summary");
@@ -55412,32 +55504,43 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             box.appendChild(wwRrEl("div", "ww-rr-dim",
                 "Profile " + (review.profile_version || review.profile_id || "—") + " · " + wwRrPlural(review.zone_count, "zone", "zones")));
             const counts = wwRrEl("div", "ww-rr-counts");
-            const chipDefs = [["mapped", live.mapped_count + " mapped", true],
-                ["inferred", live.to_confirm_count + " to confirm", true],
-                ["confirmed", live.confirmed_count + " confirmed", live.confirmed_count > 0],
-                ["resolved", live.resolved_manually_count + " resolved manually", live.resolved_manually_count > 0],
-                ["unresolved", live.unresolved_count + " unresolved", true]];
-            chipDefs.forEach(([status, text, shown]) => {
+            // Conflict and Unreadable appear only when there are some.
+            const chipDefs = [["mapped", "mapped", live.mapped_count + " mapped", true],
+                ["inferred", "assumption", wwRrPlural(live.assumption_count, "assumption", "assumptions"), true],
+                ["confirmed", "assumption", live.confirmed_count + " confirmed", live.confirmed_count > 0],
+                ["resolved", "missing", live.resolved_manually_count + " resolved manually", live.resolved_manually_count > 0],
+                ["unresolved", "missing", live.missing_count + " missing", true],
+                ["conflict", "conflict", live.conflict_count + " conflict" + (live.conflict_count === 1 ? "" : "s"), live.conflict_count > 0],
+                ["unsupported", "unsupported", live.unsupported_count + " unsupported", true],
+                ["unreadable", "unreadable", live.unreadable_count + " unreadable", live.unreadable_count > 0]];
+            chipDefs.forEach(([style, category, text, shown]) => {
                 if (!shown) return;
                 const chip = wwRrEl("span", "ww-rr-status", text);
-                chip.dataset.status = status;
+                chip.dataset.status = style;
+                chip.dataset.category = category;
                 counts.appendChild(chip);
             });
-            if (live.blocking_count > 0) counts.appendChild(wwRrEl("span", "ww-rr-blocking", live.blocking_count + " blocking"));
+            if (live.blocking_count > 0) {
+                const blocking = wwRrEl("span", "ww-rr-blocking", wwRrBlockingSettingsText(live.blocking_count));
+                blocking.id = "wwRelayReviewBlockingSettings";
+                counts.appendChild(blocking);
+            }
             counts.appendChild(wwRrEl("span", "ww-rr-dim", review.not_interpreted_count + " not interpreted"));
             box.appendChild(counts);
             box.appendChild(wwRrEl("div", "ww-rr-dim",
                 "Counts are interpreted settings, not display rows: a reach and its angle are one setting. "
-                + "Confirming accepts a value for this import session only."));
+                + "An assumption means the source was read but an engineering assumption was needed; "
+                + "confirming accepts it for this import session only."));
             const pending = wwRrPendingIds();
             const bulk = wwRrEl("div", "ww-rr-bulk");
             if (pending.length > 0) {
-                const all = wwRrEl("button", "ww-rr-btn", "Confirm all inferred values (" + pending.length + ")");
+                const all = wwRrEl("button", "ww-rr-btn", "Confirm all assumptions (" + pending.length + ")");
                 all.type = "button";
                 all.id = "wwRelayReviewConfirmAll";
                 all.addEventListener("click", () => wwRrCommit((d) => { pending.forEach((id) => d.confirmed.add(id)); }));
                 bulk.appendChild(all);
-                bulk.appendChild(wwRrEl("span", "ww-rr-dim", "Only values marked To confirm; unresolved values are not changed."));
+                bulk.appendChild(wwRrEl("span", "ww-rr-dim",
+                    "Only assumptions; missing, conflicting, unsupported and unreadable values are not changed."));
             }
             if (live.confirmed_count > 0) {
                 const undo = wwRrEl("button", "ww-rr-btn", "Undo all confirmations");
@@ -55470,18 +55573,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return box;
             }
             if (r.blocking_unresolved > 0) {
-                box.appendChild(wwRrEl("div", "", wwRrPlural(r.blocking_unresolved, "blocking item is", "blocking items are") + " unresolved."));
+                box.appendChild(wwRrEl("div", "",
+                    "Blocking settings: " + r.blocking_unresolved + ". The current engine needs "
+                    + (r.blocking_unresolved === 1 ? "this setting" : "these settings") + " and "
+                    + (r.blocking_unresolved === 1 ? "it is" : "they are") + " still open."));
             }
             if (r.status === "not_ready" && r.blocking_unresolved === 0) {
                 box.appendChild(wwRrEl("div", "", "The current Distance Protection engine cannot take these settings yet."));
             }
             if (r.pending_confirmations > 0) {
                 box.appendChild(wwRrEl("div", "",
-                    wwRrPlural(r.pending_confirmations, "inferred value still needs", "inferred values still need") + " confirmation."));
+                    wwRrPlural(r.pending_confirmations, "assumption still needs", "assumptions still need") + " confirmation."));
             }
             if (r.status === "ready") {
                 box.appendChild(wwRrEl("div", "",
-                    "Every value is mapped, confirmed or resolved, and the current engine accepts them."));
+                    "Every value is mapped, a confirmed assumption or resolved, and the current engine accepts them."));
                 box.appendChild(wwRrEl("div", "ww-rr-dim", "Nothing has been applied. Applying settings is not available yet."));
             }
             return box;
@@ -55503,7 +55609,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!ready) {
                 box.appendChild(wwRrEl("div", "",
                     "Interpretation succeeded, but the current Distance Protection engine cannot fully apply this scheme yet."));
-                box.appendChild(wwRrEl("div", "ww-rr-sub", "Blocking issues (" + live.blocking_issues.length + ")"));
+                box.appendChild(wwRrEl("div", "ww-rr-sub", "Blocking reasons (" + live.blocking_issues.length + ")"));
                 const reasons = wwRrEl("ul", "ww-rr-reasons");
                 reasons.id = "wwRelayReviewBlocking";
                 live.blocking_issues.forEach((issue) => {
