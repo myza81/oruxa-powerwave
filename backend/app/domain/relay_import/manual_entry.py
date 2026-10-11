@@ -25,6 +25,8 @@ directly behind that step.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from app.domain.distance_protection import (
     CHARACTERISTIC_MHO,
     CHARACTERISTIC_QUADRILATERAL,
@@ -94,9 +96,11 @@ def manual_to_canonical(
             )
         else:
             reach_ohm, resistive = None, ResistiveReach()
+        # A polar reach needs its angle; with no angle entered the reach stays
+        # unresolved in the model (re-attached unchanged by engine_zones_from_manual).
         reach = (
             manual(ImpedanceValue(magnitude_ohm=reach_ohm, angle_deg=angle), raw_value=reach_ohm)
-            if reach_ohm is not None
+            if reach_ohm is not None and angle is not None
             else manual_unresolved()
         )
         canonical_zones.append(
@@ -138,4 +142,17 @@ def engine_zones_from_manual(
     """
     model = manual_to_canonical(characteristic=characteristic, impedance_basis=impedance_basis, zones=zones)
     adaptation: EngineAdaptation = adapt_to_engine(model, engine_basis=impedance_basis, allow_incomplete_zones=True)
-    return adaptation.zones[: len(zones)] if adaptation.supported else zones
+    if not adaptation.supported:
+        return zones
+    # A zone whose angle was never entered stays angle-less (the adapter would
+    # otherwise fall back to its 90 default); its entered values are carried
+    # through as typed so blank and 0 stay distinguishable.
+    return tuple(
+        replace(
+            adapted, characteristic_angle_deg=None, reach_ohm=original.reach_ohm,
+            reactive_reach_ohm=original.reactive_reach_ohm,
+        )
+        if original.characteristic_angle_deg is None and adapted.enabled
+        else adapted
+        for original, adapted in zip(zones, adaptation.zones)
+    )

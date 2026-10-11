@@ -11869,7 +11869,7 @@
                                                 <span class="ww-dist-zone-card-title">Zone 2</span>
                                                 <label class="ww-phasor-manual-role-enable"><input type="checkbox" id="wwDistanceZone2Enabled" aria-label="Enable Zone 2">Enabled</label>
                                             </div>
-                                            <label class="ww-dist-zone-field"><span>Configured delay (s)</span><input type="number" id="wwDistanceZone2DelayInput" min="0" step="0.01" value="0.4"></label>
+                                            <label class="ww-dist-zone-field"><span>Configured delay (s)</span><input type="number" id="wwDistanceZone2DelayInput" min="0" step="0.01" value="0.45"></label>
                                             <label class="ww-dist-zone-field"><span>Characteristic angle (°)</span><input type="number" id="wwDistanceZone2AngleInput" step="0.1" value="90"></label>
                                             <label class="ww-dist-zone-field" id="wwDistanceZone2ReachField"><span>Reach |Z| (Ω)</span><input type="number" id="wwDistanceZone2ReachInput" min="0" step="0.01"></label>
                                             <label class="ww-dist-zone-field" id="wwDistanceZone2ReactiveReachField" hidden><span>Reactive reach (Ω)</span><input type="number" id="wwDistanceZone2ReactiveReachInput" min="0" step="0.01"></label>
@@ -11881,7 +11881,7 @@
                                                 <span class="ww-dist-zone-card-title">Zone 3</span>
                                                 <label class="ww-phasor-manual-role-enable"><input type="checkbox" id="wwDistanceZone3Enabled" aria-label="Enable Zone 3">Enabled</label>
                                             </div>
-                                            <label class="ww-dist-zone-field"><span>Configured delay (s)</span><input type="number" id="wwDistanceZone3DelayInput" min="0" step="0.01" value="1"></label>
+                                            <label class="ww-dist-zone-field"><span>Configured delay (s)</span><input type="number" id="wwDistanceZone3DelayInput" min="0" step="0.01" value="3"></label>
                                             <label class="ww-dist-zone-field"><span>Characteristic angle (°)</span><input type="number" id="wwDistanceZone3AngleInput" step="0.1" value="90"></label>
                                             <label class="ww-dist-zone-field" id="wwDistanceZone3ReachField"><span>Reach |Z| (Ω)</span><input type="number" id="wwDistanceZone3ReachInput" min="0" step="0.01"></label>
                                             <label class="ww-dist-zone-field" id="wwDistanceZone3ReactiveReachField" hidden><span>Reactive reach (Ω)</span><input type="number" id="wwDistanceZone3ReactiveReachInput" min="0" step="0.01"></label>
@@ -11895,7 +11895,7 @@
                                             </div>
                                             <div class="ww-dist-zone-direction" id="wwDistanceZone4Direction">Direction: Reverse</div>
                                             <label class="ww-dist-zone-field"><span>Configured delay (s)</span><input type="number" id="wwDistanceZone4DelayInput" min="0" step="0.01" placeholder="not set"></label>
-                                            <label class="ww-dist-zone-field"><span>Characteristic angle (°)</span><input type="number" id="wwDistanceZone4AngleInput" step="0.1" value="90"></label>
+                                            <label class="ww-dist-zone-field"><span>Characteristic angle (°)</span><input type="number" id="wwDistanceZone4AngleInput" step="0.1" placeholder="not set"></label>
                                             <label class="ww-dist-zone-field" id="wwDistanceZone4ReachField"><span>Reach |Z| (Ω)</span><input type="number" id="wwDistanceZone4ReachInput" min="0" step="0.01"></label>
                                             <label class="ww-dist-zone-field" id="wwDistanceZone4ReactiveReachField" hidden><span>Reactive reach (Ω)</span><input type="number" id="wwDistanceZone4ReactiveReachInput" min="0" step="0.01"></label>
                                             <label class="ww-dist-zone-field" id="wwDistanceZone4ResistiveForwardField" hidden><span>Resistive reach forward (Ω)</span><input type="number" id="wwDistanceZone4ResistiveForwardInput" min="0" step="0.01"></label>
@@ -53805,9 +53805,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             },
             zones: {
                 zone1: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0 }),
-                zone2: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0.4 }),
-                zone3: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 1 }),
-                zone4: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: null, direction: "reverse" }),
+                zone2: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0.45 }),
+                zone3: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 3 }),
+                zone4: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: null, characteristicAngleDeg: null, direction: "reverse" }),
             },
             latestResult: null,
             requestGeneration: 0,
@@ -54117,7 +54117,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // Reverse Zone delay is never fabricated: blank = not sent = not configured.
                 if (Number.isFinite(z.delaySeconds)) params[key + "_delay_s"] = String(z.delaySeconds);
                 else if (key !== "zone4") params[key + "_delay_s"] = "0";
-                params[key + "_characteristic_angle_deg"] = String(Number.isFinite(z.characteristicAngleDeg) ? z.characteristicAngleDeg : 90);
+                // Reverse Zone angle is never fabricated either: blank = not sent = not configured.
+                if (Number.isFinite(z.characteristicAngleDeg)) params[key + "_characteristic_angle_deg"] = String(z.characteristicAngleDeg);
+                else if (key !== "zone4") params[key + "_characteristic_angle_deg"] = "90";
                 if (wwDistanceState.characteristic === "mho") {
                     if (Number.isFinite(z.reachOhm)) params[key + "_reach_ohm"] = String(z.reachOhm);
                 } else {
@@ -54385,7 +54387,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Z_reach = reach_ohm /_ characteristic_angle_deg (to -Z_reach for a
         // reverse-direction zone).
         function wwDistanceMhoCircleSvg(zoneKey, z, toSvg, pxPerOhm) {
-            if (!z.enabled || !Number.isFinite(z.reachOhm) || z.reachOhm <= 0) return "";
+            if (!z.enabled || !Number.isFinite(z.reachOhm) || z.reachOhm <= 0 || !Number.isFinite(z.characteristicAngleDeg)) return "";
             const angleRad = (z.characteristicAngleDeg * Math.PI) / 180;
             const halfReach = z.reachOhm / 2;
             const sg = wwDistanceZoneSign(z);
@@ -54400,7 +54402,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // rotated (x' along the reach direction, r' perpendicular)
         // coordinate system, mapped back to R/X for drawing.
         function wwDistanceQuadrilateralSvg(zoneKey, z, toSvg) {
-            if (!z.enabled || !Number.isFinite(z.reactiveReachOhm) || z.reactiveReachOhm <= 0 ||
+            if (!z.enabled || !Number.isFinite(z.characteristicAngleDeg) || !Number.isFinite(z.reactiveReachOhm) || z.reactiveReachOhm <= 0 ||
                 !Number.isFinite(z.resistiveForwardOhm) || z.resistiveForwardOhm <= 0 ||
                 !Number.isFinite(z.resistiveReverseOhm) || z.resistiveReverseOhm <= 0) return "";
             const theta = (z.characteristicAngleDeg * Math.PI) / 180;
@@ -54444,6 +54446,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // drawn never affects Fit Zones).
         function wwDistanceZoneBounds(z, characteristic) {
             if (!z || !z.enabled) return null;
+            if (!Number.isFinite(z.characteristicAngleDeg)) return null;
             const theta = (z.characteristicAngleDeg * Math.PI) / 180;
             if (!Number.isFinite(theta)) return null;
             if (characteristic === "mho") {
@@ -55069,7 +55072,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const part = wwDistanceZoneIdPart(key);
                 setChecked("wwDistance" + part + "Enabled", z.enabled);
                 setVal("wwDistance" + part + "DelayInput", z.delaySeconds === null ? "" : z.delaySeconds);
-                setVal("wwDistance" + part + "AngleInput", z.characteristicAngleDeg);
+                setVal("wwDistance" + part + "AngleInput", z.characteristicAngleDeg === null ? "" : z.characteristicAngleDeg);
                 if (z.reachOhm !== null) setVal("wwDistance" + part + "ReachInput", z.reachOhm);
                 if (z.reactiveReachOhm !== null) setVal("wwDistance" + part + "ReactiveReachInput", z.reactiveReachOhm);
                 if (z.resistiveForwardOhm !== null) setVal("wwDistance" + part + "ResistiveForwardInput", z.resistiveForwardOhm);
@@ -55123,9 +55126,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwDistanceState.settings = { recordingBasis: "secondary", outputBasis: "secondary", vtPrimary: null, vtSecondary: null, ctPrimary: null, ctSecondary: null };
             wwDistanceState.zones = {
                 zone1: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0 }),
-                zone2: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0.4 }),
-                zone3: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 1 }),
-                zone4: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: null, direction: "reverse" }),
+                zone2: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0.45 }),
+                zone3: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 3 }),
+                zone4: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: null, characteristicAngleDeg: null, direction: "reverse" }),
             };
             wwDistanceState.latestResult = null;
             wwDistanceState.view = null;
@@ -60437,7 +60440,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             });
             document.getElementById("wwDistance" + part + "AngleInput").addEventListener("change", (event) => {
                 const value = parseFloat(event.target.value);
-                wwDistanceState.zones[wwDistanceZoneKey].characteristicAngleDeg = Number.isFinite(value) ? value : 90;
+                wwDistanceState.zones[wwDistanceZoneKey].characteristicAngleDeg = Number.isFinite(value) ? value : (wwDistanceZoneKey === "zone4" ? null : 90);
                 wwDistanceHandleZoneSettingChanged();
             });
             document.getElementById("wwDistance" + part + "ReachInput").addEventListener("change", (event) => {

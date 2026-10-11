@@ -173,3 +173,33 @@ test("an enabled Reverse Zone without a configured delay is not ready, and an en
   await expect(zoneRow(page, "Reverse Zone")).not.toContainText("Not Operated");
   await expect(zoneRow(page, "Reverse Zone")).toContainText("delay 0.35s");
 });
+
+test("zone delay defaults are 0 / 0.45 / 3 and the Reverse Zone is fully blank", async ({ page }) => {
+  await openDistance(page);
+  await expect(page.locator("#wwDistanceZone1DelayInput")).toHaveValue("0");
+  await expect(page.locator("#wwDistanceZone2DelayInput")).toHaveValue("0.45");
+  await expect(page.locator("#wwDistanceZone3DelayInput")).toHaveValue("3");
+  await expect(page.locator("#wwDistanceZone4Enabled")).not.toBeChecked();
+  for (const f of ["Delay", "Angle", "Reach", "ReactiveReach", "ResistiveForward", "ResistiveReverse"]) {
+    await expect(page.locator(`#wwDistanceZone4${f}Input`)).toHaveValue("");
+  }
+  // switching characteristic does not inject any Reverse Zone value
+  await page.locator("#wwDistanceCharacteristicSelect").selectOption("quadrilateral");
+  await page.locator("#wwDistanceCharacteristicSelect").selectOption("mho");
+  for (const f of ["Delay", "Angle", "Reach"]) await expect(page.locator(`#wwDistanceZone4${f}Input`)).toHaveValue("");
+  await expect(page.locator("#wwDistanceZone2DelayInput")).toHaveValue("0.45");
+});
+
+test("an enabled Reverse Zone without an angle is not ready until the angle is entered", async ({ page }) => {
+  await openDistance(page);
+  await page.locator("#wwDistanceZone4Enabled").check();
+  await page.locator("#wwDistanceZone4ReachInput").fill("15");
+  await page.locator("#wwDistanceZone4ReachInput").dispatchEvent("change");
+  await page.locator("#wwDistanceZone4DelayInput").fill("0.35");
+  await page.locator("#wwDistanceZone4DelayInput").dispatchEvent("change");
+  await enterLoop(page, 180);
+  await expect(zoneRow(page, "Reverse Zone")).toContainText("Not Operated");
+  await page.locator("#wwDistanceZone4AngleInput").fill("20");
+  await page.locator("#wwDistanceZone4AngleInput").dispatchEvent("change");
+  await expect(zoneRow(page, "Reverse Zone")).not.toContainText("Not Operated");
+});

@@ -67,7 +67,7 @@ class TestDefaults:
         assert ZoneSettings(True, 6.0, None, None, None, 75.0, 0.0).direction == DIRECTION_FORWARD
 
     def test_fourth_slot_defaults_to_disabled_reverse(self):
-        assert DEFAULT_ZONE4 == ZoneSettings(enabled=False, delay_s=None, direction=DIRECTION_REVERSE)
+        assert DEFAULT_ZONE4 == ZoneSettings(enabled=False, characteristic_angle_deg=None, delay_s=None, direction=DIRECTION_REVERSE)
         assert ZONE_KEYS == ("zone1", "zone2", "zone3", "zone4")
 
     def test_forward_is_unchanged_by_the_new_parameter(self):
@@ -442,3 +442,66 @@ class TestReverseZoneDelayHttp:
     def test_explicit_zero_delay_is_a_real_value(self, client):
         body = client.get(URL, params=manual_query(180, zone4_delay_s=0, **self.Z4)).json()
         assert body["zone4"]["state"] == "operated" and body["zone4"]["delay_s"] == 0
+
+
+class TestReverseZoneHasNoEngineeringDefaults:
+    """Every Reverse Zone engineering setting is blank until entered; an
+    explicit 0 stays distinct from blank, and nothing is injected."""
+
+    BLANK = ZoneSettings(True, None, None, None, None, None, None, DIRECTION_REVERSE)
+
+    def test_default_slot_is_fully_blank(self):
+        z = DEFAULT_ZONE4
+        assert (z.enabled, z.delay_s, z.characteristic_angle_deg, z.reach_ohm) == (False, None, None, None)
+        assert (z.reactive_reach_ohm, z.resistive_reach_forward_ohm, z.resistive_reach_reverse_ohm) == (None, None, None)
+
+    def test_forward_zone_defaults_are_unchanged(self):
+        assert ZoneSettings().characteristic_angle_deg == 90.0 and ZoneSettings().delay_s == 0.0
+
+    @pytest.mark.parametrize("characteristic", [CHARACTERISTIC_MHO, CHARACTERISTIC_QUADRILATERAL])
+    def test_blanks_survive_the_manual_canonical_adapter_path(self, characteristic):
+        routed = engine_zones_from_manual(characteristic=characteristic, impedance_basis=SEC, zones=(OFF, OFF, OFF, self.BLANK))
+        z = routed[3]
+        assert z.enabled is True and z.direction == DIRECTION_REVERSE
+        assert (z.characteristic_angle_deg, z.delay_s, z.reach_ohm, z.reactive_reach_ohm) == (None, None, None, None)
+        assert (z.resistive_reach_forward_ohm, z.resistive_reach_reverse_ohm) == (None, None)
+        assert routed[0].characteristic_angle_deg == 90.0  # zones 1-3 keep their default
+
+    def test_entered_reach_without_angle_stays_angle_less(self):
+        zone = replace(self.BLANK, reach_ohm=15.0, delay_s=0.7)
+        routed = engine_zones_from_manual(characteristic=CHARACTERISTIC_MHO, impedance_basis=SEC, zones=(OFF, OFF, OFF, zone))
+        assert (routed[3].reach_ohm, routed[3].characteristic_angle_deg, routed[3].delay_s) == (15.0, None, 0.7)
+        assert run_manual(manual_inputs(180.0), zones=routed).zone4.state == ZONE_STATE_NOT_OPERATED
+
+    def test_explicit_zero_is_distinct_from_blank(self):
+        zone = replace(self.BLANK, reach_ohm=0.0, characteristic_angle_deg=0.0, delay_s=0.0)
+        routed = engine_zones_from_manual(characteristic=CHARACTERISTIC_MHO, impedance_basis=SEC, zones=(OFF, OFF, OFF, zone))[3]
+        assert (routed.reach_ohm, routed.characteristic_angle_deg, routed.delay_s) == (0.0, 0.0, 0.0)
+
+    def test_enabled_without_angle_never_operates(self):
+        p = pt(0.0, -5.0)
+        full = replace(self.BLANK, reach_ohm=15.0, delay_s=0.0, characteristic_angle_deg=20.0)
+        assert evaluate_zone_state(p, characteristic=CHARACTERISTIC_MHO, zone=full) == ZONE_STATE_OPERATED
+        assert evaluate_zone_state(p, characteristic=CHARACTERISTIC_MHO, zone=replace(full, characteristic_angle_deg=None)) == ZONE_STATE_NOT_OPERATED
+
+    def test_switching_characteristic_does_not_inject_reverse_defaults(self):
+        a = engine_zones_from_manual(characteristic=CHARACTERISTIC_MHO, impedance_basis=SEC, zones=(OFF, OFF, OFF, self.BLANK))[3]
+        b = engine_zones_from_manual(characteristic=CHARACTERISTIC_QUADRILATERAL, impedance_basis=SEC, zones=(OFF, OFF, OFF, self.BLANK))[3]
+        assert a == b
+
+    def test_canonical_model_keeps_reverse_values_unresolved(self):
+        model = manual_to_canonical(characteristic=CHARACTERISTIC_QUADRILATERAL, impedance_basis=SEC, zones=(OFF, OFF, OFF, self.BLANK))
+        z = model.zones[3]
+        assert not z.phase_timer_s.is_resolved and not z.reach.is_resolved
+        assert not z.resistive_reach.phase_phase.is_resolved and not z.resistive_reach.reverse.is_resolved
+
+
+class TestReverseZoneBlankHttp:
+    def test_omitted_zone4_parameters_report_blank_disabled_zone(self, client):
+        body = client.get(URL, params=manual_query(180)).json()
+        assert body["zone4"] == {"zone_key": "zone4", "enabled": False, "state": "not_operated", "delay_s": None, "direction": "reverse"}
+
+    def test_enabled_without_angle_is_not_operated_but_with_angle_operates(self, client):
+        z4 = dict(zone4_enabled=True, zone4_reach_ohm=15, zone4_delay_s=0.7)
+        assert client.get(URL, params=manual_query(180, **z4)).json()["zone4"]["state"] == "not_operated"
+        assert client.get(URL, params=manual_query(180, zone4_characteristic_angle_deg=20, **z4)).json()["zone4"]["state"] == "operated"

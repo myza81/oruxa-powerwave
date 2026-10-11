@@ -279,7 +279,9 @@ class ZoneSettings:
     reactive_reach_ohm: float | None = None
     resistive_reach_forward_ohm: float | None = None
     resistive_reach_reverse_ohm: float | None = None
-    characteristic_angle_deg: float = 90.0
+    #: None = not configured (only the Reverse Zone slot defaults to None); an
+    #: ENABLED zone without an angle never operates -- no angle is invented.
+    characteristic_angle_deg: float | None = 90.0
     #: None = not configured. Only the Reverse Zone slot defaults to None; an
     #: ENABLED zone whose delay is None is incomplete and never operates.
     delay_s: float | None = 0.0
@@ -424,6 +426,9 @@ def evaluate_zone_state(point: ImpedancePoint | None, *, characteristic: str, zo
         return ZONE_STATE_NOT_OPERATED
     if zone.delay_s is None:
         # Enabled but the delay was never configured: incomplete, not ready.
+        return ZONE_STATE_NOT_OPERATED
+    if zone.characteristic_angle_deg is None:
+        # Enabled but the angle was never configured: incomplete, not ready.
         return ZONE_STATE_NOT_OPERATED
     if characteristic == CHARACTERISTIC_MHO:
         if zone.reach_ohm is None:
@@ -576,7 +581,7 @@ class ManualDistanceResult:
 #: The fourth manual slot when a caller (e.g. an older client) supplies no
 #: Zone 4: disabled, delay not configured, and facing reverse -- the only default direction that
 #: differs from the pre-existing zones.
-DEFAULT_ZONE4 = ZoneSettings(enabled=False, delay_s=None, direction=DIRECTION_REVERSE)
+DEFAULT_ZONE4 = ZoneSettings(enabled=False, characteristic_angle_deg=None, delay_s=None, direction=DIRECTION_REVERSE)
 
 
 def evaluate_manual_distance(

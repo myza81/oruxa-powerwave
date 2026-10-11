@@ -425,7 +425,29 @@ class TestReverseZoneDelayDefault:
         source = _source()
         card = _function_body(source, 'id="wwDistanceZone4DelayInput"', "</label>")
         assert "value=" not in card and 'placeholder="not set"' in card
-        assert 'delaySeconds: null, direction: "reverse"' in source
+        assert 'delaySeconds: null, characteristicAngleDeg: null, direction: "reverse"' in source
         params = _function_body(source, "function wwDistanceZoneParams()", "// The ONE place that dispatches")
         assert 'else if (key !== "zone4")' in params
         assert "delay not configured" in source
+
+
+class TestDistanceZoneDefaults:
+    def test_zone_delay_defaults_in_markup_and_state(self):
+        source = _source()
+        assert 'id="wwDistanceZone1DelayInput" min="0" step="0.01" value="0"' in source
+        assert 'id="wwDistanceZone2DelayInput" min="0" step="0.01" value="0.45"' in source
+        assert 'id="wwDistanceZone3DelayInput" min="0" step="0.01" value="3"' in source
+        # initial state and the reset state agree
+        assert source.count("zone1: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0 })") == 2
+        assert source.count("zone2: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 0.45 })") == 2
+        assert source.count("zone3: Object.assign(wwDistanceDefaultZoneSettings(), { delaySeconds: 3 })") == 2
+
+    def test_reverse_zone_has_no_engineering_defaults(self):
+        source = _source()
+        assert source.count('{ delaySeconds: null, characteristicAngleDeg: null, direction: "reverse" }') == 2
+        angle = _function_body(source, 'id="wwDistanceZone4AngleInput"', "</label>")
+        assert "value=" not in angle and 'placeholder="not set"' in angle
+        for field in ("Reach", "ReactiveReach", "ResistiveForward", "ResistiveReverse"):
+            assert "value=" not in _function_body(source, f'id="wwDistanceZone4{field}Input"', "</label>")
+        params = _function_body(source, "function wwDistanceZoneParams()", "// The ONE place that dispatches")
+        assert 'else if (key !== "zone4") params[key + "_characteristic_angle_deg"] = "90"' in params
