@@ -7,9 +7,13 @@ interpretation summary is counts and fixed phrases only.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, StrictFloat, StrictInt, StrictStr
+
+#: Mapped / To confirm / Confirmed / Unresolved / Resolved manually. Separate from
+#: the interpretation ``status``, which a confirmation never rewrites.
+ReviewStatusName = Literal["mapped", "to_confirm", "confirmed", "unresolved", "resolved_manually"]
 
 
 class ReviewSourceOut(BaseModel):
@@ -21,6 +25,17 @@ class ReviewSourceOut(BaseModel):
     page: int | None = None
     line: int | None = None
     source_text: str | None = None
+
+
+class ReviewResolutionOut(BaseModel):
+    """How the user may supply a value for an unresolved item."""
+
+    kind: Literal["number", "choice"]
+    unit_symbol: str | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+    #: (value, label) pairs for a choice.
+    options: list[tuple[str, str]] = []
 
 
 class ReviewItemOut(BaseModel):
@@ -35,6 +50,17 @@ class ReviewItemOut(BaseModel):
     profile_id: str | None = None
     profile_version: str | None = None
     sources: list[ReviewSourceOut] = []
+    #: Slice 8. Canonical path the user's decisions refer to; ``None`` for a
+    #: declined zone setting (never resolvable).
+    item_id: str | None = None
+    #: False on the second row of a value shown as two rows (reach + angle).
+    primary: bool = True
+    review_status: ReviewStatusName = "mapped"
+    #: Unresolved and needed by the current engine adapter.
+    blocking: bool = False
+    left_unresolved: bool = False
+    user_value_text: str | None = None
+    resolution: ReviewResolutionOut | None = None
 
 
 class ReviewGroupOut(BaseModel):
@@ -43,6 +69,7 @@ class ReviewGroupOut(BaseModel):
     title: str
     state_label: str | None = None
     state_status: Literal["mapped", "inferred", "unresolved"] | None = None
+    state_review_status: ReviewStatusName | None = None
     items: list[ReviewItemOut] = []
 
 
@@ -66,10 +93,41 @@ class ReviewEngineOut(BaseModel):
     warnings: list[str] = []
 
 
-class ExtractionReviewOut(BaseModel):
-    """Slice 7: read-only Extraction Review. Request-scoped and ephemeral: it
-    rides in the upload response and is kept only in the browser tab's memory.
-    Nothing here is applied to the Distance Protection form."""
+class ReviewBlockingIssueOut(BaseModel):
+    message: str
+    zone_ids: list[str] = []
+    #: Canonical values that would address the issue (it can outlive them all).
+    item_ids: list[str] = []
+
+
+class ReviewReadinessOut(BaseModel):
+    status: Literal["not_ready", "ready_after_confirmation", "ready"]
+    pending_confirmations: int
+    blocking_unresolved: int
+
+
+class ReviewStateFieldsOut(BaseModel):
+    """The part of a review that changes with the user's decisions."""
+
+    #: Counts are per canonical value (a reach and its angle are one).
+    mapped_count: int
+    #: Inferred values still awaiting confirmation.
+    to_confirm_count: int
+    confirmed_count: int
+    resolved_manually_count: int
+    #: Unresolved values, blocking or not, including those left unresolved.
+    unresolved_count: int
+    #: Unresolved values the current engine adapter needs (a subset of the above).
+    blocking_count: int
+    readiness: ReviewReadinessOut
+    blocking_issues: list[ReviewBlockingIssueOut] = []
+    engine: ReviewEngineOut
+
+
+class ExtractionReviewOut(ReviewStateFieldsOut):
+    """Slice 7: Extraction Review, with the Slice 8 review state. Request-scoped
+    and ephemeral: it rides in the upload response and is kept only in the browser
+    tab's memory. Nothing here is applied to the Distance Protection form."""
 
     manufacturer: str | None = None
     relay_family: str | None = None
@@ -77,17 +135,52 @@ class ExtractionReviewOut(BaseModel):
     profile_id: str | None = None
     profile_version: str | None = None
     zone_count: int
-    mapped_count: int
-    to_confirm_count: int
-    unresolved_count: int
     not_interpreted_count: int
     #: Interpretation quality, separate from engine compatibility.
     interpretation: Literal["reviewable", "incomplete"]
-    engine: ReviewEngineOut
     notes: list[str] = []
     groups: list[ReviewGroupOut] = []
     not_interpreted: list[ReviewRawSettingOut] = []
     out_of_scope: list[ReviewRawSettingOut] = []
+    #: The original interpretation, for stateless re-validation of the user's
+    #: decisions (see ``POST /api/v1/relay-import/review/validate``). Opaque to
+    #: the browser: it is held in tab memory and sent back unchanged.
+    validation_context: dict | None = None
+
+
+class ReviewManualResolutionIn(BaseModel):
+    item_id: str = Field(max_length=300)
+    #: A number for a numeric item, an offered option for a choice. Never coerced:
+    #: a string is not a number and a boolean is neither.
+    value: StrictFloat | StrictInt | StrictStr
+
+
+class ReviewValidationIn(BaseModel):
+    """The original interpretation plus the user's session decisions."""
+
+    validation_context: dict
+    confirmed: list[Annotated[str, Field(max_length=300)]] = Field(default=[], max_length=2000)
+    manual: list[ReviewManualResolutionIn] = Field(default=[], max_length=2000)
+    left_unresolved: list[Annotated[str, Field(max_length=300)]] = Field(default=[], max_length=2000)
+
+
+class ReviewItemStateOut(BaseModel):
+    item_id: str
+    #: The interpretation status; a confirmation never rewrites it.
+    status: Literal["mapped", "inferred", "unresolved"]
+    review_status: ReviewStatusName
+    value_text: str | None = None
+    blocking: bool = False
+    left_unresolved: bool = False
+    user_value_text: str | None = None
+
+
+class ReviewStateOut(ReviewStateFieldsOut):
+    """The reviewed state after the decisions were applied: one entry per
+    canonical value plus the counts, blocking issues, engine compatibility and
+    readiness. Nothing is stored and nothing is applied to the form."""
+
+    items: list[ReviewItemStateOut] = []
 
 
 class RelayImportUploadOut(BaseModel):

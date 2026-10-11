@@ -7,6 +7,19 @@ history already provides the detailed historical trail.
 Last updated: **2026-10-05** (Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
+## Relay import Slice 8 (2026-10-11, `feature/distance-relay-import`)
+
+**Review Confirmation / Resolution**: confirm inferred values, resolve or leave
+unresolved ones (only where the canonical type is known), see blocking issues and
+a live readiness (`Not ready` / `Ready after confirmation` / `Ready to apply`).
+Session overlay over an immutable interpretation, re-validated statelessly by
+`POST /api/v1/relay-import/review/validate`; decisions live in tab memory only.
+Details: [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-8--review-confirmation--resolution-still-no-apply).
+**Stopped at the owner UAT gate -- do not start Slice 9 (Apply Settings) until the
+owner has UAT'd and approved Slice 8.** No Apply, no form write. Not merged;
+Oscillation branch not rebased. Note for Slice 9: the validation context is
+unauthenticated client-held data -- re-derive or re-verify before applying.
+
 ## Relay import Slice 7 (2026-10-11, `feature/distance-relay-import`)
 
 Read-only **Extraction Review** of an interpreted relay (P441 only so far):

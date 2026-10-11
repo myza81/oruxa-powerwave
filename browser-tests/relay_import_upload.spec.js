@@ -385,7 +385,10 @@ function p441Pdf(notes = ["Zone 4 Defeated"], extraRows = []) {
   }
   return buildPdf(lines);
 }
-const P441_SUMMARY = /^\d+ zones found · \d+ settings mapped · \d+ to confirm · \d+ unresolved$/;
+// Slice 8: the line is the live review count, so confirmed / resolved / blocking parts appear
+// as they become non-zero and zero parts are dropped.
+const P441_SUMMARY =
+  /^\d+ zones found · \d+ settings mapped( · \d+ to confirm)?( · \d+ confirmed)?( · \d+ resolved manually)?( · \d+ unresolved)?( · \d+ blocking)?$/;
 
 test("a P441 is interpreted, summarised, and NOTHING is applied to the form", async ({ page }) => {
   await openDistance(page);

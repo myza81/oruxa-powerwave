@@ -26,6 +26,9 @@ class ProvenanceOrigin(StrEnum):
     #: Typed by the user in the manual Distance Protection form. Carries no
     #: document references or relay-profile metadata.
     MANUAL_ENTRY = "manual_entry"
+    #: Slice 8: set by the user while reviewing an import (a confirmation or a
+    #: manual resolution). Session-only; never a statement about the profile.
+    SESSION_REVIEW = "session_review"
 
 
 class MappingStatus(StrEnum):
@@ -36,6 +39,33 @@ class MappingStatus(StrEnum):
     INFERRED = "inferred"
     #: Meaning unknown; the value stays out of the model, raw text is kept.
     UNRESOLVED = "unresolved"
+    #: Slice 8: the user supplied the value during review for this session. It
+    #: is neither a deterministic mapping nor evidence about the profile.
+    RESOLVED_MANUALLY = "resolved_manually"
+
+
+class ReviewStatus(StrEnum):
+    """What the user did with an item during review (Slice 8). Separate from
+    `MappingStatus`: an inferred value that was confirmed is still inferred."""
+
+    CONFIRMED = "confirmed"
+    RESOLVED_MANUALLY = "resolved_manually"
+    #: The user looked at an unresolved item and chose to leave it unresolved.
+    LEFT_UNRESOLVED = "left_unresolved"
+
+
+@dataclass(frozen=True)
+class ReviewRecord:
+    """Session-review annotation on a `Provenance`: what the user decided and
+    what the item was before that. The original interpretation is never
+    rewritten -- it stays in the provenance fields beside this record."""
+
+    status: ReviewStatus
+    #: The `MappingStatus` the profile gave the item before review.
+    original_status: MappingStatus
+    #: The value as the user typed/chose it with its unit (manual resolution).
+    user_value_text: str | None = None
+    origin: ProvenanceOrigin = ProvenanceOrigin.SESSION_REVIEW
 
 
 @dataclass(frozen=True)
@@ -61,6 +91,8 @@ class Provenance:
     raw_value: str | float | None = None
     notes: tuple[str, ...] = ()
     origin: ProvenanceOrigin = ProvenanceOrigin.RELAY_DOCUMENT
+    #: Slice 8 session-review annotation; ``None`` until the user acts.
+    review: ReviewRecord | None = None
 
     def __post_init__(self) -> None:
         needs_source = self.origin is ProvenanceOrigin.RELAY_DOCUMENT
@@ -86,7 +118,10 @@ class Sourced(Generic[T]):
 
     @property
     def needs_confirmation(self) -> bool:
-        return self.provenance.status is MappingStatus.INFERRED
+        """Inferred and not yet confirmed by the user in this session."""
+        p = self.provenance
+        confirmed = p.review is not None and p.review.status is ReviewStatus.CONFIRMED
+        return p.status is MappingStatus.INFERRED and not confirmed
 
 
 def unresolved(

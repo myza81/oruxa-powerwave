@@ -276,7 +276,9 @@ class TestExtractionReview:
         for label in labels:
             assert not re.search(r"apply|accept|populate|generate|auto-?fill", label, re.I), label
         js = _review_js(source)
-        for forbidden in ("wwDistanceState", "wwDistanceZone", "wwDistanceHandleZoneSettingChanged", "wwDistanceRenderPlot", ".value ="):
+        # The review's own entry controls are written (a prefilled editor); the manual form never is.
+        assert "wwDistance" not in js
+        for forbidden in ("wwDistanceState", "wwDistanceZone", "wwDistanceHandleZoneSettingChanged", "wwDistanceRenderPlot"):
             assert forbidden not in js, forbidden
 
     def test_review_is_rendered_as_text_never_as_html(self):
@@ -293,7 +295,8 @@ class TestExtractionReview:
 
     def test_status_labels_match_the_interpretation_vocabulary(self):
         js = _review_js(_source())
-        assert 'mapped: "Mapped", inferred: "To confirm", unresolved: "Unresolved"' in js
+        assert 'mapped: "Mapped", to_confirm: "To confirm", confirmed: "Confirmed"' in js
+        assert 'unresolved: "Unresolved", resolved_manually: "Resolved manually"' in js
 
     def test_provenance_toggle_is_an_accessible_disclosure(self):
         js = _review_js(_source())
@@ -306,3 +309,52 @@ class TestExtractionReview:
         assert not re.search(r"#[0-9a-fA-F]{3,8}\b", css)
         assert "animation" not in css and "transition" not in css
         assert "@media (max-width: 640px)" in css
+
+
+class TestReviewConfirmation:
+    """Slice 8: confirmation / manual resolution. Behaviour is covered in
+    browser-tests/relay_import_review.spec.js; these guard the structure."""
+
+    def test_decisions_are_tab_memory_only_and_cleared_with_everything_else(self):
+        source = _source()
+        state = _slice(source, "const wwRelayImportState", "function wwRelayImportClearInterpretation")
+        assert "decisions:" in state and "reviewLive: null" in state
+        clear = _slice(source, "function wwRelayImportClearInterpretation", "// \"5 zones found")
+        for needle in ("state.decisions =", "state.reviewLive = null", "state.reviewController.abort()", "state.reviewBuilt = false"):
+            assert needle in clear, needle
+        js = _review_js(source)
+        for forbidden in ("localStorage", "sessionStorage", "indexedDB", "document.cookie"):
+            assert forbidden not in js, forbidden
+
+    def test_validation_is_asked_of_the_backend_with_the_original_context(self):
+        js = _review_js(_source())
+        assert '"/api/v1/relay-import/review/validate"' in js
+        for needle in ("validation_context: review.validation_context", "confirmed:", "manual:", "left_unresolved:"):
+            assert needle in js, needle
+        # the page never computes readiness or counts itself
+        assert not re.search(r"readiness\.status\s*=[^=]", js)
+        assert not re.search(r"(blocking|confirmed|to_confirm|unresolved)_count\s*=[^=]", js)
+
+    def test_a_refused_decision_is_rolled_back(self):
+        js = _review_js(_source())
+        assert "state.decisions = before" in js
+
+    def test_only_inferred_and_resolvable_items_get_decision_controls(self):
+        js = _review_js(_source())
+        assert 'view.review_status === "to_confirm"' in js and "item.resolution" in js
+        assert "const decidable = !!item.item_id && item.primary" in js
+
+    def test_a_blank_entry_is_not_a_value(self):
+        js = _review_js(_source())
+        assert 'if (text === "")' in js and "Number(text)" in js
+
+    def test_the_panel_is_refreshed_in_place(self):
+        js = _review_js(_source())
+        assert "state.reviewBuilt" in js and "wwRrRefreshAll" in js
+
+    def test_there_is_still_no_apply_anywhere_in_the_import_panel(self):
+        source = _source()
+        js = _review_js(source)
+        # the visible button vocabulary: no apply / populate / generate controls
+        for label in re.findall(r'wwRrAction\("([^"]+)"', js) + re.findall(r'wwRrEl\("button", "ww-rr-btn", "([^"]+)"', js):
+            assert not re.search(r"apply|populate|generate|plot|auto-?fill", label, re.I), label

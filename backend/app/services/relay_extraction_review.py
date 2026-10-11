@@ -1,5 +1,5 @@
-"""Extraction Review (Slice 7): a read-only, presentation-shaped view of an
-interpreted relay.
+"""Extraction Review (Slice 7) with review state (Slice 8): a presentation-shaped
+view of an interpreted relay.
 
 Built request-scoped from the canonical model plus the RawRelayDocument (the
 raw document is what lets each value cite its source line, text and raw value),
@@ -12,6 +12,16 @@ It adds no engineering meaning. Wording that explains *why* something is
 inferred or unresolved is the profile's own note carried through; the only
 fixed phrases here are presentation labels and the generic "not stated" text
 for an expected value the profile never touched.
+
+Slice 8: the same builder renders an *effective reviewed model* (the original
+interpretation plus the user's session overlay, see `review_state`). Every item
+carries the canonical path it came from as its ``item_id`` -- the key the user's
+decisions use -- the original interpretation ``status`` (never rewritten by a
+confirmation) and a separate ``review_status``. Counts, blocking items and the
+readiness are all computed here from the items, so what the panel counts is
+exactly what it lists. Counting convention: one count per canonical value (a
+reach and its angle are one), over the values the review lists, plus the zone
+settings the profile declined (always unresolved, never resolvable).
 """
 
 from __future__ import annotations
@@ -27,9 +37,18 @@ from app.domain.relay_import.canonical_distance import (
     ImpedanceValue,
     UnresolvedSetting,
     ZoneStatus,
+    item_label,
 )
 from app.domain.relay_import.engine_adapter import EngineAdaptation
-from app.domain.relay_import.provenance import MappingStatus, Sourced, SourceRef
+from app.domain.relay_import.provenance import MappingStatus, ReviewStatus, Sourced, SourceRef
+from app.domain.relay_import.review_state import (
+    ResolutionKind,
+    ResolutionSpec,
+    blocking_issues,
+    blocking_paths,
+    compute_readiness,
+    resolution_spec,
+)
 from app.domain.relay_import.raw_document import RawRelayDocument, RawSetting
 
 NOT_STATED = "No value is stated in the document."
@@ -48,6 +67,17 @@ class ReviewSource:
 
 
 @dataclass(frozen=True)
+class ReviewResolution:
+    """How the user may supply a value for this item (see `ResolutionSpec`)."""
+
+    kind: str  # number | choice
+    unit_symbol: str | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+    options: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
 class ReviewItem:
     key: str
     label: str
@@ -55,6 +85,8 @@ class ReviewItem:
     full_label: str
     #: Formatted engineering value with its unit; ``None`` when unresolved.
     value_text: str | None
+    #: The profile's interpretation status: mapped | inferred | unresolved. A
+    #: confirmation or manual resolution never rewrites it.
     status: str  # mapped | inferred | unresolved
     #: Profile wording: why it is inferred, or why it is unresolved.
     notes: tuple[str, ...] = ()
@@ -62,6 +94,22 @@ class ReviewItem:
     profile_id: str | None = None
     profile_version: str | None = None
     sources: tuple[ReviewSource, ...] = ()
+    #: Slice 8. The canonical path the user's decisions refer to; ``None`` for a
+    #: zone setting the profile declined (it has no canonical target).
+    item_id: str | None = None
+    #: False on the second row of a value shown as two rows (reach + angle): the
+    #: decision controls and the counts belong to the first row only.
+    primary: bool = True
+    #: mapped | to_confirm | confirmed | unresolved | resolved_manually
+    review_status: str = "mapped"
+    #: Unresolved and the current engine adapter needs it.
+    blocking: bool = False
+    #: The user consciously left this unresolved item as it is.
+    left_unresolved: bool = False
+    #: The value the user entered, with its unit (manual resolution only).
+    user_value_text: str | None = None
+    #: Present while the user may supply or change the value.
+    resolution: ReviewResolution | None = None
 
 
 @dataclass(frozen=True)
@@ -72,6 +120,8 @@ class ReviewGroup:
     #: Zone state (e.g. "Disabled / Defeated"); ``None`` for non-zone groups.
     state_label: str | None = None
     state_status: str | None = None
+    #: Slice 8: the zone state in review vocabulary (see `ReviewItem.review_status`).
+    state_review_status: str | None = None
     items: tuple[ReviewItem, ...] = ()
 
 
@@ -101,6 +151,26 @@ class ReviewEngine:
 
 
 @dataclass(frozen=True)
+class ReviewBlockingIssue:
+    """Why the current engine cannot take the (reviewed) model. ``item_ids`` are
+    the canonical values that would address it; an issue can outlive all of them."""
+
+    message: str
+    zone_ids: tuple[str, ...] = ()
+    item_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ReviewReadiness:
+    #: not_ready | ready_after_confirmation | ready (see `review_state.Readiness`).
+    status: str
+    #: Inferred values still waiting for the user's confirmation.
+    pending_confirmations: int
+    #: Unresolved values the current engine adapter needs.
+    blocking_unresolved: int
+
+
+@dataclass(frozen=True)
 class ExtractionReview:
     manufacturer: str | None
     relay_family: str | None
@@ -108,10 +178,21 @@ class ExtractionReview:
     profile_id: str | None
     profile_version: str | None
     zone_count: int
+    #: Mapped values the user has not been asked about.
     mapped_count: int
+    #: Inferred values still awaiting confirmation.
     to_confirm_count: int
+    #: Unresolved values (blocking or not), including the ones left unresolved.
     unresolved_count: int
     not_interpreted_count: int
+    #: Inferred values the user confirmed this session.
+    confirmed_count: int
+    #: Unresolved values the user supplied this session.
+    resolved_manually_count: int
+    #: Unresolved values the current engine adapter needs (a subset of the unresolved).
+    blocking_count: int
+    readiness: ReviewReadiness
+    blocking_issues: tuple[ReviewBlockingIssue, ...]
     #: reviewable | incomplete (interpretation quality, apart from the engine).
     interpretation: str
     engine: ReviewEngine
@@ -121,6 +202,11 @@ class ExtractionReview:
     not_interpreted: tuple[ReviewRawSetting, ...] = ()
     #: Settings outside Distance Protection, retained so nothing is discarded.
     out_of_scope: tuple[ReviewRawSetting, ...] = ()
+    #: Slice 8. The original interpretation as JSON-safe data. The browser holds it
+    #: in tab memory and returns it with its decisions so the backend can validate
+    #: them without keeping any state (see `canonical_codec`). ``None`` when the
+    #: review is built only to read its state back.
+    validation_context: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -188,9 +274,47 @@ def _value_text(value: object, unit: str | None = None) -> str:
 # ---------------------------------------------------------------------------
 
 
+_REVIEW_STATUS_BY_MAPPING = {
+    MappingStatus.MAPPED: "mapped",
+    MappingStatus.INFERRED: "to_confirm",
+    MappingStatus.UNRESOLVED: "unresolved",
+}
+
+
+def _interpretation_status(sourced: Sourced) -> str:
+    """The profile's own status, ignoring any session review."""
+    p = sourced.provenance
+    original = p.review.original_status if p.review else p.status
+    return original.value
+
+
+def _review_status(sourced: Sourced) -> str:
+    p = sourced.provenance
+    record = p.review
+    if record is None:
+        return _REVIEW_STATUS_BY_MAPPING[p.status]
+    if record.status is ReviewStatus.CONFIRMED:
+        return "confirmed"
+    if record.status is ReviewStatus.RESOLVED_MANUALLY:
+        return "resolved_manually"
+    return "unresolved"
+
+
+def _resolution(path: str | None, sourced: Sourced) -> ReviewResolution | None:
+    if path is None or _review_status(sourced) not in ("unresolved", "resolved_manually"):
+        return None
+    spec: ResolutionSpec | None = resolution_spec(path)
+    if spec is None:
+        return None
+    if spec.kind is ResolutionKind.NUMBER:
+        return ReviewResolution("number", _UNIT_SYMBOLS.get(spec.unit or "", spec.unit), spec.minimum, spec.maximum)
+    return ReviewResolution("choice", options=spec.options)
+
+
 class _Builder:
-    def __init__(self, document: RawRelayDocument) -> None:
+    def __init__(self, document: RawRelayDocument, blocking: frozenset[str] = frozenset()) -> None:
         self._raw: dict[str, RawSetting] = {s.setting_id: s for s in document.settings}
+        self._blocking = blocking
 
     def source(self, ref) -> ReviewSource:
         raw = self._raw.get(ref.setting_id)
@@ -214,6 +338,8 @@ class _Builder:
         unit: str | None = None,
         extra_sources: tuple = (),
         extra_notes: tuple[str, ...] = (),
+        path: str | None = None,
+        primary: bool = True,
     ) -> ReviewItem:
         prov = sourced.provenance
         refs = (*prov.sources, *(r for r in extra_sources if r not in prov.sources))
@@ -224,20 +350,31 @@ class _Builder:
                 notes = (NOT_STATED,)
         else:
             value_text = text if text is not None else _value_text(sourced.value, unit)
+        record = prov.review
+        review_status = _review_status(sourced)
         return ReviewItem(
             key=key,
             label=label,
             full_label=f"{group_label} {label}".strip() if group_label else label,
             value_text=value_text,
-            status=prov.status.value,
+            status=_interpretation_status(sourced),
             notes=notes,
             raw_value=None if prov.raw_value is None else str(prov.raw_value),
             profile_id=prov.profile_id,
             profile_version=prov.profile_version,
             sources=tuple(self.source(r) for r in refs),
+            item_id=path,
+            primary=primary,
+            review_status=review_status,
+            blocking=path is not None and not sourced.is_resolved and path in self._blocking,
+            left_unresolved=record is not None and record.status is ReviewStatus.LEFT_UNRESOLVED,
+            user_value_text=record.user_value_text if record else None,
+            resolution=_resolution(path, sourced),
         )
 
-    def impedance(self, key: str, label: str, group_label: str, sourced: Sourced) -> list[ReviewItem]:
+    def impedance(
+        self, key: str, label: str, group_label: str, sourced: Sourced, path: str | None = None
+    ) -> list[ReviewItem]:
         value = sourced.value
         if isinstance(value, ImpedanceValue):
             if value.is_polar:
@@ -250,12 +387,21 @@ class _Builder:
                     (f"{key}.r", f"{label} R", _with_unit(_number(value.r_ohm), "ohm")),
                     (f"{key}.x", f"{label} X", _with_unit(_number(value.x_ohm), "ohm")),
                 ]
-            return [self.item(k, lab, group_label, sourced, text=t) for k, lab, t in parts]
-        return [self.item(key, label, group_label, sourced)]
+            return [
+                self.item(k, lab, group_label, sourced, text=t, path=path, primary=i == 0)
+                for i, (k, lab, t) in enumerate(parts)
+            ]
+        return [self.item(key, label, group_label, sourced, path=path)]
 
-    def extras(self, key: str, group_label: str, extras: tuple[ExtraQuantity, ...]) -> list[ReviewItem]:
+    def extras(
+        self, key: str, group_label: str, extras: tuple[ExtraQuantity, ...], path: str
+    ) -> list[ReviewItem]:
         return [
-            self.item(f"{key}.{e.name}", _humanize(e.name), group_label, e.value, unit=e.unit) for e in extras
+            self.item(
+                f"{key}.{e.name}", _humanize(e.name), group_label, e.value, unit=e.unit,
+                path=f"{path}[{item_label(e, i)}].value",
+            )
+            for i, e in enumerate(extras)
         ]
 
     def unresolved_setting(self, key: str, group_label: str, setting: UnresolvedSetting) -> ReviewItem:
@@ -270,6 +416,7 @@ class _Builder:
             notes=(setting.reason,) if setting.reason else (NOT_STATED,),
             raw_value=None if setting.raw_value is None else str(setting.raw_value),
             sources=sources,
+            review_status="unresolved",
         )
 
     def source_from_setting(self, setting_id: str) -> ReviewSource:
@@ -300,12 +447,15 @@ def _touched(sourced: Sourced) -> bool:
 def _relay_group(b: _Builder, model: CanonicalDistanceProtectionModel) -> ReviewGroup:
     m = model.metadata
     items = [
-        b.item("relay.manufacturer", "Manufacturer", "", m.manufacturer),
-        b.item("relay.family", "Relay Family", "", m.family),
-        b.item("relay.model", "Model", "", m.model),
-        b.item("relay.scheme", "Scheme / Template", "", m.scheme_name),
-        b.item("relay.version", "Firmware Version", "", m.version),
-        b.item("relay.setting_group", "Active Setting Group", "", m.active_setting_group),
+        b.item("relay.manufacturer", "Manufacturer", "", m.manufacturer, path="metadata.manufacturer"),
+        b.item("relay.family", "Relay Family", "", m.family, path="metadata.family"),
+        b.item("relay.model", "Model", "", m.model, path="metadata.model"),
+        b.item("relay.scheme", "Scheme / Template", "", m.scheme_name, path="metadata.scheme_name"),
+        b.item("relay.version", "Firmware Version", "", m.version, path="metadata.version"),
+        b.item(
+            "relay.setting_group", "Active Setting Group", "", m.active_setting_group,
+            path="metadata.active_setting_group",
+        ),
     ]
     return ReviewGroup("relay", "relay", "Relay / source information", items=tuple(items))
 
@@ -313,13 +463,13 @@ def _relay_group(b: _Builder, model: CanonicalDistanceProtectionModel) -> Review
 def _transformer_group(b: _Builder, model: CanonicalDistanceProtectionModel) -> ReviewGroup:
     t = model.transformers
     items = [
-        b.item("ct.primary", "CT Primary", "", t.ct_primary_a, unit="A"),
-        b.item("ct.secondary", "CT Secondary", "", t.ct_secondary_a, unit="A"),
-        b.item("vt.primary", "VT Primary", "", t.vt_primary_v, unit="V"),
-        b.item("vt.secondary", "VT Secondary", "", t.vt_secondary_v, unit="V"),
-        b.item("basis", "Setting Values Basis", "", t.setting_basis),
-        b.item("base.voltage", "Voltage Base", "", t.voltage_base_v, unit="V"),
-        b.item("base.current", "Current Base", "", t.current_base_a, unit="A"),
+        b.item("ct.primary", "CT Primary", "", t.ct_primary_a, unit="A", path="transformers.ct_primary_a"),
+        b.item("ct.secondary", "CT Secondary", "", t.ct_secondary_a, unit="A", path="transformers.ct_secondary_a"),
+        b.item("vt.primary", "VT Primary", "", t.vt_primary_v, unit="V", path="transformers.vt_primary_v"),
+        b.item("vt.secondary", "VT Secondary", "", t.vt_secondary_v, unit="V", path="transformers.vt_secondary_v"),
+        b.item("basis", "Setting Values Basis", "", t.setting_basis, path="transformers.setting_basis"),
+        b.item("base.voltage", "Voltage Base", "", t.voltage_base_v, unit="V", path="transformers.voltage_base_v"),
+        b.item("base.current", "Current Base", "", t.current_base_a, unit="A", path="transformers.current_base_a"),
     ]
     return ReviewGroup("ct_vt", "transformers", "CT / VT", items=tuple(items))
 
@@ -332,70 +482,104 @@ def _line_group(b: _Builder, model: CanonicalDistanceProtectionModel) -> ReviewG
         b.item(
             "line.length", "Line Length", "", line.length, text=length_text,
             extra_sources=line.length_unit.provenance.sources if unit_value else (),
+            path="line.length",
         ),
-        b.item("line.angle", "Line Angle", "", line.line_angle_deg, unit="deg"),
-        *b.impedance("line.z1", "Positive-Sequence Impedance", "", line.positive_sequence_impedance),
+        b.item("line.angle", "Line Angle", "", line.line_angle_deg, unit="deg", path="line.line_angle_deg"),
+        *b.impedance(
+            "line.z1", "Positive-Sequence Impedance", "", line.positive_sequence_impedance,
+            "line.positive_sequence_impedance",
+        ),
     ]
     if _touched(line.zero_sequence_impedance):
-        items += b.impedance("line.z0", "Zero-Sequence Impedance", "", line.zero_sequence_impedance)
-    items += b.extras("line", "", line.extras)
+        items += b.impedance(
+            "line.z0", "Zero-Sequence Impedance", "", line.zero_sequence_impedance, "line.zero_sequence_impedance"
+        )
+    items += b.extras("line", "", line.extras, "line.extras")
     return ReviewGroup("line", "line", "Protected line", items=tuple(items))
 
 
-def _zone_state(zone: DistanceZone) -> tuple[str, str]:
+def _zone_state(zone: DistanceZone) -> tuple[str, str, str]:
+    """(label, interpretation status, review status) of the zone's own status."""
     status = zone.status
     if not status.is_resolved:
-        return "Status unresolved", MappingStatus.UNRESOLVED.value
-    return _STATUS_LABELS.get(str(_enum_str(status.value)), "Unknown"), status.provenance.status.value
+        return "Status unresolved", _interpretation_status(status), _review_status(status)
+    label = _STATUS_LABELS.get(str(_enum_str(status.value)), "Unknown")
+    return label, _interpretation_status(status), _review_status(status)
 
 
 def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
     name = zone.name or f"Zone {zone.zone_id}"
     pre = f"zone.{zone.zone_id}"
+    zp = f"zones[{zone.zone_id}]"
     items: list[ReviewItem] = []
 
     state_text = None if not zone.status.is_resolved else _zone_state(zone)[0]
-    items.append(b.item(f"{pre}.status", "Status", name, zone.status, text=state_text))
-    items.append(b.item(f"{pre}.direction", "Direction", name, zone.direction))
+    items.append(b.item(f"{pre}.status", "Status", name, zone.status, text=state_text, path=f"{zp}.status"))
+    items.append(b.item(f"{pre}.direction", "Direction", name, zone.direction, path=f"{zp}.direction"))
     ctype = zone.characteristic.type
     ctype_text = _CHARACTERISTIC_LABELS.get(str(_enum_str(ctype.value))) if ctype.is_resolved else None
-    items.append(b.item(f"{pre}.characteristic", "Characteristic", name, ctype, text=ctype_text))
-    items += b.impedance(f"{pre}.reach", "Reach", name, zone.reach)
+    items.append(
+        b.item(f"{pre}.characteristic", "Characteristic", name, ctype, text=ctype_text, path=f"{zp}.characteristic.type")
+    )
+    items += b.impedance(f"{pre}.reach", "Reach", name, zone.reach, f"{zp}.reach")
     if _touched(zone.earth_reach):
-        items += b.impedance(f"{pre}.earth_reach", "Earth Reach", name, zone.earth_reach)
+        items += b.impedance(f"{pre}.earth_reach", "Earth Reach", name, zone.earth_reach, f"{zp}.earth_reach")
     if _touched(zone.zero_sequence_reach):
-        items += b.impedance(f"{pre}.zero_reach", "Zero-Sequence Reach", name, zone.zero_sequence_reach)
+        items += b.impedance(
+            f"{pre}.zero_reach", "Zero-Sequence Reach", name, zone.zero_sequence_reach, f"{zp}.zero_sequence_reach"
+        )
 
     rr = zone.resistive_reach
     if _touched(rr.common):
-        items.append(b.item(f"{pre}.rr.common", "Resistive Reach", name, rr.common, unit="ohm"))
-    items.append(b.item(f"{pre}.rr.pp", "Phase-Phase Resistive Reach", name, rr.phase_phase, unit="ohm"))
-    items.append(b.item(f"{pre}.rr.pe", "Earth Resistive Reach", name, rr.phase_earth, unit="ohm"))
+        items.append(
+            b.item(f"{pre}.rr.common", "Resistive Reach", name, rr.common, unit="ohm", path=f"{zp}.resistive_reach.common")
+        )
+    items.append(
+        b.item(
+            f"{pre}.rr.pp", "Phase-Phase Resistive Reach", name, rr.phase_phase, unit="ohm",
+            path=f"{zp}.resistive_reach.phase_phase",
+        )
+    )
+    items.append(
+        b.item(
+            f"{pre}.rr.pe", "Earth Resistive Reach", name, rr.phase_earth, unit="ohm",
+            path=f"{zp}.resistive_reach.phase_earth",
+        )
+    )
     quadrilateral = ctype.is_resolved and ctype.value == CharacteristicType.QUADRILATERAL
     if quadrilateral or _touched(rr.reverse):
-        items.append(b.item(f"{pre}.rr.reverse", "Reverse Resistive Reach", name, rr.reverse, unit="ohm"))
-    items += b.extras(f"{pre}.rr", name, rr.extras)
+        items.append(
+            b.item(
+                f"{pre}.rr.reverse", "Reverse Resistive Reach", name, rr.reverse, unit="ohm",
+                path=f"{zp}.resistive_reach.reverse",
+            )
+        )
+    items += b.extras(f"{pre}.rr", name, rr.extras, f"{zp}.resistive_reach.extras")
 
     timers = [
-        (f"{pre}.timer", "Time Delay", zone.common_timer_s),
-        (f"{pre}.timer.pp", "Phase Time Delay", zone.phase_timer_s),
-        (f"{pre}.timer.pe", "Earth Time Delay", zone.earth_timer_s),
+        (f"{pre}.timer", "Time Delay", zone.common_timer_s, "common_timer_s"),
+        (f"{pre}.timer.pp", "Phase Time Delay", zone.phase_timer_s, "phase_timer_s"),
+        (f"{pre}.timer.pe", "Earth Time Delay", zone.earth_timer_s, "earth_timer_s"),
     ]
     shown = [t for t in timers if _touched(t[2])]
-    for key, label, timer in shown or timers[:1]:
-        items.append(b.item(key, label, name, timer, unit="s"))
+    for key, label, timer, attr in shown or timers[:1]:
+        items.append(b.item(key, label, name, timer, unit="s", path=f"{zp}.{attr}"))
 
-    items.append(b.item(f"{pre}.pp_enabled", "Phase-Phase Faults", name, zone.phase_phase_enabled))
-    items.append(b.item(f"{pre}.pe_enabled", "Earth Faults", name, zone.phase_earth_enabled))
+    items.append(
+        b.item(f"{pre}.pp_enabled", "Phase-Phase Faults", name, zone.phase_phase_enabled, path=f"{zp}.phase_phase_enabled")
+    )
+    items.append(
+        b.item(f"{pre}.pe_enabled", "Earth Faults", name, zone.phase_earth_enabled, path=f"{zp}.phase_earth_enabled")
+    )
     if _touched(zone.tilt_deg):
-        items.append(b.item(f"{pre}.tilt", "Tilt Angle", name, zone.tilt_deg, unit="deg"))
-    items += b.extras(f"{pre}.char", name, zone.characteristic.parameters)
+        items.append(b.item(f"{pre}.tilt", "Tilt Angle", name, zone.tilt_deg, unit="deg", path=f"{zp}.tilt_deg"))
+    items += b.extras(f"{pre}.char", name, zone.characteristic.parameters, f"{zp}.characteristic.parameters")
     for u in zone.unresolved_settings:
         if not u.out_of_scope:
             items.append(b.unresolved_setting(f"{pre}.raw.{u.setting_id}", name, u))
 
-    state_label, state_status = _zone_state(zone)
-    return ReviewGroup(f"zone-{zone.zone_id}", "zone", name, state_label, state_status, tuple(items))
+    state_label, state_status, state_review = _zone_state(zone)
+    return ReviewGroup(f"zone-{zone.zone_id}", "zone", name, state_label, state_status, state_review, tuple(items))
 
 
 def _compensation_group(b: _Builder, model: CanonicalDistanceProtectionModel) -> ReviewGroup | None:
@@ -406,11 +590,14 @@ def _compensation_group(b: _Builder, model: CanonicalDistanceProtectionModel) ->
             continue
         name = zone.name or f"Zone {zone.zone_id}"
         if comp.kind is CompensationKind.OEM_SPECIFIC:
-            items += b.extras(f"comp.{zone.zone_id}", name, comp.oem_values)
+            items += b.extras(f"comp.{zone.zone_id}", name, comp.oem_values, f"zones[{zone.zone_id}].compensation.oem_values")
             continue
         for attr, label, unit in _COMPENSATION_COMPONENTS[comp.kind]:
             items.append(
-                b.item(f"comp.{zone.zone_id}.{attr}", f"{name} {label}", "", getattr(comp, attr), unit=unit or None)
+                b.item(
+                    f"comp.{zone.zone_id}.{attr}", f"{name} {label}", "", getattr(comp, attr), unit=unit or None,
+                    path=f"zones[{zone.zone_id}].compensation.{attr}",
+                )
             )
     return ReviewGroup("compensation", "compensation", "Residual compensation", items=tuple(items)) if items else None
 
@@ -422,12 +609,13 @@ def _compensation_group(b: _Builder, model: CanonicalDistanceProtectionModel) ->
 
 def _engine_reasons(adaptation: EngineAdaptation) -> tuple[ReviewEngineReason, ...]:
     """Adapter reasons, with one identical message across several zones merged."""
-    by_message: dict[str, list[str]] = {}
-    for reason in adaptation.reasons:
-        zones = by_message.setdefault(reason.message, [])
-        if reason.zone_id and reason.zone_id not in zones:
-            zones.append(reason.zone_id)
-    return tuple(ReviewEngineReason(tuple(zones), message) for message, zones in by_message.items())
+    return tuple(ReviewEngineReason(issue.zone_ids, issue.message) for issue in blocking_issues(adaptation))
+
+
+def _counted_items(groups: list[ReviewGroup]) -> list[ReviewItem]:
+    """One item per canonical value (a value shown as two rows counts once), plus
+    every item with no canonical target (a declined zone setting)."""
+    return [item for group in groups for item in group.items if item.primary]
 
 
 def build_extraction_review(
@@ -435,18 +623,25 @@ def build_extraction_review(
     document: RawRelayDocument,
     adaptation: EngineAdaptation,
     *,
-    mapped: int,
-    inferred: int,
-    unresolved: int,
     not_interpreted: int,
 ) -> ExtractionReview:
-    b = _Builder(document)
+    b = _Builder(document, blocking_paths(adaptation))
     groups = [_relay_group(b, model), _transformer_group(b, model), _line_group(b, model)]
     groups += [_zone_group(b, z) for z in model.zones]
     comp = _compensation_group(b, model)
     if comp:
         groups.append(comp)
     meta = model.metadata
+    counted = _counted_items(groups)
+
+    def count(status: str) -> int:
+        return sum(1 for item in counted if item.review_status == status)
+
+    blocking_unresolved = sum(1 for item in counted if item.blocking)
+    pending = count("to_confirm")
+    readiness = compute_readiness(
+        engine_supported=adaptation.supported, pending_confirmations=pending, blocking_unresolved=blocking_unresolved
+    )
     return ExtractionReview(
         manufacturer=meta.manufacturer.value,
         relay_family=meta.family.value,
@@ -454,10 +649,17 @@ def build_extraction_review(
         profile_id=meta.profile_id,
         profile_version=meta.profile_version,
         zone_count=len(model.zones),
-        mapped_count=mapped,
-        to_confirm_count=inferred,
-        unresolved_count=unresolved,
+        mapped_count=count("mapped"),
+        to_confirm_count=pending,
+        unresolved_count=count("unresolved"),
         not_interpreted_count=not_interpreted,
+        confirmed_count=count("confirmed"),
+        resolved_manually_count=count("resolved_manually"),
+        blocking_count=blocking_unresolved,
+        readiness=ReviewReadiness(readiness.value, pending, blocking_unresolved),
+        blocking_issues=tuple(
+            ReviewBlockingIssue(issue.message, issue.zone_ids, issue.paths) for issue in blocking_issues(adaptation)
+        ),
         interpretation="reviewable" if model.zones else "incomplete",
         engine=ReviewEngine(
             status="ready" if adaptation.supported else "not_ready",

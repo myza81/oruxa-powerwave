@@ -55,15 +55,19 @@ class TestReviewDto:
         none = summarize_interpretation(registry, other, registry.identify(other))
         assert none.status.value == "not_supported" and none.review is None
 
-    def test_relay_profile_and_counts_match_the_card_summary(self):
+    def test_relay_profile_and_counts_follow_the_listed_items(self):
+        """Review counts are per canonical value the review lists (Slice 8), so the
+        pending inferred count equals the profile's inferred count while mapped and
+        unresolved follow what is listed (see the module docstring)."""
         summary, review = _review()
         assert (review.manufacturer, review.relay_family, review.model) == ("Schneider Electric", "MiCOM P44x", "P441")
         assert (review.profile_id, review.profile_version) == ("schneider-micom-p441", "micom-p441-v1")
         assert review.zone_count == summary.zone_count == 5
-        assert (review.mapped_count, review.to_confirm_count, review.unresolved_count, review.not_interpreted_count) == (
-            summary.mapped_setting_count, summary.inferred_setting_count,
-            summary.unresolved_setting_count, summary.not_interpreted_setting_count,
-        )
+        assert review.to_confirm_count == summary.inferred_setting_count
+        assert review.not_interpreted_count == summary.not_interpreted_setting_count
+        assert review.confirmed_count == review.resolved_manually_count == 0
+        assert review.unresolved_count >= summary.unresolved_setting_count  # required placeholders are listed too
+        assert 0 < review.blocking_count <= review.unresolved_count
         assert review.interpretation == "reviewable"
 
     def test_zones_are_generated_from_the_model_in_order(self):
@@ -78,12 +82,12 @@ class TestReviewDto:
         model = MicomP441Profile().interpret(doc)
         seven = replace(model, zones=(*model.zones, DistanceZone("Z7", "Zone 7"), DistanceZone("Z8")))
         review = build_extraction_review(
-            seven, doc, engine_adaptation(seven), mapped=1, inferred=0, unresolved=0, not_interpreted=0
+            seven, doc, engine_adaptation(seven), not_interpreted=0
         )
         titles = [g.title for g in review.groups if g.kind == "zone"]
         assert review.zone_count == 7 and titles[-2:] == ["Zone 7", "Zone Z8"]
         one = replace(model, zones=model.zones[:1])
-        short = build_extraction_review(one, doc, engine_adaptation(one), mapped=1, inferred=0, unresolved=0, not_interpreted=0)
+        short = build_extraction_review(one, doc, engine_adaptation(one), not_interpreted=0)
         assert [g.id for g in short.groups if g.kind == "zone"] == ["zone-Z1"]
         assert registry  # the registry is shared, untouched
 
@@ -195,7 +199,7 @@ class TestReviewDto:
         doc = make_doc()
         model = MicomP441Profile().interpret(doc)
         simple = replace(model, zones=())
-        review = build_extraction_review(simple, doc, engine_adaptation(simple), mapped=0, inferred=0, unresolved=0, not_interpreted=0)
+        review = build_extraction_review(simple, doc, engine_adaptation(simple), not_interpreted=0)
         assert review.interpretation == "incomplete" and review.engine.status == "not_ready"
 
     def test_raw_uninterpreted_settings_are_preserved_and_split(self):
@@ -233,7 +237,7 @@ class TestUploadResponse:
         body = r.json()
         review = ExtractionReviewOut(**body["review"])
         assert review.zone_count == body["zone_count"] == 5
-        assert review.mapped_count == body["mapped_setting_count"]
+        assert review.to_confirm_count == body["inferred_setting_count"]
         assert review.engine.status == "not_ready"
         values = {i.key: i.value_text for g in review.groups for i in g.items}
         assert values["ct.primary"] == "1200 A" and values["zone.Z1.rr.pe"] == "7.02 Ω"
@@ -273,7 +277,11 @@ class TestNoPersistence:
     def test_there_is_no_review_endpoint_that_reads_stored_state(self):
         from app.api.v1.relay_import import router
 
-        assert {r.path for r in router.routes} == {"/api/v1/relay-import/upload"}
+        # Slice 8 adds one endpoint, and it is stateless: the interpretation arrives in the request.
+        assert {r.path for r in router.routes} == {
+            "/api/v1/relay-import/upload",
+            "/api/v1/relay-import/review/validate",
+        }
 
     def test_review_schema_has_no_apply_semantics(self):
         names = set(ExtractionReviewOut.model_fields)

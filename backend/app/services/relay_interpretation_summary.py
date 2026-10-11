@@ -17,9 +17,10 @@ check and does not change the model.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 
+from app.domain.relay_import.canonical_codec import encode_model
 from app.domain.relay_import.canonical_distance import CanonicalDistanceProtectionModel, SettingBasis
 from app.domain.relay_import.engine_adapter import EngineAdaptation, adapt_to_engine
 from app.domain.relay_import.identification import RelayIdentification
@@ -122,10 +123,10 @@ def summarize_interpretation(
     review = None
     if model.zones:
         try:
-            review = build_extraction_review(
-                model, document, adaptation,
-                mapped=mapped, inferred=inferred, unresolved=unresolved, not_interpreted=not_interpreted,
-            )
+            review = build_extraction_review(model, document, adaptation, not_interpreted=not_interpreted)
+            # Slice 8: the original interpretation travels with the review so the
+            # backend can re-validate the user's decisions without keeping state.
+            review = replace(review, validation_context=encode_model(model))
         except Exception as exc:  # the review is optional: never fail the upload for it
             logger.warning("Extraction review could not be built (%s)", type(exc).__name__)
     return RelayInterpretationSummary(

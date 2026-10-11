@@ -8,6 +8,11 @@ nothing about the upload is workspace state. Generic text extraction
 interpretation (Slice 6) run request-scoped; only counts, the identification
 verdict and an interpretation summary are returned. Nothing is applied to the
 Distance Protection form.
+
+Slice 8 adds ``POST /review/validate``: a *stateless* re-validation of the user's
+review decisions. The request carries the original interpretation (the review's
+validation context) and the decisions; the response is the reviewed state. No
+server session, store or cache exists, and nothing is applied to the form.
 """
 
 from __future__ import annotations
@@ -18,14 +23,24 @@ from dataclasses import asdict
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
 from app.config import Settings
-from app.schemas.relay_import import ExtractionReviewOut, RelayImportUploadOut
+from app.domain.relay_import.review_state import ReviewDecisions
+from app.schemas.relay_import import (
+    ExtractionReviewOut,
+    RelayImportUploadOut,
+    ReviewItemStateOut,
+    ReviewStateOut,
+    ReviewValidationIn,
+)
 from app.schemas.source import ErrorOut
 from app.services.errors import ImportServiceError
+from app.services.relay_extraction_review import ExtractionReview
 from app.services.relay_import_upload_service import inspect_relay_setting_upload
+from app.services.relay_review_validation import InvalidReviewError, validate_review
 
 logger = logging.getLogger(__name__)
 
 RELAY_IMPORT_UPLOAD_PATH = "/api/v1/relay-import/upload"
+RELAY_IMPORT_REVIEW_VALIDATE_PATH = "/api/v1/relay-import/review/validate"
 
 router = APIRouter(prefix="/api/v1/relay-import", tags=["relay-import"])
 
@@ -93,3 +108,54 @@ async def upload_relay_setting_file(
         interpretation_warnings=list(interp.warnings) if interp else [],
         review=ExtractionReviewOut(**asdict(interp.review)) if interp and interp.review else None,
     )
+
+
+def _review_state_out(review: ExtractionReview) -> ReviewStateOut:
+    """The decision-dependent part of a review: one entry per canonical value."""
+    full = ExtractionReviewOut(**asdict(review))
+    items = [
+        ReviewItemStateOut(
+            item_id=item.item_id,
+            status=item.status,
+            review_status=item.review_status,
+            value_text=item.value_text,
+            blocking=item.blocking,
+            left_unresolved=item.left_unresolved,
+            user_value_text=item.user_value_text,
+        )
+        for group in full.groups
+        for item in group.items
+        if item.primary and item.item_id is not None
+    ]
+    return ReviewStateOut(
+        **full.model_dump(include=set(ReviewStateOut.model_fields) - {"items"}),
+        items=items,
+    )
+
+
+@router.post("/review/validate", response_model=ReviewStateOut)
+def validate_relay_review(body: ReviewValidationIn) -> ReviewStateOut:
+    manual = {entry.item_id: entry.value for entry in body.manual}
+    if len(manual) != len(body.manual):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorOut(code="invalid_review", message="An item cannot be resolved twice.").model_dump(),
+        )
+    decisions = ReviewDecisions(
+        confirmed=frozenset(body.confirmed), manual=manual, left_unresolved=frozenset(body.left_unresolved)
+    )
+    try:
+        review = validate_review(body.validation_context, decisions)
+    except InvalidReviewError as exc:
+        # The message is a fixed domain phrase: never the context or any content.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorOut(code="invalid_review", message=str(exc)).model_dump(),
+        ) from exc
+    except Exception:
+        logger.exception("Unexpected error validating a relay review")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorOut(code="internal_error", message="The review could not be validated.").model_dump(),
+        )
+    return _review_state_out(review)

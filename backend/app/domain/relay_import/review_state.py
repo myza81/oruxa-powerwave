@@ -1,0 +1,295 @@
+"""Review confirmation / resolution (Slice 8): a session review overlay.
+
+    original interpretation (immutable)  +  ReviewDecisions
+        -> apply_review() -> effective reviewed model
+
+The user's decisions are an overlay, never an edit of the interpretation. The
+original model is not touched; the effective model is a copy in which
+
+* a **confirmed** inferred value keeps its value, its profile provenance and its
+  ``inferred`` status, and gains a `ReviewRecord` saying the user confirmed it;
+* a **manually resolved** value replaces an unresolved one, keeping the original
+  unresolved provenance (sources, raw text, notes) beside a `ReviewRecord` that
+  holds what the user entered;
+* a **left unresolved** value stays unresolved, annotated as consciously left.
+
+Nothing here is relay-specific, and nothing here persists: decisions are plain
+values the caller supplies for one evaluation. Every resolved value comes from a
+profile mapping, an explicit confirmation or an explicit manual entry -- never
+from a form default, a zone default or an engine default.
+
+Confirmation is session-specific. It does not validate the profile, change a
+mapping rule or apply anything to the Distance Protection form.
+"""
+
+from __future__ import annotations
+
+import math
+import re
+from dataclasses import dataclass, field, fields, is_dataclass, replace
+from enum import StrEnum
+
+from app.domain.relay_import.canonical_distance import (
+    CanonicalDistanceProtectionModel,
+    ZoneDirection,
+    ZoneStatus,
+    item_label,
+)
+from app.domain.relay_import.engine_adapter import EngineAdaptation
+from app.domain.relay_import.provenance import (
+    MappingStatus,
+    Provenance,
+    ProvenanceOrigin,
+    ReviewRecord,
+    ReviewStatus,
+    Sourced,
+)
+
+
+class ReviewDecisionError(ValueError):
+    """A review decision that cannot be applied (unknown item, wrong kind of
+    item, invalid value, contradictory decisions). The message is safe to show."""
+
+
+# ---------------------------------------------------------------------------
+# What may be resolved by hand
+# ---------------------------------------------------------------------------
+
+
+class ResolutionKind(StrEnum):
+    NUMBER = "number"
+    CHOICE = "choice"
+
+
+@dataclass(frozen=True)
+class ResolutionSpec:
+    """The canonical type of a value the user may supply for an unresolved item.
+
+    Only a field with a known canonical target and a known type/unit has one;
+    everything else (a compound reach, a raw OEM setting, a base value) stays
+    unresolved."""
+
+    kind: ResolutionKind
+    #: ``ohm`` | ``s`` for a number; ``None`` for a choice.
+    unit: str | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+    #: (value, label) pairs for a choice.
+    options: tuple[tuple[str, str], ...] = ()
+
+
+_ZONE = r"^zones\[[^\]]+\]\."
+_OHM = ResolutionSpec(ResolutionKind.NUMBER, "ohm", 0.0, 1e5)
+_SECONDS = ResolutionSpec(ResolutionKind.NUMBER, "s", 0.0, 1e4)
+_STATUS = ResolutionSpec(
+    ResolutionKind.CHOICE,
+    options=((ZoneStatus.ENABLED.value, "Enabled"), (ZoneStatus.DISABLED.value, "Disabled")),
+)
+_DIRECTION = ResolutionSpec(
+    ResolutionKind.CHOICE,
+    options=(
+        (ZoneDirection.FORWARD.value, "Forward"),
+        (ZoneDirection.REVERSE.value, "Reverse"),
+        (ZoneDirection.NON_DIRECTIONAL.value, "Non-directional"),
+    ),
+)
+_ENUM_FOR_CHOICE = {_STATUS: ZoneStatus, _DIRECTION: ZoneDirection}
+
+_RESOLUTION_SPECS: tuple[tuple[re.Pattern[str], ResolutionSpec], ...] = (
+    (re.compile(_ZONE + r"status$"), _STATUS),
+    (re.compile(_ZONE + r"direction$"), _DIRECTION),
+    (re.compile(_ZONE + r"resistive_reach\.(common|phase_phase|phase_earth|reverse)$"), _OHM),
+    (re.compile(_ZONE + r"(common|phase|earth)_timer_s$"), _SECONDS),
+)
+
+_UNIT_SYMBOLS = {"ohm": "Ω", "s": "s"}
+
+
+def resolution_spec(path: str) -> ResolutionSpec | None:
+    """How the value at ``path`` could be supplied manually, or ``None`` when its
+    canonical type is not clear enough to let a user type it."""
+    return next((spec for pattern, spec in _RESOLUTION_SPECS if pattern.match(path)), None)
+
+
+def _number_text(value: float) -> str:
+    return str(int(value)) if value == int(value) and abs(value) < 1e15 else f"{value:.10g}"
+
+
+def _manual_value(path: str, spec: ResolutionSpec, raw: object) -> tuple[object, str]:
+    """(canonical value, text shown as the user's resolution) for ``raw``, or
+    `ReviewDecisionError`. A blank is not a value and zero is."""
+    if spec.kind is ResolutionKind.NUMBER:
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            raise ReviewDecisionError("A number is required.")
+        value = float(raw)
+        if not math.isfinite(value):
+            raise ReviewDecisionError("A finite number is required.")
+        if spec.minimum is not None and value < spec.minimum:
+            raise ReviewDecisionError(f"The value must be at least {_number_text(spec.minimum)}.")
+        if spec.maximum is not None and value > spec.maximum:
+            raise ReviewDecisionError(f"The value must be at most {_number_text(spec.maximum)}.")
+        symbol = _UNIT_SYMBOLS.get(spec.unit or "", spec.unit or "")
+        return value, f"{_number_text(value)} {symbol}".strip()
+    labels = dict(spec.options)
+    if not isinstance(raw, str) or raw not in labels:
+        raise ReviewDecisionError("Choose one of the offered values.")
+    return _ENUM_FOR_CHOICE[spec](raw), labels[raw]
+
+
+# ---------------------------------------------------------------------------
+# Decisions and the effective model
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ReviewDecisions:
+    """The user's session decisions, keyed by canonical value path."""
+
+    #: Inferred values the user accepts for this session.
+    confirmed: frozenset[str] = frozenset()
+    #: path -> the value the user entered (float for a number, str for a choice).
+    manual: dict[str, float | str] = field(default_factory=dict)
+    #: Unresolved values the user consciously leaves unresolved.
+    left_unresolved: frozenset[str] = frozenset()
+
+
+_TOKEN = re.compile(r"\[[^\]]*\]|[^.\[\]]+")
+
+
+def _replace_at(obj, tokens: list[str], new: Sourced):
+    head, rest = tokens[0], tokens[1:]
+    if isinstance(obj, tuple):
+        label = head[1:-1]
+        index = next((i for i, item in enumerate(obj) if item_label(item, i) == label), None)
+        if index is None:
+            raise ReviewDecisionError("Unknown review item.")
+        child = new if not rest else _replace_at(obj[index], rest, new)
+        return (*obj[:index], child, *obj[index + 1:])
+    if is_dataclass(obj) and head in {f.name for f in fields(obj)}:
+        child = new if not rest else _replace_at(getattr(obj, head), rest, new)
+        return replace(obj, **{head: child})
+    raise ReviewDecisionError("Unknown review item.")
+
+
+def _confirmed(sourced: Sourced) -> Sourced:
+    record = ReviewRecord(ReviewStatus.CONFIRMED, original_status=sourced.provenance.status)
+    return Sourced(sourced.value, replace(sourced.provenance, review=record))
+
+
+def _left_unresolved(sourced: Sourced) -> Sourced:
+    record = ReviewRecord(ReviewStatus.LEFT_UNRESOLVED, original_status=sourced.provenance.status)
+    return Sourced(None, replace(sourced.provenance, review=record))
+
+
+def _resolved_manually(sourced: Sourced, value: object, text: str) -> Sourced:
+    p = sourced.provenance
+    return Sourced(
+        value,
+        Provenance(
+            MappingStatus.RESOLVED_MANUALLY,
+            sources=p.sources,
+            profile_id=p.profile_id,
+            profile_version=p.profile_version,
+            raw_value=p.raw_value,
+            notes=p.notes,
+            origin=ProvenanceOrigin.SESSION_REVIEW,
+            review=ReviewRecord(ReviewStatus.RESOLVED_MANUALLY, p.status, user_value_text=text),
+        ),
+    )
+
+
+def apply_review(
+    model: CanonicalDistanceProtectionModel, decisions: ReviewDecisions
+) -> CanonicalDistanceProtectionModel:
+    """The effective reviewed model: ``model`` with the decisions overlaid.
+
+    ``model`` is not modified. Raises `ReviewDecisionError` for a decision that
+    names an unknown item, the wrong kind of item (only an inferred value can be
+    confirmed; only an unresolved one can be resolved or left), an invalid value,
+    or two contradictory decisions about one item."""
+    index = dict(model.iter_sourced())
+    overlay: dict[str, Sourced] = {}
+
+    def claim(path: str) -> Sourced:
+        if path not in index:
+            raise ReviewDecisionError("Unknown review item.")
+        if path in overlay:
+            raise ReviewDecisionError("An item cannot have more than one review decision.")
+        return index[path]
+
+    for path in sorted(decisions.confirmed):
+        sourced = claim(path)
+        if sourced.provenance.status is not MappingStatus.INFERRED:
+            raise ReviewDecisionError("Only an inferred value can be confirmed.")
+        overlay[path] = _confirmed(sourced)
+    for path in sorted(decisions.left_unresolved):
+        sourced = claim(path)
+        if sourced.is_resolved:
+            raise ReviewDecisionError("Only an unresolved value can be left unresolved.")
+        overlay[path] = _left_unresolved(sourced)
+    for path in sorted(decisions.manual):
+        sourced = claim(path)
+        if sourced.is_resolved:
+            raise ReviewDecisionError("Only an unresolved value can be resolved manually.")
+        spec = resolution_spec(path)
+        if spec is None:
+            raise ReviewDecisionError("This value cannot be entered manually.")
+        value, text = _manual_value(path, spec, decisions.manual[path])
+        overlay[path] = _resolved_manually(sourced, value, text)
+
+    effective = model
+    for path, sourced in overlay.items():
+        effective = _replace_at(effective, _TOKEN.findall(path), sourced)
+    return effective
+
+
+# ---------------------------------------------------------------------------
+# Blocking issues and readiness
+# ---------------------------------------------------------------------------
+
+
+class Readiness(StrEnum):
+    #: The current engine cannot take the model, or a blocking item is open.
+    NOT_READY = "not_ready"
+    #: Nothing blocks the engine, but inferred values are still unconfirmed.
+    READY_AFTER_CONFIRMATION = "ready_after_confirmation"
+    #: The engine accepts the model and every inferred value is confirmed.
+    READY = "ready"
+
+
+@dataclass(frozen=True)
+class BlockingIssue:
+    """Why the current engine cannot take the model, from the adapter's reasons
+    (identical messages across zones merged). ``paths`` are the canonical values
+    that would address it; an issue can persist after they are all resolved
+    (e.g. a zone the engine cannot represent)."""
+
+    message: str
+    zone_ids: tuple[str, ...] = ()
+    paths: tuple[str, ...] = ()
+
+
+def blocking_issues(adaptation: EngineAdaptation) -> tuple[BlockingIssue, ...]:
+    merged: dict[str, tuple[list[str], list[str]]] = {}
+    for reason in adaptation.reasons:
+        zones, paths = merged.setdefault(reason.message, ([], []))
+        if reason.zone_id and reason.zone_id not in zones:
+            zones.append(reason.zone_id)
+        paths.extend(p for p in reason.paths if p not in paths)
+    return tuple(BlockingIssue(message, tuple(zones), tuple(paths)) for message, (zones, paths) in merged.items())
+
+
+def blocking_paths(adaptation: EngineAdaptation) -> frozenset[str]:
+    return frozenset(path for reason in adaptation.reasons for path in reason.paths)
+
+
+def compute_readiness(*, engine_supported: bool, pending_confirmations: int, blocking_unresolved: int) -> Readiness:
+    """``Ready`` only when the engine adapter accepts the effective model, no
+    blocking item is open and no inferred value awaits confirmation. A "required
+    canonical field" is one the adapter needs, so an unresolved one always makes
+    the adapter refuse the model."""
+    if not engine_supported or blocking_unresolved > 0:
+        return Readiness.NOT_READY
+    if pending_confirmations > 0:
+        return Readiness.READY_AFTER_CONFIRMATION
+    return Readiness.READY

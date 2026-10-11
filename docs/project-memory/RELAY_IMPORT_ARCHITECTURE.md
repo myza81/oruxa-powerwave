@@ -1,10 +1,10 @@
 # Relay Settings Import — Architecture (Slice 1: foundation)
 
-Status: **Slices 1-7** (domain contracts, manual entry + engine adapter,
+Status: **Slices 1-8** (domain contracts, manual entry + engine adapter,
 ephemeral upload, generic PDF extraction, relay identification, MiCOM P441
-interpretation profile, read-only Extraction Review) implemented on
+interpretation profile, read-only Extraction Review, review confirmation / resolution) implemented on
 `feature/distance-relay-import`. Slice 6 is **Implemented / Awaiting
-Validation**; Slice 7 is **Implemented / Awaiting owner UAT**. Every other relay
+Validation**; Slices 7 and 8 are **Implemented / Awaiting owner UAT**. Every other relay
 is identification-only; auto-population / Apply are later slices. Approval record:
 [DECISIONS.md — DEC-RELAY-IMPORT-1](DECISIONS.md#dec-relay-import-1--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
@@ -773,9 +773,134 @@ no server session, no browser storage, no filesystem write. The review object is
 built inside the request and dropped; the browser holds it only in the page's
 memory. A static test and a browser test guard this.
 
-**Out of scope (unchanged for Slice 8+).** Apply Settings, form population,
-editing or accepting individual mappings, P44x-manual-based fixes for Zone P /
+**Out of scope (unchanged for Slice 9+).** Apply Settings, form population,
+(editing and confirming individual values is Slice 8, below) P44x-manual-based fixes for Zone P /
 reverse reach, further profiles, persistence/history, OCR, AI/LLM.
+
+## Slice 8 — Review Confirmation / Resolution (still no Apply)
+
+Status: **Implemented / Awaiting owner UAT.** Pipeline:
+`Upload -> Extract -> Identify -> Interpret -> Review -> Confirm / Resolve`. The
+slice stops **before Apply**: there is no Apply / Populate / Generate control, the
+Distance Protection form is neither read nor written, and no plotted
+characteristic changes. It ends when the review can say **Ready to apply**.
+
+```text
+original interpretation (immutable)  +  ReviewDecisions (session overlay)
+      -> apply_review()                domain/relay_import/review_state.py
+      -> effective reviewed model
+      -> engine adapter, re-run        (read-only; paths added to its reasons)
+      -> build_extraction_review()     counts, blocking, readiness
+```
+
+### Semantics
+
+* **Confirm** means "I accept this interpreted value for this import session". It
+  does **not** validate the profile, trust a mapping rule, affect future imports
+  or apply anything. The effective value keeps its value, profile provenance and
+  its `inferred` status; a `ReviewRecord(status=confirmed, original_status=inferred)`
+  is added beside them. `interpretation status` and `review status` are separate
+  (`ReviewItem.status` vs `ReviewItem.review_status`). `Sourced.needs_confirmation`
+  is false once confirmed.
+* **Mapped** values are read-only and never ask for confirmation.
+* **Unresolved** values have three states: untouched, *resolved manually* or
+  *left unresolved*. Nothing is ever turned into zero or a default; a blank is not
+  a value, an explicit `0` is.
+* **Manual resolution** only where the canonical target and type are clear
+  (`review_state.resolution_spec`, a path-pattern table): zone `status`
+  (enabled/disabled), zone `direction`, `resistive_reach.{common,phase_phase,
+  phase_earth,reverse}` (Ω, 0..1e5) and the zone timers (s, 0..1e4). Compound
+  reaches, base values, firmware, raw OEM settings stay unresolved. The effective
+  value keeps the original unresolved provenance (sources, raw text, notes) and a
+  `ReviewRecord(status=resolved_manually, original_status=unresolved,
+  user_value_text="2.5 Ω")`, with `MappingStatus.RESOLVED_MANUALLY` and
+  `ProvenanceOrigin.SESSION_REVIEW`. The UI shows `Source value: unavailable /
+  unresolved` apart from `User resolution: 2.5 Ω`. No timestamp is recorded: the
+  state is session-only and the domain is deterministic.
+* **No silent substitution.** Every resolved value comes from a profile mapping,
+  an explicit confirmation or an explicit manual entry -- never a form, zone or
+  engine default (tested).
+
+### Blocking issues and readiness
+
+`UnsupportedReason` gained `paths` (canonical value paths whose resolution would
+address it). An **unresolved item is blocking** iff its path is in some current
+adapter reason's `paths`; otherwise it is *unresolved, non-blocking*. A
+**blocking issue** is an adapter reason (identical messages merged across zones);
+it can outlive every value that caused it (Zone P resolved to *enabled* still
+cannot be represented: "a limit of the current engine"). Readiness
+(`review_state.compute_readiness`):
+
+| Result | Rule |
+|---|---|
+| `Not ready` | the adapter rejects the effective model, or a blocking item is open |
+| `Ready after confirmation` | adapter accepts, but inferred values remain unconfirmed |
+| `Ready to apply` | adapter accepts and every inferred value is confirmed |
+
+"Required canonical fields" means those the adapter needs, so an unresolved one
+always makes the adapter refuse. Other unresolved values (firmware version,
+voltage/current base, ...) do not block.
+
+### Counting convention
+
+Counts are per **canonical value the review lists** (a reach and its angle are one
+value; `ReviewItem.primary` marks the first row), plus zone settings the profile
+declined (always unresolved, never resolvable). `mapped` (untouched), `to confirm`
+(inferred, pending), `confirmed`, `resolved manually`, `unresolved` (blocking or
+not, incl. left unresolved), `blocking` (a subset of unresolved). This differs from
+the Slice 6 upload-response counts (`count_model`), which are profile-level and do
+not list required placeholders; blocking items must be a subset of the unresolved,
+so the review and the card line use the review counts. The Slice 6 response fields
+are unchanged.
+
+### Stateless validation API
+
+`POST /api/v1/relay-import/review/validate` (versioned, no session, no store).
+Input: `validation_context` + `confirmed` ids + `manual` `{item_id, value}` +
+`left_unresolved` ids. Output `ReviewStateOut`: per canonical value `{item_id,
+status, review_status, value_text, blocking, left_unresolved, user_value_text}`,
+counts, `blocking_issues`, `engine`, `readiness`. Errors: `400 invalid_review`
+(fixed domain phrases only). The **validation context** is the original canonical
+model as JSON (`domain/relay_import/canonical_codec.py`, ~64 KB for the P441
+sample, document-level unmapped settings omitted), returned inside the upload
+`review` and held in tab memory. The decoder builds only registered canonical
+dataclasses/enums through their own constructors, so every domain invariant is
+re-checked. It is **not authenticated** (the user's own session data): Slice 9
+must re-derive or re-verify before acting on it. Item ids are canonical paths
+(`zones[Z1].resistive_reach.reverse`) -- relay-neutral, no P441 logic.
+
+### UI
+
+Same panel, no modal. `To confirm` rows get **Confirm**; confirmed rows show
+**Confirmed** and **Undo confirmation**; unresolved rows with a known type get
+**Resolve** (inline number input or choice, **Set value** / **Leave unresolved** /
+**Cancel**); resolved rows get **Edit** / **Clear**. Bulk: **Confirm all inferred
+values (N)** (exact count; only `To confirm` rows; unresolved and mapped
+untouched) and **Undo all confirmations**. A readiness box and a *Blocking issues*
+list (what each needs, or that no value can clear it) sit above the groups. The
+panel updates in place (scroll, open groups and open sources are kept); a refused
+decision is rolled back with the backend's message. The card summary line shows
+the live counts.
+
+### Ephemeral lifecycle
+
+Decisions (`wwRelayImportState.decisions`, `reviewLive`) live in page memory only:
+cleared by Remove, a new upload and a refresh; never in localStorage,
+sessionStorage, IndexedDB, cookies, the server, database or filesystem.
+
+### Out of scope (unchanged)
+
+Apply Settings, form population, plotting from imports, persistent decisions,
+learning from confirmations, profile mutation, further profiles, decoding P441
+`3007`, deriving a reverse reach, OCR, AI/LLM.
+
+### P441 sample before / after
+
+Before: 4 blocking items (Z1-Z3 reverse resistive reach, Zone P status), not
+ready. Confirming everything alone stays *Not ready*. Reverse reach for Z1-Z3 +
+Zone P *disabled* -> *Ready after confirmation*; plus confirming all -> *Ready to
+apply*. Zone P *enabled* -> still *Not ready* (fifth zone); Zone P is never
+removed from the model.
 
 ## Intentionally unresolved in Slice 1
 
@@ -791,4 +916,4 @@ reverse reach, further profiles, persistence/history, OCR, AI/LLM.
 - ~~First engineering profile~~ -- Slice 6 (P441, above), awaiting owner UAT before it
   may be called `Validated`. ~~Extraction Review~~ -- Slice 7 (above), read-only,
   awaiting owner UAT. Still open: profiles for every other family; the Apply
-  workflow (Slice 8).
+  workflow (Slice 9, after Slice 8 UAT).

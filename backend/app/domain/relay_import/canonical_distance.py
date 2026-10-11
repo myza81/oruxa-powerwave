@@ -335,13 +335,18 @@ class CanonicalDistanceProtectionModel:
         return tuple(path for path, s in self.iter_sourced() if not s.is_resolved)
 
 
+def item_label(item: object, index: int) -> str:
+    """The bracketed label a tuple element gets in an `iter_sourced` path
+    (``zones[Z1]``, ``extras[tilt]``): its zone id or name, else its index."""
+    return getattr(item, "zone_id", None) or getattr(item, "name", None) or str(index)
+
+
 def _walk(prefix: str, obj) -> Iterator[tuple[str, Sourced]]:
     if isinstance(obj, Sourced):
         yield prefix, obj
     elif isinstance(obj, (tuple, list)):
         for i, item in enumerate(obj):
-            label = getattr(item, "zone_id", None) or getattr(item, "name", None) or str(i)
-            yield from _walk(f"{prefix}[{label}]", item)
+            yield from _walk(f"{prefix}[{item_label(item, i)}]", item)
     elif is_dataclass(obj) and not isinstance(obj, type):
         for f in fields(obj):
             yield from _walk(f"{prefix}.{f.name}" if prefix else f.name, getattr(obj, f.name))

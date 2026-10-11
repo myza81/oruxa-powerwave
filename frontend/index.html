@@ -8676,11 +8676,12 @@
         :is(.ww-rr-group) > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
         :is(.ww-rr-state)[data-status="unresolved"] { color: var(--error); }
         :is(.ww-rr-state)[data-status="inferred"] { color: var(--warn); }
+        :is(.ww-rr-state)[data-status="resolved"] { color: var(--accent); }
         :is(.ww-rr-items) { list-style: none; margin: 0; padding: 0 10px 6px; }
         :is(.ww-rr-item) { border-top: 1px solid var(--panel-border); }
         :is(.ww-rr-row) {
             display: grid;
-            grid-template-columns: minmax(8rem, 1.2fr) minmax(6rem, 1fr) auto auto;
+            grid-template-columns: minmax(8rem, 1.2fr) minmax(6rem, 1fr) auto auto auto;
             align-items: center;
             gap: 4px 10px;
             padding: 4px 0;
@@ -8718,6 +8719,51 @@
             border-color: color-mix(in srgb, var(--error) 45%, transparent);
         }
         :is(.ww-rr-status)[data-status="unresolved"]::before { background: var(--error); }
+        :is(.ww-rr-status)[data-status="confirmed"],
+        :is(.ww-rr-status)[data-status="resolved"] {
+            border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+        }
+        :is(.ww-rr-status)[data-status="confirmed"]::before,
+        :is(.ww-rr-status)[data-status="resolved"]::before { background: var(--accent); }
+        :is(.ww-rr-chips, .ww-rr-actions, .ww-rr-bulk, .ww-rr-resolve) {
+            display: inline-flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 4px 6px;
+        }
+        :is(.ww-rr-blocking) { color: var(--error); font-size: 0.65rem; font-weight: 600; white-space: nowrap; }
+        :is(.ww-rr-btn) {
+            padding: 1px 8px;
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            background: var(--panel);
+            color: var(--accent);
+            font-size: 0.68rem;
+            cursor: pointer;
+        }
+        :is(.ww-rr-btn):hover { border-color: var(--accent); }
+        :is(.ww-rr-btn):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        :is(.ww-rr-bulk) { margin-top: 4px; }
+        :is(.ww-rr-resolve) { display: flex; margin: 0 0 6px; padding: 4px 0; font-size: 0.72rem; }
+        :is(.ww-rr-resolve)[hidden] { display: none; }
+        :is(.ww-rr-resolve-input) {
+            width: 8rem;
+            max-width: 100%;
+            padding: 2px 6px;
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            background: var(--panel);
+            color: var(--text);
+            font-size: 0.72rem;
+        }
+        :is(.ww-rr-resolve-error) { flex-basis: 100%; color: var(--error); }
+        :is(.ww-rr-resolve-error):empty { display: none; }
+        :is(.ww-rr-notice) { font-size: 0.7rem; color: var(--error); }
+        :is(.ww-rr-notice):empty { display: none; }
+        :is(.ww-rr-sub) { margin-top: 4px; font-weight: 600; }
+        :is(.ww-rr-readiness)[data-readiness="not_ready"] { border-left: 3px solid var(--warn); }
+        :is(.ww-rr-readiness)[data-readiness="ready_after_confirmation"] { border-left: 3px solid var(--accent); }
+        :is(.ww-rr-readiness)[data-readiness="ready"] { border-left: 3px solid var(--ok); }
         :is(.ww-rr-link) {
             padding: 0 4px;
             border: 0;
@@ -11928,7 +11974,7 @@
                                     <div class="ww-rr-head">
                                         <div>
                                             <h4 class="ww-rr-title">Extraction Review</h4>
-                                            <p class="ww-rr-readonly">Read-only. Nothing has been applied to the Distance Protection form.</p>
+                                            <p class="ww-rr-readonly">Review only: confirmations and entries last for this import session. Nothing has been applied to the Distance Protection form.</p>
                                         </div>
                                         <button type="button" class="secondary" id="wwRelayReviewCloseBtn">Close review</button>
                                     </div>
@@ -54955,43 +55001,93 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // Slice 7 Extraction Review payload: tab memory only, never stored.
             review: null,
             reviewOpen: false,
+            // Slice 8 review decisions (tab memory only, never stored): which inferred
+            // values the user confirmed, what they entered, what they left unresolved.
+            // `reviewLive` is the backend's reviewed state for those decisions.
+            decisions: { confirmed: new Set(), manual: new Map(), left: new Set() },
+            reviewLive: null,
+            reviewBusy: false,
+            reviewBuilt: false,
+            reviewError: "",
+            reviewController: null,
             error: "",
             controller: null,
         };
         function wwRelayImportClearInterpretation(state) {
+            if (state.reviewController) state.reviewController.abort();
+            state.reviewController = null;
             state.review = null;
             state.reviewOpen = false;
+            state.decisions = { confirmed: new Set(), manual: new Map(), left: new Set() };
+            state.reviewLive = null;
+            state.reviewBusy = false;
+            state.reviewBuilt = false;
+            state.reviewError = "";
             state.interpretationStatus = "";
             state.zoneCount = 0;
             state.mappedCount = 0;
             state.inferredCount = 0;
             state.unresolvedCount = 0;
         }
-        // "5 zones found · 33 settings mapped · 36 to confirm · 6 unresolved"
+        // "5 zones found · 32 settings mapped · 36 to confirm · 14 unresolved · 4 blocking"
+        // Counts are the live review counts once a review exists (Slice 8): they
+        // move from "to confirm" to "confirmed" as the user reviews, and zero
+        // parts are dropped.
         function wwRelayImportSummaryText(state) {
             const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
+            const live = state.reviewLive || state.review || {
+                mapped_count: state.mappedCount, to_confirm_count: state.inferredCount, confirmed_count: 0,
+                resolved_manually_count: 0, unresolved_count: state.unresolvedCount, blocking_count: 0,
+            };
             const parts = [plural(state.zoneCount, "zone found", "zones found"),
-                plural(state.mappedCount, "setting mapped", "settings mapped")];
-            if (state.inferredCount > 0) parts.push(state.inferredCount + " to confirm");
-            if (state.unresolvedCount > 0) parts.push(state.unresolvedCount + " unresolved");
+                plural(live.mapped_count, "setting mapped", "settings mapped")];
+            if (live.to_confirm_count > 0) parts.push(live.to_confirm_count + " to confirm");
+            if (live.confirmed_count > 0) parts.push(live.confirmed_count + " confirmed");
+            if (live.resolved_manually_count > 0) parts.push(live.resolved_manually_count + " resolved manually");
+            if (live.unresolved_count > 0) parts.push(live.unresolved_count + " unresolved");
+            if (live.blocking_count > 0) parts.push(live.blocking_count + " blocking");
             return parts.join(" · ");
         }
-        // Relay Import Slice 7 -- Extraction Review (read-only). Renders the
-        // review payload the upload response carried; built with textContent
-        // only (document text is never parsed as HTML). It has no Apply /
-        // Accept / Populate action and never reads or writes the manual form.
-        const WW_RR_STATUS_LABELS = { mapped: "Mapped", inferred: "To confirm", unresolved: "Unresolved" };
+        // Relay Import Slice 7/8 -- Extraction Review and Review Confirmation /
+        // Resolution. Renders the review payload the upload response carried and
+        // collects the user's SESSION decisions (confirm an inferred value, supply
+        // or leave an unresolved one). The decisions live in tab memory only and
+        // are sent, with the original interpretation (`validation_context`), to the
+        // stateless validate endpoint: the backend, not this page, decides counts,
+        // blocking issues and readiness. Built with textContent only (document text
+        // is never parsed as HTML). There is no Apply / Populate action here and the
+        // manual Distance Protection form is never read or written.
+        const WW_RR_STATUS_LABELS = {
+            mapped: "Mapped", to_confirm: "To confirm", confirmed: "Confirmed",
+            unresolved: "Unresolved", resolved_manually: "Resolved manually",
+        };
+        // Chip / header styling hooks (the pre-Slice-8 values stay for the three original states).
+        const WW_RR_STATUS_STYLE = {
+            mapped: "mapped", to_confirm: "inferred", confirmed: "confirmed",
+            unresolved: "unresolved", resolved_manually: "resolved",
+        };
+        const WW_RR_READINESS_LABELS = {
+            not_ready: "Not ready", ready_after_confirmation: "Ready after confirmation", ready: "Ready to apply",
+        };
         const WW_RR_PAGE_SIZE = 25;
         let wwRelayReviewUid = 0;
+        // Refresh callbacks of the rows/headers/boxes currently on screen.
+        const wwRrUi = { rows: [], groups: [], items: new Map(), notice: null };
+        function wwRrNewDecisions() {
+            return { confirmed: new Set(), manual: new Map(), left: new Set() };
+        }
+        function wwRrCloneDecisions(d) {
+            return { confirmed: new Set(d.confirmed), manual: new Map(d.manual), left: new Set(d.left) };
+        }
         function wwRrEl(tag, className, text) {
             const el = document.createElement(tag);
             if (className) el.className = className;
             if (text !== undefined && text !== null) el.textContent = text;
             return el;
         }
-        function wwRrStatusChip(status) {
-            const chip = wwRrEl("span", "ww-rr-status", WW_RR_STATUS_LABELS[status] || status);
-            chip.dataset.status = status;
+        function wwRrStatusChip(reviewStatus) {
+            const chip = wwRrEl("span", "ww-rr-status", WW_RR_STATUS_LABELS[reviewStatus] || reviewStatus);
+            chip.dataset.status = WW_RR_STATUS_STYLE[reviewStatus] || reviewStatus;
             return chip;
         }
         function wwRrLocation(page, line) {
@@ -55000,17 +55096,47 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (line) parts.push("line " + line);
             return parts.join(" · ");
         }
-        function wwRrProvenance(item) {
+        // The decision-dependent part of an item: the backend's reviewed state when
+        // there is one, else what the upload response carried.
+        function wwRrView(item) {
+            const live = wwRelayImportState.reviewLive;
+            const s = live && item.item_id ? live.itemsById.get(item.item_id) : null;
+            return {
+                review_status: s ? s.review_status : item.review_status,
+                value_text: s ? s.value_text : item.value_text,
+                blocking: s ? s.blocking : item.blocking,
+                left_unresolved: s ? s.left_unresolved : item.left_unresolved,
+                user_value_text: s ? s.user_value_text : item.user_value_text,
+            };
+        }
+        function wwRrProvenance(item, view) {
             const box = wwRrEl("div", "ww-rr-prov");
-            const heading = item.full_label + " — " + (item.value_text || "Unresolved") + " — " + WW_RR_STATUS_LABELS[item.status];
+            const heading = item.full_label + " — " + (view.value_text || "Unresolved") + " — " + WW_RR_STATUS_LABELS[view.review_status];
             box.appendChild(wwRrEl("strong", "", heading));
-            const noteLabel = item.status === "inferred" ? "Assumption" : item.status === "unresolved" ? "Why unresolved" : "Note";
-            item.notes.forEach((note) => {
+            const labelled = (label, text) => {
                 const line = wwRrEl("div", "");
-                line.appendChild(wwRrEl("span", "ww-rr-dim", noteLabel + ": "));
-                line.appendChild(document.createTextNode(note));
+                line.appendChild(wwRrEl("span", "ww-rr-dim", label + ": "));
+                line.appendChild(document.createTextNode(text));
                 box.appendChild(line);
-            });
+            };
+            if (view.review_status === "resolved_manually") {
+                labelled("Source value", "unavailable / unresolved");
+                labelled("User resolution", view.user_value_text || view.value_text || "");
+                labelled("Resolved by", "you, for this import session only");
+            } else if (view.review_status === "confirmed") {
+                labelled("Confirmed", "by you, for this import session only");
+            } else if (view.left_unresolved) {
+                labelled("Left unresolved", "by you, for this import session");
+            }
+            // The profile's own reasoning is always kept: confirming never hides the assumption.
+            const noteLabel = item.status === "inferred"
+                ? (view.review_status === "confirmed" ? "Originally inferred because" : "Assumption")
+                : item.status === "unresolved" ? "Why unresolved" : "Note";
+            item.notes.forEach((note) => labelled(noteLabel, note));
+            if (view.review_status === "unresolved" && item.item_id && !item.resolution) {
+                box.appendChild(wwRrEl("div", "ww-rr-dim",
+                    "This value cannot be entered here: what it means is not established for this import."));
+            }
             if (!item.sources.length) {
                 box.appendChild(wwRrEl("div", "ww-rr-dim", "No source setting is cited."));
                 if (item.raw_value !== null && item.raw_value !== undefined) box.appendChild(wwRrEl("div", "", "Raw: " + item.raw_value));
@@ -55027,17 +55153,93 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (item.profile_version) box.appendChild(wwRrEl("div", "ww-rr-dim", "Profile: " + item.profile_version));
             return box;
         }
+        function wwRrAction(label, ariaLabel, handler) {
+            const button = wwRrEl("button", "ww-rr-btn", label);
+            button.type = "button";
+            button.setAttribute("aria-label", ariaLabel);
+            button.addEventListener("click", handler);
+            return button;
+        }
+        // The inline editor for an unresolved item with a known canonical type.
+        function wwRrEditor(item) {
+            const res = item.resolution;
+            const form = wwRrEl("form", "ww-rr-resolve");
+            form.noValidate = true;
+            form.hidden = true;
+            form.setAttribute("aria-label", "Resolve " + item.full_label);
+            let control;
+            if (res.kind === "number") {
+                control = document.createElement("input");
+                control.type = "number";
+                control.step = "any";
+                control.inputMode = "decimal";
+                if (res.minimum !== null && res.minimum !== undefined) control.min = String(res.minimum);
+                if (res.maximum !== null && res.maximum !== undefined) control.max = String(res.maximum);
+                control.setAttribute("aria-label", item.full_label + (res.unit_symbol ? " in " + res.unit_symbol : ""));
+            } else {
+                control = document.createElement("select");
+                const blank = wwRrEl("option", "", "Choose…");
+                blank.value = "";
+                control.appendChild(blank);
+                res.options.forEach(([value, label]) => {
+                    const option = wwRrEl("option", "", label);
+                    option.value = value;
+                    control.appendChild(option);
+                });
+                control.setAttribute("aria-label", item.full_label);
+            }
+            control.className = "ww-rr-resolve-input";
+            form.appendChild(control);
+            if (res.unit_symbol) form.appendChild(wwRrEl("span", "ww-rr-dim", res.unit_symbol));
+            const set = wwRrEl("button", "ww-rr-btn", "Set value");
+            set.type = "submit";
+            form.appendChild(set);
+            const leave = wwRrAction("Leave unresolved", "Leave " + item.full_label + " unresolved", async () => {
+                await wwRrCommit((d) => { d.manual.delete(item.item_id); d.left.add(item.item_id); }, form);
+            });
+            form.appendChild(leave);
+            const cancel = wwRrAction("Cancel", "Cancel resolving " + item.full_label, () => { form.hidden = true; error.textContent = ""; });
+            form.appendChild(cancel);
+            const error = wwRrEl("div", "ww-rr-resolve-error");
+            error.setAttribute("role", "alert");
+            form.appendChild(error);
+            form.addEventListener("submit", async (event) => {
+                event.preventDefault();
+                let value;
+                if (res.kind === "number") {
+                    const text = control.value.trim();
+                    // A blank is not a value (and not zero); an explicit 0 is.
+                    if (text === "") { error.textContent = "Enter a value, or choose Leave unresolved."; return; }
+                    value = Number(text);
+                    if (!Number.isFinite(value)) { error.textContent = "Enter a number."; return; }
+                } else {
+                    value = control.value;
+                    if (!value) { error.textContent = "Choose a value, or choose Leave unresolved."; return; }
+                }
+                error.textContent = "";
+                await wwRrCommit((d) => { d.left.delete(item.item_id); d.manual.set(item.item_id, value); }, form);
+            });
+            form.wwPrefill = () => {
+                const current = wwRelayImportState.decisions.manual.get(item.item_id);
+                control.value = current === undefined ? "" : String(current);
+                error.textContent = "";
+            };
+            return form;
+        }
         function wwRrItem(item) {
             const li = wwRrEl("li", "ww-rr-item");
             li.dataset.status = item.status;
             li.dataset.key = item.key;
+            if (item.item_id) li.dataset.itemId = item.item_id;
             const row = wwRrEl("div", "ww-rr-row");
             row.appendChild(wwRrEl("span", "ww-rr-label", item.label));
-            const value = wwRrEl("span", "ww-rr-value", item.value_text === null ? "Unresolved" : item.value_text);
-            if (item.value_text === null) value.dataset.empty = "true";
+            const value = wwRrEl("span", "ww-rr-value");
             row.appendChild(value);
-            row.appendChild(wwRrStatusChip(item.status));
-            const prov = wwRrProvenance(item);
+            const chips = wwRrEl("span", "ww-rr-chips");
+            row.appendChild(chips);
+            const actions = wwRrEl("span", "ww-rr-actions");
+            row.appendChild(actions);
+            const prov = wwRrEl("div", "ww-rr-prov");
             prov.hidden = true;
             prov.id = "wwRrProv" + (++wwRelayReviewUid);
             const toggle = wwRrEl("button", "ww-rr-link", "Source");
@@ -55052,6 +55254,55 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             row.appendChild(toggle);
             li.appendChild(row);
             li.appendChild(prov);
+            // The decision controls belong to the first row of a value shown as two rows.
+            const decidable = !!item.item_id && item.primary;
+            let editor = null;
+            const refresh = () => {
+                const view = wwRrView(item);
+                li.dataset.review = view.review_status;
+                li.dataset.blocking = view.blocking ? "true" : "false";
+                value.textContent = view.value_text === null ? "Unresolved" : view.value_text;
+                if (view.value_text === null) value.dataset.empty = "true"; else delete value.dataset.empty;
+                chips.replaceChildren(wwRrStatusChip(view.review_status));
+                if (view.blocking) chips.appendChild(wwRrEl("span", "ww-rr-blocking", "Blocking"));
+                if (view.left_unresolved) chips.appendChild(wwRrEl("span", "ww-rr-dim", "Left unresolved"));
+                const hadFocus = actions.contains(document.activeElement);
+                actions.replaceChildren();
+                if (decidable) {
+                    const id = item.item_id;
+                    if (view.review_status === "to_confirm") {
+                        actions.appendChild(wwRrAction("Confirm", "Confirm " + item.full_label,
+                            () => wwRrCommit((d) => { d.confirmed.add(id); })));
+                    } else if (view.review_status === "confirmed") {
+                        actions.appendChild(wwRrAction("Undo confirmation", "Undo confirmation of " + item.full_label,
+                            () => wwRrCommit((d) => { d.confirmed.delete(id); })));
+                    } else if (item.resolution) {
+                        const resolving = view.review_status === "resolved_manually";
+                        actions.appendChild(wwRrAction(resolving ? "Edit" : "Resolve",
+                            (resolving ? "Edit the value of " : "Resolve ") + item.full_label, () => {
+                                if (!editor) { editor = wwRrEditor(item); li.insertBefore(editor, prov); }
+                                editor.hidden = !editor.hidden;
+                                if (!editor.hidden) { editor.wwPrefill(); editor.querySelector(".ww-rr-resolve-input").focus(); }
+                            }));
+                        if (resolving) {
+                            actions.appendChild(wwRrAction("Clear", "Clear the value of " + item.full_label,
+                                () => wwRrCommit((d) => { d.manual.delete(id); })));
+                        } else if (view.left_unresolved) {
+                            actions.appendChild(wwRrAction("Undo", "Undo leaving " + item.full_label + " unresolved",
+                                () => wwRrCommit((d) => { d.left.delete(id); })));
+                        }
+                    }
+                }
+                if (hadFocus) {
+                    const first = actions.querySelector("button");
+                    if (first) first.focus();
+                }
+                // Refill the same node, so an expanded Source stays expanded.
+                prov.replaceChildren(...wwRrProvenance(item, view).childNodes);
+            };
+            wwRrUi.rows.push(refresh);
+            if (item.item_id && item.primary) wwRrUi.items.set(item.item_id, item);
+            refresh();
             return li;
         }
         function wwRrGroup(group) {
@@ -55060,10 +55311,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             details.dataset.group = group.id;
             const summary = wwRrEl("summary", "");
             summary.appendChild(document.createTextNode(group.title));
+            let state = null;
             if (group.state_label) {
-                const state = wwRrEl("span", "ww-rr-state", " — " + group.state_label);
-                state.dataset.status = group.state_status || "";
+                state = wwRrEl("span", "ww-rr-state");
                 summary.appendChild(state);
+                // A zone's own status item drives the header, so resolving it updates the title.
+                const statusItem = group.items[0];
+                wwRrUi.groups.push(() => {
+                    const view = wwRrView(statusItem);
+                    state.textContent = " — " + (view.value_text === null ? "Status unresolved" : view.value_text);
+                    state.dataset.status = WW_RR_STATUS_STYLE[view.review_status] || "";
+                });
+                wwRrUi.groups[wwRrUi.groups.length - 1]();
             }
             details.appendChild(summary);
             const list = wwRrEl("ul", "ww-rr-items");
@@ -55102,7 +55361,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return wrap;
         }
         function wwRrPlural(n, one, many) { return n + " " + (n === 1 ? one : many); }
+        // Live review fields: the backend's reviewed state once there is one.
+        function wwRrLive() {
+            return wwRelayImportState.reviewLive || wwRelayImportState.review;
+        }
+        function wwRrPendingIds() {
+            const ids = [];
+            wwRrUi.items.forEach((item, id) => { if (wwRrView(item).review_status === "to_confirm") ids.push(id); });
+            return ids;
+        }
         function wwRrSummary(review) {
+            const live = wwRrLive();
             const box = wwRrEl("div", "ww-rr-summary");
             box.id = "wwRelayReviewSummary";
             const identity = [review.manufacturer, review.relay_family, review.model].filter(Boolean).join(" · ");
@@ -55110,22 +55379,76 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             box.appendChild(wwRrEl("div", "ww-rr-dim",
                 "Profile " + (review.profile_version || review.profile_id || "—") + " · " + wwRrPlural(review.zone_count, "zone", "zones")));
             const counts = wwRrEl("div", "ww-rr-counts");
-            [["mapped", review.mapped_count + " mapped"], ["inferred", review.to_confirm_count + " to confirm"],
-             ["unresolved", review.unresolved_count + " unresolved"]].forEach(([status, text]) => {
+            const chipDefs = [["mapped", live.mapped_count + " mapped", true],
+                ["inferred", live.to_confirm_count + " to confirm", true],
+                ["confirmed", live.confirmed_count + " confirmed", live.confirmed_count > 0],
+                ["resolved", live.resolved_manually_count + " resolved manually", live.resolved_manually_count > 0],
+                ["unresolved", live.unresolved_count + " unresolved", true]];
+            chipDefs.forEach(([status, text, shown]) => {
+                if (!shown) return;
                 const chip = wwRrEl("span", "ww-rr-status", text);
                 chip.dataset.status = status;
                 counts.appendChild(chip);
             });
+            if (live.blocking_count > 0) counts.appendChild(wwRrEl("span", "ww-rr-blocking", live.blocking_count + " blocking"));
             counts.appendChild(wwRrEl("span", "ww-rr-dim", review.not_interpreted_count + " not interpreted"));
             box.appendChild(counts);
-            box.appendChild(wwRrEl("div", "ww-rr-dim", "Counts are interpreted settings, not display rows: a reach and its angle are one setting."));
+            box.appendChild(wwRrEl("div", "ww-rr-dim",
+                "Counts are interpreted settings, not display rows: a reach and its angle are one setting. "
+                + "Confirming accepts a value for this import session only."));
+            const pending = wwRrPendingIds();
+            const bulk = wwRrEl("div", "ww-rr-bulk");
+            if (pending.length > 0) {
+                const all = wwRrEl("button", "ww-rr-btn", "Confirm all inferred values (" + pending.length + ")");
+                all.type = "button";
+                all.id = "wwRelayReviewConfirmAll";
+                all.addEventListener("click", () => wwRrCommit((d) => { pending.forEach((id) => d.confirmed.add(id)); }));
+                bulk.appendChild(all);
+                bulk.appendChild(wwRrEl("span", "ww-rr-dim", "Only values marked To confirm; unresolved values are not changed."));
+            }
+            if (live.confirmed_count > 0) {
+                const undo = wwRrEl("button", "ww-rr-btn", "Undo all confirmations");
+                undo.type = "button";
+                undo.id = "wwRelayReviewUndoAll";
+                undo.addEventListener("click", () => wwRrCommit((d) => { d.confirmed.clear(); }));
+                bulk.appendChild(undo);
+            }
+            if (bulk.childElementCount) box.appendChild(bulk);
+            return box;
+        }
+        function wwRrReadiness() {
+            const live = wwRrLive();
+            const box = wwRrEl("div", "ww-rr-compat ww-rr-readiness");
+            box.id = "wwRelayReviewReadiness";
+            box.dataset.readiness = live.readiness.status;
+            const head = wwRrEl("div", "");
+            head.appendChild(wwRrEl("strong", "", "Readiness: "));
+            head.appendChild(document.createTextNode(WW_RR_READINESS_LABELS[live.readiness.status]));
+            box.appendChild(head);
+            const r = live.readiness;
+            if (r.blocking_unresolved > 0) {
+                box.appendChild(wwRrEl("div", "", wwRrPlural(r.blocking_unresolved, "blocking item is", "blocking items are") + " unresolved."));
+            }
+            if (live.readiness.status === "not_ready" && r.blocking_unresolved === 0) {
+                box.appendChild(wwRrEl("div", "", "The current Distance Protection engine cannot take these settings yet."));
+            }
+            if (r.pending_confirmations > 0) {
+                box.appendChild(wwRrEl("div", "",
+                    wwRrPlural(r.pending_confirmations, "inferred value still needs", "inferred values still need") + " confirmation."));
+            }
+            if (live.readiness.status === "ready") {
+                box.appendChild(wwRrEl("div", "",
+                    "Every value is mapped, confirmed or resolved, and the current engine accepts them."));
+                box.appendChild(wwRrEl("div", "ww-rr-dim", "Nothing has been applied. Applying settings is not available yet."));
+            }
             return box;
         }
         function wwRrCompat(review) {
+            const live = wwRrLive();
             const box = wwRrEl("div", "ww-rr-compat");
             box.id = "wwRelayReviewEngine";
-            box.dataset.engine = review.engine.status;
-            const ready = review.engine.status === "ready";
+            box.dataset.engine = live.engine.status;
+            const ready = live.engine.status === "ready";
             const interp = wwRrEl("div", "");
             interp.appendChild(wwRrEl("strong", "", "Interpretation: "));
             interp.appendChild(document.createTextNode(review.interpretation === "reviewable" ? "Complete enough for review" : "Incomplete"));
@@ -55137,20 +55460,111 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!ready) {
                 box.appendChild(wwRrEl("div", "",
                     "Interpretation succeeded, but the current Distance Protection engine cannot fully apply this scheme yet."));
+                box.appendChild(wwRrEl("div", "ww-rr-sub", "Blocking issues (" + live.blocking_issues.length + ")"));
                 const reasons = wwRrEl("ul", "ww-rr-reasons");
-                review.engine.reasons.forEach((reason) => {
-                    const where = reason.zone_ids.length ? " (" + reason.zone_ids.join(", ") + ")" : "";
-                    reasons.appendChild(wwRrEl("li", "", reason.message + where));
+                reasons.id = "wwRelayReviewBlocking";
+                live.blocking_issues.forEach((issue) => {
+                    const where = issue.zone_ids.length ? " (" + issue.zone_ids.join(", ") + ")" : "";
+                    const li = wwRrEl("li", "", issue.message + where);
+                    // Which still-unresolved values would address it, or why none can.
+                    const open = issue.item_ids.map((id) => wwRrUi.items.get(id))
+                        .filter((item) => item && wwRrView(item).blocking);
+                    if (open.length) {
+                        li.appendChild(wwRrEl("div", "ww-rr-dim", "Needs: " + open.map((item) => item.full_label).join("; ")));
+                    } else {
+                        li.appendChild(wwRrEl("div", "ww-rr-dim",
+                            "No value in this review can clear it; it is a limit of the current engine."));
+                    }
+                    reasons.appendChild(li);
                 });
                 box.appendChild(reasons);
             }
-            if (review.engine.warnings.length) {
+            if (live.engine.warnings.length) {
                 box.appendChild(wwRrEl("div", "ww-rr-dim", "Kept in the review but not used by the current engine:"));
                 const warns = wwRrEl("ul", "ww-rr-reasons");
-                review.engine.warnings.forEach((w) => warns.appendChild(wwRrEl("li", "", w)));
+                live.engine.warnings.forEach((w) => warns.appendChild(wwRrEl("li", "", w)));
                 box.appendChild(warns);
             }
             return box;
+        }
+        // Refreshes everything the decisions can change, in place: scroll position,
+        // open groups, expanded sources and open editors are all preserved.
+        function wwRrRefreshAll() {
+            const state = wwRelayImportState;
+            const body = document.getElementById("wwRelayReviewBody");
+            if (!state.review || !state.reviewBuilt || !body) return;
+            body.setAttribute("aria-busy", String(state.reviewBusy));
+            wwRrUi.rows.forEach((refresh) => refresh());
+            wwRrUi.groups.forEach((refresh) => refresh());
+            ["wwRelayReviewSummary", "wwRelayReviewReadiness", "wwRelayReviewEngine"].forEach((id) => {
+                const old = document.getElementById(id);
+                if (!old) return;
+                const make = id === "wwRelayReviewSummary" ? wwRrSummary : id === "wwRelayReviewReadiness" ? wwRrReadiness : wwRrCompat;
+                const focusId = old.contains(document.activeElement) ? document.activeElement.id : "";
+                old.replaceWith(make(state.review));
+                if (focusId && document.getElementById(focusId)) document.getElementById(focusId).focus();
+            });
+            if (wwRrUi.notice) wwRrUi.notice.textContent = state.reviewError;
+        }
+        // Asks the backend to re-evaluate the decisions (stateless: the original
+        // interpretation travels with the request). Resolves {ok, message}.
+        async function wwRrValidate() {
+            const state = wwRelayImportState;
+            const review = state.review;
+            const controller = new AbortController();
+            state.reviewController = controller;
+            state.reviewBusy = true;
+            wwRrRefreshAll();
+            const d = state.decisions;
+            const payload = {
+                validation_context: review.validation_context,
+                confirmed: [...d.confirmed],
+                manual: [...d.manual].map(([item_id, value]) => ({ item_id, value })),
+                left_unresolved: [...d.left],
+            };
+            let result = { ok: false, message: "The review could not be checked. Nothing was changed." };
+            try {
+                const response = await fetch(apiBaseUrl() + "/api/v1/relay-import/review/validate", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload), signal: controller.signal,
+                });
+                let body = null;
+                try { body = await response.json(); } catch (parseError) { /* non-JSON error body */ }
+                if (state.review !== review || state.reviewController !== controller) return { ok: false, stale: true };
+                if (response.ok) {
+                    body.itemsById = new Map(body.items.map((item) => [item.item_id, item]));
+                    state.reviewLive = body;
+                    result = { ok: true, message: "" };
+                } else {
+                    const detail = body && body.detail;
+                    result = { ok: false, message: (detail && typeof detail.message === "string" && detail.message)
+                        || "The review could not be checked. Nothing was changed." };
+                }
+            } catch (networkError) {
+                if (state.review !== review || state.reviewController !== controller) return { ok: false, stale: true };
+                result = { ok: false, message: "Could not reach the server. Nothing was changed." };
+            }
+            state.reviewController = null;
+            state.reviewBusy = false;
+            state.reviewError = result.ok ? "" : result.message;
+            return result;
+        }
+        // Applies one decision change, validates it, and rolls it back if the backend refuses.
+        async function wwRrCommit(mutate, editor) {
+            const state = wwRelayImportState;
+            if (!state.review || state.reviewBusy) return { ok: false };
+            const before = wwRrCloneDecisions(state.decisions);
+            mutate(state.decisions);
+            const result = await wwRrValidate();
+            if (result.stale) return result;
+            if (!result.ok) state.decisions = before;
+            wwRelayImportRender(); // card summary, and an in-place refresh of the open review
+            if (editor) {
+                const error = editor.querySelector(".ww-rr-resolve-error");
+                if (result.ok) { editor.hidden = true; if (error) error.textContent = ""; }
+                else if (error) error.textContent = result.message;
+            }
+            return result;
         }
         function wwRelayReviewRender() {
             const state = wwRelayImportState;
@@ -55165,13 +55579,33 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!open) {
                 panel.hidden = true;
                 body.replaceChildren();
+                state.reviewBuilt = false;
+                return;
+            }
+            if (state.reviewBuilt) {
+                // Already on screen: refresh in place rather than rebuilding (keeps scroll and focus).
+                panel.hidden = false;
+                wwRrRefreshAll();
                 return;
             }
             const review = state.review;
+            wwRrUi.rows = [];
+            wwRrUi.groups = [];
+            wwRrUi.items = new Map();
             const fragment = document.createDocumentFragment();
+            // Groups first so the item registry exists when the summary and boxes are drawn.
+            const groupNodes = review.groups.map((group) => wwRrGroup(group));
+            const notice = wwRrEl("div", "ww-rr-notice");
+            notice.id = "wwRelayReviewNotice";
+            notice.setAttribute("role", "status");
+            notice.setAttribute("aria-live", "polite");
+            notice.textContent = state.reviewError;
+            wwRrUi.notice = notice;
             fragment.appendChild(wwRrSummary(review));
+            fragment.appendChild(notice);
+            fragment.appendChild(wwRrReadiness());
             fragment.appendChild(wwRrCompat(review));
-            review.groups.forEach((group) => fragment.appendChild(wwRrGroup(group)));
+            groupNodes.forEach((node) => fragment.appendChild(node));
             const other = wwRrEl("details", "ww-rr-group");
             other.id = "wwRelayReviewOther";
             other.appendChild(wwRrEl("summary", "",
@@ -55185,6 +55619,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             });
             fragment.appendChild(other);
             body.replaceChildren(fragment);
+            state.reviewBuilt = true;
             panel.hidden = false;
         }
         function wwRelayImportReset() {

@@ -25143,6 +25143,23 @@ sequential ids).
   or edit** control; the manual form is untouched. Apply Settings / form
   population remain a later slice needing owner approval after UAT. Details in
   [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-7--extraction-review-read-only).
+- **Slice 8 addendum (2026-10-11)**: **Review confirmation / resolution, still
+  before Apply.** The user can confirm inferred values and resolve (or leave)
+  unresolved ones for the current import session. A confirmation means only "I
+  accept this value for this session": it keeps the value, provenance and
+  `inferred` status (a separate `review_status` is added) and never validates the
+  profile or affects future imports. Manual resolution is offered only for fields
+  with a known canonical target and type/unit (zone status/direction, resistive
+  reaches in ohms, timers in seconds); the original unresolved provenance is kept
+  beside the user's value; nothing is ever defaulted. The interpretation is
+  immutable: `original + session overlay -> effective reviewed model -> engine
+  adapter re-run`. Unresolved items the adapter needs are **blocking**; readiness
+  is `Not ready` / `Ready after confirmation` / `Ready to apply` and is computed by
+  the backend via the stateless `POST /api/v1/relay-import/review/validate` (the
+  original interpretation travels in the upload response and back; no server
+  session). Decisions are tab-memory only. **There is still no Apply, no form
+  population and no plotting from imports**; those need owner approval after UAT.
+  Details: [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-8--review-confirmation--resolution-still-no-apply).
 - **Scope**: Slice 1 is contracts + tests only -- no extraction, parsing,
   upload UI, auto-population, rendering change or persistence.
 
