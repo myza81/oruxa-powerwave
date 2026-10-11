@@ -2,11 +2,12 @@
 
 Status: **Slices 1-8 + 8A (review status taxonomy, below)** (domain contracts, manual entry + engine adapter,
 ephemeral upload, generic PDF extraction, relay identification, MiCOM P441
-interpretation profile, read-only Extraction Review, review confirmation / resolution) implemented on
-`feature/distance-relay-import`. Slice 6 is **Implemented / Awaiting
+interpretation profile, read-only Extraction Review, review confirmation / resolution) implemented
+and **integrated into `main`** (2026-10-11) on top of the completed Oscillation Analysis Phase 1
+baseline. Slice 6 is **Implemented / Awaiting
 Validation**; Slices 7 and 8 are **Implemented / Awaiting owner UAT**. Every other relay
-is identification-only; auto-population / Apply are later slices. Approval record:
-[DECISIONS.md — DEC-RELAY-IMPORT-1](DECISIONS.md#dec-relay-import-1--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
+is identification-only; auto-population / Apply (Slice 9) are later slices and **not started**. Approval record:
+[DECISIONS.md — DEC-184](DECISIONS.md#dec-184--relay-settings-import-oem-neutral-raw--profile--canonical-architecture).
 
 ## Purpose
 

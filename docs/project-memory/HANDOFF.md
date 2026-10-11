@@ -4,8 +4,23 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-05** (Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Last updated: **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
+
+## Relay import + Oscillation integration (2026-10-11)
+
+`feature/distance-relay-import` (Slices 1-8A, plus the R-X viewport controls and
+Distance Protection Reverse Zone / defaults / label / colour refinements) is now
+integrated into `main`, rebased onto the completed Oscillation Analysis Phase 1
+baseline (DEC-183). The relay architecture decision has permanent id **DEC-184**
+(drafted as `DEC-RELAY-IMPORT-1`). Current relay-import state: P441 is the only
+interpreted profile; every other family is identification-only; review state is
+ephemeral (tab memory only); **Apply Settings is not implemented and Slice 9 has
+not started**; the review uncertainty taxonomy is Mapped / Assumption / Missing /
+Conflict / Unsupported / Unreadable. The `pypdf` pin in `backend/requirements.txt`
+is a real dependency: install requirements before running the backend suite.
+Slices 6-8A remain at their owner UAT gates; the per-slice notes below record
+what each added.
 
 ## Relay import Slice 8A (2026-10-11, `feature/distance-relay-import`)
 
@@ -27,8 +42,7 @@ Session overlay over an immutable interpretation, re-validated statelessly by
 `POST /api/v1/relay-import/review/validate`; decisions live in tab memory only.
 Details: [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-8--review-confirmation--resolution-still-no-apply).
 **Stopped at the owner UAT gate -- do not start Slice 9 (Apply Settings) until the
-owner has UAT'd and approved Slice 8.** No Apply, no form write. Not merged;
-Oscillation branch not rebased. Note for Slice 9: the validation context is
+owner has UAT'd and approved Slice 8.** No Apply, no form write. Note for Slice 9: the validation context is
 unauthenticated client-held data -- re-derive or re-verify before applying.
 
 ## Relay import Slice 7 (2026-10-11, `feature/distance-relay-import`)
@@ -42,7 +56,7 @@ server state exists to fetch it from) and lives in tab memory only. Details:
 [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-7--extraction-review-read-only).
 **Stopped at the owner UAT gate -- do not start Slice 8 (Apply Settings / form
 population) until the owner has UAT'd and approved Slice 7.** No Apply, no form
-write, no editing, no persistence. Not merged; Oscillation branch not rebased.
+write, no editing, no persistence.
 Still open from Slice 6 (they now show as Unresolved / not-ready in the review):
 the `3007 Zone Status` bit layout (Zone P), the P441 left-hand resistive reach
 rule, `R<n>Ph` loop-vs-phase meaning, the K0-style reading of `kZn`.
@@ -61,8 +75,7 @@ Apply) until the owner has UAT'd and approved Slice 6.** Open points for the
 owner / P44x manual: bit layout of `3007 Zone Status` (Zone P is unresolved
 without it); the P441 left-hand resistive reach rule (the engine adapter needs a
 reverse resistive reach, so the sample is reported unsupported); whether
-`R<n>Ph` is a loop or per-phase value; the K0-style reading of `kZn`. Not merged;
-Oscillation branch not rebased. Real-sample suite: `RELAY_SAMPLE_PDF_DIR`.
+`R<n>Ph` is a loop or per-phase value; the K0-style reading of `kZn`. Real-sample suite: `RELAY_SAMPLE_PDF_DIR`.
 
 ## Relay import Slice 5 (2026-10-11, `feature/distance-relay-import`)
 
@@ -72,8 +85,7 @@ identified | ambiguous | unknown`, evidence-scored, data-driven catalogue of the
 [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-5--relay-identification-framework).
 **Stopped at the owner UAT gate -- do not start Slice 6 (P441 interpretation)
 until the owner has UAT'd and approved Slice 5.** Nothing is interpreted, no
-profile is `Validated`, the form is never auto-filled. Not merged; Oscillation
-branch not rebased. Run the real-sample suite with `RELAY_SAMPLE_PDF_DIR`.
+profile is `Validated`, the form is never auto-filled. Run the real-sample suite with `RELAY_SAMPLE_PDF_DIR`.
 
 ## Distance Protection Reverse Zone (2026-10-10, `feature/distance-relay-import`)
 
@@ -89,7 +101,7 @@ Generic PDF text extraction into `RawRelayDocument` (pypdf), summarised in the
 upload response; see
 [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-4--generic-pdf-text-extraction-into-rawrelaydocument).
 Owner UAT passed (identification is Slice 5, above). Engineering
-interpretation is not implemented. Not merged; Oscillation branch not rebased.
+interpretation is not implemented.
 Real sample sheets are not in the repo: set `RELAY_SAMPLE_PDF_DIR` to run the
 real-file regression test.
 

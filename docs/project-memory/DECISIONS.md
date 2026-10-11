@@ -25041,13 +25041,14 @@ shared `channel_ref`; frontend layout/CSS, split handling, trace fetch and chart
 integration; tests `test_compliance_trace_api.py` (+ readiness updates),
 `compliance_workspace.spec.js`.
 
-## DEC-RELAY-IMPORT-1 — Relay settings import: OEM-neutral Raw → Profile → Canonical architecture
+## DEC-184 — Relay settings import: OEM-neutral Raw → Profile → Canonical architecture
 
-Date: 2026-10-10
-Status: Approved (owner ticket, Slice 1) -- implemented on
-`feature/distance-relay-import`, not merged. The numeric DEC id is to be
-assigned at merge (the parallel Oscillation Analysis branch is allocating
-sequential ids).
+Date: 2026-10-10 (permanent id assigned 2026-10-11, at integration)
+Status: Approved (owner ticket, Slice 1) -- implemented through Slice 8A and
+integrated into `main` with the completed Oscillation Analysis Phase 1 baseline
+(DEC-183). This entry was drafted as `DEC-RELAY-IMPORT-1` while the Oscillation
+branch was allocating sequential ids; it is now **DEC-184**. Slice 9 (Apply
+Settings) has not started.
 
 - **Pipeline**: `RawRelayDocument` -> `RelayProfile` -> `CanonicalDistanceProtectionModel`
   -> existing distance characteristic engine. Full design:
@@ -25124,8 +25125,7 @@ sequential ids).
   engine adapter reports the sample unsupported -- the engine was not changed. The
   upload response gains an interpretation summary (counts and fixed phrases, no
   document values); **nothing is applied to the form** and there is no Apply /
-  Extraction Review yet. The temporary id `DEC-RELAY-IMPORT-1` is kept until
-  integration. Details in
+  Extraction Review yet. Details in
   [RELAY_IMPORT_ARCHITECTURE.md](RELAY_IMPORT_ARCHITECTURE.md#slice-6--micom-p441-engineering-interpretation-micom-p441-v1).
 - **Slice 7 addendum (2026-10-11)**: **Extraction Review is read-only.** An
   interpreted relay can be inspected before anything is applied: canonical values
