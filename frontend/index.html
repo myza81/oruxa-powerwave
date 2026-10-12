@@ -8571,6 +8571,31 @@
             background: var(--surface-tint);
         }
         .ww-relay-import-file[data-state="accepted"] { border-left-color: var(--ok); }
+        /* Overall review state of the card, from the authoritative review summary:
+           blocking > issue > clear. The whole border carries it; chips stay quieter. */
+        .ww-relay-import-file[data-review="blocking"] {
+            border-color: color-mix(in srgb, var(--error) 60%, var(--panel-border));
+            border-left-color: var(--error);
+        }
+        .ww-relay-import-file[data-review="issue"] {
+            border-color: color-mix(in srgb, var(--warn) 60%, var(--panel-border));
+            border-left-color: var(--warn);
+        }
+        .ww-relay-import-file[data-review="clear"] {
+            border-color: color-mix(in srgb, var(--ok) 60%, var(--panel-border));
+            border-left-color: var(--ok);
+        }
+        .ww-relay-import-actions {
+            flex: none;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 6px;
+        }
+        @media (max-width: 520px) {
+            .ww-relay-import-file { flex-wrap: wrap; }
+            .ww-relay-import-actions { flex: 1 1 100%; }
+        }
         .ww-relay-import-file[hidden],
         .ww-relay-import-error[hidden] { display: none; }
         .ww-relay-import-type {
@@ -8659,8 +8684,18 @@
         :is(.ww-rr-compat)[data-engine="not_ready"] { border-left: 3px solid var(--warn); }
         :is(.ww-rr-compat)[data-engine="ready"] { border-left: 3px solid var(--ok); }
         :is(.ww-rr-identity) { font-size: 0.8rem; font-weight: 600; }
-        :is(.ww-rr-dim) { color: var(--text-dim); }
-        :is(.ww-rr-counts) { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+        :is(.ww-rr-dim) { color: var(--text-dim); font-size: 0.65rem; }
+        :is(.ww-rr-counts) { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+        :is(.ww-rr-counts) > * { text-transform: capitalize; }
+        :is(.ww-rr-summary) { gap: 0; }
+        :is(.ww-rr-summary) > :is(.ww-rr-explain, .ww-rr-bulk) { margin-top: 6px; }
+        :is(.ww-rr-explain) { display: flex; flex-direction: column; gap: 1px; }
+        :is(.ww-rr-bulk-note) { display: block; }
+        :is(.ww-rr-summary) :is(.ww-rr-blocking) {
+            padding: 1px 7px;
+            border: 1px solid color-mix(in srgb, var(--error) 45%, transparent);
+            border-radius: 999px;
+        }
         :is(.ww-rr-reasons) { margin: 2px 0 0; padding-left: 18px; color: var(--text-dim); }
         :is(.ww-rr-group) {
             border: 1px solid var(--panel-border);
@@ -8747,7 +8782,8 @@
         }
         :is(.ww-rr-status)[data-status="confirmed"]::before,
         :is(.ww-rr-status)[data-status="resolved"]::before { background: var(--accent); }
-        :is(.ww-rr-chips, .ww-rr-actions, .ww-rr-bulk, .ww-rr-resolve) {
+        :is(.ww-rr-bulk) { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+        :is(.ww-rr-chips, .ww-rr-actions, .ww-rr-resolve) {
             display: inline-flex;
             align-items: center;
             flex-wrap: wrap;
@@ -9302,7 +9338,7 @@
             margin-bottom: 0;
         }
         .ww-oc-zoom-btn {
-            font-size: 0.7rem;
+            font-size: 0.6rem;
             line-height: 1;
             padding: 6px 10px;
             cursor: pointer;
@@ -11987,8 +12023,10 @@
                                         <span class="ww-relay-import-detail" id="wwRelayImportDetail"></span>
                                         <span class="ww-relay-import-detail" id="wwRelayImportSummary"></span>
                                     </div>
-                                    <button type="button" id="wwRelayReviewBtn" aria-expanded="false" aria-controls="wwRelayReviewPanel" hidden>Review Extracted Settings</button>
-                                    <button type="button" class="secondary" id="wwRelayImportRemoveBtn">Remove</button>
+                                    <div class="ww-relay-import-actions">
+                                        <button type="button" id="wwRelayReviewBtn" aria-expanded="false" aria-controls="wwRelayReviewPanel" hidden>Review Extracted Settings</button>
+                                        <button type="button" class="secondary" id="wwRelayImportRemoveBtn">Remove</button>
+                                    </div>
                                 </div>
                                 <div class="ww-relay-import-error" id="wwRelayImportError" role="alert" hidden></div>
                                 <!-- Relay Import Slice 7 -- read-only Extraction Review of the
@@ -55537,7 +55575,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const identity = [review.manufacturer, review.relay_family, review.model].filter(Boolean).join(" · ");
             box.appendChild(wwRrEl("div", "ww-rr-identity", identity || "Relay"));
             box.appendChild(wwRrEl("div", "ww-rr-dim",
-                "Profile " + (review.profile_version || review.profile_id || "—") + " · " + wwRrPlural(review.zone_count, "zone", "zones")));
+                "Profile " + (review.profile_version || review.profile_id || "—") + " · " + wwRrPlural(review.zone_count, "zone", "zones")
+                + " · " + review.not_interpreted_count + " not interpreted"));
             const counts = wwRrEl("div", "ww-rr-counts");
             // Conflict and Unreadable appear only when there are some.
             const chipDefs = [["mapped", "mapped", live.mapped_count + " mapped", true],
@@ -55556,16 +55595,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 counts.appendChild(chip);
             });
             if (live.blocking_count > 0) {
-                const blocking = wwRrEl("span", "ww-rr-blocking", wwRrBlockingSettingsText(live.blocking_count));
+                const blocking = wwRrEl("span", "ww-rr-blocking", live.blocking_count + " blocking");
+                blocking.title = wwRrBlockingSettingsText(live.blocking_count);
                 blocking.id = "wwRelayReviewBlockingSettings";
                 counts.appendChild(blocking);
             }
-            counts.appendChild(wwRrEl("span", "ww-rr-dim", review.not_interpreted_count + " not interpreted"));
             box.appendChild(counts);
-            box.appendChild(wwRrEl("div", "ww-rr-dim",
-                "Counts are interpreted settings, not display rows: a reach and its angle are one setting. "
-                + "An assumption means the source was read but an engineering assumption was needed; "
-                + "confirming accepts it for this import session only."));
+            const explain = wwRrEl("div", "ww-rr-explain");
+            explain.appendChild(wwRrEl("div", "ww-rr-dim",
+                "Counts are interpreted settings, not display rows. A reach and its angle are one setting."));
+            explain.appendChild(wwRrEl("div", "ww-rr-dim",
+                "Assumption = source value was read, but engineering interpretation required an assumption. "
+                + "Confirming accepts it for this import session only."));
+            box.appendChild(explain);
             const pending = wwRrPendingIds();
             const bulk = wwRrEl("div", "ww-rr-bulk");
             if (pending.length > 0) {
@@ -55574,8 +55616,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 all.id = "wwRelayReviewConfirmAll";
                 all.addEventListener("click", () => wwRrCommit((d) => { pending.forEach((id) => d.confirmed.add(id)); }));
                 bulk.appendChild(all);
-                bulk.appendChild(wwRrEl("span", "ww-rr-dim",
-                    "Only assumptions; missing, conflicting, unsupported and unreadable values are not changed."));
+                bulk.appendChild(wwRrEl("span", "ww-rr-dim ww-rr-bulk-note",
+                    "Only Assumption items are affected. Missing, Conflict, Unsupported and Unreadable values are unchanged."));
             }
             if (live.confirmed_count > 0) {
                 const undo = wwRrEl("button", "ww-rr-btn", "Undo all confirmations");
@@ -55673,7 +55715,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
         // Refreshes everything the decisions can change, in place: scroll position,
         // open groups, expanded sources and open editors are all preserved.
+        // Overall state of the relay card from the authoritative review summary (never inferred
+        // from the file or relay): blocking > issue > clear. "" until an interpretation exists.
+        function wwRelayCardStatus() {
+            const state = wwRelayImportState;
+            if (!state.review) return "";
+            const live = wwRrLive();
+            if (!live.readiness) return "";
+            const { status: readinessStatus } = live.readiness; // non-null: checked above
+            if (live.blocking_count > 0 || readinessStatus === "not_ready") return "blocking";
+            const open = live.missing_count + live.conflict_count + live.unsupported_count + live.unreadable_count + live.to_confirm_count;
+            return open > 0 || readinessStatus !== "ready" ? "issue" : "clear";
+        }
+        function wwRelayCardApplyStatus() {
+            const fileRow = document.getElementById("wwRelayImportFile");
+            if (!fileRow) return;
+            const status = wwRelayImportState.phase === "accepted" ? wwRelayCardStatus() : "";
+            if (status) fileRow.dataset.review = status; else delete fileRow.dataset.review;
+        }
         function wwRrRefreshAll() {
+            wwRelayCardApplyStatus();
             const state = wwRelayImportState;
             const body = document.getElementById("wwRelayReviewBody");
             if (!state.review || !state.reviewBuilt || !body) return;
@@ -55866,6 +55927,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             nameEl.textContent = showFile ? state.filename : "";
             nameEl.title = showFile ? state.filename : ""; // full name when truncated
             fileRow.dataset.state = state.phase;
+            wwRelayCardApplyStatus();
             document.getElementById("wwRelayImportType").textContent = showFile ? (state.sourceFormat || "pdf").toUpperCase() : "";
             let text = "";
             let detail = "";

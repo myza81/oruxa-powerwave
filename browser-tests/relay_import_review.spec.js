@@ -223,7 +223,7 @@ test("blocking settings are told apart from missing values that do not block", a
 test("blocking settings and blocking reasons are counted and worded apart", async ({ page }) => {
   await reviewP441(page);
   // 4 settings the engine needs, explained by 2 engine reasons: never worded as one number
-  await expect(page.locator("#wwRelayReviewBlockingSettings")).toHaveText("4 blocking settings");
+  await expect(page.locator("#wwRelayReviewBlockingSettings")).toHaveText("4 blocking");
   await expect(readiness(page)).toContainText("Blocking settings: 4");
   await expect(page.locator("#wwRelayReviewEngine .ww-rr-sub")).toHaveText("Blocking reasons (2)");
   await expect(page.locator("#wwRelayImportSummary")).toContainText("4 blocking settings");

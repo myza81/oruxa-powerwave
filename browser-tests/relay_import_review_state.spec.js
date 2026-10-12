@@ -164,7 +164,7 @@ test("a stale answer never overwrites a newer decision (a second decision while 
   await page.waitForTimeout(400);
   await expect(chip(page, "zone.Z2.reach")).toHaveText("Confirmed"); // and is discarded
   await expect(readiness(page)).not.toContainText("Re-evaluating");
-  expect(await page.locator("#wwRelayReviewSummary").innerText()).toMatch(/2 confirmed/);
+  expect(await page.locator("#wwRelayReviewSummary").innerText()).toMatch(/2 confirmed/i);
 });
 
 test("rapid successive decisions all land, in order, and readiness reflects the newest", async ({ page }) => {
