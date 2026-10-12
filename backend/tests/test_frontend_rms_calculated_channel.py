@@ -156,7 +156,10 @@ def test_create_channel_request_body_always_includes_override_key():
     source = _source()
     body = _function_body(source, "async function wwCcCreateChannel()", "async function wwCcDeleteChannel(calculatedChannelId)")
     assert "override: override" in body
-    assert "const override = wwCcBuilder.operation === \"rms\" ? !!wwCcBuilder.override : false;" in body
+    assert (
+        "const override = (wwCcBuilder.operation === \"rms\" || wwCcBuilder.operation === \"rocof\") "
+        "? !!wwCcBuilder.override : false;"
+    ) in body
 
 
 # ----------------------------------------------------------------------

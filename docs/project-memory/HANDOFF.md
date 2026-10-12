@@ -7,6 +7,12 @@ history already provides the detailed historical trail.
 Last updated: **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated)
 
+## ROCOF calculated channel (2026-10-12, `feature/calculated-channel-rocof`)
+
+Implemented in an isolated worktree off `origin/main` (d8ffed2); **not merged, not deployed, awaiting owner UAT.** Decision record: DEC-190 (`[PROPOSAL]`, id chosen to avoid DEC-184..189 on sibling branches; revised in place after the first commit `97d038a` used a three-point derivative + smoothing instead of the approved measurement-window method). Calculation: centered window T in {100, 200, 500 (default), 1000, 2000} ms; Method A `[f(t+T/2) - f(t-T/2)]/T` with linear interpolation at the edges, Method B least-squares slope; output only where the whole window is inside one continuous valid segment. UI: Calculated Channels -> "ROCOF" card (after Subtraction): "Input: Frequency (Hz)" with frequency channels first, Calculation Method, Measurement Window, Time Alignment (Centered), unit `Hz/s`, "Calculate anyway" for non-frequency inputs. Code: `evaluate_rocof()` in `app/domain/calculated_channel.py`; wiring in `calculated_channel_service.py`; errors `rocof_override_required` / `rocof_insufficient_data` / `invalid_rocof_parameters`. Tests: `backend/tests/test_calculated_channel_rocof.py`, `browser-tests/calculated-channel-rocof.spec.js`. For UAT: use a real recorder frequency channel, compare 100 ms vs 500 ms vs 2000 ms and difference vs regression, and try a channel with a gap / NaNs. Running the browser spec beside another agent's servers: use `PW_BACKEND_PORT=8110 PW_FRONTEND_PORT=8111 CORS_ORIGINS=http://127.0.0.1:8111,http://localhost:8111` (the spec routes `config.js` itself).
+
+UAT review pass (2026-10-12): calculation re-verified and Preview presentation refined (axis titles, full expression, method/window/alignment/availability rows) -- see the last paragraph of DEC-190; shared-chart items awaiting owner approval are listed there.
+
 ## Relay import + Oscillation integration (2026-10-11)
 
 `feature/distance-relay-import` (Slices 1-8A, plus the R-X viewport controls and

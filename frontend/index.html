@@ -3655,6 +3655,8 @@
         .ww-cc-preview-info-strip[hidden] { display: none; }
         .ww-cc-preview-info-label { display: block; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
         .ww-cc-preview-info-value { display: block; font-size: 0.75rem; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        /* The calculated expression can be long (e.g. ROCOF names method, window and alignment): wrap it so it is never cut off. */
+        .ww-cc-preview-info-value--wrap { white-space: normal; overflow-wrap: anywhere; }
 
         /* Shrunk from 320px: the preview typically shows one selected
            channel now rather than every visible channel split by type, so
@@ -38318,6 +38320,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // multiply_constant, plus an async eligibility check (see
             // wwCcCheckRmsEligibility()) no other operation needs.
             rms: { label: "RMS", arity: "unary", glyph: "RMS(x)" },
+            // DEC-190: Rate of Change of Frequency -- 1 frequency input
+            // (Hz) -> a Hz/s waveform; optional centred moving-average
+            // smoothing. Eligibility is presented from the backend's own
+            // engineering_type (see wwCcRocofEligibility()); the backend
+            // re-derives and enforces it.
+            rocof: { label: "ROCOF", arity: "unary", glyph: "df/dt" },
             addition: { label: "Addition", arity: "multi", glyph: "x₁+x₂" },
             subtraction: { label: "Subtraction", arity: "multi", glyph: "x₁−x₂" },
             // DEC-115: a dedicated ENGINEERING operation, not a
@@ -38330,7 +38338,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 arity: "context", glyph: "VA−VB",
             },
         };
-        const WW_CC_OPERATION_ORDER = ["reverse_polarity", "absolute_value", "multiply_constant", "rms", "addition", "subtraction", "line_to_line_voltage"];
+        const WW_CC_OPERATION_ORDER = ["reverse_polarity", "absolute_value", "multiply_constant", "rms", "addition", "subtraction", "rocof", "line_to_line_voltage"];
 
         // DEC-115: Line-to-Line output options -- wire values match
         // app.domain.line_to_line_voltage.KNOWN_OUTPUTS exactly.
@@ -38421,6 +38429,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // or an active selectable control -- the two must never look
             // the same (owner's own explicit UAT requirement).
             nominalFrequencySource: "user",
+            // DEC-190: ROCOF-only. The calculation method and the
+            // measurement window (a string, from the <select>) are both
+            // part of the estimate itself. `override` above doubles as the
+            // ROCOF "Calculate anyway" acknowledgement.
+            rocofMethod: "rolling_frequency_difference", rocofWindowMs: "500",
             // DEC-115: Line-to-Line Voltage only -- the chosen Engineering
             // Context id and output ("AB"/"BC"/"CA"/"all_three").
             llContextId: "", llOutput: "all_three",
@@ -38466,6 +38479,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwCcBuilder.nominalFrequency = "50";
             wwCcBuilder.nominalFrequencySource = "user";
             wwCcBuilder.override = false;
+            wwCcBuilder.rocofMethod = "rolling_frequency_difference";
+            wwCcBuilder.rocofWindowMs = "500";
             wwCcBuilder.llContextId = "";
             wwCcBuilder.llOutput = "all_three";
             wwCcBuilder.llNames = { AB: "", BC: "", CA: "" };
@@ -38644,6 +38659,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         shortLabel: displayName, shortLabelHtml: wwChannelDisplayNameHtml(signal.sourceId, signal.name),
                         pickerLabel: (signal.sourceName ? signal.sourceName + " — " : "") + displayName,
                         unit: signal.unit, group: signal.sourceName || signal.sourceId,
+                        engineeringType: signal.engineeringType,
                     };
                 }
                 const calc = signal.definition;
@@ -38652,6 +38668,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     calculatedChannelId: calc.id, referenceSourceId: calc.reference_source_id,
                     shortLabel: calc.name, shortLabelHtml: wwCalculatedChannelNameHtml(calc), pickerLabel: calc.name,
                     unit: calc.unit || "", group: "Calculated Channels",
+                    engineeringType: signal.engineeringType,
                 };
             });
         }
@@ -38684,6 +38701,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     ? calc.parameters.nominal_frequency_hz : "?";
                 return label + " (" + names[0] + ", " + f + " Hz)";
             }
+            if (calc.operation === "rocof") {
+                const p = calc.parameters || {};
+                return label + " (" + names[0] + ", " + wwCcRocofLabel(p.method, p.window_ms) + ")";
+            }
             if (calc.operation === "addition") return label + " (" + names.join(" + ") + ")";
             if (calc.operation === "subtraction") return label + " (" + names.join(" − ") + ")";
             if (calc.operation === "line_to_line_voltage") {
@@ -38691,6 +38712,20 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 return label + " (" + wwLineToLinePairText(calc.phase_member, wwCalculatedChannelPhaseDisplay(calc)) + (bay ? ", " + bay : "") + ")";
             }
             return label + " (" + names[0] + ")";
+        }
+
+        // DEC-190: the one place that words a ROCOF channel's method and
+        // measurement window, so the builder preview, manager summary and
+        // expression never drift. The window is the measurement itself,
+        // never worded as smoothing.
+        const WW_CC_ROCOF_METHODS = {
+            rolling_frequency_difference: { label: "Rolling Frequency Difference", short: "rolling frequency difference", nameTag: "" },
+            rolling_linear_regression: { label: "Rolling Linear Regression", short: "rolling linear regression", nameTag: "regression " },
+        };
+        const WW_CC_ROCOF_WINDOWS_MS = [100, 200, 500, 1000, 2000];
+        function wwCcRocofLabel(method, windowMs) {
+            const m = WW_CC_ROCOF_METHODS[method] || WW_CC_ROCOF_METHODS.rolling_frequency_difference;
+            return m.short + ", " + windowMs + " ms, centered";
         }
 
         function wwCcComputeSuggestedName() {
@@ -38707,6 +38742,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             else if (b.operation === "absolute_value") joined = "Abs (" + labels[0] + ")";
             else if (b.operation === "multiply_constant") joined = (b.constant === "" ? "k" : b.constant) + " × " + labels[0];
             else if (b.operation === "rms") joined = "RMS (" + labels[0] + ")";
+            else if (b.operation === "rocof") {
+                joined = "ROCOF (" + labels[0] + ", " + (WW_CC_ROCOF_METHODS[b.rocofMethod] || {}).nameTag + b.rocofWindowMs + " ms)";
+            }
             else if (b.operation === "addition") joined = labels.join(" + ");
             else joined = labels.join(" − ");
             // Section 34: "if expression is too long, generate a concise
@@ -38738,6 +38776,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (b.operation === "rms") {
                 const f = b.nominalFrequency === "" ? "50" : b.nominalFrequency;
                 return "Result = RMS (" + labels[0] + ", " + esc(f) + " Hz, 1 cycle)";
+            }
+            if (b.operation === "rocof") {
+                return "Result = ROCOF (" + labels[0] + ", " + esc(wwCcRocofLabel(b.rocofMethod, b.rocofWindowMs)) + ")";
             }
             if (b.operation === "addition") return "Result = " + labels.join(" + ");
             if (b.operation === "subtraction") return "Result = " + labels.join(" − ");
@@ -39316,6 +39357,92 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (overrideRow) overrideRow.hidden = !needsOverride;
         }
 
+        // ------------------------------------------------------------------
+        // DEC-190: ROCOF builder pieces. Presentation only: the verdict is
+        // read from the input's backend-computed engineering_type (explicit
+        // parameter type, else a reliable Hz unit -- never re-derived or
+        // guessed here), and the backend re-derives and enforces it at
+        // creation (`rocof_override_required`).
+        // ------------------------------------------------------------------
+        function wwCcRocofEligibility() {
+            const input = wwCcBuilder.inputs[0];
+            if (!input) return null;
+            const type = input.engineeringType;
+            if (type === "Frequency") return { status: "suitable", reason: "Input is identified as a frequency channel (Hz)." };
+            if (!type || type === "Undefined") {
+                return {
+                    status: "uncertain",
+                    reason: "This channel is not identified as a frequency measurement. Confirm that it is frequency in Hz before calculating ROCOF.",
+                };
+            }
+            return {
+                status: "not_frequency",
+                reason: "This channel is classified as " + type + ", not Frequency. ROCOF is only meaningful for a frequency measurement in Hz.",
+            };
+        }
+
+        function wwCcRocofBlocksCreate() {
+            if (wwCcBuilder.operation !== "rocof") return false;
+            const eligibility = wwCcRocofEligibility();
+            if (!eligibility || eligibility.status === "suitable") return false;
+            return !wwCcBuilder.override;
+        }
+
+        function wwCcRenderRocofStatus() {
+            const el = document.getElementById("wwCcRocofStatus");
+            const overrideRow = document.getElementById("wwCcRocofOverrideRow");
+            if (!el) return;
+            const eligibility = wwCcBuilder.operation === "rocof" ? wwCcRocofEligibility() : null;
+            el.classList.remove("ww-cc-rms-status-suitable", "ww-cc-rms-status-warning");
+            if (!eligibility) {
+                el.hidden = true;
+                if (overrideRow) overrideRow.hidden = true;
+                return;
+            }
+            el.hidden = false;
+            el.textContent = eligibility.reason;
+            el.classList.add(eligibility.status === "suitable" ? "ww-cc-rms-status-suitable" : "ww-cc-rms-status-warning");
+            if (overrideRow) overrideRow.hidden = eligibility.status === "suitable";
+        }
+
+        // Parameter block (DEC-190). The Measurement window is part of the
+        // estimate -- ROCOF at t describes the change across
+        // [t - T/2, t + T/2] -- and is deliberately NOT worded or laid out
+        // as smoothing. Method and window are constrained selects (the
+        // backend's closed set); alignment is the fixed centered definition.
+        function wwCcRenderRocofParameterFields() {
+            const opt = (value, label, current) =>
+                '<option value="' + value + '"' + (String(current) === String(value) ? " selected" : "") + '>' + label + '</option>';
+            let html = '<label class="ww-cc-field"><span class="ww-cc-rms-label">Calculation Method' +
+                wwInfoTipHtml(
+                    "About Calculation Method",
+                    "Rolling Frequency Difference: [f(t + T/2) \u2212 f(t \u2212 T/2)] / T. Rolling Linear Regression: the slope " +
+                    "of a straight line fitted to the valid samples in the window, which is steadier on noisy or quantized frequency."
+                ) +
+                '</span><select id="wwCcRocofMethodSelect">';
+            for (const key of Object.keys(WW_CC_ROCOF_METHODS)) {
+                html += opt(key, WW_CC_ROCOF_METHODS[key].label, wwCcBuilder.rocofMethod);
+            }
+            html += '</select></label>';
+            html += '<label class="ww-cc-field"><span class="ww-cc-rms-label">Measurement Window' +
+                wwInfoTipHtml(
+                    "About Measurement Window",
+                    "The time span T over which the frequency change is measured. A longer window gives a steadier but slower-responding " +
+                    "ROCOF; a shorter one follows fast events but is noisier. ROCOF is unavailable within T/2 of the start and end of the " +
+                    "record, and wherever the window would cross a gap or invalid sample."
+                ) +
+                '</span><select id="wwCcRocofWindowSelect">';
+            for (const ms of WW_CC_ROCOF_WINDOWS_MS) html += opt(ms, ms + " ms", wwCcBuilder.rocofWindowMs);
+            html += '</select></label>';
+            html += '<div class="ww-cc-field"><span class="ww-cc-rms-label">Time Alignment</span>' +
+                '<input type="text" readonly tabindex="-1" value="Centered"></div>';
+            html += '<div class="ww-cc-rms-status" id="wwCcRocofStatus" hidden></div>' +
+                '<label class="ww-cc-rms-override-row" id="wwCcRocofOverrideRow" hidden>' +
+                '<input type="checkbox" id="wwCcRocofOverrideCheckbox"' + (wwCcBuilder.override ? " checked" : "") + '>' +
+                '<span>Calculate anyway</span></label>';
+            return html;
+        }
+
         // Section 62: Create is enabled only when local validation passes
         // AND (for RMS specifically) the eligibility check is CURRENT for
         // the exact input+frequency the builder now holds -- never stale,
@@ -39426,6 +39553,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwCcRenderNullPolicyField() {
             const select = document.getElementById("wwCcNullPolicySelect");
             const hint = document.getElementById("wwCcNullPolicyHint");
+            // DEC-190: a missing frequency sample is not 0 Hz, so Treat
+            // Null as Zero would manufacture huge false ROCOF spikes -- the
+            // backend rejects it; here it is disabled for ROCOF.
+            const zeroOption = select ? select.querySelector('option[value="treat_null_as_zero"]') : null;
+            const isRocof = wwCcBuilder.operation === "rocof";
+            if (zeroOption) {
+                zeroOption.disabled = isRocof;
+                zeroOption.title = isRocof ? "A missing frequency sample is not 0 Hz." : "";
+            }
+            if (isRocof && wwCcBuilder.nullPolicy === "treat_null_as_zero") wwCcBuilder.nullPolicy = "propagate_null";
             if (select) select.value = wwCcBuilder.nullPolicy;
             if (hint) {
                 const meta = WW_CC_NULL_POLICIES[wwCcBuilder.nullPolicy];
@@ -39497,11 +39634,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         }
 
         function wwCcCandidateOptionsHtml(selectedFilterReferenceId) {
-            const candidates = wwCcAvailableCandidates();
+            let candidates = wwCcAvailableCandidates();
+            const isRocof = wwCcBuilder.operation === "rocof";
+            // DEC-190: ROCOF lists metadata-identified frequency channels
+            // first and separately; everything else stays selectable (a
+            // channel with missing metadata may still be frequency) but is
+            // clearly marked as needing the explicit override.
+            const groupOf = (c) => (isRocof
+                ? (c.engineeringType === "Frequency" ? "Frequency channels (Hz)" : "Other channels (not identified as frequency)")
+                : c.group);
+            if (isRocof) {
+                candidates = candidates.filter((c) => c.engineeringType === "Frequency")
+                    .concat(candidates.filter((c) => c.engineeringType !== "Frequency"));
+            }
             const groups = new Map();
             for (const c of candidates) {
-                if (!groups.has(c.group)) groups.set(c.group, []);
-                groups.get(c.group).push(c);
+                const groupName = groupOf(c);
+                if (!groups.has(groupName)) groups.set(groupName, []);
+                groups.get(groupName).push(c);
             }
             let html = '<option value="">Choose a channel…</option>';
             for (const [group, list] of groups) {
@@ -39548,7 +39698,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             if (meta.arity === "unary") {
                 const current = wwCcBuilder.inputs[0];
-                let html = '<label class="ww-cc-field"><span>Input Channel</span>' +
+                let html = '<label class="ww-cc-field"><span>' +
+                    (wwCcBuilder.operation === "rocof" ? "Input: Frequency (Hz)" : "Input Channel") + '</span>' +
                     '<select id="wwCcUnaryInputSelect">' + wwCcCandidateOptionsHtml(null) + '</select></label>';
                 if (wwCcBuilder.operation === "multiply_constant") {
                     html += '<label class="ww-cc-field"><span>Constant</span>' +
@@ -39558,6 +39709,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (wwCcBuilder.operation === "rms") {
                     html += wwCcRenderRmsParameterFields();
                 }
+                if (wwCcBuilder.operation === "rocof") {
+                    html += wwCcRenderRocofParameterFields();
+                }
                 fieldsEl.innerHTML = html;
                 const select = document.getElementById("wwCcUnaryInputSelect");
                 if (select && current) {
@@ -39565,6 +39719,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     select.value = key;
                 }
                 if (wwCcBuilder.operation === "rms") wwCcRenderRmsEligibilityStatus();
+                if (wwCcBuilder.operation === "rocof") wwCcRenderRocofStatus();
             } else {
                 let html = '<ol class="ww-cc-input-list" id="wwCcInputList">';
                 wwCcBuilder.inputs.forEach((input, index) => {
@@ -39614,6 +39769,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 unitInput.value = role ? (role.unit || "(none)") : "";
                 return;
             }
+            if (wwCcBuilder.operation === "rocof") { // DEC-190: fixed output unit, whatever the input's unit string
+                unitInput.value = "Hz/s";
+                return;
+            }
             const units = wwCcBuilder.inputs.map((i) => i.unit || "");
             const known = units.filter((u) => u);
             if (wwCcBuilder.inputs.length === 0) unitInput.value = "";
@@ -39627,7 +39786,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const errorEl = document.getElementById("wwCcError");
             if (!btn) return;
             const { valid } = wwCcValidateBuilder();
-            btn.disabled = !valid || wwCcRmsBlocksCreate();
+            btn.disabled = !valid || wwCcRmsBlocksCreate() || wwCcRocofBlocksCreate();
             if (valid && errorEl) errorEl.hidden = true;
         }
 
@@ -39639,6 +39798,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwCcBuilder.nominalFrequency = "50";
             wwCcBuilder.nominalFrequencySource = "user";
             wwCcBuilder.override = false;
+            wwCcBuilder.rocofMethod = "rolling_frequency_difference";
+            wwCcBuilder.rocofWindowMs = "500";
             wwCcBuilder.nameEditedByUser = false;
             wwCcBuilder.name = "";
             wwCcResetRmsEligibility();
@@ -39682,6 +39843,9 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 }
                 wwCcResetRmsEligibility(); // section 62: switching input clears old warning/status immediately
                 wwCcScheduleRmsEligibilityCheck();
+            }
+            if (wwCcBuilder.operation === "rocof") {
+                wwCcBuilder.override = false; // a stale acknowledgement never carries to a different input
             }
             wwCcRenderBuilderFields();
             wwCcRenderExpressionPreview();
@@ -39753,6 +39917,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (calc.operation === "rms") {
                 const f = calc.parameters && Number.isFinite(calc.parameters.nominal_frequency_hz) ? calc.parameters.nominal_frequency_hz : "?";
                 return "RMS (" + names[0] + ", " + esc(f) + " Hz, 1 cycle)";
+            }
+            if (calc.operation === "rocof") {
+                const p = calc.parameters || {};
+                return "ROCOF (" + names[0] + ", " + esc(wwCcRocofLabel(p.method, p.window_ms)) + ")";
             }
             if (calc.operation === "addition") return names.join(" + ");
             if (calc.operation === "subtraction") return names.join(" − ");
@@ -40213,6 +40381,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return html;
         }
 
+        // DEC-190: the ROCOF parameters the channel was actually measured
+        // with, read from the backend-returned `parameters` (never the
+        // builder state). Empty for every other operation.
+        function wwCcRocofInfoRowsHtml(calc) {
+            if (calc.operation !== "rocof") return "";
+            const p = calc.parameters || {};
+            const method = WW_CC_ROCOF_METHODS[p.method];
+            const row = (label, value) => '<div><span class="ww-cc-preview-info-label">' + label +
+                '</span><span class="ww-cc-preview-info-value ww-cc-preview-info-value--wrap">' + escapeHtml(value) + '</span></div>';
+            const half = Number.isFinite(p.window_ms) ? p.window_ms / 2 : null;
+            return row("ROCOF Method", method ? method.label : "—") +
+                row("Measurement Window", Number.isFinite(p.window_ms) ? p.window_ms + " ms" : "—") +
+                row("Time Alignment", p.alignment === "centered" ? "Centered" : "—") +
+                row("Availability", half == null ? "Complete window only" : "Complete window only (blank within " + half + " ms of the ends and of any gap)");
+        }
+
         // Preview header ("Selected: <name> · N visible") + the compact
         // info strip under the chart (Expression/Classification/Unit/
         // Source/Missing Data Handling...). The strip describes the
@@ -40244,10 +40428,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     const meta = WW_CC_OPERATIONS[calc.operation];
                     const inputNamesHtml = calc.inputs.map(wwCcInputDisplayNameHtml).join(", ");
                     stripEl.innerHTML =
-                        '<div><span class="ww-cc-preview-info-label">Expression</span><span class="ww-cc-preview-info-value">' + wwCcExpressionHtmlFor(calc) + '</span></div>' +
+                        // title = plain text of the full expression (AGENTS rule 3: attributes cannot carry rich notation).
+                        '<div><span class="ww-cc-preview-info-label">Expression</span><span class="ww-cc-preview-info-value ww-cc-preview-info-value--wrap" title="' + escapeHtml(wwCcExpressionTextFor(calc)) + '">' + wwCcExpressionHtmlFor(calc) + '</span></div>' +
                         '<div><span class="ww-cc-preview-info-label">Classification</span><span class="ww-cc-preview-info-value">' + escapeHtml(calc.engineering_type || "Undefined") + '</span></div>' +
                         '<div><span class="ww-cc-preview-info-label">Unit</span><span class="ww-cc-preview-info-value">' + escapeHtml(calc.unit || "—") + '</span></div>' +
                         '<div><span class="ww-cc-preview-info-label">Source</span><span class="ww-cc-preview-info-value">' + wwRichLabelHtml(escapeHtml((meta ? meta.label : calc.operation) + " · ") + inputNamesHtml) + '</span></div>' +
+                        wwCcRocofInfoRowsHtml(calc) +
                         wwCcMissingDataInfoRowsHtml(calc);
                     stripEl.hidden = false;
                 }
@@ -40444,15 +40630,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // COLOR was never made theme-aware, which is why it
                 // rendered using Plotly's own light-mode default (~black)
                 // even against a dark paper.
+                // ROCOF only (DEC-190): name the axes and make room for their
+                // titles. The other types keep their existing layout.
+                const isRocofPanel = panelTypeOf.get(type) === "ROCOF";
                 const layout = {
                     // A constant uirevision per panel keeps the engineer's own
                     // zoom/pan across visibility toggles and redraws.
                     uirevision: "ww-cc-preview:" + type,
-                    margin: { t: 10, r: 10, b: 36, l: 50 },
-                    xaxis: { title: "Time (s)", gridcolor: colors.grid, zerolinecolor: colors.grid },
-                    yaxis: { title: "", gridcolor: colors.grid, zerolinecolor: colors.grid },
+                    margin: isRocofPanel ? { t: 10, r: 10, b: 52, l: 64 } : { t: 10, r: 10, b: 36, l: 50 },
+                    // Plotly 3 removed the string form of an axis `title`, so the
+                    // other types' string titles below are not drawn; ROCOF uses
+                    // the supported `{ text }` form.
+                    xaxis: { title: isRocofPanel ? { text: "Time (s)", font: { size: 11 } } : "Time (s)", gridcolor: colors.grid, zerolinecolor: colors.grid },
+                    yaxis: { title: isRocofPanel ? { text: "ROCOF (Hz/s)", font: { size: 11 } } : "", gridcolor: colors.grid, zerolinecolor: colors.grid },
                     showlegend: true,
-                    legend: { orientation: "h" },
+                    legend: isRocofPanel ? { orientation: "h", y: -0.3, font: { size: 11 } } : { orientation: "h" },
                     autosize: true,
                     paper_bgcolor: colors.surface,
                     plot_bgcolor: colors.surface,
@@ -40677,8 +40869,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const { valid, errors } = wwCcValidateBuilder();
             if (valid && wwCcBuilder.operation === "line_to_line_voltage") return wwCcCreateLineToLine();
             const errorEl = document.getElementById("wwCcError");
-            if (!valid || wwCcRmsBlocksCreate()) {
-                if (errorEl) { errorEl.textContent = errors[0] || "Resolve the RMS eligibility warning above, or check \"Calculate anyway.\""; errorEl.hidden = false; }
+            if (!valid || wwCcRmsBlocksCreate() || wwCcRocofBlocksCreate()) {
+                if (errorEl) {
+                    errorEl.textContent = errors[0] || (wwCcBuilder.operation === "rocof"
+                        ? "Resolve the input warning above, or check \"Calculate anyway.\""
+                        : "Resolve the RMS eligibility warning above, or check \"Calculate anyway.\"");
+                    errorEl.hidden = false;
+                }
                 return;
             }
             if (errorEl) errorEl.hidden = true;
@@ -40693,11 +40890,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             let parameters = {};
             if (wwCcBuilder.operation === "multiply_constant") parameters = { constant: Number(wwCcBuilder.constant) };
             else if (wwCcBuilder.operation === "rms") parameters = { nominal_frequency_hz: Number(wwCcBuilder.nominalFrequency) };
+            else if (wwCcBuilder.operation === "rocof") {
+                parameters = {
+                    method: wwCcBuilder.rocofMethod, window_ms: Number(wwCcBuilder.rocofWindowMs), alignment: "centered",
+                };
+            }
             // Section 25/43: a strongly-typed top-level flag, not buried in
             // `parameters` -- the backend independently validates it as a
             // cross-cutting safety flag, never trusts it as an eligibility
             // result in itself (it re-derives eligibility server-side).
-            const override = wwCcBuilder.operation === "rms" ? !!wwCcBuilder.override : false;
+            const override = (wwCcBuilder.operation === "rms" || wwCcBuilder.operation === "rocof") ? !!wwCcBuilder.override : false;
 
             // DEC-084 Calc Slice 3 (section 13): `null_policy` is always
             // sent -- estimation fields are OMITTED entirely (never sent
@@ -40747,7 +40949,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // disabled state is recomputed; the error just set stays
                 // visible until the user's next edit legitimately clears it
                 // via wwCcSyncCreateButtonState() elsewhere.
-                if (createBtn) createBtn.disabled = !wwCcValidateBuilder().valid || wwCcRmsBlocksCreate();
+                if (createBtn) createBtn.disabled = !wwCcValidateBuilder().valid || wwCcRmsBlocksCreate() || wwCcRocofBlocksCreate();
                 return;
             }
             let body = null;
@@ -40756,7 +40958,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 const message = (body && body.detail && body.detail.message) || "Could not create this calculated channel.";
                 if (errorEl) { errorEl.textContent = message; errorEl.hidden = false; }
                 // Same fix as the network-error catch above.
-                if (createBtn) createBtn.disabled = !wwCcValidateBuilder().valid || wwCcRmsBlocksCreate();
+                if (createBtn) createBtn.disabled = !wwCcValidateBuilder().valid || wwCcRmsBlocksCreate() || wwCcRocofBlocksCreate();
                 return;
             }
 
@@ -40889,8 +41091,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 wwCcRenderExpressionPreview();
                 wwCcSyncCreateButtonState();
                 wwCcScheduleRmsEligibilityCheck();
-            } else if (event.target.id === "wwCcRmsOverrideCheckbox") {
+            } else if (event.target.id === "wwCcRmsOverrideCheckbox" || event.target.id === "wwCcRocofOverrideCheckbox") {
                 wwCcBuilder.override = event.target.checked;
+                wwCcSyncCreateButtonState();
+            } else if (event.target.id === "wwCcRocofMethodSelect" || event.target.id === "wwCcRocofWindowSelect") {
+                // DEC-190: method / measurement window re-word the default
+                // name and expression preview (no re-render of the fields,
+                // so the select keeps focus).
+                if (event.target.id === "wwCcRocofMethodSelect") wwCcBuilder.rocofMethod = event.target.value;
+                else wwCcBuilder.rocofWindowMs = event.target.value;
+                wwCcRenderExpressionPreview();
+                wwCcSyncNameAndUnitFields();
                 wwCcSyncCreateButtonState();
             } else if (event.target.id === "wwCcLlContextSelect" || event.target.name === "wwCcLlOutput") {
                 // DEC-115: switching bay or output re-derives the default

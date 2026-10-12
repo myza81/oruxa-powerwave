@@ -32,11 +32,13 @@ from app.domain.calculated_channel import (
     MULTI_OPERATIONS,
     NULL_POLICY_ESTIMATE,
     NULL_POLICY_REQUIRE_MANUAL,
+    NULL_POLICY_ZERO,
     OP_ABSOLUTE_VALUE,
     OP_ADDITION,
     OP_MULTIPLY_CONSTANT,
     OP_REVERSE_POLARITY,
     OP_RMS,
+    OP_ROCOF,
     OP_SUBTRACTION,
     UNARY_OPERATIONS,
     UNIMPLEMENTED_ESTIMATION_METHODS,
@@ -51,6 +53,7 @@ from app.domain.calculated_channel import (
     evaluate_multiply_constant,
     evaluate_reverse_polarity,
     evaluate_rms,
+    evaluate_rocof,
     evaluate_subtraction,
     local_mean_radius_valid,
     max_gap_unit_valid,
@@ -58,6 +61,17 @@ from app.domain.calculated_channel import (
     nominal_frequency_valid,
     rms_recording_long_enough,
     rms_sampling_dense_enough,
+    rocof_median_interval,
+    rocof_method_valid,
+    rocof_window_ms_valid,
+    ROCOF_ALIGNMENT_CENTERED,
+    ROCOF_DEFAULT_METHOD,
+    ROCOF_DEFAULT_WINDOW_MS,
+    ROCOF_EDGE_POLICY,
+    ROCOF_MIN_SAMPLES,
+    ROCOF_MIN_WINDOW_INTERVALS,
+    ROCOF_WINDOWS_MS,
+    ROCOF_UNIT,
     timebases_aligned,
     units_compatible,
     values_all_finite,
@@ -65,6 +79,8 @@ from app.domain.calculated_channel import (
 )
 from app.domain.missing_data_estimation import apply_estimation
 from app.domain.channel_classification import (
+    FREQUENCY,
+    ROCOF as ROCOF_ENGINEERING_TYPE,
     UNDEFINED,
     WAVEFORM_FORM_INSTANTANEOUS,
     WAVEFORM_FORM_MAGNITUDE,
@@ -111,10 +127,13 @@ from app.services.errors import (
     InvalidMaxGapValueError,
     InvalidNominalFrequencyError,
     InvalidNullPolicyError,
+    InvalidRocofParametersError,
     InvalidOperationArityError,
     NullPolicyNotImplementedError,
     RequireManualValueNullError,
     RmsOverrideRequiredError,
+    RocofInsufficientDataError,
+    RocofOverrideRequiredError,
     RmsRecordingTooShortError,
     RmsSamplingTooSparseError,
     SourceNotFoundError,
@@ -311,6 +330,71 @@ def _resolve_input(
         waveform_form=calc.waveform_form,
         voltage_representation=calc.voltage_representation,
         phase_member=calc.phase_member,
+    )
+
+
+def _parse_rocof_parameters(parameters: dict | None) -> tuple[str, int]:
+    """Validate the ROCOF `method` / `window_ms` / `alignment` parameters
+    (DEC-190). Missing values take the approved defaults (rolling
+    frequency difference, 500 ms, centered) and are stored back explicitly
+    on the channel. Anything present but unsupported is REJECTED, never
+    silently replaced: the window is part of the estimate, so a quietly
+    substituted window would change the answer."""
+    params = parameters or {}
+    method = params.get("method", ROCOF_DEFAULT_METHOD)
+    window_ms = params.get("window_ms", ROCOF_DEFAULT_WINDOW_MS)
+    alignment = params.get("alignment", ROCOF_ALIGNMENT_CENTERED)
+    if not rocof_method_valid(method):
+        raise InvalidRocofParametersError(f"Unsupported ROCOF calculation method: {method!r}.")
+    if not rocof_window_ms_valid(window_ms):
+        allowed = ", ".join(str(w) for w in ROCOF_WINDOWS_MS)
+        raise InvalidRocofParametersError(f"ROCOF measurement window must be one of {allowed} ms.")
+    if alignment != ROCOF_ALIGNMENT_CENTERED:
+        raise InvalidRocofParametersError("Only a centered ROCOF measurement window is supported.")
+    return method, int(window_ms)
+
+
+ROCOF_STATUS_SUITABLE = "suitable"
+ROCOF_STATUS_UNCERTAIN = "uncertain"
+ROCOF_STATUS_NOT_FREQUENCY = "not_frequency"
+
+
+@dataclass(slots=True)
+class RocofEligibility:
+    status: str
+    reason: str
+
+    @property
+    def override_required(self) -> bool:
+        return self.status != ROCOF_STATUS_SUITABLE
+
+
+def check_rocof_eligibility(engineering_type: str) -> RocofEligibility:
+    """ROCOF input eligibility (DEC-190), metadata-first and never guessed
+    from a channel name or its sample values. `engineering_type` is the
+    input's already-classified type (explicit parameter type, else a
+    reliable Hz unit -- see app.domain.channel_classification; a
+    calculated channel passes its own inherited type):
+
+    - `Frequency` -> suitable.
+    - `Undefined` -> uncertain: the metadata does not identify the
+      channel, so a genuine frequency channel with missing/odd metadata
+      is still usable, but only through the explicit override.
+    - any other known type (Voltage, Current, Power, ROCOF) -> not
+      frequency: also override-only, with a stronger message.
+    """
+    if engineering_type == FREQUENCY:
+        return RocofEligibility(ROCOF_STATUS_SUITABLE, "Input is identified as a frequency channel (Hz).")
+    if engineering_type == UNDEFINED:
+        return RocofEligibility(
+            ROCOF_STATUS_UNCERTAIN,
+            "This channel is not identified as a frequency measurement. Confirm that it is frequency in Hz "
+            "before calculating ROCOF.",
+        )
+    return RocofEligibility(
+        ROCOF_STATUS_NOT_FREQUENCY,
+        f"This channel is classified as {engineering_type}, not Frequency. ROCOF is only meaningful for a "
+        "frequency measurement in Hz.",
     )
 
 
@@ -602,6 +686,8 @@ def create_calculated_channel(
                 f"engineering types differ ({' vs '.join(conflicting_types)})."
             )
         output_unit = next((r.unit for r in resolved if r.unit), "") or ""
+    elif operation == OP_ROCOF:
+        output_unit = ROCOF_UNIT
     else:
         output_unit = resolved[0].unit
 
@@ -611,6 +697,10 @@ def create_calculated_channel(
     # or alters the unit/timebase checks above, which remain the sole
     # calculation-eligibility authority.
     output_engineering_type = derive_engineering_type([r.engineering_type for r in resolved])
+    if operation == OP_ROCOF:
+        # The output is a rate of change of frequency, never a Frequency
+        # (nor the input's type, even when an override accepted one).
+        output_engineering_type = ROCOF_ENGINEERING_TYPE
     # Phase 5B (DEC-048): same "classification/grouping only" status as
     # engineering_type above -- derive_waveform_form() never blocks or
     # alters a calculation itself; the RMS-specific eligibility/override
@@ -625,7 +715,7 @@ def create_calculated_channel(
     # Always `None` for inputs without a declaration -- unchanged behaviour.
     output_voltage_representation: str | None = None
     output_phase_member: str | None = None
-    if operation in UNARY_OPERATIONS:
+    if operation in UNARY_OPERATIONS and operation != OP_ROCOF:
         output_voltage_representation = resolved[0].voltage_representation
         if operation in (OP_RMS, OP_ABSOLUTE_VALUE):
             output_phase_member = resolved[0].phase_member
@@ -666,6 +756,21 @@ def create_calculated_channel(
         if not rms_sampling_dense_enough(first.time, nominal_frequency_hz):
             raise RmsSamplingTooSparseError(
                 "Sample rate is too low relative to the RMS window to produce a meaningful result."
+            )
+
+    rocof_method = ROCOF_DEFAULT_METHOD
+    rocof_window_ms = ROCOF_DEFAULT_WINDOW_MS
+    if operation == OP_ROCOF:
+        rocof_method, rocof_window_ms = _parse_rocof_parameters(parameters)
+        rocof_eligibility = check_rocof_eligibility(first.engineering_type)
+        if rocof_eligibility.override_required and not override:
+            raise RocofOverrideRequiredError(rocof_eligibility.reason)
+        if null_policy == NULL_POLICY_ZERO:
+            # Substituting 0 Hz for a missing frequency sample would
+            # manufacture enormous false ROCOF spikes (~f/dt Hz/s).
+            raise InvalidNullPolicyError(
+                "Treat Null as Zero cannot be used for ROCOF: a missing frequency sample is not 0 Hz. "
+                "Use Propagate Null, Estimate Missing Data or Require Manual Value."
             )
 
     if null_policy == NULL_POLICY_REQUIRE_MANUAL:
@@ -718,6 +823,28 @@ def create_calculated_channel(
         values = evaluate_multiply_constant(effective_values[0], constant)
     elif operation == OP_RMS:
         values = evaluate_rms(resolved[0].time, effective_values[0], nominal_frequency_hz)
+    elif operation == OP_ROCOF:
+        rocof_input = effective_values[0]
+        if int(np.isfinite(rocof_input).sum()) < ROCOF_MIN_SAMPLES:
+            raise RocofInsufficientDataError(
+                f"ROCOF needs at least {ROCOF_MIN_SAMPLES} valid frequency samples."
+            )
+        window_s = rocof_window_ms / 1000.0
+        median_dt = rocof_median_interval(first.time, rocof_input)
+        if median_dt is None:
+            raise RocofInsufficientDataError("ROCOF needs at least one pair of consecutive valid samples.")
+        if window_s < ROCOF_MIN_WINDOW_INTERVALS * median_dt:
+            raise InvalidRocofParametersError(
+                f"A {rocof_window_ms} ms window is too short for this recording's sampling interval: it must "
+                f"span at least {ROCOF_MIN_WINDOW_INTERVALS} sample intervals "
+                f"({ROCOF_MIN_WINDOW_INTERVALS * median_dt * 1000.0:.4g} ms). Choose a longer window."
+            )
+        values = evaluate_rocof(first.time, rocof_input, window_s, rocof_method)
+        if not np.isfinite(values).any():
+            raise RocofInsufficientDataError(
+                f"No ROCOF could be calculated: no complete centered {rocof_window_ms} ms window fits inside a "
+                "continuous run of valid samples. Use a shorter window, or check the input for gaps."
+            )
     elif operation == OP_ADDITION:
         values = evaluate_addition(effective_values)
     else:
@@ -734,6 +861,16 @@ def create_calculated_channel(
             "nominal_frequency_hz": nominal_frequency_hz,
             "window_mode": "trailing",
             "rms_kind": "true_rms",
+        }
+    elif operation == OP_ROCOF:
+        # Retained explicitly (like RMS's window_mode/rms_kind): a stored
+        # channel always states how it was differentiated and whether it
+        # is raw or smoothed.
+        output_parameters = {
+            "method": rocof_method,
+            "window_ms": rocof_window_ms,
+            "alignment": ROCOF_ALIGNMENT_CENTERED,
+            "edge_policy": ROCOF_EDGE_POLICY,
         }
     else:
         output_parameters = {}

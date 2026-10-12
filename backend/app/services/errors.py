@@ -225,6 +225,36 @@ class RmsOverrideRequiredError(ImportServiceError):
     code = "rms_override_required"
 
 
+# ---- ROCOF (DEC-190) ----
+
+
+class RocofOverrideRequiredError(ImportServiceError):
+    """The ROCOF input is not metadata-proven to be a frequency channel
+    (engineering type Undefined, or a known non-frequency type) and the
+    request did not set `override=True`. The backend re-derives this
+    itself -- it never trusts a client-supplied eligibility verdict (same
+    anti-bypass rule as RmsOverrideRequiredError)."""
+
+    code = "rocof_override_required"
+
+
+class RocofInsufficientDataError(ImportServiceError):
+    """The input has too few usable samples (or no usable consecutive
+    sample pair -- every interval is a gap / duplicate / non-finite) for
+    a ROCOF to be calculated at all. Rejected outright rather than
+    silently creating an all-NaN channel."""
+
+    code = "rocof_insufficient_data"
+
+
+class InvalidRocofParametersError(ImportServiceError):
+    """The ROCOF `method` / `window_ms` / `alignment` parameters are
+    unsupported, or the measurement window is too short for this
+    recording's sample spacing."""
+
+    code = "invalid_rocof_parameters"
+
+
 # ---- DEC-084 Calc Slice 1: Calculated-Channel Null-Handling Policy ----
 
 
