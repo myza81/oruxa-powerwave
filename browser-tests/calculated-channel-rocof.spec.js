@@ -165,6 +165,19 @@ test.describe("ROCOF calculated channel", () => {
 
     await expect(page.locator("#wwCcPreviewInfoStrip")).toContainText("ROCOF (FREQ, rolling frequency difference, 500 ms, centered)");
 
+    // UAT refinement: the preview names both axes, the full expression is never cut off, and the
+    // measurement window the channel was calculated with is stated.
+    const chart = page.locator("#wwCcPreviewPanels .ww-cc-preview-chart");
+    await expect(chart.locator(".g-xtitle")).toHaveText("Time (s)");
+    await expect(chart.locator(".g-ytitle")).toHaveText("ROCOF (Hz/s)");
+    const expression = page.locator("#wwCcPreviewInfoStrip .ww-cc-preview-info-value--wrap").first();
+    await expect(expression).toHaveAttribute("title", "ROCOF (FREQ, rolling frequency difference, 500 ms, centered)");
+    expect(await expression.evaluate((el) => el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+    for (const [label, value] of [["ROCOF Method", "Rolling Frequency Difference"], ["Measurement Window", "500 ms"], ["Time Alignment", "Centered"]]) {
+      await expect(page.locator("#wwCcPreviewInfoStrip div").filter({ hasText: label })).toContainText(value);
+    }
+    await expect(page.locator("#wwCcPreviewInfoStrip")).toContainText("blank within 250 ms of the ends and of any gap");
+
     // Timebase: grounded on the source recording, so it follows that source's sync / t=0 placement.
     const grounding = await page.evaluate(async () => {
       const ws = currentWorkspaceId();

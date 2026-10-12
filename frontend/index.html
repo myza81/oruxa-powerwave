@@ -3655,6 +3655,8 @@
         .ww-cc-preview-info-strip[hidden] { display: none; }
         .ww-cc-preview-info-label { display: block; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
         .ww-cc-preview-info-value { display: block; font-size: 0.75rem; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        /* The calculated expression can be long (e.g. ROCOF names method, window and alignment): wrap it so it is never cut off. */
+        .ww-cc-preview-info-value--wrap { white-space: normal; overflow-wrap: anywhere; }
 
         /* Shrunk from 320px: the preview typically shows one selected
            channel now rather than every visible channel split by type, so
@@ -40379,6 +40381,22 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return html;
         }
 
+        // DEC-190: the ROCOF parameters the channel was actually measured
+        // with, read from the backend-returned `parameters` (never the
+        // builder state). Empty for every other operation.
+        function wwCcRocofInfoRowsHtml(calc) {
+            if (calc.operation !== "rocof") return "";
+            const p = calc.parameters || {};
+            const method = WW_CC_ROCOF_METHODS[p.method];
+            const row = (label, value) => '<div><span class="ww-cc-preview-info-label">' + label +
+                '</span><span class="ww-cc-preview-info-value ww-cc-preview-info-value--wrap">' + escapeHtml(value) + '</span></div>';
+            const half = Number.isFinite(p.window_ms) ? p.window_ms / 2 : null;
+            return row("ROCOF Method", method ? method.label : "—") +
+                row("Measurement Window", Number.isFinite(p.window_ms) ? p.window_ms + " ms" : "—") +
+                row("Time Alignment", p.alignment === "centered" ? "Centered" : "—") +
+                row("Availability", half == null ? "Complete window only" : "Complete window only (blank within " + half + " ms of the ends and of any gap)");
+        }
+
         // Preview header ("Selected: <name> · N visible") + the compact
         // info strip under the chart (Expression/Classification/Unit/
         // Source/Missing Data Handling...). The strip describes the
@@ -40410,10 +40428,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     const meta = WW_CC_OPERATIONS[calc.operation];
                     const inputNamesHtml = calc.inputs.map(wwCcInputDisplayNameHtml).join(", ");
                     stripEl.innerHTML =
-                        '<div><span class="ww-cc-preview-info-label">Expression</span><span class="ww-cc-preview-info-value">' + wwCcExpressionHtmlFor(calc) + '</span></div>' +
+                        // title = plain text of the full expression (AGENTS rule 3: attributes cannot carry rich notation).
+                        '<div><span class="ww-cc-preview-info-label">Expression</span><span class="ww-cc-preview-info-value ww-cc-preview-info-value--wrap" title="' + escapeHtml(wwCcExpressionTextFor(calc)) + '">' + wwCcExpressionHtmlFor(calc) + '</span></div>' +
                         '<div><span class="ww-cc-preview-info-label">Classification</span><span class="ww-cc-preview-info-value">' + escapeHtml(calc.engineering_type || "Undefined") + '</span></div>' +
                         '<div><span class="ww-cc-preview-info-label">Unit</span><span class="ww-cc-preview-info-value">' + escapeHtml(calc.unit || "—") + '</span></div>' +
                         '<div><span class="ww-cc-preview-info-label">Source</span><span class="ww-cc-preview-info-value">' + wwRichLabelHtml(escapeHtml((meta ? meta.label : calc.operation) + " · ") + inputNamesHtml) + '</span></div>' +
+                        wwCcRocofInfoRowsHtml(calc) +
                         wwCcMissingDataInfoRowsHtml(calc);
                     stripEl.hidden = false;
                 }
@@ -40610,15 +40630,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // COLOR was never made theme-aware, which is why it
                 // rendered using Plotly's own light-mode default (~black)
                 // even against a dark paper.
+                // ROCOF only (DEC-190): name the axes and make room for their
+                // titles. The other types keep their existing layout.
+                const isRocofPanel = panelTypeOf.get(type) === "ROCOF";
                 const layout = {
                     // A constant uirevision per panel keeps the engineer's own
                     // zoom/pan across visibility toggles and redraws.
                     uirevision: "ww-cc-preview:" + type,
-                    margin: { t: 10, r: 10, b: 36, l: 50 },
-                    xaxis: { title: "Time (s)", gridcolor: colors.grid, zerolinecolor: colors.grid },
-                    yaxis: { title: "", gridcolor: colors.grid, zerolinecolor: colors.grid },
+                    margin: isRocofPanel ? { t: 10, r: 10, b: 52, l: 64 } : { t: 10, r: 10, b: 36, l: 50 },
+                    // Plotly 3 removed the string form of an axis `title`, so the
+                    // other types' string titles below are not drawn; ROCOF uses
+                    // the supported `{ text }` form.
+                    xaxis: { title: isRocofPanel ? { text: "Time (s)" } : "Time (s)", gridcolor: colors.grid, zerolinecolor: colors.grid },
+                    yaxis: { title: isRocofPanel ? { text: "ROCOF (Hz/s)" } : "", gridcolor: colors.grid, zerolinecolor: colors.grid },
                     showlegend: true,
-                    legend: { orientation: "h" },
+                    legend: isRocofPanel ? { orientation: "h", y: -0.3 } : { orientation: "h" },
                     autosize: true,
                     paper_bgcolor: colors.surface,
                     plot_bgcolor: colors.surface,
