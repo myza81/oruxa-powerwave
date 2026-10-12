@@ -124,6 +124,48 @@ class TestAcceptance:
         assert review.readiness.status == "ready"
 
 
+class TestSummaryCounts:
+    """Accepted suggestions are counted apart from typed values; neither collapses into the other."""
+
+    def test_three_accepted_suggestions_count_as_suggested_only(self, model):
+        review, _ = _state(model, suggested=_suggested(*Z123))
+        assert (review.suggested_count, review.resolved_manually_count) == (3, 0)
+
+    def test_typed_values_still_count_as_resolved_manually(self, model):
+        review, _ = _state(model, manual={REVERSE.format("Z1"): 0, REVERSE.format("Z2"): 2.5})
+        assert (review.suggested_count, review.resolved_manually_count) == (0, 2)
+
+    def test_mixed_manual_and_suggested_are_counted_separately(self, model):
+        review, _ = _state(
+            model, manual={ZP_STATUS: "disabled", REVERSE.format("Z1"): 0}, suggested=_suggested("Z2", "Z3")
+        )
+        assert (review.suggested_count, review.resolved_manually_count) == (2, 2)
+
+    def test_clearing_a_decision_updates_the_matching_counter(self, model):
+        manual = {ZP_STATUS: "disabled"}
+        full, _ = _state(model, manual=manual, suggested=_suggested(*Z123))
+        assert (full.suggested_count, full.resolved_manually_count) == (3, 1)
+        cleared, _ = _state(model, manual=manual, suggested=_suggested("Z1", "Z2"))  # Z3 cleared
+        assert (cleared.suggested_count, cleared.resolved_manually_count) == (2, 1)
+        none, _ = _state(model, suggested=frozenset())  # manual cleared too
+        assert (none.suggested_count, none.resolved_manually_count) == (0, 0)
+
+    def test_ready_may_coexist_with_non_blocking_missing_and_unsupported(self, model):
+        review, _ = _state(model, suggested=_suggested(*Z123), manual={ZP_STATUS: "disabled"}, confirmed=_pending(model))
+        assert review.readiness.status == "ready" and review.blocking_count == 0
+        assert review.missing_count + review.unsupported_count > 0
+
+    def test_the_validate_endpoint_reports_suggested_count(self, client):
+        ctx = TestEndpoint()._context(client)["validation_context"]
+        body = {
+            "validation_context": ctx,
+            "manual": [{"item_id": ZP_STATUS, "value": "disabled"}],
+            "suggested": [REVERSE.format(z) for z in Z123],
+        }
+        state = client.post(VALIDATE, json=body).json()
+        assert (state["suggested_count"], state["resolved_manually_count"]) == (3, 1)
+
+
 class TestRefusals:
     @pytest.mark.parametrize(
         "path",

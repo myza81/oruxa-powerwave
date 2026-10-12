@@ -232,8 +232,11 @@ class ExtractionReview:
     not_interpreted_count: int
     #: Inferred values the user confirmed this session.
     confirmed_count: int
-    #: Unresolved values the user supplied this session.
+    #: Unresolved values the user typed this session (never an accepted suggestion).
     resolved_manually_count: int
+    #: Unresolved values the user resolved by accepting a suggested value; counted apart
+    #: from `resolved_manually_count`, though both carry review_status `resolved_manually`.
+    suggested_count: int
     #: Unresolved values the current engine adapter needs (a subset of the unresolved).
     #: These are *settings*; `blocking_issues` are the adapter's *reasons*.
     blocking_count: int
@@ -824,7 +827,10 @@ def build_extraction_review(
         unresolved_count=count("unresolved"),
         not_interpreted_count=not_interpreted,
         confirmed_count=count("confirmed"),
-        resolved_manually_count=count("resolved_manually"),
+        resolved_manually_count=sum(
+            1 for item in counted if item.review_status == "resolved_manually" and item.resolution_origin != "suggestion"
+        ),
+        suggested_count=sum(1 for item in counted if item.resolution_origin == "suggestion"),
         blocking_count=blocking_unresolved,
         not_required_count=sum(1 for item in counted if item.not_required),
         readiness=ReviewReadiness(readiness.value, pending, blocking_unresolved),

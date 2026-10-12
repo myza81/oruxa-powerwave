@@ -8778,11 +8778,13 @@
         }
         :is(.ww-rr-status)[data-status="unreadable"]::before { background: var(--warn); }
         :is(.ww-rr-status)[data-status="confirmed"],
-        :is(.ww-rr-status)[data-status="resolved"] {
+        :is(.ww-rr-status)[data-status="resolved"],
+        :is(.ww-rr-status)[data-status="suggested"] {
             border-color: color-mix(in srgb, var(--accent) 45%, transparent);
         }
         :is(.ww-rr-status)[data-status="confirmed"]::before,
-        :is(.ww-rr-status)[data-status="resolved"]::before { background: var(--accent); }
+        :is(.ww-rr-status)[data-status="resolved"]::before,
+        :is(.ww-rr-status)[data-status="suggested"]::before { background: var(--accent); }
         :is(.ww-rr-bulk) { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
         :is(.ww-rr-chips, .ww-rr-actions, .ww-rr-resolve) {
             display: inline-flex;
@@ -55119,7 +55121,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
             const live = state.review ? wwRrLive() : {
                 mapped_count: state.mappedCount, assumption_count: state.inferredCount, confirmed_count: 0,
-                resolved_manually_count: 0, missing_count: 0, conflict_count: 0,
+                resolved_manually_count: 0, suggested_count: 0, missing_count: 0, conflict_count: 0,
                 unsupported_count: 0, unreadable_count: 0, blocking_count: 0,
             };
             // Without a review the upload's profile-level count cannot be split into categories.
@@ -55129,6 +55131,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (live.assumption_count > 0) parts.push(plural(live.assumption_count, "assumption", "assumptions"));
             if (live.confirmed_count > 0) parts.push(live.confirmed_count + " confirmed");
             if (live.resolved_manually_count > 0) parts.push(live.resolved_manually_count + " resolved manually");
+            if (live.suggested_count > 0) parts.push(live.suggested_count + " suggested");
             if (uncategorised > 0) parts.push(uncategorised + " unresolved");
             if (live.missing_count > 0) parts.push(live.missing_count + " missing");
             if (live.conflict_count > 0) parts.push(plural(live.conflict_count, "conflict", "conflicts"));
@@ -55569,7 +55572,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 .map((i) => ({ message: i.message, zone_ids: Array.isArray(i.zone_ids) ? i.zone_ids : [], item_ids: Array.isArray(i.item_ids) ? i.item_ids : [] }));
             return {
                 mapped_count: num(src.mapped_count), to_confirm_count: num(src.to_confirm_count),
-                confirmed_count: num(src.confirmed_count), resolved_manually_count: num(src.resolved_manually_count),
+                confirmed_count: num(src.confirmed_count), resolved_manually_count: num(src.resolved_manually_count), suggested_count: num(src.suggested_count),
                 unresolved_count: num(src.unresolved_count), blocking_count: num(src.blocking_count),
                 assumption_count: num(src.assumption_count), missing_count: num(src.missing_count),
                 conflict_count: num(src.conflict_count), unsupported_count: num(src.unsupported_count),
@@ -55603,6 +55606,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 ["inferred", "assumption", wwRrPlural(live.assumption_count, "assumption", "assumptions"), true],
                 ["confirmed", "assumption", live.confirmed_count + " confirmed", live.confirmed_count > 0],
                 ["resolved", "missing", live.resolved_manually_count + " resolved manually", live.resolved_manually_count > 0],
+                ["suggested", "missing", live.suggested_count + " suggested", live.suggested_count > 0],
                 ["unresolved", "missing", live.missing_count + " missing", true],
                 ["conflict", "conflict", live.conflict_count + " conflict" + (live.conflict_count === 1 ? "" : "s"), live.conflict_count > 0],
                 ["unsupported", "unsupported", live.unsupported_count + " unsupported", true],
@@ -55684,7 +55688,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
             if (r.status === "ready") {
                 box.appendChild(wwRrEl("div", "",
-                    "Every value is mapped, a confirmed assumption or resolved, and the current engine accepts them."));
+                    "Every required active setting is mapped, confirmed or resolved, and the current engine accepts the active configuration."));
                 box.appendChild(wwRrEl("div", "ww-rr-dim",
                     "Apply Settings copies these reviewed settings into the Distance Protection analysis. "
                     + "You can edit them there afterwards."));

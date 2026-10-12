@@ -205,50 +205,52 @@ test("an explicit zero is a value; leaving an item unresolved is a decision of i
 
 test("blocking settings are told apart from missing values that do not block", async ({ page }) => {
   await reviewP441(page);
-  for (const key of ["zone.Z1.rr.reverse", "zone.Z2.rr.reverse", "zone.Z3.rr.reverse", "zone.ZP.status"]) {
+  for (const key of ["zone.Z1.rr.reverse", "zone.Z2.rr.reverse", "zone.Z3.rr.reverse"]) {
     await expect(row(page, key)).toHaveAttribute("data-blocking", "true");
     await expect(row(page, key)).toContainText("Blocking");
   }
+  // Zone P's 10 s delay defeats it: its status is an inferred Disabled assumption, not a blocker
+  await expect(row(page, "zone.ZP.status")).toHaveAttribute("data-blocking", "false");
   for (const key of ["zone.Z4.rr.reverse", "zone.ZP.rr.reverse", "relay.version", "base.voltage"]) {
     await expect(row(page, key)).toHaveAttribute("data-review", "unresolved");
     await expect(row(page, key)).toHaveAttribute("data-blocking", "false");
   }
-  expect((await counts(page)).blocking).toBe(4);
+  expect((await counts(page)).blocking).toBe(3);
   const issues = page.locator("#wwRelayReviewBlocking");
   await expect(issues).toContainText("Left Resistive Reach (−R) is unresolved");
   await expect(issues).toContainText("Needs: Zone 1 Left Resistive Reach (−R)");
-  await expect(issues).toContainText("ZP cannot be represented");
+  await expect(issues).not.toContainText("ZP");
 });
 
 test("blocking settings and blocking reasons are counted and worded apart", async ({ page }) => {
   await reviewP441(page);
-  // 4 settings the engine needs, explained by 2 engine reasons: never worded as one number
-  await expect(page.locator("#wwRelayReviewBlockingSettings")).toHaveText("4 blocking");
-  await expect(readiness(page)).toContainText("Blocking settings: 4");
-  await expect(page.locator("#wwRelayReviewEngine .ww-rr-sub")).toHaveText("Blocking reasons (2)");
-  await expect(page.locator("#wwRelayImportSummary")).toContainText("4 blocking settings");
+  // 3 settings the engine needs, explained by 1 engine reason: never worded as one number
+  await expect(page.locator("#wwRelayReviewBlockingSettings")).toHaveText("3 blocking");
+  await expect(readiness(page)).toContainText("Blocking settings: 3");
+  await expect(page.locator("#wwRelayReviewEngine .ww-rr-sub")).toHaveText("Blocking reasons (1)");
+  await expect(page.locator("#wwRelayImportSummary")).toContainText("3 blocking settings");
   await expect(page.locator("#wwRelayReviewPanel")).not.toContainText("Blocking issues");
-  await expect(page.locator("#wwRelayReviewPanel")).not.toContainText("4 blocking items");
+  await expect(page.locator("#wwRelayReviewPanel")).not.toContainText("3 blocking items");
 });
 
 test("the summary names the uncertainty categories; conflict and unreadable appear only when present", async ({ page }) => {
   await reviewP441(page);
   const summary = page.locator("#wwRelayReviewSummary .ww-rr-counts");
   await expect(summary).toContainText("30 assumptions");
-  await expect(summary).toContainText("18 missing"); // Zone 4 is defeated: its 3 missing values are not required
+  await expect(summary).toContainText("12 missing"); // defeated Zones 4 and P: their missing values are not required
   await expect(summary).toContainText("0 unsupported"); // this sheet has no per-loop tilt rows
   await expect(summary).not.toContainText("to confirm");
   await expect(summary).not.toContainText("unresolved");
   await expect(summary).not.toContainText("conflict");
   await expect(summary).not.toContainText("unreadable");
-  await expect(page.locator("#wwRelayImportSummary")).toContainText("30 assumptions · 18 missing · 4 blocking settings");
+  await expect(page.locator("#wwRelayImportSummary")).toContainText("30 assumptions · 12 missing · 3 blocking settings");
 });
 
 test("each uncertain row is classified by why it is uncertain, with the reason in its Source", async ({ page }) => {
   await reviewP441(page);
   const expected = {
     "ct.primary": "Mapped", "zone.Z1.reach": "Assumption", "zone.Z1.direction": "Assumption",
-    "zone.Z1.rr.reverse": "Missing", "base.voltage": "Missing", "zone.ZP.status": "Missing",
+    "zone.Z1.rr.reverse": "Missing", "base.voltage": "Missing", "zone.ZP.status": "Assumption",
   };
   for (const [key, label] of Object.entries(expected)) await expect(chip(page, key)).toHaveText(label);
   // the full reason sits in the Source disclosure, under a label that names the category
@@ -258,8 +260,8 @@ test("each uncertain row is classified by why it is uncertain, with the reason i
   await open("zone.Z1.rr.reverse", "Zone 1 Left Resistive Reach (−R)");
   await expect(row(page, "zone.Z1.rr.reverse")).toContainText("Why missing: No value is stated in the document.");
   await open("zone.ZP.status", "Zone P Status");
-  await expect(row(page, "zone.ZP.status")).toContainText("Why missing:");
-  await expect(row(page, "zone.ZP.status")).toContainText("Current engine: The engine evaluates 4 zones; ZP cannot be represented.");
+  await expect(row(page, "zone.ZP.status")).toContainText("Assumption: No explicit zone status was available.");
+  await expect(row(page, "zone.ZP.status")).toContainText("defeated/inactive distance zone");
 });
 
 test("a setting the profile keeps raw (a per-loop tilt) is Unsupported and cannot be confirmed", async ({ page }) => {
@@ -311,12 +313,14 @@ test("a value that could not be read is Unreadable: no Confirm, and the row sugg
 test("readiness moves Not ready -> Ready after confirmation -> Ready to apply, live", async ({ page }) => {
   await reviewP441(page);
   await expect(readiness(page)).toContainText("Readiness: Not ready");
-  await expect(readiness(page)).toContainText("Blocking settings: 4");
+  await expect(readiness(page)).toContainText("Blocking settings: 3");
   // confirming alone does not make this relay ready
   await page.locator("#wwRelayReviewConfirmAll").click();
   await expect(readiness(page)).toContainText("Readiness: Not ready");
   await resolveAllBlockers(page);
   await expect(readiness(page)).toContainText("Readiness: Ready to apply");
+  await expect(readiness(page)).toContainText("Every required active setting is mapped, confirmed or resolved, and the current engine accepts the active configuration.");
+  await expect(readiness(page)).not.toContainText("Every value");
   await expect(readiness(page)).toContainText("Apply Settings copies these reviewed settings into the Distance Protection analysis.");
   await expect(page.locator("#wwRelayReviewEngine")).toContainText("Compatible with the current engine");
   expect((await counts(page)).blocking).toBe(0);
@@ -354,7 +358,7 @@ test("the card summary line follows the live counts", async ({ page }) => {
   await reviewP441(page);
   const summary = page.locator("#wwRelayImportSummary");
   await expect(summary).toContainText("assumptions");
-  await expect(summary).toContainText("4 blocking settings");
+  await expect(summary).toContainText("3 blocking settings");
   await page.locator("#wwRelayReviewConfirmAll").click();
   await expect(summary).toContainText("confirmed");
   await expect(summary).not.toContainText("assumptions");

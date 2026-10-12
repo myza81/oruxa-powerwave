@@ -96,12 +96,12 @@ test("findings card order is header, statuses, explanation, action; secondary in
   await expect(box.locator(".ww-rr-counts #wwRelayReviewConfirmAll")).toHaveCount(0);
   await expect(box.locator(".ww-rr-counts")).not.toContainText("not interpreted");
   await expect(box.locator(".ww-rr-identity + .ww-rr-dim")).toContainText("not interpreted");
-  await expect(box.locator(".ww-rr-counts")).toContainText("4 blocking");
+  await expect(box.locator(".ww-rr-counts")).toContainText("3 blocking");
   await expect(box.locator(".ww-rr-explain")).toContainText("Assumption = source value was read");
   await expect(box.locator(".ww-rr-bulk")).toContainText("Only Assumption items are affected.");
   // Detailed wording is unchanged.
-  await expect(page.locator("#wwRelayReviewReadiness")).toContainText("Blocking settings: 4");
-  await expect(page.locator("#wwRelayReviewEngine .ww-rr-sub")).toHaveText("Blocking reasons (2)");
+  await expect(page.locator("#wwRelayReviewReadiness")).toContainText("Blocking settings: 3");
+  await expect(page.locator("#wwRelayReviewEngine .ww-rr-sub")).toHaveText("Blocking reasons (1)");
 });
 
 test(".ww-rr-dim is 0.65rem and the overcurrent-style zoom button 0.6rem", async ({ page }) => {

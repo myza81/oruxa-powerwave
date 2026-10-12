@@ -81,9 +81,9 @@ test("review: the suggestion is offered only for the left reach, never for Zone 
     await expect(row(page, key).getByRole("button", { name: /^Use / })).toHaveCount(0);
   }
   for (const text of await offers.allInnerTexts()) expect(text).toContain("0.00 Ω");
-  // Only the left-reach rows a function needs (Zones 1-3, and Zone P while its state is unknown)
-  // carry an offer; Zone 4 is defeated, so its Left Resistive Reach is not required.
-  await expect(panel(page).getByRole("button", { name: /^Use / })).toHaveCount(4);
+  // Only the left-reach rows a function needs (Zones 1-3) carry an offer; Zones 4 and P are
+  // defeated (10 s delay), so their Left Resistive Reach is not required.
+  await expect(panel(page).getByRole("button", { name: /^Use / })).toHaveCount(3);
 });
 
 test("review: accepting the suggestion resolves it as Suggested, keeps Missing in the Source, and Clear restores it", async ({ page }) => {
@@ -110,16 +110,12 @@ test("review: accepting the suggestion resolves it as Suggested, keeps Missing i
   await expect(row(page, key).locator(".ww-rr-offer")).toBeVisible();
 });
 
-test("review: accepting all three suggestions and disabling Zone P clears the blockers; the backend decides readiness", async ({ page }) => {
+test("review: accepting all three suggestions clears the blockers; the backend decides readiness", async ({ page }) => {
   await reviewP441(page);
+  await expect(readiness(page)).toContainText("Not ready");
   for (const n of ["1", "2", "3"]) await button(page, `Use 0.00 Ω for Zone ${n} ${LEFT}`).click();
   await expect(row(page, "zone.Z3.rr.reverse")).toHaveAttribute("data-blocking", "false");
-  await expect(readiness(page)).toContainText("Not ready"); // Zone P is still unanswered
-  await page.locator('#wwRelayReviewPanel button[aria-label="Resolve Zone P Status"]').click();
-  const form = row(page, "zone.ZP.status").locator("form.ww-rr-resolve");
-  await form.locator("select").selectOption("disabled");
-  await form.getByRole("button", { name: "Set value" }).click();
-  await expect(readiness(page)).toContainText("Ready after confirmation");
+  await expect(readiness(page)).toContainText("Ready after confirmation"); // Zone P is an inferred Disabled, not a blocker
 });
 
 test("review: a typed 0 stays a manual resolution, distinct from the accepted suggestion", async ({ page }) => {
@@ -144,6 +140,51 @@ test("review: choosing Enter manually and typing a value replaces an accepted su
   await form.getByRole("button", { name: "Set value" }).click();
   await expect(chip(page, "zone.Z1.rr.reverse")).toHaveText("Resolved manually");
   await expect(row(page, "zone.Z1.rr.reverse").locator(".ww-rr-value")).toContainText("2.5");
+});
+
+const summaryCounts = (page) =>
+  page.locator("#wwRelayReviewSummary .ww-rr-counts").evaluate((el) => {
+    const out = {};
+    el.querySelectorAll(".ww-rr-status").forEach((c) => {
+      const m = c.textContent.match(/^(\d+) (.+)$/);
+      if (m) out[m[2]] = Number(m[1]);
+    });
+    return out;
+  });
+
+test("review: three accepted 0.00 Ω suggestions show 3 suggested and no resolved manually", async ({ page }) => {
+  await reviewP441(page);
+  for (const n of ["1", "2", "3"]) await button(page, `Use 0.00 Ω for Zone ${n} ${LEFT}`).click();
+  await expect(page.locator("#wwRelayReviewSummary .ww-rr-status[data-status='suggested']")).toHaveText("3 suggested");
+  await expect(page.locator("#wwRelayReviewSummary .ww-rr-status[data-status='resolved']")).toHaveCount(0);
+  await expect(page.locator("#wwRelayImportSummary")).toContainText("3 suggested");
+  await expect(page.locator("#wwRelayImportSummary")).not.toContainText("resolved manually");
+});
+
+test("review: typed and suggested resolutions are counted separately, and Clear updates the right counter", async ({ page }) => {
+  await reviewP441(page);
+  await button(page, "Resolve Zone 1 " + LEFT).click();
+  const form = row(page, "zone.Z1.rr.reverse").locator("form.ww-rr-resolve");
+  await form.locator("input").fill("2.5");
+  await form.getByRole("button", { name: "Set value" }).click();
+  for (const n of ["2", "3"]) await button(page, `Use 0.00 Ω for Zone ${n} ${LEFT}`).click();
+  
+  await expect.poll(async () => { const c = await summaryCounts(page); return [c["resolved manually"], c.suggested]; }).toEqual([1, 2]);
+  await button(page, "Clear the value of Zone 2 " + LEFT).click();
+  await expect.poll(async () => { const c = await summaryCounts(page); return [c["resolved manually"], c.suggested]; }).toEqual([1, 1]);
+  await button(page, "Clear the value of Zone 1 " + LEFT).click();
+  await expect.poll(async () => { const c = await summaryCounts(page); return [c["resolved manually"], c.suggested]; }).toEqual([undefined, 1]);
+});
+
+test("review: Ready explanation names the required active settings while non-blocking Missing/Unsupported remain", async ({ page }) => {
+  await reviewP441(page);
+  for (const n of ["1", "2", "3"]) await button(page, `Use 0.00 Ω for Zone ${n} ${LEFT}`).click();
+  await page.locator("#wwRelayReviewConfirmAll").click();
+  await expect(readiness(page)).toContainText("Ready to apply");
+  await expect(readiness(page)).toContainText("required active setting");
+  await expect(readiness(page)).not.toContainText("Every value");
+  const c = await summaryCounts(page);
+  expect((c.missing || 0) + (c.unsupported || 0)).toBeGreaterThan(0); // non-blocking leftovers coexist with Ready
 });
 
 test("review: accepting the suggestion applies nothing to the manual Distance Protection form", async ({ page }) => {

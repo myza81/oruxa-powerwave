@@ -141,6 +141,8 @@ class ReviewStateFieldsOut(BaseModel):
     to_confirm_count: int
     confirmed_count: int
     resolved_manually_count: int
+    #: Resolved by accepting a suggested value (not included in `resolved_manually_count`).
+    suggested_count: int
     #: Unresolved values, blocking or not, including those left unresolved.
     unresolved_count: int
     #: Unresolved values the current engine adapter needs (a subset of the above).

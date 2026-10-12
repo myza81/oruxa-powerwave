@@ -262,9 +262,9 @@ test("a healthy first open shows the backend's initial result, never 'Not evalua
   });
   await page.locator("#wwRelayReviewBtn").click();
   await expect(readiness(page)).toContainText("Readiness: Not ready");
-  await expect(readiness(page)).toContainText("Blocking settings: 4");
+  await expect(readiness(page)).toContainText("Blocking settings: 3");
   await expect(page.locator("#wwRelayReviewBlocking")).toContainText("Left Resistive Reach (−R) is unresolved");
-  await expect(page.locator("#wwRelayReviewBlocking")).toContainText("ZP cannot be represented");
+  await expect(page.locator("#wwRelayReviewBlocking")).not.toContainText("ZP");
   const seen = await page.evaluate(() => window.__readinessTexts);
   expect(seen.length).toBeGreaterThan(0);
   expect(seen.join("|")).not.toContain("Not evaluated");

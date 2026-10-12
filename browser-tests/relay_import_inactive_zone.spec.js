@@ -50,8 +50,8 @@ test("a defeated zone's missing Left Resistive Reach is visible, not required, n
   await expect(z1.locator(".ww-rr-notreq")).toHaveCount(0);
 });
 
-test("Zone P with settings but no decoded state is not defaulted: Missing and blocking until resolved", async ({ page }) => {
-  await review(page);
+test("Zone P with settings, no decoded state and a delay that is not defeated is not defaulted: Missing and blocking until resolved", async ({ page }) => {
+  await review(page, { overrides: { "3023": "1" } });
   await expect(zoneP(page).locator("> summary")).toContainText("Status missing");
   await expect(zoneP(page)).not.toContainText("was not found in the uploaded relay settings");
   await expect(row(page, "zone.ZP.status")).toHaveAttribute("data-blocking", "true");
@@ -72,7 +72,8 @@ test("an absent Zone P is assumed Disabled: an Assumption with helper text, noth
   await expect(status.locator(".ww-rr-value")).toHaveText("Disabled");
   // It is not the relay file's own statement, and there is nothing for the user to confirm.
   await expect(status.getByRole("button", { name: /^Confirm/ })).toHaveCount(0);
-  await expect(status.getByRole("button", { name: /^Resolve|^Enter/ })).toHaveCount(0);
+  // an inferred status can still be overridden by the user (Resolve); that is not a confirmation
+  await expect(status.getByRole("button", { name: /^Resolve|^Enter/ })).toHaveCount(1);
   await status.getByRole("button", { name: "Source of Zone P Status" }).click();
   await expect(status).toContainText("Assumption: Zone P not found in uploaded relay settings");
   await expect(status).not.toContainText(/Defeated/);
