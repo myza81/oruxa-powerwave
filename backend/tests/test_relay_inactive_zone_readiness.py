@@ -188,7 +188,7 @@ class TestZonePAbsent:
         review, items = _review(absent_zp, manual=_left_reaches(*Z123))
         assert not items[ZP_STATUS].blocking
         assert ZP_STATUS not in {i for i, item in items.items() if item.review_status == "to_confirm"}
-        assert items[ZP_STATUS].resolution is None  # nothing to confirm or fill in
+        assert items[ZP_STATUS].resolution is not None  # the user may override the assumption
         assert review.blocking_count == 0 and review.engine.status == "ready"
         pending = frozenset(i for i, item in items.items() if item.review_status == "to_confirm")
         done, _ = _review(absent_zp, manual=_left_reaches(*Z123), confirmed=pending)
@@ -300,8 +300,8 @@ class TestApi:
         z4 = items[REVERSE.format("Z4")]
         assert z4["category"] == "missing" and z4["not_required"] and not z4["blocking"] and z4["suggestion"] is None
         assert z4["not_required_reason"] == "Not required while zone is disabled"
-        assert review["not_required_count"] == 1
-        assert items[ZP_STATUS]["blocking"] and not items[ZP_STATUS]["not_required"]
+        assert review["not_required_count"] == 2  # Z4 (defeated) and Zone P (10 s delay)
+        assert not items[ZP_STATUS]["blocking"]
 
     def test_validate_reports_the_flag_and_refuses_a_suggestion_for_it(self, client):
         ctx = self._upload(client)["validation_context"]

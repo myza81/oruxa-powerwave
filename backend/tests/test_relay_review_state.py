@@ -303,8 +303,8 @@ class TestEndpoint:
     def test_upload_carries_the_context_and_the_initial_state(self, client):
         review = self._context(client)
         assert review["validation_context"]["_t"] == "CanonicalDistanceProtectionModel"
-        assert review["readiness"]["status"] == "not_ready" and review["blocking_count"] == 4
-        assert all(i["review_status"] in ("mapped", "to_confirm", "unresolved") for g in review["groups"] for i in g["items"])
+        assert review["readiness"]["status"] == "not_ready" and review["blocking_count"] == 3
+        assert all(i["review_status"] in ("mapped", "to_confirm", "unresolved", "assumed") for g in review["groups"] for i in g["items"])
         assert any(i["resolution"] for g in review["groups"] for i in g["items"])
 
     def test_validate_returns_the_reviewed_state(self, client):

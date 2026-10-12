@@ -23,6 +23,7 @@ from enum import StrEnum
 from app.domain.relay_import.canonical_codec import encode_model
 from app.domain.relay_import.canonical_distance import CanonicalDistanceProtectionModel, SettingBasis
 from app.domain.relay_import.engine_adapter import EngineAdaptation, adapt_to_engine
+from app.domain.relay_import.defeated_zone import infer_defeated_zones
 from app.domain.relay_import.identification import RelayIdentification
 from app.domain.relay_import.profile import RelayProfileRegistry
 from app.domain.relay_import.provenance import MappingStatus
@@ -74,7 +75,10 @@ def count_model(model: CanonicalDistanceProtectionModel) -> tuple[int, int, int,
         if status is MappingStatus.MAPPED:
             mapped += 1
         elif status is MappingStatus.INFERRED:
-            inferred += 1
+            # An Oruxa assumption (absent or defeated zone) is not an interpretation the
+            # user is asked to confirm, so it is not counted with them.
+            if sourced.needs_confirmation:
+                inferred += 1
         elif sourced.provenance.sources or sourced.provenance.raw_value is not None or sourced.provenance.notes:
             # Looked for or seen but not resolved. An untouched placeholder
             # (a field this relay simply does not have) is not counted.
@@ -108,7 +112,7 @@ def summarize_interpretation(
     if profile is None:
         return RelayInterpretationSummary(InterpretationStatus.NOT_SUPPORTED)
     try:
-        model = profile.interpret(document)
+        model = infer_defeated_zones(profile.interpret(document))
         mapped, inferred, unresolved, not_interpreted = count_model(model)
         adaptation = engine_adaptation(model)
         warnings = (*model.interpretation_notes, *_engine_warnings(adaptation))

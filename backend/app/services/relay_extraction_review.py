@@ -49,7 +49,9 @@ from app.domain.relay_import.canonical_distance import (
 )
 from app.domain.relay_import.engine_adapter import EngineAdaptation, zone_active
 from app.domain.relay_import.provenance import MappingStatus, ProvenanceOrigin, ReviewStatus, Sourced, SourceRef
+from app.domain.relay_import.defeated_zone import is_defeated_delay_assumption
 from app.domain.relay_import.review_state import (
+    is_overridable_assumption,
     ResolutionKind,
     ResolutionSpec,
     blocking_issues,
@@ -400,12 +402,13 @@ def _suggestion(path: str | None, sourced: Sourced, category: str) -> ReviewSugg
 
 
 def _resolution(path: str | None, sourced: Sourced, category: str) -> ReviewResolution | None:
-    if path is None or _review_status(sourced) not in ("unresolved", "resolved_manually"):
+    overridable = is_overridable_assumption(path or "", sourced)
+    if path is None or (_review_status(sourced) not in ("unresolved", "resolved_manually") and not overridable):
         return None
     # Typing a value is offered only where the source simply lacks it (or could not be
     # read) and the canonical type is known; a conflict, or a limit of the engine, is
     # not something a typed value resolves.
-    if category not in ("missing", "unreadable") and _review_status(sourced) != "resolved_manually":
+    if category not in ("missing", "unreadable") and _review_status(sourced) != "resolved_manually" and not overridable:
         return None
     spec: ResolutionSpec | None = resolution_spec(path)
     if spec is None:
@@ -720,7 +723,12 @@ def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
 
     state_label, state_status, state_review = _zone_state(zone)
     note = None
-    if zone.status.provenance.origin is ProvenanceOrigin.DEFAULT_ASSUMPTION:
+    if is_defeated_delay_assumption(zone.status):
+        note = (
+            "Zone status was not explicitly decoded. Oruxa interprets the 10.0 s operating delay "
+            "as a defeated/inactive distance zone. Its extracted settings are kept for reference."
+        )
+    elif zone.status.provenance.origin is ProvenanceOrigin.DEFAULT_ASSUMPTION:
         note = (
             f"{name} was not found in the uploaded relay settings. "
             "Oruxa assumes this optional zone is disabled."

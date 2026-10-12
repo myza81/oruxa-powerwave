@@ -118,7 +118,7 @@ class TestReviewDto:
         i = _items(review)
         assert i["ct.primary"].status == "mapped"
         assert i["zone.Z1.reach"].status == "inferred" and i["zone.Z1.reach.angle"].status == "inferred"
-        assert i["zone.ZP.status"].status == "unresolved" and i["zone.ZP.status"].value_text is None
+        assert i["zone.ZP.status"].status == "inferred" and i["zone.ZP.status"].value_text == "Disabled"
         assert i["zone.Z2.direction"].status == "mapped" and i["zone.Z1.direction"].status == "inferred"
         assert {x.status for x in i.values()} == {"mapped", "inferred", "unresolved"}
 
@@ -131,7 +131,7 @@ class TestReviewDto:
     def test_unresolved_items_explain_why(self):
         _, review = _review()
         i = _items(review)
-        assert any("not decoded" in n for n in i["zone.ZP.status"].notes)
+        assert any("10.0 s operating delay" in n for n in i["zone.ZP.status"].notes)
         assert i["zone.Z1.rr.reverse"].status == "unresolved" and i["zone.Z1.rr.reverse"].notes == (NOT_STATED,)
         assert any("not mapped to a single zone tilt" in n for n in i["zone.Z1.raw.p1-e44"].notes)
 
@@ -144,11 +144,11 @@ class TestReviewDto:
         assert by_key["zone.Z4.reach"].value_text == "0.36 Ω" and by_key["zone.Z4.timer"].value_text == "3 s"
         assert by_key["zone.Z4.rr.pe"].value_text == "17.19 Ω"
 
-    def test_zone_p_is_its_own_unresolved_section(self):
+    def test_zone_p_is_its_own_section_disabled_by_the_defeated_delay_assumption(self):
         _, review = _review()
         zp = _group(review, "zone-ZP")
-        assert zp.title == "Zone P" and zp.state_label == "Status unresolved" and zp.state_status == "unresolved"
-        assert zp.items[0].key == "zone.ZP.status" and zp.items[0].status == "unresolved"
+        assert zp.title == "Zone P" and zp.state_label == "Disabled" and zp.state_status == "inferred"
+        assert zp.items[0].key == "zone.ZP.status" and zp.items[0].category == "assumption"
         assert any(x.key == "zone.ZP.reach" and x.value_text == "0.001 Ω" for x in zp.items)
 
     def test_compensation_is_its_own_group_with_one_pair_per_zone(self):
@@ -189,7 +189,7 @@ class TestReviewDto:
         summary, review = _review()
         assert review.interpretation == "reviewable" and review.engine.status == "not_ready"
         messages = [r.message for r in review.engine.reasons]
-        assert any("ZP" in m for m in messages) and any("Left Resistive Reach" in m for m in messages)
+        assert not any("ZP" in m for m in messages) and any("Left Resistive Reach" in m for m in messages)
         assert len(messages) == len(set(messages))  # identical messages are merged across zones
         merged = next(r for r in review.engine.reasons if "Left Resistive Reach" in r.message)
         assert len(merged.zone_ids) >= 2

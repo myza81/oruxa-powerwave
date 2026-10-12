@@ -1006,3 +1006,12 @@ not started and nothing is applied.
   may be called `Validated`. ~~Extraction Review~~ -- Slice 7 (above), read-only,
   awaiting owner UAT. Still open: profiles for every other family; the Apply
   workflow (Slice 9, after Slice 8 UAT).
+
+### Defeated-zone delay rule (DEC-187, 2026-10-12)
+
+A generic relay-import step (`defeated_zone.infer_defeated_zones`) reads a distance zone with an unresolved status and an
+operating delay of exactly 10.0 s as **Disabled · Assumption** (origin `DEFAULT_ASSUMPTION`, never Mapped; timer and source
+provenance preserved). It runs after profile interpretation, is vendor-neutral and distance-zone-only, and is absent from the OEM
+profiles and the engine. This supersedes the earlier statements in this document that the P441 sample's Zone P is unresolved/blocking
+(the profile still reports it unresolved; the generic step then disables it). Explicit status wins; other delays stay unresolved; an
+assumed status can be overridden in review; an enabled Zone P (fifth zone) is reported as unsupported by the four-zone engine.

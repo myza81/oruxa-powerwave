@@ -21,6 +21,7 @@ from app.domain.relay_import.canonical_distance import (
     RelayMetadata,
     UnresolvedSetting,
 )
+from app.domain.relay_import.defeated_zone import infer_defeated_zones
 from app.domain.relay_import.identification import (
     IdentificationStatus,
     ManufacturerAliases,
@@ -147,7 +148,7 @@ class RelayProfileRegistry:
         (several is ambiguity; picking one would be a guess)."""
         confirmed = [p for p in self._profiles if p.match(document).level is MatchLevel.CONFIRMED]
         if len(confirmed) == 1:
-            return confirmed[0].interpret(document)
+            return infer_defeated_zones(confirmed[0].interpret(document))
         if len(confirmed) > 1:
             ids = ", ".join(sorted(p.profile_id for p in confirmed))
             return self._fallback.interpret(document, notes=(f"ambiguous profile match: {ids}",))

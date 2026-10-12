@@ -4,7 +4,7 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-10-12** (DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
+Last updated: **2026-10-12** (DEC-187 10 s defeated distance zone; DEC-186 disabled-zone readiness; earlier **2026-10-11** (relay-import Slices 1-8A integrated with the completed Oscillation Analysis Phase 1 baseline; earlier: **2026-10-05** Reference-driven Compliance Measurement, DEC-167, awaiting UAT; earlier: Operating Envelope Reference Profile editor, DEC-166; earlier: UAT commit of the toolbar/icon/Analyser/playback/Calculator batch, DEC-155 to DEC-165; earlier today: Event Reconstruction panel drag-to-resize;
 Waveform toolbar refinement: Synchronize Sources removed, t0 migrated))
 
 ## Relay import + Oscillation integration (2026-10-11)
@@ -30,6 +30,16 @@ non-authoritative **0.00 Ω** suggestion for a *Missing* Left reach in the relay
 (DEC-185; RELAY_IMPORT_ARCHITECTURE.md "Review UX fix"). Never auto-applied; recorded as
 `SUGGESTION_ACCEPTED`, distinct from a typed value; category stays Missing; backend validation
 decides readiness. **Slice 9 has not started.** The engine now accepts a left reach of exactly 0 (valid; negative invalid; unset = not configured).
+
+## Pre-Slice-9: 10.0 s defeated distance zone (2026-10-12, DEC-187)
+
+A distance zone with no established status and an operating delay of exactly 10.0 s is now interpreted
+as **Disabled -- Assumption** by a vendor-neutral relay-import step (`domain/relay_import/defeated_zone.py`),
+not by the P441 profile and not by the distance engine. This is why the current P441 sample's Zone P
+(`tZp` = 10 s, status undecoded) is now Disabled/non-blocking (blocking items 4 -> 3), correcting the
+DEC-186 line above that it stays Missing and blocking. Explicit statuses always win; other delays stay
+unresolved; the user can override the assumed status to Enabled, which restores validation and (fifth zone)
+reports the engine limit. Tests: `backend/tests/test_relay_defeated_zone_delay.py`. **Slice 9 has not started.**
 
 ## Pre-Slice-9: disabled-zone readiness and Zone P defaulting (2026-10-12, DEC-186)
 

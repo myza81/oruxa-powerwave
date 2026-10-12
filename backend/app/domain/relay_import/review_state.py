@@ -197,6 +197,20 @@ class ReviewDecisions:
     suggested: frozenset[str] = frozenset()
 
 
+_ZONE_STATUS_PATH = re.compile(r"^zones[[](?P<zone>[^]]+)[]]\.status$")
+
+
+def is_overridable_assumption(path: str, sourced: Sourced) -> bool:
+    """A zone status Oruxa merely assumed (absent optional zone, or a defeated delay) may be
+    replaced by the user's own choice; a mapped or inferred profile value may not."""
+    return (
+        sourced.is_resolved
+        and sourced.provenance.origin is ProvenanceOrigin.DEFAULT_ASSUMPTION
+        and sourced.provenance.review is None
+        and _ZONE_STATUS_PATH.match(path) is not None
+    )
+
+
 _ZONE_ID = re.compile(r"^zones[[](?P<zone>[^]]+)[]]")
 _TOKEN = re.compile(r"\[[^\]]*\]|[^.\[\]]+")
 
@@ -278,7 +292,9 @@ def apply_review(
     overlay: dict[str, Sourced] = {}
     # A zone that is authoritatively disabled needs none of its own settings, so there is
     # nothing to suggest for it (the decisions are validated against the model as read).
-    inactive = {z.zone_id for z in model.zones if zone_active(z) is False}
+    # A zone whose assumed status the user overrides is judged by the override instead.
+    overridden = {m.group("zone") for p in decisions.manual if (m := _ZONE_STATUS_PATH.match(p))}
+    inactive = {z.zone_id for z in model.zones if zone_active(z) is False and z.zone_id not in overridden}
 
     def claim(path: str) -> Sourced:
         if path not in index:
@@ -299,7 +315,7 @@ def apply_review(
         overlay[path] = _left_unresolved(sourced)
     for path in sorted(decisions.manual):
         sourced = claim(path)
-        if sourced.is_resolved:
+        if sourced.is_resolved and not is_overridable_assumption(path, sourced):
             raise ReviewDecisionError("Only an unresolved value can be resolved manually.")
         spec = resolution_spec(path)
         if spec is None:
