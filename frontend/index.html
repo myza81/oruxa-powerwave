@@ -8970,6 +8970,65 @@
             color: var(--text-dim);
             text-transform: uppercase;
         }
+        /* Reusable compact field group for Manual Input cards (Distance
+           Protection): a two-column grid so VT/CT primary|secondary and
+           magnitude|angle pair up, every numeric input and select shares
+           the settings-grid control style (height, radius, border,
+           padding, font, focus), and a magnitude input keeps its unit
+           selector on the same row (.ww-oc-manual-input-row, nowrap
+           here -- the value stays dominant, the unit is fixed-width).
+           Stacks to one column when the card itself is narrow. */
+        .ww-manual-field-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 8px 10px;
+        }
+        .ww-manual-field-grid > .ww-imp-manual-group-title {
+            grid-column: 1 / -1;
+        }
+        .ww-manual-field-grid .ww-phasor-field {
+            min-width: 0;
+        }
+        .ww-manual-field-grid .ww-phasor-field input[type="number"],
+        .ww-manual-field-grid .ww-phasor-field select {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 8px 10px;
+            font-size: 0.7rem;
+            line-height: 1.2;
+            height: 2rem;
+            color: var(--text);
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+        }
+        .ww-manual-field-grid .ww-phasor-field input[type="number"]:focus,
+        .ww-manual-field-grid .ww-phasor-field select:focus {
+            outline: none;
+            border-color: var(--accent-dim);
+        }
+        .ww-manual-field-grid .ww-phasor-field :is(input, select):disabled,
+        .ww-manual-field-grid .ww-phasor-field input[readonly] {
+            opacity: 0.6;
+        }
+        .ww-manual-field-grid .ww-oc-manual-input-row {
+            flex-wrap: nowrap;
+            min-width: 0;
+        }
+        .ww-manual-field-grid .ww-oc-manual-input-row input[type="number"] {
+            flex: 1 1 auto;
+            width: auto;
+        }
+        .ww-manual-field-grid .ww-oc-manual-input-row select {
+            flex: 0 0 4.2rem;
+            width: 4.2rem;
+        }
+        @container ww-oc-settings-panel (max-width: 300px) {
+            .ww-manual-field-grid {
+                grid-template-columns: minmax(0, 1fr);
+            }
+        }
         /* Impedance Locus v1 -- the R-X plane. Equal geometric scale for
            R and X is essential (never independent X/Y graphical scales --
            a future Distance characteristic reuses this same plot) --
@@ -12195,7 +12254,7 @@
                                          phase. -->
                                     <div class="ww-oc-manual-input-section ww-imp-manual-input-section" id="wwDistanceManualInputSection" hidden>
                                         <div class="ww-oc-manual-input-label">Manual Input</div>
-                                        <div class="ww-imp-manual-group">
+                                        <div class="ww-imp-manual-group ww-manual-field-grid">
                                             <div class="ww-imp-manual-group-title">Voltage</div>
                                             <label class="ww-phasor-field ww-oc-field-full">
                                                 <span class="ww-phasor-field-label">Basis</span>
@@ -12241,7 +12300,7 @@
                                                 <input type="number" id="wwDistanceManualV2AngleInput" step="0.1" value="-120" aria-label="VB angle">
                                             </label>
                                         </div>
-                                        <div class="ww-imp-manual-group">
+                                        <div class="ww-imp-manual-group ww-manual-field-grid">
                                             <div class="ww-imp-manual-group-title">Current</div>
                                             <label class="ww-phasor-field ww-oc-field-full">
                                                 <span class="ww-phasor-field-label">Basis</span>
