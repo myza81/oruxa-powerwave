@@ -1,7 +1,9 @@
-// DEC-190: ROCOF (Rate of Change of Frequency) calculated channel.
+// DEC-190: ROCOF (Rate of Change of Frequency) calculated channel -- a
+// CENTERED measurement window T (100/200/500/1000/2000 ms), rolling
+// frequency difference (default) or rolling linear regression.
 //
-// Real backend + real frontend, no mocks. Fixture: a 100 Hz, 0.5 s ASCII
-// COMTRADE with FREQ (Hz) falling linearly 50 -> 49.5 Hz (analytical
+// Real backend + real frontend, no mocks. Fixture: a 100 Hz, 1.5 s ASCII
+// COMTRADE with FREQ (Hz) falling linearly 50 -> 48.5 Hz (analytical
 // ROCOF = -1 Hz/s) and VA (V), so the frequency-first input grouping and
 // the explicit "Calculate anyway" fallback are both exercised. What is
 // plotted is asserted from the live Plotly trace arrays, not only text.
@@ -9,7 +11,7 @@
 const { test, expect } = require("@playwright/test");
 const { routeConfig } = require("./support/relay_import_helpers");
 
-const SAMPLES = 51;
+const SAMPLES = 151;
 
 function frequencyFixture() {
   const cfg = [
@@ -27,7 +29,7 @@ function frequencyFixture() {
   ].join("\r\n") + "\r\n";
   const rows = [];
   for (let i = 0; i < SAMPLES; i++) {
-    const f = 50 - (0.5 * i) / (SAMPLES - 1);
+    const f = 50 - i / 100;
     rows.push(`${i + 1},${i * 10000},${f.toFixed(6)},${(100 * Math.sin((2 * Math.PI * i) / 20)).toFixed(6)}`);
   }
   return { cfg: Buffer.from(cfg, "latin1"), dat: Buffer.from(rows.join("\r\n") + "\r\n", "latin1") };
@@ -63,13 +65,32 @@ async function pickInput(page, label) {
   await select.selectOption(value);
 }
 
+async function createRocof(page, { windowMs, method } = {}) {
+  await openRocofBuilder(page);
+  await pickInput(page, "FREQ");
+  if (method) await page.locator("#wwCcRocofMethodSelect").selectOption(method);
+  if (windowMs) await page.locator("#wwCcRocofWindowSelect").selectOption(String(windowMs));
+  await page.locator("#wwCcCreateBtn").click();
+  await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
+}
+
+function row(page, name) {
+  return page.locator(".ww-cc-list-row").filter({ has: page.locator(".ww-cc-list-row-name", { hasText: new RegExp(`^${name.replace(/[()]/g, "\\$&")}$`) }) });
+}
+
+async function showTrace(page, name) {
+  const eye = row(page, name).locator('button[data-action="toggle-visibility"]');
+  await expect(eye).toBeVisible();
+  if ((await eye.getAttribute("aria-pressed")) !== "true") await eye.click();
+}
+
 async function previewTraces(page) {
   return page.evaluate(() => Array.from(document.querySelectorAll("#wwCcPreviewPanels .ww-cc-preview-chart")).flatMap((chart) =>
     (chart.data || []).map((t) => ({ name: (t.name || "").replace(/<[^>]+>/g, ""), y: Array.from(t.y || []), x: Array.from(t.x || []) }))));
 }
 
 test.describe("ROCOF calculated channel", () => {
-  test("builder: frequency-first input, labels, fixed Hz/s unit, raw default", async ({ page }) => {
+  test("builder: frequency-first input, approved defaults, measurement window is not smoothing", async ({ page }) => {
     await uploadFixture(page);
     await openRocofBuilder(page);
 
@@ -83,64 +104,66 @@ test.describe("ROCOF calculated channel", () => {
     expect(groups[0].options.join("|")).not.toContain("VA");
     expect(groups[1].options.join("|")).toContain("VA");
 
+    // Approved defaults: Rolling Frequency Difference, 500 ms, centered.
+    await expect(page.locator("#wwCcRocofMethodSelect")).toHaveValue("rolling_frequency_difference");
+    await expect(page.locator("#wwCcRocofMethodSelect option")).toHaveText(["Rolling Frequency Difference", "Rolling Linear Regression"]);
+    await expect(page.locator("#wwCcRocofWindowSelect")).toHaveValue("500");
+    await expect(page.locator("#wwCcRocofWindowSelect option")).toHaveText(["100 ms", "200 ms", "500 ms", "1000 ms", "2000 ms"]);
+    await expect(page.locator("#wwCcBuilderFields")).toContainText("Time Alignment");
+    await expect(page.locator('#wwCcBuilderFields input[readonly][value="Centered"]')).toHaveCount(1);
+    // No separate smoothing stage.
+    await expect(page.locator("#wwCcBuilderFields")).not.toContainText(/smooth/i);
+    await expect(page.locator("#wwCcRocofSmoothingSelect")).toHaveCount(0);
+
     await pickInput(page, "FREQ");
     await expect(page.locator("#wwCcRocofStatus")).toContainText("identified as a frequency channel");
     await expect(page.locator("#wwCcRocofOverrideRow")).toBeHidden();
-    await expect(page.locator("#wwCcNameInput")).toHaveValue("ROCOF (FREQ)");
-    await expect(page.locator("#wwCcExpressionPreview")).toHaveText("Result = ROCOF (FREQ, raw)");
-    await expect(page.locator("#wwCcRocofSmoothingSelect")).toHaveValue("none");
-    await expect(page.locator("#wwCcRocofWindowInput")).toHaveCount(0);
+    await expect(page.locator("#wwCcNameInput")).toHaveValue("ROCOF (FREQ, 500 ms)");
+    await expect(page.locator("#wwCcExpressionPreview")).toHaveText("Result = ROCOF (FREQ, rolling frequency difference, 500 ms, centered)");
     await expect(page.locator("#wwCcCreateBtn")).toBeEnabled();
   });
 
-  test("smoothing: window appears, is labelled in name/preview, validated, and Treat Null as Zero is unavailable", async ({ page }) => {
+  test("method and window drive the name and preview; Treat Null as Zero is unavailable; a too-long window is reported", async ({ page }) => {
     await uploadFixture(page);
     await openRocofBuilder(page);
     await pickInput(page, "FREQ");
 
-    await page.locator("#wwCcRocofSmoothingSelect").selectOption("centered_moving_average");
-    await expect(page.locator("#wwCcRocofWindowInput")).toHaveValue("100");
-    await expect(page.locator("#wwCcNameInput")).toHaveValue("ROCOF (FREQ, 100 ms avg)");
-    await expect(page.locator("#wwCcExpressionPreview")).toHaveText("Result = ROCOF (FREQ, 100 ms centered moving average)");
-
-    await page.locator("#wwCcRocofWindowInput").fill("0");
-    await expect(page.locator("#wwCcCreateBtn")).toBeDisabled();
-    await page.locator("#wwCcRocofWindowInput").fill("200");
-    await expect(page.locator("#wwCcExpressionPreview")).toContainText("200 ms centered moving average");
-    await expect(page.locator("#wwCcCreateBtn")).toBeEnabled();
+    await page.locator("#wwCcRocofMethodSelect").selectOption("rolling_linear_regression");
+    await page.locator("#wwCcRocofWindowSelect").selectOption("200");
+    await expect(page.locator("#wwCcNameInput")).toHaveValue("ROCOF (FREQ, regression 200 ms)");
+    await expect(page.locator("#wwCcExpressionPreview")).toHaveText("Result = ROCOF (FREQ, rolling linear regression, 200 ms, centered)");
 
     await expect(page.locator('#wwCcNullPolicySelect option[value="treat_null_as_zero"]')).toHaveJSProperty("disabled", true);
 
-    // Backend range validation surfaces as an inline error (window longer than the 0.5 s record).
-    await page.locator("#wwCcRocofWindowInput").fill("5000");
+    // The 1.5 s record cannot hold a complete 2000 ms centered window: the backend says so, nothing is created.
+    await page.locator("#wwCcRocofWindowSelect").selectOption("2000");
     await page.locator("#wwCcCreateBtn").click();
-    await expect(page.locator("#wwCcError")).toContainText("longer than the recording");
+    await expect(page.locator("#wwCcError")).toContainText("2000 ms");
     await expect(page.locator("#wwCcDrawer")).toHaveClass(/ww-cc-drawer--open/);
   });
 
-  test("raw ROCOF of a 50 -> 49.5 Hz ramp plots -1 Hz/s; lifecycle and timebase", async ({ page }) => {
+  test("default ROCOF of a -1 Hz/s ramp plots -1 with the incomplete edge windows blank; lifecycle and timebase", async ({ page }) => {
     await uploadFixture(page);
-    await openRocofBuilder(page);
-    await pickInput(page, "FREQ");
-    await page.locator("#wwCcCreateBtn").click();
-    await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
+    await createRocof(page);
 
-    const row = page.locator(".ww-cc-list-row").filter({ has: page.locator(".ww-cc-list-row-name", { hasText: /^ROCOF \(FREQ\)$/ }) });
-    await expect(row).toBeVisible();
-    await expect(row.locator(".ww-cc-list-row-unit")).toHaveText("Hz/s");
-    await expect(row.locator(".ww-cc-type-badge")).toHaveText("ROCOF");
+    const name = "ROCOF (FREQ, 500 ms)";
+    await expect(row(page, name)).toBeVisible();
+    await expect(row(page, name).locator(".ww-cc-list-row-unit")).toHaveText("Hz/s");
+    await expect(row(page, name).locator(".ww-cc-type-badge")).toHaveText("ROCOF");
 
-    const eye = row.locator('button[data-action="toggle-visibility"]');
-    if ((await eye.getAttribute("aria-pressed")) !== "true") await eye.click();
+    await showTrace(page, name);
     await expect.poll(async () => (await previewTraces(page)).length).toBe(1);
     const [trace] = await previewTraces(page);
-    expect(trace.name).toBe("ROCOF (FREQ) (Hz/s)");
+    expect(trace.name).toBe("ROCOF (FREQ, 500 ms) (Hz/s)");
     expect(trace.y).toHaveLength(SAMPLES);
-    for (const v of trace.y) expect(v).toBeCloseTo(-1, 5);
+    // 250 ms (25 samples) at each end: no complete window -> blank (never shortened)
+    expect(trace.y.slice(0, 25).every((v) => v === null)).toBe(true);
+    expect(trace.y.slice(-25).every((v) => v === null)).toBe(true);
+    for (const v of trace.y.slice(25, SAMPLES - 25)) expect(v).toBeCloseTo(-1, 5);
     expect(trace.x[0]).toBeCloseTo(0, 9);
-    expect(trace.x[SAMPLES - 1]).toBeCloseTo(0.5, 9);
+    expect(trace.x[SAMPLES - 1]).toBeCloseTo(1.5, 9);
 
-    await expect(page.locator("#wwCcPreviewInfoStrip")).toContainText("ROCOF (FREQ, raw)");
+    await expect(page.locator("#wwCcPreviewInfoStrip")).toContainText("ROCOF (FREQ, rolling frequency difference, 500 ms, centered)");
 
     // Timebase: grounded on the source recording, so it follows that source's sync / t=0 placement.
     const grounding = await page.evaluate(async () => {
@@ -151,28 +174,32 @@ test.describe("ROCOF calculated channel", () => {
       return { reference: list[0].reference_source_id, sourceIds, parameters: list[0].parameters };
     });
     expect(grounding.sourceIds).toContain(grounding.reference);
-    expect(grounding.parameters).toMatchObject({ smoothing: "none", smoothing_window_ms: null });
+    expect(grounding.parameters).toMatchObject({
+      method: "rolling_frequency_difference", window_ms: 500, alignment: "centered",
+    });
 
     // Delete -> gone from the manager and the preview.
-    await row.locator(".ww-cc-menu summary").click();
-    await row.locator('button[data-action="delete"]').click();
-    await expect(row).toHaveCount(0);
+    await row(page, name).locator(".ww-cc-menu summary").click();
+    await row(page, name).locator('button[data-action="delete"]').click();
+    await expect(row(page, name)).toHaveCount(0);
     await expect.poll(async () => (await previewTraces(page)).length).toBe(0);
   });
 
-  test("smoothed channel is labelled as smoothed and keeps the same ramp", async ({ page }) => {
+  test("the measurement window genuinely changes the result: 100 ms vs 500 ms availability, regression on the same ramp", async ({ page }) => {
     await uploadFixture(page);
-    await openRocofBuilder(page);
-    await pickInput(page, "FREQ");
-    await page.locator("#wwCcRocofSmoothingSelect").selectOption("centered_moving_average");
-    await page.locator("#wwCcRocofWindowInput").fill("100");
-    await page.locator("#wwCcCreateBtn").click();
-    await expect(page.locator("#wwCcDrawer")).not.toHaveClass(/ww-cc-drawer--open/);
+    await createRocof(page, { windowMs: 100 });
+    await createRocof(page, { windowMs: 500 });
+    await createRocof(page, { windowMs: 200, method: "rolling_linear_regression" });
 
-    const row = page.locator(".ww-cc-list-row").filter({ has: page.locator(".ww-cc-list-row-name", { hasText: "ROCOF (FREQ, 100 ms avg)" }) });
-    await expect(row).toBeVisible();
-    await row.locator(".ww-cc-list-row-name").click();
-    await expect(page.locator("#wwCcPreviewInfoStrip")).toContainText("ROCOF (FREQ, 100 ms centered moving average)");
+    const names = ["ROCOF (FREQ, 100 ms)", "ROCOF (FREQ, 500 ms)", "ROCOF (FREQ, regression 200 ms)"];
+    for (const n of names) await showTrace(page, n);
+    await expect.poll(async () => (await previewTraces(page)).length).toBe(3);
+    const traces = Object.fromEntries((await previewTraces(page)).map((t) => [t.name.replace(" (Hz/s)", ""), t.y]));
+    const finite = (y) => y.filter((v) => v !== null);
+    expect(finite(traces[names[0]])).toHaveLength(141); // t in [0.05, 1.45]
+    expect(finite(traces[names[1]])).toHaveLength(101); // t in [0.25, 1.25]
+    expect(finite(traces[names[2]])).toHaveLength(131); // t in [0.10, 1.40]
+    for (const n of names) for (const v of finite(traces[n])) expect(v).toBeCloseTo(-1, 5);
   });
 
   test("non-frequency input needs the explicit Calculate anyway acknowledgement", async ({ page }) => {

@@ -90,7 +90,7 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "rms_override_required": status.HTTP_400_BAD_REQUEST,
     "rocof_override_required": status.HTTP_400_BAD_REQUEST,
     "rocof_insufficient_data": status.HTTP_400_BAD_REQUEST,
-    "invalid_rocof_smoothing": status.HTTP_400_BAD_REQUEST,
+    "invalid_rocof_parameters": status.HTTP_400_BAD_REQUEST,
     "invalid_null_policy": status.HTTP_400_BAD_REQUEST,
     "null_policy_not_implemented": status.HTTP_400_BAD_REQUEST,
     "require_manual_value_null": status.HTTP_400_BAD_REQUEST,

@@ -78,9 +78,10 @@ class CalculatedChannelCreateRequest(BaseModel):
     `parameters` is operation-specific -- `multiply_constant` reads
     `{"constant": <finite number>}`; `rms` (Phase 5B) reads
     `{"nominal_frequency_hz": <finite number>}`; `rocof` (DEC-190) reads
-    the optional `{"smoothing": "none" | "centered_moving_average",
-    "smoothing_window_ms": <positive number, only with a moving
-    average>}` (default: unsmoothed); every other operation ignores it. Section 74: no free-form formula text anywhere in this
+    the optional `{"method": "rolling_frequency_difference" |
+    "rolling_linear_regression", "window_ms": 100 | 200 | 500 | 1000 |
+    2000, "alignment": "centered"}` (default: rolling frequency
+    difference, 500 ms, centered); every other operation ignores it. Section 74: no free-form formula text anywhere in this
     shape.
 
     `override` (Phase 5B, DEC-048) only matters for `rms` and `rocof`

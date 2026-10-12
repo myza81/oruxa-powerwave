@@ -247,12 +247,12 @@ class RocofInsufficientDataError(ImportServiceError):
     code = "rocof_insufficient_data"
 
 
-class InvalidRocofSmoothingError(ImportServiceError):
-    """The ROCOF `smoothing` / `smoothing_window_ms` parameters are
-    unknown, malformed, inconsistent with each other, or the window is
-    not usable for this recording's sample spacing/duration."""
+class InvalidRocofParametersError(ImportServiceError):
+    """The ROCOF `method` / `window_ms` / `alignment` parameters are
+    unsupported, or the measurement window is too short for this
+    recording's sample spacing."""
 
-    code = "invalid_rocof_smoothing"
+    code = "invalid_rocof_parameters"
 
 
 # ---- DEC-084 Calc Slice 1: Calculated-Channel Null-Handling Policy ----

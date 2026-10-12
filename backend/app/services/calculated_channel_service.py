@@ -62,14 +62,15 @@ from app.domain.calculated_channel import (
     rms_recording_long_enough,
     rms_sampling_dense_enough,
     rocof_median_interval,
-    rocof_smoothing_window_valid,
-    ROCOF_ALL_SMOOTHING,
-    ROCOF_BOUNDARY_ONE_SIDED,
-    ROCOF_METHOD_NONUNIFORM_CENTRAL,
+    rocof_method_valid,
+    rocof_window_ms_valid,
+    ROCOF_ALIGNMENT_CENTERED,
+    ROCOF_DEFAULT_METHOD,
+    ROCOF_DEFAULT_WINDOW_MS,
+    ROCOF_EDGE_POLICY,
     ROCOF_MIN_SAMPLES,
-    ROCOF_MIN_SMOOTHING_INTERVALS,
-    ROCOF_SMOOTHING_MOVING_AVERAGE,
-    ROCOF_SMOOTHING_NONE,
+    ROCOF_MIN_WINDOW_INTERVALS,
+    ROCOF_WINDOWS_MS,
     ROCOF_UNIT,
     timebases_aligned,
     units_compatible,
@@ -126,7 +127,7 @@ from app.services.errors import (
     InvalidMaxGapValueError,
     InvalidNominalFrequencyError,
     InvalidNullPolicyError,
-    InvalidRocofSmoothingError,
+    InvalidRocofParametersError,
     InvalidOperationArityError,
     NullPolicyNotImplementedError,
     RequireManualValueNullError,
@@ -332,24 +333,25 @@ def _resolve_input(
     )
 
 
-def _parse_rocof_smoothing(parameters: dict | None) -> tuple[str, float | None]:
-    """Validate the ROCOF `smoothing` / `smoothing_window_ms` parameters
-    (DEC-190). Strict: an unknown mode, a window supplied without a moving
-    average, or a missing/non-positive window under a moving average is
-    rejected -- never silently ignored or defaulted, so a stored channel's
-    smoothing is always exactly what the engineer chose."""
+def _parse_rocof_parameters(parameters: dict | None) -> tuple[str, int]:
+    """Validate the ROCOF `method` / `window_ms` / `alignment` parameters
+    (DEC-190). Missing values take the approved defaults (rolling
+    frequency difference, 500 ms, centered) and are stored back explicitly
+    on the channel. Anything present but unsupported is REJECTED, never
+    silently replaced: the window is part of the estimate, so a quietly
+    substituted window would change the answer."""
     params = parameters or {}
-    smoothing = params.get("smoothing", ROCOF_SMOOTHING_NONE)
-    window_ms = params.get("smoothing_window_ms")
-    if not isinstance(smoothing, str) or smoothing not in ROCOF_ALL_SMOOTHING:
-        raise InvalidRocofSmoothingError(f"Unsupported ROCOF smoothing: {smoothing!r}.")
-    if smoothing == ROCOF_SMOOTHING_NONE:
-        if window_ms is not None:
-            raise InvalidRocofSmoothingError("A smoothing window applies only to a centered moving average.")
-        return ROCOF_SMOOTHING_NONE, None
-    if not rocof_smoothing_window_valid(window_ms):
-        raise InvalidRocofSmoothingError("Smoothing window must be a positive number of milliseconds.")
-    return smoothing, float(window_ms)
+    method = params.get("method", ROCOF_DEFAULT_METHOD)
+    window_ms = params.get("window_ms", ROCOF_DEFAULT_WINDOW_MS)
+    alignment = params.get("alignment", ROCOF_ALIGNMENT_CENTERED)
+    if not rocof_method_valid(method):
+        raise InvalidRocofParametersError(f"Unsupported ROCOF calculation method: {method!r}.")
+    if not rocof_window_ms_valid(window_ms):
+        allowed = ", ".join(str(w) for w in ROCOF_WINDOWS_MS)
+        raise InvalidRocofParametersError(f"ROCOF measurement window must be one of {allowed} ms.")
+    if alignment != ROCOF_ALIGNMENT_CENTERED:
+        raise InvalidRocofParametersError("Only a centered ROCOF measurement window is supported.")
+    return method, int(window_ms)
 
 
 ROCOF_STATUS_SUITABLE = "suitable"
@@ -756,10 +758,10 @@ def create_calculated_channel(
                 "Sample rate is too low relative to the RMS window to produce a meaningful result."
             )
 
-    rocof_smoothing = ROCOF_SMOOTHING_NONE
-    rocof_window_ms: float | None = None
+    rocof_method = ROCOF_DEFAULT_METHOD
+    rocof_window_ms = ROCOF_DEFAULT_WINDOW_MS
     if operation == OP_ROCOF:
-        rocof_smoothing, rocof_window_ms = _parse_rocof_smoothing(parameters)
+        rocof_method, rocof_window_ms = _parse_rocof_parameters(parameters)
         rocof_eligibility = check_rocof_eligibility(first.engineering_type)
         if rocof_eligibility.override_required and not override:
             raise RocofOverrideRequiredError(rocof_eligibility.reason)
@@ -827,25 +829,21 @@ def create_calculated_channel(
             raise RocofInsufficientDataError(
                 f"ROCOF needs at least {ROCOF_MIN_SAMPLES} valid frequency samples."
             )
-        smoothing_window_s: float | None = None
-        if rocof_smoothing == ROCOF_SMOOTHING_MOVING_AVERAGE:
-            smoothing_window_s = rocof_window_ms / 1000.0
-            median_dt = rocof_median_interval(first.time, rocof_input)
-            if median_dt is None:
-                raise RocofInsufficientDataError("ROCOF needs at least one pair of consecutive valid samples.")
-            if smoothing_window_s < ROCOF_MIN_SMOOTHING_INTERVALS * median_dt:
-                raise InvalidRocofSmoothingError(
-                    f"Smoothing window is too short for this recording: it must span at least "
-                    f"{ROCOF_MIN_SMOOTHING_INTERVALS} sample intervals "
-                    f"({ROCOF_MIN_SMOOTHING_INTERVALS * median_dt * 1000.0:.4g} ms)."
-                )
-            if smoothing_window_s > float(first.time[-1] - first.time[0]):
-                raise InvalidRocofSmoothingError("Smoothing window is longer than the recording.")
-        values = evaluate_rocof(first.time, rocof_input, smoothing_window_s)
+        window_s = rocof_window_ms / 1000.0
+        median_dt = rocof_median_interval(first.time, rocof_input)
+        if median_dt is None:
+            raise RocofInsufficientDataError("ROCOF needs at least one pair of consecutive valid samples.")
+        if window_s < ROCOF_MIN_WINDOW_INTERVALS * median_dt:
+            raise InvalidRocofParametersError(
+                f"A {rocof_window_ms} ms window is too short for this recording's sampling interval: it must "
+                f"span at least {ROCOF_MIN_WINDOW_INTERVALS} sample intervals "
+                f"({ROCOF_MIN_WINDOW_INTERVALS * median_dt * 1000.0:.4g} ms). Choose a longer window."
+            )
+        values = evaluate_rocof(first.time, rocof_input, window_s, rocof_method)
         if not np.isfinite(values).any():
             raise RocofInsufficientDataError(
-                "No ROCOF could be calculated: the input has no pair of consecutive valid samples "
-                "with increasing timestamps."
+                f"No ROCOF could be calculated: no complete centered {rocof_window_ms} ms window fits inside a "
+                "continuous run of valid samples. Use a shorter window, or check the input for gaps."
             )
     elif operation == OP_ADDITION:
         values = evaluate_addition(effective_values)
@@ -869,10 +867,10 @@ def create_calculated_channel(
         # channel always states how it was differentiated and whether it
         # is raw or smoothed.
         output_parameters = {
-            "method": ROCOF_METHOD_NONUNIFORM_CENTRAL,
-            "boundary": ROCOF_BOUNDARY_ONE_SIDED,
-            "smoothing": rocof_smoothing,
-            "smoothing_window_ms": rocof_window_ms,
+            "method": rocof_method,
+            "window_ms": rocof_window_ms,
+            "alignment": ROCOF_ALIGNMENT_CENTERED,
+            "edge_policy": ROCOF_EDGE_POLICY,
         }
     else:
         output_parameters = {}
