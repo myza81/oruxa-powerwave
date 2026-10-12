@@ -26570,8 +26570,4 @@ it. Session-only, stateless, never persisted.
 gained `suggested[]`); the adapter re-runs and the blocker clears or returns. The
 mathematical engine is **not** changed to hide missing data.
 
-**Open engineering finding (not changed here).** `quadrilateral_zone_operated()` requires
-`resistive_reach_reverse_ohm > 0`, so a left reach of exactly 0 (suggested *or* typed) would
-never operate once Apply Settings (Slice 9) exists. Slice 9 must decide: allow `>= 0` for
-the left boundary, or reject/warn on 0 at Apply. The review stage does not call the engine
-geometry.
+**Engine amendment (2026-10-12).** `quadrilateral_zone_operated()` now treats the left reach as a magnitude: unset = not configured (never read as 0), `0.0` = valid (left boundary at r' = 0, inclusive like every other boundary), `> 0` unchanged, `< 0` or non-finite = invalid. Generic; no origin- or relay-specific case. Adapter readiness and engine behaviour now agree (`tests/test_distance_zero_left_reach.py`, incl. review overlay → adapter → engine).

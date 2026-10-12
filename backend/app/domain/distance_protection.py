@@ -389,11 +389,17 @@ def quadrilateral_zone_operated(
     place in the zone's own frame, so the zone's "forward resistive" side
     ends up on the negative-R side. `resistive_reach_reverse_ohm` is still
     only the quadrilateral's own second resistive boundary and is
-    independent of this direction."""
+    independent of this direction.
+
+    `resistive_reach_reverse_ohm` is a magnitude: 0.0 is a valid configured
+    value (the left boundary lies exactly at r' = 0), a positive value
+    extends the zone to negative r', and a negative value is invalid (never
+    operates). Unset (None) is "not configured" and is handled by the caller
+    (`evaluate_zone_state`), never read as 0."""
     if not (
         math.isfinite(reactive_reach_ohm) and reactive_reach_ohm > 0.0
         and math.isfinite(resistive_reach_forward_ohm) and resistive_reach_forward_ohm > 0.0
-        and math.isfinite(resistive_reach_reverse_ohm) and resistive_reach_reverse_ohm > 0.0
+        and math.isfinite(resistive_reach_reverse_ohm) and resistive_reach_reverse_ohm >= 0.0
     ):
         return False
     oriented = _orient(point, direction)
