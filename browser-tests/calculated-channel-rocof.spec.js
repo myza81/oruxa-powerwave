@@ -170,6 +170,10 @@ test.describe("ROCOF calculated channel", () => {
     const chart = page.locator("#wwCcPreviewPanels .ww-cc-preview-chart");
     await expect(chart.locator(".g-xtitle")).toHaveText("Time (s)");
     await expect(chart.locator(".g-ytitle")).toHaveText("ROCOF (Hz/s)");
+    // Legend and axis titles are 11px (layout config, not CSS).
+    for (const sel of [".g-xtitle text", ".g-ytitle text", ".legend .legendtext"]) {
+      expect(await chart.locator(sel).first().evaluate((el) => getComputedStyle(el).fontSize)).toBe("11px");
+    }
     const expression = page.locator("#wwCcPreviewInfoStrip .ww-cc-preview-info-value--wrap").first();
     await expect(expression).toHaveAttribute("title", "ROCOF (FREQ, rolling frequency difference, 500 ms, centered)");
     expect(await expression.evaluate((el) => el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1)).toBe(true);

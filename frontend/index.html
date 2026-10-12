@@ -40641,10 +40641,10 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     // Plotly 3 removed the string form of an axis `title`, so the
                     // other types' string titles below are not drawn; ROCOF uses
                     // the supported `{ text }` form.
-                    xaxis: { title: isRocofPanel ? { text: "Time (s)" } : "Time (s)", gridcolor: colors.grid, zerolinecolor: colors.grid },
-                    yaxis: { title: isRocofPanel ? { text: "ROCOF (Hz/s)" } : "", gridcolor: colors.grid, zerolinecolor: colors.grid },
+                    xaxis: { title: isRocofPanel ? { text: "Time (s)", font: { size: 11 } } : "Time (s)", gridcolor: colors.grid, zerolinecolor: colors.grid },
+                    yaxis: { title: isRocofPanel ? { text: "ROCOF (Hz/s)", font: { size: 11 } } : "", gridcolor: colors.grid, zerolinecolor: colors.grid },
                     showlegend: true,
-                    legend: isRocofPanel ? { orientation: "h", y: -0.3 } : { orientation: "h" },
+                    legend: isRocofPanel ? { orientation: "h", y: -0.3, font: { size: 11 } } : { orientation: "h" },
                     autosize: true,
                     paper_bgcolor: colors.surface,
                     plot_bgcolor: colors.surface,
