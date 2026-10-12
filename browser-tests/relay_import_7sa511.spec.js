@@ -53,15 +53,15 @@ async function resolveNumber(page, label, key, value) {
   await expect(form).toBeHidden();
 }
 
-// What an engineer does: state which zones are in service, give each a delay (the sheet prints
-// Infinity), take the 0.00 ohm suggestion for the Left (-R) reach, confirm the assumptions.
+// What an engineer does: state which zones are in service (the sheet has no per-zone enable), give each a
+// delay (the sheet leaves the timer cells blank), take the 0.00 ohm suggestion for the Left (-R) reach, confirm the assumptions.
 async function makeReady(page, { extra = false } = {}) {
   await resolveChoice(page, "Zone 1 Status", "zone.Z1.status", "enabled");
   await resolveChoice(page, "Zone 2 Status", "zone.Z2.status", "enabled");
   await resolveChoice(page, "Zone 3 Status", "zone.Z3.status", "enabled");
   await resolveChoice(page, "Zone 4 Status", "zone.Z4.status", "disabled");
   await resolveChoice(page, "Zone 1L Status", "zone.Z1L.status", "disabled");
-  if (extra) await resolveChoice(page, "Zone 1B Status", "zone.Z1B.status", "enabled");
+  await resolveChoice(page, "Zone 1B Status", "zone.Z1B.status", extra ? "enabled" : "disabled");
   await resolveNumber(page, "Zone 1 Phase Time Delay", "zone.Z1.timer.pp", 0.15);
   await resolveNumber(page, "Zone 2 Phase Time Delay", "zone.Z2.timer.pp", 0.45);
   await resolveNumber(page, "Zone 3 Time Delay", "zone.Z3.timer", 3);
@@ -90,19 +90,44 @@ test("a 7SA511 sheet is identified and opens the generic review with every zone"
   await expect(page.locator("#wwRelayImportSummary")).toContainText("missing");
   await expect(readiness(page)).toContainText("Not ready");
   await expect(applyBtn(page)).toHaveCount(0);
-  await expect(row(page, "zone.Z2.reach")).toContainText("Assumption");
+  // explicit R/X: a Reactive Reach (X) row and no polar Reach / Reach Angle rows at all
+  await expect(row(page, "zone.Z2.x_reach")).toContainText("Reactive Reach (X)");
+  await expect(row(page, "zone.Z2.reach")).toHaveCount(0);
+  await expect(row(page, "zone.Z2.reach.angle")).toHaveCount(0);
+  await expect(row(page, "zone.Z2.rr.pp")).toContainText("Right Resistive Reach (+R)");
+  await expect(row(page, "zone.Z2.characteristic")).toContainText("Explicit R/X");
+  // the timer cell is blank: Missing, never the "Infinity" printed in the range column
   await expect(row(page, "zone.Z2.timer.pp")).toContainText("Missing");
+  await expect(row(page, "zone.Z2.timer.pp")).toContainText("Not available"); // no delay value is shown
+  await expect(row(page, "zone.Z2.timer.pp")).toContainText("not the configured delay");
   await expect(row(page, "zone.Z3.direction")).toContainText("Reverse");
   // provenance: the original setting name / code / raw text, available beside the value
-  await row(page, "zone.Z2.reach").getByRole("button", { name: /Source/ }).first().click();
-  await expect(row(page, "zone.Z2.reach")).toContainText("1312");
-  await expect(row(page, "zone.Z2.reach")).toContainText("X2");
+  await row(page, "zone.Z2.x_reach").getByRole("button", { name: /Source/ }).first().click();
+  await expect(row(page, "zone.Z2.x_reach")).toContainText("1312");
+  await expect(row(page, "zone.Z2.x_reach")).toContainText("X2");
+});
+
+test("the sheet's page notes are shown as document notes beside the zone, not as settings", async ({ page }) => {
+  await openReview(page);
+  const z1 = panel(page).locator('details[data-group="zone-Z1"]');
+  const note = z1.locator("[data-source-notes] .ww-rr-source-note");
+  await expect(note).toHaveCount(1);
+  await expect(note).toContainText("Document note / proposed requirement");
+  await expect(note).toContainText("not a current setting, not applied");
+  await expect(note).toContainText("Zone 1 timer requirement: 0.15 s");
+  await expect(note).toContainText("Delayed Zone 1");
+  // the timer the note talks about is still Missing -- the note filled nothing in
+  await expect(row(page, "zone.Z1.timer.pp")).toContainText("Missing");
+  await expect(row(page, "zone.Z1.timer.pp")).not.toContainText("0.15");
+  const z1b = panel(page).locator('details[data-group="zone-Z1B"] [data-source-notes]');
+  await expect(z1b).toContainText("Inactive (out of service)");
 });
 
 test("the zone state of the 7SA511 is never assumed: the user states it, then it is Ready to apply", async ({ page }) => {
   await openReview(page);
   await expect(row(page, "zone.Z1.status")).toContainText("Missing");
-  await expect(row(page, "zone.Z1B.status")).toContainText("Assumption"); // the sheet's own note says inactive
+  await expect(row(page, "zone.Z1B.status")).toContainText("Missing"); // the sheet's "inactive" line is a note, not a setting
+  await expect(row(page, "zone.Z2.status")).toContainText("Missing"); // DIST.PROT. = ON is the function, not a zone
   await makeReady(page);
   await expect(applyBtn(page)).toBeVisible();
 });
@@ -118,7 +143,9 @@ test("Apply Settings fills the dynamic cards and draws only the enabled zones on
   await expect(input(page, 1, "ReactiveReach")).toHaveValue("3");
   await expect(input(page, 1, "ResistiveForward")).toHaveValue("2"); // R1 (phase-phase), not R1E = 6
   await expect(input(page, 1, "ResistiveReverse")).toHaveValue("0");
-  await expect(input(page, 1, "Angle")).toHaveValue("90");
+  // explicit R/X: no reach angle exists, so none is shown or sent
+  await expect(page.locator("#wwDistanceZone1AngleField")).toBeHidden();
+  await expect(page.locator("#wwDistanceZone1Geometry")).toHaveText("Geometry: Explicit R/X");
   await expect(input(page, 1, "Delay")).toHaveValue("0.15");
   await expect(input(page, 2, "ReactiveReach")).toHaveValue("5");
   await expect(input(page, 2, "Delay")).toHaveValue("0.45");
@@ -131,10 +158,16 @@ test("Apply Settings fills the dynamic cards and draws only the enabled zones on
   await expect(page.locator("#wwDistancePanel .ww-dist-zone-card")).toHaveCount(4);
   await expect(page.locator("#wwDistancePanel [data-zone-dynamic]")).toHaveCount(0);
   await expect(page.locator("#wwDistanceZone4Enabled")).not.toBeChecked();
+  // Zone 1 is drawn as its X / +R / -R box: reach 3, +R 2, -R 0 (no tilt)
+  const corners = await page.evaluate(() => document.querySelector('#wwDistanceSvg .ww-dist-zone-boundary[data-zone-key="zone1"]').getAttribute("points"));
+  const pts = corners.trim().split(/\s+/).map((p) => p.split(",").map(Number));
+  const xs = new Set(pts.map((p) => p[0].toFixed(0))), ys = new Set(pts.map((p) => p[1].toFixed(0)));
+  expect(xs.size).toBe(2); // an upright rectangle: two distinct x, two distinct y -- axis-aligned
+  expect(ys.size).toBe(2);
 });
 
 test("an enabled Zone 1B becomes a dynamic card with the sheet's own label, is plotted and fitted", async ({ page }) => {
-  await openReview(page, { notes: false }); // without the "inactive" note Zone 1B's state is the user's to state
+  await openReview(page, { notes: false });
   await expect(row(page, "zone.Z1B.status")).toContainText("Missing");
   await makeReady(page, { extra: true });
   await applyBtn(page).click();

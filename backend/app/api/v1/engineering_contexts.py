@@ -1131,12 +1131,13 @@ def _zone_settings(
     enabled: bool, reach_ohm: float | None, reactive_reach_ohm: float | None,
     resistive_reach_forward_ohm: float | None, resistive_reach_reverse_ohm: float | None,
     characteristic_angle_deg: float | None, delay_s: float | None,
-    direction: str = "forward",
+    direction: str = "forward", geometry_mode: str = "polar",
 ) -> ZoneSettings:
     return ZoneSettings(
         enabled=enabled, reach_ohm=reach_ohm, reactive_reach_ohm=reactive_reach_ohm,
         resistive_reach_forward_ohm=resistive_reach_forward_ohm, resistive_reach_reverse_ohm=resistive_reach_reverse_ohm,
         characteristic_angle_deg=characteristic_angle_deg, delay_s=delay_s, direction=direction,
+        geometry_mode=geometry_mode,
     )
 
 
@@ -1166,6 +1167,7 @@ def _request_zones(
             (z.key, _zone_settings(
                 z.enabled, z.reach_ohm, z.reactive_reach_ohm, z.resistive_reach_forward_ohm,
                 z.resistive_reach_reverse_ohm, z.characteristic_angle_deg, z.delay_s, z.direction,
+                z.geometry_mode,
             ))
             for z in parsed
         ]

@@ -5,12 +5,13 @@
 All 7SA511-specific knowledge -- DIGSI setting addresses and their expected
 names, the unit and basis conventions of this setting-sheet template, the
 Siemens zone naming (Z1, Z1B, Z2, Z3, Z1L and the Z4 fault-detection stage),
-the ``Infinity`` timer encoding and the R / RE, X / XE reach conventions --
+the ``Infinity`` entry of the timer rows and the R / RE, X / XE reach conventions --
 lives here and nowhere else. The generic PDF extractor, the relay identifier,
 the canonical model, the review, Apply Settings, the engine adapter and the
 Distance Protection engine know nothing about it.
 
-Profile version ``siemens-7sa511-v1``. **Implemented / Awaiting Validation**:
+Profile version ``siemens-7sa511-v2`` (v1 read the sheet's range column as the timer
+value and a note as a zone state; see the DEC-190 amendment). **Implemented / Awaiting Validation**:
 it becomes ``Validated`` only after owner UAT against the real setting file.
 
 This profile is deliberately written on its own. It does not derive from, or
@@ -24,21 +25,32 @@ Rules this profile never breaks
   code-and-name-checked setting whose unit the sheet establishes). Anything
   that rests on knowledge of the 7SA5 family that the sheet does not repeat
   (the secondary basis of the ohm settings, which loop an ``R`` / ``RE`` setting
-  belongs to, the reactance reach being a horizontal boundary, which loops the
-  global fault-type selection enables) is ``inferred`` and carries a note.
+  belongs to, which loops the global fault-type selection enables) is ``inferred``
+  and carries a note.
 * A setting is read only when its code *and* its name match this version's
   table. A known code under another name is unresolved, never trusted.
 * A missing, conflicting, non-numeric, out-of-range or unit-unconfirmed
   setting becomes an unresolved value that keeps its raw text. Nothing is
   defaulted; the only unit conversion is kV -> V where the printed range says kV.
-* ``Infinity`` is a readable Siemens timer setting, not a number. It is never
-  turned into a finite delay and never decides a zone's state by itself: the
-  delay stays unresolved (Missing, so the user may state one).
-* The 7SA511 has no per-zone enable setting, so a zone's state is explicit-only:
-  the function switched off, or the sheet's notes declaring the zone inactive.
-  Otherwise it stays unresolved. A finite delay is deliberately *not* read as
-  "enabled", so the generic 10.0 s defeated-zone rule (applied by the registry,
-  not here, and not duplicated) and the user's own review decide.
+* The operating-timer rows of the sheet have a blank TAP SETTING cell; the word
+  ``Infinity`` sits in the *range / allowed-values* column. That is not the
+  configured delay and not a statement that the zone is out of service: the delay
+  stays unresolved (Missing, so the user may state one). Only an ``Infinity`` in
+  the value column itself is read as the Siemens "never" timer -- and even that is
+  never turned into a finite delay or a zone state.
+* The 7SA511 has no per-zone enable setting. ``1201 DIST.PROT. = ON`` says the
+  distance *function* is on, not that any zone is enabled, so a zone's state is
+  unresolved unless the function itself is switched off. A finite delay is
+  deliberately *not* read as "enabled" either, so the generic 10.0 s defeated-zone
+  rule (applied by the registry, not here, and not duplicated) and the user's own
+  review decide.
+* The sheet's notes ("Verification to be done", "Backup 21Z scheme requirements":
+  timers, an inactive Zone 1B) are requirements and design intent, not current
+  settings. They are kept as zone source notes with their source line and are never
+  copied into a value or a status.
+* The zones are quadrilaterals stated as explicit R / X limits (``X`` and ``R``,
+  ``RE``); the sheet gives no reach angle, so none is modelled or invented. No left
+  (-R) resistive limit is stated, so none is invented either.
 * Every raw setting ends up either cited by a value or carried as an
   ``UnresolvedSetting``; none is dropped.
 """
@@ -56,13 +68,15 @@ from app.domain.relay_import.canonical_distance import (
     CompensationKind,
     DistanceZone,
     ExtraQuantity,
-    ImpedanceValue,
+    GeometryMode,
     InstrumentTransformers,
     ProtectedLine,
     RelayMetadata,
     ResidualCompensation,
     ResistiveReach,
     SettingBasis,
+    SourceNote,
+    SourceNoteKind,
     UnresolvedSetting,
     ZoneDirection,
     ZoneStatus,
@@ -79,7 +93,7 @@ from app.domain.relay_import.provenance import (
 from app.domain.relay_import.raw_document import RawRelayDocument, RawSetting
 
 PROFILE_ID = "siemens-7sa511"
-PROFILE_VERSION = "siemens-7sa511-v1"
+PROFILE_VERSION = "siemens-7sa511-v2"
 VALIDATION_STATUS = "Implemented / Awaiting Validation"
 
 MANUFACTURER = "Siemens"
@@ -256,6 +270,10 @@ class _Read:
     notes: tuple[str, ...] = ()
     #: True when the value is the Siemens ``Infinity`` timer setting.
     infinite: bool = False
+    #: True when the setting's value cell is blank (the row may still print a range).
+    blank: bool = False
+    #: The printed range / allowed-values cell, when there is one.
+    range_text: str | None = None
 
     def fail(self, problem: str, cause: UnresolvedCause) -> None:
         self.problem = problem
@@ -391,9 +409,11 @@ class _Interpreter:
             r.raw = " / ".join(sorted(values))
             return r
         r.raw = _clean(found[0].raw_value)
+        r.range_text = _range_text(found[0])
         if not r.raw:
             r.fail("no value found", UnresolvedCause.UNREADABLE)
             r.raw = None
+            r.blank = True
         elif len(found) > 1:
             r.notes = (f"{len(found)} identical duplicate entries in the document",)
         return r
@@ -675,20 +695,16 @@ class _Interpreter:
                 sources=self.refs(*polygon), notes=(why,), cause=UnresolvedCause.MISSING
             )
             ctype = unresolved(notes=(why,), cause=UnresolvedCause.MISSING)
+            x_s = unresolved(notes=(why,), cause=UnresolvedCause.MISSING)
             resistive = ResistiveReach()
         else:
-            reach_s = (
-                self.good(
-                    ImpedanceValue(magnitude_ohm=x_val, angle_deg=90.0),
-                    (x_rd,),
-                    status="inferred",
-                    why=(
-                        "The sheet gives a reactance reach (X). It is modelled as a pure reactance boundary, i.e. a "
-                        "reach of that many ohms at 90 degrees; the sheet states no tilt for the reach line."
-                    ),
-                )
-                if x_val is not None else self.bad(x_rd)
+            # The sheet states X and R as separate limits and no reach angle: the reach is carried
+            # as an explicit X limit, never as a polar magnitude-at-angle.
+            reach_s = unresolved(
+                notes=("this zone states explicit R / X limits; it has no polar reach and no reach angle",),
+                cause=UnresolvedCause.MISSING,
             )
+            x_s = self.good(x_val, (x_rd,)) if x_val is not None else self.bad(x_rd)
             evidence = tuple(e for r in (rph_read, rpe_read, x_rd) if r is not None and r.ok for e in r.entries)
             ctype = (
                 inferred(
@@ -732,19 +748,22 @@ class _Interpreter:
             phase_timer_s=timers.get("multi", unresolved()),
             earth_timer_s=timers.get("single", unresolved()),
             common_timer_s=timers.get("common", unresolved()),
-            characteristic=CharacteristicSpec(type=ctype),
+            characteristic=CharacteristicSpec(
+                type=ctype, geometry_mode=GeometryMode.POLAR_REACH if t.fault_detection else GeometryMode.EXPLICIT_RX
+            ),
             reach=reach_s,
+            x_reach_ohm=x_s,
+            source_notes=self.source_notes(t),
             resistive_reach=resistive,
             compensation=compensation,
         )
 
     def timers(self, t: _ZoneTable) -> dict[str, Sourced]:
         """The zone's delays by kind (``single`` / ``multi`` / ``common``). A finite
-        delay is a value; ``Infinity`` is kept unresolved (Missing) with the sheet's own
-        statements beside it; the zone's operating-delay reads are kept for the status."""
+        delay is a value; a blank cell or an ``Infinity`` is kept unresolved (Missing);
+        the zone's operating-delay reads are kept for the status."""
         out: dict[str, Sourced] = {}
         reads: dict[str, _Read] = {}
-        stated = tuple(s for s in self.statements(t.label) if _STATED_TIMER.search(_entry_text(s)))
         loop_why = {
             "single": "T..1PHASE is the delay for single-phase faults, which the relay-wide loop selection evaluates in the phase-earth loop",
             "multi": "T..>1PHASE is the delay for multi-phase faults, which the relay-wide loop selection evaluates in the phase-phase loop",
@@ -759,13 +778,23 @@ class _Interpreter:
                     self.good(value, (read,), status="inferred", why=loop_why[kind]) if kind != "common" else self.good(value, (read,))
                 )
             elif read.infinite:
-                notes = [
-                    "The sheet sets this delay to Infinity (no finite operating delay is stated), so none is assumed; "
-                    "state the delay in the review if the zone is in service."
-                ]
-                notes += [f"The sheet's notes also say: {_entry_text(s).strip()!r}; this is not the table value and is not applied." for s in stated]
                 out[kind] = unresolved(
-                    read.raw, sources=self.refs(*read.entries, *stated), notes=tuple(notes), cause=UnresolvedCause.MISSING
+                    read.raw, sources=self.refs(*read.entries), cause=UnresolvedCause.MISSING,
+                    notes=(
+                        "The sheet sets this delay to Infinity (no finite operating delay is stated), so none is assumed; "
+                        "state the delay in the review if the zone is in service.",
+                    ),
+                )
+            elif read.blank:
+                notes = ["The sheet leaves the setting cell of this timer blank, so no delay is stated."]
+                if read.range_text and _norm_name(read.range_text) in _INFINITE:
+                    notes.append(
+                        "The 'Infinity' printed in the range column is the allowed value of the setting, not the configured "
+                        "delay. It is not read as a delay, and not as the zone being out of service."
+                    )
+                notes.append("State the delay in the review if the zone is in service.")
+                out[kind] = unresolved(
+                    None, sources=self.refs(*read.entries), notes=tuple(notes), cause=UnresolvedCause.MISSING
                 )
             else:
                 out[kind] = self.bad(read)
@@ -787,28 +816,37 @@ class _Interpreter:
                 ZoneStatus.DISABLED, (decisive,), status="inferred",
                 why="the Distance Protection function is switched off or not present in the relay configuration",
             )
-        inactive = tuple(s for s in self.statements(t.label) if _STATED_INACTIVE.search(_entry_text(s)))
-        if inactive:
-            return self.good(
-                ZoneStatus.DISABLED, (), status="inferred", extra=inactive + timer_entries,
-                why="the sheet's notes state this zone is inactive (its delay is set out of service)",
-                raw=_entry_text(inactive[0]).strip(),
-            )
         if ctx.dist_on is None:
             return self.bad(*ctx.dist_reads, reason=f"{t.name} in-service state is not established (Distance Protection state unresolved)")
-        # The 7SA511 has no per-zone enable setting. A finite delay does not establish that a
-        # zone is in service either: the state is left unresolved so that the generic
-        # defeated-zone rule (a 10.0 s delay) and the user's own review decide, never this profile.
-        infinite = any(r.infinite for r in reads)
+        # The 7SA511 has no per-zone enable setting, and 1201 DIST.PROT. = ON is the state of the whole
+        # distance function. Neither that, nor a finite delay, nor a design note makes a zone enabled or
+        # disabled: the state is left unresolved so that the generic defeated-zone rule (a 10.0 s delay)
+        # and the user's own review decide, never this profile.
+        function_entries = tuple(e for r in ctx.dist_reads if r.ok for e in r.entries)
         return unresolved(
-            sources=self.refs(*timer_entries),
+            sources=self.refs(*function_entries, *timer_entries),
             notes=(
-                f"{t.name} has no per-zone enable setting, so whether it is in service is not established. "
-                + ("Every operating delay the sheet lists for it is Infinity, which is not read as a state by itself. " if infinite else "")
-                + "No state is assumed.",
+                f"{t.name} has no per-zone enable setting. DIST.PROT. = ON states that the distance function as a whole "
+                "is on, not that this zone is enabled; no zone state is assumed.",
             ),
             cause=UnresolvedCause.MISSING,
         )
+
+    def source_notes(self, t: _ZoneTable) -> tuple[SourceNote, ...]:
+        """The document's notes about one zone, kept as notes: requirements and design intent
+        ("Backup 21Z scheme requirements"), never the zone's current settings."""
+        out = []
+        for s in self.statements(t.label):
+            text = _entry_text(s).strip()
+            timer = _STATED_TIMER.search(text)
+            if timer:
+                subject, value = "timer", f"{timer.group(1)} s"
+            elif _STATED_INACTIVE.search(text):
+                subject, value = "status", "Inactive (out of service)"
+            else:
+                subject = value = None
+            out.append(SourceNote(SourceNoteKind.PROPOSED_REQUIREMENT, text, subject, value, sources=self.refs(s)))
+        return tuple(out)
 
     # --- completeness ------------------------------------------------------------------------
 
@@ -833,20 +871,17 @@ class _Interpreter:
         return tuple(out)
 
     def finish_notes(self, zones: tuple[DistanceZone, ...]) -> None:
-        if any(z.reach.is_resolved for z in zones):
+        if any(z.x_reach_ohm.is_resolved for z in zones):
             self.note(
-                "Zone reach is the reactance setting (X) modelled as a pure reactance boundary at 90 degrees; "
-                "no tilt is stated by the sheet."
+                "Zone reach is stated as explicit R / X limits: the reactive reach (X) and the resistive reach (R). "
+                "The sheet states no reach angle, so none is modelled."
             )
             self.note("No Left Resistive Reach (−R) is stated by the sheet.")
-        stated_conflict = any(
-            n.startswith("The sheet's notes also say") for z in zones for tm in (z.common_timer_s, z.phase_timer_s, z.earth_timer_s)
-            for n in tm.provenance.notes
-        )
-        if stated_conflict:
+        if any(z.source_notes for z in zones):
             self.note(
-                "The settings table lists Infinity for operating delays that the sheet's own notes give as finite times; "
-                "neither is applied. State the delays of the zones that are in service in the review."
+                "The sheet's notes state timers and zone states as verification / backup-scheme requirements. They are "
+                "document notes, not current settings, and are not applied; state the delays and zone states that apply "
+                "in the review."
             )
 
 

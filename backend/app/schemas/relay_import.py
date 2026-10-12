@@ -87,6 +87,16 @@ class ReviewItemOut(BaseModel):
     not_required_reason: str | None = None
 
 
+class ReviewSourceNoteOut(BaseModel):
+    """A document statement about a zone that is not one of its settings (a requirement or
+    design note). Shown beside the zone; never a value and never applied."""
+
+    kind_label: str
+    title: str
+    text: str
+    sources: list[ReviewSourceOut] = []
+
+
 class ReviewGroupOut(BaseModel):
     id: str
     kind: Literal["relay", "transformers", "line", "zone", "compensation"]
@@ -97,6 +107,7 @@ class ReviewGroupOut(BaseModel):
     #: Helper text for a zone whose state was assumed.
     state_note: str | None = None
     items: list[ReviewItemOut] = []
+    source_notes: list[ReviewSourceNoteOut] = []
 
 
 class ReviewRawSettingOut(BaseModel):
@@ -245,11 +256,14 @@ class ApplyZoneOut(BaseModel):
     #: ``None`` only for a *disabled* zone whose direction the source does not state.
     direction: Literal["forward", "reverse"] | None = None
     delay_s: _Ohm | None = None
-    #: Reach angle (°) -- distinct from every reach in ohms.
+    #: ``polar``: a reach at an angle. ``explicit_rx``: orthogonal X / +R / -R limits with no
+    #: angle (``characteristic_angle_deg`` is then absent) -- never converted to a polar reach.
+    geometry_mode: Literal["polar", "explicit_rx"] = "polar"
+    #: Reach angle (°) -- distinct from every reach in ohms. Absent for an explicit R/X zone.
     characteristic_angle_deg: Annotated[float, Field(allow_inf_nan=False)] | None = None
     #: Mho |Z| reach (Ω).
     reach_ohm: _Ohm | None = None
-    #: Quadrilateral reactive reach (Ω).
+    #: Quadrilateral reactive reach (Ω); the X limit of an explicit R/X zone.
     reactive_reach_ohm: _Ohm | None = None
     #: Right Resistive Reach (+R), Ω.
     resistive_reach_forward_ohm: _Ohm | None = None

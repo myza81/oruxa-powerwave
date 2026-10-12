@@ -228,6 +228,16 @@ negative-X case — supporting all four quadrants mathematically even
 though the forward characteristic itself primarily occupies one region
 (`TestQuadrilateralCharacteristicGolden`).
 
+
+### Explicit R/X geometry (DEC-191)
+
+A quadrilateral zone can be stated in one of two ways, per zone (`ZoneSettings.geometry_mode`):
+
+* `polar` (default, everything above): `reactive_reach_ohm` is a distance along `characteristic_angle_deg`.
+* `explicit_rx`: orthogonal limits - `reactive_reach_ohm` is the **X limit**, `resistive_reach_forward_ohm` the **+R** limit, `resistive_reach_reverse_ohm` the **-R** limit - and the zone has **no angle** (`characteristic_angle_deg` stays `None`; none is required or invented). It is evaluated by `explicit_rx_quadrilateral_zone_operated()`, which calls `quadrilateral_zone_operated()` in the orthogonal frame (x' = X, r' = R), so there is one set of maths: the same boundary tolerance, a valid 0 Ω left limit and the same 180 degree `reverse` rotation. Direction is independent of the mode. Only a quadrilateral can be explicit; the mho characteristic ignores it (Not Operated).
+
+The two modes coexist in one analysis. The generic `zones` request parameter takes `geometry_mode` per zone; the frontend draws an explicit zone with the same quadrilateral renderer in the orthogonal frame (`wwDistanceZoneFrameAngleDeg`) and hides the zone card's angle field.
+
 ## Zone priority — none; independent evaluation
 
 Zone 1/2/3 are evaluated **completely independently** — more than one

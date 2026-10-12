@@ -16,7 +16,10 @@ import pytest
 from app.domain.relay_import.canonical_distance import (
     CharacteristicType,
     CompensationKind,
+    GeometryMode,
+    ImpedanceValue,
     SettingBasis,
+    SourceNoteKind,
     ZoneDirection,
     ZoneStatus,
 )
@@ -33,7 +36,7 @@ from app.relay_profiles.siemens_7sa511 import (
     Siemens7SA511Profile,
 )
 from app.services.relay_interpretation_summary import InterpretationStatus, summarize_interpretation
-from tests.relay_7sa511_fixtures import BASE, FINITE_TIMERS, make_doc
+from tests.relay_7sa511_fixtures import BASE, FINITE_TIMERS, INFINITY_IN_VALUE_COLUMN, make_doc
 
 APP = Path(__file__).resolve().parents[1] / "app"
 SECONDS = ("phase_timer_s", "earth_timer_s", "common_timer_s")
@@ -190,11 +193,26 @@ class TestZoneModel:
         assert zone(model, "Z3").direction.value is ZoneDirection.REVERSE
         assert zone(model, "Z4").direction.value is ZoneDirection.FORWARD
 
-    def test_reach_is_the_reactance_setting_as_an_assumption(self, model):
-        reach = zone(model, "Z2").reach
-        assert (reach.value.magnitude_ohm, reach.value.angle_deg) == (5.0, 90.0)
-        assert reach.provenance.status is MappingStatus.INFERRED
-        assert "reactance" in reach.provenance.notes[0] and "tilt" in reach.provenance.notes[0]
+    def test_the_zones_use_explicit_rx_geometry_not_a_polar_reach(self, model):
+        for zid in ("Z1", "Z2", "Z3", "Z1B", "Z1L"):
+            z = zone(model, zid)
+            assert z.characteristic.geometry_mode is GeometryMode.EXPLICIT_RX
+            assert not z.reach.is_resolved  # no polar reach exists for this zone
+        assert zone(model, "Z4").characteristic.geometry_mode is GeometryMode.POLAR_REACH  # no geometry claimed
+
+    def test_the_reactive_reach_is_the_sheets_x_setting_mapped_directly(self, model):
+        x = zone(model, "Z2").x_reach_ohm
+        assert x.value == 5.0 and x.provenance.status is MappingStatus.MAPPED
+        assert (x.provenance.sources[0].parameter_id, x.provenance.sources[0].parameter_name) == ("1312", "X2")
+
+    def test_no_reach_angle_is_invented_anywhere_in_the_model(self, model):
+        # The sheet states no angle: no polar (magnitude, angle) value, no 90 degrees, no tilt, no line angle.
+        for path, sourced in model.iter_sourced():
+            assert not isinstance(sourced.value, ImpedanceValue), path
+        for z in model.zones:
+            assert not z.tilt_deg.is_resolved
+        assert not model.line.line_angle_deg.is_resolved
+        assert all("90" not in " ".join(sourced.provenance.notes) for _, sourced in model.iter_sourced())
 
     def test_characteristic_is_an_assumption_and_never_mho(self, model):
         for zid in ("Z1", "Z2", "Z3", "Z1B", "Z1L"):
@@ -203,7 +221,7 @@ class TestZoneModel:
 
     def test_zone_4_is_the_fault_detection_stage_and_claims_no_geometry(self, model):
         z4 = zone(model, "Z4")
-        assert not z4.reach.is_resolved and not z4.characteristic.type.is_resolved
+        assert not z4.reach.is_resolved and not z4.characteristic.type.is_resolved and not z4.x_reach_ohm.is_resolved
         assert z4.reach.provenance.cause is UnresolvedCause.MISSING
         assert {s.parameter_id for s in z4.reach.provenance.sources} == {"1621", "1622", "1623"}
         assert z4.compensation is None
@@ -214,7 +232,7 @@ class TestZoneModel:
 
     def test_phase_phase_and_phase_earth_resistive_reach_stay_distinct(self, model):
         z1 = zone(model, "Z1").resistive_reach
-        assert (z1.phase_phase.value, z1.phase_earth.value) == (2.0, 6.0)
+        assert (z1.phase_phase.value, z1.phase_earth.value) == (2.0, 6.0)  # R1 (+R) and R1E, never swapped
         assert not z1.common.is_resolved
         assert z1.phase_phase.provenance.status is z1.phase_earth.provenance.status is MappingStatus.INFERRED
         assert "does not label the loop" in z1.phase_phase.provenance.notes[0]
@@ -246,18 +264,52 @@ class TestZoneModel:
 
 
 class TestStatusAndTimers:
-    def test_infinity_is_read_but_never_turned_into_a_delay(self, model):
-        t = zone(model, "Z2").phase_timer_s
-        assert not t.is_resolved and t.provenance.raw_value == "Infinity"
-        assert t.provenance.cause is UnresolvedCause.MISSING
-        assert "Infinity" in t.provenance.notes[0] and "none is assumed" in t.provenance.notes[0]
+    """The sheet's TAP SETTING cell of an operating timer is BLANK; ``Infinity`` is printed in the
+    range / allowed-values column. That is not the configured delay."""
 
-    def test_the_sheets_own_finite_timer_statements_are_shown_beside_it_and_not_applied(self, model):
-        t = zone(model, "Z1").phase_timer_s
-        assert any("0.15s" in n and "not applied" in n for n in t.provenance.notes)
-        cited = {r.setting_id for r in t.provenance.sources}
-        assert len(cited) >= 2  # the table row and the sheet's note
-        assert any("finite times" in n for n in model.interpretation_notes)
+    def test_the_range_column_infinity_is_not_the_timer(self, model, doc):
+        raw = next(r for r in doc.settings if r.parameter_id == "1315")
+        assert raw.raw_value is None and raw.setting_range.text == "Infinity"  # the extractor kept the columns apart
+        t = zone(model, "Z2").earth_timer_s
+        assert not t.is_resolved and t.provenance.cause is UnresolvedCause.MISSING
+        assert t.provenance.raw_value is None  # nothing was stated; "Infinity" is not echoed as the value
+        assert "blank" in t.provenance.notes[0] and "not the configured delay" in " ".join(t.provenance.notes)
+
+    def test_every_zone_timer_stays_missing(self, model):
+        for zid in ZONE_IDS:
+            for attr in SECONDS:
+                t = getattr(zone(model, zid), attr)
+                assert not t.is_resolved and t.value is None
+                assert t.provenance.raw_value is None
+                if t.provenance.sources:  # a timer the zone has
+                    assert t.provenance.cause is UnresolvedCause.MISSING
+
+    def test_infinity_is_not_a_zone_state_either(self, model):
+        for zid in ZONE_IDS:
+            assert zone(model, zid).status.value is None
+
+    def test_an_infinity_in_the_setting_column_is_still_never_a_delay(self):
+        m = interpret(overrides=INFINITY_IN_VALUE_COLUMN)
+        t = zone(m, "Z2").phase_timer_s
+        assert not t.is_resolved and t.provenance.raw_value == "Infinity" and t.provenance.cause is UnresolvedCause.MISSING
+        assert "none is assumed" in t.provenance.notes[0]
+        assert not zone(m, "Z2").status.is_resolved
+
+    def test_the_page_notes_are_source_notes_not_settings(self, model):
+        z = {zid: zone(model, zid).source_notes for zid in ZONE_IDS}
+        assert [(n.subject, n.value_text) for n in z["Z1"]] == [("timer", "0.15 s")]
+        assert [(n.subject, n.value_text) for n in z["Z2"]] == [("timer", "0.45 s")]
+        assert [(n.subject, n.value_text) for n in z["Z3"]] == [("timer", "3 s")]
+        assert [(n.subject, n.value_text) for n in z["Z4"]] == [("timer", "3 s")]
+        assert z["Z1L"] == ()
+        note = z["Z1"][0]
+        assert note.kind is SourceNoteKind.PROPOSED_REQUIREMENT and "0.15s" in note.text
+        assert note.sources and note.sources[0].setting_id  # provenance of the note's own line
+
+    def test_the_notes_are_not_cited_by_the_timer_they_would_contradict(self, model):
+        note_ids = {r.setting_id for n in zone(model, "Z1").source_notes for r in n.sources}
+        for attr in SECONDS:
+            assert not note_ids & {r.setting_id for r in getattr(zone(model, "Z1"), attr).provenance.sources}
 
     def test_finite_delays_map_to_the_loop_they_belong_to(self, finite):
         z1, z3 = zone(finite, "Z1"), zone(finite, "Z3")
@@ -266,22 +318,32 @@ class TestStatusAndTimers:
         assert z3.common_timer_s.value == 3.0 and z3.common_timer_s.provenance.status is MappingStatus.MAPPED
         assert zone(finite, "Z4").common_timer_s.value == 3.0
 
-    def test_no_zone_is_enabled_by_the_profile(self, model, finite):
-        # The 7SA511 has no per-zone enable; a finite delay is not a state either.
+    def test_overall_distance_protection_on_does_not_enable_any_zone(self, model, finite):
+        # 1201 DIST.PROT. = ON is the state of the whole function; the 7SA511 has no per-zone enable,
+        # and a finite delay is not a state either.
         for m in (model, finite):
-            for zid in ("Z1", "Z2", "Z3", "Z4", "Z1L"):
+            for zid in ZONE_IDS:
                 assert not zone(m, zid).status.is_resolved
                 assert zone(m, zid).status.provenance.cause is UnresolvedCause.MISSING
+                assert "no per-zone enable" in zone(m, zid).status.provenance.notes[0]
 
-    def test_zone_1b_is_disabled_only_because_the_sheet_says_inactive(self, model):
-        s = zone(model, "Z1B").status
-        assert s.value is ZoneStatus.DISABLED and s.provenance.status is MappingStatus.INFERRED
-        assert s.provenance.raw_value.startswith("Zone 1B Inactive")
-        assert any("Inactive" in (r.parameter_name or "") for r in s.provenance.sources)
+    def test_zone_1_2_3_statuses_are_unresolved_and_their_directions_stay_mapped(self, model):
+        for zid, d in (("Z1", ZoneDirection.FORWARD), ("Z2", ZoneDirection.FORWARD), ("Z3", ZoneDirection.REVERSE)):
+            z = zone(model, zid)
+            assert not z.status.is_resolved
+            assert z.direction.value is d and z.direction.provenance.status is MappingStatus.MAPPED
 
-    def test_a_negated_inactive_statement_does_not_disable_the_zone(self):
-        m = interpret(notes=(("Zone 1B not inactive: timer to be set",),))
-        assert not zone(m, "Z1B").status.is_resolved
+    def test_the_zone_1b_inactive_note_is_not_a_current_state(self, model):
+        z1b = zone(model, "Z1B")
+        assert not z1b.status.is_resolved
+        note = z1b.source_notes[0]
+        assert (note.subject, note.value_text) == ("status", "Inactive (out of service)")
+        assert note.text.startswith("Zone 1B Inactive")
+
+    def test_a_note_in_any_wording_changes_no_state(self):
+        for text in ("Zone 1B not inactive: timer to be set", "Zone 2 out of service for the backup scheme"):
+            m = interpret(notes=((text,),))
+            assert all(not z.status.is_resolved for z in m.zones)
 
     def test_function_off_disables_every_zone(self):
         m = interpret(overrides={"1201": ("DIST.PROT.", "OFF", "ON,OFF")})
@@ -292,6 +354,9 @@ class TestStatusAndTimers:
     def test_an_unreadable_function_state_leaves_status_unresolved(self):
         m = interpret(overrides={"1201": ("DIST.PROT.", "MAYBE", "ON,OFF")})
         assert not zone(m, "Z2").status.is_resolved
+
+    def test_the_interpretation_says_the_notes_are_not_settings(self, model):
+        assert any("not current settings" in n and "not applied" in n for n in model.interpretation_notes)
 
 
 # ---------------------------------------------------------------------------
@@ -324,10 +389,11 @@ class TestGenericDefeatedZoneRuleIsNotDuplicated:
         m = infer_defeated_zones(interpret(overrides={"1305": ("T1 1PHASE", "10", "0.00-32.00 s"), "1306": ("T1 >1PHASE", "0.15", "0.00-32.00 s")}))
         assert not zone(m, "Z1").status.is_resolved
 
-    def test_explicit_inactive_wins_over_the_generic_rule(self):
+    def test_the_zone_1b_note_does_not_stand_in_for_a_state_so_the_generic_rule_still_applies(self):
+        # The "inactive" statement is a note; with two 10 s delays the generic rule (not the note) decides.
         m = infer_defeated_zones(interpret(overrides={"1405": ("T1B 1PHASE", "10", "0.00-32.00 s"), "1406": ("T1B >1PHASE", "10", "0.00-32.00 s")}))
         z1b = zone(m, "Z1B").status
-        assert z1b.value is ZoneStatus.DISABLED and DEFEATED_ZONE_REASON not in z1b.provenance.notes
+        assert z1b.value is ZoneStatus.DISABLED and z1b.provenance.notes == (DEFEATED_ZONE_REASON,)
 
     def test_the_profile_contains_no_copy_of_the_rule(self):
         import ast
@@ -347,7 +413,7 @@ class TestGenericDefeatedZoneRuleIsNotDuplicated:
 class TestUnresolvedStaysUnresolved:
     def test_a_known_address_under_another_name_is_a_conflict(self):
         m = interpret(overrides={"1302": ("X1 NEW", "3", "0.05-130 ohms")})
-        reach = zone(m, "Z1").reach
+        reach = zone(m, "Z1").x_reach_ohm
         assert not reach.is_resolved and reach.provenance.cause is UnresolvedCause.CONFLICT
 
     def test_a_non_numeric_cell_is_unreadable(self):
@@ -357,7 +423,7 @@ class TestUnresolvedStaysUnresolved:
 
     def test_a_value_outside_the_printed_range_is_a_conflict(self):
         m = interpret(overrides={"1302": ("X1", "500", "0.05-130 ohms")})
-        assert zone(m, "Z1").reach.provenance.cause is UnresolvedCause.CONFLICT
+        assert zone(m, "Z1").x_reach_ohm.provenance.cause is UnresolvedCause.CONFLICT
 
     def test_a_wrong_printed_unit_is_not_converted(self):
         m = interpret(overrides={"1105": ("In PRIMARY", "800", "10-5000 kA")})
@@ -410,9 +476,9 @@ class TestProvenance:
     def test_nothing_resting_on_family_knowledge_is_mapped(self, model):
         inferred_paths = [
             "transformers.setting_basis",
-            "zones[Z1].reach", "zones[Z1].characteristic.type",
+            "zones[Z1].characteristic.type",
             "zones[Z1].resistive_reach.phase_phase", "zones[Z1].resistive_reach.phase_earth",
-            "zones[Z1].phase_phase_enabled", "zones[Z1].phase_earth_enabled", "zones[Z1B].status",
+            "zones[Z1].phase_phase_enabled", "zones[Z1].phase_earth_enabled",
         ]
         by_path = dict(model.iter_sourced())
         for path in inferred_paths:
@@ -420,9 +486,9 @@ class TestProvenance:
             assert by_path[path].provenance.notes, path  # the reason for the assumption is recorded
 
     def test_the_original_setting_name_and_code_and_raw_text_are_kept(self, model):
-        src = zone(model, "Z2").reach.provenance.sources[0]
+        src = zone(model, "Z2").x_reach_ohm.provenance.sources[0]
         assert (src.parameter_id, src.parameter_name) == ("1312", "X2") and src.page and src.location
-        assert zone(model, "Z2").reach.provenance.raw_value == "5"
+        assert zone(model, "Z2").x_reach_ohm.provenance.raw_value == "5"
 
     def test_out_of_scope_settings_are_retained_and_marked(self, model):
         out = {u.name: u.out_of_scope for u in model.unmapped_settings}
@@ -456,7 +522,7 @@ class TestEngineAdapterView:
 
         decisions = ReviewDecisions(
             manual={"zones[Z1].status": "enabled", "zones[Z2].status": "enabled", "zones[Z3].status": "enabled",
-                    "zones[Z4].status": "disabled", "zones[Z1L].status": "disabled",
+                    "zones[Z4].status": "disabled", "zones[Z1L].status": "disabled", "zones[Z1B].status": "disabled",
                     **{f"zones[{z}].resistive_reach.reverse": 0 for z in ("Z1", "Z2", "Z3")}},
         )
         eff = apply_review(finite, decisions)
@@ -464,7 +530,8 @@ class TestEngineAdapterView:
         # confirmable assumptions are not required by the adapter itself
         assert ad.supported, [r.message for r in ad.reasons]
         z1 = ad.zones[ad.zone_ids.index("Z1")]
-        assert (z1.reactive_reach_ohm, z1.resistive_reach_forward_ohm, z1.characteristic_angle_deg) == (3.0, 2.0, 90.0)
+        assert (z1.reactive_reach_ohm, z1.resistive_reach_forward_ohm) == (3.0, 2.0)
+        assert z1.geometry_mode == "explicit_rx" and z1.characteristic_angle_deg is None  # no synthetic angle
         assert z1.resistive_reach_forward_ohm != 6.0  # the phase-earth 6.0 ohm is preserved, not plotted
         assert any("phase-earth operation is preserved" in w for w in ad.warnings)
         assert any("residual compensation is preserved" in w for w in ad.warnings)
@@ -589,7 +656,8 @@ class TestRealSample:
     def test_reach_resistive_reach_and_direction(self, rmodel, zone_id):
         x, rpp, rpe, direction = self.EXPECTED[zone_id]
         z = zone(rmodel, zone_id)
-        assert z.reach.value.magnitude_ohm == x and z.reach.value.angle_deg == 90.0
+        assert z.x_reach_ohm.value == x and not z.reach.is_resolved
+        assert z.characteristic.geometry_mode is GeometryMode.EXPLICIT_RX
         assert (z.resistive_reach.phase_phase.value, z.resistive_reach.phase_earth.value) == (rpp, rpe)
         assert z.direction.value is direction
         assert not z.resistive_reach.reverse.is_resolved
@@ -598,24 +666,65 @@ class TestRealSample:
         c = zone(rmodel, "Z1").compensation
         assert (c.re_rl.value, c.xe_xl.value) == (0.59, 0.48) and c.kind is CompensationKind.RE_RL_XE_XL
 
-    def test_every_operating_delay_reads_infinity_and_stays_unresolved(self, rmodel):
+    def test_the_range_column_infinity_is_not_a_timer_and_every_delay_stays_missing(self, rmodel):
         for zid in ZONE_IDS:
             z = zone(rmodel, zid)
             for attr in SECONDS:
                 t = getattr(z, attr)
                 assert not t.is_resolved
-                if t.provenance.raw_value is not None:
-                    assert t.provenance.raw_value == "Infinity"
+                assert t.provenance.raw_value is None  # the TAP SETTING cell is blank
 
-    def test_the_sheets_notes_are_attached_to_the_delays_they_contradict(self, rmodel):
-        assert any("0.15s" in n for n in zone(rmodel, "Z1").phase_timer_s.provenance.notes)
-        assert any("0.45s" in n for n in zone(rmodel, "Z2").phase_timer_s.provenance.notes)
-        assert any("3s" in n for n in zone(rmodel, "Z3").common_timer_s.provenance.notes)
+    def test_the_page_5_requirements_are_notes_only(self, rmodel):
+        figures = {zid: [n.value_text for n in zone(rmodel, zid).source_notes] for zid in ("Z1", "Z2", "Z3", "Z4")}
+        assert figures == {"Z1": ["0.15 s"], "Z2": ["0.45 s"], "Z3": ["3 s"], "Z4": ["3 s"]}
+        assert [n.subject for n in zone(rmodel, "Z1B").source_notes] == ["status"]
+        for zid in ZONE_IDS:
+            assert all(getattr(zone(rmodel, zid), a).value is None for a in SECONDS)
 
-    def test_zone_state_nothing_is_assumed_except_the_sheets_own_inactive_statement(self, rmodel):
-        assert zone(rmodel, "Z1B").status.value is ZoneStatus.DISABLED
-        for zid in ("Z1", "Z2", "Z3", "Z4", "Z1L"):
+    def test_no_zone_state_is_assumed(self, rmodel):
+        for zid in ZONE_IDS:
             assert not zone(rmodel, zid).status.is_resolved
+
+    def test_the_phase_earth_values_stay_distinct_from_the_phase_phase_ones(self, rmodel):
+        assert [zone(rmodel, z).resistive_reach.phase_earth.value for z in ("Z1", "Z2", "Z3")] == [9.14, 9.96, 2.29]
+        assert [zone(rmodel, z).resistive_reach.phase_phase.value for z in ("Z1", "Z2", "Z3")] == [1.84, 2.12, 0.46]
+        assert not any(zone(rmodel, z).resistive_reach.reverse.is_resolved for z in ZONE_IDS)  # no left reach invented
 
     def test_every_raw_entry_is_accounted_for(self, rmodel, rdoc):
         assert rmodel.referenced_setting_ids() == {s.setting_id for s in rdoc.settings}
+
+    def test_the_real_values_reach_the_apply_plan_and_the_engine_as_explicit_rx(self, rmodel):
+        from app.domain.distance_protection import (
+            CHARACTERISTIC_QUADRILATERAL,
+            ZONE_STATE_NOT_OPERATED,
+            ZONE_STATE_OPERATED,
+            evaluate_zone_state,
+        )
+        from app.domain.impedance import ImpedancePoint
+        from app.domain.relay_import.apply_settings import build_apply_plan
+        from app.domain.relay_import.review_state import ReviewDecisions, apply_review
+
+        manual = {f"zones[{z}].status": "enabled" for z in ("Z1", "Z2", "Z3")}
+        manual |= {f"zones[{z}].status": "disabled" for z in ("Z4", "Z1B", "Z1L")}
+        manual |= {f"zones[{z}].resistive_reach.reverse": 0 for z in ("Z1", "Z2", "Z3")}
+        manual |= {"zones[Z1].phase_timer_s": 0.15, "zones[Z2].phase_timer_s": 0.45, "zones[Z3].common_timer_s": 3}
+        eff = apply_review(rmodel, ReviewDecisions(manual=manual))
+        ad = adapt_to_engine(eff, engine_basis="secondary")
+        assert ad.supported, [r.message for r in ad.reasons]
+        plan = build_apply_plan(eff, ad, impedance_basis="secondary")
+        z1, z2, z3 = plan.zones[:3]
+        assert (z1.reactive_reach_ohm, z1.resistive_reach_forward_ohm) == (2.74, 1.84)
+        assert (z2.reactive_reach_ohm, z2.resistive_reach_forward_ohm) == (4.47, 2.12)
+        assert (z3.reactive_reach_ohm, z3.resistive_reach_forward_ohm, z3.direction) == (0.69, 0.46, "reverse")
+        assert all(z.geometry_mode == "explicit_rx" and z.characteristic_angle_deg is None for z in (z1, z2, z3))
+        assert [z.delay_s for z in (z1, z2, z3)] == [0.15, 0.45, 3.0]  # the user's, not the page-5 notes' (equal here by choice)
+
+        def state(zid, r, x):
+            zs = ad.zones[ad.zone_ids.index(zid)]
+            return evaluate_zone_state(ImpedancePoint(r, x, 0.0, 0.0), characteristic=CHARACTERISTIC_QUADRILATERAL, zone=zs)
+
+        assert (state("Z1", 1.83, 2.73), state("Z1", 1.85, 2.0), state("Z1", 1.0, 2.75)) == (
+            ZONE_STATE_OPERATED, ZONE_STATE_NOT_OPERATED, ZONE_STATE_NOT_OPERATED)
+        assert (state("Z2", 2.11, 4.46), state("Z2", 2.13, 4.0)) == (ZONE_STATE_OPERATED, ZONE_STATE_NOT_OPERATED)
+        assert (state("Z3", -0.45, -0.68), state("Z3", 0.45, 0.68), state("Z3", -0.47, -0.3)) == (
+            ZONE_STATE_OPERATED, ZONE_STATE_NOT_OPERATED, ZONE_STATE_NOT_OPERATED)

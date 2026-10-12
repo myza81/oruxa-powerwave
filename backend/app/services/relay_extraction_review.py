@@ -42,7 +42,9 @@ from app.domain.relay_import.canonical_distance import (
     CompensationKind,
     DistanceZone,
     ExtraQuantity,
+    GeometryMode,
     ImpedanceValue,
+    SourceNote,
     UnresolvedSetting,
     ZoneStatus,
     item_label,
@@ -156,6 +158,20 @@ class ReviewItem:
 
 
 @dataclass(frozen=True)
+class ReviewSourceNote:
+    """A statement the document makes about a zone that is not one of its settings (for
+    example a backup-scheme requirement). Shown beside the zone, never as its value."""
+
+    #: Fixed presentation phrase for the kind of note (e.g. "Document note / proposed requirement").
+    kind_label: str
+    #: Short heading, e.g. "Zone 1 timer requirement: 0.15 s".
+    title: str
+    #: The document's own words.
+    text: str
+    sources: tuple[ReviewSource, ...] = ()
+
+
+@dataclass(frozen=True)
 class ReviewGroup:
     id: str
     kind: str  # relay | transformers | line | zone | compensation
@@ -168,6 +184,8 @@ class ReviewGroup:
     #: Helper text for a zone whose state Oruxa assumed (e.g. an absent optional zone).
     state_note: str | None = None
     items: tuple[ReviewItem, ...] = ()
+    #: Document notes about this zone (not settings, never applied).
+    source_notes: tuple[ReviewSourceNote, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -282,6 +300,9 @@ _STATUS_LABELS = {
     ZoneStatus.INACTIVE.value: "Inactive",
     ZoneStatus.UNKNOWN.value: "Unknown",
 }
+_SOURCE_NOTE_KIND_LABELS = {"proposed_requirement": "Document note / proposed requirement"}
+_GEOMETRY_LABELS = {GeometryMode.EXPLICIT_RX.value: "Explicit R/X", GeometryMode.POLAR_REACH.value: "Polar Reach"}
+
 _CHARACTERISTIC_LABELS = {
     CharacteristicType.QUADRILATERAL.value: "Quadrilateral",
     CharacteristicType.MHO.value: "Mho",
@@ -664,10 +685,20 @@ def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
     items.append(b.item(f"{pre}.direction", "Direction", name, zone.direction, path=f"{zp}.direction"))
     ctype = zone.characteristic.type
     ctype_text = _CHARACTERISTIC_LABELS.get(str(_enum_str(ctype.value))) if ctype.is_resolved else None
+    explicit = zone.characteristic.geometry_mode is GeometryMode.EXPLICIT_RX
+    if explicit and ctype_text:
+        # A polar zone is the default and reads as it always did; only the other mode is named.
+        ctype_text = f"{ctype_text} · {_GEOMETRY_LABELS[GeometryMode.EXPLICIT_RX.value]}"
     items.append(
         b.item(f"{pre}.characteristic", "Characteristic", name, ctype, text=ctype_text, path=f"{zp}.characteristic.type")
     )
-    items += b.impedance(f"{pre}.reach", "Reach", name, zone.reach, f"{zp}.reach")
+    if explicit:
+        # Explicit R/X limits: the reach is the X limit, and there is no reach angle row to show.
+        items.append(
+            b.item(f"{pre}.x_reach", "Reactive Reach (X)", name, zone.x_reach_ohm, unit="ohm", path=f"{zp}.x_reach_ohm")
+        )
+    else:
+        items += b.impedance(f"{pre}.reach", "Reach", name, zone.reach, f"{zp}.reach")
     if _touched(zone.earth_reach):
         items += b.impedance(f"{pre}.earth_reach", "Earth Reach", name, zone.earth_reach, f"{zp}.earth_reach")
     if _touched(zone.zero_sequence_reach):
@@ -682,7 +713,8 @@ def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
         )
     items.append(
         b.item(
-            f"{pre}.rr.pp", "Phase-Phase Resistive Reach", name, rr.phase_phase, unit="ohm",
+            f"{pre}.rr.pp", "Right Resistive Reach (+R)" if explicit else "Phase-Phase Resistive Reach", name,
+            rr.phase_phase, unit="ohm",
             path=f"{zp}.resistive_reach.phase_phase",
         )
     )
@@ -737,7 +769,20 @@ def _zone_group(b: _Builder, zone: DistanceZone) -> ReviewGroup:
             "This optional zone is assumed to be disabled."
         )
     return ReviewGroup(
-        f"zone-{zone.zone_id}", "zone", name, state_label, state_status, state_review, note, tuple(items)
+        f"zone-{zone.zone_id}", "zone", name, state_label, state_status, state_review, note, tuple(items),
+        tuple(_source_note(b, name, n) for n in zone.source_notes),
+    )
+
+
+def _source_note(b: _Builder, zone_name: str, note: SourceNote) -> ReviewSourceNote:
+    kind = _enum_str(note.kind)
+    if note.subject and note.value_text:
+        title = f"{zone_name} {note.subject} requirement: {note.value_text}"
+    else:
+        title = f"{zone_name} note"
+    return ReviewSourceNote(
+        _SOURCE_NOTE_KIND_LABELS.get(str(kind), "Document note"), title, note.text,
+        tuple(b.source(ref) for ref in note.sources),
     )
 
 

@@ -16,7 +16,9 @@ Current engine capability (see DISTANCE_PROTECTION_ANALYSIS.md):
 - ONE characteristic for the whole analysis (mho or quadrilateral);
 - phase-phase loops only; forward and reverse directional geometry only --
   non-directional, unknown or unresolved directions are refused;
-- one delay per zone; one shared characteristic angle per zone;
+- one delay per zone; one shared characteristic angle per polar zone. A quadrilateral
+  zone may instead state explicit R/X limits (``GeometryMode.EXPLICIT_RX``): an X reach and
+  a right and left resistive reach, with no angle. Polar and explicit zones coexist;
 - zone ohms are compared directly against the impedance in the chosen
   basis, so the settings' primary/secondary basis must already match it.
 
@@ -35,12 +37,14 @@ from app.domain.distance_protection import (
     CHARACTERISTIC_QUADRILATERAL,
     DIRECTION_FORWARD,
     DIRECTION_REVERSE,
+    GEOMETRY_EXPLICIT_RX,
     ZoneSettings,
 )
 from app.domain.relay_import.canonical_distance import (
     CanonicalDistanceProtectionModel,
     CharacteristicType,
     DistanceZone,
+    GeometryMode,
     SettingBasis,
     ZoneDirection,
     ZoneStatus,
@@ -72,6 +76,7 @@ class UnsupportedCode(StrEnum):
     LOOP_TYPE_UNSUPPORTED = "loop_type_unsupported"
     REACH_UNRESOLVED = "reach_unresolved"
     REACH_REPRESENTATION = "reach_representation"
+    GEOMETRY_UNSUPPORTED = "geometry_unsupported"
     RESISTIVE_REACH_UNRESOLVED = "resistive_reach_unresolved"
     RESISTIVE_REACH_CONFLICT = "resistive_reach_conflict"
     TILT_UNSUPPORTED = "tilt_unsupported"
@@ -278,10 +283,30 @@ def _adapt_zone(zone, ctype, allow_incomplete, fail, warn) -> ZoneSettings:
     if ctype is None:
         return ZoneSettings()
 
+    explicit = zone.characteristic.geometry_mode is GeometryMode.EXPLICIT_RX
+    if explicit and ctype is not CharacteristicType.QUADRILATERAL:
+        fail(
+            UnsupportedCode.GEOMETRY_UNSUPPORTED,
+            "Explicit R/X limits describe a quadrilateral; they are not a mho reach and no reach is derived from them.",
+            zone,
+            (zone_path(zone, "characteristic.type"),),
+        )
+        return ZoneSettings()
+
     reach_ohm = None
     angle = None
-    reach = zone.reach
-    if reach.is_resolved:
+    reach = zone.x_reach_ohm if explicit else zone.reach
+    if explicit:
+        # No polar reach exists: the X limit is the reach and there is no angle to carry.
+        if reach.is_resolved:
+            reach_ohm = reach.value
+        elif not allow_incomplete:
+            fail(
+                UnsupportedCode.REACH_UNRESOLVED, "The Reactive Reach (X) is unresolved.", zone,
+                (zone_path(zone, "x_reach_ohm"),),
+            )
+            return ZoneSettings()
+    elif reach.is_resolved:
         z = reach.value
         if not z.is_polar:
             fail(
@@ -297,6 +322,8 @@ def _adapt_zone(zone, ctype, allow_incomplete, fail, warn) -> ZoneSettings:
         return ZoneSettings()
 
     angle_kw = {} if angle is None else {"characteristic_angle_deg": angle}  # absent only for blank manual reach
+    if explicit:
+        angle_kw = {"characteristic_angle_deg": None, "geometry_mode": GEOMETRY_EXPLICIT_RX}
     if ctype is CharacteristicType.MHO:
         return ZoneSettings(enabled=True, reach_ohm=reach_ohm, delay_s=delay, direction=direction, **angle_kw)
 

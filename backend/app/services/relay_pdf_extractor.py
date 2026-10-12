@@ -37,7 +37,7 @@ from app.domain.relay_import.raw_document import (
 logger = logging.getLogger(__name__)
 
 EXTRACTOR_ID = "generic_pdf_text"
-EXTRACTOR_VERSION = "1"
+EXTRACTOR_VERSION = "2"
 
 #: Defensive bounds (pathological documents). Reaching one is reported as a
 #: warning; the entries extracted so far are kept.
@@ -89,6 +89,9 @@ _RANGE_CELL = re.compile(
     rf"^{_RANGE_NUM}\s*(?:-|~|\.\.|to)\s*{_RANGE_NUM}{_RANGE_TAIL}$"
     r"|^[\w.+*-]{1,16}(?:[/,][\w.+*-]{1,16}){1,8}$"
 )
+#: The value and range columns of a table are at least this many characters apart (a lone cell
+#: counts as sitting in the range column when it is within a quarter of that gap of it).
+_COLUMN_GAP = 16
 _RANGE_BOUNDS = re.compile(rf"^({_RANGE_NUM})\s*(?:-|~|\.\.|to)\s*({_RANGE_NUM}){_RANGE_TAIL}$")
 #: "name = value" or "name: value"; the name must start with a letter.
 _SEPARATOR_ROW = re.compile(r"^(?P<name>[A-Za-z_][^=:]{0,59}?)\s*(?:=\s*|:\s+)(?P<value>\S.*)$")
@@ -171,7 +174,51 @@ def _split_code(name: str) -> tuple[str | None, str]:
     return None, name
 
 
-def _parse_row(text: str) -> _Row:
+def _cells_with_offsets(line: str) -> list[tuple[str, int]]:
+    """The row's cells and the character column each starts at in the layout text."""
+    out: list[tuple[str, int]] = []
+    pos = 0
+    for m in [*_CELL_SPLIT.finditer(line), None]:
+        end = m.start() if m else len(line)
+        segment = line[pos:end]
+        if segment.strip():
+            out.append((segment.strip(), pos + len(segment) - len(segment.lstrip())))
+        pos = m.end() if m else end
+    return out
+
+
+def _median(values: list[int]) -> float:
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    return float(ordered[mid]) if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2
+
+
+def _table_columns(rows: list[list[tuple[str, int]]]) -> tuple[float, float] | None:
+    """(value column, range column) of a page's settings table, from the rows that show both
+    a value cell and a range cell. ``None`` unless the evidence is clear: at least two such
+    rows, columns well apart, and most rows sitting close to both. The layout text drifts by
+    a few characters from row to row, so the columns are medians, not exact positions."""
+    ranged = [r for r in rows if len(r) >= 3 and _RANGE_CELL.match(r[-1][0])]
+    # Numeric ranges ("0.05-65 ohms") are the evidence when there are enough: option lists
+    # ("FWD,RVS") are as wide as they are long and do not mark a column edge as reliably.
+    numeric = [r for r in ranged if _RANGE_BOUNDS.match(r[-1][0])]
+    pairs = [(r[-2][1], r[-1][1]) for r in (numeric if len(numeric) >= 2 else ranged)]
+    if len(pairs) < 2:
+        return None
+    value_col, range_col = _median([p[0] for p in pairs]), _median([p[1] for p in pairs])
+    gap = range_col - value_col
+    if gap < _COLUMN_GAP:
+        return None
+    near = sum(1 for v, r in pairs if abs(v - value_col) <= gap / 4 and abs(r - range_col) <= gap / 4)
+    return (value_col, range_col) if near >= max(2, math.ceil(len(pairs) * 0.6)) else None
+
+
+def _parse_row(
+    text: str, *, offsets: list[tuple[str, int]] | None = None, columns: tuple[float, float] | None = None
+) -> _Row:
+    """``offsets`` / ``columns`` (layout text only) let a label followed by one lone cell
+    be told apart: a cell sitting in the table's range column, with the value column
+    empty, is a range -- not the value (a blank setting must not borrow its allowed values)."""
     cells = [c.strip() for c in _CELL_SPLIT.split(text) if c.strip()]
     if len(cells) >= 3 and _is_code(cells[0]) and re.search(r"[A-Za-z]", cells[1]):
         parameter_id, name, rest = cells[0], cells[1], cells[2:]
@@ -190,6 +237,14 @@ def _parse_row(text: str) -> _Row:
     name = name.rstrip(":").strip() or None
     setting_range = None
     notes: list[str] = []
+    if (
+        columns is not None and offsets is not None and len(offsets) == len(cells) == 2 and len(rest) == 1
+        and abs(offsets[1][1] - columns[1]) <= (columns[1] - columns[0]) / 4
+    ):
+        return _Row(
+            name, parameter_id, None, None, None, _parse_range(rest[0]),
+            ("the value cell is blank; the cell found sits in the range column",), "row:blank_value_range",
+        )
     if len(rest) >= 2 and _RANGE_CELL.match(rest[-1]):
         setting_range = _parse_range(rest[-1])
         rest = rest[:-1]
@@ -303,7 +358,7 @@ def extract_pdf(data: bytes) -> PdfExtractionResult:
     truncated = False
 
     for page_no, lines in enumerate(page_lines, start=1):
-        kept: list[tuple[int, str]] = []
+        kept: list[tuple[int, str, list[tuple[str, int]]]] = []
         for line_no, line in enumerate(lines, start=1):
             text = line.strip()
             if _signature(text) in furniture and _is_edge(line_no, len(lines)):
@@ -311,8 +366,9 @@ def extract_pdf(data: bytes) -> PdfExtractionResult:
                     seen_hints.add(text)
                     hints.append(" ".join(text.split()))
                 continue
-            kept.append((line_no, text))
-        for pos, (line_no, text) in enumerate(kept):
+            kept.append((line_no, text, _cells_with_offsets(line)))
+        columns = _table_columns([cells for _, _, cells in kept])
+        for pos, (line_no, text, offsets) in enumerate(kept):
             note_truncated = len(text) > MAX_LINE_CHARS
             if note_truncated:
                 text = text[:MAX_LINE_CHARS]
@@ -327,7 +383,7 @@ def extract_pdf(data: bytes) -> PdfExtractionResult:
             if len(settings) >= MAX_ENTRIES:
                 truncated = True
                 break
-            row = _parse_row(text)
+            row = _parse_row(text, offsets=offsets, columns=columns)
             notes = row.notes + (("line truncated",) if note_truncated else ())
             settings.append(
                 RawSetting(

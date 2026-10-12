@@ -565,3 +565,58 @@ class TestDynamicZonesSlice10:
         legend = _function_body(source, "function wwDistanceRenderZoneLegend", "// ---- Input Source (Recording/Manual)")
         assert "wwDistanceZoneBounds(z, wwDistanceState.characteristic)" in legend  # only zones that are drawn
         assert '" (reverse)"' in legend
+
+
+class TestExplicitRxGeometryInTheFrontend:
+    """Explicit R/X zones (X, +R, -R limits and NO angle) flow Apply -> state -> request -> plot
+    without ever being given an angle or converted to a polar reach."""
+
+    def test_zone_state_names_its_geometry_and_defaults_to_polar(self):
+        fn = _function_body(_source(), "function wwDistanceDefaultZoneSettings", "// A fresh standard zone set")
+        assert 'geometryMode: "polar"' in fn
+
+    def test_the_request_sends_the_mode_and_never_an_angle_for_an_explicit_zone(self):
+        fn = _function_body(_source(), "function wwDistanceZoneParams", "// The ONE place that dispatches")
+        assert 'dto.geometry_mode = "explicit_rx"' in fn
+        explicit = fn.index('z.geometryMode === "explicit_rx"')
+        assert explicit < fn.index("dto.characteristic_angle_deg = z.characteristicAngleDeg")
+        assert "else if (Number.isFinite(z.characteristicAngleDeg))" in fn  # the angle is the polar branch only
+
+    def test_apply_keeps_the_mode_and_refuses_an_explicit_zone_that_carries_an_angle(self):
+        fn = _function_body(_source(), "function wwDistanceApplyImportedSettings", "function wwDistanceSyncSettingsFields")
+        assert 'geometryMode: geometry' in fn
+        assert 'geometry !== "polar" && geometry !== "explicit_rx"' in fn
+        assert 'geometry === "explicit_rx" && z.characteristic_angle_deg !== undefined' in fn
+        assert 'characteristicAngleDeg: geometry === "explicit_rx" ? null' in fn  # never synthesised
+
+    def test_the_plot_uses_the_orthogonal_frame_for_explicit_zones_through_one_helper(self):
+        source = _source()
+        helper = _function_body(source, "function wwDistanceZoneFrameAngleDeg", "const WW_DISTANCE_VIEW_MIN_HALF")
+        assert 'z.geometryMode === "explicit_rx" ? 90' in helper
+        quad = _function_body(source, "function wwDistanceQuadrilateralSvg", "// ---- R-X viewport")
+        bounds = _function_body(source, "function wwDistanceZoneBounds", "// Fit Zones")
+        assert "wwDistanceZoneFrameAngleDeg(z)" in quad and "wwDistanceZoneFrameAngleDeg(z)" in bounds
+        assert "z.characteristicAngleDeg" not in quad  # one geometry, not a second implementation
+
+    def test_every_card_can_hide_its_angle_field_and_says_it_is_explicit(self):
+        source = _source()
+        for n in (1, 2, 3, 4):
+            assert f'id="wwDistanceZone{n}AngleField"' in source
+        card = _function_body(source, "const WW_DISTANCE_ZONE_CARD_FIELDS", "function wwDistanceZoneCardElement")
+        assert '["AngleInput", "AngleField"' in card
+        sync = _function_body(source, "function wwDistanceRenderZoneCards", "function wwDistanceSyncZoneFields")
+        assert "Geometry: Explicit R/X" in sync and "angleField.hidden = explicit" in sync
+
+    def test_the_review_shows_document_notes_as_notes(self):
+        source = _source()
+        fn = _function_body(source, "function wwRrSourceNotes", "function wwRrRawList")
+        assert "not a current setting, not applied" in fn
+        assert "wwRrSourceNotes(group.source_notes)" in source
+
+    def test_no_relay_family_branch_exists_in_the_geometry_code(self):
+        source = _source()
+        for fn in (
+            _function_body(source, "function wwDistanceZoneFrameAngleDeg", "const WW_DISTANCE_VIEW_MIN_HALF"),
+            _function_body(source, "function wwDistanceApplyImportedSettings", "function wwDistanceSyncSettingsFields"),
+        ):
+            assert "7SA" not in fn and "Siemens" not in fn and "P441" not in fn

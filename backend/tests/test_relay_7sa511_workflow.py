@@ -49,13 +49,14 @@ def assumptions(review):
 
 def user_decisions(review, *, timers=True):
     """What an engineer does in the generic review: states which zones are in service, a delay for
-    each (the sheet prints Infinity), accepts the 0.00 ohm suggestion for the missing Left (-R) reach,
+    each (the sheet leaves the timer cells blank), accepts the 0.00 ohm suggestion for the missing Left (-R) reach,
     then confirms the assumptions."""
     manual = [
         {"item_id": "zones[Z1].status", "value": "enabled"},
         {"item_id": "zones[Z2].status", "value": "enabled"},
         {"item_id": "zones[Z3].status", "value": "enabled"},
         {"item_id": "zones[Z4].status", "value": "disabled"},
+        {"item_id": "zones[Z1B].status", "value": "disabled"},
         {"item_id": "zones[Z1L].status", "value": "disabled"},
     ]
     if timers:
@@ -80,9 +81,11 @@ def to_analysis_zones(payload):
         if z["enabled"]:
             item.update(
                 reactive_reach_ohm=z["reactive_reach_ohm"], resistive_reach_forward_ohm=z["resistive_reach_forward_ohm"],
-                resistive_reach_reverse_ohm=z["resistive_reach_reverse_ohm"], characteristic_angle_deg=z["characteristic_angle_deg"],
-                delay_s=z["delay_s"],
+                resistive_reach_reverse_ohm=z["resistive_reach_reverse_ohm"], delay_s=z["delay_s"],
+                geometry_mode=z["geometry_mode"],
             )
+            if z["characteristic_angle_deg"] is not None:  # an explicit R/X zone carries no angle
+                item["characteristic_angle_deg"] = z["characteristic_angle_deg"]
         out.append(item)
     return out
 
@@ -105,13 +108,15 @@ class TestUploadAndReview:
         )
         assert body["interpretation_status"] == "interpreted" and body["zone_count"] == 6
         review = body["review"]
-        assert (review["manufacturer"], review["model"], review["profile_version"]) == ("Siemens", "7SA511", "siemens-7sa511-v1")
+        assert (review["manufacturer"], review["model"], review["profile_version"]) == ("Siemens", "7SA511", "siemens-7sa511-v2")
 
     def test_the_generic_review_builds_one_group_per_zone_with_the_sheets_own_labels(self, client):
         review = upload(client)["review"]
         zone_groups = [g for g in review["groups"] if g["kind"] == "zone"]
         assert [g["title"] for g in zone_groups] == ["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 1B", "Zone 1L"]
-        assert zone_groups[4]["state_label"] == "Disabled / Defeated"  # the sheet itself declares Zone 1B inactive
+        # the sheet's Zone 1B "inactive" line is a document note: it states no current zone state
+        assert zone_groups[4]["state_label"] == "Status unresolved"
+        assert [g["state_label"] for g in zone_groups] == ["Status unresolved"] * 6
 
     def test_counts_and_blockers_are_reported_by_the_generic_taxonomy(self, client):
         review = upload(client)["review"]
@@ -123,10 +128,35 @@ class TestUploadAndReview:
 
     def test_provenance_is_available_for_every_listed_value(self, client):
         review = upload(client)["review"]
-        x2 = next(i for g in review["groups"] for i in g["items"] if i["item_id"] == "zones[Z2].reach")
-        assert x2["category"] == "assumption" and x2["sources"][0]["code"] == "1312" and x2["sources"][0]["name"] == "X2"
+        x2 = next(i for g in review["groups"] for i in g["items"] if i["item_id"] == "zones[Z2].x_reach_ohm")
+        assert x2["label"] == "Reactive Reach (X)" and x2["category"] == "mapped"
+        assert x2["sources"][0]["code"] == "1312" and x2["sources"][0]["name"] == "X2"
         timer = next(i for g in review["groups"] for i in g["items"] if i["item_id"] == "zones[Z2].phase_timer_s")
-        assert timer["category"] == "missing" and timer["raw_value"] == "Infinity"
+        assert timer["category"] == "missing" and timer["raw_value"] is None and timer["value_text"] is None
+
+    def test_explicit_rx_zones_show_x_and_resistive_reaches_and_no_fake_angle(self, client):
+        review = upload(client)["review"]
+        for zid in ("Z1", "Z2", "Z3"):
+            group = next(g for g in review["groups"] if g["id"] == f"zone-{zid}")
+            labels = [i["label"] for i in group["items"]]
+            assert "Reactive Reach (X)" in labels and "Right Resistive Reach (+R)" in labels
+            assert "Left Resistive Reach (−R)" in labels and "Earth Resistive Reach" in labels
+            assert not any("Angle" in label for label in labels) and "Reach" not in labels
+            ch = next(i for i in group["items"] if i["label"] == "Characteristic")
+            assert ch["value_text"] == "Quadrilateral · Explicit R/X"
+
+    def test_page_5_requirements_are_shown_as_document_notes_beside_the_zone(self, client):
+        review = upload(client)["review"]
+        group = {g["id"]: g for g in review["groups"]}
+        z1 = group["zone-Z1"]["source_notes"]
+        assert [(n["kind_label"], n["title"]) for n in z1] == [
+            ("Document note / proposed requirement", "Zone 1 timer requirement: 0.15 s")
+        ]
+        assert z1[0]["sources"] and z1[0]["text"].startswith("Zone 1")
+        assert group["zone-Z1B"]["source_notes"][0]["title"] == "Zone 1B status requirement: Inactive (out of service)"
+        # a note is never a value: the zone's own timer still shows nothing
+        timer = next(i for i in group["zone-Z1"]["items"] if i["item_id"] == "zones[Z1].phase_timer_s")
+        assert timer["value_text"] is None and "0.15" not in json.dumps(timer)
 
     def test_summary_fields_carry_no_document_values(self, client):
         body = upload(client)
@@ -161,11 +191,15 @@ class TestReadinessAndApply:
         assert [z["id"] for z in out["zones"]] == ["Z1", "Z2", "Z3", "Z4", "Z1B", "Z1L"]
         z1, z2, z3, z4, z1b, z1l = out["zones"]
         assert (z1["enabled"], z1["direction"], z1["reactive_reach_ohm"], z1["resistive_reach_forward_ohm"]) == (True, "forward", 3.0, 2.0)
-        assert (z1["resistive_reach_reverse_ohm"], z1["characteristic_angle_deg"], z1["delay_s"]) == (0.0, 90.0, 0.15)
+        assert (z1["resistive_reach_reverse_ohm"], z1["delay_s"]) == (0.0, 0.15)
+        # explicit R/X travels through Apply as it is: no angle, never converted to a polar reach
+        assert z1["geometry_mode"] == "explicit_rx" and z1["characteristic_angle_deg"] is None and z1["reach_ohm"] is None
+        assert all(z["geometry_mode"] == "explicit_rx" for z in (z2, z3))
         assert (z2["reactive_reach_ohm"], z2["resistive_reach_forward_ohm"], z2["delay_s"]) == (5.0, 3.0, 0.45)
         assert (z3["direction"], z3["delay_s"]) == ("reverse", 3.0)
         for z in (z4, z1b, z1l):  # disabled zones are present but carry no geometry
             assert z["enabled"] is False and z["reactive_reach_ohm"] is None and z["resistive_reach_forward_ohm"] is None
+            assert z["characteristic_angle_deg"] is None
 
     def test_the_phase_earth_resistive_reach_is_not_what_is_applied(self, client):
         out = client.post(APPLY, json=user_decisions(upload(client)["review"])).json()
@@ -175,8 +209,11 @@ class TestReadinessAndApply:
     def test_payload_is_the_generic_dto_and_holds_no_relay_or_document_data(self, client):
         out = client.post(APPLY, json=user_decisions(upload(client)["review"])).json()
         assert set(out) == {"characteristic", "impedance_basis", "zones"}
+        assert all(set(z) <= {"id", "display_name", "enabled", "direction", "delay_s", "geometry_mode", "characteristic_angle_deg",
+                              "reach_ohm", "reactive_reach_ohm", "resistive_reach_forward_ohm", "resistive_reach_reverse_ohm"}
+                   for z in out["zones"])
         text = json.dumps(out)
-        for token in ("7SA", "Siemens", "SIPROTEC", "DIGSI", "pdf", "sheet", "Infinity", "raw"):
+        for token in ("7SA", "Siemens", "SIPROTEC", "DIGSI", "pdf", "sheet", "Infinity", "raw", "requirement"):
             assert token not in text
 
     def test_a_blocking_zone_stays_blocking_enabled_zone_4_cannot_be_applied(self, client):
@@ -193,6 +230,14 @@ class TestReadinessAndApply:
         assert client.post(VALIDATE, json=body).json()["readiness"]["status"] == "ready"
         out = client.post(APPLY, json=body).json()
         assert [z["delay_s"] for z in out["zones"][:3]] == [0.15, 0.45, 3.0]
+
+    def test_the_users_zone_1b_choice_is_needed_because_the_note_states_nothing(self, client):
+        review = upload(client)["review"]
+        body = user_decisions(review)
+        body["manual"] = [m for m in body["manual"] if m["item_id"] != "zones[Z1B].status"]
+        state = client.post(VALIDATE, json=body).json()
+        assert state["readiness"]["status"] == "not_ready"
+        assert any(b["zone_ids"] == ["Z1B"] or "Z1B" in b["zone_ids"] for b in state["blocking_issues"])
 
     def test_a_10_s_delay_is_disabled_by_the_generic_rule_and_not_applied(self, client):
         ten = {"1405": ("T1B 1PHASE", "10", "0.00-32.00 s"), "1406": ("T1B >1PHASE", "10", "0.00-32.00 s"),

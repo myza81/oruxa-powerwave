@@ -100,6 +100,7 @@ _RESOLUTION_SPECS: tuple[tuple[re.Pattern[str], ResolutionSpec], ...] = (
     (re.compile(_ZONE + r"status$"), _STATUS),
     (re.compile(_ZONE + r"direction$"), _DIRECTION),
     (re.compile(_ZONE + r"resistive_reach\.(common|phase_phase|phase_earth|reverse)$"), _OHM),
+    (re.compile(_ZONE + r"x_reach_ohm$"), _OHM),
     (re.compile(_ZONE + r"(common|phase|earth)_timer_s$"), _SECONDS),
 )
 
@@ -389,6 +390,7 @@ _CAPABILITY_CODES = frozenset({
     UnsupportedCode.CHARACTERISTIC_UNSUPPORTED,
     UnsupportedCode.CHARACTERISTIC_MIXED,
     UnsupportedCode.DIRECTION_UNSUPPORTED,
+    UnsupportedCode.GEOMETRY_UNSUPPORTED,
     UnsupportedCode.LOOP_TYPE_UNSUPPORTED,
     UnsupportedCode.REACH_REPRESENTATION,
     UnsupportedCode.TILT_UNSUPPORTED,

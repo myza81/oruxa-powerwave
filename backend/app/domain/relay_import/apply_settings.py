@@ -24,7 +24,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from app.domain.distance_protection import CHARACTERISTIC_MHO
+from app.domain.distance_protection import CHARACTERISTIC_MHO, GEOMETRY_POLAR
 from app.domain.relay_import.canonical_distance import CanonicalDistanceProtectionModel
 from app.domain.relay_import.engine_adapter import EngineAdaptation, zone_direction
 
@@ -55,6 +55,10 @@ class ApplyZone:
     reactive_reach_ohm: float | None
     resistive_reach_forward_ohm: float | None
     resistive_reach_reverse_ohm: float | None
+    #: ``polar`` (reach at an angle) or ``explicit_rx`` (X and resistive limits, no angle).
+    #: An explicit zone carries ``characteristic_angle_deg = None`` and its X in
+    #: ``reactive_reach_ohm``; it is never converted to a polar reach.
+    geometry_mode: str = GEOMETRY_POLAR
 
 
 @dataclass(frozen=True)
@@ -116,6 +120,7 @@ def build_apply_plan(
                 None if mho else _finite(settings.reactive_reach_ohm, "reach"),
                 None if mho else _finite(settings.resistive_reach_forward_ohm, "right resistive reach"),
                 None if mho else _finite(settings.resistive_reach_reverse_ohm, "left resistive reach"),
+                settings.geometry_mode,
             )
         )
     return ApplyPlan(adaptation.characteristic, impedance_basis, tuple(zones))

@@ -261,6 +261,20 @@ DIRECTION_FORWARD = "forward"
 DIRECTION_REVERSE = "reverse"
 KNOWN_DIRECTIONS = (DIRECTION_FORWARD, DIRECTION_REVERSE)
 
+#: How a quadrilateral zone's reach is stated. ``polar``: the reactive reach is a distance
+#: along `characteristic_angle_deg` (the pre-existing form -- every zone built without a
+#: mode). ``explicit_rx``: orthogonal limits -- `reactive_reach_ohm` is the X limit,
+#: `resistive_reach_forward_ohm` the +R limit and `resistive_reach_reverse_ohm` the -R
+#: limit -- and the zone has NO angle (`characteristic_angle_deg` stays None). Only a
+#: quadrilateral can be explicit; a mho zone has no meaning for it.
+GEOMETRY_POLAR = "polar"
+GEOMETRY_EXPLICIT_RX = "explicit_rx"
+KNOWN_GEOMETRY_MODES = (GEOMETRY_POLAR, GEOMETRY_EXPLICIT_RX)
+#: The coordinate frame of an explicit R/X zone: R along the horizontal axis, X along the
+#: vertical. It is the frame the polar parameterisation reduces to at 90 degrees, reused so
+#: the quadrilateral maths exists once; it is not a setting of any zone.
+_ORTHOGONAL_FRAME_DEG = 90.0
+
 
 @dataclass(frozen=True, slots=True)
 class ZoneSettings:
@@ -293,6 +307,8 @@ class ZoneSettings:
     #: Last field with a default so every pre-existing (positional or
     #: keyword) construction keeps meaning "forward". See DIRECTION_*.
     direction: str = DIRECTION_FORWARD
+    #: See GEOMETRY_*. Defaults to polar so every pre-existing construction is unchanged.
+    geometry_mode: str = GEOMETRY_POLAR
 
 
 def _orient(point: ImpedancePoint, direction: str) -> tuple[float, float] | None:
@@ -421,6 +437,24 @@ def quadrilateral_zone_operated(
     )
 
 
+def explicit_rx_quadrilateral_zone_operated(
+    point: ImpedancePoint, *,
+    x_reach_ohm: float, right_resistive_reach_ohm: float, left_resistive_reach_ohm: float,
+    direction: str = DIRECTION_FORWARD,
+) -> bool:
+    """A quadrilateral stated as orthogonal limits: X <= `x_reach_ohm`, R between
+    -`left_resistive_reach_ohm` and +`right_resistive_reach_ohm`, no angle. Evaluated by
+    `quadrilateral_zone_operated()` in the orthogonal frame -- one set of maths, not a
+    second geometry -- so the boundary tolerance, the 0 Ω left reach and the 180° `reverse`
+    rotation behave exactly as they do for a polar zone."""
+    return quadrilateral_zone_operated(
+        point, reactive_reach_ohm=x_reach_ohm,
+        resistive_reach_forward_ohm=right_resistive_reach_ohm,
+        resistive_reach_reverse_ohm=left_resistive_reach_ohm,
+        characteristic_angle_deg=_ORTHOGONAL_FRAME_DEG, direction=direction,
+    )
+
+
 def evaluate_zone_state(point: ImpedancePoint | None, *, characteristic: str, zone: ZoneSettings) -> str:
     """The one zone-element-state entry point -- INSTANTANEOUS geometric
     state only (task's own explicit section 25: "do not latch zone
@@ -438,7 +472,11 @@ def evaluate_zone_state(point: ImpedancePoint | None, *, characteristic: str, zo
     if zone.delay_s is None:
         # Enabled but the delay was never configured: incomplete, not ready.
         return ZONE_STATE_NOT_OPERATED
-    if zone.characteristic_angle_deg is None:
+    explicit = zone.geometry_mode == GEOMETRY_EXPLICIT_RX
+    if explicit and characteristic != CHARACTERISTIC_QUADRILATERAL:
+        # Explicit R/X limits describe a quadrilateral only; nothing else is guessed from them.
+        return ZONE_STATE_NOT_OPERATED
+    if zone.characteristic_angle_deg is None and not explicit:
         # Enabled but the angle was never configured: incomplete, not ready.
         return ZONE_STATE_NOT_OPERATED
     if characteristic == CHARACTERISTIC_MHO:
@@ -450,6 +488,13 @@ def evaluate_zone_state(point: ImpedancePoint | None, *, characteristic: str, zo
     elif characteristic == CHARACTERISTIC_QUADRILATERAL:
         if zone.reactive_reach_ohm is None or zone.resistive_reach_forward_ohm is None or zone.resistive_reach_reverse_ohm is None:
             return ZONE_STATE_NOT_OPERATED
+        if explicit:
+            operated = explicit_rx_quadrilateral_zone_operated(
+                point, x_reach_ohm=zone.reactive_reach_ohm,
+                right_resistive_reach_ohm=zone.resistive_reach_forward_ohm,
+                left_resistive_reach_ohm=zone.resistive_reach_reverse_ohm, direction=zone.direction,
+            )
+            return ZONE_STATE_OPERATED if operated else ZONE_STATE_NOT_OPERATED
         operated = quadrilateral_zone_operated(
             point, reactive_reach_ohm=zone.reactive_reach_ohm,
             resistive_reach_forward_ohm=zone.resistive_reach_forward_ohm,

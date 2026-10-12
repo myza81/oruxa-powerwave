@@ -39,6 +39,9 @@ class ZoneSettingsIn(BaseModel):
     resistive_reach_reverse_ohm: _Finite | None = None
     characteristic_angle_deg: _Finite | None = None
     delay_s: _Finite | None = None
+    #: ``explicit_rx``: a quadrilateral stated as X / +R / -R limits with no angle
+    #: (`reactive_reach_ohm` is the X limit). ``polar`` (the default) is the reach-at-angle form.
+    geometry_mode: Literal["polar", "explicit_rx"] = "polar"
 
 
 ZONES_IN_ADAPTER: TypeAdapter[list[ZoneSettingsIn]] = TypeAdapter(
